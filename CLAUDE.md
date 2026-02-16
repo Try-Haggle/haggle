@@ -140,6 +140,7 @@ Haggle은 AI Agent가 자동으로 가격을 협상하고, 스테이블코인(US
 | 프로젝트 | 설명 | 상태 |
 |----------|------|------|
 | [MVP](./projects/mvp/CLAUDE.md) | 60일 MVP 개발 프로젝트 | 🔨 Active |
+| [UCP Integration](./projects/ucp-integration/CLAUDE.md) | UCP 생태계 Negotiation Extension 통합 | 🔨 Active |
 | [HNP Protocol](./projects/hnp-protocol/CLAUDE.md) | Haggle Negotiation Protocol 스펙 | 📋 Planning |
 | [Dispute System](./projects/dispute-system/CLAUDE.md) | 3-Tier 분쟁 해결 시스템 | 📋 Planning |
 
