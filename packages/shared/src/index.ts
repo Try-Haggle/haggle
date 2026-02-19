@@ -1,5 +1,5 @@
 // ─── Shared Types ────────────────────────────────────────────
-export type { ListingStatus, ListingCategory, ItemCondition } from "./types/listing.js";
+export type { ListingStatus, ListingCategory, ItemCondition, ListingDraft } from "./types/listing.js";
 export type { NegotiationStatus, OfferType } from "./types/negotiation.js";
 export type { ApiResponse, ApiError } from "./types/api.js";
 
