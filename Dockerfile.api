@@ -11,8 +11,8 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.js
 COPY apps/api/package.json apps/api/tsconfig.json apps/api/
 COPY packages/shared/package.json packages/shared/tsconfig.json packages/shared/
 COPY packages/db/package.json packages/db/tsconfig.json packages/db/
-COPY packages/protocol/package.json packages/protocol/tsconfig.json packages/protocol/
-COPY packages/engine/package.json packages/engine/tsconfig.json packages/engine/
+COPY packages/engine-core/package.json packages/engine-core/tsconfig.json packages/engine-core/
+COPY packages/engine-session/package.json packages/engine-session/tsconfig.json packages/engine-session/
 COPY packages/contracts/package.json packages/contracts/tsconfig.json packages/contracts/
 
 # Install dependencies
