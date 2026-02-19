@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { createDb } from "@haggle/db";
 import { registerMcpRoutes } from "./mcp/router.js";
 
 export async function createServer() {
@@ -9,15 +10,20 @@ export async function createServer() {
     },
   });
 
+  // ─── Database ──────────────────────────────────────────────
+  const db = createDb(process.env.DATABASE_URL!);
+
   // ─── CORS ────────────────────────────────────────────────
   // ChatGPT requires these origins to connect to the MCP server.
   await app.register(cors, {
     origin: [
       "https://chatgpt.com",
       "https://chat.openai.com",
+      /\.vercel\.app$/,
+      "https://tryhaggle.ai",
       /^http:\/\/localhost:\d+$/,
     ],
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
     credentials: true,
   });
@@ -29,9 +35,8 @@ export async function createServer() {
   }));
 
   // ─── MCP Routes ──────────────────────────────────────────
-  registerMcpRoutes(app);
+  registerMcpRoutes(app, db);
 
-  // TODO(slice-1): Register REST API routes for Embedded UI direct calls
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 
   return app;

@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { FastifyInstance } from "fastify";
+import type { Database } from "@haggle/db";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "./tools/index.js";
@@ -7,13 +8,13 @@ import { registerTools } from "./tools/index.js";
 /** Active MCP sessions keyed by session ID */
 const sessions = new Map<string, StreamableHTTPServerTransport>();
 
-function createMcpServer(): McpServer {
+function createMcpServer(db: Database): McpServer {
   const mcp = new McpServer({
     name: "haggle",
     version: "0.1.0",
   });
 
-  registerTools(mcp);
+  registerTools(mcp, db);
   return mcp;
 }
 
@@ -21,7 +22,7 @@ function createMcpServer(): McpServer {
  * Register MCP Streamable HTTP routes on the Fastify instance.
  * Handles POST (requests), GET (SSE stream), DELETE (session cleanup).
  */
-export function registerMcpRoutes(app: FastifyInstance) {
+export function registerMcpRoutes(app: FastifyInstance, db: Database) {
   // ─── POST /mcp — Initialize or send requests ────────────
   app.post("/mcp", async (request, reply) => {
     const sessionId = request.headers["mcp-session-id"] as string | undefined;
@@ -44,7 +45,7 @@ export function registerMcpRoutes(app: FastifyInstance) {
       }
     };
 
-    const server = createMcpServer();
+    const server = createMcpServer(db);
     await server.connect(transport);
 
     await transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body);
