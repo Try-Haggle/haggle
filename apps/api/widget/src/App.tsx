@@ -52,10 +52,7 @@ export default function App() {
       availableDisplayModes: ["inline", "fullscreen"],
     },
     onAppCreated: (createdApp) => {
-      console.log("[haggle] app created, registering handlers");
-
       createdApp.onhostcontextchanged = (ctx) => {
-        console.log("[haggle] host context changed:", ctx);
         if (ctx.displayMode) {
           setIsFullscreen(ctx.displayMode === "fullscreen");
         }
@@ -64,8 +61,6 @@ export default function App() {
       createdApp.ontoolresult = (result) => {
         const data = result.structuredContent as Record<string, unknown>;
         if (!data?.draft_id) return;
-
-        console.log("[haggle] tool result received:", data.draft_id);
         setDraftId(data.draft_id as string);
 
         const draft = data.draft as Record<string, unknown> | undefined;
@@ -87,7 +82,6 @@ export default function App() {
   useEffect(() => {
     if (!app || !isConnected) return;
     const ctx = app.getHostContext();
-    console.log("[haggle] connected, initial host context:", ctx);
     if (ctx?.displayMode === "fullscreen") {
       setIsFullscreen(true);
     }
@@ -95,14 +89,7 @@ export default function App() {
 
   // Request fullscreen mode from ChatGPT host (official pattern).
   const requestFullscreen = useCallback(() => {
-    if (!app || !isConnected || isFullscreen) {
-      console.log("[haggle] requestFullscreen skipped:", {
-        app: !!app,
-        isConnected,
-        isFullscreen,
-      });
-      return;
-    }
+    if (!app || !isConnected || isFullscreen) return;
 
     // If the host exposes availableDisplayModes, verify fullscreen is supported.
     // ChatGPT may not expose this field (protocol discrepancy), so skip check if absent.
@@ -111,19 +98,16 @@ export default function App() {
       ctx?.availableDisplayModes &&
       !ctx.availableDisplayModes.includes("fullscreen")
     ) {
-      console.log("[haggle] host does not support fullscreen:", ctx.availableDisplayModes);
       return;
     }
 
-    console.log("[haggle] requesting fullscreen...");
     app
       .requestDisplayMode({ mode: "fullscreen" })
       .then((result) => {
-        console.log("[haggle] displayMode result:", result);
         // Always use the RESULT mode — host has final say
         setIsFullscreen(result.mode === "fullscreen");
       })
-      .catch((err) => console.warn("[haggle] displayMode failed:", err));
+      .catch(() => {});
   }, [app, isConnected, isFullscreen]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
