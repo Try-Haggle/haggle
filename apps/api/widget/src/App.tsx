@@ -26,13 +26,6 @@ const CONDITIONS = [
 ];
 
 export default function App() {
-  const { app } = useApp({
-    appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
-    capabilities: {
-      availableDisplayModes: ["inline", "fullscreen"],
-    },
-  });
-
   // Form state
   const [draftId, setDraftId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -50,23 +43,88 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Connect to ChatGPT host via MCP Apps bridge.
+  // onAppCreated registers handlers BEFORE the connection handshake completes,
+  // preventing race conditions where the host sends events before we listen.
+  const { app, isConnected } = useApp({
+    appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
+    capabilities: {
+      availableDisplayModes: ["inline", "fullscreen"],
+    },
+    onAppCreated: (createdApp) => {
+      console.log("[haggle] app created, registering handlers");
+
+      createdApp.onhostcontextchanged = (ctx) => {
+        console.log("[haggle] host context changed:", ctx);
+        if (ctx.displayMode) {
+          setIsFullscreen(ctx.displayMode === "fullscreen");
+        }
+      };
+
+      createdApp.ontoolresult = (result) => {
+        const data = result.structuredContent as Record<string, unknown>;
+        if (!data?.draft_id) return;
+
+        console.log("[haggle] tool result received:", data.draft_id);
+        setDraftId(data.draft_id as string);
+
+        const draft = data.draft as Record<string, unknown> | undefined;
+        if (draft) {
+          if (draft.title) setTitle(draft.title as string);
+          if (draft.description) setDescription(draft.description as string);
+          if (draft.tags) setTags(draft.tags as string[]);
+          if (draft.category) setCategory(draft.category as string);
+          if (draft.condition) setCondition(draft.condition as string);
+        }
+      };
+    },
+  });
+
   const isFormValid = !!photoFile && !!title.trim();
 
-  // Request fullscreen mode from ChatGPT host
-  const requestFullscreen = useCallback(async () => {
-    if (!app || isFullscreen) return;
-    try {
-      const result = await app.requestDisplayMode({ mode: "fullscreen" });
-      if (result.mode === "fullscreen") setIsFullscreen(true);
-    } catch {
-      // Host may not support fullscreen — silently ignore
+  // Check initial display mode once the bridge is connected.
+  // onAppCreated fires before connection, so getHostContext() isn't ready there.
+  useEffect(() => {
+    if (!app || !isConnected) return;
+    const ctx = app.getHostContext();
+    console.log("[haggle] connected, initial host context:", ctx);
+    if (ctx?.displayMode === "fullscreen") {
+      setIsFullscreen(true);
     }
-  }, [app, isFullscreen]);
+  }, [app, isConnected]);
 
-  // Auto-expand to fullscreen when user interacts with the form
-  const handleFormInteraction = useCallback(() => {
-    if (!isFullscreen) requestFullscreen();
-  }, [isFullscreen, requestFullscreen]);
+  // Request fullscreen mode from ChatGPT host (official pattern).
+  const requestFullscreen = useCallback(() => {
+    if (!app || !isConnected || isFullscreen) {
+      console.log("[haggle] requestFullscreen skipped:", {
+        app: !!app,
+        isConnected,
+        isFullscreen,
+      });
+      return;
+    }
+
+    // If the host exposes availableDisplayModes, verify fullscreen is supported.
+    // ChatGPT may not expose this field (protocol discrepancy), so skip check if absent.
+    const ctx = app.getHostContext();
+    if (
+      ctx?.availableDisplayModes &&
+      !ctx.availableDisplayModes.includes("fullscreen")
+    ) {
+      console.log("[haggle] host does not support fullscreen:", ctx.availableDisplayModes);
+      return;
+    }
+
+    console.log("[haggle] requesting fullscreen...");
+    app
+      .requestDisplayMode({ mode: "fullscreen" })
+      .then((result) => {
+        console.log("[haggle] displayMode result:", result);
+        // Always use the RESULT mode — host has final say
+        setIsFullscreen(result.mode === "fullscreen");
+      })
+      .catch((err) => console.warn("[haggle] displayMode failed:", err));
+  }, [app, isConnected, isFullscreen]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,42 +132,6 @@ export default function App() {
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
-
-  // Sync display mode from host (initial + changes)
-  useEffect(() => {
-    if (!app) return;
-
-    // Check initial state
-    const ctx = app.getHostContext();
-    if (ctx?.displayMode === "fullscreen") setIsFullscreen(true);
-
-    // Listen for changes
-    app.onhostcontextchanged = (changed) => {
-      setIsFullscreen(changed.displayMode === "fullscreen");
-    };
-  }, [app]);
-
-  // Receive draft data from haggle_start_draft tool result
-  useEffect(() => {
-    if (!app) return;
-
-    app.ontoolresult = (result) => {
-      const data = result.structuredContent as Record<string, unknown>;
-      if (!data?.draft_id) return;
-
-      setDraftId(data.draft_id as string);
-
-      // Pre-fill form if draft already has data (e.g., from chat auto-fill)
-      const draft = data.draft as Record<string, unknown> | undefined;
-      if (draft) {
-        if (draft.title) setTitle(draft.title as string);
-        if (draft.description) setDescription(draft.description as string);
-        if (draft.tags) setTags(draft.tags as string[]);
-        if (draft.category) setCategory(draft.category as string);
-        if (draft.condition) setCondition(draft.condition as string);
-      }
-    };
-  }, [app]);
 
   const handleNext = async () => {
     if (!title.trim()) {
@@ -180,7 +202,7 @@ export default function App() {
       <StepIndicator currentStep={currentStep} steps={STEPS} />
 
       {currentStep === 1 ? (
-        <div onClick={handleFormInteraction}>
+        <div onPointerDownCapture={requestFullscreen}>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
