@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
@@ -28,7 +28,9 @@ const CONDITIONS = [
 export default function App() {
   const { app } = useApp({
     appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
-    capabilities: {},
+    capabilities: {
+      availableDisplayModes: ["inline", "fullscreen"],
+    },
   });
 
   // Form state
@@ -45,9 +47,26 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isFormValid = !!photoFile && !!title.trim();
+
+  // Request fullscreen mode from ChatGPT host
+  const requestFullscreen = useCallback(async () => {
+    if (!app || isFullscreen) return;
+    try {
+      const result = await app.requestDisplayMode({ mode: "fullscreen" });
+      if (result.mode === "fullscreen") setIsFullscreen(true);
+    } catch {
+      // Host may not support fullscreen — silently ignore
+    }
+  }, [app, isFullscreen]);
+
+  // Auto-expand to fullscreen when user interacts with the form
+  const handleFormInteraction = useCallback(() => {
+    if (!isFullscreen) requestFullscreen();
+  }, [isFullscreen, requestFullscreen]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,6 +74,14 @@ export default function App() {
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
+
+  // Track display mode changes from host
+  useEffect(() => {
+    if (!app) return;
+    app.onhostcontextchanged = (ctx) => {
+      setIsFullscreen(ctx.displayMode === "fullscreen");
+    };
+  }, [app]);
 
   // Receive draft data from haggle_start_draft tool result
   useEffect(() => {
@@ -112,17 +139,42 @@ export default function App() {
   };
 
   return (
-    <div className="widget">
+    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
       {/* Header */}
       <div className="header">
         <span className="header__logo">Haggle</span>
+        {!isFullscreen && (
+          <button
+            type="button"
+            className="header__expand"
+            onClick={requestFullscreen}
+            aria-label="Expand to fullscreen"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" x2="14" y1="3" y2="10" />
+              <line x1="3" x2="10" y1="21" y2="14" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Step Indicator */}
       <StepIndicator currentStep={currentStep} steps={STEPS} />
 
       {currentStep === 1 ? (
-        <>
+        <div onClick={handleFormInteraction}>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
@@ -278,7 +330,7 @@ export default function App() {
             {isSubmitting ? "Saving..." : "Next: Set Pricing"}
             {!isSubmitting && <span>→</span>}
           </button>
-        </>
+        </div>
       ) : (
         /* Step 2 Placeholder */
         <div className="placeholder">

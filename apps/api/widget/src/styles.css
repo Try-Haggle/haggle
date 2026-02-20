@@ -46,6 +46,12 @@ body {
   max-width: 560px;
   margin: 0 auto;
   padding: 24px 20px;
+  border-radius: var(--radius-lg);
+}
+
+.widget--fullscreen {
+  max-width: 640px;
+  padding: 32px 24px;
 }
 
 /* ─── Header ────────────────────────────────────────────── */
@@ -61,6 +67,26 @@ body {
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
+  flex: 1;
+}
+
+.header__expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.header__expand:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
 }
 
 /* ─── Step Indicator ────────────────────────────────────── */
