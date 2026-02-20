@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
@@ -26,11 +26,6 @@ const CONDITIONS = [
 ];
 
 export default function App() {
-  const { app } = useApp({
-    appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
-    capabilities: {},
-  });
-
   // Form state
   const [draftId, setDraftId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -45,9 +40,75 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Connect to ChatGPT host via MCP Apps bridge.
+  // onAppCreated registers handlers BEFORE the connection handshake completes,
+  // preventing race conditions where the host sends events before we listen.
+  const { app, isConnected } = useApp({
+    appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
+    capabilities: {
+      availableDisplayModes: ["inline", "fullscreen"],
+    },
+    onAppCreated: (createdApp) => {
+      createdApp.onhostcontextchanged = (ctx) => {
+        if (ctx.displayMode) {
+          setIsFullscreen(ctx.displayMode === "fullscreen");
+        }
+      };
+
+      createdApp.ontoolresult = (result) => {
+        const data = result.structuredContent as Record<string, unknown>;
+        if (!data?.draft_id) return;
+        setDraftId(data.draft_id as string);
+
+        const draft = data.draft as Record<string, unknown> | undefined;
+        if (draft) {
+          if (draft.title) setTitle(draft.title as string);
+          if (draft.description) setDescription(draft.description as string);
+          if (draft.tags) setTags(draft.tags as string[]);
+          if (draft.category) setCategory(draft.category as string);
+          if (draft.condition) setCondition(draft.condition as string);
+        }
+      };
+    },
+  });
+
   const isFormValid = !!photoFile && !!title.trim();
+
+  // Check initial display mode once the bridge is connected.
+  // onAppCreated fires before connection, so getHostContext() isn't ready there.
+  useEffect(() => {
+    if (!app || !isConnected) return;
+    const ctx = app.getHostContext();
+    if (ctx?.displayMode === "fullscreen") {
+      setIsFullscreen(true);
+    }
+  }, [app, isConnected]);
+
+  // Request fullscreen mode from ChatGPT host (official pattern).
+  const requestFullscreen = useCallback(() => {
+    if (!app || !isConnected || isFullscreen) return;
+
+    // If the host exposes availableDisplayModes, verify fullscreen is supported.
+    // ChatGPT may not expose this field (protocol discrepancy), so skip check if absent.
+    const ctx = app.getHostContext();
+    if (
+      ctx?.availableDisplayModes &&
+      !ctx.availableDisplayModes.includes("fullscreen")
+    ) {
+      return;
+    }
+
+    app
+      .requestDisplayMode({ mode: "fullscreen" })
+      .then((result) => {
+        // Always use the RESULT mode — host has final say
+        setIsFullscreen(result.mode === "fullscreen");
+      })
+      .catch(() => {});
+  }, [app, isConnected, isFullscreen]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,28 +116,6 @@ export default function App() {
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
-
-  // Receive draft data from haggle_start_draft tool result
-  useEffect(() => {
-    if (!app) return;
-
-    app.ontoolresult = (result) => {
-      const data = result.structuredContent as Record<string, unknown>;
-      if (!data?.draft_id) return;
-
-      setDraftId(data.draft_id as string);
-
-      // Pre-fill form if draft already has data (e.g., from chat auto-fill)
-      const draft = data.draft as Record<string, unknown> | undefined;
-      if (draft) {
-        if (draft.title) setTitle(draft.title as string);
-        if (draft.description) setDescription(draft.description as string);
-        if (draft.tags) setTags(draft.tags as string[]);
-        if (draft.category) setCategory(draft.category as string);
-        if (draft.condition) setCondition(draft.condition as string);
-      }
-    };
-  }, [app]);
 
   const handleNext = async () => {
     if (!title.trim()) {
@@ -112,17 +151,42 @@ export default function App() {
   };
 
   return (
-    <div className="widget">
-      {/* Header */}
-      <div className="header">
-        <span className="header__logo">Haggle</span>
-      </div>
+    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
+      {/* Header — hidden in fullscreen (host provides its own) */}
+      {!isFullscreen && (
+        <div className="header">
+          <span className="header__logo">Haggle</span>
+          <button
+            type="button"
+            className="header__expand"
+            onClick={requestFullscreen}
+            aria-label="Expand to fullscreen"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" x2="14" y1="3" y2="10" />
+              <line x1="3" x2="10" y1="21" y2="14" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Step Indicator */}
       <StepIndicator currentStep={currentStep} steps={STEPS} />
 
       {currentStep === 1 ? (
-        <>
+        <div onPointerDownCapture={requestFullscreen}>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
@@ -278,7 +342,7 @@ export default function App() {
             {isSubmitting ? "Saving..." : "Next: Set Pricing"}
             {!isSubmitting && <span>→</span>}
           </button>
-        </>
+        </div>
       ) : (
         /* Step 2 Placeholder */
         <div className="placeholder">

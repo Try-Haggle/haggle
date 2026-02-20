@@ -111,8 +111,21 @@ export function registerTools(server: McpServer, db: Database) {
           title: z.string().optional(),
           description: z.string().optional(),
           tags: z.array(z.string()).optional(),
-          category: z.string().optional(),
-          condition: z.string().optional(),
+          category: z
+            .enum([
+              "electronics",
+              "clothing",
+              "furniture",
+              "collectibles",
+              "sports",
+              "vehicles",
+              "books",
+              "other",
+            ])
+            .optional(),
+          condition: z
+            .enum(["new", "like_new", "good", "fair", "poor"])
+            .optional(),
           photoUrl: z.string().optional(),
           targetPrice: z.string().optional(),
           floorPrice: z.string().optional(),
