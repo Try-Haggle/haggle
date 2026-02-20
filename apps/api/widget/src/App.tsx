@@ -75,11 +75,17 @@ export default function App() {
     setPhotoPreview(URL.createObjectURL(file));
   };
 
-  // Track display mode changes from host
+  // Sync display mode from host (initial + changes)
   useEffect(() => {
     if (!app) return;
-    app.onhostcontextchanged = (ctx) => {
-      setIsFullscreen(ctx.displayMode === "fullscreen");
+
+    // Check initial state
+    const ctx = app.getHostContext();
+    if (ctx?.displayMode === "fullscreen") setIsFullscreen(true);
+
+    // Listen for changes
+    app.onhostcontextchanged = (changed) => {
+      setIsFullscreen(changed.displayMode === "fullscreen");
     };
   }, [app]);
 
@@ -140,10 +146,10 @@ export default function App() {
 
   return (
     <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
-      {/* Header */}
-      <div className="header">
-        <span className="header__logo">Haggle</span>
-        {!isFullscreen && (
+      {/* Header — hidden in fullscreen (host provides its own) */}
+      {!isFullscreen && (
+        <div className="header">
+          <span className="header__logo">Haggle</span>
           <button
             type="button"
             className="header__expand"
@@ -167,8 +173,8 @@ export default function App() {
               <line x1="3" x2="10" y1="21" y2="14" />
             </svg>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Step Indicator */}
       <StepIndicator currentStep={currentStep} steps={STEPS} />
