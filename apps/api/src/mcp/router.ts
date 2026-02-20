@@ -4,6 +4,7 @@ import type { Database } from "@haggle/db";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "./tools/index.js";
+import { registerResources } from "./resources.js";
 
 /** Active MCP sessions keyed by session ID */
 const sessions = new Map<string, StreamableHTTPServerTransport>();
@@ -15,6 +16,7 @@ function createMcpServer(db: Database): McpServer {
   });
 
   registerTools(mcp, db);
+  registerResources(mcp);
   return mcp;
 }
 
