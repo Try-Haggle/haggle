@@ -4,7 +4,7 @@ import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
 import ChipSelector from "./components/ChipSelector";
 
-const STEPS = [{ label: "Item Details" }, { label: "Pricing" }];
+const STEPS = [{ label: "Item Details" }, { label: "Pricing" }, { label: "AI Agent" }];
 
 const CATEGORIES = [
   { value: "electronics", label: "Electronics" },
@@ -35,6 +35,11 @@ export default function App() {
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState("electronics");
   const [condition, setCondition] = useState<string | null>(null);
+
+  // Step 2 state
+  const [targetPrice, setTargetPrice] = useState("");
+  const [floorPrice, setFloorPrice] = useState("");
+  const [sellingDeadline, setSellingDeadline] = useState("");
 
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
@@ -70,6 +75,9 @@ export default function App() {
           if (draft.tags) setTags(draft.tags as string[]);
           if (draft.category) setCategory(draft.category as string);
           if (draft.condition) setCondition(draft.condition as string);
+          if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
+          if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
+          if (draft.sellingDeadline) setSellingDeadline((draft.sellingDeadline as string).slice(0, 10));
         }
       };
     },
@@ -117,7 +125,7 @@ export default function App() {
     setPhotoPreview(URL.createObjectURL(file));
   };
 
-  const handleNext = async () => {
+  const handleNextStep1 = async () => {
     if (!title.trim()) {
       setError("Title is required");
       return;
@@ -142,6 +150,41 @@ export default function App() {
         },
       });
       setCurrentStep(2);
+    } catch (err) {
+      setError("Failed to save. Please try again.");
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleNextStep2 = async () => {
+    if (!targetPrice.trim()) {
+      setError("Asking price is required");
+      return;
+    }
+    if (!sellingDeadline) {
+      setError("Selling deadline is required");
+      return;
+    }
+    if (!app || !draftId) return;
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await app.callServerTool({
+        name: "haggle_apply_patch",
+        arguments: {
+          draft_id: draftId,
+          patch: {
+            targetPrice: targetPrice.trim(),
+            floorPrice: floorPrice.trim() || undefined,
+            sellingDeadline: new Date(sellingDeadline).toISOString(),
+          },
+        },
+      });
+      setCurrentStep(3);
     } catch (err) {
       setError("Failed to save. Please try again.");
       console.error(err);
@@ -180,6 +223,17 @@ export default function App() {
             </svg>
           </button>
         </div>
+      )}
+
+      {/* Back button — above step indicator on Step 2+ */}
+      {currentStep > 1 && (
+        <button
+          type="button"
+          className="btn-back"
+          onClick={() => { setCurrentStep(currentStep - 1); setError(null); }}
+        >
+          ← Back
+        </button>
       )}
 
       {/* Step Indicator */}
@@ -336,19 +390,132 @@ export default function App() {
           <button
             type="button"
             className="btn-primary"
-            onClick={handleNext}
+            onClick={handleNextStep1}
             disabled={!isFormValid || isSubmitting}
           >
             {isSubmitting ? "Saving..." : "Next: Set Pricing"}
             {!isSubmitting && <span>→</span>}
           </button>
         </div>
+      ) : currentStep === 2 ? (
+        <div>
+          {/* Section Heading */}
+          <div className="section-heading">
+            <svg
+              className="section-heading__icon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="12" x2="12" y1="2" y2="22" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+            <h2 className="section-heading__text">Set your price</h2>
+          </div>
+
+          {/* Item Summary Card */}
+          <div className="summary-card">
+            {photoPreview ? (
+              <img src={photoPreview} alt="" className="summary-card__photo" />
+            ) : (
+              <div className="summary-card__photo-placeholder" />
+            )}
+            <div className="summary-card__content">
+              <p className="summary-card__title">{title || "Untitled"}</p>
+              <p className="summary-card__meta">
+                {CONDITIONS.find((c) => c.value === condition)?.label ?? "—"}
+                {" · "}
+                {CATEGORIES.find((c) => c.value === category)?.label ?? "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Asking Price */}
+          <div className="form-group">
+            <label className="form-label">
+              Asking Price <span className="required-star">*</span>
+            </label>
+            <div className="price-input-wrapper">
+              <span className="price-prefix">$</span>
+              <input
+                type="number"
+                className="form-input price-input"
+                placeholder="0"
+                value={targetPrice}
+                onChange={(e) => {
+                  setTargetPrice(e.target.value);
+                  if (error) setError(null);
+                }}
+                min="0"
+              />
+            </div>
+            <p className="form-helper">The starting price buyers will see</p>
+          </div>
+
+          {/* Minimum Acceptable Price */}
+          <div className="form-group">
+            <label className="form-label">
+              Minimum Acceptable Price{" "}
+              <span className="form-label__hint">(private — only your AI agent knows)</span>
+            </label>
+            <div className="price-input-wrapper">
+              <span className="price-prefix">$</span>
+              <input
+                type="number"
+                className="form-input price-input"
+                placeholder="0"
+                value={floorPrice}
+                onChange={(e) => setFloorPrice(e.target.value)}
+                min="0"
+              />
+            </div>
+            <p className="form-helper">Your AI will never agree below this price</p>
+          </div>
+
+          {/* Selling Deadline */}
+          <div className="form-group">
+            <label className="form-label">
+              Selling Deadline <span className="required-star">*</span>
+            </label>
+            <input
+              type="date"
+              className="form-input"
+              value={sellingDeadline}
+              min={new Date().toISOString().slice(0, 10)}
+              max="2099-12-31"
+              onChange={(e) => {
+                setSellingDeadline(e.target.value);
+                if (error) setError(null);
+              }}
+            />
+            <p className="form-helper">Your AI agent may be more flexible as the deadline approaches</p>
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+
+          {/* Next Button */}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleNextStep2}
+            disabled={!targetPrice.trim() || !sellingDeadline || isSubmitting}
+          >
+            {isSubmitting ? "Saving..." : "Next: Set Up AI Agent"}
+            {!isSubmitting && <span>→</span>}
+          </button>
+        </div>
       ) : (
-        /* Step 2 Placeholder */
+        /* Step 3 Placeholder */
         <div className="placeholder">
-          <p className="placeholder__title">Set Pricing</p>
+          <p className="placeholder__title">AI Agent Setup</p>
           <p className="placeholder__text">
-            Pricing will be available in Slice 2.
+            AI Agent configuration will be available in Slice 3.
           </p>
         </div>
       )}
