@@ -45,9 +45,15 @@ export function registerTools(server: McpServer, db: Database) {
       description:
         "Start a new listing draft for selling an item. Opens the listing wizard to fill in item details.",
       inputSchema: {},
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
       _meta: {
         ui: { resourceUri: LISTING_RESOURCE_URI },
         "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
       },
     },
     async () => {
@@ -105,6 +111,11 @@ export function registerTools(server: McpServer, db: Database) {
       title: "Apply Patch",
       description:
         "Update fields on an existing listing draft. Only allowed fields (title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig) can be patched.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
       inputSchema: {
         draft_id: z.string().uuid(),
         patch: z.object({
@@ -138,6 +149,8 @@ export function registerTools(server: McpServer, db: Database) {
           resourceUri: LISTING_RESOURCE_URI,
           visibility: ["model", "app"],
         },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
       },
     },
     async ({ draft_id, patch }) => {

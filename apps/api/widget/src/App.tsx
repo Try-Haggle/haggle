@@ -51,45 +51,67 @@ export default function App() {
   // Connect to ChatGPT host via MCP Apps bridge.
   // onAppCreated registers handlers BEFORE the connection handshake completes,
   // preventing race conditions where the host sends events before we listen.
-  const { app, isConnected } = useApp({
+  const { app, isConnected, error: connectionError } = useApp({
     appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
     capabilities: {
       availableDisplayModes: ["inline", "fullscreen"],
     },
     onAppCreated: (createdApp) => {
+      console.log("[haggle] App created, registering handlers");
+
       createdApp.onhostcontextchanged = (ctx) => {
+        console.log("[haggle] Host context changed:", JSON.stringify(ctx));
         if (ctx.displayMode) {
           setIsFullscreen(ctx.displayMode === "fullscreen");
         }
       };
 
       createdApp.ontoolresult = (result) => {
-        const data = result.structuredContent as Record<string, unknown>;
-        if (!data?.draft_id) return;
-        setDraftId(data.draft_id as string);
+        try {
+          console.log("[haggle] Tool result received:", JSON.stringify(result).slice(0, 200));
+          const data = result.structuredContent as Record<string, unknown>;
+          if (!data?.draft_id) return;
+          setDraftId(data.draft_id as string);
 
-        const draft = data.draft as Record<string, unknown> | undefined;
-        if (draft) {
-          if (draft.title) setTitle(draft.title as string);
-          if (draft.description) setDescription(draft.description as string);
-          if (draft.tags) setTags(draft.tags as string[]);
-          if (draft.category) setCategory(draft.category as string);
-          if (draft.condition) setCondition(draft.condition as string);
-          if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
-          if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
-          if (draft.sellingDeadline) setSellingDeadline((draft.sellingDeadline as string).slice(0, 10));
+          const draft = data.draft as Record<string, unknown> | undefined;
+          if (draft) {
+            if (draft.title) setTitle(draft.title as string);
+            if (draft.description) setDescription(draft.description as string);
+            if (draft.tags) setTags(draft.tags as string[]);
+            if (draft.category) setCategory(draft.category as string);
+            if (draft.condition) setCondition(draft.condition as string);
+            if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
+            if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
+            if (draft.sellingDeadline) setSellingDeadline((draft.sellingDeadline as string).slice(0, 10));
+          }
+        } catch (err) {
+          console.error("[haggle] Error processing tool result:", err);
         }
+      };
+
+      createdApp.onteardown = async () => {
+        console.log("[haggle] Host requested teardown");
+        return {};
       };
     },
   });
 
   const isFormValid = !!photoFile && !!title.trim();
 
+  // Log connection state for debugging widget disappearing issue.
+  useEffect(() => {
+    console.log("[haggle] Connection state:", { isConnected, hasApp: !!app, connectionError: connectionError?.message });
+    if (connectionError) {
+      console.error("[haggle] Connection error:", connectionError);
+    }
+  }, [app, isConnected, connectionError]);
+
   // Check initial display mode once the bridge is connected.
   // onAppCreated fires before connection, so getHostContext() isn't ready there.
   useEffect(() => {
     if (!app || !isConnected) return;
     const ctx = app.getHostContext();
+    console.log("[haggle] Initial host context:", JSON.stringify(ctx));
     if (ctx?.displayMode === "fullscreen") {
       setIsFullscreen(true);
     }
@@ -195,6 +217,12 @@ export default function App() {
 
   return (
     <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
+      {/* Debug: show connection error if any */}
+      {connectionError && (
+        <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
+          Bridge error: {connectionError.message}
+        </div>
+      )}
       {/* Header — hidden in fullscreen (host provides its own) */}
       {!isFullscreen && (
         <div className="header">
