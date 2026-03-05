@@ -43,7 +43,7 @@ export function registerTools(server: McpServer, db: Database) {
     {
       title: "Start Draft",
       description:
-        "Start a new listing draft for selling an item. Opens the listing wizard to fill in item details.",
+        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. IMPORTANT: If the user provided specific item details (e.g. title, price, condition) in the same message, you may call haggle_apply_patch right after to populate those fields. But if the user only said something vague like 'I want to sell something' without concrete details, do NOT call haggle_apply_patch. Instead, let them use the wizard UI or ask for more details in chat.",
       inputSchema: {},
       annotations: {
         readOnlyHint: false,
@@ -110,7 +110,7 @@ export function registerTools(server: McpServer, db: Database) {
     {
       title: "Apply Patch",
       description:
-        "Update fields on an existing listing draft. Only allowed fields (title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig) can be patched.",
+        "Update fields on an existing listing draft. Only call this when the user explicitly mentions specific details (title, price, condition, etc.) in the conversation, or when the widget UI sends a patch. Do NOT guess or auto-fill fields that the user has not mentioned. Allowed fields: title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
