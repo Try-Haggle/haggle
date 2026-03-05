@@ -3,6 +3,13 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
 import ChipSelector from "./components/ChipSelector";
+import RadarChart from "./components/RadarChart";
+import {
+  AGENT_PRESETS,
+  DEFAULT_STATS,
+  STAT_META,
+  type AgentStats,
+} from "./agentPresets";
 
 const STEPS = [{ label: "Item Details" }, { label: "Pricing" }, { label: "AI Agent" }];
 
@@ -40,6 +47,10 @@ export default function App() {
   const [targetPrice, setTargetPrice] = useState("");
   const [floorPrice, setFloorPrice] = useState("");
   const [sellingDeadline, setSellingDeadline] = useState("");
+
+  // Step 3 state
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
 
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
@@ -216,7 +227,7 @@ export default function App() {
   };
 
   return (
-    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
+    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}${currentStep === 3 ? " widget--wide" : ""}`}>
       {/* Debug: show connection error if any */}
       {connectionError && (
         <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
@@ -426,7 +437,7 @@ export default function App() {
           </button>
         </div>
       ) : currentStep === 2 ? (
-        <div>
+        <div onPointerDownCapture={requestFullscreen}>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
@@ -539,13 +550,235 @@ export default function App() {
           </button>
         </div>
       ) : (
-        /* Step 3 Placeholder */
-        <div className="placeholder">
-          <p className="placeholder__title">AI Agent Setup</p>
-          <p className="placeholder__text">
-            AI Agent configuration will be available in Slice 3.
-          </p>
-        </div>
+        /* ─── Step 3: AI Agent Setup ──────────────────────────── */
+        (() => {
+          const activePreset = AGENT_PRESETS.find((a) => a.id === selectedAgent);
+          const currentStats: AgentStats = activePreset?.stats ?? DEFAULT_STATS;
+          const formatPrice = (v: string) => {
+            const n = parseFloat(v);
+            return isNaN(n) ? "$0" : `$${n.toLocaleString()}`;
+          };
+
+          return (
+            <div className="step3-wrapper" onPointerDownCapture={requestFullscreen}>
+              {/* Section Heading — full width above the grid */}
+              <div className="section-heading">
+                <svg
+                  className="section-heading__icon"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect width="18" height="10" x="3" y="11" rx="2" />
+                  <circle cx="12" cy="5" r="2" />
+                  <path d="M12 7v4" />
+                  <line x1="8" x2="8" y1="16" y2="16" />
+                  <line x1="16" x2="16" y1="16" y2="16" />
+                </svg>
+                <h2 className="section-heading__text">Set Up Your Selling Agent</h2>
+              </div>
+              <p className="step3-description">
+                Your AI will handle buyer negotiations automatically. Choose a style and customize its approach.
+              </p>
+
+              {/* Two-column row: cards + profile */}
+              <div className="step3-layout">
+              {/* ── LEFT COLUMN ─────────────────────────────── */}
+              <div className="step3-left">
+                {/* Agent Preset Cards (2×2 grid) */}
+                <div className="agent-grid">
+                  {AGENT_PRESETS.map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      className={`agent-card${selectedAgent === agent.id ? " agent-card--selected" : ""}`}
+                      onClick={() => setSelectedAgent(agent.id)}
+                    >
+                      <div className="agent-card__header">
+                        <span
+                          className="agent-card__icon"
+                          style={{ background: `${agent.accentColor}22`, color: agent.accentColor }}
+                        >
+                          {agent.id === "gatekeeper" && (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>
+                          )}
+                          {agent.id === "diplomat" && (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M6 8H5a4 4 0 0 0 0 8h1" /><path d="M8 6v12" /><path d="M16 6v12" />
+                            </svg>
+                          )}
+                          {agent.id === "storyteller" && (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" />
+                            </svg>
+                          )}
+                          {agent.id === "dealmaker" && (
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                          )}
+                        </span>
+                        <div>
+                          <p className="agent-card__name">{agent.name}</p>
+                          <p className="agent-card__tagline">{agent.tagline}</p>
+                        </div>
+                      </div>
+                      <p className="agent-card__desc">{agent.description}</p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chat Placeholder */}
+                <div className="chat-placeholder">
+                  <div className="chat-placeholder__header">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="18" height="10" x="3" y="11" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
+                    </svg>
+                    <span className="chat-placeholder__name">
+                      {activePreset ? activePreset.name : "Selling Agent"}
+                    </span>
+                  </div>
+                  <div className="chat-placeholder__body">
+                    <p>
+                      Hi! I'm your selling agent. I'll handle all price negotiations on your behalf — so you don't have to. Let me know how you'd like me to approach this.
+                    </p>
+                    <p className="chat-placeholder__hint">
+                      You can customize my approach below, or just pick a style and I'll run with it.
+                    </p>
+                  </div>
+                  <div className="chat-placeholder__banner">
+                    Chat with your AI agent to fine-tune its negotiation strategy. Coming soon.
+                  </div>
+                </div>
+              </div>
+
+              {/* ── RIGHT COLUMN ────────────────────────────── */}
+              <div className="step3-right">
+                <div className="agent-profile">
+                  {/* Profile Header */}
+                  <div className="agent-profile__header">
+                    <h3 className="agent-profile__title">AGENT PROFILE</h3>
+                    <span className={`agent-profile__pill${selectedAgent ? "" : " agent-profile__pill--empty"}`}>
+                      {!selectedAgent ? "No Agent" : isStrategyCustomized ? "Customized" : "Default"}
+                    </span>
+                  </div>
+
+                  {/* Pricing Summary Card */}
+                  <div className="pricing-card">
+                    <p className="pricing-card__label">{title || "Untitled"}</p>
+                    <p className="pricing-card__price">{formatPrice(targetPrice)}</p>
+                    <p className="pricing-card__floor">Floor: {formatPrice(floorPrice)} (private)</p>
+                  </div>
+
+                  {/* Selected Agent Display */}
+                  {activePreset ? (
+                    <div className="agent-selected">
+                      <span
+                        className="agent-card__icon"
+                        style={{ background: `${activePreset.accentColor}22`, color: activePreset.accentColor }}
+                      >
+                        {activePreset.id === "gatekeeper" && (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                        )}
+                        {activePreset.id === "diplomat" && (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M6 8H5a4 4 0 0 0 0 8h1" /><path d="M8 6v12" /><path d="M16 6v12" /></svg>
+                        )}
+                        {activePreset.id === "storyteller" && (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" /></svg>
+                        )}
+                        {activePreset.id === "dealmaker" && (
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                        )}
+                      </span>
+                      <div>
+                        <p className="agent-selected__name">{activePreset.name}</p>
+                        <p className="agent-selected__tagline">{activePreset.tagline}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="agent-empty">
+                      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.4">
+                        <rect width="18" height="10" x="3" y="11" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
+                      </svg>
+                      <p>Select an agent above</p>
+                    </div>
+                  )}
+
+                  {/* Stat Bars */}
+                  <div className="stat-bars">
+                    {STAT_META.map((stat) => (
+                      <div key={stat.key} className="stat-bar">
+                        <div className="stat-bar__header">
+                          <span className="stat-bar__label">{stat.label}</span>
+                          <span className="stat-bar__value">{currentStats[stat.key]}%</span>
+                        </div>
+                        <div className="stat-bar__track">
+                          <div
+                            className="stat-bar__fill"
+                            style={{
+                              width: `${currentStats[stat.key]}%`,
+                              background: stat.gradient,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Radar Chart */}
+                  <div className="radar-section">
+                    <h4 className="radar-section__title">STRATEGY MATRIX</h4>
+                    <RadarChart stats={currentStats} />
+                  </div>
+
+                  {/* CTA Button */}
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!selectedAgent || isSubmitting}
+                    onClick={async () => {
+                      if (!app || !draftId || !selectedAgent) return;
+                      setIsSubmitting(true);
+                      setError(null);
+                      try {
+                        await app.callServerTool({
+                          name: "haggle_apply_patch",
+                          arguments: {
+                            draft_id: draftId,
+                            patch: {
+                              strategyConfig: {
+                                preset: selectedAgent,
+                                ...currentStats,
+                              },
+                            },
+                          },
+                        });
+                      } catch (err) {
+                        setError("Failed to save. Please try again.");
+                        console.error(err);
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                  >
+                    {isSubmitting ? "Saving..." : "Save & Get Share Link"}
+                    {!isSubmitting && <span>→</span>}
+                  </button>
+                  {error && <p className="form-error" style={{ marginTop: 8 }}>{error}</p>}
+                </div>
+              </div>
+              </div>
+            </div>
+          );
+        })()
       )}
     </div>
   );
