@@ -603,12 +603,10 @@ body {
    ═══════════════════════════════════════════════════════════ */
 
 /* Wider widget on Step 3 */
-.widget--wide {
+.step3-wrapper {
   max-width: 1100px;
-}
-
-.widget--fullscreen.widget--wide > * {
-  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ─── Two-Column Layout ────────────────────────────────── */

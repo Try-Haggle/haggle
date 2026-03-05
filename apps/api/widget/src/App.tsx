@@ -227,7 +227,7 @@ export default function App() {
   };
 
   return (
-    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}${currentStep === 3 ? " widget--wide" : ""}`}>
+    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
       {/* Debug: show connection error if any */}
       {connectionError && (
         <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
@@ -264,19 +264,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Back button — above step indicator on Step 2+ */}
-      {currentStep > 1 && (
-        <button
-          type="button"
-          className="btn-back"
-          onClick={() => { setCurrentStep(currentStep - 1); setError(null); }}
-        >
-          ← Back
-        </button>
+      {/* Step Indicator — rendered here for Step 1 & 2 (Step 3 renders its own inside wrapper) */}
+      {currentStep !== 3 && (
+        <StepIndicator currentStep={currentStep} steps={STEPS} />
       )}
-
-      {/* Step Indicator */}
-      <StepIndicator currentStep={currentStep} steps={STEPS} />
 
       {currentStep === 1 ? (
         <div onPointerDownCapture={requestFullscreen}>
@@ -438,6 +429,14 @@ export default function App() {
         </div>
       ) : currentStep === 2 ? (
         <div onPointerDownCapture={requestFullscreen}>
+          {/* Back button */}
+          <button
+            type="button"
+            className="btn-back"
+            onClick={() => { setCurrentStep(1); setError(null); }}
+          >
+            ← Back
+          </button>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
@@ -561,6 +560,16 @@ export default function App() {
 
           return (
             <div className="step3-wrapper" onPointerDownCapture={requestFullscreen}>
+              {/* Back + Step Indicator inside wrapper for proper max-width */}
+              <button
+                type="button"
+                className="btn-back"
+                onClick={() => { setCurrentStep(currentStep - 1); setError(null); }}
+              >
+                ← Back
+              </button>
+              <StepIndicator currentStep={currentStep} steps={STEPS} />
+
               {/* Section Heading — full width above the grid */}
               <div className="section-heading">
                 <svg
