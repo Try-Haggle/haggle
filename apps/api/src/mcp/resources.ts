@@ -6,7 +6,7 @@ import {
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
 
-export const LISTING_RESOURCE_URI = "ui://haggle/listing.html";
+export const LISTING_RESOURCE_URI = "ui://haggle/listing.html?v=2";
 
 /**
  * Register MCP App Resources (HTML widgets rendered in host iframes).

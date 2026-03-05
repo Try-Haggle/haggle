@@ -43,11 +43,17 @@ export function registerTools(server: McpServer, db: Database) {
     {
       title: "Start Draft",
       description:
-        "Start a new listing draft for selling an item. Opens the listing wizard to fill in item details.",
+        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. IMPORTANT: If the user provided specific item details (e.g. title, price, condition) in the same message, you may call haggle_apply_patch right after to populate those fields. But if the user only said something vague like 'I want to sell something' without concrete details, do NOT call haggle_apply_patch. Instead, let them use the wizard UI or ask for more details in chat.",
       inputSchema: {},
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
       _meta: {
         ui: { resourceUri: LISTING_RESOURCE_URI },
         "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
       },
     },
     async () => {
@@ -104,15 +110,33 @@ export function registerTools(server: McpServer, db: Database) {
     {
       title: "Apply Patch",
       description:
-        "Update fields on an existing listing draft. Only allowed fields (title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig) can be patched.",
+        "Update fields on an existing listing draft. Only call this when the user explicitly mentions specific details (title, price, condition, etc.) in the conversation, or when the widget UI sends a patch. Do NOT guess or auto-fill fields that the user has not mentioned. Allowed fields: title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
       inputSchema: {
         draft_id: z.string().uuid(),
         patch: z.object({
           title: z.string().optional(),
           description: z.string().optional(),
           tags: z.array(z.string()).optional(),
-          category: z.string().optional(),
-          condition: z.string().optional(),
+          category: z
+            .enum([
+              "electronics",
+              "clothing",
+              "furniture",
+              "collectibles",
+              "sports",
+              "vehicles",
+              "books",
+              "other",
+            ])
+            .optional(),
+          condition: z
+            .enum(["new", "like_new", "good", "fair", "poor"])
+            .optional(),
           photoUrl: z.string().optional(),
           targetPrice: z.string().optional(),
           floorPrice: z.string().optional(),
@@ -125,6 +149,8 @@ export function registerTools(server: McpServer, db: Database) {
           resourceUri: LISTING_RESOURCE_URI,
           visibility: ["model", "app"],
         },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
       },
     },
     async ({ draft_id, patch }) => {
