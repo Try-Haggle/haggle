@@ -8,6 +8,7 @@ import {
 import { assembleContext } from '../strategy/assembler.js';
 import { transition } from '../session/state-machine.js';
 import { trackConcession } from './concession.js';
+import { SessionError } from '../errors/types.js';
 import type { MasterStrategy, RoundData } from '../strategy/types.js';
 import type { NegotiationSession, NegotiationRound } from '../session/types.js';
 import type { HnpMessage, HnpMessageType } from '../protocol/types.js';
@@ -68,6 +69,17 @@ export function executeRound(
   // 2. Compute utility
   const utility: UtilityResult = computeUtility(ctx);
 
+  // 2a. Propagate engine-core errors
+  if (utility.error) {
+    return {
+      message: incomingOffer,
+      utility,
+      decision: 'REJECT',
+      session,
+      error: SessionError.ENGINE_ERROR,
+    };
+  }
+
   // 3. Make decision
   const decision: DecisionAction = makeDecision(
     utility,
@@ -78,7 +90,7 @@ export function executeRound(
   // 4. Compute counter-offer price if applicable
   let counterPrice: number | undefined;
   if (decision === 'COUNTER' || decision === 'NEAR_DEAL') {
-    const p_start = session.last_offer_price ?? (session.role === 'BUYER' ? strategy.p_target : strategy.p_limit);
+    const p_start = session.last_offer_price ?? strategy.p_target;
     counterPrice = computeCounterOffer({
       p_start,
       p_limit: strategy.p_limit,

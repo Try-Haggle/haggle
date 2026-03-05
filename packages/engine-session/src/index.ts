@@ -18,3 +18,14 @@ export type { SessionEvent } from './session/state-machine.js';
 export type { RoundResult, EscalationRequest } from './round/types.js';
 export { executeRound } from './round/executor.js';
 export { trackConcession } from './round/concession.js';
+
+// Errors
+export { SessionError } from './errors/types.js';
+
+// Session factory + timeout
+export { createSession } from './session/factory.js';
+export type { CreateSessionOptions } from './session/factory.js';
+export { checkTimeout } from './session/timeout.js';
+
+// Strategy validation
+export { validateStrategy, validateRoundData } from './strategy/validation.js';

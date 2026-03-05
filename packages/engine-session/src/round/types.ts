@@ -2,6 +2,7 @@ import type { UtilityResult, DecisionAction } from '@haggle/engine-core';
 import type { HnpMessage } from '../protocol/types.js';
 import type { NegotiationSession, NegotiationRound } from '../session/types.js';
 import type { MasterStrategy } from '../strategy/types.js';
+import type { SessionError } from '../errors/types.js';
 
 /** Result of executing a single negotiation round. */
 export interface RoundResult {
@@ -10,6 +11,7 @@ export interface RoundResult {
   decision: DecisionAction;
   session: NegotiationSession;
   escalation?: EscalationRequest;
+  error?: SessionError;
 }
 
 /** Request for LLM escalation. This package does NOT call the LLM — it returns this for the app layer. */

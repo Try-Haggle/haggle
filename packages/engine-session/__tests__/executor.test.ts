@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { executeRound } from '../src/round/executor.js';
+import { SessionError } from '../src/errors/types.js';
 import type { MasterStrategy, RoundData } from '../src/strategy/types.js';
 import type { NegotiationSession } from '../src/session/types.js';
 import type { HnpMessage } from '../src/protocol/types.js';
@@ -151,10 +152,9 @@ describe('executeRound', () => {
       makeRoundData({ p_effective: 115 }),
     );
 
-    if (result.decision === 'COUNTER') {
-      expect(result.session.rounds[0].counter_price).toBeDefined();
-      expect(result.message.type).toBe('COUNTER');
-    }
+    expect(result.decision).toBe('COUNTER');
+    expect(result.session.rounds[0].counter_price).toBeDefined();
+    expect(result.message.type).toBe('COUNTER');
   });
 
   it('produces ACCEPT when utility exceeds aspiration', () => {
@@ -197,12 +197,11 @@ describe('executeRound', () => {
       makeRoundData({ p_effective: 110 }),
     );
 
-    if (result.decision === 'ESCALATE') {
-      expect(result.escalation).toBeDefined();
-      expect(result.escalation!.session_id).toBe('sess-1');
-      expect(result.escalation!.current_strategy).toBe(strategy);
-      expect(result.message.type).toBe('ESCALATE');
-    }
+    expect(result.decision).toBe('ESCALATE');
+    expect(result.escalation).toBeDefined();
+    expect(result.escalation!.session_id).toBe('sess-1');
+    expect(result.escalation!.current_strategy).toBe(strategy);
+    expect(result.message.type).toBe('ESCALATE');
   });
 
   it('does not mutate the input session', () => {
@@ -215,5 +214,37 @@ describe('executeRound', () => {
     expect(session.rounds).toBe(originalRounds);
     expect(session.status).toBe(originalStatus);
     expect(session.current_round).toBe(0);
+  });
+
+  it('returns ENGINE_ERROR when engine-core produces utility.error', () => {
+    // Invalid weights (sum != 1.0) will cause engine-core to return an error
+    const strategy = makeStrategy({
+      weights: { w_p: 0.5, w_t: 0.5, w_r: 0.5, w_s: 0.5 },
+    });
+    const session = makeSession();
+
+    const result = executeRound(
+      session,
+      strategy,
+      makeOffer(95),
+      makeRoundData(),
+    );
+
+    expect(result.error).toBe(SessionError.ENGINE_ERROR);
+    expect(result.decision).toBe('REJECT');
+    expect(result.utility.error).toBeDefined();
+    // Session should be returned unchanged (early return)
+    expect(result.session).toBe(session);
+  });
+
+  it('does not set error field on successful round', () => {
+    const result = executeRound(
+      makeSession(),
+      makeStrategy(),
+      makeOffer(95),
+      makeRoundData(),
+    );
+
+    expect(result.error).toBeUndefined();
   });
 });

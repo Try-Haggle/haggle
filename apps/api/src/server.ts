@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createDb } from "@haggle/db";
 import { registerMcpRoutes } from "./mcp/router.js";
+import { registerDraftRoutes } from "./routes/index.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -11,10 +12,12 @@ export async function createServer() {
   });
 
   // ─── Database ──────────────────────────────────────────────
-  const db = createDb(process.env.DATABASE_URL!);
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL is required");
+  const db = createDb(databaseUrl);
 
   // ─── CORS ────────────────────────────────────────────────
-  // ChatGPT requires these origins to connect to the MCP server.
+  // ChatGPT + Vercel widget origins.
   await app.register(cors, {
     origin: [
       "https://chatgpt.com",
@@ -36,6 +39,9 @@ export async function createServer() {
 
   // ─── MCP Routes ──────────────────────────────────────────
   registerMcpRoutes(app, db);
+
+  // ─── REST API Routes ─────────────────────────────────────
+  registerDraftRoutes(app, db);
 
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 
