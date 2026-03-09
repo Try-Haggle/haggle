@@ -2,17 +2,22 @@ import {
   computeUtility,
   makeDecision,
   computeCounterOffer,
+  computeDynamicBeta,
+  shouldAcceptNext,
+  computeUtilitySpaceCounterOffer,
   type UtilityResult,
   type DecisionAction,
 } from '@haggle/engine-core';
 import { assembleContext } from '../strategy/assembler.js';
 import { transition } from '../session/state-machine.js';
 import { trackConcession } from './concession.js';
+import { classifyMove } from './classify-move.js';
+import { createOpponentModel, updateOpponentModel } from './opponent-model.js';
 import { SessionError } from '../errors/types.js';
 import type { MasterStrategy, RoundData } from '../strategy/types.js';
 import type { NegotiationSession, NegotiationRound } from '../session/types.js';
 import type { HnpMessage, HnpMessageType } from '../protocol/types.js';
-import type { RoundResult, EscalationRequest } from './types.js';
+import type { RoundResult, EscalationRequest, NegotiationRange } from './types.js';
 
 /** Map engine DecisionAction to outgoing HNP message type. */
 function decisionToMessageType(action: DecisionAction): HnpMessageType {
@@ -52,8 +57,11 @@ const STALLED_THRESHOLD = 2;
  * 1. Assemble NegotiationContext from strategy + round data
  * 2. Compute utility via engine-core
  * 3. Make decision (ACCEPT / COUNTER / REJECT / NEAR_DEAL / ESCALATE)
- * 4. If COUNTER or NEAR_DEAL → compute counter-offer price via Faratin
- * 5. Track concession and update session state
+ * 4. If COUNTER or NEAR_DEAL:
+ *    4a. Compute dynamic beta (competition + opponent concession rate)
+ *    4b. Compute counter-offer (utility-space or price-space)
+ *    4c. AC_next check: if incoming offer already better than counter → ACCEPT
+ * 5. Track concession, classify move, update opponent model, update session state
  * 6. Generate outgoing HNP message
  * 7. Return RoundResult
  */
@@ -81,7 +89,7 @@ export function executeRound(
   }
 
   // 3. Make decision
-  const decision: DecisionAction = makeDecision(
+  let decision: DecisionAction = makeDecision(
     utility,
     { u_threshold: strategy.u_threshold, u_aspiration: strategy.u_aspiration },
     { rounds_no_concession: session.rounds_no_concession },
@@ -89,24 +97,67 @@ export function executeRound(
 
   // 4. Compute counter-offer price if applicable
   let counterPrice: number | undefined;
+  let acNextTriggered = false;
+
   if (decision === 'COUNTER' || decision === 'NEAR_DEAL') {
-    const p_start = session.last_offer_price ?? strategy.p_target;
-    counterPrice = computeCounterOffer({
-      p_start,
-      p_limit: strategy.p_limit,
-      t: roundData.t_elapsed,
-      T: strategy.t_deadline,
-      beta: strategy.beta,
+    // 4a. Compute dynamic beta
+    const opponentRate = session.opponent_model?.concession_rate ?? 0;
+    const nCompetitors = roundData.competition?.n_competitors ?? 0;
+
+    const dynamicBeta = computeDynamicBeta({
+      beta_base: strategy.beta,
+      n_competitors: nCompetitors,
+      opponent_concession_rate: opponentRate,
+      kappa: strategy.kappa,
+      lambda: strategy.lambda,
     });
+
+    // 4b. Compute counter-offer
+    if (strategy.use_utility_space) {
+      counterPrice = computeUtilitySpaceCounterOffer({
+        u_aspiration: strategy.u_aspiration,
+        u_threshold: strategy.u_threshold,
+        t: roundData.t_elapsed,
+        T: strategy.t_deadline,
+        beta: dynamicBeta,
+        weights: strategy.weights,
+        v_t: utility.v_t,
+        v_r: utility.v_r,
+        v_s: utility.v_s,
+        p_target: strategy.p_target,
+        p_limit: strategy.p_limit,
+      });
+    } else {
+      const p_start = session.last_offer_price ?? strategy.p_target;
+      counterPrice = computeCounterOffer({
+        p_start,
+        p_limit: strategy.p_limit,
+        t: roundData.t_elapsed,
+        T: strategy.t_deadline,
+        beta: dynamicBeta,
+      });
+    }
+
+    // 4c. AC_next check
+    if (shouldAcceptNext(incomingOffer.price, counterPrice, strategy.p_target, strategy.p_limit)) {
+      decision = 'ACCEPT';
+      counterPrice = undefined;
+      acNextTriggered = true;
+    }
   }
 
-  // 5. Track concession and update session state
+  // 5. Track concession, classify move, update opponent model, update session state
+  const negotiationRange: NegotiationRange = {
+    p_target: strategy.p_target,
+    p_limit: strategy.p_limit,
+  };
   const updatedSession = updateSession(
     session,
     incomingOffer,
     utility,
     decision,
     counterPrice,
+    negotiationRange,
   );
 
   // 6. Generate outgoing HNP message
@@ -141,6 +192,7 @@ export function executeRound(
     decision,
     session: updatedSession,
     escalation,
+    ...(acNextTriggered ? { ac_next_triggered: true } : {}),
   };
 }
 
@@ -154,11 +206,12 @@ function updateSession(
   utility: UtilityResult,
   decision: DecisionAction,
   counterPrice: number | undefined,
+  negotiationRange: NegotiationRange,
 ): NegotiationSession {
   const nextRoundNo = session.current_round + 1;
   const isFirstRound = session.status === 'CREATED';
 
-  // Track concession from incoming offer
+  // Track concession from incoming offer (existing logic)
   let roundsNoConcession = session.rounds_no_concession;
   if (session.last_offer_price !== null) {
     const conceded = trackConcession(
@@ -167,6 +220,18 @@ function updateSession(
       incomingOffer.sender_role,
     );
     roundsNoConcession = conceded ? 0 : roundsNoConcession + 1;
+  }
+
+  // Classify opponent move and update opponent model
+  let opponentModel = session.opponent_model ?? createOpponentModel();
+  if (session.last_offer_price !== null) {
+    const move = classifyMove(
+      session.last_offer_price,
+      incomingOffer.price,
+      incomingOffer.sender_role,
+      negotiationRange,
+    );
+    opponentModel = updateOpponentModel(opponentModel, move);
   }
 
   // Determine session event and advance state machine
@@ -197,6 +262,7 @@ function updateSession(
     last_offer_price: incomingOffer.price,
     last_utility: utility,
     updated_at: Date.now(),
+    opponent_model: opponentModel,
   };
 }
 

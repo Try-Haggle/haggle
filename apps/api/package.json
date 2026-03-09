@@ -26,6 +26,7 @@
   "dependencies": {
     "@fastify/cors": "^11.0.0",
     "@haggle/db": "workspace:*",
+    "@haggle/ucp-adapter": "workspace:*",
     "@haggle/engine-core": "workspace:*",
     "@haggle/engine-session": "workspace:*",
     "@haggle/shared": "workspace:*",

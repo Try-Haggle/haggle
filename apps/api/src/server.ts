@@ -3,6 +3,8 @@ import cors from "@fastify/cors";
 import { createDb } from "@haggle/db";
 import { registerMcpRoutes } from "./mcp/router.js";
 import { registerDraftRoutes } from "./routes/index.js";
+import { registerUcpRoutes } from "./ucp/routes.js";
+import { registerWellKnownUcp } from "./ucp/well-known.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -26,8 +28,11 @@ export async function createServer() {
       "https://tryhaggle.ai",
       /^http:\/\/localhost:\d+$/,
     ],
-    methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type", "Authorization", "mcp-session-id",
+      "UCP-Agent", "Request-Signature", "Idempotency-Key", "Request-Id",
+    ],
     credentials: true,
   });
 
@@ -42,6 +47,10 @@ export async function createServer() {
 
   // ─── REST API Routes ─────────────────────────────────────
   registerDraftRoutes(app, db);
+
+  // ─── UCP Routes ─────────────────────────────────────────
+  registerWellKnownUcp(app);
+  registerUcpRoutes(app);
 
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 

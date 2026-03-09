@@ -18,6 +18,7 @@ export type {
   DecisionThresholds,
   SessionState,
   FaratinParams,
+  DynamicBetaParams,
 } from './decision/types.js';
 
 // Batch types
@@ -34,6 +35,7 @@ export type {
 // Core functions
 export { computeUtility } from './utility/index.js';
 export { computeVp } from './utility/v-price.js';
+export { invertVp } from './utility/invert-vp.js';
 export { computeVt } from './utility/v-time.js';
 export { computeVr } from './utility/v-risk.js';
 export { computeVs } from './utility/v-relationship.js';
@@ -42,6 +44,10 @@ export { adjustVpForCompetition } from './utility/competition.js';
 // Decision functions
 export { makeDecision } from './decision/maker.js';
 export { computeCounterOffer } from './decision/faratin.js';
+export { computeDynamicBeta } from './decision/dynamic-beta.js';
+export { shouldAcceptNext } from './decision/ac-next.js';
+export { computeUtilitySpaceCounterOffer } from './decision/utility-counter.js';
+export type { UtilityCounterParams } from './decision/utility-counter.js';
 
 // Batch functions
 export { batchEvaluate } from './batch/evaluator.js';

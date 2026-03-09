@@ -40,6 +40,22 @@ describe('Public API (@haggle/engine-core)', () => {
       expect(typeof api.computeCounterOffer).toBe('function');
     });
 
+    it('exports computeDynamicBeta', () => {
+      expect(typeof api.computeDynamicBeta).toBe('function');
+    });
+
+    it('exports shouldAcceptNext', () => {
+      expect(typeof api.shouldAcceptNext).toBe('function');
+    });
+
+    it('exports computeUtilitySpaceCounterOffer', () => {
+      expect(typeof api.computeUtilitySpaceCounterOffer).toBe('function');
+    });
+
+    it('exports invertVp', () => {
+      expect(typeof api.invertVp).toBe('function');
+    });
+
     it('exports batchEvaluate', () => {
       expect(typeof api.batchEvaluate).toBe('function');
     });

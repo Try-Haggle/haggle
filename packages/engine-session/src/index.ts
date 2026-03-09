@@ -14,10 +14,19 @@ export type {
 export { transition } from './session/state-machine.js';
 export type { SessionEvent } from './session/state-machine.js';
 
-// Round types + executor + concession
-export type { RoundResult, EscalationRequest } from './round/types.js';
+// Round types + executor + concession + opponent modeling
+export type {
+  RoundResult,
+  EscalationRequest,
+  OpponentMoveType,
+  OpponentMove,
+  OpponentModel,
+  NegotiationRange,
+} from './round/types.js';
 export { executeRound } from './round/executor.js';
 export { trackConcession } from './round/concession.js';
+export { classifyMove } from './round/classify-move.js';
+export { createOpponentModel, updateOpponentModel } from './round/opponent-model.js';
 
 // Errors
 export { SessionError } from './errors/types.js';

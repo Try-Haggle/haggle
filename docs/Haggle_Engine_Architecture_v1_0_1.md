@@ -1,8 +1,8 @@
 # Haggle Engine Architecture v1.0.1
 ## 적대적 AI-to-AI 협상을 위한 통합 엔진 사양서
 
-**버전:** 1.0.1
-**작성일:** 2026-02-19
+**버전:** 1.0.2
+**작성일:** 2026-03-04
 **상태:** 외부 검토용 초안 (Draft for External Review)
 **아키텍처:** 4-Layer Skills 기반 (L0 Gateway → L1 Skill Layer → L2 Engine Core → L3 Wire+Data)
 **범위:** Engine Core 수학, Agent Stats System, Session Orchestration, LLM 에스컬레이션, 이벤트 드리븐 매칭, 비용 모델
@@ -13,6 +13,7 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| v1.0.2 | 2026-03-04 | 엔진 4-Gap 개선: (1) 상대방 이동 분류 (OpponentModel + EMA 양보율 추적), (2) 동적 베타 (경쟁자 수 + 상대 양보율 기반 β 조정), (3) 효용 공간 양보 곡선 (Faratin을 utility-space에서 운영, invertVp 역함수), (4) AC_next 수락 조건 (역제안보다 상대 제안이 이미 좋으면 즉시 수락). MasterStrategy에 kappa, lambda, use_utility_space 추가. NegotiationSession에 opponent_model 추가. |
 | v1.0.1 | 2026-02-19 | 에이전트 능력치 체계 (Agent Stats System) 추가. 8개 스탯 → 엔진 파라미터 자동 변환. 6개 프리셋 페르소나. MasterStrategy에 AgentStats 및 확장 파라미터 추가. Decision Maker 스탯 연동. 적합성 테스트 확장. |
 | v1.0.0 | 2026-02-17 | 통합 초판. Engine Core 수학 + Multi-Session Orchestration + 리액티브 에스컬레이션 + Skills Marketplace + 이벤트 드리븐 매칭 + 크로스 프레셔 + 장기 협상 + HNP v1.1 확장 + Grok 4.1 Fast 선정 + 비용 모델. |
 
@@ -54,6 +55,13 @@
 │  ├──────────────────────────────────────────────────────────┤│
 │  │  Faratin 양보 곡선 (순수 수학)                            ││
 │  │  P(t) = P_start + (P_limit - P_start) × (t/T)^(1/β)    ││
+│  │  v1.0.2: utility-space 곡선 + 동적 β + AC_next          ││
+│  ├──────────────────────────────────────────────────────────┤│
+│  │  Dynamic Beta (v1.0.2 NEW)                               ││
+│  │  β = β_base × (1+κ·ln(n+1)) × (1+λ·opp_rate)           ││
+│  ├──────────────────────────────────────────────────────────┤│
+│  │  AC_next (v1.0.2 NEW)                                    ││
+│  │  상대 제안 ≥ 역제안 → COUNTER→ACCEPT 업그레이드           ││
 │  ├──────────────────────────────────────────────────────────┤│
 │  │  Batch Evaluator (순수 반복)                              ││
 │  │  같은 전략 × N개 리스팅 → N개 U_total → 정렬             ││
@@ -86,7 +94,9 @@
 
 ```
 Hot Path (매 라운드, 95%+ 트래픽):
-  상대 역제안 → Skill Coordinator → Engine Core (200μs) → Decision Maker → 응답
+  상대 역제안 → Skill Coordinator → Engine Core (200μs) → Decision Maker
+    → v1.0.2: Dynamic Beta → Counter-Offer (price/utility-space) → AC_next 체크
+    → classifyMove → updateOpponentModel → 응답
   LLM 호출: 0회
 
 Cold Path (초기 전략 수립):
@@ -1180,7 +1190,84 @@ $$P(t) = P_{start} + (P_{limit} - P_{start}) \times \left(\frac{t}{T}\right)^{1/
 
 Engine Core의 Decision Maker가 COUNTER 결정을 내리면, 이 곡선으로 역제안 가격을 산출한다.
 
-### 7.5 후반 라운드 공격 완화 (v1.0.1 NEW)
+### 7.5 동적 베타 (v1.0.2 NEW)
+
+β를 고정값이 아닌, 경쟁 상황과 상대방 행동에 따라 동적으로 조정한다.
+
+$$\beta_{competition} = \beta_{base} \times (1 + \kappa \cdot \ln(n_{competitors} + 1))$$
+$$\beta_{dynamic} = \beta_{competition} \times (1 + \lambda \cdot opponent\_concession\_rate)$$
+$$\beta_{final} = \text{clamp}(\beta_{dynamic}, 0.1, 10.0)$$
+
+| 파라미터 | 기본값 | 역할 |
+|----------|--------|------|
+| κ (kappa) | 0.5 | 경쟁 민감도. 경쟁자 많을수록 β↑ |
+| λ (lambda) | 0.3 | 상대 반응 민감도. 상대 양보 중이면 β↑, 경직하면 β↓ |
+
+`opponent_concession_rate`는 OpponentModel의 EMA 양보율 (§7.8 참조).
+
+경쟁/상대 데이터가 없으면 β_base 그대로 반환 (하위 호환).
+
+### 7.6 효용 공간 양보 곡선 (v1.0.2 NEW)
+
+기존 Faratin은 가격 공간에서 양보한다. 효용 공간 모드(`use_utility_space=true`)를 켜면, 4차원 효용을 반영한 역제안 가격을 산출한다.
+
+**공식:**
+
+```
+1. U_target(t) = U_aspiration + (U_threshold - U_aspiration) × (t/T)^(1/β)
+2. v_p_target = (U_target - w_t·V_t - w_r·V_r - w_s·V_s) / w_p
+3. price = invertVp(v_p_target, p_target, p_limit)
+```
+
+**invertVp (computeVp의 역함수):**
+
+```
+Buyer:  p = p_limit - (p_limit - p_target + 1)^v_p + 1
+Seller: p = p_limit + (p_target - p_limit + 1)^v_p - 1
+```
+
+**장점:** 시간·리스크·관계 효용이 높을 때 가격 양보를 줄이고, 반대의 경우 가격으로 보상한다. 단순 가격 곡선보다 상황 적응적이다.
+
+`use_utility_space` 기본값은 `false` — 기존 price-space Faratin 유지.
+
+### 7.7 AC_next 수락 조건 (v1.0.2 NEW)
+
+역제안 가격을 계산한 후, 상대의 현재 제안이 이미 그보다 좋은지 확인한다.
+
+```
+Buyer:  incoming_price ≤ counter_price → ACCEPT
+Seller: incoming_price ≥ counter_price → ACCEPT
+```
+
+COUNTER→ACCEPT 업그레이드 시 `ac_next_triggered=true` 플래그를 RoundResult에 표시하여 투명성을 확보한다. 불필요한 라운드를 제거하여 비용과 시간을 절약한다.
+
+### 7.8 상대방 이동 분류 및 OpponentModel (v1.0.2 NEW)
+
+상대방의 가격 이동을 매 라운드 분류하고, EMA 기반으로 양보율을 추적한다.
+
+**분류:**
+
+| OpponentMoveType | 조건 | 의미 |
+|------------------|------|------|
+| CONCESSION | 상대가 우리 선호 방향으로 이동 | 양보 중 |
+| SELFISH | 상대가 반대 방향으로 이동 | 경직/공격적 |
+| SILENT | 가격 변동 없음 (노이즈 임계값 이내) | 관망 |
+
+**OpponentModel:**
+
+```
+concession_rate: EMA 양보율 (양수 = 양보 추세, 음수 = 경직 추세)
+move_count: 관찰한 이동 수
+last_move: 마지막 분류 결과
+```
+
+EMA 스무딩 팩터 α=0.3 (기본값). 첫 관찰은 스무딩 없이 직접 설정.
+
+`magnitude`는 이동폭을 협상 범위(|p_limit - p_target|)로 정규화한 [0, 1] 값.
+
+`opponent_model`은 `NegotiationSession`에 저장되며, `createSession()`에서 자동 초기화된다.
+
+### 7.9 후반 라운드 공격 완화 (v1.0.1 NEW)
 
 Rapport > 60인 에이전트는 `late_round_aggression_modifier = 0.8`이 적용된다.
 
@@ -1359,6 +1446,9 @@ U_aspiration: 목표 효용 (Strategy Skill이 설정. v1.0.1: AgentStats의 res
   2. u_total ≥ U_threshold AND 마감 임박(V_t < 0.1) → ACCEPT
   3. u_total ≥ U_threshold → NEAR_DEAL (사용자에게 수락 추천)
   4. u_total > 0 → COUNTER (Faratin 곡선으로 역제안)
+     4a. v1.0.2: Dynamic Beta로 β 조정 (§7.5)
+     4b. v1.0.2: use_utility_space이면 효용 공간 곡선 사용 (§7.6)
+     4c. v1.0.2: AC_next — 역제안보다 상대 제안이 이미 좋으면 ACCEPT로 업그레이드 (§7.7)
   5. u_total ≤ 0 → REJECT (마지노선 초과)
 
   === 진행 중 에스컬레이션 ===
@@ -1680,6 +1770,8 @@ class ProposalInterpretationCache:
 │    market_utilization, r_score_minimum,       │
 │    i_completeness_minimum,                   │
 │    late_round_aggression_modifier            │
+│  - v1.0.2: kappa, lambda,                   │
+│    use_utility_space                         │
 └───────────────────┬─────────────────────────┘
                     │ 동일 전략
         ┌───────────┼───────────┐
@@ -1734,6 +1826,11 @@ message MasterStrategy {
   float late_round_aggression_modifier = 23; // 후반 라운드 공격 완화 [0, 1]
   float gamma = 24;                        // 경쟁 민감도 (Stats에서 도출)
   float cross_pressure_sensitivity = 25;   // 크로스 프레셔 민감도 [0, 1]
+
+  // v1.0.2 NEW: 동적 베타 및 효용 공간 양보
+  float kappa = 26;                        // 경쟁 민감도 κ (default 0.5)
+  float lambda = 27;                       // 상대 반응 민감도 λ (default 0.3)
+  bool use_utility_space = 28;             // 효용 공간 양보 곡선 활성화 (default false)
 }
 ```
 
@@ -3038,6 +3135,14 @@ Skill Builder 기능을 구독 티어에 통합한다.
 - **9번째 스탯 후보:** Creativity (창의력) — 번들/조건부 제안 생성 능력. 현재 LLM에 의존하는 제안 생성을 규칙 기반으로 보조.
 - **동적 스탯 조정:** 거래 이력에 따라 스탯이 자동 조정되는 EvoStats. 승리 패턴 학습.
 - **스탯 시각화:** 사용자 대시보드에서 스탯 분포, 프리셋 비교, 시뮬레이션 결과 표시.
+
+### 26.4 OpponentModel 확장 (v1.0.2 예약)
+
+현재 OpponentModel은 가격 이동만 추적한다. 향후 확장:
+
+- **다차원 상대 모델링:** 가격 외에 응답 시간, 메시지 길이, 감정 패턴 등을 추적하여 상대 전략 유형 분류.
+- **적응형 EMA 팩터:** 초반에는 α를 높게 (빠른 학습), 안정화 후 α를 낮게 (노이즈 필터링).
+- **Dynamic Beta 자동 튜닝:** κ, λ를 거래 이력 기반으로 최적화하는 메타러닝.
 
 ---
 

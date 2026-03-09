@@ -62,9 +62,12 @@ haggle/
 │   ├── shared/                       ← 공통 타입, 상수, 유틸 (DO NOT TOUCH)
 │   ├── db/                           ← Drizzle ORM + PostgreSQL (DO NOT TOUCH)
 │   ├── contracts/                    ← 스마트 컨트랙트 (스텁)
-│   ├── engine-core/                  ← 순수 수학 엔진 (83 tests, 외부 의존성 0)
-│   └── engine-session/               ← 세션 오케스트레이션 (121+ tests)
-├── docs/                             ← 사업/아키텍처 문서
+│   ├── engine-core/                  ← 순수 수학 엔진 (137 tests, 외부 의존성 0)
+│   ├── engine-session/               ← 세션 오케스트레이션 (178 tests)
+│   └── ucp-adapter/                  ← UCP 통합 어댑터 (104 tests)
+├── docs/
+│   ├── engine/                       ← 엔진 아키텍처 v1.0.2 기술 사양서 (17개 문서)
+│   └── ...                           ← 사업/구현 계획 문서
 ├── CLAUDE.md                         ← 이 파일
 ├── package.json
 ├── pnpm-workspace.yaml
@@ -77,11 +80,12 @@ haggle/
 ```
 shared ← db
        ← contracts
-engine-core ← engine-session
+engine-core ← engine-session ← ucp-adapter
 ```
 
 > `engine-core`와 `engine-session`은 `shared`/`db`와 의존 관계 없음.
-> 추후 apps/api에서 engine-session을 import하여 협상 라운드를 실행.
+> `ucp-adapter`는 `engine-core` + `engine-session`에 의존.
+> apps/api에서 engine-session과 ucp-adapter를 import하여 협상 라운드를 실행.
 
 ---
 
@@ -94,6 +98,10 @@ engine-core ← engine-session
 | `computeUtility(ctx)` | NegotiationContext → UtilityResult (4차원 효용 계산) |
 | `makeDecision(utility, thresholds, session)` | U_total → ACCEPT/COUNTER/REJECT/NEAR_DEAL/ESCALATE |
 | `computeCounterOffer(params)` | Faratin 양보 곡선으로 역제안 가격 계산 |
+| `computeDynamicBeta(params)` | 경쟁자 수 + 상대 양보율 기반 동적 β 계산 |
+| `computeUtilitySpaceCounterOffer(params)` | 효용 공간에서 Faratin 곡선 역제안 가격 계산 |
+| `shouldAcceptNext(incoming, counter, p_target, p_limit)` | AC_next: 상대 제안 ≥ 역제안이면 즉시 수락 |
+| `invertVp(vp_target, p_target, p_limit)` | computeVp의 역함수 — v_p 값에서 가격 복원 |
 | `batchEvaluate(request)` | N개 리스팅 일괄 평가 + 순위 |
 | `compareSessions(sessions)` | N개 세션 비교 + BATNA 산출 |
 
@@ -104,10 +112,12 @@ DB/API/LLM 호출 없음. LLM 에스컬레이션은 `EscalationRequest` 반환.
 
 | 함수/타입 | 설명 |
 |-----------|------|
-| `executeRound(session, strategy, offer, roundData)` | 한 라운드 실행 파이프라인 |
+| `executeRound(session, strategy, offer, roundData)` | 한 라운드 실행 파이프라인 (동적β + 효용공간 + AC_next + 상대모델 통합) |
 | `assembleContext(strategy, roundData)` | MasterStrategy + RoundData → NegotiationContext |
 | `transition(status, event)` | 세션 상태 전이 |
-| `trackConcession(prev, current, role)` | 양보 여부 판단 |
+| `trackConcession(prev, current, role)` | 양보 여부 판단 (rounds_no_concession 카운터용) |
+| `classifyMove(prev, current, role, range)` | 상대 가격 이동을 CONCESSION/SELFISH/SILENT로 분류 |
+| `createOpponentModel()` / `updateOpponentModel(model, move)` | EMA 기반 상대방 양보율 추적 모델 |
 
 ---
 
@@ -149,14 +159,43 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
+## 패키지: @haggle/ucp-adapter
+
+UCP(Universal Checkout Protocol) 통합 어댑터. engine-core + engine-session 위에 UCP 호환 레이어 제공.
+
+| 모듈 | 설명 |
+|------|------|
+| `profile/` | UCP 프로필 관리 (/.well-known/ucp) |
+| `checkout/` | 체크아웃 세션 생성 및 관리 |
+| `extension/` | UCP Extension 인터페이스 |
+| `order/` | 주문 상태 관리 |
+| `payment/` | 결제 연동 (USDC) |
+| `transport/` | UCP 전송 계층 |
+| `createBridgedSession()` | engine-session ↔ UCP 세션 브릿지 |
+| `processNegotiationRound()` | UCP 경유 협상 라운드 실행 |
+
+---
+
 ## 📄 상세 문서 (`/docs`)
+
+### 엔진 아키텍처 (v1.0.2 기술 사양서)
+
+`docs/engine/` 폴더에 17개 자체 완결형 한국어 문서로 구성. 라우팅 문서: [00_INDEX.md](./docs/engine/00_INDEX.md)
+
+| Part | 문서 | 내용 |
+|------|------|------|
+| **A: 엔진 코어** | 01~07 | 아키텍처, 효용 함수, 양보 곡선, 상대방 모델, 의사결정, AgentStats, 구현 계획 |
+| **B: 운영/인프라** | 08~17 | LLM 정책, 세션 오케스트레이션, 매칭, 토폴로지, HNP, 비용, 데이터/성능, 적합성 테스트, 스킬 마켓, 확장/미결 |
+
+### 기타 문서
 
 | 문서 | 내용 |
 |------|------|
 | [MVP_Final_Implementation_Plan.md](./docs/MVP_Final_Implementation_Plan.md) | MVP 구현 계획 |
 | [Slice_0_Implementation_Plan.md](./docs/Slice_0_Implementation_Plan.md) | Slice 0 구현 계획 |
+| [UCP_Integration_Plan.md](./docs/UCP_Integration_Plan.md) | UCP 통합 계획 (Slice 0-7) |
 
 ---
 
-*Last Updated: 2026-02-17*
-*Version: 2.0*
+*Last Updated: 2026-03-07*
+*Version: 2.2*

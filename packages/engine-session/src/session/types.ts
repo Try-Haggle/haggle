@@ -1,5 +1,6 @@
 import type { UtilityResult, DecisionAction } from '@haggle/engine-core';
 import type { HnpMessage, HnpRole } from '../protocol/types.js';
+import type { OpponentModel } from '../round/types.js';
 
 /** Session lifecycle status. */
 export type SessionStatus =
@@ -36,4 +37,5 @@ export interface NegotiationSession {
   last_utility: UtilityResult | null;
   created_at: number;
   updated_at: number;
+  opponent_model?: OpponentModel;
 }

@@ -1,5 +1,6 @@
 import type { HnpRole } from '../protocol/types.js';
 import type { NegotiationSession } from './types.js';
+import { createOpponentModel } from '../round/opponent-model.js';
 
 export interface CreateSessionOptions {
   session_id: string;
@@ -23,5 +24,6 @@ export function createSession(options: CreateSessionOptions): NegotiationSession
     last_utility: null,
     created_at: now,
     updated_at: now,
+    opponent_model: createOpponentModel(),
   };
 }

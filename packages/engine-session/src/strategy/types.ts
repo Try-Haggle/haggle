@@ -19,6 +19,12 @@ export interface MasterStrategy {
   u_aspiration: number;
   persona: string;
   gamma?: number;
+  /** Dynamic beta: competition sensitivity (default 0.5). */
+  kappa?: number;
+  /** Dynamic beta: opponent response sensitivity (default 0.3). */
+  lambda?: number;
+  /** Use utility-space concession curve instead of price-space (default false). */
+  use_utility_space?: boolean;
   created_at: number;
   expires_at: number;
 }
