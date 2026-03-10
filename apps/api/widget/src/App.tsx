@@ -52,6 +52,13 @@ export default function App() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
 
+  // Publish state
+  const [publishResult, setPublishResult] = useState<{
+    publicId: string;
+    shareUrl: string;
+  } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -558,6 +565,83 @@ export default function App() {
             return isNaN(n) ? "$0" : `$${n.toLocaleString()}`;
           };
 
+          // ─── Listing Live Screen ───────────────────────────
+          if (publishResult) {
+            return (
+              <div className="listing-live" onPointerDownCapture={requestFullscreen}>
+                {/* Success Icon */}
+                <div className="listing-live__icon">
+                  <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+                    <path d="M20 3v4" /><path d="M22 5h-4" />
+                    <path d="M4 17v2" /><path d="M5 18H3" />
+                  </svg>
+                </div>
+
+                <h2 className="listing-live__title">Your listing is live!</h2>
+                <p className="listing-live__subtitle">
+                  Share the link below. When buyers click it, they'll negotiate with your AI agent automatically.
+                </p>
+
+                {/* Item Summary Card */}
+                <div className="listing-live__summary">
+                  {photoPreview ? (
+                    <img src={photoPreview} alt="" className="listing-live__photo" />
+                  ) : (
+                    <div className="listing-live__photo-placeholder" />
+                  )}
+                  <div className="listing-live__info">
+                    <p className="listing-live__item-title">{title || "Untitled"}</p>
+                    <p className="listing-live__item-price">{formatPrice(targetPrice)}</p>
+                    {activePreset && (
+                      <p className="listing-live__item-agent">
+                        <span className="listing-live__agent-dot" style={{ background: activePreset.accentColor }} />
+                        Agent: {activePreset.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Share Link */}
+                <div className="listing-live__section-label">YOUR HAGGLE LINK</div>
+                <div className="listing-live__link-box">
+                  <svg className="listing-live__link-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                  <span className="listing-live__link-url">{publishResult.shareUrl}</span>
+                  <button
+                    type="button"
+                    className="listing-live__copy-btn"
+                    onClick={() => {
+                      navigator.clipboard.writeText(publishResult.shareUrl).then(() => {
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2000);
+                      });
+                    }}
+                  >
+                    {linkCopied ? (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                {/* Dashboard Button (Coming Soon) */}
+                <button type="button" className="btn-primary listing-live__dashboard-btn" disabled>
+                  Go to Dashboard
+                  <span className="listing-live__coming-soon">Coming Soon</span>
+                </button>
+              </div>
+            );
+          }
+
           return (
             <div className="step3-wrapper" onPointerDownCapture={requestFullscreen}>
               {/* Back + Step Indicator inside wrapper for proper max-width */}
@@ -758,6 +842,7 @@ export default function App() {
                       setIsSubmitting(true);
                       setError(null);
                       try {
+                        // 1. Save strategy config
                         await app.callServerTool({
                           name: "haggle_apply_patch",
                           arguments: {
@@ -770,15 +855,53 @@ export default function App() {
                             },
                           },
                         });
+
+                        // 2. Validate
+                        const validateResult = await app.callServerTool({
+                          name: "haggle_validate_draft",
+                          arguments: { draft_id: draftId },
+                        });
+                        const validateData = validateResult?.structuredContent as Record<string, unknown> | undefined;
+                        // data-only tools return via content text, not structuredContent
+                        let validateParsed: { ok?: boolean; errors?: Array<{ field: string; message: string; step: number }> } = {};
+                        if (validateData?.ok !== undefined) {
+                          validateParsed = validateData as typeof validateParsed;
+                        } else {
+                          // Parse from content text
+                          const textContent = (validateResult as Record<string, unknown>)?.content;
+                          if (Array.isArray(textContent) && textContent[0]?.text) {
+                            validateParsed = JSON.parse(textContent[0].text as string);
+                          }
+                        }
+
+                        if (validateParsed.ok === false && validateParsed.errors?.length) {
+                          const firstError = validateParsed.errors[0];
+                          setError(firstError.message);
+                          setCurrentStep(firstError.step);
+                          return;
+                        }
+
+                        // 3. Publish
+                        const publishRes = await app.callServerTool({
+                          name: "haggle_publish_listing",
+                          arguments: { draft_id: draftId },
+                        });
+                        const pubData = publishRes?.structuredContent as Record<string, unknown> | undefined;
+                        if (pubData?.share_url) {
+                          setPublishResult({
+                            publicId: pubData.public_id as string,
+                            shareUrl: pubData.share_url as string,
+                          });
+                        }
                       } catch (err) {
-                        setError("Failed to save. Please try again.");
+                        setError("Failed to publish. Please try again.");
                         console.error(err);
                       } finally {
                         setIsSubmitting(false);
                       }
                     }}
                   >
-                    {isSubmitting ? "Saving..." : "Save & Get Share Link"}
+                    {isSubmitting ? "Publishing..." : "Save & Get Share Link"}
                     {!isSubmitting && <span>→</span>}
                   </button>
                   {error && <p className="form-error" style={{ marginTop: 8 }}>{error}</p>}

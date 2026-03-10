@@ -1,4 +1,5 @@
-import { type Database, listingDrafts, eq } from "@haggle/db";
+import { randomBytes } from "node:crypto";
+import { type Database, listingDrafts, listingsPublished, eq } from "@haggle/db";
 
 /** Fields that can be patched via haggle_apply_patch. */
 const PATCHABLE_FIELDS = [
@@ -67,4 +68,101 @@ export async function patchDraft(
     .returning();
 
   return row ?? null;
+}
+
+// ─── Validation ─────────────────────────────────────────────
+
+export interface ValidationError {
+  field: string;
+  message: string;
+  step: number;
+}
+
+/** Validate that all required fields are present for publishing. */
+export function validateDraft(
+  draft: NonNullable<Awaited<ReturnType<typeof getDraftById>>>,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (!draft.title?.trim()) {
+    errors.push({ field: "title", message: "Title is required", step: 1 });
+  }
+  if (!draft.targetPrice) {
+    errors.push({
+      field: "targetPrice",
+      message: "Asking price is required",
+      step: 2,
+    });
+  }
+  if (!draft.sellingDeadline) {
+    errors.push({
+      field: "sellingDeadline",
+      message: "Selling deadline is required",
+      step: 2,
+    });
+  }
+
+  return errors;
+}
+
+// ─── Publishing ─────────────────────────────────────────────
+
+/** Generate a short URL-safe public ID (8 chars). */
+function generatePublicId(): string {
+  return randomBytes(6).toString("base64url").slice(0, 8);
+}
+
+/** Generate a claim token (32 chars). */
+function generateClaimToken(): string {
+  return randomBytes(24).toString("base64url");
+}
+
+/**
+ * Publish a validated draft:
+ * 1. Insert snapshot into listings_published
+ * 2. Update draft status to "published" + set claim token
+ * Returns the published record, or null if draft not found.
+ */
+export async function publishDraft(db: Database, draftId: string) {
+  const draft = await getDraftById(db, draftId);
+  if (!draft) return null;
+
+  if (draft.status === "published") {
+    throw new Error("Draft is already published");
+  }
+
+  const publicId = generatePublicId();
+  const claimToken = generateClaimToken();
+  const claimExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+  // Insert published snapshot
+  const [published] = await db
+    .insert(listingsPublished)
+    .values({
+      publicId,
+      draftId: draft.id,
+      snapshotJson: draft as unknown as Record<string, unknown>,
+    })
+    .returning();
+
+  // Update draft status + claim info
+  const [updatedDraft] = await db
+    .update(listingDrafts)
+    .set({
+      status: "published",
+      claimToken,
+      claimExpiresAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(listingDrafts.id, draftId))
+    .returning();
+
+  return {
+    publicId,
+    shareUrl: `https://tryhaggle.ai/l/${publicId}`,
+    claimToken,
+    claimExpiresAt: claimExpiresAt.toISOString(),
+    draft: updatedDraft,
+    published,
+  };
 }

@@ -6,6 +6,8 @@ import {
   createDraft,
   getDraftById,
   patchDraft,
+  validateDraft,
+  publishDraft,
 } from "../../services/draft.service.js";
 import { LISTING_RESOURCE_URI } from "../resources.js";
 
@@ -186,9 +188,152 @@ export function registerTools(server: McpServer, db: Database) {
     },
   );
 
-  // TODO(slice-3): haggle_set_agent_strategy — AI 에이전트 프리셋 및 전략 설정
-  // TODO(slice-4): haggle_validate_draft — 필수값 검증
-  // TODO(slice-4): haggle_publish_listing — 리스팅 발행 + 공유 링크 생성
+  // ─── haggle_validate_draft ──────────────────────────────────
+  server.tool(
+    "haggle_validate_draft",
+    "Validate a listing draft before publishing. Checks that all required fields (title, asking price, selling deadline) are filled in. Returns ok: true if valid, or a list of errors with the step number to navigate to for fixing. Call this before haggle_publish_listing.",
+    { draft_id: z.string().uuid() },
+    async ({ draft_id }) => {
+      const draft = await getDraftById(db, draft_id);
+      if (!draft) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "Draft not found", draft_id }),
+            },
+          ],
+        };
+      }
+
+      const errors = validateDraft(draft);
+      if (errors.length > 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ ok: false, errors, draft_id }),
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ ok: true, draft_id }),
+          },
+        ],
+      };
+    },
+  );
+
+  // ─── haggle_publish_listing ────────────────────────────────
+  registerAppTool(
+    server,
+    "haggle_publish_listing",
+    {
+      title: "Publish Listing",
+      description:
+        "Publish a validated listing draft. This creates a public share link that buyers can use to start negotiation. IMPORTANT: Always call haggle_validate_draft first. If validation fails, do NOT call this tool — instead guide the user to fix the missing fields. On success, the widget will show the 'Listing Live' screen with the share link.",
+      inputSchema: {
+        draft_id: z.string().uuid(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: LISTING_RESOURCE_URI,
+          visibility: ["model", "app"],
+        },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ draft_id }) => {
+      // Pre-validate
+      const draft = await getDraftById(db, draft_id);
+      if (!draft) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "Draft not found", draft_id }),
+            },
+          ],
+        };
+      }
+
+      const errors = validateDraft(draft);
+      if (errors.length > 0) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                error: "Validation failed — call haggle_validate_draft first",
+                errors,
+                draft_id,
+              }),
+            },
+          ],
+        };
+      }
+
+      try {
+        const result = await publishDraft(db, draft_id);
+        if (!result) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: "Draft not found", draft_id }),
+              },
+            ],
+          };
+        }
+
+        return {
+          structuredContent: {
+            draft_id,
+            public_id: result.publicId,
+            share_url: result.shareUrl,
+            claim_token: result.claimToken,
+            claim_expires_at: result.claimExpiresAt,
+            draft: result.draft,
+          },
+          content: [
+            {
+              type: "text" as const,
+              text: `Listing published! Share link: ${result.shareUrl}`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                error: err instanceof Error ? err.message : "Publish failed",
+                draft_id,
+              }),
+            },
+          ],
+        };
+      }
+    },
+  );
+
   // TODO(slice-5): haggle_create_negotiation_session — 구매자 협상 세션 생성
   // TODO(slice-5): haggle_submit_offer — 오퍼 제출 + AI 에이전트 결정
   // TODO(slice-6): haggle_claim — 24시간 소유권 연결
