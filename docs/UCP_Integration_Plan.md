@@ -7,6 +7,9 @@
 > Status: Draft
 > UCP Spec Version: 2026-01-23
 
+> 브랜치 운영 기준은 [Main_Branch_Release_Policy.md](./Main_Branch_Release_Policy.md)를 따른다.  
+> 이 문서는 Haggle의 장기 표준화 및 상호운용 범위를 다루며, `main` 브랜치의 출시 전 MVP 범위를 제한 기준으로 삼지 않는다.
+
 ---
 
 ## Table of Contents
@@ -43,9 +46,9 @@ Haggle UCP 흐름: Discovery → [Negotiation] → Checkout → Payment → Orde
 
 | Phase | 내용 | 우선순위 |
 |-------|------|----------|
-| Phase 1 | UCP Profile + Discovery (판매자 등록) | P0 - MVP |
-| Phase 2 | Checkout Session ↔ Negotiation Session 연동 | P0 - MVP |
-| Phase 3 | Haggle Negotiation Extension 정의 | P0 - MVP |
+| Phase 1 | UCP Profile + Discovery (판매자 등록) | P0 - Foundation |
+| Phase 2 | Checkout Session ↔ Negotiation Session 연동 | P0 - Foundation |
+| Phase 3 | Haggle Negotiation Extension 정의 | P0 - Foundation |
 | Phase 4 | Order Management (웹훅 수신) | P1 |
 | Phase 5 | USDC Payment Handler 정의 | P1 |
 | Phase 6 | AP2 Mandate 통합 (에이전트 자율 협상) | P2 |
@@ -68,7 +71,7 @@ UCP는 TCP/IP에서 영감 받은 **레이어드 아키텍처**:
 **핵심 설계 원칙:**
 - **Server-selects model**: 판매자(서버)가 양측 지원 기능의 교집합에서 선택
 - **Transport-agnostic**: REST, MCP, A2A, Embedded Protocol 모두 지원
-- **Reverse-domain naming**: `dev.ucp.shopping.checkout`, `ai.tryhaggle.negotiation`
+- **Reverse-domain naming**: `dev.ucp.shopping.checkout`, `ai.haggle.negotiation`
 - **Extension composition via `allOf`**: 기존 스키마를 깨지 않고 확장
 
 ### 2.2 Discovery: `/.well-known/ucp`
@@ -90,11 +93,11 @@ UCP는 TCP/IP에서 영감 받은 **레이어드 아키텍처**:
     "capabilities": {
       "dev.ucp.shopping.checkout": [{"version": "2026-01-23"}],
       "dev.ucp.shopping.discount": [{"version": "2026-01-23", "extends": "dev.ucp.shopping.checkout"}],
-      "ai.tryhaggle.negotiation": [{"version": "2026-03-01", "extends": "dev.ucp.shopping.checkout"}]
+      "ai.haggle.negotiation": [{"version": "2026-03-01", "extends": "dev.ucp.shopping.checkout"}]
     },
     "payment_handlers": {
       "com.google.pay": [{ /* ... */ }],
-      "ai.tryhaggle.usdc": [{ /* ... */ }]
+      "ai.haggle.usdc": [{ /* ... */ }]
     }
   }
 }
@@ -144,11 +147,11 @@ UCP의 Extension은 `allOf` composition으로 부모 capability를 확장:
 
 ```json
 {
-  "ai.tryhaggle.negotiation": [{
+  "ai.haggle.negotiation": [{
     "version": "2026-03-01",
     "extends": "dev.ucp.shopping.checkout",
-    "spec": "https://tryhaggle.ai/ucp/negotiation-spec.json",
-    "schema": "https://tryhaggle.ai/ucp/negotiation-schema.json"
+    "spec": "https://haggle.ai/ucp/negotiation-spec.json",
+    "schema": "https://haggle.ai/ucp/negotiation-schema.json"
   }]
 }
 ```
@@ -241,7 +244,7 @@ packages/ucp-adapter/
 │   │   ├── mapper.ts             ← UCP Checkout ↔ HNP Session 변환
 │   │   └── session-bridge.ts     ← 양방향 상태 동기화
 │   ├── extension/
-│   │   ├── negotiation.ts        ← ai.tryhaggle.negotiation extension
+│   │   ├── negotiation.ts        ← ai.haggle.negotiation extension
 │   │   └── schema.ts             ← Extension JSON Schema
 │   ├── transport/
 │   │   ├── rest.ts               ← REST binding handlers
@@ -307,7 +310,7 @@ UCP Extension으로 협상 데이터를 Checkout에 첨부:
 
 ```json
 {
-  "ai.tryhaggle.negotiation": {
+  "ai.haggle.negotiation": {
     "session_id": "hnp_abc123",
     "status": "active",
     "original_price": 25000,
@@ -317,7 +320,7 @@ UCP Extension으로 협상 데이터를 Checkout에 첨부:
     "role": "BUYER",
     "utility_score": 0.72,
     "decision": "COUNTER",
-    "negotiation_url": "https://tryhaggle.ai/negotiate/abc123",
+    "negotiation_url": "https://haggle.ai/negotiate/abc123",
     "constraints": {
       "price_floor": 20000,
       "price_ceiling": 25000,
@@ -352,12 +355,12 @@ UCP Extension으로 협상 데이터를 Checkout에 첨부:
 
 2. Buyer Agent → Create Checkout + Negotiation
    POST /checkout-sessions
-   Body: { line_items: [...], ai.tryhaggle.negotiation: { intent: "negotiate" } }
+   Body: { line_items: [...], ai.haggle.negotiation: { intent: "negotiate" } }
    → UCP Checkout (incomplete) + HNP Session (CREATED) 생성
 
 3. Negotiation Rounds (HNP over UCP)
    PUT /checkout-sessions/{id}
-   Body: { ai.tryhaggle.negotiation: { offer: 22000 } }
+   Body: { ai.haggle.negotiation: { offer: 22000 } }
    → engine-session.executeRound() → counter/accept/reject
    → Response includes updated negotiation state
 
@@ -367,7 +370,7 @@ UCP Extension으로 협상 데이터를 Checkout에 첨부:
 
 5. Payment
    POST /checkout-sessions/{id}/complete
-   Body: { payment: { instruments: [{ handler_id: "ai.tryhaggle.usdc", ... }] } }
+   Body: { payment: { instruments: [{ handler_id: "ai.haggle.usdc", ... }] } }
    → 결제 처리
 
 6. Order Created
@@ -451,7 +454,7 @@ apps/api/
 
 ### Slice 2: Haggle Negotiation Extension
 
-**목표:** UCP Extension으로 `ai.tryhaggle.negotiation` 정의 + Checkout에 협상 데이터 첨부
+**목표:** UCP Extension으로 `ai.haggle.negotiation` 정의 + Checkout에 협상 데이터 첨부
 
 **산출물:**
 - Extension JSON Schema 정의
@@ -491,7 +494,7 @@ interface HaggleNegotiationExtension {
 **완료 기준:**
 - [ ] Extension schema가 UCP allOf composition 규칙 준수
 - [ ] Checkout session 생성/조회 시 negotiation 데이터 포함
-- [ ] Profile에 `ai.tryhaggle.negotiation` capability 노출
+- [ ] Profile에 `ai.haggle.negotiation` capability 노출
 
 **의존성:** Slice 0, Slice 1
 
@@ -638,7 +641,7 @@ apps/api/
 **목표:** UCP Payment Handler로 USDC 스테이블코인 결제 정의
 
 **산출물:**
-- `ai.tryhaggle.usdc` payment handler 스펙
+- `ai.haggle.usdc` payment handler 스펙
 - Payment instrument 타입 (wallet address, chain, token)
 - Payment handler를 UCP Profile에 등록
 - Complete checkout 시 USDC 결제 처리 (stub → 실제 온체인은 후속)
@@ -656,7 +659,7 @@ packages/ucp-adapter/
 **Payment Handler 정의:**
 ```json
 {
-  "ai.tryhaggle.usdc": [{
+  "ai.haggle.usdc": [{
     "id": "usdc",
     "version": "2026-03-01",
     "config": {
