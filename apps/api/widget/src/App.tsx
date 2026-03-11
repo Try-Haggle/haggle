@@ -643,10 +643,72 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Dashboard Button (Coming Soon) */}
-                <button type="button" className="btn-primary listing-live__dashboard-btn" disabled>
+                {/* Claim CTA */}
+                <div className="listing-live__claim-cta">
+                  <div className="claim-cta__header">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <div>
+                      <p className="claim-cta__title">Your listing isn't saved to an account yet</p>
+                      <p className="claim-cta__subtitle">You have 24 hours to claim this listing. After that, it will be removed and can't be recovered.</p>
+                    </div>
+                  </div>
+
+                  <div className="claim-cta__features">
+                    <div className="claim-cta__feature">
+                      <div className="claim-cta__feature-icon claim-cta__feature-icon--cyan">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                          <polyline points="16 7 22 7 22 13" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="claim-cta__feature-title">Track every negotiation</p>
+                        <p className="claim-cta__feature-desc">See who offered what, win rates, and your AI's performance over time.</p>
+                      </div>
+                    </div>
+                    <div className="claim-cta__feature">
+                      <div className="claim-cta__feature-icon claim-cta__feature-icon--green">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="claim-cta__feature-title">Get notified when a deal closes</p>
+                        <p className="claim-cta__feature-desc">Without an account, you won't know if your AI sealed a deal.</p>
+                      </div>
+                    </div>
+                    <div className="claim-cta__feature">
+                      <div className="claim-cta__feature-icon claim-cta__feature-icon--purple">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <line x1="19" y1="8" x2="19" y2="14" />
+                          <line x1="22" y1="11" x2="16" y2="11" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="claim-cta__feature-title">Manage all your listings in one place</p>
+                        <p className="claim-cta__feature-desc">Pause, edit, or relist — your dashboard, your control.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-primary listing-live__dashboard-btn"
+                  onClick={() => {
+                    // TODO: change to https://tryhaggle.ai for production
+                    window.open(`http://localhost:3000/claim?token=${publishResult.publicId}`, "_blank");
+                  }}
+                >
                   Go to Dashboard
-                  <span className="listing-live__coming-soon">Coming Soon</span>
                 </button>
               </div>
             );

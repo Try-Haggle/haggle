@@ -159,7 +159,8 @@ export async function publishDraft(db: Database, draftId: string) {
 
   return {
     publicId,
-    shareUrl: `https://tryhaggle.ai/l/${publicId}`,
+    // TODO: change to https://tryhaggle.ai for production
+    shareUrl: `http://localhost:3000/l/${publicId}`,
     claimToken,
     claimExpiresAt: claimExpiresAt.toISOString(),
     draft: updatedDraft,

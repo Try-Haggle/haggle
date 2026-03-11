@@ -1066,17 +1066,98 @@ body {
   color: var(--accent-cyan);
 }
 
-/* ─── Dashboard Button ────────────────────────────────── */
-.listing-live__dashboard-btn {
-  position: relative;
+/* ─── Claim CTA ──────────────────────────────────────── */
+.listing-live__claim-cta {
+  margin-top: 28px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  text-align: left;
 }
 
-.listing-live__coming-soon {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 8px;
+.claim-cta__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.claim-cta__header svg {
+  color: #FCD34D;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.claim-cta__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #FCD34D;
+  margin-bottom: 4px;
+}
+
+.claim-cta__subtitle {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(252, 211, 77, 0.6);
+}
+
+.claim-cta__features {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.claim-cta__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.claim-cta__feature-icon {
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-full);
-  background: rgba(148, 163, 184, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.claim-cta__feature-icon--cyan {
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--accent-cyan);
+}
+
+.claim-cta__feature-icon--green {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent-emerald);
+}
+
+.claim-cta__feature-icon--yellow {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber);
+}
+
+.claim-cta__feature-icon--purple {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.claim-cta__feature-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.claim-cta__feature-desc {
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--text-secondary);
-  margin-left: 8px;
+}
+
+.listing-live__dashboard-btn {
+  width: 100%;
+  margin-top: 20px;
 }
