@@ -614,10 +614,20 @@ export default function App() {
                     type="button"
                     className="listing-live__copy-btn"
                     onClick={() => {
-                      navigator.clipboard.writeText(publishResult.shareUrl).then(() => {
+                      try {
+                        const ta = document.createElement("textarea");
+                        ta.value = publishResult.shareUrl;
+                        ta.style.position = "fixed";
+                        ta.style.opacity = "0";
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(ta);
                         setLinkCopied(true);
                         setTimeout(() => setLinkCopied(false), 2000);
-                      });
+                      } catch (e) {
+                        console.error("Copy failed:", e);
+                      }
                     }}
                   >
                     {linkCopied ? (
