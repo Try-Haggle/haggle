@@ -56,6 +56,7 @@ export default function App() {
   const [publishResult, setPublishResult] = useState<{
     publicId: string;
     shareUrl: string;
+    claimToken: string;
   } | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -705,7 +706,7 @@ export default function App() {
                   className="btn-primary listing-live__dashboard-btn"
                   onClick={() => {
                     // TODO: change to https://tryhaggle.ai for production
-                    window.open(`http://localhost:3000/claim?token=${publishResult.publicId}`, "_blank");
+                    window.open(`http://localhost:3000/claim?token=${publishResult.claimToken}`, "_blank");
                   }}
                 >
                   Go to Dashboard
@@ -963,6 +964,7 @@ export default function App() {
                           setPublishResult({
                             publicId: pubData.public_id as string,
                             shareUrl: pubData.share_url as string,
+                            claimToken: pubData.claim_token as string,
                           });
                         }
                       } catch (err) {

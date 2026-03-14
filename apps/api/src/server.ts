@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createDb } from "@haggle/db";
 import { registerMcpRoutes } from "./mcp/router.js";
+import { registerClaimRoutes } from "./routes/claim.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -36,6 +37,9 @@ export async function createServer() {
 
   // ─── MCP Routes ──────────────────────────────────────────
   registerMcpRoutes(app, db);
+
+  // ─── REST API Routes ───────────────────────────────────
+  registerClaimRoutes(app, db);
 
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 

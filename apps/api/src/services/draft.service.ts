@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { type Database, listingDrafts, listingsPublished, eq } from "@haggle/db";
+import { type Database, listingDrafts, listingsPublished, eq, and, gt } from "@haggle/db";
 
 /** Fields that can be patched via haggle_apply_patch. */
 const PATCHABLE_FIELDS = [
@@ -166,4 +166,56 @@ export async function publishDraft(db: Database, draftId: string) {
     draft: updatedDraft,
     published,
   };
+}
+
+// ─── Claim ──────────────────────────────────────────────────
+
+export type ClaimResult =
+  | { ok: true; draftId: string }
+  | { ok: false; error: "invalid_token" | "expired" | "already_claimed" };
+
+/**
+ * Claim a listing by verifying the claim token and linking the user.
+ * - Token must match a published draft
+ * - Token must not be expired (claim_expires_at > now)
+ * - Draft must not already be claimed (user_id must be null)
+ */
+export async function claimListing(
+  db: Database,
+  claimToken: string,
+  userId: string,
+): Promise<ClaimResult> {
+  // Find draft with matching, non-expired claim token
+  const draft = await db.query.listingDrafts.findFirst({
+    where: (fields, ops) =>
+      ops.and(
+        ops.eq(fields.claimToken, claimToken),
+        ops.eq(fields.status, "published"),
+      ),
+  });
+
+  if (!draft) {
+    return { ok: false, error: "invalid_token" };
+  }
+
+  // Check if already claimed
+  if (draft.userId) {
+    return { ok: false, error: "already_claimed" };
+  }
+
+  // Check expiry
+  if (draft.claimExpiresAt && draft.claimExpiresAt < new Date()) {
+    return { ok: false, error: "expired" };
+  }
+
+  // Link user_id to the draft
+  await db
+    .update(listingDrafts)
+    .set({
+      userId,
+      updatedAt: new Date(),
+    })
+    .where(eq(listingDrafts.id, draft.id));
+
+  return { ok: true, draftId: draft.id };
 }
