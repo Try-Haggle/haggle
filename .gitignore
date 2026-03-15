@@ -25,9 +25,6 @@ Thumbs.db
 # Logs
 *.log
 
-# Drizzle
-packages/db/drizzle/
-
 # Foundry (post-MVP)
 packages/contracts/out/
 packages/contracts/cache/

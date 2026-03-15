@@ -6,7 +6,10 @@ import {
   createDraft,
   getDraftById,
   patchDraft,
+  validateDraft,
+  publishDraft,
 } from "../../services/draft.service.js";
+import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import { LISTING_RESOURCE_URI } from "../resources.js";
 
 /**
@@ -43,11 +46,17 @@ export function registerTools(server: McpServer, db: Database) {
     {
       title: "Start Draft",
       description:
-        "Start a new listing draft for selling an item. Opens the listing wizard to fill in item details.",
+        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. IMPORTANT: If the user provided specific item details (e.g. title, price, condition) in the same message, you may call haggle_apply_patch right after to populate those fields. But if the user only said something vague like 'I want to sell something' without concrete details, do NOT call haggle_apply_patch. Instead, let them use the wizard UI or ask for more details in chat.",
       inputSchema: {},
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
       _meta: {
         ui: { resourceUri: LISTING_RESOURCE_URI },
         "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
       },
     },
     async () => {
@@ -104,15 +113,33 @@ export function registerTools(server: McpServer, db: Database) {
     {
       title: "Apply Patch",
       description:
-        "Update fields on an existing listing draft. Only allowed fields (title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig) can be patched.",
+        "Update fields on an existing listing draft. IMPORTANT: Bundle ALL mentioned fields into a single call — do NOT split into multiple calls. Only call this when the user explicitly mentions specific details (title, price, condition, etc.) in the conversation, or when the widget UI sends a patch. Do NOT guess or auto-fill fields that the user has not mentioned. Allowed fields: title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
       inputSchema: {
         draft_id: z.string().uuid(),
         patch: z.object({
           title: z.string().optional(),
           description: z.string().optional(),
           tags: z.array(z.string()).optional(),
-          category: z.string().optional(),
-          condition: z.string().optional(),
+          category: z
+            .enum([
+              "electronics",
+              "clothing",
+              "furniture",
+              "collectibles",
+              "sports",
+              "vehicles",
+              "books",
+              "other",
+            ])
+            .optional(),
+          condition: z
+            .enum(["new", "like_new", "good", "fair", "poor"])
+            .optional(),
           photoUrl: z.string().optional(),
           targetPrice: z.string().optional(),
           floorPrice: z.string().optional(),
@@ -125,6 +152,8 @@ export function registerTools(server: McpServer, db: Database) {
           resourceUri: LISTING_RESOURCE_URI,
           visibility: ["model", "app"],
         },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
       },
     },
     async ({ draft_id, patch }) => {
@@ -160,9 +189,230 @@ export function registerTools(server: McpServer, db: Database) {
     },
   );
 
-  // TODO(slice-3): haggle_set_agent_strategy — AI 에이전트 프리셋 및 전략 설정
-  // TODO(slice-4): haggle_validate_draft — 필수값 검증
-  // TODO(slice-4): haggle_publish_listing — 리스팅 발행 + 공유 링크 생성
+  // ─── haggle_validate_draft ──────────────────────────────────
+  server.tool(
+    "haggle_validate_draft",
+    "Validate a listing draft before publishing. Checks that all required fields (title, asking price, selling deadline) are filled in. Returns ok: true if valid, or a list of errors with the step number to navigate to for fixing. Call this before haggle_publish_listing.",
+    { draft_id: z.string().uuid() },
+    async ({ draft_id }) => {
+      const draft = await getDraftById(db, draft_id);
+      if (!draft) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "Draft not found", draft_id }),
+            },
+          ],
+        };
+      }
+
+      const errors = validateDraft(draft);
+      if (errors.length > 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ ok: false, errors, draft_id }),
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ ok: true, draft_id }),
+          },
+        ],
+      };
+    },
+  );
+
+  // ─── haggle_publish_listing ────────────────────────────────
+  registerAppTool(
+    server,
+    "haggle_publish_listing",
+    {
+      title: "Publish Listing",
+      description:
+        "Publish a validated listing draft. This creates a public share link that buyers can use to start negotiation. IMPORTANT: Always call haggle_validate_draft first. If validation fails, do NOT call this tool — instead guide the user to fix the missing fields. On success, the widget will show the 'Listing Live' screen with the share link.",
+      inputSchema: {
+        draft_id: z.string().uuid(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: LISTING_RESOURCE_URI,
+          visibility: ["model", "app"],
+        },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ draft_id }) => {
+      // Pre-validate
+      const draft = await getDraftById(db, draft_id);
+      if (!draft) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "Draft not found", draft_id }),
+            },
+          ],
+        };
+      }
+
+      const errors = validateDraft(draft);
+      if (errors.length > 0) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                error: "Validation failed — call haggle_validate_draft first",
+                errors,
+                draft_id,
+              }),
+            },
+          ],
+        };
+      }
+
+      try {
+        const result = await publishDraft(db, draft_id);
+        if (!result) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: "Draft not found", draft_id }),
+              },
+            ],
+          };
+        }
+
+        return {
+          structuredContent: {
+            draft_id,
+            public_id: result.publicId,
+            share_url: result.shareUrl,
+            claim_token: result.claimToken,
+            claim_expires_at: result.claimExpiresAt,
+            draft: result.draft,
+          },
+          content: [
+            {
+              type: "text" as const,
+              text: `Listing published! Share link: ${result.shareUrl}`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                error: err instanceof Error ? err.message : "Publish failed",
+                draft_id,
+              }),
+            },
+          ],
+        };
+      }
+    },
+  );
+
+  // ─── haggle_upload_photo ─────────────────────────────────
+  // Widget-only tool: receives base64 image, uploads to Supabase Storage,
+  // patches draft.photoUrl with the public URL.
+  registerAppTool(
+    server,
+    "haggle_upload_photo",
+    {
+      title: "Upload Photo",
+      description:
+        "Upload a listing photo. Receives a base64-encoded image from the widget, stores it in Supabase Storage, and updates the draft's photoUrl. This tool is called automatically by the widget when the user selects a photo — do NOT call it from the model.",
+      inputSchema: {
+        draft_id: z.string().uuid(),
+        image_base64: z
+          .string()
+          .describe("Base64-encoded image data (without data URI prefix)"),
+        mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: {
+          resourceUri: LISTING_RESOURCE_URI,
+          visibility: ["app"],
+        },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ draft_id, image_base64, mime_type }) => {
+      try {
+        const { publicUrl } = await uploadListingPhoto(
+          draft_id,
+          image_base64,
+          mime_type,
+        );
+
+        // Patch draft with the uploaded photo URL
+        const draft = await patchDraft(db, draft_id, { photoUrl: publicUrl });
+        if (!draft) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: "Draft not found", draft_id }),
+              },
+            ],
+          };
+        }
+
+        return {
+          structuredContent: { draft_id, photo_url: publicUrl, draft },
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ draft_id, photo_url: publicUrl }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Photo upload failed";
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: message, draft_id }),
+            },
+          ],
+        };
+      }
+    },
+  );
+
   // TODO(slice-5): haggle_create_negotiation_session — 구매자 협상 세션 생성
   // TODO(slice-5): haggle_submit_offer — 오퍼 제출 + AI 에이전트 결정
   // TODO(slice-6): haggle_claim — 24시간 소유권 연결
