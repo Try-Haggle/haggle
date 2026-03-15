@@ -176,19 +176,32 @@ export default function App() {
     }
 
     setError(null);
-    setPhotoPreview(URL.createObjectURL(file));
     setPhotoUploaded(false);
 
-    // Convert to base64 for MCP tool upload
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      // Strip data URI prefix: "data:image/png;base64,..."
+    // Resize & compress via canvas to stay within MCP bridge payload limits
+    const img = new Image();
+    img.onload = () => {
+      const MAX_DIM = 1200;
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const scale = MAX_DIM / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      // Always output JPEG at 80% quality for smaller payload
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      setPhotoPreview(dataUrl);
       const base64 = dataUrl.split(",")[1];
       setPhotoBase64(base64);
-      setPhotoMimeType(file.type);
+      setPhotoMimeType("image/jpeg");
+      URL.revokeObjectURL(img.src);
     };
-    reader.readAsDataURL(file);
+    img.src = URL.createObjectURL(file);
   };
 
   const handleNextStep1 = async () => {
