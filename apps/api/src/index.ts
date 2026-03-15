@@ -1,4 +1,8 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import { resolve } from "node:path";
+
+// Load .env from monorepo root (works from any cwd)
+dotenv.config({ path: resolve(import.meta.dirname, "../../../.env") });
 import { createServer } from "./server.js";
 
 const PORT = parseInt(process.env.PORT || "3001", 10);

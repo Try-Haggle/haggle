@@ -2,8 +2,20 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardContent } from "./dashboard-content";
 
-// TODO: use env var for production
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+export interface ListingSummary {
+  id: string;
+  title: string | null;
+  category: string | null;
+  condition: string | null;
+  photoUrl: string | null;
+  targetPrice: string | null;
+  status: string;
+  strategyConfig: Record<string, unknown> | null;
+  createdAt: string;
+  publicId: string;
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -42,10 +54,26 @@ export default async function DashboardPage({
     }
   }
 
+  // Fetch user's listings
+  let listings: ListingSummary[] = [];
+  try {
+    const res = await fetch(
+      `${API_URL}/api/listings?userId=${user.id}`,
+      { cache: "no-store" },
+    );
+    const data = await res.json();
+    if (data.ok) {
+      listings = data.listings;
+    }
+  } catch {
+    // Listings will be empty — dashboard still renders
+  }
+
   return (
     <DashboardContent
       userEmail={user.email ?? ""}
       claimResult={claimResult}
+      listings={listings}
     />
   );
 }

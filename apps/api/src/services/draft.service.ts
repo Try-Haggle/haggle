@@ -168,6 +168,57 @@ export async function publishDraft(db: Database, draftId: string) {
   };
 }
 
+// ─── Dashboard Queries ──────────────────────────────────────
+
+/** Fetch all published listings for a given user, with their public share URL. */
+export async function getListingsByUserId(db: Database, userId: string) {
+  const drafts = await db
+    .select({
+      id: listingDrafts.id,
+      title: listingDrafts.title,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      status: listingDrafts.status,
+      strategyConfig: listingDrafts.strategyConfig,
+      createdAt: listingDrafts.createdAt,
+      publicId: listingsPublished.publicId,
+    })
+    .from(listingDrafts)
+    .innerJoin(listingsPublished, eq(listingsPublished.draftId, listingDrafts.id))
+    .where(eq(listingDrafts.userId, userId))
+    .orderBy(listingDrafts.createdAt);
+
+  return drafts;
+}
+
+/** Fetch a single listing by draft ID + userId (ownership check). */
+export async function getListingByIdForUser(db: Database, id: string, userId: string) {
+  const rows = await db
+    .select({
+      id: listingDrafts.id,
+      title: listingDrafts.title,
+      description: listingDrafts.description,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      floorPrice: listingDrafts.floorPrice,
+      tags: listingDrafts.tags,
+      status: listingDrafts.status,
+      strategyConfig: listingDrafts.strategyConfig,
+      sellingDeadline: listingDrafts.sellingDeadline,
+      createdAt: listingDrafts.createdAt,
+      publicId: listingsPublished.publicId,
+    })
+    .from(listingDrafts)
+    .innerJoin(listingsPublished, eq(listingsPublished.draftId, listingDrafts.id))
+    .where(and(eq(listingDrafts.id, id), eq(listingDrafts.userId, userId)));
+
+  return rows[0] ?? null;
+}
+
 // ─── Claim ──────────────────────────────────────────────────
 
 export type ClaimResult =
