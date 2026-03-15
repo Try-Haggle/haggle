@@ -9,6 +9,7 @@ import {
   validateDraft,
   publishDraft,
 } from "../../services/draft.service.js";
+import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import { LISTING_RESOURCE_URI } from "../resources.js";
 
 /**
@@ -327,6 +328,84 @@ export function registerTools(server: McpServer, db: Database) {
                 error: err instanceof Error ? err.message : "Publish failed",
                 draft_id,
               }),
+            },
+          ],
+        };
+      }
+    },
+  );
+
+  // ─── haggle_upload_photo ─────────────────────────────────
+  // Widget-only tool: receives base64 image, uploads to Supabase Storage,
+  // patches draft.photoUrl with the public URL.
+  registerAppTool(
+    server,
+    "haggle_upload_photo",
+    {
+      title: "Upload Photo",
+      description:
+        "Upload a listing photo. Receives a base64-encoded image from the widget, stores it in Supabase Storage, and updates the draft's photoUrl. This tool is called automatically by the widget when the user selects a photo — do NOT call it from the model.",
+      inputSchema: {
+        draft_id: z.string().uuid(),
+        image_base64: z
+          .string()
+          .describe("Base64-encoded image data (without data URI prefix)"),
+        mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: {
+          resourceUri: LISTING_RESOURCE_URI,
+          visibility: ["app"],
+        },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ draft_id, image_base64, mime_type }) => {
+      try {
+        const { publicUrl } = await uploadListingPhoto(
+          draft_id,
+          image_base64,
+          mime_type,
+        );
+
+        // Patch draft with the uploaded photo URL
+        const draft = await patchDraft(db, draft_id, { photoUrl: publicUrl });
+        if (!draft) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: "Draft not found", draft_id }),
+              },
+            ],
+          };
+        }
+
+        return {
+          structuredContent: { draft_id, photo_url: publicUrl, draft },
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ draft_id, photo_url: publicUrl }),
+            },
+          ],
+        };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Photo upload failed";
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: message, draft_id }),
             },
           ],
         };

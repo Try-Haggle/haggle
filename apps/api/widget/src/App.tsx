@@ -36,7 +36,9 @@ export default function App() {
   // Form state
   const [draftId, setDraftId] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photoMimeType, setPhotoMimeType] = useState<string | null>(null);
+  const [photoUploaded, setPhotoUploaded] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -99,6 +101,10 @@ export default function App() {
             if (draft.tags) setTags(draft.tags as string[]);
             if (draft.category) setCategory(draft.category as string);
             if (draft.condition) setCondition(draft.condition as string);
+            if (draft.photoUrl) {
+              setPhotoPreview(draft.photoUrl as string);
+              setPhotoUploaded(true);
+            }
             if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
             if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
             if (draft.sellingDeadline) setSellingDeadline((draft.sellingDeadline as string).slice(0, 10));
@@ -115,7 +121,7 @@ export default function App() {
     },
   });
 
-  const isFormValid = !!photoFile && !!title.trim();
+  const isFormValid = (!!photoBase64 || photoUploaded) && !!title.trim();
 
   // Log connection state for debugging widget disappearing issue.
   useEffect(() => {
@@ -162,8 +168,27 @@ export default function App() {
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPhotoFile(file);
+
+    // 5MB client-side check
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image too large. Maximum size is 5 MB.");
+      return;
+    }
+
+    setError(null);
     setPhotoPreview(URL.createObjectURL(file));
+    setPhotoUploaded(false);
+
+    // Convert to base64 for MCP tool upload
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      // Strip data URI prefix: "data:image/png;base64,..."
+      const base64 = dataUrl.split(",")[1];
+      setPhotoBase64(base64);
+      setPhotoMimeType(file.type);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleNextStep1 = async () => {
@@ -177,6 +202,19 @@ export default function App() {
     setError(null);
 
     try {
+      // Upload photo if not already uploaded
+      if (photoBase64 && photoMimeType && !photoUploaded) {
+        await app.callServerTool({
+          name: "haggle_upload_photo",
+          arguments: {
+            draft_id: draftId,
+            image_base64: photoBase64,
+            mime_type: photoMimeType,
+          },
+        });
+        setPhotoUploaded(true);
+      }
+
       await app.callServerTool({
         name: "haggle_apply_patch",
         arguments: {
@@ -309,7 +347,7 @@ export default function App() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/jpg"
+              accept="image/png,image/jpeg,image/webp"
               className="photo-file-input"
               onChange={handlePhotoSelect}
             />
