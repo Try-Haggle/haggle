@@ -605,29 +605,36 @@ Widget "Go to Dashboard" → /claim?token={claimToken}
 
 ---
 
-### Slice 9 — Account Settings ⬜
+### Slice 9 — Account Settings + 테마 통일 ✅ 완료
 **목표**
-유저 프로필 관리 + 비밀번호 설정 + 계정 삭제 기능 제공
+유저 프로필 관리 + 비밀번호 설정 + 계정 삭제 기능 제공 + 웹앱 색상 테마를 위젯과 통일
 
-**구현**
-- `/settings` 페이지 (Nav 드롭다운에서 진입, `(app)` route group 내)
-- **프로필 섹션**:
-  - 이름 변경 (Supabase Auth `user_metadata.name`)
-  - 아바타 변경 (Supabase Auth `user_metadata.avatar_url` — Supabase Storage 업로드)
-  - Nav 아바타에 반영 (현재 이메일 첫글자 → 이미지 or 이름 첫글자)
-- **비밀번호 섹션**:
-  - Magic Link 유저: 비밀번호 설정 (`supabase.auth.updateUser({ password })`)
-  - 기존 비밀번호 유저: 비밀번호 변경
-- **계정 삭제 섹션**:
-  - 확인 모달 (이메일 입력 확인)
-  - Supabase Admin API로 유저 삭제 + 관련 데이터 정리
-  - 삭제 후 `/claim`으로 리다이렉트
+**구현** — 모두 완료
+- ✅ `/settings` 페이지 (Nav 드롭다운에서 진입, `(app)` route group 내)
+- ✅ **프로필 섹션**:
+  - 이름 변경 (`supabase.auth.updateUser({ data: { display_name } })`)
+  - 아바타 업로드 (Supabase Storage `avatars` 버킷 → `custom_avatar_url`로 저장)
+  - Google OAuth `avatar_url` 덮어쓰기 방지: `custom_avatar_url` 우선 → `avatar_url` fallback
+  - Nav 아바타에 즉시 반영 (`referrerPolicy="no-referrer"`, `onError` fallback)
+- ✅ **비밀번호 섹션**:
+  - Google OAuth 유저: "Set a password to also sign in with email" 안내
+  - Magic Link / Email 유저: 비밀번호 변경
+  - 8자 최소 + 확인 입력 검증
+- ✅ **계정 삭제 섹션**:
+  - 이메일 입력 확인 (confirmation prompt)
+  - `DELETE /api/account` — Supabase Admin API로 유저 삭제 + listing_drafts unlink
+  - 삭제 후 signOut + `/claim` 리다이렉트
+- ✅ **테마 통일**:
+  - `globals.css` — 위젯 매칭 색상 토큰 (`--color-bg-primary`, `--color-bg-card`, `--color-bg-input`, `--color-border-default`)
+  - CTA 버튼 cyan → emerald 통일 (claim, settings, dashboard)
+  - 아바타 fallback 색상 emerald 통일
 
-**완료 기준**
-- Nav 드롭다운 → Settings 진입 가능
-- 이름/아바타 변경 → Nav에 즉시 반영
-- 비밀번호 설정/변경 성공
-- 계정 삭제 → 로그아웃 + 데이터 정리
+**완료 기준** — 모두 충족
+- ✅ Nav 드롭다운 → Settings 진입 가능
+- ✅ 이름/아바타 변경 → Nav에 즉시 반영 (새로고침 후에도 유지)
+- ✅ 비밀번호 설정/변경 성공
+- ✅ 계정 삭제 → 로그아웃 + 데이터 정리
+- ✅ 웹앱 전체 색상이 위젯과 일관된 테마
 
 ---
 
@@ -708,8 +715,8 @@ Widget "Go to Dashboard" → /claim?token={claimToken}
 - Slice 8 ✅ (이미지 업로드 — Supabase Storage + canvas 압축)
 
 ### Week 4
-- Slice 9 (Account Settings) + Slice 10 (구매자 협상) + Slice 11 (하드닝 + Apps 제출)
-- 유저 프로필/비밀번호/계정 삭제 + 구매자 협상 1회 왕복 + E2E 데모 영상 촬영
+- Slice 9 ✅ (Account Settings + 테마 통일) + Slice 10 (구매자 협상) + Slice 11 (하드닝 + Apps 제출)
+- 구매자 협상 1회 왕복 + E2E 데모 영상 촬영
 
 ---
 
@@ -719,4 +726,4 @@ Widget "Go to Dashboard" → /claim?token={claimToken}
 ---
 
 *Last Updated: 2026-03-14*
-*Progress: Slice 0 ✅ → Slice 1 ✅ → Slice 2 ✅ → Slice 3 🔄 (UI 완료, 채팅 보류) → Slice 4 ✅ → Slice 5 🔄 (구현 완료, Magic Link 테스트 보류) → Slice 6 ✅ → Slice 7 ✅ (Layout & Nav) → Slice 8 ✅ (이미지 업로드) → Slice 9 ⬜ (Account Settings) → Slice 10 ⬜ (구매자 협상) → Slice 11 ⬜ (하드닝)*
+*Progress: Slice 0 ✅ → Slice 1 ✅ → Slice 2 ✅ → Slice 3 🔄 (UI 완료, 채팅 보류) → Slice 4 ✅ → Slice 5 🔄 (구현 완료, Magic Link 테스트 보류) → Slice 6 ✅ → Slice 7 ✅ (Layout & Nav) → Slice 8 ✅ (이미지 업로드) → Slice 9 ✅ (Account Settings + 테마 통일) → Slice 10 ⬜ (구매자 협상) → Slice 11 ⬜ (하드닝)*
