@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+@theme {
+  /* Match widget design tokens exactly */
+  --color-bg-primary: #0a0e17;
+  --color-bg-card: #111827;
+  --color-bg-input: #0d1321;
+  --color-border-default: #1e293b;
+}

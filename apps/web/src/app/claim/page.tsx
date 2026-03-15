@@ -8,7 +8,7 @@ export default function ClaimPage() {
   return (
     <Suspense fallback={
       <main className="flex min-h-screen items-center justify-center p-4">
-        <div className="text-zinc-500">Loading...</div>
+        <div className="text-slate-500">Loading...</div>
       </main>
     }>
       <ClaimForm />
@@ -83,14 +83,14 @@ function ClaimForm() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold">Check your email</h1>
-          <p className="text-zinc-400">
-            We sent a magic link to <span className="text-zinc-200 font-medium">{email}</span>.
+          <p className="text-slate-400">
+            We sent a magic link to <span className="text-slate-200 font-medium">{email}</span>.
             Click the link to sign in and claim your listing.
           </p>
           <button
             type="button"
             onClick={() => setEmailSent(false)}
-            className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
           >
             Use a different email
           </button>
@@ -105,7 +105,7 @@ function ClaimForm() {
         {/* Header */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">Haggle</h1>
-          <p className="text-zinc-400">
+          <p className="text-slate-400">
             {token
               ? "Sign up to claim your listing and start receiving offers."
               : "Sign in to manage your listings."}
@@ -116,7 +116,7 @@ function ClaimForm() {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-medium hover:bg-zinc-800 transition-colors"
+          className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-700 bg-bg-card px-4 py-3 text-sm font-medium hover:bg-slate-800 transition-colors"
         >
           <svg width="18" height="18" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
@@ -130,17 +130,17 @@ function ClaimForm() {
         {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-zinc-800" />
+            <div className="w-full border-t border-slate-800" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="bg-zinc-950 px-3 text-zinc-500">or</span>
+            <span className="bg-bg-primary px-3 text-slate-500">or</span>
           </div>
         </div>
 
         {/* Magic Link */}
         <form onSubmit={handleEmailLogin} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-zinc-400 mb-1.5">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-400 mb-1.5">
               Email
             </label>
             <input
@@ -150,13 +150,13 @@ function ClaimForm() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
+              className="w-full rounded-lg border border-slate-700 bg-bg-card px-4 py-3 text-sm placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
             />
           </div>
           <button
             type="submit"
             disabled={isLoading || !email.trim()}
-            className="w-full rounded-lg bg-cyan-600 px-4 py-3 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? "Sending..." : "Send Magic Link"}
           </button>
@@ -168,7 +168,7 @@ function ClaimForm() {
         )}
 
         {/* Footer */}
-        <p className="text-center text-xs text-zinc-600">
+        <p className="text-center text-xs text-slate-600">
           By signing up, you agree to our Terms of Service and Privacy Policy.
         </p>
       </div>

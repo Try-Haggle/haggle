@@ -33,7 +33,7 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
       {/* Back link */}
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-6"
       >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="15 18 9 12 15 6" />
@@ -55,7 +55,7 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
               {listing.status === "published" ? "active" : listing.status}
             </span>
           </div>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-slate-400">
             Asking <span className="font-semibold text-white">{price}</span>
             {agentLabel && (
               <>
@@ -69,7 +69,7 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
         {/* Share URL */}
         <button
           onClick={handleCopy}
-          className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-600 transition-colors shrink-0 self-start cursor-pointer"
+          className="flex items-center gap-2 rounded-full border border-slate-700 bg-bg-card px-4 py-2 text-sm text-slate-300 hover:border-slate-600 transition-colors shrink-0 self-start cursor-pointer"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
             <circle cx="18" cy="5" r="3" />
@@ -145,15 +145,15 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
 
       {/* Negotiation History */}
       <h2 className="text-lg font-bold text-white mb-4">Negotiation History</h2>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-zinc-300 mb-1">No negotiations yet</h3>
-        <p className="text-sm text-zinc-500">
+        <h3 className="text-lg font-semibold text-slate-300 mb-1">No negotiations yet</h3>
+        <p className="text-sm text-slate-500">
           Share your link to start receiving offers from buyers&apos; AI agents
         </p>
       </div>
@@ -203,12 +203,12 @@ function KpiCard({
   label: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4">
       <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>
         <span className={iconColor}>{icon}</span>
       </div>
       <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-sm text-zinc-400 mt-0.5">{label}</p>
+      <p className="text-sm text-slate-400 mt-0.5">{label}</p>
     </div>
   );
 }

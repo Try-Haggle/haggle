@@ -63,11 +63,11 @@ export function DashboardContent({
             </svg>
             <h1 className="text-2xl font-bold text-white">Seller Dashboard</h1>
           </div>
-          <p className="text-sm text-zinc-400">Manage your listings and track AI negotiations</p>
+          <p className="text-sm text-slate-400">Manage your listings and track AI negotiations</p>
         </div>
         <button
           disabled
-          className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 opacity-50 cursor-not-allowed shrink-0 self-start sm:self-auto"
+          className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 opacity-50 cursor-not-allowed shrink-0 self-start sm:self-auto"
           title="Coming soon — create listings with /haggle in ChatGPT"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -135,17 +135,17 @@ export function DashboardContent({
       <h2 className="text-lg font-bold text-white mb-4">Your Listings</h2>
 
       {listings.length === 0 ? (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
               <path d="M20 7h-9" />
               <path d="M14 17H5" />
               <circle cx="17" cy="17" r="3" />
               <circle cx="7" cy="7" r="3" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-zinc-300 mb-1">No listings yet</h3>
-          <p className="text-sm text-zinc-500">
+          <h3 className="text-lg font-semibold text-slate-300 mb-1">No listings yet</h3>
+          <p className="text-sm text-slate-500">
             Create one with <span className="text-cyan-400 font-mono">/haggle</span> in ChatGPT, then claim it to see it here.
           </p>
         </div>
@@ -175,12 +175,12 @@ function KpiCard({
   label: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4">
       <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>
         <span className={iconColor}>{icon}</span>
       </div>
       <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-sm text-zinc-400 mt-0.5">{label}</p>
+      <p className="text-sm text-slate-400 mt-0.5">{label}</p>
     </div>
   );
 }
@@ -201,10 +201,10 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
   return (
     <Link
       href={`/dashboard/${listing.id}`}
-      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 sm:p-4 hover:border-zinc-700 transition-colors"
+      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
     >
       {/* Photo or placeholder */}
-      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-zinc-800 overflow-hidden flex items-center justify-center">
+      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-slate-800 overflow-hidden flex items-center justify-center">
         {listing.photoUrl ? (
           <img
             src={listing.photoUrl}
@@ -212,7 +212,7 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
             <line x1="7" y1="7" x2="7.01" y2="7" />
           </svg>
@@ -227,24 +227,24 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
             {listing.status === "published" ? "active" : listing.status}
           </span>
         </div>
-        {meta && <p className="text-xs sm:text-sm text-zinc-400">{meta}</p>}
+        {meta && <p className="text-xs sm:text-sm text-slate-400">{meta}</p>}
       </div>
 
       {/* Price + negotiations */}
       <div className="shrink-0 text-right mr-1 sm:mr-2">
         <p className="font-semibold text-white text-sm sm:text-base">{price}</p>
-        <p className="text-xs sm:text-sm text-zinc-400">0 negotiations</p>
+        <p className="text-xs sm:text-sm text-slate-400">0 negotiations</p>
       </div>
 
       {/* Action icons */}
       <div className="hidden sm:flex items-center gap-2 shrink-0">
         <ShareButton publicId={listing.publicId} />
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </div>
       {/* Mobile chevron only */}
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500 sm:hidden shrink-0">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 sm:hidden shrink-0">
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </Link>
@@ -263,7 +263,7 @@ function ShareButton({ publicId }: { publicId: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+      className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
       title="Copy share link"
     >
       {copied ? (
