@@ -1,7 +1,7 @@
-# Haggle Engine Architecture v1.0.2 — 문서 색인
+# Haggle Engine Architecture v2.0.0 — 문서 색인
 
-**버전:** 1.0.2
-**작성일:** 2026-03-07
+**버전:** 2.0.0
+**작성일:** 2026-03-16
 **상태:** 구현 사양서 (개발 승인 완료)
 
 > 이 폴더는 Haggle Engine Core의 **완전한 기술 사양서**입니다.
@@ -22,6 +22,7 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| v2.0.0 | 2026-03-16 | **vNext 다중이슈 엔진 구현**: (1) Multi-Issue 효용 모델 U_total = clip(U_contract - C_risk + B_rel, 0,1), (2) J(ω) Offer Search, (3) Parallel Session EU + Dynamic BATNA, (4) NEAR_DEAL 밴드 + proximity, (5) Direction-aware 상대 모델 (enum/boolean/scalar), (6) Offer 검증 + 가중치 검증, (7) NegotiationEngine 인터페이스, (8) executeMultiIssueRound 파이프라인, (9) 수치 안정성 (beta=0, T=0 가드), (10) Settlement 재귀 정렬 |
 | v1.0.2 | 2026-03-07 | **다중 이슈 엔진 업그레이드**: (1) 이슈 타입 시스템 + Offer Inverter, (2) 6종 이동 분류 (Jonker Fig.2), (3) 베이지안 상대방 모델 + Reputation Prior, (4) 동적 마감 (Faratin 4.2.1), (5) 선택 정책, (6) 전술 엔진. v1.0.1 하위 호환. |
 | v1.0.1 | 2026-03-04 | 엔진 4-Gap: OpponentModel (EMA), 동적 베타, 효용 공간 양보 곡선, AC_next. AgentStats 시스템. |
 | v1.0.0 | 2026-02-17 | 초판. 4차원 효용 + Decision Maker + Faratin 양보 곡선. |
@@ -35,10 +36,10 @@
 | # | 파일 | 내용 | 핵심 키워드 |
 |---|------|------|------------|
 | 01 | [01_아키텍처_개요.md](./01_아키텍처_개요.md) | 4-Layer 시스템 구조, 설계 원칙, Hot/Cold Path | L0~L3, 결정론, 스킬 경계 |
-| 02 | [02_효용_함수.md](./02_효용_함수.md) | V_p, V_t, V_r, V_s 전체 수식 + 다중 이슈 일반화 | U_total, 가중치, Protobuf |
-| 03 | [03_양보_곡선_역산.md](./03_양보_곡선_역산.md) | Faratin 곡선, 동적 베타, AC_next, 동적 마감, Offer Inverter | β, U_target, invertVp |
-| 04 | [04_상대방_모델.md](./04_상대방_모델.md) | 3종/6종 이동 분류, EMA 추적기, 베이지안 모델, Reputation Prior | classifyMove, OpponentModel |
-| 05 | [05_의사결정_전술.md](./05_의사결정_전술.md) | Decision Maker 규칙, 전술 엔진, 미러링 전략, 선택 정책 | ACCEPT/COUNTER/ESCALATE |
+| 02 | [02_효용_함수.md](./02_효용_함수.md) | V_p, V_t, V_r, V_s 전체 수식 + 다중 이슈 일반화 + vNext 다중이슈 U_contract 모델, 검증 | U_total, 가중치, Protobuf |
+| 03 | [03_양보_곡선_역산.md](./03_양보_곡선_역산.md) | Faratin 곡선, 동적 베타, AC_next, 동적 마감, Offer Inverter + J(ω) Offer Search, 수치안정성 가드 | β, U_target, invertVp |
+| 04 | [04_상대방_모델.md](./04_상대방_모델.md) | 3종/6종 이동 분류, EMA 추적기, 베이지안 모델, Reputation Prior + Direction-aware 추적, enum/boolean 지원 | classifyMove, OpponentModel |
+| 05 | [05_의사결정_전술.md](./05_의사결정_전술.md) | Decision Maker 규칙, 전술 엔진, 미러링 전략, 선택 정책 + NEAR_DEAL 밴드, Parallel Session EU | ACCEPT/COUNTER/ESCALATE |
 | 06 | [06_에이전트_스탯.md](./06_에이전트_스탯.md) | 8개 스탯 전체 사양, 파라미터 변환, 6개 프리셋, 예산 제약 | AgentStats, 400포인트 |
 | 07 | [07_구현_계획.md](./07_구현_계획.md) | Phase별 구현 순서, 패키지 배치, 테스트 전략, 리스크 | engine-core, engine-session |
 
@@ -81,6 +82,9 @@
 ### v1.0.2 신규 내용만 필요한 경우
 각 문서에서 `(v1.0.2 신규)` 또는 `(v1.0.2 확장)` 표기를 찾으세요.
 
+### v2.0 신규 내용만 필요한 경우
+각 문서에서 `(v2.0 신규)` 또는 `(v2.0 구현)` 표기를 찾으세요.
+
 ---
 
-*이 색인은 Haggle Engine v1.0.2의 완전한 기술 사양서 세트에 대한 라우팅 문서입니다.*
+*이 색인은 Haggle Engine v2.0.0의 완전한 기술 사양서 세트에 대한 라우팅 문서입니다.*

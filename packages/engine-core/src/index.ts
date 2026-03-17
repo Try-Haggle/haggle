@@ -58,3 +58,80 @@ export { validateContext } from './validation.js';
 
 // Utils
 export { clamp } from './utils.js';
+
+// Issue-based negotiation types (HNP vNext)
+export type {
+  IssueValueType,
+  IssueDirection,
+  IssueCategory,
+  IssueDefinition,
+  IssueSchema,
+  IssueValue,
+  IssueValues,
+  IssueWeight,
+  IssueUtilityResult,
+  MultiIssueUtilityResult,
+  RiskCostParams,
+  RelationshipBonusParams,
+  AcceptanceThresholdParams,
+  OfferSearchParams,
+  ParallelSessionEval,
+  ContractUtilityInput,
+  MultiIssueUtilityInput,
+} from './issues/index.js';
+
+// Issue-based utility functions
+export {
+  computeScalarUtility,
+  computeDeadlineUtility,
+  computeEnumUtility,
+  computeBooleanUtility,
+  computeIssueUtility,
+  computeContractUtility,
+  computeRiskCost,
+  computeRelationshipBonus,
+  computeMultiIssueUtility,
+} from './issues/index.js';
+
+// Acceptance threshold
+export { computeAcceptanceThreshold } from './issues/index.js';
+
+// Multi-issue decision
+export { makeMultiIssueDecision } from './issues/index.js';
+export type { MultiIssueDecisionInput, MultiIssueDecision } from './issues/index.js';
+
+// Multi-issue counter-offer
+export { computeMultiIssueCounterOffer, computeMoveCost } from './issues/index.js';
+export type {
+  IssueFaratinParams,
+  MultiIssueCounterInput,
+  MultiIssueCounterResult,
+} from './issues/index.js';
+
+// Domain schemas
+export {
+  ELECTRONICS_SHIPPING_V1,
+  VEHICLE_V1,
+  REAL_ESTATE_V1,
+  SERVICES_V1,
+} from './issues/index.js';
+
+// Offer search (Section 11.4)
+export { searchOffer, estimateAcceptanceProbability } from './issues/index.js';
+export type { OfferSearchInput, OfferSearchResult } from './issues/index.js';
+
+// Parallel session (Section 11.5)
+export {
+  computeParallelSessionEU,
+  rankParallelSessions,
+  computeDynamicBatna,
+} from './issues/index.js';
+
+// Offer & weight validation
+export { validateOffer, validateWeights } from './issues/index.js';
+export type {
+  ValidationError,
+  WeightValidationError,
+  OfferValidationResult,
+  WeightValidationResult,
+} from './issues/index.js';
