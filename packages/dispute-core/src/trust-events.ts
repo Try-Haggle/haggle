@@ -13,6 +13,11 @@ export function trustTriggersForDisputeResolution(status: DisputeStatus): TrustT
         { module: "dispute", actor_role: "seller", type: "dispute_win" },
         { module: "dispute", actor_role: "buyer", type: "dispute_loss" },
       ];
+    case "PARTIAL_REFUND":
+      return [
+        { module: "dispute", actor_role: "buyer", type: "dispute_win" },
+        { module: "dispute", actor_role: "seller", type: "dispute_loss" },
+      ];
     default:
       return [];
   }

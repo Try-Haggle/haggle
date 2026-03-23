@@ -9,7 +9,10 @@ export function trustTriggersForPaymentTransition(
   previous: PaymentIntentStatus,
   next: PaymentIntentStatus,
 ): TrustTriggerEvent[] {
-  if ((next === "FAILED" || next === "CANCELED") && previous !== "SETTLED") {
+  // Only penalize when failing/canceling AFTER authorization (buyer had committed).
+  // CREATED/QUOTED cancellations are legitimate — no funds were committed.
+  const postAuthStates: PaymentIntentStatus[] = ["AUTHORIZED", "SETTLEMENT_PENDING"];
+  if ((next === "FAILED" || next === "CANCELED") && postAuthStates.includes(previous)) {
     return [
       {
         module: "payment",

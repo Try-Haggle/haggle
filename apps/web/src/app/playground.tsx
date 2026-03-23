@@ -1217,6 +1217,11 @@ export function NegotiationPlayground() {
           </p>
         </div>
         <div className={styles.heroMeta}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <a href="/commerce" style={{ display: "inline-block", padding: "8px 16px", background: "#d87421", color: "#fff", borderRadius: "10px", textDecoration: "none", fontWeight: 700, fontSize: "0.88rem" }}>
+              → Commerce Dashboard
+            </a>
+          </div>
           <div>
             <span>상태</span>
             <StatusBadge status={simulation.status} />

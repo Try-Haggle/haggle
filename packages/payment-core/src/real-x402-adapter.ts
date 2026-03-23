@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createId } from "./id.js";
 import type {
   PaymentIntent,
@@ -50,11 +51,7 @@ function nowIso(): string {
 }
 
 function createDeterministicHash(input: string): string {
-  let hash = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
 }
 
 function hashApprovalSnapshot(intent: PaymentIntent): string {

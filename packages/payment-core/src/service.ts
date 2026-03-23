@@ -125,6 +125,12 @@ export class PaymentService {
   }
 
   async refundIntent(intent: PaymentIntent, refund: Refund): Promise<RefundPaymentResult> {
+    if (intent.status !== "SETTLED") {
+      throw new Error(`refund requires SETTLED intent, got ${intent.status}`);
+    }
+    if (refund.amount.amount_minor > intent.amount.amount_minor) {
+      throw new Error(`refund amount ${refund.amount.amount_minor} exceeds payment amount ${intent.amount.amount_minor}`);
+    }
     const provider = this.resolveProvider(intent.selected_rail);
     return provider.refund(intent, refund);
   }

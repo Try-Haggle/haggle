@@ -5,3 +5,5 @@ export * from "./approval-state-machine.js";
 export * from "./market-pressure.js";
 export * from "./trust-ledger.js";
 export * from "./trust-policy.js";
+export * from "./hold-expiration.js";
+export * from "./order-lifecycle.js";

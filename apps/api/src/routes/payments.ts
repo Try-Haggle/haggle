@@ -95,6 +95,9 @@ const x402SubmitSchema = z.object({
   verify_only: z.boolean().optional(),
 });
 
+// TODO(security): Replace header-based actor with JWT/session auth middleware.
+// Currently trusts x-haggle-actor-id header — any caller can impersonate any user.
+// Must be fixed before production deployment.
 function actorFromHeaders(headers: Record<string, unknown>) {
   const actorId = headers["x-haggle-actor-id"];
   const actorRole = headers["x-haggle-actor-role"];
