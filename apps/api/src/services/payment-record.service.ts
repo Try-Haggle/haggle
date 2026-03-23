@@ -107,15 +107,9 @@ export async function getSettlementApprovalById(db: Database, id: string): Promi
 }
 
 export async function ensureCommerceOrderForApproval(db: Database, approval: SettlementApproval) {
-  const existing = await db.query.commerceOrders.findFirst({
-    where: (fields, ops) => ops.eq(fields.settlementApprovalId, approval.id),
-  });
-
-  if (existing) {
-    return existing;
-  }
-
-  const [created] = await db
+  // Use insert-on-conflict to prevent TOCTOU race condition.
+  // Two concurrent calls with the same approval_id will not create duplicates.
+  const [upserted] = await db
     .insert(commerceOrders)
     .values({
       settlementApprovalId: approval.id,
@@ -132,9 +126,19 @@ export async function ensureCommerceOrderForApproval(db: Database, approval: Set
         hold_snapshot: approval.hold_snapshot ?? null,
       },
     })
+    .onConflictDoNothing({ target: commerceOrders.settlementApprovalId })
     .returning();
 
-  return created;
+  if (upserted) {
+    return upserted;
+  }
+
+  // Conflict occurred — return existing row
+  const existing = await db.query.commerceOrders.findFirst({
+    where: (fields, ops) => ops.eq(fields.settlementApprovalId, approval.id),
+  });
+
+  return existing!;
 }
 
 export async function createStoredPaymentIntent(

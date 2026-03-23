@@ -24,8 +24,11 @@ function parseWalletMap(raw: string | undefined): Record<string, WalletMapEntry>
   if (!raw) {
     return {};
   }
-  const parsed = JSON.parse(raw) as Record<string, WalletMapEntry>;
-  return parsed;
+  try {
+    return JSON.parse(raw) as Record<string, WalletMapEntry>;
+  } catch {
+    throw new Error(`invalid JSON in wallet map env var: ${raw.slice(0, 100)}`);
+  }
 }
 
 function paymentWalletFromMap(

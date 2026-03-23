@@ -1,9 +1,10 @@
+/**
+ * Lightweight re-exports for client-side consumers.
+ * Excludes viem, contracts, and heavy adapter modules.
+ */
 export * from "./types.js";
 export * from "./state-machine.js";
 export * from "./trust-events.js";
 export * from "./provider.js";
-export * from "./mock-carrier-adapter.js";
-export * from "./sla.js";
 export * from "./service.js";
-export * from "./id.js";
-export * from "./escalation.js";
+export * from "./execution.js";

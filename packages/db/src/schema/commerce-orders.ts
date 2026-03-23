@@ -44,7 +44,7 @@ export const settlementApprovals = pgTable("settlement_approvals", {
 
 export const commerceOrders = pgTable("commerce_orders", {
   id: uuid("id").defaultRandom().primaryKey(),
-  settlementApprovalId: uuid("settlement_approval_id").notNull(),
+  settlementApprovalId: uuid("settlement_approval_id").notNull().unique(),
   listingId: uuid("listing_id").notNull(),
   sellerId: uuid("seller_id").notNull(),
   buyerId: uuid("buyer_id").notNull(),
