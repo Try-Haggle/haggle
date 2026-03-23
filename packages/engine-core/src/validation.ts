@@ -42,6 +42,13 @@ export function validateRiskContext(r: RiskContext): EngineError | null {
   if (r.r_score < 0 || r.r_score > 1 || r.i_completeness < 0 || r.i_completeness > 1) {
     return EngineError.INVALID_RISK_INPUT;
   }
+  if (
+    (r.settlement_reliability !== undefined && (r.settlement_reliability < 0 || r.settlement_reliability > 1)) ||
+    (r.w_settlement !== undefined && (r.w_settlement < 0 || r.w_settlement > 1)) ||
+    (r.approval_default_rate !== undefined && (r.approval_default_rate < 0 || r.approval_default_rate > 1))
+  ) {
+    return EngineError.INVALID_RISK_INPUT;
+  }
   return null;
 }
 

@@ -89,6 +89,32 @@ describe('validateRiskContext', () => {
       EngineError.INVALID_RISK_INPUT,
     );
   });
+
+  it('accepts settlement reliability fields in range', () => {
+    expect(
+      validateRiskContext({
+        r_score: 0.5,
+        i_completeness: 0.8,
+        settlement_reliability: 0.9,
+        w_rep: 0.4,
+        w_info: 0.3,
+        w_settlement: 0.3,
+      }),
+    ).toBeNull();
+  });
+
+  it('rejects settlement reliability out of range', () => {
+    expect(
+      validateRiskContext({
+        r_score: 0.5,
+        i_completeness: 0.8,
+        settlement_reliability: 1.2,
+        w_rep: 0.4,
+        w_info: 0.3,
+        w_settlement: 0.3,
+      }),
+    ).toBe(EngineError.INVALID_RISK_INPUT);
+  });
 });
 
 describe('validateRelationshipContext', () => {
