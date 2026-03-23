@@ -8,6 +8,7 @@ import { registerAccountRoutes } from "./routes/account.js";
 import { registerPublicListingRoutes } from "./routes/public-listing.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -30,7 +31,7 @@ export async function createServer() {
       /^http:\/\/localhost:\d+$/,
     ],
     methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
+    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
   });
 
@@ -42,6 +43,9 @@ export async function createServer() {
 
   // ─── MCP Routes ──────────────────────────────────────────
   registerMcpRoutes(app, db);
+
+  // ─── Commerce Routes ─────────────────────────────────────
+  registerPaymentRoutes(app, db);
 
   // ─── REST API Routes ───────────────────────────────────
   registerClaimRoutes(app, db);
