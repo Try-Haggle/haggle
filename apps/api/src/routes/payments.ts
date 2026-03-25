@@ -4,11 +4,16 @@ import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
 import {
   assertPaymentReadyForExecution,
+  createSettlementRelease,
   type PaymentIntent,
   type Refund,
   type BuyerAuthorizationMode,
   type X402PaymentPayloadEnvelope,
 } from "@haggle/payment-core";
+import { computeWeightBuffer } from "@haggle/shipping-core";
+import {
+  createSettlementReleaseRecord,
+} from "../services/settlement-release.service.js";
 import { createPaymentServiceFromEnv, getX402EnvConfig } from "../payments/providers.js";
 import {
   createPaymentAuthorizationRecord,
@@ -127,6 +132,42 @@ async function resolveSettlementApproval(
     return getSettlementApprovalById(db, body.settlement_approval_id);
   }
   return (body.settlement_approval as SettlementApproval | undefined) ?? null;
+}
+
+/**
+ * Auto-create a SettlementRelease when a payment reaches SETTLED.
+ * Calculates weight buffer from a default parcel weight (can be overridden
+ * when actual shipment weight is known).
+ */
+async function autoCreateSettlementRelease(
+  db: Database,
+  intent: PaymentIntent,
+  declaredWeightOz?: number,
+) {
+  try {
+    const weightOz = declaredWeightOz ?? 16; // default 1lb if unknown
+    const buffer = computeWeightBuffer(weightOz);
+    const bufferMinor = buffer.buffer_amount_minor;
+
+    const release = createSettlementRelease({
+      payment_intent_id: intent.id,
+      order_id: intent.order_id,
+      product_amount: {
+        currency: intent.amount.currency,
+        amount_minor: intent.amount.amount_minor - bufferMinor,
+      },
+      buffer_amount: {
+        currency: intent.amount.currency,
+        amount_minor: bufferMinor,
+      },
+    });
+
+    await createSettlementReleaseRecord(db, release);
+    return release;
+  } catch {
+    // Non-critical: log but don't fail the settlement
+    return null;
+  }
 }
 
 export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
@@ -321,9 +362,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         triggers: result.trust_triggers,
       });
     }
+    // Auto-create Settlement Release (Payment Protection)
+    const settlementRelease = await autoCreateSettlementRelease(db, result.intent);
+
     return reply.send({
       settlement: settle,
       payment: result,
+      settlement_release: settlementRelease,
     });
   });
 
@@ -384,7 +429,11 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         triggers: result.trust_triggers,
       });
     }
-    return reply.send(result);
+
+    // Auto-create Settlement Release (Payment Protection)
+    const settlementRelease = await autoCreateSettlementRelease(db, result.intent);
+
+    return reply.send({ ...result, settlement_release: settlementRelease });
   });
 
   app.post("/payments/:id/fail", async (request, reply) => {

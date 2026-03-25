@@ -135,6 +135,8 @@ pnpm --filter @haggle/engine-session test
 4. **Event-Driven**: 모듈 간 직접 의존 금지, 이벤트로 통신
 5. **Open Protocol, Closed Engine**: HNP 스펙은 공개, 엔진 로직은 비공개
 6. **MVP-First**: main 브랜치는 MVP 전용. 결제/분쟁 등은 별도 브랜치
+7. **Non-Custodial**: Haggle 은 사용자 자금에 대한 키를 절대 보유하지 않는다
+8. **Governance-Safe**: 컨트랙트 업그레이드 권한과 자금 접근 권한은 완전히 분리. Timelock(48h+) + Multisig 필수
 
 ---
 

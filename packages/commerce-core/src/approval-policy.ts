@@ -66,6 +66,12 @@ export interface SettlementTermsSnapshot {
   currency: string;
   selected_payment_rail: "x402" | "stripe";
   shipment_input_due_at?: string;
+  shipping_cost_minor?: number;
+  shipping_cost_bearer?: "buyer" | "seller" | "split";
+  shipping_cost_buyer_share_minor?: number;
+  shipping_cost_seller_share_minor?: number;
+  weight_buffer_minor?: number;
+  fulfillment_type?: "shipped" | "local_pickup";
 }
 
 export interface SettlementApproval {
@@ -78,4 +84,29 @@ export interface SettlementApproval {
   seller_approved_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export const MINIMUM_TRANSACTION_MINOR = 10_00; // $10.00 in cents
+
+export type FulfillmentType = "shipped" | "local_pickup";
+
+export interface MinimumTransactionResult {
+  valid: boolean;
+  reason?: string;
+}
+
+export function validateMinimumTransaction(
+  amount_minor: number,
+  fulfillment_type: FulfillmentType,
+): MinimumTransactionResult {
+  if (fulfillment_type === "local_pickup") {
+    return { valid: true };
+  }
+  if (amount_minor < MINIMUM_TRANSACTION_MINOR) {
+    return {
+      valid: false,
+      reason: `Shipped transactions require a minimum of $${(MINIMUM_TRANSACTION_MINOR / 100).toFixed(2)}. Current amount: $${(amount_minor / 100).toFixed(2)}. Use local pickup for transactions below the minimum.`,
+    };
+  }
+  return { valid: true };
 }

@@ -1,11 +1,11 @@
 import { createId } from "./id.js";
-import type { CarrierProvider, CarrierTrackingResult, CreateLabelResult } from "./provider.js";
+import type { CarrierProvider, CarrierTrackingResult, CreateLabelResult, LabelRequest } from "./provider.js";
 import type { Shipment, ShipmentEvent } from "./types.js";
 
 export class MockCarrierAdapter implements CarrierProvider {
   readonly carrier = "mock_carrier";
 
-  async createLabel(_shipment: Shipment): Promise<CreateLabelResult> {
+  async createLabel(_shipment: Shipment, _request?: LabelRequest): Promise<CreateLabelResult> {
     return {
       tracking_number: `MOCK-${createId()}`,
       tracking_url: "https://mock-carrier.test/track/MOCK-123",

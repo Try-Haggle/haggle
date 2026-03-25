@@ -2,14 +2,15 @@ import {
   MockStripeAdapter,
   MockX402Adapter,
   PaymentService,
-  RealX402Adapter,
   ScaffoldDisputeRegistryContract,
   ScaffoldSettlementRouterContract,
-  ViemDisputeRegistryContract,
-  ViemSettlementRouterContract,
   type BuyerAuthorizationMode,
+  type PaymentIntent,
   type PaymentPartyWallet,
 } from "@haggle/payment-core";
+// Heavy modules not re-exported from the barrel — import via tsconfig paths.
+import { RealX402Adapter } from "@haggle/payment-core/heavy/real-x402-adapter";
+import { ViemDisputeRegistryContract, ViemSettlementRouterContract } from "@haggle/payment-core/heavy/viem-contracts";
 import { createPublicClient, createWalletClient, http, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
@@ -123,13 +124,13 @@ export function createPaymentServiceFromEnv() {
     },
     settlement_router: settlementRouter,
     dispute_registry: disputeRegistry,
-    async resolve_seller_payout_target(sellerId) {
+    async resolve_seller_payout_target(sellerId: string) {
       return {
         seller_id: sellerId,
         wallet: paymentWalletFromMap(sellerId, sellerWalletMap[sellerId], walletNetwork, "external"),
       };
     },
-    async resolve_buyer_authorization(intent) {
+    async resolve_buyer_authorization(intent: PaymentIntent) {
       return {
         buyer_id: intent.buyer_id,
         mode: intent.buyer_authorization_mode ?? defaultBuyerAuthMode,
