@@ -336,8 +336,70 @@ h1{font-size:28px;font-weight:700;margin-bottom:4px;background:linear-gradient(1
 <strong style="color:#e0e0e0">용어 설명</strong><br>
 <strong style="color:#3498db">GMV</strong> (Gross Merchandise Volume) = 플랫폼에서 거래된 상품의 총 금액. 예: Haggle에서 iPhone 1만 대가 각 $450에 팔리면 GMV = $4.5M. 이건 Haggle의 수입이 아니라 "얼마나 많은 거래가 일어났는가"의 지표.<br>
 <strong style="color:#2ecc71">ARR</strong> (Annual Recurring Revenue) = 연간 반복 수입. GMV에서 Haggle이 실제로 가져가는 돈. 수수료 1.5%면 GMV $100M → ARR $1.5M.<br>
-<strong style="color:#f39c12">ARR (부가 포함)</strong> = 거래 수수료(1.5%) + 배송 마진 + 프리미엄 구독 + 인증 서비스 + API 라이선스 등 모든 수익원을 합한 연간 수입. 테이크레이트(실질 수수료율)가 3-5%로 올라가는 효과.<br>
+<strong style="color:#f39c12">ARR (전체 수익)</strong> = 거래 수수료(1.5%) + 아래 부가 수익원을 모두 합한 연간 수입. 테이크레이트(실질 수수료율)가 3-5%로 올라가는 효과.<br>
 <strong style="color:#9b59b6">마진율</strong> = 수입 중 실제 이익 비율. Haggle은 서버 비용 외에 원가가 거의 없으므로 96%+ (eBay, Poshmark도 비슷한 마진율).
+</div>
+
+<h5>부가 수익원 상세</h5>
+<p>거래 수수료 1.5% 외에 추가 수익이 발생하는 경로들. 목표 달성(월 60만 건) 기준 연간 추정.</p>
+<table>
+<tr><th>수익원</th><th>단가 / 비율</th><th>적용 대상</th><th style="text-align:right">연간 추정</th><th>근거</th></tr>
+<tr>
+<td style="color:#2ecc71;font-weight:500">거래 수수료</td>
+<td>1.5%</td>
+<td>모든 거래</td>
+<td style="text-align:right;color:#2ecc71;font-weight:600;font-family:'JetBrains Mono',monospace">$37-50M</td>
+<td style="color:#666;font-size:10px">GMV $2.5-3.3B × 1.5%</td>
+</tr>
+<tr>
+<td style="color:#f39c12;font-weight:500">배송 마진</td>
+<td>~$1/건</td>
+<td>Haggle 라벨 사용 거래 (~80%)</td>
+<td style="text-align:right;color:#f39c12;font-weight:600;font-family:'JetBrains Mono',monospace">$5.8M</td>
+<td style="color:#666;font-size:10px">월 60만 × 80% × $1 × 12개월</td>
+</tr>
+<tr>
+<td style="color:#e67e22;font-weight:500">분쟁 수수료</td>
+<td>$5 ~ 거래액 6%</td>
+<td>분쟁 건 (거래의 ~1%)</td>
+<td style="text-align:right;color:#e67e22;font-weight:600;font-family:'JetBrains Mono',monospace">$3.4M</td>
+<td style="color:#666;font-size:10px">연 7.2만 건 × 평균 $47 (Haggle 몫 30%)</td>
+</tr>
+<tr>
+<td style="color:#9b59b6;font-weight:500">프리미엄 구독</td>
+<td>$9.99-29.99/월</td>
+<td>파워셀러, 대량 판매자</td>
+<td style="text-align:right;color:#9b59b6;font-weight:600;font-family:'JetBrains Mono',monospace">$2-5M</td>
+<td style="color:#666;font-size:10px">판매자의 5-10%가 구독 가정</td>
+</tr>
+<tr>
+<td style="color:#3498db;font-weight:500">신뢰 API</td>
+<td>$0.01-0.05/조회</td>
+<td>외부 플랫폼 (PMF 후)</td>
+<td style="text-align:right;color:#3498db;font-weight:600;font-family:'JetBrains Mono',monospace">$1-3M</td>
+<td style="color:#666;font-size:10px">월 500만 조회 × $0.02 (PMF 후 점진 성장)</td>
+</tr>
+<tr>
+<td style="color:#e0e0e0;font-weight:500">인증/검증</td>
+<td>$5-15/건</td>
+<td>Apple 기기 상태 검증</td>
+<td style="text-align:right;color:#e0e0e0;font-weight:600;font-family:'JetBrains Mono',monospace">$3-7M</td>
+<td style="color:#666;font-size:10px">거래의 10-15%가 인증 요청 가정</td>
+</tr>
+<tr style="border-top:2px solid #333;font-weight:700;font-size:13px">
+<td colspan="3">합계 (전체 수익)</td>
+<td style="text-align:right;color:#f39c12;font-family:'JetBrains Mono',monospace">$52-74M</td>
+<td style="color:#666;font-size:10px">보수적 추정</td>
+</tr>
+<tr style="font-weight:700;font-size:13px">
+<td colspan="3">합계 (낙관적)</td>
+<td style="text-align:right;color:#2ecc71;font-family:'JetBrains Mono',monospace">$75-165M</td>
+<td style="color:#666;font-size:10px">프리미엄+API 성장 시</td>
+</tr>
+</table>
+
+<div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:6px;padding:10px;margin:8px 0;font-size:11px;color:#666;line-height:1.6">
+<strong style="color:#888">계산 가정</strong>: 목표 GMV $3B 기준 / 월 60만 건 / 평균 거래 $450 / 분쟁율 1% / Haggle 라벨 사용율 80% / 프리미엄 구독 전환율 5-10% / 신뢰 API는 PMF 이후 서서히 성장
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0">
