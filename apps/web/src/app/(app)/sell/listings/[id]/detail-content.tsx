@@ -29,10 +29,10 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
   };
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
+    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
       {/* Back link */}
       <Link
-        href="/dashboard"
+        href="/sell/dashboard"
         className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-6"
       >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

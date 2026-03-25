@@ -481,7 +481,7 @@ export function NewListingWizard({ userId }: { userId: string }) {
     };
 
     return (
-      <main className="min-h-[calc(100vh-3.5rem)] px-4 py-6">
+      <main className="min-h-[calc(100vh-4rem)] px-4 py-6">
         <div className="mx-auto max-w-[560px] pt-5 pb-10 text-center">
           {/* Success Icon — matches widget sparkle icon */}
           <div
@@ -558,7 +558,7 @@ export function NewListingWizard({ userId }: { userId: string }) {
           {/* Go to Dashboard */}
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/sell/dashboard")}
             className="mt-7 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-none text-[15px] font-semibold text-white transition-colors"
             style={{ background: "#10b981", padding: "14px 24px" }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "#059669"; }}
@@ -576,13 +576,13 @@ export function NewListingWizard({ userId }: { userId: string }) {
   const stepLabels = ["Item Details", "Set Pricing", "AI Agent"];
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] px-4 py-6 sm:p-6 max-w-4xl mx-auto">
+    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-4xl mx-auto">
       {/* Back button */}
       <button
         type="button"
         onClick={() => {
           setError(null);
-          if (step === 1) router.push("/dashboard");
+          if (step === 1) router.push("/sell/dashboard");
           else setStep(step - 1);
         }}
         className="mb-4 flex cursor-pointer items-center gap-1 text-sm text-slate-400 hover:text-white transition-colors"

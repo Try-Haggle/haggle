@@ -38,7 +38,7 @@ function ClaimForm() {
     setIsLoading(true);
     setAuthError(null);
 
-    const nextPath = token ? `/dashboard?claim=${token}` : returnTo || "/dashboard";
+    const nextPath = token ? `/sell/dashboard?claim=${token}` : returnTo || "/sell/dashboard";
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signInWithOtp({
@@ -58,7 +58,7 @@ function ClaimForm() {
   async function handleGoogleLogin() {
     setAuthError(null);
 
-    const nextPath = token ? `/dashboard?claim=${token}` : returnTo || "/dashboard";
+    const nextPath = token ? `/sell/dashboard?claim=${token}` : returnTo || "/sell/dashboard";
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signInWithOAuth({

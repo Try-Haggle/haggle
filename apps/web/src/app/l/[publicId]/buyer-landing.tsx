@@ -195,7 +195,7 @@ export function BuyerLanding({ listing, user }: { listing: Listing; user: UserIn
                     <p className="text-sm text-slate-300 truncate">{user.email}</p>
                   </div>
                   <a
-                    href="/dashboard"
+                    href="/buy/dashboard"
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
                   >
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -227,7 +227,7 @@ export function BuyerLanding({ listing, user }: { listing: Listing; user: UserIn
         </div>
       </nav>
 
-      <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: "calc(56px + 2rem)" }}>
+      <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: "calc(64px + 2rem)" }}>
         {/* ── Item Overview (top, prominent) ──────────────── */}
         <section className="mb-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
