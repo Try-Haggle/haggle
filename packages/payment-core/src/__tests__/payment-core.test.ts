@@ -9,6 +9,10 @@ import { createId } from "../id.js";
 import { PaymentService } from "../service.js";
 import { MockX402Adapter } from "../mock-x402-adapter.js";
 import { MockStripeAdapter } from "../mock-stripe-adapter.js";
+import { RealX402Adapter } from "../real-x402-adapter.js";
+import type { X402AdapterConfig } from "../real-x402-adapter.js";
+import { ScaffoldSettlementRouterContract, ScaffoldDisputeRegistryContract } from "../scaffold-contracts.js";
+import { MockFacilitatorClient, FacilitatorError } from "../facilitator-client.js";
 import type { PaymentIntent, PaymentIntentStatus } from "../types.js";
 import type { SettlementApproval } from "@haggle/commerce-core";
 
@@ -898,5 +902,181 @@ describe("MockStripeAdapter", () => {
     const result = await adapter.settle(intent);
     expect(result.settlement.status).toBe("SETTLED");
     expect(result.metadata?.charge_id).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RealX402Adapter (with ScaffoldContracts)
+// ---------------------------------------------------------------------------
+describe("RealX402Adapter", () => {
+  const feeWallet = { wallet_address: "0xHaggleFee", wallet_network: "eip155:8453" };
+  const buyerWallet = { wallet_address: "0xBuyer", wallet_network: "eip155:8453" };
+  const sellerWallet = { wallet_address: "0xSeller", wallet_network: "eip155:8453" };
+
+  function makeConfig(overrides?: Partial<X402AdapterConfig>): X402AdapterConfig {
+    return {
+      facilitator_url: "https://facilitator.test",
+      network: "base-sepolia",
+      asset: "USDC",
+      fee_policy: { fee_bps: 150, wallet: feeWallet },
+      settlement_router: new ScaffoldSettlementRouterContract("base-sepolia", "USDC"),
+      resolve_seller_payout_target: async (sellerId: string) => ({
+        seller_id: sellerId,
+        wallet: sellerWallet,
+      }),
+      resolve_buyer_authorization: async (intent: PaymentIntent) => ({
+        buyer_id: intent.buyer_id,
+        mode: "human_wallet" as const,
+        wallet: buyerWallet,
+      }),
+      ...overrides,
+    };
+  }
+
+  it("has correct rail and provider", () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    expect(adapter.rail).toBe("x402");
+    expect(adapter.provider).toBe("ai.haggle.x402");
+  });
+
+  it("quote resolves buyer/seller and returns metadata", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent({ amount: { currency: "USDC", amount_minor: 10000 } });
+    const quote = await adapter.quote(intent);
+    expect(quote.rail).toBe("x402");
+    expect(quote.amount.amount_minor).toBe(10000);
+    expect(quote.metadata?.network).toBe("base-sepolia");
+    expect(quote.metadata?.seller_wallet).toBe("0xSeller");
+    expect(quote.metadata?.haggle_fee_wallet).toBe("0xHaggleFee");
+    expect(quote.metadata?.buyer_authorization_mode).toBe("human_wallet");
+  });
+
+  it("quote splits fee correctly (150 bps = 1.5%)", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent({ amount: { currency: "USDC", amount_minor: 10000 } });
+    const quote = await adapter.quote(intent);
+    // 10000 * 150 / 10000 = 150
+    expect(quote.metadata?.haggle_fee_minor).toBe(150);
+    expect(quote.metadata?.seller_amount_minor).toBe(9850);
+  });
+
+  it("authorize returns buyer wallet info", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent();
+    const result = await adapter.authorize(intent);
+    expect(result.authorization.rail).toBe("x402");
+    expect(result.metadata?.buyer_wallet).toBe("0xBuyer");
+    expect(result.metadata?.authorization_mode).toBe("human_wallet");
+  });
+
+  it("settle calls settlement router and returns tx_hash", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent({ amount: { currency: "USDC", amount_minor: 10000 } });
+    const result = await adapter.settle(intent);
+    expect(result.settlement.rail).toBe("x402");
+    expect(result.settlement.status).toBe("PENDING");
+    expect(result.metadata?.tx_hash).toBeDefined();
+    expect(result.metadata?.tx_hash).toMatch(/^0x/);
+    expect(result.metadata?.network).toBe("base-sepolia");
+    expect(result.metadata?.seller_wallet).toBe("0xSeller");
+    expect(result.metadata?.haggle_fee_wallet).toBe("0xHaggleFee");
+  });
+
+  it("refund returns PENDING status", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent();
+    const refund = {
+      id: "ref_001",
+      payment_intent_id: intent.id,
+      amount: { currency: "USDC", amount_minor: 5000 },
+      status: "REQUESTED" as const,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    const result = await adapter.refund(intent, refund);
+    expect(result.refund.status).toBe("PENDING");
+    expect(result.metadata?.refund_mode).toBe("business_logic_transfer");
+  });
+
+  it("anchorDispute calls dispute registry", async () => {
+    const disputeRegistry = new ScaffoldDisputeRegistryContract("base-sepolia");
+    const adapter = new RealX402Adapter(makeConfig({ dispute_registry: disputeRegistry }));
+    const record = {
+      order_id: "ord_001",
+      dispute_case_id: "dsp_001",
+      evidence_root_hash: "abc123",
+      resolution_hash: "def456",
+    };
+    const result = await adapter.anchorDispute(record);
+    expect(result.onchain_reference).toBeDefined();
+    expect(result.anchored_at).toBeDefined();
+  });
+
+  it("anchorDispute throws when no registry configured", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    await expect(
+      adapter.anchorDispute({
+        order_id: "ord_001",
+        dispute_case_id: "dsp_001",
+        evidence_root_hash: "abc",
+        resolution_hash: "def",
+      }),
+    ).rejects.toThrow("dispute registry is not configured");
+  });
+
+  it("fee split rounds down (no fractional cents)", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent({ amount: { currency: "USDC", amount_minor: 333 } });
+    const quote = await adapter.quote(intent);
+    // 333 * 150 / 10000 = 4.995 → floor to 4
+    expect(quote.metadata?.haggle_fee_minor).toBe(4);
+    expect(quote.metadata?.seller_amount_minor).toBe(329);
+    // verify no loss: 329 + 4 = 333
+    expect(quote.metadata?.seller_amount_minor + quote.metadata?.haggle_fee_minor).toBe(333);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MockFacilitatorClient
+// ---------------------------------------------------------------------------
+describe("MockFacilitatorClient", () => {
+  const mockPayload = {
+    x402Version: 1 as const,
+    scheme: "exact" as const,
+    network: "base-sepolia",
+    payload: { test: true },
+  };
+
+  it("verify returns valid", async () => {
+    const client = new MockFacilitatorClient();
+    const result = await client.verify(mockPayload);
+    expect(result.isValid).toBe(true);
+  });
+
+  it("settle returns success with txHash", async () => {
+    const client = new MockFacilitatorClient();
+    const result = await client.settle(mockPayload);
+    expect(result.success).toBe(true);
+    expect(result.txHash).toMatch(/^0xmock_/);
+    expect(result.network).toBe("base-sepolia");
+  });
+
+  it("records all calls", async () => {
+    const client = new MockFacilitatorClient();
+    await client.verify(mockPayload);
+    await client.settle(mockPayload);
+    expect(client.calls).toHaveLength(2);
+    expect(client.calls[0].method).toBe("verify");
+    expect(client.calls[1].method).toBe("settle");
+  });
+});
+
+describe("FacilitatorError", () => {
+  it("has statusCode and name", () => {
+    const err = new FacilitatorError("test error", 500);
+    expect(err.message).toBe("test error");
+    expect(err.statusCode).toBe(500);
+    expect(err.name).toBe("FacilitatorError");
+    expect(err).toBeInstanceOf(Error);
   });
 });

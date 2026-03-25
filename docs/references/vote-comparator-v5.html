@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haggle 분쟁 투표 시스템 v5</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08090b;color:#e0e0e0;font-family:'Noto Sans KR',sans-serif;min-height:100vh}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+input[type=number]{-moz-appearance:textfield}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+select{-webkit-appearance:none;appearance:none}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes barGrow{from{width:0}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+.fade-in{animation:fadeIn .4s ease-out both}.bar-grow{animation:barGrow .6s ease-out both}.slide-in{animation:slideIn .3s ease-out both}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useMemo}=React;
+const MONO={fontFamily:"'JetBrains Mono',monospace"};
+const PANEL_THRESHOLD=15;
+
+const TIERS={
+  BRONZE:{label:"Bronze",color:"#cd7f32",finalWeight:0.63},
+  SILVER:{label:"Silver",color:"#c0c0c0",finalWeight:0.85},
+  GOLD:{label:"Gold",color:"#ffd700",finalWeight:1.10},
+  PLATINUM:{label:"Platinum",color:"#e5e4e2",finalWeight:1.45},
+  DIAMOND:{label:"Diamond",color:"#b9f2ff",finalWeight:2.0},
+};
+
+const OPTIONS=[0,25,50,75,100];
+const OPT_LABELS={
+  0:{label:"판매자 승",buyer:"환불 없음",seller:"전액 수령",icon:"🛡️",bColor:"#e74c3c",sColor:"#2ecc71"},
+  25:{label:"판매자 우세",buyer:"25% 환불",seller:"75% 수령",icon:"🔻",bColor:"#e67e22",sColor:"#27ae60"},
+  50:{label:"절반 분할",buyer:"50% 환불",seller:"50% 수령",icon:"⚖️",bColor:"#f39c12",sColor:"#f39c12"},
+  75:{label:"구매자 우세",buyer:"75% 환불",seller:"25% 수령",icon:"🔺",bColor:"#27ae60",sColor:"#e67e22"},
+  100:{label:"구매자 승",buyer:"전액 환불",seller:"수령 없음",icon:"🏆",bColor:"#2ecc71",sColor:"#e74c3c"},
+};
+function snap5(v){return OPTIONS.reduce((b,x)=>Math.abs(x-v)<Math.abs(b-v)?x:b);}
+
+// ====== K-Means ======
+function kMeans(data,k,maxIter=100){
+  if(data.length<=k)return{labels:data.map((_,i)=>i),centers:data.map(d=>[d])};
+  const centers=[data[Math.floor(Math.random()*data.length)]];
+  while(centers.length<k){const dist=data.map(d=>Math.min(...centers.map(c=>(d[0]-c[0])**2)));const total=dist.reduce((a,b)=>a+b,0);if(total===0)break;const probs=dist.map(d=>d/total);let r=Math.random(),cum=0;for(let i=0;i<probs.length;i++){cum+=probs[i];if(cum>=r){centers.push([...data[i]]);break;}}}
+  let labels=new Array(data.length).fill(0);
+  for(let iter=0;iter<maxIter;iter++){labels=data.map(d=>{let m=Infinity,mi=0;centers.forEach((c,i)=>{const dd=(d[0]-c[0])**2;if(dd<m){m=dd;mi=i;}});return mi;});let changed=false;for(let c=0;c<k;c++){const mm=data.filter((_,i)=>labels[i]===c);if(mm.length>0){const nc=mm.reduce((s,x)=>s+x[0],0)/mm.length;if(Math.abs(nc-centers[c][0])>0.01)changed=true;centers[c]=[nc];}}if(!changed)break;}
+  return{labels,centers:centers.map(c=>c[0])};
+}
+function determineOptimalK(data,maxK=5){if(data.length<10)return 2;const inertias=[];for(let k=2;k<=Math.min(maxK,data.length-1);k++){const{labels,centers}=kMeans(data,k);let in_=0;data.forEach((d,i)=>{in_+=(d[0]-centers[labels[i]])**2;});inertias.push(in_);}if(inertias.length<2)return 2;const dec=inertias.slice(0,-1).map((v,i)=>v-inertias[i+1]);for(let i=0;i<dec.length-1;i++){if(dec[i+1]<dec[i]*0.5)return i+2;}return 3;}
+function runKMeans(votes,seed=42){
+  const orig=Math.random;let s=seed;Math.random=()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};
+  const weighted=[];votes.forEach(v=>{const reps=Math.max(1,Math.round(v.weight*2));for(let r=0;r<reps;r++)weighted.push([v.value]);});
+  const optK=determineOptimalK(weighted);const{labels,centers}=kMeans(weighted,optK);
+  const sizes={};labels.forEach(l=>{sizes[l]=(sizes[l]||0)+1;});
+  const majId=Object.entries(sizes).sort((a,b)=>b[1]-a[1])[0][0];
+  const majV=weighted.filter((_,i)=>labels[i]==majId).map(v=>v[0]);
+  const counts={};majV.forEach(v=>{counts[v]=(counts[v]||0)+1;});
+  const[modeVal,modeCount]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  const modePct=modeCount/majV.length;
+  let result;if(modePct>=0.5)result=parseInt(modeVal);else{const c=centers[majId];result=[0,25,50,75,100].reduce((b,x)=>Math.abs(x-c)<Math.abs(b-c)?x:b);}
+  const clusters={};labels.forEach((l,i)=>{if(!clusters[l])clusters[l]={values:[],center:centers[l],isMajority:l==majId};clusters[l].values.push(weighted[i][0]);});
+  Math.random=orig;
+  return{result,k:optK,clusters:Object.values(clusters),totalWeightedVotes:weighted.length};
+}
+
+// ====== 소규모: 가중다수결 ======
+function runWeightedMajority(votes){
+  const buckets={};OPTIONS.forEach(o=>{buckets[o]={count:0,weight:0,voters:[]};});
+  votes.forEach((v,i)=>{const s=snap5(v.value);buckets[s].count++;buckets[s].weight+=v.weight;buckets[s].voters.push({...v,idx:i});});
+  const totalW=votes.reduce((s,v)=>s+v.weight,0);
+  const ranked=OPTIONS.map(o=>({option:o,...buckets[o],pct:buckets[o].weight/totalW*100})).sort((a,b)=>b.weight-a.weight);
+  const winner=ranked[0];
+  const margin=ranked.length>1?(winner.pct-ranked[1].pct):100;
+  let strength,sColor,sLabel;
+  if(winner.pct>=60){strength="strong";sColor="#2ecc71";sLabel="압도적 다수";}
+  else if(winner.pct>=45){strength="moderate";sColor="#f39c12";sLabel="과반 다수";}
+  else if(winner.pct>=35){strength="weak";sColor="#e67e22";sLabel="상대 다수";}
+  else{strength="plural";sColor="#e74c3c";sLabel="다수 불명확";}
+  return{winner:winner.option,winnerWeight:winner.weight,winnerPct:winner.pct,winnerCount:winner.count,buckets,ranked,totalW,margin,strength,sColor,sLabel};
+}
+
+// ====== 대규모: Trimmed Mean ======
+function runTrimmedMean(votes,trimPct=0.20){
+  const sorted=[...votes].sort((a,b)=>a.value-b.value);
+  const totalW=sorted.reduce((s,v)=>s+v.weight,0);const trimW=totalW*trimPct;
+  let cumL=0;const afterLow=[],tLow=[];
+  for(const v of sorted){if(cumL+v.weight<=trimW){cumL+=v.weight;tLow.push(v);}else afterLow.push(v);}
+  let cumH=0;const final=[],tHigh=[];
+  for(const v of[...afterLow].reverse()){if(cumH+v.weight<=trimW){cumH+=v.weight;tHigh.push(v);}else final.push(v);}
+  if(final.length===0)final.push(...afterLow);
+  const wSum=final.reduce((s,v)=>s+v.value*v.weight,0);
+  const wW=final.reduce((s,v)=>s+v.weight,0);
+  const raw=wSum/wW;
+  return{result:Math.round(raw/5)*5,rawMean:raw,trimmedLow:tLow,trimmedHigh:tHigh,included:final,totalVoters:votes.length,includedVoters:final.length};
+}
+function runWeightedMean(votes){
+  const wSum=votes.reduce((s,v)=>s+v.value*v.weight,0);
+  const wW=votes.reduce((s,v)=>s+v.weight,0);
+  const raw=wSum/wW;const variance=votes.reduce((s,v)=>s+v.weight*(v.value-raw)**2,0)/wW;
+  return{result:Math.round(raw/5)*5,rawMean:raw,stdDev:Math.sqrt(variance),totalVoters:votes.length,totalWeight:wW};
+}
+
+// ====== Agreement Zone ======
+function analyzeAgreement(votes,center,method,param){
+  const totalWeight=votes.reduce((s,v)=>s+v.weight,0);
+  const wMean=votes.reduce((s,v)=>s+v.value*v.weight,0)/totalWeight;
+  const wVar=votes.reduce((s,v)=>s+v.weight*(v.value-wMean)**2,0)/totalWeight;
+  const wStd=Math.sqrt(wVar);
+  let low,high;
+  if(method==="sigma"){low=Math.max(0,center-param*wStd);high=Math.min(100,center+param*wStd);}
+  else{low=Math.max(0,center-param);high=Math.min(100,center+param);}
+  const inside=[],outside=[];
+  votes.forEach((v,i)=>{if(v.value>=low&&v.value<=high)inside.push({...v,idx:i});else outside.push({...v,idx:i});});
+  const insideWeight=inside.reduce((s,v)=>s+v.weight,0);
+  const agreementRatio=insideWeight/totalWeight;
+  let refinedResult=center;
+  if(inside.length>0){const rr=inside.reduce((s,v)=>s+v.value*v.weight,0)/insideWeight;refinedResult=Math.round(rr/5)*5;}
+  let strength,sColor,sLabel;
+  if(agreementRatio>=0.75){strength="strong";sColor="#2ecc71";sLabel="강한 합의";}
+  else if(agreementRatio>=0.60){strength="moderate";sColor="#f39c12";sLabel="보통 합의";}
+  else if(agreementRatio>=0.45){strength="weak";sColor="#e67e22";sLabel="약한 합의";}
+  else{strength="failed";sColor="#e74c3c";sLabel="합의 실패";}
+  return{low,high,wStd,inside,outside,insideCount:inside.length,outsideCount:outside.length,agreementRatio,refinedResult,strength,sColor,sLabel,totalVoters:votes.length};
+}
+
+// ====== Presets ======
+const PRESETS={
+  // --- 소규모 (5옵션 직접투표) ---
+  S_clear:{level:2,name:"소액·명확",panelInfo:"5명 | $150",desc:"$150 이어폰 불량",amount:150,mode:"small",
+    votes:[{value:100,tier:"GOLD"},{value:100,tier:"SILVER"},{value:100,tier:"BRONZE"},{value:0,tier:"SILVER"},{value:100,tier:"PLATINUM"}]},
+  S_majority:{level:2,name:"중액·다수",panelInfo:"7명 | $800",desc:"$800 태블릿 — 75%에 4명",amount:800,mode:"small",
+    votes:[{value:75,tier:"GOLD"},{value:100,tier:"DIAMOND"},{value:75,tier:"SILVER"},{value:75,tier:"PLATINUM"},{value:50,tier:"GOLD"},{value:25,tier:"BRONZE"},{value:75,tier:"SILVER"}]},
+  S_outlier:{level:2,name:"고액·극단값",panelInfo:"11명 | $5K",desc:"$5K 맥북 — 0% 공격 2명",amount:5000,mode:"small",
+    votes:[{value:75,tier:"GOLD"},{value:100,tier:"DIAMOND"},{value:75,tier:"SILVER"},{value:100,tier:"PLATINUM"},{value:75,tier:"GOLD"},{value:75,tier:"SILVER"},{value:75,tier:"BRONZE"},{value:100,tier:"GOLD"},{value:0,tier:"BRONZE"},{value:0,tier:"BRONZE"},{value:75,tier:"PLATINUM"}]},
+  S_overturn:{level:3,name:"소액·역전",panelInfo:"9명 | $80",desc:"$80 충전기 — 뒤집기",amount:80,mode:"small",
+    votes:[{value:0,tier:"GOLD"},{value:0,tier:"PLATINUM"},{value:0,tier:"DIAMOND"},{value:25,tier:"SILVER"},{value:0,tier:"GOLD"},{value:100,tier:"BRONZE"},{value:0,tier:"SILVER"},{value:0,tier:"PLATINUM"},{value:25,tier:"BRONZE"}]},
+  S_split:{level:2,name:"중액·분열",panelInfo:"7명 | $2K",desc:"$2K 카메라 — 의견 분열",amount:2000,mode:"small",
+    votes:[{value:75,tier:"GOLD"},{value:50,tier:"DIAMOND"},{value:25,tier:"SILVER"},{value:75,tier:"PLATINUM"},{value:50,tier:"GOLD"},{value:25,tier:"SILVER"},{value:50,tier:"BRONZE"}]},
+  S_tie:{level:2,name:"고액·동점",panelInfo:"9명 | $3K",desc:"$3K 노트북 — 50 vs 75",amount:3000,mode:"small",
+    votes:[{value:50,tier:"GOLD"},{value:75,tier:"DIAMOND"},{value:50,tier:"SILVER"},{value:75,tier:"PLATINUM"},{value:50,tier:"GOLD"},{value:75,tier:"SILVER"},{value:50,tier:"BRONZE"},{value:75,tier:"GOLD"},{value:25,tier:"PLATINUM"}]},
+  // --- 대규모 (연속값 투표) ---
+  L_split:{level:2,name:"고액·분열",panelInfo:"15명 | $8K",desc:"$8K 카메라 — 연속값",amount:8000,mode:"large",
+    votes:[{value:80,tier:"GOLD"},{value:85,tier:"DIAMOND"},{value:75,tier:"PLATINUM"},{value:82,tier:"GOLD"},{value:78,tier:"SILVER"},{value:70,tier:"SILVER"},{value:30,tier:"GOLD"},{value:25,tier:"PLATINUM"},{value:20,tier:"SILVER"},{value:35,tier:"DIAMOND"},{value:50,tier:"BRONZE"},{value:55,tier:"SILVER"},{value:45,tier:"GOLD"},{value:72,tier:"PLATINUM"},{value:28,tier:"BRONZE"}]},
+  L_consensus:{level:2,name:"초고액·합의",panelInfo:"35명 | $120K",desc:"$120K 차량 — 넓은 합의",amount:120000,mode:"large",
+    votes:(()=>{const v=[];const t=["GOLD","PLATINUM","DIAMOND","SILVER","GOLD","PLATINUM","DIAMOND","GOLD","SILVER","PLATINUM","GOLD","DIAMOND","SILVER","GOLD","PLATINUM","SILVER","GOLD","DIAMOND","PLATINUM","GOLD","SILVER","PLATINUM","GOLD","DIAMOND","SILVER","GOLD","PLATINUM","GOLD","SILVER","DIAMOND","PLATINUM","GOLD","SILVER","GOLD","PLATINUM"];for(let i=0;i<35;i++)v.push({value:60+Math.floor((i*7+3)%15)-5,tier:t[i]});return v;})()},
+  L_3way:{level:2,name:"초고액·3파전",panelInfo:"29명 | $100K",desc:"$100K 보트 — 3개 파벌",amount:100000,mode:"large",
+    votes:(()=>{const v=[];[85,90,82,88,92,80,87,95,83,86,91,84].forEach((val,i)=>v.push({value:val,tier:["GOLD","DIAMOND","SILVER","PLATINUM","GOLD","BRONZE","GOLD","DIAMOND","SILVER","PLATINUM","GOLD","SILVER"][i]}));[50,45,55,48,52,42,50,47,53].forEach((val,i)=>v.push({value:val,tier:["GOLD","SILVER","PLATINUM","GOLD","DIAMOND","BRONZE","SILVER","GOLD","PLATINUM"][i]}));[10,5,15,8,12,7,10,14].forEach((val,i)=>v.push({value:val,tier:["GOLD","BRONZE","PLATINUM","SILVER","GOLD","BRONZE","SILVER","BRONZE"][i]}));return v;})()},
+  L_nuanced:{level:3,name:"중액·세밀",panelInfo:"15명 | $1.5K",desc:"$1.5K 콘솔 — 세밀한 의견",amount:1500,mode:"large",
+    votes:[{value:60,tier:"GOLD"},{value:65,tier:"DIAMOND"},{value:55,tier:"PLATINUM"},{value:70,tier:"GOLD"},{value:50,tier:"SILVER"},{value:60,tier:"SILVER"},{value:45,tier:"GOLD"},{value:65,tier:"PLATINUM"},{value:58,tier:"DIAMOND"},{value:40,tier:"BRONZE"},{value:62,tier:"GOLD"},{value:55,tier:"SILVER"},{value:100,tier:"BRONZE"},{value:0,tier:"BRONZE"},{value:63,tier:"PLATINUM"}]},
+  L_large:{level:3,name:"고액·대규모",panelInfo:"35명 | $25K",desc:"$25K 시계 — 35명",amount:25000,mode:"large",
+    votes:(()=>{const v=[];[70,75,72,80,68,77,73,82,71,76,74,79,65,78,70,73,85,69,75,72,80,74,71,77,68].forEach((val,i)=>v.push({value:val,tier:["GOLD","DIAMOND","PLATINUM","GOLD","SILVER","GOLD","PLATINUM","DIAMOND","SILVER","GOLD","PLATINUM","GOLD","SILVER","DIAMOND","GOLD","PLATINUM","GOLD","SILVER","DIAMOND","GOLD","PLATINUM","GOLD","SILVER","GOLD","PLATINUM"][i]}));[25,30,20,35,28,22].forEach((val,i)=>v.push({value:val,tier:["SILVER","GOLD","BRONZE","PLATINUM","SILVER","BRONZE"][i]}));[0,5,0,3].forEach((val,i)=>v.push({value:val,tier:["BRONZE","BRONZE","SILVER","BRONZE"][i]}));return v;})()},
+  L_massive:{level:3,name:"초고액·대규모",panelInfo:"75명 | $200K",desc:"$200K 부동산 — 최대 패널",amount:200000,mode:"large",
+    votes:(()=>{const v=[];for(let i=0;i<45;i++)v.push({value:55+(i*7+3)%21,tier:["GOLD","PLATINUM","DIAMOND","SILVER","GOLD","PLATINUM","GOLD","DIAMOND","SILVER","GOLD"][i%10]});for(let i=0;i<15;i++)v.push({value:30+(i*5+2)%21,tier:["SILVER","GOLD","PLATINUM","GOLD","SILVER","GOLD","BRONZE","PLATINUM","SILVER","GOLD"][i%10]});for(let i=0;i<10;i++)v.push({value:(i*4+1)%21,tier:["BRONZE","SILVER","BRONZE","GOLD","BRONZE","SILVER","BRONZE","GOLD","BRONZE","SILVER"][i]});[95,100,90,98,92].forEach((val,i)=>v.push({value:val,tier:["BRONZE","SILVER","BRONZE","GOLD","BRONZE"][i]}));return v;})()},
+  L_polarized:{level:3,name:"초고액·양극화",panelInfo:"59명 | $150K",desc:"$150K 차량 — 극단 양극화",amount:150000,mode:"large",
+    votes:(()=>{const v=[];for(let i=0;i<28;i++)v.push({value:70+(i*3+2)%31,tier:["GOLD","PLATINUM","DIAMOND","SILVER","GOLD","PLATINUM","GOLD","DIAMOND","SILVER","GOLD"][i%10]});for(let i=0;i<25;i++)v.push({value:(i*4+1)%31,tier:["SILVER","GOLD","BRONZE","PLATINUM","SILVER","GOLD","BRONZE","SILVER","GOLD","PLATINUM"][i%10]});[48,52,50,47,53,50].forEach((val,i)=>v.push({value:val,tier:["DIAMOND","GOLD","PLATINUM","GOLD","DIAMOND","PLATINUM"][i]}));return v;})()},
+};
+
+// ====== UI Components ======
+function ConsensusBar({ratio,color,label}){
+  return React.createElement("div",{style:{margin:"6px 0"}},
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}},
+      React.createElement("span",{style:{color:"#666"}},"합의 강도"),
+      React.createElement("span",{style:{color,fontWeight:700,...MONO}},`${label} (${(ratio*100).toFixed(0)}%)`)),
+    React.createElement("div",{style:{height:5,background:"#181818",borderRadius:3,overflow:"hidden"}},
+      React.createElement("div",{className:"bar-grow",style:{width:`${ratio*100}%`,height:"100%",borderRadius:3,background:`linear-gradient(90deg,${color}66,${color})`}})));
+}
+
+function NumberLineWithZone({votes,resultValue,resultColor,zone,dimmedIndices}){
+  const isLarge=votes.length>25;const rows=Math.max(3,Math.ceil(votes.length/25));const rowH=isLarge?10:16;const height=Math.min(140,30+rows*rowH);
+  return React.createElement("div",{style:{position:"relative",height,margin:"0 12px 6px"}},
+    zone&&React.createElement("div",{style:{position:"absolute",left:`${zone.low}%`,width:`${zone.high-zone.low}%`,top:0,bottom:14,background:`${zone.color}12`,borderLeft:`1px dashed ${zone.color}40`,borderRight:`1px dashed ${zone.color}40`,zIndex:0}},
+      React.createElement("div",{style:{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",fontSize:8,color:`${zone.color}77`,whiteSpace:"nowrap",...MONO}},`${zone.low.toFixed(0)}–${zone.high.toFixed(0)}%`)),
+    React.createElement("div",{style:{position:"absolute",bottom:8,left:0,right:0,height:2,background:"#2a2a2a",zIndex:1}}),
+    [0,25,50,75,100].map(t=>React.createElement("div",{key:t,style:{position:"absolute",left:`${t}%`,bottom:0,transform:"translateX(-50%)",textAlign:"center",zIndex:2}},
+      React.createElement("div",{style:{width:1,height:6,background:"#444",margin:"0 auto"}}),
+      React.createElement("span",{style:{fontSize:8,color:"#555",...MONO}},t))),
+    votes.map((v,i)=>{const t=TIERS[v.tier];const size=Math.max(4,Math.min(10,7+v.weight*4-(isLarge?2:0)));const isIn=zone?(v.value>=zone.low&&v.value<=zone.high):true;const isDimmed=dimmedIndices&&dimmedIndices.includes(i);
+      return React.createElement("div",{key:i,title:`${v.value}% (${t.label}, w${v.weight.toFixed(2)})${isIn?" ✓":" ✗"}`,style:{position:"absolute",left:`${v.value}%`,bottom:`${10+(i%rows)*rowH}px`,transform:"translateX(-50%)",width:size,height:size,borderRadius:"50%",backgroundColor:isDimmed?`${t.color}20`:isIn?`${t.color}88`:`${t.color}20`,border:isIn?`1px solid ${t.color}`:`1px solid ${t.color}18`,zIndex:isIn?5:1,cursor:"default"}});}),
+    resultValue!=null&&React.createElement("div",{style:{position:"absolute",left:`${resultValue}%`,bottom:0,top:0,width:2,background:resultColor,transform:"translateX(-50%)",zIndex:20}},
+      React.createElement("div",{style:{position:"absolute",top:zone?10:-4,left:"50%",transform:"translateX(-50%)",background:resultColor,color:"#000",fontSize:9,fontWeight:700,padding:"1px 4px",borderRadius:3,whiteSpace:"nowrap",...MONO}},`${resultValue}%`)));
+}
+
+// ========================================================================================
+// ====== SMALL PANEL: 5옵션 직접투표 UI ======
+// ========================================================================================
+function SmallPanelView({votes,amount}){
+  const maj=useMemo(()=>runWeightedMajority(votes),[votes]);
+  const winner=maj.winner;
+  const ol=OPT_LABELS[winner];
+  const buyerAmt=amount*winner/100;
+  const sellerAmt=amount-buyerAmt;
+  const isLarge=votes.length>9;
+  const dotSize=isLarge?9:11;
+
+  return React.createElement("div",{className:"fade-in"},
+    // 모드 표시
+    React.createElement("div",{style:{display:"flex",justifyContent:"center",marginBottom:12}},
+      React.createElement("div",{style:{background:"#131a13",padding:"6px 16px",borderRadius:20,border:"1px solid #2ecc7133",fontSize:11,color:"#2ecc71"}},
+        `📋 5옵션 직접투표 모드 · ${votes.length}명 (<${PANEL_THRESHOLD}명)`)),
+
+    // 5개 옵션 컬럼
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:14}},
+      OPTIONS.map(opt=>{
+        const label=OPT_LABELS[opt];
+        const b=maj.buckets[opt];
+        const isWin=opt===winner;
+        const wPct=b.weight/maj.totalW*100;
+
+        return React.createElement("div",{key:opt,style:{background:isWin?"#0f1a12":"#0a0a0a",borderRadius:10,padding:"10px 8px",border:isWin?"2px solid #2ecc71":"1px solid #181818",transition:"all .3s",position:"relative"}},
+          // 승리 배지
+          isWin&&React.createElement("div",{style:{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",background:"#2ecc71",color:"#000",fontSize:8,fontWeight:700,padding:"2px 8px",borderRadius:8}},"WINNER"),
+          // 헤더
+          React.createElement("div",{style:{textAlign:"center",marginBottom:8,marginTop:isWin?4:0}},
+            React.createElement("div",{style:{fontSize:22}},label.icon),
+            React.createElement("div",{style:{fontSize:11,fontWeight:700,color:isWin?"#e0e0e0":"#555",marginTop:3}},label.label),
+            React.createElement("div",{style:{fontSize:9,color:"#444",...MONO}},`${opt}%`)),
+          // 가중 비율 바
+          React.createElement("div",{style:{height:6,background:"#181818",borderRadius:3,marginBottom:4,overflow:"hidden"}},
+            React.createElement("div",{className:"bar-grow",style:{width:`${wPct}%`,height:"100%",borderRadius:3,background:isWin?"#2ecc71":"#444"}})),
+          React.createElement("div",{style:{textAlign:"center",fontSize:10,color:isWin?"#2ecc71":"#555",...MONO,marginBottom:8}},
+            React.createElement("span",{style:{fontWeight:700,fontSize:isWin?14:10}},`${wPct.toFixed(0)}%`),
+            React.createElement("span",{style:{fontSize:9,color:"#444",marginLeft:4}},`(${b.count}명)`)),
+          // 투표자 점
+          React.createElement("div",{style:{minHeight:45,display:"flex",flexWrap:"wrap",justifyContent:"center",gap:3,alignContent:"flex-start",marginBottom:10}},
+            b.voters.sort((a,b2)=>b2.weight-a.weight).map((v,i)=>{
+              const t=TIERS[v.tier];
+              return React.createElement("div",{key:i,title:`#${v.idx+1} ${t.label} (w${v.weight.toFixed(2)})`,
+                style:{width:dotSize,height:dotSize,borderRadius:"50%",backgroundColor:`${t.color}${isWin?"cc":"55"}`,border:`1.5px solid ${t.color}`,cursor:"default",
+                  boxShadow:isWin?`0 0 4px ${t.color}44`:"none"}});
+            }),
+            b.count===0&&React.createElement("div",{style:{fontSize:9,color:"#222",padding:"12px 0"}},"—")),
+          // 금액
+          React.createElement("div",{style:{borderTop:"1px solid #181818",paddingTop:8,...MONO,fontSize:10}},
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:3}},
+              React.createElement("span",{style:{color:"#3498db",fontSize:9}},"🛒 구매자"),
+              React.createElement("span",{style:{color:opt>0?"#3498db":"#333",fontWeight:isWin?700:400}},opt>0?`$${(amount*opt/100).toLocaleString()}`:"$0")),
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between"}},
+              React.createElement("span",{style:{color:"#e67e22",fontSize:9}},"📦 판매자"),
+              React.createElement("span",{style:{color:opt<100?"#e67e22":"#333",fontWeight:isWin?700:400}},opt<100?`$${(amount*(100-opt)/100).toLocaleString()}`:"$0"))));
+      })),
+
+    // 최종 판정
+    React.createElement("div",{style:{background:"#0e0e0e",borderRadius:10,padding:16,border:"2px solid #2ecc7733"}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:10}},
+        React.createElement("span",{style:{fontSize:36}},ol.icon),
+        React.createElement("div",null,
+          React.createElement("div",{style:{fontSize:16,fontWeight:700,color:"#e0e0e0"}},`${ol.label}`),
+          React.createElement("div",{style:{fontSize:11,color:"#888",...MONO}},`가중 ${maj.winnerPct.toFixed(1)}% · ${maj.winnerCount}/${votes.length}명`),
+          React.createElement("div",{style:{fontSize:10,color:maj.sColor,marginTop:2}},maj.sLabel))),
+      // 구매자/판매자 바
+      React.createElement("div",{style:{display:"flex",borderRadius:6,overflow:"hidden",height:40,margin:"10px 0"}},
+        winner>0&&React.createElement("div",{style:{width:`${winner}%`,background:"linear-gradient(135deg,#3498db,#2980b9)",display:"flex",alignItems:"center",justifyContent:"center"}},
+          React.createElement("span",{style:{color:"#fff",fontWeight:700,fontSize:12,...MONO}},`🛒 $${buyerAmt.toLocaleString()}`)),
+        winner<100&&React.createElement("div",{style:{width:`${100-winner}%`,background:"linear-gradient(135deg,#e67e22,#d35400)",display:"flex",alignItems:"center",justifyContent:"center"}},
+          React.createElement("span",{style:{color:"#fff",fontWeight:700,fontSize:12,...MONO}},`📦 $${sellerAmt.toLocaleString()}`))))
+  );
+}
+
+// ========================================================================================
+// ====== LARGE PANEL: 연속값 투표 → 3-Method 비교 → Agreement Zone → 연속값 보상 ======
+// ========================================================================================
+// ========================================================================================
+// ====== Method Explainer (Collapsible) ======
+// ========================================================================================
+const METHOD_EXPLAIN={
+  "K-Means Clustering":{
+    subtitle:"비지도 클러스터링 기반 다수파 추출",
+    steps:[
+      {title:"1. 가중 복제",desc:"DS 티어 가중치에 비례해 투표를 복제합니다. Diamond(×2.0)은 4표, Bronze(×0.63)은 1표로 확대 → 가중치가 자연스럽게 반영됩니다.",formula:"복제 수 = round(weight × 2)"},
+      {title:"2. 최적 K 결정",desc:"Elbow Method로 K=2~5 범위에서 관성(inertia) 감소율이 50% 미만으로 떨어지는 지점을 자동 선택합니다. 분열된 투표에서 파벌 수를 자동 감지합니다.",formula:"K* = argmin_k { Δinertia(k+1) < 0.5 × Δinertia(k) }"},
+      {title:"3. K-Means++ 초기화",desc:"첫 중심은 랜덤, 이후 중심은 기존 중심에서 가장 먼 데이터를 확률적으로 선택합니다 (K-Means++ 알고리즘). 최대 100회 반복으로 수렴합니다.",formula:"P(x) ∝ D(x)² (거리 제곱 비례 확률)"},
+      {title:"4. 다수파 클러스터 선택",desc:"가장 많은 복제표를 포함한 클러스터가 다수파입니다. 다수파의 중심값이 합의구간 계산의 기초가 되며, 재계산된 연속값이 최종 보상 비율로 사용됩니다.",formula:"result = majority_cluster.center → zone refine"},
+    ],
+    pros:["파벌 구조 자동 감지 (양극화·3파전 시 강점)","이상치가 별도 클러스터로 자연 분리","비모수적 — 분포 가정 불필요"],
+    cons:["비결정론적 — seed에 따라 결과 변동 가능","소규모 패널에서 불안정","K 선택이 경험적 (Elbow heuristic)"],
+    source:"MacQueen (1967), Arthur & Vassilvitskii (2007, K-Means++)"
+  },
+  "Trimmed Mean":{
+    subtitle:"양 극단 제거 후 가중 평균 — 권장 기본값",
+    steps:[
+      {title:"1. 가중치 기준 정렬",desc:"모든 투표를 값 순서로 정렬합니다. 각 투표는 DS 티어별 가중치(0.63~2.0)를 가집니다.",formula:"sorted = votes.sort(by value)"},
+      {title:"2. 양쪽 trim% 제거",desc:"총 가중치의 trim%(기본 20%)만큼 하위·상위에서 제거합니다. 가중치가 낮은 Bronze(0.63)가 먼저 잘리고, Diamond(2.0)은 잘 안 잘립니다 → 티어 가중치가 이중으로 작동합니다.",formula:"trimWeight = totalWeight × 0.20"},
+      {title:"3. 잔여 투표 가중 평균",desc:"제거 후 남은 투표들의 가중 평균을 계산합니다. 이 값이 중심값(Step 1 결과)입니다.",formula:"result = Σ(v_i × w_i) / Σ(w_i), i ∈ remaining"},
+      {title:"4. 합의구간 재계산",desc:"μ±kσ 합의구간 내 투표만으로 가중 평균을 다시 계산합니다. 이 값이 최종 연속값 결과이며, 소수점까지 정밀하게 보상에 반영됩니다.",formula:"refined = Σ(v_i × w_i) / Σ(w_i), i ∈ zone"},
+    ],
+    pros:["결정론적 — 항상 동일 결과","Wilcox(2003): 20% trim이 광범위 분포에서 최적","LIBOR(22%), ISU(11%), 올림픽에서 실전 검증","이상치 직접 제거 → 전략적 투표 방어"],
+    cons:["양극화 시 한쪽 파벌 전체 제거 가능","파벌 구조를 감지하지 못함","trim%가 고정값 — 데이터 적응형이 아님"],
+    source:"Wilcox & Keselman (2003, Psych Methods), Rosenberger & Gasko (1983)"
+  },
+  "Weighted Mean":{
+    subtitle:"전체 투표의 가중 평균 — 비교 기준선",
+    steps:[
+      {title:"1. 전원 포함",desc:"모든 DS 패널리스트의 투표를 포함합니다. 어떤 투표도 제거하지 않습니다. 이상치, 전략적 투표 모두 그대로 반영됩니다.",formula:"N = 전체 투표자 수"},
+      {title:"2. 가중 평균 계산",desc:"각 투표에 DS 티어 가중치를 곱해 합산 후, 총 가중치로 나눕니다. Diamond(2.0)의 의견이 Bronze(0.63)보다 ~3.2배 강하게 반영됩니다.",formula:"μ = Σ(v_i × w_i) / Σ(w_i)"},
+      {title:"3. 표준편차 산출",desc:"가중 분산과 표준편차를 계산합니다. σ가 크면 의견이 분산되어 있고, 작으면 합의에 가깝습니다. 합의구간(μ±kσ) 계산에 사용됩니다.",formula:"σ = √[ Σ(w_i × (v_i - μ)²) / Σ(w_i) ]"},
+      {title:"4. 합의구간 재계산",desc:"μ±kσ 합의구간 내 투표만으로 가중 평균을 다시 계산합니다. 이상치가 포함된 상태이므로 재계산 전후 차이가 클 수 있습니다. 연속값 그대로 보상에 반영됩니다.",formula:"refined = Σ(v_i × w_i) / Σ(w_i), i ∈ zone"},
+    ],
+    pros:["가장 단순하고 직관적","결정론적 — 항상 동일 결과","모든 의견이 반영됨 (민주적)","σ로 의견 분산도 정량화 가능"],
+    cons:["이상치에 취약 — 0% 공격 1명이 전체 결과 왜곡","전략적 투표 방어 불가","소수 극단 의견에 과대 민감"],
+    source:"기본 통계학, DS 티어 가중치로 확장"
+  }
+};
+
+function MethodExplainer({methodName,color}){
+  const[open,setOpen]=useState(false);
+  const info=METHOD_EXPLAIN[methodName];
+  if(!info)return null;
+  return React.createElement("div",{style:{marginTop:6}},
+    React.createElement("button",{onClick:()=>setOpen(!open),style:{width:"100%",padding:"4px 8px",background:"#0a0a0a",border:`1px solid ${color}18`,borderRadius:6,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",color:`${color}88`,fontSize:9,transition:"all .2s"}},
+      React.createElement("span",null,open?"📖 작동 원리":"📖 어떻게 계산하나?"),
+      React.createElement("span",{style:{fontSize:8,color:"#444"}},open?"▲":"▼")),
+    open&&React.createElement("div",{className:"fade-in",style:{background:"#080808",borderRadius:"0 0 8px 8px",padding:10,border:`1px solid ${color}12`,borderTop:"none",marginTop:-1}},
+      // Subtitle
+      React.createElement("div",{style:{fontSize:10,color,fontWeight:600,marginBottom:8}},info.subtitle),
+      // Steps
+      info.steps.map((s,i)=>React.createElement("div",{key:i,style:{marginBottom:8,paddingLeft:8,borderLeft:`2px solid ${color}22`}},
+        React.createElement("div",{style:{fontSize:10,color:"#ccc",fontWeight:600,marginBottom:2}},s.title),
+        React.createElement("div",{style:{fontSize:9,color:"#888",lineHeight:1.7}},s.desc),
+        React.createElement("div",{style:{fontSize:9,color:`${color}66`,marginTop:2,...MONO,background:"#0c0c0c",padding:"2px 6px",borderRadius:3,display:"inline-block"}},s.formula))),
+      // Pros/Cons
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}},
+        React.createElement("div",null,
+          React.createElement("div",{style:{fontSize:9,color:"#2ecc71",fontWeight:600,marginBottom:3}},"✅ 장점"),
+          info.pros.map((p,i)=>React.createElement("div",{key:i,style:{fontSize:8,color:"#666",lineHeight:1.6,paddingLeft:6}},`· ${p}`))),
+        React.createElement("div",null,
+          React.createElement("div",{style:{fontSize:9,color:"#e74c3c",fontWeight:600,marginBottom:3}},"⚠️ 한계"),
+          info.cons.map((c,i)=>React.createElement("div",{key:i,style:{fontSize:8,color:"#666",lineHeight:1.6,paddingLeft:6}},`· ${c}`)))),
+      // Source
+      React.createElement("div",{style:{fontSize:8,color:"#333",marginTop:8,borderTop:"1px solid #111",paddingTop:4}},
+        `📚 ${info.source}`)));
+}
+
+function LargePanelView({votes,amount,trimPercent,setTrimPercent,zoneMethod,sigmaK,fixedDelta,seed,setSeed}){
+  const tmResult=useMemo(()=>runTrimmedMean(votes,trimPercent/100),[votes,trimPercent]);
+  const wmResult=useMemo(()=>runWeightedMean(votes),[votes]);
+  const kmResult=useMemo(()=>runKMeans(votes,seed),[votes,seed]);
+  const zp=zoneMethod==="sigma"?sigmaK:fixedDelta;
+  const zoneTM=useMemo(()=>analyzeAgreement(votes,tmResult.result,zoneMethod,zp),[votes,tmResult.result,zoneMethod,zp]);
+  const zoneWM=useMemo(()=>analyzeAgreement(votes,wmResult.result,zoneMethod,zp),[votes,wmResult.result,zoneMethod,zp]);
+  const zoneKM=useMemo(()=>analyzeAgreement(votes,kmResult.result,zoneMethod,zp),[votes,kmResult.result,zoneMethod,zp]);
+
+  const trimmedIndices=useMemo(()=>{
+    const ids=[...tmResult.trimmedLow,...tmResult.trimmedHigh].map(v=>votes.findIndex(av=>av.value===v.value&&av.tier===v.tier));
+    return[...new Set(ids)].filter(i=>i>=0);
+  },[tmResult,votes]);
+
+  // 연속값 결과 — 5옵션 스냅 없음
+  const allMethods=[
+    {name:"K-Means Clustering",short:"K-Means",zone:zoneKM,pct:zoneKM.refinedResult,color:"#e74c3c"},
+    {name:"Trimmed Mean",short:"Trimmed",zone:zoneTM,pct:zoneTM.refinedResult,color:"#2ecc71"},
+    {name:"Weighted Mean",short:"Weighted",zone:zoneWM,pct:zoneWM.refinedResult,color:"#3498db"}
+  ];
+  const best=[...allMethods].sort((a,b)=>b.zone.agreementRatio-a.zone.agreementRatio)[0];
+
+  return React.createElement("div",{className:"fade-in"},
+    // 모드 표시
+    React.createElement("div",{style:{display:"flex",justifyContent:"center",marginBottom:12}},
+      React.createElement("div",{style:{background:"#0f0f1a",padding:"6px 16px",borderRadius:20,border:"1px solid #3498db33",fontSize:11,color:"#3498db"}},
+        `📊 연속값 투표 모드 · ${votes.length}명 (≥${PANEL_THRESHOLD}명)`)),
+
+    // Step 1+2: 3개 method 비교
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}},
+      [{name:"K-Means Clustering",short:"K-Means",color:"#e74c3c",res:kmResult,zone:zoneKM,dimmed:null,
+        extra:React.createElement("div",{style:{fontSize:9,color:"#555",marginTop:4,lineHeight:1.6}},
+          React.createElement("div",{style:{...MONO}},`K=${kmResult.k} · 복제 ${kmResult.totalWeightedVotes}표`),
+          kmResult.clusters.map((c,ci)=>React.createElement("div",{key:ci,style:{paddingLeft:4,color:c.isMajority?"#e74c3c":"#333"}},
+            `${c.isMajority?"★":"·"} C${ci+1}: ${c.center.toFixed(0)}% (${c.values.length})`)),
+          React.createElement("button",{onClick:()=>setSeed(s=>s+1),style:{marginTop:3,padding:"1px 6px",background:"#1a1a1a",border:"1px solid #222",borderRadius:3,color:"#555",cursor:"pointer",fontSize:8,...MONO}},`seed ${seed} ↻`))},
+       {name:"Trimmed Mean",short:"Trimmed",color:"#2ecc71",res:tmResult,zone:zoneTM,dimmed:trimmedIndices,
+        extra:React.createElement("div",{style:{display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#555",marginTop:4}},
+          "Trim:",React.createElement("input",{type:"range",min:10,max:25,value:trimPercent,onChange:e=>setTrimPercent(parseInt(e.target.value)),style:{width:45,accentColor:"#2ecc71"}}),
+          React.createElement("span",{style:{color:"#2ecc71",fontWeight:600,...MONO}},`±${trimPercent}%`),
+          React.createElement("span",{style:{...MONO,color:"#444"}},` ${tmResult.includedVoters}/${tmResult.totalVoters}명`))},
+       {name:"Weighted Mean",short:"Weighted",color:"#3498db",res:wmResult,zone:zoneWM,dimmed:null,
+        extra:React.createElement("div",{style:{fontSize:9,color:"#555",marginTop:4,...MONO}},
+          `σ=${wmResult.stdDev.toFixed(1)} · 전원 ${wmResult.totalVoters}명`)}
+      ].map(({name,short,color,res,zone,dimmed,extra})=>
+        React.createElement("div",{key:name,style:{background:"#0e0e0e",borderRadius:10,padding:10,border:`1px solid ${color}18`}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontSize:10,color,fontWeight:700}},name),
+              React.createElement("div",{style:{fontSize:8,color:"#444"}},METHOD_EXPLAIN[name]?.subtitle||"")),
+            React.createElement("span",{style:{fontSize:20,fontWeight:700,color,...MONO}},`${res.result}%`)),
+          React.createElement(NumberLineWithZone,{votes,resultValue:res.result,resultColor:color,
+            zone:{low:zone.low,high:zone.high,color},dimmedIndices:dimmed}),
+          extra,
+          React.createElement("div",{style:{marginTop:6,borderTop:"1px solid #1a1a1a",paddingTop:6}},
+            React.createElement("div",{style:{fontSize:9,color:"#888",...MONO}},
+              `구간 ${zone.low.toFixed(0)}–${zone.high.toFixed(0)}% · ${zone.insideCount}/${zone.totalVoters}명`),
+            zone.refinedResult!==res.result&&React.createElement("div",{style:{fontSize:9,color,...MONO}},
+              `재계산→ ${zone.refinedResult}%`),
+            React.createElement(ConsensusBar,{ratio:zone.agreementRatio,color:zone.sColor,label:zone.sLabel})),
+          React.createElement(MethodExplainer,{methodName:name,color})))),
+
+    // Step 3: 연속값 보상 — 메서드 선택식
+    React.createElement(Step3Compensation,{allMethods,amount,votes,MONO})
+  );
+}
+
+// ========================================================================================
+// ====== Step 3: Method-Switchable Compensation Board ======
+// ========================================================================================
+function Step3Compensation({allMethods,amount,votes,MONO}){
+  const[selIdx,setSelIdx]=useState(1); // 0=K-Means,1=Trimmed(기본),2=NoTrim
+  const sel=allMethods[selIdx];
+  const selPct=sel.pct; // 연속값 (예: 62.3)
+  const selZone=sel.zone;
+  const buyerAmt=Math.round(amount*selPct/100*100)/100; // 센트 반올림
+  const sellerAmt=Math.round((amount-buyerAmt)*100)/100;
+
+  // 다른 method와 차이
+  const others=allMethods.filter((_,i)=>i!==selIdx);
+  const hasDiff=others.some(o=>Math.abs(o.pct-selPct)>=0.5);
+
+  // 투표 분포 히스토그램 (10% 단위 bin)
+  const bins=Array.from({length:10},(_,i)=>({lo:i*10,hi:(i+1)*10,inside:[],outside:[]}));
+  selZone.inside.forEach(v=>{const bi=Math.min(Math.floor(v.value/10),9);bins[bi].inside.push(v);});
+  selZone.outside.forEach(v=>{const bi=Math.min(Math.floor(v.value/10),9);bins[bi].outside.push(v);});
+  const maxBin=Math.max(...bins.map(b=>b.inside.length+b.outside.length),1);
+
+  return React.createElement("div",{style:{background:"#0e0e0e",borderRadius:10,padding:12,border:`1px solid ${sel.color}22`}},
+
+    // 헤더 + 메서드 탭
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}},
+      React.createElement("div",{style:{fontSize:11,color:"#c8a96e",fontWeight:700}},"💰 Step 3: 보상 분배"),
+      React.createElement("div",{style:{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:"1px solid #222"}},
+        allMethods.map((m,i)=>{
+          const isSel=i===selIdx;
+          return React.createElement("button",{key:m.name,onClick:()=>setSelIdx(i),style:{
+            padding:"5px 14px",border:"none",cursor:"pointer",
+            background:isSel?m.color:"#111",color:isSel?"#000":"#555",
+            fontSize:10,fontWeight:isSel?700:400,transition:"all .2s",
+            borderRight:i<2?"1px solid #222":"none"}},
+            m.short,isSel&&React.createElement("span",{style:{marginLeft:4,fontSize:8}},"●"));
+        }))),
+
+    // 연속값 결과 표시 — 핵심 숫자
+    React.createElement("div",{style:{display:"flex",alignItems:"center",gap:16,padding:"10px 0",marginBottom:8}},
+      // 큰 숫자
+      React.createElement("div",{style:{textAlign:"center",minWidth:120}},
+        React.createElement("div",{style:{fontSize:36,fontWeight:700,color:sel.color,...MONO}},`${selPct}%`),
+        React.createElement("div",{style:{fontSize:9,color:sel.color,opacity:.7}},sel.name),
+        React.createElement("div",{style:{fontSize:9,color:selZone.sColor,fontWeight:600,marginTop:2}},
+          `${selZone.sLabel} (${(selZone.agreementRatio*100).toFixed(0)}%)`)),
+      // 금액 분배
+      React.createElement("div",{style:{flex:1}},
+        React.createElement("div",{style:{display:"flex",gap:12,marginBottom:8}},
+          React.createElement("div",{style:{flex:1,background:"#3498db0c",borderRadius:8,padding:"8px 12px",border:"1px solid #3498db22"}},
+            React.createElement("div",{style:{fontSize:8,color:"#3498db88"}},"🛒 구매자 환불"),
+            React.createElement("div",{style:{fontSize:18,fontWeight:700,color:"#3498db",...MONO}},`$${buyerAmt.toLocaleString()}`),
+            React.createElement("div",{style:{fontSize:9,color:"#3498db66",...MONO}},`${selPct}%`)),
+          React.createElement("div",{style:{flex:1,background:"#e67e220c",borderRadius:8,padding:"8px 12px",border:"1px solid #e67e2222"}},
+            React.createElement("div",{style:{fontSize:8,color:"#e67e2288"}},"📦 판매자 수령"),
+            React.createElement("div",{style:{fontSize:18,fontWeight:700,color:"#e67e22",...MONO}},`$${sellerAmt.toLocaleString()}`),
+            React.createElement("div",{style:{fontSize:9,color:"#e67e2266",...MONO}},`${(100-selPct).toFixed(1)}%`))))),
+
+    // 연속값 보상 바
+    React.createElement("div",{style:{display:"flex",borderRadius:6,overflow:"hidden",height:36,marginBottom:6}},
+      selPct>0&&React.createElement("div",{style:{width:`${selPct}%`,background:"linear-gradient(135deg,#3498db,#2980b9)",display:"flex",alignItems:"center",justifyContent:"center",transition:"width .4s",position:"relative"}},
+        React.createElement("span",{style:{color:"#fff",fontWeight:700,fontSize:11,...MONO}},
+          selPct>=15?`🛒 $${buyerAmt.toLocaleString()}`:"")),
+      selPct<100&&React.createElement("div",{style:{width:`${100-selPct}%`,background:"linear-gradient(135deg,#e67e22,#d35400)",display:"flex",alignItems:"center",justifyContent:"center",transition:"width .4s"}},
+        React.createElement("span",{style:{color:"#fff",fontWeight:700,fontSize:11,...MONO}},
+          (100-selPct)>=15?`📦 $${sellerAmt.toLocaleString()}`:""))),
+    // 바 아래 결과값 마커
+    React.createElement("div",{style:{position:"relative",height:12,marginBottom:12}},
+      React.createElement("div",{style:{position:"absolute",left:`${selPct}%`,transform:"translateX(-50%)",fontSize:8,color:sel.color,fontWeight:700,...MONO}},`▲ ${selPct}%`)),
+
+    // 투표 분포 히스토그램 (10% 단위)
+    React.createElement("div",{style:{marginBottom:12}},
+      React.createElement("div",{style:{fontSize:9,color:"#555",marginBottom:6}},"📊 투표 분포 (합의구간 내 밝게 / 외 흐리게)"),
+      React.createElement("div",{style:{display:"flex",gap:1,alignItems:"flex-end",height:40}},
+        bins.map((b,i)=>{
+          const total=b.inside.length+b.outside.length;
+          const h=total>0?Math.max(total/maxBin*100,8):0;
+          const inPct=total>0?b.inside.length/total:0;
+          const isResult=selPct>=b.lo&&selPct<b.hi;
+          return React.createElement("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}},
+            React.createElement("div",{style:{width:"100%",height:`${h}%`,minHeight:total>0?3:0,borderRadius:"2px 2px 0 0",position:"relative",overflow:"hidden"}},
+              React.createElement("div",{style:{position:"absolute",bottom:0,width:"100%",height:`${inPct*100}%`,background:isResult?sel.color:`${sel.color}88`,borderRadius:"2px 2px 0 0"}}),
+              React.createElement("div",{style:{position:"absolute",top:0,width:"100%",height:`${(1-inPct)*100}%`,background:isResult?`${sel.color}33`:"#222"}})),
+            React.createElement("div",{style:{fontSize:7,color:isResult?sel.color:"#333",marginTop:2,...MONO}},`${b.lo}`));
+        })),
+      // 결과값 위치 표시
+      React.createElement("div",{style:{position:"relative",height:8}},
+        React.createElement("div",{style:{position:"absolute",left:`${selPct}%`,transform:"translateX(-50%)",width:2,height:8,background:sel.color}}))),
+
+    // 메서드 간 차이 비교
+    React.createElement("div",{style:{marginTop:6,borderTop:"1px solid #1a1a1a",paddingTop:10}},
+      React.createElement("div",{style:{fontSize:10,color:"#666",marginBottom:8}},
+        hasDiff?"⚡ 메서드별 결과 차이":"✅ 모든 메서드 동일 결과"),
+
+      // 3-method 비교 카드
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}},
+        allMethods.map((m,i)=>{
+          const isSel=i===selIdx;
+          const diff=+(m.pct-selPct).toFixed(1);
+          const diffAmt=Math.round(amount*diff/100*100)/100;
+          const mBuyer=Math.round(amount*m.pct/100*100)/100;
+          const mSeller=Math.round((amount-mBuyer)*100)/100;
+          return React.createElement("div",{key:m.name,onClick:()=>setSelIdx(i),style:{
+            background:isSel?`${m.color}0c`:"#080808",borderRadius:8,padding:"8px 10px",
+            border:isSel?`2px solid ${m.color}44`:"1px solid #151515",
+            cursor:"pointer",transition:"all .3s"}},
+
+            // 헤더
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:10,color:m.color,fontWeight:700}},
+                  isSel?"● "+m.short:m.short),
+                React.createElement("div",{style:{fontSize:7,color:"#444"}},m.name)),
+              React.createElement("div",{style:{fontSize:20,fontWeight:700,color:isSel?m.color:`${m.color}55`,...MONO}},`${m.pct}%`)),
+
+            // 금액
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:9,...MONO,marginBottom:4}},
+              React.createElement("span",{style:{color:isSel?"#3498db":"#3498db55"}},`🛒$${mBuyer.toLocaleString()}`),
+              React.createElement("span",{style:{color:isSel?"#e67e22":"#e67e2255"}},`📦$${mSeller.toLocaleString()}`)),
+
+            // 차이 표시 (선택된 것이 아닐 때만)
+            !isSel&&Math.abs(diff)>=0.5&&React.createElement("div",{style:{background:diff>0?"#3498db15":"#e67e2215",borderRadius:4,padding:"3px 6px",marginBottom:4}},
+              React.createElement("div",{style:{fontSize:9,color:diff>0?"#3498db":"#e67e22",textAlign:"center",...MONO}},
+                diff>0?`구매자 +$${Math.abs(diffAmt).toLocaleString()}`:`판매자 +$${Math.abs(diffAmt).toLocaleString()}`),
+              React.createElement("div",{style:{fontSize:8,color:"#444",textAlign:"center"}},
+                `${sel.short} 대비 ${diff>0?"+":""}${diff}%p`)),
+            !isSel&&Math.abs(diff)<0.5&&React.createElement("div",{style:{fontSize:8,color:"#2ecc7155",textAlign:"center",padding:3}},"≈ 동일 결과"),
+
+            // 미니 바
+            React.createElement("div",{style:{display:"flex",borderRadius:3,overflow:"hidden",height:14,marginTop:4}},
+              m.pct>0&&React.createElement("div",{style:{width:`${m.pct}%`,background:isSel?"#3498db":"#3498db44",transition:"all .4s"}}),
+              m.pct<100&&React.createElement("div",{style:{width:`${100-m.pct}%`,background:isSel?"#e67e22":"#e67e2244",transition:"all .4s"}})),
+
+            // 합의 강도
+            React.createElement("div",{style:{fontSize:8,color:m.zone.sColor,textAlign:"center",marginTop:4}},
+              `${m.zone.sLabel} · ${(m.zone.agreementRatio*100).toFixed(0)}%`));
+        })),
+
+      // 비교 테이블
+      React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:9,marginTop:10,...MONO}},
+        React.createElement("thead",null,React.createElement("tr",{style:{borderBottom:"1px solid #222"}},
+          React.createElement("td",{style:{padding:4,color:"#444"}},""),
+          allMethods.map((m,i)=>React.createElement("td",{key:m.name,style:{padding:4,color:i===selIdx?m.color:`${m.color}66`,textAlign:"center",fontWeight:i===selIdx?700:400}},m.short)))),
+        React.createElement("tbody",null,
+          [["판정값",...allMethods.map(m=>`${m.pct}%`)],
+           ["합의율",...allMethods.map(m=>`${(m.zone.agreementRatio*100).toFixed(0)}%`)],
+           ["🛒 환불",...allMethods.map(m=>`$${Math.round(amount*m.pct/100*100/100).toLocaleString()}`)],
+           ["📦 수령",...allMethods.map(m=>`$${Math.round(amount*(100-m.pct)/100*100/100).toLocaleString()}`)],
+           ["결정론적","❌","✅","✅"],["이상치 방어","암시적","✅","❌"],
+          ].map(([label,...vals],ri)=>
+            React.createElement("tr",{key:ri,style:{borderBottom:"1px solid #141414"}},
+              React.createElement("td",{style:{padding:4,color:"#888"}},label),
+              vals.map((v,j)=>React.createElement("td",{key:j,style:{padding:4,textAlign:"center",
+                color:j===selIdx?allMethods[j].color:`${allMethods[j].color}44`,
+                fontWeight:j===selIdx?600:400}},v)))))))
+  );
+}
+
+// ========================================================================================
+// ====== Main App ======
+// ========================================================================================
+function App(){
+  const[selectedPreset,setSelectedPreset]=useState("S_outlier");
+  const[trimPercent,setTrimPercent]=useState(20);
+  const[customVotes,setCustomVotes]=useState(null);
+  const[levelFilter,setLevelFilter]=useState("all");
+  const[zoneMethod,setZoneMethod]=useState("sigma");
+  const[sigmaK,setSigmaK]=useState(1.0);
+  const[fixedDelta,setFixedDelta]=useState(15);
+  const[showResearch,setShowResearch]=useState(false);
+  const[seed,setSeed]=useState(42);
+
+  const preset=PRESETS[selectedPreset];
+  const amount=preset.amount||1000;
+  const rawVotes=customVotes||preset.votes;
+  const activeVotes=rawVotes.map(v=>({...v,weight:TIERS[v.tier].finalWeight}));
+  const isSmall=activeVotes.length<PANEL_THRESHOLD;
+  const mode=isSmall?"small":"large";
+
+  const addVote=()=>{const c=customVotes||[...preset.votes];c.push({value:50,tier:"SILVER"});setCustomVotes([...c]);};
+  const removeVote=(idx)=>{const c=customVotes||[...preset.votes];c.splice(idx,1);if(c.length<3)return;setCustomVotes([...c]);};
+  const updateVote=(idx,field,val)=>{const c=customVotes||[...preset.votes];c[idx]={...c[idx],[field]:field==="value"?parseInt(val)||0:val};setCustomVotes([...c]);};
+
+  const tierCounts={};activeVotes.forEach(v=>{tierCounts[v.tier]=(tierCounts[v.tier]||0)+1;});
+  const filteredPresets=Object.entries(PRESETS).filter(([,p])=>levelFilter==="all"||(levelFilter==="small"?p.mode==="small":p.mode==="large"));
+  const isLargeList=activeVotes.length>20;
+
+  return React.createElement("div",{style:{padding:16,maxWidth:1200,margin:"0 auto"}},
+    React.createElement("h1",{style:{textAlign:"center",fontSize:18,fontWeight:700,color:"#c8a96e",marginBottom:2,letterSpacing:"-0.5px"}},"Haggle 분쟁 투표 시스템"),
+    React.createElement("p",{style:{textAlign:"center",color:"#555",fontSize:11,marginBottom:16}},
+      isSmall?`소규모 패널 → 5옵션 직접투표 + 가중다수결`:`대규모 패널 → 연속값 투표 + 3-Method 비교 + 합의 검증 → 연속값 보상`),
+
+    // Mode & filter
+    React.createElement("div",{style:{display:"flex",gap:6,justifyContent:"center",marginBottom:10}},
+      [["all","전체"],["small",`소규모 (<${PANEL_THRESHOLD})`],["large",`대규모 (≥${PANEL_THRESHOLD})`]].map(([val,label])=>
+        React.createElement("button",{key:val,onClick:()=>setLevelFilter(val),style:{padding:"5px 16px",borderRadius:16,border:"none",cursor:"pointer",background:levelFilter===val?"#c8a96e":"#111",color:levelFilter===val?"#000":"#666",fontSize:10,fontWeight:600,transition:"all .2s"}},label))),
+
+    // Presets
+    React.createElement("div",{style:{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center",marginBottom:14,maxWidth:1000,margin:"0 auto 14px"}},
+      filteredPresets.map(([key,p])=>{
+        const isSel=selectedPreset===key&&!customVotes;
+        const bg=isSel?(p.mode==="small"?"#2ecc71":"#3498db"):"#0e0e0e";
+        return React.createElement("button",{key,onClick:()=>{setSelectedPreset(key);setCustomVotes(null);},style:{padding:"5px 9px",borderRadius:6,border:isSel?"none":"1px solid #1a1a1a",cursor:"pointer",background:bg,color:isSel?"#000":"#888",fontSize:10,fontWeight:isSel?700:400,display:"flex",flexDirection:"column",alignItems:"center",gap:1,transition:"all .2s"}},
+          React.createElement("span",null,p.name),React.createElement("span",{style:{fontSize:8,opacity:0.5}},p.panelInfo));})),
+
+    React.createElement("p",{style:{textAlign:"center",color:"#555",fontSize:11,marginBottom:12}},
+      customVotes?`📝 커스텀 (${activeVotes.length}명)`:`${preset.level===2?"⚖️ 2심":"🏛️ 3심"} ${preset.desc} ($${amount.toLocaleString()})`),
+
+    // Vote data
+    React.createElement("div",{style:{background:"#0e0e0e",borderRadius:10,padding:12,marginBottom:12,maxWidth:1100,margin:"0 auto 12px",border:"1px solid #1a1a1a"}},
+      React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+          React.createElement("span",{style:{fontSize:12,color:"#c8a96e",fontWeight:700}},`DS 패널 (${activeVotes.length}명)`),
+          React.createElement("div",{style:{background:isSmall?"#2ecc7722":"#3498db22",padding:"2px 8px",borderRadius:8,fontSize:9,color:isSmall?"#2ecc71":"#3498db",fontWeight:600}},
+            isSmall?"5옵션":"연속값"),
+          React.createElement("div",{style:{display:"flex",gap:5}},
+            Object.entries(tierCounts).sort((a,b)=>{const o=["DIAMOND","PLATINUM","GOLD","SILVER","BRONZE"];return o.indexOf(a[0])-o.indexOf(b[0]);}).map(([tier,count])=>
+              React.createElement("span",{key:tier,style:{fontSize:9,color:TIERS[tier].color,opacity:0.6,...MONO}},`${TIERS[tier].label[0]}${count}`)))),
+        React.createElement("div",{style:{display:"flex",gap:5}},
+          customVotes&&React.createElement("button",{onClick:()=>setCustomVotes(null),style:{padding:"2px 7px",borderRadius:4,border:"1px solid #333",background:"transparent",color:"#666",fontSize:9,cursor:"pointer"}},"리셋"),
+          React.createElement("button",{onClick:addVote,style:{padding:"2px 7px",borderRadius:4,border:"none",background:"#1a1a1a",color:"#888",fontSize:9,cursor:"pointer"}},"+추가"))),
+      React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:isLargeList?2:4,maxHeight:isLargeList?100:180,overflowY:"auto"}},
+        activeVotes.map((v,i)=>React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:2,background:"#111",borderRadius:5,padding:isLargeList?"2px 4px":"3px 5px",border:`1px solid ${TIERS[v.tier].color}15`}},
+          isSmall?
+            React.createElement("select",{value:snap5(v.value),onChange:e=>updateVote(i,"value",e.target.value),style:{background:"#181818",border:"1px solid #252525",borderRadius:3,color:"#ddd",fontSize:10,padding:"2px 4px",...MONO,outline:"none",cursor:"pointer"}},
+              OPTIONS.map(o=>React.createElement("option",{key:o,value:o},`${o}%`)))
+            :React.createElement("input",{type:"number",min:0,max:100,value:v.value,onChange:e=>updateVote(i,"value",e.target.value),style:{width:28,background:"#181818",border:"1px solid #252525",borderRadius:3,color:"#ddd",fontSize:isLargeList?9:10,textAlign:"center",padding:1,...MONO,outline:"none"}}),
+          React.createElement("select",{value:v.tier,onChange:e=>updateVote(i,"tier",e.target.value),style:{background:"#181818",border:"1px solid #252525",borderRadius:3,color:TIERS[v.tier].color,fontSize:9,padding:"1px 2px",outline:"none",cursor:"pointer"}},
+            Object.entries(TIERS).map(([k,t])=>React.createElement("option",{key:k,value:k},t.label[0]))),
+          activeVotes.length>3&&React.createElement("button",{onClick:()=>removeVote(i),style:{background:"none",border:"none",color:"#2a2a2a",cursor:"pointer",fontSize:9,padding:0}},"×"))))),
+
+    // 대규모일 때만 합의 구간 파라미터
+    !isSmall&&React.createElement("div",{style:{background:"#0a0c0f",borderRadius:10,padding:"10px 14px",maxWidth:1100,margin:"0 auto 12px",border:"1px solid #c8a96e22"}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
+          React.createElement("span",{style:{fontSize:11,color:"#c8a96e",fontWeight:700}},"합의 구간"),
+          [["sigma","μ ± kσ"],["fixed","± Δ%p"]].map(([m,label])=>
+            React.createElement("button",{key:m,onClick:()=>setZoneMethod(m),style:{padding:"3px 10px",borderRadius:12,border:"none",cursor:"pointer",background:zoneMethod===m?"#c8a96e":"#111",color:zoneMethod===m?"#000":"#666",fontSize:10,fontWeight:600}},label))),
+        zoneMethod==="sigma"?
+          React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},
+            React.createElement("span",{style:{fontSize:10,color:"#555"}},"k="),
+            React.createElement("input",{type:"range",min:5,max:20,value:sigmaK*10,onChange:e=>setSigmaK(parseInt(e.target.value)/10),style:{width:80,accentColor:"#c8a96e"}}),
+            React.createElement("span",{style:{fontSize:12,color:"#c8a96e",fontWeight:700,...MONO}},`${sigmaK.toFixed(1)}σ`))
+          :React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},
+            React.createElement("span",{style:{fontSize:10,color:"#555"}},"Δ="),
+            React.createElement("input",{type:"range",min:5,max:30,value:fixedDelta,onChange:e=>setFixedDelta(parseInt(e.target.value)),style:{width:80,accentColor:"#c8a96e"}}),
+            React.createElement("span",{style:{fontSize:12,color:"#c8a96e",fontWeight:700,...MONO}},`±${fixedDelta}%p`)))),
+
+    // ====== Main View ======
+    React.createElement("div",{style:{maxWidth:1100,margin:"0 auto 14px"}},
+      isSmall?
+        React.createElement(SmallPanelView,{votes:activeVotes,amount})
+        :React.createElement(LargePanelView,{votes:activeVotes,amount,trimPercent,setTrimPercent,zoneMethod,sigmaK,fixedDelta,seed,setSeed})),
+
+    // ====== 연구 근거 ======
+    React.createElement("div",{style:{maxWidth:1100,margin:"0 auto 14px"}},
+      React.createElement("button",{onClick:()=>setShowResearch(!showResearch),style:{width:"100%",padding:"10px 14px",background:"#0e0e0e",border:"1px solid #1a1a1a",borderRadius:10,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",color:"#c8a96e"}},
+        React.createElement("span",{style:{fontSize:12,fontWeight:700}},"📚 시스템 설계 근거"),
+        React.createElement("span",{style:{fontSize:10,color:"#666"}},showResearch?"▲":"▼")),
+      showResearch&&React.createElement("div",{className:"fade-in",style:{background:"#0e0e0e",borderRadius:"0 0 10px 10px",padding:16,border:"1px solid #1a1a1a",borderTopColor:"transparent",marginTop:-1}},
+        // 패널 분기 근거
+        React.createElement("div",{style:{marginBottom:16}},
+          React.createElement("h4",{style:{color:"#c8a96e",fontSize:12,marginBottom:6}},`패널 분기점: 왜 ${PANEL_THRESHOLD}명인가`),
+          React.createElement("div",{style:{fontSize:10,color:"#999",lineHeight:1.8}},
+            React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+              React.createElement("div",{style:{background:"#111",borderRadius:8,padding:10,border:"1px solid #2ecc7722"}},
+                React.createElement("div",{style:{color:"#2ecc71",fontWeight:700,fontSize:11,marginBottom:4}},`소규모 (<${PANEL_THRESHOLD}명)`),
+                React.createElement("div",{style:{lineHeight:1.8}},
+                  "• 5옵션 직접투표 (0/25/50/75/100%)",React.createElement("br"),
+                  "• 가중 다수결로 즉시 판정",React.createElement("br"),
+                  "• Trim/σ 불필요 — 표본이 작아 통계 무의미",React.createElement("br"),
+                  "• ISU 피겨스케이팅: 9명 심판 → 이산적 GOE")),
+              React.createElement("div",{style:{background:"#111",borderRadius:8,padding:10,border:"1px solid #3498db22"}},
+                React.createElement("div",{style:{color:"#3498db",fontWeight:700,fontSize:11,marginBottom:4}},`대규모 (≥${PANEL_THRESHOLD}명)`),
+                React.createElement("div",{style:{lineHeight:1.8}},
+                  "• 연속값 0~100% 투표",React.createElement("br"),
+                  "• Trimmed Mean + 합의구간 검증",React.createElement("br"),
+                  "• Wilcox(2003): n≥20에서 20% trim 최적",React.createElement("br"),
+                  "• LIBOR: 18명 → 22% trim"))))),
+        // Trim %
+        React.createElement("div",{style:{marginBottom:16}},
+          React.createElement("h4",{style:{color:"#2ecc71",fontSize:12,marginBottom:6}},"Trim 20%: Wilcox & Keselman (2003)"),
+          React.createElement("div",{style:{fontSize:10,color:"#999",lineHeight:1.8}},
+            "Psychological Methods Vol.8 No.3 — 시뮬레이션으로 20% trim이 정규·비정규 분포 모두에서 표준오차 최소화. n<20이면 25% trim 권장 (Rosenberger & Gasko 1983). LIBOR는 22%, ISU는 ~11%.")),
+        // σ
+        React.createElement("div",{style:{marginBottom:16}},
+          React.createElement("h4",{style:{color:"#f39c12",fontSize:12,marginBottom:6}},"합의구간 1.0σ: Kleros IQR vs 정규분포"),
+          React.createElement("div",{style:{fontSize:10,color:"#999",lineHeight:1.8}},
+            "1σ=68.3% 포함. Kleros의 IQR(50%)보다 관대하고, 2σ(95.4%)보다 엄격. '실질적 다수 동의 범위'로서 합리적 균형점. 패널 규모가 커질수록 σ 추정 신뢰도 상승.")),
+        // Kleros
+        React.createElement("div",null,
+          React.createElement("h4",{style:{color:"#e74c3c",fontSize:12,marginBottom:6}},"Kleros 대비 Haggle 차별점"),
+          React.createElement("div",{style:{fontSize:10,color:"#999",lineHeight:1.8}},
+            "Kleros: 이진/다지선다 Schelling Point + 토큰 스테이킹. 장점=게임이론 정합성. 단점=정확한 비율 판정 불가.",React.createElement("br"),
+            "Haggle: 소규모=5옵션 가중다수결, 대규모=연속값 Trimmed Mean+합의검증. DS 티어가 스테이킹 역할 대체 (평판 기반 가중치).")))),
+
+    // Footer
+    React.createElement("div",{style:{textAlign:"center",fontSize:9,color:"#222",marginTop:12,...MONO}},
+      `threshold=${PANEL_THRESHOLD} | trim=20% | σ=1.0 | v5`)
+  );
+}
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
+</script>
+</body>
+</html>

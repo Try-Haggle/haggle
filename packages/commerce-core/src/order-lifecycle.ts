@@ -15,6 +15,8 @@ export interface OrderState {
   payment_status?: string;
   shipment_status?: string;
   dispute_status?: string;
+  product_release_status?: "PENDING_DELIVERY" | "BUYER_REVIEW" | "RELEASED";
+  buffer_release_status?: "HELD" | "ADJUSTING" | "RELEASED";
 }
 
 export type OrderAction =
@@ -25,6 +27,9 @@ export type OrderAction =
   | { type: "complete_order" }
   | { type: "open_dispute"; reason_code: string }
   | { type: "process_refund" }
+  | { type: "start_buyer_review" }
+  | { type: "release_product_payment" }
+  | { type: "release_weight_buffer" }
   | { type: "no_action" };
 
 /**
@@ -67,6 +72,12 @@ export function determineNextAction(state: OrderState): OrderAction {
 
     case "DELIVERY":
       if (state.shipment_status === "DELIVERED") {
+        if (state.product_release_status === "PENDING_DELIVERY") {
+          return { type: "start_buyer_review" };
+        }
+        if (state.product_release_status === "BUYER_REVIEW") {
+          return { type: "release_product_payment" };
+        }
         return { type: "complete_order" };
       }
       if (state.shipment_status === "DELIVERY_EXCEPTION") {
@@ -75,6 +86,9 @@ export function determineNextAction(state: OrderState): OrderAction {
       return { type: "await_delivery" };
 
     case "COMPLETED":
+      if (state.buffer_release_status === "HELD" || state.buffer_release_status === "ADJUSTING") {
+        return { type: "release_weight_buffer" };
+      }
       return { type: "no_action" };
 
     case "IN_DISPUTE":
@@ -133,6 +147,13 @@ export function computeOrderPhase(state: Omit<OrderState, "phase">): OrderPhase 
 
   // Delivery phase
   if (state.shipment_status === "DELIVERED") {
+    // If product_release_status is present and not yet RELEASED, stay in DELIVERY
+    if (
+      state.product_release_status !== undefined &&
+      state.product_release_status !== "RELEASED"
+    ) {
+      return "DELIVERY";
+    }
     return "COMPLETED";
   }
   if (state.shipment_status === "DELIVERY_EXCEPTION") {

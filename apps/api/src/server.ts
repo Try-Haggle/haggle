@@ -9,6 +9,9 @@ import { registerPublicListingRoutes } from "./routes/public-listing.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
+import { registerShipmentRoutes } from "./routes/shipments.js";
+import { registerDisputeRoutes } from "./routes/disputes.js";
+import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -46,6 +49,9 @@ export async function createServer() {
 
   // ─── Commerce Routes ─────────────────────────────────────
   registerPaymentRoutes(app, db);
+  registerShipmentRoutes(app, db);
+  registerDisputeRoutes(app, db);
+  registerSettlementReleaseRoutes(app, db);
 
   // ─── REST API Routes ───────────────────────────────────
   registerClaimRoutes(app, db);

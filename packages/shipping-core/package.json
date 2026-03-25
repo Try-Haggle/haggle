@@ -21,6 +21,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "@easypost/api": "^8.8.0",
     "@haggle/commerce-core": "workspace:*"
   }
 }
