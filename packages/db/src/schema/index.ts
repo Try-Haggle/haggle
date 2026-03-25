@@ -1,5 +1,6 @@
 export { listingDrafts } from "./listing-drafts.js";
 export { listingsPublished } from "./listings-published.js";
+export { buyerListings } from "./buyer-listings.js";
 // TODO(slice-4): export { negotiationSessions } from "./negotiation-sessions.js";
 // TODO(slice-4): export { offers } from "./offers.js";
 // TODO(slice-6): export { users } from "./users.js";

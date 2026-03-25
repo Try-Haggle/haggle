@@ -638,28 +638,66 @@ Widget "Go to Dashboard" → /claim?token={claimToken}
 
 ---
 
-### Slice 10 — 구매자 링크 + 협상 1회 왕복
+### Slice 10 — 구매자 링크 랜딩 페이지 🔄 UI 완료
 **목표**
-구매자가 공유 링크로 진입 → 오퍼 제출 → AI 에이전트가 결정 반환
+구매자가 공유 링크로 진입 → 상품 정보 확인 + 에이전트 선택 UI
 
 **구현**
-- `/l/{public_id}` 상품 랜딩 페이지 (SSR)
-- DB: `negotiation_sessions` + `offers` 테이블
-- API: `create_negotiation_session`, `submit_offer`
-- 협상 로직 (MVP — 룰 기반, `strategy_config` 활용):
-  - `floor_price` 이하 → 거절
-  - `target_price` 이상 → 수락
-  - 중간 값 → 에이전트 프리셋 + 슬라이더 기반 카운터 제안
-  - `selling_deadline` 가까울수록 유연한 대응
+- ✅ `/l/{public_id}` 상품 랜딩 페이지 (SSR)
+  - 아이템 오버뷰 (이미지, 제목, 설명, 카테고리, 컨디션)
+  - 4개 기본 구매자 에이전트 프리셋 (Price Hunter, Smart Trader, Fast Closer, Spec Analyst)
+  - 에이전트 스탯 바 + SVG 레이더 차트
+  - 커스터마이징 placeholder 섹션
+  - 판매자 에이전트 상태 표시
+- ✅ `GET /api/public/listings/:publicId` — 인증 불필요, floorPrice/전략 비공개
+- ✅ `buyer-agents.ts` — 프리셋 정의, 스탯 메타, 레이더 라벨
+- ⬜ 협상 1회 왕복 (별도 Slice로 분리 예정)
+  - DB: `negotiation_sessions` + `offers` 테이블
+  - API: `create_negotiation_session`, `submit_offer`
+  - 협상 로직 (MVP — 룰 기반, `strategy_config` 활용)
 
 **완료 기준**
-- 공유 링크 오픈 → 상품 정보 표시 + 세션 생성
-- 오퍼 1회 → 에이전트 결정/카운터 표시
-- 결과 DB 기록
+- ✅ 공유 링크 오픈 → 상품 정보 + 에이전트 선택 UI 표시
+- ⬜ 오퍼 1회 → 에이전트 결정/카운터 표시
+- ⬜ 결과 DB 기록
 
 ---
 
-### Slice 11 — 프로덕션 하드닝 + Apps 제출
+### Slice 11 — 웹앱 New Listing 위자드 + UX 개선 ✅ 완료
+**목표**
+ChatGPT Embedded UI 위자드와 동일한 3단계 리스팅 생성 플로우를 웹앱(`/dashboard/new`)에서도 제공 + 각종 UX 버그 수정
+
+**구현**
+- ✅ `/dashboard/new` — 3단계 위자드 (Item Details → Pricing → AI Agent Setup → Publish)
+  - ChatGPT widget과 100% 동일한 UI/디자인 (progress bar, form fields, 색상, spacing)
+  - Step indicator: 24px 원, 1.5px border, 11px font, cyan 컬러
+  - Step 1: 사진 업로드 (200px, dashed border), Title, Description, Tags (+ New 패턴), Category (full-width select), Condition (pill chips)
+  - Step 2: 아이템 요약 카드, Asking Price, Floor Price, Selling Deadline
+  - Step 3: 4개 에이전트 프리셋 선택, 스탯 바, 레이더 차트, 가격 요약
+  - Published 화면: 공유 링크 + 복사 버튼
+- ✅ REST API: `POST /api/drafts`, `PATCH /api/drafts/:id`, `POST /api/drafts/:id/validate`, `POST /api/drafts/:id/publish`
+- ✅ Supabase Storage 클라이언트 업로드 (listing-photos 버킷 RLS 정책 설정)
+- ✅ 클라이언트 이미지 압축 (canvas API, max 1200px, JPEG 0.8)
+- ✅ 한국어 IME 태그 중복 입력 버그 수정 (`isComposing` 체크) — 웹앱 + widget 양쪽
+- ✅ 모든 클릭 가능 요소에 `cursor-pointer` 추가
+- ✅ Progress bar 스텝 클릭 네비게이션 (뒤로만 가능, 앞으로 불가)
+- ✅ Chrome 확장 hydration 에러 수정 (`suppressHydrationWarning`)
+
+**주요 파일**
+- `apps/web/src/app/(app)/dashboard/new/page.tsx` — 인증 체크 + 위자드 로드
+- `apps/web/src/app/(app)/dashboard/new/new-listing-wizard.tsx` — 전체 위자드 컴포넌트
+- `apps/api/src/routes/drafts.ts` — Draft REST API
+- `apps/api/widget/src/components/TagInput.tsx` — IME 수정
+- `apps/web/src/app/layout.tsx` — hydration 수정
+
+**완료 기준**
+- ✅ 웹앱에서 리스팅 생성 → 사진 업로드 → 가격 설정 → 에이전트 선택 → 발행
+- ✅ widget과 동일한 디자인/레이아웃
+- ✅ 한국어 입력 시 태그 중복 없음
+
+---
+
+### Slice 12 — 프로덕션 하드닝 + Apps 제출
 **목표**
 실사용 가능 수준 + OpenAI Apps 제출 준비
 
@@ -714,9 +752,11 @@ Widget "Go to Dashboard" → /claim?token={claimToken}
 - Slice 5 ✅ (Auth + Claim) + Slice 6 ✅ (Dashboard 리스팅 목록/상세) + Slice 7 ✅ (Layout & Nav)
 - Slice 8 ✅ (이미지 업로드 — Supabase Storage + canvas 압축)
 
-### Week 4
-- Slice 9 ✅ (Account Settings + 테마 통일) + Slice 10 (구매자 협상) + Slice 11 (하드닝 + Apps 제출)
-- 구매자 협상 1회 왕복 + E2E 데모 영상 촬영
+### Week 4 — 현재
+- Slice 9 ✅ (Account Settings + 테마 통일)
+- Slice 10 🔄 (구매자 링크 랜딩 UI 완료, 협상 로직 미구현)
+- Slice 11 ✅ (웹앱 New Listing 위자드 + UX 개선)
+- Slice 12 ⬜ (하드닝 + Apps 제출)
 
 ---
 
@@ -725,5 +765,5 @@ Widget "Go to Dashboard" → /claim?token={claimToken}
 
 ---
 
-*Last Updated: 2026-03-14*
-*Progress: Slice 0 ✅ → Slice 1 ✅ → Slice 2 ✅ → Slice 3 🔄 (UI 완료, 채팅 보류) → Slice 4 ✅ → Slice 5 🔄 (구현 완료, Magic Link 테스트 보류) → Slice 6 ✅ → Slice 7 ✅ (Layout & Nav) → Slice 8 ✅ (이미지 업로드) → Slice 9 ✅ (Account Settings + 테마 통일) → Slice 10 ⬜ (구매자 협상) → Slice 11 ⬜ (하드닝)*
+*Last Updated: 2026-03-21*
+*Progress: Slice 0 ✅ → Slice 1 ✅ → Slice 2 ✅ → Slice 3 🔄 (UI 완료, 채팅 보류) → Slice 4 ✅ → Slice 5 🔄 (구현 완료, Magic Link 테스트 보류) → Slice 6 ✅ → Slice 7 ✅ (Layout & Nav) → Slice 8 ✅ (이미지 업로드) → Slice 9 ✅ (Account Settings + 테마 통일) → Slice 10 🔄 (구매자 랜딩 UI 완료) → Slice 11 ✅ (웹앱 위자드 + UX 개선) → Slice 12 ⬜ (하드닝)*

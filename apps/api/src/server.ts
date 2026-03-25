@@ -7,6 +7,7 @@ import { registerListingsRoutes } from "./routes/listings.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerPublicListingRoutes } from "./routes/public-listing.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
+import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -48,6 +49,7 @@ export async function createServer() {
   registerAccountRoutes(app, db);
   registerPublicListingRoutes(app, db);
   registerDraftRoutes(app, db);
+  registerBuyerListingsRoutes(app, db);
 
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 

@@ -9,6 +9,7 @@ export default defineConfig({
   schema: [
     "./src/schema/listing-drafts.ts",
     "./src/schema/listings-published.ts",
+    "./src/schema/buyer-listings.ts",
   ],
   out: "./drizzle",
   dbCredentials: {
