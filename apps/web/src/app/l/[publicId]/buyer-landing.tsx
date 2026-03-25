@@ -9,6 +9,7 @@ import {
   type BuyerAgentStats,
   DEFAULT_BUYER_STATS,
 } from "@/lib/buyer-agents";
+import { Nav } from "@/components/nav";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -137,97 +138,30 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
   );
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   const currentStats: BuyerAgentStats = selectedAgent?.stats ?? DEFAULT_BUYER_STATS;
   const deadline = timeRemaining(listing.sellingDeadline);
 
   return (
     <main className="min-h-screen bg-bg-primary">
-      {/* Header — matches seller Nav pattern */}
-      <nav className="fixed top-0 inset-x-0 z-50 h-14 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
-        <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          {/* Left: Logo */}
-          <span className="text-lg font-bold text-white">Haggle</span>
-
-          {/* Right: Auth */}
-          {user ? (
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors cursor-pointer"
-              >
-                {user.avatarUrl && !avatarError ? (
-                  <img
-                    src={user.avatarUrl}
-                    alt=""
-                    className="h-6 w-6 rounded-full object-cover"
-                    referrerPolicy="no-referrer"
-                    onError={() => setAvatarError(true)}
-                  />
-                ) : (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-medium text-emerald-400">
-                    {(user.name || user.email).charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-
-              {menuOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-800 bg-bg-card py-1 shadow-xl">
-                  <div className="px-4 py-2.5 border-b border-slate-800">
-                    <p className="text-xs text-slate-500">Signed in as</p>
-                    <p className="text-sm text-slate-300 truncate">{user.email}</p>
-                  </div>
-                  <a
-                    href="/buy/dashboard"
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                  >
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
-                    </svg>
-                    Dashboard
-                  </a>
-                  <a
-                    href="/settings"
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                  >
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                    Settings
-                  </a>
-                </div>
-              )}
-            </div>
-          ) : (
+      {/* Header: shared Nav for logged-in users, minimal header for guests */}
+      {user ? (
+        <Nav userEmail={user.email} userName={user.name} userAvatarUrl={user.avatarUrl} />
+      ) : (
+        <nav className="fixed top-0 inset-x-0 z-50 h-14 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
+          <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+            <span className="text-lg font-bold text-white">Haggle</span>
             <a
               href={`/claim?returnTo=/l/${listing.publicId}`}
               className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
             >
               Sign in
             </a>
-          )}
-        </div>
-      </nav>
+          </div>
+        </nav>
+      )}
 
-      <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: "calc(64px + 2rem)" }}>
+      <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: user ? "calc(64px + 2rem)" : "calc(56px + 2rem)" }}>
         {/* ── Item Overview (top, prominent) ──────────────── */}
         <section className="mb-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
