@@ -22,7 +22,7 @@ export default async function AppLayout({
   return (
     <>
       <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
-      <div className="pt-14">{children}</div>
+      <div className="pt-16">{children}</div>
     </>
   );
 }

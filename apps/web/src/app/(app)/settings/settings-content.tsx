@@ -195,7 +195,7 @@ export function SettingsContent({
       {/* Header */}
       <div className="mb-8">
         <button
-          onClick={() => router.push("/dashboard")}
+          onClick={() => router.push("/sell/dashboard")}
           className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
         >
           <svg

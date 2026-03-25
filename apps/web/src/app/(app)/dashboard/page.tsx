@@ -1,79 +1,33 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { DashboardContent } from "./dashboard-content";
+"use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-export interface ListingSummary {
-  id: string;
-  title: string | null;
-  category: string | null;
-  condition: string | null;
-  photoUrl: string | null;
-  targetPrice: string | null;
-  status: string;
-  strategyConfig: Record<string, unknown> | null;
-  createdAt: string;
-  publicId: string;
-}
+/**
+ * Legacy /dashboard redirect.
+ * Reads the user's mode preference from localStorage and redirects accordingly.
+ * Also handles ?claim= param forwarding for the seller claim flow.
+ */
+export default function DashboardRedirect() {
+  const router = useRouter();
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ claim?: string }>;
-}) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    const mode = localStorage.getItem("haggle_mode");
+    const params = new URLSearchParams(window.location.search);
+    const claim = params.get("claim");
 
-  // Not authenticated → redirect to claim/login page
-  if (!user) {
-    const params = await searchParams;
-    const claimParam = params.claim ? `?token=${params.claim}` : "";
-    redirect(`/claim${claimParam}`);
-  }
-
-  // Process claim if token is present
-  const params = await searchParams;
-  let claimResult: { ok: boolean; error?: string } | null = null;
-
-  if (params.claim) {
-    try {
-      const res = await fetch(`${API_URL}/api/claim`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          claimToken: params.claim,
-          userId: user.id,
-        }),
-      });
-      claimResult = await res.json();
-    } catch {
-      claimResult = { ok: false, error: "network_error" };
+    if (claim) {
+      // Claim flow always goes to seller dashboard
+      router.replace(`/sell/dashboard?claim=${claim}`);
+      return;
     }
-  }
 
-  // Fetch user's listings
-  let listings: ListingSummary[] = [];
-  try {
-    const res = await fetch(
-      `${API_URL}/api/listings?userId=${user.id}`,
-      { cache: "no-store" },
-    );
-    const data = await res.json();
-    if (data.ok) {
-      listings = data.listings;
+    if (mode === "buying") {
+      router.replace("/buy/dashboard");
+    } else {
+      router.replace("/sell/dashboard");
     }
-  } catch {
-    // Listings will be empty — dashboard still renders
-  }
+  }, [router]);
 
-  return (
-    <DashboardContent
-      userEmail={user.email ?? ""}
-      claimResult={claimResult}
-      listings={listings}
-    />
-  );
+  return null;
 }

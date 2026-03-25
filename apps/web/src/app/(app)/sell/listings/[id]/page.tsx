@@ -52,7 +52,7 @@ export default async function ListingDetailPage({
   }
 
   if (!listing) {
-    redirect("/dashboard");
+    redirect("/sell/dashboard");
   }
 
   return <DetailContent listing={listing} />;

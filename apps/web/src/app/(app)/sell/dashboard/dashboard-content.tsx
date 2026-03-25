@@ -16,7 +16,7 @@ export function DashboardContent({
   const activeCount = listings.filter((l) => l.status === "published").length;
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
+    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
       {/* Claim Result Banner */}
       {claimResult && (
         <div
@@ -66,7 +66,7 @@ export function DashboardContent({
           <p className="text-sm text-slate-400">Manage your listings and track AI negotiations</p>
         </div>
         <Link
-          href="/dashboard/new"
+          href="/sell/listings/new"
           className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition-colors shrink-0 self-start sm:self-auto"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -199,7 +199,7 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
 
   return (
     <Link
-      href={`/dashboard/${listing.id}`}
+      href={`/sell/listings/${listing.id}`}
       className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
     >
       {/* Photo or placeholder */}
