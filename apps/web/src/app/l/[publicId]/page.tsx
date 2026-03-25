@@ -34,7 +34,7 @@ export default async function BuyerListingPage({
     notFound();
   }
 
-  const data = (await res.json()) as { ok: boolean; listing: ListingData };
+  const data = (await res.json()) as { ok: boolean; listing: ListingData; sellerId?: string | null };
 
   if (!data.ok || !data.listing) {
     notFound();
@@ -54,5 +54,18 @@ export default async function BuyerListingPage({
       }
     : null;
 
-  return <BuyerLanding listing={data.listing} user={userInfo} />;
+  // Record view for logged-in buyers (fire-and-forget, don't block render)
+  if (user) {
+    fetch(`${API_URL}/api/viewed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, publicId }),
+    }).catch(() => {
+      // Silent fail — viewing history is non-critical
+    });
+  }
+
+  const isOwner = !!(user && data.sellerId && user.id === data.sellerId);
+
+  return <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} />;
 }

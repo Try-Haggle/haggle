@@ -133,7 +133,7 @@ interface UserInfo {
   avatarUrl: string | null;
 }
 
-export function BuyerLanding({ listing, user }: { listing: Listing; user: UserInfo | null }) {
+export function BuyerLanding({ listing, user, isOwner = false }: { listing: Listing; user: UserInfo | null; isOwner?: boolean }) {
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
   );
@@ -521,17 +521,27 @@ export function BuyerLanding({ listing, user }: { listing: Listing; user: UserIn
                   No account needed. Create an account to save your agent and track negotiation history.
                 </div>
 
-                <button
-                  type="button"
-                  disabled={!selectedAgent}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Start Negotiation
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14" />
-                    <path d="m12 5 7 7-7 7" />
-                  </svg>
-                </button>
+                {isOwner ? (
+                  <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-3 text-[14px] font-medium text-slate-400">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                    </svg>
+                    You own this listing
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!selectedAgent}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Start Negotiation
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14" />
+                      <path d="m12 5 7 7-7 7" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
           </div>

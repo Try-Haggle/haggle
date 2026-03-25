@@ -246,6 +246,7 @@ export async function getPublishedListingByPublicId(
       id: listingsPublished.id,
       publicId: listingsPublished.publicId,
       publishedAt: listingsPublished.publishedAt,
+      sellerId: listingDrafts.userId,
       title: listingDrafts.title,
       description: listingDrafts.description,
       category: listingDrafts.category,

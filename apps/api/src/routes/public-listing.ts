@@ -22,8 +22,8 @@ export function registerPublicListingRoutes(
       });
     }
 
-    // Don't expose floorPrice or internal strategy details to buyers
-    const { strategyConfig, ...publicFields } = listing;
+    // Don't expose floorPrice, sellerId, or internal strategy details to buyers
+    const { strategyConfig, sellerId, ...publicFields } = listing;
 
     // Only expose the seller's agent preset name (not thresholds)
     const sellerAgentPreset =
@@ -35,6 +35,8 @@ export function registerPublicListingRoutes(
         ...publicFields,
         sellerAgentPreset,
       },
+      // Included for ownership check — not sensitive (just a UUID)
+      sellerId,
     });
   });
 }
