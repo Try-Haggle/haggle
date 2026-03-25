@@ -240,6 +240,169 @@ h1{font-size:28px;font-weight:700;margin-bottom:4px;background:linear-gradient(1
   <span style="color:#888;font-size:11px">* 수수료·배송비 반반 기준. 실제로는 0~100% 자유롭게 협상 가능.</span>
 </div>
 
+<h5>🎛️ 협상 가능 존 — 인터랙티브 시뮬레이터</h5>
+<p>수수료와 배송비 분담 비율을 조절해보세요. 어떤 비율이든 <strong>양쪽 모두 다른 플랫폼보다 유리</strong>합니다.</p>
+
+<div id="nego-sim" style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:10px;padding:20px;margin:12px 0">
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+<div>
+<label style="font-size:11px;color:#888;display:block;margin-bottom:6px">상품 합의 가격</label>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="color:#666">$</span>
+<input id="sim-price" type="number" value="450" min="10" max="10000" step="10" style="background:#111;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:14px;font-family:'JetBrains Mono',monospace;width:120px">
+</div>
+</div>
+<div>
+<label style="font-size:11px;color:#888;display:block;margin-bottom:6px">배송비 (Haggle 라벨)</label>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="color:#666">$</span>
+<input id="sim-ship" type="number" value="4.99" min="0" max="50" step="0.5" style="background:#111;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:14px;font-family:'JetBrains Mono',monospace;width:120px">
+</div>
+</div>
+</div>
+
+<div style="margin-bottom:12px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+<span style="font-size:11px;color:#888">수수료 분담 (구매자 ← → 판매자)</span>
+<span id="fee-label" style="font-size:11px;color:#3498db;font-family:'JetBrains Mono',monospace">50 : 50</span>
+</div>
+<input id="sim-fee-split" type="range" min="0" max="100" value="50" style="width:100%;accent-color:#3498db">
+<div style="display:flex;justify-content:space-between;font-size:10px;color:#555"><span>구매자 100%</span><span>반반</span><span>판매자 100%</span></div>
+</div>
+
+<div style="margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+<span style="font-size:11px;color:#888">배송비 분담 (구매자 ← → 판매자)</span>
+<span id="ship-label" style="font-size:11px;color:#e67e22;font-family:'JetBrains Mono',monospace">50 : 50</span>
+</div>
+<input id="sim-ship-split" type="range" min="0" max="100" value="50" style="width:100%;accent-color:#e67e22">
+<div style="display:flex;justify-content:space-between;font-size:10px;color:#555"><span>구매자 100%</span><span>반반</span><span>판매자 100%</span></div>
+</div>
+
+<!-- Results -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+<div style="background:#111;border:1px solid #2ecc7133;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#888;margin-bottom:4px">🏷️ 판매자 수령</div>
+<div id="sim-seller" style="font-size:28px;font-weight:700;color:#2ecc71;font-family:'JetBrains Mono',monospace">$444.12</div>
+<div id="sim-seller-detail" style="font-size:10px;color:#666;margin-top:4px">$450 − $3.38 − $2.50</div>
+</div>
+<div style="background:#111;border:1px solid #3498db33;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#888;margin-bottom:4px">🛒 구매자 지불</div>
+<div id="sim-buyer" style="font-size:28px;font-weight:700;color:#3498db;font-family:'JetBrains Mono',monospace">$455.88</div>
+<div id="sim-buyer-detail" style="font-size:10px;color:#666;margin-top:4px">$450 + $3.38 + $2.50</div>
+</div>
+<div style="background:#111;border:1px solid #f39c1233;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#888;margin-bottom:4px">💰 Haggle 수익</div>
+<div id="sim-haggle" style="font-size:28px;font-weight:700;color:#f39c12;font-family:'JetBrains Mono',monospace">$7.75</div>
+<div id="sim-haggle-detail" style="font-size:10px;color:#666;margin-top:4px">수수료 $6.75 + 배송 마진 $1.00</div>
+<div id="sim-haggle-annual" style="font-size:10px;color:#555;margin-top:2px"></div>
+</div>
+</div>
+
+<!-- Comparison bar -->
+<div style="font-size:11px;color:#888;margin-bottom:6px">다른 플랫폼과 비교 (같은 상품 가격 기준)</div>
+<div id="sim-bars" style="display:grid;gap:6px">
+</div>
+
+<!-- Negotiation zone visual -->
+<div style="margin-top:16px">
+<div style="font-size:11px;color:#888;margin-bottom:8px">협상 가능 범위 — 슬라이더를 어디로 놓든 Haggle이 유리한 구간</div>
+<div style="position:relative;height:40px;background:#111;border-radius:6px;overflow:hidden;border:1px solid #1a1a1a">
+<div id="zone-seller" style="position:absolute;left:0;top:0;height:50%;background:linear-gradient(90deg,#2ecc7100,#2ecc7140);border-bottom:1px solid #1a1a1a"></div>
+<div id="zone-buyer" style="position:absolute;left:0;bottom:0;height:50%;background:linear-gradient(90deg,#3498db00,#3498db40)"></div>
+<div id="zone-marker" style="position:absolute;top:0;bottom:0;width:2px;background:#fff;transition:left .1s"></div>
+<div style="position:absolute;left:4px;top:4px;font-size:9px;color:#2ecc71">판매자 수령</div>
+<div style="position:absolute;left:4px;bottom:4px;font-size:9px;color:#3498db">구매자 지불</div>
+<!-- competitor lines -->
+<div id="zone-ebay-s" style="position:absolute;top:0;height:50%;width:1px;border-left:1px dashed #e74c3c66"></div>
+<div id="zone-ebay-b" style="position:absolute;bottom:0;height:50%;width:1px;border-left:1px dashed #e74c3c66"></div>
+</div>
+<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:2px">
+<span>$350</span><span id="zone-max">$470</span>
+</div>
+</div>
+
+</div>
+
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="title">🚀 목표 달성 시 기업 수익 & 가치</span></div>
+<div class="item-body">
+<h5>목표: 미국 이커머스 0.1% + 중고거래 1%</h5>
+<p>미국 이커머스 전체 시장 ~$1.3조의 0.1% + 중고거래 시장 ~$2,000억의 1% = <strong>Haggle을 통해 거래되는 총 금액 $25-33억</strong></p>
+
+<div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:14px;margin:10px 0;font-size:11px;color:#888;line-height:1.8">
+<strong style="color:#e0e0e0">용어 설명</strong><br>
+<strong style="color:#3498db">GMV</strong> (Gross Merchandise Volume) = 플랫폼에서 거래된 상품의 총 금액. 예: Haggle에서 iPhone 1만 대가 각 $450에 팔리면 GMV = $4.5M. 이건 Haggle의 수입이 아니라 "얼마나 많은 거래가 일어났는가"의 지표.<br>
+<strong style="color:#2ecc71">ARR</strong> (Annual Recurring Revenue) = 연간 반복 수입. GMV에서 Haggle이 실제로 가져가는 돈. 수수료 1.5%면 GMV $100M → ARR $1.5M.<br>
+<strong style="color:#f39c12">ARR (부가 포함)</strong> = 거래 수수료(1.5%) + 배송 마진 + 프리미엄 구독 + 인증 서비스 + API 라이선스 등 모든 수익원을 합한 연간 수입. 테이크레이트(실질 수수료율)가 3-5%로 올라가는 효과.<br>
+<strong style="color:#9b59b6">마진율</strong> = 수입 중 실제 이익 비율. Haggle은 서버 비용 외에 원가가 거의 없으므로 96%+ (eBay, Poshmark도 비슷한 마진율).
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0">
+<div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#3498db;font-weight:500">GMV (총 거래액)</div>
+<div style="font-size:20px;font-weight:700;color:#e0e0e0;font-family:'JetBrains Mono',monospace">$2.5-3.3B</div>
+<div style="font-size:9px;color:#555;margin-top:2px">플랫폼 거래 총액</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #2ecc7133;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#2ecc71;font-weight:500">ARR (수수료만)</div>
+<div style="font-size:20px;font-weight:700;color:#2ecc71;font-family:'JetBrains Mono',monospace">$37-50M</div>
+<div style="font-size:9px;color:#555;margin-top:2px">GMV의 1.5%</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #f39c1233;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#f39c12;font-weight:500">ARR (전체 수익)</div>
+<div style="font-size:20px;font-weight:700;color:#f39c12;font-family:'JetBrains Mono',monospace">$75-165M</div>
+<div style="font-size:9px;color:#555;margin-top:2px">수수료+배송+부가서비스</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #9b59b633;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#9b59b6;font-weight:500">마진율</div>
+<div style="font-size:20px;font-weight:700;color:#9b59b6;font-family:'JetBrains Mono',monospace">96%+</div>
+<div style="font-size:9px;color:#555;margin-top:2px">수입 ≈ 이익</div>
+</div>
+</div>
+
+<h5>기업가치 추정</h5>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:12px 0">
+<div style="background:#0d0d0d;border:1px solid #e74c3c33;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#e74c3c;font-weight:600;margin-bottom:4px">보수적 (마켓플레이스 3x)</div>
+<div style="font-size:26px;font-weight:700;color:#e0e0e0;font-family:'JetBrains Mono',monospace">$111M</div>
+<div style="font-size:10px;color:#666;margin-top:2px">ARR $37M × 3x</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #f39c1233;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#f39c12;font-weight:600;margin-bottom:4px">기본 (핀테크 6x)</div>
+<div style="font-size:26px;font-weight:700;color:#e0e0e0;font-family:'JetBrains Mono',monospace">$450M</div>
+<div style="font-size:10px;color:#666;margin-top:2px">ARR $75M × 6x</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #2ecc7133;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#2ecc71;font-weight:600;margin-bottom:4px">낙관 (AI 프로토콜 12x)</div>
+<div style="font-size:26px;font-weight:700;color:#2ecc71;font-family:'JetBrains Mono',monospace">$1.2B</div>
+<div style="font-size:10px;color:#666;margin-top:2px">ARR $100M × 12x — 유니콘</div>
+</div>
+</div>
+
+<div class="highlight" style="text-align:center;font-size:12px">
+같은 수입이라도 <strong>"마켓플레이스"로 보이면 3x</strong>, <strong>"AI 프로토콜 인프라"로 보이면 12x</strong>.<br>
+"The Stripe of Negotiations" 포지셔닝이 기업가치에 직접 영향.
+</div>
+
+<h5>연간 성장 경로</h5>
+<table>
+<tr><th></th><th style="text-align:center">Year 1</th><th style="text-align:center">Year 2</th><th style="text-align:center">Year 3</th><th style="text-align:center;color:#2ecc71">목표</th></tr>
+<tr><td style="color:#888">월 거래</td><td>500</td><td>3,000</td><td>20,000</td><td style="color:#2ecc71;font-weight:600">600,000</td></tr>
+<tr><td style="color:#888">GMV</td><td>$1.35M</td><td>$10.8M</td><td>$72M</td><td style="color:#2ecc71;font-weight:600">$2.5-3.3B</td></tr>
+<tr><td style="color:#888">ARR</td><td>$20K</td><td>$162K</td><td>$1.08M</td><td style="color:#2ecc71;font-weight:600">$37-100M</td></tr>
+</table>
+
+<h5>벤치마크</h5>
+<table>
+<tr><th>회사</th><th>밸류에이션</th><th>수입</th><th>멀티플</th></tr>
+<tr><td>Poshmark (인수)</td><td>$1.2B</td><td>$350M</td><td>3.4x</td></tr>
+<tr><td>Poshmark (IPO)</td><td>$3B+</td><td>$320M</td><td>9.4x</td></tr>
+<tr><td>StockX</td><td>$3.8B</td><td>~$400M</td><td>9.5x</td></tr>
+<tr><td style="color:#2ecc71;font-weight:600">Haggle (목표)</td><td style="color:#2ecc71">$450M-$1.2B</td><td style="color:#2ecc71">$75-100M</td><td style="color:#2ecc71">6-12x</td></tr>
+</table>
 </div></div>
 
 </div><!-- /overview -->
@@ -870,6 +1033,130 @@ document.querySelectorAll('.tab').forEach(t=>{
 document.querySelectorAll('.item-head').forEach(h=>{
   h.addEventListener('click',()=>h.parentElement.classList.toggle('open'));
 });
+
+// ===== Negotiation Simulator =====
+(function(){
+  const $=id=>document.getElementById(id);
+  const FEE_RATE=0.015;
+
+  // Competitor models: {sellerFee, buyerFee, shippingCost, shippingPayer}
+  function competitors(price){
+    return {
+      eBay:{
+        label:'eBay',color:'#e74c3c',
+        sellerGet: price - (price*0.1325+0.30) - 6, // seller pays ~$6 shipping + 13.25% fee
+        buyerPay: price, // buyer pays listing price (shipping baked in)
+      },
+      Mercari:{
+        label:'Mercari',color:'#e67e22',
+        sellerGet: price - price*0.10 - 6.99, // 10% fee + free shipping
+        buyerPay: price + price*0.036, // 3.6% buyer protection
+      },
+      Poshmark:{
+        label:'Poshmark',color:'#9b59b6',
+        sellerGet: price - price*0.20, // 20% fee, no shipping cost
+        buyerPay: price + 7.67, // buyer pays shipping
+      },
+    };
+  }
+
+  function update(){
+    const price=parseFloat($('sim-price').value)||450;
+    const ship=parseFloat($('sim-ship').value)||4.99;
+    const feeSplit=parseInt($('sim-fee-split').value); // 0=buyer pays all, 100=seller pays all
+    const shipSplit=parseInt($('sim-ship-split').value);
+
+    const totalFee=price*FEE_RATE;
+    const sellerFeeShare=totalFee*(feeSplit/100);
+    const buyerFeeShare=totalFee*(1-feeSplit/100);
+    const sellerShipShare=ship*(shipSplit/100);
+    const buyerShipShare=ship*(1-shipSplit/100);
+
+    const sellerGet=price-sellerFeeShare-sellerShipShare;
+    const buyerPay=price+buyerFeeShare+buyerShipShare;
+
+    $('fee-label').textContent=`${100-feeSplit} : ${feeSplit}`;
+    $('ship-label').textContent=`${100-shipSplit} : ${shipSplit}`;
+
+    $('sim-seller').textContent='$'+sellerGet.toFixed(2);
+    $('sim-buyer').textContent='$'+buyerPay.toFixed(2);
+    $('sim-seller-detail').textContent=
+      `$${price} − $${sellerFeeShare.toFixed(2)} (수수료) − $${sellerShipShare.toFixed(2)} (배송)`;
+    $('sim-buyer-detail').textContent=
+      `$${price} + $${buyerFeeShare.toFixed(2)} (수수료) + $${buyerShipShare.toFixed(2)} (배송)`;
+
+    // Haggle revenue
+    const shipMargin=Math.max(0, ship - (ship*0.8)); // ~20% margin on shipping
+    const haggleRev=totalFee+shipMargin;
+    $('sim-haggle').textContent='$'+haggleRev.toFixed(2);
+    $('sim-haggle-detail').textContent=`수수료 $${totalFee.toFixed(2)} + 배송 마진 $${shipMargin.toFixed(2)}`;
+    // Annual projections
+    const mo5k=haggleRev*5000;const mo20k=haggleRev*20000;const goal=haggleRev*600000;
+    $('sim-haggle-annual').innerHTML=
+      `<span style="color:#666">월 5K건:</span> <span style="color:#f39c12">$${(mo5k/1000).toFixed(0)}K</span>`+
+      ` · <span style="color:#666">월 20K건:</span> <span style="color:#f39c12">$${(mo20k/1000).toFixed(0)}K</span>`+
+      ` · <span style="color:#666">목표:</span> <span style="color:#2ecc71">$${(goal/1e6).toFixed(0)}M</span>`;
+
+    // Competitor comparison bars
+    const comp=competitors(price);
+    const allSeller=[sellerGet,comp.eBay.sellerGet,comp.Mercari.sellerGet,comp.Poshmark.sellerGet];
+    const allBuyer=[buyerPay,comp.eBay.buyerPay,comp.Mercari.buyerPay,comp.Poshmark.buyerPay];
+    const maxSeller=Math.max(...allSeller);
+    const minBuyer=Math.min(...allBuyer);
+
+    function bar(label,seller,buyer,color,isHaggle){
+      const sDiff=seller-sellerGet;
+      const bDiff=buyer-buyerPay;
+      const sBar=Math.max(5,(seller/maxSeller)*100);
+      const sSign=sDiff>0?'+':''; const bSign=bDiff>0?'+':'';
+      const hl=isHaggle?'border:1px solid '+color+'44;':'border:1px solid #1a1a1a;';
+      return `<div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;align-items:center;padding:6px 8px;background:#0d0d0d;border-radius:6px;${hl}font-size:11px">
+        <span style="color:${color};font-weight:${isHaggle?700:400}">${label}</span>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="color:#888;font-size:9px">판매자 수령</span>
+            <span style="color:${seller>=sellerGet?'#2ecc71':'#e74c3c'};font-family:'JetBrains Mono',monospace;font-size:10px">$${seller.toFixed(0)} ${!isHaggle?'('+sSign+sDiff.toFixed(0)+')':''}</span>
+          </div>
+          <div style="height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:${sBar}%;height:100%;background:${color};border-radius:2px;transition:width .2s"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="color:#888;font-size:9px">구매자 지불</span>
+            <span style="color:${buyer<=buyerPay?'#2ecc71':'#e74c3c'};font-family:'JetBrains Mono',monospace;font-size:10px">$${buyer.toFixed(0)} ${!isHaggle?'('+bSign+bDiff.toFixed(0)+')':''}</span>
+          </div>
+          <div style="height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:${Math.max(5,(minBuyer/buyer)*100)}%;height:100%;background:${color};border-radius:2px;transition:width .2s"></div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    $('sim-bars').innerHTML=
+      bar('Haggle',sellerGet,buyerPay,'#2ecc71',true)+
+      bar('eBay',comp.eBay.sellerGet,comp.eBay.buyerPay,'#e74c3c',false)+
+      bar('Mercari',comp.Mercari.sellerGet,comp.Mercari.buyerPay,'#e67e22',false)+
+      bar('Poshmark',comp.Poshmark.sellerGet,comp.Poshmark.buyerPay,'#9b59b6',false);
+
+    // Zone visualization
+    const zoneMin=350;const zoneMax=price+30;
+    const range=zoneMax-zoneMin;
+    function pct(v){return Math.max(0,Math.min(100,((v-zoneMin)/range)*100));}
+
+    $('zone-seller').style.width=pct(sellerGet)+'%';
+    $('zone-buyer').style.width=pct(buyerPay)+'%';
+    $('zone-marker').style.left=pct(price)+'%';
+    $('zone-ebay-s').style.left=pct(comp.eBay.sellerGet)+'%';
+    $('zone-ebay-b').style.left=pct(comp.eBay.buyerPay)+'%';
+    $('zone-max').textContent='$'+zoneMax;
+  }
+
+  ['sim-price','sim-ship','sim-fee-split','sim-ship-split'].forEach(id=>{
+    $(id).addEventListener('input',update);
+  });
+  update();
+})();
 </script>
 </body>
 </html>
