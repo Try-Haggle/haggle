@@ -23,6 +23,9 @@ export default function TagInput({ tags, onChange }: TagInputProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // Skip if IME is composing (Korean, Japanese, Chinese input)
+    if (e.nativeEvent.isComposing) return;
+
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       if (inputValue.trim()) {
