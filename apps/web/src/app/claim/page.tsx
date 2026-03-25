@@ -19,6 +19,7 @@ export default function ClaimPage() {
 function ClaimForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
+  const returnTo = searchParams.get("returnTo");
   const error = searchParams.get("error");
 
   const [email, setEmail] = useState("");
@@ -37,9 +38,8 @@ function ClaimForm() {
     setIsLoading(true);
     setAuthError(null);
 
-    const redirectTo = `${window.location.origin}/auth/callback?next=${
-      token ? `/dashboard?claim=${token}` : "/dashboard"
-    }`;
+    const nextPath = token ? `/dashboard?claim=${token}` : returnTo || "/dashboard";
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -58,9 +58,8 @@ function ClaimForm() {
   async function handleGoogleLogin() {
     setAuthError(null);
 
-    const redirectTo = `${window.location.origin}/auth/callback?next=${
-      token ? `/dashboard?claim=${token}` : "/dashboard"
-    }`;
+    const nextPath = token ? `/dashboard?claim=${token}` : returnTo || "/dashboard";
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",

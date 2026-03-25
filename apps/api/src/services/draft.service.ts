@@ -53,6 +53,11 @@ export async function patchDraft(
     }
   }
 
+  // Drizzle timestamp columns expect Date objects, not strings
+  if (typeof updates.sellingDeadline === "string") {
+    updates.sellingDeadline = new Date(updates.sellingDeadline);
+  }
+
   // Empty patch — return current draft without hitting DB for write
   if (Object.keys(updates).length === 0) {
     return getDraftById(db, id);
@@ -132,8 +137,13 @@ export async function publishDraft(db: Database, draftId: string) {
   }
 
   const publicId = generatePublicId();
-  const claimToken = generateClaimToken();
-  const claimExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+  // Only generate claim token if no user is linked (ChatGPT widget flow)
+  const needsClaim = !draft.userId;
+  const claimToken = needsClaim ? generateClaimToken() : null;
+  const claimExpiresAt = needsClaim
+    ? new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
+    : null;
 
   // Insert published snapshot
   const [published] = await db
@@ -145,24 +155,29 @@ export async function publishDraft(db: Database, draftId: string) {
     })
     .returning();
 
-  // Update draft status + claim info
+  // Update draft status (+ claim info only if needed)
+  const updateSet: Record<string, unknown> = {
+    status: "published",
+    updatedAt: new Date(),
+  };
+  if (claimToken) {
+    updateSet.claimToken = claimToken;
+    updateSet.claimExpiresAt = claimExpiresAt;
+  }
+
   const [updatedDraft] = await db
     .update(listingDrafts)
-    .set({
-      status: "published",
-      claimToken,
-      claimExpiresAt,
-      updatedAt: new Date(),
-    })
+    .set(updateSet)
     .where(eq(listingDrafts.id, draftId))
     .returning();
 
   return {
     publicId,
-    // TODO: change to https://tryhaggle.ai for production
-    shareUrl: `http://localhost:3000/l/${publicId}`,
-    claimToken,
-    claimExpiresAt: claimExpiresAt.toISOString(),
+    shareUrl: `${process.env.PUBLIC_APP_URL || "http://localhost:3000"}/l/${publicId}`,
+    ...(claimToken && {
+      claimToken,
+      claimExpiresAt: claimExpiresAt!.toISOString(),
+    }),
     draft: updatedDraft,
     published,
   };
@@ -215,6 +230,35 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
     .from(listingDrafts)
     .innerJoin(listingsPublished, eq(listingsPublished.draftId, listingDrafts.id))
     .where(and(eq(listingDrafts.id, id), eq(listingDrafts.userId, userId)));
+
+  return rows[0] ?? null;
+}
+
+// ─── Public Listing (Buyer) ─────────────────────────────────
+
+/** Fetch a published listing by its public_id. No auth required. */
+export async function getPublishedListingByPublicId(
+  db: Database,
+  publicId: string,
+) {
+  const rows = await db
+    .select({
+      id: listingsPublished.id,
+      publicId: listingsPublished.publicId,
+      publishedAt: listingsPublished.publishedAt,
+      title: listingDrafts.title,
+      description: listingDrafts.description,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      tags: listingDrafts.tags,
+      strategyConfig: listingDrafts.strategyConfig,
+      sellingDeadline: listingDrafts.sellingDeadline,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(eq(listingsPublished.publicId, publicId));
 
   return rows[0] ?? null;
 }
