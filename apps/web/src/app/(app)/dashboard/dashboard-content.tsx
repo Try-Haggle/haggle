@@ -65,17 +65,16 @@ export function DashboardContent({
           </div>
           <p className="text-sm text-slate-400">Manage your listings and track AI negotiations</p>
         </div>
-        <button
-          disabled
-          className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 opacity-50 cursor-not-allowed shrink-0 self-start sm:self-auto"
-          title="Coming soon — create listings with /haggle in ChatGPT"
+        <Link
+          href="/dashboard/new"
+          className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition-colors shrink-0 self-start sm:self-auto"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
           New Listing
-        </button>
+        </Link>
       </div>
 
       {/* KPI Cards */}
