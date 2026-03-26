@@ -62,7 +62,7 @@ Vercel   ← apps/web  (Next.js, 자동 감지)
 Supabase ← PostgreSQL DB (Transaction mode pooler, port 6543)
 ```
 
-같은 리포에서 관리하지만 배포는 완전히 별도. `main` 브랜치에 push하면 Railway, Vercel 모두 자동 배포.
+같은 리포에서 관리하지만 배포는 완전히 별도. `main` 브랜치에 push하면 Railway, Vercel 모두 자동 배포된다. 따라서 `main` 은 항상 공개 가능한 상태를 유지해야 하며, 운영 원칙은 [Main_Branch_Release_Policy.md](./Main_Branch_Release_Policy.md)를 따른다.
 
 ---
 
@@ -168,8 +168,8 @@ DB (Supabase):  PostgreSQL — aws-0-us-west-2.pooler.supabase.com:6543
 ```
 
 ## 인프라 계정
-- GitHub Organization: `Try-Haggle` (repo: `haggle`)
-- Railway / Vercel / Supabase: `tryhaggle@gmail.com`으로 가입
+- GitHub Organization: `Haggle` (repo: `haggle`)
+- Railway / Vercel / Supabase: 공식 Haggle 계정으로 가입
 - 비밀번호 관리: Bitwarden
 
 ---
