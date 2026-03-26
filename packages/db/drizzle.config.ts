@@ -10,8 +10,6 @@ export default defineConfig({
     "./src/schema/listing-drafts.ts",
     "./src/schema/listings-published.ts",
     "./src/schema/buyer-listings.ts",
-    "./src/schema/seller-profiles.ts",
-    "./src/schema/negotiation-attempts.ts",
     "./src/schema/commerce-orders.ts",
     "./src/schema/payments.ts",
     "./src/schema/shipments.ts",
