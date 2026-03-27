@@ -5,11 +5,11 @@
 export type ReviewerTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM" | "DIAMOND";
 
 export const TIER_WEIGHTS: Record<ReviewerTier, number> = {
-  BRONZE: 0.63,
-  SILVER: 0.85,
-  GOLD: 1.10,
-  PLATINUM: 1.45,
-  DIAMOND: 2.0,
+  BRONZE: 0.75,
+  SILVER: 0.90,
+  GOLD: 1.05,
+  PLATINUM: 1.20,
+  DIAMOND: 1.40,
 };
 
 export const PANEL_THRESHOLD = 15;

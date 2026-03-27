@@ -6,3 +6,5 @@ export * from "./service.js";
 export * from "./id.js";
 export * from "./evidence-validator.js";
 export * from "./vote-aggregation.js";
+export * from "./dispute-cost.js";
+export * from "./ds-rating.js";
