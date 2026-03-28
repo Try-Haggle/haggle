@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2P Resale Fee Calculator — Compare eBay, Mercari, Poshmark Fees | Haggle</title>
+<meta name="description" content="See exactly how much you keep when selling on eBay, Mercari, Poshmark, StockX, and more. Compare seller fees, buyer costs, and shipping side by side. Haggle's 1.5% total fee means sellers keep more and buyers pay less.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --brand-50:#eff6ff;--brand-100:#dbeafe;--brand-200:#bfdbfe;--brand-500:#3b82f6;--brand-600:#2563eb;--brand-700:#1d4ed8;--brand-800:#1e40af;--brand-900:#1e3a8a;--brand-950:#172554;
+  --accent-50:#ecfdf5;--accent-100:#d1fae5;--accent-200:#a7f3d0;--accent-400:#34d399;--accent-500:#10b981;--accent-600:#059669;--accent-700:#047857;--accent-900:#064e3b;
+  --rose-50:#fff1f2;--rose-100:#ffe4e6;--rose-500:#f43f5e;--rose-600:#e11d48;--rose-700:#be123c;
+  --slate-50:#f8fafc;--slate-100:#f1f5f9;--slate-200:#e2e8f0;--slate-300:#cbd5e1;--slate-400:#94a3b8;--slate-500:#64748b;--slate-600:#475569;--slate-700:#334155;--slate-800:#1e293b;--slate-900:#0f172a;
+}
+body{font-family:'Inter',system-ui,sans-serif;color:var(--slate-600);background:var(--slate-50);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+
+/* Scroll Reveal Animations */
+.reveal{opacity:0;transform:translateY(30px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal-left{opacity:0;transform:translateX(-40px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
+.reveal-left.visible{opacity:1;transform:translateX(0)}
+.reveal-right{opacity:0;transform:translateX(40px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
+.reveal-right.visible{opacity:1;transform:translateX(0)}
+.reveal-scale{opacity:0;transform:scale(.92);transition:opacity .6s ease,transform .6s ease}
+.reveal-scale.visible{opacity:1;transform:scale(1)}
+.stagger-1{transition-delay:.1s}.stagger-2{transition-delay:.2s}.stagger-3{transition-delay:.3s}.stagger-4{transition-delay:.4s}
+
+/* Animated number flash */
+@keyframes numPulse{0%{color:var(--brand-600);transform:scale(1.08)}100%{color:inherit;transform:scale(1)}}
+.num-flash{animation:numPulse .4s ease-out}
+
+/* Price input ring pulse */
+@keyframes ringPulse{0%{box-shadow:0 0 0 0 rgba(59,130,246,.4)}70%{box-shadow:0 0 0 10px rgba(59,130,246,0)}100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}}
+.input-pulse{animation:ringPulse .6s ease-out}
+
+/* Fee bar in table cells */
+.fee-bar-wrap{position:relative;display:flex;align-items:center;gap:.5rem}
+.fee-bar{height:4px;border-radius:2px;min-width:2px;transition:width .5s cubic-bezier(.22,1,.36,1);flex-shrink:0}
+
+/* Platform icon pulse on hover */
+.platform-icon{transition:transform .2s,box-shadow .2s}
+tr:hover .platform-icon{transform:scale(1.15);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+
+/* Header */
+.header{position:fixed;top:0;width:100%;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--slate-200);z-index:50;transition:all .3s ease}
+.header.scrolled{background:rgba(255,255,255,.96);box-shadow:0 4px 20px rgba(0,0,0,.08);border-bottom-color:transparent}
+.header.scrolled .header-inner{height:3.25rem}
+.header-inner{max-width:80rem;margin:0 auto;padding:0 1.5rem;height:4rem;display:flex;align-items:center;justify-content:space-between;transition:height .3s ease}
+.logo{display:flex;align-items:center;gap:.5rem}
+.logo-icon{width:2rem;height:2rem;border-radius:.5rem;background:var(--brand-600);color:#fff;display:flex;align-items:center;justify-content:center}
+.logo-text{font-weight:800;font-size:1.25rem;color:var(--slate-900);letter-spacing:-.02em}
+.nav{display:flex;align-items:center;gap:2rem;font-size:.875rem;font-weight:500}
+.nav a{color:var(--slate-600);transition:color .2s}
+.nav a:hover{color:var(--brand-600)}
+.btn-primary{padding:.5rem 1rem;background:var(--slate-900);color:#fff;font-size:.875rem;font-weight:600;border-radius:.5rem;transition:background .2s}
+.btn-primary:hover{background:var(--slate-800)}
+
+/* Hero */
+.hero{background:var(--brand-950);color:#fff;padding:7rem 1.5rem 5rem;text-align:center;position:relative;overflow:hidden}
+.hero::before,.hero::after{content:'';position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none}
+.hero::before{top:-20%;right:-10%;width:70%;height:70%;background:rgba(30,58,138,.4);animation:heroBlobA 12s ease-in-out infinite alternate}
+.hero::after{bottom:-20%;left:-10%;width:60%;height:60%;background:rgba(30,64,175,.2);animation:heroBlobB 10s ease-in-out infinite alternate}
+@keyframes heroBlobA{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-5%,8%) scale(1.1)}}
+@keyframes heroBlobB{0%{transform:translate(0,0) scale(1)}100%{transform:translate(5%,-5%) scale(1.08)}}
+/* Floating particles in hero */
+.hero-particles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.hero-particle{position:absolute;border-radius:50%;opacity:.12;animation:particleFloat linear infinite}
+@keyframes particleFloat{0%{transform:translateY(0) rotate(0deg)}100%{transform:translateY(-100vh) rotate(360deg)}}
+.hero-content{position:relative;z-index:1;max-width:64rem;margin:0 auto}
+.badge{display:inline-block;padding:.25rem .75rem;border-radius:9999px;background:var(--brand-900);border:1px solid var(--brand-800);color:var(--brand-200);font-size:.8rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.5rem;animation:badgeIn .6s ease .1s both}
+@keyframes badgeIn{0%{opacity:0;transform:translateY(-10px) scale(.9)}100%{opacity:1;transform:translateY(0) scale(1)}}
+.hero h1{font-size:clamp(2rem,5vw,3.75rem);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:1rem;animation:heroTextIn .7s ease .2s both}
+.hero p{font-size:clamp(1rem,2.5vw,1.35rem);color:var(--brand-100);max-width:48rem;margin:0 auto 3rem;line-height:1.6;animation:heroTextIn .7s ease .35s both}
+@keyframes heroTextIn{0%{opacity:0;transform:translateY(20px)}100%{opacity:1;transform:translateY(0)}}
+
+/* Calculator Input — Premium Card */
+.calc-card-outer{max-width:38rem;margin:0 auto;padding:2px;border-radius:1.25rem;background:linear-gradient(135deg,rgba(59,130,246,.4),rgba(16,185,129,.3),rgba(59,130,246,.2));box-shadow:0 25px 60px -12px rgba(0,0,0,.35);animation:heroCardEntry .8s cubic-bezier(.22,1,.36,1) .3s both;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s ease}
+.calc-card-outer:hover{transform:translateY(-4px);box-shadow:0 30px 70px -12px rgba(0,0,0,.45)}
+@keyframes heroCardEntry{0%{opacity:0;transform:translateY(30px) scale(.96)}100%{opacity:1;transform:translateY(0) scale(1)}}
+.calc-card{background:rgba(255,255,255,.92);backdrop-filter:blur(20px);border-radius:1.125rem;padding:2.5rem;text-align:center;color:var(--slate-900);position:relative;overflow:hidden}
+.calc-card::before{content:'';position:absolute;top:0;right:0;width:16rem;height:16rem;background:radial-gradient(circle,rgba(59,130,246,.05),transparent 70%);pointer-events:none}
+.calc-card::after{content:'';position:absolute;bottom:0;left:0;width:12rem;height:12rem;background:radial-gradient(circle,rgba(16,185,129,.04),transparent 70%);pointer-events:none}
+.calc-label{display:block;font-size:.75rem;font-weight:700;color:var(--slate-500);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.06em}
+.calc-input-wrap{position:relative}
+.calc-dollar{position:absolute;top:50%;transform:translateY(-50%);font-size:2.5rem;font-weight:800;color:var(--slate-300);transition:color .3s;pointer-events:none}
+.calc-input-wrap:focus-within .calc-dollar{color:var(--brand-500)}
+.calc-input{width:100%;font-size:clamp(2.25rem,4.5vw,3.5rem);font-weight:800;padding:1.25rem 1.5rem;background:linear-gradient(135deg,var(--slate-50),#fff);border:2px solid var(--slate-200);border-radius:1rem;outline:none;transition:border-color .3s,box-shadow .3s,background .3s;color:var(--slate-900);font-family:inherit;letter-spacing:-.02em;text-align:center}
+.calc-input:focus{border-color:var(--brand-400);box-shadow:0 0 0 4px rgba(59,130,246,.12),0 8px 24px rgba(59,130,246,.08);background:linear-gradient(135deg,#fff,var(--brand-50))}
+/* dollar sign color handled by .calc-input-wrap:focus-within above */
+.calc-hint{font-size:.8rem;color:var(--slate-400);margin-top:.75rem;display:flex;align-items:center;gap:.35rem}
+.calc-hint::before{content:'';display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--brand-400)}
+.calc-note{margin-top:1.5rem;text-align:center;font-size:.8rem;color:var(--brand-200);font-weight:500}
+
+/* Hero quick stats */
+.hero-stats{display:flex;justify-content:center;gap:2rem;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--slate-200)}
+.hero-stat{text-align:center}
+.hero-stat-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-400);margin-bottom:.25rem}
+.hero-stat-value{font-size:1.35rem;font-weight:800;color:var(--slate-900);letter-spacing:-.02em;transition:all .3s}
+.hero-stat-value.rose{color:var(--rose-600)}
+.hero-stat-value.accent{color:var(--accent-600)}
+.hero-stat-sub{font-size:.65rem;color:var(--slate-400);margin-top:.15rem}
+
+/* Money Drain Visualization */
+.drain{background:#fff;padding:5rem 1.5rem 4rem;position:relative}
+.drain::before{content:'';position:absolute;top:0;left:0;right:0;height:6rem;background:linear-gradient(to bottom,var(--brand-950),transparent);pointer-events:none}
+.drain-inner{max-width:52rem;margin:0 auto}
+.drain-header{text-align:center;margin-bottom:3rem}
+.drain-header h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
+.drain-header p{color:var(--slate-500);font-size:1rem;margin-top:.5rem}
+.drain-row{display:flex;align-items:center;gap:1rem;margin-bottom:1rem;opacity:0;transform:translateX(-30px);transition:opacity .6s ease,transform .6s ease}
+.drain-row.visible{opacity:1;transform:translateX(0)}
+.drain-label{width:7rem;flex-shrink:0;text-align:right;font-weight:700;font-size:.85rem;color:var(--slate-700)}
+.drain-bar-track{flex:1;height:2.75rem;background:var(--slate-100);border-radius:.75rem;position:relative;overflow:hidden}
+.drain-bar-fill{height:100%;border-radius:.75rem;display:flex;align-items:center;justify-content:flex-end;padding-right:1rem;transition:width 1.2s cubic-bezier(.22,1,.36,1);width:0}
+.drain-bar-fill.animated{/* width set by JS */}
+.drain-bar-fill span{font-weight:800;font-size:.85rem;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.15)}
+.drain-bar-loss{position:absolute;right:.75rem;top:50%;transform:translateY(-50%);font-size:.7rem;font-weight:700;color:var(--rose-500);opacity:0;transition:opacity .5s .8s}
+.drain-row.visible .drain-bar-loss{opacity:1}
+.drain-row.haggle-row .drain-bar-fill{background:linear-gradient(90deg,var(--accent-500),var(--accent-400));color:#fff}
+.drain-row.haggle-row .drain-label{color:var(--accent-700);font-size:1rem}
+.drain-row.haggle-row .drain-bar-track{height:3.5rem;border:2px solid var(--accent-300);background:var(--accent-50)}
+.drain-row.haggle-row .drain-bar-fill span{font-size:1rem}
+.drain-divider{height:1px;background:var(--slate-200);margin:1.5rem 0;position:relative}
+.drain-divider::after{content:'vs';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:0 .75rem;font-size:.7rem;font-weight:700;color:var(--slate-400);text-transform:uppercase;letter-spacing:.08em}
+.drain-footnote{text-align:center;margin-top:2rem;font-size:.8rem;color:var(--slate-400)}
+.drain-cta{text-align:center;margin-top:1.5rem}
+.drain-cta a{display:inline-flex;align-items:center;gap:.5rem;padding:.75rem 1.5rem;background:var(--slate-900);color:#fff;font-weight:700;font-size:.9rem;border-radius:.5rem;transition:all .2s}
+.drain-cta a:hover{background:var(--brand-600);transform:translateY(-2px);box-shadow:0 4px 12px rgba(37,99,235,.3)}
+.drain-cta a svg{transition:transform .2s}
+.drain-cta a:hover svg{transform:translateX(3px)}
+@media(max-width:640px){
+  .drain-label{width:4.5rem;font-size:.7rem}
+  .drain-bar-track{height:2.25rem}
+  .drain-row.haggle-row .drain-bar-track{height:2.75rem}
+}
+
+/* Automation / Beyond Fees Section */
+.beyond{background:linear-gradient(180deg,#fff,var(--slate-50));padding:5rem 1.5rem;overflow:hidden}
+.beyond-inner{max-width:72rem;margin:0 auto}
+.beyond-header{text-align:center;margin-bottom:1rem}
+.beyond-eyebrow{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--brand-600);margin-bottom:.5rem}
+.beyond-header h2{font-size:clamp(1.75rem,3.5vw,2.5rem);font-weight:800;color:var(--slate-900);letter-spacing:-.03em}
+.beyond-header p{color:var(--slate-500);font-size:1.05rem;margin-top:.5rem;max-width:40rem;margin-left:auto;margin-right:auto}
+
+/* Process comparison timeline */
+.process-compare{display:grid;grid-template-columns:1fr auto 1fr;gap:2rem;margin:3rem 0;align-items:start}
+.process-col{position:relative}
+.process-col-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:1.25rem;text-align:center;padding:.35rem .75rem;border-radius:9999px;display:inline-block;width:100%;text-align:center}
+.process-old .process-col-title{background:var(--rose-50);color:var(--rose-600);border:1px solid var(--rose-100)}
+.process-new .process-col-title{background:var(--accent-50);color:var(--accent-700);border:1px solid var(--accent-200)}
+.process-step{display:flex;align-items:flex-start;gap:.75rem;padding:.75rem 1rem;border-radius:.75rem;margin-bottom:.5rem;transition:all .3s}
+.process-old .process-step{background:#fff;border:1px solid var(--slate-100)}
+.process-old .process-step:hover{border-color:var(--rose-200);background:var(--rose-50)}
+.process-new .process-step{background:#fff;border:1px solid var(--accent-100)}
+.process-new .process-step:hover{border-color:var(--accent-300);background:var(--accent-50)}
+.process-num{width:1.5rem;height:1.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex-shrink:0;margin-top:.1rem}
+.process-old .process-num{background:var(--slate-100);color:var(--slate-500)}
+.process-new .process-num{background:var(--accent-100);color:var(--accent-700)}
+.process-step-text{font-size:.85rem;color:var(--slate-700);line-height:1.4}
+.process-step-text strong{color:var(--slate-900)}
+.process-step.struck .process-step-text{text-decoration:line-through;color:var(--slate-400)}
+.process-step.struck .process-num{background:var(--rose-100);color:var(--rose-400)}
+.process-arrow-col{display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:3rem}
+.process-arrow{font-size:2rem;color:var(--brand-500);animation:arrowPulse 2s ease-in-out infinite}
+@keyframes arrowPulse{0%,100%{opacity:.5;transform:translateX(0)}50%{opacity:1;transform:translateX(4px)}}
+.process-time{margin-top:1rem;padding:.5rem 1rem;border-radius:.5rem;font-size:.7rem;font-weight:700;text-align:center}
+.process-old .process-time{background:var(--rose-50);color:var(--rose-600);border:1px solid var(--rose-100)}
+.process-new .process-time{background:var(--accent-50);color:var(--accent-700);border:1px solid var(--accent-200)}
+
+/* Feature pills below process */
+.beyond-features{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:3rem}
+.beyond-pill{background:#fff;border:1px solid var(--slate-200);border-radius:1rem;padding:1.5rem;text-align:center;transition:all .3s cubic-bezier(.22,1,.36,1);position:relative;overflow:hidden}
+.beyond-pill::before{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--brand-500);transform:scaleX(0);transition:transform .3s;transform-origin:left}
+.beyond-pill:hover{transform:translateY(-6px);box-shadow:0 12px 30px rgba(0,0,0,.08);border-color:var(--brand-200)}
+.beyond-pill:hover::before{transform:scaleX(1)}
+.beyond-pill-icon{width:3rem;height:3rem;border-radius:.75rem;display:flex;align-items:center;justify-content:center;margin:0 auto .75rem}
+.beyond-pill h4{font-size:.9rem;font-weight:700;color:var(--slate-900);margin-bottom:.35rem}
+.beyond-pill p{font-size:.75rem;color:var(--slate-500);line-height:1.4}
+@media(max-width:1024px){
+  .process-compare{grid-template-columns:1fr;gap:1.5rem}
+  .process-arrow-col{flex-direction:row;padding-top:0}
+  .process-arrow{transform:rotate(90deg)}
+  .beyond-features{grid-template-columns:1fr 1fr}
+}
+@media(max-width:640px){
+  .beyond-features{grid-template-columns:1fr}
+}
+
+/* Pain Point → Solution Cards */
+.painfix{padding:5rem 1.5rem;overflow:hidden}
+.painfix-inner{max-width:72rem;margin:0 auto}
+.painfix-header{text-align:center;margin-bottom:3rem}
+.painfix-header h2{font-size:clamp(1.75rem,3.5vw,2.5rem);font-weight:800;color:var(--slate-900);letter-spacing:-.03em}
+.painfix-header p{color:var(--slate-500);font-size:1rem;margin-top:.5rem}
+.painfix-role-tag{display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.35rem .85rem;border-radius:9999px;margin-bottom:.75rem}
+.painfix-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:1.25rem;margin-bottom:3.5rem}
+.pain-card{background:#fff;border:1px solid var(--slate-200);border-radius:1rem;padding:1.5rem;position:relative;overflow:hidden;transition:all .4s cubic-bezier(.22,1,.36,1)}
+.pain-card:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(0,0,0,.07)}
+.pain-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.pain-card.pain-type::before{background:linear-gradient(90deg,var(--rose-500),var(--rose-300))}
+.pain-card.fix-type::before{background:linear-gradient(90deg,var(--accent-500),var(--accent-300))}
+.pain-icon{width:2.5rem;height:2.5rem;border-radius:.625rem;display:flex;align-items:center;justify-content:center;margin-bottom:.75rem}
+.pain-card.pain-type .pain-icon{background:var(--rose-50);color:var(--rose-500)}
+.pain-card.fix-type .pain-icon{background:var(--accent-50);color:var(--accent-600)}
+.pain-card h4{font-size:.9rem;font-weight:700;margin-bottom:.35rem}
+.pain-card.pain-type h4{color:var(--rose-700)}
+.pain-card.fix-type h4{color:var(--accent-700)}
+.pain-card p{font-size:.8rem;color:var(--slate-500);line-height:1.5}
+.pain-arrow{display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--brand-500);margin:-0.5rem 0}
+.pain-pair{display:flex;flex-direction:column;gap:.5rem}
+.pain-pair .pain-arrow-down{text-align:center;color:var(--brand-400);font-size:1.25rem;animation:arrowBounce 2s ease-in-out infinite}
+@keyframes arrowBounce{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(4px);opacity:1}}
+.pain-vs{display:grid;grid-template-columns:1fr auto 1fr;gap:1rem;align-items:stretch}
+.pain-vs-arrow{display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--brand-400)}
+@media(max-width:768px){
+  .painfix-grid{grid-template-columns:1fr}
+  .pain-vs{grid-template-columns:1fr}
+  .pain-vs-arrow{transform:rotate(90deg);padding:.5rem 0}
+}
+
+/* Journey Flow */
+.journey-flow{display:flex;flex-direction:column;gap:2rem;margin:2rem 0}
+.journey-row{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:nowrap;padding:1rem 0}
+.journey-row.old-way{position:relative}
+.journey-row.old-way::after{content:'';position:absolute;top:50%;left:8%;right:8%;height:3px;background:var(--rose-200);z-index:0;transform:translateY(-8px)}
+.journey-row.new-way::after{content:'';position:absolute;top:50%;left:10%;right:10%;height:3px;background:var(--accent-300);z-index:0;transform:translateY(-8px)}
+.journey-row.new-way{position:relative}
+.journey-step{display:flex;flex-direction:column;align-items:center;gap:.35rem;z-index:1;min-width:4rem;flex:1}
+.journey-step .step-icon{font-size:1.75rem;width:3rem;height:3rem;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.journey-row.old-way .step-icon{border:2px solid var(--rose-200)}
+.journey-row.new-way .step-icon{border:2px solid var(--accent-300)}
+.journey-step .step-label{font-size:.6rem;font-weight:600;color:var(--slate-500);text-align:center;line-height:1.2;max-width:5rem}
+.journey-connector{font-size:1rem;color:var(--slate-300);z-index:1;flex-shrink:0;margin:0 -.25rem}
+.journey-row-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:.25rem .75rem;border-radius:9999px;margin-bottom:.5rem;display:inline-block}
+.journey-row-label.old{background:var(--rose-50);color:var(--rose-600);border:1px solid var(--rose-100)}
+.journey-row-label.new{background:var(--accent-50);color:var(--accent-700);border:1px solid var(--accent-200)}
+@media(max-width:640px){
+  .journey-step .step-icon{font-size:1.25rem;width:2.25rem;height:2.25rem}
+  .journey-step .step-label{font-size:.5rem;max-width:3.5rem}
+  .journey-row.old-way::after,.journey-row.new-way::after{left:4%;right:4%}
+}
+
+/* Mock UI Cards */
+.mock-compare{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin:2rem 0;align-items:start}
+.mock-ui{border-radius:1rem;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.12);border:1px solid var(--slate-200);background:#fff;transition:transform .3s,box-shadow .3s}
+.mock-ui:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,.15)}
+.mock-titlebar{padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;font-size:.7rem;font-weight:600}
+.mock-titlebar .dots{display:flex;gap:4px}
+.mock-titlebar .dots span{width:8px;height:8px;border-radius:50%}
+.mock-ui.old-ui .mock-titlebar{background:var(--slate-800);color:var(--slate-300)}
+.mock-ui.old-ui .mock-titlebar .dots span:nth-child(1){background:#ef4444}
+.mock-ui.old-ui .mock-titlebar .dots span:nth-child(2){background:#eab308}
+.mock-ui.old-ui .mock-titlebar .dots span:nth-child(3){background:#22c55e}
+.mock-ui.new-ui .mock-titlebar{background:var(--brand-600);color:#fff}
+.mock-ui.new-ui .mock-titlebar .dots span{background:rgba(255,255,255,.3)}
+.mock-body{padding:1rem}
+
+/* Mock Chat Bubbles */
+.mock-chat{display:flex;flex-direction:column;gap:.5rem}
+.chat-bubble{max-width:80%;padding:.6rem .85rem;border-radius:.75rem;font-size:.75rem;line-height:1.4;position:relative}
+.chat-bubble.sent{align-self:flex-end;background:var(--brand-500);color:#fff;border-bottom-right-radius:.2rem}
+.chat-bubble.received{align-self:flex-start;background:var(--slate-100);color:var(--slate-700);border-bottom-left-radius:.2rem}
+.chat-bubble .time{font-size:.55rem;color:rgba(255,255,255,.6);margin-top:.2rem;text-align:right}
+.chat-bubble.received .time{color:var(--slate-400)}
+.chat-ghost{text-align:center;font-size:.65rem;color:var(--slate-400);padding:.75rem 0;font-style:italic}
+
+/* Mock Deal Card */
+.mock-deal{display:flex;flex-direction:column;gap:.75rem}
+.deal-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--slate-100)}
+.deal-row:last-child{border-bottom:none}
+.deal-label{font-size:.7rem;color:var(--slate-500);font-weight:500}
+.deal-value{font-size:.8rem;font-weight:700;color:var(--slate-900)}
+.deal-value.accent{color:var(--accent-600)}
+.deal-value.brand{color:var(--brand-600)}
+.deal-status{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .5rem;border-radius:9999px;font-size:.6rem;font-weight:700}
+.deal-status.locked{background:var(--accent-50);color:var(--accent-700);border:1px solid var(--accent-200)}
+.deal-status.agreed{background:var(--brand-50);color:var(--brand-700);border:1px solid var(--brand-200)}
+
+/* Mock Receipt */
+.mock-receipt{font-size:.75rem}
+.receipt-row{display:flex;justify-content:space-between;padding:.35rem 0;color:var(--slate-600)}
+.receipt-row.total{border-top:2px dashed var(--slate-300);margin-top:.5rem;padding-top:.75rem;font-weight:800;font-size:.9rem;color:var(--slate-900)}
+.receipt-row.fee{color:var(--rose-500)}
+.receipt-row.highlight{color:var(--accent-600);font-weight:700}
+.receipt-row .hidden-label{font-size:.55rem;color:var(--rose-400);font-style:italic}
+
+/* Stat Contrast Grid */
+.stat-contrast{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;margin:2rem 0}
+.stat-item{text-align:center;padding:1.5rem 1rem;background:#fff;border-radius:1rem;border:1px solid var(--slate-200);box-shadow:0 2px 8px rgba(0,0,0,.04);transition:transform .3s,box-shadow .3s}
+.stat-item:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.stat-old{font-size:1.75rem;font-weight:800;color:var(--rose-500);text-decoration:line-through;text-decoration-thickness:3px;line-height:1.2}
+.stat-arrow{font-size:1.25rem;margin:.25rem 0;color:var(--brand-400)}
+.stat-new{font-size:2rem;font-weight:800;color:var(--accent-600);line-height:1.2}
+.stat-label{font-size:.7rem;font-weight:600;color:var(--slate-400);margin-top:.5rem;text-transform:uppercase;letter-spacing:.04em}
+
+/* Protection Flow */
+.protect-flow{display:flex;align-items:center;justify-content:center;gap:0;margin:2rem 0;flex-wrap:wrap}
+.protect-flow-step{display:flex;flex-direction:column;align-items:center;gap:.35rem;padding:1rem}
+.protect-flow-step .flow-icon{width:3.5rem;height:3.5rem;border-radius:50%;background:var(--accent-50);border:2px solid var(--accent-300);display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+.protect-flow-step .flow-label{font-size:.7rem;font-weight:600;color:var(--accent-700);text-align:center;max-width:5rem}
+.protect-flow-arrow{font-size:1.5rem;color:var(--accent-400);flex-shrink:0}
+
+/* Experience Section Layout */
+.exp-section{padding:5rem 1.5rem;overflow:hidden}
+.exp-inner{max-width:72rem;margin:0 auto}
+.exp-header{text-align:center;margin-bottom:2.5rem}
+.exp-header h2{font-size:clamp(1.75rem,3.5vw,2.5rem);font-weight:800;color:var(--slate-900);letter-spacing:-.03em}
+.exp-header p{color:var(--slate-500);font-size:1rem;margin-top:.5rem;max-width:36rem;margin-left:auto;margin-right:auto}
+.exp-role-tag{display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.35rem .85rem;border-radius:9999px;margin-bottom:.75rem}
+
+@media(max-width:768px){
+  .mock-compare{grid-template-columns:1fr}
+  .stat-contrast{grid-template-columns:1fr}
+  .protect-flow{flex-direction:column}
+  .protect-flow-arrow{transform:rotate(90deg)}
+  .journey-row{flex-wrap:wrap;justify-content:center}
+}
+
+/* Visual Keep-Gauge: stacked bar showing how much you keep */
+.keep-gauge{margin-top:2rem;display:flex;flex-direction:column;gap:1rem}
+.keep-row{display:flex;align-items:center;gap:.75rem}
+.keep-label{width:5.5rem;font-size:.75rem;font-weight:600;color:var(--slate-500);text-align:right;flex-shrink:0}
+.keep-bar-bg{flex:1;height:2rem;background:var(--slate-100);border-radius:.5rem;overflow:hidden;position:relative}
+.keep-bar{height:100%;border-radius:.5rem;display:flex;align-items:center;justify-content:flex-end;padding-right:.5rem;font-size:.7rem;font-weight:700;color:#fff;transition:width 1s cubic-bezier(.22,1,.36,1);width:0}
+.keep-bar.animated{width:var(--target-width)}
+.keep-bar-lost{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);font-size:.65rem;font-weight:600;color:var(--slate-400)}
+.keep-row.haggle-row .keep-label{color:var(--accent-700);font-weight:700}
+.keep-row.haggle-row .keep-bar-bg{border:2px solid var(--accent-300)}
+
+/* Animated count-up numbers */
+.count-up{display:inline-block}
+
+/* Sections */
+.content{max-width:80rem;margin:0 auto;padding:5rem 1.5rem}
+.section{margin-bottom:6rem}
+.section-head h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;color:var(--slate-900);letter-spacing:-.02em;margin-bottom:.5rem}
+.section-head p{font-size:1.1rem;color:var(--slate-600);max-width:40rem}
+.section-head{margin-bottom:2.5rem}
+
+/* Tables */
+.table-wrap{background:#fff;border-radius:1rem;box-shadow:0 1px 3px rgba(0,0,0,.06);border:1px solid var(--slate-200);overflow:hidden;transition:box-shadow .3s}
+.table-wrap:hover{box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;white-space:nowrap;min-width:700px;font-size:.875rem}
+thead tr{background:var(--slate-50);border-bottom:1px solid var(--slate-200)}
+th{padding:1rem;text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-500);font-weight:600}
+td{padding:1rem;border-bottom:1px solid var(--slate-100)}
+tbody tr{transition:background .2s,transform .2s}
+tbody tr:hover{background:var(--slate-50)}
+tbody tr:hover td{transition:padding-left .2s}
+tbody tr:hover td:first-child{padding-left:2rem}
+.platform-cell{display:flex;align-items:center;gap:.75rem;font-weight:600;color:var(--slate-900)}
+.platform-icon{width:2rem;height:2rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0}
+.text-rose{color:var(--rose-600)}
+.text-accent{color:var(--accent-600)}
+.text-muted{color:var(--slate-500)}
+.font-bold{font-weight:700}
+.font-medium{font-weight:500}
+
+/* Haggle row */
+.row-haggle{background:rgba(16,185,129,.05)}
+.row-haggle td{position:relative;z-index:1}
+.haggle-bar{position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent-500);border-radius:0 4px 4px 0}
+.haggle-icon{width:2rem;height:2rem;border-radius:.5rem;background:var(--brand-600);color:#fff;display:flex;align-items:center;justify-content:center}
+
+/* Insight callout */
+.insight{margin-top:1.5rem;background:#fff;border:1px solid var(--slate-200);border-radius:.75rem;padding:1.5rem;display:flex;gap:1rem;align-items:flex-start;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:border-color .3s,box-shadow .3s}
+.insight:hover{border-color:var(--accent-300);box-shadow:0 4px 16px rgba(16,185,129,.1)}
+.insight-icon{flex-shrink:0;width:2.5rem;height:2.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;margin-top:.15rem}
+.insight h4{font-size:.8rem;font-weight:700;color:var(--slate-900);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem}
+.insight-list{list-style:none;display:flex;flex-direction:column;gap:.5rem}
+.insight-list li{display:flex;align-items:center;gap:.5rem;font-weight:500;color:var(--slate-700)}
+.insight-dot{width:6px;height:6px;border-radius:9999px;flex-shrink:0}
+.insight-highlight{background:var(--accent-50);padding:.25rem .5rem;border-radius:.25rem;border:1px solid var(--accent-100);margin-left:-.5rem;width:fit-content}
+.insight-bottom{font-size:1.1rem;font-weight:700;color:var(--slate-900);border-top:1px solid var(--slate-100);padding-top:.75rem;margin-top:.75rem}
+.insight-footnotes{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--slate-100);font-size:.7rem;color:var(--slate-400)}
+.insight-footnotes p{margin-bottom:.25rem}
+
+/* Dark callout */
+.callout-dark{margin-top:1.5rem;background:var(--slate-900);color:#fff;border-radius:.75rem;padding:2rem;position:relative;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,.1);transition:transform .3s ease,box-shadow .3s}
+.callout-dark:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.2)}
+.callout-dark::after{content:'';position:absolute;top:0;right:0;width:12rem;height:12rem;background:radial-gradient(circle,rgba(59,130,246,.08),transparent 70%);pointer-events:none}
+.callout-dark h4{font-size:1.25rem;font-weight:700;margin-bottom:.75rem}
+.callout-dark p{color:var(--slate-300);font-size:1.05rem;line-height:1.6;max-width:48rem}
+.callout-dark .highlight{color:#fff;font-weight:700}
+.callout-dark .accent-text{color:var(--accent-400);font-weight:700;font-size:1.25rem}
+
+/* Total Platform Tax — Donut Chart Cards */
+.tax-donuts{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:2rem}
+.tax-donut-card{background:#fff;border-radius:1rem;border:1px solid var(--slate-200);padding:1.25rem;text-align:center;transition:all .3s cubic-bezier(.22,1,.36,1);position:relative;overflow:hidden}
+.tax-donut-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.tax-donut-card.haggle-card{border:2px solid var(--accent-400);background:var(--accent-50)}
+.tax-donut-card.haggle-card:hover{box-shadow:0 8px 24px rgba(16,185,129,.15)}
+.donut-svg{display:block;margin:0 auto .5rem}
+.donut-track{fill:none;stroke:var(--slate-100);stroke-width:10}
+.donut-ring{fill:none;stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1)}
+.tax-donut-name{font-size:.75rem;font-weight:700;color:var(--slate-900);margin-bottom:.15rem}
+.tax-donut-takes{font-size:1.1rem;font-weight:800;margin-bottom:.1rem}
+.tax-donut-takes.rose{color:var(--rose-600)}
+.tax-donut-takes.accent{color:var(--accent-600)}
+.tax-donut-sub{font-size:.6rem;color:var(--slate-400)}
+
+.tax-summary{margin-top:1rem;text-align:center;background:var(--slate-900);color:#fff;border-radius:1rem;padding:2.5rem;position:relative;overflow:hidden}
+.tax-summary::before{content:'';position:absolute;top:0;right:0;width:15rem;height:15rem;background:radial-gradient(circle,rgba(16,185,129,.1),transparent 70%);pointer-events:none}
+.tax-summary .big{font-size:1.75rem;font-weight:800;margin-bottom:.5rem}
+.tax-summary .big span{color:var(--rose-400)}
+.tax-summary .sub{font-size:1rem;color:var(--slate-300);margin-bottom:1.5rem}
+.tax-summary .result{display:inline-block;padding:.75rem 1.5rem;background:rgba(16,185,129,.15);color:var(--accent-300);border-radius:.5rem;border:1px solid rgba(16,185,129,.3);font-weight:700;font-size:1.05rem}
+.tax-summary .result span{color:var(--accent-400);font-weight:800}
+@media(max-width:768px){.tax-donuts{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:480px){.tax-donuts{grid-template-columns:repeat(2,1fr)}}
+
+/* Reverse calc cards */
+.reverse-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem}
+.reverse-card{background:#fff;border-radius:1rem;border:1px solid var(--slate-200);padding:1.5rem;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:all .3s cubic-bezier(.22,1,.36,1)}
+.reverse-card:hover{box-shadow:0 8px 20px rgba(0,0,0,.1);transform:translateY(-4px)}
+.reverse-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.reverse-card-name{font-weight:700;font-size:1.1rem;color:var(--slate-900)}
+.reverse-card-badge{padding:.25rem .5rem;background:var(--slate-100);color:var(--slate-600);font-size:.7rem;font-weight:700;border-radius:.25rem}
+.reverse-card-rows{border-top:1px solid var(--slate-100);border-bottom:1px solid var(--slate-100);padding:.75rem 0;margin:.75rem 0;display:flex;flex-direction:column;gap:.5rem;font-size:.85rem}
+.reverse-card-row{display:flex;justify-content:space-between}
+.reverse-card-row span:first-child{color:var(--slate-500)}
+.reverse-card-bottom{background:var(--slate-50);border-radius:.5rem;padding:.75rem;text-align:center;border:1px solid var(--slate-100)}
+.reverse-card-bottom label{display:block;font-size:.65rem;font-weight:600;color:var(--slate-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem}
+.reverse-card-bottom .value{font-size:1.25rem;font-weight:700;color:var(--slate-900)}
+.reverse-card.worst{border-color:var(--rose-200)}
+.reverse-card.worst .reverse-card-badge{background:var(--rose-50);color:var(--rose-700)}
+.reverse-card.worst .reverse-card-bottom{background:var(--rose-50);border-color:var(--rose-100)}
+.reverse-card.worst .reverse-card-bottom .value{color:var(--rose-900)}
+.reverse-card.best{border:2px solid var(--accent-400);box-shadow:0 4px 12px rgba(16,185,129,.1);transform:translateY(-4px)}
+.reverse-card.best .reverse-card-badge{background:#fff;color:var(--accent-700);border:1px solid var(--accent-200)}
+.reverse-card.best .reverse-card-bottom{background:var(--accent-50);border-color:var(--accent-200)}
+.reverse-card.best .reverse-card-bottom .value{color:var(--accent-700);font-size:1.5rem}
+.reverse-card.best .reverse-card-bottom label{color:var(--accent-600);font-weight:700}
+.best-tag{position:absolute;top:-.75rem;left:50%;transform:translateX(-50%);background:var(--accent-500);color:#fff;font-size:.6rem;font-weight:700;padding:.25rem .75rem;border-radius:9999px;text-transform:uppercase;letter-spacing:.06em;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+.reverse-callout{margin-top:2rem;display:flex;gap:1rem;align-items:center;background:var(--slate-900);color:#fff;padding:1.5rem;border-radius:.75rem}
+.reverse-callout-icon{flex-shrink:0;padding:.75rem;background:rgba(244,63,94,.15);border-radius:9999px;color:var(--rose-400)}
+
+/* Why 1.5% */
+.why-grid{display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center}
+.why-list{list-style:none;display:flex;flex-direction:column;gap:1.5rem;margin-top:2rem}
+.why-item{display:flex;gap:1rem;transition:transform .2s ease}
+.why-item:hover{transform:translateX(6px)}
+.why-icon{flex-shrink:0;width:3rem;height:3rem;border-radius:.75rem;display:flex;align-items:center;justify-content:center;transition:transform .3s,box-shadow .3s}
+.why-item:hover .why-icon{transform:scale(1.1) rotate(-5deg);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.why-item h4{font-weight:700;color:var(--slate-900);font-size:1.05rem}
+.why-item p{font-size:.85rem;color:var(--slate-600);margin-top:.25rem}
+.why-quote{margin-top:2rem;padding:1rem;background:var(--slate-100);border-radius:.5rem;border:1px solid var(--slate-200);font-weight:500;color:var(--slate-900)}
+.why-visual{background:var(--slate-900);border-radius:1.5rem;padding:2rem;min-height:400px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;position:relative;overflow:hidden}
+.why-visual::before{content:'';position:absolute;inset:0;opacity:.15;background:radial-gradient(circle at 30% 50%,var(--brand-600),transparent 60%)}
+
+/* Fee Split Slider */
+.split-section{background:linear-gradient(135deg,var(--slate-900),var(--brand-950));border-radius:1.5rem;padding:3rem;color:#fff;overflow:hidden;position:relative;box-shadow:0 25px 50px rgba(0,0,0,.15)}
+.split-section::before{content:'';position:absolute;top:0;right:0;width:16rem;height:16rem;background:rgba(59,130,246,.08);border-radius:9999px;filter:blur(60px);animation:splitBlob 8s ease-in-out infinite alternate}
+@keyframes splitBlob{0%{transform:translate(0,0)}100%{transform:translate(-20px,20px)}}
+.split-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center}
+.split-tag{display:inline-block;padding:.25rem .75rem;border-radius:.25rem;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--accent-400);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem}
+.split-section h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;margin-bottom:1.5rem}
+.split-section .desc{color:var(--slate-300);font-size:1.05rem;line-height:1.6}
+.split-features{list-style:none;margin-top:1.5rem;display:flex;flex-direction:column;gap:.75rem}
+.split-features li{display:flex;align-items:flex-start;gap:.75rem;color:#fff;font-size:.95rem}
+.split-features svg{flex-shrink:0;color:var(--accent-400)}
+.split-quote{margin-top:2rem;padding-left:1rem;border-left:3px solid var(--brand-500);color:var(--brand-200);font-weight:700;font-size:1.15rem}
+
+/* Slider Card */
+.slider-card{background:#fff;border-radius:1rem;padding:2rem;color:var(--slate-900);box-shadow:0 20px 40px rgba(0,0,0,.15);border:1px solid var(--slate-200);transition:transform .5s cubic-bezier(.22,1,.36,1),box-shadow .5s ease;transform-style:preserve-3d}
+.slider-card-header{text-align:center;margin-bottom:2rem}
+.slider-card-header .label{font-size:.8rem;font-weight:600;color:var(--slate-500);text-transform:uppercase;letter-spacing:.04em}
+.slider-card-header .price{font-size:2.5rem;font-weight:800;color:var(--slate-900);margin-top:.25rem}
+.slider-card-header .fee{font-size:.75rem;color:var(--slate-400);margin-top:.25rem}
+
+/* Slider */
+.slider-wrap{margin-bottom:2rem;position:relative}
+.slider-labels{display:flex;justify-content:space-between;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-400);margin-bottom:.75rem}
+.slider-labels .buyer-label{color:var(--brand-600)}
+.slider-labels .seller-label{color:var(--accent-600)}
+.slider-track{position:relative;height:1rem;background:var(--slate-100);border-radius:9999px;overflow:visible;box-shadow:inset 0 2px 4px rgba(0,0,0,.06);cursor:pointer}
+.slider-fill-buyer{position:absolute;left:0;top:0;height:100%;background:var(--brand-500);border-radius:9999px 0 0 9999px;transition:width .15s}
+.slider-fill-seller{position:absolute;right:0;top:0;height:100%;background:var(--accent-500);border-radius:0 9999px 9999px 0;transition:width .15s}
+.slider-thumb{position:absolute;top:50%;transform:translate(-50%,-50%);width:2rem;height:2rem;background:#fff;border:3px solid var(--slate-900);border-radius:9999px;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:grab;z-index:2;display:flex;align-items:center;justify-content:center;transition:left .15s}
+.slider-thumb:active{cursor:grabbing;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.slider-thumb::after{content:'';width:2px;height:.75rem;background:var(--slate-300);border-radius:1px}
+.slider-pct{position:absolute;top:-1.75rem;left:50%;transform:translateX(-50%);font-size:.7rem;font-weight:700;color:var(--slate-900);background:#fff;padding:.15rem .4rem;border-radius:.25rem;box-shadow:0 1px 3px rgba(0,0,0,.1);white-space:nowrap}
+
+/* Result cards */
+.result-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.result-card{border-radius:.75rem;padding:1rem;border:1px solid;transition:transform .5s cubic-bezier(.22,1,.36,1),box-shadow .5s ease,opacity .4s ease}
+.result-card .amount{transition:transform .4s cubic-bezier(.22,1,.36,1),color .3s}
+.result-buyer{background:var(--brand-50);border-color:var(--brand-100)}
+.result-seller{background:var(--accent-50);border-color:var(--accent-100)}
+.result-card label{display:block;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.25rem}
+.result-buyer label{color:var(--brand-600)}
+.result-seller label{color:var(--accent-600)}
+.result-card .amount{font-size:1.75rem;font-weight:800;color:var(--slate-900);transition:all .15s}
+.result-card .detail{font-size:.7rem;color:var(--slate-500);margin-top:.25rem}
+
+/* Protection */
+.protect-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-top:2.5rem}
+.protect-card{background:#fff;padding:1.5rem;border-radius:1rem;box-shadow:0 1px 3px rgba(0,0,0,.04);border:1px solid var(--slate-200);transition:transform .3s cubic-bezier(.22,1,.36,1),box-shadow .3s ease,border-color .3s;position:relative;overflow:hidden}
+.protect-card::before{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);transition:left .6s ease;pointer-events:none}
+.protect-card:hover{transform:translateY(-6px);box-shadow:0 12px 30px rgba(0,0,0,.1);border-color:var(--brand-200)}
+.protect-card:hover::before{left:150%}
+.protect-icon{width:3rem;height:3rem;border-radius:.5rem;display:flex;align-items:center;justify-content:center;margin-bottom:1rem}
+.protect-card h3{font-weight:700;color:var(--slate-900);font-size:1.05rem;margin-bottom:.5rem}
+.protect-card p{font-size:.85rem;color:var(--slate-600);line-height:1.5}
+.protect-tagline{margin-top:3rem;text-align:center}
+.protect-tagline p{display:inline-flex;align-items:center;gap:.5rem;font-size:1.15rem;font-weight:700;color:var(--slate-900);padding:.75rem 1.5rem;background:#fff;border:2px solid var(--slate-200);border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+
+/* CTA */
+.cta{background:linear-gradient(-45deg,var(--brand-700),var(--brand-600),var(--brand-500),var(--brand-700));background-size:300% 300%;animation:ctaGradient 8s ease infinite;padding:6rem 1.5rem;text-align:center;position:relative;overflow:hidden}
+@keyframes ctaGradient{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.cta::before{content:'';position:absolute;inset:0;opacity:.06;background:repeating-linear-gradient(0deg,transparent,transparent 39px,#fff 39px,#fff 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,#fff 39px,#fff 40px)}
+.cta-inner{position:relative;z-index:1;max-width:48rem;margin:0 auto}
+.cta h2{font-size:clamp(1.75rem,4vw,2.75rem);font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:1rem}
+.cta .sub{font-size:1.25rem;color:var(--brand-100);margin-bottom:2.5rem}
+.cta-buttons{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.cta-btn{padding:1rem 2rem;font-size:1.1rem;font-weight:700;border-radius:.75rem;display:inline-flex;align-items:center;gap:.5rem;transition:all .2s;border:none;cursor:pointer;font-family:inherit}
+.cta-btn-white{background:#fff;color:var(--brand-900);box-shadow:0 4px 12px rgba(0,0,0,.15);position:relative;overflow:hidden}
+.cta-btn-white::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(59,130,246,.1),transparent);opacity:0;transition:opacity .3s}
+.cta-btn-white:hover{transform:scale(1.05);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.cta-btn-white:hover::after{opacity:1}
+.cta-btn-ghost{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.3);backdrop-filter:blur(8px)}
+.cta-btn-ghost:hover{background:rgba(255,255,255,.2)}
+
+/* Testimonial */
+.testimonial{margin-top:4rem;max-width:36rem;margin-left:auto;margin-right:auto;background:rgba(255,255,255,.08);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.15);border-radius:1rem;padding:2rem;text-align:left;box-shadow:0 8px 32px rgba(0,0,0,.15);transition:transform .3s ease,box-shadow .3s;position:relative;overflow:hidden}
+.testimonial::before{content:'\201C';position:absolute;top:-.5rem;left:1rem;font-size:6rem;font-family:Georgia,serif;color:rgba(255,255,255,.06);pointer-events:none;line-height:1}
+.testimonial:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,.2)}
+.testimonial p{font-size:1.15rem;font-weight:500;color:#fff;font-style:italic;line-height:1.5}
+.testimonial-author{margin-top:1rem;display:flex;align-items:center;gap:.75rem}
+.testimonial-avatar{width:2.5rem;height:2.5rem;border-radius:9999px;background:var(--brand-400);color:var(--brand-900);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem}
+.testimonial-name{font-weight:700;color:#fff}
+.testimonial-role{font-size:.8rem;color:var(--brand-200)}
+
+/* FAQ */
+.faq{max-width:48rem;margin:0 auto;padding:6rem 1.5rem}
+.faq h2{font-size:2rem;font-weight:700;color:var(--slate-900);text-align:center;margin-bottom:2.5rem}
+.faq-list{display:flex;flex-direction:column;gap:1rem}
+.faq-item{background:#fff;border-radius:.75rem;border:1px solid var(--slate-200);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:box-shadow .3s,border-color .3s}
+.faq-item:hover{box-shadow:0 4px 12px rgba(0,0,0,.06);border-color:var(--brand-200)}
+.faq-item.open{border-color:var(--brand-300);box-shadow:0 4px 16px rgba(59,130,246,.1)}
+.faq-q{display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;cursor:pointer;font-weight:700;color:var(--slate-900);font-size:1rem;background:var(--slate-50);transition:background .15s;border:none;width:100%;text-align:left;font-family:inherit}
+.faq-q:hover{background:var(--slate-100)}
+.faq-q svg{flex-shrink:0;color:var(--slate-400);transition:transform .3s}
+.faq-item.open .faq-q svg{transform:rotate(180deg)}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .3s ease-out}
+.faq-item.open .faq-a{max-height:20rem}
+.faq-a-inner{padding:1.25rem 1.5rem;color:var(--slate-600);line-height:1.7;border-top:1px solid var(--slate-100)}
+
+/* Footer */
+.footer{background:var(--slate-50);border-top:1px solid var(--slate-200);padding:3rem 1.5rem}
+.footer-inner{max-width:80rem;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1.5rem}
+.footer-links{display:flex;gap:1.5rem;font-size:.85rem;font-weight:500}
+.footer-links a{color:var(--slate-500);transition:color .2s}
+.footer-links a:hover{color:var(--slate-900)}
+.footer-copy{font-size:.75rem;color:var(--slate-400)}
+
+/* Responsive */
+@media(max-width:1024px){
+  .why-grid,.split-grid{grid-template-columns:1fr}
+  .why-visual{min-height:300px;margin-top:2rem}
+  .nav{display:none}
+}
+@media(max-width:640px){
+  .reverse-grid{grid-template-columns:1fr 1fr}
+  .result-grid{grid-template-columns:1fr}
+  .cta-buttons{flex-direction:column;align-items:center}
+  .footer-inner{flex-direction:column;text-align:center}
+  .hero-stats{gap:1rem}
+  .hero-stat-value{font-size:1.1rem}
+  .calc-card{padding:1.75rem}
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-inner">
+    <a href="#" class="logo">
+      <div class="logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <span class="logo-text">Haggle</span>
+    </a>
+    <nav class="nav">
+      <a href="#seller-fees">Seller Fees</a>
+      <a href="#buyer-fees">Buyer Fees</a>
+      <a href="#fee-split">Fee Split</a>
+      <a href="#why-haggle">Why 1.5%?</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a href="#" class="btn-primary">Start Selling</a>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-particles" id="heroParticles"></div>
+  <div class="hero-content">
+    <span class="badge">2026 Fee Comparison Calculator</span>
+    <h1>How Much Are You Really<br>Losing in Fees?</h1>
+    <p>Enter a price. We'll show you what every platform actually takes — and what you actually keep.</p>
+    <div class="calc-card-outer">
+      <div class="calc-card">
+        <label class="calc-label">Agreed Sale Price</label>
+        <div class="calc-input-wrap">
+          <input id="priceInput" type="text" class="calc-input" value="450" placeholder="0" inputmode="decimal" aria-label="Sale Price">
+          <span class="calc-dollar">$</span>
+        </div>
+        <p class="calc-hint">Enter the price buyer and seller agree on</p>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="hero-stat-label">eBay Seller Gets</div>
+            <div class="hero-stat-value rose" id="heroEbay">$382</div>
+            <div class="hero-stat-sub">after 13.6% + ship</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-label">Haggle Seller Gets</div>
+            <div class="hero-stat-value accent" id="heroHaggle">$447</div>
+            <div class="hero-stat-sub">after 1.5% total</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-label">You Save</div>
+            <div class="hero-stat-value" id="heroSave" style="color:var(--brand-600)">+$65</div>
+            <div class="hero-stat-sub">per transaction</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="calc-note">No signup required. Just type a number.</p>
+  </div>
+</section>
+
+<!-- Money Drain Visualization -->
+<section class="drain" id="drainSection">
+  <div class="drain-inner">
+    <div class="drain-header">
+      <h2>Where Does Your Money Go?</h2>
+      <p>Same $<span id="drainPrice">450</span> sale — here's what the seller actually takes home.</p>
+    </div>
+    <div id="drainBars"></div>
+    <div class="drain-divider"></div>
+    <div id="drainHaggle"></div>
+    <p class="drain-footnote">Default 50/50 fee split. Includes platform fees + shipping. Updated March 2026.</p>
+    <div class="drain-cta">
+      <a href="#seller-fees">See Full Breakdown <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<!-- Beyond Fees: Header Only -->
+<section class="beyond reveal">
+  <div class="beyond-inner">
+    <div class="beyond-header">
+      <div class="beyond-eyebrow">It's Not Just About Fees</div>
+      <h2>The Entire Process Is Broken.<br>Haggle Fixes It.</h2>
+      <p>See how the selling and buying experience transforms with Haggle.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Seller Experience ═══════════ -->
+<section class="exp-section reveal" style="background:linear-gradient(180deg,var(--slate-50),#fff)">
+  <div class="exp-inner">
+    <div class="exp-header">
+      <div class="exp-role-tag" style="background:var(--brand-50);color:var(--brand-700)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        Seller Experience
+      </div>
+      <h2>Selling Shouldn't Be This Hard</h2>
+      <p>From listing to payout — every step is faster, cheaper, and safer.</p>
+    </div>
+
+    <!-- A) Journey Flow -->
+    <div class="journey-flow reveal">
+      <div style="text-align:center"><span class="journey-row-label old">Old Way — 7 painful steps</span></div>
+      <div class="journey-row old-way">
+        <div class="journey-step"><div class="step-icon">📝</div><div class="step-label">List manually</div></div>
+        <div class="journey-connector">›</div>
+        <div class="journey-step"><div class="step-icon">⏳</div><div class="step-label">Wait days</div></div>
+        <div class="journey-connector">›</div>
+        <div class="journey-step"><div class="step-icon">💬</div><div class="step-label">Chat & haggle</div></div>
+        <div class="journey-connector">›</div>
+        <div class="journey-step"><div class="step-icon">🤞</div><div class="step-label">Hope they pay</div></div>
+        <div class="journey-connector">›</div>
+        <div class="journey-step"><div class="step-icon">💸</div><div class="step-label">Lose 13%+</div></div>
+        <div class="journey-connector">›</div>
+        <div class="journey-step"><div class="step-icon">📦</div><div class="step-label">Ship & pray</div></div>
+        <div class="journey-connector">›</div>
+        <div class="journey-step"><div class="step-icon">😤</div><div class="step-label">Dispute weeks</div></div>
+      </div>
+
+      <div style="text-align:center;margin-top:1rem"><span class="journey-row-label new">Haggle — 5 automated steps</span></div>
+      <div class="journey-row new-way">
+        <div class="journey-step"><div class="step-icon">🎤</div><div class="step-label">Say it</div></div>
+        <div class="journey-connector" style="color:var(--accent-400)">›</div>
+        <div class="journey-step"><div class="step-icon">🤖</div><div class="step-label">AI negotiates</div></div>
+        <div class="journey-connector" style="color:var(--accent-400)">›</div>
+        <div class="journey-step"><div class="step-icon">🔒</div><div class="step-label">Deal locked</div></div>
+        <div class="journey-connector" style="color:var(--accent-400)">›</div>
+        <div class="journey-step"><div class="step-icon">📦</div><div class="step-label">Auto ship</div></div>
+        <div class="journey-connector" style="color:var(--accent-400)">›</div>
+        <div class="journey-step"><div class="step-icon">✅</div><div class="step-label">Paid instantly</div></div>
+      </div>
+    </div>
+
+    <!-- B) Mock UI: Chat vs Deal Card -->
+    <div class="mock-compare reveal">
+      <!-- Old: Chat screen -->
+      <div class="mock-ui old-ui reveal-left">
+        <div class="mock-titlebar">
+          <div class="dots"><span></span><span></span><span></span></div>
+          Marketplace Chat
+        </div>
+        <div class="mock-body">
+          <div class="mock-chat">
+            <div class="chat-bubble received">Hey, is the iPhone still available?<div class="time">Mon 2:14 PM</div></div>
+            <div class="chat-bubble sent">Yes! Asking $450<div class="time">Mon 2:15 PM</div></div>
+            <div class="chat-bubble received">Would you take $300?<div class="time">Mon 2:16 PM</div></div>
+            <div class="chat-bubble sent">That's too low. $420?<div class="time">Mon 2:18 PM</div></div>
+            <div class="chat-bubble received">$320 final offer<div class="time">Mon 2:20 PM</div></div>
+            <div class="chat-bubble sent">How about $400?<div class="time">Mon 2:22 PM</div></div>
+            <div class="chat-ghost">Seen 3 days ago</div>
+            <div class="chat-bubble sent" style="opacity:.5">Hello? Still interested?<div class="time">Thu 11:05 AM</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- New: Haggle Deal Card -->
+      <div class="mock-ui new-ui reveal-right">
+        <div class="mock-titlebar">
+          <div class="dots"><span></span><span></span><span></span></div>
+          Haggle — Deal Summary
+        </div>
+        <div class="mock-body">
+          <div class="mock-deal">
+            <div class="deal-row">
+              <span class="deal-label">Item</span>
+              <span class="deal-value">iPhone 15 Pro 256GB</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">Your Floor Price</span>
+              <span class="deal-value">$380</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">Agreed Price</span>
+              <span class="deal-value accent" style="font-size:1.1rem">$423.00</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">Protocol Fee (1.5%)</span>
+              <span class="deal-value">−$6.35</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">You Receive</span>
+              <span class="deal-value accent" style="font-size:1.1rem">$416.65</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">Status</span>
+              <span class="deal-status agreed">✓ Agreed</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">Payment</span>
+              <span class="deal-status locked">🔒 Locked in Escrow</span>
+            </div>
+            <div class="deal-row">
+              <span class="deal-label">Time to Deal</span>
+              <span class="deal-value brand">4 min 12 sec</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C) Stat Contrast -->
+    <div class="stat-contrast reveal">
+      <div class="stat-item reveal-scale stagger-1">
+        <div class="stat-old">47 messages</div>
+        <div class="stat-arrow">→</div>
+        <div class="stat-new">0</div>
+        <div class="stat-label">Messages Needed</div>
+      </div>
+      <div class="stat-item reveal-scale stagger-2">
+        <div class="stat-old">3–14 days</div>
+        <div class="stat-arrow">→</div>
+        <div class="stat-new">5 min</div>
+        <div class="stat-label">Time to Deal</div>
+      </div>
+      <div class="stat-item reveal-scale stagger-3">
+        <div class="stat-old">13% fees</div>
+        <div class="stat-arrow">→</div>
+        <div class="stat-new">1.5%</div>
+        <div class="stat-label">Total Platform Fee</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Buyer Experience ═══════════ -->
+<section class="exp-section reveal" style="background:linear-gradient(180deg,#fff,var(--slate-50))">
+  <div class="exp-inner">
+    <div class="exp-header">
+      <div class="exp-role-tag" style="background:var(--accent-50);color:var(--accent-700)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+        Buyer Experience
+      </div>
+      <h2>Buying Shouldn't Feel Like Gambling</h2>
+      <p>Hidden fees, ghosting sellers, and zero protection. Until now.</p>
+    </div>
+
+    <!-- A) Mock UI: Receipt comparison -->
+    <div class="mock-compare reveal">
+      <!-- Old: Hidden fee receipt -->
+      <div class="mock-ui old-ui reveal-left">
+        <div class="mock-titlebar">
+          <div class="dots"><span></span><span></span><span></span></div>
+          Traditional Platform — Receipt
+        </div>
+        <div class="mock-body">
+          <div class="mock-receipt">
+            <div class="receipt-row"><span>Item Price</span><span>$450.00</span></div>
+            <div class="receipt-row fee"><span>Buyer Service Fee <span class="hidden-label">(hidden in price)</span></span><span>+$40.50</span></div>
+            <div class="receipt-row fee"><span>Payment Processing</span><span>+$14.85</span></div>
+            <div class="receipt-row"><span>Shipping</span><span>+$12.99</span></div>
+            <div class="receipt-row fee"><span>Sales Tax Adjustment</span><span>+$8.50</span></div>
+            <div class="receipt-row fee"><span>Insurance Fee</span><span>+$4.99</span></div>
+            <div class="receipt-row total"><span>Total Charged</span><span style="color:var(--rose-600)">$531.83</span></div>
+            <div style="text-align:center;padding-top:.75rem;font-size:.6rem;color:var(--rose-400);font-style:italic">* Price inflated 10-20% to cover seller fees</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- New: Haggle receipt -->
+      <div class="mock-ui new-ui reveal-right">
+        <div class="mock-titlebar">
+          <div class="dots"><span></span><span></span><span></span></div>
+          Haggle — Receipt
+        </div>
+        <div class="mock-body">
+          <div class="mock-receipt">
+            <div class="receipt-row"><span>AI-Negotiated Price</span><span>$423.00</span></div>
+            <div class="receipt-row highlight"><span>Protocol Fee (0.75%)</span><span>+$3.17</span></div>
+            <div class="receipt-row"><span>Shipping (EasyPost)</span><span>+$9.45</span></div>
+            <div class="receipt-row total"><span>Total Paid</span><span style="color:var(--accent-600)">$435.62</span></div>
+            <div style="text-align:center;padding-top:1rem">
+              <div style="display:inline-flex;align-items:center;gap:.4rem;background:var(--accent-50);border:1px solid var(--accent-200);padding:.4rem .8rem;border-radius:9999px;font-size:.7rem;font-weight:700;color:var(--accent-700)">
+                You saved $96.21 vs traditional platforms
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B) Stat Contrast -->
+    <div class="stat-contrast reveal">
+      <div class="stat-item reveal-scale stagger-1">
+        <div class="stat-old">$540 actual</div>
+        <div class="stat-arrow">→</div>
+        <div class="stat-new">$436</div>
+        <div class="stat-label">Total You Pay</div>
+      </div>
+      <div class="stat-item reveal-scale stagger-2">
+        <div class="stat-old">❓ trust</div>
+        <div class="stat-arrow">→</div>
+        <div class="stat-new">98% verified</div>
+        <div class="stat-label">Seller Reliability</div>
+      </div>
+      <div class="stat-item reveal-scale stagger-3">
+        <div class="stat-old">2 weeks</div>
+        <div class="stat-arrow">→</div>
+        <div class="stat-new">5 min</div>
+        <div class="stat-label">Dispute Resolution</div>
+      </div>
+    </div>
+
+    <!-- C) Protection Flow -->
+    <div class="protect-flow reveal">
+      <div class="protect-flow-step reveal-scale stagger-1">
+        <div class="flow-icon">🔒</div>
+        <div class="flow-label">Funds Locked</div>
+      </div>
+      <div class="protect-flow-arrow">→</div>
+      <div class="protect-flow-step reveal-scale stagger-2">
+        <div class="flow-icon">🚚</div>
+        <div class="flow-label">Shipping Tracked</div>
+      </div>
+      <div class="protect-flow-arrow">→</div>
+      <div class="protect-flow-step reveal-scale stagger-3">
+        <div class="flow-icon">✋</div>
+        <div class="flow-label">Receipt Confirmed</div>
+      </div>
+      <div class="protect-flow-arrow">→</div>
+      <div class="protect-flow-step reveal-scale stagger-4">
+        <div class="flow-icon">💚</div>
+        <div class="flow-label">Funds Released</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Content -->
+<div class="content">
+
+  <!-- Seller Breakdown -->
+  <section id="seller-fees" class="section reveal" style="scroll-margin-top:5rem">
+    <div class="section-head">
+      <h2>Seller Breakdown: What You Actually Keep</h2>
+      <p>Same item, same agreed price — wildly different payouts.</p>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th style="padding-left:1.5rem">Platform</th>
+            <th>Selling Fee</th>
+            <th>Processing</th>
+            <th>Shipping</th>
+            <th>Seller Receives</th>
+            <th>Notes</th>
+          </tr></thead>
+          <tbody id="sellerTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="insight" id="sellerInsight"></div>
+    <div class="keep-gauge" id="keepGauge"></div>
+  </section>
+
+  <!-- Buyer Breakdown -->
+  <section id="buyer-fees" class="section reveal" style="scroll-margin-top:5rem">
+    <div class="section-head" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:1rem">
+      <div>
+        <h2>Buyer Breakdown: What You Actually Pay</h2>
+        <p>The sticker price is never the final price. Here's what buyers really spend.</p>
+      </div>
+      <div style="background:var(--slate-100);border-radius:.5rem;padding:.5rem 1rem;font-size:.85rem;font-weight:500;color:var(--slate-600);border:1px solid var(--slate-200)">
+        Based on $<span id="buyerBadge">450</span> agreed price
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th style="padding-left:1.5rem">Platform</th>
+            <th>Buyer Fee</th>
+            <th>Shipping</th>
+            <th style="background:var(--slate-100);color:var(--slate-700);font-weight:700">Total Paid</th>
+            <th>Notes</th>
+          </tr></thead>
+          <tbody id="buyerTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="callout-dark">
+      <h4>"But eBay is free for buyers!"</h4>
+      <p>Not really. Sellers inflate prices <span class="highlight">$<span id="ebayMarkup">60</span>+</span> to cover 13.6% fees.</p>
+      <p class="accent-text" style="margin-top:.75rem">On Haggle, the real price is the fair price.</p>
+    </div>
+  </section>
+
+  <!-- Total Platform Tax — Donut Charts -->
+  <section class="section reveal" id="taxSection">
+    <div class="section-head" style="text-align:center;max-width:48rem;margin:0 auto 2.5rem">
+      <span style="color:var(--rose-600);font-weight:700;text-transform:uppercase;font-size:.85rem;letter-spacing:.04em">The Real Cost</span>
+      <h2 style="font-size:clamp(1.5rem,3.5vw,2.25rem);margin-top:.5rem">How Much Each Platform Really Takes</h2>
+      <p>The colored ring shows the platform's total cut. Bigger ring = more money gone.</p>
+    </div>
+    <div class="tax-donuts" id="taxDonuts"></div>
+    <div class="tax-summary" id="taxSummary"></div>
+  </section>
+
+  <!-- Reverse Calc -->
+  <section class="section reveal">
+    <div class="section-head">
+      <h2>Same Payout? Higher Buyer Price.</h2>
+      <p>To match Haggle's take-home, other platforms require buyers to pay more.</p>
+    </div>
+    <div class="reverse-grid" id="reverseGrid"></div>
+    <div class="reverse-callout" id="reverseCallout"></div>
+  </section>
+
+  <!-- Why 1.5% -->
+  <section id="why-haggle" class="section reveal" style="scroll-margin-top:5rem">
+    <div class="why-grid">
+      <div>
+        <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:700;color:var(--slate-900);margin-bottom:1.5rem">How Haggle Keeps Fees at 1.5%</h2>
+        <p style="font-size:1.05rem;color:var(--slate-600);line-height:1.6">Other platforms charge 10-20% for storefronts, ads, and credit card processing.</p>
+        <p style="font-weight:700;color:var(--slate-900);font-size:1.25rem;margin:1.5rem 0">Haggle is infrastructure, not a marketplace.</p>
+        <ul class="why-list">
+          <li class="why-item">
+            <div class="why-icon" style="background:var(--brand-100);color:var(--brand-600)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg></div>
+            <div><h4>No Storefront</h4><p>Direct P2P. No listing fees.</p></div>
+          </li>
+          <li class="why-item">
+            <div class="why-icon" style="background:#f3e8ff;color:#9333ea"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
+            <div><h4>AI Negotiation</h4><p>Fair price found automatically. Zero human overhead.</p></div>
+          </li>
+          <li class="why-item">
+            <div class="why-icon" style="background:var(--accent-100);color:var(--accent-600)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+            <div><h4>Stablecoin Settlement</h4><p>Skip Visa's 3%. Transfer on-chain for pennies.</p></div>
+          </li>
+        </ul>
+        <div class="why-quote">1.5% covers the protocol. Everything else stays with you.</div>
+      </div>
+      <div class="why-visual">
+        <div style="position:relative;z-index:1;width:100%;max-width:20rem">
+          <div style="background:rgba(255,255,255,.08);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:1rem;padding:1.5rem;color:#fff;text-align:center;margin-bottom:1rem">
+            <h3 style="font-weight:700;margin-bottom:1rem">Old Way (~15%)</h3>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <div style="width:2.5rem;height:2.5rem;border-radius:9999px;background:var(--slate-700);display:flex;align-items:center;justify-content:center;font-size:.65rem;flex-shrink:0">Seller</div>
+              <div style="flex:1;position:relative;height:.5rem;background:var(--rose-500);border-radius:.25rem"><div style="position:absolute;top:-1.5rem;left:50%;transform:translateX(-50%);font-size:.6rem;font-weight:700;background:var(--rose-500);padding:.15rem .5rem;border-radius:.25rem;white-space:nowrap">Platform Takes Cut</div></div>
+              <div style="width:2.5rem;height:2.5rem;border-radius:9999px;background:var(--slate-700);display:flex;align-items:center;justify-content:center;font-size:.65rem;flex-shrink:0">Buyer</div>
+            </div>
+          </div>
+          <div style="text-align:center;color:var(--brand-400);margin:.5rem 0">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+          </div>
+          <div style="background:var(--brand-600);border:1px solid var(--brand-500);border-radius:1rem;padding:1.5rem;color:#fff;text-align:center;box-shadow:0 8px 24px rgba(37,99,235,.3)">
+            <h3 style="font-weight:700;margin-bottom:1rem">Haggle Protocol (1.5%)</h3>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <div style="width:3rem;height:3rem;border-radius:9999px;background:#fff;color:var(--brand-700);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.7rem;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.1)">Seller</div>
+              <div style="flex:1;display:flex;align-items:center;gap:2px">
+                <div style="flex:1;height:2px;background:var(--brand-300)"></div>
+                <div style="width:1.5rem;height:1.5rem;border-radius:.25rem;background:var(--brand-800);border:1px solid var(--brand-400);display:flex;align-items:center;justify-content:center;font-size:.5rem;font-weight:700;flex-shrink:0">1.5%</div>
+                <div style="flex:1;height:2px;background:var(--brand-300)"></div>
+              </div>
+              <div style="width:3rem;height:3rem;border-radius:9999px;background:#fff;color:var(--brand-700);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.7rem;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,.1)">Buyer</div>
+            </div>
+            <p style="font-size:.7rem;color:var(--brand-200);margin-top:.75rem">Direct P2P Settlement</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fee Split Slider -->
+  <section id="fee-split" class="section reveal" style="scroll-margin-top:5rem">
+    <div class="split-section">
+      <div class="split-grid">
+        <div>
+          <span class="split-tag">Unique Feature</span>
+          <h2>Even the Fee Split Is Negotiable</h2>
+          <p class="desc">Other platforms fix who pays. On Haggle, even the 1.5% split is negotiable.</p>
+          <ul class="split-features">
+            <li><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg><span><strong>Default: 50/50</strong> — buyer 0.75% + seller 0.75%</span></li>
+            <li><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg><span><strong>Seller wants max payout?</strong> Shift more to buyer.</span></li>
+            <li><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg><span><strong>Buyer wants lowest price?</strong> Shift more to seller.</span></li>
+          </ul>
+          <p class="split-quote">It's your deal. You decide.</p>
+        </div>
+        <div>
+          <div class="slider-card" id="sliderCard">
+            <div class="slider-card-header">
+              <span class="label">Agreed Price</span>
+              <div class="price" id="sliderPrice">$450.00</div>
+              <div class="fee" id="sliderFee">Total Protocol Fee: $6.75 (1.5%)</div>
+            </div>
+            <div class="slider-wrap">
+              <div class="slider-labels">
+                <span class="buyer-label">Buyer Pays All</span>
+                <span>50 / 50</span>
+                <span class="seller-label">Seller Pays All</span>
+              </div>
+              <div class="slider-track" id="sliderTrack">
+                <div class="slider-fill-buyer" id="sliderFillBuyer"></div>
+                <div class="slider-fill-seller" id="sliderFillSeller"></div>
+                <div class="slider-thumb" id="sliderThumb">
+                  <span class="slider-pct" id="sliderPct">50 / 50</span>
+                </div>
+              </div>
+            </div>
+            <div class="result-grid">
+              <div class="result-card result-buyer" id="resultBuyer">
+                <label>Buyer Pays</label>
+                <div class="amount" id="buyerAmount">$453.38</div>
+                <div class="detail" id="buyerDetail">Includes 0.75% fee</div>
+              </div>
+              <div class="result-card result-seller" id="resultSeller">
+                <label>Seller Receives</label>
+                <div class="amount" id="sellerAmount">$446.62</div>
+                <div class="detail" id="sellerDetail">Minus 0.75% fee</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Low Fees, Not Low Protection -->
+  <section class="section reveal">
+    <div style="text-align:center;max-width:48rem;margin:0 auto 2.5rem">
+      <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:700;color:var(--slate-900);margin-bottom:.75rem">Low Fees, Not Low Protection</h2>
+      <p style="font-size:1.05rem;color:var(--slate-600)">Zero fees = zero protection. Haggle is built differently.</p>
+    </div>
+    <div class="protect-grid">
+      <div class="protect-card">
+        <div class="protect-icon" style="background:#eff6ff;color:var(--brand-600)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div>
+        <h3>Payment Lock</h3>
+        <p>Funds secured until delivery confirmed</p>
+      </div>
+      <div class="protect-card">
+        <div class="protect-icon" style="background:#f3e8ff;color:#9333ea"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
+        <h3>AI Disputes</h3>
+        <p>3-tier resolution in minutes, not weeks</p>
+      </div>
+      <div class="protect-card">
+        <div class="protect-icon" style="background:var(--accent-50);color:var(--accent-600)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg></div>
+        <h3>Trust Scores</h3>
+        <p>Verified transaction history, not fake reviews</p>
+      </div>
+      <div class="protect-card">
+        <div class="protect-icon" style="background:#fef3c7;color:#d97706"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg></div>
+        <h3>Non-Custodial</h3>
+        <p>Direct P2P via smart contracts</p>
+      </div>
+    </div>
+    <div class="protect-tagline">
+      <p><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent-500)" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      You get Poshmark-level protection at 1/13th the cost.</p>
+    </div>
+  </section>
+</div>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="cta-inner">
+    <h2>Stop Donating Your Margins to Middlemen.</h2>
+    <p class="sub">Keep 98.5% of every single sale.</p>
+    <div class="cta-buttons">
+      <a href="#" class="cta-btn cta-btn-white">Start Selling on Haggle <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></a>
+      <a href="#" class="cta-btn cta-btn-ghost"><svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg> See How It Works (30s Demo)</a>
+    </div>
+    <div class="testimonial">
+      <p>"I switched from eBay immediately. On a $500 sneaker sale, I kept $492 instead of $430. The math just makes sense."</p>
+      <div class="testimonial-author">
+        <div class="testimonial-avatar">M</div>
+        <div><div class="testimonial-name">Marcus T.</div><div class="testimonial-role">Early Beta Seller &bull; Sneakerhead</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="faq" style="scroll-margin-top:5rem">
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-list" id="faqList"></div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="logo" style="opacity:.5">
+      <div class="logo-icon" style="background:var(--slate-300)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <span class="logo-text" style="color:var(--slate-400)">Haggle</span>
+    </div>
+    <div class="footer-links">
+      <a href="#">Protocol Specs</a>
+      <a href="#">Fee Methodology</a>
+      <a href="#">Terms</a>
+      <a href="#">Privacy</a>
+    </div>
+    <p class="footer-copy">&copy; 2026 Haggle Protocol. Not affiliated with eBay, Poshmark, or Mercari.</p>
+  </div>
+</footer>
+
+<script>
+// ─── Platform Data ───
+const PLATFORMS = [
+  { id:'ebay', name:'eBay', abbr:'eB', color:'#e53238', bgColor:'#fef2f2',
+    sellerFee: p => p * 0.136 + 0.40,
+    sellerShip: 6.00, sellerShipLabel: '-$6.00',
+    buyerFee: _ => 0, buyerShip: 0,
+    notes:'Store discounts available', buyerNote:'Fee baked into seller price' },
+  { id:'mercari', name:'Mercari', abbr:'Me', color:'#4dc1e0', bgColor:'#ecfeff',
+    sellerFee: p => p * 0.10,
+    sellerShip: 6.99, sellerShipLabel: '-$6.99',
+    buyerFee: p => p * 0.036, buyerShip: 0,
+    notes:'Buyer pays 3.6% protection', buyerNote:'Buyer protection since 2025' },
+  { id:'poshmark', name:'Poshmark', abbr:'Po', color:'#c23d5e', bgColor:'#fff1f2',
+    sellerFee: p => p >= 15 ? p * 0.20 : 2.95,
+    sellerShip: 0, sellerShipLabel: '$0',
+    buyerFee: _ => 0, buyerShip: 8.27,
+    notes:'Highest commission rate', buyerNote:'PoshPost $8.27 flat' },
+  { id:'stockx', name:'StockX', abbr:'SX', color:'#006340', bgColor:'#ecfdf5',
+    sellerFee: p => p * 0.09 + p * 0.03 + 5,
+    sellerShip: 0, sellerShipLabel: 'Incl.',
+    buyerFee: p => p * 0.04, buyerShip: 15,
+    notes:'Auth + 3% processing + $5', buyerNote:'Auth routing = slow ship' },
+  { id:'goat', name:'GOAT', abbr:'GO', color:'#1a1a1a', bgColor:'#f1f5f9',
+    sellerFee: p => p * 0.095 + p * 0.029 + 15,
+    sellerShip: 0, sellerShipLabel: 'Label',
+    buyerFee: p => p * 0.05, buyerShip: 0,
+    notes:'9.5% + 2.9% cashout + flat', buyerNote:'All-in price shown' },
+  { id:'depop', name:'Depop', abbr:'De', color:'#ff2300', bgColor:'#fff5f5',
+    sellerFee: p => p * 0.033 + 0.45,
+    sellerShip: 0, sellerShipLabel: 'Seller sets',
+    buyerFee: _ => 0, buyerShip: 5,
+    notes:'0% commission US only', buyerNote:'Shipping added at checkout' },
+  { id:'fb', name:'FB Marketplace', abbr:'FB', color:'#1877f2', bgColor:'#dbeafe',
+    sellerFee: p => p * 0.10,
+    sellerShip: 0, sellerShipLabel: '$0',
+    buyerFee: _ => 0, buyerShip: 7,
+    notes:'0% for local pickup', buyerNote:'$0 if local cash' },
+  { id:'offerup', name:'OfferUp', abbr:'OU', color:'#00b57c', bgColor:'#ecfdf5',
+    sellerFee: p => p * 0.129,
+    sellerShip: 0, sellerShipLabel: '$0',
+    buyerFee: _ => 0, buyerShip: 7,
+    notes:'0% for local pickup', buyerNote:'No fee for local' },
+  { id:'grailed', name:'Grailed', abbr:'Gr', color:'#1a1a1a', bgColor:'#f8fafc',
+    sellerFee: p => p * 0.09 + p * 0.0349 + 0.49,
+    sellerShip: 0, sellerShipLabel: '$0',
+    buyerFee: _ => 0, buyerShip: 10,
+    notes:"Men's luxury/streetwear", buyerNote:'Seller sets ship fee' },
+  { id:'craigslist', name:'Craigslist', abbr:'CL', color:'#5a0a9f', bgColor:'#f3e8ff',
+    sellerFee: _ => 0,
+    sellerShip: 0, sellerShipLabel: 'N/A',
+    buyerFee: _ => 0, buyerShip: 0,
+    notes:'Zero buyer protection', buyerNote:'Cash local, zero protection' },
+];
+
+const HAGGLE_RATE = 0.015;
+const HAGGLE_SHIP = 4.99;
+let currentPrice = 450;
+let splitRatio = 50; // 0=buyer pays all, 100=seller pays all
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtInt = n => Math.round(n).toLocaleString('en-US');
+
+// ─── Haggle calculations ───
+function haggleCalc(price, split) {
+  const totalFee = price * HAGGLE_RATE;
+  const buyerFeeShare = totalFee * ((100 - split) / 100);
+  const sellerFeeShare = totalFee * (split / 100);
+  const buyerShipShare = HAGGLE_SHIP * 0.5;
+  const sellerShipShare = HAGGLE_SHIP * 0.5;
+  return {
+    totalFee,
+    buyerPays: price + buyerFeeShare + buyerShipShare,
+    sellerReceives: price - sellerFeeShare - sellerShipShare,
+    buyerFeeShare, sellerFeeShare, buyerShipShare, sellerShipShare
+  };
+}
+
+// ─── Render Seller Table ───
+function renderSellerTable(price) {
+  const h = haggleCalc(price, 50);
+  const maxFee = Math.max(...PLATFORMS.map(pl => pl.sellerFee(price) + pl.sellerShip));
+  let html = '';
+  PLATFORMS.forEach((pl, idx) => {
+    const fee = pl.sellerFee(price);
+    const receives = price - fee - pl.sellerShip;
+    const feeStr = fee > 0 ? '-$' + fmt(fee) : '$0';
+    const feePct = maxFee > 0 ? ((fee + pl.sellerShip) / maxFee * 100) : 0;
+    const barColor = fee > price * 0.15 ? 'var(--rose-400)' : fee > 0 ? 'var(--slate-300)' : 'var(--accent-300)';
+    html += `<tr style="animation:rowFadeIn .4s ease ${idx * 0.04}s both">
+      <td style="padding-left:1.5rem"><div class="platform-cell"><div class="platform-icon" style="background:${pl.bgColor||'var(--slate-100)'};color:${pl.color}">${pl.abbr}</div>${pl.name}</div></td>
+      <td class="${fee > price*0.15?'text-rose font-bold':'font-medium'}"><div class="fee-bar-wrap">${feeStr}<div class="fee-bar" style="width:${feePct}%;background:${barColor}"></div></div></td>
+      <td class="text-muted">${fee>0?'Included':'—'}</td>
+      <td class="text-muted">${pl.sellerShipLabel}</td>
+      <td class="font-bold ${receives < h.sellerReceives - 5 ? 'text-rose' : ''}">${receives >= 0 ? '$'+fmt(receives) : '-$'+fmt(-receives)}</td>
+      <td class="text-muted" style="font-size:.8rem">${pl.notes}</td>
+    </tr>`;
+  });
+  // Haggle row
+  const haggleFee = h.totalFee * 0.5;
+  html += `<tr class="row-haggle" style="border-top:2px solid var(--slate-200)">
+    <td style="padding-left:1.5rem;position:relative"><div class="haggle-bar"></div><div class="platform-cell"><div class="haggle-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><strong>Haggle</strong></div></td>
+    <td class="text-accent" style="font-size:1.05rem"><strong>-$${fmt(h.totalFee/2)}</strong> <span class="text-muted" style="font-size:.75rem">(0.75%)</span></td>
+    <td class="font-medium">Included</td>
+    <td class="font-medium">-$${fmt(HAGGLE_SHIP/2)} <span class="text-muted" style="font-size:.75rem">(half)</span></td>
+    <td class="text-accent font-bold" style="font-size:1.05rem">$${fmt(h.sellerReceives)}</td>
+    <td class="font-medium" style="font-size:.8rem">Fee split negotiable</td>
+  </tr>`;
+  $('sellerTableBody').innerHTML = html;
+
+  // Insight
+  const ebayReceives = price - PLATFORMS[0].sellerFee(price) - PLATFORMS[0].sellerShip;
+  const poshReceives = price - PLATFORMS[2].sellerFee(price) - PLATFORMS[2].sellerShip;
+  $('sellerInsight').innerHTML = `
+    <div class="insight-icon" style="background:var(--accent-100);color:var(--accent-600)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+    </div>
+    <div>
+      <h4>$${fmtInt(price)} sale: You save <span class="text-accent">$${fmtInt(h.sellerReceives - ebayReceives)}</span> vs eBay</h4>
+      <p class="insight-bottom" style="margin-top:.5rem">Haggle: <strong class="text-accent">$${fmtInt(h.sellerReceives)}</strong> kept &nbsp;|&nbsp; eBay: $${fmtInt(ebayReceives)} &nbsp;|&nbsp; Poshmark: $${fmtInt(poshReceives)}</p>
+      <div class="insight-footnotes" style="margin-top:.75rem">
+        <p>* 1.5% fee split 50/50 (negotiable). Shipping: 1lb USPS Zone 5. March 2026.</p>
+      </div>
+    </div>`;
+
+  // Keep Gauge — visual bar chart
+  const gaugeItems = [
+    { label:'eBay', receives: ebayReceives, color:'#e53238' },
+    { label:'Poshmark', receives: poshReceives, color:'#c23d5e' },
+    { label:'Mercari', receives: price - PLATFORMS[1].sellerFee(price) - PLATFORMS[1].sellerShip, color:'#4dc1e0' },
+    { label:'Haggle', receives: h.sellerReceives, color:'var(--accent-500)', isHaggle:true },
+  ];
+  let gaugeHtml = '<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-400);margin-bottom:.5rem">What You Keep on a $'+fmtInt(price)+' Sale</div>';
+  gaugeItems.forEach(g => {
+    const pct = Math.max(0, (g.receives / price) * 100);
+    const lost = price - g.receives;
+    gaugeHtml += `<div class="keep-row ${g.isHaggle?'haggle-row':''}">
+      <div class="keep-label">${g.label}</div>
+      <div class="keep-bar-bg">
+        <div class="keep-bar" style="--target-width:${pct}%;background:${g.color}">${pct>=20?'$'+fmtInt(g.receives):''}</div>
+        ${lost > 5 ? `<div class="keep-bar-lost">-$${fmtInt(lost)} lost</div>`:''}
+      </div>
+    </div>`;
+  });
+  $('keepGauge').innerHTML = gaugeHtml;
+
+  // Animate bars on scroll
+  const gaugeObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if(e.isIntersecting) {
+        e.target.querySelectorAll('.keep-bar').forEach((bar,i) => {
+          setTimeout(() => bar.classList.add('animated'), i * 150);
+        });
+        gaugeObs.unobserve(e.target);
+      }
+    });
+  }, {threshold:0.3});
+  gaugeObs.observe($('keepGauge'));
+}
+
+// ─── Render Buyer Table ───
+function renderBuyerTable(price) {
+  const h = haggleCalc(price, 50);
+  $('buyerBadge').textContent = fmtInt(price);
+  let html = '';
+  PLATFORMS.forEach(pl => {
+    const bFee = pl.buyerFee(price);
+    const total = price + bFee + pl.buyerShip;
+    const isRange = pl.buyerShip > 0 && pl.id !== 'poshmark';
+    const totalStr = isRange ? `$${fmtInt(total-3)} ~ $${fmtInt(total+3)}` : `$${fmt(total)}`;
+    const isHigh = total > h.buyerPays + 5;
+    html += `<tr>
+      <td style="padding-left:1.5rem" class="font-bold" style="color:var(--slate-900)">${pl.name}</td>
+      <td>${bFee > 0 ? `$${fmt(bFee)}` : '$0'}</td>
+      <td class="text-muted">${pl.buyerShip > 0 ? '$'+fmt(pl.buyerShip) : (pl.id==='craigslist'?'N/A':'$0 (Seller)')}</td>
+      <td style="background:${isHigh?'var(--rose-50)':'var(--slate-50)'};font-weight:700;color:${isHigh?'var(--rose-700)':'var(--slate-900)'}">${totalStr}</td>
+      <td class="text-muted" style="font-size:.8rem">${pl.buyerNote}</td>
+    </tr>`;
+  });
+  html += `<tr class="row-haggle" style="border-top:2px solid var(--slate-200)">
+    <td style="padding-left:1.5rem;position:relative"><div class="haggle-bar"></div><strong>Haggle</strong></td>
+    <td class="text-accent font-bold">$${fmt(h.buyerFeeShare)} <span class="text-muted" style="font-size:.7rem">(half of 1.5%)</span></td>
+    <td class="text-accent font-bold">$${fmt(h.buyerShipShare)} <span class="text-muted" style="font-size:.7rem">(half)</span></td>
+    <td style="background:rgba(16,185,129,.06);font-weight:700;color:var(--accent-700);font-size:1.05rem">$${fmt(h.buyerPays)}</td>
+    <td class="font-medium" style="font-size:.8rem">Fees &amp; shipping negotiable</td>
+  </tr>`;
+  $('buyerTableBody').innerHTML = html;
+
+  // eBay markup callout
+  const ebayFee = PLATFORMS[0].sellerFee(price) + PLATFORMS[0].sellerShip;
+  $('ebayMarkup').textContent = fmtInt(ebayFee);
+}
+
+// ─── Render Tax Donuts ───
+const CIRC = 2 * Math.PI * 38; // r=38, circumference ≈ 238.76
+function renderTaxTable(price) {
+  const h = haggleCalc(price, 50);
+  const haggleTakes = h.buyerPays - h.sellerReceives;
+  const comparisons = [
+    { name:'eBay', idx:0, color:'#e53238' },
+    { name:'Mercari', idx:1, color:'#4dc1e0' },
+    { name:'Poshmark', idx:2, color:'#c23d5e' },
+    { name:'StockX', idx:3, color:'#006340' },
+  ];
+
+  let maxTakes = 0;
+  let html = '';
+  comparisons.forEach(c => {
+    const pl = PLATFORMS[c.idx];
+    const sellerRec = price - pl.sellerFee(price) - pl.sellerShip;
+    const buyerPays = price + pl.buyerFee(price) + pl.buyerShip;
+    const takes = buyerPays - sellerRec;
+    if(takes > maxTakes) maxTakes = takes;
+    const pct = (takes / price) * 100;
+    const offset = CIRC - (CIRC * Math.min(pct, 100) / 100);
+    html += `<div class="tax-donut-card">
+      <svg class="donut-svg" width="100" height="100" viewBox="0 0 100 100">
+        <circle class="donut-track" cx="50" cy="50" r="38"/>
+        <circle class="donut-ring" cx="50" cy="50" r="38" stroke="${c.color}"
+          stroke-dasharray="${CIRC}" stroke-dashoffset="${offset}"
+          transform="rotate(-90 50 50)"/>
+        <text x="50" y="46" text-anchor="middle" font-size="16" font-weight="800" fill="${c.color}">${pct.toFixed(1)}%</text>
+        <text x="50" y="60" text-anchor="middle" font-size="8" fill="#94a3b8">platform cut</text>
+      </svg>
+      <div class="tax-donut-name">${c.name}</div>
+      <div class="tax-donut-takes rose">-$${fmtInt(takes)}</div>
+      <div class="tax-donut-sub">$${fmtInt(takes - haggleTakes)} more than Haggle</div>
+    </div>`;
+  });
+
+  // Haggle donut
+  const hagglePct = (haggleTakes / price) * 100;
+  const haggleOffset = CIRC - (CIRC * hagglePct / 100);
+  html += `<div class="tax-donut-card haggle-card">
+    <svg class="donut-svg" width="100" height="100" viewBox="0 0 100 100">
+      <circle class="donut-track" cx="50" cy="50" r="38" stroke="var(--accent-100)"/>
+      <circle class="donut-ring" cx="50" cy="50" r="38" stroke="var(--accent-500)"
+        stroke-dasharray="${CIRC}" stroke-dashoffset="${haggleOffset}"
+        transform="rotate(-90 50 50)"/>
+      <text x="50" y="46" text-anchor="middle" font-size="16" font-weight="800" fill="#059669">${hagglePct.toFixed(1)}%</text>
+      <text x="50" y="60" text-anchor="middle" font-size="8" fill="#6b7280">total cut</text>
+    </svg>
+    <div class="tax-donut-name" style="color:var(--accent-700)">Haggle</div>
+    <div class="tax-donut-takes accent">$${fmtInt(haggleTakes)}</div>
+    <div class="tax-donut-sub" style="color:var(--accent-600);font-weight:600">Lowest possible</div>
+  </div>`;
+
+  $('taxDonuts').innerHTML = html;
+
+  const minGap = Math.round(comparisons.reduce((m,c) => {
+    const pl = PLATFORMS[c.idx];
+    const t = (price + pl.buyerFee(price) + pl.buyerShip) - (price - pl.sellerFee(price) - pl.sellerShip);
+    return Math.min(m, t - haggleTakes);
+  }, Infinity));
+
+  $('taxSummary').innerHTML = `
+    <p class="big">Other platforms waste <span>$${fmtInt(minGap)}–$${fmtInt(Math.round(maxTakes - haggleTakes))}</span> per sale.</p>
+    <p class="sub">That gap is pure overhead — fees, processing, middlemen. Money that helps nobody.</p>
+    <p class="result">Haggle total: <span>$${fmtInt(haggleTakes)}</span> on a $${fmtInt(price)} deal. Both sides keep more.</p>`;
+}
+
+// ─── Render Reverse Calc ───
+function renderReverseCalc(price) {
+  const h = haggleCalc(price, 50);
+  const targetPayout = h.sellerReceives;
+  const cards = [
+    { name:'eBay', idx:0 },
+    { name:'Mercari', idx:1 },
+    { name:'Poshmark', idx:2 },
+  ];
+
+  let html = '';
+  let worstBuyerTotal = 0;
+  let worstName = '';
+  cards.forEach(c => {
+    const pl = PLATFORMS[c.idx];
+    // reverse: find list price so seller receives targetPayout
+    // receives = listPrice - sellerFee(listPrice) - sellerShip
+    let lo = price, hi = price * 3;
+    for(let i=0;i<50;i++){
+      const mid = (lo+hi)/2;
+      const rec = mid - pl.sellerFee(mid) - pl.sellerShip;
+      if(rec < targetPayout) lo = mid; else hi = mid;
+    }
+    const listPrice = (lo+hi)/2;
+    const feesShip = listPrice - targetPayout;
+    const buyerTotal = listPrice + pl.buyerFee(listPrice) + pl.buyerShip;
+    if(buyerTotal > worstBuyerTotal){ worstBuyerTotal = buyerTotal; worstName = c.name; }
+    const isWorst = c.name === 'Poshmark';
+    html += `<div class="reverse-card ${isWorst?'worst':''}" style="position:relative">
+      <div>
+        <div class="reverse-card-header"><span class="reverse-card-name">${c.name}</span><span class="reverse-card-badge">List: $${fmtInt(listPrice)}</span></div>
+        <div class="reverse-card-rows">
+          <div class="reverse-card-row"><span>Fees + Shipping</span><span style="color:var(--rose-600);font-weight:500">-$${fmtInt(feesShip)}</span></div>
+          <div class="reverse-card-row"><span>Seller Receives</span><span style="font-weight:700">$${fmtInt(targetPayout)}</span></div>
+        </div>
+      </div>
+      <div class="reverse-card-bottom"><label>Buyer Total Cost</label><div class="value">$${fmtInt(buyerTotal)}</div></div>
+    </div>`;
+  });
+  // Haggle card
+  html += `<div class="reverse-card best" style="position:relative">
+    <div class="best-tag">Fair Market</div>
+    <div>
+      <div class="reverse-card-header" style="margin-top:.5rem"><span class="reverse-card-name" style="color:var(--accent-900);font-size:1.25rem">Haggle</span><span class="reverse-card-badge">List: $${fmtInt(price)}</span></div>
+      <div class="reverse-card-rows">
+        <div class="reverse-card-row"><span style="color:var(--accent-800)">Fees + Shipping</span><span style="color:var(--accent-600);font-weight:700">-$${fmt(price - targetPayout)}</span></div>
+        <div class="reverse-card-row"><span style="color:var(--accent-800)">Seller Receives</span><span style="font-weight:700;color:var(--accent-900)">$${fmtInt(targetPayout)}</span></div>
+      </div>
+    </div>
+    <div class="reverse-card-bottom"><label>Buyer Total Cost</label><div class="value">$${fmtInt(h.buyerPays)}</div></div>
+  </div>`;
+  $('reverseGrid').innerHTML = html;
+
+  $('reverseCallout').innerHTML = `
+    <div class="reverse-callout-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div>
+    <div>
+      <p style="font-weight:500;font-size:1.05rem">To pocket $${fmtInt(targetPayout)} on ${worstName}, you need to list at $${fmtInt(worstBuyerTotal - PLATFORMS[2].buyerShip)}.</p>
+      <p style="color:var(--slate-400)">Your buyer pays <strong style="color:#fff">$${fmtInt(worstBuyerTotal - h.buyerPays)} more</strong> than on Haggle. Higher fees don't just cost sellers — they price out buyers.</p>
+    </div>`;
+}
+
+// ─── Slider ───
+function initSlider() {
+  const track = $('sliderTrack');
+  const thumb = $('sliderThumb');
+  let dragging = false;
+
+  function setSlider(ratio) {
+    splitRatio = Math.max(0, Math.min(100, Math.round(ratio)));
+    const pct = splitRatio;
+    const buyerPct = 100 - pct;
+    thumb.style.left = pct + '%';
+    $('sliderFillBuyer').style.width = pct + '%';
+    $('sliderFillSeller').style.width = (100 - pct) + '%';
+    $('sliderPct').textContent = buyerPct + ' / ' + pct;
+    updateSliderResults();
+  }
+
+  function updateSliderResults() {
+    const h = haggleCalc(currentPrice, splitRatio);
+    $('sliderPrice').textContent = '$' + fmt(currentPrice);
+    $('sliderFee').textContent = `Total Protocol Fee: $${fmt(h.totalFee)} (1.5%)`;
+    $('buyerAmount').textContent = '$' + fmt(h.buyerPays);
+    $('sellerAmount').textContent = '$' + fmt(h.sellerReceives);
+    const buyerPct = ((100 - splitRatio) / 100 * HAGGLE_RATE * 100).toFixed(2);
+    const sellerPct = (splitRatio / 100 * HAGGLE_RATE * 100).toFixed(2);
+    $('buyerDetail').textContent = `Includes ${buyerPct}% fee + $${fmt(HAGGLE_SHIP/2)} ship`;
+    $('sellerDetail').textContent = `Minus ${sellerPct}% fee + $${fmt(HAGGLE_SHIP/2)} ship`;
+
+    // ─── Enhanced card tilt effect ───
+    const card = $('sliderCard');
+    const buyerCard = $('resultBuyer');
+    const sellerCard = $('resultSeller');
+    const norm = (splitRatio - 50) / 50; // -1 (buyer heavy) to +1 (seller heavy)
+    const absNorm = Math.abs(norm);
+
+    // 1) Card 3D rotation — max ±8 degrees with slight Z tilt
+    const tiltY = norm * 8;
+    const tiltZ = norm * -1.5;
+    // Shadow shifts opposite to tilt direction
+    const shadowX = norm * -15;
+    const shadowBlur = 30 + absNorm * 20;
+    const shadowAlpha = 0.12 + absNorm * 0.1;
+    card.style.transform = `perspective(600px) rotateY(${tiltY}deg) rotateZ(${tiltZ}deg)`;
+    card.style.boxShadow = `${shadowX}px 20px ${shadowBlur}px rgba(0,0,0,${shadowAlpha})`;
+
+    // 2) Background gradient shift — subtle color wash toward heavier side
+    if(absNorm > 0.1) {
+      const buyerAlpha = Math.max(0, -norm) * 0.06;
+      const sellerAlpha = Math.max(0, norm) * 0.06;
+      card.style.background = `linear-gradient(${norm < 0 ? '135deg' : '225deg'},
+        rgba(59,130,246,${buyerAlpha}) 0%,
+        #fff 40%, #fff 60%,
+        rgba(16,185,129,${sellerAlpha}) 100%)`;
+    } else {
+      card.style.background = '#fff';
+    }
+
+    // 3) Result cards — dramatic lift/drop with scale and glow
+    const buyerLift = Math.max(0, -norm); // 0–1, bigger when buyer pays more
+    const sellerLift = Math.max(0, norm);  // 0–1, bigger when seller pays more
+
+    // Buyer card: rises when buyer pays more (norm < 0)
+    const bScale = 1 + buyerLift * 0.08;
+    const bY = -buyerLift * 8;
+    const bShadow = buyerLift * 20;
+    const bGlow = buyerLift * 0.25;
+    buyerCard.style.transform = `scale(${bScale}) translateY(${bY}px)`;
+    buyerCard.style.boxShadow = buyerLift > 0.15
+      ? `0 ${4+bShadow}px ${12+bShadow}px rgba(59,130,246,${bGlow})`
+      : 'none';
+    buyerCard.style.borderColor = buyerLift > 0.3 ? 'var(--brand-300)' : 'var(--brand-100)';
+    buyerCard.querySelector('.amount').style.transform = `scale(${1 + buyerLift * 0.1})`;
+    buyerCard.querySelector('.amount').style.color = buyerLift > 0.3 ? 'var(--brand-700)' : 'var(--slate-900)';
+    // fade down when not emphasized
+    buyerCard.style.opacity = sellerLift > 0.5 ? 0.7 : 1;
+
+    // Seller card: rises when seller pays more (norm > 0)
+    const sScale = 1 + sellerLift * 0.08;
+    const sY = -sellerLift * 8;
+    const sShadow = sellerLift * 20;
+    const sGlow = sellerLift * 0.25;
+    sellerCard.style.transform = `scale(${sScale}) translateY(${sY}px)`;
+    sellerCard.style.boxShadow = sellerLift > 0.15
+      ? `0 ${4+sShadow}px ${12+sShadow}px rgba(16,185,129,${sGlow})`
+      : 'none';
+    sellerCard.style.borderColor = sellerLift > 0.3 ? 'var(--accent-300)' : 'var(--accent-100)';
+    sellerCard.querySelector('.amount').style.transform = `scale(${1 + sellerLift * 0.1})`;
+    sellerCard.querySelector('.amount').style.color = sellerLift > 0.3 ? 'var(--accent-700)' : 'var(--slate-900)';
+    sellerCard.style.opacity = buyerLift > 0.5 ? 0.7 : 1;
+  }
+
+  function getPos(e) {
+    const rect = track.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    return (x / rect.width) * 100;
+  }
+
+  thumb.addEventListener('mousedown', () => dragging = true);
+  thumb.addEventListener('touchstart', () => dragging = true, {passive:true});
+  track.addEventListener('click', e => setSlider(getPos(e)));
+  window.addEventListener('mousemove', e => { if(dragging) setSlider(getPos(e)); });
+  window.addEventListener('touchmove', e => { if(dragging) setSlider(getPos(e)); }, {passive:true});
+  window.addEventListener('mouseup', () => dragging = false);
+  window.addEventListener('touchend', () => dragging = false);
+
+  setSlider(50);
+}
+
+// ─── FAQ ───
+function initFAQ() {
+  const faqs = [
+    { q:'How does Haggle charge only 1.5%?', a:'Haggle is protocol infrastructure, not a marketplace. We don\'t maintain storefronts, run ad campaigns, or employ large customer service teams. AI handles negotiation, smart contracts secure payments on-chain, and stablecoin rails eliminate 3% payment processor middlemen. All structural savings go back to you.' },
+    { q:'Is the 1.5% fee the only cost?', a:'Yes. 1.5% of the agreed price covers the full Haggle protocol fee. No listing fees, no payment processing surcharges, no hidden withdrawal charges. Shipping costs are separate and transparent — and even the shipping cost split is negotiable between buyer and seller.' },
+    { q:'What about buyer protection?', a:'Funds are locked on-chain by smart contract until the buyer confirms receipt. If there\'s a dispute, Haggle\'s 3-tier system resolves it: automated rules first, then community voting, then professional arbitration.' },
+    { q:'How does Haggle compare to Depop\'s 0% commission?', a:'Depop claims 0% commission but charges 3.3% + $0.45 in payment processing per transaction. On a $450 sale, that costs $15.30. Haggle\'s total fee is $6.75 — less than half. Plus you get AI negotiation and the ability to split fees with the buyer.' },
+    { q:'Is Haggle only for expensive items?', a:'No. The 1.5% fee works at any price point. A $50 sale costs $0.75 total. Compare that to eBay ($7.20), Mercari ($5.00), or Poshmark ($2.95 flat). Haggle wins at $50 and wins at $5,000.' },
+    { q:'Which platforms does the calculator compare?', a:'eBay, Mercari, Poshmark, StockX, GOAT, Depop, Facebook Marketplace, OfferUp, Grailed, and Craigslist. All fee data is audited and updated as of March 2026.' },
+  ];
+  $('faqList').innerHTML = faqs.map((f,i) => `
+    <div class="faq-item ${i===0?'open':''}">
+      <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+        <span>${f.q}</span>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      </button>
+      <div class="faq-a"><div class="faq-a-inner">${f.a}</div></div>
+    </div>`).join('');
+}
+
+// ─── Price Input ───
+function positionDollarSign() {
+  const input = $('priceInput');
+  const dollar = document.querySelector('.calc-dollar');
+  if(!input || !dollar) return;
+  // Create a hidden span to measure text width
+  const measure = document.createElement('span');
+  measure.style.cssText = 'position:absolute;visibility:hidden;font-family:inherit;font-size:'+getComputedStyle(input).fontSize+';font-weight:800;letter-spacing:-.02em';
+  measure.textContent = input.value || '0';
+  document.body.appendChild(measure);
+  const textW = measure.offsetWidth;
+  document.body.removeChild(measure);
+  const inputW = input.offsetWidth;
+  const dollarW = dollar.offsetWidth;
+  const leftPos = (inputW - textW) / 2 - dollarW - 4;
+  dollar.style.left = Math.max(8, leftPos) + 'px';
+}
+
+function initPriceInput() {
+  const input = $('priceInput');
+  let debounce;
+  input.addEventListener('input', () => {
+    positionDollarSign();
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      const val = parseFloat(input.value.replace(/[^0-9.]/g,''));
+      if(!isNaN(val) && val > 0 && val <= 100000) {
+        currentPrice = val;
+        renderAll();
+      }
+    }, 150);
+  });
+  input.addEventListener('focus', () => { input.select(); positionDollarSign(); });
+  window.addEventListener('resize', positionDollarSign);
+  setTimeout(positionDollarSign, 50);
+}
+
+// ─── Update Hero Stats ───
+function updateHeroStats(price) {
+  const h = haggleCalc(price, 50);
+  const ebayRec = price - PLATFORMS[0].sellerFee(price) - PLATFORMS[0].sellerShip;
+  const diff = h.sellerReceives - ebayRec;
+  const heroEbay = $('heroEbay');
+  const heroHaggle = $('heroHaggle');
+  const heroSave = $('heroSave');
+  if(heroEbay) heroEbay.textContent = '$' + fmtInt(ebayRec);
+  if(heroHaggle) heroHaggle.textContent = '$' + fmtInt(h.sellerReceives);
+  if(heroSave) heroSave.textContent = '+$' + fmtInt(diff);
+  // Animate the numbers
+  [heroEbay, heroHaggle, heroSave].forEach(el => {
+    if(!el) return;
+    el.classList.remove('num-flash');
+    void el.offsetWidth;
+    el.classList.add('num-flash');
+  });
+}
+
+// ─── Render Drain Bars ───
+function renderDrainBars(price) {
+  const h = haggleCalc(price, 50);
+  const drainPlatforms = [
+    { name:'eBay', idx:0, color:'linear-gradient(90deg,#e53238,#ff6b6b)' },
+    { name:'Poshmark', idx:2, color:'linear-gradient(90deg,#c23d5e,#e8768e)' },
+    { name:'StockX', idx:3, color:'linear-gradient(90deg,#006340,#2a9d6e)' },
+    { name:'Mercari', idx:1, color:'linear-gradient(90deg,#4dc1e0,#7dd5ec)' },
+    { name:'Depop', idx:5, color:'linear-gradient(90deg,#ff2300,#ff6b55)' },
+  ];
+
+  const drainPriceEl = $('drainPrice');
+  if(drainPriceEl) drainPriceEl.textContent = fmtInt(price);
+
+  let html = '';
+  drainPlatforms.forEach((dp, i) => {
+    const pl = PLATFORMS[dp.idx];
+    const receives = price - pl.sellerFee(price) - pl.sellerShip;
+    const pct = (receives / price) * 100;
+    const lost = price - receives;
+    html += `<div class="drain-row" style="transition-delay:${i * 0.12}s" data-pct="${pct}">
+      <div class="drain-label">${dp.name}</div>
+      <div class="drain-bar-track">
+        <div class="drain-bar-fill" style="background:${dp.color};color:#fff;width:0" data-target="${pct}"><span>$${fmtInt(receives)}</span></div>
+        <div class="drain-bar-loss">-$${fmtInt(lost)} lost</div>
+      </div>
+    </div>`;
+  });
+  $('drainBars').innerHTML = html;
+
+  // Haggle row
+  const hagglePct = (h.sellerReceives / price) * 100;
+  $('drainHaggle').innerHTML = `<div class="drain-row haggle-row" style="transition-delay:${drainPlatforms.length * 0.12}s" data-pct="${hagglePct}">
+    <div class="drain-label">Haggle</div>
+    <div class="drain-bar-track">
+      <div class="drain-bar-fill" style="width:0" data-target="${hagglePct}"><span>$${fmtInt(h.sellerReceives)} — you keep ${hagglePct.toFixed(1)}%</span></div>
+    </div>
+  </div>`;
+
+  // Re-observe for scroll trigger
+  initDrainObserver();
+}
+
+let drainObserver;
+function initDrainObserver() {
+  if(drainObserver) drainObserver.disconnect();
+  drainObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if(entry.isIntersecting) {
+        // Animate all bars
+        const rows = entry.target.querySelectorAll('.drain-row');
+        rows.forEach((row, i) => {
+          setTimeout(() => {
+            row.classList.add('visible');
+            const fill = row.querySelector('.drain-bar-fill');
+            if(fill) fill.style.width = fill.dataset.target + '%';
+          }, i * 120);
+        });
+        drainObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.2 });
+  const section = $('drainSection');
+  if(section) drainObserver.observe(section);
+}
+
+// ─── Render All ───
+function renderAll() {
+  renderSellerTable(currentPrice);
+  renderBuyerTable(currentPrice);
+  renderTaxTable(currentPrice);
+  renderReverseCalc(currentPrice);
+  updateHeroStats(currentPrice);
+  renderDrainBars(currentPrice);
+  // Update slider card too
+  const h = haggleCalc(currentPrice, splitRatio);
+  $('sliderPrice').textContent = '$' + fmt(currentPrice);
+  $('sliderFee').textContent = `Total Protocol Fee: $${fmt(h.totalFee)} (1.5%)`;
+  $('buyerAmount').textContent = '$' + fmt(h.buyerPays);
+  $('sellerAmount').textContent = '$' + fmt(h.sellerReceives);
+}
+
+// ─── Init ───
+initPriceInput();
+initSlider();
+initFAQ();
+renderAll();
+
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const el = document.querySelector(a.getAttribute('href'));
+    if(el) el.scrollIntoView({behavior:'smooth'});
+  });
+});
+
+// ─── Scroll Reveal (IntersectionObserver) ───
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if(entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal,.reveal-left,.reveal-right,.reveal-scale').forEach(el => revealObserver.observe(el));
+
+// ─── Header shrink on scroll ───
+let lastScroll = 0;
+window.addEventListener('scroll', () => {
+  const header = document.querySelector('.header');
+  if(window.scrollY > 60) header.classList.add('scrolled');
+  else header.classList.remove('scrolled');
+  lastScroll = window.scrollY;
+}, {passive:true});
+
+// ─── Hero floating particles ───
+(function initParticles() {
+  const container = $('heroParticles');
+  if(!container) return;
+  const colors = ['rgba(59,130,246,.3)', 'rgba(16,185,129,.2)', 'rgba(255,255,255,.15)'];
+  for(let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'hero-particle';
+    const size = 3 + Math.random() * 8;
+    p.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;top:${100+Math.random()*20}%;background:${colors[i%colors.length]};animation-duration:${8+Math.random()*12}s;animation-delay:${Math.random()*8}s`;
+    container.appendChild(p);
+  }
+})();
+
+// ─── Price input pulse effect ───
+const priceInputEl = $('priceInput');
+const origInputHandler = priceInputEl.oninput;
+priceInputEl.addEventListener('input', () => {
+  priceInputEl.classList.remove('input-pulse');
+  void priceInputEl.offsetWidth; // reflow
+  priceInputEl.classList.add('input-pulse');
+});
+
+// ─── Row fade-in keyframes (injected dynamically) ───
+const styleSheet = document.createElement('style');
+styleSheet.textContent = '@keyframes rowFadeIn{0%{opacity:0;transform:translateX(-10px)}100%{opacity:1;transform:translateX(0)}}';
+document.head.appendChild(styleSheet);
+</script>
+</body>
+</html>
