@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2P Resale Fee Calculator — Compare eBay, Mercari, Poshmark Fees | Haggle</title>
+<meta name="description" content="See exactly how much you keep when selling on eBay, Mercari, Poshmark, StockX, and more. Haggle's 1.5% total fee means sellers keep more.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --brand-50:#eff6ff;--brand-100:#dbeafe;--brand-200:#bfdbfe;--brand-500:#3b82f6;--brand-600:#2563eb;--brand-700:#1d4ed8;--brand-800:#1e40af;--brand-900:#1e3a8a;--brand-950:#172554;
+  --accent-50:#ecfdf5;--accent-100:#d1fae5;--accent-200:#a7f3d0;--accent-400:#34d399;--accent-500:#10b981;--accent-600:#059669;--accent-700:#047857;
+  --rose-50:#fff1f2;--rose-100:#ffe4e6;--rose-500:#f43f5e;--rose-600:#e11d48;--rose-700:#be123c;
+  --slate-50:#f8fafc;--slate-100:#f1f5f9;--slate-200:#e2e8f0;--slate-300:#cbd5e1;--slate-400:#94a3b8;--slate-500:#64748b;--slate-600:#475569;--slate-700:#334155;--slate-800:#1e293b;--slate-900:#0f172a;
+}
+body{font-family:'Inter',system-ui,sans-serif;color:var(--slate-600);background:var(--slate-50);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}
+
+/* Reveal */
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+/* Number flash */
+@keyframes numPulse{0%{color:var(--brand-600);transform:scale(1.06)}100%{color:inherit;transform:scale(1)}}
+.num-flash{animation:numPulse .35s ease-out}
+
+/* Header */
+.header{position:fixed;top:0;width:100%;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--slate-200);z-index:50;transition:all .3s}
+.header.scrolled{box-shadow:0 4px 20px rgba(0,0,0,.06);border-bottom-color:transparent}
+.header-inner{max-width:72rem;margin:0 auto;padding:0 1.5rem;height:3.5rem;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:.4rem}
+.logo-icon{width:1.75rem;height:1.75rem;border-radius:.4rem;background:var(--brand-600);color:#fff;display:flex;align-items:center;justify-content:center}
+.logo-text{font-weight:800;font-size:1.1rem;color:var(--slate-900);letter-spacing:-.02em}
+.nav{display:flex;align-items:center;gap:1.75rem;font-size:.85rem;font-weight:500}
+.nav a{color:var(--slate-500);transition:color .2s}.nav a:hover{color:var(--brand-600)}
+.btn-primary{padding:.4rem .9rem;background:var(--slate-900);color:#fff;font-size:.8rem;font-weight:600;border-radius:.4rem;transition:background .2s}
+.btn-primary:hover{background:var(--slate-800)}
+
+/* Hero */
+.hero{background:var(--brand-950);color:#fff;padding:6rem 1.5rem 4rem;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-30%;right:-15%;width:60%;height:70%;background:rgba(30,58,138,.35);border-radius:50%;filter:blur(80px)}
+.hero-content{position:relative;z-index:1;max-width:56rem;margin:0 auto}
+.badge{display:inline-block;padding:.2rem .6rem;border-radius:9999px;background:var(--brand-900);border:1px solid var(--brand-800);color:var(--brand-200);font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.25rem}
+.hero h1{font-size:clamp(1.75rem,4.5vw,3.25rem);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:.75rem}
+.hero p{font-size:clamp(.95rem,2vw,1.2rem);color:var(--brand-100);max-width:40rem;margin:0 auto 2rem;line-height:1.5}
+
+/* Calculator Card */
+.calc-card-outer{max-width:34rem;margin:0 auto;padding:2px;border-radius:1rem;background:linear-gradient(135deg,rgba(59,130,246,.35),rgba(16,185,129,.25));box-shadow:0 20px 50px -10px rgba(0,0,0,.35)}
+.calc-card{background:rgba(255,255,255,.93);backdrop-filter:blur(16px);border-radius:.875rem;padding:2rem;text-align:center;color:var(--slate-900)}
+.calc-label{font-size:.7rem;font-weight:700;color:var(--slate-500);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.06em}
+.calc-input-wrap{position:relative}
+.calc-dollar{position:absolute;top:50%;transform:translateY(-50%);font-size:2.25rem;font-weight:800;color:var(--slate-300);pointer-events:none;transition:color .3s}
+.calc-input-wrap:focus-within .calc-dollar{color:var(--brand-500)}
+.calc-input{width:100%;font-size:clamp(2rem,4vw,3rem);font-weight:800;padding:1rem;background:linear-gradient(135deg,var(--slate-50),#fff);border:2px solid var(--slate-200);border-radius:.75rem;outline:none;transition:border-color .3s,box-shadow .3s;color:var(--slate-900);font-family:inherit;letter-spacing:-.02em;text-align:center}
+.calc-input:focus{border-color:var(--brand-400);box-shadow:0 0 0 4px rgba(59,130,246,.1)}
+.hero-stats{display:flex;justify-content:center;gap:1.75rem;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--slate-200)}
+.hero-stat{text-align:center}
+.hero-stat-label{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-400);margin-bottom:.2rem}
+.hero-stat-value{font-size:1.2rem;font-weight:800;color:var(--slate-900);letter-spacing:-.02em;transition:all .3s}
+.hero-stat-value.rose{color:var(--rose-600)}
+.hero-stat-value.accent{color:var(--accent-600)}
+
+/* Drain Section */
+.drain{background:#fff;padding:4rem 1.5rem 3rem;position:relative}
+.drain::before{content:'';position:absolute;top:0;left:0;right:0;height:5rem;background:linear-gradient(to bottom,var(--brand-950),transparent);pointer-events:none}
+.drain-inner{max-width:48rem;margin:0 auto}
+.drain-header{text-align:center;margin-bottom:2.5rem}
+.drain-header h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
+.drain-header p{color:var(--slate-500);font-size:.95rem;margin-top:.35rem}
+.drain-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;opacity:0;transform:translateX(-20px);transition:opacity .5s ease,transform .5s ease}
+.drain-row.visible{opacity:1;transform:translateX(0)}
+.drain-label{width:6rem;flex-shrink:0;text-align:right;font-weight:700;font-size:.8rem;color:var(--slate-700)}
+.drain-bar-track{flex:1;height:2.5rem;background:var(--slate-100);border-radius:.625rem;position:relative;overflow:hidden}
+.drain-bar-fill{height:100%;border-radius:.625rem;display:flex;align-items:center;justify-content:flex-end;padding-right:.75rem;transition:width 1s cubic-bezier(.22,1,.36,1);width:0}
+.drain-bar-fill span{font-weight:800;font-size:.8rem;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.12)}
+.drain-bar-loss{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);font-size:.65rem;font-weight:700;color:var(--rose-500);opacity:0;transition:opacity .4s .7s}
+.drain-row.visible .drain-bar-loss{opacity:1}
+.drain-row.haggle-row .drain-bar-fill{background:linear-gradient(90deg,var(--accent-500),var(--accent-400));color:#fff}
+.drain-row.haggle-row .drain-label{color:var(--accent-700);font-size:.9rem}
+.drain-row.haggle-row .drain-bar-track{height:3rem;border:2px solid var(--accent-300);background:var(--accent-50)}
+.drain-divider{height:1px;background:var(--slate-200);margin:1.25rem 0;position:relative}
+.drain-divider::after{content:'vs';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:0 .6rem;font-size:.6rem;font-weight:700;color:var(--slate-400);text-transform:uppercase;letter-spacing:.08em}
+.drain-footnote{text-align:center;margin-top:1.5rem;font-size:.75rem;color:var(--slate-400)}
+
+/* Mock UI Comparison */
+.mock-section{padding:4rem 1.5rem;overflow:hidden;background:linear-gradient(180deg,#fff,var(--slate-50))}
+.mock-inner{max-width:64rem;margin:0 auto}
+.mock-header{text-align:center;margin-bottom:2.5rem}
+.mock-header h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
+.mock-header p{color:var(--slate-500);font-size:.95rem;margin-top:.35rem}
+.mock-compare{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
+.mock-ui{border-radius:.875rem;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.1);border:1px solid var(--slate-200);background:#fff;transition:transform .3s,box-shadow .3s}
+.mock-ui:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.13)}
+.mock-titlebar{padding:.4rem .65rem;display:flex;align-items:center;gap:.4rem;font-size:.65rem;font-weight:600}
+.mock-titlebar .dots{display:flex;gap:3px}
+.mock-titlebar .dots span{width:7px;height:7px;border-radius:50%}
+.mock-ui.old-ui .mock-titlebar{background:var(--slate-800);color:var(--slate-300)}
+.mock-ui.old-ui .dots span:nth-child(1){background:#ef4444}
+.mock-ui.old-ui .dots span:nth-child(2){background:#eab308}
+.mock-ui.old-ui .dots span:nth-child(3){background:#22c55e}
+.mock-ui.new-ui .mock-titlebar{background:var(--brand-600);color:#fff}
+.mock-ui.new-ui .dots span{background:rgba(255,255,255,.3)}
+.mock-body{padding:.85rem}
+.mock-chat{display:flex;flex-direction:column;gap:.4rem}
+.chat-bubble{max-width:80%;padding:.5rem .75rem;border-radius:.65rem;font-size:.7rem;line-height:1.4}
+.chat-bubble.sent{align-self:flex-end;background:var(--brand-500);color:#fff;border-bottom-right-radius:.15rem}
+.chat-bubble.received{align-self:flex-start;background:var(--slate-100);color:var(--slate-700);border-bottom-left-radius:.15rem}
+.chat-bubble .time{font-size:.5rem;color:rgba(255,255,255,.5);margin-top:.15rem;text-align:right}
+.chat-bubble.received .time{color:var(--slate-400)}
+.chat-ghost{text-align:center;font-size:.6rem;color:var(--slate-400);padding:.5rem 0;font-style:italic}
+.mock-deal{display:flex;flex-direction:column;gap:.5rem}
+.deal-row{display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--slate-100)}
+.deal-row:last-child{border-bottom:none}
+.deal-label{font-size:.65rem;color:var(--slate-500);font-weight:500}
+.deal-value{font-size:.75rem;font-weight:700;color:var(--slate-900)}
+.deal-value.accent{color:var(--accent-600)}
+.deal-value.brand{color:var(--brand-600)}
+.deal-status{display:inline-flex;align-items:center;gap:.2rem;padding:.15rem .4rem;border-radius:9999px;font-size:.55rem;font-weight:700}
+.deal-status.locked{background:var(--accent-50);color:var(--accent-700);border:1px solid var(--accent-200)}
+.deal-status.agreed{background:var(--brand-50);color:var(--brand-700);border:1px solid var(--brand-200)}
+
+/* Seller Table */
+.content{max-width:72rem;margin:0 auto;padding:4rem 1.5rem}
+.section{margin-bottom:4rem}
+.section-head h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:700;color:var(--slate-900);letter-spacing:-.02em;margin-bottom:.35rem}
+.section-head p{font-size:1rem;color:var(--slate-600);max-width:36rem}
+.section-head{margin-bottom:2rem}
+.table-wrap{background:#fff;border-radius:.875rem;box-shadow:0 1px 3px rgba(0,0,0,.05);border:1px solid var(--slate-200);overflow:hidden}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;white-space:nowrap;min-width:600px;font-size:.85rem}
+thead tr{background:var(--slate-50);border-bottom:1px solid var(--slate-200)}
+th{padding:.75rem;text-align:left;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-500);font-weight:600}
+td{padding:.75rem;border-bottom:1px solid var(--slate-100)}
+tbody tr{transition:background .15s}
+tbody tr:hover{background:var(--slate-50)}
+.platform-cell{display:flex;align-items:center;gap:.6rem;font-weight:600;color:var(--slate-900)}
+.platform-icon{width:1.75rem;height:1.75rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;flex-shrink:0}
+.text-rose{color:var(--rose-600)}.text-accent{color:var(--accent-600)}.text-muted{color:var(--slate-500)}.font-bold{font-weight:700}.font-medium{font-weight:500}
+.row-haggle{background:rgba(16,185,129,.04)}
+.row-haggle td{position:relative;z-index:1}
+.haggle-bar{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent-500);border-radius:0 3px 3px 0}
+.haggle-icon{width:1.75rem;height:1.75rem;border-radius:.4rem;background:var(--brand-600);color:#fff;display:flex;align-items:center;justify-content:center}
+.fee-bar-wrap{display:flex;align-items:center;gap:.4rem}
+.fee-bar{height:3px;border-radius:2px;min-width:2px;transition:width .4s ease;flex-shrink:0}
+
+/* Insight */
+.insight{margin-top:1.25rem;background:#fff;border:1px solid var(--slate-200);border-radius:.625rem;padding:1.25rem;display:flex;gap:.75rem;align-items:flex-start;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.insight-icon{flex-shrink:0;width:2.25rem;height:2.25rem;border-radius:9999px;display:flex;align-items:center;justify-content:center}
+.insight h4{font-size:.75rem;font-weight:700;color:var(--slate-900);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem}
+.insight-bottom{font-size:1rem;font-weight:700;color:var(--slate-900);border-top:1px solid var(--slate-100);padding-top:.6rem;margin-top:.6rem}
+.insight-footnotes{margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--slate-100);font-size:.65rem;color:var(--slate-400)}
+
+/* Fee Split Slider */
+.split-section{background:linear-gradient(135deg,var(--slate-900),var(--brand-950));border-radius:1.25rem;padding:2.5rem;color:#fff;overflow:hidden;position:relative;box-shadow:0 20px 40px rgba(0,0,0,.12)}
+.split-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:center}
+.split-tag{display:inline-block;padding:.2rem .6rem;border-radius:.25rem;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:var(--accent-400);font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.split-section h2{font-size:clamp(1.3rem,2.5vw,1.75rem);font-weight:700;margin-bottom:1rem}
+.split-section .desc{color:var(--slate-300);font-size:.95rem;line-height:1.5}
+.split-features{list-style:none;margin-top:1.25rem;display:flex;flex-direction:column;gap:.6rem}
+.split-features li{display:flex;align-items:flex-start;gap:.6rem;color:#fff;font-size:.9rem}
+.split-features svg{flex-shrink:0;color:var(--accent-400)}
+.slider-card{background:#fff;border-radius:.875rem;padding:1.75rem;color:var(--slate-900);box-shadow:0 16px 32px rgba(0,0,0,.12);border:1px solid var(--slate-200);transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s;transform-style:preserve-3d}
+.slider-card-header{text-align:center;margin-bottom:1.5rem}
+.slider-card-header .label{font-size:.7rem;font-weight:600;color:var(--slate-500);text-transform:uppercase;letter-spacing:.04em}
+.slider-card-header .price{font-size:2rem;font-weight:800;color:var(--slate-900);margin-top:.2rem}
+.slider-card-header .fee{font-size:.7rem;color:var(--slate-400);margin-top:.2rem}
+.slider-wrap{margin-bottom:1.5rem;position:relative}
+.slider-labels{display:flex;justify-content:space-between;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--slate-400);margin-bottom:.5rem}
+.slider-labels .buyer-label{color:var(--brand-600)}
+.slider-labels .seller-label{color:var(--accent-600)}
+.slider-track{position:relative;height:.875rem;background:var(--slate-100);border-radius:9999px;overflow:visible;box-shadow:inset 0 1px 3px rgba(0,0,0,.05);cursor:pointer}
+.slider-fill-buyer{position:absolute;left:0;top:0;height:100%;background:var(--brand-500);border-radius:9999px 0 0 9999px;transition:width .12s}
+.slider-fill-seller{position:absolute;right:0;top:0;height:100%;background:var(--accent-500);border-radius:0 9999px 9999px 0;transition:width .12s}
+.slider-thumb{position:absolute;top:50%;transform:translate(-50%,-50%);width:1.75rem;height:1.75rem;background:#fff;border:2.5px solid var(--slate-900);border-radius:9999px;box-shadow:0 2px 6px rgba(0,0,0,.18);cursor:grab;z-index:2;display:flex;align-items:center;justify-content:center;transition:left .12s}
+.slider-thumb:active{cursor:grabbing}
+.slider-thumb::after{content:'';width:2px;height:.6rem;background:var(--slate-300);border-radius:1px}
+.slider-pct{position:absolute;top:-1.5rem;left:50%;transform:translateX(-50%);font-size:.6rem;font-weight:700;color:var(--slate-900);background:#fff;padding:.1rem .35rem;border-radius:.2rem;box-shadow:0 1px 2px rgba(0,0,0,.08);white-space:nowrap}
+.result-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.result-card{border-radius:.625rem;padding:.875rem;border:1px solid;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s,opacity .3s}
+.result-buyer{background:var(--brand-50);border-color:var(--brand-100)}
+.result-seller{background:var(--accent-50);border-color:var(--accent-100)}
+.result-card label{display:block;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.2rem}
+.result-buyer label{color:var(--brand-600)}
+.result-seller label{color:var(--accent-600)}
+.result-card .amount{font-size:1.5rem;font-weight:800;color:var(--slate-900);transition:all .12s}
+.result-card .detail{font-size:.65rem;color:var(--slate-500);margin-top:.15rem}
+
+/* Why + Protection merged */
+.why-section{padding:4rem 1.5rem;background:#fff}
+.why-inner{max-width:64rem;margin:0 auto}
+.why-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start}
+.why-list{list-style:none;display:flex;flex-direction:column;gap:1.25rem;margin-top:1.5rem}
+.why-item{display:flex;gap:.75rem}
+.why-icon{flex-shrink:0;width:2.5rem;height:2.5rem;border-radius:.625rem;display:flex;align-items:center;justify-content:center}
+.why-item h4{font-weight:700;color:var(--slate-900);font-size:.95rem}
+.why-item p{font-size:.8rem;color:var(--slate-600);margin-top:.15rem}
+.protect-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.protect-card{background:var(--slate-50);padding:1.25rem;border-radius:.875rem;border:1px solid var(--slate-200);transition:transform .2s}
+.protect-card:hover{transform:translateY(-2px)}
+.protect-icon{width:2.5rem;height:2.5rem;border-radius:.5rem;display:flex;align-items:center;justify-content:center;margin-bottom:.75rem}
+.protect-card h3{font-weight:700;color:var(--slate-900);font-size:.9rem;margin-bottom:.3rem}
+.protect-card p{font-size:.8rem;color:var(--slate-600);line-height:1.4}
+
+/* CTA */
+.cta{background:linear-gradient(-45deg,var(--brand-700),var(--brand-600),var(--brand-500));padding:5rem 1.5rem;text-align:center}
+.cta-inner{max-width:40rem;margin:0 auto}
+.cta h2{font-size:clamp(1.5rem,3.5vw,2.25rem);font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:.75rem}
+.cta .sub{font-size:1.1rem;color:var(--brand-100);margin-bottom:2rem}
+.cta-btn{padding:.875rem 1.75rem;font-size:1rem;font-weight:700;border-radius:.625rem;display:inline-flex;align-items:center;gap:.4rem;transition:all .2s;border:none;cursor:pointer;font-family:inherit;background:#fff;color:var(--brand-900);box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.cta-btn:hover{transform:scale(1.04);box-shadow:0 8px 20px rgba(0,0,0,.2)}
+.testimonial{margin-top:3rem;max-width:32rem;margin-left:auto;margin-right:auto;background:rgba(255,255,255,.08);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:.875rem;padding:1.5rem;text-align:left}
+.testimonial p{font-size:1rem;font-weight:500;color:#fff;font-style:italic;line-height:1.5}
+.testimonial-author{margin-top:.75rem;display:flex;align-items:center;gap:.5rem}
+.testimonial-avatar{width:2rem;height:2rem;border-radius:9999px;background:var(--brand-400);color:var(--brand-900);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem}
+.testimonial-name{font-weight:700;color:#fff;font-size:.85rem}
+.testimonial-role{font-size:.7rem;color:var(--brand-200)}
+
+/* FAQ */
+.faq{max-width:42rem;margin:0 auto;padding:4rem 1.5rem}
+.faq h2{font-size:1.75rem;font-weight:700;color:var(--slate-900);text-align:center;margin-bottom:2rem}
+.faq-list{display:flex;flex-direction:column;gap:.75rem}
+.faq-item{background:#fff;border-radius:.625rem;border:1px solid var(--slate-200);overflow:hidden}
+.faq-item.open{border-color:var(--brand-300);box-shadow:0 2px 12px rgba(59,130,246,.08)}
+.faq-q{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;cursor:pointer;font-weight:700;color:var(--slate-900);font-size:.9rem;background:var(--slate-50);border:none;width:100%;text-align:left;font-family:inherit;transition:background .1s}
+.faq-q:hover{background:var(--slate-100)}
+.faq-q svg{flex-shrink:0;color:var(--slate-400);transition:transform .25s}
+.faq-item.open .faq-q svg{transform:rotate(180deg)}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .25s ease-out}
+.faq-item.open .faq-a{max-height:16rem}
+.faq-a-inner{padding:1rem 1.25rem;color:var(--slate-600);line-height:1.6;border-top:1px solid var(--slate-100);font-size:.9rem}
+
+/* Footer */
+.footer{background:var(--slate-50);border-top:1px solid var(--slate-200);padding:2rem 1.5rem}
+.footer-inner{max-width:72rem;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem}
+.footer-links{display:flex;gap:1.25rem;font-size:.8rem;font-weight:500}
+.footer-links a{color:var(--slate-500);transition:color .2s}.footer-links a:hover{color:var(--slate-900)}
+.footer-copy{font-size:.7rem;color:var(--slate-400)}
+
+/* Responsive */
+@media(max-width:1024px){.split-grid,.why-grid{grid-template-columns:1fr}.nav{display:none}}
+@media(max-width:768px){.mock-compare{grid-template-columns:1fr}.protect-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.hero-stats{gap:.75rem}.hero-stat-value{font-size:1rem}.calc-card{padding:1.5rem}.result-grid{grid-template-columns:1fr}.footer-inner{flex-direction:column;text-align:center}.drain-label{width:4.5rem;font-size:.7rem}}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-inner">
+    <a href="#" class="logo">
+      <div class="logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <span class="logo-text">Haggle</span>
+    </a>
+    <nav class="nav">
+      <a href="#breakdown">Fee Breakdown</a>
+      <a href="#fee-split">Fee Split</a>
+      <a href="#why">Why 1.5%?</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a href="#" class="btn-primary">Start Selling</a>
+  </div>
+</header>
+
+<!-- 1. HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <span class="badge">2026 Fee Comparison</span>
+    <h1>How Much Are You Really<br>Losing in Fees?</h1>
+    <p>Enter a price. See what every platform actually takes.</p>
+    <div class="calc-card-outer">
+      <div class="calc-card">
+        <label class="calc-label">Agreed Sale Price</label>
+        <div class="calc-input-wrap">
+          <input id="priceInput" type="text" class="calc-input" value="450" placeholder="0" inputmode="decimal">
+          <span class="calc-dollar">$</span>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="hero-stat-label">eBay Seller Gets</div>
+            <div class="hero-stat-value rose" id="heroEbay">$382</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-label">Haggle Seller Gets</div>
+            <div class="hero-stat-value accent" id="heroHaggle">$447</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-label">You Save</div>
+            <div class="hero-stat-value" id="heroSave" style="color:var(--brand-600)">+$65</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. DRAIN BARS -->
+<section class="drain" id="drainSection">
+  <div class="drain-inner">
+    <div class="drain-header">
+      <h2>Where Does Your Money Go?</h2>
+      <p>Same $<span id="drainPrice">450</span> sale — what the seller actually takes home.</p>
+    </div>
+    <div id="drainBars"></div>
+    <div class="drain-divider"></div>
+    <div id="drainHaggle"></div>
+    <p class="drain-footnote">Default 50/50 fee split. Includes platform fees + shipping. Updated March 2026.</p>
+  </div>
+</section>
+
+<!-- 3. MOCK UI COMPARISON -->
+<section class="mock-section reveal">
+  <div class="mock-inner">
+    <div class="mock-header">
+      <h2>Old Way vs. Haggle</h2>
+      <p>Same iPhone, same seller. Different experience.</p>
+    </div>
+    <div class="mock-compare">
+      <div class="mock-ui old-ui">
+        <div class="mock-titlebar"><div class="dots"><span></span><span></span><span></span></div>Marketplace Chat</div>
+        <div class="mock-body">
+          <div class="mock-chat">
+            <div class="chat-bubble received">Hey, is the iPhone still available?<div class="time">Mon 2:14 PM</div></div>
+            <div class="chat-bubble sent">Yes! Asking $450<div class="time">Mon 2:15 PM</div></div>
+            <div class="chat-bubble received">Would you take $300?<div class="time">Mon 2:16 PM</div></div>
+            <div class="chat-bubble sent">That's too low. $420?<div class="time">Mon 2:18 PM</div></div>
+            <div class="chat-bubble received">$320 final offer<div class="time">Mon 2:20 PM</div></div>
+            <div class="chat-ghost">Seen 3 days ago</div>
+            <div class="chat-bubble sent" style="opacity:.4">Hello? Still interested?<div class="time">Thu 11:05 AM</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="mock-ui new-ui">
+        <div class="mock-titlebar"><div class="dots"><span></span><span></span><span></span></div>Haggle — Deal Summary</div>
+        <div class="mock-body">
+          <div class="mock-deal">
+            <div class="deal-row"><span class="deal-label">Item</span><span class="deal-value">iPhone 15 Pro 256GB</span></div>
+            <div class="deal-row"><span class="deal-label">Your Floor Price</span><span class="deal-value">$380</span></div>
+            <div class="deal-row"><span class="deal-label">Agreed Price</span><span class="deal-value accent" style="font-size:.85rem">$423.00</span></div>
+            <div class="deal-row"><span class="deal-label">Protocol Fee (1.5%)</span><span class="deal-value">−$6.35</span></div>
+            <div class="deal-row"><span class="deal-label">You Receive</span><span class="deal-value accent" style="font-size:.85rem">$416.65</span></div>
+            <div class="deal-row"><span class="deal-label">Status</span><span class="deal-status agreed">✓ Agreed</span></div>
+            <div class="deal-row"><span class="deal-label">Payment</span><span class="deal-status locked">🔒 Locked in Escrow</span></div>
+            <div class="deal-row"><span class="deal-label">Time to Deal</span><span class="deal-value brand">4 min 12 sec</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. SELLER TABLE -->
+<div class="content">
+  <section id="breakdown" class="section reveal" style="scroll-margin-top:4rem">
+    <div class="section-head">
+      <h2>Full Breakdown: What You Actually Keep</h2>
+      <p>Same item, same agreed price — wildly different payouts.</p>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th style="padding-left:1.25rem">Platform</th>
+            <th>Selling Fee</th>
+            <th>Processing</th>
+            <th>Shipping</th>
+            <th>Seller Receives</th>
+            <th>Notes</th>
+          </tr></thead>
+          <tbody id="sellerTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="insight" id="sellerInsight"></div>
+  </section>
+
+  <!-- 5. FEE SPLIT SLIDER -->
+  <section id="fee-split" class="section reveal" style="scroll-margin-top:4rem">
+    <div class="split-section">
+      <div class="split-grid">
+        <div>
+          <span class="split-tag">Unique Feature</span>
+          <h2>Even the Fee Split Is Negotiable</h2>
+          <p class="desc">Other platforms fix who pays. On Haggle, even the 1.5% split is negotiable.</p>
+          <ul class="split-features">
+            <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg><span><strong>Default 50/50</strong> — buyer 0.75% + seller 0.75%</span></li>
+            <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg><span><strong>Seller wants max payout?</strong> Shift more to buyer.</span></li>
+            <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg><span><strong>Buyer wants lowest price?</strong> Shift more to seller.</span></li>
+          </ul>
+        </div>
+        <div>
+          <div class="slider-card" id="sliderCard">
+            <div class="slider-card-header">
+              <span class="label">Agreed Price</span>
+              <div class="price" id="sliderPrice">$450.00</div>
+              <div class="fee" id="sliderFee">Total Protocol Fee: $6.75 (1.5%)</div>
+            </div>
+            <div class="slider-wrap">
+              <div class="slider-labels">
+                <span class="buyer-label">Buyer Pays All</span>
+                <span>50 / 50</span>
+                <span class="seller-label">Seller Pays All</span>
+              </div>
+              <div class="slider-track" id="sliderTrack">
+                <div class="slider-fill-buyer" id="sliderFillBuyer"></div>
+                <div class="slider-fill-seller" id="sliderFillSeller"></div>
+                <div class="slider-thumb" id="sliderThumb">
+                  <span class="slider-pct" id="sliderPct">50 / 50</span>
+                </div>
+              </div>
+            </div>
+            <div class="result-grid">
+              <div class="result-card result-buyer" id="resultBuyer">
+                <label>Buyer Pays</label>
+                <div class="amount" id="buyerAmount">$453.38</div>
+                <div class="detail" id="buyerDetail">Includes 0.75% fee</div>
+              </div>
+              <div class="result-card result-seller" id="resultSeller">
+                <label>Seller Receives</label>
+                <div class="amount" id="sellerAmount">$446.62</div>
+                <div class="detail" id="sellerDetail">Minus 0.75% fee</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 6. WHY 1.5% + PROTECTION -->
+<section id="why" class="why-section reveal" style="scroll-margin-top:4rem">
+  <div class="why-inner">
+    <div class="why-grid">
+      <div>
+        <h2 style="font-size:clamp(1.4rem,3vw,2rem);font-weight:800;color:var(--slate-900);margin-bottom:.5rem">How Haggle Keeps Fees at 1.5%</h2>
+        <p style="font-size:.95rem;color:var(--slate-600);line-height:1.5">Other platforms charge 10-20% for storefronts, ads, and credit card processing. <strong style="color:var(--slate-900)">Haggle is infrastructure, not a marketplace.</strong></p>
+        <ul class="why-list">
+          <li class="why-item">
+            <div class="why-icon" style="background:var(--brand-100);color:var(--brand-600)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg></div>
+            <div><h4>No Storefront</h4><p>Direct P2P. No listing fees, no ad spend.</p></div>
+          </li>
+          <li class="why-item">
+            <div class="why-icon" style="background:#f3e8ff;color:#9333ea"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
+            <div><h4>AI Negotiation</h4><p>Fair price found automatically. Zero human overhead.</p></div>
+          </li>
+          <li class="why-item">
+            <div class="why-icon" style="background:var(--accent-100);color:var(--accent-600)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+            <div><h4>Stablecoin Settlement</h4><p>Skip Visa's 3%. Transfer on-chain for pennies.</p></div>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--slate-400);margin-bottom:1rem">Low fees, not low protection</div>
+        <div class="protect-grid">
+          <div class="protect-card">
+            <div class="protect-icon" style="background:#eff6ff;color:var(--brand-600)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div>
+            <h3>Payment Lock</h3>
+            <p>Funds secured until delivery confirmed</p>
+          </div>
+          <div class="protect-card">
+            <div class="protect-icon" style="background:#f3e8ff;color:#9333ea"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
+            <h3>AI Disputes</h3>
+            <p>3-tier resolution in minutes, not weeks</p>
+          </div>
+          <div class="protect-card">
+            <div class="protect-icon" style="background:var(--accent-50);color:var(--accent-600)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg></div>
+            <h3>Trust Scores</h3>
+            <p>Verified transaction history, not fake reviews</p>
+          </div>
+          <div class="protect-card">
+            <div class="protect-icon" style="background:#fef3c7;color:#d97706"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg></div>
+            <h3>Non-Custodial</h3>
+            <p>Direct P2P via smart contracts</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="cta-inner">
+    <h2>Stop Donating Your Margins.</h2>
+    <p class="sub">Keep 98.5% of every sale.</p>
+    <a href="#" class="cta-btn">Start Selling on Haggle <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></a>
+    <div class="testimonial">
+      <p>"I switched from eBay immediately. On a $500 sneaker sale, I kept $492 instead of $430."</p>
+      <div class="testimonial-author">
+        <div class="testimonial-avatar">M</div>
+        <div><div class="testimonial-name">Marcus T.</div><div class="testimonial-role">Early Beta Seller</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="faq" style="scroll-margin-top:4rem">
+  <h2>Frequently Asked Questions</h2>
+  <div class="faq-list" id="faqList"></div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="logo" style="opacity:.4">
+      <div class="logo-icon" style="background:var(--slate-300)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <span class="logo-text" style="color:var(--slate-400)">Haggle</span>
+    </div>
+    <div class="footer-links">
+      <a href="#">Protocol Specs</a>
+      <a href="#">Fee Methodology</a>
+      <a href="#">Terms</a>
+      <a href="#">Privacy</a>
+    </div>
+    <p class="footer-copy">&copy; 2026 Haggle Protocol. Not affiliated with eBay, Poshmark, or Mercari.</p>
+  </div>
+</footer>
+
+<script>
+// ─── Platform Data ───
+const PLATFORMS = [
+  { id:'ebay', name:'eBay', abbr:'eB', color:'#e53238', bgColor:'#fef2f2',
+    sellerFee: p => p * 0.136 + 0.40, sellerShip: 6.00, sellerShipLabel: '-$6.00',
+    notes:'Store discounts available' },
+  { id:'mercari', name:'Mercari', abbr:'Me', color:'#4dc1e0', bgColor:'#ecfeff',
+    sellerFee: p => p * 0.10, sellerShip: 6.99, sellerShipLabel: '-$6.99',
+    notes:'Buyer pays 3.6% protection' },
+  { id:'poshmark', name:'Poshmark', abbr:'Po', color:'#c23d5e', bgColor:'#fff1f2',
+    sellerFee: p => p >= 15 ? p * 0.20 : 2.95, sellerShip: 0, sellerShipLabel: '$0',
+    notes:'Highest commission rate' },
+  { id:'stockx', name:'StockX', abbr:'SX', color:'#006340', bgColor:'#ecfdf5',
+    sellerFee: p => p * 0.09 + p * 0.03 + 5, sellerShip: 0, sellerShipLabel: 'Incl.',
+    notes:'Auth + 3% processing + $5' },
+  { id:'goat', name:'GOAT', abbr:'GO', color:'#1a1a1a', bgColor:'#f1f5f9',
+    sellerFee: p => p * 0.095 + p * 0.029 + 15, sellerShip: 0, sellerShipLabel: 'Label',
+    notes:'9.5% + 2.9% cashout + flat' },
+  { id:'depop', name:'Depop', abbr:'De', color:'#ff2300', bgColor:'#fff5f5',
+    sellerFee: p => p * 0.033 + 0.45, sellerShip: 0, sellerShipLabel: 'Seller sets',
+    notes:'0% commission US only' },
+  { id:'fb', name:'FB Marketplace', abbr:'FB', color:'#1877f2', bgColor:'#dbeafe',
+    sellerFee: p => p * 0.10, sellerShip: 0, sellerShipLabel: '$0',
+    notes:'0% for local pickup' },
+  { id:'offerup', name:'OfferUp', abbr:'OU', color:'#00b57c', bgColor:'#ecfdf5',
+    sellerFee: p => p * 0.129, sellerShip: 0, sellerShipLabel: '$0',
+    notes:'0% for local pickup' },
+  { id:'grailed', name:'Grailed', abbr:'Gr', color:'#1a1a1a', bgColor:'#f8fafc',
+    sellerFee: p => p * 0.09 + p * 0.0349 + 0.49, sellerShip: 0, sellerShipLabel: '$0',
+    notes:"Men's luxury/streetwear" },
+  { id:'craigslist', name:'Craigslist', abbr:'CL', color:'#5a0a9f', bgColor:'#f3e8ff',
+    sellerFee: _ => 0, sellerShip: 0, sellerShipLabel: 'N/A',
+    notes:'Zero buyer protection' },
+];
+
+const HAGGLE_RATE = 0.015;
+const HAGGLE_SHIP = 4.99;
+let currentPrice = 450;
+let splitRatio = 50;
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtInt = n => Math.round(n).toLocaleString('en-US');
+
+function haggleCalc(price, split) {
+  const totalFee = price * HAGGLE_RATE;
+  const buyerFeeShare = totalFee * ((100 - split) / 100);
+  const sellerFeeShare = totalFee * (split / 100);
+  const buyerShipShare = HAGGLE_SHIP * 0.5;
+  const sellerShipShare = HAGGLE_SHIP * 0.5;
+  return {
+    totalFee, buyerPays: price + buyerFeeShare + buyerShipShare,
+    sellerReceives: price - sellerFeeShare - sellerShipShare,
+    buyerFeeShare, sellerFeeShare, buyerShipShare, sellerShipShare
+  };
+}
+
+// ─── Seller Table ───
+function renderSellerTable(price) {
+  const h = haggleCalc(price, 50);
+  const maxFee = Math.max(...PLATFORMS.map(pl => pl.sellerFee(price) + pl.sellerShip));
+  let html = '';
+  PLATFORMS.forEach(pl => {
+    const fee = pl.sellerFee(price);
+    const receives = price - fee - pl.sellerShip;
+    const feePct = maxFee > 0 ? ((fee + pl.sellerShip) / maxFee * 100) : 0;
+    const barColor = fee > price * 0.15 ? 'var(--rose-400)' : fee > 0 ? 'var(--slate-300)' : 'var(--accent-300)';
+    html += `<tr>
+      <td style="padding-left:1.25rem"><div class="platform-cell"><div class="platform-icon" style="background:${pl.bgColor};color:${pl.color}">${pl.abbr}</div>${pl.name}</div></td>
+      <td class="${fee>price*0.15?'text-rose font-bold':'font-medium'}"><div class="fee-bar-wrap">-$${fmt(fee)}<div class="fee-bar" style="width:${feePct}%;background:${barColor}"></div></div></td>
+      <td class="text-muted">${fee>0?'Included':'—'}</td>
+      <td class="text-muted">${pl.sellerShipLabel}</td>
+      <td class="font-bold ${receives<h.sellerReceives-5?'text-rose':''}">${receives>=0?'$'+fmt(receives):'-$'+fmt(-receives)}</td>
+      <td class="text-muted" style="font-size:.75rem">${pl.notes}</td>
+    </tr>`;
+  });
+  html += `<tr class="row-haggle" style="border-top:2px solid var(--slate-200)">
+    <td style="padding-left:1.25rem;position:relative"><div class="haggle-bar"></div><div class="platform-cell"><div class="haggle-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><strong>Haggle</strong></div></td>
+    <td class="text-accent"><strong>-$${fmt(h.totalFee/2)}</strong> <span class="text-muted" style="font-size:.7rem">(0.75%)</span></td>
+    <td class="font-medium">Included</td>
+    <td class="font-medium">-$${fmt(HAGGLE_SHIP/2)}</td>
+    <td class="text-accent font-bold">$${fmt(h.sellerReceives)}</td>
+    <td class="font-medium" style="font-size:.75rem">Fee split negotiable</td>
+  </tr>`;
+  $('sellerTableBody').innerHTML = html;
+
+  const ebayRec = price - PLATFORMS[0].sellerFee(price) - PLATFORMS[0].sellerShip;
+  const poshRec = price - PLATFORMS[2].sellerFee(price) - PLATFORMS[2].sellerShip;
+  $('sellerInsight').innerHTML = `
+    <div class="insight-icon" style="background:var(--accent-100);color:var(--accent-600)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+    </div>
+    <div>
+      <h4>$${fmtInt(price)} sale: You save <span class="text-accent">$${fmtInt(h.sellerReceives-ebayRec)}</span> vs eBay</h4>
+      <p class="insight-bottom">Haggle: <strong class="text-accent">$${fmtInt(h.sellerReceives)}</strong> | eBay: $${fmtInt(ebayRec)} | Poshmark: $${fmtInt(poshRec)}</p>
+      <div class="insight-footnotes"><p>* 1.5% fee split 50/50 (negotiable). Shipping: 1lb USPS Zone 5. March 2026.</p></div>
+    </div>`;
+}
+
+// ─── Drain Bars ───
+function renderDrainBars(price) {
+  const h = haggleCalc(price, 50);
+  const drainPlatforms = [
+    { name:'eBay', idx:0, color:'linear-gradient(90deg,#e53238,#ff6b6b)' },
+    { name:'Poshmark', idx:2, color:'linear-gradient(90deg,#c23d5e,#e8768e)' },
+    { name:'StockX', idx:3, color:'linear-gradient(90deg,#006340,#2a9d6e)' },
+    { name:'Mercari', idx:1, color:'linear-gradient(90deg,#4dc1e0,#7dd5ec)' },
+    { name:'Depop', idx:5, color:'linear-gradient(90deg,#ff2300,#ff6b55)' },
+  ];
+  if($('drainPrice')) $('drainPrice').textContent = fmtInt(price);
+
+  let html = '';
+  drainPlatforms.forEach((dp, i) => {
+    const pl = PLATFORMS[dp.idx];
+    const receives = price - pl.sellerFee(price) - pl.sellerShip;
+    const pct = (receives / price) * 100;
+    const lost = price - receives;
+    html += `<div class="drain-row" style="transition-delay:${i*.1}s" data-pct="${pct}">
+      <div class="drain-label">${dp.name}</div>
+      <div class="drain-bar-track">
+        <div class="drain-bar-fill" style="background:${dp.color};color:#fff;width:0" data-target="${pct}"><span>$${fmtInt(receives)}</span></div>
+        <div class="drain-bar-loss">-$${fmtInt(lost)} lost</div>
+      </div>
+    </div>`;
+  });
+  $('drainBars').innerHTML = html;
+
+  const hagglePct = (h.sellerReceives / price) * 100;
+  $('drainHaggle').innerHTML = `<div class="drain-row haggle-row" style="transition-delay:${drainPlatforms.length*.1}s" data-pct="${hagglePct}">
+    <div class="drain-label">Haggle</div>
+    <div class="drain-bar-track">
+      <div class="drain-bar-fill" style="width:0" data-target="${hagglePct}"><span>$${fmtInt(h.sellerReceives)} — keep ${hagglePct.toFixed(1)}%</span></div>
+    </div>
+  </div>`;
+  initDrainObserver();
+}
+
+let drainObs;
+function initDrainObserver() {
+  if(drainObs) drainObs.disconnect();
+  drainObs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if(e.isIntersecting) {
+        e.target.querySelectorAll('.drain-row').forEach((row, i) => {
+          setTimeout(() => {
+            row.classList.add('visible');
+            const fill = row.querySelector('.drain-bar-fill');
+            if(fill) fill.style.width = fill.dataset.target + '%';
+          }, i * 100);
+        });
+        drainObs.unobserve(e.target);
+      }
+    });
+  }, {threshold:0.2});
+  drainObs.observe($('drainSection'));
+}
+
+// ─── Hero Stats ───
+function updateHeroStats(price) {
+  const h = haggleCalc(price, 50);
+  const ebayRec = price - PLATFORMS[0].sellerFee(price) - PLATFORMS[0].sellerShip;
+  const diff = h.sellerReceives - ebayRec;
+  const els = [$('heroEbay'), $('heroHaggle'), $('heroSave')];
+  if(els[0]) els[0].textContent = '$' + fmtInt(ebayRec);
+  if(els[1]) els[1].textContent = '$' + fmtInt(h.sellerReceives);
+  if(els[2]) els[2].textContent = '+$' + fmtInt(diff);
+  els.forEach(el => { if(!el) return; el.classList.remove('num-flash'); void el.offsetWidth; el.classList.add('num-flash'); });
+}
+
+// ─── Slider ───
+function initSlider() {
+  const track = $('sliderTrack'), thumb = $('sliderThumb');
+  let dragging = false;
+
+  function setSlider(ratio) {
+    splitRatio = Math.max(0, Math.min(100, Math.round(ratio)));
+    thumb.style.left = splitRatio + '%';
+    $('sliderFillBuyer').style.width = splitRatio + '%';
+    $('sliderFillSeller').style.width = (100 - splitRatio) + '%';
+    $('sliderPct').textContent = (100 - splitRatio) + ' / ' + splitRatio;
+    updateSliderResults();
+  }
+
+  function updateSliderResults() {
+    const h = haggleCalc(currentPrice, splitRatio);
+    $('sliderPrice').textContent = '$' + fmt(currentPrice);
+    $('sliderFee').textContent = `Total Protocol Fee: $${fmt(h.totalFee)} (1.5%)`;
+    $('buyerAmount').textContent = '$' + fmt(h.buyerPays);
+    $('sellerAmount').textContent = '$' + fmt(h.sellerReceives);
+    $('buyerDetail').textContent = `Includes ${((100-splitRatio)/100*HAGGLE_RATE*100).toFixed(2)}% fee + $${fmt(HAGGLE_SHIP/2)} ship`;
+    $('sellerDetail').textContent = `Minus ${(splitRatio/100*HAGGLE_RATE*100).toFixed(2)}% fee + $${fmt(HAGGLE_SHIP/2)} ship`;
+
+    // Card tilt
+    const card = $('sliderCard');
+    const norm = (splitRatio - 50) / 50;
+    card.style.transform = `perspective(600px) rotateY(${norm*6}deg)`;
+    card.style.boxShadow = `${norm*-12}px 16px ${28+Math.abs(norm)*16}px rgba(0,0,0,${0.1+Math.abs(norm)*0.08})`;
+  }
+
+  function getPos(e) {
+    const rect = track.getBoundingClientRect();
+    return ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) / rect.width * 100;
+  }
+
+  thumb.addEventListener('mousedown', () => dragging = true);
+  thumb.addEventListener('touchstart', () => dragging = true, {passive:true});
+  track.addEventListener('click', e => setSlider(getPos(e)));
+  window.addEventListener('mousemove', e => { if(dragging) setSlider(getPos(e)); });
+  window.addEventListener('touchmove', e => { if(dragging) setSlider(getPos(e)); }, {passive:true});
+  window.addEventListener('mouseup', () => dragging = false);
+  window.addEventListener('touchend', () => dragging = false);
+  setSlider(50);
+}
+
+// ─── FAQ ───
+function initFAQ() {
+  const faqs = [
+    { q:'How does Haggle charge only 1.5%?', a:'Haggle is protocol infrastructure, not a marketplace. No storefronts, no ads, no large support teams. AI handles negotiation, smart contracts secure payments on-chain, and stablecoin rails eliminate 3% payment processor fees.' },
+    { q:'Is the 1.5% fee the only cost?', a:'Yes. 1.5% of the agreed price covers the full protocol fee. No listing fees, no processing surcharges, no hidden withdrawal charges. Shipping costs are separate and transparent — even the shipping split is negotiable.' },
+    { q:'What about buyer protection?', a:'Funds are locked on-chain by smart contract until the buyer confirms receipt. Disputes go through a 3-tier system: automated rules, community voting, then professional arbitration.' },
+    { q:'Is Haggle only for expensive items?', a:'No. A $50 sale costs $0.75 total. Compare: eBay ($7.20), Mercari ($5.00), Poshmark ($2.95). Haggle wins at $50 and at $5,000.' },
+  ];
+  $('faqList').innerHTML = faqs.map((f,i) => `
+    <div class="faq-item ${i===0?'open':''}">
+      <button class="faq-q" onclick="this.parentElement.classList.toggle('open')">
+        <span>${f.q}</span>
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      </button>
+      <div class="faq-a"><div class="faq-a-inner">${f.a}</div></div>
+    </div>`).join('');
+}
+
+// ─── Price Input ───
+function positionDollarSign() {
+  const input = $('priceInput'), dollar = document.querySelector('.calc-dollar');
+  if(!input||!dollar) return;
+  const m = document.createElement('span');
+  m.style.cssText = 'position:absolute;visibility:hidden;font-family:inherit;font-size:'+getComputedStyle(input).fontSize+';font-weight:800;letter-spacing:-.02em';
+  m.textContent = input.value || '0';
+  document.body.appendChild(m);
+  dollar.style.left = Math.max(8, (input.offsetWidth - m.offsetWidth)/2 - dollar.offsetWidth - 4) + 'px';
+  document.body.removeChild(m);
+}
+
+function initPriceInput() {
+  const input = $('priceInput');
+  let debounce;
+  input.addEventListener('input', () => {
+    positionDollarSign();
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      const val = parseFloat(input.value.replace(/[^0-9.]/g,''));
+      if(!isNaN(val) && val > 0 && val <= 100000) { currentPrice = val; renderAll(); }
+    }, 150);
+  });
+  input.addEventListener('focus', () => { input.select(); positionDollarSign(); });
+  window.addEventListener('resize', positionDollarSign);
+  setTimeout(positionDollarSign, 50);
+}
+
+// ─── Render All ───
+function renderAll() {
+  renderSellerTable(currentPrice);
+  updateHeroStats(currentPrice);
+  renderDrainBars(currentPrice);
+  const h = haggleCalc(currentPrice, splitRatio);
+  $('sliderPrice').textContent = '$' + fmt(currentPrice);
+  $('sliderFee').textContent = `Total Protocol Fee: $${fmt(h.totalFee)} (1.5%)`;
+  $('buyerAmount').textContent = '$' + fmt(h.buyerPays);
+  $('sellerAmount').textContent = '$' + fmt(h.sellerReceives);
+}
+
+// ─── Init ───
+initPriceInput();
+initSlider();
+initFAQ();
+renderAll();
+
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => { e.preventDefault(); const el = document.querySelector(a.getAttribute('href')); if(el) el.scrollIntoView({behavior:'smooth'}); });
+});
+
+// Scroll reveal
+const revealObs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }});
+}, {threshold:0.1, rootMargin:'0px 0px -30px 0px'});
+document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+// Header shrink
+window.addEventListener('scroll', () => {
+  document.querySelector('.header').classList.toggle('scrolled', window.scrollY > 50);
+}, {passive:true});
+</script>
+</body>
+</html>
