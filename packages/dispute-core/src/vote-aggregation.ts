@@ -66,6 +66,18 @@ export interface LargePanelResult {
   included_count: number;
   total_voters: number;
   agreement: AgreementZone;
+  /** True if K-Means fallback was used due to agreement failure. */
+  fallback_used: boolean;
+  /** K-Means cluster info, only present when fallback_used is true. */
+  clusters?: KMeansCluster[];
+}
+
+// -- K-Means types --
+export interface KMeansCluster {
+  centroid: number;
+  member_count: number;
+  total_weight: number;
+  is_majority: boolean;
 }
 
 export type VoteAggregationResult = SmallPanelResult | LargePanelResult;
@@ -217,6 +229,7 @@ export function aggregateLargePanel(
     included_count: included.length,
     total_voters: votes.length,
     agreement,
+    fallback_used: false,
   };
 }
 
@@ -266,8 +279,24 @@ function computeAgreementZone(
     );
   }
 
+  // Polarization check: even if zone ratio is OK, if no votes are near
+  // the center (within ±15 points), the distribution is bimodal → "failed"
+  const CENTER_BAND = 15;
+  const centerLow = Math.max(0, center - CENTER_BAND);
+  const centerHigh = Math.min(100, center + CENTER_BAND);
+  let centerWeight = 0;
+  for (const v of votes) {
+    if (v.value >= centerLow && v.value <= centerHigh) {
+      centerWeight += getWeight(v);
+    }
+  }
+  const centerDensity = centerWeight / totalWeight;
+
   let strength: AgreementStrength;
-  if (agreementRatio >= 0.75) strength = "strong";
+  if (centerDensity < 0.10) {
+    // Bimodal: less than 10% of weight near center → polarized, force failed
+    strength = "failed";
+  } else if (agreementRatio >= 0.75) strength = "strong";
   else if (agreementRatio >= 0.6) strength = "moderate";
   else if (agreementRatio >= 0.45) strength = "weak";
   else strength = "failed";
@@ -319,6 +348,182 @@ export function getMajorityReviewers(
   return votes
     .filter((v) => v.value >= low && v.value <= high)
     .map((v) => v.reviewer_id);
+}
+
+// ---------------------------------------------------------------------------
+// K-Means Fallback (deterministic, seeded PRNG)
+// ---------------------------------------------------------------------------
+
+/**
+ * Seeded PRNG (Mulberry32). Deterministic: same seed = same sequence.
+ * Used to make K-Means initialization reproducible.
+ */
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Simple string hash → integer seed.
+ * Used to derive a deterministic seed from dispute_id.
+ */
+export function hashToSeed(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash + char) | 0;
+  }
+  return hash;
+}
+
+interface WeightedPoint {
+  value: number;
+  weight: number;
+  index: number;
+}
+
+/**
+ * Deterministic K-Means clustering (K=2) for polarized vote detection.
+ *
+ * Used only when Trimmed Mean agreement fails (ratio < 0.45).
+ * Seed is derived from dispute_id for reproducibility.
+ */
+function kMeans2(
+  points: WeightedPoint[],
+  seed: number,
+  maxIter: number = 50,
+): { clusters: [WeightedPoint[], WeightedPoint[]]; centroids: [number, number] } {
+  const rng = mulberry32(seed);
+
+  // Initialize centroids: pick two distinct random points
+  let c1 = points[Math.floor(rng() * points.length)].value;
+  let c2 = c1;
+  let attempts = 0;
+  while (c2 === c1 && attempts < 20) {
+    c2 = points[Math.floor(rng() * points.length)].value;
+    attempts++;
+  }
+  // If all identical, just split at midpoint
+  if (c1 === c2) {
+    c1 = Math.max(0, c1 - 1);
+    c2 = Math.min(100, c2 + 1);
+  }
+  // Ensure c1 < c2
+  if (c1 > c2) [c1, c2] = [c2, c1];
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    const g1: WeightedPoint[] = [];
+    const g2: WeightedPoint[] = [];
+
+    for (const p of points) {
+      if (Math.abs(p.value - c1) <= Math.abs(p.value - c2)) {
+        g1.push(p);
+      } else {
+        g2.push(p);
+      }
+    }
+
+    // Weighted centroids
+    const w1 = g1.reduce((s, p) => s + p.weight, 0);
+    const w2 = g2.reduce((s, p) => s + p.weight, 0);
+    const nc1 = w1 > 0 ? g1.reduce((s, p) => s + p.value * p.weight, 0) / w1 : c1;
+    const nc2 = w2 > 0 ? g2.reduce((s, p) => s + p.value * p.weight, 0) / w2 : c2;
+
+    if (Math.abs(nc1 - c1) < 0.01 && Math.abs(nc2 - c2) < 0.01) {
+      return { clusters: [g1, g2], centroids: [nc1, nc2] };
+    }
+    c1 = nc1;
+    c2 = nc2;
+  }
+
+  // Final assignment
+  const g1: WeightedPoint[] = [];
+  const g2: WeightedPoint[] = [];
+  for (const p of points) {
+    if (Math.abs(p.value - c1) <= Math.abs(p.value - c2)) {
+      g1.push(p);
+    } else {
+      g2.push(p);
+    }
+  }
+
+  return { clusters: [g1, g2], centroids: [c1, c2] };
+}
+
+/**
+ * Run K-Means fallback on a set of votes.
+ * Returns the majority cluster's centroid as the result.
+ */
+function runKMeansFallback(
+  votes: ReviewerVote[],
+  seed: number,
+): { result: number; clusters: KMeansCluster[]; agreement: AgreementZone } {
+  const points: WeightedPoint[] = votes.map((v, i) => ({
+    value: v.value,
+    weight: getWeight(v),
+    index: i,
+  }));
+
+  const { clusters, centroids } = kMeans2(points, seed);
+
+  const w0 = clusters[0].reduce((s, p) => s + p.weight, 0);
+  const w1 = clusters[1].reduce((s, p) => s + p.weight, 0);
+  const majorIdx = w0 >= w1 ? 0 : 1;
+
+  const kmClusters: KMeansCluster[] = clusters.map((c, i) => ({
+    centroid: Math.round(centroids[i] * 100) / 100,
+    member_count: c.length,
+    total_weight: Math.round(c.reduce((s, p) => s + p.weight, 0) * 100) / 100,
+    is_majority: i === majorIdx,
+  }));
+
+  const majorCentroid = centroids[majorIdx];
+  const result = roundTo5(majorCentroid);
+
+  // Recompute agreement zone around K-Means result
+  const agreement = computeAgreementZone(votes, majorCentroid);
+
+  return { result, clusters: kmClusters, agreement };
+}
+
+/**
+ * Aggregate large panel votes with K-Means fallback.
+ *
+ * 1. Run Trimmed Mean → Agreement Zone
+ * 2. If agreement.strength === "failed" (ratio < 0.45): run K-Means fallback
+ * 3. K-Means uses seed derived from dispute_id for deterministic results
+ *
+ * @param votes Reviewer votes
+ * @param dispute_id Used to seed K-Means PRNG (deterministic)
+ * @param trimPct Trim percentage (default 0.20)
+ */
+export function aggregateWithFallback(
+  votes: ReviewerVote[],
+  dispute_id: string,
+  trimPct: number = 0.2,
+): LargePanelResult {
+  const primary = aggregateLargePanel(votes, trimPct);
+
+  if (primary.agreement.strength !== "failed") {
+    return primary;
+  }
+
+  // Fallback: K-Means with deterministic seed
+  const seed = hashToSeed(dispute_id);
+  const fallback = runKMeansFallback(votes, seed);
+
+  return {
+    ...primary,
+    result: fallback.result,
+    agreement: fallback.agreement,
+    fallback_used: true,
+    clusters: fallback.clusters,
+  };
 }
 
 /**
