@@ -42,8 +42,8 @@ a{text-decoration:none;color:inherit}
 .hero::before{content:'';position:absolute;top:-30%;right:-15%;width:60%;height:70%;background:rgba(30,58,138,.35);border-radius:50%;filter:blur(80px)}
 .hero-content{position:relative;z-index:1;max-width:56rem;margin:0 auto}
 .badge{display:inline-block;padding:.2rem .6rem;border-radius:9999px;background:var(--brand-900);border:1px solid var(--brand-800);color:var(--brand-200);font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.25rem}
-.hero h1{font-size:clamp(1.75rem,4.5vw,3.25rem);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:.75rem}
-.hero p{font-size:clamp(.95rem,2vw,1.2rem);color:var(--brand-100);max-width:40rem;margin:0 auto 2rem;line-height:1.5}
+.hero h1{font-size:clamp(2rem,5vw,3.75rem);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-bottom:1rem}
+.hero p{font-size:clamp(1rem,2.5vw,1.35rem);color:var(--brand-100);max-width:48rem;margin:0 auto 3rem;line-height:1.6}
 
 /* Calculator Card */
 .calc-card-outer{max-width:34rem;margin:0 auto;padding:2px;border-radius:1rem;background:linear-gradient(135deg,rgba(59,130,246,.35),rgba(16,185,129,.25));box-shadow:0 20px 50px -10px rgba(0,0,0,.35)}
@@ -52,7 +52,7 @@ a{text-decoration:none;color:inherit}
 .calc-input-wrap{position:relative}
 .calc-dollar{position:absolute;top:50%;transform:translateY(-50%);font-size:2.25rem;font-weight:800;color:var(--slate-300);pointer-events:none;transition:color .3s}
 .calc-input-wrap:focus-within .calc-dollar{color:var(--brand-500)}
-.calc-input{width:100%;font-size:clamp(2rem,4vw,3rem);font-weight:800;padding:1rem;background:linear-gradient(135deg,var(--slate-50),#fff);border:2px solid var(--slate-200);border-radius:.75rem;outline:none;transition:border-color .3s,box-shadow .3s;color:var(--slate-900);font-family:inherit;letter-spacing:-.02em;text-align:center}
+.calc-input{width:100%;font-size:clamp(2.25rem,4.5vw,3.5rem);font-weight:800;padding:1.25rem 1.5rem;background:linear-gradient(135deg,var(--slate-50),#fff);border:2px solid var(--slate-200);border-radius:1rem;outline:none;transition:border-color .3s,box-shadow .3s;color:var(--slate-900);font-family:inherit;letter-spacing:-.02em;text-align:center}
 .calc-input:focus{border-color:var(--brand-400);box-shadow:0 0 0 4px rgba(59,130,246,.1)}
 .hero-stats{display:flex;justify-content:center;gap:1.75rem;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--slate-200)}
 .hero-stat{text-align:center}
@@ -66,8 +66,8 @@ a{text-decoration:none;color:inherit}
 .drain::before{content:'';position:absolute;top:0;left:0;right:0;height:5rem;background:linear-gradient(to bottom,var(--brand-950),transparent);pointer-events:none}
 .drain-inner{max-width:48rem;margin:0 auto}
 .drain-header{text-align:center;margin-bottom:2.5rem}
-.drain-header h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
-.drain-header p{color:var(--slate-500);font-size:.95rem;margin-top:.35rem}
+.drain-header h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
+.drain-header p{color:var(--slate-500);font-size:1rem;margin-top:.5rem}
 .drain-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;opacity:0;transform:translateX(-20px);transition:opacity .5s ease,transform .5s ease}
 .drain-row.visible{opacity:1;transform:translateX(0)}
 .drain-label{width:6rem;flex-shrink:0;text-align:right;font-weight:700;font-size:.8rem;color:var(--slate-700)}
@@ -87,7 +87,7 @@ a{text-decoration:none;color:inherit}
 .mock-section{padding:4rem 1.5rem;overflow:hidden;background:linear-gradient(180deg,#fff,var(--slate-50))}
 .mock-inner{max-width:64rem;margin:0 auto}
 .mock-header{text-align:center;margin-bottom:2.5rem}
-.mock-header h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
+.mock-header h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:800;color:var(--slate-900);letter-spacing:-.02em}
 .mock-header p{color:var(--slate-500);font-size:.95rem;margin-top:.35rem}
 .mock-compare{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
 .mock-ui{border-radius:.875rem;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.1);border:1px solid var(--slate-200);background:#fff;transition:transform .3s,box-shadow .3s}
@@ -123,7 +123,7 @@ a{text-decoration:none;color:inherit}
 /* Seller Table */
 .content{max-width:72rem;margin:0 auto;padding:4rem 1.5rem}
 .section{margin-bottom:4rem}
-.section-head h2{font-size:clamp(1.4rem,3vw,1.85rem);font-weight:700;color:var(--slate-900);letter-spacing:-.02em;margin-bottom:.35rem}
+.section-head h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;color:var(--slate-900);letter-spacing:-.02em;margin-bottom:.5rem}
 .section-head p{font-size:1rem;color:var(--slate-600);max-width:36rem}
 .section-head{margin-bottom:2rem}
 .table-wrap{background:#fff;border-radius:.875rem;box-shadow:0 1px 3px rgba(0,0,0,.05);border:1px solid var(--slate-200);overflow:hidden}
@@ -155,10 +155,10 @@ tbody tr:hover{background:var(--slate-50)}
 .split-section{background:linear-gradient(135deg,var(--slate-900),var(--brand-950));border-radius:1.25rem;padding:2.5rem;color:#fff;overflow:hidden;position:relative;box-shadow:0 20px 40px rgba(0,0,0,.12)}
 .split-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:center}
 .split-tag{display:inline-block;padding:.2rem .6rem;border-radius:.25rem;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:var(--accent-400);font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
-.split-section h2{font-size:clamp(1.3rem,2.5vw,1.75rem);font-weight:700;margin-bottom:1rem}
-.split-section .desc{color:var(--slate-300);font-size:.95rem;line-height:1.5}
+.split-section h2{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;margin-bottom:1.5rem}
+.split-section .desc{color:var(--slate-300);font-size:1.05rem;line-height:1.6}
 .split-features{list-style:none;margin-top:1.25rem;display:flex;flex-direction:column;gap:.6rem}
-.split-features li{display:flex;align-items:flex-start;gap:.6rem;color:#fff;font-size:.9rem}
+.split-features li{display:flex;align-items:flex-start;gap:.75rem;color:#fff;font-size:.95rem}
 .split-features svg{flex-shrink:0;color:var(--accent-400)}
 .slider-card{background:#fff;border-radius:.875rem;padding:1.75rem;color:var(--slate-900);box-shadow:0 16px 32px rgba(0,0,0,.12);border:1px solid var(--slate-200);transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s;transform-style:preserve-3d}
 .slider-card-header{text-align:center;margin-bottom:1.5rem}
@@ -194,7 +194,7 @@ tbody tr:hover{background:var(--slate-50)}
 .why-item{display:flex;gap:.75rem}
 .why-icon{flex-shrink:0;width:2.5rem;height:2.5rem;border-radius:.625rem;display:flex;align-items:center;justify-content:center}
 .why-item h4{font-weight:700;color:var(--slate-900);font-size:.95rem}
-.why-item p{font-size:.8rem;color:var(--slate-600);margin-top:.15rem}
+.why-item p{font-size:.85rem;color:var(--slate-600);margin-top:.25rem}
 .protect-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 .protect-card{background:var(--slate-50);padding:1.25rem;border-radius:.875rem;border:1px solid var(--slate-200);transition:transform .2s}
 .protect-card:hover{transform:translateY(-2px)}
@@ -205,7 +205,7 @@ tbody tr:hover{background:var(--slate-50)}
 /* CTA */
 .cta{background:linear-gradient(-45deg,var(--brand-700),var(--brand-600),var(--brand-500));padding:5rem 1.5rem;text-align:center}
 .cta-inner{max-width:40rem;margin:0 auto}
-.cta h2{font-size:clamp(1.5rem,3.5vw,2.25rem);font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:.75rem}
+.cta h2{font-size:clamp(1.75rem,4vw,2.75rem);font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:1rem}
 .cta .sub{font-size:1.1rem;color:var(--brand-100);margin-bottom:2rem}
 .cta-btn{padding:.875rem 1.75rem;font-size:1rem;font-weight:700;border-radius:.625rem;display:inline-flex;align-items:center;gap:.4rem;transition:all .2s;border:none;cursor:pointer;font-family:inherit;background:#fff;color:var(--brand-900);box-shadow:0 4px 12px rgba(0,0,0,.12)}
 .cta-btn:hover{transform:scale(1.04);box-shadow:0 8px 20px rgba(0,0,0,.2)}
@@ -218,7 +218,7 @@ tbody tr:hover{background:var(--slate-50)}
 
 /* FAQ */
 .faq{max-width:42rem;margin:0 auto;padding:4rem 1.5rem}
-.faq h2{font-size:1.75rem;font-weight:700;color:var(--slate-900);text-align:center;margin-bottom:2rem}
+.faq h2{font-size:2rem;font-weight:700;color:var(--slate-900);text-align:center;margin-bottom:2.5rem}
 .faq-list{display:flex;flex-direction:column;gap:.75rem}
 .faq-item{background:#fff;border-radius:.625rem;border:1px solid var(--slate-200);overflow:hidden}
 .faq-item.open{border-color:var(--brand-300);box-shadow:0 2px 12px rgba(59,130,246,.08)}
@@ -249,12 +249,12 @@ tbody tr:hover{background:var(--slate-50)}
 <header class="header">
   <div class="header-inner">
     <a href="#" class="logo">
-      <div class="logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
       <span class="logo-text">Haggle</span>
     </a>
     <nav class="nav">
       <a href="#breakdown">Fee Breakdown</a>
       <a href="#fee-split">Fee Split</a>
+      <a href="#how-it-works">How It Works</a>
       <a href="#why">Why 1.5%?</a>
       <a href="#faq">FAQ</a>
     </nav>
@@ -433,7 +433,7 @@ tbody tr:hover{background:var(--slate-50)}
   <div class="why-inner">
     <div class="why-grid">
       <div>
-        <h2 style="font-size:clamp(1.4rem,3vw,2rem);font-weight:800;color:var(--slate-900);margin-bottom:.5rem">How Haggle Keeps Fees at 1.5%</h2>
+        <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:800;color:var(--slate-900);margin-bottom:.5rem">How Haggle Keeps Fees at 1.5%</h2>
         <p style="font-size:.95rem;color:var(--slate-600);line-height:1.5">Other platforms charge 10-20% for storefronts, ads, and credit card processing. <strong style="color:var(--slate-900)">Haggle is infrastructure, not a marketplace.</strong></p>
         <ul class="why-list">
           <li class="why-item">
@@ -479,6 +479,207 @@ tbody tr:hover{background:var(--slate-50)}
   </div>
 </section>
 
+<!-- 7. HOW AI NEGOTIATION WORKS -->
+<section id="how-it-works" class="reveal" style="padding:5rem 1.5rem;background:#fff;scroll-margin-top:4rem">
+  <div style="max-width:56rem;margin:0 auto">
+    <div style="text-align:center;margin-bottom:3rem">
+      <span style="display:inline-block;padding:.2rem .6rem;border-radius:9999px;background:var(--brand-50);border:1px solid var(--brand-100);color:var(--brand-600);font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1rem">How It Works</span>
+      <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:800;color:var(--slate-900)">AI Negotiation in 30 Seconds</h2>
+      <p style="color:var(--slate-500);font-size:1rem;margin-top:.5rem;max-width:36rem;margin-left:auto;margin-right:auto">No awkward messages. No lowball offers. Your AI agent handles the entire negotiation while you do nothing.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;position:relative">
+      <div style="position:absolute;top:2.5rem;left:12%;right:12%;height:2px;background:linear-gradient(90deg,var(--brand-200),var(--accent-200));z-index:0"></div>
+      <div style="text-align:center;position:relative;z-index:1">
+        <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:var(--brand-50);border:2px solid var(--brand-200);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem">1</div>
+        <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem;margin-bottom:.35rem">Set Your Terms</h4>
+        <p style="font-size:.85rem;color:var(--slate-500);line-height:1.5">Target price, floor price, shipping preference. Takes 10 seconds.</p>
+      </div>
+      <div style="text-align:center;position:relative;z-index:1">
+        <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:var(--brand-50);border:2px solid var(--brand-200);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem">2</div>
+        <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem;margin-bottom:.35rem">AI Negotiates</h4>
+        <p style="font-size:.85rem;color:var(--slate-500);line-height:1.5">Your agent and theirs exchange offers automatically. Price, shipping, fees — all negotiated.</p>
+      </div>
+      <div style="text-align:center;position:relative;z-index:1">
+        <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:var(--accent-50);border:2px solid var(--accent-200);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem">3</div>
+        <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem;margin-bottom:.35rem">Deal Reached</h4>
+        <p style="font-size:.85rem;color:var(--slate-500);line-height:1.5">Both sides agree. Payment is locked in a smart contract automatically.</p>
+      </div>
+      <div style="text-align:center;position:relative;z-index:1">
+        <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:var(--accent-50);border:2px solid var(--accent-200);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;font-size:1.5rem">4</div>
+        <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem;margin-bottom:.35rem">Ship & Get Paid</h4>
+        <p style="font-size:.85rem;color:var(--slate-500);line-height:1.5">Seller ships with a discounted label. Buyer confirms. Payment released instantly.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. TRUST SCORE & DISPUTE PROTECTION -->
+<section class="reveal" style="padding:5rem 1.5rem;background:var(--slate-50)">
+  <div style="max-width:60rem;margin:0 auto">
+    <div style="text-align:center;margin-bottom:3rem">
+      <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:800;color:var(--slate-900)">Trust Built on Real Transactions</h2>
+      <p style="color:var(--slate-500);font-size:1rem;margin-top:.5rem">Not fake reviews. Not paid badges. Every Trust Score is earned from actual trades, verified on-chain.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem">
+      <div style="background:#fff;border-radius:1rem;padding:2rem;border:1px solid var(--slate-200);box-shadow:0 4px 16px rgba(0,0,0,.04)">
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem">
+          <div style="width:2.5rem;height:2.5rem;border-radius:.5rem;background:var(--brand-50);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-600)" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg></div>
+          <h3 style="font-weight:700;color:var(--slate-900);font-size:1.1rem">Trust Score</h3>
+        </div>
+        <p style="font-size:.9rem;color:var(--slate-600);line-height:1.6;margin-bottom:1rem">Every user gets a 0-100 Trust Score based on 9 real metrics: trade completion, dispute history, SLA compliance, peer ratings, and more.</p>
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:var(--slate-50);border-radius:.5rem"><span style="font-size:.8rem;color:var(--slate-600)">New User</span><span style="font-size:.8rem;font-weight:700;color:var(--slate-400)">NEW badge</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:var(--slate-50);border-radius:.5rem"><span style="font-size:.8rem;color:var(--slate-600)">5+ trades</span><span style="font-size:.8rem;font-weight:700;color:var(--brand-600)">Score visible</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:var(--slate-50);border-radius:.5rem"><span style="font-size:.8rem;color:var(--slate-600)">20+ trades</span><span style="font-size:.8rem;font-weight:700;color:var(--accent-600)">Fully reliable</span></div>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:1rem;padding:2rem;border:1px solid var(--slate-200);box-shadow:0 4px 16px rgba(0,0,0,.04)">
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem">
+          <div style="width:2.5rem;height:2.5rem;border-radius:.5rem;background:#fef3c7;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+          <h3 style="font-weight:700;color:var(--slate-900);font-size:1.1rem">3-Tier Dispute Resolution</h3>
+        </div>
+        <p style="font-size:.9rem;color:var(--slate-600);line-height:1.6;margin-bottom:1rem">If something goes wrong, our 3-tier system resolves it fast and fairly. Not weeks of email ping-pong.</p>
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:#eff6ff;border-radius:.5rem;border:1px solid var(--brand-100)"><span style="font-size:.8rem;color:var(--brand-700);font-weight:600">Tier 1: AI Review</span><span style="font-size:.8rem;color:var(--brand-600)">Instant &middot; from $1</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:#f3e8ff;border-radius:.5rem;border:1px solid #e9d5ff"><span style="font-size:.8rem;color:#7c3aed;font-weight:600">Tier 2: Panel Review</span><span style="font-size:.8rem;color:#7c3aed">48h &middot; 3%</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem .75rem;background:#fef3c7;border-radius:.5rem;border:1px solid #fde68a"><span style="font-size:.8rem;color:#92400e;font-weight:600">Tier 3: Grand Panel</span><span style="font-size:.8rem;color:#92400e">Final &middot; 6%</span></div>
+        </div>
+        <p style="font-size:.75rem;color:var(--slate-400);margin-top:.75rem">Loser pays. Winner gets their deposit back. Partial refunds supported.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9. REAL TRADE SCENARIO — iPhone Step by Step -->
+<section class="reveal" style="padding:5rem 1.5rem;background:#fff">
+  <div style="max-width:48rem;margin:0 auto">
+    <div style="text-align:center;margin-bottom:2.5rem">
+      <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:800;color:var(--slate-900)">See a Real Trade: iPhone 15 Pro</h2>
+      <p style="color:var(--slate-500);font-size:1rem;margin-top:.5rem">From listing to payment in your wallet. Here's exactly what happens.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0;position:relative;padding-left:2.5rem">
+      <div style="position:absolute;left:1.1rem;top:1.5rem;bottom:1.5rem;width:2px;background:linear-gradient(to bottom,var(--brand-200),var(--accent-200))"></div>
+      <div style="position:relative;padding:1.25rem 0">
+        <div style="position:absolute;left:-2.5rem;top:1.25rem;width:2rem;height:2rem;border-radius:50%;background:var(--brand-600);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;z-index:1">1</div>
+        <div style="background:var(--slate-50);border-radius:.75rem;padding:1.25rem;border:1px solid var(--slate-200)">
+          <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem">Seller lists iPhone 15 Pro</h4>
+          <p style="font-size:.85rem;color:var(--slate-500);margin-top:.35rem">Target: <strong style="color:var(--slate-700)">$850</strong> &middot; Floor: <strong style="color:var(--slate-700)">$750</strong> &middot; Condition: A grade &middot; Ships in 3 days</p>
+        </div>
+      </div>
+      <div style="position:relative;padding:1.25rem 0">
+        <div style="position:absolute;left:-2.5rem;top:1.25rem;width:2rem;height:2rem;border-radius:50%;background:var(--brand-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;z-index:1">2</div>
+        <div style="background:var(--slate-50);border-radius:.75rem;padding:1.25rem;border:1px solid var(--slate-200)">
+          <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem">Buyer's AI starts negotiating</h4>
+          <p style="font-size:.85rem;color:var(--slate-500);margin-top:.35rem">Budget: $800 &middot; AI offers <strong style="color:var(--brand-600)">$760</strong> → Seller counters <strong style="color:var(--accent-600)">$820</strong> → AI counters <strong style="color:var(--brand-600)">$790</strong></p>
+        </div>
+      </div>
+      <div style="position:relative;padding:1.25rem 0">
+        <div style="position:absolute;left:-2.5rem;top:1.25rem;width:2rem;height:2rem;border-radius:50%;background:var(--accent-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;z-index:1">3</div>
+        <div style="background:var(--accent-50);border-radius:.75rem;padding:1.25rem;border:1px solid var(--accent-200)">
+          <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem">Deal at $800 — both happy</h4>
+          <p style="font-size:.85rem;color:var(--slate-500);margin-top:.35rem">Agreed: <strong style="color:var(--accent-700)">$800</strong> &middot; Fee split 50/50 &middot; Buyer pays shipping &middot; 3-day SLA</p>
+        </div>
+      </div>
+      <div style="position:relative;padding:1.25rem 0">
+        <div style="position:absolute;left:-2.5rem;top:1.25rem;width:2rem;height:2rem;border-radius:50%;background:var(--accent-600);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;z-index:1">4</div>
+        <div style="background:var(--accent-50);border-radius:.75rem;padding:1.25rem;border:1px solid var(--accent-200)">
+          <h4 style="font-weight:700;color:var(--slate-900);font-size:.95rem">Payment locked, shipped, confirmed</h4>
+          <p style="font-size:.85rem;color:var(--slate-500);margin-top:.35rem">$800 USDC → Settlement Contract → Seller ships → Buyer confirms → <strong style="color:var(--accent-700)">$794 released to seller</strong></p>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-top:2.5rem;padding-top:2rem;border-top:1px solid var(--slate-200)">
+      <div style="text-align:center"><div style="font-size:1.5rem;font-weight:800;color:var(--accent-600)">$794</div><div style="font-size:.75rem;color:var(--slate-500)">Seller receives</div></div>
+      <div style="text-align:center"><div style="font-size:1.5rem;font-weight:800;color:var(--brand-600)">$806</div><div style="font-size:.75rem;color:var(--slate-500)">Buyer pays</div></div>
+      <div style="text-align:center"><div style="font-size:1.5rem;font-weight:800;color:var(--rose-500)">$12</div><div style="font-size:.75rem;color:var(--slate-500)">Total fees (1.5%)</div></div>
+    </div>
+    <div style="text-align:center;margin-top:1.25rem"><p style="font-size:.85rem;color:var(--slate-400)">Same iPhone on eBay? Seller gets <strong style="color:var(--rose-500)">$688</strong> after 13.25% + payment fees. That's <strong style="color:var(--rose-500)">$106 less</strong>.</p></div>
+  </div>
+</section>
+
+<!-- 10. COMPETITOR DEEP COMPARISON -->
+<section class="reveal" style="padding:5rem 1.5rem;background:var(--slate-50)">
+  <div style="max-width:56rem;margin:0 auto">
+    <div style="text-align:center;margin-bottom:2.5rem">
+      <h2 style="font-size:clamp(1.5rem,3vw,2.25rem);font-weight:800;color:var(--slate-900)">How Every Platform Really Compares</h2>
+      <p style="color:var(--slate-500);font-size:1rem;margin-top:.5rem">Fees are just the start. Here's the full picture.</p>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem;background:#fff;border-radius:.75rem;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.06)">
+        <thead>
+          <tr style="background:var(--slate-900);color:#fff">
+            <th style="padding:.875rem 1rem;text-align:left;font-weight:600"></th>
+            <th style="padding:.875rem 1rem;text-align:center;font-weight:700;color:var(--accent-400)">Haggle</th>
+            <th style="padding:.875rem 1rem;text-align:center;font-weight:600">eBay</th>
+            <th style="padding:.875rem 1rem;text-align:center;font-weight:600">Mercari</th>
+            <th style="padding:.875rem 1rem;text-align:center;font-weight:600">Poshmark</th>
+            <th style="padding:.875rem 1rem;text-align:center;font-weight:600">Depop</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--slate-100)">
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Total fees</td>
+            <td style="padding:.75rem 1rem;text-align:center;font-weight:700;color:var(--accent-600)">1.5%</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--rose-600)">~16%</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--rose-600)">~14%</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--rose-600)">20%</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--rose-600)">~8%</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--slate-100)">
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Negotiation</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--accent-600)">AI auto</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">Manual offers</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">Manual offers</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">Manual offers</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">DM haggling</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--slate-100)">
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Seller payout</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--accent-600)">Instant</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">2-5 days</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">3-5 days</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">3 days</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">2-5 days</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--slate-100)">
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Dispute resolution</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--accent-600)">3-tier, transparent</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Opaque support</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Opaque support</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Opaque support</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Opaque support</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--slate-100)">
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Fee negotiable?</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--accent-600)">Yes — split is negotiable</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">No</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">No</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">No</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-400)">No</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--slate-100)">
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Trust system</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--accent-600)">On-chain, portable</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Stars, locked</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Stars, locked</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Love notes, locked</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">Stars, locked</td>
+          </tr>
+          <tr>
+            <td style="padding:.75rem 1rem;font-weight:600;color:var(--slate-700)">Cross-border</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--accent-600)">USDC — no FX fees</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">3%+ FX fees</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">US only</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">US/Canada</td>
+            <td style="padding:.75rem 1rem;text-align:center;color:var(--slate-500)">FX fees apply</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="text-align:center;margin-top:1.25rem;font-size:.8rem;color:var(--slate-400)">Fees include seller commission + payment processing + buyer fees. Haggle: 1.5% total, on-chain settlement.</p>
+  </div>
+</section>
+
 <!-- CTA -->
 <section class="cta">
   <div class="cta-inner">
@@ -505,7 +706,6 @@ tbody tr:hover{background:var(--slate-50)}
 <footer class="footer">
   <div class="footer-inner">
     <div class="logo" style="opacity:.4">
-      <div class="logo-icon" style="background:var(--slate-300)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
       <span class="logo-text" style="color:var(--slate-400)">Haggle</span>
     </div>
     <div class="footer-links">
