@@ -147,6 +147,27 @@ h1{font-size:28px;font-weight:700;margin-bottom:4px;background:linear-gradient(1
 <p>구매자의 돈은 <code>Settlement Contract</code>(스마트 컨트랙트 — 조건 충족 시 자동 실행되는 블록체인 프로그램)에 잠깁니다. Haggle이 돈을 들고 있는 게 아니라, <strong>코드가 금고 역할</strong>을 합니다. 배송 완료 후 구매자가 "OK" 하거나 24시간이 지나면 자동으로 판매자에게 릴리즈됩니다.</p>
 </div></div>
 
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">협상 가능한 조건 목록 (Multi-Issue Negotiation)</span><span class="brief">가격 외 10개 조건</span></div>
+<div class="item-body">
+<h5>Haggle에서 협상되는 것</h5>
+<p>Haggle의 AI 협상은 단순히 가격만 흥정하는 게 아닙니다. 아래 모든 조건이 하나의 협상 세션에서 동시에 조율됩니다. 각 조건은 트레이드오프 관계입니다 — 예를 들어, 구매자가 빠른 배송을 원하면 가격에서 양보해야 할 수 있습니다.</p>
+<table>
+<tr><th>조건</th><th>범위/예시</th><th>누가 유리?</th></tr>
+<tr><td><strong>가격</strong></td><td>판매자 target ~ 구매자 budget</td><td>기본 협상</td></tr>
+<tr><td><strong>수수료 분담</strong></td><td>구매자 100% ~ 판매자 100% (기본 50/50)</td><td>양측</td></tr>
+<tr><td><strong>배송비 분담</strong></td><td>구매자 / 판매자 / 분할</td><td>양측</td></tr>
+<tr><td><strong>배송 SLA</strong></td><td>1~14일 (발송 기한)</td><td>구매자: 짧게 / 판매자: 길게</td></tr>
+<tr><td><strong>SLA 초과 보상</strong></td><td>deposit 기반 / N%/일 / N USDC/일</td><td>구매자 보호</td></tr>
+<tr><td><strong>무게 정확도</strong></td><td>±Ng, 초과 시 패널티</td><td>구매자 보호</td></tr>
+<tr><td><strong>캐리어 선호</strong></td><td>"UPS/FedEx만", "USPS 제외" 등</td><td>구매자: 안전 / 판매자: 비용</td></tr>
+<tr><td><strong>서명 수령</strong></td><td>필수 / 선택</td><td>고가 거래 구매자</td></tr>
+<tr><td><strong>배송 보험</strong></td><td>추가/미추가, 비용 분담</td><td>양측</td></tr>
+<tr><td><strong>반품 조건</strong></td><td>무조건 / 상태 불일치 시 / 불가</td><td>구매자: 넓게 / 판매자: 좁게</td></tr>
+</table>
+<h5>플랫폼 정책 (협상 불가)</h5>
+<p>14일 미발송 자동 취소 + 전액 환불 + deposit 몰수, Trust Score 감점, 구매자 검토 기간(ARP 자동 조정), 무게 2단계+ 초과 경고 — 이것들은 공정성을 위해 Haggle이 강제합니다.</p>
+</div></div>
+
 <div class="item"><div class="item-head"><span class="arrow">▶</span><span class="title">왜 크립토인가? (USDC + x402)</span></div>
 <div class="item-body">
 <h5>"왜 그냥 카드 결제 안 쓰나요?"</h5>
