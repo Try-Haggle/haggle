@@ -710,11 +710,63 @@ function initSlider() {
     $('buyerDetail').textContent = `Includes ${((100-splitRatio)/100*HAGGLE_RATE*100).toFixed(2)}% fee + $${fmt(HAGGLE_SHIP/2)} ship`;
     $('sellerDetail').textContent = `Minus ${(splitRatio/100*HAGGLE_RATE*100).toFixed(2)}% fee + $${fmt(HAGGLE_SHIP/2)} ship`;
 
-    // Card tilt
+    // ─── Enhanced card tilt effect (from v1) ───
     const card = $('sliderCard');
-    const norm = (splitRatio - 50) / 50;
-    card.style.transform = `perspective(600px) rotateY(${norm*6}deg)`;
-    card.style.boxShadow = `${norm*-12}px 16px ${28+Math.abs(norm)*16}px rgba(0,0,0,${0.1+Math.abs(norm)*0.08})`;
+    const buyerCard = $('resultBuyer');
+    const sellerCard = $('resultSeller');
+    const norm = (splitRatio - 50) / 50; // -1 (buyer heavy) to +1 (seller heavy)
+    const absNorm = Math.abs(norm);
+
+    // 1) Card 3D rotation — max ±8 degrees with slight Z tilt
+    const tiltY = norm * 8;
+    const tiltZ = norm * -1.5;
+    const shadowX = norm * -15;
+    const shadowBlur = 30 + absNorm * 20;
+    const shadowAlpha = 0.12 + absNorm * 0.1;
+    card.style.transform = `perspective(600px) rotateY(${tiltY}deg) rotateZ(${tiltZ}deg)`;
+    card.style.boxShadow = `${shadowX}px 20px ${shadowBlur}px rgba(0,0,0,${shadowAlpha})`;
+
+    // 2) Background gradient shift — subtle color wash toward heavier side
+    if(absNorm > 0.1) {
+      const buyerAlpha = Math.max(0, -norm) * 0.06;
+      const sellerAlpha = Math.max(0, norm) * 0.06;
+      card.style.background = `linear-gradient(${norm < 0 ? '135deg' : '225deg'},
+        rgba(59,130,246,${buyerAlpha}) 0%,
+        #fff 40%, #fff 60%,
+        rgba(16,185,129,${sellerAlpha}) 100%)`;
+    } else {
+      card.style.background = '#fff';
+    }
+
+    // 3) Result cards — lift/drop with scale and glow
+    if(buyerCard && sellerCard) {
+      const buyerLift = Math.max(0, -norm);
+      const sellerLift = Math.max(0, norm);
+
+      const bScale = 1 + buyerLift * 0.08;
+      const bY = -buyerLift * 8;
+      const bShadow = buyerLift * 20;
+      const bGlow = buyerLift * 0.25;
+      buyerCard.style.transform = `scale(${bScale}) translateY(${bY}px)`;
+      buyerCard.style.boxShadow = buyerLift > 0.15
+        ? `0 ${4+bShadow}px ${12+bShadow}px rgba(59,130,246,${bGlow})`
+        : 'none';
+      buyerCard.style.opacity = sellerLift > 0.5 ? 0.7 : 1;
+      const bAmt = buyerCard.querySelector('.amount');
+      if(bAmt) { bAmt.style.transform = `scale(${1 + buyerLift * 0.1})`; }
+
+      const sScale = 1 + sellerLift * 0.08;
+      const sY = -sellerLift * 8;
+      const sShadow = sellerLift * 20;
+      const sGlow = sellerLift * 0.25;
+      sellerCard.style.transform = `scale(${sScale}) translateY(${sY}px)`;
+      sellerCard.style.boxShadow = sellerLift > 0.15
+        ? `0 ${4+sShadow}px ${12+sShadow}px rgba(16,185,129,${sGlow})`
+        : 'none';
+      sellerCard.style.opacity = buyerLift > 0.5 ? 0.7 : 1;
+      const sAmt = sellerCard.querySelector('.amount');
+      if(sAmt) { sAmt.style.transform = `scale(${1 + sellerLift * 0.1})`; }
+    }
   }
 
   function getPos(e) {
