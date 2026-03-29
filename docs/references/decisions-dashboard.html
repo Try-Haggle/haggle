@@ -78,21 +78,22 @@ h1{font-size:28px;font-weight:700;margin-bottom:4px;background:linear-gradient(1
 <body>
 
 <h1>Haggle Commerce Foundation</h1>
-<p class="subtitle">결정 사항 & 미결 안건 대시보드 — 2026-03-24 업데이트</p>
+<p class="subtitle">결정 사항 & 미결 안건 대시보드 — 2026-03-28 업데이트</p>
 
 <div class="stat-grid">
-  <div class="stat"><div class="num" style="color:#2ecc71">896</div><div class="lbl">Tests</div></div>
+  <div class="stat"><div class="num" style="color:#2ecc71">1,164</div><div class="lbl">Tests</div></div>
   <div class="stat"><div class="num" style="color:#3498db">35</div><div class="lbl">Endpoints</div></div>
-  <div class="stat"><div class="num" style="color:#9b59b6">30+</div><div class="lbl">확정</div></div>
-  <div class="stat"><div class="num" style="color:#f39c12">7</div><div class="lbl">미결 안건</div></div>
+  <div class="stat"><div class="num" style="color:#9b59b6">50+</div><div class="lbl">확정</div></div>
+  <div class="stat"><div class="num" style="color:#2ecc71">0</div><div class="lbl">미결 안건</div></div>
 </div>
 
 <div class="tabs" id="tabs">
   <div class="tab active" data-tab="overview">🏠 Overview</div>
-  <div class="tab" data-tab="payment">💳 결제 <span class="badge badge-o">1</span></div>
-  <div class="tab" data-tab="shipping">📦 배송 <span class="badge badge-o">2</span></div>
-  <div class="tab" data-tab="dispute">⚖️ 분쟁 <span class="badge badge-o">3</span></div>
-  <div class="tab" data-tab="trust">🛡️ 신뢰 <span class="badge badge-o">1</span></div>
+  <div class="tab" data-tab="payment">💳 결제 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="shipping">📦 배송 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="dispute">⚖️ 분쟁 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="trust">🛡️ 신뢰 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="new-decisions">🆕 신규 결정</div>
   <div class="tab" data-tab="terms">📝 용어</div>
   <div class="tab" data-tab="impl">🔧 구현</div>
 </div>
@@ -689,8 +690,8 @@ Non-custodial (Haggle 방식):
 
 <div class="sep"></div>
 
-<!-- Fiat 온램프 미결 -->
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">A1. Fiat 온램프 타이밍</span><span class="brief">달러→USDC 자동 변환</span></div>
+<!-- Fiat 온램프 — 확정 (2026-03-25) -->
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">A1. Fiat 온램프 → MVP 포함</span><span class="brief">Stripe → USDC 자동 변환. 목표: USDC 직접 결제 유도</span></div>
 <div class="item-body">
 <h5>이게 뭔가요?</h5>
 <p><code>Fiat</code> = 달러, 원화 같은 법정 통화. <code>온램프</code> = "진입로". 즉, 일반 달러를 크립토(USDC)로 바꿔주는 서비스입니다.</p>
@@ -791,7 +792,7 @@ Non-custodial (Haggle 방식):
 
 <div class="sep"></div>
 
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">B1. 자체 배송 허용 여부</span><span class="brief">현재 불허</span></div>
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">B1. 자체 배송 → 불허 확정</span><span class="brief">EasyPost 라벨 only</span></div>
 <div class="item-body">
 <h5>배경</h5>
 <p>일부 판매자는 이미 자기만의 배송 계약이 있거나, 특정 캐리어를 선호할 수 있습니다. 하지만 자체 배송을 허용하면:</p>
@@ -802,7 +803,7 @@ Non-custodial (Haggle 방식):
 </div>
 </div></div>
 
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">B2. 배송 입력 SLA 범위</span><span class="brief">최소/최대 필요</span></div>
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">B2. 배송 SLA → 1-14일 협상 + 취소권 + 보상 협상</span><span class="brief">6h grace, 14일 하드 데드라인</span></div>
 <div class="item-body">
 <h5>배경</h5>
 <p>판매자가 라벨을 생성하고 패키지를 접수해야 하는 기한입니다. 이 기한은 <strong>협상 가능</strong>으로 결정되었지만, "1시간 내 배송해" 같은 비현실적 요구를 방지하려면 최소/최대 범위가 필요합니다.</p>
@@ -932,7 +933,7 @@ Trimmed Mean (상하위 20% 제거):
 
 <div class="sep"></div>
 
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">C1. 고가 상품 자동 확정 기간</span><span class="brief">24시간 일괄 vs 차등</span></div>
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">C1. 자동 확정 → ARP 자동 조정 시스템</span><span class="brief">기본 36h, 데이터 기반 자동 최적화</span></div>
 <div class="item-body">
 <h5>배경</h5>
 <p>현재 모든 거래에 24시간 자동 확정이 적용됩니다. $50 충전기와 $5,000 MacBook에 같은 검토 시간이 적절한가?</p>
@@ -947,7 +948,7 @@ Trimmed Mean (상하위 20% 제거):
 <p>차등 시 판매자 정산이 느려지는 단점 vs 고가 상품의 더 철저한 검토.</p>
 </div></div>
 
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">C2. Reviewer 모집 및 자격</span><span class="brief">누가? 어떻게?</span></div>
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">C2. Reviewer → 15명 지인 확보, DS 등급 + 태그 매칭</span><span class="brief">최소 거래 + Trust Score 자격</span></div>
 <div class="item-body">
 <h5>배경</h5>
 <p>Tier 2/3에서 분쟁을 판정하는 <code>Reviewer</code> (이전 용어: 배심원/DS). 비용, 인원, 보상은 v8.3에서 정의되었지만 실제 운영 방식이 미정입니다.</p>
@@ -960,7 +961,7 @@ Trimmed Mean (상하위 20% 제거):
 </div>
 </div></div>
 
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">C3. Tier 3 비용 할인 세부</span><span class="brief">v8.3 규칙 적용?</span></div>
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">C3. Tier 3 할인 → 삭제. Trimmed Mean + K-Means fallback</span><span class="brief">연속값 투표, 부분 환불</span></div>
 <div class="item-body">
 <h5>v8.3 원본 규칙</h5>
 <p>Tier 2 결과의 표 차이에 따라 Tier 3 비용이 할인됩니다:</p>
@@ -998,11 +999,11 @@ Trimmed Mean (상하위 20% 제거):
 <h5>Reviewer 티어 가중치</h5>
 <table>
 <tr><th>티어</th><th>가중치</th><th>의미</th></tr>
-<tr><td style="color:#cd7f32">Bronze</td><td>0.63×</td><td>신규 / 실적 적음</td></tr>
-<tr><td style="color:#c0c0c0">Silver</td><td>0.85×</td><td>기본 활동</td></tr>
-<tr><td style="color:#ffd700">Gold</td><td>1.10×</td><td>안정적 활동</td></tr>
-<tr><td style="color:#e5e4e2">Platinum</td><td>1.45×</td><td>고신뢰</td></tr>
-<tr><td style="color:#b9f2ff">Diamond</td><td>2.00×</td><td>최고 등급</td></tr>
+<tr><td style="color:#cd7f32">Bronze</td><td>0.75×</td><td>신규 / 실적 적음 (회복 가능)</td></tr>
+<tr><td style="color:#c0c0c0">Silver</td><td>0.90×</td><td>기본 활동</td></tr>
+<tr><td style="color:#ffd700">Gold</td><td>1.05×</td><td>안정적 활동</td></tr>
+<tr><td style="color:#e5e4e2">Platinum</td><td>1.20×</td><td>고신뢰</td></tr>
+<tr><td style="color:#b9f2ff">Diamond</td><td>1.40×</td><td>최고 등급 (최대 1.87x 차이)</td></tr>
 </table>
 <p>전문가 보너스: 분야 매칭 시 추가 <strong>× 1.3배</strong></p>
 <h5>외부 서비스 구상</h5>
@@ -1016,7 +1017,7 @@ Trimmed Mean (상하위 20% 제거):
 
 <div class="sep"></div>
 
-<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-open">미결</span><span class="title">D1. 동적 정책 기준</span><span class="brief">수치 미정</span></div>
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">D1. Trust Score (9입력) + DS Rating (8입력) 설계 완료</span><span class="brief">실시간 계산, 분기별 가중치 백테스트</span></div>
 <div class="item-body">
 <h5>배경</h5>
 <p>신뢰도에 따라 거래 조건이 달라져야 합니다. 저신뢰 사용자는 더 높은 버퍼, 자동 승인 불가 등. 구체적 수치가 아직 결정되지 않았습니다.</p>
@@ -1050,7 +1051,7 @@ Trimmed Mean (상하위 20% 제거):
 
 <!-- =============== IMPL =============== -->
 <div class="section" id="impl">
-<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">🔧 구현 현황 — 2026-03-24</span></div>
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">🔧 구현 현황 — 2026-03-28</span></div>
 <div class="item-body">
 <h5>패키지 (순수 로직) — ✅ 완료</h5>
 <table>
@@ -1058,7 +1059,8 @@ Trimmed Mean (상하위 20% 제거):
 <tr><td>commerce-core</td><td style="color:#2ecc71">170</td><td>상태 머신, 신뢰 점수, 최소 거래, order lifecycle, market pressure</td></tr>
 <tr><td>payment-core</td><td style="color:#2ecc71">237</td><td>결제 서비스, Settlement Release, Facilitator Client</td></tr>
 <tr><td>shipping-core</td><td style="color:#2ecc71">265</td><td>EasyPost 어댑터, 웹훅, 라벨 생성, Weight Buffer</td></tr>
-<tr><td>dispute-core</td><td style="color:#2ecc71">227</td><td>분쟁 서비스, 증거 검증, 투표 집계 (Trimmed Mean)</td></tr>
+<tr><td>dispute-core</td><td style="color:#2ecc71">226</td><td>분쟁 서비스, 증거 검증, 투표 집계 (Trimmed Mean + K-Means), Dispute Cost, DS Rating</td></tr>
+<tr><td style="color:#2ecc71"><strong>trust-core (신규)</strong></td><td style="color:#2ecc71"><strong>42</strong></td><td>Trust Score, 콜드 스타트, SLA 패널티, 스냅샷/백테스트</td></tr>
 <tr><td>db</td><td>-</td><td>6개 스키마 (payments, shipments, disputes, trust, settlement-releases, commerce-orders)</td></tr>
 </table>
 <h5>API 통합 (apps/api) — ✅ 완료</h5>
@@ -1083,6 +1085,125 @@ Trimmed Mean (상하위 20% 제거):
 </table>
 </div></div>
 </div><!-- /impl -->
+
+<!-- =============== NEW DECISIONS (2026-03-25~28) =============== -->
+<div class="section" id="new-decisions">
+
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">분쟁 비용 — Tier 1 체감 비율</span><span class="brief">min $1, 4단계 체감</span></div>
+<div class="item-body">
+<h5>Tier 1 (AI Review) 비용</h5>
+<table>
+<tr><th>구간</th><th>비율</th><th>예시 ($10K 거래)</th></tr>
+<tr><td>첫 $1,000</td><td>1.2%</td><td>$12</td></tr>
+<tr><td>$1,001-$10,000</td><td>0.7%</td><td>+$63 = $75</td></tr>
+<tr><td>$10,001-$100,000</td><td>0.3%</td><td>+$270 = $345</td></tr>
+<tr><td>$100,001+</td><td>0.15%</td><td>$500K → $945</td></tr>
+</table>
+<p>최소 $1. 고액일수록 AI 추론 복잡도 반영. 차/부동산까지 확장 가능.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">Deposit 모델 — 양측 deposit, 보류 후 최종 정산</span><span class="brief">Kleros A모델</span></div>
+<div class="item-body">
+<h5>흐름</h5>
+<div class="example">리스팅 시: 판매자만 Tier 1 deposit
+분쟁 발생: 구매자는 Settlement Contract 내 금액에서 차감
+에스컬레이션: 판매자 추가 deposit 필요 (미납 → Default Judgment)
+최종 정산: 패소자 전 tier 몰수, 승소자 전액 반환</div>
+<p>패소자가 상대 비용까지 부담하지 않음 (A모델). Performance Bond 차등 삭제 — 모든 판매자 동일 deposit.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">에스컬레이션 기간 — Tier별 차등</span><span class="brief">24h / 24-72h</span></div>
+<div class="item-body">
+<table>
+<tr><th>에스컬레이션</th><th>기간</th><th>조건</th></tr>
+<tr><td>Tier 1 → 2</td><td>24시간</td><td>모든 거래</td></tr>
+<tr><td>Tier 2 → 3 (≤$500)</td><td>24시간</td><td>소액</td></tr>
+<tr><td>Tier 2 → 3 ($501-$5K)</td><td>48시간</td><td>중액</td></tr>
+<tr><td>Tier 2 → 3 ($5K+)</td><td>72시간</td><td>고액</td></tr>
+</table>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">투표 집계 — Trimmed Mean + K-Means fallback</span><span class="brief">연속값 부분 환불</span></div>
+<div class="item-body">
+<h5>이중 모드</h5>
+<div class="opts">
+<div class="opt"><span class="ol">소규모 (<15명)</span><span class="od">5옵션 직접투표 (0/25/50/75/100%) + 가중 다수결</span></div>
+<div class="opt"><span class="ol">대규모 (≥15명)</span><span class="od">연속값 투표 (0-100%) + Trimmed Mean (상하 20% trim) + Agreement Zone</span></div>
+</div>
+<h5>양극화 대응</h5>
+<p>Agreement Zone 합의율 < 45% → K-Means fallback (seed=hash(dispute_id), 결정론적). 중심 ±15pt 밀도 < 10%면 양극화 강제 감지.</p>
+<h5>승패 판정</h5>
+<p>결과값 >50% = 구매자 우세 (판매자 비용 부담). 부분 환불: 62% → 거래액의 62% 환불.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">ARP — Adaptive Review Period 자동 조정</span><span class="brief">기본 36h, 다차원</span></div>
+<div class="item-body">
+<h5>3-Layer 구조</h5>
+<div class="example">Layer 3: Meta-Tuner (시스템 자체 조정, 6주 주기)
+Layer 2: ARP Engine (검토 기간 조정, 2주 주기)
+Layer 1: Data Collection (거래/분쟁 데이터)</div>
+<h5>세그먼트</h5>
+<p>금액(6개) × 카테고리(16+개) × 태그(동적). 7단계 fallback 조회. Hard bounds: 24h ~ 14일.</p>
+<h5>태그 시스템</h5>
+<p>AI 자동 생성 → CANDIDATE → EMERGING (30일 20회+) → OFFICIAL (60일 관찰) → DEPRECATED. 판매자 직접 태그 아님.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">Trust Score + DS Rating — 이중 신뢰 시스템</span><span class="brief">거래자 vs Reviewer 분리</span></div>
+<div class="item-body">
+<h5>Trust Score (거래자)</h5>
+<p>0-100점, 9개 입력 (거래완료율, 분쟁결과, 분쟁발생률, SLA준수, 취소율, 자동확정, 평가, 빈도, 기간). 실시간 계산. 콜드 스타트: 5건 미만 = NEW 뱃지.</p>
+<h5>DS Rating (Reviewer)</h5>
+<p>Bronze~Diamond, 8개 입력 (Zone진입, 근접도, 참여율, 응답속도, 건수, 다양성, 고액경험, <strong>consistency</strong>). 히스테리시스 ±3점. 태그별 전문 점수.</p>
+<h5>가중치 검증</h5>
+<p>분기 1회 백테스트: 원본 입력 스냅샷 보존 → 새 가중치 소급 적용 → 예측력 비교 → 추천 리포트 → 운영팀 수동 결정.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">DS 티어 가중치 압축</span><span class="brief">0.75 ~ 1.40 (1.87x 차이)</span></div>
+<div class="item-body">
+<p>기존 Bronze(0.63)~Diamond(2.0) = 3.17x → 압축하여 Bronze 회복 가능 + 공정한 투표.</p>
+<p>Consistency 입력 추가 (15% 가중치): 연속 Zone 진입 보상 → Bronze도 꾸준히 맞추면 승급.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">배송 협상 조건 확장</span><span class="brief">SLA 보상, 무게, 캐리어, 보험</span></div>
+<div class="item-body">
+<h5>협상 가능 조건</h5>
+<table>
+<tr><th>조건</th><th>범위</th><th>예시</th></tr>
+<tr><td>SLA 기한</td><td>1-14일</td><td>"3일 내 발송"</td></tr>
+<tr><td>SLA 초과 보상</td><td>deposit / %/일 / USDC/일</td><td>"0.5%/일" 또는 "2 USDC/일"</td></tr>
+<tr><td>무게 정확도</td><td>±Ng 또는 %</td><td>"공식 무게 ±75g, 초과 시 3% 패널티"</td></tr>
+<tr><td>캐리어 선호</td><td>UPS/FedEx only 등</td><td>"USPS 제외"</td></tr>
+<tr><td>서명 수령</td><td>필수/선택</td><td>"고가 → 서명 필수"</td></tr>
+<tr><td>배송 보험</td><td>추가/미추가, 비용 분담</td><td>"보험 추가, 50/50 분담"</td></tr>
+<tr><td>반품 조건</td><td>무조건/조건부/불가</td><td>"상태 불일치 시 반품 가능"</td></tr>
+</table>
+<h5>플랫폼 정책 (협상 불가)</h5>
+<p>14일 자동 취소 + 전액 환불 + deposit 몰수 + Trust 대폭 감점. 무게 2단계+ 초과 → 경고 + Trust 감점.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">Dispute Resolution Marketplace</span><span class="brief">외부 개발자 도구 생태계</span></div>
+<div class="item-body">
+<p>외부 개발자가 분쟁 해결 도구(진품 감정, 상태 판정 등) 제작·판매. Skill의 한 카테고리.</p>
+<div class="opts">
+<div class="opt"><span class="ol">시범 기간</span><span class="od">90일 무료 → accuracy 70%+ 시 유료 전환</span></div>
+<div class="opt"><span class="ol">수익 분배</span><span class="od">개발자 75% / Haggle 20% / Reviewer 보상 5%</span></div>
+<div class="opt"><span class="ol">Hook Point</span><span class="od">거래 라이프사이클 전 단계 After(읽기 전용). 구현은 후순위, 모듈 경계만 유지</span></div>
+</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-impl">구현됨</span><span class="title">Phase 1 구현 완료 — trust-core, dispute-cost, ds-rating, K-Means</span><span class="brief">268 tests</span></div>
+<div class="item-body">
+<table>
+<tr><th>모듈</th><th>테스트</th><th>상태</th></tr>
+<tr><td>@haggle/trust-core (신규)</td><td style="color:#2ecc71">42</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>dispute-cost.ts</td><td style="color:#2ecc71">35</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>ds-rating.ts</td><td style="color:#2ecc71">50</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>K-Means fallback</td><td style="color:#2ecc71">15</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>dispute-core 전체</td><td style="color:#2ecc71">226</td><td style="color:#2ecc71">✅</td></tr>
+</table>
+</div></div>
+
+</div><!-- /new-decisions -->
 
 <script>
 document.querySelectorAll('.tab').forEach(t=>{
