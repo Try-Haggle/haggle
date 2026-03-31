@@ -84,6 +84,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@amplitude/analytics-browser':
+        specifier: ^2.38.0
+        version: 2.38.0
       '@supabase/ssr':
         specifier: ^0.9.0
         version: 0.9.0(@supabase/supabase-js@2.99.0)
@@ -178,6 +181,33 @@ packages:
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+
+  '@amplitude/analytics-browser@2.38.0':
+    resolution: {integrity: sha512-MhqyEkr1gGAR4s4GSSflDhFVheIx9Nv3FfElQu9NlNrXB2Hh3BEOyVgdK7hgfi6NJwFyfw30+t5lym+njtA8hA==}
+
+  '@amplitude/analytics-connector@1.6.4':
+    resolution: {integrity: sha512-SpIv0IQMNIq6SH3UqFGiaZyGSc7PBZwRdq7lvP0pBxW8i4Ny+8zwI0pV+VMfMHQwWY3wdIbWw5WQphNjpdq1/Q==}
+
+  '@amplitude/analytics-core@2.44.0':
+    resolution: {integrity: sha512-z9QuTxLqEQ8KIeAT6Vmy6K48rP9TUmjnb4GwUMYoV/fxu3B9ClTaN18zqXQMmDw9HwUiIreHiVbwTb7OQRN5aA==}
+
+  '@amplitude/plugin-autocapture-browser@1.25.0':
+    resolution: {integrity: sha512-YuWsz8XmJuKu3NlMxkvlhLey/5tGCeOwwfsROHficR0yDWO9gNG0WtHl7A0Pw1PUc9iaXjqfG2AjYumAtiq16Q==}
+
+  '@amplitude/plugin-custom-enrichment-browser@0.1.2':
+    resolution: {integrity: sha512-ZX9BKqs1E1OI7l7QCGu9JnB/1kqLN+zqIePgM2tuEhZNFQJaw4NhAMUaMRqvNnaCkHlmpVRISzSj/4D3tWMRtA==}
+
+  '@amplitude/plugin-network-capture-browser@1.9.11':
+    resolution: {integrity: sha512-49o3zYnKUmRdrxgAEcr1iHnXR1um40e1icO0hzugSq04k19hs27zcl3zpEk9geO+nNKwO744ryE1q93gqVbHrQ==}
+
+  '@amplitude/plugin-page-url-enrichment-browser@0.7.3':
+    resolution: {integrity: sha512-3UZq/zKg4lcsRgziWAPSEeaUsNsbyjjxmsAE9kSDi/hIj5RaWnwWhY6TGhv45UAReugTA4vVZyFRg9btf3c/Fg==}
+
+  '@amplitude/plugin-page-view-tracking-browser@2.9.4':
+    resolution: {integrity: sha512-J16zmEadnzNpkHSmzpTiQN2q9pGJ/4SkHONA9O8KxUsMU/MYTDgof3rAYY/w5B5rmvdxfMRCjqWtvnkizzgZ6w==}
+
+  '@amplitude/plugin-web-vitals-browser@1.1.26':
+    resolution: {integrity: sha512-wiD4vy+f2fepr+8Lnn26TYYjDEnWsmlGhJog99x+xfbZ/D+stGdaCIOz5AOjU1TpTRvxvamEu2XuOh+8EZOCSA==}
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -1303,6 +1333,9 @@ packages:
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
+  '@types/zen-observable@0.8.3':
+    resolution: {integrity: sha512-fbF6oTd4sGGy0xjHPKAt+eS2CrxJ3+6gQ3FGcBoIJR2TLAyCkCyI8JqZNy+FeON0AhVgNJoUumVoZQjBFUqHkw==}
+
   '@vitejs/plugin-react@5.1.4':
     resolution: {integrity: sha512-VIcFLdRi/VYRU8OL/puL7QXMYafHmqOnwTZY50U1JPlCNj30PxCMx65c494b1K9be9hX83KVt0+gTEwTWLqToA==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -2128,6 +2161,9 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
+  safe-json-stringify@1.2.0:
+    resolution: {integrity: sha512-gH8eh2nZudPQO6TytOvbxnuhYBOvDBBLW52tz5q6X58lJcd/tkmqFR+5Z9adS8aJtURSXWThWy/xJtJwixErvg==}
+
   safe-regex2@5.0.0:
     resolution: {integrity: sha512-YwJwe5a51WlK7KbOJREPdjNrpViQBI3p4T50lfwPuDhZnE3XGVTlGvi+aolc5+RvxDD6bnUmjVsU9n1eboLUYw==}
 
@@ -2439,6 +2475,9 @@ packages:
       jsdom:
         optional: true
 
+  web-vitals@5.1.0:
+    resolution: {integrity: sha512-ArI3kx5jI0atlTtmV0fWU3fjpLmq/nD3Zr1iFFlJLaqa5wLBkUSzINwBPySCX/8jRyjlmy1Volw1kz1g9XE4Jg==}
+
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
@@ -2472,6 +2511,9 @@ packages:
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
+  zen-observable@0.10.0:
+    resolution: {integrity: sha512-iI3lT0iojZhKwT5DaFy2Ce42n3yFcLdFyOh01G7H0flMY60P8MJuVFEoJoNwXlmAyQ45GrjL6AcZmmlv8A5rbw==}
+
   zod-to-json-schema@3.25.1:
     resolution: {integrity: sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA==}
     peerDependencies:
@@ -2483,6 +2525,58 @@ packages:
 snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
+
+  '@amplitude/analytics-browser@2.38.0':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      '@amplitude/plugin-autocapture-browser': 1.25.0
+      '@amplitude/plugin-custom-enrichment-browser': 0.1.2
+      '@amplitude/plugin-network-capture-browser': 1.9.11
+      '@amplitude/plugin-page-url-enrichment-browser': 0.7.3
+      '@amplitude/plugin-page-view-tracking-browser': 2.9.4
+      '@amplitude/plugin-web-vitals-browser': 1.1.26
+      tslib: 2.8.1
+
+  '@amplitude/analytics-connector@1.6.4': {}
+
+  '@amplitude/analytics-core@2.44.0':
+    dependencies:
+      '@amplitude/analytics-connector': 1.6.4
+      '@types/zen-observable': 0.8.3
+      safe-json-stringify: 1.2.0
+      tslib: 2.8.1
+      zen-observable: 0.10.0
+
+  '@amplitude/plugin-autocapture-browser@1.25.0':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      tslib: 2.8.1
+
+  '@amplitude/plugin-custom-enrichment-browser@0.1.2':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      tslib: 2.8.1
+
+  '@amplitude/plugin-network-capture-browser@1.9.11':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      tslib: 2.8.1
+
+  '@amplitude/plugin-page-url-enrichment-browser@0.7.3':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      tslib: 2.8.1
+
+  '@amplitude/plugin-page-view-tracking-browser@2.9.4':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      tslib: 2.8.1
+
+  '@amplitude/plugin-web-vitals-browser@1.1.26':
+    dependencies:
+      '@amplitude/analytics-core': 2.44.0
+      tslib: 2.8.1
+      web-vitals: 5.1.0
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -3325,6 +3419,8 @@ snapshots:
     dependencies:
       '@types/node': 22.19.11
 
+  '@types/zen-observable@0.8.3': {}
+
   '@vitejs/plugin-react@5.1.4(vite@7.3.1(@types/node@22.19.11)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0))':
     dependencies:
       '@babel/core': 7.29.0
@@ -4130,6 +4226,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  safe-json-stringify@1.2.0: {}
+
   safe-regex2@5.0.0:
     dependencies:
       ret: 0.5.0
@@ -4445,6 +4543,8 @@ snapshots:
       - tsx
       - yaml
 
+  web-vitals@5.1.0: {}
+
   which@2.0.2:
     dependencies:
       isexe: 2.0.0
@@ -4463,6 +4563,8 @@ snapshots:
   ws@8.19.0: {}
 
   yallist@3.1.1: {}
+
+  zen-observable@0.10.0: {}
 
   zod-to-json-schema@3.25.1(zod@3.25.76):
     dependencies:

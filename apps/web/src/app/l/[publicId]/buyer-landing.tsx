@@ -10,6 +10,7 @@ import {
   DEFAULT_BUYER_STATS,
 } from "@/lib/buyer-agents";
 import { Nav } from "@/components/nav";
+import { useAmplitude } from "@/providers/amplitude-provider";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -135,12 +136,26 @@ interface UserInfo {
 }
 
 export function BuyerLanding({ listing, user, isOwner = false }: { listing: Listing; user: UserInfo | null; isOwner?: boolean }) {
+  const { track } = useAmplitude();
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
   );
 
   const currentStats: BuyerAgentStats = selectedAgent?.stats ?? DEFAULT_BUYER_STATS;
   const deadline = timeRemaining(listing.sellingDeadline);
+
+  // Public Listing Viewed (1회)
+  const viewTracked = useRef(false);
+  useEffect(() => {
+    if (viewTracked.current) return;
+    viewTracked.current = true;
+    track("Public Listing Viewed", {
+      public_id: listing.publicId,
+      category: listing.category,
+      is_authenticated: !!user,
+      is_owner: isOwner,
+    });
+  }, []);
 
   return (
     <main className="min-h-screen bg-bg-primary">

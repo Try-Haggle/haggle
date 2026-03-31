@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import type { ListingDetail } from "./page";
+import { useAmplitude } from "@/providers/amplitude-provider";
 
 export function DetailContent({ listing }: { listing: ListingDetail }) {
   const [copied, setCopied] = useState(false);
@@ -22,8 +23,11 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
 
   const timeLeft = useTimeLeft(listing.sellingDeadline);
 
+  const { track } = useAmplitude();
+
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);
+    track("Share Link Copied", { public_id: listing.publicId, source: "listing_detail" });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
