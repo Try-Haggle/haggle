@@ -51,7 +51,7 @@ Haggle은 AI Agent가 자동으로 가격을 협상하고, 스테이블코인(US
 
 ## Monorepo 구조
 
-이 저장소는 **MVP 중심 monorepo**입니다. 결제/분쟁 등 MVP에 불필요한 기능은 별도 브랜치에서 개발합니다.
+이 저장소는 **MVP 중심 monorepo**입니다. MVP 범위: 협상 엔진 + 웹앱 + API + 결제(USDC) + 배송 + 분쟁 + 스마트 컨트랙트(Base L2).
 
 ```
 haggle/
@@ -61,7 +61,7 @@ haggle/
 ├── packages/
 │   ├── shared/                       ← 공통 타입, 상수, 유틸 (DO NOT TOUCH)
 │   ├── db/                           ← Drizzle ORM + PostgreSQL (DO NOT TOUCH)
-│   ├── contracts/                    ← 스마트 컨트랙트 (스텁)
+│   ├── contracts/                    ← 스마트 컨트랙트 (Foundry, Base L2)
 │   ├── engine-core/                  ← 순수 수학 엔진 (83 tests, 외부 의존성 0)
 │   └── engine-session/               ← 세션 오케스트레이션 (121+ tests)
 ├── docs/                             ← 사업/아키텍처 문서
@@ -134,7 +134,7 @@ pnpm --filter @haggle/engine-session test
 3. **Stateless Engine**: 수평 확장 가능한 설계
 4. **Event-Driven**: 모듈 간 직접 의존 금지, 이벤트로 통신
 5. **Open Protocol, Closed Engine**: HNP 스펙은 공개, 엔진 로직은 비공개
-6. **MVP-First**: main 브랜치는 MVP 전용. 결제/분쟁 등은 별도 브랜치
+6. **MVP-First**: main 브랜치는 MVP 전용. 협상 + 결제 + 배송 + 분쟁 + 스마트 컨트랙트 포함
 7. **Non-Custodial**: Haggle 은 사용자 자금에 대한 키를 절대 보유하지 않는다
 8. **Governance-Safe**: 컨트랙트 업그레이드 권한과 자금 접근 권한은 완전히 분리. Timelock(48h+) + Multisig 필수
 
@@ -144,10 +144,8 @@ pnpm --filter @haggle/engine-session test
 
 | 브랜치 | 용도 |
 |--------|------|
-| `main` | MVP 전용 (협상 엔진 + 웹앱 + API) |
+| `main` | MVP 전용 (협상 + 결제 + 배송 + 분쟁 + 스마트 컨트랙트) |
 | `feature/hnp-proto` | HNP Protobuf wire format (추후) |
-| `feature/dispute-system` | 3-Tier 분쟁 해결 시스템 (추후) |
-| `feature/settlement` | USDC 결제 연동 (추후) |
 
 ---
 
@@ -160,5 +158,5 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
-*Last Updated: 2026-02-17*
-*Version: 2.0*
+*Last Updated: 2026-03-31*
+*Version: 2.1*

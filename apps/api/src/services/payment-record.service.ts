@@ -241,6 +241,49 @@ export async function createPaymentSettlementRecord(
   return row;
 }
 
+type CommerceOrderStatus =
+  | "APPROVED"
+  | "PAYMENT_PENDING"
+  | "PAID"
+  | "FULFILLMENT_PENDING"
+  | "FULFILLMENT_ACTIVE"
+  | "DELIVERED"
+  | "IN_DISPUTE"
+  | "REFUNDED"
+  | "CLOSED"
+  | "CANCELED";
+
+export async function updateCommerceOrderStatus(
+  db: Database,
+  orderId: string,
+  status: CommerceOrderStatus,
+): Promise<void> {
+  await db
+    .update(commerceOrders)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(commerceOrders.id, orderId));
+}
+
+export async function getCommerceOrderByOrderId(
+  db: Database,
+  orderId: string,
+): Promise<typeof commerceOrders.$inferSelect | null> {
+  const row = await db.query.commerceOrders.findFirst({
+    where: (fields, ops) => ops.eq(fields.id, orderId),
+  });
+  return row ?? null;
+}
+
+export async function getPaymentIntentByOrderId(
+  db: Database,
+  orderId: string,
+): Promise<PaymentIntent | null> {
+  const row = await db.query.paymentIntents.findFirst({
+    where: (fields, ops) => ops.eq(fields.orderId, orderId),
+  });
+  return row ? mapPaymentIntent(row) : null;
+}
+
 export async function createRefundRecord(db: Database, refund: Refund, providerReference?: string | null) {
   const [row] = await db
     .insert(refunds)

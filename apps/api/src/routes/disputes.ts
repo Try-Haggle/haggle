@@ -12,6 +12,14 @@ import {
   createDisputeResolutionRecord,
 } from "../services/dispute-record.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
+import {
+  getCommerceOrderByOrderId,
+  getPaymentIntentByOrderId,
+  updateCommerceOrderStatus,
+  createRefundRecord,
+} from "../services/payment-record.service.js";
+import { createPaymentServiceFromEnv } from "../payments/providers.js";
+import type { Refund } from "@haggle/payment-core";
 
 const openDisputeSchema = z.object({
   order_id: z.string(),
@@ -44,6 +52,7 @@ const resolveDisputeSchema = z.object({
 
 export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const disputeService = new DisputeService();
+  const paymentService = createPaymentServiceFromEnv();
 
   // POST /disputes — open a new dispute
   app.post("/disputes", async (request, reply) => {
@@ -72,6 +81,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     });
 
     await createDisputeRecord(db, result.dispute);
+
+    // Transition order to IN_DISPUTE
+    await updateCommerceOrderStatus(db, parsed.data.order_id, "IN_DISPUTE");
 
     return reply.code(201).send(result);
   });
@@ -203,19 +215,59 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (result.value) {
         await createDisputeResolutionRecord(db, dispute.id, result.value);
       }
+      // Resolve buyer/seller from the commerce order
+      const order = await getCommerceOrderByOrderId(db, dispute.order_id);
+
       if (result.trust_triggers.length > 0) {
-        // Need buyer/seller IDs — get from the order or dispute record
-        const fullDispute = await getDisputeById(db, dispute.id);
-        if (fullDispute) {
-          await applyTrustTriggers(db, {
-            order_id: fullDispute.order_id,
-            buyer_id: "", // TODO: resolve from order
-            seller_id: "", // TODO: resolve from order
-            triggers: result.trust_triggers,
-          });
-        }
+        await applyTrustTriggers(db, {
+          order_id: dispute.order_id,
+          buyer_id: order?.buyerId ?? "",
+          seller_id: order?.sellerId ?? "",
+          triggers: result.trust_triggers,
+        });
       }
-      return reply.send(result);
+
+      // Auto-refund on buyer_favor / partial_refund; close on seller_favor
+      let autoRefundResult = null;
+      if (parsed.data.outcome === "buyer_favor" || parsed.data.outcome === "partial_refund") {
+        const intent = await getPaymentIntentByOrderId(db, dispute.order_id);
+        if (intent) {
+          const refundAmountMinor =
+            parsed.data.refund_amount_minor ?? intent.amount.amount_minor;
+          const refund: Refund = {
+            id:
+              typeof globalThis.crypto?.randomUUID === "function"
+                ? globalThis.crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            payment_intent_id: intent.id,
+            amount: {
+              currency: intent.amount.currency,
+              amount_minor: refundAmountMinor,
+            },
+            reason_code: `dispute_${parsed.data.outcome}`,
+            status: "REQUESTED",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          try {
+            autoRefundResult = await paymentService.refundIntent(intent, refund);
+            await createRefundRecord(
+              db,
+              autoRefundResult.refund,
+              typeof autoRefundResult.metadata?.provider_reference === "string"
+                ? autoRefundResult.metadata.provider_reference
+                : null,
+            );
+          } catch {
+            // Refund attempt failed — log but don't fail the resolution
+          }
+        }
+        await updateCommerceOrderStatus(db, dispute.order_id, "REFUNDED");
+      } else if (parsed.data.outcome === "seller_favor") {
+        await updateCommerceOrderStatus(db, dispute.order_id, "CLOSED");
+      }
+
+      return reply.send({ ...result, auto_refund: autoRefundResult });
     } catch (error) {
       return reply.code(400).send({
         error: "RESOLUTION_FAILED",

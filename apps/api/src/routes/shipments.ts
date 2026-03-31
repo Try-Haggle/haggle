@@ -25,6 +25,7 @@ import {
 } from "../services/settlement-release.service.js";
 import type { ShipmentStatus } from "@haggle/shipping-core";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
+import { updateCommerceOrderStatus } from "../services/payment-record.service.js";
 
 type ShipmentEventType = Parameters<typeof transitionShipmentStatus>[1];
 
@@ -112,6 +113,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     await updateShipmentRecord(db, result.shipment);
     if (newEvent) {
       await insertShipmentEvent(db, newEvent);
+    }
+
+    // Sync order status with shipment status
+    if (result.shipment.status === "IN_TRANSIT") {
+      await updateCommerceOrderStatus(db, result.shipment.order_id, "FULFILLMENT_ACTIVE");
+    } else if (result.shipment.status === "DELIVERED") {
+      await updateCommerceOrderStatus(db, result.shipment.order_id, "DELIVERED");
     }
 
     // Auto-start buyer review when shipment is delivered

@@ -23,8 +23,10 @@ import {
   ensureCommerceOrderForApproval,
   getPaymentIntentById,
   getSettlementApprovalById,
+  updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
+import { createShipmentRecord } from "../services/shipment-record.service.js";
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
@@ -164,6 +166,19 @@ async function autoCreateSettlementRelease(
 
     await createSettlementReleaseRecord(db, release);
     return release;
+  } catch {
+    // Non-critical: log but don't fail the settlement
+    return null;
+  }
+}
+
+/**
+ * Auto-create a shipment record after payment settles.
+ * Non-critical — failures are swallowed so the settlement response is not affected.
+ */
+async function autoCreateShipment(db: Database, intent: PaymentIntent) {
+  try {
+    return await createShipmentRecord(db, intent.order_id, intent.seller_id, intent.buyer_id);
   } catch {
     // Non-critical: log but don't fail the settlement
     return null;
@@ -365,10 +380,18 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     // Auto-create Settlement Release (Payment Protection)
     const settlementRelease = await autoCreateSettlementRelease(db, result.intent);
 
+    // Auto-transition order status and create shipment
+    await updateCommerceOrderStatus(db, result.intent.order_id, "PAID");
+    const shipment = await autoCreateShipment(db, result.intent);
+    if (shipment) {
+      await updateCommerceOrderStatus(db, result.intent.order_id, "FULFILLMENT_PENDING");
+    }
+
     return reply.send({
       settlement: settle,
       payment: result,
       settlement_release: settlementRelease,
+      shipment,
     });
   });
 
@@ -433,7 +456,14 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     // Auto-create Settlement Release (Payment Protection)
     const settlementRelease = await autoCreateSettlementRelease(db, result.intent);
 
-    return reply.send({ ...result, settlement_release: settlementRelease });
+    // Auto-transition order status and create shipment
+    await updateCommerceOrderStatus(db, result.intent.order_id, "PAID");
+    const shipment = await autoCreateShipment(db, result.intent);
+    if (shipment) {
+      await updateCommerceOrderStatus(db, result.intent.order_id, "FULFILLMENT_PENDING");
+    }
+
+    return reply.send({ ...result, settlement_release: settlementRelease, shipment });
   });
 
   app.post("/payments/:id/fail", async (request, reply) => {
