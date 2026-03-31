@@ -31,12 +31,23 @@ function ClaimForm() {
 
   const supabase = createClient();
 
+  function storeAuthIntent() {
+    let entryPoint = "direct";
+    if (token) entryPoint = "chatgpt_mcp";
+    else if (returnTo?.startsWith("/l/")) entryPoint = "listing";
+    localStorage.setItem("haggle_auth_intent", JSON.stringify({
+      entry_point: entryPoint,
+      timestamp: Date.now(),
+    }));
+  }
+
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
 
     setIsLoading(true);
     setAuthError(null);
+    storeAuthIntent();
 
     const nextPath = token ? `/sell/dashboard?claim=${token}` : returnTo || "/sell/dashboard";
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
@@ -57,6 +68,7 @@ function ClaimForm() {
 
   async function handleGoogleLogin() {
     setAuthError(null);
+    storeAuthIntent();
 
     const nextPath = token ? `/sell/dashboard?claim=${token}` : returnTo || "/sell/dashboard";
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useAmplitude } from "@/providers/amplitude-provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -203,9 +204,12 @@ function RadarChart({ stats }: { stats: AgentStats }) {
 
 /* ─── Main Wizard ─────────────────────────────────────────── */
 
+const STEP_NAMES = ["item_details", "pricing", "agent"] as const;
+
 export function NewListingWizard({ userId }: { userId: string }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { track } = useAmplitude();
 
   // Wizard state
   const [step, setStep] = useState(1);
@@ -255,6 +259,28 @@ export function NewListingWizard({ userId }: { userId: string }) {
 
   const currentStats = selectedAgent?.stats ?? DEFAULT_STATS;
   const accentColor = selectedAgent?.accentColor ?? "#64748b";
+
+  /* ─── Amplitude tracking ───────────────────────────────── */
+
+  // Wizard Started (1회) + Step Viewed (스텝 변경 시)
+  const wizardTracked = useRef(false);
+  const lastTrackedStep = useRef<number | null>(null);
+  useEffect(() => {
+    if (!wizardTracked.current) {
+      track("Listing Wizard Started", {
+        source: document.referrer.includes("/sell/dashboard") ? "dashboard" : "direct",
+      });
+      wizardTracked.current = true;
+    }
+    if (lastTrackedStep.current !== step) {
+      track("Listing Wizard Step Viewed", {
+        step_index: step,
+        step_name: STEP_NAMES[step - 1],
+        draft_id: draftId,
+      });
+      lastTrackedStep.current = step;
+    }
+  }, [step]);
 
   /* ─── Photo handling ────────────────────────────────────── */
 
@@ -440,6 +466,16 @@ export function NewListingWizard({ userId }: { userId: string }) {
         return;
       }
 
+      track("Listing Published", {
+        draft_id: draftId,
+        public_id: data.publicId,
+        category,
+        condition,
+        has_photo: !!photoUrl,
+        has_floor_price: !!floorPrice,
+        agent_preset: selectedAgent.id,
+      });
+
       setPublishResult({
         publicId: data.publicId,
         shareUrl: data.shareUrl,
@@ -534,6 +570,7 @@ export function NewListingWizard({ userId }: { userId: string }) {
               type="button"
               onClick={() => {
                 navigator.clipboard.writeText(publishResult.shareUrl);
+                track("Share Link Copied", { public_id: publishResult.publicId, source: "publish_screen" });
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               }}
@@ -582,8 +619,11 @@ export function NewListingWizard({ userId }: { userId: string }) {
         type="button"
         onClick={() => {
           setError(null);
-          if (step === 1) router.push("/sell/dashboard");
-          else setStep(step - 1);
+          if (step === 1) {
+            router.push("/sell/dashboard");
+          } else {
+            setStep(step - 1);
+          }
         }}
         className="mb-4 flex cursor-pointer items-center gap-1 text-sm text-slate-400 hover:text-white transition-colors"
       >
@@ -1015,7 +1055,10 @@ export function NewListingWizard({ userId }: { userId: string }) {
                     <button
                       key={agent.id}
                       type="button"
-                      onClick={() => setSelectedAgent(agent)}
+                      onClick={() => {
+                        setSelectedAgent(agent);
+                        track("Seller Agent Selected", { agent_preset: agent.id, draft_id: draftId });
+                      }}
                       className="flex cursor-pointer flex-col rounded-xl border p-4 text-left transition-all"
                       style={{
                         background: "#111827",

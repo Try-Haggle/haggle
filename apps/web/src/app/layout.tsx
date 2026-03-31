@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AmplitudeProvider } from "@/providers/amplitude-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,7 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-bg-primary text-slate-100 antialiased" suppressHydrationWarning>{children}</body>
+      <body className="bg-bg-primary text-slate-100 antialiased" suppressHydrationWarning>
+        <AmplitudeProvider>{children}</AmplitudeProvider>
+      </body>
     </html>
   );
 }

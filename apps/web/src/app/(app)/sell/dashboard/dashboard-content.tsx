@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ListingSummary } from "./page";
+import { useAmplitude } from "@/providers/amplitude-provider";
+
 
 export function DashboardContent({
   userEmail,
@@ -13,7 +15,18 @@ export function DashboardContent({
   claimResult: { ok: boolean; error?: string } | null;
   listings: ListingSummary[];
 }) {
+  const { track } = useAmplitude();
   const activeCount = listings.filter((l) => l.status === "published").length;
+
+  // Claim Token Used (1회)
+  const claimTracked = useRef(false);
+  useEffect(() => {
+    if (claimTracked.current) return;
+    claimTracked.current = true;
+    if (claimResult?.ok) {
+      track("Claim Token Used", { source: "chatgpt_mcp" });
+    }
+  }, []);
 
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
@@ -252,6 +265,7 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
 
 function ShareButton({ publicId }: { publicId: string }) {
   const [copied, setCopied] = useState(false);
+  const { track } = useAmplitude();
 
   return (
     <button
@@ -259,6 +273,7 @@ function ShareButton({ publicId }: { publicId: string }) {
         e.preventDefault();
         const url = `${window.location.origin}/l/${publicId}`;
         navigator.clipboard.writeText(url);
+        track("Share Link Copied", { public_id: publicId, source: "dashboard" });
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
