@@ -1,5 +1,5 @@
-import { NegotiationPlayground } from "./playground";
+import { Landing } from "./(marketing)/landing";
 
 export default function Home() {
-  return <NegotiationPlayground />;
+  return <Landing />;
 }
