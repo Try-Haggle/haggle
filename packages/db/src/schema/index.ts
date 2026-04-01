@@ -10,6 +10,7 @@ export {
   refunds,
 } from "./payments.js";
 export { shipmentEvents, shipments } from "./shipments.js";
+export { authentications, authenticationEvents } from "./authentications.js";
 export { settlementReleases } from "./settlement-releases.js";
 export { disputeCases, disputeEvidence, disputeResolutions } from "./disputes.js";
 export {

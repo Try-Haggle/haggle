@@ -11,6 +11,7 @@ import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerShipmentRoutes } from "./routes/shipments.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
+import { registerAuthenticationRoutes } from "./routes/authentications.js";
 import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 
 export async function createServer() {
@@ -52,6 +53,7 @@ export async function createServer() {
   registerShipmentRoutes(app, db);
   registerDisputeRoutes(app, db);
   registerSettlementReleaseRoutes(app, db);
+  registerAuthenticationRoutes(app, db);
 
   // ─── REST API Routes ───────────────────────────────────
   registerClaimRoutes(app, db);
