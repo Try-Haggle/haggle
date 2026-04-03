@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BuyerLanding } from "./buyer-landing";
+import { SimilarListings } from "./similar-listings";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -67,5 +68,10 @@ export default async function BuyerListingPage({
 
   const isOwner = !!(user && data.sellerId && user.id === data.sellerId);
 
-  return <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} />;
+  return (
+    <>
+      <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} />
+      <SimilarListings publicId={publicId} userId={user?.id ?? null} />
+    </>
+  );
 }
