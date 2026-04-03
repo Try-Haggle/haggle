@@ -1,4 +1,4 @@
-import { type Database, categoryRelatedness, tagIdfCache, listingEmbeddings, buyerInterestVectors, recommendationLogs, eq, sql } from "@haggle/db";
+import { type Database, categoryRelatedness, tagIdfCache, recommendationLogs, sql } from "@haggle/db";
 
 // ─── In-Memory Caches ──────────────────────────────────
 
@@ -100,7 +100,8 @@ const WEIGHTS = {
   image: 0.03,
 } as const;
 
-const MINIMUM_SIMILARITY_THRESHOLD = 0.55;
+const SIMILARITY_THRESHOLD_DETAIL = 0.55;    // Detail page: single listing comparison
+const SIMILARITY_THRESHOLD_DASHBOARD = 0.40; // Dashboard: Interest Vector (averaged) scores lower
 
 // ─── Signal Functions ──────────────────────────────────
 
@@ -300,6 +301,7 @@ export async function findSimilarListings(
   options: {
     limit?: number;
     userId?: string | null;
+    threshold?: number;
   } = {},
 ): Promise<ScoredCandidate[]> {
   const { limit = 10, userId = null } = options;
@@ -317,6 +319,12 @@ export async function findSimilarListings(
     ? sql``
     : sql`AND lp.id != ${publishedListingId}`;
 
+  // Exclude listings the user has already viewed (both detail page and dashboard)
+  // Dashboard has Recently Viewed section separately, so no need to duplicate
+  const viewedFilter = userId
+    ? sql`AND lp.id NOT IN (SELECT published_listing_id FROM buyer_listings WHERE user_id = ${userId})`
+    : sql``;
+
   const candidates = await db.execute(sql`
     SELECT
       lp.id,
@@ -332,6 +340,7 @@ export async function findSimilarListings(
     WHERE true
       ${listingFilter}
       ${userFilter}
+      ${viewedFilter}
       AND ld.status = 'published'
       AND (ld.selling_deadline > NOW() OR ld.selling_deadline IS NULL)
       AND le.text_embedding IS NOT NULL
@@ -365,7 +374,8 @@ export async function findSimilarListings(
   });
 
   // Filter by minimum similarity threshold
-  scored = scored.filter((s) => s.compositeScore >= MINIMUM_SIMILARITY_THRESHOLD);
+  const threshold = options.threshold ?? SIMILARITY_THRESHOLD_DETAIL;
+  scored = scored.filter((s) => s.compositeScore >= threshold);
 
   if (scored.length === 0) return [];
 
@@ -573,40 +583,91 @@ export async function getDashboardRecommendations(
   const { limit = 10 } = options;
 
   // Fetch Interest Vector
-  const ivRows = await db.execute<{
-    interest_vector: string;
-    based_on_count: number;
-  }>(sql`
+  const ivRows = await db.execute(sql`
     SELECT interest_vector, based_on_count
     FROM buyer_interest_vectors
     WHERE user_id = ${userId}
   `);
 
-  const ivResult = ivRows as unknown as Array<{
-    interest_vector: string;
-    based_on_count: number;
-  }>;
+  const ivResult = ivRows as unknown as Array<Record<string, unknown>>;
 
   // No Interest Vector → empty state
-  if (ivResult.length === 0) {
+  if (!ivResult || ivResult.length === 0 || !ivResult[0]?.interest_vector) {
     return {
       listings: [],
       meta: { source: "empty", basedOnCount: 0, totalCandidates: 0, algorithm: "multi-signal-v1" },
     };
   }
 
-  const { interest_vector: rawVector, based_on_count: basedOnCount } = ivResult[0];
+  const rawVector = ivResult[0].interest_vector as string;
+  const basedOnCount = Number(ivResult[0].based_on_count) || 0;
   const interestVector: number[] = typeof rawVector === "string"
     ? rawVector.slice(1, -1).split(",").map(Number)
     : (rawVector as unknown as number[]);
 
-  // Run pipeline with Interest Vector as anchor
-  // Create a synthetic snapshot for signal computation (no specific listing context)
-  const syntheticSnapshot: Record<string, unknown> = {};
+  // Build synthetic snapshot from user's viewing history
+  // So Stage 2 signals (category, price, condition, tags) have meaningful comparison targets
+  const viewedData = await db.execute<{
+    category: string | null;
+    condition: string | null;
+    target_price: string | null;
+    tags: string[] | null;
+  }>(sql`
+    SELECT
+      lp.snapshot_json->>'category' AS category,
+      lp.snapshot_json->>'condition' AS condition,
+      lp.snapshot_json->>'targetPrice' AS target_price,
+      CASE WHEN jsonb_typeof(lp.snapshot_json->'tags') = 'array'
+        THEN ARRAY(SELECT jsonb_array_elements_text(lp.snapshot_json->'tags'))
+        ELSE '{}'::text[]
+      END AS tags
+    FROM buyer_listings bl
+    JOIN listings_published lp ON lp.id = bl.published_listing_id
+    WHERE bl.user_id = ${userId}
+    ORDER BY bl.last_viewed_at DESC
+    LIMIT 50
+  `);
+
+  const viewedRows = viewedData as unknown as Array<{
+    category: string | null;
+    condition: string | null;
+    target_price: string | null;
+    tags: string[] | null;
+  }>;
+
+  // Most common category
+  const categoryCounts: Record<string, number> = {};
+  for (const r of viewedRows) {
+    if (r.category) categoryCounts[r.category] = (categoryCounts[r.category] ?? 0) + 1;
+  }
+  const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  // Most common condition
+  const conditionCounts: Record<string, number> = {};
+  for (const r of viewedRows) {
+    if (r.condition) conditionCounts[r.condition] = (conditionCounts[r.condition] ?? 0) + 1;
+  }
+  const topCondition = Object.entries(conditionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  // Average price
+  const prices = viewedRows.map((r) => Number(r.target_price)).filter((p) => p > 0);
+  const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
+
+  // Merged tags
+  const allTags = viewedRows.flatMap((r) => r.tags ?? []);
+  const uniqueTags = [...new Set(allTags)];
+
+  const syntheticSnapshot: Record<string, unknown> = {
+    category: topCategory,
+    condition: topCondition,
+    targetPrice: avgPrice ? String(avgPrice.toFixed(2)) : null,
+    tags: uniqueTags.slice(0, 10),
+  };
 
   const results = await findSimilarListings(db, "__none__", syntheticSnapshot, interestVector, {
     limit,
     userId,
+    threshold: SIMILARITY_THRESHOLD_DASHBOARD,
   });
 
   // Save recommendation logs + build response
