@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAmplitude } from "@/providers/amplitude-provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -40,6 +41,7 @@ function formatCondition(condition: string | null): string {
 }
 
 export function RecommendedForYou({ userId }: { userId: string }) {
+  const { track } = useAmplitude();
   const [listings, setListings] = useState<RecommendedListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<string>("empty");
@@ -51,6 +53,12 @@ export function RecommendedForYou({ userId }: { userId: string }) {
         if (data.ok) {
           setListings(data.listings ?? []);
           setSource(data.meta?.source ?? "empty");
+          if (data.listings?.length > 0) {
+            track("recommendation_impressed", {
+              context: "dashboard",
+              count: data.listings.length,
+            });
+          }
         }
       })
       .catch(() => {})
@@ -98,6 +106,10 @@ export function RecommendedForYou({ userId }: { userId: string }) {
                 fetch(`${API_URL}/api/recommendations/log/${item.logId}/click`, {
                   method: "PATCH",
                 }).catch(() => {});
+                track("recommendation_clicked", {
+                  context: "dashboard",
+                  recommended_listing_id: item.publicId,
+                });
               }}
               className="group cursor-pointer rounded-xl border border-slate-800 bg-slate-900/50 p-3 transition-colors hover:border-slate-700 hover:bg-slate-800/50"
             >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAmplitude } from "@/providers/amplitude-provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -40,6 +41,7 @@ function formatCondition(condition: string | null): string {
 }
 
 export function SimilarListings({ publicId, userId }: { publicId: string; userId?: string | null }) {
+  const { track } = useAmplitude();
   const [listings, setListings] = useState<SimilarListing[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,6 +54,13 @@ export function SimilarListings({ publicId, userId }: { publicId: string; userId
       .then((data) => {
         if (data.ok && data.listings) {
           setListings(data.listings);
+          if (data.listings.length > 0) {
+            track("recommendation_impressed", {
+              context: "detail_page",
+              source_listing_id: publicId,
+              count: data.listings.length,
+            });
+          }
         }
       })
       .catch(() => {
@@ -89,6 +98,11 @@ export function SimilarListings({ publicId, userId }: { publicId: string; userId
                 fetch(`${API_URL}/api/recommendations/log/${item.logId}/click`, {
                   method: "PATCH",
                 }).catch(() => {});
+                track("recommendation_clicked", {
+                  context: "detail_page",
+                  source_listing_id: publicId,
+                  recommended_listing_id: item.publicId,
+                });
               }}
               className="group cursor-pointer rounded-xl border border-slate-800 bg-slate-900/50 p-3 transition-colors hover:border-slate-700 hover:bg-slate-800/50"
             >
