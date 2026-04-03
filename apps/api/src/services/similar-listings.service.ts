@@ -1,4 +1,4 @@
-import { type Database, categoryRelatedness, tagIdfCache, listingEmbeddings, recommendationLogs, sql } from "@haggle/db";
+import { type Database, categoryRelatedness, tagIdfCache, listingEmbeddings, buyerInterestVectors, recommendationLogs, eq, sql } from "@haggle/db";
 
 // ─── In-Memory Caches ──────────────────────────────────
 
@@ -307,12 +307,15 @@ export async function findSimilarListings(
   // Stage 1: Candidate generation via pgvector ANN search
   const embeddingStr = `[${sourceEmbedding.join(",")}]`;
 
-  // Build user exclusion clause: only apply when userId is provided (authenticated user)
-  // When userId is null (public/anonymous), don't filter by user — otherwise NULL user_id
-  // listings get excluded because NULL IS DISTINCT FROM NULL = FALSE
+  // Build exclusion clauses
   const userFilter = userId
     ? sql`AND ld.user_id IS DISTINCT FROM ${userId}`
     : sql``;
+
+  // Dashboard mode: no source listing to exclude
+  const listingFilter = publishedListingId === "__none__"
+    ? sql``
+    : sql`AND lp.id != ${publishedListingId}`;
 
   const candidates = await db.execute(sql`
     SELECT
@@ -326,7 +329,8 @@ export async function findSimilarListings(
     FROM listings_published lp
     JOIN listing_embeddings le ON le.published_listing_id = lp.id
     JOIN listing_drafts ld ON ld.id = lp.draft_id
-    WHERE lp.id != ${publishedListingId}
+    WHERE true
+      ${listingFilter}
       ${userFilter}
       AND ld.status = 'published'
       AND (ld.selling_deadline > NOW() OR ld.selling_deadline IS NULL)
@@ -457,6 +461,193 @@ export async function getSimilarListingsForPublicId(
     listings,
     meta: {
       sourcePublicId: publicId,
+      totalCandidates: results.length,
+      algorithm: "multi-signal-v1",
+    },
+  };
+}
+
+// ─── Interest Vector ───────────────────────────────────
+
+const ENGAGEMENT_MULTIPLIER: Record<string, number> = {
+  viewed: 1.0,
+  negotiating: 3.0,
+  completed: 5.0,
+  cancelled: 0.5,
+};
+
+/** Exponential decay with 24-hour half-life. */
+function computeRecencyDecay(lastViewedAt: Date): number {
+  const hoursAgo = (Date.now() - lastViewedAt.getTime()) / (1000 * 60 * 60);
+  return Math.exp(-0.029 * hoursAgo); // ln(2)/24 ≈ 0.029
+}
+
+/** Frequency boost: more views = more interest, capped at 5. */
+function computeFrequencyBoost(viewCount: number): number {
+  return Math.min(viewCount, 5) / 5;
+}
+
+/**
+ * Compute and store Interest Vector for a user.
+ * Weighted average of recent 50 viewed listings' embeddings.
+ * Fire-and-forget — call without await from POST /api/viewed.
+ */
+export async function recomputeInterestVector(db: Database, userId: string) {
+  // Fetch recent 50 viewed listings with their embeddings
+  const rows = await db.execute<{
+    status: string;
+    view_count: number;
+    last_viewed_at: string;
+    text_embedding: string;
+  }>(sql`
+    SELECT
+      bl.status,
+      bl.view_count,
+      bl.last_viewed_at,
+      le.text_embedding
+    FROM buyer_listings bl
+    JOIN listing_embeddings le ON le.published_listing_id = bl.published_listing_id
+    WHERE bl.user_id = ${userId}
+      AND le.status = 'completed'
+      AND le.text_embedding IS NOT NULL
+    ORDER BY bl.last_viewed_at DESC
+    LIMIT 50
+  `);
+
+  const viewedRows = rows as unknown as Array<{
+    status: string;
+    view_count: number;
+    last_viewed_at: string;
+    text_embedding: string;
+  }>;
+
+  if (viewedRows.length === 0) return;
+
+  const dimension = 1536;
+  const weighted = new Array(dimension).fill(0);
+  let totalWeight = 0;
+
+  for (const row of viewedRows) {
+    const embedding = typeof row.text_embedding === "string"
+      ? row.text_embedding.slice(1, -1).split(",").map(Number)
+      : (row.text_embedding as unknown as number[]);
+
+    const recency = computeRecencyDecay(new Date(row.last_viewed_at));
+    const engagement = ENGAGEMENT_MULTIPLIER[row.status] ?? 1.0;
+    const frequency = computeFrequencyBoost(row.view_count);
+
+    const weight = recency * engagement * frequency;
+    totalWeight += weight;
+
+    for (let i = 0; i < dimension; i++) {
+      weighted[i] += embedding[i] * weight;
+    }
+  }
+
+  // Normalize
+  if (totalWeight > 0) {
+    for (let i = 0; i < dimension; i++) {
+      weighted[i] /= totalWeight;
+    }
+  }
+
+  // Upsert into buyer_interest_vectors
+  const vectorStr = `[${weighted.join(",")}]`;
+  await db.execute(sql`
+    INSERT INTO buyer_interest_vectors (user_id, interest_vector, based_on_count, updated_at)
+    VALUES (${userId}, ${vectorStr}::vector, ${viewedRows.length}, NOW())
+    ON CONFLICT (user_id) DO UPDATE SET
+      interest_vector = ${vectorStr}::vector,
+      based_on_count = ${viewedRows.length},
+      updated_at = NOW()
+  `);
+}
+
+// ─── Dashboard Recommendations ─────────────────────────
+
+export async function getDashboardRecommendations(
+  db: Database,
+  userId: string,
+  options: { limit?: number } = {},
+): Promise<{ listings: SimilarListingResult[]; meta: Record<string, unknown> }> {
+  const { limit = 10 } = options;
+
+  // Fetch Interest Vector
+  const ivRows = await db.execute<{
+    interest_vector: string;
+    based_on_count: number;
+  }>(sql`
+    SELECT interest_vector, based_on_count
+    FROM buyer_interest_vectors
+    WHERE user_id = ${userId}
+  `);
+
+  const ivResult = ivRows as unknown as Array<{
+    interest_vector: string;
+    based_on_count: number;
+  }>;
+
+  // No Interest Vector → empty state
+  if (ivResult.length === 0) {
+    return {
+      listings: [],
+      meta: { source: "empty", basedOnCount: 0, totalCandidates: 0, algorithm: "multi-signal-v1" },
+    };
+  }
+
+  const { interest_vector: rawVector, based_on_count: basedOnCount } = ivResult[0];
+  const interestVector: number[] = typeof rawVector === "string"
+    ? rawVector.slice(1, -1).split(",").map(Number)
+    : (rawVector as unknown as number[]);
+
+  // Run pipeline with Interest Vector as anchor
+  // Create a synthetic snapshot for signal computation (no specific listing context)
+  const syntheticSnapshot: Record<string, unknown> = {};
+
+  const results = await findSimilarListings(db, "__none__", syntheticSnapshot, interestVector, {
+    limit,
+    userId,
+  });
+
+  // Save recommendation logs + build response
+  const listings: SimilarListingResult[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const { candidate, scores, compositeScore } = results[i];
+    const snap = candidate.snapshot_json;
+
+    const [logRow] = await db
+      .insert(recommendationLogs)
+      .values({
+        userId,
+        context: "dashboard",
+        sourceType: "interest_vector",
+        recommendedListingId: candidate.id,
+        position: i + 1,
+        compositeScore: compositeScore.toFixed(4),
+        signalScores: scores as unknown as Record<string, number>,
+      })
+      .returning({ id: recommendationLogs.id });
+
+    listings.push({
+      publicId: candidate.public_id,
+      title: (snap.title as string) || "",
+      category: (snap.category as string) || null,
+      condition: (snap.condition as string) || null,
+      photoUrl: (snap.photoUrl as string) || null,
+      targetPrice: snap.targetPrice ? String(snap.targetPrice) : null,
+      sellingDeadline: snap.sellingDeadline ? String(snap.sellingDeadline) : null,
+      similarityScore: Math.round(compositeScore * 100) / 100,
+      matchReasons: generateMatchReasons(scores),
+      logId: logRow.id,
+    });
+  }
+
+  return {
+    listings,
+    meta: {
+      source: "interest_vector",
+      basedOnCount: basedOnCount,
       totalCandidates: results.length,
       algorithm: "multi-signal-v1",
     },

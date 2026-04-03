@@ -6,7 +6,9 @@ import {
   listingDrafts,
   eq,
   desc,
+  sql,
 } from "@haggle/db";
+import { recomputeInterestVector } from "../services/similar-listings.service.js";
 
 export function registerBuyerListingsRoutes(
   app: FastifyInstance,
@@ -57,8 +59,15 @@ export function registerBuyerListingsRoutes(
     if (existing) {
       await db
         .update(buyerListings)
-        .set({ lastViewedAt: new Date(), updatedAt: new Date() })
+        .set({
+          lastViewedAt: new Date(),
+          viewCount: sql`view_count + 1`,
+          updatedAt: new Date(),
+        })
         .where(eq(buyerListings.id, existing.id));
+
+      // Recompute Interest Vector (fire-and-forget)
+      recomputeInterestVector(db, userId).catch(() => {});
 
       return reply.send({ ok: true, action: "updated" });
     }
@@ -69,6 +78,10 @@ export function registerBuyerListingsRoutes(
         publishedListingId: published.id,
         status: "viewed",
       });
+
+      // Recompute Interest Vector (fire-and-forget)
+      recomputeInterestVector(db, userId).catch(() => {});
+
       return reply.send({ ok: true, action: "created" });
     } catch (err: unknown) {
       // Unique index conflict from concurrent request — treat as update
