@@ -11,6 +11,7 @@ import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 import { loadSimilarListingsCaches } from "./services/similar-listings.service.js";
 import { registerSimilarListingsRoutes } from "./routes/similar-listings.js";
 import { registerRecommendationsRoutes } from "./routes/recommendations.js";
+import { registerInternalRoutes } from "./routes/internal.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -55,6 +56,7 @@ export async function createServer() {
   registerBuyerListingsRoutes(app, db);
   registerSimilarListingsRoutes(app, db);
   registerRecommendationsRoutes(app, db);
+  registerInternalRoutes(app, db);
 
   // ─── Load Caches ────────────────────────────────────────
   await loadSimilarListingsCaches(db);
