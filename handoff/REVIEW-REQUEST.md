@@ -1,4 +1,4 @@
-# Review Request — Step 7: Skill System Foundation
+# Review Request — Step 9: Skill DB + Service + API (rev 2)
 *Written by Builder. Read by Reviewer.*
 
 Ready for Review: YES
@@ -7,39 +7,48 @@ Ready for Review: YES
 
 ## What Was Built
 
-New `packages/skill-core` package — pure logic foundation for the skill/marketplace system. Types, manifest validation, in-memory registry with lifecycle transitions, and pipeline execution planning. Zero external dependencies. 62 tests, 0 typecheck errors.
+Skill DB persistence (2 tables), service layer (7 functions), and API routes (9 endpoints). Follows exact same patterns as tags.ts/tag.service.ts. Uses validateManifest from skill-core for manifest validation on registration. Lifecycle transitions enforced in route layer.
+
+## Rev 2 Fixes (from REVIEW-FEEDBACK.md)
+
+All 3 Must Fix items resolved. Both Should Fix items resolved.
+
+| # | Type | Fix |
+|---|------|-----|
+| MF-1 | Must Fix | `/skills/resolve` now imports `isCompatibleCategory` from `@haggle/skill-core` instead of inlining wildcard matching logic. DB row `supportedCategories` cast to minimal `SkillManifest`-shaped object. |
+| MF-2 | Must Fix | POST `/skills/:skillId/execute` now checks `existing.status !== "ACTIVE"` before recording execution. Returns 400 `SKILL_NOT_ACTIVE` for DRAFT/SUSPENDED/DEPRECATED skills. |
+| MF-3 | Must Fix | Comment on `updateSkillMetrics` changed from "atomic rolling average" to "rolling average (per-statement atomic, not concurrent-safe — acceptable for MVP)". |
+| SF-1 | Should Fix | `limit` query param on GET `/skills/:skillId/executions` bounded to `[1, 200]` via `Math.min(Math.max(parsed, 1), 200)`. |
+| SF-2 | Should Fix | `Number.isNaN` check on parsed limit — NaN from non-numeric input falls back to `undefined` (service default 50). |
 
 ## Files Changed
 
 | File | Lines | Change |
 |---|---|---|
-| `packages/skill-core/package.json` | 1-20 | NEW — package config, vitest devDep only |
-| `packages/skill-core/tsconfig.json` | 1-9 | NEW — extends base, standard pattern |
-| `packages/skill-core/vitest.config.ts` | 1-7 | NEW — standard vitest config |
-| `packages/skill-core/src/types.ts` | 1-68 | NEW — all core types (SkillManifest, RegisteredSkill, HookPoint, etc.) |
-| `packages/skill-core/src/manifest.ts` | 1-121 | NEW — validateManifest, isCompatibleHookPoint, isCompatibleCategory with wildcard |
-| `packages/skill-core/src/registry.ts` | 1-95 | NEW — SkillRegistry class (Map-based, lifecycle, queries, recordUsage) |
-| `packages/skill-core/src/pipeline.ts` | 1-60 | NEW — PipelineConfig, resolveSkills, createExecutionPlan (planning only) |
-| `packages/skill-core/src/index.ts` | 1-4 | NEW — re-export barrel |
-| `packages/skill-core/src/__tests__/manifest.test.ts` | 1-170 | NEW — 26 tests |
-| `packages/skill-core/src/__tests__/registry.test.ts` | 1-210 | NEW — 26 tests |
-| `packages/skill-core/src/__tests__/pipeline.test.ts` | 1-130 | NEW — 10 tests |
+| `packages/db/src/schema/skills.ts` | 1-42 | NEW — `skills` table + `skillExecutions` table |
+| `packages/db/src/schema/index.ts` | 28 | MODIFIED — added skills/skillExecutions export |
+| `apps/api/src/services/skill.service.ts` | 1-178 | NEW — 7 service functions (CRUD + metrics + executions). Rev 2: comment fix line 117. |
+| `apps/api/src/routes/skills.ts` | 1-252 | NEW — 9 endpoints via registerSkillRoutes. Rev 2: isCompatibleCategory import, ACTIVE guard on execute, limit bounds validation. |
+| `apps/api/src/server.ts` | 20, 70 | MODIFIED — import + registration |
+| `apps/api/package.json` | 38 | MODIFIED — added @haggle/skill-core dep |
 
 ## Key Areas to Scrutinize
 
-1. **Wildcard matching** (`manifest.ts:109-121`) — "vehicles.*" matches "vehicles.cars" and "vehicles.cars.sedans" but NOT "vehicles". The brief said match "vehicles.cars" — confirm deep subcategory match is desired or should be single-level only.
-2. **deprecate() dual source** (`registry.ts:48-53`) — Accepts both ACTIVE and SUSPENDED per brief. Other transitions are strict single-source.
-3. **Rolling average math** (`registry.ts:77-87`) — Uses cumulative mean for latency and error rate. Confirm this is acceptable vs exponential moving average.
-4. **skillId regex** (`manifest.ts:33`) — Allows single-char IDs like "a". Brief said "non-empty, lowercase, alphanumeric + hyphens" — single char passes all rules.
+1. **Rolling average SQL** (`skill.service.ts:117-123`) — Comment now clarifies concurrency limitation. No logic change for MVP.
+
+2. **hookPoint post-filter** (`skill.service.ts:46-52`) — Fetches rows filtered by category/status in SQL, then filters hookPoint in JS (since it's a jsonb array). Correct for MVP but suboptimal at scale.
+
+3. **isCompatibleCategory cast** (`skills.ts:63`) — DB row's `supportedCategories` wrapped as `{ supportedCategories: supported } as SkillManifest`. The cast is safe because `isCompatibleCategory` only accesses `supportedCategories`.
+
+4. **409 on duplicate skillId** (`skills.ts:102-104`) — Escalated to Architect per review feedback. Awaiting decision on idempotent vs 409 pattern.
 
 ## Open Questions
 
-None. Brief was unambiguous on all major design points.
+1. Should duplicate skillId registration be idempotent (return existing) or error (409)? Currently 409. Escalated to Architect.
 
 ## Verification
 
 ```
-pnpm --filter @haggle/skill-core test       — 62 tests passing
-pnpm --filter @haggle/skill-core typecheck   — 0 errors
-External dependencies: 0
+pnpm --filter @haggle/db typecheck       — 0 errors
+pnpm --filter @haggle/api typecheck      — 0 errors in new files (pre-existing KG-3 shipping-core errors only)
 ```

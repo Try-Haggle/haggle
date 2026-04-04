@@ -17,6 +17,17 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
+  "dependencies": {
+    "@haggle/commerce-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@easypost/api": ">=7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@easypost/api": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "vitest": "^3.0.0"
   }

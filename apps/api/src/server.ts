@@ -17,6 +17,7 @@ import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
 import { registerARPRoutes } from "./routes/arp.js";
 import { registerTagRoutes } from "./routes/tags.js";
 import { registerIntentRoutes } from "./routes/intents.js";
+import { registerSkillRoutes } from "./routes/skills.js";
 import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 
 export async function createServer() {
@@ -66,6 +67,7 @@ export async function createServer() {
   registerARPRoutes(app, db);
   registerTagRoutes(app, db);
   registerIntentRoutes(app, db);
+  registerSkillRoutes(app, db);
 
   // ─── REST API Routes ───────────────────────────────────
   registerClaimRoutes(app, db);

@@ -5,13 +5,72 @@
 
 ## Current Status
 
-**Active step:** 7 — Skill System Foundation (packages/skill-core)
-**Last cleared:** Step 6 WaitingIntent DB + Service + API Route complete — 2026-04-03
+**Active step:** 9 — Skill DB + Service + API — COMPLETE (rev 2, re-review requested)
+**Last cleared:** Step 8 Fix shipping-core build errors — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 9 — Skill DB + Service + API (Phase 5b-c) — COMPLETE (rev 2)
+*Date: 2026-04-03*
+
+Files changed:
+- `packages/db/src/schema/skills.ts` — NEW: `skills` table (id, skillId UNIQUE, name, description, version, category enum, provider enum, status enum w/ DRAFT default, supportedCategories jsonb, hookPoints jsonb, pricing jsonb, configSchema jsonb, usageCount, averageLatencyMs, errorRate, metadata, timestamps) + `skillExecutions` table (id, skillId, hookPoint, success boolean, latencyMs, inputSummary jsonb, outputSummary jsonb, error, createdAt)
+- `packages/db/src/schema/index.ts` — MODIFIED: added `skills, skillExecutions` export
+- `apps/api/src/services/skill.service.ts` — NEW: getSkillBySkillId, listSkills (with category/status/hookPoint filters), createSkill, updateSkillStatus, updateSkillMetrics (rolling avg via SQL), recordExecution, getExecutionsBySkillId
+- `apps/api/src/routes/skills.ts` — NEW: registerSkillRoutes — GET /skills/resolve (before /:skillId), POST /skills, GET /skills, GET /skills/:skillId, PATCH /skills/:skillId/activate, PATCH /skills/:skillId/suspend, PATCH /skills/:skillId/deprecate, POST /skills/:skillId/execute, GET /skills/:skillId/executions — 9 endpoints total
+- `apps/api/src/server.ts` — MODIFIED: added registerSkillRoutes import + registration
+- `apps/api/package.json` — MODIFIED: added `@haggle/skill-core: "workspace:*"` dependency
+
+Decisions made:
+- `validateManifest` from skill-core used in POST /skills to validate manifest before DB insert
+- GET /skills/resolve registered before /:skillId to prevent param capture (same pattern as tags/clusters)
+- hookPoint filter in listSkills is post-filter on jsonb array (no SQL jsonb query) — simple and sufficient for MVP
+- `isCompatibleCategory` from skill-core used in /skills/resolve for product_category matching — single source of truth
+- POST /skills/:skillId/execute records execution log only — no actual skill HTTP execution per brief flag
+- POST /skills/:skillId/execute guards on ACTIVE status — DRAFT/SUSPENDED/DEPRECATED skills cannot have executions logged
+- updateSkillMetrics uses raw SQL for rolling average (per-statement atomic, not concurrent-safe — acceptable for MVP)
+- Lifecycle transitions validated in route layer: activate (DRAFT->ACTIVE), suspend (ACTIVE->SUSPENDED), deprecate (ACTIVE|SUSPENDED->DEPRECATED)
+- `success` column in skillExecutions is `boolean` (not text) — matches brief spec
+- All drizzle-orm operators imported via @haggle/db — no direct drizzle-orm dependency
+- Zod schemas at file scope per established pattern
+- 409 CONFLICT returned for duplicate skillId registration (not idempotent return like tags)
+- GET /skills/:skillId/executions `limit` param bounded to [1, 200], NaN defaults to service default (50)
+
+Test results: N/A (DB schema + service + route layer, no unit tests — tested via typecheck)
+Typecheck: 0 errors in new/modified files. Pre-existing shipping-core errors remain (KG-3).
+
+Reviewer findings (rev 2 fixes):
+- **MF-1 FIXED**: skills.ts:57-65 — replaced inline wildcard category matching with `isCompatibleCategory` imported from `@haggle/skill-core`. DB row's `supportedCategories` cast to minimal `SkillManifest`-shaped object. Single source of truth.
+- **MF-2 FIXED**: skills.ts:215-217 — added `existing.status !== "ACTIVE"` guard before recording execution. Returns 400 `SKILL_NOT_ACTIVE` for DRAFT/SUSPENDED/DEPRECATED skills.
+- **MF-3 FIXED**: skill.service.ts:117 — changed comment from "atomic rolling average" to "rolling average (per-statement atomic, not concurrent-safe — acceptable for MVP)".
+- **SF-1 FIXED**: skills.ts:241-245 — `limit` query param now bounded: `Math.min(Math.max(parsed, 1), 200)`. NaN from non-numeric input falls back to `undefined` (service default 50).
+- **SF-2 FIXED**: same location — `Number.isNaN` check prevents NaN from reaching Drizzle `.limit()`.
+
+### Step 8 — Fix shipping-core Build Errors — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `packages/shipping-core/src/types.ts` — MODIFIED: appended ShipmentStatus (8-value union), ShipmentEvent (id, shipment_id, status, occurred_at, carrier_raw_status?, message?, location?), Shipment (id, order_id, carrier, tracking_number?, tracking_url?, status, events, delivered_at?, created_at, updated_at) — shapes derived from actual usage in state-machine.ts, service.ts, provider.ts, escalation.ts, mock-carrier-adapter.ts, easypost-adapter.ts
+- `packages/shipping-core/src/easypost-api.d.ts` — NEW: minimal ambient module declaration for `@easypost/api` so typecheck passes without the optional peer dep installed
+- `packages/shipping-core/package.json` — MODIFIED: added `@haggle/commerce-core: "workspace:*"` dependency, added `@easypost/api` as optional peerDependency
+- `packages/shipping-core/src/index.ts` — MODIFIED: added exports for state-machine, provider, service, escalation, sla (with SlaCheckResult renamed to ShipmentSlaCheckResult to avoid collision with types.ts SlaCheckResult), trust-events
+
+Decisions made:
+- ShipmentEvent uses `occurred_at` (not `timestamp`) and includes `id`, `shipment_id` fields — derived from service.ts and easypost-adapter.ts actual usage
+- Shipment uses `id` field (not `shipment_id`) — derived from service.ts `createShipment()` which sets `id: createId("shp")`
+- Shipment includes `tracking_url` field — used in service.ts `createLabel()` result
+- `@easypost/api` added as optional peer dep (not devDep) — adapter is a runtime consumer but only needed when EasyPostCarrierAdapter is used
+- Ambient `.d.ts` declaration created for `@easypost/api` — provides minimal type stubs so typecheck passes without install
+- `sla.ts` SlaCheckResult re-exported as `ShipmentSlaCheckResult` in index.ts — avoids TS2308 ambiguity with SlaCheckResult from types.ts (both are public API, different shapes)
+- easypost-adapter.ts and mock-carrier-adapter.ts NOT exported from index.ts — they are provider implementations, not public API (per brief)
+
+Test results: 184 tests, all passing (6 test files)
+Typecheck: clean, 0 errors
+
+Known Gap KG-3 status: RESOLVED — shipping-core now exports all types needed by shipments.ts and shipment-record.service.ts
 
 ### Step 7 — Skill System Foundation (packages/skill-core) — COMPLETE
 *Date: 2026-04-03*
@@ -231,7 +290,7 @@ Deploy: committed 1d793cb
 
 - **KG-1** — trust-core/packages/ contains duplicate dispute-core files (likely accidental copy) — logged 2026-04-03
 - **KG-2** — ~~DB schemas not yet updated for Phase 1-2 types~~ — RESOLVED Step 2 (2026-04-03)
-- **KG-3** — `shipments.ts` and `shipment-record.service.ts` have pre-existing type errors (missing shipping-core exports) — logged 2026-04-03
+- **KG-3** — ~~`shipments.ts` and `shipment-record.service.ts` have pre-existing type errors (missing shipping-core exports)~~ — RESOLVED Step 8 (2026-04-03)
 
 ---
 

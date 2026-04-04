@@ -25,6 +25,7 @@ export { disputeDeposits } from "./dispute-deposits.js";
 export { arpSegments } from "./arp-segments.js";
 export { tags, expertTags, tagMergeLog } from "./tags.js";
 export { waitingIntents, intentMatches } from "./waiting-intents.js";
+export { skills, skillExecutions } from "./skills.js";
 // TODO(slice-4): export { negotiationSessions } from "./negotiation-sessions.js";
 // TODO(slice-4): export { offers } from "./offers.js";
 // TODO(slice-6): export { users } from "./users.js";

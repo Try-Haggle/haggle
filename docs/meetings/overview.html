@@ -214,15 +214,15 @@
   </p>
   <div class="meta">
     <span>📅 마지막 업데이트: 2026-04-04</span>
-    <span>🧪 520+ 테스트</span>
+    <span>🧪 830+ 테스트</span>
     <span>📦 pnpm monorepo</span>
   </div>
 </section>
 
 <div class="stats">
-  <div class="stat green"><div class="num">520+</div><div class="label">테스트 전부 통과</div><div class="sublabel">trust + dispute + arp + shipping + tag</div></div>
-  <div class="stat blue"><div class="num">5</div><div class="label">신규 패키지</div><div class="sublabel">Phase 1-2 + tag-core</div></div>
-  <div class="stat purple"><div class="num">P1-2</div><div class="label">Phase 완료</div><div class="sublabel">Foundation + Systems</div></div>
+  <div class="stat green"><div class="num">830+</div><div class="label">테스트 전부 통과</div><div class="sublabel">trust + dispute + arp + tag + engine + skill</div></div>
+  <div class="stat blue"><div class="num">8</div><div class="label">코어 패키지</div><div class="sublabel">Phase 1-5 foundation</div></div>
+  <div class="stat purple"><div class="num">P1-5</div><div class="label">Phase 완료</div><div class="sublabel">Foundation → Skill Core</div></div>
   <div class="stat yellow"><div class="num">CI/CD</div><div class="label">자동화 추가</div><div class="sublabel">PR시 test + typecheck</div></div>
 </div>
 
@@ -474,34 +474,35 @@
 <div id="tab-future" class="tab-content">
 
   <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🗺</div>남은 구현 로드맵</div>
-    <div class="section-desc">Phase 3~5 남은 작업. Phase 3a(tag-core)는 완료.</div>
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🗺</div>구현 로드맵</div>
+    <div class="section-desc">Phase 1-5 코어 로직 완료. DB/API 연결 완료. Skill DB+API 남음.</div>
 
     <div class="card-grid">
       <div class="phase-card">
-        <h3>Phase 3 — Infrastructure</h3>
-        <div class="phase-desc">Tag ✅, DB 스키마, API 라우트</div>
+        <h3>Phase 3 — Infrastructure ✅</h3>
+        <div class="phase-desc">DB 스키마 10개 테이블 + API 30 엔드포인트</div>
         <ul class="security-list">
           <li><span class="check">✓</span>tag-core 구현 (71 tests)</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>DB 스키마 업데이트 (Drizzle)</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>API 라우트 (Trust, DS, ARP, Tag)</li>
+          <li><span class="check">✓</span>DB 스키마 (trust, ds, deposit, arp, tags)</li>
+          <li><span class="check">✓</span>Service 레이어 (5 CRUD 파일)</li>
+          <li><span class="check">✓</span>API 라우트 (Trust, DS, ARP, Tag, Deposit)</li>
         </ul>
       </div>
       <div class="phase-card">
-        <h3>Phase 4 — WaitingIntent 매칭</h3>
-        <div class="phase-desc">양방향 매칭 엔진 + 상태 머신</div>
+        <h3>Phase 4 — WaitingIntent ✅</h3>
+        <div class="phase-desc">양방향 매칭 엔진 + 상태 머신 + DB/API</div>
         <ul class="security-list">
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>WaitingIntent 타입 + 상태 머신</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>매칭 엔진 (양쪽 U_total ≥ min)</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>DB 성능 최적화</li>
+          <li><span class="check">✓</span>WaitingIntent 타입 + 상태 머신 (46 tests)</li>
+          <li><span class="check">✓</span>매칭 엔진 (양쪽 U_total ≥ min)</li>
+          <li><span class="check">✓</span>Intent DB + Service + API (7 엔드포인트)</li>
         </ul>
       </div>
       <div class="phase-card">
-        <h3>Phase 5 — Skill/API 생태계</h3>
-        <div class="phase-desc">Hook Point, Skill Manifest, DRaaS</div>
+        <h3>Phase 5 — Skill 생태계 🔄</h3>
+        <div class="phase-desc">Skill 타입 + 레지스트리 완료. DB/API 남음.</div>
         <ul class="security-list">
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Hook Point 시스템</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Skill Manifest + 등록</li>
+          <li><span class="check">✓</span>skill-core: Manifest + Registry + Pipeline (62 tests)</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Skill DB 스키마 + Service + API</li>
           <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Dispute Resolution Marketplace</li>
         </ul>
       </div>
@@ -518,9 +519,10 @@
         <li><span class="check">✓</span>협상 엔진 (engine-core + session)</li>
         <li><span class="check">✓</span>분쟁 해결 시스템 (dispute-core)</li>
         <li><span class="check">✓</span>신뢰 점수 + 배송 SLA + ARP</li>
+        <li><span class="check">✓</span>DB 스키마 + API 라우트 (Phase 3-4)</li>
+        <li><span class="check">✓</span>Skill 시스템 기반 (Phase 5a)</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>웹앱 + API 통합</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>USDC 결제 연동</li>
-        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>DB 스키마 + API 라우트 (Phase 3b-c)</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>배포 + 도메인 연결 (tryhaggle.ai)</li>
       </ul>
     </div>
@@ -535,8 +537,8 @@
         <h3>프로덕트</h3><span class="badge-role">Growth</span>
         <ul class="security-list">
           <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>캐릭터 시스템 론칭 (게이미피케이션)</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>WaitingIntent 매칭 (Phase 4)</li>
-          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Skill/API 생태계 (Phase 5)</li>
+          <li><span class="check">✓</span>WaitingIntent 매칭 (Phase 4)</li>
+          <li><span class="check">✓</span>Skill 기반 (Phase 5a — registry + pipeline)</li>
           <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>코스메틱 마켓 오픈</li>
           <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>DRaaS API 외부 제공</li>
         </ul>
@@ -607,6 +609,19 @@
         <li>NFT 전략 (DB 기반 MVP, Soulbound 나중)</li>
         <li>CI/CD 추가 (GitHub Actions: PR시 test + typecheck)</li>
         <li>문서를 살아있는 형태(지난/현재/향후 탭)로 재구성</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — Phase 3-5 구현</div>
+      <ul class="update-items">
+        <li>Phase 3 완료: DB 스키마 10개 테이블 + Service 5개 + API 30 엔드포인트</li>
+        <li>Phase 4 완료: WaitingIntent 타입 + 상태 머신 + 매칭 엔진 (46 tests) + DB/API</li>
+        <li>Phase 5a 완료: skill-core 패키지 (manifest, registry, pipeline = 62 tests)</li>
+        <li>문서 정리: archive 구조 도입, 구현 완료 문서 이동, README 라우터 생성</li>
+        <li>MVP_TECH_DEBT.md 추가 (TD-001~TD-016 추적 중)</li>
+        <li>CLAUDE.md v2.2 업데이트 (패키지 목록, 3man team, 문서 라우터)</li>
+        <li>3man team 워크플로우 도입 (Arch/Bob/Richard)</li>
+        <li>총 테스트: 830+ (engine 223 + trust 85 + dispute 117 + arp 57 + tag 71 + skill 62 + shipping/others)</li>
       </ul>
     </div>
     <!-- 다음 모임 후 여기에 추가 -->

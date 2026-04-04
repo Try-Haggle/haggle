@@ -34,6 +34,7 @@
     "@haggle/trust-core": "workspace:*",
     "@haggle/arp-core": "workspace:*",
     "@haggle/tag-core": "workspace:*",
+    "@haggle/skill-core": "workspace:*",
     "@haggle/skill-legit": "workspace:*",
     "@haggle/shared": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^1.1.2",
