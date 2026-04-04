@@ -1,275 +1,217 @@
 import { describe, it, expect } from "vitest";
 import {
-  computeTier1Cost,
-  computeTier2Cost,
-  computeTier3Cost,
   computeDisputeCost,
-  computeWorstCaseCost,
-  getEscalationPeriodHours,
+  getEscalationPeriod,
   getReviewerCount,
+  computeTier3Discount,
 } from "../dispute-cost.js";
 
 // ---------------------------------------------------------------------------
-// Tier 1 — Progressive rate
+// computeDisputeCost - Tier 1
 // ---------------------------------------------------------------------------
 
-describe("computeTier1Cost", () => {
-  it("returns minimum $1 for very small amount ($10)", () => {
-    const r = computeTier1Cost(1_000); // $10
-    // $10 × 1.2% = $0.12 → min $1
-    expect(r.cost_minor).toBe(100);
-    expect(r.tier).toBe(1);
+describe("computeDisputeCost - Tier 1", () => {
+  it("returns fixed $5 cost for any amount", () => {
+    const result = computeDisputeCost(10_000, 1); // $100
+    expect(result.cost_cents).toBe(500);
   });
 
-  it("returns minimum $1 for $50", () => {
-    const r = computeTier1Cost(5_000); // $50
-    // $50 × 1.2% = $0.60 → min $1
-    expect(r.cost_minor).toBe(100);
+  it("returns null reviewer_count for Tier 1", () => {
+    const result = computeDisputeCost(50_000, 1);
+    expect(result.reviewer_count).toBeNull();
   });
 
-  it("computes $100 correctly", () => {
-    const r = computeTier1Cost(10_000); // $100
-    // $100 × 1.2% = $1.20 = 120 minor
-    expect(r.cost_minor).toBe(120);
+  it("includes correct tier in result", () => {
+    const result = computeDisputeCost(10_000, 1);
+    expect(result.tier).toBe(1);
   });
 
-  it("computes $500 correctly", () => {
-    const r = computeTier1Cost(50_000); // $500
-    // $500 × 1.2% = $6.00 = 600 minor
-    expect(r.cost_minor).toBe(600);
-  });
-
-  it("computes $1,000 correctly (first bracket boundary)", () => {
-    const r = computeTier1Cost(100_000); // $1,000
-    // $1,000 × 1.2% = $12.00
-    expect(r.cost_minor).toBe(1_200);
-  });
-
-  it("computes $5,000 correctly (crosses into second bracket)", () => {
-    const r = computeTier1Cost(500_000); // $5,000
-    // First $1K × 1.2% = $12
-    // Next $4K × 0.7% = $28
-    // Total = $40 = 4,000 minor
-    expect(r.cost_minor).toBe(4_000);
-  });
-
-  it("computes $10,000 correctly (second bracket boundary)", () => {
-    const r = computeTier1Cost(1_000_000); // $10,000
-    // First $1K × 1.2% = $12
-    // Next $9K × 0.7% = $63
-    // Total = $75 = 7,500 minor
-    expect(r.cost_minor).toBe(7_500);
-  });
-
-  it("computes $30,000 correctly (crosses into third bracket)", () => {
-    const r = computeTier1Cost(3_000_000); // $30,000
-    // First $1K × 1.2% = $12 = 1,200
-    // Next $9K × 0.7% = $63 = 6,300
-    // Next $20K × 0.3% = $60 = 6,000
-    // Total = $135 = 13,500 minor
-    expect(r.cost_minor).toBe(13_500);
-  });
-
-  it("computes $100,000 correctly (third bracket boundary)", () => {
-    const r = computeTier1Cost(10_000_000); // $100,000
-    // First $1K × 1.2% = $12 = 1,200
-    // Next $9K × 0.7% = $63 = 6,300
-    // Next $90K × 0.3% = $270 = 27,000
-    // Total = $345 = 34,500 minor
-    expect(r.cost_minor).toBe(34_500);
-  });
-
-  it("computes $500,000 correctly (fourth bracket)", () => {
-    const r = computeTier1Cost(50_000_000); // $500,000
-    // First $1K × 1.2% = $12 = 1,200
-    // Next $9K × 0.7% = $63 = 6,300
-    // Next $90K × 0.3% = $270 = 27,000
-    // Next $400K × 0.15% = $600 = 60,000
-    // Total = $945 = 94,500 minor
-    expect(r.cost_minor).toBe(94_500);
-  });
-
-  it("returns 0 for amount 0", () => {
-    expect(computeTier1Cost(0).cost_minor).toBe(0);
-  });
-
-  it("returns 0 for negative amount", () => {
-    expect(computeTier1Cost(-1000).cost_minor).toBe(0);
-  });
-
-  it("includes breakdown entries", () => {
-    const r = computeTier1Cost(500_000); // $5,000
-    expect(r.breakdown.length).toBeGreaterThanOrEqual(2);
-    expect(r.breakdown[0].rate).toBe(0.012);
-    expect(r.breakdown[1].rate).toBe(0.007);
+  it("includes escalation period", () => {
+    const result = computeDisputeCost(10_000, 1);
+    expect(result.escalation_period_hours).toBe(24);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tier 2 — 3%, min $20
+// computeDisputeCost - Tier 2 progressive rate
 // ---------------------------------------------------------------------------
 
-describe("computeTier2Cost", () => {
-  it("returns min $20 for $100 transaction", () => {
-    const r = computeTier2Cost(10_000); // $100
-    // $100 × 3% = $3 → min $20
-    expect(r.cost_minor).toBe(2_000);
+describe("computeDisputeCost - Tier 2", () => {
+  it("applies minimum $20 for $100 transaction", () => {
+    // $100 = 10,000 cents. 10,000 * 0.012 = 120 cents = $1.20 -> min $20
+    const result = computeDisputeCost(10_000, 2);
+    expect(result.cost_cents).toBe(2_000);
   });
 
-  it("returns min $20 for $500 transaction", () => {
-    const r = computeTier2Cost(50_000); // $500
-    // $500 × 3% = $15 → min $20
-    expect(r.cost_minor).toBe(2_000);
+  it("applies minimum $20 for $500 transaction", () => {
+    // 50,000 * 0.012 = 600 cents = $6 -> min $20
+    const result = computeDisputeCost(50_000, 2);
+    expect(result.cost_cents).toBe(2_000);
   });
 
-  it("computes $1,000 correctly (above minimum)", () => {
-    const r = computeTier2Cost(100_000); // $1,000
-    // $1,000 × 3% = $30
-    expect(r.cost_minor).toBe(3_000);
+  it("applies minimum $20 for $1,000 transaction", () => {
+    // First $500: 50,000 * 0.012 = 600
+    // Next $500: 50,000 * 0.007 = 350
+    // Total: 950 -> min $20
+    const result = computeDisputeCost(100_000, 2);
+    expect(result.cost_cents).toBe(2_000);
   });
 
-  it("computes $10,000 correctly", () => {
-    const r = computeTier2Cost(1_000_000); // $10,000
-    // $10,000 × 3% = $300
-    expect(r.cost_minor).toBe(30_000);
+  it("computes cost for $5,000 transaction (three brackets)", () => {
+    // First $500: 50,000 * 0.012 = 600
+    // Next $500: 50,000 * 0.007 = 350
+    // Next $4,000: 400,000 * 0.003 = 1,200
+    // Total: 2,150
+    const result = computeDisputeCost(500_000, 2);
+    expect(result.cost_cents).toBe(2_150);
   });
 
-  it("returns 0 for amount 0", () => {
-    expect(computeTier2Cost(0).cost_minor).toBe(0);
+  it("computes cost for $10,000 transaction (all four brackets)", () => {
+    // First $500: 50,000 * 0.012 = 600
+    // Next $500: 50,000 * 0.007 = 350
+    // Next $4,000: 400,000 * 0.003 = 1,200
+    // Next $5,000: 500,000 * 0.0015 = 750
+    // Total: 2,900
+    const result = computeDisputeCost(1_000_000, 2);
+    expect(result.cost_cents).toBe(2_900);
+  });
+
+  it("returns reviewer count for Tier 2", () => {
+    const result = computeDisputeCost(50_000, 2);
+    expect(result.reviewer_count).toBe(9);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tier 3 — 6%, min $40
+// computeDisputeCost - Tier 3
 // ---------------------------------------------------------------------------
 
-describe("computeTier3Cost", () => {
-  it("returns min $40 for $100 transaction", () => {
-    const r = computeTier3Cost(10_000); // $100
-    // $100 × 6% = $6 → min $40
-    expect(r.cost_minor).toBe(4_000);
+describe("computeDisputeCost - Tier 3", () => {
+  it("computes 6% cost for $1,000 transaction", () => {
+    const result = computeDisputeCost(100_000, 3);
+    expect(result.cost_cents).toBe(6_000);
   });
 
-  it("returns min $40 for $500 transaction", () => {
-    const r = computeTier3Cost(50_000); // $500
-    // $500 × 6% = $30 → min $40
-    expect(r.cost_minor).toBe(4_000);
+  it("applies minimum $40 for small transactions", () => {
+    // $100: 6% = $6 = 600 cents -> min $40 = 4,000 cents
+    const result = computeDisputeCost(10_000, 3);
+    expect(result.cost_cents).toBe(4_000);
   });
 
-  it("computes $1,000 correctly (above minimum)", () => {
-    const r = computeTier3Cost(100_000); // $1,000
-    // $1,000 × 6% = $60
-    expect(r.cost_minor).toBe(6_000);
-  });
-
-  it("computes $10,000 correctly", () => {
-    const r = computeTier3Cost(1_000_000); // $10,000
-    // $10,000 × 6% = $600
-    expect(r.cost_minor).toBe(60_000);
-  });
-
-  it("returns 0 for amount 0", () => {
-    expect(computeTier3Cost(0).cost_minor).toBe(0);
+  it("returns reviewer count for Tier 3", () => {
+    const result = computeDisputeCost(50_000, 3);
+    expect(result.reviewer_count).toBe(15);
   });
 });
 
 // ---------------------------------------------------------------------------
-// computeDisputeCost (combined)
+// computeDisputeCost - validation
 // ---------------------------------------------------------------------------
 
-describe("computeDisputeCost", () => {
-  it("delegates to correct tier function", () => {
-    const t1 = computeDisputeCost(100_000, 1);
-    const t2 = computeDisputeCost(100_000, 2);
-    const t3 = computeDisputeCost(100_000, 3);
-    expect(t1.tier).toBe(1);
-    expect(t2.tier).toBe(2);
-    expect(t3.tier).toBe(3);
-    expect(t1.cost_minor).toBe(1_200); // $12
-    expect(t2.cost_minor).toBe(3_000); // $30
-    expect(t3.cost_minor).toBe(6_000); // $60
+describe("computeDisputeCost - validation", () => {
+  it("throws for zero amount", () => {
+    expect(() => computeDisputeCost(0, 1)).toThrow("amount_cents must be positive");
+  });
+
+  it("throws for negative amount", () => {
+    expect(() => computeDisputeCost(-100, 2)).toThrow("amount_cents must be positive");
   });
 });
 
 // ---------------------------------------------------------------------------
-// computeWorstCaseCost
+// getEscalationPeriod
 // ---------------------------------------------------------------------------
 
-describe("computeWorstCaseCost", () => {
-  it("sums all 3 tiers for $1,000 transaction", () => {
-    const r = computeWorstCaseCost(100_000); // $1,000
-    expect(r.tier1_minor).toBe(1_200); // $12
-    expect(r.tier2_minor).toBe(3_000); // $30
-    expect(r.tier3_minor).toBe(6_000); // $60
-    expect(r.total_minor).toBe(10_200); // $102
+describe("getEscalationPeriod", () => {
+  it("returns 24h for $200 transaction", () => {
+    expect(getEscalationPeriod(20_000)).toBe(24);
   });
 
-  it("uses minimums for small transaction ($100)", () => {
-    const r = computeWorstCaseCost(10_000); // $100
-    expect(r.tier1_minor).toBe(120); // $1.20
-    expect(r.tier2_minor).toBe(2_000); // $20 min
-    expect(r.tier3_minor).toBe(4_000); // $40 min
-    expect(r.total_minor).toBe(6_120); // $61.20
+  it("returns 24h for $500 (boundary)", () => {
+    expect(getEscalationPeriod(50_000)).toBe(24);
   });
 
-  it("uses minimums for $10 transaction", () => {
-    const r = computeWorstCaseCost(1_000); // $10
-    expect(r.tier1_minor).toBe(100); // $1 min
-    expect(r.tier2_minor).toBe(2_000); // $20 min
-    expect(r.tier3_minor).toBe(4_000); // $40 min
-    expect(r.total_minor).toBe(6_100); // $61
+  it("returns 48h for $1,000 transaction", () => {
+    expect(getEscalationPeriod(100_000)).toBe(48);
+  });
+
+  it("returns 48h for $3,000 (boundary)", () => {
+    expect(getEscalationPeriod(300_000)).toBe(48);
+  });
+
+  it("returns 72h for $5,000 transaction", () => {
+    expect(getEscalationPeriod(500_000)).toBe(72);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Escalation periods
-// ---------------------------------------------------------------------------
-
-describe("getEscalationPeriodHours", () => {
-  it("Tier 1→2: always 24 hours", () => {
-    expect(getEscalationPeriodHours(1, 1_000)).toBe(24);
-    expect(getEscalationPeriodHours(1, 100_000)).toBe(24);
-    expect(getEscalationPeriodHours(1, 10_000_000)).toBe(24);
-  });
-
-  it("Tier 2→3: 24h for ≤$500", () => {
-    expect(getEscalationPeriodHours(2, 50_000)).toBe(24); // $500
-    expect(getEscalationPeriodHours(2, 10_000)).toBe(24); // $100
-  });
-
-  it("Tier 2→3: 48h for $501-$5,000", () => {
-    expect(getEscalationPeriodHours(2, 50_100)).toBe(48); // $501
-    expect(getEscalationPeriodHours(2, 500_000)).toBe(48); // $5,000
-  });
-
-  it("Tier 2→3: 72h for $5,001+", () => {
-    expect(getEscalationPeriodHours(2, 500_100)).toBe(72); // $5,001
-    expect(getEscalationPeriodHours(2, 10_000_000)).toBe(72); // $100,000
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Reviewer counts (v8.3)
+// getReviewerCount
 // ---------------------------------------------------------------------------
 
 describe("getReviewerCount", () => {
-  it("returns 9/15 for ≤$500", () => {
+  it("returns 9 tier2 reviewers for $500", () => {
     expect(getReviewerCount(50_000, 2)).toBe(9);
+  });
+
+  it("returns 15 tier3 reviewers for $500", () => {
     expect(getReviewerCount(50_000, 3)).toBe(15);
   });
 
-  it("returns 13/23 for $1K-$3K", () => {
-    expect(getReviewerCount(200_000, 2)).toBe(13); // $2,000
-    expect(getReviewerCount(200_000, 3)).toBe(23);
+  it("returns 13 tier2 reviewers for $2,000", () => {
+    expect(getReviewerCount(200_000, 2)).toBe(13);
   });
 
-  it("returns 19/33 for $5K-$10K", () => {
-    expect(getReviewerCount(800_000, 2)).toBe(19); // $8,000
-    expect(getReviewerCount(800_000, 3)).toBe(33);
+  it("returns 51 tier2 reviewers for $100,000", () => {
+    expect(getReviewerCount(10_000_000, 2)).toBe(51);
   });
 
-  it("returns 91/151 for $1M+", () => {
-    expect(getReviewerCount(200_000_000, 2)).toBe(91); // $2M
-    expect(getReviewerCount(200_000_000, 3)).toBe(151);
+  it("returns 91 tier3 reviewers for $100,000", () => {
+    expect(getReviewerCount(10_000_000, 3)).toBe(91);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeTier3Discount
+// ---------------------------------------------------------------------------
+
+describe("computeTier3Discount", () => {
+  it("returns free re-review for exact tie (margin 0)", () => {
+    const result = computeTier3Discount(0, 6_000);
+    expect(result.discounted_cost_cents).toBe(0);
+    expect(result.is_free_rereview).toBe(true);
+    expect(result.discount_pct).toBe(100);
+  });
+
+  it("returns 75% cost for 1-vote margin", () => {
+    const result = computeTier3Discount(1, 6_000);
+    expect(result.discounted_cost_cents).toBe(4_500);
+    expect(result.discount_pct).toBe(25);
+    expect(result.is_free_rereview).toBe(false);
+  });
+
+  it("returns 90% cost for 2-vote margin", () => {
+    const result = computeTier3Discount(2, 6_000);
+    expect(result.discounted_cost_cents).toBe(5_400);
+    expect(result.discount_pct).toBe(10);
+  });
+
+  it("returns full price for 3+ vote margin", () => {
+    const result = computeTier3Discount(3, 6_000);
+    expect(result.discounted_cost_cents).toBe(6_000);
+    expect(result.discount_pct).toBe(0);
+  });
+
+  it("returns full price for large margin", () => {
+    const result = computeTier3Discount(5, 10_000);
+    expect(result.discounted_cost_cents).toBe(10_000);
+  });
+
+  it("preserves original cost in result", () => {
+    const result = computeTier3Discount(1, 8_000);
+    expect(result.original_cost_cents).toBe(8_000);
+  });
+
+  it("throws for negative margin", () => {
+    expect(() => computeTier3Discount(-1, 6_000)).toThrow("tier2_margin must be non-negative");
   });
 });

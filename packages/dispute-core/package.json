@@ -1,7 +1,6 @@
 {
   "name": "@haggle/dispute-core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "1.0.0",
   "type": "module",
   "exports": {
     ".": {
@@ -9,18 +8,19 @@
       "default": "./dist/index.js"
     }
   },
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "devDependencies": {
-    "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
-  },
   "dependencies": {
     "@haggle/commerce-core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
   }
 }

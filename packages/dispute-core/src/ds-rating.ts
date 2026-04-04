@@ -1,346 +1,224 @@
+import type {
+  DSTier,
+  DSInput,
+  DSResult,
+  PromotionResult,
+  TagData,
+  TagSpecialization,
+} from "./types.js";
+import { DS_TIER_BOUNDARIES, DS_VOTE_WEIGHTS } from "./types.js";
+
 // ---------------------------------------------------------------------------
-// DS Rating — Dispute Skill rating for Reviewers
+// Constants
 // ---------------------------------------------------------------------------
 
-import type { ReviewerTier } from "./vote-aggregation.js";
-import { TIER_WEIGHTS } from "./vote-aggregation.js";
+/** Hysteresis buffer for tier transitions */
+const HYSTERESIS_BUFFER = 3;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+/** Minimum recent cases required for tier change */
+const MIN_RECENT_CASES_FOR_CHANGE = 5;
 
-export interface DSInput {
-  /** Agreement Zone hit rate: fraction of votes that landed inside the zone. 0-1. */
-  zone_hit_rate: number;
+/** Minimum cases for cold start threshold */
+const COLD_START_THRESHOLD = 5;
 
-  /** Result proximity: avg of (1 - |my_vote - final_result| / 100) across cases. 0-1. */
-  result_proximity: number;
+/** Tag specialization minimum case count */
+const TAG_MIN_CASES = 10;
 
-  /** Participation rate: voted / assigned. 0-1. */
-  participation_rate: number;
+/** Tag specialization minimum zone hit rate */
+const TAG_MIN_ZONE_HIT_RATE = 0.6;
 
-  /** Response speed: normalized (faster = higher). 0-1. */
-  response_speed: number;
-
-  /** Total cases reviewed, normalized to 0-1 (e.g., cases / 200, capped at 1). */
-  total_cases_norm: number;
-
-  /** Category diversity: unique categories / total categories on platform, capped at 1. */
-  category_diversity: number;
-
-  /** High-value experience: fraction of cases that were $1K+, normalized. 0-1. */
-  high_value_experience: number;
-
-  /**
-   * Consistency: consecutive Zone hits / streak target (e.g., 10 consecutive = 1.0).
-   * Rewards steady, reliable voting. Helps Bronze recover by rewarding streaks.
-   */
-  consistency: number;
-}
-
-export type DSWeightKey = keyof DSInput;
-
-export type DSWeights = Record<DSWeightKey, number>;
-
-export const DS_WEIGHTS_V1: DSWeights = {
-  zone_hit_rate: 0.25,
-  result_proximity: 0.20,
-  participation_rate: 0.12,
-  response_speed: 0.10,
-  total_cases_norm: 0.08,
-  category_diversity: 0.05,
+/** Input weights for DS score computation */
+const DS_WEIGHTS = {
+  zone_hit_rate:         0.30,
+  result_proximity:      0.25,
+  participation_rate:    0.15,
+  response_speed:        0.10,
+  cumulative_cases:      0.10,
+  category_diversity:    0.05,
   high_value_experience: 0.05,
-  consistency: 0.15,
-};
+} as const;
+
+/** Normalization caps */
+const RESPONSE_SPEED_MAX_HOURS = 48;
+const CUMULATIVE_CASES_CAP = 200;
+const CATEGORY_DIVERSITY_CAP = 10;
+const HIGH_VALUE_CASES_CAP = 50;
 
 // ---------------------------------------------------------------------------
-// Tier boundaries
+// Tier order for promotion/demotion
 // ---------------------------------------------------------------------------
 
-export interface TierBoundary {
-  tier: ReviewerTier;
-  min_score: number;
-  max_score: number;
+const TIER_ORDER: DSTier[] = ["BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"];
+
+function tierIndex(tier: DSTier): number {
+  return TIER_ORDER.indexOf(tier);
 }
 
-export const TIER_BOUNDARIES: TierBoundary[] = [
-  { tier: "BRONZE", min_score: 0, max_score: 30 },
-  { tier: "SILVER", min_score: 31, max_score: 50 },
-  { tier: "GOLD", min_score: 51, max_score: 70 },
-  { tier: "PLATINUM", min_score: 71, max_score: 85 },
-  { tier: "DIAMOND", min_score: 86, max_score: 100 },
-];
-
-/** Hysteresis buffer: must exceed boundary by this many points to promote/demote. */
-export const HYSTERESIS_BUFFER = 3;
-
-/** Minimum recent cases required to allow tier change. */
-export const MIN_RECENT_CASES_FOR_CHANGE = 5;
-
 // ---------------------------------------------------------------------------
-// Response speed normalization
+// Public Functions
 // ---------------------------------------------------------------------------
 
 /**
- * Normalize response time to a 0-1 score.
- * Faster response → higher score, with bonus tiers.
+ * Compute the DS (Dispute Specialist) score from 7 weighted inputs.
+ * Score range: 0-100.
  *
- * @param response_hours Hours from assignment to vote
- * @param deadline_hours Total hours allowed (e.g., 48)
+ * @param input - 7 input metrics for the reviewer
+ * @returns DSResult with score, tier, and vote weight
  */
-export function normalizeResponseSpeed(
-  response_hours: number,
-  deadline_hours: number,
-): number {
-  if (response_hours <= 0 || deadline_hours <= 0) return 1.0;
-  if (response_hours >= deadline_hours) return 0;
+export function computeDSScore(input: DSInput): DSResult {
+  // Normalize inputs to 0-1
+  const response_speed = 1 - Math.min(input.response_hours / RESPONSE_SPEED_MAX_HOURS, 1);
+  const cumulative_norm = Math.min(input.cumulative_cases / CUMULATIVE_CASES_CAP, 1);
+  const diversity_norm =
+    input.total_categories > 0
+      ? Math.min(input.unique_categories / CATEGORY_DIVERSITY_CAP, 1)
+      : 0;
+  const high_value_norm = Math.min(input.high_value_cases / HIGH_VALUE_CASES_CAP, 1);
 
-  const ratio = response_hours / deadline_hours;
+  // Weighted sum (all inputs are 0-1, result is 0-1)
+  const raw =
+    input.zone_hit_rate       * DS_WEIGHTS.zone_hit_rate +
+    input.result_proximity    * DS_WEIGHTS.result_proximity +
+    input.participation_rate  * DS_WEIGHTS.participation_rate +
+    response_speed            * DS_WEIGHTS.response_speed +
+    cumulative_norm           * DS_WEIGHTS.cumulative_cases +
+    diversity_norm            * DS_WEIGHTS.category_diversity +
+    high_value_norm           * DS_WEIGHTS.high_value_experience;
 
-  // Tiered scoring:
-  // ≤12.5% of deadline (e.g., ≤6h of 48h): 1.0 (excellent)
-  // ≤50% of deadline (e.g., ≤24h of 48h): 0.7-1.0 (good)
-  // ≤100% of deadline: 0.1-0.7 (acceptable)
-  if (ratio <= 0.125) return 1.0;
-  if (ratio <= 0.50) return 1.0 - (ratio - 0.125) * 0.8; // 1.0 → 0.7
-  return 0.7 - (ratio - 0.50) * 1.2; // 0.7 → 0.1
-}
+  // Scale to 0-100
+  const score = Math.round(Math.min(Math.max(raw * 100, 0), 100));
+  const tier = getDSTier(score);
+  const vote_weight = getVoteWeight(tier);
 
-// ---------------------------------------------------------------------------
-// Consistency calculation
-// ---------------------------------------------------------------------------
-
-/** Target streak length for max consistency score. */
-export const CONSISTENCY_STREAK_TARGET = 10;
-
-/**
- * Compute consistency score from consecutive Zone hits.
- * streak / target, capped at 1.0.
- * A single miss resets the streak to 0.
- */
-export function computeConsistency(consecutive_zone_hits: number): number {
-  return Math.min(1.0, consecutive_zone_hits / CONSISTENCY_STREAK_TARGET);
-}
-
-// ---------------------------------------------------------------------------
-// Core computation
-// ---------------------------------------------------------------------------
-
-/**
- * Compute DS raw score (0-100) from inputs.
- * All inputs must be 0-1. Weighted sum × 100.
- */
-export function computeDSScore(
-  input: DSInput,
-  weights: DSWeights = DS_WEIGHTS_V1,
-): number {
-  let sum = 0;
-  for (const key of Object.keys(weights) as DSWeightKey[]) {
-    const value = Math.max(0, Math.min(1, input[key]));
-    sum += value * weights[key];
-  }
-  return Math.round(Math.max(0, Math.min(100, sum * 100)));
+  return { score, tier, vote_weight };
 }
 
 /**
- * Map a raw score to a tier without hysteresis.
- * Used for initial assignment or display purposes.
+ * Map a numeric score (0-100) to a DS tier.
+ *
+ * @param score - Numeric score 0-100
+ * @returns DSTier
  */
-export function mapScoreToTier(score: number): ReviewerTier {
-  for (const boundary of TIER_BOUNDARIES) {
-    if (score >= boundary.min_score && score <= boundary.max_score) {
-      return boundary.tier;
+export function getDSTier(score: number): DSTier {
+  const clamped = Math.round(Math.min(Math.max(score, 0), 100));
+
+  for (const tier of TIER_ORDER) {
+    const bounds = DS_TIER_BOUNDARIES[tier];
+    if (clamped >= bounds.min && clamped <= bounds.max) {
+      return tier;
     }
   }
-  return "DIAMOND"; // score > 100 edge case
+
+  return "DIAMOND"; // score > 100 after clamping shouldn't happen, but safety
 }
 
 /**
- * Get the voting weight for a tier.
+ * Get the vote weight for a given DS tier.
+ *
+ * @param tier - DSTier
+ * @returns Vote weight multiplier
  */
-export function getTierWeight(tier: ReviewerTier): number {
-  return TIER_WEIGHTS[tier];
-}
-
-// ---------------------------------------------------------------------------
-// Hysteresis — promotion / demotion with buffer
-// ---------------------------------------------------------------------------
-
-export interface DSRatingResult {
-  score: number;
-  tier: ReviewerTier;
-  tier_weight: number;
-  previous_tier: ReviewerTier;
-  tier_changed: boolean;
-  change_direction: "promoted" | "demoted" | "none";
+export function getVoteWeight(tier: DSTier): number {
+  return DS_VOTE_WEIGHTS[tier];
 }
 
 /**
- * Apply hysteresis rules to determine actual tier.
+ * Check if a reviewer should be promoted or demoted based on hysteresis rules.
  *
- * Promotion: score >= next tier's min_score + HYSTERESIS_BUFFER AND recent_cases >= MIN
- * Demotion: score <= current tier's min_score - HYSTERESIS_BUFFER AND recent_cases >= MIN
- * Otherwise: stay at current tier.
+ * Promotion requires: score >= tier_upper_bound + HYSTERESIS_BUFFER AND recent_cases >= 5
+ * Demotion requires: score <= tier_lower_bound - HYSTERESIS_BUFFER AND recent_cases >= 5
  *
- * @param score Raw DS score (0-100)
- * @param current_tier The reviewer's current tier before this evaluation
- * @param recent_cases Number of cases in recent evaluation window
+ * @param current_tier - The reviewer's current tier
+ * @param score - The reviewer's current score
+ * @param recent_cases - Number of recent cases (for activity gate)
+ * @returns PromotionResult indicating whether and how the tier should change
  */
-export function applyHysteresis(
+export function checkPromotion(
+  current_tier: DSTier,
   score: number,
-  current_tier: ReviewerTier,
   recent_cases: number,
-): DSRatingResult {
-  const natural_tier = mapScoreToTier(score);
-
-  // Not enough recent activity — stay at current tier
-  if (recent_cases < MIN_RECENT_CASES_FOR_CHANGE) {
-    return {
-      score,
-      tier: current_tier,
-      tier_weight: getTierWeight(current_tier),
-      previous_tier: current_tier,
-      tier_changed: false,
-      change_direction: "none",
-    };
-  }
-
-  const currentBoundary = TIER_BOUNDARIES.find((b) => b.tier === current_tier)!;
-  const currentIdx = TIER_BOUNDARIES.indexOf(currentBoundary);
-
-  // Check promotion (is there a higher tier?)
-  if (currentIdx < TIER_BOUNDARIES.length - 1) {
-    const nextBoundary = TIER_BOUNDARIES[currentIdx + 1];
-    if (score >= nextBoundary.min_score + HYSTERESIS_BUFFER) {
-      // Could promote multiple tiers — find the right one
-      const new_tier = mapScoreToTier(score);
-      const newIdx = TIER_BOUNDARIES.findIndex((b) => b.tier === new_tier);
-      if (newIdx > currentIdx) {
-        return {
-          score,
-          tier: new_tier,
-          tier_weight: getTierWeight(new_tier),
-          previous_tier: current_tier,
-          tier_changed: true,
-          change_direction: "promoted",
-        };
-      }
-    }
-  }
-
-  // Check demotion (is there a lower tier?)
-  if (currentIdx > 0) {
-    if (score <= currentBoundary.min_score - HYSTERESIS_BUFFER) {
-      const new_tier = mapScoreToTier(score);
-      const newIdx = TIER_BOUNDARIES.findIndex((b) => b.tier === new_tier);
-      if (newIdx < currentIdx) {
-        return {
-          score,
-          tier: new_tier,
-          tier_weight: getTierWeight(new_tier),
-          previous_tier: current_tier,
-          tier_changed: true,
-          change_direction: "demoted",
-        };
-      }
-    }
-  }
-
-  // No change — within hysteresis band or at boundary tier
-  return {
-    score,
-    tier: current_tier,
-    tier_weight: getTierWeight(current_tier),
-    previous_tier: current_tier,
-    tier_changed: false,
-    change_direction: "none",
+): PromotionResult {
+  const no_change: PromotionResult = {
+    should_change: false,
+    new_tier: current_tier,
+    direction: "none",
   };
-}
 
-// ---------------------------------------------------------------------------
-// Tag specialization
-// ---------------------------------------------------------------------------
+  // Activity gate: must have minimum recent cases
+  if (recent_cases < MIN_RECENT_CASES_FOR_CHANGE) {
+    return no_change;
+  }
 
-/** Minimum cases in a tag to qualify for specialization. */
-export const TAG_SPEC_MIN_CASES = 10;
+  const idx = tierIndex(current_tier);
+  const bounds = DS_TIER_BOUNDARIES[current_tier];
 
-/** Minimum zone hit rate in a tag to qualify. */
-export const TAG_SPEC_MIN_ZONE_HIT = 0.60;
+  // Check promotion (can't promote above DIAMOND)
+  if (idx < TIER_ORDER.length - 1) {
+    const promotion_threshold = bounds.max + HYSTERESIS_BUFFER;
+    if (score >= promotion_threshold) {
+      const new_tier = TIER_ORDER[idx + 1];
+      return { should_change: true, new_tier, direction: "promote" };
+    }
+  }
 
-export interface TagSpecialization {
-  tag: string;
-  score: number;
-  tier: ReviewerTier;
-  tier_weight: number;
-  cases: number;
-  zone_hit_rate: number;
-  result_proximity: number;
-  qualified: boolean;
+  // Check demotion (can't demote below BRONZE)
+  if (idx > 0) {
+    const demotion_threshold = bounds.min - HYSTERESIS_BUFFER;
+    if (score <= demotion_threshold) {
+      const new_tier = TIER_ORDER[idx - 1];
+      return { should_change: true, new_tier, direction: "demote" };
+    }
+  }
+
+  return no_change;
 }
 
 /**
- * Compute specialization score for a specific tag.
- * Uses a simplified formula: 60% zone_hit_rate + 40% result_proximity.
- * Only qualifies if cases >= 10 AND zone_hit_rate >= 0.60.
+ * Compute per-tag specialization for a reviewer.
+ * Qualified if: tag_cases >= 10 AND zone_hit_rate >= 0.6
+ *
+ * @param tag_data - Per-tag performance data
+ * @returns TagSpecialization with score, tier, and qualification status
  */
-export function computeTagSpecialization(
-  tag: string,
-  cases: number,
-  zone_hit_rate: number,
-  result_proximity: number,
-): TagSpecialization {
-  const qualified =
-    cases >= TAG_SPEC_MIN_CASES && zone_hit_rate >= TAG_SPEC_MIN_ZONE_HIT;
+export function computeTagSpecialization(tag_data: TagData): TagSpecialization {
+  // Use a simplified score based on available tag-level data
+  const response_speed = 1 - Math.min(tag_data.response_hours / RESPONSE_SPEED_MAX_HOURS, 1);
 
-  const raw = zone_hit_rate * 0.60 + result_proximity * 0.40;
-  const score = Math.round(Math.max(0, Math.min(100, raw * 100)));
-  const tier = mapScoreToTier(score);
+  const raw =
+    tag_data.zone_hit_rate     * DS_WEIGHTS.zone_hit_rate +
+    tag_data.result_proximity  * DS_WEIGHTS.result_proximity +
+    tag_data.participation_rate * DS_WEIGHTS.participation_rate +
+    response_speed             * DS_WEIGHTS.response_speed;
+
+  // Normalize: max possible from these weights = 0.80
+  const max_possible = DS_WEIGHTS.zone_hit_rate +
+    DS_WEIGHTS.result_proximity +
+    DS_WEIGHTS.participation_rate +
+    DS_WEIGHTS.response_speed;
+
+  const score = Math.round(Math.min(Math.max((raw / max_possible) * 100, 0), 100));
+  const tier = getDSTier(score);
 
   return {
-    tag,
+    tag: tag_data.tag,
     score,
     tier,
-    tier_weight: getTierWeight(tier),
-    cases,
-    zone_hit_rate,
-    result_proximity,
-    qualified,
+    case_count: tag_data.case_count,
+    zone_hit_rate: tag_data.zone_hit_rate,
   };
 }
 
 /**
- * Resolve which weight to use for a reviewer on a specific dispute.
- * If the reviewer has a qualified tag specialization matching the dispute,
- * use the tag-specific tier weight. Otherwise use the global DS tier weight.
+ * Check if a tag specialization is qualified.
+ * Requires: case_count >= 10 AND zone_hit_rate >= 0.6
  */
-export function resolveDisputeWeight(
-  global_tier: ReviewerTier,
-  tag_specializations: TagSpecialization[],
-  dispute_tags: string[],
-): { tier: ReviewerTier; weight: number; source: "global" | "tag"; tag?: string } {
-  // Find best matching qualified tag specialization
-  let bestMatch: TagSpecialization | null = null;
+export function isTagQualified(spec: TagSpecialization): boolean {
+  return spec.case_count >= TAG_MIN_CASES && spec.zone_hit_rate >= TAG_MIN_ZONE_HIT_RATE;
+}
 
-  for (const spec of tag_specializations) {
-    if (!spec.qualified) continue;
-    if (!dispute_tags.includes(spec.tag)) continue;
-    if (!bestMatch || spec.score > bestMatch.score) {
-      bestMatch = spec;
-    }
-  }
-
-  if (bestMatch) {
-    return {
-      tier: bestMatch.tier,
-      weight: bestMatch.tier_weight,
-      source: "tag",
-      tag: bestMatch.tag,
-    };
-  }
-
-  return {
-    tier: global_tier,
-    weight: getTierWeight(global_tier),
-    source: "global",
-  };
+/**
+ * Get the cold start threshold (minimum cases before first DS score).
+ */
+export function getColdStartThreshold(): number {
+  return COLD_START_THRESHOLD;
 }

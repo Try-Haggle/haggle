@@ -1,121 +1,130 @@
 // ---------------------------------------------------------------------------
-// Trust Score — Types
+// Trust Input
 // ---------------------------------------------------------------------------
 
 /**
- * Raw input metrics for Trust Score computation.
- * null = data not available (buyer-only user has no SLA data, etc.)
- * All rates are 0-1 where 1 is best/most.
+ * Raw input signals for trust score computation.
+ * All rate fields are 0-1 (fractions, not percentages).
+ * Fields may be undefined when data is unavailable.
  */
 export interface TrustInput {
-  /** Completed trades / total initiated trades. Higher = better. */
-  trade_completion_rate: number | null;
-
-  /** Disputes where this user's side was Accepted / total disputes involving user. Higher = better. */
-  dispute_win_rate: number | null;
-
-  /** Disputes filed involving this user / total trades. Lower = better (inverted during computation). */
-  dispute_incidence_rate: number | null;
-
-  /** Shipments sent within SLA / total shipments (seller role only). Higher = better. */
-  sla_compliance_rate: number | null;
-
-  /** User-attributable cancellations / total trades. Lower = better (inverted during computation). */
-  cancellation_rate: number | null;
-
-  /** Auto-confirmed deliveries / total purchases (buyer role only). Higher = better. */
-  auto_confirm_rate: number | null;
-
-  /** Average peer rating normalized to 0-1 (e.g., 4.5/5 = 0.9). Higher = better. */
-  peer_rating: number | null;
-
-  /** Trade frequency normalized to 0-1 (relative to platform median). Higher = more active. */
-  trade_frequency: number | null;
-
-  /** Account age normalized to 0-1 (e.g., 365 days / max_days). Higher = longer tenure. */
-  account_tenure: number | null;
+  /** Fraction of transactions completed successfully (0-1). Seller + Buyer. */
+  transaction_completion_rate?: number;
+  /** Fraction of disputes won (0-1). Seller + Buyer. */
+  dispute_win_rate?: number;
+  /** Fraction of transactions that resulted in a dispute (0-1). Seller + Buyer. Lower is better. */
+  dispute_rate?: number;
+  /** Fraction of orders shipped within SLA (0-1). Seller only. */
+  sla_compliance_rate?: number;
+  /** Fraction of transactions cancelled (0-1). Seller + Buyer. Lower is better. */
+  cancellation_rate?: number;
+  /** Fraction of deliveries auto-confirmed by buyer (0-1). Buyer only. */
+  auto_confirm_rate?: number;
+  /** Average peer rating (0-5 star scale). Seller + Buyer. */
+  peer_rating?: number;
+  /** Total number of completed transactions. Both roles. */
+  transaction_frequency?: number;
+  /** Account age in days. Both roles. */
+  account_age_days?: number;
 }
 
-/** Metrics that are "lower is better" — inverted during computation. */
-export const INVERTED_METRICS: (keyof TrustInput)[] = [
-  "dispute_incidence_rate",
-  "cancellation_rate",
-];
+// ---------------------------------------------------------------------------
+// Trust Score Status
+// ---------------------------------------------------------------------------
 
-/**
- * Weight configuration for Trust Score.
- * Keys must match TrustInput. Values must sum to 1.0.
- */
-export type TrustWeights = Record<keyof TrustInput, number>;
+/** Cold-start progression stages. */
+export type TrustStatus = "NEW" | "SCORING" | "MATURE";
 
-export const TRUST_WEIGHTS_V1: TrustWeights = {
-  trade_completion_rate: 0.20,
-  dispute_win_rate: 0.18,
-  dispute_incidence_rate: 0.15,
-  sla_compliance_rate: 0.12,
-  cancellation_rate: 0.12,
-  auto_confirm_rate: 0.08,
-  peer_rating: 0.08,
-  trade_frequency: 0.04,
-  account_tenure: 0.03,
-};
+// ---------------------------------------------------------------------------
+// Role
+// ---------------------------------------------------------------------------
 
-/** Cold start classification based on completed trade count. */
-export type ColdStartStage = "NEW" | "SCORING" | "MATURE";
+/** The role context for score computation. */
+export type TrustRole = "seller" | "buyer" | "combined";
 
-export const COLD_START_THRESHOLDS = {
-  /** 0 to this (exclusive) = NEW — no score shown. */
-  scoring_min: 5,
-  /** This and above = MATURE — fully reliable score. */
-  mature_min: 20,
-} as const;
+// ---------------------------------------------------------------------------
+// Input Key
+// ---------------------------------------------------------------------------
 
-export interface TrustScoreResult {
-  /** Final score 0-100. null if NEW stage. */
-  score: number | null;
-  cold_start: ColdStartStage;
-  /** How many input metrics had data. */
-  inputs_used: number;
-  inputs_total: number;
-  weights_version: string;
+export type TrustInputKey = keyof TrustInput;
+
+// ---------------------------------------------------------------------------
+// Weight Configuration
+// ---------------------------------------------------------------------------
+
+/** Direction of a metric: higher-is-better, lower-is-better, or needs normalization. */
+export type InputDirection = "higher" | "lower" | "normalize";
+
+/** Normalization strategy for a metric. */
+export type NormalizationType = "rate" | "inverse_rate" | "frequency" | "age" | "rating";
+
+/** Configuration for a single trust input. */
+export interface InputConfig {
+  weight: number;
+  direction: InputDirection;
+  normalization: NormalizationType;
+  applies_to_seller: boolean;
+  applies_to_buyer: boolean;
 }
 
-/**
- * Snapshot for backtest validation.
- * Stores raw inputs at a point in time so new weights can be retroactively applied.
- */
-export interface TrustSnapshot {
-  user_id: string;
-  snapshot_at: string;
-  raw_inputs: TrustInput;
-  computed_score: number | null;
-  cold_start: ColdStartStage;
-  weights_version: string;
-  trade_count: number;
-}
+/** Full weight configuration for trust score computation. */
+export type WeightConfig = Record<TrustInputKey, InputConfig>;
 
 // ---------------------------------------------------------------------------
 // SLA Penalty
 // ---------------------------------------------------------------------------
 
-export const SLA_PENALTY_BASE = 5;
-
-export const SLA_FREQUENCY_MULTIPLIERS: Record<string, number> = {
-  first: 1.0,
-  second_in_90d: 1.5,
-  third_in_90d: 2.5,
-  fourth_plus_in_90d: 4.0,
-};
-
-export interface SlaPenaltyInput {
-  overdue_days: number;
-  sla_days: number;
-  violations_in_90d: number;
+export interface SlaPenalty {
+  /** Number of SLA violations. */
+  sla_violation_count: number;
 }
 
-export interface SlaPenaltyResult {
-  penalty: number;
-  base: number;
-  overdue_ratio: number;
-  frequency_multiplier: number;
+// ---------------------------------------------------------------------------
+// Trust Result
+// ---------------------------------------------------------------------------
+
+export interface TrustResult {
+  /** Computed trust score, clamped to [0, 100]. */
+  score: number;
+  /** Cold-start status. */
+  status: TrustStatus;
+  /** Number of completed transactions used for status determination. */
+  completed_transactions: number;
+  /** The role used for computation. */
+  role: TrustRole;
+  /** Weights version identifier. */
+  weights_version: string;
+  /** Raw score before SLA penalty (if penalty was applied). */
+  raw_score: number;
+  /** SLA penalty factor applied (1.0 = no penalty). */
+  sla_penalty_factor: number;
+}
+
+// ---------------------------------------------------------------------------
+// Trust Snapshot (for quarterly backtest)
+// ---------------------------------------------------------------------------
+
+export interface TrustSnapshot {
+  user_id: string;
+  snapshot_date: string;
+  raw_inputs: TrustInput;
+  computed_score: number;
+  weights_version: string;
+  /** Whether this user had a dispute in the next quarter. Filled retroactively. */
+  next_quarter_dispute: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Computation Options
+// ---------------------------------------------------------------------------
+
+export interface ComputeOptions {
+  /** Role context for filtering applicable inputs. Default: "combined". */
+  role?: TrustRole;
+  /** Number of completed transactions (for cold-start status). */
+  completed_transactions: number;
+  /** Optional SLA penalty. */
+  sla_penalty?: SlaPenalty;
+  /** Optional weight config override. Default: DEFAULT_WEIGHT_CONFIG. */
+  weights?: WeightConfig;
 }

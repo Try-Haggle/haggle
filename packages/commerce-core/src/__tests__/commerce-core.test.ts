@@ -575,8 +575,11 @@ describe("trustPenaltyScore", () => {
 });
 
 describe("computeSettlementReliability", () => {
+  const base = { actor_id: "user-1", actor_role: "seller" as const };
+
   it("returns 1.0 for perfect record", () => {
     expect(computeSettlementReliability({
+      ...base,
       successful_settlements: 10,
       approval_defaults: 0,
       shipment_sla_misses: 0,
@@ -587,6 +590,7 @@ describe("computeSettlementReliability", () => {
 
   it("returns 1.0 for empty record", () => {
     expect(computeSettlementReliability({
+      ...base,
       successful_settlements: 0,
       approval_defaults: 0,
       shipment_sla_misses: 0,
@@ -597,6 +601,7 @@ describe("computeSettlementReliability", () => {
 
   it("defaults reduce reliability", () => {
     const result = computeSettlementReliability({
+      ...base,
       successful_settlements: 8,
       approval_defaults: 2,
       shipment_sla_misses: 0,
@@ -609,6 +614,7 @@ describe("computeSettlementReliability", () => {
 
   it("dispute wins give small credit", () => {
     const result = computeSettlementReliability({
+      ...base,
       successful_settlements: 5,
       approval_defaults: 0,
       shipment_sla_misses: 0,
@@ -621,6 +627,7 @@ describe("computeSettlementReliability", () => {
 
   it("mixed record gives fractional reliability", () => {
     const result = computeSettlementReliability({
+      ...base,
       successful_settlements: 10,
       approval_defaults: 2,
       shipment_sla_misses: 1,
@@ -636,6 +643,7 @@ describe("computeSettlementReliability", () => {
 
   it("clamps to [0, 1]", () => {
     const result = computeSettlementReliability({
+      ...base,
       successful_settlements: 0,
       approval_defaults: 10,
       shipment_sla_misses: 10,

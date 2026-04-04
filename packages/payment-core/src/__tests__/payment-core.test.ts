@@ -909,9 +909,9 @@ describe("MockStripeAdapter", () => {
 // RealX402Adapter (with ScaffoldContracts)
 // ---------------------------------------------------------------------------
 describe("RealX402Adapter", () => {
-  const feeWallet = { wallet_address: "0xHaggleFee", wallet_network: "eip155:8453" };
-  const buyerWallet = { wallet_address: "0xBuyer", wallet_network: "eip155:8453" };
-  const sellerWallet = { wallet_address: "0xSeller", wallet_network: "eip155:8453" };
+  const feeWallet = { actor_id: "haggle", wallet_address: "0xHaggleFee", network: "eip155:8453", custody: "merchant_managed" as const };
+  const buyerWallet = { actor_id: "buyer-1", wallet_address: "0xBuyer", network: "eip155:8453", custody: "external" as const };
+  const sellerWallet = { actor_id: "seller-1", wallet_address: "0xSeller", network: "eip155:8453", custody: "external" as const };
 
   function makeConfig(overrides?: Partial<X402AdapterConfig>): X402AdapterConfig {
     return {
@@ -989,6 +989,7 @@ describe("RealX402Adapter", () => {
       id: "ref_001",
       payment_intent_id: intent.id,
       amount: { currency: "USDC", amount_minor: 5000 },
+      reason_code: "buyer_request",
       status: "REQUESTED" as const,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
@@ -1032,7 +1033,7 @@ describe("RealX402Adapter", () => {
     expect(quote.metadata?.haggle_fee_minor).toBe(4);
     expect(quote.metadata?.seller_amount_minor).toBe(329);
     // verify no loss: 329 + 4 = 333
-    expect(quote.metadata?.seller_amount_minor + quote.metadata?.haggle_fee_minor).toBe(333);
+    expect((quote.metadata?.seller_amount_minor as number) + (quote.metadata?.haggle_fee_minor as number)).toBe(333);
   });
 });
 
