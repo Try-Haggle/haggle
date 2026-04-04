@@ -1,44 +1,45 @@
-# Review Request — Step 6: WaitingIntent DB + Service + API Route (rev 2)
+# Review Request — Step 7: Skill System Foundation
 *Written by Builder. Read by Reviewer.*
 
-Ready for Re-Review: YES
+Ready for Review: YES
 
 ---
 
-## Rev 2 Fixes (from REVIEW-FEEDBACK.md must-fix items)
-
-1. **MF-1 — hardcoded status strings**: Replaced `"CANCELLED"` (line 142) and `"MATCHED"` (line 171) with `nextStatus` variable returned by `transitionIntent()`. State machine is now the single source of truth for status values.
-2. **MF-2 — scope creep endpoint removed**: Deleted `GET /intents/:id/matches` route (lines 186-198) and its `getMatchesByIntentId` import. Service function retained per reviewer guidance.
-
 ## What Was Built
 
-WaitingIntent persistence layer (DB schema, service, API routes) connecting Step 5's pure logic to the API. One new schema file with two tables, one new service file with 9 functions, one new route file with 7 endpoints, schema index and server.ts updated.
+New `packages/skill-core` package — pure logic foundation for the skill/marketplace system. Types, manifest validation, in-memory registry with lifecycle transitions, and pipeline execution planning. Zero external dependencies. 62 tests, 0 typecheck errors.
 
 ## Files Changed
 
 | File | Lines | Change |
 |---|---|---|
-| `packages/db/src/schema/waiting-intents.ts` | 1-33 | NEW — waitingIntents table (16 cols) + intentMatches table (8 cols) |
-| `packages/db/src/schema/index.ts` | 27 | MODIFIED — added waitingIntents, intentMatches exports |
-| `apps/api/src/services/intent.service.ts` | 1-157 | NEW — 9 service functions (getIntentById, getActiveIntentsByCategory, getIntentsByUserId, createIntent, updateIntentStatus, getActiveIntentCount, createMatch, getMatchesByIntentId, expireStaleIntents) |
-| `apps/api/src/routes/intents.ts` | 1-237 | NEW — registerIntentRoutes: POST /intents, GET /intents, GET /intents/:id, PATCH /intents/:id/cancel, POST /intents/:id/match, POST /intents/trigger-match, POST /intents/expire |
-| `apps/api/src/server.ts` | 19, 68 | MODIFIED — import registerIntentRoutes + registration call |
+| `packages/skill-core/package.json` | 1-20 | NEW — package config, vitest devDep only |
+| `packages/skill-core/tsconfig.json` | 1-9 | NEW — extends base, standard pattern |
+| `packages/skill-core/vitest.config.ts` | 1-7 | NEW — standard vitest config |
+| `packages/skill-core/src/types.ts` | 1-68 | NEW — all core types (SkillManifest, RegisteredSkill, HookPoint, etc.) |
+| `packages/skill-core/src/manifest.ts` | 1-121 | NEW — validateManifest, isCompatibleHookPoint, isCompatibleCategory with wildcard |
+| `packages/skill-core/src/registry.ts` | 1-95 | NEW — SkillRegistry class (Map-based, lifecycle, queries, recordUsage) |
+| `packages/skill-core/src/pipeline.ts` | 1-60 | NEW — PipelineConfig, resolveSkills, createExecutionPlan (planning only) |
+| `packages/skill-core/src/index.ts` | 1-4 | NEW — re-export barrel |
+| `packages/skill-core/src/__tests__/manifest.test.ts` | 1-170 | NEW — 26 tests |
+| `packages/skill-core/src/__tests__/registry.test.ts` | 1-210 | NEW — 26 tests |
+| `packages/skill-core/src/__tests__/pipeline.test.ts` | 1-130 | NEW — 10 tests |
 
-## Remaining Areas to Scrutinize (should-fix + escalate items from review)
+## Key Areas to Scrutinize
 
-1. **trigger-match endpoint** — `currentActiveSessions: 0` hardcode and `context_template` passthrough are MVP simplifications. Escalated to Architect.
-2. **capacity check** — uses `max_active_sessions` from request body (default 5). Per-request cap vs system-wide constant.
-3. **GET /intents with no filters** — returns empty array instead of 400 `FILTER_REQUIRED`. Reviewer flagged as should-fix.
-4. **Comment at line 185** — "MUST be before /:id routes" wording is misleading per reviewer. Fastify radix-tree router handles static vs parametric correctly regardless of order.
+1. **Wildcard matching** (`manifest.ts:109-121`) — "vehicles.*" matches "vehicles.cars" and "vehicles.cars.sedans" but NOT "vehicles". The brief said match "vehicles.cars" — confirm deep subcategory match is desired or should be single-level only.
+2. **deprecate() dual source** (`registry.ts:48-53`) — Accepts both ACTIVE and SUSPENDED per brief. Other transitions are strict single-source.
+3. **Rolling average math** (`registry.ts:77-87`) — Uses cumulative mean for latency and error rate. Confirm this is acceptable vs exponential moving average.
+4. **skillId regex** (`manifest.ts:33`) — Allows single-char IDs like "a". Brief said "non-empty, lowercase, alphanumeric + hyphens" — single char passes all rules.
 
 ## Open Questions
 
-1. Should GET /intents with no query params return 400 "FILTER_REQUIRED" instead of empty array?
-2. Is `currentActiveSessions: 0` in trigger-match acceptable for MVP, or should we add a count subquery? (Escalated to Architect)
+None. Brief was unambiguous on all major design points.
 
 ## Verification
 
 ```
-pnpm --filter @haggle/db typecheck      — 0 errors
-pnpm --filter @haggle/api typecheck     — 0 errors in new files (KG-3 shipping-core pre-existing only)
+pnpm --filter @haggle/skill-core test       — 62 tests passing
+pnpm --filter @haggle/skill-core typecheck   — 0 errors
+External dependencies: 0
 ```

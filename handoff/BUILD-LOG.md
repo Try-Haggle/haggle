@@ -5,13 +5,44 @@
 
 ## Current Status
 
-**Active step:** 6 — WaitingIntent DB + Service + API Route
-**Last cleared:** Step 5 WaitingIntent Types + State Machine complete — 2026-04-03
+**Active step:** 7 — Skill System Foundation (packages/skill-core)
+**Last cleared:** Step 6 WaitingIntent DB + Service + API Route complete — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 7 — Skill System Foundation (packages/skill-core) — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `packages/skill-core/package.json` — NEW: package config, vitest devDep only, zero external deps
+- `packages/skill-core/tsconfig.json` — NEW: extends base, standard pattern
+- `packages/skill-core/vitest.config.ts` — NEW: standard vitest config
+- `packages/skill-core/src/types.ts` — NEW: SkillCategory, SkillStatus, SkillProvider, HookPoint, PricingModel, SkillPricing, SkillManifest, RegisteredSkill, SkillInput, SkillOutput
+- `packages/skill-core/src/manifest.ts` — NEW: validateManifest, isCompatibleHookPoint, isCompatibleCategory (wildcard support)
+- `packages/skill-core/src/registry.ts` — NEW: SkillRegistry class (in-memory Map, lifecycle transitions, findByHookPoint/findByCategory, recordUsage with rolling averages)
+- `packages/skill-core/src/pipeline.ts` — NEW: PipelineConfig, SkillExecutionPlan, defaultPipelineConfig, resolveSkills, createExecutionPlan (planning only, no execution)
+- `packages/skill-core/src/index.ts` — NEW: re-exports all modules
+- `packages/skill-core/src/__tests__/manifest.test.ts` — NEW: 26 tests
+- `packages/skill-core/src/__tests__/registry.test.ts` — NEW: 26 tests
+- `packages/skill-core/src/__tests__/pipeline.test.ts` — NEW: 10 tests
+
+Decisions made:
+- ZERO external dependencies — not even engine-core. SkillInput.context is Record<string, unknown>
+- SkillRegistry is in-memory Map only — DB persistence is Step 8+
+- Pipeline creates execution plans only, does NOT execute skills — execution is async at API layer
+- Wildcard category matching: "vehicles.*" matches "vehicles.cars" and "vehicles.cars.sedans" but NOT "vehicles" alone
+- skillId regex allows single-char IDs (e.g., "a") and hyphenated slugs up to 64 chars
+- deprecate() accepts both ACTIVE and SUSPENDED as source states; other transitions are strict single-source
+- recordUsage uses rolling average for latency and cumulative error rate
+- Package structure matches tag-core/arp-core pattern exactly
+
+Test results: 62 tests, all passing
+Typecheck: clean, 0 errors
+
+Reviewer findings: pending
 
 ### Step 6 — WaitingIntent DB + Service + API Route — COMPLETE (rev 2)
 *Date: 2026-04-03*
