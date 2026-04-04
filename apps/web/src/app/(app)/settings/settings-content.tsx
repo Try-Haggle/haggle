@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { api, ApiError } from "@/lib/api-client";
 
 interface SettingsContentProps {
   email: string;
@@ -49,9 +50,6 @@ export function SettingsContent({
     type: "error";
     text: string;
   } | null>(null);
-
-  const API_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
   // ── Profile ──────────────────────────────────────────────
 
@@ -156,32 +154,16 @@ export function SettingsContent({
     setDeleteMsg(null);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const res = await fetch(`${API_URL}/api/account`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setDeleteMsg({
-          type: "error",
-          text: body.error || "Failed to delete account.",
-        });
-        setDeleting(false);
-        return;
-      }
+      await api.delete("/api/account");
 
       await supabase.auth.signOut();
       router.push("/claim");
-    } catch {
-      setDeleteMsg({ type: "error", text: "Something went wrong." });
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message || "Failed to delete account."
+          : "Something went wrong.";
+      setDeleteMsg({ type: "error", text: message });
       setDeleting(false);
     }
   };

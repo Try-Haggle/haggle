@@ -5,13 +5,37 @@
 
 ## Current Status
 
-**Active step:** 11 — Auth Middleware (Supabase JWT) — COMPLETE
-**Last cleared:** Step 9 Skill DB + Service + API — 2026-04-03
+**Active step:** 12 — API Client Utility + Auth Token Injection — COMPLETE
+**Last cleared:** Step 11 Auth Middleware (Supabase JWT) — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 12 — API Client Utility + Auth Token Injection — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/web/src/lib/api-client.ts` — NEW: Browser-side API client. Centralizes `API_URL` from `NEXT_PUBLIC_API_URL` env var. `apiClient()` injects Supabase JWT from browser session into `Authorization` header. `ApiError` class for structured error handling. `api` convenience object with `get/post/patch/delete` methods. `skipAuth` option for public endpoints.
+- `apps/web/src/lib/api-server.ts` — NEW: Server-side API client for React Server Components. `apiServer()` base function with method/body/skipAuth options. `serverApi` convenience object with `get/post` methods. `apiServerFireAndForget()` for non-critical fire-and-forget POSTs (e.g., view tracking). Uses server-side Supabase client (cookie-based).
+- `apps/web/src/app/(app)/sell/dashboard/page.tsx` — MODIFIED: removed hardcoded `API_URL`. Replaced raw `fetch` for claim POST and listings GET with `serverApi.post` and `serverApi.get`. Auth token now injected automatically.
+- `apps/web/src/app/(app)/buy/dashboard/page.tsx` — MODIFIED: removed hardcoded `API_URL`. Replaced raw `fetch` for viewed listings GET with `serverApi.get`.
+- `apps/web/src/app/(app)/sell/listings/[id]/page.tsx` — MODIFIED: removed hardcoded `API_URL`. Replaced raw `fetch` for listing detail GET with `serverApi.get`.
+- `apps/web/src/app/(app)/sell/listings/new/new-listing-wizard.tsx` — MODIFIED: removed hardcoded `API_URL`. Replaced 3 raw `fetch` calls (ensureDraft POST, patchDraft PATCH, publish POST) with `api.post`/`api.patch`. Auth token now injected automatically.
+- `apps/web/src/app/(app)/settings/settings-content.tsx` — MODIFIED: removed hardcoded `API_URL`. Replaced manual session+fetch for account DELETE with `api.delete`. Error handling preserved via `ApiError` catch.
+- `apps/web/src/app/l/[publicId]/page.tsx` — MODIFIED: removed hardcoded `API_URL`. Public listing fetch uses `serverApi.get` with `skipAuth: true`. View tracking POST uses `apiServerFireAndForget` with auth headers from existing supabase session.
+
+Decisions made:
+- `api-server.ts` extended beyond brief's GET-only `apiServer()` to include `serverApi.post()` — sell dashboard's claim endpoint requires server-side POST with auth. Without this, would need raw fetch or a workaround.
+- `apiServerFireAndForget()` takes pre-built headers parameter — avoids redundant `createClient()` call in `l/[publicId]/page.tsx` where supabase session already exists.
+- Publish endpoint in wizard uses `.catch(() => null)` pattern — `apiClient` throws on non-2xx, but publish may return 2xx with `{ ok: false, errors }` for validation errors. The `.catch` handles network/server errors while the `ok` check handles business logic errors.
+- Non-null assertions (`data.publicId!`, `data.shareUrl!`) used after `data.ok` guard — the API guarantees these fields exist when `ok: true`.
+- `server.ts` exports `createClient` (not `createServerClient` as brief suggested) — matched actual export name.
+- `ApiError` imported in settings-content for typed error handling in catch block.
+
+Test results: N/A (client utility + page refactor, no unit tests)
+Typecheck: `pnpm --filter @haggle/web typecheck` — 0 errors
 
 ### Step 11 — Auth Middleware (Supabase JWT) — COMPLETE
 *Date: 2026-04-03*

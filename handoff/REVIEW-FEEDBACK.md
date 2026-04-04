@@ -1,4 +1,4 @@
-# Review Feedback — Step 11
+# Review Feedback — Step 12
 Date: 2026-04-04
 Ready for Builder: YES
 
@@ -8,42 +8,38 @@ None.
 
 ## Should Fix
 
-- `auth.ts:25` — `SUPABASE_JWT_SECRET` is read once at module load via `process.env.SUPABASE_JWT_SECRET`. If the env var is set after the module loads (e.g., dotenv loading order), the secret will be stale. For MVP this is fine since dotenv runs before server creation. Log this as a known limitation if env loading order ever changes.
+- `api-server.ts:73-86` — `apiServerFireAndForget` accepts pre-built headers instead of resolving auth internally. This works but creates a split pattern: `serverApi.get`/`serverApi.post` handle auth internally, while `apiServerFireAndForget` pushes that responsibility to the caller. The call site at `l/[publicId]/page.tsx:58-65` correctly constructs the headers, but any future caller must remember to build them manually. Consider adding an overload that accepts `skipAuth?: boolean` and resolves headers internally, keeping the current signature as a secondary option. Not blocking — only one call site exists today.
 
-- `auth.ts:60` — Role resolution chain is `payload.role ?? payload.user_metadata?.role ?? payload.app_metadata?.role`. Supabase puts the default role in `payload.role` (typically `"authenticated"`), not the app-level role. In practice, admin roles are usually in `app_metadata.role`. This means `requireAdmin` will see `"authenticated"` instead of `"admin"` for users who have an admin role set in `app_metadata` but also have the default `role` field populated. Bob should verify what field Supabase actually populates for admin users in the Haggle Supabase project. If `payload.role` is always `"authenticated"`, the precedence should be `app_metadata?.role ?? user_metadata?.role ?? payload.role`. Not blocking because the Supabase project is not yet configured with admin roles, but this will bite when it is.
+- `api-server.ts:31-50` — The brief specified `apiServer` as a simple GET-only function (`apiServer<T>(path: string): Promise<T>`). Bob extended it with `ApiServerOptions` (method, body, skipAuth) and added `serverApi.post`. This was necessary because the sell dashboard's claim endpoint requires a server-side POST. The extension is clean and follows the same convenience pattern as the client-side `api` object. Logging as a spec deviation that was justified by implementation need. No action required.
 
-- `intents.ts:149-184` — `POST /intents/:id/match` has no auth guard. The brief does not list it, so Bob followed the brief correctly. However, this is a mutation that creates a match record and transitions intent status. Flagging for awareness — if this is intentional (e.g., system/engine calls it internally), fine. If users can call it directly, it should have `requireAuth` at minimum. Not a code fix — Arch should confirm.
+- `new-listing-wizard.tsx:486-487` — `data.publicId!` and `data.shareUrl!` non-null assertions after the `data.ok` guard. These are safe only if the API contract guarantees `publicId` and `shareUrl` are present when `ok: true`. The publish endpoint at `drafts.ts:106` returns `{ ok: true, ...result }` where `result` comes from `publishDraft`. If `publishDraft` ever returns without those fields, the wizard will set `undefined` into `publishResult`. Low risk — the contract is stable — but a defensive fallback (`data.publicId ?? ""`) would be cleaner than a non-null assertion.
 
-- `tags.ts:265-300` — `POST /tags/:tagId/experts/qualify` has no auth guard. Same situation: not in the brief, Bob followed the brief. But this is a mutation that grants expert qualification status. Flagging for Arch awareness.
+- `new-listing-wizard.tsx:458` — `.catch(() => null)` on the publish `api.post` call. This silently swallows all non-2xx errors (including network failures and 400s from `drafts.ts:110`). The subsequent `if (!data)` check on line 460 handles this with a generic "Failed to publish" message. The 400 response body (`{ ok: false, error: message }`) is lost. In practice, the most common failure path is the 200+`ok:false` validation error (line 101 of drafts.ts) which is correctly handled. The 400 path losing its error message is acceptable for MVP. No action required.
 
 ## Escalate to Architect
 
-- **Supabase JWT `role` field precedence** — Supabase JWTs include a top-level `role` field that is typically `"authenticated"` for all logged-in users. The actual application role (e.g., `"admin"`) is usually in `app_metadata.role`. The current code at `auth.ts:60` checks `payload.role` first, which will mask the real app role. Arch should confirm the correct field precedence for the Haggle Supabase configuration before admin routes are tested in staging.
+- **`serverApi.post` addition** — The brief specified `apiServer` as GET-only. Bob added `serverApi.post` because the sell dashboard claim endpoint requires a server-side POST. The implementation is clean. Arch should confirm this is the intended pattern for future server-side mutations, or if server-side POSTs should use the raw `apiServer` function with method override instead.
 
-- **Unguarded mutation routes** — `POST /intents/:id/match`, `POST /intents/trigger-match`, `POST /tags`, `PATCH /tags/:id`, `POST /tags/:tagId/experts/qualify` are all public mutations. The brief did not list them for guarding, so Bob is spec-compliant. Arch should confirm these are intentionally public (e.g., called by internal services) or add them to a future auth pass.
+- **`apiServerFireAndForget` caller-managed auth** — The brief did not specify a fire-and-forget helper. Bob added it for the public listing view tracking. The current design requires callers to build auth headers manually. Arch should decide if this helper should manage its own auth (simpler API, one extra `createClient()` call per invocation) or keep the current caller-managed approach (avoids redundant work when the session is already available).
 
 ## Cleared
 
-10 files reviewed against the Step 11 brief.
+8 files reviewed against the Step 12 brief.
 
-**auth.ts**: Fastify plugin via `fastify-plugin`. JWT decoded from `Authorization: Bearer` header. When `SUPABASE_JWT_SECRET` is set, `jwt.verify()` validates signature. When unset, `jwt.decode()` passes through for local dev with `sub` field validation. Type augmentation correctly extends `FastifyRequest` with optional `user`. `AuthUser` interface matches the brief. No token = request passes through unauthenticated. Invalid token = 401 `INVALID_TOKEN`. Correct.
+**api-client.ts**: Matches the brief exactly. `ApiError` class with status and code. `apiClient` function attaches Supabase JWT via `createClient().auth.getSession()`. `skipAuth` option skips token injection. Non-2xx responses throw `ApiError` with parsed body. `api` convenience object exposes `get`, `post`, `patch`, `delete`. `API_URL` centralized from env var with localhost fallback. Correct.
 
-**require-auth.ts**: `requireAuth` returns 401 if no `request.user`. `requireAdmin` returns 401 if no user, 403 if role is not `"admin"`. Matches the brief exactly. Clean, minimal.
+**api-server.ts**: Extended beyond the brief (GET-only to GET+POST+fire-and-forget). `getAuthHeaders` helper creates server-side Supabase client and extracts JWT. `apiServer` base function uses `next: { revalidate: 0 }` (equivalent to the original `cache: "no-store"`). `serverApi` convenience object with `get` and `post`. `apiServerFireAndForget` for non-blocking POSTs. Error handling throws simple `Error` (not `ApiError`) — matches the brief's server-side pattern. Correct.
 
-**server.ts**: `authPlugin` imported and registered (line 50) before all route registrations (lines 59-82). Registration order is correct: CORS, auth, health, then routes. `x-haggle-actor-id` kept in CORS `allowedHeaders` per brief flag for backwards compat.
+**sell/dashboard/page.tsx**: Server Component. Uses `serverApi.post` for claim and `serverApi.get` for listings. Error handling preserved — try/catch with fallback to `{ ok: false, error: "network_error" }` for claim, empty array for listings. No `API_URL` reference. Correct.
 
-**payments.ts**: Fake `actorFromHeaders` and `actorRoleSchema` fully removed. No references to `x-haggle-actor-id` or `x-haggle-actor-role` in route logic. `requireAuth` applied to all POST routes: prepare, quote, x402/submit-signature, authorize, settlement-pending, settle, fail, cancel, refund. Webhook routes (`/payments/webhooks/x402`, `/payments/webhooks/stripe`) correctly left unguarded with their own signature verification. GET `/payments/:id` and GET `/payments/:id/x402/requirements` remain public. `request.user!.id` used at line 198 for `actor_id`. `actor_role` hardcoded to `"buyer"` at line 199 — matches Bob's rationale that only buyers call `/payments/prepare`. Non-null assertion is safe because `requireAuth` preHandler guarantees `request.user` exists.
+**buy/dashboard/page.tsx**: Server Component. Uses `serverApi.get` for viewed listings. Error handling preserved — try/catch with empty array fallback. No `API_URL` reference. Correct.
 
-**intents.ts**: `requireAuth` on `POST /intents` (line 47) and `PATCH /intents/:id/cancel` (line 130). `POST /intents/expire` left public (line 234) — correct per brief, cron endpoint. GET routes public. Matches brief.
+**sell/listings/[id]/page.tsx**: Server Component. Uses `serverApi.get` for listing detail. Error handling preserved — try/catch with null fallback, redirect to dashboard on not-found. No `API_URL` reference. Correct.
 
-**tags.ts**: `requireAdmin` on `POST /tags/merge` (line 75), `POST /tags/:id/promote` (line 189), `POST /tags/:id/deprecate` (line 223). GET routes public. Matches brief.
+**new-listing-wizard.tsx**: Client Component ("use client"). Uses `api.post` for draft creation, `api.patch` for draft updates, `api.post` for publish. `ensureDraft` and `patchDraft` wrapped in try/catch with user-facing error messages. Publish uses `.catch(() => null)` to handle network/4xx failures gracefully while preserving 200+`ok:false` validation error parsing. No `API_URL` reference. Correct.
 
-**trust.ts**: `requireAdmin` on `POST /trust/:actorId/compute` (line 59). GET routes public. Matches brief.
+**settings-content.tsx**: Client Component ("use client"). Uses `api.delete` for account deletion. Error handling uses `ApiError` instanceof check with fallback message. `signOut` and redirect preserved after successful delete. No `API_URL` reference. Correct.
 
-**arp.ts**: `requireAdmin` on `POST /arp/segments/:id/adjust` (line 76). GET routes public. Matches brief.
+**l/[publicId]/page.tsx**: Server Component. Uses `serverApi.get` with `skipAuth: true` for public listing fetch. Uses `apiServerFireAndForget` with manually constructed auth headers for view tracking. Auth header construction at lines 58-65 correctly reads session and sets Bearer token. `notFound()` on fetch failure or missing listing. No `API_URL` reference. Correct.
 
-**skills.ts**: `requireAdmin` on PATCH activate (line 153), suspend (line 171), deprecate (line 189). `requireAuth` on POST execute (line 208). Routes are PATCH not POST — Bob flagged this deviation. The actual handlers were already PATCH from Step 9; the brief listed them as POST but the auth guards are applied to the actual handlers. No functional issue. GET routes and POST `/skills` (create) left public per brief.
-
-**package.json**: `jsonwebtoken` ^9.0.0, `fastify-plugin` ^5.0.0 in dependencies. `@types/jsonwebtoken` ^9.0.0 in devDependencies. All three present and correct.
-
-No breaking changes introduced. Unauthenticated requests pass through the auth hook without error. Only routes with explicit `preHandler` guards reject unauthenticated callers.
+No hardcoded `API_URL` in any page file (verified via grep). Marketing `landing.tsx` untouched per brief. Server/Client component boundary respected: all 4 page files (RSC) use `serverApi`, both "use client" files use `api`. Public page uses `skipAuth: true`. No breaking changes to UI behavior.

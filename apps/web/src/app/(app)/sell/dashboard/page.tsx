@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { serverApi } from "@/lib/api-server";
 import { DashboardContent } from "./dashboard-content";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export interface ListingSummary {
   id: string;
@@ -40,15 +39,10 @@ export default async function DashboardPage({
 
   if (params.claim) {
     try {
-      const res = await fetch(`${API_URL}/api/claim`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          claimToken: params.claim,
-          userId: user.id,
-        }),
-      });
-      claimResult = await res.json();
+      claimResult = await serverApi.post<{ ok: boolean; error?: string }>(
+        `/api/claim`,
+        { claimToken: params.claim, userId: user.id },
+      );
     } catch {
       claimResult = { ok: false, error: "network_error" };
     }
@@ -57,11 +51,9 @@ export default async function DashboardPage({
   // Fetch user's listings
   let listings: ListingSummary[] = [];
   try {
-    const res = await fetch(
-      `${API_URL}/api/listings?userId=${user.id}`,
-      { cache: "no-store" },
+    const data = await serverApi.get<{ ok: boolean; listings: ListingSummary[] }>(
+      `/api/listings?userId=${user.id}`,
     );
-    const data = await res.json();
     if (data.ok) {
       listings = data.listings;
     }

@@ -4,183 +4,169 @@
 
 ---
 
-## Step 11 — Auth Middleware (Supabase JWT)
+## Step 12 — API Client Utility + Auth Token Injection
 
 ### Context
-All API routes currently have no authentication. Payments route uses fake `x-haggle-actor-id` header. The web app uses Supabase Auth (`@supabase/ssr`). We need a Fastify middleware that validates Supabase JWTs and injects user info into requests.
-
-### Architecture
-```
-Client → Authorization: Bearer <supabase_jwt> → Fastify → Auth Plugin → route handler
-                                                           ↓
-                                                  request.user = { id, email, role }
-```
+The web app has `API_URL` hardcoded in 6+ files and makes raw `fetch()` calls without auth tokens. We built Supabase JWT auth middleware (Step 11) on the API side, but the frontend never sends the token. This step creates a shared API client that:
+1. Centralizes the API base URL
+2. Automatically attaches the Supabase JWT to every request
+3. Handles common error patterns
 
 ### Build Order
 
-#### 1. `apps/api/src/middleware/auth.ts` — Auth plugin
+#### 1. `apps/web/src/lib/api-client.ts` — Shared API client
 
 ```ts
-import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import fp from "fastify-plugin";
+import { createClient } from "./supabase/client";
 
-export interface AuthUser {
-  id: string;          // Supabase user UUID
-  email?: string;
-  role?: string;       // from user_metadata or app_metadata
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+interface ApiOptions extends RequestInit {
+  skipAuth?: boolean;
 }
 
-// Extend Fastify request
-declare module "fastify" {
-  interface FastifyRequest {
-    user?: AuthUser;
-  }
-}
+export async function apiClient<T = unknown>(
+  path: string,
+  options: ApiOptions = {},
+): Promise<T> {
+  const { skipAuth, ...fetchOptions } = options;
 
-// Verify Supabase JWT
-// Supabase JWTs are standard JWTs signed with the project's JWT secret.
-// For MVP: decode + verify signature using SUPABASE_JWT_SECRET env var.
-// No external library needed — use Node.js crypto + base64 decode.
-// OR use jsonwebtoken package (simpler).
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(fetchOptions.headers as Record<string, string>),
+  };
 
-async function authPlugin(app: FastifyInstance) {
-  app.decorateRequest("user", undefined);
-
-  app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
-    // Skip auth for public routes
-    const publicPaths = [
-      "/health",
-      "/mcp",                  // MCP routes have their own auth
-      "/public-listing",       // Public listing pages
-    ];
-    if (publicPaths.some(p => request.url.startsWith(p))) return;
-
-    // Also skip if no Authorization header (allow unauthenticated access where needed)
-    const authHeader = request.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      // No token = unauthenticated request. Route handlers decide if they need auth.
-      return;
-    }
-
-    const token = authHeader.slice(7);
+  // Attach Supabase JWT if available
+  if (!skipAuth) {
     try {
-      const payload = verifySupabaseJwt(token);
-      request.user = {
-        id: payload.sub,
-        email: payload.email,
-        role: payload.role || payload.user_metadata?.role,
-      };
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
     } catch {
-      return reply.code(401).send({ error: "INVALID_TOKEN" });
+      // Auth not available — continue without token
     }
+  }
+
+  const url = path.startsWith("http") ? path : `${API_URL}${path}`;
+  const res = await fetch(url, {
+    ...fetchOptions,
+    headers,
   });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.error || "UNKNOWN_ERROR", body.message);
+  }
+
+  return res.json() as Promise<T>;
 }
 
-export default fp(authPlugin, { name: "auth" });
-```
-
-For JWT verification, two options:
-**Option A (recommended for MVP):** Use `jsonwebtoken` package. Simple `jwt.verify(token, secret)`.
-**Option B:** Pure Node.js crypto. More code but no dep.
-
-Go with Option A.
-
-#### 2. `apps/api/src/middleware/require-auth.ts` — Guard helper
-
-```ts
-import type { FastifyRequest, FastifyReply } from "fastify";
-
-// Use as a preHandler on routes that REQUIRE authentication
-export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.user) {
-    return reply.code(401).send({ error: "AUTH_REQUIRED" });
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message?: string,
+  ) {
+    super(message || code);
+    this.name = "ApiError";
   }
 }
 
-// Use for admin-only routes
-export async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
-  if (!request.user) {
-    return reply.code(401).send({ error: "AUTH_REQUIRED" });
+// Convenience methods
+export const api = {
+  get: <T = unknown>(path: string, opts?: ApiOptions) =>
+    apiClient<T>(path, { ...opts, method: "GET" }),
+
+  post: <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
+    apiClient<T>(path, { ...opts, method: "POST", body: body ? JSON.stringify(body) : undefined }),
+
+  patch: <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
+    apiClient<T>(path, { ...opts, method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+
+  delete: <T = unknown>(path: string, opts?: ApiOptions) =>
+    apiClient<T>(path, { ...opts, method: "DELETE" }),
+};
+```
+
+#### 2. Update existing pages to use `api` client
+
+Replace raw `fetch` in these files:
+
+**`app/(app)/sell/dashboard/page.tsx`:**
+```ts
+// Before:
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const res = await fetch(`${API_URL}/api/claim`, { ... });
+const res = await fetch(`${API_URL}/api/listings?userId=${user.id}`, { ... });
+
+// After:
+import { api } from "@/lib/api-client";
+const data = await api.post("/api/claim", { ... });
+const data = await api.get(`/api/listings?userId=${user.id}`);
+```
+
+Do the same for:
+- `app/(app)/buy/dashboard/page.tsx`
+- `app/(app)/sell/listings/new/new-listing-wizard.tsx`
+- `app/(app)/sell/listings/[id]/page.tsx`
+- `app/(app)/settings/settings-content.tsx`
+- `app/l/[publicId]/page.tsx` (use `skipAuth: true` for public pages)
+
+**Do NOT change:**
+- `app/(marketing)/landing.tsx` — uses relative `/api/waitlist` which is a Next.js API route, not our Fastify API
+
+#### 3. Server-side API client for SSR pages
+
+Some pages fetch data server-side (React Server Components). Those need the server-side Supabase client:
+
+`apps/web/src/lib/api-server.ts`:
+```ts
+import { createServerClient } from "./supabase/server";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+export async function apiServer<T = unknown>(path: string): Promise<T> {
+  const supabase = await createServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (session?.access_token) {
+    headers["Authorization"] = `Bearer ${session.access_token}`;
   }
-  if (request.user.role !== "admin") {
-    return reply.code(403).send({ error: "ADMIN_REQUIRED" });
+
+  const url = `${API_URL}${path}`;
+  const res = await fetch(url, { headers, next: { revalidate: 0 } });
+
+  if (!res.ok) {
+    throw new Error(`API ${res.status}: ${path}`);
   }
+  return res.json() as Promise<T>;
 }
 ```
 
-#### 3. Update `apps/api/src/server.ts`
-
-Register the auth plugin BEFORE route registration:
-```ts
-import authPlugin from "./middleware/auth.js";
-// ...
-await app.register(authPlugin);
-// Then register routes...
-```
-
-#### 4. Update `apps/api/src/routes/payments.ts`
-
-Replace the fake header auth with `request.user`:
-```ts
-// Before (fake):
-const actorId = headers["x-haggle-actor-id"];
-const actorRole = headers["x-haggle-actor-role"];
-
-// After (real):
-import { requireAuth } from "../middleware/require-auth.js";
-// Add preHandler to routes that need auth:
-app.post("/payments/prepare", { preHandler: [requireAuth] }, async (request, reply) => {
-  const actorId = request.user!.id;
-  // ...
-});
-```
-
-Do NOT add requireAuth to ALL routes. Only to:
-- POST /payments/* (all payment mutations)
-- PATCH /intents/:id/cancel (user action)
-- POST /intents (user action)
-- POST /tags/:id/promote, /deprecate, /merge (admin)
-- POST /trust/:actorId/compute (admin)
-- POST /arp/segments/:id/adjust (admin)
-- POST /skills/:skillId/activate, /suspend, /deprecate (admin)
-- POST /skills/:skillId/execute
-
-Leave these public (no auth):
-- GET routes (read-only for MVP)
-- /health
-- /mcp/*
-- /public-listing/*
-- POST /intents/expire (cron, will get separate auth later)
-
-#### 5. Dependencies
-
-Add to `apps/api/package.json`:
-```json
-"jsonwebtoken": "^9.0.0",
-"fastify-plugin": "^5.0.0"
-```
-Add to devDependencies:
-```json
-"@types/jsonwebtoken": "^9.0.0"
-```
-
-Check if `fastify-plugin` is already a dependency.
+Read `apps/web/src/lib/supabase/server.ts` to understand the server-side Supabase client pattern.
 
 ### Flags
-- Flag: JWT secret comes from `SUPABASE_JWT_SECRET` env var. If not set, auth is effectively disabled (all requests pass through as unauthenticated). This allows local dev without Supabase.
-- Flag: Do NOT break existing functionality. If no auth header, request passes through. Routes that need auth use `requireAuth` preHandler.
-- Flag: Remove the fake `x-haggle-actor-id` header from payments.ts. Replace with `request.user.id`.
-- Flag: Keep `x-haggle-actor-id` in CORS allowedHeaders for backwards compat (MCP might still use it).
-- Flag: Read the existing payments.ts carefully — the actor logic is complex with SettlementApproval.
+- Flag: Read each file BEFORE changing it. The existing fetch calls may have specific headers, error handling, or response parsing that needs to be preserved.
+- Flag: Some pages are Server Components (no "use client"). Those use `apiServer`. Client Components use `api`.
+- Flag: Check if each page is a Server Component or Client Component before choosing which api client to use.
+- Flag: `app/l/[publicId]/page.tsx` is a public listing page — use `skipAuth: true` or `apiServer` without auth.
+- Flag: Do NOT change the API paths themselves (e.g., `/api/drafts` stays `/api/drafts`).
+- Flag: Preserve existing error handling in each page (toast notifications, error states, etc.)
+- Flag: The `@/lib/...` import path should work — check tsconfig paths.
 
 ### Definition of Done
-- [ ] Auth middleware plugin created
-- [ ] requireAuth/requireAdmin guard helpers
-- [ ] server.ts registers auth plugin
-- [ ] payments.ts uses request.user instead of fake headers
-- [ ] Critical mutation routes have requireAuth preHandler
-- [ ] GET routes remain public
-- [ ] No breaking changes (unauthenticated requests still work for non-guarded routes)
+- [ ] `lib/api-client.ts` created with `api` convenience methods + auth token injection
+- [ ] `lib/api-server.ts` created for SSR pages
+- [ ] 6 page files updated to use new api client
+- [ ] No hardcoded `API_URL` in page files
+- [ ] Auth tokens automatically attached
+- [ ] Public pages use skipAuth
+- [ ] No breaking changes to existing UI behavior
 
 ---
 

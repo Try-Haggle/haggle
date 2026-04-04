@@ -1,4 +1,4 @@
-# Review Request — Step 11: Auth Middleware (Supabase JWT)
+# Review Request — Step 12: API Client Utility + Auth Token Injection
 *Written by Builder. Read by Reviewer.*
 
 Ready for Review: YES
@@ -7,44 +7,42 @@ Ready for Review: YES
 
 ## What Was Built
 
-Fastify auth middleware that validates Supabase JWTs and injects `request.user` into requests. Guard helpers (`requireAuth`, `requireAdmin`) applied as preHandlers on mutation routes. Fake `x-haggle-actor-id` header auth removed from payments.ts. All GET routes remain public. Webhooks and cron endpoints left unguarded (they have their own auth mechanisms).
+Centralized API client for the Next.js frontend. Two modules: `api-client.ts` (browser, Client Components) and `api-server.ts` (SSR, Server Components). Both automatically inject Supabase JWT into outgoing API requests. All 6 page files updated to use the new clients. Zero hardcoded `API_URL` remains in any page file.
 
 ## Files Changed
 
 | File | Lines | Change |
 |---|---|---|
-| `apps/api/src/middleware/auth.ts` | 1-70 | NEW — Fastify plugin via `fastify-plugin`. Decodes JWT from `Authorization: Bearer` header. Verifies with `SUPABASE_JWT_SECRET` if set; decodes without verification if unset (local dev). Decorates `request.user`. |
-| `apps/api/src/middleware/require-auth.ts` | 1-25 | NEW — `requireAuth` (401 if no user) and `requireAdmin` (401/403) preHandler functions. |
-| `apps/api/src/server.ts` | 4, 48-49 | MODIFIED — import `authPlugin` + `await app.register(authPlugin)` before route registration. |
-| `apps/api/src/routes/payments.ts` | 1-5, 105-116 removed, 205 | MODIFIED — removed `actorFromHeaders`, `actorRoleSchema`. Added `requireAuth` preHandler to all POST routes except webhooks. `/payments/prepare` reads `request.user!.id`. |
-| `apps/api/src/routes/intents.ts` | 5, 46, 128 | MODIFIED — `requireAuth` on `POST /intents`, `PATCH /intents/:id/cancel`. `POST /intents/expire` left public. |
-| `apps/api/src/routes/tags.ts` | 4, 74, 188, 221 | MODIFIED — `requireAdmin` on `POST /tags/merge`, `POST /tags/:id/promote`, `POST /tags/:id/deprecate`. |
-| `apps/api/src/routes/trust.ts` | 4, 56 | MODIFIED — `requireAdmin` on `POST /trust/:actorId/compute`. |
-| `apps/api/src/routes/arp.ts` | 4, 73 | MODIFIED — `requireAdmin` on `POST /arp/segments/:id/adjust`. |
-| `apps/api/src/routes/skills.ts` | 4, 151, 168, 185, 203 | MODIFIED — `requireAdmin` on activate/suspend/deprecate. `requireAuth` on execute. |
-| `apps/api/package.json` | deps, devDeps | MODIFIED — added `jsonwebtoken`, `fastify-plugin`, `@types/jsonwebtoken`. |
+| `apps/web/src/lib/api-client.ts` | 1-82 | NEW — `apiClient()` with Supabase JWT injection, `ApiError` class, `api` convenience object (`get/post/patch/delete`). `skipAuth` option for public endpoints. |
+| `apps/web/src/lib/api-server.ts` | 1-82 | NEW — `apiServer()` base, `serverApi` convenience object (`get/post`), `apiServerFireAndForget()` for non-critical POSTs. Server-side Supabase client (cookie-based auth). |
+| `apps/web/src/app/(app)/sell/dashboard/page.tsx` | 1-4, 40-60 | MODIFIED — removed `API_URL`, replaced 2 raw fetches with `serverApi.post` (claim) and `serverApi.get` (listings). |
+| `apps/web/src/app/(app)/buy/dashboard/page.tsx` | 1-4, 31-41 | MODIFIED — removed `API_URL`, replaced 1 raw fetch with `serverApi.get` (viewed listings). |
+| `apps/web/src/app/(app)/sell/listings/[id]/page.tsx` | 1-4, 40-50 | MODIFIED — removed `API_URL`, replaced 1 raw fetch with `serverApi.get` (listing detail). |
+| `apps/web/src/app/(app)/sell/listings/new/new-listing-wizard.tsx` | 5-8, 331-368, 450-470 | MODIFIED — removed `API_URL`, replaced 3 raw fetches with `api.post`/`api.patch`. Added try/catch to `ensureDraft` and `patchDraft`. |
+| `apps/web/src/app/(app)/settings/settings-content.tsx` | 5, 53-54, 158-174 | MODIFIED — removed `API_URL`, replaced manual session+fetch DELETE with `api.delete`. Error handling via `ApiError`. |
+| `apps/web/src/app/l/[publicId]/page.tsx` | 1-3, 29-36, 57-66 | MODIFIED — removed `API_URL`, public listing uses `serverApi.get` with `skipAuth: true`, view tracking uses `apiServerFireAndForget`. |
 
 ## Key Areas to Scrutinize
 
-1. **JWT passthrough logic** (`auth.ts:28-34`) — When `SUPABASE_JWT_SECRET` is unset, `jwt.decode()` is used without verification. This is intentional for local dev but Richard should verify this is acceptable security posture. The `sub` field is still validated.
+1. **`apiClient` throws on non-2xx** (`api-client.ts:51-54`) — The `ApiError` throw means pages that previously parsed error response bodies (like the wizard's publish validation errors) need careful handling. The wizard uses `.catch(() => null)` for publish since validation errors may come as 200+`ok:false` OR as 4xx. Richard should verify the publish endpoint's actual HTTP status on validation failure.
 
-2. **Actor role hardcoded to "buyer"** (`payments.ts:211`) — `actorFromHeaders` previously read role from a header. Now `actor_role` is hardcoded to `"buyer"` since only buyers call `/payments/prepare`. If sellers need to call this route in future, the role should come from the JWT payload or request body.
+2. **Server-side `apiServer` uses `next: { revalidate: 0 }`** (`api-server.ts:43`) — This disables Next.js fetch caching for all server-side API calls. The original pages used `cache: "no-store"` which is equivalent. Verify this is the correct caching strategy for all server pages.
 
-3. **Fastify type augmentation** (`auth.ts:34-38`) — `declare module "fastify"` extends `FastifyRequest` with optional `user`. This is project-global — Richard should verify no other module declares the same augmentation.
+3. **`apiServerFireAndForget` takes pre-built headers** (`api-server.ts:70-81`) — This is a deviation from the brief's original `apiServer` design. It accepts headers directly instead of internally creating a Supabase client. This avoids a redundant `createClient()` call in the public listing page where the session is already available. Richard should verify the auth headers are correctly constructed at the call site (`l/[publicId]/page.tsx:58-65`).
 
-4. **preHandler array syntax** — All routes use `{ preHandler: [requireAuth] }` (array form). This is correct for Fastify 5 and allows composing multiple preHandlers in future.
+4. **Non-null assertions in wizard** (`new-listing-wizard.tsx:486-487`) — `data.publicId!` and `data.shareUrl!` after the `data.ok` guard. These are safe if the API contract guarantees these fields on success, but worth a glance.
 
-5. **Skills lifecycle routes are PATCH not POST** — The brief listed these as `POST /skills/:skillId/activate` etc. but the actual implementation uses `PATCH`. Auth guards applied to the actual `PATCH` handlers.
+5. **Settings delete error handling** (`settings-content.tsx:162-170`) — Changed from manual `res.ok` check + `body.error` parsing to `ApiError` catch. The error message field mapping (`err.message`) should produce the same user-visible text as before.
 
 ## Open Questions
 
-1. The `actor_role` in `/payments/prepare` is now hardcoded to `"buyer"`. Should this be derived from JWT `role` or from the request body instead? Current approach is simplest and matches the business logic (only buyers prepare payments).
+1. The `serverApi.post` was added beyond the brief's spec (brief only had GET-only `apiServer`). The sell dashboard's claim endpoint requires a server-side POST. Is a `serverApi` convenience object the right pattern, or should this use the raw `apiServer` function with method override?
 
-2. Should `POST /skills` (create skill) also require `requireAdmin`? The brief did not list it but it seems like an admin operation. Left public for now per brief.
+2. Should the `apiServerFireAndForget` helper internally create its own Supabase client for auth (simpler API, one extra `createClient` call) or accept pre-built headers (current approach, avoids redundant work)?
 
 ## Verification
 
 ```
-pnpm install                             — 15 packages added (jsonwebtoken, fastify-plugin, @types/jsonwebtoken + transitive deps)
-pnpm --filter @haggle/api typecheck      — 0 new errors (pre-existing shipping-core KG-3 errors only)
+pnpm --filter @haggle/web typecheck   — 0 errors
+grep -r "API_URL\|localhost:3001" apps/web/src/app/   — 0 matches
 ```

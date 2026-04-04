@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { serverApi } from "@/lib/api-server";
 import { DetailContent } from "./detail-content";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export interface ListingDetail {
   id: string;
@@ -39,11 +38,9 @@ export default async function ListingDetailPage({
 
   let listing: ListingDetail | null = null;
   try {
-    const res = await fetch(
-      `${API_URL}/api/listings/${id}?userId=${user.id}`,
-      { cache: "no-store" },
+    const data = await serverApi.get<{ ok: boolean; listing: ListingDetail }>(
+      `/api/listings/${id}?userId=${user.id}`,
     );
-    const data = await res.json();
     if (data.ok) {
       listing = data.listing;
     }
