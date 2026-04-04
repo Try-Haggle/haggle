@@ -185,7 +185,7 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
           <div className="overflow-hidden rounded-2xl border border-border-default bg-bg-card">
             <div className="grid gap-0 md:grid-cols-2">
               {/* Photo */}
-              <div className="relative aspect-square bg-black/30 md:aspect-auto md:min-h-[400px]">
+              <div className="relative aspect-square bg-black/30 md:aspect-auto md:min-h-72 md:max-h-96">
                 {listing.photoUrl ? (
                   <img
                     src={listing.photoUrl}

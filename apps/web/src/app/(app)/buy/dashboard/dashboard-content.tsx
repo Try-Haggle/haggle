@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ViewedListing } from "./page";
+import { RecommendedForYou } from "./recommended";
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -17,8 +18,10 @@ function formatTimeAgo(dateStr: string): string {
 
 export function BuyerDashboardContent({
   viewedListings,
+  userId,
 }: {
   viewedListings: ViewedListing[];
+  userId: string;
 }) {
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
@@ -36,6 +39,9 @@ export function BuyerDashboardContent({
           <p className="text-sm text-slate-400">Browse listings and track your negotiations</p>
         </div>
       </div>
+
+      {/* Recommended For You */}
+      <RecommendedForYou userId={userId} />
 
       {/* Recently Viewed Listings */}
       <h2 className="text-lg font-bold text-white mb-4">Recently Viewed</h2>
@@ -55,7 +61,7 @@ export function BuyerDashboardContent({
         </div>
       ) : (
         <div className="space-y-3 mb-8">
-          {viewedListings.map((listing) => (
+          {viewedListings.filter(Boolean).map((listing) => (
             <ViewedListingCard key={listing.id} listing={listing} />
           ))}
         </div>

@@ -5,4 +5,4 @@ export type { Database } from "./client.js";
 export * from "./schema/index.js";
 
 // Re-export commonly used drizzle-orm operators so consumers don't need a direct drizzle-orm dependency
-export { eq, and, gt, desc } from "drizzle-orm";
+export { eq, and, gt, desc, sql } from "drizzle-orm";
