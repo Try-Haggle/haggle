@@ -1,27 +1,49 @@
-# Review Feedback — Step 9
+# Review Feedback — Step 11
 Date: 2026-04-04
-Ready for Builder: NO
+Ready for Builder: YES
 
 ## Must Fix
 
-- `skills.ts:62-72` — Wildcard category matching is inlined instead of importing `isCompatibleCategory` from `@haggle/skill-core`. The logic happens to match today, but now there are two copies. When skill-core's version changes (e.g., the pending Arch decision on deep-match from Step 7), this copy will silently diverge. Fix: import `isCompatibleCategory` from `@haggle/skill-core`, construct a minimal `SkillManifest`-shaped object from the DB row (only `supportedCategories` is needed), and call the function. If constructing a full manifest is awkward, extract the category-matching loop into a standalone `isCompatibleCategory(supportedCategories: string[], productCategory: string)` in skill-core and import that. Either way, one source of truth.
-
-- `skills.ts:208-236` — POST `/skills/:skillId/execute` does not check that the skill's status is `ACTIVE` before recording execution. A DRAFT, SUSPENDED, or DEPRECATED skill can have executions logged against it. The brief says "execute skill (record execution, update metrics)" which implies the skill should be executable. Add a guard: if `existing.status !== "ACTIVE"`, return 400 with `SKILL_NOT_ACTIVE`. This is consistent with the lifecycle model where only ACTIVE skills are resolved and used.
-
-- `skill.service.ts:117-123` — The rolling average SQL has a race condition between `usageCount` read in the SET clause and the `usageCount + 1` denominator. Both `averageLatencyMs` and `errorRate` read `skills.usageCount` in the same UPDATE, which is correct within a single statement (Postgres evaluates SET expressions using the pre-update row). However, two concurrent executions can both read the same `usageCount` value, meaning one execution's latency contribution gets overwritten. Bob flagged this area for scrutiny. For MVP this is acceptable in practice, but the comment on line 117 says "atomic rolling average" which is misleading — it is atomic per-statement but not concurrent-safe. Fix: change the comment from "atomic rolling average" to "rolling average (not concurrent-safe, acceptable for MVP)". This is a comment-only fix — no logic change needed for MVP.
+None.
 
 ## Should Fix
 
-- `skills.ts:245` — `parseInt(query.limit, 10)` on the executions endpoint has no bounds validation. A caller can pass `limit=999999` and dump the entire executions table. The service defaults to 50, but the route overrides it with any positive integer. Add `Math.min(parsed, 200)` or validate via Zod. Tag routes don't have this pattern so there's no precedent to follow, but it's a sensible guard.
+- `auth.ts:25` — `SUPABASE_JWT_SECRET` is read once at module load via `process.env.SUPABASE_JWT_SECRET`. If the env var is set after the module loads (e.g., dotenv loading order), the secret will be stale. For MVP this is fine since dotenv runs before server creation. Log this as a known limitation if env loading order ever changes.
 
-- `skills.ts:245` — `parseInt` on non-numeric input like `limit=abc` returns `NaN`, which passes through to `getExecutionsBySkillId` as `NaN`. Drizzle's `.limit(NaN)` behavior is undefined. Add a `Number.isNaN` check or use Zod to validate the query param.
+- `auth.ts:60` — Role resolution chain is `payload.role ?? payload.user_metadata?.role ?? payload.app_metadata?.role`. Supabase puts the default role in `payload.role` (typically `"authenticated"`), not the app-level role. In practice, admin roles are usually in `app_metadata.role`. This means `requireAdmin` will see `"authenticated"` instead of `"admin"` for users who have an admin role set in `app_metadata` but also have the default `role` field populated. Bob should verify what field Supabase actually populates for admin users in the Haggle Supabase project. If `payload.role` is always `"authenticated"`, the precedence should be `app_metadata?.role ?? user_metadata?.role ?? payload.role`. Not blocking because the Supabase project is not yet configured with admin roles, but this will bite when it is.
 
-- `skills.ts:109-111` — 409 on duplicate `skillId` diverges from the tag pattern (which returns the existing row on duplicate). Bob flagged this as an open question. Both approaches are valid. Logging this for Arch to confirm — see Escalate section.
+- `intents.ts:149-184` — `POST /intents/:id/match` has no auth guard. The brief does not list it, so Bob followed the brief correctly. However, this is a mutation that creates a match record and transitions intent status. Flagging for awareness — if this is intentional (e.g., system/engine calls it internally), fine. If users can call it directly, it should have `requireAuth` at minimum. Not a code fix — Arch should confirm.
+
+- `tags.ts:265-300` — `POST /tags/:tagId/experts/qualify` has no auth guard. Same situation: not in the brief, Bob followed the brief. But this is a mutation that grants expert qualification status. Flagging for Arch awareness.
 
 ## Escalate to Architect
 
-- **Duplicate skillId behavior** — Tags return existing row on duplicate (idempotent POST). Skills return 409 CONFLICT. Bob flagged this in REVIEW-REQUEST.md. Both are defensible. Idempotent is safer for retries (network failures). 409 is stricter and prevents accidental re-registration with different data. Arch should decide which pattern is canonical for this project. If 409, document it as intentional divergence from the tag pattern.
+- **Supabase JWT `role` field precedence** — Supabase JWTs include a top-level `role` field that is typically `"authenticated"` for all logged-in users. The actual application role (e.g., `"admin"`) is usually in `app_metadata.role`. The current code at `auth.ts:60` checks `payload.role` first, which will mask the real app role. Arch should confirm the correct field precedence for the Haggle Supabase configuration before admin routes are tested in staging.
+
+- **Unguarded mutation routes** — `POST /intents/:id/match`, `POST /intents/trigger-match`, `POST /tags`, `PATCH /tags/:id`, `POST /tags/:tagId/experts/qualify` are all public mutations. The brief did not list them for guarding, so Bob is spec-compliant. Arch should confirm these are intentionally public (e.g., called by internal services) or add them to a future auth pass.
 
 ## Cleared
 
-6 files reviewed against the Step 9 brief. DB schema (`skills.ts`) matches the brief exactly — all columns, types, defaults, and constraints present. `skillExecutions` table has all specified fields. `schema/index.ts` correctly exports both tables. Service layer (`skill.service.ts`) implements all 7 functions from the brief with correct signatures. `createSkill` maps all manifest fields. `updateSkillStatus` sets `updatedAt`. `recordExecution` and `getExecutionsBySkillId` work as specified. Route file (`skills.ts`) registers 9 endpoints matching the brief. Route ordering is correct: `/skills/resolve` registered before `/:skillId` (line 46). Zod validation present on POST `/skills` and POST `/skills/:skillId/execute`. Lifecycle transitions enforced: activate requires DRAFT, suspend requires ACTIVE, deprecate requires ACTIVE or SUSPENDED. `validateManifest` from skill-core correctly used in POST `/skills`. `server.ts` imports and registers skill routes. `package.json` has `@haggle/skill-core` dependency. Patterns follow tags route structure (Fastify generics, Zod parse, service delegation, error codes).
+10 files reviewed against the Step 11 brief.
+
+**auth.ts**: Fastify plugin via `fastify-plugin`. JWT decoded from `Authorization: Bearer` header. When `SUPABASE_JWT_SECRET` is set, `jwt.verify()` validates signature. When unset, `jwt.decode()` passes through for local dev with `sub` field validation. Type augmentation correctly extends `FastifyRequest` with optional `user`. `AuthUser` interface matches the brief. No token = request passes through unauthenticated. Invalid token = 401 `INVALID_TOKEN`. Correct.
+
+**require-auth.ts**: `requireAuth` returns 401 if no `request.user`. `requireAdmin` returns 401 if no user, 403 if role is not `"admin"`. Matches the brief exactly. Clean, minimal.
+
+**server.ts**: `authPlugin` imported and registered (line 50) before all route registrations (lines 59-82). Registration order is correct: CORS, auth, health, then routes. `x-haggle-actor-id` kept in CORS `allowedHeaders` per brief flag for backwards compat.
+
+**payments.ts**: Fake `actorFromHeaders` and `actorRoleSchema` fully removed. No references to `x-haggle-actor-id` or `x-haggle-actor-role` in route logic. `requireAuth` applied to all POST routes: prepare, quote, x402/submit-signature, authorize, settlement-pending, settle, fail, cancel, refund. Webhook routes (`/payments/webhooks/x402`, `/payments/webhooks/stripe`) correctly left unguarded with their own signature verification. GET `/payments/:id` and GET `/payments/:id/x402/requirements` remain public. `request.user!.id` used at line 198 for `actor_id`. `actor_role` hardcoded to `"buyer"` at line 199 — matches Bob's rationale that only buyers call `/payments/prepare`. Non-null assertion is safe because `requireAuth` preHandler guarantees `request.user` exists.
+
+**intents.ts**: `requireAuth` on `POST /intents` (line 47) and `PATCH /intents/:id/cancel` (line 130). `POST /intents/expire` left public (line 234) — correct per brief, cron endpoint. GET routes public. Matches brief.
+
+**tags.ts**: `requireAdmin` on `POST /tags/merge` (line 75), `POST /tags/:id/promote` (line 189), `POST /tags/:id/deprecate` (line 223). GET routes public. Matches brief.
+
+**trust.ts**: `requireAdmin` on `POST /trust/:actorId/compute` (line 59). GET routes public. Matches brief.
+
+**arp.ts**: `requireAdmin` on `POST /arp/segments/:id/adjust` (line 76). GET routes public. Matches brief.
+
+**skills.ts**: `requireAdmin` on PATCH activate (line 153), suspend (line 171), deprecate (line 189). `requireAuth` on POST execute (line 208). Routes are PATCH not POST — Bob flagged this deviation. The actual handlers were already PATCH from Step 9; the brief listed them as POST but the auth guards are applied to the actual handlers. No functional issue. GET routes and POST `/skills` (create) left public per brief.
+
+**package.json**: `jsonwebtoken` ^9.0.0, `fastify-plugin` ^5.0.0 in dependencies. `@types/jsonwebtoken` ^9.0.0 in devDependencies. All three present and correct.
+
+No breaking changes introduced. Unauthenticated requests pass through the auth hook without error. Only routes with explicit `preHandler` guards reject unauthenticated callers.

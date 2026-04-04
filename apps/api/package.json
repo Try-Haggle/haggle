@@ -12,6 +12,7 @@
     "clean": "rm -rf dist widget/dist"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -42,6 +43,8 @@
     "@supabase/supabase-js": "^2.99.0",
     "dotenv": "^16.4.0",
     "fastify": "^5.2.0",
+    "fastify-plugin": "^5.0.0",
+    "jsonwebtoken": "^9.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "viem": "^2.39.3",

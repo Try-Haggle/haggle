@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAdmin } from "../middleware/require-auth.js";
 import {
   classifyAmountTier,
   getColdStartHours,
@@ -72,6 +73,7 @@ export function registerARPRoutes(app: FastifyInstance, db: Database) {
   // POST /arp/segments/:id/adjust
   app.post<{ Params: { id: string } }>(
     "/arp/segments/:id/adjust",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { id } = request.params;
       const parsed = adjustSignalsSchema.safeParse(request.body);

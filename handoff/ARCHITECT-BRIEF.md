@@ -4,242 +4,183 @@
 
 ---
 
-## Step 8 — Fix shipping-core Build Errors
+## Step 11 — Auth Middleware (Supabase JWT)
 
 ### Context
-`packages/shipping-core` has build errors. The `types.ts` only has SLA types but the rest of the package references `Shipment`, `ShipmentStatus`, `ShipmentEvent` which don't exist. Also `@haggle/commerce-core` and `@easypost/api` dependencies are missing from package.json.
+All API routes currently have no authentication. Payments route uses fake `x-haggle-actor-id` header. The web app uses Supabase Auth (`@supabase/ssr`). We need a Fastify middleware that validates Supabase JWTs and injects user info into requests.
 
-The `index.ts` only exports SLA modules, not the shipment state machine, service, provider, etc.
+### Architecture
+```
+Client → Authorization: Bearer <supabase_jwt> → Fastify → Auth Plugin → route handler
+                                                           ↓
+                                                  request.user = { id, email, role }
+```
 
-### Root Cause
-The package was partially implemented — SLA system (tests passing via vitest which doesn't need build) but shipment tracking types were never added to types.ts. The non-SLA files (state-machine.ts, provider.ts, service.ts, easypost-adapter.ts, etc.) reference types that don't exist.
+### Build Order
 
-### Fix Strategy
-Two options:
-**Option A (Recommended):** Add missing types to types.ts, add missing deps to package.json, update index.ts to export all modules.
-**Option B:** Remove the unfinished files and keep only SLA (regressive).
+#### 1. `apps/api/src/middleware/auth.ts` — Auth plugin
+
+```ts
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import fp from "fastify-plugin";
+
+export interface AuthUser {
+  id: string;          // Supabase user UUID
+  email?: string;
+  role?: string;       // from user_metadata or app_metadata
+}
+
+// Extend Fastify request
+declare module "fastify" {
+  interface FastifyRequest {
+    user?: AuthUser;
+  }
+}
+
+// Verify Supabase JWT
+// Supabase JWTs are standard JWTs signed with the project's JWT secret.
+// For MVP: decode + verify signature using SUPABASE_JWT_SECRET env var.
+// No external library needed — use Node.js crypto + base64 decode.
+// OR use jsonwebtoken package (simpler).
+
+async function authPlugin(app: FastifyInstance) {
+  app.decorateRequest("user", undefined);
+
+  app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
+    // Skip auth for public routes
+    const publicPaths = [
+      "/health",
+      "/mcp",                  // MCP routes have their own auth
+      "/public-listing",       // Public listing pages
+    ];
+    if (publicPaths.some(p => request.url.startsWith(p))) return;
+
+    // Also skip if no Authorization header (allow unauthenticated access where needed)
+    const authHeader = request.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      // No token = unauthenticated request. Route handlers decide if they need auth.
+      return;
+    }
+
+    const token = authHeader.slice(7);
+    try {
+      const payload = verifySupabaseJwt(token);
+      request.user = {
+        id: payload.sub,
+        email: payload.email,
+        role: payload.role || payload.user_metadata?.role,
+      };
+    } catch {
+      return reply.code(401).send({ error: "INVALID_TOKEN" });
+    }
+  });
+}
+
+export default fp(authPlugin, { name: "auth" });
+```
+
+For JWT verification, two options:
+**Option A (recommended for MVP):** Use `jsonwebtoken` package. Simple `jwt.verify(token, secret)`.
+**Option B:** Pure Node.js crypto. More code but no dep.
 
 Go with Option A.
 
-### Build Order
-
-#### 1. Add missing types to `src/types.ts`
-Append after existing SLA types. Derive from what state-machine.ts and other files expect:
+#### 2. `apps/api/src/middleware/require-auth.ts` — Guard helper
 
 ```ts
-// ─── Shipment Tracking Types ─────────────────────────────────
+import type { FastifyRequest, FastifyReply } from "fastify";
 
-export type ShipmentStatus =
-  | "LABEL_PENDING"
-  | "LABEL_CREATED"
-  | "IN_TRANSIT"
-  | "OUT_FOR_DELIVERY"
-  | "DELIVERED"
-  | "DELIVERY_EXCEPTION"
-  | "RETURN_IN_TRANSIT"
-  | "RETURNED";
-
-export interface ShipmentEvent {
-  event_type: string;
-  status: ShipmentStatus;
-  timestamp: string;          // ISO
-  location?: string;
-  description?: string;
-  carrier_detail?: Record<string, unknown>;
+// Use as a preHandler on routes that REQUIRE authentication
+export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.user) {
+    return reply.code(401).send({ error: "AUTH_REQUIRED" });
+  }
 }
 
-export interface Shipment {
-  shipment_id: string;
-  order_id: string;
-  carrier: string;            // "easypost", "usps", "ups", "fedex"
-  tracking_number?: string;
-  status: ShipmentStatus;
-  events: ShipmentEvent[];
-  label_url?: string;
-  estimated_delivery?: string;  // ISO
-  created_at: string;
-  updated_at: string;
+// Use for admin-only routes
+export async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.user) {
+    return reply.code(401).send({ error: "AUTH_REQUIRED" });
+  }
+  if (request.user.role !== "admin") {
+    return reply.code(403).send({ error: "ADMIN_REQUIRED" });
+  }
 }
 ```
 
-Read ALL files that import these types to verify the shapes match:
-- `src/state-machine.ts` — uses ShipmentStatus
-- `src/provider.ts` — uses Shipment, ShipmentEvent, ShipmentStatus
-- `src/service.ts` — uses Shipment, ShipmentEvent, ShipmentStatus, imports from @haggle/commerce-core
-- `src/easypost-adapter.ts` — uses Shipment, ShipmentEvent, ShipmentStatus, imports @easypost/api
-- `src/easypost-webhook.ts` — uses ShipmentStatus
-- `src/escalation.ts` — uses ShipmentStatus, Shipment
-- `src/mock-carrier-adapter.ts` — uses Shipment, ShipmentEvent
+#### 3. Update `apps/api/src/server.ts`
 
-Adjust the types as needed based on actual usage.
+Register the auth plugin BEFORE route registration:
+```ts
+import authPlugin from "./middleware/auth.js";
+// ...
+await app.register(authPlugin);
+// Then register routes...
+```
 
-#### 2. Add dependencies to `package.json`
+#### 4. Update `apps/api/src/routes/payments.ts`
+
+Replace the fake header auth with `request.user`:
+```ts
+// Before (fake):
+const actorId = headers["x-haggle-actor-id"];
+const actorRole = headers["x-haggle-actor-role"];
+
+// After (real):
+import { requireAuth } from "../middleware/require-auth.js";
+// Add preHandler to routes that need auth:
+app.post("/payments/prepare", { preHandler: [requireAuth] }, async (request, reply) => {
+  const actorId = request.user!.id;
+  // ...
+});
+```
+
+Do NOT add requireAuth to ALL routes. Only to:
+- POST /payments/* (all payment mutations)
+- PATCH /intents/:id/cancel (user action)
+- POST /intents (user action)
+- POST /tags/:id/promote, /deprecate, /merge (admin)
+- POST /trust/:actorId/compute (admin)
+- POST /arp/segments/:id/adjust (admin)
+- POST /skills/:skillId/activate, /suspend, /deprecate (admin)
+- POST /skills/:skillId/execute
+
+Leave these public (no auth):
+- GET routes (read-only for MVP)
+- /health
+- /mcp/*
+- /public-listing/*
+- POST /intents/expire (cron, will get separate auth later)
+
+#### 5. Dependencies
+
+Add to `apps/api/package.json`:
 ```json
-"dependencies": {
-  "@haggle/commerce-core": "workspace:*"
-}
+"jsonwebtoken": "^9.0.0",
+"fastify-plugin": "^5.0.0"
 ```
-For `@easypost/api`: check if it's actually used at runtime or just for types. If the adapter is optional, wrap the import with try/catch or make it a peerDependency. 
-
-Read `src/easypost-adapter.ts` to determine the right approach. If it imports EasyPostClient directly, add as optional/peer dep.
-
-#### 3. Update `src/index.ts`
-Export all modules:
-```ts
-export * from "./types.js";
-export * from "./sla-defaults.js";
-export * from "./sla-validation.js";
-export * from "./sla-violation.js";
-export * from "./state-machine.js";
-export * from "./provider.js";
-export * from "./service.js";
-export * from "./escalation.js";
-// Don't export easypost-adapter or mock-carrier-adapter (provider implementations, not public API)
+Add to devDependencies:
+```json
+"@types/jsonwebtoken": "^9.0.0"
 ```
 
-#### 4. Verify
-- `pnpm --filter @haggle/shipping-core typecheck` passes (or at least drastically reduced errors)
-- `pnpm --filter @haggle/shipping-core test` still passes (184 existing tests)
+Check if `fastify-plugin` is already a dependency.
 
 ### Flags
-- Flag: Do NOT change any existing logic. Only add missing types and deps.
-- Flag: Read every file that has errors to understand what types they expect. Don't guess.
-- Flag: The easypost-adapter.ts imports from `@easypost/api`. If this package isn't installed and we can't install it easily, mark the import as `// @ts-ignore` with a TODO, or add `@easypost/api` as an optional peerDependency. Check if it exists in the workspace root.
-- Flag: `service.ts` imports from `@haggle/commerce-core`. This workspace package exists and builds. Just add it as a dependency.
-- Flag: If type shapes need adjustment, adjust them. The goal is build success with 0 logic changes.
+- Flag: JWT secret comes from `SUPABASE_JWT_SECRET` env var. If not set, auth is effectively disabled (all requests pass through as unauthenticated). This allows local dev without Supabase.
+- Flag: Do NOT break existing functionality. If no auth header, request passes through. Routes that need auth use `requireAuth` preHandler.
+- Flag: Remove the fake `x-haggle-actor-id` header from payments.ts. Replace with `request.user.id`.
+- Flag: Keep `x-haggle-actor-id` in CORS allowedHeaders for backwards compat (MCP might still use it).
+- Flag: Read the existing payments.ts carefully — the actor logic is complex with SettlementApproval.
 
 ### Definition of Done
-- [ ] types.ts has ShipmentStatus, ShipmentEvent, Shipment
-- [ ] package.json has needed deps
-- [ ] index.ts exports all public modules
-- [ ] Build errors drastically reduced or eliminated
-- [ ] Existing tests still pass
-
----
-
-## Step 9 — Skill DB + Service + API (Phase 5b-c)
-
-### Context
-skill-core (Step 7) provides in-memory types, manifest validation, registry, and pipeline. This step persists skills to DB and exposes via API. Same pattern as Phase 3.
-
-### Build Order
-
-#### 1. DB Schema: `packages/db/src/schema/skills.ts`
-
-```
-skills = pgTable("skills", {
-  id:                  uuid PK defaultRandom
-  skillId:             text NOT NULL UNIQUE          -- "legit-app-auth-v1"
-  name:                text NOT NULL
-  description:         text NOT NULL
-  version:             text NOT NULL                 -- semver
-  category:            text enum("STRATEGY","DATA","INTERPRETATION","AUTHENTICATION","DISPUTE_RESOLUTION") NOT NULL
-  provider:            text enum("FIRST_PARTY","THIRD_PARTY","COMMUNITY") NOT NULL
-  status:              text enum("DRAFT","ACTIVE","SUSPENDED","DEPRECATED") NOT NULL DEFAULT "DRAFT"
-  supportedCategories: jsonb NOT NULL                -- string[]
-  hookPoints:          jsonb NOT NULL                -- HookPoint[]
-  pricing:             jsonb NOT NULL                -- SkillPricing
-  configSchema:        jsonb
-  usageCount:          integer NOT NULL DEFAULT 0
-  averageLatencyMs:    numeric(8,2) NOT NULL DEFAULT "0"
-  errorRate:           numeric(8,4) NOT NULL DEFAULT "0"
-  metadata:            jsonb
-  registeredAt:        timestamptz NOT NULL DEFAULT now()
-  updatedAt:           timestamptz NOT NULL DEFAULT now()
-})
-
-skillExecutions = pgTable("skill_executions", {
-  id:           uuid PK defaultRandom
-  skillId:      text NOT NULL                        -- matches skills.skillId
-  hookPoint:    text NOT NULL
-  success:      boolean NOT NULL
-  latencyMs:    integer NOT NULL
-  inputSummary: jsonb                                -- truncated input for debugging
-  outputSummary: jsonb                               -- truncated output
-  error:        text
-  createdAt:    timestamptz NOT NULL DEFAULT now()
-})
-```
-
-Update `packages/db/src/schema/index.ts`.
-
-#### 2. Service: `apps/api/src/services/skill.service.ts`
-
-```ts
-getSkillBySkillId(db, skillId)
-listSkills(db, filters?: { category?, status?, hookPoint? })
-createSkill(db, data)          -- from SkillManifest
-updateSkillStatus(db, skillId, status)
-updateSkillMetrics(db, skillId, latencyMs, success)  -- rolling avg update
-recordExecution(db, data)      -- insert into skillExecutions
-getExecutionsBySkillId(db, skillId, limit?)
-```
-
-#### 3. API Route: `apps/api/src/routes/skills.ts`
-
-```
-registerSkillRoutes(app, db)
-
-POST /skills                    -- register a new skill (validates manifest via skill-core)
-GET /skills                     -- list skills (query: category?, status?, hook_point?)
-GET /skills/:skillId            -- get skill details
-PATCH /skills/:skillId/activate -- DRAFT → ACTIVE
-PATCH /skills/:skillId/suspend  -- ACTIVE → SUSPENDED
-PATCH /skills/:skillId/deprecate -- → DEPRECATED
-POST /skills/:skillId/execute   -- execute skill (record execution, update metrics)
-GET /skills/:skillId/executions -- execution history
-
-GET /skills/resolve             -- query: hook_point, product_category → find matching active skills
-```
-
-#### 4. Update server.ts
-
-### Flags
-- Flag: Add @haggle/skill-core as a dependency to apps/api/package.json
-- Flag: Use validateManifest from skill-core in POST /skills
-- Flag: Use resolveSkills logic (or just query DB with filters) for GET /skills/resolve
-- Flag: Follow exact same patterns as tags.ts route + tag.service.ts
-- Flag: No actual skill execution logic (HTTP calls). POST /skills/:skillId/execute just records the execution log.
-
-### Definition of Done
-- [ ] 1 schema file + index.ts update
-- [ ] 1 service file
-- [ ] 1 route file + server.ts update
-- [ ] Typecheck passes
-
----
-
-## Step 10 — USDC Payment Integration Check
-
-### Context
-payment-core already exists with x402 + Stripe adapters. We need to verify the integration works and identify what's missing for MVP.
-
-### This is a RESEARCH step, not a build step.
-
-Bob should:
-1. Read `packages/payment-core/src/index.ts` to understand what's exported
-2. Read `packages/payment-core/src/types.ts` for payment types
-3. Read `packages/payment-core/src/real-x402-adapter.ts` for x402 integration
-4. Read `packages/payment-core/src/x402-protocol.ts` for protocol details
-5. Read `apps/api/src/routes/payments.ts` to see existing payment endpoints
-6. Read `apps/api/src/services/payment-record.service.ts` for DB integration
-7. Check if there are payment tests: `pnpm --filter @haggle/payment-core test`
-
-### Deliverable
-Write a status report to `handoff/ARCHITECT-BRIEF.md` with:
-- What's already working
-- What's missing for MVP USDC payments
-- What needs to be built (specific files, functions)
-- Any blockers (missing env vars, missing contracts, etc.)
-
-DO NOT build anything yet. Just report.
-
----
-
-## Execution Order
-1. Step 8 (shipping-core fix) — Bob first, quick fix
-2. Step 9 (Skill DB/API) — Bob second, standard pattern
-3. Step 10 (USDC research) — Bob third, research only
+- [ ] Auth middleware plugin created
+- [ ] requireAuth/requireAdmin guard helpers
+- [ ] server.ts registers auth plugin
+- [ ] payments.ts uses request.user instead of fake headers
+- [ ] Critical mutation routes have requireAuth preHandler
+- [ ] GET routes remain public
+- [ ] No breaking changes (unauthenticated requests still work for non-guarded routes)
 
 ---
 

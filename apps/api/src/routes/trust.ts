@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAdmin } from "../middleware/require-auth.js";
 import { computeTrustScore } from "@haggle/trust-core";
 import type { TrustInput } from "@haggle/trust-core";
 import {
@@ -55,6 +56,7 @@ export function registerTrustRoutes(app: FastifyInstance, db: Database) {
   // POST /trust/:actorId/compute
   app.post<{ Params: { actorId: string } }>(
     "/trust/:actorId/compute",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { actorId } = request.params;
       const parsed = computeTrustSchema.safeParse(request.body);

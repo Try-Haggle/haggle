@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import { validateManifest, isCompatibleCategory } from "@haggle/skill-core";
 import type { SkillManifest } from "@haggle/skill-core";
 import {
@@ -150,6 +151,7 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
   // PATCH /skills/:skillId/activate — DRAFT -> ACTIVE
   app.patch<{ Params: { skillId: string } }>(
     "/skills/:skillId/activate",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { skillId } = request.params;
       const existing = await getSkillBySkillId(db, skillId);
@@ -167,6 +169,7 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
   // PATCH /skills/:skillId/suspend — ACTIVE -> SUSPENDED
   app.patch<{ Params: { skillId: string } }>(
     "/skills/:skillId/suspend",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { skillId } = request.params;
       const existing = await getSkillBySkillId(db, skillId);
@@ -184,6 +187,7 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
   // PATCH /skills/:skillId/deprecate — ACTIVE or SUSPENDED -> DEPRECATED
   app.patch<{ Params: { skillId: string } }>(
     "/skills/:skillId/deprecate",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { skillId } = request.params;
       const existing = await getSkillBySkillId(db, skillId);
@@ -201,6 +205,7 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
   // POST /skills/:skillId/execute — record execution log + update metrics
   app.post<{ Params: { skillId: string } }>(
     "/skills/:skillId/execute",
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { skillId } = request.params;
       const parsed = executeSkillSchema.safeParse(request.body);

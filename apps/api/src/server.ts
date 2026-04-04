@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createDb } from "@haggle/db";
+import authPlugin from "./middleware/auth.js";
 import { registerMcpRoutes } from "./mcp/router.js";
 import { registerClaimRoutes } from "./routes/claim.js";
 import { registerListingsRoutes } from "./routes/listings.js";
@@ -44,6 +45,9 @@ export async function createServer() {
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
   });
+
+  // ─── Auth Middleware ──────────────────────────────────────
+  await app.register(authPlugin);
 
   // ─── Health Check ────────────────────────────────────────
   app.get("/health", async () => ({

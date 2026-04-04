@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   assertPaymentReadyForExecution,
   createSettlementRelease,
@@ -30,8 +31,6 @@ import { createShipmentRecord } from "../services/shipment-record.service.js";
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
-
-const actorRoleSchema = z.enum(["buyer", "seller"]);
 
 const settlementApprovalSchema = z.object({
   id: z.string(),
@@ -101,19 +100,6 @@ const x402SubmitSchema = z.object({
   }),
   verify_only: z.boolean().optional(),
 });
-
-// TODO(security): Replace header-based actor with JWT/session auth middleware.
-// Currently trusts x-haggle-actor-id header — any caller can impersonate any user.
-// Must be fixed before production deployment.
-function actorFromHeaders(headers: Record<string, unknown>) {
-  const actorId = headers["x-haggle-actor-id"];
-  const actorRole = headers["x-haggle-actor-role"];
-
-  return {
-    actor_id: typeof actorId === "string" ? actorId : "",
-    actor_role: actorRoleSchema.parse(actorRole),
-  };
-}
 
 function requireWebhookSignature(headers: Record<string, unknown>, provider: "x402" | "stripe") {
   const key =
@@ -202,18 +188,16 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ payment: intent });
   });
 
-  app.post("/payments/prepare", async (request, reply) => {
+  app.post("/payments/prepare", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = preparePaymentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_PAYMENT_PREPARE_REQUEST", issues: parsed.error.issues });
     }
 
-    let actor;
-    try {
-      actor = actorFromHeaders(request.headers as Record<string, unknown>);
-    } catch (error) {
-      return reply.code(400).send({ error: "INVALID_PAYMENT_ACTOR", message: error instanceof Error ? error.message : String(error) });
-    }
+    const actor = {
+      actor_id: request.user!.id,
+      actor_role: "buyer" as const,
+    };
 
     const settlementApproval = await resolveSettlementApproval(db, parsed.data);
     if (!settlementApproval) {
@@ -261,7 +245,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
-  app.post("/payments/:id/quote", async (request, reply) => {
+  app.post("/payments/:id/quote", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -312,7 +296,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(requirement);
   });
 
-  app.post("/payments/:id/x402/submit-signature", async (request, reply) => {
+  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -404,7 +388,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
-  app.post("/payments/:id/authorize", async (request, reply) => {
+  app.post("/payments/:id/authorize", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -425,7 +409,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/settlement-pending", async (request, reply) => {
+  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -443,7 +427,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/settle", async (request, reply) => {
+  app.post("/payments/:id/settle", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -475,7 +459,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ ...result, settlement_release: settlementRelease, shipment });
   });
 
-  app.post("/payments/:id/fail", async (request, reply) => {
+  app.post("/payments/:id/fail", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -493,7 +477,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/cancel", async (request, reply) => {
+  app.post("/payments/:id/cancel", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -511,7 +495,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/refund", async (request, reply) => {
+  app.post("/payments/:id/refund", { preHandler: [requireAuth] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });

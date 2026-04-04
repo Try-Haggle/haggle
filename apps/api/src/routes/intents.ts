@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
 import type { NegotiationContext } from "@haggle/engine-core";
+import { requireAuth } from "../middleware/require-auth.js";
 import type { WaitingIntent } from "@haggle/engine-session";
 import { transitionIntent, evaluateIntents } from "@haggle/engine-session";
 import {
@@ -43,7 +44,7 @@ const triggerMatchSchema = z.object({
 
 export function registerIntentRoutes(app: FastifyInstance, db: Database) {
   // POST /intents
-  app.post("/intents", async (request, reply) => {
+  app.post("/intents", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = createIntentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_INTENT_REQUEST", issues: parsed.error.issues });
@@ -126,6 +127,7 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
   // PATCH /intents/:id/cancel
   app.patch<{ Params: { id: string } }>(
     "/intents/:id/cancel",
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params;
       const intent = await getIntentById(db, id);

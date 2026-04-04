@@ -1,4 +1,4 @@
-# Review Request — Step 9: Skill DB + Service + API (rev 2)
+# Review Request — Step 11: Auth Middleware (Supabase JWT)
 *Written by Builder. Read by Reviewer.*
 
 Ready for Review: YES
@@ -7,48 +7,44 @@ Ready for Review: YES
 
 ## What Was Built
 
-Skill DB persistence (2 tables), service layer (7 functions), and API routes (9 endpoints). Follows exact same patterns as tags.ts/tag.service.ts. Uses validateManifest from skill-core for manifest validation on registration. Lifecycle transitions enforced in route layer.
-
-## Rev 2 Fixes (from REVIEW-FEEDBACK.md)
-
-All 3 Must Fix items resolved. Both Should Fix items resolved.
-
-| # | Type | Fix |
-|---|------|-----|
-| MF-1 | Must Fix | `/skills/resolve` now imports `isCompatibleCategory` from `@haggle/skill-core` instead of inlining wildcard matching logic. DB row `supportedCategories` cast to minimal `SkillManifest`-shaped object. |
-| MF-2 | Must Fix | POST `/skills/:skillId/execute` now checks `existing.status !== "ACTIVE"` before recording execution. Returns 400 `SKILL_NOT_ACTIVE` for DRAFT/SUSPENDED/DEPRECATED skills. |
-| MF-3 | Must Fix | Comment on `updateSkillMetrics` changed from "atomic rolling average" to "rolling average (per-statement atomic, not concurrent-safe — acceptable for MVP)". |
-| SF-1 | Should Fix | `limit` query param on GET `/skills/:skillId/executions` bounded to `[1, 200]` via `Math.min(Math.max(parsed, 1), 200)`. |
-| SF-2 | Should Fix | `Number.isNaN` check on parsed limit — NaN from non-numeric input falls back to `undefined` (service default 50). |
+Fastify auth middleware that validates Supabase JWTs and injects `request.user` into requests. Guard helpers (`requireAuth`, `requireAdmin`) applied as preHandlers on mutation routes. Fake `x-haggle-actor-id` header auth removed from payments.ts. All GET routes remain public. Webhooks and cron endpoints left unguarded (they have their own auth mechanisms).
 
 ## Files Changed
 
 | File | Lines | Change |
 |---|---|---|
-| `packages/db/src/schema/skills.ts` | 1-42 | NEW — `skills` table + `skillExecutions` table |
-| `packages/db/src/schema/index.ts` | 28 | MODIFIED — added skills/skillExecutions export |
-| `apps/api/src/services/skill.service.ts` | 1-178 | NEW — 7 service functions (CRUD + metrics + executions). Rev 2: comment fix line 117. |
-| `apps/api/src/routes/skills.ts` | 1-252 | NEW — 9 endpoints via registerSkillRoutes. Rev 2: isCompatibleCategory import, ACTIVE guard on execute, limit bounds validation. |
-| `apps/api/src/server.ts` | 20, 70 | MODIFIED — import + registration |
-| `apps/api/package.json` | 38 | MODIFIED — added @haggle/skill-core dep |
+| `apps/api/src/middleware/auth.ts` | 1-70 | NEW — Fastify plugin via `fastify-plugin`. Decodes JWT from `Authorization: Bearer` header. Verifies with `SUPABASE_JWT_SECRET` if set; decodes without verification if unset (local dev). Decorates `request.user`. |
+| `apps/api/src/middleware/require-auth.ts` | 1-25 | NEW — `requireAuth` (401 if no user) and `requireAdmin` (401/403) preHandler functions. |
+| `apps/api/src/server.ts` | 4, 48-49 | MODIFIED — import `authPlugin` + `await app.register(authPlugin)` before route registration. |
+| `apps/api/src/routes/payments.ts` | 1-5, 105-116 removed, 205 | MODIFIED — removed `actorFromHeaders`, `actorRoleSchema`. Added `requireAuth` preHandler to all POST routes except webhooks. `/payments/prepare` reads `request.user!.id`. |
+| `apps/api/src/routes/intents.ts` | 5, 46, 128 | MODIFIED — `requireAuth` on `POST /intents`, `PATCH /intents/:id/cancel`. `POST /intents/expire` left public. |
+| `apps/api/src/routes/tags.ts` | 4, 74, 188, 221 | MODIFIED — `requireAdmin` on `POST /tags/merge`, `POST /tags/:id/promote`, `POST /tags/:id/deprecate`. |
+| `apps/api/src/routes/trust.ts` | 4, 56 | MODIFIED — `requireAdmin` on `POST /trust/:actorId/compute`. |
+| `apps/api/src/routes/arp.ts` | 4, 73 | MODIFIED — `requireAdmin` on `POST /arp/segments/:id/adjust`. |
+| `apps/api/src/routes/skills.ts` | 4, 151, 168, 185, 203 | MODIFIED — `requireAdmin` on activate/suspend/deprecate. `requireAuth` on execute. |
+| `apps/api/package.json` | deps, devDeps | MODIFIED — added `jsonwebtoken`, `fastify-plugin`, `@types/jsonwebtoken`. |
 
 ## Key Areas to Scrutinize
 
-1. **Rolling average SQL** (`skill.service.ts:117-123`) — Comment now clarifies concurrency limitation. No logic change for MVP.
+1. **JWT passthrough logic** (`auth.ts:28-34`) — When `SUPABASE_JWT_SECRET` is unset, `jwt.decode()` is used without verification. This is intentional for local dev but Richard should verify this is acceptable security posture. The `sub` field is still validated.
 
-2. **hookPoint post-filter** (`skill.service.ts:46-52`) — Fetches rows filtered by category/status in SQL, then filters hookPoint in JS (since it's a jsonb array). Correct for MVP but suboptimal at scale.
+2. **Actor role hardcoded to "buyer"** (`payments.ts:211`) — `actorFromHeaders` previously read role from a header. Now `actor_role` is hardcoded to `"buyer"` since only buyers call `/payments/prepare`. If sellers need to call this route in future, the role should come from the JWT payload or request body.
 
-3. **isCompatibleCategory cast** (`skills.ts:63`) — DB row's `supportedCategories` wrapped as `{ supportedCategories: supported } as SkillManifest`. The cast is safe because `isCompatibleCategory` only accesses `supportedCategories`.
+3. **Fastify type augmentation** (`auth.ts:34-38`) — `declare module "fastify"` extends `FastifyRequest` with optional `user`. This is project-global — Richard should verify no other module declares the same augmentation.
 
-4. **409 on duplicate skillId** (`skills.ts:102-104`) — Escalated to Architect per review feedback. Awaiting decision on idempotent vs 409 pattern.
+4. **preHandler array syntax** — All routes use `{ preHandler: [requireAuth] }` (array form). This is correct for Fastify 5 and allows composing multiple preHandlers in future.
+
+5. **Skills lifecycle routes are PATCH not POST** — The brief listed these as `POST /skills/:skillId/activate` etc. but the actual implementation uses `PATCH`. Auth guards applied to the actual `PATCH` handlers.
 
 ## Open Questions
 
-1. Should duplicate skillId registration be idempotent (return existing) or error (409)? Currently 409. Escalated to Architect.
+1. The `actor_role` in `/payments/prepare` is now hardcoded to `"buyer"`. Should this be derived from JWT `role` or from the request body instead? Current approach is simplest and matches the business logic (only buyers prepare payments).
+
+2. Should `POST /skills` (create skill) also require `requireAdmin`? The brief did not list it but it seems like an admin operation. Left public for now per brief.
 
 ## Verification
 
 ```
-pnpm --filter @haggle/db typecheck       — 0 errors
-pnpm --filter @haggle/api typecheck      — 0 errors in new files (pre-existing KG-3 shipping-core errors only)
+pnpm install                             — 15 packages added (jsonwebtoken, fastify-plugin, @types/jsonwebtoken + transitive deps)
+pnpm --filter @haggle/api typecheck      — 0 new errors (pre-existing shipping-core KG-3 errors only)
 ```

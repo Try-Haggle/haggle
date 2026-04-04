@@ -5,13 +5,41 @@
 
 ## Current Status
 
-**Active step:** 9 — Skill DB + Service + API — COMPLETE (rev 2, re-review requested)
-**Last cleared:** Step 8 Fix shipping-core build errors — 2026-04-03
+**Active step:** 11 — Auth Middleware (Supabase JWT) — COMPLETE
+**Last cleared:** Step 9 Skill DB + Service + API — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 11 — Auth Middleware (Supabase JWT) — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/middleware/auth.ts` — NEW: Fastify auth plugin. Decodes `Authorization: Bearer <jwt>` header, verifies with `jsonwebtoken` using `SUPABASE_JWT_SECRET` env var. If env var missing, decodes without verification (local dev passthrough). Decorates `request.user` with `{ id, email, role }`. Invalid tokens get 401. Missing tokens pass through (routes decide auth requirement).
+- `apps/api/src/middleware/require-auth.ts` — NEW: `requireAuth` preHandler (401 if no user) + `requireAdmin` preHandler (401 if no user, 403 if role !== "admin").
+- `apps/api/src/server.ts` — MODIFIED: imports and registers `authPlugin` before all route registrations.
+- `apps/api/src/routes/payments.ts` — MODIFIED: removed `actorFromHeaders` function and `actorRoleSchema`. Added `requireAuth` preHandler to all POST `/payments/*` routes except webhooks (x402, stripe). `/payments/prepare` now reads `request.user!.id` instead of `x-haggle-actor-id` header. GET routes remain public.
+- `apps/api/src/routes/intents.ts` — MODIFIED: added `requireAuth` to `POST /intents` and `PATCH /intents/:id/cancel`. `POST /intents/expire` left public (cron).
+- `apps/api/src/routes/tags.ts` — MODIFIED: added `requireAdmin` to `POST /tags/merge`, `POST /tags/:id/promote`, `POST /tags/:id/deprecate`.
+- `apps/api/src/routes/trust.ts` — MODIFIED: added `requireAdmin` to `POST /trust/:actorId/compute`.
+- `apps/api/src/routes/arp.ts` — MODIFIED: added `requireAdmin` to `POST /arp/segments/:id/adjust`.
+- `apps/api/src/routes/skills.ts` — MODIFIED: added `requireAdmin` to `PATCH /skills/:skillId/activate`, `/suspend`, `/deprecate`. Added `requireAuth` to `POST /skills/:skillId/execute`.
+- `apps/api/package.json` — MODIFIED: added `jsonwebtoken`, `fastify-plugin` to deps, `@types/jsonwebtoken` to devDeps.
+
+Decisions made:
+- `actorRoleSchema` removed — no longer needed since `actorFromHeaders` is gone. The `actor_role` in `/payments/prepare` is hardcoded to `"buyer"` since only buyers prepare payments via JWT auth.
+- JWT passthrough when `SUPABASE_JWT_SECRET` is unset: `jwt.decode()` (no verification) allows local dev to work with any valid-shaped JWT. Invalid payloads (missing `sub`) still fail.
+- `x-haggle-actor-id` kept in CORS `allowedHeaders` for backwards compat with MCP clients.
+- Auth plugin registered BEFORE routes but AFTER CORS — ensures all routes get the `request.user` decoration.
+- Webhook routes (`/payments/webhooks/x402`, `/payments/webhooks/stripe`) have NO auth — they have their own signature verification.
+- `POST /intents/expire` left public — cron/admin auth deferred per brief.
+- Skills lifecycle routes (activate/suspend/deprecate) use `requireAdmin` per brief — actual HTTP method is `PATCH` (not `POST` as brief listed).
+- Fastify `request.user` type augmentation in `auth.ts` via `declare module "fastify"` — standard Fastify pattern.
+
+Test results: N/A (middleware + route layer, no unit tests — tested via typecheck)
+Typecheck: 0 new errors. Pre-existing shipping-core export errors remain (KG-3 class: `computeWeightBuffer`, `MockCarrierAdapter`, etc.).
 
 ### Step 9 — Skill DB + Service + API (Phase 5b-c) — COMPLETE (rev 2)
 *Date: 2026-04-03*

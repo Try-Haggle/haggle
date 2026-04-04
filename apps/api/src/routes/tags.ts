@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAdmin } from "../middleware/require-auth.js";
 import {
   normalizeTagName,
   validateTag,
@@ -71,7 +72,7 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
   );
 
   // POST /tags/merge
-  app.post("/tags/merge", async (request, reply) => {
+  app.post("/tags/merge", { preHandler: [requireAdmin] }, async (request, reply) => {
     const parsed = mergeTagSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_MERGE_REQUEST", issues: parsed.error.issues });
@@ -186,6 +187,7 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
   // POST /tags/:id/promote
   app.post<{ Params: { id: string } }>(
     "/tags/:id/promote",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { id } = request.params;
       const row = await getTagById(db, id);
@@ -219,6 +221,7 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
   // POST /tags/:id/deprecate
   app.post<{ Params: { id: string } }>(
     "/tags/:id/deprecate",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { id } = request.params;
       const row = await getTagById(db, id);
