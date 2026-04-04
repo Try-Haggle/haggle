@@ -193,6 +193,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       ? new X402FacilitatorClient(x402Config.facilitatorUrl, x402Config.apiKeyId, x402Config.apiKeySecret)
       : null;
 
+  // ─── GET payment by ID ──────────────────────────────────────
+  app.get<{ Params: { id: string } }>("/payments/:id", async (request, reply) => {
+    const intent = await getPaymentIntentById(db, request.params.id);
+    if (!intent) {
+      return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });
+    }
+    return reply.send({ payment: intent });
+  });
+
   app.post("/payments/prepare", async (request, reply) => {
     const parsed = preparePaymentSchema.safeParse(request.body);
     if (!parsed.success) {
