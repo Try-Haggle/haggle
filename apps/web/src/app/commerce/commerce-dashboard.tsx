@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import s from "./commerce.module.css";
 import {
   createInitialState,
@@ -24,6 +24,7 @@ import {
   type DisputeReasonCode,
   type NegotiationResult,
 } from "./commerce-engine";
+import * as commerceApi from "./commerce-api";
 
 // ─── Phase Stepper ───────────────────────────────────────────
 
@@ -580,9 +581,32 @@ function ShippingCard({ state }: { state: CommerceState }) {
 
 // ─── Main Dashboard ──────────────────────────────────────────
 
+// ─── API Helpers ────────────────────────────────────────────
+
+/** Returns true when we have real server-side IDs (not demo mode). */
+function isDemoMode(state: CommerceState): boolean {
+  // Demo mode: no real order/payment IDs exist on the state.
+  // Real IDs would be injected from URL params or API responses.
+  // The local engine uses mock wallet addresses and no server-assigned IDs.
+  return !state.buyer_wallet.address.startsWith("0x") ||
+    state.buyer_wallet.address.includes("...");
+}
+
+function showApiError(action: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.warn(`[commerce-api] ${action} failed: ${msg}`);
+}
+
 export function CommerceDashboard() {
   const [state, setState] = useState<CommerceState | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+
+  // Track server-assigned IDs from API responses
+  const serverIds = useRef<{
+    paymentId?: string;
+    orderId?: string;
+    disputeId?: string;
+  }>({});
 
   useEffect(() => {
     try {
@@ -593,9 +617,41 @@ export function CommerceDashboard() {
     }
   }, []);
 
+  // Fetch trust scores from API on mount (non-blocking)
+  useEffect(() => {
+    if (!state) return;
+    if (isDemoMode(state)) return;
+
+    const { buyer_id, seller_id } = state.negotiation;
+
+    Promise.allSettled([
+      commerceApi.getTrustScore(buyer_id),
+      commerceApi.getTrustScore(seller_id),
+    ]).then(([buyerResult, sellerResult]) => {
+      setState((prev) => {
+        if (!prev) return prev;
+        const trust = { ...prev.trust_scores };
+        if (buyerResult.status === "fulfilled") {
+          trust.buyer_reliability = buyerResult.value.trust_score.settlement_reliability;
+        }
+        if (sellerResult.status === "fulfilled") {
+          trust.seller_reliability = sellerResult.value.trust_score.settlement_reliability;
+        }
+        return { ...prev, trust_scores: trust };
+      });
+    });
+  // Run once on initial state creation only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.negotiation.buyer_id]);
+
   const handleAction = useCallback((action: string, payload?: unknown) => {
+    // Capture previous state for rollback on API failure
+    let prevSnapshot: CommerceState | undefined;
+
     setState((prev) => {
       if (!prev) return prev;
+      prevSnapshot = prev;
+
       switch (action) {
         case "buyer_approve":
           return buyerApprove(prev);
@@ -622,11 +678,80 @@ export function CommerceDashboard() {
         case "update_negotiation":
           return updateNegotiation(prev, payload as Partial<NegotiationResult>);
         case "reset":
+          serverIds.current = {};
           return createInitialState();
         default:
           return prev;
       }
     });
+
+    // Fire API calls in background (skip in demo mode)
+    const snap = prevSnapshot;
+    if (!snap || isDemoMode(snap)) return;
+
+    const revert = () => setState(snap);
+
+    switch (action) {
+      case "buyer_approve":
+      case "seller_approve": {
+        // Approval is local-only for now — no dedicated API endpoint.
+        // Payment preparation happens when approval completes and payment phase starts.
+        if (snap.approval_state === "MUTUALLY_ACCEPTABLE" || snap.approval_state === "AWAITING_SELLER_APPROVAL") {
+          const approvalId = serverIds.current.orderId;
+          if (approvalId) {
+            commerceApi.preparePayment(approvalId).then((res) => {
+              serverIds.current.paymentId = res.payment.id;
+            }).catch((err) => {
+              showApiError("preparePayment", err);
+              // Don't revert approval — payment can be retried
+            });
+          }
+        }
+        break;
+      }
+
+      case "process_payment": {
+        const pid = serverIds.current.paymentId;
+        if (!pid) break;
+
+        // Run payment pipeline: quote -> authorize -> settle
+        (async () => {
+          try {
+            await commerceApi.quotePayment(pid);
+            await commerceApi.authorizePayment(pid);
+            await commerceApi.settlePayment(pid);
+          } catch (err) {
+            showApiError("process_payment", err);
+            revert();
+          }
+        })();
+        break;
+      }
+
+      case "file_dispute": {
+        const orderId = serverIds.current.orderId;
+        if (!orderId) break;
+        const p = payload as { reason_code: string; description: string };
+        commerceApi.openDispute(
+          orderId,
+          p.reason_code,
+          p.description,
+          snap.negotiation.buyer_id,
+        ).then((res) => {
+          serverIds.current.disputeId = res.dispute.id;
+        }).catch((err) => {
+          showApiError("openDispute", err);
+          revert();
+        });
+        break;
+      }
+
+      // These actions are simulation-only (local state machines).
+      // No API calls for: submit_shipping, advance_shipment, delivery_exception,
+      // start_ai_review, resolve_dispute, update_negotiation, reset.
+      default:
+        break;
+    }
   }, []);
 
   if (!state) {

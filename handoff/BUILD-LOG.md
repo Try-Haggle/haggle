@@ -5,13 +5,34 @@
 
 ## Current Status
 
-**Active step:** 12 — API Client Utility + Auth Token Injection — COMPLETE
-**Last cleared:** Step 11 Auth Middleware (Supabase JWT) — 2026-04-03
+**Active step:** 13 — Commerce Dashboard Real API Integration — COMPLETE
+**Last cleared:** Step 12 API Client Utility + Auth Token Injection — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 13 — Commerce Dashboard Real API Integration — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/web/src/app/commerce/commerce-api.ts` — NEW: API integration layer mapping commerce actions to real API calls. Typed response interfaces (PaymentResponse, DisputeResponse, ShipmentResponse, TrustScoreResponse). Functions: preparePayment, getPaymentStatus, quotePayment, authorizePayment, settlePayment, openDispute, getDisputeByOrder, getShipmentByOrder, getTrustScore. Uses `api` from `@/lib/api-client`.
+- `apps/web/src/app/commerce/commerce-dashboard.tsx` — MODIFIED: imported `commerce-api` module and `useRef`. Added `isDemoMode()` helper (detects mock wallet addresses). Added `showApiError()` for console.warn on API failures. Added `serverIds` ref to track server-assigned payment/order/dispute IDs. Added trust score API fetch on mount (non-blocking, `Promise.allSettled`). Wired API calls into `handleAction`: buyer/seller approve triggers `preparePayment`, process_payment runs quote→authorize→settle pipeline, file_dispute calls `openDispute`. All API calls wrapped in try/catch with rollback on failure. Demo mode (no real IDs) skips all API calls — local state machines work standalone.
+
+Decisions made:
+- `isDemoMode()` checks for `"..."` in wallet address — the mock data uses `0x1a2B...buyer` pattern, real addresses would not contain `...`. Simple heuristic that works for current demo state.
+- `prevSnapshot` captured via `let` variable assigned inside `setState` callback, then used outside for API calls — avoids stale closure issue. Assigned to `const snap` after setState for TypeScript narrowing.
+- Trust score fetch uses `Promise.allSettled` — both buyer and seller fetches are independent, partial success is fine.
+- Payment pipeline (quote→authorize→settle) runs sequentially — each step depends on the previous.
+- Approval API call (preparePayment) does NOT revert on failure — approval is a local state transition, payment can be retried separately.
+- Dispute API call reverts local state on failure — opening a dispute without server record would be inconsistent.
+- Shipment, delivery exception, AI review, dispute resolution have no API calls — these are simulation-only in the dashboard.
+- `serverIds` uses `useRef` not state — avoids re-renders when server IDs are stored.
+- `eslint-disable-next-line react-hooks/exhaustive-deps` on trust fetch effect — intentionally runs once on buyer_id availability, not on every state change.
+
+Test results: N/A (UI integration layer, no unit tests)
+Typecheck: `pnpm --filter @haggle/web typecheck` — 0 errors
 
 ### Step 12 — API Client Utility + Auth Token Injection — COMPLETE
 *Date: 2026-04-03*

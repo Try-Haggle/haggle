@@ -4,169 +4,105 @@
 
 ---
 
-## Step 12 — API Client Utility + Auth Token Injection
+## Step 13 — Commerce Dashboard Real API Integration
 
 ### Context
-The web app has `API_URL` hardcoded in 6+ files and makes raw `fetch()` calls without auth tokens. We built Supabase JWT auth middleware (Step 11) on the API side, but the frontend never sends the token. This step creates a shared API client that:
-1. Centralizes the API base URL
-2. Automatically attaches the Supabase JWT to every request
-3. Handles common error patterns
+`/commerce` page has a `commerce-engine.ts` with state machines copied from @haggle/* packages. The `commerce-dashboard.tsx` runs mock data in-browser. This step replaces mock flows with real API calls where possible, while keeping the local state machines for UI transitions (they update instantly for UX, then sync with the server).
+
+### Strategy: Optimistic UI + Server Sync
+Keep the local state machines for instant UI feedback. Add API calls that fire alongside state transitions:
+1. User clicks action → local state updates instantly (optimistic)
+2. API call fires in background
+3. If API fails → revert local state + show error
 
 ### Build Order
 
-#### 1. `apps/web/src/lib/api-client.ts` — Shared API client
+#### 1. Create `apps/web/src/app/commerce/commerce-api.ts` — API integration layer
+
+This file maps commerce actions to API calls:
 
 ```ts
-import { createClient } from "./supabase/client";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-
-interface ApiOptions extends RequestInit {
-  skipAuth?: boolean;
-}
-
-export async function apiClient<T = unknown>(
-  path: string,
-  options: ApiOptions = {},
-): Promise<T> {
-  const { skipAuth, ...fetchOptions } = options;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(fetchOptions.headers as Record<string, string>),
-  };
-
-  // Attach Supabase JWT if available
-  if (!skipAuth) {
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
-      }
-    } catch {
-      // Auth not available — continue without token
-    }
-  }
-
-  const url = path.startsWith("http") ? path : `${API_URL}${path}`;
-  const res = await fetch(url, {
-    ...fetchOptions,
-    headers,
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.error || "UNKNOWN_ERROR", body.message);
-  }
-
-  return res.json() as Promise<T>;
-}
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message?: string,
-  ) {
-    super(message || code);
-    this.name = "ApiError";
-  }
-}
-
-// Convenience methods
-export const api = {
-  get: <T = unknown>(path: string, opts?: ApiOptions) =>
-    apiClient<T>(path, { ...opts, method: "GET" }),
-
-  post: <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
-    apiClient<T>(path, { ...opts, method: "POST", body: body ? JSON.stringify(body) : undefined }),
-
-  patch: <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
-    apiClient<T>(path, { ...opts, method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
-
-  delete: <T = unknown>(path: string, opts?: ApiOptions) =>
-    apiClient<T>(path, { ...opts, method: "DELETE" }),
-};
-```
-
-#### 2. Update existing pages to use `api` client
-
-Replace raw `fetch` in these files:
-
-**`app/(app)/sell/dashboard/page.tsx`:**
-```ts
-// Before:
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-const res = await fetch(`${API_URL}/api/claim`, { ... });
-const res = await fetch(`${API_URL}/api/listings?userId=${user.id}`, { ... });
-
-// After:
 import { api } from "@/lib/api-client";
-const data = await api.post("/api/claim", { ... });
-const data = await api.get(`/api/listings?userId=${user.id}`);
-```
 
-Do the same for:
-- `app/(app)/buy/dashboard/page.tsx`
-- `app/(app)/sell/listings/new/new-listing-wizard.tsx`
-- `app/(app)/sell/listings/[id]/page.tsx`
-- `app/(app)/settings/settings-content.tsx`
-- `app/l/[publicId]/page.tsx` (use `skipAuth: true` for public pages)
+// Payment actions
+export async function preparePayment(approvalId: string) {
+  return api.post<{ payment: unknown }>("/api/payments/prepare", {
+    approval_id: approvalId,
+  });
+}
 
-**Do NOT change:**
-- `app/(marketing)/landing.tsx` — uses relative `/api/waitlist` which is a Next.js API route, not our Fastify API
+export async function getPaymentStatus(paymentId: string) {
+  return api.get<{ payment: unknown }>(`/api/payments/${paymentId}`);
+}
 
-#### 3. Server-side API client for SSR pages
+export async function quotePayment(paymentId: string) {
+  return api.post<unknown>(`/api/payments/${paymentId}/quote`);
+}
 
-Some pages fetch data server-side (React Server Components). Those need the server-side Supabase client:
+export async function authorizePayment(paymentId: string) {
+  return api.post<unknown>(`/api/payments/${paymentId}/authorize`);
+}
 
-`apps/web/src/lib/api-server.ts`:
-```ts
-import { createServerClient } from "./supabase/server";
+export async function settlePayment(paymentId: string) {
+  return api.post<unknown>(`/api/payments/${paymentId}/settle`);
+}
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// Dispute actions
+export async function openDispute(orderId: string, reasonCode: string, openedBy: string) {
+  return api.post<{ dispute: unknown }>("/api/disputes", {
+    order_id: orderId,
+    reason_code: reasonCode,
+    opened_by: openedBy,
+  });
+}
 
-export async function apiServer<T = unknown>(path: string): Promise<T> {
-  const supabase = await createServerClient();
-  const { data: { session } } = await supabase.auth.getSession();
+export async function getDisputeByOrder(orderId: string) {
+  return api.get<{ dispute: unknown }>(`/api/disputes/order/${orderId}`);
+}
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (session?.access_token) {
-    headers["Authorization"] = `Bearer ${session.access_token}`;
-  }
+// Shipment actions
+export async function getShipmentByOrder(orderId: string) {
+  return api.get<{ shipment: unknown }>(`/api/shipments/order/${orderId}`);
+}
 
-  const url = `${API_URL}${path}`;
-  const res = await fetch(url, { headers, next: { revalidate: 0 } });
-
-  if (!res.ok) {
-    throw new Error(`API ${res.status}: ${path}`);
-  }
-  return res.json() as Promise<T>;
+// Trust
+export async function getTrustScore(userId: string) {
+  return api.get<{ trust_score: unknown }>(`/api/trust/${userId}`);
 }
 ```
 
-Read `apps/web/src/lib/supabase/server.ts` to understand the server-side Supabase client pattern.
+#### 2. Update `commerce-dashboard.tsx` — Wire up API calls
+
+Read the full file first. Then add API integration:
+
+For each user action (button click) that transitions state:
+1. Keep the local `dispatch()` for instant UI update
+2. Add `try { await commerceApi.xxx() } catch { revert }` after dispatch
+3. On page load, fetch real data if an order ID exists in URL/state
+
+Specific integration points:
+- **"Prepare Payment" button** → call `preparePayment()`, store returned payment ID
+- **"Quote" step** → call `quotePayment()`
+- **"Authorize" step** → call `authorizePayment()`
+- **"Settle" step** → call `settlePayment()`
+- **"Open Dispute" button** → call `openDispute()`
+- **Page load** → if order has payment, call `getPaymentStatus()` to sync
+- **Trust score display** → call `getTrustScore()` for both parties
 
 ### Flags
-- Flag: Read each file BEFORE changing it. The existing fetch calls may have specific headers, error handling, or response parsing that needs to be preserved.
-- Flag: Some pages are Server Components (no "use client"). Those use `apiServer`. Client Components use `api`.
-- Flag: Check if each page is a Server Component or Client Component before choosing which api client to use.
-- Flag: `app/l/[publicId]/page.tsx` is a public listing page — use `skipAuth: true` or `apiServer` without auth.
-- Flag: Do NOT change the API paths themselves (e.g., `/api/drafts` stays `/api/drafts`).
-- Flag: Preserve existing error handling in each page (toast notifications, error states, etc.)
-- Flag: The `@/lib/...` import path should work — check tsconfig paths.
+- Flag: Read `commerce-dashboard.tsx` FULLY before any changes. It's complex with reducers.
+- Flag: Do NOT remove local state machines. They provide instant UI feedback.
+- Flag: API calls are additive — they sync state but don't replace local transitions.
+- Flag: If API isn't available (dev mode, no env), the dashboard should still work with local-only state (graceful degradation).
+- Flag: Use `try/catch` around every API call. Never let an API error crash the UI.
+- Flag: The dashboard may be in demo mode (no real order). Skip API calls if no real order/payment IDs.
 
 ### Definition of Done
-- [ ] `lib/api-client.ts` created with `api` convenience methods + auth token injection
-- [ ] `lib/api-server.ts` created for SSR pages
-- [ ] 6 page files updated to use new api client
-- [ ] No hardcoded `API_URL` in page files
-- [ ] Auth tokens automatically attached
-- [ ] Public pages use skipAuth
-- [ ] No breaking changes to existing UI behavior
+- [ ] commerce-api.ts created with typed API functions
+- [ ] commerce-dashboard.tsx fires API calls on key actions
+- [ ] Graceful degradation — works without API (demo mode)
+- [ ] Error handling — API failures show toast, don't crash
+- [ ] Trust score fetched for display
 
 ---
 
