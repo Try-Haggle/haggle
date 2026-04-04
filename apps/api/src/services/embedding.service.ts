@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
-import { type Database, listingsPublished, listingEmbeddings, eq } from "@haggle/db";
+import Replicate from "replicate";
+import { type Database, listingsPublished, listingEmbeddings, eq, sql } from "@haggle/db";
 
 // ─── OpenAI Client (lazy init to allow dotenv to load first) ───
 
@@ -20,6 +21,16 @@ function getEmbeddingDimensions(): number {
   return parseInt(process.env.EMBEDDING_DIMENSIONS || "1536", 10);
 }
 
+// ─── Replicate Client (lazy init for image embeddings) ──
+
+let _replicate: Replicate | null = null;
+function getReplicate(): Replicate {
+  if (!_replicate) {
+    _replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
+  }
+  return _replicate;
+}
+
 // ─── Text Embedding Generation ─────────────────────────
 
 /** Call OpenAI Embeddings API to convert text into a vector. */
@@ -30,6 +41,22 @@ export async function generateTextEmbedding(text: string): Promise<number[]> {
     dimensions: getEmbeddingDimensions(),
   });
   return response.data[0].embedding;
+}
+
+// ─── Image Embedding Generation (Replicate CLIP) ───────
+
+/** Call Replicate CLIP API to convert an image URL into a 512-dim vector. */
+export async function generateImageEmbedding(imageUrl: string): Promise<number[]> {
+  const output = await getReplicate().run(
+    "andreasjansson/clip-features:75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a",
+    { input: { inputs: imageUrl } },
+  );
+  // Output is an array of { embedding: number[], input: string }
+  const results = output as Array<{ embedding: number[]; input: string }>;
+  if (!results?.[0]?.embedding) {
+    throw new Error("CLIP API returned no embedding");
+  }
+  return results[0].embedding;
 }
 
 // ─── Embedding Input Construction ──────────────────────
@@ -152,19 +179,49 @@ export async function generateAndStoreEmbedding(
   if (existing[0]?.textHash === hash && existing[0]?.status === "completed") return;
 
   try {
-    const embedding = await generateTextEmbedding(input);
+    const textEmbedding = await generateTextEmbedding(input);
 
-    await db
-      .update(listingEmbeddings)
-      .set({
-        textEmbedding: embedding,
-        textHash: hash,
-        status: "completed",
-        modelVersion: `${getEmbeddingModel()}-v1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(listingEmbeddings.publishedListingId, publishedListingId));
-  } catch {
+    // Generate image embedding if photo URL exists
+    const photoUrl = snapshot.photoUrl as string | null;
+    let imageEmbedding: number[] | null = null;
+    let imageHash: string | null = null;
+    if (photoUrl) {
+      try {
+        imageEmbedding = await generateImageEmbedding(photoUrl);
+        imageHash = computeTextHash(photoUrl);
+      } catch {
+        // Image embedding failure doesn't block text embedding
+        console.warn(`[embedding] Image embedding failed for ${publishedListingId}, continuing with text only`);
+      }
+    }
+
+    // Build update using raw SQL to handle vector types properly
+    if (imageEmbedding) {
+      const imageVectorStr = `[${imageEmbedding.join(",")}]`;
+      await db.execute(sql`
+        UPDATE listing_embeddings SET
+          text_embedding = ${`[${textEmbedding.join(",")}]`}::vector,
+          image_embedding = ${imageVectorStr}::vector,
+          text_hash = ${hash},
+          image_hash = ${imageHash},
+          status = 'completed',
+          model_version = ${`${getEmbeddingModel()}-v1`},
+          updated_at = NOW()
+        WHERE published_listing_id = ${publishedListingId}
+      `);
+    } else {
+      await db.execute(sql`
+        UPDATE listing_embeddings SET
+          text_embedding = ${`[${textEmbedding.join(",")}]`}::vector,
+          text_hash = ${hash},
+          status = 'completed',
+          model_version = ${`${getEmbeddingModel()}-v1`},
+          updated_at = NOW()
+        WHERE published_listing_id = ${publishedListingId}
+      `);
+    }
+  } catch (err) {
+    console.error(`[embedding] Failed for ${publishedListingId}:`, err instanceof Error ? err.message : err);
     const retryCount = (existing[0]?.retryCount ?? 0) + 1;
     await db
       .update(listingEmbeddings)

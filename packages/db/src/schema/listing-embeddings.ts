@@ -9,7 +9,7 @@ export const listingEmbeddings = pgTable("listing_embeddings", {
     .unique()
     .references(() => listingsPublished.id, { onDelete: "cascade" }),
   textEmbedding: vector("text_embedding", 1536),
-  imageEmbedding: vector("image_embedding", 512),
+  imageEmbedding: vector("image_embedding", 768),
   textHash: text("text_hash"),
   imageHash: text("image_hash"),
   modelVersion: text("model_version").notNull(),

@@ -1,25 +1,9 @@
-import { type Database, categoryRelatedness, tagIdfCache, recommendationLogs, sql } from "@haggle/db";
+import { type Database, tagIdfCache, recommendationLogs, sql } from "@haggle/db";
 
 // ─── In-Memory Caches ──────────────────────────────────
 
-/** Category relatedness matrix: categoryRelatednessMap[from][to] = score */
-let categoryRelatednessMap: Record<string, Record<string, number>> = {};
-
 /** Tag IDF scores: idfMap.get(tag) = idf score */
 let idfMap: Map<string, number> = new Map();
-
-/** Load category_relatedness table into memory. Call on server startup. */
-export async function loadCategoryRelatedness(db: Database) {
-  const rows = await db.select().from(categoryRelatedness);
-  categoryRelatednessMap = {};
-  for (const row of rows) {
-    if (!categoryRelatednessMap[row.categoryFrom]) {
-      categoryRelatednessMap[row.categoryFrom] = {};
-    }
-    categoryRelatednessMap[row.categoryFrom][row.categoryTo] = Number(row.score);
-  }
-  console.log(`[similar-listings] Loaded ${rows.length} category relatedness entries`);
-}
 
 /** Load tag_idf_cache table into memory. Call on server startup. */
 export async function loadTagIdfCache(db: Database) {
@@ -31,17 +15,12 @@ export async function loadTagIdfCache(db: Database) {
   console.log(`[similar-listings] Loaded ${rows.length} tag IDF entries`);
 }
 
-/** Reload both caches. Call on server startup. */
+/** Load caches on server startup. */
 export async function loadSimilarListingsCaches(db: Database) {
-  await loadCategoryRelatedness(db);
   await loadTagIdfCache(db);
 }
 
 // ─── Getters for use in signal functions ───────────────
-
-export function getCategoryRelatedness(from: string, to: string): number {
-  return categoryRelatednessMap[from]?.[to] ?? 0.0;
-}
 
 export function getTagIdf(tag: string): number {
   return idfMap.get(tag) ?? 1.0; // unknown tag = treat as rare (weight 1.0)
@@ -61,12 +40,11 @@ interface CandidateRow {
 
 interface SignalScores {
   semantic: number;
-  category: number;
+  image: number;
+  tags: number;
   price: number;
   condition: number;
-  tags: number;
   temporal: number;
-  image: number;
 }
 
 interface ScoredCandidate {
@@ -91,13 +69,12 @@ export interface SimilarListingResult {
 // ─── Signal Weights ────────────────────────────────────
 
 const WEIGHTS = {
-  semantic: 0.40,
-  category: 0.20,
-  tags: 0.15,
-  price: 0.12,
+  semantic: 0.35,
+  image: 0.35,
+  tags: 0.12,
+  price: 0.08,
   condition: 0.05,
   temporal: 0.05,
-  image: 0.03,
 } as const;
 
 const SIMILARITY_THRESHOLD_DETAIL = 0.55;    // Detail page: single listing comparison
@@ -110,13 +87,7 @@ function semanticSimilarity(cosineSim: number): number {
   return cosineSim;
 }
 
-/** Signal 2: Category match using DB-loaded relatedness map */
-function categoryMatch(source: string | null, candidate: string | null): number {
-  if (!source || !candidate) return 0.5;
-  return getCategoryRelatedness(source, candidate);
-}
-
-/** Signal 3: Price proximity using log ratio */
+/** Signal 2: Price proximity using log ratio */
 function priceProximity(sourcePrice: number | null, candidatePrice: number | null): number {
   if (!sourcePrice || !candidatePrice || sourcePrice <= 0 || candidatePrice <= 0) return 0.5;
   const logRatio = Math.abs(Math.log10(sourcePrice / candidatePrice));
@@ -179,12 +150,13 @@ function temporalRelevance(sellingDeadline: string | null): number {
   return 0.5 + 0.5 * ((remaining - 3 * ONE_DAY) / (THIRTY_DAYS - 3 * ONE_DAY));
 }
 
-/** Signal 7: Image similarity (Phase 1: neutral, Phase 2: CLIP cosine) */
+/** Signal 7: Image similarity (CLIP cosine — neutral if either embedding missing) */
 function imageSimilarity(
-  _sourceImageEmbedding: number[] | null,
-  _candidateImageEmbedding: number[] | null,
+  sourceImageEmbedding: number[] | null,
+  candidateImageEmbedding: number[] | null,
 ): number {
-  return 0.5; // Phase 1: always neutral
+  if (!sourceImageEmbedding || !candidateImageEmbedding) return 0.5; // neutral if missing
+  return cosineSimilarity(sourceImageEmbedding, candidateImageEmbedding);
 }
 
 // ─── Composite Score ───────────────────────────────────
@@ -192,31 +164,30 @@ function imageSimilarity(
 function computeSignalScores(
   source: Record<string, unknown>,
   candidate: CandidateRow,
+  sourceImageEmbedding: number[] | null,
 ): SignalScores {
   const snap = candidate.snapshot_json;
   return {
     semantic: semanticSimilarity(candidate.cosine_similarity),
-    category: categoryMatch(source.category as string | null, snap.category as string | null),
+    image: imageSimilarity(sourceImageEmbedding, candidate.image_embedding),
+    tags: weightedJaccard(source.tags as string[] | null, snap.tags as string[] | null),
     price: priceProximity(
       source.targetPrice ? Number(source.targetPrice) : null,
       snap.targetPrice ? Number(snap.targetPrice) : null,
     ),
     condition: conditionProximity(source.condition as string | null, snap.condition as string | null),
-    tags: weightedJaccard(source.tags as string[] | null, snap.tags as string[] | null),
     temporal: temporalRelevance(snap.sellingDeadline as string | null),
-    image: imageSimilarity(null, null),
   };
 }
 
 function computeCompositeScore(scores: SignalScores): number {
   return (
     WEIGHTS.semantic * scores.semantic +
-    WEIGHTS.category * scores.category +
+    WEIGHTS.image * scores.image +
     WEIGHTS.tags * scores.tags +
     WEIGHTS.price * scores.price +
     WEIGHTS.condition * scores.condition +
-    WEIGHTS.temporal * scores.temporal +
-    WEIGHTS.image * scores.image
+    WEIGHTS.temporal * scores.temporal
   );
 }
 
@@ -224,11 +195,11 @@ function computeCompositeScore(scores: SignalScores): number {
 
 function generateMatchReasons(scores: SignalScores): string[] {
   const reasons: string[] = [];
-  if (scores.category >= 0.8) reasons.push("Same category");
+  if (scores.semantic >= 0.85) reasons.push("Very similar item");
+  if (scores.image >= 0.8) reasons.push("Looks similar");
   if (scores.price >= 0.8) reasons.push("Similar price range");
   if (scores.condition >= 0.75) reasons.push("Similar condition");
   if (scores.tags >= 0.5) reasons.push("Matching tags");
-  if (scores.semantic >= 0.85) reasons.push("Very similar item");
   return reasons;
 }
 
@@ -298,6 +269,7 @@ export async function findSimilarListings(
   publishedListingId: string,
   sourceSnapshot: Record<string, unknown>,
   sourceEmbedding: number[],
+  sourceImageEmbedding: number[] | null,
   options: {
     limit?: number;
     userId?: string | null;
@@ -325,6 +297,12 @@ export async function findSimilarListings(
     ? sql`AND lp.id NOT IN (SELECT published_listing_id FROM buyer_listings WHERE user_id = ${userId})`
     : sql``;
 
+  // Same category filter — only recommend within the same category
+  const sourceCategory = sourceSnapshot.category as string | null;
+  const categoryFilter = sourceCategory
+    ? sql`AND lp.snapshot_json->>'category' = ${sourceCategory}`
+    : sql``;
+
   const candidates = await db.execute(sql`
     SELECT
       lp.id,
@@ -341,6 +319,7 @@ export async function findSimilarListings(
       ${listingFilter}
       ${userFilter}
       ${viewedFilter}
+      ${categoryFilter}
       AND ld.status = 'published'
       AND (ld.selling_deadline > NOW() OR ld.selling_deadline IS NULL)
       AND le.text_embedding IS NOT NULL
@@ -368,7 +347,7 @@ export async function findSimilarListings(
 
   // Stage 2: Multi-signal scoring
   let scored: ScoredCandidate[] = rows.map((candidate) => {
-    const scores = computeSignalScores(sourceSnapshot, candidate);
+    const scores = computeSignalScores(sourceSnapshot, candidate, sourceImageEmbedding);
     const compositeScore = computeCompositeScore(scores);
     return { candidate, scores, compositeScore };
   });
@@ -408,28 +387,35 @@ export async function getSimilarListingsForPublicId(
 
   const { id: publishedListingId, snapshot_json: sourceSnapshot } = pubRows[0];
 
-  // Get source embedding
-  const embRows = await db.execute<{ text_embedding: number[] }>(sql`
-    SELECT text_embedding FROM listing_embeddings
+  // Get source embeddings (text + image)
+  const embRows = await db.execute(sql`
+    SELECT text_embedding, image_embedding FROM listing_embeddings
     WHERE published_listing_id = ${publishedListingId}
       AND status = 'completed'
       AND text_embedding IS NOT NULL
   `);
 
-  const embResult = embRows as unknown as Array<{ text_embedding: number[] }>;
+  const embResult = embRows as unknown as Array<Record<string, unknown>>;
   if (embResult.length === 0) {
     // Source listing has no embedding yet
     return { listings: [], meta: { sourcePublicId: publicId, totalCandidates: 0, algorithm: "multi-signal-v1" } };
   }
 
   // pgvector returns embedding as string "[0.1,0.2,...]" via raw SQL — parse to number[]
-  const rawEmb = embResult[0].text_embedding;
-  const sourceEmbedding: number[] = typeof rawEmb === "string"
-    ? (rawEmb as string).slice(1, -1).split(",").map(Number)
-    : rawEmb;
+  const rawTextEmb = embResult[0].text_embedding;
+  const sourceEmbedding: number[] = typeof rawTextEmb === "string"
+    ? (rawTextEmb as string).slice(1, -1).split(",").map(Number)
+    : (rawTextEmb as number[]);
+
+  const rawImageEmb = embResult[0].image_embedding;
+  const sourceImageEmbedding: number[] | null = rawImageEmb
+    ? typeof rawImageEmb === "string"
+      ? (rawImageEmb as string).slice(1, -1).split(",").map(Number)
+      : (rawImageEmb as number[])
+    : null;
 
   // Run pipeline
-  const results = await findSimilarListings(db, publishedListingId, sourceSnapshot, sourceEmbedding, options);
+  const results = await findSimilarListings(db, publishedListingId, sourceSnapshot, sourceEmbedding, sourceImageEmbedding, options);
 
   // Save recommendation logs + build response
   const listings: SimilarListingResult[] = [];
@@ -664,7 +650,7 @@ export async function getDashboardRecommendations(
     tags: uniqueTags.slice(0, 10),
   };
 
-  const results = await findSimilarListings(db, "__none__", syntheticSnapshot, interestVector, {
+  const results = await findSimilarListings(db, "__none__", syntheticSnapshot, interestVector, null, {
     limit,
     userId,
     threshold: SIMILARITY_THRESHOLD_DASHBOARD,
