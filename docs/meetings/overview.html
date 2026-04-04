@@ -624,6 +624,20 @@
         <li>총 테스트: 830+ (engine 223 + trust 85 + dispute 117 + arp 57 + tag 71 + skill 62 + shipping/others)</li>
       </ul>
     </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 인프라 + 통합 (Step 8-12)</div>
+      <ul class="update-items">
+        <li>shipping-core 빌드 에러 수정 (184 tests, 0 errors)</li>
+        <li>Phase 5b: Skill DB/API (skills + skill_executions 테이블, 9 엔드포인트)</li>
+        <li>GET /payments/:id 추가 (결제 상태 조회)</li>
+        <li>Supabase JWT 인증 미들웨어 (auth.ts + require-auth.ts)</li>
+        <li>모든 mutation 라우트에 requireAuth/requireAdmin 적용</li>
+        <li>웹앱 API 클라이언트 통합 (api-client.ts + api-server.ts)</li>
+        <li>6개 페이지 fetch → 공유 클라이언트로 교체 + JWT 자동 첨부</li>
+        <li>USDC 결제 리서치: payment-core 140t 완성, 컨트랙트 배포만 남음</li>
+        <li>CEO_TODO.md 작성 (컨트랙트 배포, env vars, 인프라 — CEO 직접 처리)</li>
+      </ul>
+    </div>
     <!-- 다음 모임 후 여기에 추가 -->
   </div>
 </section>
