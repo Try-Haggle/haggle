@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY } from "@haggle/dispute-core";
-import type { DisputeCase, DisputeEvidence, DisputeReasonCode } from "@haggle/dispute-core";
+import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY, computeDisputeCost, createDepositRequirement } from "@haggle/dispute-core";
+import type { DisputeCase, DisputeEvidence, DisputeReasonCode, DisputeTier } from "@haggle/dispute-core";
 import {
   createDisputeRecord,
   getDisputeById,
@@ -14,6 +14,8 @@ import {
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import {
   getDepositByDisputeId,
+  createDeposit,
+  getPendingExpiredDeposits,
   updateDepositStatus,
 } from "../services/dispute-deposit.service.js";
 import {
@@ -50,6 +52,11 @@ const addEvidenceSchema = z.object({
 
 const depositSchema = z.object({
   amount_cents: z.number().int().min(1),
+});
+
+const escalateSchema = z.object({
+  escalated_by: z.enum(["buyer", "seller", "system"]),
+  reason: z.string().optional(),
 });
 
 const resolveDisputeSchema = z.object({
@@ -94,6 +101,83 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     await updateCommerceOrderStatus(db, parsed.data.order_id, "IN_DISPUTE");
 
     return reply.code(201).send(result);
+  });
+
+  // POST /disputes/deposits/expire — admin/cron: forfeit expired deposits
+  // Registered BEFORE /:id routes to avoid route collision
+  app.post("/disputes/deposits/expire", async (_request, reply) => {
+    const expired = await getPendingExpiredDeposits(db);
+    let forfeited = 0;
+    for (const deposit of expired) {
+      await updateDepositStatus(db, deposit.id, "FORFEITED", { resolvedAt: new Date() });
+      forfeited++;
+    }
+    return reply.send({ forfeited_count: forfeited });
+  });
+
+  // POST /disputes/:id/escalate — escalate T1→T2→T3 with auto deposit
+  app.post<{ Params: { id: string } }>("/disputes/:id/escalate", async (request, reply) => {
+    const { id } = request.params;
+    const parsed = escalateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_ESCALATE_REQUEST", issues: parsed.error.issues });
+    }
+
+    const dispute = await getDisputeById(db, id);
+    if (!dispute) {
+      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+    }
+
+    // Determine current tier from metadata or default to T1
+    const currentTier = (dispute.metadata as Record<string, unknown>)?.tier as number ?? 1;
+    if (currentTier >= 3) {
+      return reply.code(400).send({ error: "MAX_TIER_REACHED", message: "Cannot escalate beyond T3" });
+    }
+
+    const nextTier = (currentTier + 1) as DisputeTier;
+
+    // Compute cost for next tier using dispute-core
+    const amountCents = dispute.refundAmountMinor
+      ? parseInt(String(dispute.refundAmountMinor))
+      : 0;
+
+    if (amountCents <= 0) {
+      return reply.code(400).send({ error: "INVALID_DISPUTE_AMOUNT", message: "Dispute must have a positive refund amount for escalation" });
+    }
+
+    const cost = computeDisputeCost(amountCents, nextTier);
+
+    // Update dispute metadata with new tier
+    await updateDisputeRecord(db, {
+      ...dispute,
+      metadata: {
+        ...(dispute.metadata as Record<string, unknown>),
+        tier: nextTier,
+        escalated_by: parsed.data.escalated_by,
+        escalated_reason: parsed.data.reason ?? null,
+      },
+    });
+
+    // For T2/T3: create deposit requirement (seller-only deposit)
+    let deposit = null;
+    if (nextTier >= 2) {
+      const depositReq = createDepositRequirement(id, nextTier as 2 | 3, amountCents);
+      deposit = await createDeposit(db, {
+        disputeId: id,
+        tier: nextTier,
+        amountCents: depositReq.amount_cents,
+        deadlineHours: depositReq.deadline_hours,
+        deadlineAt: new Date(Date.now() + depositReq.deadline_hours * 60 * 60 * 1000),
+      });
+    }
+
+    return reply.send({
+      dispute_id: id,
+      previous_tier: currentTier,
+      new_tier: nextTier,
+      cost,
+      deposit,
+    });
   });
 
   // GET /disputes/:id

@@ -4,181 +4,282 @@
 
 ---
 
-## Step 14 — "Start Negotiation" Button → Intent API
+## Step 15 — x402 Webhook Event Processing
 
 ### Context
-The buyer landing page (`/l/[publicId]`) has a "Start Negotiation" button with no onClick handler. This step connects it to the WaitingIntent API to create a buyer intent, which can then be matched with the seller's listing.
+`POST /payments/webhooks/x402` currently validates the signature then echoes the payload. It needs to process events and update payment state.
 
-### Flow
-1. Buyer clicks "Start Negotiation"
-2. Frontend creates a WaitingIntent via `POST /intents`
-3. Frontend calls `POST /intents/trigger-match` to find immediate matches
-4. If match found → show "Match found! Negotiation starting..." 
-5. If no match → show "Intent registered! You'll be notified when a match is found."
-6. Redirect to a negotiation status page or show inline status
+### What x402 Facilitator Sends
+The x402 facilitator (Coinbase CDP) sends webhook callbacks for:
+- `settlement.confirmed` — on-chain settlement verified
+- `settlement.failed` — settlement failed
+- `payment.expired` — payment authorization expired
 
 ### Build Order
 
-#### 1. Create `apps/web/src/app/l/[publicId]/negotiation-api.ts`
+#### 1. Add webhook event processing to `apps/api/src/routes/payments.ts`
+
+Replace the x402 webhook stub (lines ~536-549) with:
 
 ```ts
-import { api } from "@/lib/api-client";
+app.post("/payments/webhooks/x402", async (request, reply) => {
+  try {
+    requireWebhookSignature(request.headers as Record<string, unknown>, "x402");
+  } catch (error) {
+    return reply.code(400).send({ error: "INVALID_X402_WEBHOOK", message: ... });
+  }
 
-export interface CreateIntentResponse {
-  intent: {
-    id: string;
-    status: string;
-  };
-}
+  const body = request.body as { event_type?: string; payment_intent_id?: string; [key: string]: unknown };
+  const eventType = body.event_type;
+  const paymentIntentId = body.payment_intent_id;
 
-export async function createBuyerIntent(params: {
-  userId: string;
-  category: string;
-  keywords: string[];
-  listingId: string;
-  agentPreset: string;
-  targetPrice?: number;
-}) {
-  // Build a minimal strategy from the agent preset
-  const strategy = buildStrategyFromPreset(params.agentPreset, params.targetPrice);
+  if (!eventType || !paymentIntentId) {
+    return reply.code(400).send({ error: "MISSING_WEBHOOK_FIELDS" });
+  }
 
-  return api.post<CreateIntentResponse>("/api/intents", {
-    user_id: params.userId,
-    role: "BUYER",
-    category: params.category || "general",
-    keywords: params.keywords || [],
-    strategy,
-    min_u_total: 0.3,
-    max_active_sessions: 5,
-    expires_in_days: 30,
-  });
-}
-
-export async function triggerMatch(category: string, listingId: string) {
-  return api.post<{ match_result: { matched: unknown[]; rejected: unknown[]; total_evaluated: number } }>(
-    "/api/intents/trigger-match",
-    {
-      category,
-      listing_id: listingId,
-      context_template: {
-        // Minimal context for matching — real context built server-side
-        price: { current: 0, target: 0, limit: 0, opening: 0 },
-        time: { round: 1, max_rounds: 10, deadline_pressure: 0 },
-        risk: { trust_score: 0.5, escrow_active: true, dispute_rate: 0, is_first_transaction: false },
-        relationship: { repeat_partner: false, total_history: 0, avg_concession: 0 },
-      },
-    },
-  );
-}
-
-function buildStrategyFromPreset(presetId: string, targetPrice?: number) {
-  // Map buyer agent presets to MasterStrategy-like objects
-  // These are stored as strategy snapshots in the intent
-  const presets: Record<string, Record<string, unknown>> = {
-    fox: { aggression: 0.7, patience: 0.5, risk: 0.6, style: "aggressive" },
-    owl: { aggression: 0.3, patience: 0.9, risk: 0.3, style: "analytical" },
-    dolphin: { aggression: 0.5, patience: 0.7, risk: 0.4, style: "collaborative" },
-    bear: { aggression: 0.9, patience: 0.3, risk: 0.8, style: "hardball" },
-  };
-
-  return {
-    preset: presetId,
-    params: presets[presetId] || presets.fox,
-    target_price: targetPrice,
-  };
-}
-```
-
-#### 2. Update `buyer-landing.tsx` — Add onClick handler
-
-Add state + handler:
-```ts
-const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
-const [negotiationMessage, setNegotiationMessage] = useState("");
-```
-
-Add onClick to the Start Negotiation button:
-```ts
-onClick={async () => {
-  if (!selectedAgent) return;
-  setNegotiationState("loading");
+  const intent = await getPaymentIntentById(db, paymentIntentId);
+  if (!intent) {
+    // Ignore events for unknown intents (idempotent)
+    return reply.send({ accepted: true, action: "ignored", reason: "unknown_intent" });
+  }
 
   try {
-    // If user is not logged in, redirect to claim/auth page
-    if (!user) {
-      // Store intent in sessionStorage so we can create it after auth
-      sessionStorage.setItem("pendingIntent", JSON.stringify({
-        listingId: listing.id,
-        publicId: listing.publicId,
-        category: listing.category,
-        agentPreset: selectedAgent,
-      }));
-      window.location.href = `/claim?redirect=/l/${listing.publicId}`;
-      return;
-    }
-
-    const result = await createBuyerIntent({
-      userId: user.email,  // user info passed as prop — use email or ID
-      category: listing.category || "general",
-      keywords: listing.tags || [],
-      listingId: listing.id,
-      agentPreset: selectedAgent,
-      targetPrice: listing.targetPrice ? parseFloat(listing.targetPrice) : undefined,
-    });
-
-    setNegotiationState("success");
-    setNegotiationMessage("Your negotiation agent is set up! Matching you with the seller...");
-
-    // Try immediate match
-    try {
-      const match = await triggerMatch(listing.category || "general", listing.id);
-      if (match.match_result.matched.length > 0) {
-        setNegotiationMessage("Match found! Your agent will start negotiating shortly.");
-      } else {
-        setNegotiationMessage("Intent registered! You'll be notified when negotiation begins.");
+    switch (eventType) {
+      case "settlement.confirmed": {
+        // If not already settled, settle now
+        if (intent.status !== "SETTLED") {
+          const result = await service.settleIntent(intent);
+          await updateStoredPaymentIntent(db, result.intent, result.metadata);
+          if (result.value) {
+            await createPaymentSettlementRecord(db, result.value);
+          }
+          // Trust triggers
+          if (result.trust_triggers.length > 0) {
+            await applyTrustTriggers(db, {
+              order_id: result.intent.order_id,
+              buyer_id: result.intent.buyer_id,
+              seller_id: result.intent.seller_id,
+              triggers: result.trust_triggers,
+            });
+          }
+        }
+        return reply.send({ accepted: true, action: "settled" });
       }
-    } catch {
-      // Match trigger failed, but intent was created successfully
-      setNegotiationMessage("Intent registered! Matching will happen shortly.");
-    }
-  } catch (err) {
-    setNegotiationState("error");
-    setNegotiationMessage("Something went wrong. Please try again.");
-    console.warn("Failed to create intent:", err);
-  }
-}}
-```
 
-Show the negotiation state below the button:
-```tsx
-{negotiationState === "loading" && (
-  <div className="text-center text-sm text-slate-400 mt-3">Setting up your agent...</div>
-)}
-{negotiationState === "success" && (
-  <div className="text-center text-sm text-emerald-400 mt-3">{negotiationMessage}</div>
-)}
-{negotiationState === "error" && (
-  <div className="text-center text-sm text-red-400 mt-3">{negotiationMessage}</div>
-)}
+      case "settlement.failed": {
+        if (intent.status !== "FAILED" && intent.status !== "SETTLED") {
+          const result = service.failIntent(intent);
+          await updateStoredPaymentIntent(db, result.intent);
+          if (result.trust_triggers.length > 0) {
+            await applyTrustTriggers(db, {
+              order_id: result.intent.order_id,
+              buyer_id: result.intent.buyer_id,
+              seller_id: result.intent.seller_id,
+              triggers: result.trust_triggers,
+            });
+          }
+        }
+        return reply.send({ accepted: true, action: "failed" });
+      }
+
+      case "payment.expired": {
+        if (intent.status !== "CANCELED" && intent.status !== "SETTLED") {
+          const result = service.cancelIntent(intent);
+          await updateStoredPaymentIntent(db, result.intent);
+        }
+        return reply.send({ accepted: true, action: "expired" });
+      }
+
+      default:
+        return reply.send({ accepted: true, action: "ignored", reason: "unknown_event" });
+    }
+  } catch (error) {
+    // Log but don't fail — webhooks must return 200 to avoid retries
+    console.error("Webhook processing error:", error);
+    return reply.send({ accepted: true, action: "error", message: String(error) });
+  }
+});
 ```
 
 ### Flags
-- Flag: Read buyer-landing.tsx FULLY. It's a 500-line component. Understand the state.
-- Flag: `user` prop is `{ email, name, avatarUrl } | null`. When null, redirect to auth.
-- Flag: `selectedAgent` is the currently selected buyer agent preset ID (string).
-- Flag: The listing prop has id, publicId, category, tags, targetPrice — use these for the intent.
-- Flag: Do NOT add a negotiation chat UI. Just the "start" action + status message for now.
-- Flag: Disable the button while loading. Show loading state.
-- Flag: The `triggerMatch` call is best-effort. If it fails, the intent still exists.
+- Flag: Webhooks MUST return 200 (or reply.send) even on processing errors. Otherwise the facilitator retries.
+- Flag: Idempotent — if already settled/failed, skip the action.
+- Flag: The `service` variable is already available in the closure (created at line ~189).
+- Flag: Import `createPaymentSettlementRecord` if not already imported at the top.
+- Flag: Do NOT change the Stripe webhook — leave it as stub.
+- Flag: No auth required on webhook endpoints (they use signature verification instead).
 
 ### Definition of Done
-- [ ] negotiation-api.ts created
-- [ ] "Start Negotiation" button has onClick handler
-- [ ] Unauthenticated users → redirect to /claim
-- [ ] Authenticated users → create intent → try match → show status
-- [ ] Loading/success/error states shown
-- [ ] Button disabled during loading
-- [ ] No crashes on API failure
+- [ ] x402 webhook processes settlement.confirmed, settlement.failed, payment.expired
+- [ ] Idempotent (no double-settle)
+- [ ] Always returns 200
+- [ ] Trust triggers fired on settle/fail
+
+---
+
+## Step 16 — Dispute Escalation (T1→T2→T3 + Deposit)
+
+### Context
+Disputes can currently be opened and resolved, but there's no escalation flow. The dispute-core package has tier-based costs (T1/T2/T3) and deposit logic. This step adds:
+- `POST /disputes/:id/escalate` — escalate to next tier
+- Auto-create deposit requirement on T2/T3 escalation
+- Deposit deadline enforcement
+
+### Build Order
+
+#### 1. Check what dispute-core exports for escalation
+
+Read `packages/dispute-core/src/index.ts` to find:
+- `computeDisputeCost` or similar — tier-based cost calculation
+- `createDepositRequirement` — deposit amount for T2/T3
+- Any escalation-related functions
+
+#### 2. Add `POST /disputes/:id/escalate` to `apps/api/src/routes/disputes.ts`
+
+```ts
+const escalateSchema = z.object({
+  escalated_by: z.enum(["buyer", "seller", "system"]),
+  reason: z.string().optional(),
+});
+
+app.post<{ Params: { id: string } }>("/disputes/:id/escalate", async (request, reply) => {
+  const { id } = request.params;
+  const parsed = escalateSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: "INVALID_ESCALATE_REQUEST", issues: parsed.error.issues });
+  }
+
+  const dispute = await getDisputeById(db, id);
+  if (!dispute) {
+    return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+  }
+
+  // Determine current tier from metadata or default to T1
+  const currentTier = (dispute.metadata as any)?.tier ?? 1;
+  if (currentTier >= 3) {
+    return reply.code(400).send({ error: "MAX_TIER_REACHED", message: "Cannot escalate beyond T3" });
+  }
+
+  const nextTier = currentTier + 1;
+
+  // Compute cost for next tier using dispute-core
+  // Import computeDisputeCost (or equivalent)
+  const amount = dispute.refundAmountMinor 
+    ? parseInt(String(dispute.refundAmountMinor)) 
+    : 0;
+  const cost = computeDisputeCost(nextTier, amount);
+
+  // Update dispute metadata with new tier
+  await updateDisputeRecord(db, {
+    ...dispute,
+    metadata: { ...(dispute.metadata as Record<string, unknown>), tier: nextTier, escalated_by: parsed.data.escalated_by },
+  });
+
+  // For T2/T3: create deposit requirement
+  let deposit = null;
+  if (nextTier >= 2) {
+    const depositReq = createDepositRequirement(nextTier, amount);
+    deposit = await createDeposit(db, {
+      disputeId: id,
+      tier: nextTier,
+      amountCents: depositReq.amount_cents,
+      deadlineHours: depositReq.deadline_hours,
+      deadlineAt: new Date(Date.now() + depositReq.deadline_hours * 60 * 60 * 1000),
+    });
+  }
+
+  return reply.send({
+    dispute_id: id,
+    previous_tier: currentTier,
+    new_tier: nextTier,
+    cost,
+    deposit,
+  });
+});
+```
+
+#### 3. Add `POST /disputes/deposits/expire` — Admin/cron endpoint
+
+```ts
+app.post("/disputes/deposits/expire", async (request, reply) => {
+  // Find PENDING deposits past deadline and forfeit them
+  const expired = await getPendingExpiredDeposits(db);
+  let forfeited = 0;
+  for (const deposit of expired) {
+    await updateDepositStatus(db, deposit.id, "FORFEITED", { resolvedAt: new Date() });
+    forfeited++;
+  }
+  return reply.send({ forfeited_count: forfeited });
+});
+```
+
+### Flags
+- Flag: Read dispute-core index.ts to find REAL function names for cost calculation and deposit.
+- Flag: Import createDeposit, getPendingExpiredDeposits, updateDepositStatus from dispute-deposit service.
+- Flag: The `computeDisputeCost` function signature may differ — check actual exports.
+- Flag: Register /disputes/deposits/expire BEFORE /:id routes to avoid collision.
+- Flag: Deposit amounts are in cents. Dispute refundAmountMinor is in minor units (same as cents for USD).
+
+### Definition of Done
+- [ ] POST /disputes/:id/escalate implemented
+- [ ] Auto-creates deposit on T2/T3 escalation
+- [ ] POST /disputes/deposits/expire for cron
+- [ ] Max tier validation (can't exceed T3)
+- [ ] Uses real dispute-core functions
+
+---
+
+## Step 17 — Drizzle Migration Generation
+
+### Context
+We have 12+ tables in `packages/db/src/schema/` but no SQL migration files. This step generates the initial migration.
+
+### Build Order
+
+#### 1. Check Drizzle config
+
+Read `packages/db/drizzle.config.ts` (or similar) to see migration setup.
+If none exists, create one:
+
+```ts
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./src/schema/index.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+});
+```
+
+#### 2. Generate migration
+
+```bash
+cd packages/db
+npx drizzle-kit generate
+```
+
+This creates SQL files in `packages/db/drizzle/`.
+
+#### 3. If drizzle-kit is not installed, add to devDependencies
+
+```bash
+pnpm --filter @haggle/db add -D drizzle-kit
+```
+
+### Flags
+- Flag: This is a GENERATION step, not an application step. We don't run migrations (no DB connection).
+- Flag: If drizzle-kit can't be installed or fails, create the migration SQL manually based on schema files.
+- Flag: The migration SQL should be checked into git.
+
+### Definition of Done
+- [ ] drizzle.config.ts exists in packages/db
+- [ ] Migration SQL files generated
+- [ ] Migration files checked in
+
+---
+
+## Execution Order
+Step 15 + 16 in parallel (Bob), then Step 17.
 
 ---
 

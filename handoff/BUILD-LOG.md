@@ -5,13 +5,47 @@
 
 ## Current Status
 
-**Active step:** 14 — "Start Negotiation" Button → Intent API — COMPLETE
-**Last cleared:** Step 13 Commerce Dashboard Real API Integration — 2026-04-03
+**Active step:** 16 — Dispute Escalation (T1→T2→T3 + Deposit) — COMPLETE
+**Last cleared:** Step 15 x402 Webhook Event Processing — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 16 — Dispute Escalation (T1→T2→T3 + Deposit) — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/routes/disputes.ts` — MODIFIED: Added two new endpoints. (1) `POST /disputes/deposits/expire` (lines 106-116) — admin/cron endpoint that finds all PENDING deposits past deadline via `getPendingExpiredDeposits` and sets them to FORFEITED. Registered before any `/:id` routes to avoid Fastify route collision. (2) `POST /disputes/:id/escalate` (lines 118-181) — escalates a dispute from T1→T2 or T2→T3. Validates max tier (T3 = ceiling), computes cost via `computeDisputeCost(amountCents, nextTier)` from dispute-core, updates dispute metadata with new tier/escalator/reason, and auto-creates a seller deposit requirement via `createDepositRequirement` + `createDeposit` for T2/T3 escalations. Added imports: `computeDisputeCost`, `createDepositRequirement` from `@haggle/dispute-core`; `DisputeTier` type; `createDeposit`, `getPendingExpiredDeposits` from deposit service. Added `escalateSchema` zod validator.
+
+Decisions made:
+- `computeDisputeCost` signature is `(amount_cents, tier)` not `(tier, amount)` — matched actual dispute-core export.
+- `createDepositRequirement` takes `(dispute_id, tier, amount_cents)` — 3 args, not 2 as brief pseudocode suggested.
+- Added `INVALID_DISPUTE_AMOUNT` guard — `computeDisputeCost` throws on amount <= 0, so we validate before calling.
+- Deposit deadline calculated as `Date.now() + deadline_hours * 3600 * 1000` — matches existing deposit creation pattern in the service.
+- `escalated_reason` stored in metadata alongside `escalated_by` for audit trail.
+- Used `_request` (unused param) on expire endpoint to signal intent.
+
+Test results: N/A (route handlers, requires integration test with DB)
+
+### Step 15 — x402 Webhook Event Processing — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/routes/payments.ts` — MODIFIED: Replaced x402 webhook stub (lines ~536-549) with real event processing. Handles three event types: `settlement.confirmed` (settles intent, creates settlement record, fires trust triggers), `settlement.failed` (fails intent, fires trust triggers), `payment.expired` (cancels intent). All handlers are idempotent — check current status before acting (e.g. skip if already SETTLED/FAILED/CANCELED). Outer try/catch returns 200 with error info on processing failure to prevent facilitator retries. Returns 400 only for missing signature or missing required fields.
+
+Decisions made:
+- `settlement.confirmed` guards on `intent.status !== "SETTLED"` — matches existing `/payments/:id/settle` pattern.
+- `settlement.failed` guards on `intent.status !== "FAILED" && intent.status !== "SETTLED"` — cannot fail an already-settled payment.
+- `payment.expired` guards on `intent.status !== "CANCELED" && intent.status !== "SETTLED"` — cannot expire a settled payment.
+- Unknown intents return 200 with `action: "ignored"` — facilitator may send events for intents from other environments.
+- Unknown event types return 200 with `action: "ignored"` — forward-compatible with new event types.
+- No `autoCreateSettlementRelease` or `autoCreateShipment` on webhook settle — webhook is a fallback confirmation path; those side effects belong to the primary submit-signature flow.
+
+Test results: N/A (webhook handler, requires integration test with mocked facilitator)
+
+---
 
 ### Step 14 — "Start Negotiation" Button → Intent API — COMPLETE
 *Date: 2026-04-03*

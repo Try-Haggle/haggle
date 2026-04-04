@@ -1,4 +1,4 @@
-# Review Request — Step 14: "Start Negotiation" Button → Intent API
+# Review Request — Step 16: Dispute Escalation (T1→T2→T3 + Deposit)
 *Written by Builder. Read by Reviewer.*
 
 Ready for Review: YES
@@ -7,33 +7,26 @@ Ready for Review: YES
 
 ## What Was Built
 
-Wired the "Start Negotiation" button on the buyer landing page (`/l/[publicId]`) to the WaitingIntent API. New `negotiation-api.ts` module handles intent creation and match triggering. Button now has full state management: disabled during loading, shows status messages for success/error, redirects unauthenticated users to `/claim`.
+Two new dispute endpoints in `disputes.ts`: (1) `POST /disputes/deposits/expire` for cron-based forfeiture of expired deposits, and (2) `POST /disputes/:id/escalate` for tier escalation with auto deposit creation.
 
 ## Files Changed
 
 | File | Lines | Change |
 |---|---|---|
-| `apps/web/src/app/l/[publicId]/negotiation-api.ts` | 1-61 | NEW — `createBuyerIntent()` posts to `/api/intents` with strategy built from preset. `triggerMatch()` posts to `/api/intents/trigger-match`. `buildStrategyFromPreset()` maps agent IDs to strategy params. |
-| `apps/web/src/app/l/[publicId]/buyer-landing.tsx` | 14, 144-145, 485-551 | MODIFIED — Added import, negotiation state/message, async onClick handler with auth check, button disabled + text swap during loading, status message divs, fragment wrapper. |
+| `apps/api/src/routes/disputes.ts` | 4-5 | MODIFIED — Added imports: `computeDisputeCost`, `createDepositRequirement` from dispute-core; `DisputeTier` type. |
+| `apps/api/src/routes/disputes.ts` | 16-20 | MODIFIED — Added imports: `createDeposit`, `getPendingExpiredDeposits` from deposit service. |
+| `apps/api/src/routes/disputes.ts` | 57-60 | NEW — `escalateSchema` zod validator for escalation requests. |
+| `apps/api/src/routes/disputes.ts` | 106-116 | NEW — `POST /disputes/deposits/expire`. Queries pending expired deposits, forfeits each, returns count. Registered before /:id routes. |
+| `apps/api/src/routes/disputes.ts` | 118-181 | NEW — `POST /disputes/:id/escalate`. Validates tier < 3, computes cost via dispute-core, updates metadata, creates deposit for T2/T3. |
 
 ## Key Areas to Scrutinize
 
-1. **Preset ID mapping** (`negotiation-api.ts:48-53`) — Brief used `fox/owl/dolphin/bear` as preset keys but actual `BuyerAgentPreset.id` values are `price-hunter/smart-trader/fast-closer/spec-analyst`. I used the real IDs. Richard should verify these map correctly to the intended strategy params.
-
-2. **Auth redirect flow** (`buyer-landing.tsx:494-502`) — Unauthenticated users get their intent stored in `sessionStorage` before redirect to `/claim`. Nothing currently reads this data after auth completes. This is a placeholder for future pickup logic.
-
-3. **Fragment wrapper** (`buyer-landing.tsx:485, 551`) — Added `<>...</>` around button + status divs in the ternary false branch. Required because JSX ternary needs a single root element. Check the indentation/nesting is clean.
-
-4. **triggerMatch error handling** (`buyer-landing.tsx:524-526`) — Match trigger failure is silently caught and shows a softer success message. Intent still exists server-side. Per brief: "triggerMatch call is best-effort."
-
-5. **Strategy param values** (`negotiation-api.ts:48-53`) — The aggression/patience/risk/style values are hardcoded estimates. Richard should check whether these should match any existing engine-core or engine-session constants.
+1. **Line 132** — Tier extraction from metadata uses `as number ?? 1` fallback. If metadata has `tier: 0` somehow, this would read as falsy and default to 1. Acceptable for current use but worth noting.
+2. **Line 137** — `(currentTier + 1) as DisputeTier` cast is safe because we guard `currentTier >= 3` above, so nextTier is always 2 or 3.
+3. **Line 164** — `nextTier as 2 | 3` cast for `createDepositRequirement` is safe because the `nextTier >= 2` guard ensures this.
+4. **No auth middleware** on either endpoint. The expire endpoint is intended for admin/cron. Auth should be added when the auth layer is wired up (outside current step scope).
 
 ## Open Questions
 
-1. The `sessionStorage.setItem("pendingIntent", ...)` stores intent data for unauthenticated users, but no code reads it after auth redirect. Should Step 15 handle the post-auth intent pickup?
-
-## Verification
-
-```
-pnpm --filter @haggle/web typecheck — 0 errors
-```
+- Should the expire endpoint return the list of forfeited deposit IDs in addition to the count?
+- Should escalation fire trust triggers (e.g., penalize the party that caused escalation)?

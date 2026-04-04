@@ -540,12 +540,73 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
     }
 
-    return reply.send({
-      accepted: true,
-      provider: "x402",
-      received_at: new Date().toISOString(),
-      payload: request.body,
-    });
+    const body = request.body as { event_type?: string; payment_intent_id?: string; [key: string]: unknown };
+    const eventType = body.event_type;
+    const paymentIntentId = body.payment_intent_id;
+
+    if (!eventType || !paymentIntentId) {
+      return reply.code(400).send({ error: "MISSING_WEBHOOK_FIELDS" });
+    }
+
+    const intent = await getPaymentIntentById(db, paymentIntentId);
+    if (!intent) {
+      // Ignore events for unknown intents (idempotent)
+      return reply.send({ accepted: true, action: "ignored", reason: "unknown_intent" });
+    }
+
+    try {
+      switch (eventType) {
+        case "settlement.confirmed": {
+          if (intent.status !== "SETTLED") {
+            const result = await service.settleIntent(intent);
+            await updateStoredPaymentIntent(db, result.intent, result.metadata);
+            if (result.value) {
+              await createPaymentSettlementRecord(db, result.value);
+            }
+            if (result.trust_triggers.length > 0) {
+              await applyTrustTriggers(db, {
+                order_id: result.intent.order_id,
+                buyer_id: result.intent.buyer_id,
+                seller_id: result.intent.seller_id,
+                triggers: result.trust_triggers,
+              });
+            }
+          }
+          return reply.send({ accepted: true, action: "settled" });
+        }
+
+        case "settlement.failed": {
+          if (intent.status !== "FAILED" && intent.status !== "SETTLED") {
+            const result = service.failIntent(intent);
+            await updateStoredPaymentIntent(db, result.intent);
+            if (result.trust_triggers.length > 0) {
+              await applyTrustTriggers(db, {
+                order_id: result.intent.order_id,
+                buyer_id: result.intent.buyer_id,
+                seller_id: result.intent.seller_id,
+                triggers: result.trust_triggers,
+              });
+            }
+          }
+          return reply.send({ accepted: true, action: "failed" });
+        }
+
+        case "payment.expired": {
+          if (intent.status !== "CANCELED" && intent.status !== "SETTLED") {
+            const result = service.cancelIntent(intent);
+            await updateStoredPaymentIntent(db, result.intent);
+          }
+          return reply.send({ accepted: true, action: "expired" });
+        }
+
+        default:
+          return reply.send({ accepted: true, action: "ignored", reason: "unknown_event" });
+      }
+    } catch (error) {
+      // Log but don't fail — webhooks must return 200 to avoid retries
+      console.error("x402 webhook processing error:", error);
+      return reply.send({ accepted: true, action: "error", message: String(error) });
+    }
   });
 
   app.post("/payments/webhooks/stripe", async (request, reply) => {
