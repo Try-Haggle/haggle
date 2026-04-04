@@ -648,6 +648,16 @@
         <li>미인증 구매자 → /claim 리다이렉트 (pending intent sessionStorage 보존)</li>
       </ul>
     </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 결제/배송/분쟁 통합 (Step 15-17)</div>
+      <ul class="update-items">
+        <li>x402 Webhook 실제 이벤트 처리 (settlement confirmed/failed/expired)</li>
+        <li>분쟁 에스컬레이션 T1→T2→T3 + 자동 deposit 생성</li>
+        <li>만료 deposit 자동 몰수 cron 엔드포인트</li>
+        <li>Drizzle migration SQL: 15개 신규 테이블 (Phase 3-5 전체)</li>
+        <li>drizzle.config.ts에 모든 스키마 파일 등록</li>
+      </ul>
+    </div>
     <!-- 다음 모임 후 여기에 추가 -->
   </div>
 </section>
