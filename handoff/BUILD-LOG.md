@@ -5,13 +5,30 @@
 
 ## Current Status
 
-**Active step:** 13 — Commerce Dashboard Real API Integration — COMPLETE
-**Last cleared:** Step 12 API Client Utility + Auth Token Injection — 2026-04-03
+**Active step:** 14 — "Start Negotiation" Button → Intent API — COMPLETE
+**Last cleared:** Step 13 Commerce Dashboard Real API Integration — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 14 — "Start Negotiation" Button → Intent API — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/web/src/app/l/[publicId]/negotiation-api.ts` — NEW: API integration for buyer intent creation and match triggering. `createBuyerIntent()` posts to `/api/intents` with strategy built from agent preset. `triggerMatch()` posts to `/api/intents/trigger-match` with minimal context template. `buildStrategyFromPreset()` maps buyer agent IDs (price-hunter, smart-trader, fast-closer, spec-analyst) to strategy params.
+- `apps/web/src/app/l/[publicId]/buyer-landing.tsx` — MODIFIED: imported `createBuyerIntent` and `triggerMatch` from `negotiation-api`. Added `negotiationState` (idle/loading/success/error) and `negotiationMessage` state. Added async `onClick` handler to "Start Negotiation" button: unauthenticated users get redirected to `/claim` with pending intent saved to sessionStorage; authenticated users create intent then attempt match. Button disabled during loading. Button text changes to "Setting up agent..." while loading. Status messages rendered below button for loading/success/error states. Wrapped button + status messages in fragment to satisfy JSX ternary requirement.
+
+Decisions made:
+- Agent preset IDs in `buildStrategyFromPreset` use the actual `BuyerAgentPreset.id` values (`price-hunter`, `smart-trader`, `fast-closer`, `spec-analyst`) — not the brief's fox/owl/dolphin/bear names which don't match the codebase.
+- Unicode right single quotation mark (`\u2019`) used in "You'll be notified" message — avoids JSX entity issues.
+- `negotiationMessage` reset to empty string on each click — prevents stale messages from previous attempts.
+- Fragment `<>...</>` wraps the button + status divs in the ternary false branch — JSX ternary requires single root element.
+- `triggerMatch` failure does not revert intent creation state — intent exists server-side regardless of match trigger outcome, per brief flag.
+
+Test results: N/A (UI integration, no unit tests)
+Typecheck: `pnpm --filter @haggle/web typecheck` — 0 errors
 
 ### Step 13 — Commerce Dashboard Real API Integration — COMPLETE
 *Date: 2026-04-03*
