@@ -12,6 +12,11 @@ import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerShipmentRoutes } from "./routes/shipments.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
 import { registerAuthenticationRoutes } from "./routes/authentications.js";
+import { registerTrustRoutes } from "./routes/trust.js";
+import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
+import { registerARPRoutes } from "./routes/arp.js";
+import { registerTagRoutes } from "./routes/tags.js";
+import { registerIntentRoutes } from "./routes/intents.js";
 import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 
 export async function createServer() {
@@ -54,6 +59,13 @@ export async function createServer() {
   registerDisputeRoutes(app, db);
   registerSettlementReleaseRoutes(app, db);
   registerAuthenticationRoutes(app, db);
+
+  // ─── Trust, DS Rating, ARP, Tag Routes ──────────────────
+  registerTrustRoutes(app, db);
+  registerDSRatingRoutes(app, db);
+  registerARPRoutes(app, db);
+  registerTagRoutes(app, db);
+  registerIntentRoutes(app, db);
 
   // ─── REST API Routes ───────────────────────────────────
   registerClaimRoutes(app, db);

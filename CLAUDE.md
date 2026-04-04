@@ -62,8 +62,12 @@ haggle/
 │   ├── shared/                       ← 공통 타입, 상수, 유틸 (DO NOT TOUCH)
 │   ├── db/                           ← Drizzle ORM + PostgreSQL (DO NOT TOUCH)
 │   ├── contracts/                    ← 스마트 컨트랙트 (Foundry, Base L2)
-│   ├── engine-core/                  ← 순수 수학 엔진 (83 tests, 외부 의존성 0)
-│   └── engine-session/               ← 세션 오케스트레이션 (121+ tests)
+│   ├── engine-core/                  ← 순수 수학 엔진 (102 tests, 외부 의존성 0)
+│   ├── engine-session/               ← 세션 오케스트레이션 (121 tests)
+│   ├── trust-core/                   ← 신뢰 점수 엔진 (85 tests)
+│   ├── dispute-core/                 ← 분쟁 비용 + DS 패널 (117 tests)
+│   ├── arp-core/                     ← 적응형 리뷰 기간 (57 tests)
+│   └── tag-core/                     ← 태그 라이프사이클 (71 tests)
 ├── docs/                             ← 사업/아키텍처 문서
 ├── CLAUDE.md                         ← 이 파일
 ├── package.json
@@ -149,14 +153,34 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
-## 📄 상세 문서 (`/docs`)
+## 3man Team (Arch / Bob / Richard)
 
-| 문서 | 내용 |
+프로젝트 구현은 3man team 워크플로우를 사용합니다.
+
+| 파일 | 역할 |
 |------|------|
-| [MVP_Final_Implementation_Plan.md](./docs/MVP_Final_Implementation_Plan.md) | MVP 구현 계획 |
-| [Slice_0_Implementation_Plan.md](./docs/Slice_0_Implementation_Plan.md) | Slice 0 구현 계획 |
+| `ARCHITECT.md` | Arch — 설계, 의사결정, Bob/Richard 지시 |
+| `BUILDER.md` | Bob — 구현, ARCHITECT-BRIEF 기반 빌드 |
+| `REVIEWER.md` | Richard — 코드 리뷰, 품질 게이트 |
+| `handoff/` | 세션 간 브리프, 빌드 로그, 리뷰 피드백 |
 
 ---
 
-*Last Updated: 2026-03-31*
-*Version: 2.1*
+## 상세 문서 (`/docs`)
+
+> 문서 라우터: [docs/README.md](./docs/README.md)
+
+| 문서 | 내용 |
+|------|------|
+| [MVP_Final_Implementation_Plan.md](./docs/MVP_Final_Implementation_Plan.md) | MVP vertical slice 계획 |
+| [MVP_TECH_DEBT.md](./docs/MVP_TECH_DEBT.md) | MVP 의도적 단순화 추적 |
+| [Main_Branch_Release_Policy.md](./docs/Main_Branch_Release_Policy.md) | main 브랜치 운영 원칙 |
+| [Haggle_Moat_Strategy.md](./docs/Haggle_Moat_Strategy.md) | 해자 전략 + 파트너 리서치 |
+| [engine/](./docs/engine/00_INDEX.md) | 엔진 + HNP 프로토콜 기술 사양 |
+
+**문서 관리 규칙:** 구현 완료 → `docs/archive/` 이동. 임시 작업 → `docs/wip/` (완료 시 삭제).
+
+---
+
+*Last Updated: 2026-04-03*
+*Version: 2.2*

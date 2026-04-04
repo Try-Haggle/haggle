@@ -13,6 +13,10 @@ import {
 } from "../services/dispute-record.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import {
+  getDepositByDisputeId,
+  updateDepositStatus,
+} from "../services/dispute-deposit.service.js";
+import {
   getCommerceOrderByOrderId,
   getPaymentIntentByOrderId,
   updateCommerceOrderStatus,
@@ -42,6 +46,10 @@ const addEvidenceSchema = z.object({
   type: z.enum(["text", "image", "tracking_snapshot", "payment_proof", "other"]),
   uri: z.string().optional(),
   text: z.string().optional(),
+});
+
+const depositSchema = z.object({
+  amount_cents: z.number().int().min(1),
 });
 
 const resolveDisputeSchema = z.object({
@@ -293,5 +301,39 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  // POST /disputes/:id/deposit — mark deposit as paid
+  app.post<{ Params: { id: string } }>("/disputes/:id/deposit", async (request, reply) => {
+    const { id } = request.params;
+    const parsed = depositSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_DEPOSIT_REQUEST", issues: parsed.error.issues });
+    }
+
+    const deposit = await getDepositByDisputeId(db, id);
+    if (!deposit) {
+      return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
+    }
+
+    if (deposit.status !== "PENDING") {
+      return reply.code(400).send({ error: "DEPOSIT_ALREADY_PROCESSED", message: `Deposit status is ${deposit.status}` });
+    }
+
+    const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
+      depositedAt: new Date(),
+    });
+
+    return reply.send({ deposit: updated });
+  });
+
+  // GET /disputes/:id/deposit — get deposit for a dispute
+  app.get<{ Params: { id: string } }>("/disputes/:id/deposit", async (request, reply) => {
+    const { id } = request.params;
+    const deposit = await getDepositByDisputeId(db, id);
+    if (!deposit) {
+      return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
+    }
+    return reply.send({ deposit });
   });
 }
