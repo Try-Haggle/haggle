@@ -4,282 +4,147 @@
 
 ---
 
-## Step 15 — x402 Webhook Event Processing
+## Step 18 — Shipping SLA Violation → Auto Dispute Creation
 
 ### Context
-`POST /payments/webhooks/x402` currently validates the signature then echoes the payload. It needs to process events and update payment state.
-
-### What x402 Facilitator Sends
-The x402 facilitator (Coinbase CDP) sends webhook callbacks for:
-- `settlement.confirmed` — on-chain settlement verified
-- `settlement.failed` — settlement failed
-- `payment.expired` — payment authorization expired
+When a seller misses the shipping SLA deadline, the system should automatically open a dispute. Currently shipments.ts has SLA tracking and trust triggers, but no auto-dispute. dispute-core has `SHIPMENT_SLA_MISSED` reason code.
 
 ### Build Order
 
-#### 1. Add webhook event processing to `apps/api/src/routes/payments.ts`
+#### 1. Add auto-dispute logic to `apps/api/src/routes/shipments.ts`
 
-Replace the x402 webhook stub (lines ~536-549) with:
+In the `persistAndRespond` helper (or a new helper called after shipment event processing), check if the SLA is violated:
 
 ```ts
-app.post("/payments/webhooks/x402", async (request, reply) => {
-  try {
-    requireWebhookSignature(request.headers as Record<string, unknown>, "x402");
-  } catch (error) {
-    return reply.code(400).send({ error: "INVALID_X402_WEBHOOK", message: ... });
-  }
-
-  const body = request.body as { event_type?: string; payment_intent_id?: string; [key: string]: unknown };
-  const eventType = body.event_type;
-  const paymentIntentId = body.payment_intent_id;
-
-  if (!eventType || !paymentIntentId) {
-    return reply.code(400).send({ error: "MISSING_WEBHOOK_FIELDS" });
-  }
-
-  const intent = await getPaymentIntentById(db, paymentIntentId);
-  if (!intent) {
-    // Ignore events for unknown intents (idempotent)
-    return reply.send({ accepted: true, action: "ignored", reason: "unknown_intent" });
-  }
-
-  try {
-    switch (eventType) {
-      case "settlement.confirmed": {
-        // If not already settled, settle now
-        if (intent.status !== "SETTLED") {
-          const result = await service.settleIntent(intent);
-          await updateStoredPaymentIntent(db, result.intent, result.metadata);
-          if (result.value) {
-            await createPaymentSettlementRecord(db, result.value);
-          }
-          // Trust triggers
-          if (result.trust_triggers.length > 0) {
-            await applyTrustTriggers(db, {
-              order_id: result.intent.order_id,
-              buyer_id: result.intent.buyer_id,
-              seller_id: result.intent.seller_id,
-              triggers: result.trust_triggers,
-            });
-          }
-        }
-        return reply.send({ accepted: true, action: "settled" });
-      }
-
-      case "settlement.failed": {
-        if (intent.status !== "FAILED" && intent.status !== "SETTLED") {
-          const result = service.failIntent(intent);
-          await updateStoredPaymentIntent(db, result.intent);
-          if (result.trust_triggers.length > 0) {
-            await applyTrustTriggers(db, {
-              order_id: result.intent.order_id,
-              buyer_id: result.intent.buyer_id,
-              seller_id: result.intent.seller_id,
-              triggers: result.trust_triggers,
-            });
-          }
-        }
-        return reply.send({ accepted: true, action: "failed" });
-      }
-
-      case "payment.expired": {
-        if (intent.status !== "CANCELED" && intent.status !== "SETTLED") {
-          const result = service.cancelIntent(intent);
-          await updateStoredPaymentIntent(db, result.intent);
-        }
-        return reply.send({ accepted: true, action: "expired" });
-      }
-
-      default:
-        return reply.send({ accepted: true, action: "ignored", reason: "unknown_event" });
-    }
-  } catch (error) {
-    // Log but don't fail — webhooks must return 200 to avoid retries
-    console.error("Webhook processing error:", error);
-    return reply.send({ accepted: true, action: "error", message: String(error) });
-  }
-});
+async function autoCreateDisputeOnSlaViolation(
+  shipment: Shipment,
+  db: Database,
+) {
+  // Only trigger on SLA-related statuses or when SLA check shows VIOLATED
+  // Import SLA check functions from shipping-core
+  // Import dispute creation from dispute service
+  
+  // Check if SLA is violated
+  // If violated AND no existing dispute for this order → create one
+  // Reason code: SHIPMENT_SLA_MISSED
+  // opened_by: "system"
+}
 ```
 
+Call this after every shipment status update (inside `persistAndRespond`).
+
+Read these first:
+- `packages/shipping-core/src/sla-violation.ts` — what functions check SLA status
+- `apps/api/src/services/dispute-record.service.ts` — createDisputeRecord
+- `apps/api/src/routes/disputes.ts` — see how disputes are opened (pattern to follow)
+
 ### Flags
-- Flag: Webhooks MUST return 200 (or reply.send) even on processing errors. Otherwise the facilitator retries.
-- Flag: Idempotent — if already settled/failed, skip the action.
-- Flag: The `service` variable is already available in the closure (created at line ~189).
-- Flag: Import `createPaymentSettlementRecord` if not already imported at the top.
-- Flag: Do NOT change the Stripe webhook — leave it as stub.
-- Flag: No auth required on webhook endpoints (they use signature verification instead).
+- Flag: Read shipping-core SLA functions to find the right one. Likely `checkSlaStatus` or similar.
+- Flag: Only create dispute if one doesn't already exist for this order (check first).
+- Flag: opened_by: "system" — this is an automated dispute.
+- Flag: Don't import DisputeService class — use the service functions directly for DB operations.
+- Flag: Non-critical — wrap in try/catch, don't fail the shipment update.
 
 ### Definition of Done
-- [ ] x402 webhook processes settlement.confirmed, settlement.failed, payment.expired
-- [ ] Idempotent (no double-settle)
-- [ ] Always returns 200
-- [ ] Trust triggers fired on settle/fail
+- [ ] Auto-dispute created when SLA violated
+- [ ] No duplicate disputes (check existing first)
+- [ ] System-initiated (opened_by: "system")
+- [ ] Non-blocking (try/catch, shipment update still succeeds)
 
 ---
 
-## Step 16 — Dispute Escalation (T1→T2→T3 + Deposit)
+## Step 19 — Settlement Release Flow Endpoints
 
 ### Context
-Disputes can currently be opened and resolved, but there's no escalation flow. The dispute-core package has tier-based costs (T1/T2/T3) and deposit logic. This step adds:
-- `POST /disputes/:id/escalate` — escalate to next tier
-- Auto-create deposit requirement on T2/T3 escalation
-- Deposit deadline enforcement
+payment-core has a complete settlement release system (2-phase: product release + buffer release). But the API doesn't expose endpoints for the buyer review flow:
+- Buyer confirms receipt → product funds released
+- 14-day buffer period → remaining funds released
+- Buyer disputes during review → funds held
 
 ### Build Order
 
-#### 1. Check what dispute-core exports for escalation
+Read first:
+- `apps/api/src/routes/settlement-releases.ts` — existing endpoints
+- `apps/api/src/services/settlement-release.service.ts` — existing service
+- `packages/payment-core/src/settlement-release.ts` — the pure logic functions
 
-Read `packages/dispute-core/src/index.ts` to find:
-- `computeDisputeCost` or similar — tier-based cost calculation
-- `createDepositRequirement` — deposit amount for T2/T3
-- Any escalation-related functions
+Then check what endpoints already exist and what's missing. Add:
 
-#### 2. Add `POST /disputes/:id/escalate` to `apps/api/src/routes/disputes.ts`
-
-```ts
-const escalateSchema = z.object({
-  escalated_by: z.enum(["buyer", "seller", "system"]),
-  reason: z.string().optional(),
-});
-
-app.post<{ Params: { id: string } }>("/disputes/:id/escalate", async (request, reply) => {
-  const { id } = request.params;
-  const parsed = escalateSchema.safeParse(request.body);
-  if (!parsed.success) {
-    return reply.code(400).send({ error: "INVALID_ESCALATE_REQUEST", issues: parsed.error.issues });
-  }
-
-  const dispute = await getDisputeById(db, id);
-  if (!dispute) {
-    return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-  }
-
-  // Determine current tier from metadata or default to T1
-  const currentTier = (dispute.metadata as any)?.tier ?? 1;
-  if (currentTier >= 3) {
-    return reply.code(400).send({ error: "MAX_TIER_REACHED", message: "Cannot escalate beyond T3" });
-  }
-
-  const nextTier = currentTier + 1;
-
-  // Compute cost for next tier using dispute-core
-  // Import computeDisputeCost (or equivalent)
-  const amount = dispute.refundAmountMinor 
-    ? parseInt(String(dispute.refundAmountMinor)) 
-    : 0;
-  const cost = computeDisputeCost(nextTier, amount);
-
-  // Update dispute metadata with new tier
-  await updateDisputeRecord(db, {
-    ...dispute,
-    metadata: { ...(dispute.metadata as Record<string, unknown>), tier: nextTier, escalated_by: parsed.data.escalated_by },
-  });
-
-  // For T2/T3: create deposit requirement
-  let deposit = null;
-  if (nextTier >= 2) {
-    const depositReq = createDepositRequirement(nextTier, amount);
-    deposit = await createDeposit(db, {
-      disputeId: id,
-      tier: nextTier,
-      amountCents: depositReq.amount_cents,
-      deadlineHours: depositReq.deadline_hours,
-      deadlineAt: new Date(Date.now() + depositReq.deadline_hours * 60 * 60 * 1000),
-    });
-  }
-
-  return reply.send({
-    dispute_id: id,
-    previous_tier: currentTier,
-    new_tier: nextTier,
-    cost,
-    deposit,
-  });
-});
 ```
+POST /settlement-releases/:orderId/buyer-confirm
+  → buyerConfirmReceipt(release) → update DB → release product funds
 
-#### 3. Add `POST /disputes/deposits/expire` — Admin/cron endpoint
+POST /settlement-releases/:orderId/complete-buffer
+  → completeBufferRelease(release) → update DB → release remaining funds
 
-```ts
-app.post("/disputes/deposits/expire", async (request, reply) => {
-  // Find PENDING deposits past deadline and forfeit them
-  const expired = await getPendingExpiredDeposits(db);
-  let forfeited = 0;
-  for (const deposit of expired) {
-    await updateDepositStatus(db, deposit.id, "FORFEITED", { resolvedAt: new Date() });
-    forfeited++;
-  }
-  return reply.send({ forfeited_count: forfeited });
-});
+GET /settlement-releases/:orderId
+  → get current release status (if not already exists)
 ```
 
 ### Flags
-- Flag: Read dispute-core index.ts to find REAL function names for cost calculation and deposit.
-- Flag: Import createDeposit, getPendingExpiredDeposits, updateDepositStatus from dispute-deposit service.
-- Flag: The `computeDisputeCost` function signature may differ — check actual exports.
-- Flag: Register /disputes/deposits/expire BEFORE /:id routes to avoid collision.
-- Flag: Deposit amounts are in cents. Dispute refundAmountMinor is in minor units (same as cents for USD).
+- Flag: Read existing files FULLY before adding — some of these may already exist.
+- Flag: Import functions from @haggle/payment-core (buyerConfirmReceipt, completeBufferRelease, etc.)
+- Flag: Use requireAuth on mutation endpoints.
 
 ### Definition of Done
-- [ ] POST /disputes/:id/escalate implemented
-- [ ] Auto-creates deposit on T2/T3 escalation
-- [ ] POST /disputes/deposits/expire for cron
-- [ ] Max tier validation (can't exceed T3)
-- [ ] Uses real dispute-core functions
+- [ ] Buyer can confirm receipt → product release
+- [ ] Buffer release endpoint for admin/cron
+- [ ] Get release status endpoint
 
 ---
 
-## Step 17 — Drizzle Migration Generation
+## Step 20 — API Integration Tests (supertest)
 
 ### Context
-We have 12+ tables in `packages/db/src/schema/` but no SQL migration files. This step generates the initial migration.
+We have 830+ unit tests but 0 API route tests. Add supertest-based integration tests for the 3 critical flows: payment, shipment, dispute.
 
 ### Build Order
 
-#### 1. Check Drizzle config
+#### 1. Setup test infrastructure
 
-Read `packages/db/drizzle.config.ts` (or similar) to see migration setup.
-If none exists, create one:
+Create `apps/api/src/__tests__/setup.ts`:
+- Build a test Fastify app using createServer()
+- Mock the database (use in-memory or mock the db parameter)
+- Export the app for tests
 
-```ts
-import { defineConfig } from "drizzle-kit";
+#### 2. Test files
 
-export default defineConfig({
-  schema: "./src/schema/index.ts",
-  out: "./drizzle",
-  dialect: "postgresql",
-});
-```
+**`apps/api/src/__tests__/payments.test.ts`** (~10 tests):
+- GET /payments/:id returns 404 for unknown
+- POST /payments/prepare requires auth (401 without token)
+- POST /payments/webhooks/x402 rejects missing signature
+- POST /payments/webhooks/x402 processes settlement.confirmed
+- POST /payments/webhooks/x402 handles unknown event type
 
-#### 2. Generate migration
+**`apps/api/src/__tests__/disputes.test.ts`** (~10 tests):
+- POST /disputes validates schema
+- GET /disputes/:id returns 404
+- POST /disputes/:id/escalate prevents T3+ escalation
+- POST /disputes/deposits/expire returns count
+- POST /disputes/:id/deposit rejects non-PENDING
 
-```bash
-cd packages/db
-npx drizzle-kit generate
-```
-
-This creates SQL files in `packages/db/drizzle/`.
-
-#### 3. If drizzle-kit is not installed, add to devDependencies
-
-```bash
-pnpm --filter @haggle/db add -D drizzle-kit
-```
+**`apps/api/src/__tests__/shipments.test.ts`** (~8 tests):
+- POST /shipments validates schema
+- GET /shipments/:id returns 404
+- POST /shipments/:id/event records event
 
 ### Flags
-- Flag: This is a GENERATION step, not an application step. We don't run migrations (no DB connection).
-- Flag: If drizzle-kit can't be installed or fails, create the migration SQL manually based on schema files.
-- Flag: The migration SQL should be checked into git.
+- Flag: The real challenge is mocking the database. Since all services take `db: Database`, we need either a mock DB or to use a real test database.
+- Flag: For MVP, mock the service functions at the import level (vi.mock) rather than the full DB.
+- Flag: Add `supertest` and `@types/supertest` to apps/api devDependencies.
+- Flag: vitest can run these — add a test script to apps/api/package.json if not present.
+- Flag: These tests verify route-level behavior (validation, auth, status codes), not business logic (already tested in core packages).
 
 ### Definition of Done
-- [ ] drizzle.config.ts exists in packages/db
-- [ ] Migration SQL files generated
-- [ ] Migration files checked in
+- [ ] Test setup with mock DB
+- [ ] ~25+ integration tests across 3 files
+- [ ] `pnpm --filter @haggle/api test` passes
+- [ ] Tests verify auth, validation, status codes
 
 ---
 
 ## Execution Order
-Step 15 + 16 in parallel (Bob), then Step 17.
+Step 18 + 19 in parallel (small, additive), then Step 20 (bigger).
 
 ---
 

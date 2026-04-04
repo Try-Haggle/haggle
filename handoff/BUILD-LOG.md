@@ -5,13 +5,67 @@
 
 ## Current Status
 
-**Active step:** 16 — Dispute Escalation (T1→T2→T3 + Deposit) — COMPLETE
-**Last cleared:** Step 15 x402 Webhook Event Processing — 2026-04-03
+**Active step:** 20 — API Integration Tests — COMPLETE
+**Last cleared:** Step 19 Settlement Release Flow Endpoints — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 20 — API Integration Tests — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/vitest.config.ts` — NEW: Vitest config with resolve aliases for workspace packages and payment-core heavy subpath stubs. Suppresses Fastify logs via `LOG_LEVEL=silent`.
+- `apps/api/package.json` — MODIFIED: Added `vitest` to devDependencies, added `"test": "vitest run"` script.
+- `apps/api/src/__tests__/setup.ts` — NEW: Global test setup. Mocks `@haggle/db` (createDb returns proxy), MCP SDK modules, `@supabase/supabase-js`, `@easypost/api`, `viem`, `@haggle/payment-core/heavy/*` subpaths, and patches `@haggle/shipping-core` barrel with missing exports (MockCarrierAdapter, EasyPostCarrierAdapter, computeWeightBuffer, etc.).
+- `apps/api/src/__tests__/helpers.ts` — NEW: `getTestApp()` / `closeTestApp()` — builds a cached Fastify app via `createServer()` for test injection.
+- `apps/api/src/__tests__/stubs/payment-heavy.ts` — NEW: Stub classes for `RealX402Adapter`, `ViemDisputeRegistryContract`, `ViemSettlementRouterContract` — these heavy modules are not resolvable without a full viem build chain.
+- `apps/api/src/__tests__/payments.test.ts` — NEW: 10 tests covering health check, payment 404, auth required (401), x402 webhook signature/field validation (400), stripe webhook validation, unknown intent handling.
+- `apps/api/src/__tests__/disputes.test.ts` — NEW: 9 tests covering dispute creation validation (400, invalid reason code), dispute 404, deposit expire (200 with count), escalation 404/400, deposit 404.
+- `apps/api/src/__tests__/shipments.test.ts` — NEW: 7 tests covering shipment creation validation (400), shipment 404, by-order 404, event 404, label 404, rate validation (400).
+
+Decisions made:
+- Used `app.inject()` (Fastify's built-in test method) instead of supertest. Zero additional HTTP dependencies needed.
+- Mocked services at the import level (vi.mock) rather than mocking the full DB. Each test file mocks all service modules to return null/empty arrays. This lets route-level validation and status code logic execute naturally.
+- Patched `@haggle/shipping-core` via `vi.mock` with `importOriginal` to add missing barrel exports (MockCarrierAdapter, EasyPostCarrierAdapter, computeWeightBuffer, etc.) — these are used by route files but not exported from the package's index.ts.
+- Used resolve aliases for `@haggle/payment-core/heavy/*` subpaths that have no package.json exports entry. These stubs are minimal classes that satisfy the import but are never instantiated in mock mode.
+- Service mocks are duplicated across test files (not centralized) because `vi.mock()` calls must be at the top level of each test file per vitest's module-scoping rules. The setup file handles infrastructure-level mocks (db, MCP, viem).
+
+Known gaps:
+- Pre-existing: `@haggle/shipping-core` barrel doesn't export MockCarrierAdapter, EasyPostCarrierAdapter, computeWeightBuffer, verifyEasyPostWebhook, parseEasyPostWebhookPayload, parseEasyPostInvoicePayload. Routes import them but they are missing from index.ts.
+- Service mock duplication across test files. Could be centralized into a shared mock factory if test count grows significantly.
+
+### Step 18 — Shipping SLA Violation → Auto Dispute Creation — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/routes/shipments.ts` — MODIFIED: Added imports for `createDisputeRecord`, `getDisputeByOrderId` from dispute-record service, `createId` and `DisputeCase` type from `@haggle/dispute-core`. Added `autoCreateDisputeOnSlaViolation` helper function (lines ~100-150) that checks if a LABEL_PENDING shipment has passed its `shipment_input_due_at` deadline, verifies no existing dispute for the order, and creates a system-initiated dispute with reason code `SHIPMENT_SLA_MISSED`. Called from `persistAndRespond` after `autoConfirmDeliveryIfNeeded` and before trust triggers.
+
+Decisions made:
+- Used direct DB query for `shipment_input_due_at` instead of `checkShipmentInputSla` from shipping-core. The pure function requires `approved_at` which isn't available on the Shipment domain type. The DB row has the pre-computed `shipment_input_due_at` timestamp, so a simple time comparison is more reliable and avoids reconstructing the approval timestamp.
+- Only checks LABEL_PENDING shipments — once the seller provides shipping info (status transitions away from LABEL_PENDING), the SLA is no longer relevant.
+- Entire function wrapped in try/catch — non-blocking per brief requirements.
+- Also transitions order to IN_DISPUTE after creating the dispute, matching the pattern in disputes.ts route.
+
+Known gaps:
+- Pre-existing typecheck failures in disputes.ts, payments.ts, and shipments.ts (lines 6-12, missing shipping-core exports) — none related to this step.
+
+### Step 19 — Settlement Release Flow Endpoints — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/routes/settlement-releases.ts` — MODIFIED: Added `buyerConfirmReceipt` import from `@haggle/payment-core` and `requireAuth` import from middleware. Added two new order-ID-based mutation endpoints under the `/by-order/:orderId` namespace: (1) `POST /settlement-releases/by-order/:orderId/buyer-confirm` (lines 213-240) — buyer confirms receipt, calls `buyerConfirmReceipt` from payment-core, requires auth. (2) `POST /settlement-releases/by-order/:orderId/complete-buffer` (lines 242-269) — completes buffer release, calls `completeBufferRelease` from payment-core, requires auth.
+
+Decisions made:
+- GET by orderId already existed at `/settlement-releases/by-order/:orderId` (line 84) — no new GET endpoint needed.
+- Used `/by-order/:orderId/<action>` path prefix instead of `/:orderId/<action>` to avoid Fastify route collision with existing `/:id` param routes.
+- Used `buyerConfirmReceipt` (not `completeBuyerReview`) for the buyer-confirm endpoint — `buyerConfirmReceipt` is the explicit buyer action that releases product payment immediately, while `completeBuyerReview` is for auto-release after the 24h deadline.
+- Both mutation endpoints use `requireAuth` preHandler per brief requirements.
+
+Known gaps:
+- Pre-existing typecheck failures in disputes.ts (metadata property), payments.ts (computeWeightBuffer), and shipments.ts (missing shipping-core exports) — none related to this step.
 
 ### Step 16 — Dispute Escalation (T1→T2→T3 + Deposit) — COMPLETE
 *Date: 2026-04-03*

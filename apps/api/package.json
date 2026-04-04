@@ -9,9 +9,11 @@
     "build": "pnpm build:widget && tsc --project tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf dist widget/dist"
   },
   "devDependencies": {
+    "vitest": "^3.2.1",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

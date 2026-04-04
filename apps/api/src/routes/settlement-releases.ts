@@ -5,10 +5,12 @@ import {
   createSettlementRelease,
   confirmDelivery,
   completeBuyerReview,
+  buyerConfirmReceipt,
   applyApvAdjustment,
   completeBufferRelease,
   computeReleasePhase,
 } from "@haggle/payment-core";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   createSettlementReleaseRecord,
   getSettlementReleaseById,
@@ -200,4 +202,69 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       phase: computeReleasePhase(updated),
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Order-ID-based endpoints (buyer flow)
+  // -------------------------------------------------------------------------
+  // Note: GET by order ID already exists at /settlement-releases/by-order/:orderId
+  // The POST endpoints below use /by-order/:orderId/<action> to avoid
+  // route collision with the existing /settlement-releases/:id param routes.
+
+  // POST /settlement-releases/by-order/:orderId/buyer-confirm — Buyer confirms receipt
+  app.post(
+    "/settlement-releases/by-order/:orderId/buyer-confirm",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { orderId } = request.params as { orderId: string };
+      const release = await getSettlementReleaseByOrderId(db, orderId);
+      if (!release) {
+        return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
+      }
+
+      let updated;
+      try {
+        updated = buyerConfirmReceipt(release, new Date().toISOString());
+      } catch (error) {
+        return reply.code(400).send({
+          error: "INVALID_STATE_TRANSITION",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      await updateSettlementReleaseRecord(db, updated);
+      return reply.send({
+        release: updated,
+        phase: computeReleasePhase(updated),
+      });
+    },
+  );
+
+  // POST /settlement-releases/by-order/:orderId/complete-buffer — Complete buffer release
+  app.post(
+    "/settlement-releases/by-order/:orderId/complete-buffer",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { orderId } = request.params as { orderId: string };
+      const release = await getSettlementReleaseByOrderId(db, orderId);
+      if (!release) {
+        return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
+      }
+
+      let updated;
+      try {
+        updated = completeBufferRelease(release, new Date().toISOString());
+      } catch (error) {
+        return reply.code(400).send({
+          error: "INVALID_STATE_TRANSITION",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      await updateSettlementReleaseRecord(db, updated);
+      return reply.send({
+        release: updated,
+        phase: computeReleasePhase(updated),
+      });
+    },
+  );
 }

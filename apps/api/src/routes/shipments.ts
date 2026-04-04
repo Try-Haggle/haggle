@@ -23,7 +23,13 @@ import {
   getSettlementReleaseByOrderId,
   updateSettlementReleaseRecord,
 } from "../services/settlement-release.service.js";
+import {
+  createDisputeRecord,
+  getDisputeByOrderId,
+} from "../services/dispute-record.service.js";
 import type { ShipmentStatus } from "@haggle/shipping-core";
+import { createId } from "@haggle/dispute-core";
+import type { DisputeCase } from "@haggle/dispute-core";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { updateCommerceOrderStatus } from "../services/payment-record.service.js";
 
@@ -103,6 +109,53 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     }
   }
 
+  /**
+   * Auto-create a dispute when the shipment SLA is violated.
+   * Non-blocking: failures are silently caught so the shipment update always succeeds.
+   */
+  async function autoCreateDisputeOnSlaViolation(
+    shipment: import("@haggle/shipping-core").Shipment,
+    db: Database,
+  ) {
+    try {
+      // Only check SLA for shipments still pending label — the SLA tracks whether
+      // the seller provided shipment info within the allowed window.
+      if (shipment.status !== "LABEL_PENDING") return;
+
+      // Query the raw DB row for the shipment_input_due_at deadline.
+      const row = await db.query.shipments.findFirst({
+        where: (fields, ops) => ops.eq(fields.id, shipment.id),
+      });
+      if (!row?.shipmentInputDueAt) return;
+
+      const dueMs = new Date(row.shipmentInputDueAt).getTime();
+      const now = new Date().toISOString();
+
+      // Simple check: if now is past the due date, SLA is violated
+      if (new Date(now).getTime() <= dueMs) return;
+
+      // Check if a dispute already exists for this order
+      const existing = await getDisputeByOrderId(db, shipment.order_id);
+      if (existing) return;
+
+      // Create system-initiated dispute
+      const dispute: DisputeCase = {
+        id: createId("dsp"),
+        order_id: shipment.order_id,
+        reason_code: "SHIPMENT_SLA_MISSED",
+        status: "OPEN",
+        opened_by: "system",
+        opened_at: now,
+        evidence: [],
+      };
+
+      await createDisputeRecord(db, dispute);
+      await updateCommerceOrderStatus(db, shipment.order_id, "IN_DISPUTE");
+    } catch {
+      // Non-critical: don't fail the shipment update
+    }
+  }
+
   async function persistAndRespond(
     result: { shipment: import("@haggle/shipping-core").Shipment; trust_triggers: import("@haggle/commerce-core").TrustTriggerEvent[] },
     reply: import("fastify").FastifyReply,
@@ -124,6 +177,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
     // Auto-start buyer review when shipment is delivered
     await autoConfirmDeliveryIfNeeded(result.shipment);
+    // Auto-create dispute if SLA is violated and no dispute exists yet
+    await autoCreateDisputeOnSlaViolation(result.shipment, db);
     if (result.trust_triggers.length > 0) {
       await applyTrustTriggers(db, {
         order_id: result.shipment.order_id,
