@@ -3,6 +3,21 @@ import { z } from "zod";
 import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
+
+// ---------------------------------------------------------------------------
+// Webhook idempotency cache (MVP: in-memory Set with TTL cleanup)
+// Prevents duplicate processing when x402 facilitator retries webhooks.
+// ---------------------------------------------------------------------------
+const WEBHOOK_TTL_MS = 60 * 60 * 1000; // 1 hour
+const processedWebhookEvents = new Set<string>();
+
+function markWebhookProcessed(eventId: string): void {
+  processedWebhookEvents.add(eventId);
+  setTimeout(() => {
+    processedWebhookEvents.delete(eventId);
+  }, WEBHOOK_TTL_MS);
+}
+
 import {
   assertPaymentReadyForExecution,
   createSettlementRelease,
@@ -540,12 +555,18 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
     }
 
-    const body = request.body as { event_type?: string; payment_intent_id?: string; [key: string]: unknown };
+    const body = request.body as { event_type?: string; payment_intent_id?: string; event_id?: string; id?: string; [key: string]: unknown };
     const eventType = body.event_type;
     const paymentIntentId = body.payment_intent_id;
 
     if (!eventType || !paymentIntentId) {
       return reply.code(400).send({ error: "MISSING_WEBHOOK_FIELDS" });
+    }
+
+    // Idempotency: derive a stable event ID and skip if already processed
+    const webhookEventId = body.event_id ?? body.id ?? `${eventType}:${paymentIntentId}`;
+    if (processedWebhookEvents.has(webhookEventId)) {
+      return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
     }
 
     const intent = await getPaymentIntentById(db, paymentIntentId);
@@ -572,6 +593,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               });
             }
           }
+          markWebhookProcessed(webhookEventId);
           return reply.send({ accepted: true, action: "settled" });
         }
 
@@ -588,6 +610,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               });
             }
           }
+          markWebhookProcessed(webhookEventId);
           return reply.send({ accepted: true, action: "failed" });
         }
 
@@ -596,6 +619,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
             const result = service.cancelIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
           }
+          markWebhookProcessed(webhookEventId);
           return reply.send({ accepted: true, action: "expired" });
         }
 

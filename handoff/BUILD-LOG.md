@@ -5,13 +5,52 @@
 
 ## Current Status
 
-**Active step:** 20 — API Integration Tests — COMPLETE
-**Last cleared:** Step 19 Settlement Release Flow Endpoints — 2026-04-03
+**Active step:** 22 — Webhook Idempotency Cache — COMPLETE
+**Last cleared:** Step 21 Extended API Integration Tests — 2026-04-03
 **Pending deploy:** NO
 
 ---
 
 ## Step History
+
+### Step 22 — Webhook Idempotency Cache — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/routes/payments.ts` — MODIFIED: Added in-memory webhook idempotency to the x402 webhook handler.
+
+What was added:
+- Module-scope `Set<string>` (`processedWebhookEvents`) tracks processed webhook event IDs.
+- `markWebhookProcessed()` helper adds to the set and schedules TTL cleanup after 1 hour via `setTimeout`.
+- Event ID derived from `body.event_id ?? body.id ?? ${event_type}:${payment_intent_id}` — covers both explicit IDs and fallback composite keys.
+- Duplicate check at handler entry: if event ID already in set, returns `{ accepted: true, action: "duplicate", reason: "already_processed" }` immediately (HTTP 200).
+- `markWebhookProcessed()` called after each successful branch (settled, failed, expired) but NOT on errors or ignored/unknown events (so retries can succeed after transient failures).
+
+Decisions made:
+- In-memory Set is sufficient for MVP (single-process deployment). Post-MVP upgrade path: Redis SET with TTL.
+- Intentionally do NOT mark on error — if processing throws, the facilitator retry should attempt again.
+- 1-hour TTL prevents unbounded memory growth while covering typical retry windows.
+
+Known gaps:
+- Not durable across server restarts. Acceptable for MVP; the existing status checks (e.g., `intent.status !== "SETTLED"`) provide a secondary guard.
+- Multi-instance deployments would need shared state (Redis). Noted for post-MVP.
+
+### Step 21 — Extended API Integration Tests — COMPLETE
+*Date: 2026-04-03*
+
+Files changed:
+- `apps/api/src/__tests__/trust.test.ts` — NEW: 6 tests covering trust score 404 lookup, role validation (400 for invalid role), admin-only compute (401), snapshot 404.
+- `apps/api/src/__tests__/tags.test.ts` — NEW: 9 tests covering tag listing (200 empty), creation validation (400 missing fields, 201 valid), clusters endpoint (200), tag 404, merge auth (401), promote auth (401).
+- `apps/api/src/__tests__/intents.test.ts` — NEW: 8 tests covering intent listing (200 empty, with user_id filter), auth required (401), intent 404, cancel auth (401), expire cron (200 with count), trigger-match validation (400).
+- `apps/api/src/__tests__/skills.test.ts` — NEW: 6 tests covering skill listing (200 empty), creation validation (400), resolve without hook_point (400), resolve with hook_point (200), skill 404, activate auth (401).
+
+Decisions made:
+- Followed identical mock pattern from Step 20: all service modules mocked per file, infrastructure mocks in setup.ts.
+- Updated service mocks to include all exported functions from each service file (e.g., `getSegment`/`listSegments`/`updateSegmentReviewHours` for arp-segment, full tag/intent/skill service surfaces).
+- Tests focus on route wiring, validation, auth middleware, and 404 handling — the same integration test philosophy as the existing suite.
+
+Known gaps:
+- Service mock duplication across 7 test files. Same note as Step 20 — could centralize if test count grows further.
 
 ### Step 20 — API Integration Tests — COMPLETE
 *Date: 2026-04-03*
