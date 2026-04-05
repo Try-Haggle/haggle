@@ -137,10 +137,22 @@
   .formula-box .formula { font-family:'JetBrains Mono','Fira Code',monospace; font-size:1rem; color:var(--accent); font-weight:600; line-height:2; }
   .formula-box .formula-desc { color:var(--dim); font-size:.82rem; margin-top:8px; line-height:1.7; }
 
-  .rarity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin:16px 0; }
-  .rarity-item { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center; }
-  .rarity-item .rarity-name { font-weight:700; font-size:.9rem; margin-bottom:2px; }
+  .rarity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin:16px 0; }
+  .rarity-item { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 14px; text-align:center; transition:transform .15s; }
+  .rarity-item:hover { transform:translateY(-2px); }
+  .rarity-item .rarity-name { font-weight:700; font-size:.95rem; margin-bottom:2px; }
   .rarity-item .rarity-sub { color:var(--dim); font-size:.75rem; }
+  .rarity-item .rarity-border { color:var(--dim); font-size:.72rem; margin-top:4px; }
+  .rarity-item .rarity-features { text-align:left; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:.78rem; color:var(--muted); line-height:1.6; }
+  .rarity-item .rarity-features li { list-style:none; padding-left:0; }
+  .rarity-item .rarity-features li::before { content:''; display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .rarity-item.common .rarity-features li::before { background:#94a3b8; }
+  .rarity-item.uncommon .rarity-features li::before { background:#10b981; }
+  .rarity-item.rare .rarity-features li::before { background:#3b82f6; }
+  .rarity-item.epic .rarity-features li::before { background:#8b5cf6; }
+  .rarity-item.legendary .rarity-features li::before { background:#f59e0b; }
+  .rarity-item.mythic .rarity-features li::before { background:#ef4444; }
+  .rarity-item .rarity-prob { display:inline-block; margin-top:8px; font-size:.7rem; color:var(--dim); background:rgba(255,255,255,.04); padding:2px 8px; border-radius:6px; }
   .rarity-item.common { border-color:#64748b; } .rarity-item.common .rarity-name { color:#94a3b8; }
   .rarity-item.uncommon { border-color:#10b981; } .rarity-item.uncommon .rarity-name { color:#10b981; }
   .rarity-item.rare { border-color:#3b82f6; } .rarity-item.rare .rarity-name { color:#3b82f6; }
@@ -328,7 +340,7 @@
     <div class="analogy"><div class="title">FairClaims 실패 교훈</div><p><strong>FairClaims:</strong> 플랫폼 비용 부담 &rarr; 편향 &rarr; 폐업<br><strong>Haggle:</strong> 패소자 부담 &rarr; <strong>구조적 중립</strong></p></div>
     <div class="arch-grid">
       <div class="arch-card"><h3>ODR 시장</h3><span class="badge-role">Online Dispute Resolution</span><div style="text-align:center;padding:16px 0;"><div style="font-size:2rem;font-weight:800;color:var(--blue);">~$1.5-1.8B</div><div style="color:var(--muted);font-size:.85rem;margin-top:4px;">2025 시장 규모</div><div style="color:var(--green);font-size:.85rem;margin-top:4px;">CAGR 18-22%</div></div></div>
-      <div class="arch-card"><h3>NFT 전략</h3><span class="badge-role">DB-First &rarr; Soulbound</span><ul class="security-list"><li><span class="check">✓</span><strong>MVP:</strong> DB 기반 (NFT 아님)</li><li><span class="check">✓</span><strong>추후:</strong> Soulbound (달성 보상만)</li><li><span class="check">✓</span>용어: <strong>"에이전트 캐릭터"</strong></li><li><span class="check">✓</span>특성만 온체인, 렌더링 오프체인</li></ul></div>
+      <div class="arch-card"><h3>NFT 전략</h3><span class="badge-role">DB-First &rarr; 투트랙</span><ul class="security-list"><li><span class="check">✓</span><strong>MVP:</strong> DB 기반 (NFT 아님)</li><li><span class="check">✓</span><strong>트랙 1 — Soulbound:</strong> 업적/달성 보상 (거래 불가)</li><li><span class="check">✓</span><strong>트랙 2 — Tradeable:</strong> 캐릭터 마켓플레이스 (거래 가능)</li><li><span class="check">✓</span>용어: <strong>"에이전트 캐릭터"</strong></li><li><span class="check">✓</span>특성만 온체인, 렌더링 오프체인</li></ul></div>
     </div>
     <div class="info-box" style="margin-top:16px;"><div class="info-title">Reddit Digital Collectibles 모델</div><p>"Digital Collectibles" 브랜딩 &rarr; <strong>20M 채택</strong>. 무료 지급 + 실제 용도 = 성공.</p></div>
   </section>
@@ -351,12 +363,100 @@
 
     <div style="margin-top:24px;margin-bottom:8px;font-weight:600;">캐릭터 등급 (6단계)</div>
     <div class="rarity-grid">
-      <div class="rarity-item common"><div class="rarity-name">Common</div><div class="rarity-sub">가장 흔한</div></div>
-      <div class="rarity-item uncommon"><div class="rarity-name">Uncommon</div><div class="rarity-sub">약간 희귀</div></div>
-      <div class="rarity-item rare"><div class="rarity-name">Rare</div><div class="rarity-sub">희귀</div></div>
-      <div class="rarity-item epic"><div class="rarity-name">Epic</div><div class="rarity-sub">매우 희귀</div></div>
-      <div class="rarity-item legendary"><div class="rarity-name">Legendary</div><div class="rarity-sub">전설</div></div>
-      <div class="rarity-item mythic"><div class="rarity-name">Mythic</div><div class="rarity-sub">신화급</div></div>
+      <div class="rarity-item common">
+        <div class="rarity-name">⬜ Common</div>
+        <div class="rarity-sub">가장 흔한</div>
+        <div class="rarity-border">흰색 테두리</div>
+        <ul class="rarity-features">
+          <li>기본 색상 조합</li>
+          <li>기본 CSS 아이들 모션</li>
+          <li>프로필 표시</li>
+        </ul>
+        <div class="rarity-prob">~65-75%</div>
+      </div>
+      <div class="rarity-item uncommon">
+        <div class="rarity-name">🟩 Uncommon</div>
+        <div class="rarity-sub">약간 희귀</div>
+        <div class="rarity-border">초록 테두리</div>
+        <ul class="rarity-features">
+          <li>특별한 색 조합</li>
+          <li>Common 모션 + 고개 갸웃</li>
+          <li>프로필 초록 테두리 표시</li>
+        </ul>
+        <div class="rarity-prob">~15-18%</div>
+      </div>
+      <div class="rarity-item rare">
+        <div class="rarity-name">🟦 Rare</div>
+        <div class="rarity-sub">희귀</div>
+        <div class="rarity-border">파란 테두리</div>
+        <ul class="rarity-features">
+          <li>+ 무늬 (줄무늬/물방울/별)</li>
+          <li>240종 패턴 추가</li>
+          <li>전용 입장 이펙트</li>
+          <li>조합 수 &times;240 &rarr; ~1,613억</li>
+        </ul>
+        <div class="rarity-prob">~7-13%</div>
+      </div>
+      <div class="rarity-item epic">
+        <div class="rarity-name">🟪 Epic</div>
+        <div class="rarity-sub">매우 희귀</div>
+        <div class="rarity-border">보라 테두리</div>
+        <ul class="rarity-features">
+          <li>특수 색상 (홀로그램/네온/메탈릭)</li>
+          <li>전용 파티클 이펙트</li>
+          <li>협상 화면 보라빛 오라</li>
+          <li>프로필 뱃지 표시</li>
+        </ul>
+        <div class="rarity-prob">~2.5-8%</div>
+      </div>
+      <div class="rarity-item legendary">
+        <div class="rarity-name">🟨 Legendary</div>
+        <div class="rarity-sub">전설</div>
+        <div class="rarity-border">금색 테두리</div>
+        <ul class="rarity-features">
+          <li>전설 전용 디자인</li>
+          <li>투명/황금/우주 테마</li>
+          <li>금색 입장 + 오라 + 파티클</li>
+          <li>전설 전용 프레임</li>
+          <li>🔊 <strong>TTS 음성</strong> &mdash; 협상 중 캐릭터가 말함</li>
+          <li>전체 수천 종만 존재</li>
+        </ul>
+        <div class="rarity-prob">~0.4-4.5%</div>
+      </div>
+      <div class="rarity-item mythic">
+        <div class="rarity-name">🔴 Mythic</div>
+        <div class="rarity-sub">신화급</div>
+        <div class="rarity-border">홀로그램 테두리</div>
+        <ul class="rarity-features">
+          <li>종족당 1~3종 신화적 존재</li>
+          <li>구미호, 천룡, 피닉스 등</li>
+          <li>전용 풀스크린 등장 연출</li>
+          <li>🔊 <strong>TTS 음성</strong> &mdash; 종족 고유 목소리 + 감정 표현</li>
+          <li>모든 이펙트 해금</li>
+          <li>전체 <strong>24종</strong>만 존재</li>
+        </ul>
+        <div class="rarity-prob">~0.03-0.5%</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">레벨 기반 커스터마이징 해금</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--green);font-weight:700;">Lv.1</span> &mdash; 캐릭터 1마리</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--green);font-weight:700;">Lv.5</span> &mdash; 악세서리 1슬롯</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--blue);font-weight:700;">Lv.10</span> &mdash; 배경 선택</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--blue);font-weight:700;">Lv.15</span> &mdash; 악세서리 2슬롯</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--accent2);font-weight:700;">Lv.20</span> &mdash; 날씨 이펙트</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--accent2);font-weight:700;">Lv.25</span> &mdash; 오라</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--yellow);font-weight:700;">Lv.30</span> &mdash; 프레임</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--yellow);font-weight:700;">Lv.40</span> &mdash; 전용 파티클</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--red);font-weight:700;">Lv.50</span> &mdash; 모든 해금 (~1,800건 거래)</div>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">수집 업적</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏅 <strong>3종족 보유</strong> &mdash; "탐험가" 뱃지</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏅 <strong>5종족 보유</strong> &mdash; "수집가" 뱃지 + 배경</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏆 <strong>8종족 전부</strong> &mdash; "마스터 수집가" + 특별 프레임</div>
     </div>
 
     <div class="formula-box">
@@ -447,6 +547,133 @@
         <tr><td>DRaaS API</td><td class="dim-text">분쟁 해결 API 외부 제공</td><td>모듈화 후</td><td><span class="sev medium">PLANNED</span></td></tr>
       </tbody>
     </table>
+  </section>
+
+  <!-- NFT 시장 비교 분석 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">🎭</div>NFT 시장 분석 — 성공 vs 실패, 그리고 우리의 전략</div>
+    <div class="section-desc">NFT 시장의 성공/실패 패턴을 분석하고, Haggle 캐릭터 시스템이 왜 다른지 정리.</div>
+
+    <div class="arch-grid">
+      <div class="arch-card" style="border-color:var(--green);">
+        <h3 style="color:var(--green);">성공 프로젝트</h3><span class="badge-role">커뮤니티 + 유틸리티</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>BAYC</strong> &mdash; 민팅 $190 &rarr; 피크 $400K. 커뮤니티 이벤트, IP 권리, APE 토큰 에어드랍. Yuga Labs $4B 밸류에이션</li>
+          <li><span class="check">✓</span><strong>Pudgy Penguins</strong> &mdash; 죽을 뻔 &rarr; 새 리더십 $2.5M 인수 &rarr; 월마트 장난감 $50M+ 매출. 물리적 제품으로 피벗</li>
+          <li><span class="check">✓</span><strong>CryptoPunks</strong> &mdash; 2017 퍼스트무버. 10,000개 고정 공급. 역사적 상징성</li>
+        </ul>
+      </div>
+      <div class="arch-card" style="border-color:var(--red);">
+        <h3 style="color:var(--red);">실패 프로젝트</h3><span class="badge-role">투기 + 미이행</span>
+        <ul class="security-list">
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>셀럽 NFT</strong> &mdash; 90-99% 가치 하락. Justin Bieber Ape $1.3M &rarr; $50K. 유틸리티 없음, 이름값만</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>Generic PFP</strong> &mdash; 2021-22 PFP 프로젝트 ~95% 가치 0. 차별화 없음, 로드맵 미이행, 러그풀</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>Pixelmon</strong> &mdash; $70M 모금 후 조악한 아트 전달. 과대 약속, 과소 이행</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">성공/실패 핵심 패턴</div>
+    <table class="biz-table">
+      <thead><tr><th style="color:var(--green);">성공 요인</th><th style="color:var(--red);">실패 패턴</th></tr></thead>
+      <tbody>
+        <tr><td>커뮤니티 중심 (유틸리티, 접근권)</td><td>투기만 가능한 가치 구조</td></tr>
+        <tr><td>IP 권리 / 실물 연계</td><td>민팅 후 로드맵 없음</td></tr>
+        <tr><td>NFT 너머의 브랜드 구축</td><td>셀럽 이름값에 의존</td></tr>
+        <tr><td>팀의 장기 실행력</td><td>익명/무책임 팀</td></tr>
+        <tr><td>희소성의 자연 형성</td><td>인위적 희소성 (한정판 마케팅)</td></tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">현재 NFT 시장 (2025-26)</div>
+    <div class="info-box">
+      <div class="info-title">시장 현황</div>
+      <p>거래량 2022 피크 대비 <strong>~90% 감소</strong>. OpenSea &rarr; Blur 이동 후 둘 다 하락. 시장은 <strong>투기 &rarr; 유틸리티</strong>로 전환 중. Pudgy Penguins 모델 (물리+디지털 하이브리드)이 새 템플릿으로 부상.</p>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:700;font-size:1.05rem;color:var(--accent);">Haggle은 왜 다른가?</div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>실패 패턴 회피</h3><span class="badge-role">Anti-Pattern</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>거래 기반 획득</strong> &mdash; 투기적 민팅 없음. 실제 거래로만 캐릭터 획득</li>
+          <li><span class="check">✓</span><strong>유틸리티 내재</strong> &mdash; 캐릭터 = 협상 AI 아바타. 프로필 + 신뢰도 시각화</li>
+          <li><span class="check">✓</span><strong>투트랙 NFT</strong> &mdash; 업적/뱃지는 Soulbound (거래 불가), 캐릭터는 마켓플레이스 거래 가능</li>
+          <li><span class="check">✓</span><strong>동적 희소성</strong> &mdash; 공급 자동 조절 (수식 기반). 인위적 한정판 아님</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>성공 패턴 채택</h3><span class="badge-role">Best Practice</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>커뮤니티 = 유저</strong> &mdash; 거래할수록 캐릭터 성장. 자연스러운 참여 루프</li>
+          <li><span class="check">✓</span><strong>수집 + 업적</strong> &mdash; 8종족 수집, 배심원 뱃지, 마스터 수집가 프레임</li>
+          <li><span class="check">✓</span><strong>레벨 해금</strong> &mdash; Lv.1~50 커스터마이징 진행형. 장기 리텐션 설계</li>
+          <li><span class="check">✓</span><strong>DB-First</strong> &mdash; MVP는 온체인 아님. 검증 후 투트랙 (Soulbound + Marketplace) 이행</li>
+        </ul>
+      </div>
+    </div>
+    <div class="warn-box"><div class="warn-title">핵심 차이 &mdash; 투트랙 전략</div>
+      <p style="margin-bottom:8px;">NFT 프로젝트는 <strong>"사서 되팔기"</strong>가 목적. Haggle 캐릭터는 <strong>"거래하면서 성장하기"</strong>가 목적.</p>
+      <p style="margin:0;"><strong>트랙 1 (Soulbound)</strong>: 업적 뱃지, 마스터 수집가 프레임, 배심원 ⭐ &mdash; 거래 불가. 순수 달성 보상.<br>
+      <strong>트랙 2 (Tradeable)</strong>: 캐릭터 자체는 마켓플레이스에서 거래 가능. 수수료 5% (법률 검토 후). 희귀 캐릭터 경제 형성.</p>
+    </div>
+  </section>
+
+  <!-- ODR 시장 분석 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(59,130,246,.15);">⚖️</div>ODR (온라인 분쟁 해결) 시장 분석</div>
+    <div class="section-desc">글로벌 ODR 시장 $800M-$1.2B (2024) &rarr; $2.5-3.5B (2030 예상). CAGR 18-22%. Haggle DRaaS의 시장 기회.</div>
+
+    <div class="stats" style="margin:-10px auto 24px;padding:0;">
+      <div class="stat blue"><div class="num">$1.2B</div><div class="label">ODR 시장 규모 (2024)</div></div>
+      <div class="stat green"><div class="num">$3.5B</div><div class="label">예상 시장 (2030)</div></div>
+      <div class="stat purple"><div class="num">18-22%</div><div class="label">연평균 성장률</div></div>
+      <div class="stat yellow"><div class="num">60M</div><div class="label">eBay 연간 분쟁 건수</div></div>
+    </div>
+
+    <div style="margin-bottom:8px;font-weight:600;">주요 플레이어</div>
+    <table class="biz-table">
+      <thead><tr><th>플레이어</th><th>영역</th><th>특징</th><th>한계</th></tr></thead>
+      <tbody>
+        <tr><td class="bold">eBay/PayPal</td><td>마켓플레이스 내부</td><td>연 60M 건 처리, 90% 자동 해결</td><td>자체 생태계만. 외부 사용 불가</td></tr>
+        <tr><td class="bold">Tyler Tech (Modria)</td><td>법원/정부</td><td>미국 법원 ODR 지배적</td><td>B2G만. 소비자 직접 접근 불가</td></tr>
+        <tr><td class="bold">Kleros</td><td>블록체인 중재</td><td>탈중앙 배심원, PNK 토큰, $10M+ 처리</td><td>범용. 커머스 최적화 아님</td></tr>
+        <tr><td class="bold">Aragon Court</td><td>DAO 거버넌스</td><td>ANT 토큰 기반</td><td>소규모. DAO 전용</td></tr>
+        <tr><td class="bold">Matterhorn</td><td>B2B SaaS</td><td>보험, 통신사 분쟁</td><td>P2P 커머스 미지원</td></tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">시장 트렌드</div>
+    <ul class="gacha-list">
+      <li><div class="gacha-icon">🤖</div><div><strong>AI 자동 분류</strong> &mdash; 분쟁 자동 분류 + 해결 제안 (eBay 90% 자동 해결 달성)</div></li>
+      <li><div class="gacha-icon">⛓️</div><div><strong>블록체인 중재</strong> &mdash; Kleros 모델로 탈중앙 배심원 작동 검증 완료</div></li>
+      <li><div class="gacha-icon">📜</div><div><strong>규제 추진</strong> &mdash; EU ODR 플랫폼 (ec.europa.eu/odr), UNCITRAL ODR 기술 노트</div></li>
+      <li><div class="gacha-icon">💸</div><div><strong>비용 절감 압력</strong> &mdash; 전통 중재 비용 대비 ODR 70-90% 절감 가능</div></li>
+    </ul>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:700;font-size:1.05rem;color:var(--accent);">시장 공백 &amp; Haggle DRaaS 기회</div>
+    <div class="arch-grid">
+      <div class="arch-card" style="border-color:var(--red);">
+        <h3 style="color:var(--red);">현재 시장 공백</h3>
+        <ul class="security-list">
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>P2P + 온체인 결제</strong> 통합 ODR 솔루션 없음</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>eBay/PayPal은 자체 생태계만 지원</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>Kleros는 범용 (커머스 최적화 안 됨)</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>협상 + 결제 + 분쟁을 하나의 프로토콜로 묶은 서비스 없음</li>
+        </ul>
+      </div>
+      <div class="arch-card" style="border-color:var(--green);">
+        <h3 style="color:var(--green);">Haggle DRaaS 차별점</h3>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>3계층 비용</strong> &mdash; T1: max(0.5%,$3), T2: max(2%,$12), T3: max(5%,$30)</li>
+          <li><span class="check">✓</span><strong>DS 패널</strong> &mdash; ⭐1-5 배심원 시스템, 전문가 태그, 경력 기반</li>
+          <li><span class="check">✓</span><strong>온체인 투표</strong> &mdash; Signed + Merkle 기반 투명한 판정</li>
+          <li><span class="check">✓</span><strong>프로토콜 내장</strong> &mdash; 협상 &rarr; 결제 &rarr; 배송 &rarr; 분쟁 일체형</li>
+          <li><span class="check">✓</span><strong>외부 제공 가능</strong> &mdash; DRaaS API로 타 플랫폼에도 분쟁 해결 서비스 제공</li>
+        </ul>
+      </div>
+    </div>
+    <div class="info-box"><div class="info-title">DRaaS 수익 모델</div><p>분쟁 비용 30/70 분할 (패소자 70%, Haggle 30%). 외부 API 제공 시 추가 수수료. <strong>ODR 시장 $3.5B 중 P2P 커머스만 겨냥해도 $500M+ TAM.</strong></p></div>
   </section>
 
   <!-- 결정 필요 항목 -->
@@ -606,7 +833,7 @@
         <li>캐릭터 파이프라인 검증 (Gemini &rarr; Python &rarr; CSS)</li>
         <li>Rive/Spine 테스트 후 CSS로 최종 결정</li>
         <li>게이미피케이션 v3 확정 (8종족, 6등급, 동적 확률)</li>
-        <li>NFT 전략 (DB 기반 MVP, Soulbound 나중)</li>
+        <li>NFT 전략 (DB 기반 MVP, 투트랙: Soulbound 업적 + Tradeable 캐릭터 마켓)</li>
         <li>CI/CD 추가 (GitHub Actions: PR시 test + typecheck)</li>
         <li>문서를 살아있는 형태(지난/현재/향후 탭)로 재구성</li>
       </ul>
