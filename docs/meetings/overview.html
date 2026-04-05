@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haggle 팀 모임 — 진행 현황</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --card: #111827;
+    --border: #1e293b;
+    --accent: #6366f1;
+    --accent2: #8b5cf6;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --blue: #3b82f6;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif; line-height:1.7; }
+
+  .hero { text-align:center; padding:80px 20px 60px; background:linear-gradient(180deg,#0f172a 0%,var(--bg) 100%); position:relative; overflow:hidden; }
+  .hero::before { content:''; position:absolute; top:-200px; left:50%; transform:translateX(-50%); width:800px; height:800px; background:radial-gradient(circle,rgba(99,102,241,.12) 0%,transparent 70%); pointer-events:none; }
+  .hero h1 { font-size:2.8rem; font-weight:800; background:linear-gradient(135deg,#6366f1,#a78bfa,#6366f1); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:12px; }
+  .hero .sub { color:var(--muted); font-size:1.1rem; margin-bottom:8px; }
+  .hero .explain { color:var(--dim); font-size:.92rem; max-width:700px; margin:16px auto 0; line-height:1.8; }
+  .hero .meta { color:var(--dim); font-size:.85rem; display:flex; gap:24px; justify-content:center; flex-wrap:wrap; margin-top:20px; }
+
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; max-width:1100px; margin:-30px auto 40px; padding:0 20px; position:relative; z-index:1; }
+  .stat { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px; text-align:center; }
+  .stat .num { font-size:2.4rem; font-weight:800; }
+  .stat .label { color:var(--muted); font-size:.85rem; margin-top:4px; }
+  .stat .sublabel { color:var(--dim); font-size:.75rem; margin-top:2px; }
+  .stat.green .num { color:var(--green); }
+  .stat.blue .num { color:var(--blue); }
+  .stat.purple .num { color:var(--accent2); }
+  .stat.yellow .num { color:var(--yellow); }
+
+  .container { max-width:1100px; margin:0 auto; padding:0 20px 80px; }
+
+  /* Tab navigation for Past / Current / Future */
+  .tab-bar { display:flex; gap:0; max-width:1100px; margin:0 auto 32px; padding:0 20px; }
+  .tab-bar button { flex:1; padding:14px 20px; background:var(--card); border:1px solid var(--border); color:var(--dim); font-size:.95rem; font-weight:600; cursor:pointer; transition:all .2s; font-family:inherit; }
+  .tab-bar button:first-child { border-radius:12px 0 0 12px; }
+  .tab-bar button:last-child { border-radius:0 12px 12px 0; }
+  .tab-bar button.active { background:rgba(99,102,241,.12); border-color:var(--accent); color:var(--accent); }
+  .tab-bar button:hover:not(.active) { background:rgba(99,102,241,.05); color:var(--muted); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  .section { margin-bottom:56px; }
+  .section-title { font-size:1.5rem; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:10px; }
+  .section-title .icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+  .section-desc { color:var(--muted); font-size:.9rem; margin-bottom:20px; line-height:1.7; }
+
+  .arch-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media(max-width:700px){ .arch-grid { grid-template-columns:1fr; } }
+  .arch-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px; }
+  .arch-card h3 { font-size:1.15rem; margin-bottom:4px; }
+  .arch-card .badge-role { display:inline-block; padding:2px 10px; border-radius:12px; font-size:.72rem; font-weight:600; margin-bottom:10px; background:rgba(99,102,241,.15); color:var(--accent); }
+  .arch-card .desc { color:var(--muted); font-size:.9rem; margin-bottom:16px; line-height:1.7; }
+  .arch-card .flow { background:#0f172a; border-radius:10px; padding:16px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:.82rem; color:var(--green); line-height:1.8; white-space:pre; overflow-x:auto; }
+
+  .analogy { background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(139,92,246,.08)); border:1px solid rgba(99,102,241,.2); border-radius:14px; padding:20px 24px; margin-bottom:24px; }
+  .analogy .title { font-size:.85rem; font-weight:600; color:var(--accent); margin-bottom:6px; }
+  .analogy p { font-size:.88rem; color:var(--muted); line-height:1.7; }
+
+  .flow-diagram { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; overflow-x:auto; }
+  .flow-steps { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; }
+  .flow-step { background:#0f172a; border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:.85rem; font-weight:600; text-align:center; min-width:110px; }
+  .flow-arrow { color:var(--dim); font-size:1.2rem; margin:0 6px; flex-shrink:0; }
+  .flow-step.highlight { border-color:var(--accent); color:var(--accent); }
+  .flow-explain { text-align:center; margin-top:16px; color:var(--muted); font-size:.84rem; line-height:1.7; }
+
+  .cost-table { width:100%; border-collapse:collapse; font-size:.85rem; margin-bottom:16px; }
+  .cost-table th { text-align:left; padding:10px 14px; border-bottom:2px solid var(--border); color:var(--muted); font-weight:600; }
+  .cost-table td { padding:10px 14px; border-bottom:1px solid rgba(30,41,59,.5); }
+  .cost-table tr:last-child td { border-bottom:2px solid var(--border); }
+  .cost-table .cost-val { color:var(--green); font-weight:700; font-family:'JetBrains Mono','Fira Code',monospace; }
+  .cost-table .cost-label { color:var(--muted); }
+
+  .biz-table { width:100%; border-collapse:collapse; background:var(--card); border-radius:12px; overflow:hidden; margin-bottom:16px; }
+  .biz-table th { background:rgba(99,102,241,.08); color:var(--accent); font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; padding:12px 14px; text-align:left; font-weight:600; }
+  .biz-table td { padding:10px 14px; border-top:1px solid var(--border); font-size:.85rem; }
+  .biz-table tr:hover td { background:rgba(99,102,241,.03); }
+  .biz-table .right { text-align:right; }
+  .biz-table .mono { font-family:'JetBrains Mono','Fira Code',monospace; font-size:.82rem; }
+  .biz-table .green-text { color:var(--green); }
+  .biz-table .dim-text { color:var(--dim); }
+  .biz-table .bold { font-weight:700; }
+  .biz-table .highlight-row td { background:rgba(16,185,129,.06); border-top:2px solid rgba(16,185,129,.3); }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+
+  .info-box { background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.2); border-radius:12px; padding:16px 20px; margin-bottom:20px; }
+  .info-box .info-title { font-size:.82rem; font-weight:600; color:var(--blue); margin-bottom:4px; }
+  .info-box p { font-size:.85rem; color:var(--muted); line-height:1.7; }
+
+  .success-box { background:rgba(16,185,129,.06); border:1px solid rgba(16,185,129,.2); border-radius:12px; padding:16px 20px; margin:16px 0; font-size:.85rem; line-height:1.8; }
+  .success-box .success-title { font-weight:700; color:var(--green); margin-bottom:4px; }
+  .warn-box { background:rgba(245,158,11,.06); border:1px solid rgba(245,158,11,.2); border-radius:12px; padding:16px 20px; margin:16px 0; font-size:.85rem; line-height:1.8; }
+  .warn-box .warn-title { font-weight:700; color:var(--yellow); margin-bottom:4px; }
+
+  .checklist { list-style:none; }
+  .checklist li { padding:10px 16px; background:var(--card); border:1px solid var(--border); border-radius:10px; margin-bottom:8px; display:flex; align-items:center; gap:10px; font-size:.9rem; }
+  .checklist .box { width:18px; height:18px; border:2px solid var(--dim); border-radius:4px; flex-shrink:0; }
+  .checklist .box.checked { background:var(--green); border-color:var(--green); position:relative; }
+  .checklist .box.checked::after { content:''; position:absolute; left:4px; top:1px; width:6px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+  .checklist .box.fail { background:var(--red); border-color:var(--red); }
+
+  .phase-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px; margin-bottom:16px; }
+  .phase-card h3 { font-size:1.1rem; margin-bottom:4px; }
+  .phase-card .phase-desc { color:var(--muted); font-size:.9rem; margin-bottom:12px; line-height:1.7; }
+
+  .footer { text-align:center; padding:40px 20px; color:var(--dim); font-size:.8rem; border-top:1px solid var(--border); margin-top:40px; }
+
+  .nav { position:sticky; top:0; z-index:100; background:rgba(10,14,26,.85); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem; padding:6px 14px; border-radius:20px; transition:all .2s; }
+  .nav a:hover { background:rgba(99,102,241,.12); color:var(--accent); }
+
+  .security-list { list-style:none; margin-top:14px; }
+  .security-list li { padding:6px 0; font-size:.88rem; color:var(--muted); display:flex; align-items:flex-start; gap:8px; }
+  .check { color:var(--green); flex-shrink:0; }
+  .fail { color:var(--red); flex-shrink:0; }
+
+  .sev { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.75rem; font-weight:600; white-space:nowrap; }
+  .sev.critical { background:rgba(239,68,68,.15); color:var(--red); }
+  .sev.high { background:rgba(249,115,22,.15); color:var(--orange); }
+  .sev.medium { background:rgba(245,158,11,.15); color:var(--yellow); }
+  .sev.low { background:rgba(16,185,129,.15); color:var(--green); }
+
+  .formula-box { background:#0f172a; border:1px solid var(--border); border-radius:12px; padding:20px 24px; margin:16px 0; text-align:center; }
+  .formula-box .formula { font-family:'JetBrains Mono','Fira Code',monospace; font-size:1rem; color:var(--accent); font-weight:600; line-height:2; }
+  .formula-box .formula-desc { color:var(--dim); font-size:.82rem; margin-top:8px; line-height:1.7; }
+
+  .rarity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin:16px 0; }
+  .rarity-item { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 14px; text-align:center; transition:transform .15s; }
+  .rarity-item:hover { transform:translateY(-2px); }
+  .rarity-item .rarity-name { font-weight:700; font-size:.95rem; margin-bottom:2px; }
+  .rarity-item .rarity-sub { color:var(--dim); font-size:.75rem; }
+  .rarity-item .rarity-border { color:var(--dim); font-size:.72rem; margin-top:4px; }
+  .rarity-item .rarity-features { text-align:left; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:.78rem; color:var(--muted); line-height:1.6; }
+  .rarity-item .rarity-features li { list-style:none; padding-left:0; }
+  .rarity-item .rarity-features li::before { content:''; display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .rarity-item.common .rarity-features li::before { background:#94a3b8; }
+  .rarity-item.uncommon .rarity-features li::before { background:#10b981; }
+  .rarity-item.rare .rarity-features li::before { background:#3b82f6; }
+  .rarity-item.epic .rarity-features li::before { background:#8b5cf6; }
+  .rarity-item.legendary .rarity-features li::before { background:#f59e0b; }
+  .rarity-item.mythic .rarity-features li::before { background:#ef4444; }
+  .rarity-item .rarity-prob { display:inline-block; margin-top:8px; font-size:.7rem; color:var(--dim); background:rgba(255,255,255,.04); padding:2px 8px; border-radius:6px; }
+  .rarity-item.common { border-color:#64748b; } .rarity-item.common .rarity-name { color:#94a3b8; }
+  .rarity-item.uncommon { border-color:#10b981; } .rarity-item.uncommon .rarity-name { color:#10b981; }
+  .rarity-item.rare { border-color:#3b82f6; } .rarity-item.rare .rarity-name { color:#3b82f6; }
+  .rarity-item.epic { border-color:#8b5cf6; } .rarity-item.epic .rarity-name { color:#8b5cf6; }
+  .rarity-item.legendary { border-color:#f59e0b; } .rarity-item.legendary .rarity-name { color:#f59e0b; }
+  .rarity-item.mythic { border-color:#ef4444; background:linear-gradient(135deg,rgba(239,68,68,.08),rgba(249,115,22,.08)); } .rarity-item.mythic .rarity-name { color:#ef4444; font-size:1rem; }
+
+  .gacha-list { list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media(max-width:700px){ .gacha-list { grid-template-columns:1fr; } }
+  .gacha-list li { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 16px; font-size:.85rem; display:flex; align-items:center; gap:10px; }
+  .gacha-list .gacha-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:.9rem; flex-shrink:0; background:rgba(99,102,241,.1); }
+
+  .level-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
+  .level-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px; }
+  .level-card h4 { font-size:.95rem; margin-bottom:6px; }
+  .level-card .level-display { font-size:1.3rem; font-weight:800; margin-bottom:4px; }
+  .level-card .level-desc { color:var(--muted); font-size:.82rem; line-height:1.6; }
+  .level-up { color:var(--green); font-size:.78rem; }
+  .level-down { color:var(--red); font-size:.78rem; }
+
+  /* Chibi fox demo */
+  .fox-demo { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center; margin-top:20px; }
+  .fox-stage { position:relative; width:200px; height:280px; margin:0 auto; display:flex; align-items:center; justify-content:center; }
+  .fox-wrapper { position:relative; width:200px; height:280px; animation:foxIdle 2s ease-in-out infinite; transform-origin:center bottom; }
+  .fox-wrapper img.fox-img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; object-position:center bottom; transition:opacity .05s; }
+  .fox-wrapper img.fox-img.hidden { opacity:0; }
+  .fox-wrapper img.fox-acc { position:absolute; top:5%; left:50%; transform:translateX(-50%); object-fit:contain; opacity:0; transition:opacity .1s; pointer-events:none; }
+  .fox-wrapper img.fox-acc.crown { top:-2%; width:64px; }
+  .fox-wrapper img.fox-acc.glasses { top:10%; width:160px; mix-blend-mode:multiply; margin-left:-6px; }
+  .fox-wrapper img.fox-acc.visible { opacity:1; }
+  @keyframes foxIdle { 0%,100% { transform:scale(1) rotate(0deg); } 50% { transform:scale(1.02) rotate(.5deg); } }
+  @keyframes foxThinking { 0%,100% { transform:rotate(0); } 33% { transform:rotate(3deg); } 66% { transform:rotate(-2.5deg); } }
+  @keyframes foxSurprised { 0% { transform:scale(1); } 30% { transform:scale(1.12); } 100% { transform:scale(1); } }
+  @keyframes foxExcited { 0%,100% { transform:rotate(0) scale(1); } 25% { transform:rotate(4deg) scale(1.03); } 75% { transform:rotate(-4deg) scale(1.03); } }
+  @keyframes foxHappy { 0% { transform:scale(1); } 30% { transform:scale(1.1) rotate(2deg); } 60% { transform:scale(.95); } 100% { transform:scale(1); } }
+  @keyframes foxSad { 0% { transform:scale(1) translateY(0); } 100% { transform:scale(.95) translateY(5px); } }
+  .fox-controls { display:flex; flex-wrap:wrap; gap:6px; margin-top:16px; justify-content:center; }
+  .fox-controls button { padding:6px 14px; border:2px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff; border-radius:20px; cursor:pointer; font-size:.8rem; transition:all .2s; font-family:inherit; }
+  .fox-controls button:hover { background:rgba(255,255,255,.12); border-color:rgba(100,150,255,.5); }
+  .fox-controls button.fox-on { background:rgba(255,200,0,.3); border-color:rgba(255,200,0,.8); }
+  .fox-status { margin-top:10px; font-size:.8rem; color:var(--dim); }
+  .fox-note { font-size:.72rem; color:var(--dim); margin-top:6px; opacity:.6; }
+
+  /* Update log */
+  .update-log { border-left:3px solid var(--accent); padding-left:20px; }
+  .update-entry { margin-bottom:24px; }
+  .update-entry .update-date { font-size:.82rem; font-weight:700; color:var(--accent); margin-bottom:4px; }
+  .update-entry .update-items { list-style:none; }
+  .update-entry .update-items li { padding:3px 0; font-size:.85rem; color:var(--muted); }
+  .update-entry .update-items li::before { content:'·'; margin-right:8px; color:var(--dim); }
+
+  @media(max-width:768px) { .card-grid,.arch-grid { grid-template-columns:1fr; } .level-grid { grid-template-columns:1fr 1fr; } .hero h1 { font-size:2rem; } .tab-bar button { font-size:.82rem; padding:10px 12px; } }
+  @media(max-width:480px) { .level-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="#" onclick="showTab('past');return false">지난 안건</a>
+  <a href="#" onclick="showTab('current');return false">현재 안건</a>
+  <a href="#" onclick="showTab('future');return false">향후 목표</a>
+  <a href="#updates">업데이트 내역</a>
+</nav>
+
+<section class="hero">
+  <h1>Haggle 팀 모임</h1>
+  <p class="sub">진행 현황 · 안건 추적 · 목표 관리</p>
+  <p class="explain">
+    매 모임 후 업데이트되는 살아있는 문서입니다.<br>
+    지난 안건(확정/완료), 현재 안건(이번 모임), 향후 목표(다음 단계)로 나눠 관리합니다.
+  </p>
+  <div class="meta">
+    <span>📅 마지막 업데이트: 2026-04-04</span>
+    <span>🧪 830+ 테스트</span>
+    <span>📦 pnpm monorepo</span>
+  </div>
+</section>
+
+<div class="stats">
+  <div class="stat green"><div class="num">830+</div><div class="label">테스트 전부 통과</div><div class="sublabel">trust + dispute + arp + tag + engine + skill</div></div>
+  <div class="stat blue"><div class="num">8</div><div class="label">코어 패키지</div><div class="sublabel">Phase 1-5 foundation</div></div>
+  <div class="stat purple"><div class="num">P1-5</div><div class="label">Phase 완료</div><div class="sublabel">Foundation → Skill Core</div></div>
+  <div class="stat yellow"><div class="num">CI/CD</div><div class="label">자동화 추가</div><div class="sublabel">PR시 test + typecheck</div></div>
+</div>
+
+<!-- Tab Bar -->
+<div class="tab-bar">
+  <button class="active" onclick="showTab('past')">📋 지난 안건 (확정)</button>
+  <button onclick="showTab('current')">🔥 현재 안건 (4/4)</button>
+  <button onclick="showTab('future')">🎯 향후 목표</button>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════ -->
+<!-- TAB 1: 지난 안건 (확정/완료) -->
+<!-- ═══════════════════════════════════════ -->
+<div id="tab-past" class="tab-content active">
+
+  <!-- 구현 현황 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(16,185,129,.15);">📊</div>구현 진행 현황</div>
+    <div class="section-desc">Phase 1-2 완료. 총 520+ 테스트 통과.</div>
+    <table class="biz-table">
+      <thead><tr><th>패키지</th><th>내용</th><th class="right">Tests</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">trust-core</td><td>Trust Score 엔진</td><td class="right mono green-text bold">85</td></tr>
+        <tr><td class="mono">dispute-core</td><td>분쟁 비용 + DS Rating + 투표 + 보증금 + 정산</td><td class="right mono green-text bold">123</td></tr>
+        <tr><td class="mono">arp-core</td><td>적응형 검토 기간</td><td class="right mono green-text bold">57</td></tr>
+        <tr><td class="mono">shipping-core</td><td>SLA 협상 + 배송 추적</td><td class="right mono green-text bold">184</td></tr>
+        <tr><td class="mono">tag-core</td><td>태그 라이프사이클 + 클러스터링 + 전문가</td><td class="right mono green-text bold">71</td></tr>
+        <tr class="highlight-row"><td class="bold">합계</td><td></td><td class="right mono green-text bold">520+</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 분쟁 시스템 v2 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(239,68,68,.15);">⚖️</div>분쟁 시스템 v2 (확정)</div>
+    <div class="section-desc">3단계 비용, 30/70 고정 분배, AI+배심원 하이브리드. 온체인 머클 트리 투표.</div>
+
+    <div class="arch-card" style="margin-bottom:20px;">
+      <h3>비용 단계</h3><span class="badge-role">3-Tier Escalation</span>
+      <table class="cost-table" style="margin-top:12px;">
+        <thead><tr><th>단계</th><th>비용</th><th>판정자</th><th>에스컬레이션</th></tr></thead>
+        <tbody>
+          <tr><td><span class="sev high">T1</span></td><td class="cost-val">max(0.5%, $3)</td><td>AI 판사</td><td class="cost-label">-</td></tr>
+          <tr><td><span class="sev medium">T2</span></td><td class="cost-val">max(2%, $12)</td><td>배심원단</td><td>T1 &times; 4배</td></tr>
+          <tr><td><span class="sev critical">T3</span></td><td class="cost-val">max(5%, $30)</td><td>대배심</td><td>T2 &times; 2.5배</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="success-box"><div class="success-title">분배: 30% 플랫폼 / 70% 배심원 (고정)</div>비율 변경 없이 고정. 배심원 보상 충분해야 참여 동기 유지.</div>
+
+    <div class="arch-grid" style="margin-bottom:20px;">
+      <div class="arch-card">
+        <h3>배심원 모델</h3><span class="badge-role">하이브리드</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>AI</strong> = 변호사 (양측) + T1 판사</li>
+          <li><span class="check">✓</span><strong>일반 사용자</strong> = 배심원 (T2/T3)</li>
+          <li><span class="check">✓</span><strong>Skill</strong> = 전문가 증인</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>온체인 투표</h3><span class="badge-role">서명 + 머클 트리</span>
+        <div class="desc">배심원 오프체인 서명 ($0 gas) &rarr; 머클 루트 1건 온체인.<br>해글 ≠ Oracle — 서명 자체가 결과 증명.</div>
+        <div class="flow">배심원 서명 (오프체인, $0 gas)
+  &darr;
+머클 루트 1건 &rarr; 온체인 기록
+  &darr;
+누구나 서명 검증 가능</div>
+      </div>
+    </div>
+    <div class="warn-box"><div class="warn-title">법적 포지션</div><strong>"Platform resolution"</strong> (중재 아님) &rarr; 소액재판소 접근권 보존<br><strong>Non-custodial</strong> &rarr; Money Transmitter 아님<br><strong>ToS 7개 필수 조항</strong> 필요</div>
+  </section>
+
+  <!-- 등급/레벨 시스템 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">🏅</div>등급/레벨 시스템 통합 (확정)</div>
+    <div class="section-desc">4개 독립 시스템. 겹치지 않으며 각각 다른 행동을 측정.</div>
+    <div class="level-grid">
+      <div class="level-card"><div class="level-display" style="color:var(--accent);">Lv.34 + XP</div><h4>에이전트 레벨</h4><div class="level-desc">거래/활동으로 올라감<br><span class="level-up">올라감</span>&nbsp;<span style="color:var(--dim);font-size:.78rem;text-decoration:line-through;">내려감 없음</span></div></div>
+      <div class="level-card"><div class="level-display" style="color:var(--blue);">Trust 87</div><h4>Trust Score</h4><div class="level-desc">좋은 거래 &rarr; 상승, 분쟁/취소 &rarr; 하락<br><span class="level-up">올라감</span>&nbsp;<span class="level-down">내려감</span></div></div>
+      <div class="level-card"><div class="level-display" style="color:var(--accent2);">Rare</div><h4>캐릭터 등급</h4><div class="level-desc">Common~Mythic. 뽑기 운으로 결정<br><span style="color:var(--dim);font-size:.78rem;">고정 (변하지 않음)</span></div></div>
+      <div class="level-card"><div class="level-display" style="color:var(--yellow);">&#11088;&#11088;&#11088;</div><h4>배심원 별</h4><div class="level-desc">정확한 판정 &rarr; 상승, 소수파/미활동 &rarr; 하락<br><span class="level-up">올라감</span>&nbsp;<span class="level-down">내려감</span></div></div>
+    </div>
+    <div class="arch-card" style="margin-top:20px;">
+      <h3>배심원 미활동 감소</h3><span class="badge-role">Inactivity Decay</span>
+      <table class="cost-table" style="margin-top:12px;">
+        <thead><tr><th>기간</th><th>누적 감소</th><th>의미</th></tr></thead>
+        <tbody>
+          <tr><td>30일</td><td class="cost-val" style="color:var(--yellow);">-2%</td><td class="cost-label">경고</td></tr>
+          <tr><td>90일</td><td class="cost-val" style="color:var(--orange);">-18%</td><td class="cost-label">의미 있는 하락</td></tr>
+          <tr><td>180일</td><td class="cost-val" style="color:var(--red);">-72%</td><td class="cost-label">사실상 리셋</td></tr>
+        </tbody>
+      </table>
+      <div class="info-box" style="margin-top:12px;margin-bottom:0;"><div class="info-title">리셋 조건</div><p>판정 <strong>1건</strong>만 하면 타이머 즉시 리셋.</p></div>
+    </div>
+    <div class="info-box" style="margin-top:20px;"><div class="info-title">전문가 태그 조건</div><p>최근 <strong>50건 + 85% 정확도</strong> (43/50) &rarr; 상위 <strong>1.4%</strong>. 카테고리별 별도 별점.</p></div>
+  </section>
+
+  <!-- 법적/사업 분석 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(59,130,246,.15);">📋</div>법적/사업 분석 (확정)</div>
+    <div class="analogy"><div class="title">FairClaims 실패 교훈</div><p><strong>FairClaims:</strong> 플랫폼 비용 부담 &rarr; 편향 &rarr; 폐업<br><strong>Haggle:</strong> 패소자 부담 &rarr; <strong>구조적 중립</strong></p></div>
+    <div class="arch-grid">
+      <div class="arch-card"><h3>ODR 시장</h3><span class="badge-role">Online Dispute Resolution</span><div style="text-align:center;padding:16px 0;"><div style="font-size:2rem;font-weight:800;color:var(--blue);">~$1.5-1.8B</div><div style="color:var(--muted);font-size:.85rem;margin-top:4px;">2025 시장 규모</div><div style="color:var(--green);font-size:.85rem;margin-top:4px;">CAGR 18-22%</div></div></div>
+      <div class="arch-card"><h3>NFT 전략</h3><span class="badge-role">DB-First &rarr; 투트랙</span><ul class="security-list"><li><span class="check">✓</span><strong>MVP:</strong> DB 기반 (NFT 아님)</li><li><span class="check">✓</span><strong>트랙 1 — Soulbound:</strong> 업적/달성 보상 (거래 불가)</li><li><span class="check">✓</span><strong>트랙 2 — Tradeable:</strong> 캐릭터 마켓플레이스 (거래 가능)</li><li><span class="check">✓</span>용어: <strong>"에이전트 캐릭터"</strong></li><li><span class="check">✓</span>특성만 온체인, 렌더링 오프체인</li></ul></div>
+    </div>
+    <div class="info-box" style="margin-top:16px;"><div class="info-title">Reddit Digital Collectibles 모델</div><p>"Digital Collectibles" 브랜딩 &rarr; <strong>20M 채택</strong>. 무료 지급 + 실제 용도 = 성공.</p></div>
+  </section>
+
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- TAB 2: 현재 안건 (4/4 모임) -->
+<!-- ═══════════════════════════════════════ -->
+<div id="tab-current" class="tab-content">
+
+  <!-- 게이미피케이션 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">🎮</div>게이미피케이션 (확정)</div>
+    <div class="section-desc">8종족, 마스크 기반 레이어 합성, CSS 애니메이션. ~1,613억+ 조합.</div>
+    <div class="arch-grid">
+      <div class="arch-card"><h3>캐릭터 시스템</h3><span class="badge-role">8종족 &middot; 16카테고리</span><ul class="security-list"><li><span class="check">✓</span><strong>8종족</strong> (16카테고리 그룹화)</li><li><span class="check">✓</span><strong>마스크 기반</strong> 레이어 합성 &mdash; Python 자동</li><li><span class="check">✓</span><strong>0.065초</strong>/캐릭터 생성</li><li><span class="check">✓</span><strong>CSS 애니메이션</strong> &mdash; 라이브러리 0개</li><li><span class="check">✓</span>크로스 드롭 15%</li></ul></div>
+      <div class="arch-card"><h3>조합 수</h3><span class="badge-role">사실상 유니크</span><div style="text-align:center;padding:20px 0;"><div style="font-size:2.4rem;font-weight:800;color:var(--accent);">~161.3B+</div><div style="color:var(--muted);font-size:.85rem;margin-top:4px;">가능한 조합 수</div><div style="color:var(--dim);font-size:.78rem;margin-top:2px;">중복 사실상 불가능</div></div></div>
+    </div>
+
+    <div style="margin-top:24px;margin-bottom:8px;font-weight:600;">캐릭터 등급 (6단계)</div>
+    <div class="rarity-grid">
+      <div class="rarity-item common">
+        <div class="rarity-name">⬜ Common</div>
+        <div class="rarity-sub">가장 흔한</div>
+        <div class="rarity-border">흰색 테두리</div>
+        <ul class="rarity-features">
+          <li>기본 색상 조합</li>
+          <li>기본 CSS 아이들 모션</li>
+          <li>프로필 표시</li>
+        </ul>
+        <div class="rarity-prob">~65-75%</div>
+      </div>
+      <div class="rarity-item uncommon">
+        <div class="rarity-name">🟩 Uncommon</div>
+        <div class="rarity-sub">약간 희귀</div>
+        <div class="rarity-border">초록 테두리</div>
+        <ul class="rarity-features">
+          <li>특별한 색 조합</li>
+          <li>Common 모션 + 고개 갸웃</li>
+          <li>프로필 초록 테두리 표시</li>
+        </ul>
+        <div class="rarity-prob">~15-18%</div>
+      </div>
+      <div class="rarity-item rare">
+        <div class="rarity-name">🟦 Rare</div>
+        <div class="rarity-sub">희귀</div>
+        <div class="rarity-border">파란 테두리</div>
+        <ul class="rarity-features">
+          <li>+ 무늬 (줄무늬/물방울/별)</li>
+          <li>240종 패턴 추가</li>
+          <li>전용 입장 이펙트</li>
+          <li>조합 수 &times;240 &rarr; ~1,613억</li>
+        </ul>
+        <div class="rarity-prob">~7-13%</div>
+      </div>
+      <div class="rarity-item epic">
+        <div class="rarity-name">🟪 Epic</div>
+        <div class="rarity-sub">매우 희귀</div>
+        <div class="rarity-border">보라 테두리</div>
+        <ul class="rarity-features">
+          <li>특수 색상 (홀로그램/네온/메탈릭)</li>
+          <li>전용 파티클 이펙트</li>
+          <li>협상 화면 보라빛 오라</li>
+          <li>프로필 뱃지 표시</li>
+        </ul>
+        <div class="rarity-prob">~2.5-8%</div>
+      </div>
+      <div class="rarity-item legendary">
+        <div class="rarity-name">🟨 Legendary</div>
+        <div class="rarity-sub">전설</div>
+        <div class="rarity-border">금색 테두리</div>
+        <ul class="rarity-features">
+          <li>전설 전용 디자인</li>
+          <li>투명/황금/우주 테마</li>
+          <li>금색 입장 + 오라 + 파티클</li>
+          <li>전설 전용 프레임</li>
+          <li>🔊 <strong>TTS 음성</strong> &mdash; 협상 중 캐릭터가 말함</li>
+          <li>전체 수천 종만 존재</li>
+        </ul>
+        <div class="rarity-prob">~0.4-4.5%</div>
+      </div>
+      <div class="rarity-item mythic">
+        <div class="rarity-name">🔴 Mythic</div>
+        <div class="rarity-sub">신화급</div>
+        <div class="rarity-border">홀로그램 테두리</div>
+        <ul class="rarity-features">
+          <li>종족당 1~3종 신화적 존재</li>
+          <li>구미호, 천룡, 피닉스 등</li>
+          <li>전용 풀스크린 등장 연출</li>
+          <li>🔊 <strong>TTS 음성</strong> &mdash; 종족 고유 목소리 + 감정 표현</li>
+          <li>모든 이펙트 해금</li>
+          <li>전체 <strong>24종</strong>만 존재</li>
+        </ul>
+        <div class="rarity-prob">~0.03-0.5%</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">레벨 기반 커스터마이징 해금</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--green);font-weight:700;">Lv.1</span> &mdash; 캐릭터 1마리</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--green);font-weight:700;">Lv.5</span> &mdash; 악세서리 1슬롯</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--blue);font-weight:700;">Lv.10</span> &mdash; 배경 선택</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--blue);font-weight:700;">Lv.15</span> &mdash; 악세서리 2슬롯</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--accent2);font-weight:700;">Lv.20</span> &mdash; 날씨 이펙트</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--accent2);font-weight:700;">Lv.25</span> &mdash; 오라</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--yellow);font-weight:700;">Lv.30</span> &mdash; 프레임</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--yellow);font-weight:700;">Lv.40</span> &mdash; 전용 파티클</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--red);font-weight:700;">Lv.50</span> &mdash; 모든 해금 (~1,800건 거래)</div>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">수집 업적</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏅 <strong>3종족 보유</strong> &mdash; "탐험가" 뱃지</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏅 <strong>5종족 보유</strong> &mdash; "수집가" 뱃지 + 배경</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏆 <strong>8종족 전부</strong> &mdash; "마스터 수집가" + 특별 프레임</div>
+    </div>
+
+    <div class="formula-box">
+      <div class="formula">rate = base &times; ln(1 + amount/100) / sqrt(1 + total_minted/5000) &times; (remaining/max)</div>
+      <div class="formula-desc">거래액 높으면 확률 &uarr; &middot; 총 민팅 늘면 확률 &darr; &middot; 등급 소진 시 확률 &rarr; 0</div>
+    </div>
+
+    <div style="margin-top:24px;margin-bottom:12px;font-weight:600;">뽑기 타이밍</div>
+    <ul class="gacha-list">
+      <li><div class="gacha-icon">🔄</div><div><strong>매 거래</strong> &mdash; 일반 뽑기 1회</div></li>
+      <li><div class="gacha-icon">✨</div><div><strong>새 파라미터 조합</strong> &mdash; 보너스 뽑기</div></li>
+      <li><div class="gacha-icon">🆕</div><div><strong>새 카테고리</strong> &mdash; 종족 확정 뽑기</div></li>
+      <li><div class="gacha-icon">🏆</div><div><strong>마일스톤 달성</strong> &mdash; 등급 상승 뽑기</div></li>
+      <li><div class="gacha-icon">⚖️</div><div><strong>배심원 10건</strong> &mdash; 전용 뽑기</div></li>
+    </ul>
+  </section>
+
+  <!-- 캐릭터 파이프라인 + 라이브 데모 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🎨</div>캐릭터 파이프라인 (검증 완료)</div>
+    <div class="section-desc">전체 파이프라인 테스트 완료. Spine/Rive 불필요 확인. Pure CSS/JS로 최종 결정.</div>
+
+    <div style="margin-bottom:8px;font-weight:600;">테스트 결과</div>
+    <ul class="checklist">
+      <li><div class="box checked"></div>Gemini API &rarr; 캐릭터 이미지 생성 <span style="color:var(--green);font-size:.82rem;margin-left:auto;">$0.04</span></li>
+      <li><div class="box checked"></div>Python &rarr; 배경 제거 + defringe</li>
+      <li><div class="box checked"></div>Python &rarr; 색상 변형 (hue shift)</li>
+      <li><div class="box checked"></div>CSS &rarr; 애니메이션 (idle, happy, sad, thinking, surprised, excited)</li>
+      <li><div class="box checked"></div>악세서리 토글 (crown, glasses &mdash; 동시 작동)</li>
+      <li><div class="box checked"></div>표정 교체 (이미지 swap)</li>
+      <li style="opacity:.6;"><div class="box fail"></div>Spine &rarr; 동물/치비 리깅 <span style="color:var(--red);font-size:.82rem;margin-left:auto;">실패</span></li>
+      <li style="opacity:.6;"><div class="box fail"></div>Rive &rarr; CSS로 동일 결과 <span style="color:var(--dim);font-size:.82rem;margin-left:auto;">불필요</span></li>
+      <li><div class="box checked"></div>RiveMCP &rarr; .riv 생성 가능 <span style="color:var(--yellow);font-size:.82rem;margin-left:auto;">토큰 과다</span></li>
+    </ul>
+
+    <div style="margin-top:24px;margin-bottom:8px;font-weight:600;">프로덕션 파이프라인</div>
+    <div class="flow-diagram">
+      <div class="flow-steps">
+        <div class="flow-step">준비 (1회)<br><small style="color:var(--muted)">마스크 8장 &times; 8종족<br>= 64장</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step highlight">Python 색칠<br><small style="color:var(--muted)">0.065초/캐릭터<br>비용 $0</small></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step">CSS 렌더링<br><small style="color:var(--muted)">라이브러리 0<br>애니메이션 포함</small></div>
+      </div>
+      <div class="flow-explain">마스크 이미지 준비는 1회. 이후 캐릭터 생성은 <strong>완전 자동 + 무료</strong>.</div>
+    </div>
+
+    <!-- Live Chibi Fox Demo -->
+    <div class="fox-demo">
+      <div style="font-weight:700;font-size:1.1rem;margin-bottom:4px;">🦊 치비 여우 라이브 데모</div>
+      <div style="color:var(--dim);font-size:.82rem;margin-bottom:16px;">Pure CSS/JS &mdash; Rive 없음, 라이브러리 없음, 이미지만 교체하면 커스터마이징 완료</div>
+      <div class="fox-stage">
+        <div class="fox-wrapper" id="foxWrapper">
+          <img class="fox-img" id="foxNormal" src="assets/chibi_fox_clean.png">
+          <img class="fox-img hidden" id="foxHappy" src="assets/fox_happy_clean.png">
+          <img class="fox-img hidden" id="foxSad" src="assets/fox_sad_clean.png">
+          <img class="fox-acc crown visible" id="foxAcc" src="assets/crown_only_clean.png">
+        </div>
+      </div>
+      <div class="fox-controls">
+        <button onclick="foxMood('idle')">😊 Idle</button>
+        <button onclick="foxMood('happy')">🎉 Happy</button>
+        <button onclick="foxMood('sad')">😢 Sad</button>
+        <button onclick="foxMood('thinking')">🤔 Thinking</button>
+        <button onclick="foxMood('surprised')">😲 Surprised</button>
+        <button onclick="foxMood('excited')">⚡ Excited</button>
+        <button id="foxCrownBtn" class="fox-on" onclick="foxSetAcc('assets/crown_only_clean.png','crown')">👑 Crown</button>
+        <button id="foxGlassBtn" onclick="foxSetAcc('assets/glasses_clean.png','glasses')">👓 Glasses</button>
+        <button onclick="foxToggleAcc()">🎀 On/Off</button>
+      </div>
+      <div class="fox-status" id="foxStatus">버튼을 눌러보세요</div>
+      <div class="fox-note">실제 프로덕션과 동일한 방식. 이미지만 바꾸면 다른 종족으로 변환 가능.</div>
+    </div>
+  </section>
+
+  <!-- 수익 모델 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(16,185,129,.15);">💰</div>수익 모델</div>
+    <div class="section-desc">MVP 2개 수익원에서 시작, 단계적 6개 확장.</div>
+    <table class="biz-table">
+      <thead><tr><th>수익원</th><th>비율/내용</th><th>시기</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td class="bold">거래 수수료</td><td class="mono green-text">1.5%</td><td>MVP</td><td><span class="sev low">READY</span></td></tr>
+        <tr><td class="bold">분쟁 비용</td><td class="mono green-text">30%</td><td>MVP</td><td><span class="sev low">READY</span></td></tr>
+        <tr><td>코스메틱 직접 판매</td><td class="dim-text">캐릭터 악세서리</td><td>유저 100K+</td><td><span class="sev medium">PLANNED</span></td></tr>
+        <tr><td>마켓 거래 수수료</td><td class="mono">5%</td><td>법률 검토 후</td><td><span class="sev medium">PLANNED</span></td></tr>
+        <tr><td>콜라보 수익</td><td class="dim-text">브랜드/IP</td><td>파트너십 후</td><td><span class="sev medium">PLANNED</span></td></tr>
+        <tr><td>DRaaS API</td><td class="dim-text">분쟁 해결 API 외부 제공</td><td>모듈화 후</td><td><span class="sev medium">PLANNED</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- NFT 시장 비교 분석 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">🎭</div>NFT 시장 분석 — 성공 vs 실패, 그리고 우리의 전략</div>
+    <div class="section-desc">NFT 시장의 성공/실패 패턴을 분석하고, Haggle 캐릭터 시스템이 왜 다른지 정리.</div>
+
+    <div class="arch-grid">
+      <div class="arch-card" style="border-color:var(--green);">
+        <h3 style="color:var(--green);">성공 프로젝트</h3><span class="badge-role">커뮤니티 + 유틸리티</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>BAYC</strong> &mdash; 민팅 $190 &rarr; 피크 $400K. 커뮤니티 이벤트, IP 권리, APE 토큰 에어드랍. Yuga Labs $4B 밸류에이션</li>
+          <li><span class="check">✓</span><strong>Pudgy Penguins</strong> &mdash; 죽을 뻔 &rarr; 새 리더십 $2.5M 인수 &rarr; 월마트 장난감 $50M+ 매출. 물리적 제품으로 피벗</li>
+          <li><span class="check">✓</span><strong>CryptoPunks</strong> &mdash; 2017 퍼스트무버. 10,000개 고정 공급. 역사적 상징성</li>
+        </ul>
+      </div>
+      <div class="arch-card" style="border-color:var(--red);">
+        <h3 style="color:var(--red);">실패 프로젝트</h3><span class="badge-role">투기 + 미이행</span>
+        <ul class="security-list">
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>셀럽 NFT</strong> &mdash; 90-99% 가치 하락. Justin Bieber Ape $1.3M &rarr; $50K. 유틸리티 없음, 이름값만</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>Generic PFP</strong> &mdash; 2021-22 PFP 프로젝트 ~95% 가치 0. 차별화 없음, 로드맵 미이행, 러그풀</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>Pixelmon</strong> &mdash; $70M 모금 후 조악한 아트 전달. 과대 약속, 과소 이행</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">성공/실패 핵심 패턴</div>
+    <table class="biz-table">
+      <thead><tr><th style="color:var(--green);">성공 요인</th><th style="color:var(--red);">실패 패턴</th></tr></thead>
+      <tbody>
+        <tr><td>커뮤니티 중심 (유틸리티, 접근권)</td><td>투기만 가능한 가치 구조</td></tr>
+        <tr><td>IP 권리 / 실물 연계</td><td>민팅 후 로드맵 없음</td></tr>
+        <tr><td>NFT 너머의 브랜드 구축</td><td>셀럽 이름값에 의존</td></tr>
+        <tr><td>팀의 장기 실행력</td><td>익명/무책임 팀</td></tr>
+        <tr><td>희소성의 자연 형성</td><td>인위적 희소성 (한정판 마케팅)</td></tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">현재 NFT 시장 (2025-26)</div>
+    <div class="info-box">
+      <div class="info-title">시장 현황</div>
+      <p>거래량 2022 피크 대비 <strong>~90% 감소</strong>. OpenSea &rarr; Blur 이동 후 둘 다 하락. 시장은 <strong>투기 &rarr; 유틸리티</strong>로 전환 중. Pudgy Penguins 모델 (물리+디지털 하이브리드)이 새 템플릿으로 부상.</p>
+    </div>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:700;font-size:1.05rem;color:var(--accent);">Haggle은 왜 다른가?</div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>실패 패턴 회피</h3><span class="badge-role">Anti-Pattern</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>거래 기반 획득</strong> &mdash; 투기적 민팅 없음. 실제 거래로만 캐릭터 획득</li>
+          <li><span class="check">✓</span><strong>유틸리티 내재</strong> &mdash; 캐릭터 = 협상 AI 아바타. 프로필 + 신뢰도 시각화</li>
+          <li><span class="check">✓</span><strong>투트랙 NFT</strong> &mdash; 업적/뱃지는 Soulbound (거래 불가), 캐릭터는 마켓플레이스 거래 가능</li>
+          <li><span class="check">✓</span><strong>동적 희소성</strong> &mdash; 공급 자동 조절 (수식 기반). 인위적 한정판 아님</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>성공 패턴 채택</h3><span class="badge-role">Best Practice</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>커뮤니티 = 유저</strong> &mdash; 거래할수록 캐릭터 성장. 자연스러운 참여 루프</li>
+          <li><span class="check">✓</span><strong>수집 + 업적</strong> &mdash; 8종족 수집, 배심원 뱃지, 마스터 수집가 프레임</li>
+          <li><span class="check">✓</span><strong>레벨 해금</strong> &mdash; Lv.1~50 커스터마이징 진행형. 장기 리텐션 설계</li>
+          <li><span class="check">✓</span><strong>DB-First</strong> &mdash; MVP는 온체인 아님. 검증 후 투트랙 (Soulbound + Marketplace) 이행</li>
+        </ul>
+      </div>
+    </div>
+    <div class="warn-box"><div class="warn-title">핵심 차이 &mdash; 투트랙 전략</div>
+      <p style="margin-bottom:8px;">NFT 프로젝트는 <strong>"사서 되팔기"</strong>가 목적. Haggle 캐릭터는 <strong>"거래하면서 성장하기"</strong>가 목적.</p>
+      <p style="margin:0;"><strong>트랙 1 (Soulbound)</strong>: 업적 뱃지, 마스터 수집가 프레임, 배심원 ⭐ &mdash; 거래 불가. 순수 달성 보상.<br>
+      <strong>트랙 2 (Tradeable)</strong>: 캐릭터 자체는 마켓플레이스에서 거래 가능. 수수료 5% (법률 검토 후). 희귀 캐릭터 경제 형성.</p>
+    </div>
+  </section>
+
+  <!-- ODR 시장 분석 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(59,130,246,.15);">⚖️</div>ODR (온라인 분쟁 해결) 시장 분석</div>
+    <div class="section-desc">글로벌 ODR 시장 $800M-$1.2B (2024) &rarr; $2.5-3.5B (2030 예상). CAGR 18-22%. Haggle DRaaS의 시장 기회.</div>
+
+    <div class="stats" style="margin:-10px auto 24px;padding:0;">
+      <div class="stat blue"><div class="num">$1.2B</div><div class="label">ODR 시장 규모 (2024)</div></div>
+      <div class="stat green"><div class="num">$3.5B</div><div class="label">예상 시장 (2030)</div></div>
+      <div class="stat purple"><div class="num">18-22%</div><div class="label">연평균 성장률</div></div>
+      <div class="stat yellow"><div class="num">60M</div><div class="label">eBay 연간 분쟁 건수</div></div>
+    </div>
+
+    <div style="margin-bottom:8px;font-weight:600;">주요 플레이어</div>
+    <table class="biz-table">
+      <thead><tr><th>플레이어</th><th>영역</th><th>특징</th><th>한계</th></tr></thead>
+      <tbody>
+        <tr><td class="bold">eBay/PayPal</td><td>마켓플레이스 내부</td><td>연 60M 건 처리, 90% 자동 해결</td><td>자체 생태계만. 외부 사용 불가</td></tr>
+        <tr><td class="bold">Tyler Tech (Modria)</td><td>법원/정부</td><td>미국 법원 ODR 지배적</td><td>B2G만. 소비자 직접 접근 불가</td></tr>
+        <tr><td class="bold">Kleros</td><td>블록체인 중재</td><td>탈중앙 배심원, PNK 토큰, $10M+ 처리</td><td>범용. 커머스 최적화 아님</td></tr>
+        <tr><td class="bold">Aragon Court</td><td>DAO 거버넌스</td><td>ANT 토큰 기반</td><td>소규모. DAO 전용</td></tr>
+        <tr><td class="bold">Matterhorn</td><td>B2B SaaS</td><td>보험, 통신사 분쟁</td><td>P2P 커머스 미지원</td></tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">시장 트렌드</div>
+    <ul class="gacha-list">
+      <li><div class="gacha-icon">🤖</div><div><strong>AI 자동 분류</strong> &mdash; 분쟁 자동 분류 + 해결 제안 (eBay 90% 자동 해결 달성)</div></li>
+      <li><div class="gacha-icon">⛓️</div><div><strong>블록체인 중재</strong> &mdash; Kleros 모델로 탈중앙 배심원 작동 검증 완료</div></li>
+      <li><div class="gacha-icon">📜</div><div><strong>규제 추진</strong> &mdash; EU ODR 플랫폼 (ec.europa.eu/odr), UNCITRAL ODR 기술 노트</div></li>
+      <li><div class="gacha-icon">💸</div><div><strong>비용 절감 압력</strong> &mdash; 전통 중재 비용 대비 ODR 70-90% 절감 가능</div></li>
+    </ul>
+
+    <div style="margin-top:20px;margin-bottom:8px;font-weight:700;font-size:1.05rem;color:var(--accent);">시장 공백 &amp; Haggle DRaaS 기회</div>
+    <div class="arch-grid">
+      <div class="arch-card" style="border-color:var(--red);">
+        <h3 style="color:var(--red);">현재 시장 공백</h3>
+        <ul class="security-list">
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>P2P + 온체인 결제</strong> 통합 ODR 솔루션 없음</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>eBay/PayPal은 자체 생태계만 지원</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>Kleros는 범용 (커머스 최적화 안 됨)</li>
+          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>협상 + 결제 + 분쟁을 하나의 프로토콜로 묶은 서비스 없음</li>
+        </ul>
+      </div>
+      <div class="arch-card" style="border-color:var(--green);">
+        <h3 style="color:var(--green);">Haggle DRaaS 차별점</h3>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>3계층 비용</strong> &mdash; T1: max(0.5%,$3), T2: max(2%,$12), T3: max(5%,$30)</li>
+          <li><span class="check">✓</span><strong>DS 패널</strong> &mdash; ⭐1-5 배심원 시스템, 전문가 태그, 경력 기반</li>
+          <li><span class="check">✓</span><strong>온체인 투표</strong> &mdash; Signed + Merkle 기반 투명한 판정</li>
+          <li><span class="check">✓</span><strong>프로토콜 내장</strong> &mdash; 협상 &rarr; 결제 &rarr; 배송 &rarr; 분쟁 일체형</li>
+          <li><span class="check">✓</span><strong>외부 제공 가능</strong> &mdash; DRaaS API로 타 플랫폼에도 분쟁 해결 서비스 제공</li>
+        </ul>
+      </div>
+    </div>
+    <div class="info-box"><div class="info-title">DRaaS 수익 모델</div><p>분쟁 비용 30/70 분할 (패소자 70%, Haggle 30%). 외부 API 제공 시 추가 수수료. <strong>ODR 시장 $3.5B 중 P2P 커머스만 겨냥해도 $500M+ TAM.</strong></p></div>
+  </section>
+
+  <!-- 결정 필요 항목 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(249,115,22,.15);">🔔</div>결정 필요 항목</div>
+    <table class="biz-table">
+      <thead><tr><th>#</th><th>안건</th><th class="right">우선순위</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td class="bold">캐릭터 마스크 이미지 제작 (Gemini? 디자이너?)</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">2</td><td>뽑기 연출 디자인 (알 깨기 애니메이션)</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">3</td><td>동적 희소성 base 값 최종 확정</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">4</td><td>Mythic 디자인 컨셉 (종족별 1~3종)</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">5</td><td>악세서리 초기 목록</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">6</td><td>콜라보 대상 리스트</td><td class="right"><span class="sev low">낮음</span></td></tr>
+      </tbody>
+    </table>
+    <div class="warn-box"><div class="warn-title">최우선 과제</div><strong>#1 마스크 이미지 제작</strong>은 캐릭터 시스템의 전제 조건입니다. 마스크 없이 캐릭터 생성 파이프라인 가동 불가.</div>
+  </section>
+
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- TAB 3: 향후 목표 -->
+<!-- ═══════════════════════════════════════ -->
+<div id="tab-future" class="tab-content">
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🗺</div>구현 로드맵</div>
+    <div class="section-desc">Phase 1-5 코어 로직 완료. DB/API 연결 완료. Skill DB+API 남음.</div>
+
+    <div class="card-grid">
+      <div class="phase-card">
+        <h3>Phase 3 — Infrastructure ✅</h3>
+        <div class="phase-desc">DB 스키마 10개 테이블 + API 30 엔드포인트</div>
+        <ul class="security-list">
+          <li><span class="check">✓</span>tag-core 구현 (71 tests)</li>
+          <li><span class="check">✓</span>DB 스키마 (trust, ds, deposit, arp, tags)</li>
+          <li><span class="check">✓</span>Service 레이어 (5 CRUD 파일)</li>
+          <li><span class="check">✓</span>API 라우트 (Trust, DS, ARP, Tag, Deposit)</li>
+        </ul>
+      </div>
+      <div class="phase-card">
+        <h3>Phase 4 — WaitingIntent ✅</h3>
+        <div class="phase-desc">양방향 매칭 엔진 + 상태 머신 + DB/API</div>
+        <ul class="security-list">
+          <li><span class="check">✓</span>WaitingIntent 타입 + 상태 머신 (46 tests)</li>
+          <li><span class="check">✓</span>매칭 엔진 (양쪽 U_total ≥ min)</li>
+          <li><span class="check">✓</span>Intent DB + Service + API (7 엔드포인트)</li>
+        </ul>
+      </div>
+      <div class="phase-card">
+        <h3>Phase 5 — Skill 생태계 🔄</h3>
+        <div class="phase-desc">Skill 타입 + 레지스트리 완료. DB/API 남음.</div>
+        <ul class="security-list">
+          <li><span class="check">✓</span>skill-core: Manifest + Registry + Pipeline (62 tests)</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Skill DB 스키마 + Service + API</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>Dispute Resolution Marketplace</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 단기 목표: MVP -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(239,68,68,.15);">🚀</div>단기 목표 — MVP 출시 (4월 이내)</div>
+    <div class="section-desc">4월 안에 MVP를 출시하는 것이 최우선. 협상 + 결제 + 배송 + 분쟁이 동작하는 최소 제품.</div>
+    <div class="arch-card">
+      <h3>MVP 체크리스트</h3><span class="badge-role">4월 마감</span>
+      <ul class="security-list">
+        <li><span class="check">✓</span>협상 엔진 (engine-core + session)</li>
+        <li><span class="check">✓</span>분쟁 해결 시스템 (dispute-core)</li>
+        <li><span class="check">✓</span>신뢰 점수 + 배송 SLA + ARP</li>
+        <li><span class="check">✓</span>DB 스키마 + API 라우트 (Phase 3-4)</li>
+        <li><span class="check">✓</span>Skill 시스템 기반 (Phase 5a)</li>
+        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>웹앱 + API 통합</li>
+        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>USDC 결제 연동</li>
+        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>배포 + 도메인 연결 (tryhaggle.ai)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 중기 목표 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">🎯</div>중기 목표 — 월 10K 유저</div>
+    <div class="section-desc">MVP 출시 후 3~6개월 내 월간 활성 유저 10,000명 달성.</div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>프로덕트</h3><span class="badge-role">Growth</span>
+        <ul class="security-list">
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>캐릭터 시스템 론칭 (게이미피케이션)</li>
+          <li><span class="check">✓</span>WaitingIntent 매칭 (Phase 4)</li>
+          <li><span class="check">✓</span>Skill 기반 (Phase 5a — registry + pipeline)</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>코스메틱 마켓 오픈</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>DRaaS API 외부 제공</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>비즈니스</h3><span class="badge-role">수익화</span>
+        <ul class="security-list">
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>1.5% 거래 수수료 활성화</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>분쟁 비용 30% 플랫폼 수익</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>월 GMV $500K+ 목표</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>브랜드/IP 콜라보 시작</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 마케팅 방안 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">📣</div>마케팅 방안</div>
+    <div class="section-desc">MVP 출시와 동시에 시작할 마케팅 채널과 전략.</div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>초기 채널 (MVP 동시)</h3><span class="badge-role">Day 1</span>
+        <ul class="security-list">
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>Waitlist</strong> &mdash; 랜딩 페이지 대기자 전환</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>Product Hunt</strong> 론칭</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>Reddit</strong> r/deals, r/flipping, r/cryptocurrency</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>Twitter/X</strong> AI + Web3 커뮤니티</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>Discord</strong> 커뮤니티 오픈</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>성장 전략</h3><span class="badge-role">Post-Launch</span>
+        <ul class="security-list">
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>레퍼럴</strong> &mdash; 초대 시 양쪽 캐릭터 뽑기</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>콘텐츠</strong> &mdash; "eBay 수수료 13% vs Haggle 1.5%" 비교 영상</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>인플루언서</strong> &mdash; 리셀러/딜 유튜버 파트너십</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>SEO</strong> &mdash; "AI negotiation", "P2P crypto marketplace"</li>
+          <li><span style="color:var(--yellow);flex-shrink:0;">◯</span><strong>파트너십</strong> &mdash; 리셀러 커뮤니티, 소규모 셀러 그룹</li>
+        </ul>
+      </div>
+    </div>
+    <div class="info-box" style="margin-top:16px;"><div class="info-title">핵심 메시지</div><p><strong>"eBay에 13% 주지 마세요. AI가 협상하고 1.5%만 받습니다."</strong><br>수수료 절감이 가장 강력한 후크. 캐릭터 시스템은 리텐션 도구.</p></div>
+  </section>
+
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- 업데이트 내역 (항상 표시) -->
+<!-- ═══════════════════════════════════════ -->
+<section class="section" id="updates">
+  <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">📝</div>업데이트 내역</div>
+  <div class="section-desc">모임 후 정리한 변경사항. 최신순.</div>
+
+  <div class="update-log">
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 첫 번째 모임</div>
+      <ul class="update-items">
+        <li>Phase 1-2 구현 완료 (trust, dispute, arp, shipping = 443 tests)</li>
+        <li>tag-core 구현 완료 (71 tests, Phase 3a)</li>
+        <li>분쟁 비용 체계 확정 (T1/T2/T3, 30/70 분배)</li>
+        <li>배심원 모델 확정 (AI+사용자 하이브리드, Skill 전문가 증인)</li>
+        <li>온체인 투표 확정 (서명 + 머클 트리)</li>
+        <li>등급 시스템 통합 (4개 독립 시스템, 겹침 없음)</li>
+        <li>캐릭터 파이프라인 검증 (Gemini &rarr; Python &rarr; CSS)</li>
+        <li>Rive/Spine 테스트 후 CSS로 최종 결정</li>
+        <li>게이미피케이션 v3 확정 (8종족, 6등급, 동적 확률)</li>
+        <li>NFT 전략 (DB 기반 MVP, 투트랙: Soulbound 업적 + Tradeable 캐릭터 마켓)</li>
+        <li>CI/CD 추가 (GitHub Actions: PR시 test + typecheck)</li>
+        <li>문서를 살아있는 형태(지난/현재/향후 탭)로 재구성</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — Phase 3-5 구현</div>
+      <ul class="update-items">
+        <li>Phase 3 완료: DB 스키마 10개 테이블 + Service 5개 + API 30 엔드포인트</li>
+        <li>Phase 4 완료: WaitingIntent 타입 + 상태 머신 + 매칭 엔진 (46 tests) + DB/API</li>
+        <li>Phase 5a 완료: skill-core 패키지 (manifest, registry, pipeline = 62 tests)</li>
+        <li>문서 정리: archive 구조 도입, 구현 완료 문서 이동, README 라우터 생성</li>
+        <li>MVP_TECH_DEBT.md 추가 (TD-001~TD-016 추적 중)</li>
+        <li>CLAUDE.md v2.2 업데이트 (패키지 목록, 3man team, 문서 라우터)</li>
+        <li>3man team 워크플로우 도입 (Arch/Bob/Richard)</li>
+        <li>총 테스트: 830+ (engine 223 + trust 85 + dispute 117 + arp 57 + tag 71 + skill 62 + shipping/others)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 인프라 + 통합 (Step 8-12)</div>
+      <ul class="update-items">
+        <li>shipping-core 빌드 에러 수정 (184 tests, 0 errors)</li>
+        <li>Phase 5b: Skill DB/API (skills + skill_executions 테이블, 9 엔드포인트)</li>
+        <li>GET /payments/:id 추가 (결제 상태 조회)</li>
+        <li>Supabase JWT 인증 미들웨어 (auth.ts + require-auth.ts)</li>
+        <li>모든 mutation 라우트에 requireAuth/requireAdmin 적용</li>
+        <li>웹앱 API 클라이언트 통합 (api-client.ts + api-server.ts)</li>
+        <li>6개 페이지 fetch → 공유 클라이언트로 교체 + JWT 자동 첨부</li>
+        <li>USDC 결제 리서치: payment-core 140t 완성, 컨트랙트 배포만 남음</li>
+        <li>CEO_TODO.md 작성 (컨트랙트 배포, env vars, 인프라 — CEO 직접 처리)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 웹앱 통합 (Step 11-14)</div>
+      <ul class="update-items">
+        <li>Supabase JWT 인증 미들웨어 + 모든 mutation 라우트 guard 적용</li>
+        <li>공유 API 클라이언트 (JWT 자동 첨부, 6개 페이지 교체)</li>
+        <li>Commerce 대시보드 → 실제 payment/dispute/trust API 연동 (optimistic UI)</li>
+        <li>구매자 랜딩 "Start Negotiation" → Intent 생성 + 즉시 매칭 시도</li>
+        <li>미인증 구매자 → /claim 리다이렉트 (pending intent sessionStorage 보존)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 결제/배송/분쟁 통합 (Step 15-17)</div>
+      <ul class="update-items">
+        <li>x402 Webhook 실제 이벤트 처리 (settlement confirmed/failed/expired)</li>
+        <li>분쟁 에스컬레이션 T1→T2→T3 + 자동 deposit 생성</li>
+        <li>만료 deposit 자동 몰수 cron 엔드포인트</li>
+        <li>Drizzle migration SQL: 15개 신규 테이블 (Phase 3-5 전체)</li>
+        <li>drizzle.config.ts에 모든 스키마 파일 등록</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 자동화 + 테스트 (Step 18-20)</div>
+      <ul class="update-items">
+        <li>배송 SLA 위반 → 자동 분쟁 생성 (system-initiated)</li>
+        <li>Settlement Release: buyer-confirm + buffer-complete 엔드포인트</li>
+        <li>API 통합 테스트 26개 (payments 10 + disputes 9 + shipments 7)</li>
+        <li>총 테스트: 830+ 유닛 + 26 API 통합</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-04 — 마무리 (Step 21-22)</div>
+      <ul class="update-items">
+        <li>shipping-core 누락 export 수정 (easypost, mock-carrier, weight-buffer, webhook)</li>
+        <li>API 통합 테스트 29개 추가 (trust 6 + tags 9 + intents 8 + skills 6) → 총 55개</li>
+        <li>x402 Webhook 중복 방지 (idempotency cache, 1시간 TTL)</li>
+        <li>3man team 가능 작업 전부 완료 — CEO 인프라 작업만 남음</li>
+      </ul>
+    </div>
+    <!-- 다음 모임 후 여기에 추가 -->
+  </div>
+</section>
+
+</div>
+
+<footer class="footer">
+  <div>Haggle &mdash; AI 협상 + 온체인 결제 프로토콜</div>
+  <div style="margin-top:8px;">이 문서는 매 모임 후 업데이트됩니다</div>
+  <div style="margin-top:4px;">마지막 업데이트: 2026-04-04</div>
+</footer>
+
+<script>
+// Tab switching
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-bar button').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  const labels = { past: 0, current: 1, future: 2 };
+  document.querySelectorAll('.tab-bar button')[labels[name]].classList.add('active');
+}
+
+// Chibi fox demo
+const foxWrapper = document.getElementById('foxWrapper');
+const foxImgs = { normal: document.getElementById('foxNormal'), happy: document.getElementById('foxHappy'), sad: document.getElementById('foxSad') };
+const foxAcc = document.getElementById('foxAcc');
+
+function foxMood(m) {
+  Object.values(foxImgs).forEach(i => i.classList.add('hidden'));
+  if (m === 'happy') foxImgs.happy.classList.remove('hidden');
+  else if (m === 'sad') foxImgs.sad.classList.remove('hidden');
+  else foxImgs.normal.classList.remove('hidden');
+
+  foxWrapper.style.animation = 'none';
+  void foxWrapper.offsetWidth;
+  if (m === 'idle') foxWrapper.style.animation = 'foxIdle 2s ease-in-out infinite';
+  else if (m === 'thinking') foxWrapper.style.animation = 'foxThinking 2s ease-in-out infinite';
+  else if (m === 'excited') foxWrapper.style.animation = 'foxExcited 0.5s ease-in-out infinite';
+  else if (m === 'surprised') foxWrapper.style.animation = 'foxSurprised 0.4s ease-out 1';
+  else if (m === 'happy') foxWrapper.style.animation = 'foxHappy 0.5s ease-out 1';
+  else if (m === 'sad') foxWrapper.style.animation = 'foxSad 0.6s ease-out forwards';
+
+  if (['happy', 'surprised'].includes(m)) {
+    setTimeout(() => { foxImgs.happy.classList.add('hidden'); foxImgs.normal.classList.remove('hidden'); foxWrapper.style.animation = 'foxIdle 2s ease-in-out infinite'; }, 600);
+  }
+  if (m === 'sad') {
+    setTimeout(() => { foxImgs.sad.classList.add('hidden'); foxImgs.normal.classList.remove('hidden'); foxWrapper.style.animation = 'foxIdle 2s ease-in-out infinite'; }, 2000);
+  }
+
+  const labels = { idle:'😊 대기 중', happy:'🎉 거래 성사!', sad:'😢 협상 결렬...', thinking:'🤔 전략 분석 중...', surprised:'😲 깜짝!', excited:'⚡ 신남!' };
+  document.getElementById('foxStatus').textContent = labels[m];
+}
+
+function foxToggleAcc() { foxAcc.classList.toggle('visible'); }
+function foxSetAcc(src, type) {
+  foxAcc.src = src;
+  foxAcc.className = 'fox-acc ' + type + ' visible';
+  document.querySelectorAll('.fox-controls button').forEach(b => b.classList.remove('fox-on'));
+  if (type === 'crown') document.getElementById('foxCrownBtn').classList.add('fox-on');
+  else document.getElementById('foxGlassBtn').classList.add('fox-on');
+  document.getElementById('foxStatus').textContent = (type === 'crown' ? '👑 왕관' : '👓 안경') + ' 장착!';
+}
+</script>
+</body>
+</html>

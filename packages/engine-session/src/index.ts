@@ -18,3 +18,7 @@ export type { SessionEvent } from './session/state-machine.js';
 export type { RoundResult, EscalationRequest } from './round/types.js';
 export { executeRound } from './round/executor.js';
 export { trackConcession } from './round/concession.js';
+
+// Intent types + matching
+export type { WaitingIntent, IntentConfig, IntentRole, IntentStatus, MatchCandidate, MatchResult, IntentEvent } from './intent/index.js';
+export { defaultIntentConfig, transitionIntent, evaluateMatch, evaluateIntents, evaluateBidirectionalMatch } from './intent/index.js';

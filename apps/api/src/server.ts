@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createDb } from "@haggle/db";
+import authPlugin from "./middleware/auth.js";
 import { registerMcpRoutes } from "./mcp/router.js";
 import { registerClaimRoutes } from "./routes/claim.js";
 import { registerListingsRoutes } from "./routes/listings.js";
@@ -8,6 +9,17 @@ import { registerAccountRoutes } from "./routes/account.js";
 import { registerPublicListingRoutes } from "./routes/public-listing.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
+import { registerShipmentRoutes } from "./routes/shipments.js";
+import { registerDisputeRoutes } from "./routes/disputes.js";
+import { registerAuthenticationRoutes } from "./routes/authentications.js";
+import { registerTrustRoutes } from "./routes/trust.js";
+import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
+import { registerARPRoutes } from "./routes/arp.js";
+import { registerTagRoutes } from "./routes/tags.js";
+import { registerIntentRoutes } from "./routes/intents.js";
+import { registerSkillRoutes } from "./routes/skills.js";
+import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -30,9 +42,12 @@ export async function createServer() {
       /^http:\/\/localhost:\d+$/,
     ],
     methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
+    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
   });
+
+  // ─── Auth Middleware ──────────────────────────────────────
+  await app.register(authPlugin);
 
   // ─── Health Check ────────────────────────────────────────
   app.get("/health", async () => ({
@@ -42,6 +57,21 @@ export async function createServer() {
 
   // ─── MCP Routes ──────────────────────────────────────────
   registerMcpRoutes(app, db);
+
+  // ─── Commerce Routes ─────────────────────────────────────
+  registerPaymentRoutes(app, db);
+  registerShipmentRoutes(app, db);
+  registerDisputeRoutes(app, db);
+  registerSettlementReleaseRoutes(app, db);
+  registerAuthenticationRoutes(app, db);
+
+  // ─── Trust, DS Rating, ARP, Tag Routes ──────────────────
+  registerTrustRoutes(app, db);
+  registerDSRatingRoutes(app, db);
+  registerARPRoutes(app, db);
+  registerTagRoutes(app, db);
+  registerIntentRoutes(app, db);
+  registerSkillRoutes(app, db);
 
   // ─── REST API Routes ───────────────────────────────────
   registerClaimRoutes(app, db);

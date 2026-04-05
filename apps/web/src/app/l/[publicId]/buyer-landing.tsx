@@ -11,6 +11,7 @@ import {
 } from "@/lib/buyer-agents";
 import { Nav } from "@/components/nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
+import { createBuyerIntent, triggerMatch } from "./negotiation-api";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -140,6 +141,8 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
   );
+  const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [negotiationMessage, setNegotiationMessage] = useState("");
 
   const currentStats: BuyerAgentStats = selectedAgent?.stats ?? DEFAULT_BUYER_STATS;
   const deadline = timeRemaining(listing.sellingDeadline);
@@ -479,17 +482,73 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
                     You own this listing
                   </div>
                 ) : (
+                  <>
                   <button
                     type="button"
-                    disabled={!selectedAgent}
+                    disabled={!selectedAgent || negotiationState === "loading"}
+                    onClick={async () => {
+                      if (!selectedAgent) return;
+                      setNegotiationState("loading");
+                      setNegotiationMessage("");
+
+                      try {
+                        if (!user) {
+                          sessionStorage.setItem("pendingIntent", JSON.stringify({
+                            listingId: listing.id,
+                            publicId: listing.publicId,
+                            category: listing.category,
+                            agentPreset: selectedAgent.id,
+                          }));
+                          window.location.href = `/claim?redirect=/l/${listing.publicId}`;
+                          return;
+                        }
+
+                        await createBuyerIntent({
+                          userId: user.email,
+                          category: listing.category || "general",
+                          keywords: listing.tags || [],
+                          listingId: listing.id,
+                          agentPreset: selectedAgent.id,
+                          targetPrice: listing.targetPrice ? parseFloat(listing.targetPrice) : undefined,
+                        });
+
+                        setNegotiationState("success");
+                        setNegotiationMessage("Your negotiation agent is set up! Matching you with the seller...");
+
+                        try {
+                          const match = await triggerMatch(listing.category || "general", listing.id);
+                          if (match.match_result.matched.length > 0) {
+                            setNegotiationMessage("Match found! Your agent will start negotiating shortly.");
+                          } else {
+                            setNegotiationMessage("Intent registered! You\u2019ll be notified when negotiation begins.");
+                          }
+                        } catch {
+                          setNegotiationMessage("Intent registered! Matching will happen shortly.");
+                        }
+                      } catch (err) {
+                        setNegotiationState("error");
+                        setNegotiationMessage("Something went wrong. Please try again.");
+                        console.warn("Failed to create intent:", err);
+                      }
+                    }}
                     className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Start Negotiation
+                    {negotiationState === "loading" ? "Setting up agent..." : "Start Negotiation"}
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12h14" />
                       <path d="m12 5 7 7-7 7" />
                     </svg>
                   </button>
+                  {negotiationState === "loading" && (
+                    <div className="text-center text-sm text-slate-400 mt-3">Setting up your agent...</div>
+                  )}
+                  {negotiationState === "success" && (
+                    <div className="text-center text-sm text-emerald-400 mt-3">{negotiationMessage}</div>
+                  )}
+                  {negotiationState === "error" && (
+                    <div className="text-center text-sm text-red-400 mt-3">{negotiationMessage}</div>
+                  )}
+                  </>
                 )}
               </div>
             </div>

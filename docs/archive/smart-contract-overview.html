@@ -1,0 +1,1830 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haggle 스마트 컨트랙트 · 비용 · 수익 Overview</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --card: #111827;
+    --border: #1e293b;
+    --accent: #6366f1;
+    --accent2: #8b5cf6;
+    --green: #10b981;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --blue: #3b82f6;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif; line-height:1.7; }
+
+  .hero { text-align:center; padding:80px 20px 60px; background:linear-gradient(180deg,#0f172a 0%,var(--bg) 100%); position:relative; overflow:hidden; }
+  .hero::before { content:''; position:absolute; top:-200px; left:50%; transform:translateX(-50%); width:800px; height:800px; background:radial-gradient(circle,rgba(99,102,241,.12) 0%,transparent 70%); pointer-events:none; }
+  .hero h1 { font-size:2.8rem; font-weight:800; background:linear-gradient(135deg,#6366f1,#a78bfa,#6366f1); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:12px; }
+  .hero .sub { color:var(--muted); font-size:1.1rem; margin-bottom:8px; }
+  .hero .explain { color:var(--dim); font-size:.92rem; max-width:700px; margin:16px auto 0; line-height:1.8; }
+  .hero .meta { color:var(--dim); font-size:.85rem; display:flex; gap:24px; justify-content:center; flex-wrap:wrap; margin-top:20px; }
+
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; max-width:1100px; margin:-30px auto 40px; padding:0 20px; position:relative; z-index:1; }
+  .stat { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px; text-align:center; }
+  .stat .num { font-size:2.4rem; font-weight:800; }
+  .stat .label { color:var(--muted); font-size:.85rem; margin-top:4px; }
+  .stat .sublabel { color:var(--dim); font-size:.75rem; margin-top:2px; }
+  .stat.green .num { color:var(--green); }
+  .stat.blue .num { color:var(--blue); }
+  .stat.purple .num { color:var(--accent2); }
+  .stat.yellow .num { color:var(--yellow); }
+
+  .container { max-width:1100px; margin:0 auto; padding:0 20px 80px; }
+
+  .section { margin-bottom:56px; }
+  .section-title { font-size:1.5rem; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:10px; }
+  .section-title .icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+  .section-desc { color:var(--muted); font-size:.9rem; margin-bottom:20px; line-height:1.7; }
+
+  .arch-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media(max-width:700px){ .arch-grid { grid-template-columns:1fr; } }
+  .arch-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px; }
+  .arch-card h3 { font-size:1.15rem; margin-bottom:4px; }
+  .arch-card .badge-role { display:inline-block; padding:2px 10px; border-radius:12px; font-size:.72rem; font-weight:600; margin-bottom:10px; background:rgba(99,102,241,.15); color:var(--accent); }
+  .arch-card .desc { color:var(--muted); font-size:.9rem; margin-bottom:16px; line-height:1.7; }
+  .arch-card .flow { background:#0f172a; border-radius:10px; padding:16px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:.82rem; color:var(--green); line-height:1.8; white-space:pre; overflow-x:auto; }
+  .security-list { list-style:none; margin-top:14px; }
+  .security-list li { padding:6px 0; font-size:.88rem; color:var(--muted); display:flex; align-items:flex-start; gap:8px; }
+  .check { color:var(--green); flex-shrink:0; }
+
+  /* Analogy box */
+  .analogy { background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(139,92,246,.08)); border:1px solid rgba(99,102,241,.2); border-radius:14px; padding:20px 24px; margin-bottom:24px; }
+  .analogy .title { font-size:.85rem; font-weight:600; color:var(--accent); margin-bottom:6px; }
+  .analogy p { font-size:.88rem; color:var(--muted); line-height:1.7; }
+
+  .flow-diagram { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; overflow-x:auto; }
+  .flow-steps { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; }
+  .flow-step { background:#0f172a; border:1px solid var(--border); border-radius:10px; padding:12px 20px; font-size:.85rem; font-weight:600; text-align:center; min-width:110px; }
+  .flow-arrow { color:var(--dim); font-size:1.2rem; margin:0 6px; flex-shrink:0; }
+  .flow-step.highlight { border-color:var(--accent); color:var(--accent); }
+  .flow-explain { text-align:center; margin-top:16px; color:var(--muted); font-size:.84rem; line-height:1.7; }
+
+  .timeline { position:relative; padding-left:32px; }
+  .timeline::before { content:''; position:absolute; left:11px; top:8px; bottom:8px; width:2px; background:linear-gradient(180deg,var(--red),var(--orange),var(--yellow),var(--green)); border-radius:2px; }
+  .round { position:relative; margin-bottom:32px; }
+  .round:last-child { margin-bottom:0; }
+  .round .dot { position:absolute; left:-32px; top:4px; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.65rem; font-weight:700; color:#fff; }
+  .round .dot.r1 { background:var(--red); }
+  .round .dot.r2 { background:var(--orange); }
+  .round .dot.r3 { background:var(--yellow); }
+  .round .dot.r4 { background:var(--green); }
+  .round h3 { font-size:1.05rem; margin-bottom:4px; }
+  .round h3 span { color:var(--muted); font-weight:400; font-size:.85rem; margin-left:8px; }
+  .round .round-desc { color:var(--dim); font-size:.82rem; margin-bottom:10px; line-height:1.6; }
+  .fix-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  .fix-table th { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--muted); font-weight:500; }
+  .fix-table td { padding:8px 10px; border-bottom:1px solid rgba(30,41,59,.5); vertical-align:top; }
+  .sev { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.75rem; font-weight:600; white-space:nowrap; }
+  .sev.critical { background:rgba(239,68,68,.15); color:var(--red); }
+  .sev.high { background:rgba(249,115,22,.15); color:var(--orange); }
+  .sev.medium { background:rgba(245,158,11,.15); color:var(--yellow); }
+  .sev.low { background:rgba(16,185,129,.15); color:var(--green); }
+  .sev.medium-high { background:rgba(249,115,22,.12); color:var(--orange); }
+
+  .attack-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media(max-width:700px){ .attack-grid { grid-template-columns:1fr; } }
+  .attack-row { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; font-size:.88rem; }
+  .attack-row .name { font-weight:600; margin-bottom:4px; }
+  .attack-row .explain { color:var(--dim); font-size:.8rem; margin-bottom:6px; }
+  .attack-row .badge { display:inline-block; padding:3px 12px; border-radius:16px; font-size:.75rem; font-weight:600; background:rgba(16,185,129,.12); color:var(--green); }
+
+  .override-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:700px){ .override-grid { grid-template-columns:1fr; } }
+  .override-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:22px; }
+  .override-card .contract-badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:.72rem; font-weight:600; margin-bottom:10px; }
+  .override-card .contract-badge.router { background:rgba(99,102,241,.15); color:var(--accent); }
+  .override-card .contract-badge.registry { background:rgba(139,92,246,.15); color:var(--accent2); }
+  .override-card h4 { font-size:.95rem; margin-bottom:6px; font-family:'JetBrains Mono','Fira Code',monospace; }
+  .override-card .use-case { color:var(--muted); font-size:.84rem; line-height:1.6; }
+  .override-card .example { background:#0f172a; border-radius:8px; padding:10px 14px; margin-top:10px; color:var(--dim); font-size:.8rem; line-height:1.5; }
+
+  .fn-section { margin-bottom:28px; }
+  .fn-section h3 { font-size:1.05rem; margin-bottom:14px; color:var(--accent); }
+  .fn-grid { display:grid; gap:8px; }
+  .fn-row { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 16px; display:grid; grid-template-columns:220px 100px 1fr; gap:12px; align-items:center; font-size:.85rem; }
+  @media(max-width:700px){ .fn-row { grid-template-columns:1fr; } }
+  .fn-name { font-family:'JetBrains Mono','Fira Code',monospace; color:var(--green); font-size:.82rem; }
+  .fn-access { font-size:.78rem; }
+  .fn-access.buyer { color:var(--blue); }
+  .fn-access.owner { color:var(--yellow); }
+  .fn-access.resolver { color:var(--accent2); }
+  .fn-access.view { color:var(--dim); }
+  .fn-access.guardian { color:var(--orange); }
+  .fn-desc { color:var(--muted); }
+
+  .test-bar { display:flex; gap:4px; margin-bottom:20px; height:36px; border-radius:8px; overflow:hidden; }
+  .test-bar div { display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:600; color:#fff; }
+  .test-breakdown { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+  .test-item { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; font-size:.85rem; }
+  .test-item .count { color:var(--green); font-weight:700; font-family:'JetBrains Mono','Fira Code',monospace; }
+
+  .checklist { list-style:none; }
+  .checklist li { padding:10px 16px; background:var(--card); border:1px solid var(--border); border-radius:10px; margin-bottom:8px; display:flex; align-items:center; gap:10px; font-size:.9rem; }
+  .checklist .box { width:18px; height:18px; border:2px solid var(--dim); border-radius:4px; flex-shrink:0; }
+
+  .phase-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px; margin-bottom:16px; }
+  .phase-card h3 { font-size:1.1rem; margin-bottom:4px; }
+  .phase-card .phase-desc { color:var(--muted); font-size:.9rem; margin-bottom:12px; line-height:1.7; }
+  .phase-tasks { list-style:none; }
+  .phase-tasks li { padding:6px 0; color:var(--muted); font-size:.85rem; display:flex; align-items:center; gap:8px; }
+  .phase-tasks .box { width:16px; height:16px; border:2px solid var(--dim); border-radius:3px; flex-shrink:0; }
+
+  .footer { text-align:center; padding:40px 20px; color:var(--dim); font-size:.8rem; border-top:1px solid var(--border); margin-top:40px; }
+
+  .nav { position:sticky; top:0; z-index:100; background:rgba(10,14,26,.85); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.82rem; padding:6px 14px; border-radius:20px; transition:all .2s; }
+  .nav a:hover { background:rgba(99,102,241,.12); color:var(--accent); }
+
+  .info-box { background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.2); border-radius:12px; padding:16px 20px; margin-bottom:20px; }
+  .info-box .info-title { font-size:.82rem; font-weight:600; color:var(--blue); margin-bottom:4px; }
+  .info-box p { font-size:.85rem; color:var(--muted); line-height:1.7; }
+
+  /* Merkle tree diagram */
+  .merkle-tree { text-align:center; padding:28px; }
+  .merkle-level { display:flex; justify-content:center; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
+  .merkle-node { background:#0f172a; border:1px solid var(--border); border-radius:8px; padding:8px 14px; font-size:.8rem; font-family:'JetBrains Mono','Fira Code',monospace; }
+  .merkle-node.root { border-color:var(--green); color:var(--green); font-weight:700; font-size:.9rem; }
+  .merkle-node.mid { border-color:var(--accent); color:var(--accent); }
+  .merkle-node.leaf { border-color:var(--dim); color:var(--muted); }
+  .merkle-arrows { color:var(--dim); font-size:.9rem; margin-bottom:8px; }
+
+  /* Cost table */
+  .cost-table { width:100%; border-collapse:collapse; font-size:.85rem; margin-bottom:16px; }
+  .cost-table th { text-align:left; padding:10px 14px; border-bottom:2px solid var(--border); color:var(--muted); font-weight:600; }
+  .cost-table td { padding:10px 14px; border-bottom:1px solid rgba(30,41,59,.5); }
+  .cost-table tr:last-child td { border-bottom:2px solid var(--border); }
+  .cost-table .cost-val { color:var(--green); font-weight:700; font-family:'JetBrains Mono','Fira Code',monospace; }
+  .cost-table .cost-label { color:var(--muted); }
+  .cost-total { background:var(--card); border:1px solid var(--green); border-radius:14px; padding:24px; text-align:center; margin-top:20px; }
+  .cost-total .big { font-size:2.2rem; font-weight:800; color:var(--green); }
+  .cost-total .sub { color:var(--muted); font-size:.9rem; margin-top:4px; }
+  .cost-total .note { color:var(--dim); font-size:.8rem; margin-top:8px; }
+
+  /* Data flow */
+  .data-layer { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:12px; }
+  .data-layer h4 { margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .data-layer .layer-badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:.72rem; font-weight:600; }
+  .data-layer .layer-badge.user { background:rgba(59,130,246,.15); color:var(--blue); }
+  .data-layer .layer-badge.server { background:rgba(245,158,11,.15); color:var(--yellow); }
+  .data-layer .layer-badge.chain { background:rgba(16,185,129,.15); color:var(--green); }
+  .data-layer p { color:var(--muted); font-size:.88rem; line-height:1.7; }
+  .data-layer .data-items { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .data-layer .data-tag { background:#0f172a; border:1px solid var(--border); border-radius:8px; padding:4px 12px; font-size:.78rem; color:var(--muted); }
+  .data-connector { text-align:center; color:var(--dim); font-size:1.5rem; margin:4px 0; }
+
+  /* Scale table */
+  .scale-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-top:16px; }
+  .scale-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; text-align:center; }
+  .scale-card .scale-users { font-size:1.4rem; font-weight:700; color:var(--accent); }
+  .scale-card .scale-label { color:var(--muted); font-size:.82rem; margin-top:2px; }
+  .scale-card .scale-proof { color:var(--dim); font-size:.78rem; margin-top:6px; }
+
+  /* ── Business Economics (추가) ── */
+  .biz-table { width:100%; border-collapse:collapse; background:var(--card); border-radius:12px; overflow:hidden; margin-bottom:16px; }
+  .biz-table th { background:rgba(99,102,241,.08); color:var(--accent); font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; padding:12px 14px; text-align:left; font-weight:600; }
+  .biz-table td { padding:10px 14px; border-top:1px solid var(--border); font-size:.85rem; }
+  .biz-table tr:hover td { background:rgba(99,102,241,.03); }
+  .biz-table .right { text-align:right; }
+  .biz-table .mono { font-family:'JetBrains Mono','Fira Code',monospace; font-size:.82rem; }
+  .biz-table .green-text { color:var(--green); }
+  .biz-table .red-text { color:var(--red); }
+  .biz-table .yellow-text { color:var(--yellow); }
+  .biz-table .dim-text { color:var(--dim); }
+  .biz-table .bold { font-weight:700; }
+  .biz-table .highlight-row td { background:rgba(16,185,129,.06); border-top:2px solid rgba(16,185,129,.3); }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .biz-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:24px; margin-bottom:16px; }
+  .biz-card-title { font-weight:700; font-size:1rem; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+
+  .compare-bar { margin:12px 0; }
+  .compare-item { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+  .compare-label { width:120px; font-size:.82rem; color:var(--muted); flex-shrink:0; }
+  .compare-fill { height:28px; border-radius:6px; display:flex; align-items:center; padding:0 10px; font-size:.75rem; font-weight:700; color:#fff; min-width:40px; }
+
+  .success-box { background:rgba(16,185,129,.06); border:1px solid rgba(16,185,129,.2); border-radius:12px; padding:16px 20px; margin:16px 0; font-size:.85rem; line-height:1.8; }
+  .success-box .success-title { font-weight:700; color:var(--green); margin-bottom:4px; }
+  .warn-box { background:rgba(245,158,11,.06); border:1px solid rgba(245,158,11,.2); border-radius:12px; padding:16px 20px; margin:16px 0; font-size:.85rem; line-height:1.8; }
+  .warn-box .warn-title { font-weight:700; color:var(--yellow); margin-bottom:4px; }
+
+  .donut-wrap { display:flex; align-items:center; gap:32px; flex-wrap:wrap; justify-content:center; }
+  .donut { width:160px; height:160px; border-radius:50%; position:relative; }
+  .donut-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; }
+  .donut-center .big { font-size:1.4rem; font-weight:800; }
+  .donut-center .small { font-size:.72rem; color:var(--muted); }
+  .donut-legend { display:flex; flex-direction:column; gap:8px; }
+  .legend-item { display:flex; align-items:center; gap:8px; font-size:.82rem; }
+  .legend-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+
+  .waterfall { display:flex; gap:2px; margin:20px 0; align-items:flex-end; height:180px; }
+  .waterfall-item { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }
+  .waterfall-bar { width:100%; border-radius:6px 6px 0 0; display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px; font-size:.72rem; font-weight:700; color:#fff; min-height:10px; }
+  .waterfall-label { font-size:.7rem; color:var(--muted); margin-top:6px; text-align:center; line-height:1.3; }
+
+  .pnl-scale-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; }
+  .pnl-scale-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; text-align:center; position:relative; overflow:hidden; }
+  .pnl-scale-card.featured { border-color:var(--green); }
+  .pnl-scale-card.featured::before { content:'TARGET'; position:absolute; top:0; right:0; background:var(--green); color:#000; font-size:.65rem; font-weight:700; padding:4px 10px; border-radius:0 0 0 8px; }
+  .pnl-scale-card .sc-users { font-size:1.6rem; font-weight:800; color:var(--accent); }
+  .pnl-scale-card .sc-label { color:var(--muted); font-size:.78rem; margin-bottom:14px; }
+  .pnl-scale-card .sc-row { display:flex; justify-content:space-between; padding:5px 0; border-top:1px solid var(--border); font-size:.8rem; }
+  .pnl-scale-card .sc-row:first-of-type { border-top:none; }
+  .pnl-scale-card .sc-row .k { color:var(--muted); }
+  .pnl-scale-card .sc-row .v { font-weight:600; }
+  @media(max-width:768px) { .card-grid,.pnl-scale-grid { grid-template-columns:1fr; } .donut-wrap { flex-direction:column; } }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="#arch">구조</a>
+  <a href="#flow">결제 흐름</a>
+  <a href="#data">데이터 연결</a>
+  <a href="#merkle">신뢰도 시스템</a>
+  <a href="#cost">온체인 비용</a>
+  <a href="#revenue">수익 구조</a>
+  <a href="#total-cost">총 비용·손익</a>
+  <a href="#competitor">경쟁사 비교</a>
+  <a href="#projections">규모별 시뮬레이션</a>
+  <a href="#first-deposit">첫 거래 무료</a>
+  <a href="#meeting-0331">3/31 안건</a>
+  <a href="#timeline">보안 리뷰</a>
+  <a href="#redteam">해킹 테스트</a>
+  <a href="#override">긴급 수정</a>
+  <a href="#tests">테스트</a>
+  <a href="#deploy">배포</a>
+  <a href="#future">향후 계획</a>
+</nav>
+
+<section class="hero">
+  <h1>Haggle 스마트 컨트랙트</h1>
+  <p class="sub">아키텍처 · 보안 · 신뢰도 · 비용 · 수익 · 손익 Overview</p>
+  <p class="explain">
+    Haggle의 결제와 분쟁 해결은 <strong>스마트 컨트랙트</strong>(블록체인 위에서 자동으로 실행되는 프로그램)로 동작합니다.<br>
+    이 문서는 컨트랙트 구조, 보안 점검 결과, 신뢰도 시스템, 운영 비용, 수익 구조, 손익 분석을 정리한 것입니다.
+  </p>
+  <div class="meta">
+    <span>📅 2026년 3월 31일</span>
+    <span>⛓ Base L2 (이더리움 레이어2)</span>
+    <span>🔧 Solidity 0.8.24</span>
+    <span>🛡 OpenZeppelin v5.x</span>
+  </div>
+</section>
+
+<div class="stats">
+  <div class="stat green">
+    <div class="num">148</div>
+    <div class="label">테스트 전부 통과</div>
+    <div class="sublabel">자동화된 검증 시나리오</div>
+  </div>
+  <div class="stat blue">
+    <div class="num">1.5%</div>
+    <div class="label">플랫폼 수수료</div>
+    <div class="sublabel">eBay의 1/9 수준</div>
+  </div>
+  <div class="stat purple">
+    <div class="num">96%+</div>
+    <div class="label">매출 총이익률</div>
+    <div class="sublabel">건당 원가 $0.04</div>
+  </div>
+  <div class="stat yellow">
+    <div class="num">1건</div>
+    <div class="label">손익분기점</div>
+    <div class="sublabel">첫 거래부터 흑자</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 쉬운 설명 -->
+  <section class="section" id="arch">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(99,102,241,.15);">🏗</div>
+      컨트랙트 구조
+    </div>
+    <div class="section-desc">
+      Haggle은 2개의 스마트 컨트랙트로 구성됩니다. 하나는 <strong>결제를 처리</strong>하고, 다른 하나는 <strong>분쟁 기록을 보관</strong>합니다.
+    </div>
+
+    <div class="analogy">
+      <div class="title">💡 쉽게 이해하기</div>
+      <p>
+        <strong>정산 라우터</strong>는 은행 창구 직원과 비슷합니다. 구매자가 돈을 보내면, 판매자에게 상품 대금을, 플랫폼에 수수료를 각각 나눠서 전달합니다.
+        단, 이 "창구 직원"은 절대 돈을 자기가 가지지 않습니다 — 모든 돈은 바로 전달됩니다.<br><br>
+        <strong>분쟁 레지스트리</strong>는 공증사무소와 비슷합니다. "이 거래에서 이런 분쟁이 있었고, 이렇게 해결됐다"는 기록을 블록체인에 영구 보관합니다.
+        나중에 어느 쪽도 "그런 적 없다"고 주장할 수 없습니다.
+      </p>
+    </div>
+
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>정산 라우터 (Settlement Router)</h3>
+        <span class="badge-role">결제 담당</span>
+        <div class="desc">
+          구매자의 USDC(스테이블코인)를 판매자와 수수료 지갑으로 나눠서 보냅니다.<br>
+          <strong>핵심: 우리가 사용자 돈을 보유하지 않습니다</strong> — 모든 전송은 즉시 실행됩니다.
+        </div>
+        <div class="flow">구매자 ──[승인]──→ 라우터 (검증)
+  ├──[전송]──→ 판매자 지갑
+  └──[전송]──→ 수수료 지갑</div>
+        <ul class="security-list">
+          <li><span class="check">✓</span> 구매자 본인만 결제 가능 (사칭 방지)</li>
+          <li><span class="check">✓</span> 백엔드 서명 검증 (파라미터 조작 방지)</li>
+          <li><span class="check">✓</span> 주문당 1회만 결제 (중복 결제 방지)</li>
+          <li><span class="check">✓</span> 허용된 자산만 사용 가능</li>
+          <li><span class="check">✓</span> 수수료 최대 10% 상한</li>
+          <li><span class="check">✓</span> 서명자 교체 시 48시간 대기</li>
+          <li><span class="check">✓</span> 긴급 시 즉시 정지 가능</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>분쟁 레지스트리 (Dispute Registry)</h3>
+        <span class="badge-role">분쟁 기록 담당</span>
+        <div class="desc">
+          분쟁 해결 결과를 블록체인에 영구 기록합니다.<br>
+          <strong>핵심: 어느 쪽도 기록을 부인하거나 조작할 수 없습니다.</strong>
+        </div>
+        <div class="flow">분쟁 해결사 ──[기록]──→ 레지스트리
+  │  (주문ID, 분쟁ID, 증거, 결과)
+  │
+  └──→ 영구 보존 기록 (앵커)</div>
+        <ul class="security-list">
+          <li><span class="check">✓</span> 역할 분리 (소유자 ≠ 분쟁 해결사)</li>
+          <li><span class="check">✓</span> 소유권 이전 시 2단계 확인</li>
+          <li><span class="check">✓</span> 주문당 최대 50개 기록 (서비스 방해 방지)</li>
+          <li><span class="check">✓</span> 같은 분쟁 중복 기록 방지</li>
+          <li><span class="check">✓</span> 잘못된 기록 교체/무효화 가능 (감사 추적 유지)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 결제 흐름 -->
+  <section class="section" id="flow">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">🔄</div>
+      결제가 처리되는 과정
+    </div>
+    <div class="section-desc">
+      구매자가 결제 버튼을 누르면 아래 과정이 자동으로 실행됩니다. 모든 검증을 통과해야만 돈이 이동합니다.
+    </div>
+    <div class="flow-diagram">
+      <div class="flow-steps">
+        <div class="flow-step">구매자<br><small style="color:var(--muted)">USDC 승인</small></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step highlight">라우터<br><small style="color:var(--muted)">7가지 검증</small></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">판매자<br><small style="color:var(--muted)">상품 대금 수령</small></div>
+        <div class="flow-arrow" style="margin-left:-8px;">+</div>
+        <div class="flow-step">수수료 지갑<br><small style="color:var(--muted)">플랫폼 수수료</small></div>
+      </div>
+      <div class="flow-explain">
+        <strong>7가지 검증 순서:</strong><br>
+        ① 구매자 본인인지 → ② 차단된 주문인지 → ③ 이미 결제된 주문인지 → ④ 서명이 유효한지<br>
+        → ⑤ 금액이 맞는지 → ⑥ 수수료가 10% 이하인지 → ⑦ 안전하게 전송
+      </div>
+    </div>
+  </section>
+
+  <!-- 데이터 연결 구조 -->
+  <section class="section" id="data">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(59,130,246,.15);">🔗</div>
+      분쟁 데이터와 유저의 연결 구조
+    </div>
+    <div class="section-desc">
+      유저 정보는 블록체인에 올라가지 않습니다. 블록체인에는 "지문(해시)"만 저장되고, 실제 데이터는 우리 서버 DB에 있습니다.
+    </div>
+
+    <div class="analogy">
+      <div class="title">💡 쉽게 이해하기</div>
+      <p>
+        블록체인에는 <strong>"이 거래에서 분쟁이 있었고, 이렇게 판결됐다"는 지문(해시)</strong>만 남깁니다.
+        "김철수가 구매자다"같은 개인정보는 우리 서버에만 있습니다.<br><br>
+        블록체인 기록의 목적은 <strong>나중에 Haggle이 판결을 몰래 바꿨다고 할 수 없게</strong> 하는 것입니다.
+        공증사무소에 도장 찍는 것과 같습니다.
+      </p>
+    </div>
+
+    <div class="data-layer">
+      <h4><span class="layer-badge user">유저 레이어</span> 브라우저 / 앱</h4>
+      <p>구매자가 "물건이 안 왔어요"라고 분쟁을 엽니다. → 증거 제출 → 판결 결과 확인</p>
+    </div>
+    <div class="data-connector">↓ API 호출</div>
+    <div class="data-layer">
+      <h4><span class="layer-badge server">서버 레이어</span> Haggle API + PostgreSQL</h4>
+      <p>분쟁의 <strong>전체 과정</strong>이 여기에서 처리됩니다 — 분쟁 오픈, 증거 수집, 검토, 판결까지 전부 오프체인.</p>
+      <div class="data-items">
+        <span class="data-tag">dispute_cases (분쟁 내역)</span>
+        <span class="data-tag">dispute_evidence (증거)</span>
+        <span class="data-tag">dispute_resolutions (판결 결과)</span>
+        <span class="data-tag">commerce_orders (주문 → buyer_id, seller_id)</span>
+        <span class="data-tag">trust_penalty_records (신뢰 페널티)</span>
+      </div>
+    </div>
+    <div class="data-connector">↓ 분쟁 <strong>해결 후</strong> 해시값만 전송</div>
+    <div class="data-layer">
+      <h4><span class="layer-badge chain">블록체인 레이어</span> Base L2</h4>
+      <p>분쟁이 <strong>해결된 후에만</strong> 최종 결과의 해시를 기록합니다. 진행 중인 분쟁은 블록체인에 올라가지 않습니다.</p>
+      <div class="data-items">
+        <span class="data-tag">keccak256(주문ID)</span>
+        <span class="data-tag">keccak256(분쟁ID)</span>
+        <span class="data-tag">keccak256(증거 머클루트)</span>
+        <span class="data-tag">keccak256(판결 결과)</span>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top:16px;">
+      <div class="info-title">ℹ️ 왜 해결 후에만 기록하나요?</div>
+      <p>
+        분쟁이 열린 시점에는 아직 증거도 다 안 모였고 판결도 안 났습니다.
+        블록체인에 올리는 건 <strong>"이런 증거를 검토해서 이렇게 판결했다"는 최종 결과의 공증</strong>이므로,
+        모든 절차가 끝난 후에 기록하는 것이 맞습니다.
+      </p>
+    </div>
+  </section>
+
+  <!-- 머클 트리 신뢰도 시스템 -->
+  <section class="section" id="merkle">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">🌳</div>
+      머클 트리 신뢰도 시스템
+    </div>
+    <div class="section-desc">
+      유저의 신뢰 점수는 우리 서버(오프체인)에서 관리하고, 주기적으로 "요약 지문" 1개만 블록체인에 기록합니다.
+      유저가 몇 명이든 블록체인 비용은 동일합니다.
+    </div>
+
+    <div class="analogy">
+      <div class="title">💡 머클 트리란?</div>
+      <p>
+        데이터 여러 개를 2개씩 묶어서 요약하고, 또 묶어서 요약하고... 최종적으로 <strong>"지문 1개"</strong>로 만드는 방법입니다.<br>
+        도서관에 책 1,000권이 있을 때, 전부 비교하는 대신 "지문 1개"만 보관하면 어떤 책이든 원본인지 증명할 수 있습니다.<br><br>
+        <strong>핵심:</strong> 유저가 1만 명이든 1억 명이든, 블록체인에 저장하는 건 항상 <strong>32바이트 해시 1개</strong>뿐입니다.
+      </p>
+    </div>
+
+    <div class="flow-diagram">
+      <div class="merkle-tree">
+        <div class="merkle-level">
+          <div class="merkle-node root">머클 루트 — 이것만 블록체인에 저장!</div>
+        </div>
+        <div class="merkle-arrows">↗ ↖</div>
+        <div class="merkle-level">
+          <div class="merkle-node mid">hash(A+B)</div>
+          <div class="merkle-node mid">hash(C+D)</div>
+        </div>
+        <div class="merkle-arrows">↗↖ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↗↖</div>
+        <div class="merkle-level">
+          <div class="merkle-node leaf">유저 A: 92점</div>
+          <div class="merkle-node leaf">유저 B: 85점</div>
+          <div class="merkle-node leaf">유저 C: 71점</div>
+          <div class="merkle-node leaf">유저 D: 88점</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:24px;">
+      <h4 style="margin-bottom:12px;">검증 과정 — "내 점수가 진짜 맞아?"</h4>
+      <div class="info-box">
+        <div class="info-title">유저 C가 자기 점수 71점을 검증하고 싶을 때</div>
+        <p>
+          ① Haggle API에서 자기 점수 + <strong>머클 증명</strong>(경로 해시 2~3개)을 받음<br>
+          ② 블록체인에 저장된 머클 루트와 대조<br>
+          ③ 계산 결과가 일치하면 → <strong>Haggle이 점수를 조작하지 않았음이 수학적으로 증명됨</strong><br><br>
+          유저 1억 명이어도 증명에 필요한 해시는 <strong>27개뿐</strong>입니다. (log₂ 1억 ≈ 27)
+        </p>
+      </div>
+    </div>
+
+    <h4 style="margin-bottom:12px; margin-top:24px;">유저 수별 확장성</h4>
+    <div class="scale-grid">
+      <div class="scale-card">
+        <div class="scale-users">1,000명</div>
+        <div class="scale-label">MVP / 초기</div>
+        <div class="scale-proof">증명 크기: 해시 10개</div>
+      </div>
+      <div class="scale-card">
+        <div class="scale-users">100만 명</div>
+        <div class="scale-label">성장기</div>
+        <div class="scale-proof">증명 크기: 해시 20개</div>
+      </div>
+      <div class="scale-card">
+        <div class="scale-users">1억 명</div>
+        <div class="scale-label">대규모</div>
+        <div class="scale-proof">증명 크기: 해시 27개</div>
+      </div>
+    </div>
+    <p style="text-align:center; color:var(--dim); font-size:.82rem; margin-top:12px;">
+      블록체인 기록 비용: 유저 수와 무관하게 <strong style="color:var(--green);">항상 동일</strong> (32바이트 해시 1개)
+    </p>
+
+    <div style="margin-top:28px;">
+      <h4 style="margin-bottom:12px;">구현 방식</h4>
+      <div class="arch-grid">
+        <div class="arch-card">
+          <h3>오프체인 (API 서버)</h3>
+          <span class="badge-role">신뢰 점수 관리</span>
+          <div class="desc">유저의 거래 성공/실패, 분쟁 승/패를 실시간 집계. 주 1회 머클 트리 생성 후 루트 해시를 블록체인에 기록.</div>
+          <ul class="security-list">
+            <li><span class="check">✓</span> 실시간 점수 업데이트 (가스비 없음)</li>
+            <li><span class="check">✓</span> 유저 요청 시 머클 증명 제공</li>
+            <li><span class="check">✓</span> OpenZeppelin merkle-tree 라이브러리 사용</li>
+          </ul>
+        </div>
+        <div class="arch-card">
+          <h3>온체인 (Base L2)</h3>
+          <span class="badge-role">머클 루트 저장</span>
+          <div class="desc">주기적으로 (주 1회) 전체 유저 신뢰도의 머클 루트 해시 1개만 기록. 변조 방지 목적.</div>
+          <ul class="security-list">
+            <li><span class="check">✓</span> 유저 수 무관하게 비용 고정</li>
+            <li><span class="check">✓</span> 누구나 자기 점수를 독립적으로 검증 가능</li>
+            <li><span class="check">✓</span> Haggle의 점수 조작 불가능 증명</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 비용 -->
+  <section class="section" id="cost">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">💰</div>
+      온체인 운영 비용
+    </div>
+    <div class="section-desc">
+      Base L2의 가스비는 약 0.005 Gwei로, 이더리움 메인넷 대비 1/1000 수준입니다.
+      아래는 ETH $3,500 기준 예상 비용입니다.
+    </div>
+
+    <h4 style="margin-bottom:12px;">건당 비용</h4>
+    <table class="cost-table">
+      <tr><th>작업</th><th>가스 사용량</th><th>비용 (USD)</th><th>비용 (원)</th></tr>
+      <tr><td>결제 정산 1건</td><td>~280,000 gas</td><td class="cost-val">$0.005</td><td class="cost-label">약 7원</td></tr>
+      <tr><td>분쟁 기록 1건</td><td>~232,000 gas</td><td class="cost-val">$0.004</td><td class="cost-label">약 6원</td></tr>
+      <tr><td>분쟁 기록 교체</td><td>~207,000 gas</td><td class="cost-val">$0.004</td><td class="cost-label">약 5원</td></tr>
+      <tr><td>분쟁 기록 무효화</td><td>~54,000 gas</td><td class="cost-val">$0.001</td><td class="cost-label">약 1원</td></tr>
+      <tr><td>신뢰도 머클 루트 업데이트</td><td>~45,000 gas</td><td class="cost-val">$0.001</td><td class="cost-label">약 1원</td></tr>
+      <tr><td>컨트랙트 배포 (1회)</td><td>~916,000 gas</td><td class="cost-val">$0.016</td><td class="cost-label">약 22원</td></tr>
+    </table>
+
+    <h4 style="margin-bottom:12px; margin-top:28px;">월간 운영 비용 시뮬레이션</h4>
+    <table class="cost-table">
+      <tr><th>시나리오</th><th>결제</th><th>분쟁</th><th>신뢰도 업데이트</th><th>월 총 비용</th></tr>
+      <tr>
+        <td>MVP 초기<br><small style="color:var(--dim)">월 100건 거래</small></td>
+        <td>100건 × $0.005</td>
+        <td>5건 × $0.004</td>
+        <td>4회 × $0.001</td>
+        <td class="cost-val">$0.52 (약 720원)</td>
+      </tr>
+      <tr>
+        <td>성장기<br><small style="color:var(--dim)">월 10,000건 거래</small></td>
+        <td>10,000건 × $0.005</td>
+        <td>500건 × $0.004</td>
+        <td>4회 × $0.001</td>
+        <td class="cost-val">$52 (약 72,000원)</td>
+      </tr>
+      <tr>
+        <td>대규모<br><small style="color:var(--dim)">월 100,000건 거래</small></td>
+        <td>100,000건 × $0.005</td>
+        <td>5,000건 × $0.004</td>
+        <td>4회 × $0.001</td>
+        <td class="cost-val">$520 (약 72만원)</td>
+      </tr>
+    </table>
+
+    <div class="cost-total">
+      <div class="big">월 $52 이하</div>
+      <div class="sub">월 1만 건 거래 기준 예상 온체인 비용</div>
+      <div class="note">
+        신뢰도 머클 루트는 유저가 100만 명이어도 주 1회 $0.001 (고정)<br>
+        이더리움 메인넷이었다면 같은 규모에서 월 $52,000 이상 소요
+      </div>
+    </div>
+
+    <div class="analogy" style="margin-top:24px;">
+      <div class="title">💡 비교하면</div>
+      <p>
+        Stripe 결제 수수료: 건당 2.9% + $0.30 → $30 거래 시 <strong>$1.17</strong><br>
+        Haggle 온체인 비용: 건당 <strong>$0.005</strong> (Stripe의 1/234)<br><br>
+        월 1만 건 거래 시: Stripe $11,700 vs Haggle 온체인 <strong>$52</strong>
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ 수익 구조 ═══════════════════════════ -->
+  <section class="section" id="revenue">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">💰</div>
+      수익 구조
+    </div>
+    <div class="section-desc">
+      Haggle의 수익은 크게 3가지입니다. 핵심은 <strong>거래 수수료 1.5%</strong>이고,
+      나머지는 스킬 마켓플레이스와 API 마크업입니다.
+    </div>
+
+    <table class="biz-table">
+      <tr><th>수익원</th><th>비율</th><th>설명</th><th class="right">$340 거래 시</th></tr>
+      <tr>
+        <td><strong>거래 수수료</strong></td>
+        <td>1.5%</td>
+        <td>모든 성사된 거래에서 수취. 바이어/셀러 분담 비율도 협상 가능</td>
+        <td class="right mono bold green-text">$5.10</td>
+      </tr>
+      <tr>
+        <td><strong>스킬 마켓플레이스</strong></td>
+        <td>30% 커미션</td>
+        <td>감정(LegitApp 등) 서비스 이용 시 수수료의 30%를 Haggle이 수취</td>
+        <td class="right mono">$0.90</td>
+      </tr>
+      <tr>
+        <td><strong>API 마크업</strong></td>
+        <td>~3%</td>
+        <td>외부 API (배송 조회, 시세 등) 원가 대비 소폭 마크업</td>
+        <td class="right mono dim-text">$0.05~</td>
+      </tr>
+    </table>
+
+    <div class="analogy">
+      <div class="title">💡 수수료 1.5%의 의미</div>
+      <p>
+        $340짜리 물건을 거래하면 Haggle이 받는 돈은 <strong>$5.10</strong>입니다.<br>
+        같은 물건을 eBay에서 팔면 셀러가 <strong>$46.64</strong>를 수수료로 냅니다.<br>
+        스킬 수익은 감정 서비스를 쓸 때만 발생합니다 (선택사항).
+      </p>
+    </div>
+
+    <!-- Revenue pie -->
+    <div class="donut-wrap" style="margin-top:20px;">
+      <div class="donut" style="background:conic-gradient(#6366f1 0% 84%, #8b5cf6 84% 97%, #475569 97% 100%);">
+        <div class="donut-center">
+          <div class="big" style="color:var(--accent);">84%</div>
+          <div class="small">거래 수수료</div>
+        </div>
+      </div>
+      <div class="donut-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#6366f1;"></div> 거래 수수료 (1.5%) — 84%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div> 스킬 커미션 (30%) — 13%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#475569;"></div> API 마크업 — 3%</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ 총 비용·손익 ═══════════════════════════ -->
+  <section class="section" id="total-cost">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(139,92,246,.15);">📋</div>
+      건당 총 운영비용 · 순수익
+    </div>
+    <div class="section-desc">
+      하나의 거래가 성사될 때 발생하는 <strong>모든 비용</strong>을 합산합니다.
+      온체인(가스비) + LLM(AI 협상) + 인프라(서버/DB) 전부 포함.
+    </div>
+
+    <!-- LLM 비용 설명 -->
+    <div class="analogy" style="margin-bottom:20px;">
+      <div class="title">🤖 LLM (AI 협상) 비용</div>
+      <p>
+        <strong>Grok 4.1 Fast</strong> (Input $0.20/1M · Output $0.50/1M) 사용.<br>
+        80~85%의 협상은 규칙 엔진이 LLM 없이 처리 → 나머지만 LLM 호출.<br>
+        <strong>건당 평균 $0.003</strong> (GPT-5 대비 1/17 가격)
+      </p>
+    </div>
+
+    <table class="biz-table">
+      <tr><th>비용 항목</th><th>상세</th><th class="right">건당 비용</th><th class="right">수수료 대비</th></tr>
+      <tr>
+        <td>⛓️ 온체인 정산</td>
+        <td>executeSettlement (Base L2)</td>
+        <td class="right mono">$0.005</td>
+        <td class="right mono dim-text">0.10%</td>
+      </tr>
+      <tr>
+        <td>🤖 LLM 협상</td>
+        <td>Grok 4.1 Fast × 1.5회 평균</td>
+        <td class="right mono">$0.003</td>
+        <td class="right mono dim-text">0.06%</td>
+      </tr>
+      <tr>
+        <td>🖥️ 인프라</td>
+        <td>서버+DB+호스팅 (10K 유저, 월 4K건 기준 배분)</td>
+        <td class="right mono">$0.035</td>
+        <td class="right mono dim-text">0.69%</td>
+      </tr>
+      <tr>
+        <td>⛓️ 분쟁 앵커링</td>
+        <td>anchorDispute (거래의 3% 비율 적용)</td>
+        <td class="right mono">$0.0001</td>
+        <td class="right mono dim-text">~0%</td>
+      </tr>
+      <tr>
+        <td>⛓️ 머클 스냅샷</td>
+        <td>주 1회 / 월간 거래 수 배분</td>
+        <td class="right mono">$0.0001</td>
+        <td class="right mono dim-text">~0%</td>
+      </tr>
+      <tr class="highlight-row">
+        <td colspan="2"><strong>건당 총 비용</strong></td>
+        <td class="right mono bold green-text" style="font-size:1.05rem;">$0.043</td>
+        <td class="right mono bold green-text">0.85%</td>
+      </tr>
+      <tr style="background:rgba(16,185,129,.08);">
+        <td colspan="2"><strong>건당 순수익 ($340 기준)</strong></td>
+        <td class="right mono bold green-text" style="font-size:1.05rem;">$5.057</td>
+        <td class="right mono bold green-text">99.15%</td>
+      </tr>
+    </table>
+
+    <!-- Waterfall -->
+    <div style="margin-top:20px;">
+      <h4 style="margin-bottom:12px;">건당 수익 워터폴 ($340 거래 기준)</h4>
+      <div class="waterfall">
+        <div class="waterfall-item">
+          <div class="waterfall-bar" style="height:100%; background:linear-gradient(180deg,var(--green),#059669);">$5.10</div>
+          <div class="waterfall-label">매출<br>(수수료)</div>
+        </div>
+        <div class="waterfall-item">
+          <div class="waterfall-bar" style="height:2%; background:var(--red);">-</div>
+          <div class="waterfall-label">온체인<br>-$0.005</div>
+        </div>
+        <div class="waterfall-item">
+          <div class="waterfall-bar" style="height:1%; background:var(--orange);">-</div>
+          <div class="waterfall-label">LLM<br>-$0.003</div>
+        </div>
+        <div class="waterfall-item">
+          <div class="waterfall-bar" style="height:7%; background:var(--yellow);">-</div>
+          <div class="waterfall-label">인프라<br>-$0.035</div>
+        </div>
+        <div class="waterfall-item">
+          <div class="waterfall-bar" style="height:99%; background:linear-gradient(180deg,var(--accent),var(--accent2));">$5.057</div>
+          <div class="waterfall-label">순수익</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="success-box">
+      <div class="success-title">건당 원가율: 0.85%</div>
+      <p style="margin:0;">
+        $340 거래에서 Haggle이 버는 $5.10 중 원가는 고작 <strong>4.3센트</strong>입니다.<br>
+        나머지 <strong>$5.057</strong>이 순수익 — 이것이 <strong>96%+ 마진</strong>의 비밀입니다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ 경쟁사 비교 ═══════════════════════════ -->
+  <section class="section" id="competitor">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(245,158,11,.15);">🆚</div>
+      경쟁사 수수료 비교
+    </div>
+    <div class="section-desc">
+      $340 물건을 팔 때 <strong>판매자가 실제로 받는 금액</strong>과 <strong>구매자가 실제로 내는 금액</strong>을 비교합니다.
+    </div>
+
+    <table class="biz-table">
+      <tr><th>플랫폼</th><th class="right">판매자 수수료</th><th class="right">판매자 수령액</th><th class="right">구매자 총 지불</th></tr>
+      <tr>
+        <td>Poshmark</td>
+        <td class="right mono red-text">20%</td>
+        <td class="right mono">$272</td>
+        <td class="right mono">$348</td>
+      </tr>
+      <tr>
+        <td>eBay</td>
+        <td class="right mono red-text">13.6%</td>
+        <td class="right mono">$293</td>
+        <td class="right mono">$340</td>
+      </tr>
+      <tr>
+        <td>OfferUp (배송)</td>
+        <td class="right mono red-text">12.9%</td>
+        <td class="right mono">$296</td>
+        <td class="right mono">$340</td>
+      </tr>
+      <tr>
+        <td>Grailed</td>
+        <td class="right mono red-text">9% + 3.49%</td>
+        <td class="right mono">$297</td>
+        <td class="right mono">$340</td>
+      </tr>
+      <tr>
+        <td>Mercari</td>
+        <td class="right mono yellow-text">10%</td>
+        <td class="right mono">$306</td>
+        <td class="right mono">$352</td>
+      </tr>
+      <tr>
+        <td>StockX</td>
+        <td class="right mono yellow-text">9~12%</td>
+        <td class="right mono">$306</td>
+        <td class="right mono">$360</td>
+      </tr>
+      <tr>
+        <td>GOAT</td>
+        <td class="right mono yellow-text">9.5%</td>
+        <td class="right mono">$308</td>
+        <td class="right mono">$350</td>
+      </tr>
+      <tr class="highlight-row">
+        <td><strong>Haggle</strong></td>
+        <td class="right mono green-text bold">1.5%</td>
+        <td class="right mono green-text bold">$335</td>
+        <td class="right mono green-text bold">$345</td>
+      </tr>
+    </table>
+
+    <div class="card-grid">
+      <div class="biz-card">
+        <div class="biz-card-title">셀러가 $340 중 실제로 받는 금액</div>
+        <div class="compare-bar">
+          <div class="compare-item">
+            <div class="compare-label" style="font-weight:700; color:var(--green);">Haggle</div>
+            <div class="compare-fill" style="width:98.5%; background:var(--green);">$335 (98.5%)</div>
+          </div>
+          <div class="compare-item">
+            <div class="compare-label">Mercari</div>
+            <div class="compare-fill" style="width:90%; background:var(--yellow);">$306 (90%)</div>
+          </div>
+          <div class="compare-item">
+            <div class="compare-label">eBay</div>
+            <div class="compare-fill" style="width:86.3%; background:var(--orange);">$293 (86.3%)</div>
+          </div>
+          <div class="compare-item">
+            <div class="compare-label">Poshmark</div>
+            <div class="compare-fill" style="width:80%; background:var(--red);">$272 (80%)</div>
+          </div>
+        </div>
+      </div>
+      <div class="biz-card">
+        <div class="biz-card-title">핵심 메시지</div>
+        <p style="color:var(--muted); font-size:.85rem; line-height:1.8; margin:0;">
+          <strong>셀러</strong>: eBay 대비 <span style="color:var(--green); font-weight:700;">+$42 더</span> 수령<br>
+          <strong>바이어</strong>: 숨겨진 수수료 없이 <span style="color:var(--green); font-weight:700;">$5.10만</span> 부담<br>
+          <strong>양쪽 합산</strong>: 경쟁사 대비 <span style="color:var(--green); font-weight:700;">$37~63 절약</span><br><br>
+          스마트 컨트랙트가 중개를 대체하므로<br>
+          에스크로, 결제 처리, 분쟁 시스템 운영 비용이 거의 0
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ 규모별 손익 ═══════════════════════════ -->
+  <section class="section" id="projections">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">📈</div>
+      규모별 월간 손익 시뮬레이션
+    </div>
+    <div class="section-desc">
+      유저 수별 월간 매출, 플랫폼 운영비, 순수익 추정입니다. 거래 성사율 20%, 평균 거래가 $340 기준.<br>
+      팀 인건비는 순수익에서 각자 가져가는 구조이므로, 비용이 아닌 <strong>수익 배분</strong>으로 봅니다.
+    </div>
+
+    <div class="pnl-scale-grid">
+      <!-- 1K users -->
+      <div class="pnl-scale-card">
+        <div class="sc-users">1K</div>
+        <div class="sc-label">활성 유저 / 월</div>
+        <div class="sc-row"><span class="k">성사 거래</span><span class="v">400건</span></div>
+        <div class="sc-row"><span class="k">GMV</span><span class="v">$136K</span></div>
+        <div class="sc-row"><span class="k">총 매출</span><span class="v" style="color:var(--blue);">$2,180</span></div>
+        <div class="sc-row"><span class="k">플랫폼 비용</span><span class="v">-$38</span></div>
+        <div class="sc-row"><span class="k" style="font-weight:700;">순수익</span><span class="v" style="color:var(--green); font-weight:700;">+$2,142</span></div>
+        <div class="sc-row"><span class="k">1인당 (÷5)</span><span class="v" style="color:var(--muted);">$428</span></div>
+        <div class="sc-row"><span class="k">연간</span><span class="v" style="color:var(--green);">+$25.7K</span></div>
+        <div class="sc-row"><span class="k">마진</span><span class="v" style="color:var(--green);">98.3%</span></div>
+      </div>
+      <!-- 10K users -->
+      <div class="pnl-scale-card featured">
+        <div class="sc-users">10K</div>
+        <div class="sc-label">활성 유저 / 월</div>
+        <div class="sc-row"><span class="k">성사 거래</span><span class="v">4,000건</span></div>
+        <div class="sc-row"><span class="k">GMV</span><span class="v">$1.36M</span></div>
+        <div class="sc-row"><span class="k">총 매출</span><span class="v" style="color:var(--blue);">$23,200</span></div>
+        <div class="sc-row"><span class="k">플랫폼 비용</span><span class="v">-$201</span></div>
+        <div class="sc-row"><span class="k" style="font-weight:700;">순수익</span><span class="v" style="color:var(--green); font-weight:700;">+$22,999</span></div>
+        <div class="sc-row"><span class="k">1인당 (÷5)</span><span class="v" style="color:var(--green);">$4,600</span></div>
+        <div class="sc-row"><span class="k">연간</span><span class="v" style="color:var(--green);">+$276K</span></div>
+        <div class="sc-row"><span class="k">마진</span><span class="v" style="color:var(--green);">99.1%</span></div>
+      </div>
+      <!-- 50K users -->
+      <div class="pnl-scale-card">
+        <div class="sc-users">50K</div>
+        <div class="sc-label">활성 유저 / 월</div>
+        <div class="sc-row"><span class="k">성사 거래</span><span class="v">20,000건</span></div>
+        <div class="sc-row"><span class="k">GMV</span><span class="v">$6.8M</span></div>
+        <div class="sc-row"><span class="k">총 매출</span><span class="v" style="color:var(--blue);">$116,000</span></div>
+        <div class="sc-row"><span class="k">플랫폼 비용</span><span class="v">-$620</span></div>
+        <div class="sc-row"><span class="k" style="font-weight:700;">순수익</span><span class="v" style="color:var(--green); font-weight:700;">+$115,380</span></div>
+        <div class="sc-row"><span class="k">1인당 (÷5)</span><span class="v" style="color:var(--green);">$23,076</span></div>
+        <div class="sc-row"><span class="k">연간</span><span class="v" style="color:var(--green);">+$1.38M</span></div>
+        <div class="sc-row"><span class="k">마진</span><span class="v" style="color:var(--green);">99.5%</span></div>
+      </div>
+      <!-- 100K users -->
+      <div class="pnl-scale-card">
+        <div class="sc-users">100K</div>
+        <div class="sc-label">활성 유저 / 월</div>
+        <div class="sc-row"><span class="k">성사 거래</span><span class="v">40,000건</span></div>
+        <div class="sc-row"><span class="k">GMV</span><span class="v">$13.6M</span></div>
+        <div class="sc-row"><span class="k">총 매출</span><span class="v" style="color:var(--blue);">$232,000</span></div>
+        <div class="sc-row"><span class="k">플랫폼 비용</span><span class="v">-$1,081</span></div>
+        <div class="sc-row"><span class="k" style="font-weight:700;">순수익</span><span class="v" style="color:var(--green); font-weight:700;">+$230,919</span></div>
+        <div class="sc-row"><span class="k">1인당 (÷5)</span><span class="v" style="color:var(--green);">$46,184</span></div>
+        <div class="sc-row"><span class="k">연간</span><span class="v" style="color:var(--green);">+$2.77M</span></div>
+        <div class="sc-row"><span class="k">마진</span><span class="v" style="color:var(--green);">99.5%</span></div>
+      </div>
+    </div>
+
+    <!-- P&L 상세 -->
+    <h4 style="margin:28px 0 12px;">P&L 상세 (월간)</h4>
+    <table class="biz-table">
+      <tr><th>항목</th><th class="right">1K 유저</th><th class="right">10K 유저</th><th class="right">50K 유저</th><th class="right">100K 유저</th></tr>
+      <tr style="background:rgba(99,102,241,.04);">
+        <td colspan="5" style="color:var(--accent); font-weight:700; font-size:.78rem; letter-spacing:.5px;">매출</td>
+      </tr>
+      <tr>
+        <td>거래 수수료 (1.5%)</td>
+        <td class="right mono">$2,040</td>
+        <td class="right mono">$20,400</td>
+        <td class="right mono">$102,000</td>
+        <td class="right mono">$204,000</td>
+      </tr>
+      <tr>
+        <td>스킬 커미션 + API</td>
+        <td class="right mono">$140</td>
+        <td class="right mono">$2,800</td>
+        <td class="right mono">$14,000</td>
+        <td class="right mono">$28,000</td>
+      </tr>
+      <tr class="highlight-row">
+        <td><strong>총 매출</strong></td>
+        <td class="right mono bold" style="color:var(--blue);">$2,180</td>
+        <td class="right mono bold" style="color:var(--blue);">$23,200</td>
+        <td class="right mono bold" style="color:var(--blue);">$116,000</td>
+        <td class="right mono bold" style="color:var(--blue);">$232,000</td>
+      </tr>
+
+      <tr style="background:rgba(239,68,68,.04);">
+        <td colspan="5" style="color:var(--red); font-weight:700; font-size:.78rem; letter-spacing:.5px;">플랫폼 운영비</td>
+      </tr>
+      <tr>
+        <td>⛓️ 온체인 가스비</td>
+        <td class="right mono">-$2</td>
+        <td class="right mono">-$20</td>
+        <td class="right mono">-$100</td>
+        <td class="right mono">-$200</td>
+      </tr>
+      <tr>
+        <td>🤖 LLM (AI 협상)</td>
+        <td class="right mono">-$4</td>
+        <td class="right mono">-$40</td>
+        <td class="right mono">-$200</td>
+        <td class="right mono">-$400</td>
+      </tr>
+      <tr>
+        <td>🖥️ 인프라 (서버+DB)</td>
+        <td class="right mono">-$32</td>
+        <td class="right mono">-$141</td>
+        <td class="right mono">-$320</td>
+        <td class="right mono">-$481</td>
+      </tr>
+      <tr>
+        <td><strong>운영비 소계</strong></td>
+        <td class="right mono red-text">-$38</td>
+        <td class="right mono red-text">-$201</td>
+        <td class="right mono red-text">-$620</td>
+        <td class="right mono red-text">-$1,081</td>
+      </tr>
+
+      <tr style="background:rgba(16,185,129,.06); border-top:3px solid rgba(16,185,129,.4);">
+        <td><strong style="font-size:1rem;">월 순수익</strong></td>
+        <td class="right mono bold green-text" style="font-size:1rem;">+$2,142</td>
+        <td class="right mono bold green-text" style="font-size:1rem;">+$22,999</td>
+        <td class="right mono bold green-text" style="font-size:1rem;">+$115,380</td>
+        <td class="right mono bold green-text" style="font-size:1rem;">+$230,919</td>
+      </tr>
+      <tr>
+        <td><strong>연간 환산</strong></td>
+        <td class="right mono green-text bold">+$25.7K</td>
+        <td class="right mono green-text bold">+$276K</td>
+        <td class="right mono green-text bold">+$1.38M</td>
+        <td class="right mono green-text bold">+$2.77M</td>
+      </tr>
+      <tr>
+        <td><strong>마진</strong></td>
+        <td class="right mono green-text">98.3%</td>
+        <td class="right mono green-text">99.1%</td>
+        <td class="right mono green-text">99.5%</td>
+        <td class="right mono green-text">99.5%</td>
+      </tr>
+
+      <tr style="background:rgba(139,92,246,.04);">
+        <td colspan="5" style="color:var(--accent2); font-weight:700; font-size:.78rem; letter-spacing:.5px;">5인 팀 배분 (순수익에서)</td>
+      </tr>
+      <tr>
+        <td>1인당 월 수령</td>
+        <td class="right mono" style="color:var(--accent2);">$428</td>
+        <td class="right mono" style="color:var(--accent2);">$4,600</td>
+        <td class="right mono" style="color:var(--accent2);">$23,076</td>
+        <td class="right mono" style="color:var(--accent2);">$46,184</td>
+      </tr>
+      <tr>
+        <td>1인당 연간</td>
+        <td class="right mono" style="color:var(--accent2);">$5.1K</td>
+        <td class="right mono" style="color:var(--accent2);">$55.2K</td>
+        <td class="right mono" style="color:var(--accent2);">$276.9K</td>
+        <td class="right mono" style="color:var(--accent2);">$554.2K</td>
+      </tr>
+    </table>
+
+    <div class="success-box">
+      <div class="success-title">첫 거래부터 흑자 — 손익분기점 없음</div>
+      <p style="margin:0;">
+        플랫폼 운영비만 있고 고정 인건비가 없으므로 <strong>거래 1건만 성사돼도 수익</strong>입니다.<br>
+        건당 수수료 $5.10 vs 건당 원가 $0.043 → <strong>거래 1건당 $5.057이 남고</strong>, 이걸 5명이 나눕니다.<br><br>
+        10K 유저: 1인당 월 <strong>$4,600</strong> · 50K 유저: 1인당 월 <strong>$23,076</strong>
+      </p>
+    </div>
+
+    <div class="warn-box">
+      <div class="warn-title">⚠️ 주의사항</div>
+      <p style="margin:0;">
+        위 수치는 추정치입니다. 실제 결과는 거래 성사율(20% 가정), 평균 거래가($340 가정),
+        LLM 가격 변동, 유저 활성도(유저당 월 2건 협상)에 따라 달라질 수 있습니다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ 첫 거래 무료 디포짓 정책 ═══════════════════════════ -->
+  <section class="section" id="first-deposit">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">🎁</div>
+      첫 거래 무료 디포짓 정책
+    </div>
+    <div class="section-desc">
+      판매자의 첫 거래 진입 장벽을 낮추기 위해, 첫 디포짓(분쟁 보증금 + 무게 버퍼)을 <strong>$0</strong>으로 면제합니다.<br>
+      추가 요금 발생 시 사후 청구하며, 미납 시 페널티를 부여합니다.
+    </div>
+
+    <!-- 정책 개요 카드 -->
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:28px;">
+      <div style="background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; text-align:center;">
+        <div style="font-size:2rem; margin-bottom:8px;">💰</div>
+        <div style="font-size:1.6rem; font-weight:800; color:var(--green);">$0</div>
+        <div style="color:var(--muted); font-size:.85rem; margin-top:4px;">첫 디포짓 금액</div>
+        <div style="color:var(--dim); font-size:.75rem; margin-top:2px;">분쟁 보증금 + 무게 버퍼</div>
+      </div>
+      <div style="background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; text-align:center;">
+        <div style="font-size:2rem; margin-bottom:8px;">📦</div>
+        <div style="font-size:1.6rem; font-weight:800; color:var(--blue);">무게 버퍼</div>
+        <div style="color:var(--muted); font-size:.85rem; margin-top:4px;">첫 거래 면제</div>
+        <div style="color:var(--dim); font-size:.75rem; margin-top:2px;">차액 발생 시 사후 청구</div>
+      </div>
+      <div style="background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; text-align:center;">
+        <div style="font-size:2rem; margin-bottom:8px;">🛡️</div>
+        <div style="font-size:1.6rem; font-weight:800; color:var(--blue);">분쟁 보증금</div>
+        <div style="color:var(--muted); font-size:.85rem; margin-top:4px;">첫 거래 면제</div>
+        <div style="color:var(--dim); font-size:.75rem; margin-top:2px;">분쟁 발생 시 사후 청구</div>
+      </div>
+    </div>
+
+    <!-- 디포짓 종류 설명 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--accent);">디포짓 종류</h3>
+    <table class="biz-table" style="margin-bottom:28px;">
+      <thead>
+        <tr><th>디포짓</th><th>목적</th><th>첫 거래</th><th>2회차부터</th><th>추가 요금 발생 시</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>분쟁 보증금</strong></td>
+          <td>분쟁 해결 비용 담보</td>
+          <td style="color:var(--green); font-weight:700;">$0 면제</td>
+          <td>정상 청구</td>
+          <td>판매자에게 사후 청구</td>
+        </tr>
+        <tr>
+          <td><strong>무게 버퍼</strong></td>
+          <td>실제 중량 vs 신고 중량 차이 담보</td>
+          <td style="color:var(--green); font-weight:700;">$0 면제</td>
+          <td>정상 청구</td>
+          <td>차액 판매자에게 사후 청구</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 무게 버퍼 작동 방식 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--accent);">무게 버퍼 작동 방식</h3>
+    <div style="background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:28px;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; font-size:.9rem; padding:16px 0;">
+        <div style="background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.3); border-radius:10px; padding:12px 18px; text-align:center;">
+          <div style="font-size:.75rem; color:var(--dim);">판매자 신고</div>
+          <div style="font-weight:700; color:var(--accent);">3.0 lbs</div>
+        </div>
+        <div style="color:var(--dim);">→</div>
+        <div style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.3); border-radius:10px; padding:12px 18px; text-align:center;">
+          <div style="font-size:.75rem; color:var(--dim);">한 단계 위 중량 가격 적용</div>
+          <div style="font-weight:700; color:var(--green);">4.0 lbs 기준 배송비</div>
+        </div>
+        <div style="color:var(--dim);">→</div>
+        <div style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.3); border-radius:10px; padding:12px 18px; text-align:center;">
+          <div style="font-size:.75rem; color:var(--dim);">14일 후 실제 측정</div>
+          <div style="font-weight:700; color:var(--yellow);">3.2 lbs 확인</div>
+        </div>
+        <div style="color:var(--dim);">→</div>
+        <div style="background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.3); border-radius:10px; padding:12px 18px; text-align:center;">
+          <div style="font-size:.75rem; color:var(--dim);">차액</div>
+          <div style="font-weight:700; color:var(--green);">구매자에게 환불</div>
+        </div>
+      </div>
+      <div style="text-align:center; color:var(--dim); font-size:.82rem; margin-top:8px;">
+        첫 거래: 버퍼 차액을 사전 수취하지 않음 → 추가 요금 발생 시 판매자에게 사후 청구
+      </div>
+    </div>
+
+    <!-- 사후 청구 + 페널티 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--accent);">미납 시 페널티 체계</h3>
+    <div style="background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:28px;">
+      <div style="display:grid; grid-template-columns:1fr; gap:0;">
+        <!-- 타임라인 -->
+        <div style="display:flex; align-items:stretch; gap:0; margin-bottom:8px;">
+          <div style="flex:1; text-align:center; padding:14px 12px; background:rgba(16,185,129,.08); border-radius:10px 0 0 10px; border:1px solid rgba(16,185,129,.2);">
+            <div style="font-size:.75rem; color:var(--dim);">추가 요금 발생</div>
+            <div style="font-weight:700; color:var(--green); font-size:.9rem;">사후 청구 알림</div>
+          </div>
+          <div style="flex:1; text-align:center; padding:14px 12px; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.2);">
+            <div style="font-size:.75rem; color:var(--dim);">7일 이내 미납</div>
+            <div style="font-weight:700; color:var(--yellow); font-size:.9rem;">신규 리스팅 제한</div>
+          </div>
+          <div style="flex:1; text-align:center; padding:14px 12px; background:rgba(249,115,22,.08); border:1px solid rgba(249,115,22,.2);">
+            <div style="font-size:.75rem; color:var(--dim);">14일 이내 미납</div>
+            <div style="font-weight:700; color:var(--orange); font-size:.9rem;">신뢰도 점수 차감</div>
+          </div>
+          <div style="flex:1; text-align:center; padding:14px 12px; background:rgba(239,68,68,.08); border-radius:0 10px 10px 0; border:1px solid rgba(239,68,68,.2);">
+            <div style="font-size:.75rem; color:var(--dim);">30일 초과 미납</div>
+            <div style="font-weight:700; color:var(--red); font-size:.9rem;">계정 정지 + 수금</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 고가 제품 제외 -->
+    <div class="warn-box">
+      <div class="warn-title">⚠️ 고가 제품 제외</div>
+      <p style="margin:0;">
+        일정 금액 이상의 고가 제품은 첫 거래 무료 디포짓 대상에서 <strong>제외</strong>됩니다.<br>
+        고가 제품은 분쟁 리스크가 높아 첫 거래라도 디포짓을 정상 청구합니다.
+        구체적인 기준 금액은 카테고리별로 다르게 설정될 예정입니다.
+      </p>
+    </div>
+
+    <!-- 왜 이 정책인가 -->
+    <div class="success-box" style="margin-top:16px;">
+      <div class="success-title">💡 왜 첫 디포짓 무료인가?</div>
+      <p style="margin:0;">
+        <strong>판매자 온보딩 장벽 최소화</strong> — 디포짓은 첫 판매자에게 심리적 부담.<br>
+        첫 거래를 무료로 시작하게 하고, 문제가 생기면 사후 청구. 대부분의 첫 거래는 정상 완료되므로
+        플랫폼 리스크는 낮으면서 판매자 전환율은 크게 높아집니다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ 3/31 모임 안건 ═══════════════════════════ -->
+  <section class="section" id="meeting-0331">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(249,115,22,.15);">📋</div>
+      3/31 모임 안건 — 첫 거래 무료 디포짓 위험 분석
+    </div>
+    <div class="section-desc">
+      첫 거래 무료 디포짓 정책을 실행했을 때 발생 가능한 최대 위험과, 경쟁사가 이를 악용할 수 있는 공격 시나리오를 분석합니다.
+    </div>
+
+    <!-- 핵심 메시지 -->
+    <div class="warn-box" style="margin-bottom:28px;">
+      <div class="warn-title">⚠️ 핵심 위험: 금전 손실보다 "신뢰 오염"이 더 치명적</div>
+      <p style="margin:0;">
+        초기 사용자 100명 중 5명이 가짜 셀러를 만나면 → 입소문으로 "Haggle은 위험하다" 확산 → <strong>성장 자체가 멈춤.</strong><br>
+        금전 피해는 건당 $5~15 수준이지만, 신뢰 붕괴는 복구가 불가능합니다.
+      </p>
+    </div>
+
+    <!-- 최악의 시나리오 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--red);">🚨 최악의 시나리오: Sybil Attack (다계정 악용)</h3>
+    <div style="background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; margin-bottom:28px;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; font-size:.85rem; padding:12px 0;">
+        <div style="background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); border-radius:10px; padding:12px 16px; text-align:center;">
+          <div style="font-size:.72rem; color:var(--dim);">Step 1</div>
+          <div style="font-weight:700; color:var(--red);">가짜 셀러 100개 생성</div>
+        </div>
+        <div style="color:var(--dim);">→</div>
+        <div style="background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); border-radius:10px; padding:12px 16px; text-align:center;">
+          <div style="font-size:.72rem; color:var(--dim);">Step 2</div>
+          <div style="font-weight:700; color:var(--red);">각 계정 첫 거래 (디포짓 $0)</div>
+        </div>
+        <div style="color:var(--dim);">→</div>
+        <div style="background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); border-radius:10px; padding:12px 16px; text-align:center;">
+          <div style="font-size:.72rem; color:var(--dim);">Step 3</div>
+          <div style="font-weight:700; color:var(--red);">무게 과소 신고 / 미발송</div>
+        </div>
+        <div style="color:var(--dim);">→</div>
+        <div style="background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); border-radius:10px; padding:12px 16px; text-align:center;">
+          <div style="font-size:.72rem; color:var(--dim);">Step 4</div>
+          <div style="font-weight:700; color:var(--red);">사후 청구 무시 + 계정 폐기</div>
+        </div>
+      </div>
+
+      <!-- 피해 추정 테이블 -->
+      <table class="biz-table" style="margin-top:16px;">
+        <thead>
+          <tr><th>규모</th><th>계정당 손실</th><th>총 금전 피해</th><th>분쟁 처리 비용</th><th>실질 피해</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>100 계정</td><td>$5~15</td><td>~$1,000</td><td>~$500</td><td style="color:var(--yellow);">$1,500</td></tr>
+          <tr><td>1,000 계정</td><td>$5~15</td><td>~$10,000</td><td>~$5,000</td><td style="color:var(--orange);">$15,000</td></tr>
+          <tr><td>5,000 계정</td><td>$5~15</td><td>~$50,000</td><td>~$25,000</td><td style="color:var(--red); font-weight:700;">$75,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 경쟁사 공격 시나리오 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--orange);">⚔️ 경쟁사 공격 시나리오</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:28px;">
+
+      <!-- 공격 A -->
+      <div style="background:var(--card); border:1px solid rgba(239,68,68,.3); border-radius:14px; padding:22px;">
+        <div style="font-size:.75rem; font-weight:600; color:var(--red); margin-bottom:8px; padding:3px 10px; background:rgba(239,68,68,.1); border-radius:12px; display:inline-block;">Critical</div>
+        <h4 style="font-size:.95rem; margin-bottom:8px;">공격 A: 대량 가짜 셀러 투입</h4>
+        <div style="color:var(--muted); font-size:.82rem; line-height:1.7;">
+          봇으로 셀러 계정 대량 생성 → 가짜 저가 인기 상품 리스팅 → 구매자 결제 → 미발송/엉뚱한 상품 →
+          분쟁 폭주 → <strong>"Haggle은 사기꾼 천지"</strong> 인식 확산
+        </div>
+        <div style="margin-top:12px; padding:8px 12px; background:rgba(239,68,68,.06); border-radius:8px; font-size:.78rem; color:var(--dim);">
+          <strong>목적:</strong> 초기 사용자 신뢰 파괴 → 성장 저지
+        </div>
+      </div>
+
+      <!-- 공격 B -->
+      <div style="background:var(--card); border:1px solid rgba(16,185,129,.3); border-radius:14px; padding:22px;">
+        <div style="font-size:.75rem; font-weight:600; color:var(--green); margin-bottom:8px; padding:3px 10px; background:rgba(16,185,129,.1); border-radius:12px; display:inline-block;">Low — 자연 방어됨</div>
+        <h4 style="font-size:.95rem; margin-bottom:8px;">공격 B: 무게 버퍼 악용 <span style="color:var(--green); font-size:.8rem;">(위험 낮음)</span></h4>
+        <div style="color:var(--muted); font-size:.82rem; line-height:1.7;">
+          무게 과소 신고 시도 → 그러나 Haggle이 캐리어 API로 <strong>중량 구간별 요금을 이미 알고 있음</strong> →
+          버퍼 차액이 "한 단계 위 구간"으로 제한 (건당 $1~5) → 대규모 악용 불가
+        </div>
+        <div style="margin-top:12px; padding:8px 12px; background:rgba(16,185,129,.06); border-radius:8px; font-size:.78rem; color:var(--dim);">
+          <strong>자연 방어:</strong> 캐리어 중량 구간 체계가 손실 상한을 자동 제한
+        </div>
+      </div>
+
+      <!-- 공격 C -->
+      <div style="background:var(--card); border:1px solid rgba(245,158,11,.3); border-radius:14px; padding:22px;">
+        <div style="font-size:.75rem; font-weight:600; color:var(--yellow); margin-bottom:8px; padding:3px 10px; background:rgba(245,158,11,.1); border-radius:12px; display:inline-block;">Medium</div>
+        <h4 style="font-size:.95rem; margin-bottom:8px;">공격 C: 구매자-셀러 공모 환불</h4>
+        <div style="color:var(--muted); font-size:.82rem; line-height:1.7;">
+          가짜 구매자 + 가짜 셀러 공모 → 면제 기준 바로 아래 고가 거래 → 즉시 분쟁 → buyer_favor →
+          <strong>자동 환불 + 셀러 이미 인출</strong>
+        </div>
+        <div style="margin-top:12px; padding:8px 12px; background:rgba(245,158,11,.06); border-radius:8px; font-size:.78rem; color:var(--dim);">
+          <strong>목적:</strong> 환불 사기로 직접 금전 탈취
+        </div>
+      </div>
+    </div>
+
+    <!-- 위험 등급 요약 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--accent);">위험 등급 매트릭스</h3>
+    <table class="biz-table" style="margin-bottom:28px;">
+      <thead>
+        <tr><th>위험</th><th>심각도</th><th>발생 확률</th><th>경쟁사 무기화</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Sybil 다계정 악용</td>
+          <td><span style="color:var(--red); font-weight:700;">Critical</span></td>
+          <td><span style="color:var(--red);">높음</span></td>
+          <td><span style="color:var(--red);">매우 높음</span></td>
+        </tr>
+        <tr>
+          <td>무게 버퍼 악용 <span style="color:var(--green); font-size:.78rem;">(자연 방어)</span></td>
+          <td><span style="color:var(--green); font-weight:700;">Low</span></td>
+          <td><span style="color:var(--green);">낮음</span></td>
+          <td><span style="color:var(--green);">낮음</span></td>
+        </tr>
+        <tr>
+          <td>구매자-셀러 공모 환불 사기</td>
+          <td><span style="color:var(--orange); font-weight:700;">High</span></td>
+          <td><span style="color:var(--green);">낮음</span></td>
+          <td><span style="color:var(--yellow);">중간</span></td>
+        </tr>
+        <tr>
+          <td>운영팀 과부하 (분쟁 폭주)</td>
+          <td><span style="color:var(--yellow); font-weight:700;">Medium</span></td>
+          <td><span style="color:var(--yellow);">중간</span></td>
+          <td><span style="color:var(--orange);">높음</span></td>
+        </tr>
+        <tr>
+          <td>평판 공격 (SNS 악성 후기)</td>
+          <td><span style="color:var(--yellow); font-weight:700;">Medium</span></td>
+          <td><span style="color:var(--yellow);">중간</span></td>
+          <td><span style="color:var(--orange);">높음</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 방어 대책 -->
+    <h3 style="font-size:1.1rem; margin-bottom:14px; color:var(--green);">🛡️ 방어 대책</h3>
+    <table class="biz-table" style="margin-bottom:28px;">
+      <thead>
+        <tr><th>방어 수단</th><th>대상 위험</th><th>구현 난이도</th><th>효과</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>본인인증 (KYC Lite)</strong><br><span style="color:var(--dim); font-size:.78rem;">전화번호 + 신분증 1회</span></td>
+          <td>Sybil 공격</td>
+          <td style="color:var(--green);">낮음</td>
+          <td style="color:var(--green); font-weight:700;">★★★★★</td>
+        </tr>
+        <tr>
+          <td><strong>첫 거래 금액 상한 $200</strong><br><span style="color:var(--dim); font-size:.78rem;">면제 적용 거래의 최대 금액</span></td>
+          <td>환불 사기</td>
+          <td style="color:var(--green);">낮음</td>
+          <td style="color:var(--green); font-weight:700;">★★★★★</td>
+        </tr>
+        <tr style="opacity:.5; text-decoration:line-through;">
+          <td><strong>무게 버퍼 차이 상한</strong><br><span style="color:var(--dim); font-size:.78rem;">불필요 — 캐리어 중량 구간이 자연 제한</span></td>
+          <td>무게 악용</td>
+          <td style="color:var(--green);">—</td>
+          <td style="color:var(--dim); font-weight:700;">불필요</td>
+        </tr>
+        <tr>
+          <td><strong>디바이스 핑거프린팅</strong><br><span style="color:var(--dim); font-size:.78rem;">같은 기기/IP 다계정 탐지</span></td>
+          <td>Sybil 공격</td>
+          <td style="color:var(--yellow);">중간</td>
+          <td style="color:var(--green); font-weight:700;">★★★★☆</td>
+        </tr>
+        <tr>
+          <td><strong>속도 제한</strong><br><span style="color:var(--dim); font-size:.78rem;">신규 셀러 첫 24시간 리스팅 제한</span></td>
+          <td>대량 투입</td>
+          <td style="color:var(--green);">낮음</td>
+          <td style="color:var(--yellow); font-weight:700;">★★★☆☆</td>
+        </tr>
+        <tr>
+          <td><strong>이상 탐지</strong><br><span style="color:var(--dim); font-size:.78rem;">첫 거래 분쟁율 임계치 자동 플래그</span></td>
+          <td>공모 사기</td>
+          <td style="color:var(--yellow);">중간</td>
+          <td style="color:var(--green); font-weight:700;">★★★★☆</td>
+        </tr>
+        <tr>
+          <td><strong>사후 청구 선제 차단</strong><br><span style="color:var(--dim); font-size:.78rem;">미납 즉시 진행 중 거래 정산 보류</span></td>
+          <td>미납 도주</td>
+          <td style="color:var(--yellow);">중간</td>
+          <td style="color:var(--green); font-weight:700;">★★★★☆</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- MVP 최소 방어선 -->
+    <div class="success-box">
+      <div class="success-title">✅ MVP 최소 방어선 (반드시 구현)</div>
+      <p style="margin:0;">
+        아래 2가지만 있으면 경쟁사 공격의 비용 대비 효과가 크게 떨어져 공격 동기 자체가 줄어듭니다.<br>
+        <span style="color:var(--dim); font-size:.82rem;">무게 버퍼는 캐리어 중량 구간 체계가 자연 방어하므로 별도 상한 불필요.</span>
+      </p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; max-width:500px;">
+        <div style="background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.2); border-radius:10px; padding:14px; text-align:center;">
+          <div style="font-size:1.4rem; margin-bottom:4px;">📱</div>
+          <div style="font-weight:700; font-size:.9rem;">전화번호 인증</div>
+          <div style="color:var(--dim); font-size:.75rem;">Sybil 공격 차단</div>
+        </div>
+        <div style="background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.2); border-radius:10px; padding:14px; text-align:center;">
+          <div style="font-size:1.4rem; margin-bottom:4px;">💵</div>
+          <div style="font-weight:700; font-size:.9rem;">첫 거래 상한 $200</div>
+          <div style="color:var(--dim); font-size:.75rem;">피해 규모 제한</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 논의 필요 사항 -->
+    <div style="background:var(--card); border:1px solid rgba(99,102,241,.3); border-radius:14px; padding:24px; margin-top:20px;">
+      <h4 style="font-size:.95rem; color:var(--accent); margin-bottom:12px;">💬 논의 필요 사항</h4>
+      <div style="display:grid; gap:10px;">
+        <div style="display:flex; align-items:center; gap:10px; font-size:.88rem;">
+          <div style="width:20px; height:20px; border:2px solid var(--dim); border-radius:4px; flex-shrink:0;"></div>
+          <span>고가 제품 기준 금액: 카테고리별 다르게? 일괄 $500?</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; font-size:.88rem;">
+          <div style="width:20px; height:20px; border:2px solid var(--dim); border-radius:4px; flex-shrink:0;"></div>
+          <span>KYC Lite 수준: 전화번호만? 신분증까지?</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; font-size:.88rem;">
+          <div style="width:20px; height:20px; border:2px solid var(--dim); border-radius:4px; flex-shrink:0;"></div>
+          <span>미납 페널티 7/14/30일 타임라인 적정한지?</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; font-size:.88rem;">
+          <div style="width:20px; height:20px; border:2px solid var(--dim); border-radius:4px; flex-shrink:0;"></div>
+          <span>디바이스 핑거프린팅 MVP에 포함? Phase 2로 미룰지?</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 보안 리뷰 타임라인 -->
+  <section class="section" id="timeline">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(245,158,11,.15);">🔒</div>
+      보안 리뷰 타임라인
+    </div>
+    <div class="section-desc">
+      총 4라운드에 걸쳐 24개의 보안 취약점을 발견하고 모두 수정했습니다.
+      아래로 갈수록 점점 더 정교한 공격에 대비합니다.
+    </div>
+
+    <div class="info-box">
+      <div class="info-title">ℹ️ 심각도 기준</div>
+      <p>
+        <strong style="color:var(--red)">Critical</strong> = 자금이 도난당할 수 있음 &nbsp;|&nbsp;
+        <strong style="color:var(--orange)">High</strong> = 심각한 기능 오작동 &nbsp;|&nbsp;
+        <strong style="color:var(--yellow)">Medium</strong> = 관리 기능 위험 &nbsp;|&nbsp;
+        <strong style="color:var(--green)">Low</strong> = 비정상 사용 방지
+      </p>
+    </div>
+
+    <div class="timeline">
+      <div class="round">
+        <div class="dot r1">1</div>
+        <h3>1차: 기본 보안 강화 <span>9건 수정</span></h3>
+        <p class="round-desc">가장 기본적이고 위험한 취약점들을 막았습니다. "문에 잠금장치 달기" 수준의 필수 보안입니다.</p>
+        <table class="fix-table">
+          <tr><th>취약점</th><th>위험도</th><th>어떻게 막았나</th></tr>
+          <tr><td>아무나 다른 사람 돈으로 결제 가능</td><td><span class="sev critical">Critical</span></td><td>구매자 본인만 호출 가능하도록 제한</td></tr>
+          <tr><td>서명 없이 결제 실행 가능</td><td><span class="sev critical">Critical</span></td><td>백엔드 서명 검증 (EIP-712) 추가</td></tr>
+          <tr><td>같은 주문으로 돈을 여러 번 빼감</td><td><span class="sev high">High</span></td><td>주문별 1회 결제 제한</td></tr>
+          <tr><td>금액을 조작해서 결제 가능</td><td><span class="sev high">High</span></td><td>판매자 금액 + 수수료 = 총액 검증</td></tr>
+          <tr><td>수수료를 100%로 설정 가능</td><td><span class="sev high">High</span></td><td>수수료 최대 10% 상한 설정</td></tr>
+          <tr><td>서명 방식이 표준이 아님</td><td><span class="sev medium">Medium</span></td><td>EIP-712 표준 서명으로 변경</td></tr>
+          <tr><td>서명자를 즉시 바꿀 수 있음</td><td><span class="sev medium">Medium</span></td><td>2단계 교체 + 48시간 대기 기간</td></tr>
+          <tr><td>소유권을 실수로 영구 포기 가능</td><td><span class="sev medium">Medium</span></td><td>소유권 포기 기능 비활성화</td></tr>
+          <tr><td>0.0001원짜리 스팸 결제 가능</td><td><span class="sev medium">Medium</span></td><td>최소 금액 제한 추가</td></tr>
+        </table>
+      </div>
+
+      <div class="round">
+        <div class="dot r2">2</div>
+        <h3>2차: 엣지 케이스 방어 <span>5건 수정</span></h3>
+        <p class="round-desc">"보통은 안 일어나지만, 일어나면 문제가 되는" 상황들을 방어했습니다.</p>
+        <table class="fix-table">
+          <tr><th>취약점</th><th>위험도</th><th>어떻게 막았나</th></tr>
+          <tr><td>스마트 컨트랙트 지갑이 서명 못 함</td><td><span class="sev high">High</span></td><td>컨트랙트 지갑 서명도 지원 (EIP-1271)</td></tr>
+          <tr><td>한 번에 너무 큰 금액 결제 가능</td><td><span class="sev high">High</span></td><td>건당 결제 한도 설정</td></tr>
+          <tr><td>라우터 자기 자신에게 송금 가능</td><td><span class="sev medium">Medium</span></td><td>수신 주소가 라우터인지 확인</td></tr>
+          <tr><td>만료된 결제 요청도 실행 가능</td><td><span class="sev medium">Medium</span></td><td>결제 기한(deadline) 검증 추가</td></tr>
+          <tr><td>같은 분쟁을 두 번 기록 가능</td><td><span class="sev medium">Medium</span></td><td>중복 분쟁 기록 방지</td></tr>
+        </table>
+      </div>
+
+      <div class="round">
+        <div class="dot r3">3</div>
+        <h3>3차: 실행 순서 + 관리 보안 <span>6건 수정</span></h3>
+        <p class="round-desc">코드 실행 순서와 관리자 기능의 보안을 강화했습니다. "금고 번호를 먼저 바꾸고 돈을 넣는" 순서 같은 것입니다.</p>
+        <table class="fix-table">
+          <tr><th>취약점</th><th>위험도</th><th>어떻게 막았나</th></tr>
+          <tr><td>상태 기록 전에 외부 호출 → 재진입 위험</td><td><span class="sev high">High</span></td><td>상태 변경을 먼저 하고 외부 호출은 나중에</td></tr>
+          <tr><td>소유자 바뀌면 분쟁 해결 권한이 꼬임</td><td><span class="sev high">High</span></td><td>소유권 이전 시 권한 자동 재설정</td></tr>
+          <tr><td>서명자 확정 시 속임수에 취약</td><td><span class="sev medium">Medium</span></td><td>확정할 서명자 주소를 명시적으로 지정</td></tr>
+          <tr><td>가디언이 반복적으로 긴급 정지 남용</td><td><span class="sev medium">Medium</span></td><td>정지 후 1시간 쿨다운 기간 추가</td></tr>
+          <tr><td>서명자 제안 덮어쓸 때 이벤트 없음</td><td><span class="sev medium">Medium</span></td><td>취소 이벤트 기록 추가</td></tr>
+          <tr><td>소유자 바뀌어도 대기 중인 서명자 제안이 남음</td><td><span class="sev medium">Medium</span></td><td>소유권 이전 시 대기 제안 자동 취소</td></tr>
+        </table>
+      </div>
+
+      <div class="round">
+        <div class="dot r4">4</div>
+        <h3>4차: 해커 관점 공격 시뮬레이션 <span>4건 수정</span></h3>
+        <p class="round-desc">"내가 이 시스템을 해킹한다면?" 관점에서 25가지 공격 시나리오를 시뮬레이션했습니다.</p>
+        <table class="fix-table">
+          <tr><th>취약점</th><th>위험도</th><th>어떻게 막았나</th></tr>
+          <tr><td>서명자 키가 탈취되면 48시간 동안 악용 가능</td><td><span class="sev medium-high">중-상</span></td><td>긴급 동결 기능 추가 (즉시 서명자 무효화)</td></tr>
+          <tr><td>잘못된 분쟁 기록을 영원히 수정 불가</td><td><span class="sev medium">Medium</span></td><td>기록 교체 기능 추가 (원본은 보존)</td></tr>
+          <tr><td>구매자=판매자로 자기에게 결제</td><td><span class="sev low">Low</span></td><td>구매자와 판매자가 같으면 거부</td></tr>
+          <tr><td>판매자 지갑=수수료 지갑이면 수수료 유실</td><td><span class="sev low">Low</span></td><td>두 지갑이 같으면 거부</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 해킹 테스트 -->
+  <section class="section" id="redteam">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(239,68,68,.15);">🎯</div>
+      해킹 시나리오 테스트 — 전부 안전 확인
+    </div>
+    <div class="section-desc">
+      실제 해커가 시도할 수 있는 10가지 공격 방법을 테스트했습니다. 모두 방어가 확인되었습니다.
+    </div>
+
+    <div class="attack-grid">
+      <div class="attack-row">
+        <div>
+          <div class="name">다른 체인에서 서명 재사용</div>
+          <div class="explain">이더리움에서 쓴 서명을 Base에서 다시 쓰려는 공격</div>
+          <div class="badge">안전 — 체인 ID가 서명에 포함됨</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">서명 위변조</div>
+          <div class="explain">같은 의미의 서명을 다른 형태로 만들어 재사용</div>
+          <div class="badge">안전 — OpenZeppelin 라이브러리가 차단</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">결제 가로채기 (프론트러닝)</div>
+          <div class="explain">다른 사람의 결제 트랜잭션을 보고 먼저 실행</div>
+          <div class="badge">안전 — 구매자 본인만 호출 가능</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">수수료 전액 탈취</div>
+          <div class="explain">수수료를 100%로 설정해서 전액을 가져가려는 시도</div>
+          <div class="badge">안전 — 수수료 상한 10%</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">플래시론 공격</div>
+          <div class="explain">순간적으로 대출받아 가격을 조작하는 DeFi 공격</div>
+          <div class="badge">안전 — 가격 오라클 미사용</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">재진입 공격 (콜백)</div>
+          <div class="explain">결제 중간에 다시 결제를 호출하는 공격</div>
+          <div class="badge">안전 — 재진입 방지 잠금 장치</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">재진입 공격 (토큰 훅)</div>
+          <div class="explain">특수 토큰이 전송 시 악성 코드를 실행</div>
+          <div class="badge">안전 — 재진입 방지 잠금 장치</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">주문 ID 선점</div>
+          <div class="explain">다른 사람의 주문 ID를 먼저 사용하려는 시도</div>
+          <div class="badge">안전 — 백엔드 서명이 필수</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">먼지 스팸 공격</div>
+          <div class="explain">아주 작은 금액으로 수천 건의 결제를 보내 시스템 마비</div>
+          <div class="badge">안전 — 최소 금액 제한</div>
+        </div>
+      </div>
+      <div class="attack-row">
+        <div>
+          <div class="name">승인 금액 조작</div>
+          <div class="explain">구매자의 토큰 승인 금액을 이용한 서비스 거부 공격</div>
+          <div class="badge">안전 — 구매자 본인만 호출 가능</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 긴급 수정 기능 -->
+  <section class="section" id="override">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(245,158,11,.15);">🔧</div>
+      긴급 수정 기능 (관리자 전용)
+    </div>
+    <div class="section-desc">
+      실수나 사기가 발생했을 때 관리자가 수동으로 상황을 바로잡을 수 있는 기능들입니다.
+      일반 사용자는 사용할 수 없으며, 오직 컨트랙트 소유자(관리자)만 실행할 수 있습니다.
+    </div>
+
+    <div class="override-grid">
+      <div class="override-card">
+        <span class="contract-badge router">정산 라우터</span>
+        <h4>adminResetOrder(orderId)</h4>
+        <div class="use-case">결제가 잘못 처리된 주문을 초기화해서 다시 결제할 수 있게 합니다.</div>
+        <div class="example">📌 예시: 시스템 오류로 잘못된 금액이 결제됨 → 리셋 후 올바른 금액으로 재결제</div>
+      </div>
+      <div class="override-card">
+        <span class="contract-badge router">정산 라우터</span>
+        <h4>adminVoidOrder(orderId, reason)</h4>
+        <div class="use-case">사기로 확인된 주문을 영구 차단합니다. 차단된 주문은 다시는 결제할 수 없습니다.</div>
+        <div class="example">📌 예시: 도난 카드로 생성된 주문 → 영구 차단 + 사유 기록</div>
+      </div>
+      <div class="override-card">
+        <span class="contract-badge registry">분쟁 레지스트리</span>
+        <h4>supersedeAnchor(oldId, evidence, resolution)</h4>
+        <div class="use-case">잘못된 분쟁 기록을 새로운 기록으로 교체합니다. 원래 기록은 감사 추적을 위해 보존됩니다.</div>
+        <div class="example">📌 예시: 증거 누락으로 잘못 판결 → 새 증거로 교체 기록 생성 (원본은 보존)</div>
+      </div>
+      <div class="override-card">
+        <span class="contract-badge registry">분쟁 레지스트리</span>
+        <h4>revokeAnchor(anchorId, reason)</h4>
+        <div class="use-case">허위 분쟁 기록을 무효화합니다. 무효화 후 같은 분쟁에 대해 새로 기록할 수 있습니다.</div>
+        <div class="example">📌 예시: 조작된 증거로 생성된 기록 → 무효 처리 + 사유 기록</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 기능 목록 -->
+  <section class="section" id="functions">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(99,102,241,.15);">📋</div>
+      전체 기능 목록
+    </div>
+    <div class="section-desc">
+      각 컨트랙트가 제공하는 모든 기능입니다. <strong>누가 실행할 수 있는지</strong>가 색상으로 구분됩니다.
+    </div>
+
+    <div class="info-box">
+      <div class="info-title">ℹ️ 권한 색상</div>
+      <p>
+        <strong style="color:var(--blue)">구매자</strong> = 결제하는 사람 &nbsp;|&nbsp;
+        <strong style="color:var(--yellow)">소유자</strong> = 관리자 &nbsp;|&nbsp;
+        <strong style="color:var(--orange)">소유자/가디언</strong> = 관리자 또는 보안 담당자 &nbsp;|&nbsp;
+        <strong style="color:var(--accent2)">분쟁 해결사</strong> = 분쟁 처리 권한자 &nbsp;|&nbsp;
+        <strong style="color:var(--dim)">누구나</strong> = 조회만 가능
+      </p>
+    </div>
+
+    <div class="fn-section">
+      <h3>정산 라우터 (Settlement Router)</h3>
+      <div class="fn-grid">
+        <div class="fn-row"><span class="fn-name">executeSettlement</span><span class="fn-access buyer">구매자</span><span class="fn-desc">결제 실행 (서명 검증 후 USDC 전송)</span></div>
+        <div class="fn-row"><span class="fn-name">proposeSigner</span><span class="fn-access owner">소유자</span><span class="fn-desc">새 서명자 제안 (48시간 후 확정 가능)</span></div>
+        <div class="fn-row"><span class="fn-name">confirmSigner</span><span class="fn-access owner">소유자</span><span class="fn-desc">서명자 교체 확정</span></div>
+        <div class="fn-row"><span class="fn-name">cancelSignerRotation</span><span class="fn-access owner">소유자</span><span class="fn-desc">서명자 교체 제안 취소</span></div>
+        <div class="fn-row"><span class="fn-name">emergencyFreezeSigner</span><span class="fn-access owner">소유자</span><span class="fn-desc">서명자 긴급 동결 (키 탈취 시)</span></div>
+        <div class="fn-row"><span class="fn-name">setGuardian</span><span class="fn-access owner">소유자</span><span class="fn-desc">보안 담당자(가디언) 지정/해제</span></div>
+        <div class="fn-row"><span class="fn-name">pause / unpause</span><span class="fn-access guardian">소유자/가디언</span><span class="fn-desc">긴급 일시 정지 / 재개</span></div>
+        <div class="fn-row"><span class="fn-name">allowAsset</span><span class="fn-access owner">소유자</span><span class="fn-desc">결제에 사용할 수 있는 자산 추가</span></div>
+        <div class="fn-row"><span class="fn-name">setMaxSettlementAmount</span><span class="fn-access owner">소유자</span><span class="fn-desc">1건당 최대 결제 금액 설정</span></div>
+        <div class="fn-row"><span class="fn-name">adminResetOrder</span><span class="fn-access owner">소유자</span><span class="fn-desc">결제 상태 초기화 (재결제 가능)</span></div>
+        <div class="fn-row"><span class="fn-name">adminVoidOrder</span><span class="fn-access owner">소유자</span><span class="fn-desc">주문 영구 차단 (사기 방지)</span></div>
+      </div>
+    </div>
+
+    <div class="fn-section">
+      <h3>분쟁 레지스트리 (Dispute Registry)</h3>
+      <div class="fn-grid">
+        <div class="fn-row"><span class="fn-name">anchorDispute</span><span class="fn-access resolver">분쟁 해결사</span><span class="fn-desc">분쟁 결과를 블록체인에 기록</span></div>
+        <div class="fn-row"><span class="fn-name">supersedeAnchor</span><span class="fn-access resolver">분쟁 해결사</span><span class="fn-desc">기존 기록을 새 기록으로 교체</span></div>
+        <div class="fn-row"><span class="fn-name">revokeAnchor</span><span class="fn-access owner">소유자</span><span class="fn-desc">분쟁 기록 무효화</span></div>
+        <div class="fn-row"><span class="fn-name">grantResolver</span><span class="fn-access owner">소유자</span><span class="fn-desc">분쟁 해결사 권한 부여</span></div>
+        <div class="fn-row"><span class="fn-name">revokeResolver</span><span class="fn-access owner">소유자</span><span class="fn-desc">분쟁 해결사 권한 회수</span></div>
+        <div class="fn-row"><span class="fn-name">getOrderAnchors</span><span class="fn-access view">누구나</span><span class="fn-desc">특정 주문의 모든 분쟁 기록 조회</span></div>
+        <div class="fn-row"><span class="fn-name">getOrderAnchorCount</span><span class="fn-access view">누구나</span><span class="fn-desc">특정 주문의 분쟁 기록 수 조회</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 테스트 -->
+  <section class="section" id="tests">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(16,185,129,.15);">✅</div>
+      테스트 현황 — 148개 전부 통과
+    </div>
+    <div class="section-desc">
+      148개의 자동화된 테스트가 "이 상황에서 이렇게 동작해야 한다"를 검증합니다.
+      랜덤 입력 테스트(퍼징)와 불변 속성 테스트도 포함됩니다.
+    </div>
+
+    <div class="analogy">
+      <div class="title">💡 퍼징(Fuzz) 테스트란?</div>
+      <p>
+        컴퓨터가 무작위로 1,000번 이상 다양한 값을 넣어봐서 예상치 못한 오류가 없는지 확인하는 방법입니다.
+        사람이 생각하지 못한 극단적인 경우를 자동으로 찾아냅니다.
+      </p>
+    </div>
+
+    <div class="test-bar">
+      <div style="flex:95;background:var(--accent);">정산 라우터 95개</div>
+      <div style="flex:52;background:var(--accent2);">분쟁 레지스트리 52개</div>
+      <div style="flex:3;background:var(--green);">불변 1</div>
+    </div>
+
+    <h4 style="margin-bottom:12px;color:var(--accent);">정산 라우터 — 95개 테스트</h4>
+    <div class="test-breakdown" style="margin-bottom:24px;">
+      <div class="test-item"><span>배포 (초기 설정 확인)</span><span class="count">6</span></div>
+      <div class="test-item"><span>핵심 결제 + 랜덤 테스트</span><span class="count">8 + 2</span></div>
+      <div class="test-item"><span>금액 검증</span><span class="count">4</span></div>
+      <div class="test-item"><span>주소 검증</span><span class="count">7</span></div>
+      <div class="test-item"><span>서명 검증</span><span class="count">5</span></div>
+      <div class="test-item"><span>긴급 정지 / 재개</span><span class="count">9</span></div>
+      <div class="test-item"><span>서명자 교체</span><span class="count">11</span></div>
+      <div class="test-item"><span>가디언 (보안 담당자)</span><span class="count">5</span></div>
+      <div class="test-item"><span>소유권 이전</span><span class="count">3</span></div>
+      <div class="test-item"><span>긴급 동결</span><span class="count">4</span></div>
+      <div class="test-item"><span>수동 관리 기능</span><span class="count">7</span></div>
+      <div class="test-item"><span>극단적 상황</span><span class="count">6</span></div>
+      <div class="test-item"><span>불변 속성 (256회 x 16,384 호출)</span><span class="count">1</span></div>
+    </div>
+
+    <h4 style="margin-bottom:12px;color:var(--accent2);">분쟁 레지스트리 — 52개 테스트</h4>
+    <div class="test-breakdown">
+      <div class="test-item"><span>배포 (초기 설정 확인)</span><span class="count">5</span></div>
+      <div class="test-item"><span>핵심 기록 + 랜덤 테스트</span><span class="count">7 + 1</span></div>
+      <div class="test-item"><span>중복 기록 방지</span><span class="count">2</span></div>
+      <div class="test-item"><span>입력값 검증</span><span class="count">4</span></div>
+      <div class="test-item"><span>최대 기록 수 제한</span><span class="count">1</span></div>
+      <div class="test-item"><span>권한 통제</span><span class="count">8</span></div>
+      <div class="test-item"><span>소유권 이전</span><span class="count">6</span></div>
+      <div class="test-item"><span>기록 교체</span><span class="count">6</span></div>
+      <div class="test-item"><span>기록 무효화</span><span class="count">6</span></div>
+    </div>
+  </section>
+
+  <!-- 배포 체크리스트 -->
+  <section class="section" id="deploy">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(59,130,246,.15);">🚀</div>
+      배포 체크리스트
+    </div>
+    <div class="section-desc">
+      실제 블록체인에 올리기 전에 완료해야 할 항목들입니다.
+    </div>
+    <ul class="checklist">
+      <li><span class="box"></span>다중 서명 지갑 생성 (여러 명이 동의해야 실행 — Gnosis Safe)</li>
+      <li><span class="box"></span>서명자 키 생성 + 하드웨어 보안 모듈(HSM)에 보관</li>
+      <li><span class="box"></span>가디언(보안 담당자) 핫 월렛 설정</li>
+      <li><span class="box"></span>USDC를 허용 자산으로 등록</li>
+      <li><span class="box"></span>1건당 최대 결제 한도 초기값 설정</li>
+      <li><span class="box"></span>테스트넷(Base Sepolia)에 먼저 배포 + 실제 환경 테스트</li>
+      <li><span class="box"></span>메인넷(Base Mainnet)에 최종 배포</li>
+      <li><span class="box"></span>컨트랙트 소스코드를 Etherscan에서 검증</li>
+      <li><span class="box"></span>컨트랙트 주소를 코드베이스에 업데이트</li>
+    </ul>
+  </section>
+
+  <!-- 향후 계획 -->
+  <section class="section" id="future">
+    <div class="section-title">
+      <div class="icon" style="background:rgba(139,92,246,.15);">🔮</div>
+      향후 개발 계획
+    </div>
+    <div class="section-desc">
+      현재 완성된 기본 결제 + 분쟁 시스템 위에 앞으로 추가될 기능들입니다.
+    </div>
+
+    <div class="phase-card">
+      <h3>Phase 2: 중량 조정 버퍼 정산</h3>
+      <div class="phase-desc">
+        중고 거래에서 "예상 무게"와 "실제 무게"가 다를 수 있습니다.
+        차이 금액을 미리 보증금으로 받아두고, 14일 후 실제 측정 결과에 따라 정산하는 시스템입니다.
+      </div>
+      <ul class="phase-tasks">
+        <li><span class="box"></span>보증금 라우터 컨트랙트 설계</li>
+        <li><span class="box"></span>14일 대기 후 자동 정산 메커니즘</li>
+        <li><span class="box"></span>미납 시 리스팅 금지 (온체인 제재)</li>
+      </ul>
+    </div>
+
+    <div class="phase-card">
+      <h3>Phase 3: 추가 기능</h3>
+      <ul class="phase-tasks">
+        <li><span class="box"></span>한 번의 트랜잭션으로 여러 건 동시 결제</li>
+        <li><span class="box"></span>USDC 외 다른 자산 지원</li>
+        <li><span class="box"></span>거버넌스 토큰 연동</li>
+        <li><span class="box"></span>다른 체인과의 결제 연동 (크로스체인)</li>
+      </ul>
+    </div>
+
+    <div class="phase-card">
+      <h3>보안 추가 강화</h3>
+      <ul class="phase-tasks">
+        <li><span class="box"></span>외부 전문 감사 (Trail of Bits / OpenZeppelin Audit)</li>
+        <li><span class="box"></span>버그 바운티 프로그램 (해커에게 보상금 — Immunefi)</li>
+        <li><span class="box"></span>실시간 모니터링 대시보드 (Forta / Tenderly)</li>
+        <li><span class="box"></span>서명자 키를 하드웨어 보안 모듈로 이전</li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>148개 테스트 · 4라운드 보안 리뷰 · 머클 트리 신뢰도 · 건당 원가 $0.04 · 마진 99%+</p>
+  <p style="margin-top:4px;">2026년 3월 31일 기준 · 투자자 미팅용 내부 문서</p>
+  <p style="margin-top:12px; font-size:.9rem; color:var(--muted);">Haggle — The Stripe of Negotiations</p>
+</footer>
+
+</body>
+</html>

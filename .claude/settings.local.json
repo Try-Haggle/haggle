@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "mcp__plugin_telegram_telegram__reply"
+    ]
+  }
+}

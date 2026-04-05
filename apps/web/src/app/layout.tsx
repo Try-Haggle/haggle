@@ -3,9 +3,20 @@ import { AmplitudeProvider } from "@/providers/amplitude-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Haggle — AI-Powered Negotiation Marketplace",
+  metadataBase: new URL("https://tryhaggle.ai"),
+  title: {
+    default: "Haggle — AI Negotiation Protocol",
+    template: "%s | Haggle",
+  },
   description:
-    "The Stripe of Negotiations. Buy and sell with AI-assisted price negotiation.",
+    "AI negotiates for you. 1.5% total fee. Non-custodial smart contract payments. The Stripe of Negotiations.",
+  openGraph: {
+    type: "website",
+    siteName: "Haggle",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default function RootLayout({

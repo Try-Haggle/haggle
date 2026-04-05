@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { serverApi, apiServerFireAndForget } from "@/lib/api-server";
 import { BuyerLanding } from "./buyer-landing";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 interface ListingData {
   id: string;
@@ -26,15 +25,15 @@ export default async function BuyerListingPage({
 }) {
   const { publicId } = await params;
 
-  const res = await fetch(`${API_URL}/api/public/listings/${publicId}`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
+  let data: { ok: boolean; listing: ListingData; sellerId?: string | null };
+  try {
+    data = await serverApi.get<{ ok: boolean; listing: ListingData; sellerId?: string | null }>(
+      `/api/public/listings/${publicId}`,
+      { skipAuth: true },
+    );
+  } catch {
     notFound();
   }
-
-  const data = (await res.json()) as { ok: boolean; listing: ListingData; sellerId?: string | null };
 
   if (!data.ok || !data.listing) {
     notFound();
@@ -56,13 +55,14 @@ export default async function BuyerListingPage({
 
   // Record view for logged-in buyers (fire-and-forget, don't block render)
   if (user) {
-    fetch(`${API_URL}/api/viewed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id, publicId }),
-    }).catch(() => {
-      // Silent fail — viewing history is non-critical
-    });
+    const { data: { session } } = await supabase.auth.getSession();
+    const authHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (session?.access_token) {
+      authHeaders["Authorization"] = `Bearer ${session.access_token}`;
+    }
+    apiServerFireAndForget(`/api/viewed`, { userId: user.id, publicId }, authHeaders);
   }
 
   const isOwner = !!(user && data.sellerId && user.id === data.sellerId);

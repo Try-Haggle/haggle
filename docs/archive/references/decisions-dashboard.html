@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haggle Commerce — Decisions & Agenda</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#08090b;color:#e0e0e0;font-family:'Noto Sans KR',sans-serif;min-height:100vh;padding:24px;max-width:960px;margin:0 auto}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#111}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+.mono{font-family:'JetBrains Mono',monospace}
+h1{font-size:28px;font-weight:700;margin-bottom:4px;background:linear-gradient(135deg,#3498db,#2ecc71);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:#666;font-size:13px;margin-bottom:28px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:28px}
+.stat{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:14px;text-align:center}
+.stat .num{font-size:26px;font-weight:700;margin-bottom:2px}.stat .lbl{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.tab{padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;transition:all .2s;border:1px solid #222;background:#111;user-select:none}
+.tab:hover{border-color:#444}.tab.active{background:#1a1a2e;border-color:#3498db;color:#3498db}
+.tab .badge{display:inline-block;margin-left:5px;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700}
+.badge-g{background:#2ecc7133;color:#2ecc71}.badge-o{background:#f39c1233;color:#f39c12}
+
+.section{display:none}.section.active{display:block}
+
+/* Expandable item */
+.item{background:#111;border:1px solid #1a1a1a;border-radius:10px;margin-bottom:8px;overflow:hidden;transition:border-color .2s}
+.item:hover{border-color:#282828}
+.item-head{padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;user-select:none}
+.item-head .arrow{color:#555;font-size:10px;transition:transform .2s;flex-shrink:0}
+.item.open .item-head .arrow{transform:rotate(90deg)}
+.item-head .status{flex-shrink:0;display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.3px}
+.st-ok{background:#2ecc7118;color:#2ecc71;border:1px solid #2ecc7133}
+.st-open{background:#f39c1218;color:#f39c12;border:1px solid #f39c1233}
+.st-done{background:#3498db18;color:#3498db;border:1px solid #3498db33}
+.st-impl{background:#9b59b618;color:#9b59b6;border:1px solid #9b59b633}
+.item-head .title{font-size:13px;font-weight:600;flex:1}
+.item-head .brief{font-size:11px;color:#666;margin-left:auto;text-align:right;max-width:40%}
+.item-body{display:none;padding:0 16px 16px;font-size:12px;line-height:1.8;color:#aaa}
+.item.open .item-body{display:block}
+.item-body h5{color:#e0e0e0;font-size:12px;font-weight:600;margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid #1a1a1a}
+.item-body p{margin-bottom:8px}
+.item-body .highlight{background:#1a1a2e;border:1px solid #3498db33;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px}
+.item-body .warn{background:#f39c1210;border:1px solid #f39c1233;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px;color:#f39c12}
+.item-body code{background:#0d0d0d;padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#3498db}
+.item-body .opts{display:grid;gap:6px;margin:8px 0}
+.item-body .opt{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:6px;padding:8px 12px;font-size:11px;display:flex;gap:8px;align-items:flex-start}
+.item-body .opt .ol{font-weight:600;color:#e0e0e0;min-width:80px;flex-shrink:0}
+.item-body .opt .od{color:#888}
+.item-body .pro{color:#2ecc71}.item-body .con{color:#e74c3c}
+.item-body .example{background:#0a0a0a;border-left:3px solid #3498db;padding:10px 14px;margin:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:#888;white-space:pre-wrap}
+.item-body table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11px}
+.item-body th{text-align:left;padding:6px 10px;color:#666;border-bottom:1px solid #1a1a1a;font-size:10px}
+.item-body td{padding:6px 10px;border-bottom:1px solid #0d0d0d}
+.sep{height:1px;background:#1a1a1a;margin:16px 0}
+
+/* Overview-specific styles */
+.flow-diagram{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:10px;padding:20px;margin:12px 0;overflow-x:auto}
+.flow-row{display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center;margin:8px 0}
+.flow-step{background:#111;border:1px solid #282828;border-radius:8px;padding:8px 14px;font-size:11px;font-weight:500;text-align:center;white-space:nowrap}
+.flow-step.active{border-color:#3498db;color:#3498db}
+.flow-step.warn-step{border-color:#f39c12;color:#f39c12}
+.flow-arrow{color:#555;font-size:14px;padding:0 4px;flex-shrink:0}
+.flow-branch{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:8px}
+.flow-label{font-size:10px;color:#666;margin-top:4px}
+
+.overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.overview-card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:14px}
+.overview-card h6{color:#e0e0e0;font-size:12px;font-weight:600;margin-bottom:6px}
+.overview-card p{font-size:11px;color:#888;line-height:1.6;margin-bottom:0}
+
+.analogy{background:#0d0d10;border:1px solid #2ecc7133;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:12px;color:#2ecc71}
+.analogy::before{content:'💡 비유: ';font-weight:600}
+
+@media(max-width:768px){body{padding:12px}.stat-grid{grid-template-columns:1fr 1fr}.item-head .brief{display:none}.overview-grid{grid-template-columns:1fr}.flow-row{flex-direction:column;gap:4px}.flow-arrow{transform:rotate(90deg)}}
+</style>
+</head>
+<body>
+
+<h1>Haggle Commerce Foundation</h1>
+<p class="subtitle">결정 사항 & 미결 안건 대시보드 — 2026-03-28 업데이트</p>
+
+<div class="stat-grid">
+  <div class="stat"><div class="num" style="color:#2ecc71">1,164</div><div class="lbl">Tests</div></div>
+  <div class="stat"><div class="num" style="color:#3498db">35</div><div class="lbl">Endpoints</div></div>
+  <div class="stat"><div class="num" style="color:#9b59b6">50+</div><div class="lbl">확정</div></div>
+  <div class="stat"><div class="num" style="color:#2ecc71">0</div><div class="lbl">미결 안건</div></div>
+</div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="overview">🏠 Overview</div>
+  <div class="tab" data-tab="payment">💳 결제 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="shipping">📦 배송 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="dispute">⚖️ 분쟁 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="trust">🛡️ 신뢰 <span class="badge badge-g">✓</span></div>
+  <div class="tab" data-tab="new-decisions">🆕 신규 결정</div>
+  <div class="tab" data-tab="terms">📝 용어</div>
+  <div class="tab" data-tab="impl">🔧 구현</div>
+</div>
+
+<!-- =============== OVERVIEW =============== -->
+<div class="section active" id="overview">
+
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">Haggle이란?</span></div>
+<div class="item-body">
+<h5>한 줄 요약</h5>
+<div class="highlight">AI가 자동으로 가격을 협상하고, 스테이블코인(USDC — 1코인 = $1인 디지털 달러)으로 즉시 결제하는 <strong>P2P 마켓플레이스 프로토콜</strong>. "The Stripe of Negotiations."</div>
+<p>Stripe가 온라인 결제를 "카드번호 입력 → 완료"로 단순화했듯, Haggle은 중고 거래의 가격 협상을 "AI에게 맡기면 끝"으로 단순화합니다.</p>
+<h5>누구를 위한 것인가</h5>
+<div class="overview-grid">
+<div class="overview-card"><h6>구매자</h6><p>AI가 대신 협상해서 10-20% 할인. 배송비 분담 비율도 협상 가능. 더 이상 어색한 흥정 메시지를 보낼 필요 없음.</p></div>
+<div class="overview-card"><h6>판매자</h6><p>eBay 수수료 13% 대신 Haggle 1.5%. $450 아이폰 판매 시 eBay는 ~$390 수령, Haggle은 ~$443 수령.</p></div>
+<div class="overview-card"><h6>타겟 마켓</h6><p>Apple 전자제품 리세일, US-only로 시작. 이유: 고가 + 표준화된 제품 = 협상 가치가 높고, 상태 판단이 명확함.</p></div>
+<div class="overview-card"><h6>수익 모델</h6><p>거래 수수료 1.5% + 배송 마진 (EasyPost 할인가와 사용자 청구가 차이). $450 거래 기준 건당 ~$7-8.</p></div>
+</div>
+</div></div>
+
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">전체 거래 흐름 (The Big Picture)</span></div>
+<div class="item-body">
+<p>Haggle에서 하나의 거래가 시작부터 끝까지 어떻게 진행되는지 보여줍니다.</p>
+<div class="flow-diagram">
+<div class="flow-row">
+  <div class="flow-step active">🤖 AI 협상<div class="flow-label">가격/배송비/조건</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step active">🤝 합의<div class="flow-label">양측 수락</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step active">💰 결제<div class="flow-label">USDC → Settlement Contract</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">📦 배송<div class="flow-label">Haggle 라벨로 발송</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step warn-step">👀 구매자 확인<div class="flow-label">24시간 검토</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">💸 정산<div class="flow-label">판매자에게 릴리즈</div></div>
+</div>
+<div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #1a1a1a">
+  <div style="font-size:11px;color:#666;margin-bottom:8px">문제 발생 시 (24시간 내 분쟁 제기)</div>
+  <div class="flow-row">
+    <div class="flow-step warn-step">⚖️ Tier 1: AI Review<div class="flow-label">$5 · 즉시</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step warn-step">⚖️ Tier 2: Panel<div class="flow-label">3% · 48시간</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step warn-step">⚖️ Tier 3: Grand Panel<div class="flow-label">6% · 최종</div></div>
+  </div>
+</div>
+</div>
+<h5>핵심 포인트</h5>
+<p>구매자의 돈은 <code>Settlement Contract</code>(스마트 컨트랙트 — 조건 충족 시 자동 실행되는 블록체인 프로그램)에 잠깁니다. Haggle이 돈을 들고 있는 게 아니라, <strong>코드가 금고 역할</strong>을 합니다. 배송 완료 후 구매자가 "OK" 하거나 24시간이 지나면 자동으로 판매자에게 릴리즈됩니다.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">협상 가능한 조건 목록 (Multi-Issue Negotiation)</span><span class="brief">가격 외 10개 조건</span></div>
+<div class="item-body">
+<h5>Haggle에서 협상되는 것</h5>
+<p>Haggle의 AI 협상은 단순히 가격만 흥정하는 게 아닙니다. 아래 모든 조건이 하나의 협상 세션에서 동시에 조율됩니다. 각 조건은 트레이드오프 관계입니다 — 예를 들어, 구매자가 빠른 배송을 원하면 가격에서 양보해야 할 수 있습니다.</p>
+<table>
+<tr><th>조건</th><th>범위/예시</th><th>누가 유리?</th></tr>
+<tr><td><strong>가격</strong></td><td>판매자 target ~ 구매자 budget</td><td>기본 협상</td></tr>
+<tr><td><strong>수수료 분담</strong></td><td>구매자 100% ~ 판매자 100% (기본 50/50)</td><td>양측</td></tr>
+<tr><td><strong>배송비 분담</strong></td><td>구매자 / 판매자 / 분할</td><td>양측</td></tr>
+<tr><td><strong>배송 SLA</strong></td><td>1~14일 (발송 기한)</td><td>구매자: 짧게 / 판매자: 길게</td></tr>
+<tr><td><strong>SLA 초과 보상</strong></td><td>deposit 기반 / N%/일 / N USDC/일</td><td>구매자 보호</td></tr>
+<tr><td><strong>무게 정확도</strong></td><td>±Ng, 초과 시 패널티</td><td>구매자 보호</td></tr>
+<tr><td><strong>캐리어 선호</strong></td><td>"UPS/FedEx만", "USPS 제외" 등</td><td>구매자: 안전 / 판매자: 비용</td></tr>
+<tr><td><strong>서명 수령</strong></td><td>필수 / 선택</td><td>고가 거래 구매자</td></tr>
+<tr><td><strong>배송 보험</strong></td><td>추가/미추가, 비용 분담</td><td>양측</td></tr>
+<tr><td><strong>반품 조건</strong></td><td>무조건 / 상태 불일치 시 / 불가</td><td>구매자: 넓게 / 판매자: 좁게</td></tr>
+</table>
+<h5>플랫폼 정책 (협상 불가)</h5>
+<p>14일 미발송 자동 취소 + 전액 환불 + deposit 몰수, Trust Score 감점, 구매자 검토 기간(ARP 자동 조정), 무게 2단계+ 초과 경고 — 이것들은 공정성을 위해 Haggle이 강제합니다.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="title">왜 크립토인가? (USDC + x402)</span></div>
+<div class="item-body">
+<h5>"왜 그냥 카드 결제 안 쓰나요?"</h5>
+<p>짧은 대답: <strong>규제 회피 + 낮은 수수료 + 프로그래밍 가능</strong>.</p>
+
+<h5>1. Non-custodial = 송금업 라이선스 불필요</h5>
+<p>미국에서 다른 사람의 돈을 대신 보관하거나 전송하면 <code>Money Transmitter License</code>(송금업 라이선스)가 필요합니다. 50개 주 각각에서 별도 취득해야 하고, 비용만 수십만 달러입니다.</p>
+<div class="analogy">eBay 방식 = 내 돈을 eBay 은행 계좌에 맡김 (custodial). Haggle 방식 = 내 돈이 코드에 잠김, Haggle은 열쇠가 없음 (non-custodial). 마치 집 열쇠를 부동산 관리인에게 주는 것 vs 조건 충족 시 자동으로 열리는 스마트 도어록을 설치하는 것.</div>
+<p>스마트 컨트랙트를 사용하면 Haggle이 자금에 접근할 수 없으므로 <strong>FinCEN(미국 금융범죄단속네트워크) 면제</strong>를 주장할 수 있습니다.</p>
+
+<h5>2. 낮은 수수료</h5>
+<table>
+<tr><th>방식</th><th>수수료</th><th>정산 속도</th></tr>
+<tr><td>Stripe (카드)</td><td>2.9% + $0.30</td><td>2-7일</td></tr>
+<tr><td>PayPal</td><td>2.99% + $0.49</td><td>1-3일</td></tr>
+<tr><td style="color:#2ecc71">USDC on Base L2</td><td style="color:#2ecc71">가스비 ~$0.01</td><td style="color:#2ecc71">수초</td></tr>
+</table>
+
+<h5>3. 프로그래밍 가능한 돈</h5>
+<p>스마트 컨트랙트로 "배송 완료 → 24시간 대기 → 자동 릴리즈" 같은 조건부 결제를 코드로 강제할 수 있습니다. 전통 결제에서는 이런 로직을 중앙 서버에서 관리해야 하고, 그러면 다시 custodial 문제가 생깁니다.</p>
+
+<h5>주요 용어 정리</h5>
+<div class="opts">
+<div class="opt"><span class="ol">USDC</span><span class="od">Circle이 발행하는 달러 연동 스테이블코인. 1 USDC = 항상 $1. 비트코인처럼 가격이 오르내리지 않음.</span></div>
+<div class="opt"><span class="ol">Base L2</span><span class="od">Coinbase가 운영하는 이더리움 레이어2 네트워크. 이더리움의 보안을 유지하면서 가스비(트랜잭션 수수료)를 ~$0.01 수준으로 낮춤.</span></div>
+<div class="opt"><span class="ol">x402</span><span class="od">Coinbase가 만든 HTTP 기반 결제 프로토콜. 웹 표준인 HTTP 402 (Payment Required) 상태 코드를 활용하여 웹 요청에 크립토 결제를 내장함.</span></div>
+<div class="opt"><span class="ol">스마트 컨트랙트</span><span class="od">블록체인 위에서 돌아가는 프로그램. 한번 배포하면 누구도 (Haggle 포함) 마음대로 바꿀 수 없고, 정해진 조건에 따라 자동으로 실행됨.</span></div>
+</div>
+</div></div>
+
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">📊 경쟁 플랫폼 비교 — $450 iPhone (1lb) 거래</span></div>
+<div class="item-body">
+<p>공정한 비교를 위해 Haggle에서는 <strong>수수료(1.5%)와 배송비(~$4.99) 모두 반반 부담</strong>으로 가정합니다. 실제로는 이 비율도 협상 가능 — Haggle만의 차별점입니다.</p>
+
+<h5>판매자 관점 — "내가 실제로 얼마를 받는가?"</h5>
+<table>
+<tr><th></th><th>eBay</th><th>Mercari</th><th>Poshmark</th><th style="color:#2ecc71;border-bottom:2px solid #2ecc71">Haggle</th></tr>
+<tr><td style="color:#888">상품 합의 가격</td><td>$450</td><td>$450</td><td>$450</td><td>$450</td></tr>
+<tr><td style="color:#888">플랫폼 수수료</td><td style="color:#e74c3c">−$60.08<br><small>13.25%+$0.30</small></td><td style="color:#e74c3c">−$45.00<br><small>10%</small></td><td style="color:#e74c3c">−$90.00<br><small>20%</small></td><td style="color:#f39c12">−$3.38<br><small>1.5%의 절반</small></td></tr>
+<tr><td style="color:#888">배송비 부담</td><td style="color:#e74c3c">−$6.00<br><small>판매자 전액 (일반적)</small></td><td style="color:#e74c3c">−$6.99<br><small>판매자 전액 (무료배송 시)</small></td><td style="color:#2ecc71">$0<br><small>구매자 부담</small></td><td style="color:#f39c12">−$2.50<br><small>배송비 절반 ($4.99÷2)</small></td></tr>
+<tr style="font-weight:700;font-size:14px;border-top:2px solid #333"><td>💰 판매자 실수령</td><td style="color:#e74c3c">$383.92</td><td style="color:#e74c3c">$398.01</td><td style="color:#e74c3c">$360.00</td><td style="color:#2ecc71">$444.12</td></tr>
+<tr><td style="color:#888">Haggle 대비</td><td style="color:#e74c3c">$60 적게 받음</td><td style="color:#e74c3c">$46 적게 받음</td><td style="color:#e74c3c">$84 적게 받음</td><td style="color:#2ecc71">기준</td></tr>
+</table>
+
+<h5>구매자 관점 — "내가 실제로 얼마를 내는가?"</h5>
+<table>
+<tr><th></th><th>eBay</th><th>Mercari</th><th>Poshmark</th><th style="color:#2ecc71;border-bottom:2px solid #2ecc71">Haggle</th></tr>
+<tr><td style="color:#888">상품 가격</td><td>$450</td><td>$450</td><td>$450</td><td>$450</td></tr>
+<tr><td style="color:#888">구매자 수수료</td><td style="color:#2ecc71">$0<br><small>없음 (판매자가 흡수)</small></td><td style="color:#e74c3c">+$16.20<br><small>Buyer Protection 3.6%</small></td><td style="color:#2ecc71">$0<br><small>없음 (판매자가 흡수)</small></td><td style="color:#f39c12">+$3.38<br><small>1.5%의 절반</small></td></tr>
+<tr><td style="color:#888">배송비 부담</td><td style="color:#2ecc71">$0<br><small>판매자가 가격에 포함</small></td><td style="color:#2ecc71">$0<br><small>판매자 부담 시</small></td><td style="color:#e74c3c">+$7.67<br><small>PoshPost 고정</small></td><td style="color:#f39c12">+$2.50<br><small>배송비 절반 ($4.99÷2)</small></td></tr>
+<tr style="font-weight:700;font-size:14px;border-top:2px solid #333"><td>💸 구매자 총 지불</td><td style="color:#f39c12">$450.00</td><td style="color:#e74c3c">$466.20</td><td style="color:#e74c3c">$457.67</td><td style="color:#2ecc71">$455.88</td></tr>
+<tr><td style="color:#888">Haggle 대비</td><td style="color:#2ecc71">$6 저렴</td><td style="color:#e74c3c">$10 비쌈</td><td style="color:#f39c12">$2 비쌈</td><td style="color:#2ecc71">기준</td></tr>
+</table>
+
+<div class="warn">⚠️ eBay 구매자가 가장 저렴해 보이지만, 그 비용은 <strong>판매자가 $60 수수료로 흡수</strong>한 것입니다. 실제로 eBay 판매자는 $384만 받습니다 — Haggle보다 $60 적게.</div>
+
+<h5>양쪽 모두의 이득 — 핵심 비교</h5>
+<table>
+<tr><th></th><th>판매자 수령</th><th>구매자 지불</th><th>양쪽 합산 이득</th></tr>
+<tr><td>eBay</td><td style="color:#e74c3c">$384</td><td>$450</td><td style="color:#e74c3c">−$54 (vs Haggle)</td></tr>
+<tr><td>Mercari</td><td style="color:#e74c3c">$398</td><td style="color:#e74c3c">$466</td><td style="color:#e74c3c">−$57 (vs Haggle)</td></tr>
+<tr><td>Poshmark</td><td style="color:#e74c3c">$360</td><td style="color:#e74c3c">$458</td><td style="color:#e74c3c">−$86 (vs Haggle)</td></tr>
+<tr style="background:#2ecc7108"><td style="color:#2ecc71;font-weight:700">Haggle</td><td style="color:#2ecc71;font-weight:700">$444</td><td style="color:#2ecc71;font-weight:700">$456</td><td style="color:#2ecc71;font-weight:700">기준</td></tr>
+</table>
+<p><strong>Haggle은 판매자도 더 많이 받고, 구매자도 적게 냅니다.</strong> 다른 플랫폼에서 수수료로 빠져나가던 $54-86이 양쪽 사용자에게 돌아갑니다.</p>
+
+<h5>같은 수령액($444)을 맞추려면 — 다른 플랫폼에서는?</h5>
+<table>
+<tr><th>플랫폼</th><th>필요 판매가</th><th>수수료+배송</th><th>구매자 지불</th><th>판매자 수령</th></tr>
+<tr><td>eBay</td><td style="color:#e74c3c">$518</td><td>$74</td><td style="color:#e74c3c">$518</td><td>$444</td></tr>
+<tr><td>Mercari</td><td style="color:#e74c3c">$501</td><td>$57</td><td style="color:#e74c3c">$517</td><td>$444</td></tr>
+<tr><td>Poshmark</td><td style="color:#e74c3c">$555</td><td>$111</td><td style="color:#e74c3c">$563</td><td>$444</td></tr>
+<tr><td style="color:#2ecc71;font-weight:700">Haggle</td><td style="color:#2ecc71">$450</td><td style="color:#2ecc71">$5.88</td><td style="color:#2ecc71">$456</td><td style="color:#2ecc71">$444</td></tr>
+</table>
+<p>판매자가 <strong>같은 금액을 받으려면</strong> eBay에서 $518, Poshmark에서 $555를 받아야 합니다. 구매자는 그만큼 더 냅니다. <strong>Haggle에서는 $450이면 충분합니다.</strong></p>
+
+<h5>배송비 비교 (1lb iPhone, USPS, Zone 5)</h5>
+<table>
+<tr><th>플랫폼</th><th>배송비</th><th>배송 방식</th><th>누가 부담</th></tr>
+<tr><td>eBay</td><td>$5~7</td><td>판매자 직접 구매 (eBay 할인 라벨)</td><td>보통 판매자</td></tr>
+<tr><td>Mercari</td><td>$6.99</td><td>Mercari 프리페이드 (USPS Ground)</td><td>판매자 선택</td></tr>
+<tr><td>Poshmark</td><td>$7.67</td><td>PoshPost (USPS Ground Advantage)</td><td>구매자 고정</td></tr>
+<tr><td style="color:#2ecc71;font-weight:700">Haggle</td><td style="color:#2ecc71">~$4.99</td><td style="color:#2ecc71">Haggle 라벨 (EasyPost, 최대 60% 할인)</td><td style="color:#2ecc71">협상 (비교에서는 반반)</td></tr>
+</table>
+<p>Haggle 라벨이 <strong>모든 플랫폼 중 가장 저렴</strong>합니다. EasyPost 상업 요율(소매가 대비 최대 60% 할인) 덕분입니다. 그리고 누가 부담할지도 <strong>협상으로 결정</strong> — 다른 플랫폼은 고정입니다.</p>
+
+<h5>핵심 메시지</h5>
+<div class="highlight" style="font-size:13px;text-align:center;line-height:2.2">
+  <strong>🏷️ 판매자</strong>: "eBay에서 $384 받을 걸 Haggle에서 <span style="color:#2ecc71;font-weight:700">$444</span> 받습니다. <span style="color:#2ecc71;font-weight:700">+$60.</span>"<br>
+  <strong>🛒 구매자</strong>: "Mercari에서 $466 낼 걸 Haggle에서 <span style="color:#2ecc71;font-weight:700">$456</span> 냅니다. <span style="color:#2ecc71;font-weight:700">−$10.</span>"<br>
+  <strong>📦 배송비</strong>: 가장 저렴 + 누가 낼지 <span style="color:#2ecc71;font-weight:700">협상 가능</span>. 수수료도 <span style="color:#2ecc71;font-weight:700">협상 가능</span>.<br>
+  <span style="color:#888;font-size:11px">* 수수료·배송비 반반 기준. 실제로는 0~100% 자유롭게 협상 가능.</span>
+</div>
+
+<h5>🎛️ 협상 가능 존 — 인터랙티브 시뮬레이터</h5>
+<p>수수료와 배송비 분담 비율을 조절해보세요. 어떤 비율이든 <strong>양쪽 모두 다른 플랫폼보다 유리</strong>합니다.</p>
+
+<div id="nego-sim" style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:10px;padding:20px;margin:12px 0">
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+<div>
+<label style="font-size:11px;color:#888;display:block;margin-bottom:6px">상품 합의 가격</label>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="color:#666">$</span>
+<input id="sim-price" type="number" value="450" min="10" max="10000" step="10" style="background:#111;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:14px;font-family:'JetBrains Mono',monospace;width:120px">
+</div>
+</div>
+<div>
+<label style="font-size:11px;color:#888;display:block;margin-bottom:6px">배송비 (Haggle 라벨)</label>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="color:#666">$</span>
+<input id="sim-ship" type="number" value="4.99" min="0" max="50" step="0.5" style="background:#111;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:14px;font-family:'JetBrains Mono',monospace;width:120px">
+</div>
+</div>
+</div>
+
+<div style="margin-bottom:12px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+<span style="font-size:11px;color:#888">수수료 분담 (구매자 ← → 판매자)</span>
+<span id="fee-label" style="font-size:11px;color:#3498db;font-family:'JetBrains Mono',monospace">50 : 50</span>
+</div>
+<input id="sim-fee-split" type="range" min="0" max="100" value="50" style="width:100%;accent-color:#3498db">
+<div style="display:flex;justify-content:space-between;font-size:10px;color:#555"><span>구매자 100%</span><span>반반</span><span>판매자 100%</span></div>
+</div>
+
+<div style="margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+<span style="font-size:11px;color:#888">배송비 분담 (구매자 ← → 판매자)</span>
+<span id="ship-label" style="font-size:11px;color:#e67e22;font-family:'JetBrains Mono',monospace">50 : 50</span>
+</div>
+<input id="sim-ship-split" type="range" min="0" max="100" value="50" style="width:100%;accent-color:#e67e22">
+<div style="display:flex;justify-content:space-between;font-size:10px;color:#555"><span>구매자 100%</span><span>반반</span><span>판매자 100%</span></div>
+</div>
+
+<!-- Results -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+<div style="background:#111;border:1px solid #2ecc7133;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#888;margin-bottom:4px">🏷️ 판매자 수령</div>
+<div id="sim-seller" style="font-size:28px;font-weight:700;color:#2ecc71;font-family:'JetBrains Mono',monospace">$444.12</div>
+<div id="sim-seller-detail" style="font-size:10px;color:#666;margin-top:4px">$450 − $3.38 − $2.50</div>
+</div>
+<div style="background:#111;border:1px solid #3498db33;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#888;margin-bottom:4px">🛒 구매자 지불</div>
+<div id="sim-buyer" style="font-size:28px;font-weight:700;color:#3498db;font-family:'JetBrains Mono',monospace">$455.88</div>
+<div id="sim-buyer-detail" style="font-size:10px;color:#666;margin-top:4px">$450 + $3.38 + $2.50</div>
+</div>
+<div style="background:#111;border:1px solid #f39c1233;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#888;margin-bottom:4px">💰 Haggle 수익</div>
+<div id="sim-haggle" style="font-size:28px;font-weight:700;color:#f39c12;font-family:'JetBrains Mono',monospace">$7.75</div>
+<div id="sim-haggle-detail" style="font-size:10px;color:#666;margin-top:4px">수수료 $6.75 + 배송 마진 $1.00</div>
+<div id="sim-haggle-annual" style="font-size:10px;color:#555;margin-top:2px"></div>
+</div>
+</div>
+
+<!-- Comparison bar -->
+<div style="font-size:11px;color:#888;margin-bottom:6px">다른 플랫폼과 비교 (같은 상품 가격 기준)</div>
+<div id="sim-bars" style="display:grid;gap:6px">
+</div>
+
+<!-- Negotiation zone visual -->
+<div style="margin-top:16px">
+<div style="font-size:11px;color:#888;margin-bottom:8px">협상 가능 범위 — 슬라이더를 어디로 놓든 Haggle이 유리한 구간</div>
+<div style="position:relative;height:40px;background:#111;border-radius:6px;overflow:hidden;border:1px solid #1a1a1a">
+<div id="zone-seller" style="position:absolute;left:0;top:0;height:50%;background:linear-gradient(90deg,#2ecc7100,#2ecc7140);border-bottom:1px solid #1a1a1a"></div>
+<div id="zone-buyer" style="position:absolute;left:0;bottom:0;height:50%;background:linear-gradient(90deg,#3498db00,#3498db40)"></div>
+<div id="zone-marker" style="position:absolute;top:0;bottom:0;width:2px;background:#fff;transition:left .1s"></div>
+<div style="position:absolute;left:4px;top:4px;font-size:9px;color:#2ecc71">판매자 수령</div>
+<div style="position:absolute;left:4px;bottom:4px;font-size:9px;color:#3498db">구매자 지불</div>
+<!-- competitor lines -->
+<div id="zone-ebay-s" style="position:absolute;top:0;height:50%;width:1px;border-left:1px dashed #e74c3c66"></div>
+<div id="zone-ebay-b" style="position:absolute;bottom:0;height:50%;width:1px;border-left:1px dashed #e74c3c66"></div>
+</div>
+<div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:2px">
+<span>$350</span><span id="zone-max">$470</span>
+</div>
+</div>
+
+</div>
+
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="title">🚀 목표 달성 시 기업 수익 & 가치</span></div>
+<div class="item-body">
+<h5>목표: 미국 이커머스 0.1% + 중고거래 1%</h5>
+<p>미국 이커머스 전체 시장 ~$1.3조의 0.1% + 중고거래 시장 ~$2,000억의 1% = <strong>Haggle을 통해 거래되는 총 금액 $25-33억</strong></p>
+
+<div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:14px;margin:10px 0;font-size:11px;color:#888;line-height:1.8">
+<strong style="color:#e0e0e0">용어 설명</strong><br>
+<strong style="color:#3498db">GMV</strong> (Gross Merchandise Volume) = 플랫폼에서 거래된 상품의 총 금액. 예: Haggle에서 iPhone 1만 대가 각 $450에 팔리면 GMV = $4.5M. 이건 Haggle의 수입이 아니라 "얼마나 많은 거래가 일어났는가"의 지표.<br>
+<strong style="color:#2ecc71">ARR</strong> (Annual Recurring Revenue) = 연간 반복 수입. GMV에서 Haggle이 실제로 가져가는 돈. 수수료 1.5%면 GMV $100M → ARR $1.5M.<br>
+<strong style="color:#f39c12">ARR (전체 수익)</strong> = 거래 수수료(1.5%) + 아래 부가 수익원을 모두 합한 연간 수입. 테이크레이트(실질 수수료율)가 3-5%로 올라가는 효과.<br>
+<strong style="color:#9b59b6">마진율</strong> = 수입 중 실제 이익 비율. Haggle은 서버 비용 외에 원가가 거의 없으므로 96%+ (eBay, Poshmark도 비슷한 마진율).
+</div>
+
+<h5>부가 수익원 상세</h5>
+<p>거래 수수료 1.5% 외에 추가 수익이 발생하는 경로들. 목표 달성(월 60만 건) 기준 연간 추정.</p>
+<table>
+<tr><th>수익원</th><th>단가 / 비율</th><th>적용 대상</th><th style="text-align:right">연간 추정</th><th>근거</th></tr>
+<tr>
+<td style="color:#2ecc71;font-weight:500">거래 수수료</td>
+<td>1.5%</td>
+<td>모든 거래</td>
+<td style="text-align:right;color:#2ecc71;font-weight:600;font-family:'JetBrains Mono',monospace">$37-50M</td>
+<td style="color:#666;font-size:10px">GMV $2.5-3.3B × 1.5%</td>
+</tr>
+<tr>
+<td style="color:#f39c12;font-weight:500">배송 마진</td>
+<td>~$1/건</td>
+<td>Haggle 라벨 사용 거래 (~80%)</td>
+<td style="text-align:right;color:#f39c12;font-weight:600;font-family:'JetBrains Mono',monospace">$5.8M</td>
+<td style="color:#666;font-size:10px">월 60만 × 80% × $1 × 12개월</td>
+</tr>
+<tr>
+<td style="color:#e67e22;font-weight:500">분쟁 수수료</td>
+<td>$5 ~ 거래액 6%</td>
+<td>분쟁 건 (거래의 ~1%)</td>
+<td style="text-align:right;color:#e67e22;font-weight:600;font-family:'JetBrains Mono',monospace">$3.4M</td>
+<td style="color:#666;font-size:10px">연 7.2만 건 × 평균 $47 (Haggle 몫 30%)</td>
+</tr>
+<tr>
+<td style="color:#9b59b6;font-weight:500">프리미엄 구독</td>
+<td>$9.99-29.99/월</td>
+<td>파워셀러, 대량 판매자</td>
+<td style="text-align:right;color:#9b59b6;font-weight:600;font-family:'JetBrains Mono',monospace">$2-5M</td>
+<td style="color:#666;font-size:10px">판매자의 5-10%가 구독 가정</td>
+</tr>
+<tr>
+<td style="color:#3498db;font-weight:500">신뢰 API</td>
+<td>$0.01-0.05/조회</td>
+<td>외부 플랫폼 (PMF 후)</td>
+<td style="text-align:right;color:#3498db;font-weight:600;font-family:'JetBrains Mono',monospace">$1-3M</td>
+<td style="color:#666;font-size:10px">월 500만 조회 × $0.02 (PMF* 후 점진 성장)</td>
+</tr>
+<tr>
+<td style="color:#e0e0e0;font-weight:500">인증/검증</td>
+<td>$5-15/건</td>
+<td>Apple 기기 상태 검증</td>
+<td style="text-align:right;color:#e0e0e0;font-weight:600;font-family:'JetBrains Mono',monospace">$3-7M</td>
+<td style="color:#666;font-size:10px">거래의 10-15%가 인증 요청 가정</td>
+</tr>
+<tr style="border-top:2px solid #333;font-weight:700;font-size:13px">
+<td colspan="3">합계 (전체 수익)</td>
+<td style="text-align:right;color:#f39c12;font-family:'JetBrains Mono',monospace">$52-74M</td>
+<td style="color:#666;font-size:10px">보수적 추정</td>
+</tr>
+<tr style="font-weight:700;font-size:13px">
+<td colspan="3">합계 (낙관적)</td>
+<td style="text-align:right;color:#2ecc71;font-family:'JetBrains Mono',monospace">$75-165M</td>
+<td style="color:#666;font-size:10px">프리미엄+API 성장 시</td>
+</tr>
+</table>
+
+<div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:6px;padding:10px;margin:8px 0;font-size:11px;color:#666;line-height:1.6">
+<strong style="color:#888">계산 가정</strong>: 목표 GMV $3B 기준 / 월 60만 건 / 평균 거래 $450 / 분쟁율 1% / Haggle 라벨 사용율 80% / 프리미엄 구독 전환율 5-10% / 신뢰 API는 PMF 이후 서서히 성장<br>
+<strong style="color:#f39c12">*PMF</strong> (Product-Market Fit) = 제품이 시장 수요와 맞아떨어지는 상태. 사용자들이 Haggle을 반복적으로 쓰고, 재거래율과 만족도가 의미 있는 수준에 도달한 시점. 보통 스타트업이 "이제 됐다"를 확인하는 순간.
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0">
+<div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#3498db;font-weight:500">GMV (총 거래액)</div>
+<div style="font-size:20px;font-weight:700;color:#e0e0e0;font-family:'JetBrains Mono',monospace">$2.5-3.3B</div>
+<div style="font-size:9px;color:#555;margin-top:2px">플랫폼 거래 총액</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #2ecc7133;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#2ecc71;font-weight:500">ARR (수수료만)</div>
+<div style="font-size:20px;font-weight:700;color:#2ecc71;font-family:'JetBrains Mono',monospace">$37-50M</div>
+<div style="font-size:9px;color:#555;margin-top:2px">GMV의 1.5%</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #f39c1233;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#f39c12;font-weight:500">ARR (전체 수익)</div>
+<div style="font-size:20px;font-weight:700;color:#f39c12;font-family:'JetBrains Mono',monospace">$75-165M</div>
+<div style="font-size:9px;color:#555;margin-top:2px">수수료+배송+부가서비스</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #9b59b633;border-radius:8px;padding:12px;text-align:center">
+<div style="font-size:10px;color:#9b59b6;font-weight:500">마진율</div>
+<div style="font-size:20px;font-weight:700;color:#9b59b6;font-family:'JetBrains Mono',monospace">96%+</div>
+<div style="font-size:9px;color:#555;margin-top:2px">수입 ≈ 이익</div>
+</div>
+</div>
+
+<h5>기업가치 추정</h5>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:12px 0">
+<div style="background:#0d0d0d;border:1px solid #e74c3c33;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#e74c3c;font-weight:600;margin-bottom:4px">보수적 (마켓플레이스 3x)</div>
+<div style="font-size:26px;font-weight:700;color:#e0e0e0;font-family:'JetBrains Mono',monospace">$111M</div>
+<div style="font-size:10px;color:#666;margin-top:2px">ARR $37M × 3x</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #f39c1233;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#f39c12;font-weight:600;margin-bottom:4px">기본 (핀테크 6x)</div>
+<div style="font-size:26px;font-weight:700;color:#e0e0e0;font-family:'JetBrains Mono',monospace">$450M</div>
+<div style="font-size:10px;color:#666;margin-top:2px">ARR $75M × 6x</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #2ecc7133;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:10px;color:#2ecc71;font-weight:600;margin-bottom:4px">낙관 (AI 프로토콜 12x)</div>
+<div style="font-size:26px;font-weight:700;color:#2ecc71;font-family:'JetBrains Mono',monospace">$1.2B</div>
+<div style="font-size:10px;color:#666;margin-top:2px">ARR $100M × 12x — 유니콘</div>
+</div>
+</div>
+
+<div class="highlight" style="text-align:center;font-size:12px">
+같은 수입이라도 <strong>"마켓플레이스"로 보이면 3x</strong>, <strong>"AI 프로토콜 인프라"로 보이면 12x</strong>.<br>
+"The Stripe of Negotiations" 포지셔닝이 기업가치에 직접 영향.
+</div>
+
+<h5>연간 성장 경로</h5>
+<table>
+<tr><th></th><th style="text-align:center">Year 1</th><th style="text-align:center">Year 2</th><th style="text-align:center">Year 3</th><th style="text-align:center;color:#2ecc71">목표</th></tr>
+<tr><td style="color:#888">월 거래</td><td>500</td><td>3,000</td><td>20,000</td><td style="color:#2ecc71;font-weight:600">600,000</td></tr>
+<tr><td style="color:#888">GMV</td><td>$1.35M</td><td>$10.8M</td><td>$72M</td><td style="color:#2ecc71;font-weight:600">$2.5-3.3B</td></tr>
+<tr><td style="color:#888">ARR</td><td>$20K</td><td>$162K</td><td>$1.08M</td><td style="color:#2ecc71;font-weight:600">$37-100M</td></tr>
+</table>
+
+<h5>벤치마크</h5>
+<table>
+<tr><th>회사</th><th>밸류에이션</th><th>수입</th><th>멀티플</th></tr>
+<tr><td>Poshmark (인수)</td><td>$1.2B</td><td>$350M</td><td>3.4x</td></tr>
+<tr><td>Poshmark (IPO)</td><td>$3B+</td><td>$320M</td><td>9.4x</td></tr>
+<tr><td>StockX</td><td>$3.8B</td><td>~$400M</td><td>9.5x</td></tr>
+<tr><td style="color:#2ecc71;font-weight:600">Haggle (목표)</td><td style="color:#2ecc71">$450M-$1.2B</td><td style="color:#2ecc71">$75-100M</td><td style="color:#2ecc71">6-12x</td></tr>
+</table>
+</div></div>
+
+</div><!-- /overview -->
+
+<!-- =============== PAYMENT =============== -->
+<div class="section" id="payment">
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">결제 수단: x402 + USDC</span><span class="brief">Base L2</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p><code>x402</code>는 Coinbase가 만든 HTTP 기반 결제 프로토콜. HTTP 402 (Payment Required) 상태 코드를 활용하여 웹 요청에 결제를 내장합니다. <code>USDC</code>(USD Coin)는 Circle이 발행하는 달러 연동 스테이블코인 (1 USDC = $1). 가격이 변동하지 않는 "디지털 달러"입니다.</p>
+<p><code>Base</code>는 Coinbase가 운영하는 이더리움 L2(레이어2 — 이더리움 위에서 돌아가는 더 빠르고 저렴한 네트워크). 가스비(블록체인 트랜잭션 수수료)가 ~$0.01로 매우 낮아 소액 결제에 적합합니다.</p>
+<h5>왜 이걸 선택했나</h5>
+<p>기존 카드 결제(Stripe 등)는 분쟁 시 자금을 판매자로부터 강제 회수할 수 있지만(chargeback), 크립토는 <code>non-custodial</code>(Haggle이 자금을 직접 보관하지 않는) 구조라 스마트 컨트랙트(블록체인 위의 자동 실행 프로그램)로 보호합니다. Haggle이 직접 자금을 관리하지 않으므로 Money Transmitter(송금업) 규제를 피할 수 있습니다.</p>
+<h5>검토했던 다른 옵션</h5>
+<div class="opts">
+<div class="opt"><span class="ol">Stripe 단독</span><span class="od">카드 결제 → 간단하지만 높은 수수료(2.9%+$0.30), custodial(대리 보관) = 규제 대상</span></div>
+<div class="opt"><span class="ol">ETH 직접</span><span class="od">가격 변동 리스크, 일반 소비자 접근성 낮음</span></div>
+<div class="opt"><span class="ol">x402 + USDC</span><span class="od"><span class="pro">✅ 선택됨</span> — 안정적 가치 + non-custodial + 낮은 가스비</span></div>
+</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">수수료: 1.5%</span><span class="brief">전체 가격에 포함</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>Haggle의 거래 수수료는 <strong>1.5%</strong>로, 협상되는 전체 가격에 포함됩니다. 별도로 청구되지 않습니다. 구매자와 판매자가 $450에 합의하면, 그 안에 이미 Haggle 수수료가 포함된 것입니다.</p>
+<h5>경쟁사 비교</h5>
+<table>
+<tr><th>플랫폼</th><th>수수료</th><th>$450 거래 시 판매자 수령</th></tr>
+<tr><td>eBay</td><td>13.25% + $0.30</td><td>~$390</td></tr>
+<tr><td>Mercari</td><td>10% + 구매자 3.6%</td><td>~$405</td></tr>
+<tr><td>Poshmark</td><td>20%</td><td>$360</td></tr>
+<tr><td style="color:#2ecc71;font-weight:600">Haggle</td><td style="color:#2ecc71">1.5%</td><td style="color:#2ecc71">~$443</td></tr>
+</table>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">배송비 분담: 협상으로 결정</span><span class="brief">고정 부담자 없음</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>기존 플랫폼은 배송비 부담자가 고정됩니다 (Poshmark=구매자, eBay=판매자 선택). Haggle은 <strong>배송비 자체가 협상 항목</strong>입니다.</p>
+<div class="example">"iPhone $430에 배송비 내가 낼게"
+"$420으로 해주면 배송비 내가 부담"
+"$450에 무료 배송 해줘"</div>
+<p>이건 기존 마켓플레이스에 없는 Haggle만의 차별점입니다.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">최소 거래: $10</span><span class="brief">미만은 로컬 픽업만</span></div>
+<div class="item-body">
+<h5>왜 $10인가</h5>
+<p>배송 트래킹 비용과 수수료의 비율 때문입니다. $10 거래에서 수수료는 $0.15 — 트래킹 비용 $0.02는 13%를 차지합니다. Apple 전자제품은 대부분 $50+ 이므로 실질적 영향은 없습니다.</p>
+<p>$10 미만은 <code>로컬 픽업</code>(직거래)만 허용됩니다. 대량 판매자는 묶음 주문 총합이 $10 이상이면 허용.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">컨트랙트 거버넌스: Timelock + Multisig</span><span class="brief">DAO 없음</span></div>
+<div class="item-body">
+<h5>먼저: 스마트 컨트랙트가 뭔가요?</h5>
+<p>블록체인 위에서 돌아가는 프로그램입니다. 한번 배포되면 정해진 조건에 따라 <strong>자동으로 실행</strong>됩니다. 사람이 개입할 필요 없이요.</p>
+<div class="analogy">자판기를 생각하면 됩니다. 돈을 넣고 버튼을 누르면 음료가 나옵니다. 직원이 필요 없죠. 스마트 컨트랙트도 마찬가지 — "배송 완료 + 24시간 경과 → 판매자에게 돈 보내기"가 자동으로 실행됩니다.</div>
+
+<h5>왜 거버넌스(관리 체계)가 필요한가?</h5>
+<p>스마트 컨트랙트도 프로그램이기 때문에 때로는 업데이트가 필요합니다 — 버그 수정, 수수료 변경, 새 기능 추가 등. 문제는 <strong>"누가 이 변경을 할 수 있는가?"</strong>입니다.</p>
+<div class="opts">
+<div class="opt"><span class="ol">한 사람이 키를 가지면</span><span class="od"><span class="con">위험</span> — 그 사람이 규칙을 마음대로 바꿀 수 있음 (최악의 경우 모든 돈을 빼갈 수 있음)</span></div>
+<div class="opt"><span class="ol">아무도 못 바꾸면</span><span class="od"><span class="con">위험</span> — 버그가 발견돼도 고칠 수 없음</span></div>
+<div class="opt"><span class="ol">여러 명이 동의해야 + 대기 시간</span><span class="od"><span class="pro">해결책</span> — 한 사람의 독단 방지 + 사용자에게 확인 시간 제공</span></div>
+</div>
+
+<h5>Multisig (다중 서명) 란?</h5>
+<p><code>Multisig</code> = "Multi-signature" = 여러 명이 동시에 서명해야 실행되는 구조.</p>
+<div class="analogy">은행 금고를 열려면 열쇠 5개 중 3개가 필요한 것과 같습니다. 한 사람이 열쇠를 잃어버려도 금고는 안전하고, 한 사람이 악의를 가져도 나머지가 동의하지 않으면 아무것도 할 수 없습니다.</div>
+<p>Haggle의 경우 Phase 1에서 <strong>3-of-5</strong> 구조: 5명의 서명자 중 최소 3명이 동의해야 컨트랙트 변경이 가능합니다.</p>
+
+<h5>Timelock (시간 잠금) 이란?</h5>
+<p><code>Timelock</code> = 서명자들이 변경에 동의한 후에도 <strong>즉시 실행되지 않고 일정 시간을 기다리는</strong> 구조.</p>
+<div class="analogy">국회에서 법안이 통과돼도 "공포 후 30일"부터 시행되는 것과 비슷합니다. 이 기간 동안 시민(= Haggle 사용자)이 법안 내용을 확인하고, 마음에 안 들면 대응할 수 있습니다.</div>
+<p>Haggle에서는 <strong>최소 48시간</strong> 대기. 이 동안 사용자는:</p>
+<div class="opts">
+<div class="opt"><span class="ol">1. 확인</span><span class="od">무엇이 바뀌는지 블록체인에서 직접 확인 가능 (투명성)</span></div>
+<div class="opt"><span class="ol">2. 대응</span><span class="od">문제가 있으면 Settlement Contract에서 자금을 인출할 수 있음 (자기 보호)</span></div>
+</div>
+
+<h5>DAO란? 그리고 왜 안 쓰나?</h5>
+<p><code>DAO</code> = "Decentralized Autonomous Organization" (탈중앙 자율 조직). Multisig는 특정 5명이 결정하지만, DAO는 <strong>거버넌스 토큰을 가진 모든 사람이 투표</strong>할 수 있습니다. 주주총회와 비슷한 개념입니다.</p>
+<div class="highlight"><strong>문제: DAO에는 거버넌스 토큰이 필요합니다.</strong><br><br>거버넌스 토큰을 만드는 것은 사실상 새로운 암호화폐를 발행하는 것입니다. 미국에서 이는 <code>Howey Test</code>(증권 판별 기준)에 걸릴 가능성이 높고, SEC(미국 증권거래위원회)의 규제 대상이 됩니다.<br><br>Multisig만으로도 "한 사람의 독단 방지"라는 동일한 목표를 달성할 수 있습니다. 굳이 법적 리스크를 감수할 이유가 없습니다.</div>
+
+<h5>점진적 확대 로드맵</h5>
+<p>시간이 지남에 따라 점점 더 많은 외부인이 서명자로 참여하여, Haggle 팀의 권한이 분산됩니다.</p>
+<table>
+<tr><th>단계</th><th>구성</th><th>Timelock</th><th>설명</th></tr>
+<tr><td>Phase 1 (런칭)</td><td>3-of-5 내부</td><td>48시간</td><td>Haggle 팀 5명 중 3명 동의 필요</td></tr>
+<tr><td>Phase 2 (PMF 후)</td><td>4-of-7 (외부 3명)</td><td>72시간</td><td>외부 신뢰자 3명 추가, 내부만으로는 변경 불가</td></tr>
+<tr><td>Phase 3 (스케일)</td><td>5-of-9 (외부 과반)</td><td>72시간</td><td>외부 서명자가 과반 = Haggle 팀 독단 불가</td></tr>
+<tr><td>Phase 4 (성숙)</td><td>7-of-13 + 서명자 공개</td><td>72시간</td><td>모든 서명자 신원 공개, 최대 탈중앙화</td></tr>
+</table>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">Non-custodial 구조</span><span class="brief">Haggle은 자금 키 미보유</span></div>
+<div class="item-body">
+<h5>Custodial vs Non-custodial이 뭔가요?</h5>
+<p><code>Custodial</code>(수탁) = 회사가 당신의 돈을 대신 들고 있는 구조. 은행에 돈을 예금하거나, eBay가 구매자 대금을 보관하는 것이 여기에 해당합니다.</p>
+<p><code>Non-custodial</code>(비수탁) = 회사가 당신의 돈에 접근할 수 없는 구조. 돈은 코드(스마트 컨트랙트)에 의해 관리됩니다.</p>
+<div class="analogy">Custodial = 집 열쇠를 부동산 관리인에게 맡김. 관리인이 잘해주면 좋지만, 마음먹으면 집에 들어갈 수 있음. Non-custodial = 조건 충족 시 자동으로 열리는 스마트 도어록 설치. 아무도 열쇠를 갖고 있지 않고, 코드가 규칙을 강제함.</div>
+
+<h5>왜 이게 중요한가 — 규제 문제</h5>
+<p>미국에서 다른 사람의 돈을 보관하거나 전송하면 <code>Money Transmitter License</code>(송금업 라이선스)가 필요합니다.</p>
+<div class="highlight"><strong>Money Transmitter License의 현실:</strong><br>
+- 50개 주 각각에서 별도 취득 필요<br>
+- 취득 비용: 수십만 달러 (주당 수천~수만 달러)<br>
+- 유지 비용: 연간 수만 달러 + 정기 감사<br>
+- 취득 기간: 6개월~2년<br>
+- 예: Coinbase는 이 라이선스를 위해 수백만 달러를 투자했음</div>
+
+<h5>Haggle의 Non-custodial 구조</h5>
+<div class="example">Custodial (eBay 방식):
+  구매자 돈 → eBay 은행 계좌 → eBay가 판매자에게 송금
+  = eBay가 돈을 "들고 있음" = 규제 대상
+
+Non-custodial (Haggle 방식):
+  구매자 돈 → 스마트 컨트랙트 코드에 잠김 → 조건 충족 시 자동으로 판매자에게
+  = Haggle은 돈에 접근 못함 = 코드가 금고</div>
+
+<h5>실질적 의미</h5>
+<p>Non-custodial이면 <code>FinCEN</code>(미국 금융범죄단속네트워크) 면제를 주장할 수 있습니다. Haggle은 자금 이동의 "규칙을 작성하는 자"이지, "돈을 만지는 자"가 아닙니다. 이 차이가 수십만 달러의 라이선스 비용과 수년의 규제 절차를 피하게 해줍니다.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">환불 정책</span><span class="brief">전액 + 부분% 지원</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>분쟁 결과에 따라 3가지 결과가 가능합니다:</p>
+<div class="opts">
+<div class="opt"><span class="ol">Accepted (구매자 측)</span><span class="od">전액 환불 (100%) — 구매자의 주장이 인정됨</span></div>
+<div class="opt"><span class="ol">Declined (판매자 측)</span><span class="od">환불 없음 (0%) — 판매자의 주장이 인정됨</span></div>
+<div class="opt"><span class="ol">Partial</span><span class="od">부분 환불 (AI/Reviewer가 비율 결정: 25%, 50%, 75% 등) — 양측 다 일리 있는 경우</span></div>
+</div>
+<p>투표 집계 시 소규모 패널은 5단계 옵션(0/25/50/75/100%), 대규모 패널은 연속값(0-100%)으로 <code>Trimmed Mean</code>(상하위 극단값을 제거한 가중 평균) 알고리즘을 사용합니다.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">지갑 온보딩: Coinbase Smart Wallet</span><span class="brief">이메일만으로 생성</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>구매자가 USDC 결제를 하려면 크립토 지갑(블록체인 자산을 보관/전송하는 계정)이 필요합니다. <code>Coinbase Smart Wallet</code>은 이메일 주소만 입력하면 자동으로 지갑이 생성됩니다. 기존 지갑(MetaMask 등)을 가진 사용자는 직접 연결도 가능합니다.</p>
+<h5>검토했던 옵션</h5>
+<div class="opts">
+<div class="opt"><span class="ol">Coinbase Smart Wallet</span><span class="od"><span class="pro">✅ 선택</span> — 이메일만으로 자동 생성, 가장 쉬움</span></div>
+<div class="opt"><span class="ol">직접 연결</span><span class="od">기존 지갑 보유자만 → 사용자 풀 제한</span></div>
+<div class="opt"><span class="ol">Haggle 내장 지갑</span><span class="od">custodial(대리 보관) = 규제 리스크</span></div>
+</div>
+</div></div>
+
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">💰 수익 모델 & 성장 목표</span><span class="brief">ARR $37-100M → 기업가치 $1.2B</span></div>
+<div class="item-body">
+
+<h5>수익원 2가지</h5>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0">
+<div style="background:#0d0d0d;border:1px solid #2ecc7133;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:22px;font-weight:700;color:#2ecc71">1.5%</div>
+<div style="font-size:11px;color:#888;margin-top:4px">거래 수수료</div>
+<div style="font-size:11px;color:#666;margin-top:2px">$450 거래 → $6.75</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #3498db33;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:22px;font-weight:700;color:#3498db">~$1</div>
+<div style="font-size:11px;color:#888;margin-top:4px">배송 마진 / 건</div>
+<div style="font-size:11px;color:#666;margin-top:2px">EasyPost 할인가 vs 사용자 청구가 차이</div>
+</div>
+</div>
+
+<h5>시장 규모</h5>
+<table>
+<tr><th>시장</th><th>규모 (2025-2026)</th><th>Haggle 목표 점유율</th></tr>
+<tr><td>미국 이커머스 전체</td><td>~$1.3T</td><td>0.1%</td></tr>
+<tr><td>미국 중고거래 전체 (전 카테고리)</td><td>~$200B+</td><td>1%</td></tr>
+</table>
+
+<h5>연간 성장 시나리오</h5>
+<table>
+<tr><th></th><th style="text-align:center">Year 1<br><small style="color:#666">런칭</small></th><th style="text-align:center">Year 2<br><small style="color:#666">PMF 탐색</small></th><th style="text-align:center">Year 3<br><small style="color:#666">스케일링</small></th><th style="text-align:center;color:#2ecc71">목표 달성<br><small>이커머스 0.1%+중고 1%</small></th></tr>
+<tr><td style="color:#888">월간 거래 수</td><td>500</td><td>3,000</td><td>20,000</td><td style="color:#2ecc71;font-weight:600">~600,000</td></tr>
+<tr><td style="color:#888">GMV</td><td>$1.35M</td><td>$10.8M</td><td>$72M</td><td style="color:#2ecc71;font-weight:600">$2.5-3.3B</td></tr>
+<tr><td style="color:#888">ARR (수수료 1.5%)</td><td>$20K</td><td>$162K</td><td>$1.08M</td><td style="color:#2ecc71;font-weight:600">$37-50M</td></tr>
+<tr><td style="color:#888">ARR (부가 서비스 포함 3-5%)</td><td>-</td><td>-</td><td>$2-4M</td><td style="color:#2ecc71;font-weight:600">$75-165M</td></tr>
+</table>
+
+<h5>기업가치 추정 (목표 달성 시)</h5>
+<p>Haggle은 "마켓플레이스 + 핀테크 + AI 프로토콜" — 포지셔닝에 따라 멀티플이 달라집니다.</p>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:12px 0">
+<div style="background:#0d0d0d;border:1px solid #e74c3c33;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:11px;color:#e74c3c;font-weight:600;margin-bottom:6px">보수적 (마켓플레이스 3x)</div>
+<div style="font-size:24px;font-weight:700;color:#e0e0e0">$111M</div>
+<div style="font-size:10px;color:#666;margin-top:4px">ARR $37M × 3x</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #f39c1233;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:11px;color:#f39c12;font-weight:600;margin-bottom:6px">기본 (핀테크 6x)</div>
+<div style="font-size:24px;font-weight:700;color:#e0e0e0">$450M</div>
+<div style="font-size:10px;color:#666;margin-top:4px">ARR $75M × 6x</div>
+</div>
+<div style="background:#0d0d0d;border:1px solid #2ecc7133;border-radius:8px;padding:14px;text-align:center">
+<div style="font-size:11px;color:#2ecc71;font-weight:600;margin-bottom:6px">낙관 (AI 프로토콜 12x)</div>
+<div style="font-size:24px;font-weight:700;color:#2ecc71">$1.2B</div>
+<div style="font-size:10px;color:#666;margin-top:4px">ARR $100M × 12x — 유니콘</div>
+</div>
+</div>
+
+<h5>멀티플이 왜 다른가?</h5>
+<div class="opts">
+<div class="opt"><span class="ol" style="color:#e74c3c">3x 마켓플레이스</span><span class="od">eBay, Poshmark처럼 "거래 중개 플랫폼"으로 보이면. Poshmark 인수가 $1.2B / 수입 $350M = 3.4x</span></div>
+<div class="opt"><span class="ol" style="color:#f39c12">6x 핀테크</span><span class="od">"결제 인프라"로 보이면. 핀테크 중간값 3.7-7.4x (2025)</span></div>
+<div class="opt"><span class="ol" style="color:#2ecc71">12x AI 프로토콜</span><span class="od">"The Stripe of Negotiations" — 다른 플랫폼이 API로 쓰는 프로토콜 인프라로 보이면. AI 스타트업 10-50x</span></div>
+</div>
+<div class="highlight">핵심: 같은 수입이라도 <strong>"마켓플레이스"로 보이면 3x, "AI 프로토콜 인프라"로 보이면 12x</strong>입니다. Haggle을 "The Stripe of Negotiations"로 포지셔닝하는 게 단순히 마케팅이 아니라 기업가치에 직접 영향을 줍니다.</div>
+
+<h5>벤치마크</h5>
+<table>
+<tr><th>회사</th><th>밸류에이션</th><th>당시 수입</th><th>멀티플</th></tr>
+<tr><td>Poshmark (Naver 인수)</td><td>$1.2B</td><td>$350M</td><td>3.4x</td></tr>
+<tr><td>Poshmark (IPO 시점)</td><td>$3B+</td><td>$320M</td><td>9.4x</td></tr>
+<tr><td>StockX (마지막 라운드)</td><td>$3.8B</td><td>~$400M</td><td>9.5x</td></tr>
+<tr><td style="color:#2ecc71;font-weight:600">Haggle (목표)</td><td style="color:#2ecc71">$450M-$1.2B</td><td style="color:#2ecc71">$75-100M</td><td style="color:#2ecc71">6-12x</td></tr>
+</table>
+
+</div></div>
+
+<div class="sep"></div>
+
+<!-- Fiat 온램프 — 확정 (2026-03-25) -->
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">A1. Fiat 온램프 → MVP 포함</span><span class="brief">Stripe → USDC 자동 변환. 목표: USDC 직접 결제 유도</span></div>
+<div class="item-body">
+<h5>이게 뭔가요?</h5>
+<p><code>Fiat</code> = 달러, 원화 같은 법정 통화. <code>온램프</code> = "진입로". 즉, 일반 달러를 크립토(USDC)로 바꿔주는 서비스입니다.</p>
+<p>구매자가 신용카드나 은행으로 결제하면 → 백엔드에서 자동으로 USDC로 변환 → <code>Settlement Contract</code>(조건부 자금 잠금 스마트 컨트랙트)에 잠김. 구매자는 크립토를 직접 다룰 필요 없습니다.</p>
+<p>Stripe가 이 서비스를 제공합니다 (2025년 12월 출시, 수수료 1.5% 별도).</p>
+<h5>결정이 필요한 이유</h5>
+<p>이걸 MVP에 넣으면 크립토를 모르는 일반 소비자도 바로 사용 가능하지만, 구현이 복잡해집니다. 안 넣으면 초기 사용자가 USDC 보유자로 제한됩니다.</p>
+<h5>선택지</h5>
+<div class="opts">
+<div class="opt"><span class="ol">MVP에 포함</span><span class="od"><span class="pro">+</span> 비크립토 사용자 즉시 이용, 사용자 풀 극대화<br><span class="con">−</span> 구현 복잡도 증가, Stripe 수수료 1.5% 추가 (Haggle 1.5% + Stripe 1.5% = 3%)</span></div>
+<div class="opt"><span class="ol">PMF 후 추가</span><span class="od"><span class="pro">+</span> MVP 단순화, 핵심 x402 플로우에 집중<br><span class="con">−</span> 초기 사용자가 USDC 보유자로 제한 → cold start 더 어려움</span></div>
+</div>
+</div></div>
+
+</div><!-- /payment -->
+
+<!-- =============== SHIPPING =============== -->
+<div class="section" id="shipping">
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">배송 방법: Haggle 라벨 + 로컬 픽업</span><span class="brief">자체 배송 불가</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>배송은 <code>Haggle 라벨</code>(EasyPost를 통해 생성한 운송장)만 허용됩니다. 판매자가 직접 운송장을 입력하는 "자체 배송"은 현재 지원하지 않습니다.</p>
+<h5>이유</h5>
+<div class="opts">
+<div class="opt"><span class="ol">Haggle 라벨</span><span class="od">트래킹 <strong>무료</strong> (라벨에 포함), 무게 버퍼 자동, <code>APV</code>(Automated Package Verification — USPS의 자동 무게/크기 검증 시스템) 조정 자동, Payment Protection 완전 작동</span></div>
+<div class="opt"><span class="ol">자체 배송</span><span class="od">트래킹 <strong>$0.02/건</strong> 별도, 무게 버퍼/APV 불가, Payment Protection 약화</span></div>
+<div class="opt"><span class="ol">로컬 픽업</span><span class="od">직거래. 배송 없음, 최소 거래 금액 제한 없음</span></div>
+</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">배송 인프라: EasyPost</span><span class="brief">100+ 캐리어, 최대 60% 할인</span></div>
+<div class="item-body">
+<h5>왜 EasyPost인가</h5>
+<table>
+<tr><th>기준</th><th>EasyPost</th><th>Shippo</th><th>AfterShip</th></tr>
+<tr><td>트래킹 비용</td><td><strong>무료</strong> (라벨 포함)</td><td>$0.01/건</td><td>$0.08/건</td></tr>
+<tr><td>월 고정비</td><td>$0</td><td>$0</td><td>$11/월~</td></tr>
+<tr><td>캐리어 수</td><td>100+</td><td>40+</td><td>1,200+</td></tr>
+<tr><td>Node.js SDK</td><td>공식 (TS 지원)</td><td>공식</td><td>공식</td></tr>
+<tr><td>라벨 비용</td><td>3,000건/월 무료</td><td>30건/월 무료</td><td>미지원</td></tr>
+</table>
+<h5>비용 구조</h5>
+<div class="example">라벨 생성:  3,000건/월 무료 → 초과 시 $0.08/건
+트래킹:    라벨 생성 시 무료 (외부 운송장은 $0.02/건)
+배송비:    USPS 상업 요율 (소매가 대비 최대 60% 할인)
+웹훅:      무료</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">2단계 정산 (Payment Protection)</span><span class="brief">24h 확인 + 14일 버퍼</span></div>
+<div class="item-body">
+<h5>이건 뭘 대체하는 건가요?</h5>
+<p>전통적으로 이걸 "에스크로"(escrow)라고 부르지만, Haggle에서는 <strong>절대 "에스크로"라고 부르지 않습니다</strong>. 미국에서 에스크로는 별도 라이선스가 필요한 규제 용어이기 때문입니다. 대신 <code>Payment Protection</code> 또는 <code>Settlement Contract</code>라고 부릅니다.</p>
+<div class="highlight"><strong>핵심 차이:</strong> 전통 에스크로는 "회사가 돈을 보관" (custodial). Haggle의 Settlement Contract는 "코드가 돈을 잠금" (non-custodial). 기능은 비슷하지만 법적으로 완전히 다른 구조입니다.</div>
+
+<h5>단계별 작동 방식</h5>
+<div class="flow-diagram">
+<div style="font-size:11px;line-height:2.2">
+<div><span style="color:#3498db;font-weight:600">거래 성사</span> → Settlement Contract(스마트 컨트랙트)에 자금 잠금</div>
+<div style="padding-left:20px;color:#888">├── 상품 대금</div>
+<div style="padding-left:20px;color:#888">├── 배송비</div>
+<div style="padding-left:20px;color:#888">├── 무게 조정 버퍼 (APV 대비 예비금)</div>
+<div style="padding-left:20px;color:#888">└── Haggle 수수료 (1.5%)</div>
+<div style="margin-top:10px"><span style="color:#2ecc71;font-weight:600">Phase 1 — 배송 완료 후:</span></div>
+<div style="padding-left:20px;color:#888">구매자 "확인 완료" 클릭 → 상품 대금 <strong>즉시</strong> 판매자에게 릴리즈</div>
+<div style="padding-left:20px;color:#888">24시간 내 미확인 → <strong>자동</strong> 릴리즈 (구매자가 아무것도 안 해도)</div>
+<div style="padding-left:20px;color:#f39c12">24시간 내 분쟁 제기 → 릴리즈 <strong>중단</strong>, 분쟁 해결까지 자금 잠김</div>
+<div style="margin-top:10px"><span style="color:#9b59b6;font-weight:600">Phase 2 — 14일 후:</span></div>
+<div style="padding-left:20px;color:#888">USPS 무게 조정(APV) 있으면 → 버퍼에서 차감</div>
+<div style="padding-left:20px;color:#888">나머지 버퍼 → 판매자에게 반환</div>
+</div>
+</div>
+
+<h5>왜 24시간이지 7일이 아닌가?</h5>
+<p>원래 설계(v8.3)에서는 7일이었습니다. 하지만:</p>
+<div class="opts">
+<div class="opt"><span class="ol">판매자 관점</span><span class="od">물건을 보냈는데 돈을 7일이나 못 받는 건 너무 깁니다. 특히 중고 거래 판매자에게는 현금 흐름이 중요합니다.</span></div>
+<div class="opt"><span class="ol">구매자 관점</span><span class="od">택배 받고 박스를 열어서 상태를 확인하는 데 24시간이면 충분합니다. 대부분의 문제(파손, 오배송, 상태 불량)는 열어보는 순간 발견됩니다.</span></div>
+</div>
+
+<div class="warn">⚠️ 24시간 검토 기간은 <strong>플랫폼 정책으로 고정</strong>입니다 (협상 불가). 이유: non-custodial 구조상 릴리즈 후에는 판매자 지갑에서 강제 회수가 불가능합니다. <strong>이 24시간이 구매자의 유일한 보호 수단</strong>입니다. 릴리즈된 돈은 되돌릴 수 없습니다 — 은행의 chargeback(강제 환불) 같은 건 블록체인에 없습니다.</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">무게 비례 버퍼</span><span class="brief">한 단계 위 구간 차이</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>USPS는 모든 패키지를 자동 스캔하여 실제 무게와 신고 무게를 비교합니다. 이걸 <code>APV</code> (Automated Package Verification — 자동 패키지 검증)라고 합니다. 불일치 시 차액이 청구됩니다.</p>
+<p>이를 대비해 판매자가 입력한 무게의 <strong>한 단계 위 구간 요금과의 차이</strong>를 버퍼로 잡아둡니다.</p>
+<div class="example">판매자 입력: 2lb → 배송비 $7.50
+한 단계 위:  3lb → 배송비 $9.00
+버퍼:        $1.50
+
+판매자 입력: 5lb → 배송비 $11.00
+한 단계 위:  7lb → 배송비 $14.00
+버퍼:        $3.00</div>
+<p>무게가 무거울수록 버퍼도 커집니다. 무게 조정은 <strong>판매자 책임</strong>이며, 라벨 생성 시 명시적으로 고지합니다.</p>
+</div></div>
+
+<div class="sep"></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">B1. 자체 배송 → 불허 확정</span><span class="brief">EasyPost 라벨 only</span></div>
+<div class="item-body">
+<h5>배경</h5>
+<p>일부 판매자는 이미 자기만의 배송 계약이 있거나, 특정 캐리어를 선호할 수 있습니다. 하지만 자체 배송을 허용하면:</p>
+<div class="opts">
+<div class="opt"><span class="ol">불허 (현재)</span><span class="od"><span class="pro">+</span> 일관된 UX, 무게 버퍼 작동, Payment Protection 완전<br><span class="con">−</span> 판매자 자유도 제한, 이미 좋은 배송 계약이 있는 판매자 불만</span></div>
+<div class="opt"><span class="ol">허용</span><span class="od"><span class="pro">+</span> 판매자 유연성<br><span class="con">−</span> 외부 트래킹 $0.02/건, 무게 버퍼/APV 불가, 보호 약화</span></div>
+<div class="opt"><span class="ol">고신뢰만 허용</span><span class="od">절충안. 신뢰 점수 높은 판매자에게만 옵션 제공</span></div>
+</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">B2. 배송 SLA → 1-14일 협상 + 취소권 + 보상 협상</span><span class="brief">6h grace, 14일 하드 데드라인</span></div>
+<div class="item-body">
+<h5>배경</h5>
+<p>판매자가 라벨을 생성하고 패키지를 접수해야 하는 기한입니다. 이 기한은 <strong>협상 가능</strong>으로 결정되었지만, "1시간 내 배송해" 같은 비현실적 요구를 방지하려면 최소/최대 범위가 필요합니다.</p>
+<h5>선택지</h5>
+<table>
+<tr><th>항목</th><th>옵션 A</th><th>옵션 B</th></tr>
+<tr><td>최소</td><td>1일</td><td>2일</td></tr>
+<tr><td>최대</td><td>5일</td><td>7일</td></tr>
+<tr><td>기본값</td><td>2일</td><td>3일</td></tr>
+</table>
+<p>SLA 위반 시 판매자 신뢰 점수에 패널티가 부과됩니다 (현재 trust penalty 0.2).</p>
+</div></div>
+
+</div><!-- /shipping -->
+
+<!-- =============== DISPUTE =============== -->
+<div class="section" id="dispute">
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">3-Tier 분쟁 해결 시스템</span><span class="brief">AI → Panel → Grand Panel</span></div>
+<div class="item-body">
+<h5>왜 3단계인가?</h5>
+<p>분쟁의 대부분(약 80%)은 단순합니다: "사진과 다르다", "파손됐다", "안 왔다". AI가 증거 사진과 배송 기록만 보면 바로 판단할 수 있습니다. 이런 건을 $5에 즉시 해결합니다.</p>
+<p>하지만 "이 정도 스크래치가 '중고 양호' 상태인가?"처럼 주관적인 분쟁은 AI만으로 부족합니다. 이때 사람(Reviewer 패널)이 투표합니다. 대부분의 주관적 분쟁도 9-45명이면 충분합니다.</p>
+<p>극히 드물게 패널 결과에 불복하는 경우, 더 큰 Grand Panel(15-151명)이 최종 결정합니다. 여기서 나온 결정은 뒤집을 수 없습니다.</p>
+<div class="highlight"><strong>핵심 원리:</strong> 대부분의 분쟁은 가장 저렴한 방법으로 해결하고, 복잡한 분쟁에만 비용을 투자합니다. 모든 분쟁에 45명의 Reviewer를 배정하면 비용이 폭발합니다.</div>
+
+<h5>구조</h5>
+<table>
+<tr><th>Tier</th><th>판단자</th><th>비용</th><th>시간</th><th>불복</th></tr>
+<tr><td><strong>Tier 1: AI Review</strong></td><td>AI</td><td>$5 고정</td><td>즉시</td><td>→ Tier 2 가능</td></tr>
+<tr><td><strong>Tier 2: Panel Review</strong></td><td>Reviewer 9-45명</td><td>거래액 3% (min $20)</td><td>48시간</td><td>→ Tier 3 가능</td></tr>
+<tr><td><strong>Tier 3: Grand Panel</strong></td><td>Reviewer 15-151명</td><td>거래액 6% (min $40)</td><td>48-72시간</td><td>최종</td></tr>
+</table>
+
+<h5>양측 AI Advocate</h5>
+<p>구매자와 판매자 각각에게 <code>AI Advocate</code>(AI 대변인)가 배정됩니다. AI가 증거를 분석하여 각 측의 주장을 대변합니다.</p>
+<div class="highlight"><strong>"AI Advocate"는 변호사(lawyer)가 아닙니다.</strong> 변호사는 법적 자격증(bar license)이 필요합니다. AI Advocate는 증거를 분석하고 정리해서 각 측의 입장을 대신 설명해주는 "조사 도우미"에 가깝습니다. 법적 조언을 하지 않고, 사실 관계 정리와 주장 구성만 합니다.</div>
+
+<h5>"Accepted"와 "Declined"가 뭔가요?</h5>
+<p>구매자가 분쟁을 제기하면, 판매자는 두 가지 선택지가 있습니다:</p>
+<div class="opts">
+<div class="opt"><span class="ol">Accept (수용)</span><span class="od">구매자의 요구(예: "75% 환불해주세요")를 받아들임 → 분쟁 즉시 종료, <strong>양측 모두 비용 없음</strong>. 오히려 "합리적 대응"으로 신뢰 점수에 긍정적.</span></div>
+<div class="opt"><span class="ol">Decline (거부)</span><span class="od">구매자의 요구를 거부하고 싸움 → Reviewer들이 판정 → <strong>진 쪽이 분쟁 비용 부담</strong>. 근거 없이 거부하면 돈도 잃고 신뢰 점수도 깎임.</span></div>
+</div>
+<p>이 구조 덕분에 근거 없는 분쟁 남발이 자연스럽게 방지됩니다. 이길 자신이 없으면 Accept하는 게 모든 면에서 유리하니까요.</p>
+
+<h5>비용 부담</h5>
+<p>모든 Tier에서 <strong>패소자(Declined 측)가 비용을 부담</strong>합니다.</p>
+<h5>거래액별 Reviewer 수</h5>
+<table>
+<tr><th>거래액</th><th>Tier 2</th><th>Tier 3</th></tr>
+<tr><td>~$500</td><td>9명</td><td>15명</td></tr>
+<tr><td>$500-1K</td><td>11명</td><td>19명</td></tr>
+<tr><td>$1K-3K</td><td>13명</td><td>23명</td></tr>
+<tr><td>$3K-5K</td><td>15명</td><td>27명</td></tr>
+<tr><td>$5K-10K</td><td>19명</td><td>33명</td></tr>
+<tr><td>$10K+</td><td>23-91명</td><td>41-151명</td></tr>
+</table>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-impl">구현완료</span><span class="title">투표 집계: Trimmed Mean</span><span class="brief">결정론적 + 이상치 방어</span></div>
+<div class="item-body">
+<h5>Trimmed Mean이 뭔가요?</h5>
+<p>"극단값을 잘라낸 평균"입니다. 상위 20%와 하위 20%의 투표를 제거한 후 나머지로 평균을 계산합니다.</p>
+<div class="example">예시: 9명의 Reviewer가 환불 비율을 투표했습니다.
+
+투표값: [0%, 10%, 40%, 50%, 50%, 55%, 60%, 90%, 100%]
+
+일반 평균: 50.6%
+
+Trimmed Mean (상하위 20% 제거):
+  제거: 0%, 10% (하위) / 90%, 100% (상위)
+  남은 값: [40%, 50%, 50%, 55%, 60%]
+  평균: 51%
+
+→ 극단적 투표(0%, 100%)가 결과에 영향을 주지 못합니다.</div>
+
+<h5>왜 "결정론적"(deterministic)이어야 하나?</h5>
+<p><strong>같은 투표 데이터를 넣으면 항상 같은 결과가 나와야 합니다.</strong> 이유:</p>
+<div class="opts">
+<div class="opt"><span class="ol">신뢰</span><span class="od">"같은 투표인데 결과가 달라졌다"면 누가 이 시스템을 믿겠습니까? 분쟁 해결 시스템에서 재현 가능성은 핵심입니다.</span></div>
+<div class="opt"><span class="ol">감사 가능</span><span class="od">누군가 결과에 이의를 제기하면, 투표 데이터로 결과를 똑같이 재현하여 검증할 수 있어야 합니다.</span></div>
+<div class="opt"><span class="ol">투명성</span><span class="od">알고리즘을 공개하면 누구나 직접 계산해서 결과를 확인할 수 있습니다. "블랙박스" 판정이 아님.</span></div>
+</div>
+<p>K-Means 같은 알고리즘은 랜덤 시드(초기값)에 따라 결과가 달라질 수 있어서 탈락했습니다.</p>
+
+<h5>왜 이상치 방어가 중요한가?</h5>
+<p>Reviewer가 악의적으로 극단값(항상 0% 또는 100%)을 투표할 수 있습니다. 일반 평균은 이런 극단값에 크게 영향받지만, Trimmed Mean은 상하위를 잘라내므로 게이밍(조작)이 어렵습니다.</p>
+
+<h5>이중 모드</h5>
+<div class="opts">
+<div class="opt"><span class="ol">소규모 (&lt;15명)</span><span class="od">5개 고정 옵션 (0/25/50/75/100%) + 가중 다수결. 각 Reviewer의 티어별 가중치 적용</span></div>
+<div class="opt"><span class="ol">대규모 (≥15명)</span><span class="od">연속값 (0-100%) + <strong>Trimmed Mean</strong> (상하위 20% 제거 후 가중 평균)</span></div>
+</div>
+
+<h5>알고리즘 비교: 왜 Trimmed Mean을 선택했나</h5>
+<table>
+<tr><th>알고리즘</th><th>결정론적</th><th>이상치 방어</th><th>실전 검증</th></tr>
+<tr><td>K-Means</td><td style="color:#e74c3c">❌ (랜덤 seed)</td><td>암시적</td><td>-</td></tr>
+<tr><td>Weighted Mean</td><td style="color:#2ecc71">✅</td><td style="color:#e74c3c">❌</td><td>-</td></tr>
+<tr><td style="color:#2ecc71;font-weight:600">Trimmed Mean</td><td style="color:#2ecc71">✅</td><td style="color:#2ecc71">✅</td><td>LIBOR, ISU, 올림픽</td></tr>
+</table>
+<p>LIBOR(국제 금리 기준), ISU(피겨 스케이팅 점수), 올림픽 채점 모두 Trimmed Mean을 사용합니다. 실전에서 수십 년간 검증된 방식입니다.</p>
+
+<h5>전문가 보너스</h5>
+<p>분쟁 카테고리와 Reviewer의 전문 분야가 일치하면 가중치 <strong>× 1.3배</strong>. 예: 전자제품 분쟁에 전자제품 전문 Reviewer → 의견이 더 무거움.</p>
+<h5>Reviewer 보상</h5>
+<p>분쟁 비용의 <strong>70%</strong>가 Reviewer 풀로. <strong>다수 의견에 속한 Reviewer만</strong> 균등 분배 (소수 의견 = $0).</p>
+<div class="example">$5,000 거래, Tier 2:
+  비용: $150 (3%)
+  Reviewer 풀: $105 (70%)
+  Reviewer: 19명
+  다수 11명: $9.50/명
+  소수 8명: $0</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">타이브레이커 규칙</span><span class="brief">v8.3 기준</span></div>
+<div class="item-body">
+<table>
+<tr><th>상황</th><th>처리</th><th>비용</th></tr>
+<tr><td>Tier 2 동점</td><td>무료 재심 (새 Reviewer)</td><td>플랫폼 부담</td></tr>
+<tr><td>Tier 3 동점</td><td>타이브레이커 3명 추가</td><td>플랫폼 부담</td></tr>
+<tr><td>Tier 3 1명 차이</td><td>+2명 추가</td><td>플랫폼 부담</td></tr>
+<tr><td>Tier 3 3명+ 차이</td><td>확정 (추가 없음)</td><td>-</td></tr>
+</table>
+</div></div>
+
+<div class="sep"></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">C1. 자동 확정 → ARP 자동 조정 시스템</span><span class="brief">기본 36h, 데이터 기반 자동 최적화</span></div>
+<div class="item-body">
+<h5>배경</h5>
+<p>현재 모든 거래에 24시간 자동 확정이 적용됩니다. $50 충전기와 $5,000 MacBook에 같은 검토 시간이 적절한가?</p>
+<h5>선택지</h5>
+<table>
+<tr><th>거래액</th><th>A: 일괄</th><th>B: 차등</th></tr>
+<tr><td>~$100</td><td>24시간</td><td>24시간</td></tr>
+<tr><td>$100-$500</td><td>24시간</td><td>48시간</td></tr>
+<tr><td>$500-$1,000</td><td>24시간</td><td>72시간</td></tr>
+<tr><td>$1,000+</td><td>24시간</td><td>5일</td></tr>
+</table>
+<p>차등 시 판매자 정산이 느려지는 단점 vs 고가 상품의 더 철저한 검토.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">C2. Reviewer → 15명 지인 확보, DS 등급 + 태그 매칭</span><span class="brief">최소 거래 + Trust Score 자격</span></div>
+<div class="item-body">
+<h5>배경</h5>
+<p>Tier 2/3에서 분쟁을 판정하는 <code>Reviewer</code> (이전 용어: 배심원/DS). 비용, 인원, 보상은 v8.3에서 정의되었지만 실제 운영 방식이 미정입니다.</p>
+<h5>결정이 필요한 항목</h5>
+<div class="opts">
+<div class="opt"><span class="ol">누구?</span><span class="od">커뮤니티 자원봉사 / 유급 계약직 / Haggle 직원 / 혼합</span></div>
+<div class="opt"><span class="ol">자격</span><span class="od">신뢰 점수 기준? 최소 거래 횟수? 전문 분야 인증?</span></div>
+<div class="opt"><span class="ol">전문가 매칭</span><span class="od">전자제품 분쟁 → 전자제품에 경험 있는 Reviewer 우선 배정</span></div>
+<div class="opt"><span class="ol">초기 확보</span><span class="od">MVP 시점에 외부 Reviewer가 없음 → Haggle 팀이 직접? 파트너십?</span></div>
+</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">C3. Tier 3 할인 → 삭제. Trimmed Mean + K-Means fallback</span><span class="brief">연속값 투표, 부분 환불</span></div>
+<div class="item-body">
+<h5>v8.3 원본 규칙</h5>
+<p>Tier 2 결과의 표 차이에 따라 Tier 3 비용이 할인됩니다:</p>
+<table>
+<tr><th>Tier 2 결과</th><th>Tier 3 비용</th></tr>
+<tr><td>완전 동점</td><td>무료 Tier 2 재심</td></tr>
+<tr><td>1표 차이</td><td>정상가의 75%</td></tr>
+<tr><td>2표 차이</td><td>정상가의 90%</td></tr>
+<tr><td>3표+ 차이</td><td>정상가 100%</td></tr>
+</table>
+<h5>선택지</h5>
+<div class="opts">
+<div class="opt"><span class="ol">v8.3 그대로</span><span class="od">근소한 차이로 진 측에 할인 → 공정성 + 에스컬레이션 유도</span></div>
+<div class="opt"><span class="ol">단순화</span><span class="od">일괄 정상가. 구현 간단, 할인 없음</span></div>
+</div>
+</div></div>
+
+</div><!-- /dispute -->
+
+<!-- =============== TRUST =============== -->
+<div class="section" id="trust">
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-ok">확정</span><span class="title">신뢰 시스템: 모듈화 + 온체인</span><span class="brief">외부 서비스 가능</span></div>
+<div class="item-body">
+<h5>설명</h5>
+<p>Haggle의 신뢰 점수는 <strong>실제 거래 이행 기반</strong>입니다. DeFi 참여나 소셜 활동이 아니라 "이 사람이 돈을 내고, 물건을 보내고, 약속을 지키는가?"를 측정합니다.</p>
+<h5>측정 항목</h5>
+<div class="example">settlement_reliability = f(
+  성공한 정산,
+  승인 후 미결제 횟수 (× 1.5 가중),
+  배송 SLA 위반 (× 1.0),
+  분쟁 패소 (× 1.2),
+  분쟁 승리 (+ 0.2 크레딧)
+)</div>
+<h5>Reviewer 티어 가중치</h5>
+<table>
+<tr><th>티어</th><th>가중치</th><th>의미</th></tr>
+<tr><td style="color:#cd7f32">Bronze</td><td>0.75×</td><td>신규 / 실적 적음 (회복 가능)</td></tr>
+<tr><td style="color:#c0c0c0">Silver</td><td>0.90×</td><td>기본 활동</td></tr>
+<tr><td style="color:#ffd700">Gold</td><td>1.05×</td><td>안정적 활동</td></tr>
+<tr><td style="color:#e5e4e2">Platinum</td><td>1.20×</td><td>고신뢰</td></tr>
+<tr><td style="color:#b9f2ff">Diamond</td><td>1.40×</td><td>최고 등급 (최대 1.87x 차이)</td></tr>
+</table>
+<p>전문가 보너스: 분야 매칭 시 추가 <strong>× 1.3배</strong></p>
+<h5>외부 서비스 구상</h5>
+<div class="opts">
+<div class="opt"><span class="ol">온체인 프로필 (무료)</span><span class="od"><code>Base L2</code>(Coinbase의 이더리움 레이어2 네트워크)에 앵커링. 점수 + 거래 수 + 분쟁 비율만 공개</span></div>
+<div class="opt"><span class="ol">상세 API (유료)</span><span class="od">분야별 점수, SLA 준수율. 조회당 $0.01-0.05</span></div>
+<div class="opt"><span class="ol">인증 배지 (유료)</span><span class="od">"Haggle Verified Trader" 배지. 발급당 $1-5</span></div>
+</div>
+<p>API 공개 범위: 점수 + 통계 요약까지. <strong>상세 이력은 본인 동의 시에만</strong> (데이터는 사용자 것).</p>
+</div></div>
+
+<div class="sep"></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">D1. Trust Score (9입력) + DS Rating (8입력) 설계 완료</span><span class="brief">실시간 계산, 분기별 가중치 백테스트</span></div>
+<div class="item-body">
+<h5>배경</h5>
+<p>신뢰도에 따라 거래 조건이 달라져야 합니다. 저신뢰 사용자는 더 높은 버퍼, 자동 승인 불가 등. 구체적 수치가 아직 결정되지 않았습니다.</p>
+<h5>결정 필요</h5>
+<div class="opts">
+<div class="opt"><span class="ol">신규 기본 점수</span><span class="od">0.5 (중간 시작) / 0.7 (약간 유리하게) / 1.0 (완전 신뢰로 시작)</span></div>
+<div class="opt"><span class="ol">버퍼 확대 기준</span><span class="od">점수 몇 이하에서 2단계 위 구간 버퍼? 0.5 이하? 0.3 이하?</span></div>
+<div class="opt"><span class="ol">자동 승인 자격</span><span class="od">점수 몇 이상? 최소 거래 몇 건 이상?</span></div>
+</div>
+</div></div>
+
+</div><!-- /trust -->
+
+<!-- =============== TERMS =============== -->
+<div class="section" id="terms">
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">📝 용어 규칙 — 법적 용어 사용 금지</span></div>
+<div class="item-body">
+<h5>왜?</h5>
+<p>"에스크로"는 미국에서 <code>Escrow License</code>가 필요한 규제 용어입니다. "심급", "승소" 등은 법적 권위를 암시하여 책임 문제가 생길 수 있습니다. Haggle은 법원이 아니라 플랫폼 내 분쟁 해결 서비스입니다.</p>
+<table>
+<tr><th>❌ 사용 금지</th><th>✅ 대신 사용</th><th>이유</th></tr>
+<tr><td style="color:#e74c3c;text-decoration:line-through">에스크로 / escrow</td><td style="color:#2ecc71">Payment Protection, Settlement Contract</td><td>Escrow License 규제 회피</td></tr>
+<tr><td style="color:#e74c3c;text-decoration:line-through">1심 / 2심 / 3심</td><td style="color:#2ecc71">AI Review / Panel Review / Grand Panel</td><td>법적 심급 암시 방지</td></tr>
+<tr><td style="color:#e74c3c;text-decoration:line-through">배심원</td><td style="color:#2ecc71">Reviewer, Panelist</td><td>법적 권위 암시 방지</td></tr>
+<tr><td style="color:#e74c3c;text-decoration:line-through">승소 / 패소</td><td style="color:#2ecc71">Accepted / Declined</td><td>중립적 표현</td></tr>
+<tr><td style="color:#e74c3c;text-decoration:line-through">원고 / 피고</td><td style="color:#2ecc71">Requester / Responder</td><td>역할 기반</td></tr>
+<tr><td style="color:#e74c3c;text-decoration:line-through">AI 변호사</td><td style="color:#2ecc71">AI Advocate</td><td>변호사는 자격증 필요</td></tr>
+</table>
+</div></div>
+</div><!-- /terms -->
+
+<!-- =============== IMPL =============== -->
+<div class="section" id="impl">
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="title">🔧 구현 현황 — 2026-03-28</span></div>
+<div class="item-body">
+<h5>패키지 (순수 로직) — ✅ 완료</h5>
+<table>
+<tr><th>패키지</th><th>테스트</th><th>주요 기능</th></tr>
+<tr><td>commerce-core</td><td style="color:#2ecc71">170</td><td>상태 머신, 신뢰 점수, 최소 거래, order lifecycle, market pressure</td></tr>
+<tr><td>payment-core</td><td style="color:#2ecc71">237</td><td>결제 서비스, Settlement Release, Facilitator Client</td></tr>
+<tr><td>shipping-core</td><td style="color:#2ecc71">265</td><td>EasyPost 어댑터, 웹훅, 라벨 생성, Weight Buffer</td></tr>
+<tr><td>dispute-core</td><td style="color:#2ecc71">226</td><td>분쟁 서비스, 증거 검증, 투표 집계 (Trimmed Mean + K-Means), Dispute Cost, DS Rating</td></tr>
+<tr><td style="color:#2ecc71"><strong>trust-core (신규)</strong></td><td style="color:#2ecc71"><strong>42</strong></td><td>Trust Score, 콜드 스타트, SLA 패널티, 스냅샷/백테스트</td></tr>
+<tr><td>db</td><td>-</td><td>6개 스키마 (payments, shipments, disputes, trust, settlement-releases, commerce-orders)</td></tr>
+</table>
+<h5>API 통합 (apps/api) — ✅ 완료</h5>
+<table>
+<tr><th>모듈</th><th>엔드포인트</th><th>상태</th></tr>
+<tr><td>결제</td><td>11개</td><td style="color:#2ecc71">✅ + Settlement Release 자동 생성 hook</td></tr>
+<tr><td>배송</td><td>8개</td><td style="color:#2ecc71">✅ + EasyPost 웹훅 + Rate Shopping</td></tr>
+<tr><td>분쟁</td><td>9개</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>Settlement Release</td><td>7개</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td colspan="2">TypeScript 컴파일</td><td style="color:#2ecc71">✅ 0 errors</td></tr>
+</table>
+<h5>남은 작업</h5>
+<table>
+<tr><th>작업</th><th>설명</th><th>우선순위</th></tr>
+<tr><td>Worker/Cron</td><td>24시간 자동 확정, 14일 버퍼 자동 릴리즈</td><td style="color:#f39c12">높음</td></tr>
+<tr><td>EasyPost 키</td><td>테스트 키 발급 → E2E 테스트</td><td style="color:#f39c12">높음</td></tr>
+<tr><td>JWT 인증</td><td>현재 헤더 신뢰 → JWT 토큰 검증</td><td style="color:#f39c12">높음</td></tr>
+<tr><td>DB 마이그레이션</td><td>Drizzle migration 실행</td><td style="color:#f39c12">높음</td></tr>
+<tr><td>프론트엔드</td><td>결제/배송/분쟁 UI</td><td style="color:#888">중간</td></tr>
+<tr><td>스마트 컨트랙트</td><td>Solidity HaggleSettlementRouter + 배포</td><td style="color:#888">중간</td></tr>
+<tr><td>보안 감사</td><td>외부 감사</td><td style="color:#888">프로덕션 전</td></tr>
+</table>
+</div></div>
+</div><!-- /impl -->
+
+<!-- =============== NEW DECISIONS (2026-03-25~28) =============== -->
+<div class="section" id="new-decisions">
+
+<div class="item open"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">분쟁 비용 — Tier 1 체감 비율</span><span class="brief">min $1, 4단계 체감</span></div>
+<div class="item-body">
+<h5>Tier 1 (AI Review) 비용</h5>
+<table>
+<tr><th>구간</th><th>비율</th><th>예시 ($10K 거래)</th></tr>
+<tr><td>첫 $1,000</td><td>1.2%</td><td>$12</td></tr>
+<tr><td>$1,001-$10,000</td><td>0.7%</td><td>+$63 = $75</td></tr>
+<tr><td>$10,001-$100,000</td><td>0.3%</td><td>+$270 = $345</td></tr>
+<tr><td>$100,001+</td><td>0.15%</td><td>$500K → $945</td></tr>
+</table>
+<p>최소 $1. 고액일수록 AI 추론 복잡도 반영. 차/부동산까지 확장 가능.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">Deposit 모델 — 양측 deposit, 보류 후 최종 정산</span><span class="brief">Kleros A모델</span></div>
+<div class="item-body">
+<h5>흐름</h5>
+<div class="example">리스팅 시: 판매자만 Tier 1 deposit
+분쟁 발생: 구매자는 Settlement Contract 내 금액에서 차감
+에스컬레이션: 판매자 추가 deposit 필요 (미납 → Default Judgment)
+최종 정산: 패소자 전 tier 몰수, 승소자 전액 반환</div>
+<p>패소자가 상대 비용까지 부담하지 않음 (A모델). Performance Bond 차등 삭제 — 모든 판매자 동일 deposit.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">에스컬레이션 기간 — Tier별 차등</span><span class="brief">24h / 24-72h</span></div>
+<div class="item-body">
+<table>
+<tr><th>에스컬레이션</th><th>기간</th><th>조건</th></tr>
+<tr><td>Tier 1 → 2</td><td>24시간</td><td>모든 거래</td></tr>
+<tr><td>Tier 2 → 3 (≤$500)</td><td>24시간</td><td>소액</td></tr>
+<tr><td>Tier 2 → 3 ($501-$5K)</td><td>48시간</td><td>중액</td></tr>
+<tr><td>Tier 2 → 3 ($5K+)</td><td>72시간</td><td>고액</td></tr>
+</table>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">투표 집계 — Trimmed Mean + K-Means fallback</span><span class="brief">연속값 부분 환불</span></div>
+<div class="item-body">
+<h5>이중 모드</h5>
+<div class="opts">
+<div class="opt"><span class="ol">소규모 (<15명)</span><span class="od">5옵션 직접투표 (0/25/50/75/100%) + 가중 다수결</span></div>
+<div class="opt"><span class="ol">대규모 (≥15명)</span><span class="od">연속값 투표 (0-100%) + Trimmed Mean (상하 20% trim) + Agreement Zone</span></div>
+</div>
+<h5>양극화 대응</h5>
+<p>Agreement Zone 합의율 < 45% → K-Means fallback (seed=hash(dispute_id), 결정론적). 중심 ±15pt 밀도 < 10%면 양극화 강제 감지.</p>
+<h5>승패 판정</h5>
+<p>결과값 >50% = 구매자 우세 (판매자 비용 부담). 부분 환불: 62% → 거래액의 62% 환불.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">ARP — Adaptive Review Period 자동 조정</span><span class="brief">기본 36h, 다차원</span></div>
+<div class="item-body">
+<h5>3-Layer 구조</h5>
+<div class="example">Layer 3: Meta-Tuner (시스템 자체 조정, 6주 주기)
+Layer 2: ARP Engine (검토 기간 조정, 2주 주기)
+Layer 1: Data Collection (거래/분쟁 데이터)</div>
+<h5>세그먼트</h5>
+<p>금액(6개) × 카테고리(16+개) × 태그(동적). 7단계 fallback 조회. Hard bounds: 24h ~ 14일.</p>
+<h5>태그 시스템</h5>
+<p>AI 자동 생성 → CANDIDATE → EMERGING (30일 20회+) → OFFICIAL (60일 관찰) → DEPRECATED. 판매자 직접 태그 아님.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">Trust Score + DS Rating — 이중 신뢰 시스템</span><span class="brief">거래자 vs Reviewer 분리</span></div>
+<div class="item-body">
+<h5>Trust Score (거래자)</h5>
+<p>0-100점, 9개 입력 (거래완료율, 분쟁결과, 분쟁발생률, SLA준수, 취소율, 자동확정, 평가, 빈도, 기간). 실시간 계산. 콜드 스타트: 5건 미만 = NEW 뱃지.</p>
+<h5>DS Rating (Reviewer)</h5>
+<p>Bronze~Diamond, 8개 입력 (Zone진입, 근접도, 참여율, 응답속도, 건수, 다양성, 고액경험, <strong>consistency</strong>). 히스테리시스 ±3점. 태그별 전문 점수.</p>
+<h5>가중치 검증</h5>
+<p>분기 1회 백테스트: 원본 입력 스냅샷 보존 → 새 가중치 소급 적용 → 예측력 비교 → 추천 리포트 → 운영팀 수동 결정.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">DS 티어 가중치 압축</span><span class="brief">0.75 ~ 1.40 (1.87x 차이)</span></div>
+<div class="item-body">
+<p>기존 Bronze(0.63)~Diamond(2.0) = 3.17x → 압축하여 Bronze 회복 가능 + 공정한 투표.</p>
+<p>Consistency 입력 추가 (15% 가중치): 연속 Zone 진입 보상 → Bronze도 꾸준히 맞추면 승급.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">배송 협상 조건 확장</span><span class="brief">SLA 보상, 무게, 캐리어, 보험</span></div>
+<div class="item-body">
+<h5>협상 가능 조건</h5>
+<table>
+<tr><th>조건</th><th>범위</th><th>예시</th></tr>
+<tr><td>SLA 기한</td><td>1-14일</td><td>"3일 내 발송"</td></tr>
+<tr><td>SLA 초과 보상</td><td>deposit / %/일 / USDC/일</td><td>"0.5%/일" 또는 "2 USDC/일"</td></tr>
+<tr><td>무게 정확도</td><td>±Ng 또는 %</td><td>"공식 무게 ±75g, 초과 시 3% 패널티"</td></tr>
+<tr><td>캐리어 선호</td><td>UPS/FedEx only 등</td><td>"USPS 제외"</td></tr>
+<tr><td>서명 수령</td><td>필수/선택</td><td>"고가 → 서명 필수"</td></tr>
+<tr><td>배송 보험</td><td>추가/미추가, 비용 분담</td><td>"보험 추가, 50/50 분담"</td></tr>
+<tr><td>반품 조건</td><td>무조건/조건부/불가</td><td>"상태 불일치 시 반품 가능"</td></tr>
+</table>
+<h5>플랫폼 정책 (협상 불가)</h5>
+<p>14일 자동 취소 + 전액 환불 + deposit 몰수 + Trust 대폭 감점. 무게 2단계+ 초과 → 경고 + Trust 감점.</p>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-done">확정</span><span class="title">Dispute Resolution Marketplace</span><span class="brief">외부 개발자 도구 생태계</span></div>
+<div class="item-body">
+<p>외부 개발자가 분쟁 해결 도구(진품 감정, 상태 판정 등) 제작·판매. Skill의 한 카테고리.</p>
+<div class="opts">
+<div class="opt"><span class="ol">시범 기간</span><span class="od">90일 무료 → accuracy 70%+ 시 유료 전환</span></div>
+<div class="opt"><span class="ol">수익 분배</span><span class="od">개발자 75% / Haggle 20% / Reviewer 보상 5%</span></div>
+<div class="opt"><span class="ol">Hook Point</span><span class="od">거래 라이프사이클 전 단계 After(읽기 전용). 구현은 후순위, 모듈 경계만 유지</span></div>
+</div>
+</div></div>
+
+<div class="item"><div class="item-head"><span class="arrow">▶</span><span class="status st-impl">구현됨</span><span class="title">Phase 1 구현 완료 — trust-core, dispute-cost, ds-rating, K-Means</span><span class="brief">268 tests</span></div>
+<div class="item-body">
+<table>
+<tr><th>모듈</th><th>테스트</th><th>상태</th></tr>
+<tr><td>@haggle/trust-core (신규)</td><td style="color:#2ecc71">42</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>dispute-cost.ts</td><td style="color:#2ecc71">35</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>ds-rating.ts</td><td style="color:#2ecc71">50</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>K-Means fallback</td><td style="color:#2ecc71">15</td><td style="color:#2ecc71">✅</td></tr>
+<tr><td>dispute-core 전체</td><td style="color:#2ecc71">226</td><td style="color:#2ecc71">✅</td></tr>
+</table>
+</div></div>
+
+</div><!-- /new-decisions -->
+
+<script>
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.tab).classList.add('active');
+  });
+});
+document.querySelectorAll('.item-head').forEach(h=>{
+  h.addEventListener('click',()=>h.parentElement.classList.toggle('open'));
+});
+
+// ===== Negotiation Simulator =====
+(function(){
+  const $=id=>document.getElementById(id);
+  const FEE_RATE=0.015;
+
+  // Competitor models: {sellerFee, buyerFee, shippingCost, shippingPayer}
+  function competitors(price){
+    return {
+      eBay:{
+        label:'eBay',color:'#e74c3c',
+        sellerGet: price - (price*0.1325+0.30) - 6, // seller pays ~$6 shipping + 13.25% fee
+        buyerPay: price, // buyer pays listing price (shipping baked in)
+      },
+      Mercari:{
+        label:'Mercari',color:'#e67e22',
+        sellerGet: price - price*0.10 - 6.99, // 10% fee + free shipping
+        buyerPay: price + price*0.036, // 3.6% buyer protection
+      },
+      Poshmark:{
+        label:'Poshmark',color:'#9b59b6',
+        sellerGet: price - price*0.20, // 20% fee, no shipping cost
+        buyerPay: price + 7.67, // buyer pays shipping
+      },
+    };
+  }
+
+  function update(){
+    const price=parseFloat($('sim-price').value)||450;
+    const ship=parseFloat($('sim-ship').value)||4.99;
+    const feeSplit=parseInt($('sim-fee-split').value); // 0=buyer pays all, 100=seller pays all
+    const shipSplit=parseInt($('sim-ship-split').value);
+
+    const totalFee=price*FEE_RATE;
+    const sellerFeeShare=totalFee*(feeSplit/100);
+    const buyerFeeShare=totalFee*(1-feeSplit/100);
+    const sellerShipShare=ship*(shipSplit/100);
+    const buyerShipShare=ship*(1-shipSplit/100);
+
+    const sellerGet=price-sellerFeeShare-sellerShipShare;
+    const buyerPay=price+buyerFeeShare+buyerShipShare;
+
+    $('fee-label').textContent=`${100-feeSplit} : ${feeSplit}`;
+    $('ship-label').textContent=`${100-shipSplit} : ${shipSplit}`;
+
+    $('sim-seller').textContent='$'+sellerGet.toFixed(2);
+    $('sim-buyer').textContent='$'+buyerPay.toFixed(2);
+    $('sim-seller-detail').textContent=
+      `$${price} − $${sellerFeeShare.toFixed(2)} (수수료) − $${sellerShipShare.toFixed(2)} (배송)`;
+    $('sim-buyer-detail').textContent=
+      `$${price} + $${buyerFeeShare.toFixed(2)} (수수료) + $${buyerShipShare.toFixed(2)} (배송)`;
+
+    // Haggle revenue
+    const shipMargin=Math.max(0, ship - (ship*0.8)); // ~20% margin on shipping
+    const haggleRev=totalFee+shipMargin;
+    $('sim-haggle').textContent='$'+haggleRev.toFixed(2);
+    $('sim-haggle-detail').textContent=`수수료 $${totalFee.toFixed(2)} + 배송 마진 $${shipMargin.toFixed(2)}`;
+    // Annual projections
+    const mo5k=haggleRev*5000;const mo20k=haggleRev*20000;const goal=haggleRev*600000;
+    $('sim-haggle-annual').innerHTML=
+      `<span style="color:#666">월 5K건:</span> <span style="color:#f39c12">$${(mo5k/1000).toFixed(0)}K</span>`+
+      ` · <span style="color:#666">월 20K건:</span> <span style="color:#f39c12">$${(mo20k/1000).toFixed(0)}K</span>`+
+      ` · <span style="color:#666">목표:</span> <span style="color:#2ecc71">$${(goal/1e6).toFixed(0)}M</span>`;
+
+    // Competitor comparison bars
+    const comp=competitors(price);
+    const allSeller=[sellerGet,comp.eBay.sellerGet,comp.Mercari.sellerGet,comp.Poshmark.sellerGet];
+    const allBuyer=[buyerPay,comp.eBay.buyerPay,comp.Mercari.buyerPay,comp.Poshmark.buyerPay];
+    const maxSeller=Math.max(...allSeller);
+    const minBuyer=Math.min(...allBuyer);
+
+    function bar(label,seller,buyer,color,isHaggle){
+      const sDiff=seller-sellerGet;
+      const bDiff=buyer-buyerPay;
+      const sBar=Math.max(5,(seller/maxSeller)*100);
+      const sSign=sDiff>0?'+':''; const bSign=bDiff>0?'+':'';
+      const hl=isHaggle?'border:1px solid '+color+'44;':'border:1px solid #1a1a1a;';
+      return `<div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;align-items:center;padding:6px 8px;background:#0d0d0d;border-radius:6px;${hl}font-size:11px">
+        <span style="color:${color};font-weight:${isHaggle?700:400}">${label}</span>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="color:#888;font-size:9px">판매자 수령</span>
+            <span style="color:${seller>=sellerGet?'#2ecc71':'#e74c3c'};font-family:'JetBrains Mono',monospace;font-size:10px">$${seller.toFixed(0)} ${!isHaggle?'('+sSign+sDiff.toFixed(0)+')':''}</span>
+          </div>
+          <div style="height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:${sBar}%;height:100%;background:${color};border-radius:2px;transition:width .2s"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="color:#888;font-size:9px">구매자 지불</span>
+            <span style="color:${buyer<=buyerPay?'#2ecc71':'#e74c3c'};font-family:'JetBrains Mono',monospace;font-size:10px">$${buyer.toFixed(0)} ${!isHaggle?'('+bSign+bDiff.toFixed(0)+')':''}</span>
+          </div>
+          <div style="height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden">
+            <div style="width:${Math.max(5,(minBuyer/buyer)*100)}%;height:100%;background:${color};border-radius:2px;transition:width .2s"></div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    $('sim-bars').innerHTML=
+      bar('Haggle',sellerGet,buyerPay,'#2ecc71',true)+
+      bar('eBay',comp.eBay.sellerGet,comp.eBay.buyerPay,'#e74c3c',false)+
+      bar('Mercari',comp.Mercari.sellerGet,comp.Mercari.buyerPay,'#e67e22',false)+
+      bar('Poshmark',comp.Poshmark.sellerGet,comp.Poshmark.buyerPay,'#9b59b6',false);
+
+    // Zone visualization
+    const zoneMin=350;const zoneMax=price+30;
+    const range=zoneMax-zoneMin;
+    function pct(v){return Math.max(0,Math.min(100,((v-zoneMin)/range)*100));}
+
+    $('zone-seller').style.width=pct(sellerGet)+'%';
+    $('zone-buyer').style.width=pct(buyerPay)+'%';
+    $('zone-marker').style.left=pct(price)+'%';
+    $('zone-ebay-s').style.left=pct(comp.eBay.sellerGet)+'%';
+    $('zone-ebay-b').style.left=pct(comp.eBay.buyerPay)+'%';
+    $('zone-max').textContent='$'+zoneMax;
+  }
+
+  ['sim-price','sim-ship','sim-fee-split','sim-ship-split'].forEach(id=>{
+    $(id).addEventListener('input',update);
+  });
+  update();
+})();
+</script>
+</body>
+</html>

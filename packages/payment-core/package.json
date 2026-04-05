@@ -1,0 +1,32 @@
+{
+  "name": "@haggle/payment-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./lite": {
+      "types": "./src/lite.ts",
+      "default": "./dist/lite.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@haggle/commerce-core": "workspace:*",
+    "@haggle/contracts": "workspace:*",
+    "viem": "^2.39.3"
+  }
+}

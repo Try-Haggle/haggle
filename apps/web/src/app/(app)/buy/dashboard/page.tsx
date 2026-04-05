@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { serverApi } from "@/lib/api-server";
 import { BuyerDashboardContent } from "./dashboard-content";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export interface ViewedListing {
   id: string;
@@ -30,11 +29,9 @@ export default async function BuyerDashboardPage() {
 
   let viewedListings: ViewedListing[] = [];
   try {
-    const res = await fetch(
-      `${API_URL}/api/viewed?userId=${user.id}`,
-      { cache: "no-store" },
+    const data = await serverApi.get<{ ok: boolean; listings: ViewedListing[] }>(
+      `/api/viewed?userId=${user.id}`,
     );
-    const data = await res.json();
     if (data.ok) {
       viewedListings = data.listings;
     }

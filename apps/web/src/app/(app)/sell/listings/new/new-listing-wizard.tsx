@@ -4,8 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAmplitude } from "@/providers/amplitude-provider";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+import { api } from "@/lib/api-client";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -331,35 +330,38 @@ export function NewListingWizard({ userId }: { userId: string }) {
   async function ensureDraft(): Promise<string | null> {
     if (draftId) return draftId;
 
-    const res = await fetch(`${API_URL}/api/drafts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
-    });
-
-    const data = await res.json();
-    if (!data.ok) {
+    try {
+      const data = await api.post<{ ok: boolean; draft: { id: string } }>(
+        "/api/drafts",
+        { userId },
+      );
+      if (!data.ok) {
+        setError("Failed to create draft");
+        return null;
+      }
+      setDraftId(data.draft.id);
+      return data.draft.id;
+    } catch {
       setError("Failed to create draft");
       return null;
     }
-
-    setDraftId(data.draft.id);
-    return data.draft.id;
   }
 
   async function patchDraft(id: string, patch: Record<string, unknown>) {
-    const res = await fetch(`${API_URL}/api/drafts/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...patch, userId }),
-    });
-
-    const data = await res.json();
-    if (!data.ok) {
+    try {
+      const data = await api.patch<{ ok: boolean }>(
+        `/api/drafts/${id}`,
+        { ...patch, userId },
+      );
+      if (!data.ok) {
+        setError("Failed to save changes");
+        return false;
+      }
+      return true;
+    } catch {
       setError("Failed to save changes");
       return false;
     }
-    return true;
   }
 
   /* ─── Step handlers ─────────────────────────────────────── */
@@ -446,14 +448,19 @@ export function NewListingWizard({ userId }: { userId: string }) {
       });
       if (!ok) return;
 
-      // Publish
-      const res = await fetch(`${API_URL}/api/drafts/${draftId}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
+      // Publish — uses apiClient directly to preserve structured error responses
+      const data = await api.post<{
+        ok: boolean;
+        publicId?: string;
+        shareUrl?: string;
+        errors?: { message: string; step: number }[];
+        error?: string;
+      }>(`/api/drafts/${draftId}/publish`, { userId }).catch(() => null);
 
-      const data = await res.json();
+      if (!data) {
+        setError("Failed to publish");
+        return;
+      }
 
       if (!data.ok) {
         if (data.errors) {
@@ -477,8 +484,8 @@ export function NewListingWizard({ userId }: { userId: string }) {
       });
 
       setPublishResult({
-        publicId: data.publicId,
-        shareUrl: data.shareUrl,
+        publicId: data.publicId!,
+        shareUrl: data.shareUrl!,
       });
     } finally {
       setSaving(false);

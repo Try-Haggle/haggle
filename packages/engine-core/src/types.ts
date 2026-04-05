@@ -27,6 +27,20 @@ export interface RiskContext {
   i_completeness: number;
   w_rep: number;
   w_info: number;
+  /**
+   * 승인 후 실제 결제/이행까지 이어질 확률 [0, 1].
+   * 미결제/노쇼/배송 SLA 위반 등이 누적되면 감소한다.
+   */
+  settlement_reliability?: number;
+  /**
+   * settlement_reliability 가 있을 때의 가중치.
+   */
+  w_settlement?: number;
+  /**
+   * 승인 이후 결제나 이행으로 이어지지 않은 비율 [0, 1].
+   * settlement_reliability 를 직접 계산하지 못하는 레이어를 위한 보조 입력.
+   */
+  approval_default_rate?: number;
 }
 
 /** Relationship context with success history and dispute penalties. */
@@ -39,7 +53,27 @@ export interface RelationshipContext {
 
 /** Optional competition context for 1:N / N:1 topologies. */
 export interface CompetitionContext {
+  /**
+   * 검증된 경쟁 세션 수.
+   * 상대가 주장한 임의의 카운터 오퍼 수가 아니라, 플랫폼이 실제로 확인한
+   * 병렬 경쟁 상대 수를 의미한다.
+   */
   n_competitors: number;
+  /**
+   * 경쟁 강도 [0, 1].
+   * "더 좋은 다른 딜이 있다"는 가격 압박이 아니라, 현재 시장에 유효한
+   * 경쟁자가 존재한다는 신호를 정규화한 값이다.
+   */
+  competitive_pressure?: number;
+  /**
+   * 우리 제안/세션의 상대적 위치 [0, 1].
+   * 정확한 타 경쟁 가격이 아니라, 현재 세션이 시장에서 얼마나 불리하거나
+   * 유리한 위치인지 나타내는 값이다.
+   */
+  /**
+   * @deprecated exact competitor price should not be used as a direct pressure
+   * input. Keep only for backward compatibility with older evaluation paths.
+   */
   best_alternative: number;
   market_position: number;
 }

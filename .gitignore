@@ -28,3 +28,4 @@ Thumbs.db
 # Foundry (post-MVP)
 packages/contracts/out/
 packages/contracts/cache/
+.gstack/
