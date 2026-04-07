@@ -60,8 +60,8 @@ export function BuyerDashboardContent({
 
       {/* Active Negotiations */}
       <h2 className="text-lg font-bold text-white mb-4">Active Negotiations</h2>
-      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
           <svg
             viewBox="0 0 24 24"
             width="24"
@@ -76,7 +76,7 @@ export function BuyerDashboardContent({
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-slate-300 mb-1">
+        <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">
           No active negotiations
         </h3>
         <p className="text-sm text-slate-500">
@@ -113,8 +113,8 @@ function RecentlyViewed({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
             <svg
               viewBox="0 0 24 24"
               width="24"
@@ -130,7 +130,7 @@ function RecentlyViewed({
               <path d="m21 21-4.3-4.3" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">
             No recently viewed listings
           </h3>
           <p className="text-sm text-slate-500">

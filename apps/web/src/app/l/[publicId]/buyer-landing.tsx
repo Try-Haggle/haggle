@@ -10,6 +10,7 @@ import {
   DEFAULT_BUYER_STATS,
 } from "@/lib/buyer-agents";
 import { Nav } from "@/components/nav";
+import { BottomNav } from "@/components/bottom-nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -249,8 +250,9 @@ export function BuyerLanding({
       )}
 
       <div
-        className="mx-auto max-w-6xl px-4 pb-8"
-        style={{ paddingTop: user ? "calc(64px + 2rem)" : "calc(56px + 2rem)" }}
+        className={`mx-auto max-w-6xl px-4 pb-20 md:pb-8 ${
+          user ? "pt-8 md:pt-24" : "pt-22"
+        }`}
       >
         {/* ── Item Overview (top, prominent) ──────────────── */}
         <section className="mb-10">
@@ -377,13 +379,10 @@ export function BuyerLanding({
             seller&apos;s agent to get you the best price.
           </p>
 
-          <div
-            className="grid gap-7"
-            style={{ gridTemplateColumns: "1fr 300px" }}
-          >
+          <div className="grid gap-7 grid-cols-1 lg:grid-cols-[1fr_300px]">
             {/* Left: Agent cards (2x2) */}
             <div>
-              <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                 {BUYER_AGENT_PRESETS.map((agent) => {
                   const isSelected = selectedAgent?.id === agent.id;
                   return (
@@ -842,6 +841,7 @@ export function BuyerLanding({
           </div>
         </section>
       </div>
+      {user && <BottomNav />}
     </main>
   );
 }

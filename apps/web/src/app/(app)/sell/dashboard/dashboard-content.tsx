@@ -147,8 +147,8 @@ export function DashboardContent({
       <h2 className="text-lg font-bold text-white mb-4">Your Listings</h2>
 
       {listings.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
               <path d="M20 7h-9" />
               <path d="M14 17H5" />
@@ -156,7 +156,7 @@ export function DashboardContent({
               <circle cx="7" cy="7" r="3" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">No listings yet</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">No listings yet</h3>
           <p className="text-sm text-slate-500">
             Create one with <span className="text-cyan-400 font-mono">/haggle</span> in ChatGPT, then claim it to see it here.
           </p>
@@ -187,12 +187,12 @@ function KpiCard({
   label: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4">
-      <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>
+    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4">
+      <div className={`mb-2 sm:mb-3 flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg ${iconBg}`}>
         <span className={iconColor}>{icon}</span>
       </div>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-sm text-slate-400 mt-0.5">{label}</p>
+      <p className="text-xl sm:text-2xl font-bold text-white">{value}</p>
+      <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{label}</p>
     </div>
   );
 }

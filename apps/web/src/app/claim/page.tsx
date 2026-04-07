@@ -115,10 +115,10 @@ function ClaimForm() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
+      <div className="w-full max-w-md space-y-6 sm:space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Haggle</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Haggle</h1>
           <p className="text-slate-400">
             {token
               ? "Sign up to claim your listing and start receiving offers."
