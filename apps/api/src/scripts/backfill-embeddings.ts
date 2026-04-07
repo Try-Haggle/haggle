@@ -56,6 +56,11 @@ async function main() {
       await generateAndStoreEmbedding(db, row.id, row.snapshot_json);
       success++;
       console.log(`  ✅ [${success + failed}/${rows.length}] ${row.snapshot_json.title || row.id}`);
+
+      // Rate limit: wait 12s between items to stay under Replicate's 6 req/min limit
+      if (success + failed < rows.length) {
+        await new Promise((r) => setTimeout(r, 12_000));
+      }
     } catch (err) {
       failed++;
       console.error(`  ❌ [${success + failed}/${rows.length}] ${row.id}:`, err);

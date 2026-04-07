@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import Replicate from "replicate";
-import { type Database, listingsPublished, listingEmbeddings, eq, sql } from "@haggle/db";
+import {
+  type Database,
+  listingsPublished,
+  listingEmbeddings,
+  eq,
+  sql,
+} from "@haggle/db";
 
 // ─── OpenAI Client (lazy init to allow dotenv to load first) ───
 
@@ -46,7 +52,9 @@ export async function generateTextEmbedding(text: string): Promise<number[]> {
 // ─── Image Embedding Generation (Replicate CLIP) ───────
 
 /** Call Replicate CLIP API to convert an image URL into a 512-dim vector. */
-export async function generateImageEmbedding(imageUrl: string): Promise<number[]> {
+export async function generateImageEmbedding(
+  imageUrl: string,
+): Promise<number[]> {
   const output = await getReplicate().run(
     "andreasjansson/clip-features:75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a",
     { input: { inputs: imageUrl } },
@@ -176,7 +184,8 @@ export async function generateAndStoreEmbedding(
     .where(eq(listingEmbeddings.publishedListingId, publishedListingId))
     .limit(1);
 
-  if (existing[0]?.textHash === hash && existing[0]?.status === "completed") return;
+  if (existing[0]?.textHash === hash && existing[0]?.status === "completed")
+    return;
 
   try {
     const textEmbedding = await generateTextEmbedding(input);
@@ -189,9 +198,12 @@ export async function generateAndStoreEmbedding(
       try {
         imageEmbedding = await generateImageEmbedding(photoUrl);
         imageHash = computeTextHash(photoUrl);
-      } catch {
+      } catch (imgErr) {
         // Image embedding failure doesn't block text embedding
-        console.warn(`[embedding] Image embedding failed for ${publishedListingId}, continuing with text only`);
+        console.warn(
+          `[embedding] Image embedding failed for ${publishedListingId}, continuing with text only:`,
+          imgErr instanceof Error ? imgErr.message : imgErr,
+        );
       }
     }
 
@@ -221,7 +233,10 @@ export async function generateAndStoreEmbedding(
       `);
     }
   } catch (err) {
-    console.error(`[embedding] Failed for ${publishedListingId}:`, err instanceof Error ? err.message : err);
+    console.error(
+      `[embedding] Failed for ${publishedListingId}:`,
+      err instanceof Error ? err.message : err,
+    );
     const retryCount = (existing[0]?.retryCount ?? 0) + 1;
     await db
       .update(listingEmbeddings)
