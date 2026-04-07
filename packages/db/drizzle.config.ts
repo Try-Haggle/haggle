@@ -10,6 +10,11 @@ export default defineConfig({
     "./src/schema/listing-drafts.ts",
     "./src/schema/listings-published.ts",
     "./src/schema/buyer-listings.ts",
+    "./src/schema/listing-embeddings.ts",
+    "./src/schema/tag-idf-cache.ts",
+    "./src/schema/buyer-interest-vectors.ts",
+    "./src/schema/recommendation-logs.ts",
+    "./src/schema/category-relatedness.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

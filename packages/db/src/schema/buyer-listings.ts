@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { listingsPublished } from "./listings-published.js";
 
 export const buyerListings = pgTable(
@@ -20,6 +20,7 @@ export const buyerListings = pgTable(
     lastViewedAt: timestamp("last_viewed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    viewCount: integer("view_count").notNull().default(1),
     negotiationStartedAt: timestamp("negotiation_started_at", {
       withTimezone: true,
     }),

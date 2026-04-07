@@ -1,6 +1,11 @@
 export { listingDrafts } from "./listing-drafts.js";
 export { listingsPublished } from "./listings-published.js";
 export { buyerListings } from "./buyer-listings.js";
+export { listingEmbeddings } from "./listing-embeddings.js";
+export { tagIdfCache } from "./tag-idf-cache.js";
+export { buyerInterestVectors } from "./buyer-interest-vectors.js";
+export { recommendationLogs } from "./recommendation-logs.js";
+export { categoryRelatedness } from "./category-relatedness.js";
 // TODO(slice-4): export { negotiationSessions } from "./negotiation-sessions.js";
 // TODO(slice-4): export { offers } from "./offers.js";
 // TODO(slice-6): export { users } from "./users.js";

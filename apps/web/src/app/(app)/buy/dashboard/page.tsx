@@ -42,5 +42,5 @@ export default async function BuyerDashboardPage() {
     // API down — dashboard still renders with empty state
   }
 
-  return <BuyerDashboardContent viewedListings={viewedListings} />;
+  return <BuyerDashboardContent viewedListings={viewedListings} userId={user.id} />;
 }
