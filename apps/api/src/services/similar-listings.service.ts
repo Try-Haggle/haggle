@@ -1,4 +1,9 @@
-import { type Database, tagIdfCache, recommendationLogs, sql } from "@haggle/db";
+import {
+  type Database,
+  tagIdfCache,
+  recommendationLogs,
+  sql,
+} from "@haggle/db";
 
 // ─── In-Memory Caches ──────────────────────────────────
 
@@ -43,8 +48,6 @@ interface SignalScores {
   image: number;
   tags: number;
   price: number;
-  condition: number;
-  temporal: number;
 }
 
 interface ScoredCandidate {
@@ -69,16 +72,14 @@ export interface SimilarListingResult {
 // ─── Signal Weights ────────────────────────────────────
 
 const WEIGHTS = {
-  semantic: 0.35,
-  image: 0.35,
+  semantic: 0.8,
+  image: 0, // disabled until better model (DINOv2 or fine-tuned CLIP)
   tags: 0.12,
   price: 0.08,
-  condition: 0.05,
-  temporal: 0.05,
 } as const;
 
-const SIMILARITY_THRESHOLD_DETAIL = 0.55;    // Detail page: single listing comparison
-const SIMILARITY_THRESHOLD_DASHBOARD = 0.40; // Dashboard: Interest Vector (averaged) scores lower
+const SIMILARITY_THRESHOLD_DETAIL = 0.65; // Detail page: single listing comparison
+const SIMILARITY_THRESHOLD_DASHBOARD = 0.5; // Dashboard: same threshold as detail page
 
 // ─── Signal Functions ──────────────────────────────────
 
@@ -88,30 +89,26 @@ function semanticSimilarity(cosineSim: number): number {
 }
 
 /** Signal 2: Price proximity using log ratio */
-function priceProximity(sourcePrice: number | null, candidatePrice: number | null): number {
-  if (!sourcePrice || !candidatePrice || sourcePrice <= 0 || candidatePrice <= 0) return 0.5;
+function priceProximity(
+  sourcePrice: number | null,
+  candidatePrice: number | null,
+): number {
+  if (
+    !sourcePrice ||
+    !candidatePrice ||
+    sourcePrice <= 0 ||
+    candidatePrice <= 0
+  )
+    return 0.5;
   const logRatio = Math.abs(Math.log10(sourcePrice / candidatePrice));
   return Math.max(0, 1 - logRatio);
 }
 
-/** Signal 4: Condition proximity using ordinal distance */
-const CONDITION_ORDER: Record<string, number> = {
-  new: 4,
-  like_new: 3,
-  good: 2,
-  fair: 1,
-  poor: 0,
-};
-
-function conditionProximity(source: string | null, candidate: string | null): number {
-  if (!source || !candidate) return 0.5;
-  const s = CONDITION_ORDER[source] ?? 2;
-  const c = CONDITION_ORDER[candidate] ?? 2;
-  return 1 - Math.abs(s - c) / 4;
-}
-
 /** Signal 5: Tag overlap with IDF weighting */
-function weightedJaccard(sourceTags: string[] | null, candidateTags: string[] | null): number {
+function weightedJaccard(
+  sourceTags: string[] | null,
+  candidateTags: string[] | null,
+): number {
   if (!sourceTags?.length || !candidateTags?.length) return 0;
 
   const set1 = new Set(sourceTags.map((t) => t.toLowerCase()));
@@ -128,26 +125,6 @@ function weightedJaccard(sourceTags: string[] | null, candidateTags: string[] | 
   }
 
   return unionWeight > 0 ? intersectionWeight / unionWeight : 0;
-}
-
-/** Signal 6: Temporal relevance (deadline decay) */
-function temporalRelevance(sellingDeadline: string | null): number {
-  if (!sellingDeadline) return 0.5;
-
-  const now = Date.now();
-  const deadline = new Date(sellingDeadline).getTime();
-  const remaining = deadline - now;
-
-  if (remaining <= 0) return 0;
-
-  const ONE_DAY = 24 * 60 * 60 * 1000;
-  const THIRTY_DAYS = 30 * ONE_DAY;
-
-  if (remaining < ONE_DAY) return 0.2;
-  if (remaining < 3 * ONE_DAY) return 0.5;
-  if (remaining > THIRTY_DAYS) return 1.0;
-
-  return 0.5 + 0.5 * ((remaining - 3 * ONE_DAY) / (THIRTY_DAYS - 3 * ONE_DAY));
 }
 
 /** Signal 7: Image similarity (CLIP cosine — neutral if either embedding missing) */
@@ -170,13 +147,14 @@ function computeSignalScores(
   return {
     semantic: semanticSimilarity(candidate.cosine_similarity),
     image: imageSimilarity(sourceImageEmbedding, candidate.image_embedding),
-    tags: weightedJaccard(source.tags as string[] | null, snap.tags as string[] | null),
+    tags: weightedJaccard(
+      source.tags as string[] | null,
+      snap.tags as string[] | null,
+    ),
     price: priceProximity(
       source.targetPrice ? Number(source.targetPrice) : null,
       snap.targetPrice ? Number(snap.targetPrice) : null,
     ),
-    condition: conditionProximity(source.condition as string | null, snap.condition as string | null),
-    temporal: temporalRelevance(snap.sellingDeadline as string | null),
   };
 }
 
@@ -185,9 +163,7 @@ function computeCompositeScore(scores: SignalScores): number {
     WEIGHTS.semantic * scores.semantic +
     WEIGHTS.image * scores.image +
     WEIGHTS.tags * scores.tags +
-    WEIGHTS.price * scores.price +
-    WEIGHTS.condition * scores.condition +
-    WEIGHTS.temporal * scores.temporal
+    WEIGHTS.price * scores.price
   );
 }
 
@@ -198,7 +174,6 @@ function generateMatchReasons(scores: SignalScores): string[] {
   if (scores.semantic >= 0.85) reasons.push("Very similar item");
   if (scores.image >= 0.8) reasons.push("Looks similar");
   if (scores.price >= 0.8) reasons.push("Similar price range");
-  if (scores.condition >= 0.75) reasons.push("Similar condition");
   if (scores.tags >= 0.5) reasons.push("Matching tags");
   return reasons;
 }
@@ -220,48 +195,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
 // ─── Stage 3: MMR Reranking ────────────────────────────
 
-function mmrRerank(
-  candidates: ScoredCandidate[],
-  topK: number,
-  lambda: number = 0.7,
-): ScoredCandidate[] {
-  const selected: ScoredCandidate[] = [];
-  const remaining = [...candidates];
-
-  while (selected.length < topK && remaining.length > 0) {
-    let bestIdx = -1;
-    let bestMmrScore = -Infinity;
-
-    for (let i = 0; i < remaining.length; i++) {
-      const cand = remaining[i];
-      const relevance = cand.compositeScore;
-
-      const maxSimToSelected =
-        selected.length === 0
-          ? 0
-          : Math.max(
-              ...selected.map((s) =>
-                cosineSimilarity(cand.candidate.text_embedding, s.candidate.text_embedding),
-              ),
-            );
-
-      const mmrScore = lambda * relevance - (1 - lambda) * maxSimToSelected;
-
-      if (mmrScore > bestMmrScore) {
-        bestMmrScore = mmrScore;
-        bestIdx = i;
-      }
-    }
-
-    if (bestIdx >= 0) {
-      selected.push(remaining[bestIdx]);
-      remaining.splice(bestIdx, 1);
-    }
-  }
-
-  return selected;
-}
-
 // ─── Main Pipeline ─────────────────────────────────────
 
 export async function findSimilarListings(
@@ -274,9 +207,10 @@ export async function findSimilarListings(
     limit?: number;
     userId?: string | null;
     threshold?: number;
+    excludeViewed?: boolean;
   } = {},
 ): Promise<ScoredCandidate[]> {
-  const { limit = 10, userId = null } = options;
+  const { limit = 10, userId = null, excludeViewed = false } = options;
 
   // Stage 1: Candidate generation via pgvector ANN search
   const embeddingStr = `[${sourceEmbedding.join(",")}]`;
@@ -287,15 +221,16 @@ export async function findSimilarListings(
     : sql``;
 
   // Dashboard mode: no source listing to exclude
-  const listingFilter = publishedListingId === "__none__"
-    ? sql``
-    : sql`AND lp.id != ${publishedListingId}`;
+  const listingFilter =
+    publishedListingId === "__none__"
+      ? sql``
+      : sql`AND lp.id != ${publishedListingId}`;
 
-  // Exclude listings the user has already viewed (both detail page and dashboard)
-  // Dashboard has Recently Viewed section separately, so no need to duplicate
-  const viewedFilter = userId
-    ? sql`AND lp.id NOT IN (SELECT published_listing_id FROM buyer_listings WHERE user_id = ${userId})`
-    : sql``;
+  // Exclude already-viewed listings (only for dashboard recommendations)
+  const viewedFilter =
+    excludeViewed && userId
+      ? sql`AND lp.id NOT IN (SELECT published_listing_id FROM buyer_listings WHERE user_id = ${userId})`
+      : sql``;
 
   // Same category filter — only recommend within the same category
   const sourceCategory = sourceSnapshot.category as string | null;
@@ -330,24 +265,32 @@ export async function findSimilarListings(
 
   // Parse embedding strings from pgvector raw SQL results
   const rawRows = candidates as unknown as Array<Record<string, unknown>>;
-  const rows: CandidateRow[] = rawRows.map((r) => ({
-    ...r,
-    text_embedding: typeof r.text_embedding === "string"
-      ? (r.text_embedding as string).slice(1, -1).split(",").map(Number)
-      : (r.text_embedding as number[]),
-    image_embedding: r.image_embedding
-      ? typeof r.image_embedding === "string"
-        ? (r.image_embedding as string).slice(1, -1).split(",").map(Number)
-        : (r.image_embedding as number[])
-      : null,
-    cosine_similarity: Number(r.cosine_similarity),
-  } as CandidateRow));
+  const rows: CandidateRow[] = rawRows.map(
+    (r) =>
+      ({
+        ...r,
+        text_embedding:
+          typeof r.text_embedding === "string"
+            ? (r.text_embedding as string).slice(1, -1).split(",").map(Number)
+            : (r.text_embedding as number[]),
+        image_embedding: r.image_embedding
+          ? typeof r.image_embedding === "string"
+            ? (r.image_embedding as string).slice(1, -1).split(",").map(Number)
+            : (r.image_embedding as number[])
+          : null,
+        cosine_similarity: Number(r.cosine_similarity),
+      }) as CandidateRow,
+  );
 
   if (rows.length === 0) return [];
 
   // Stage 2: Multi-signal scoring
   let scored: ScoredCandidate[] = rows.map((candidate) => {
-    const scores = computeSignalScores(sourceSnapshot, candidate, sourceImageEmbedding);
+    const scores = computeSignalScores(
+      sourceSnapshot,
+      candidate,
+      sourceImageEmbedding,
+    );
     const compositeScore = computeCompositeScore(scores);
     return { candidate, scores, compositeScore };
   });
@@ -361,10 +304,8 @@ export async function findSimilarListings(
   // Sort by composite score descending
   scored.sort((a, b) => b.compositeScore - a.compositeScore);
 
-  // Stage 3: MMR reranking for diversity
-  const reranked = mmrRerank(scored, limit);
-
-  return reranked;
+  // Return top results sorted by composite score (highest first)
+  return scored.slice(0, limit);
 }
 
 // ─── Public API Helper ─────────────────────────────────
@@ -373,7 +314,10 @@ export async function getSimilarListingsForPublicId(
   db: Database,
   publicId: string,
   options: { limit?: number; userId?: string | null } = {},
-): Promise<{ listings: SimilarListingResult[]; meta: Record<string, unknown> } | null> {
+): Promise<{
+  listings: SimilarListingResult[];
+  meta: Record<string, unknown>;
+} | null> {
   // Look up the published listing
   const published = await db.execute<{
     id: string;
@@ -382,7 +326,10 @@ export async function getSimilarListingsForPublicId(
     SELECT id, snapshot_json FROM listings_published WHERE public_id = ${publicId}
   `);
 
-  const pubRows = published as unknown as Array<{ id: string; snapshot_json: Record<string, unknown> }>;
+  const pubRows = published as unknown as Array<{
+    id: string;
+    snapshot_json: Record<string, unknown>;
+  }>;
   if (pubRows.length === 0) return null;
 
   const { id: publishedListingId, snapshot_json: sourceSnapshot } = pubRows[0];
@@ -398,14 +345,22 @@ export async function getSimilarListingsForPublicId(
   const embResult = embRows as unknown as Array<Record<string, unknown>>;
   if (embResult.length === 0) {
     // Source listing has no embedding yet
-    return { listings: [], meta: { sourcePublicId: publicId, totalCandidates: 0, algorithm: "multi-signal-v1" } };
+    return {
+      listings: [],
+      meta: {
+        sourcePublicId: publicId,
+        totalCandidates: 0,
+        algorithm: "multi-signal-v1",
+      },
+    };
   }
 
   // pgvector returns embedding as string "[0.1,0.2,...]" via raw SQL — parse to number[]
   const rawTextEmb = embResult[0].text_embedding;
-  const sourceEmbedding: number[] = typeof rawTextEmb === "string"
-    ? (rawTextEmb as string).slice(1, -1).split(",").map(Number)
-    : (rawTextEmb as number[]);
+  const sourceEmbedding: number[] =
+    typeof rawTextEmb === "string"
+      ? (rawTextEmb as string).slice(1, -1).split(",").map(Number)
+      : (rawTextEmb as number[]);
 
   const rawImageEmb = embResult[0].image_embedding;
   const sourceImageEmbedding: number[] | null = rawImageEmb
@@ -415,7 +370,14 @@ export async function getSimilarListingsForPublicId(
     : null;
 
   // Run pipeline
-  const results = await findSimilarListings(db, publishedListingId, sourceSnapshot, sourceEmbedding, sourceImageEmbedding, options);
+  const results = await findSimilarListings(
+    db,
+    publishedListingId,
+    sourceSnapshot,
+    sourceEmbedding,
+    sourceImageEmbedding,
+    options,
+  );
 
   // Save recommendation logs + build response
   const listings: SimilarListingResult[] = [];
@@ -446,7 +408,9 @@ export async function getSimilarListingsForPublicId(
       condition: (snap.condition as string) || null,
       photoUrl: (snap.photoUrl as string) || null,
       targetPrice: snap.targetPrice ? String(snap.targetPrice) : null,
-      sellingDeadline: snap.sellingDeadline ? String(snap.sellingDeadline) : null,
+      sellingDeadline: snap.sellingDeadline
+        ? String(snap.sellingDeadline)
+        : null,
       similarityScore: Math.round(compositeScore * 100) / 100,
       matchReasons: generateMatchReasons(scores),
       logId: logRow.id,
@@ -524,9 +488,10 @@ export async function recomputeInterestVector(db: Database, userId: string) {
   let totalWeight = 0;
 
   for (const row of viewedRows) {
-    const embedding = typeof row.text_embedding === "string"
-      ? row.text_embedding.slice(1, -1).split(",").map(Number)
-      : (row.text_embedding as unknown as number[]);
+    const embedding =
+      typeof row.text_embedding === "string"
+        ? row.text_embedding.slice(1, -1).split(",").map(Number)
+        : (row.text_embedding as unknown as number[]);
 
     const recency = computeRecencyDecay(new Date(row.last_viewed_at));
     const engagement = ENGAGEMENT_MULTIPLIER[row.status] ?? 1.0;
@@ -565,7 +530,10 @@ export async function getDashboardRecommendations(
   db: Database,
   userId: string,
   options: { limit?: number } = {},
-): Promise<{ listings: SimilarListingResult[]; meta: Record<string, unknown> }> {
+): Promise<{
+  listings: SimilarListingResult[];
+  meta: Record<string, unknown>;
+}> {
   const { limit = 10 } = options;
 
   // Fetch Interest Vector
@@ -581,15 +549,21 @@ export async function getDashboardRecommendations(
   if (!ivResult || ivResult.length === 0 || !ivResult[0]?.interest_vector) {
     return {
       listings: [],
-      meta: { source: "empty", basedOnCount: 0, totalCandidates: 0, algorithm: "multi-signal-v1" },
+      meta: {
+        source: "empty",
+        basedOnCount: 0,
+        totalCandidates: 0,
+        algorithm: "multi-signal-v1",
+      },
     };
   }
 
   const rawVector = ivResult[0].interest_vector as string;
   const basedOnCount = Number(ivResult[0].based_on_count) || 0;
-  const interestVector: number[] = typeof rawVector === "string"
-    ? rawVector.slice(1, -1).split(",").map(Number)
-    : (rawVector as unknown as number[]);
+  const interestVector: number[] =
+    typeof rawVector === "string"
+      ? rawVector.slice(1, -1).split(",").map(Number)
+      : (rawVector as unknown as number[]);
 
   // Build synthetic snapshot from user's viewing history
   // So Stage 2 signals (category, price, condition, tags) have meaningful comparison targets
@@ -624,20 +598,29 @@ export async function getDashboardRecommendations(
   // Most common category
   const categoryCounts: Record<string, number> = {};
   for (const r of viewedRows) {
-    if (r.category) categoryCounts[r.category] = (categoryCounts[r.category] ?? 0) + 1;
+    if (r.category)
+      categoryCounts[r.category] = (categoryCounts[r.category] ?? 0) + 1;
   }
-  const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topCategory =
+    Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   // Most common condition
   const conditionCounts: Record<string, number> = {};
   for (const r of viewedRows) {
-    if (r.condition) conditionCounts[r.condition] = (conditionCounts[r.condition] ?? 0) + 1;
+    if (r.condition)
+      conditionCounts[r.condition] = (conditionCounts[r.condition] ?? 0) + 1;
   }
-  const topCondition = Object.entries(conditionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topCondition =
+    Object.entries(conditionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   // Average price
-  const prices = viewedRows.map((r) => Number(r.target_price)).filter((p) => p > 0);
-  const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : null;
+  const prices = viewedRows
+    .map((r) => Number(r.target_price))
+    .filter((p) => p > 0);
+  const avgPrice =
+    prices.length > 0
+      ? prices.reduce((a, b) => a + b, 0) / prices.length
+      : null;
 
   // Merged tags
   const allTags = viewedRows.flatMap((r) => r.tags ?? []);
@@ -650,11 +633,19 @@ export async function getDashboardRecommendations(
     tags: uniqueTags.slice(0, 10),
   };
 
-  const results = await findSimilarListings(db, "__none__", syntheticSnapshot, interestVector, null, {
-    limit,
-    userId,
-    threshold: SIMILARITY_THRESHOLD_DASHBOARD,
-  });
+  const results = await findSimilarListings(
+    db,
+    "__none__",
+    syntheticSnapshot,
+    interestVector,
+    null,
+    {
+      limit,
+      userId,
+      threshold: SIMILARITY_THRESHOLD_DASHBOARD,
+      excludeViewed: true,
+    },
+  );
 
   // Save recommendation logs + build response
   const listings: SimilarListingResult[] = [];
@@ -683,7 +674,9 @@ export async function getDashboardRecommendations(
       condition: (snap.condition as string) || null,
       photoUrl: (snap.photoUrl as string) || null,
       targetPrice: snap.targetPrice ? String(snap.targetPrice) : null,
-      sellingDeadline: snap.sellingDeadline ? String(snap.sellingDeadline) : null,
+      sellingDeadline: snap.sellingDeadline
+        ? String(snap.sellingDeadline)
+        : null,
       similarityScore: Math.round(compositeScore * 100) / 100,
       matchReasons: generateMatchReasons(scores),
       logId: logRow.id,
