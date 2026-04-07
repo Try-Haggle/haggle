@@ -71,11 +71,18 @@ export interface SimilarListingResult {
 
 // ─── Signal Weights ────────────────────────────────────
 
-const WEIGHTS = {
+const WEIGHTS_DETAIL = {
   semantic: 0.8,
   image: 0, // disabled until better model (DINOv2 or fine-tuned CLIP)
   tags: 0.12,
   price: 0.08,
+} as const;
+
+const WEIGHTS_DASHBOARD = {
+  semantic: 0.85,
+  image: 0,
+  tags: 0.15,
+  price: 0,
 } as const;
 
 const SIMILARITY_THRESHOLD_DETAIL = 0.65; // Detail page: single listing comparison
@@ -158,12 +165,19 @@ function computeSignalScores(
   };
 }
 
-function computeCompositeScore(scores: SignalScores): number {
+interface Weights {
+  semantic: number;
+  image: number;
+  tags: number;
+  price: number;
+}
+
+function computeCompositeScore(scores: SignalScores, weights: Weights): number {
   return (
-    WEIGHTS.semantic * scores.semantic +
-    WEIGHTS.image * scores.image +
-    WEIGHTS.tags * scores.tags +
-    WEIGHTS.price * scores.price
+    weights.semantic * scores.semantic +
+    weights.image * scores.image +
+    weights.tags * scores.tags +
+    weights.price * scores.price
   );
 }
 
@@ -208,9 +222,17 @@ export async function findSimilarListings(
     userId?: string | null;
     threshold?: number;
     excludeViewed?: boolean;
+    skipCategoryFilter?: boolean;
+    weights?: Weights;
   } = {},
 ): Promise<ScoredCandidate[]> {
-  const { limit = 10, userId = null, excludeViewed = false } = options;
+  const {
+    limit = 10,
+    userId = null,
+    excludeViewed = false,
+    skipCategoryFilter = false,
+    weights = WEIGHTS_DETAIL,
+  } = options;
 
   // Stage 1: Candidate generation via pgvector ANN search
   const embeddingStr = `[${sourceEmbedding.join(",")}]`;
@@ -232,11 +254,12 @@ export async function findSimilarListings(
       ? sql`AND lp.id NOT IN (SELECT published_listing_id FROM buyer_listings WHERE user_id = ${userId})`
       : sql``;
 
-  // Same category filter — only recommend within the same category
+  // Same category filter — only for detail page, not dashboard
   const sourceCategory = sourceSnapshot.category as string | null;
-  const categoryFilter = sourceCategory
-    ? sql`AND lp.snapshot_json->>'category' = ${sourceCategory}`
-    : sql``;
+  const categoryFilter =
+    !skipCategoryFilter && sourceCategory
+      ? sql`AND lp.snapshot_json->>'category' = ${sourceCategory}`
+      : sql``;
 
   const candidates = await db.execute(sql`
     SELECT
@@ -291,7 +314,7 @@ export async function findSimilarListings(
       candidate,
       sourceImageEmbedding,
     );
-    const compositeScore = computeCompositeScore(scores);
+    const compositeScore = computeCompositeScore(scores, weights);
     return { candidate, scores, compositeScore };
   });
 
@@ -633,7 +656,10 @@ export async function getDashboardRecommendations(
     tags: uniqueTags.slice(0, 10),
   };
 
-  const results = await findSimilarListings(
+  const MIN_RESULTS = 4;
+
+  // First try: exclude viewed listings
+  let results = await findSimilarListings(
     db,
     "__none__",
     syntheticSnapshot,
@@ -644,8 +670,37 @@ export async function getDashboardRecommendations(
       userId,
       threshold: SIMILARITY_THRESHOLD_DASHBOARD,
       excludeViewed: true,
+      skipCategoryFilter: true,
+      weights: WEIGHTS_DASHBOARD,
     },
   );
+
+  // Fallback: if not enough results, include viewed listings to fill
+  if (results.length < MIN_RESULTS) {
+    const viewedIds = new Set(results.map((r) => r.candidate.id));
+    const withViewed = await findSimilarListings(
+      db,
+      "__none__",
+      syntheticSnapshot,
+      interestVector,
+      null,
+      {
+        limit,
+        userId,
+        threshold: SIMILARITY_THRESHOLD_DASHBOARD,
+        excludeViewed: false,
+        skipCategoryFilter: true,
+        weights: WEIGHTS_DASHBOARD,
+      },
+    );
+    // Append only new ones (not already in results)
+    for (const r of withViewed) {
+      if (!viewedIds.has(r.candidate.id)) {
+        results.push(r);
+        if (results.length >= limit) break;
+      }
+    }
+  }
 
   // Save recommendation logs + build response
   const listings: SimilarListingResult[] = [];
