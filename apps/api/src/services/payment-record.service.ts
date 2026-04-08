@@ -175,6 +175,35 @@ export async function getPaymentIntentById(db: Database, id: string): Promise<Pa
   return row ? mapPaymentIntent(row) : null;
 }
 
+/**
+ * Raw payment-intent row (includes providerContext which the DTO drops).
+ * Used by admin routes that need to inspect or merge provider metadata.
+ */
+export async function getPaymentIntentRowById(
+  db: Database,
+  id: string,
+): Promise<typeof paymentIntents.$inferSelect | null> {
+  const row = await db.query.paymentIntents.findFirst({
+    where: (fields, ops) => ops.eq(fields.id, id),
+  });
+  return row ?? null;
+}
+
+/**
+ * Overwrite the providerContext jsonb column for a payment intent. Callers
+ * are expected to have merged any existing context before calling this.
+ */
+export async function setPaymentIntentProviderContext(
+  db: Database,
+  id: string,
+  providerContext: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(paymentIntents)
+    .set({ providerContext, updatedAt: new Date() })
+    .where(eq(paymentIntents.id, id));
+}
+
 export async function updateStoredPaymentIntent(
   db: Database,
   intent: PaymentIntent,
