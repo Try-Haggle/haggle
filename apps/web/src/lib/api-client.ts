@@ -76,6 +76,13 @@ export const api = {
       body: body ? JSON.stringify(body) : undefined,
     }),
 
+  put: <T = unknown>(path: string, body?: unknown, opts?: ApiOptions) =>
+    apiClient<T>(path, {
+      ...opts,
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+
   delete: <T = unknown>(path: string, opts?: ApiOptions) =>
     apiClient<T>(path, { ...opts, method: "DELETE" }),
 };

@@ -241,7 +241,7 @@
 <!-- Tab Bar -->
 <div class="tab-bar">
   <button class="active" onclick="showTab('past')">📋 지난 안건 (확정)</button>
-  <button onclick="showTab('current')">🔥 현재 안건 (4/7)</button>
+  <button onclick="showTab('current')">🔥 현재 안건 (4/11)</button>
   <button onclick="showTab('future')">🎯 향후 목표</button>
 </div>
 
@@ -1017,12 +1017,9 @@
     <div class="section-desc">NFT 시장 성공/실패 패턴 분석 완료. Haggle = 거래 기반 획득 + 유틸리티 내재 + 투트랙 (Soulbound + Tradeable). 투기적 민팅 없음.</div>
   </section>
 
-</div>
-
-<!-- ═══════════════════════════════════════ -->
-<!-- TAB 2: 현재 안건 (4/7 모임) -->
-<!-- ═══════════════════════════════════════ -->
-<div id="tab-current" class="tab-content">
+  <!-- ═══════════════════════════════════════ -->
+  <!-- 4/7 모임 확정 (지난 안건으로 이동) -->
+  <!-- ═══════════════════════════════════════ -->
 
   <!-- 엔진 Term Space 리네이밍 -->
   <section class="section">
@@ -1525,6 +1522,151 @@ Haggle Credits 가치 ↑
 </div>
 
 <!-- ═══════════════════════════════════════ -->
+<!-- TAB 2: 현재 안건 (4/11 모임) -->
+<!-- ═══════════════════════════════════════ -->
+<div id="tab-current" class="tab-content">
+
+  <!-- Phase 0 전략 확정 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(239,68,68,.15);">🎯</div>Phase 0 전략 확정 (4/8 업데이트)</div>
+    <div class="section-desc">
+      <p><b>배경:</b> 지난 주까지 Haggle은 "AI 협상 + 결제 프로토콜"이라는 넓은 포지셔닝으로 진행하고 있었다. 하지만 YC 오피스아워 스타일의 프리미스 챌린지(/office-hours 세션)를 돌려본 결과, "누가 이걸 실제로 필사적으로 원하는가?" 라는 질문에 답을 못했다. 범용 프로토콜은 아무도 간절히 원하지 않는다. 그래서 4/8에 전체 방향을 "가장 좁은 쐐기(wedge)"로 재정의했다.</p>
+      <p><b>결론:</b> Phase 0는 <b>"중고 iPhone Pro 가격 최적화 도구"</b>로 시작한다. "마켓플레이스"가 아니다. eBay나 Swappa를 대체하는 게 아니라, 이미 거기서 사고팔고 있는 사람들에게 "AI가 협상 붙여서 평균보다 $50+ 더 싸게 사게 해줌"이라는 단일 가치만 판다. 성공 측정도 이 한 문장으로 환원된다.</p>
+    </div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>해자(Moat) 재정의</h3><span class="badge-role">Moat</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">"코드는 해자가 아니다. AI 시대엔 복제 비용이 0에 수렴한다. 그렇다면 Haggle이 시간이 갈수록 복제 불가능해지는 자산은 무엇인가?"</p>
+        <ul class="security-list">
+          <li><b>Primary — Judgment Precedent DB:</b> 분쟁 발생 시 DS(Dispute Settlement) 패널이 판결한 판례 + 셀러/바이어 attestation(증거) 쌍. 거래가 쌓여야만 생기는 데이터. 스마트 컨트랙트는 포크할 수 있어도 "지난 2년간 1만 건의 분쟁이 어떻게 해결됐는지"는 복제 불가.</li>
+          <li><b>Secondary — Skills Marketplace:</b> 협상 스킬(전략) 마켓. Phase 2+ 기능이지 지금의 해자는 아님.</li>
+          <li><b>핵심 프레임</b>: Haggle은 "AI가 가능하게 했지만, AI로 복제할 수 없는" 카테고리여야 한다.</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>Wedge — 가장 좁은 진입점</h3><span class="badge-role">Category</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">"모든 중고거래" ❌ → "미국에서 iPhone 13/14/15 Pro 3개 모델만" ✅</p>
+        <ul class="security-list">
+          <li><b>카테고리:</b> Electronics only, 그 중에서도 iPhone 13/14/15 Pro 3 SKU만. 미국 시장 한정.</li>
+          <li><b>이유:</b> (1) 가격 표준화(Swappa median 존재) (2) 검증 가능(IMEI, 배터리 헬스) (3) 고가($500+)라 $50 절약이 유의미 (4) 구매자 집중(r/appleswap 같은 커뮤니티 존재).</li>
+          <li><b>North Star:</b> AI가 만들어낸 1건당 평균 절약액 vs Swappa 30일 median. 목표 ≥ $50/txn.</li>
+          <li><b>Attribution 공식:</b> <span class="mono">savings = max(0, Swappa_30d_median − final_price)</span> — 단일 baseline, 게이밍 불가.</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>Phase 1.5 진입 게이트 (AND 조건)</h3><span class="badge-role">Gate</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">"언제 다음 카테고리로 확장해도 되는가?" 세 가지 조건이 <b>모두</b> 충족되어야 Phase 1.5 시작.</p>
+        <ul class="security-list">
+          <li><b>Magnitude:</b> 거래당 평균 절약액 ≥ $50 AND</li>
+          <li><b>Scale:</b> 90일간 유효 거래 ≥ 500건 AND</li>
+          <li><b>Dispute rate:</b> 분쟁 발생률 ≤ 5%</li>
+          <li><b>Phase 1.5 내용:</b> Sneakers(스니커즈)를 retention engine으로 추가. 이유: iPhone은 24개월 재구매 주기라 LTV가 낮다. Sneakers는 월 단위 반복 구매라 retention 붙음. <b>Series-A 투자 유치 전제조건이지 선택이 아니다.</b></li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>유통(GTM) 전략</h3><span class="badge-role">GTM</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">"Paid 광고는 PMF 전까지 금지." 돈 태워서 성장하면 진짜 수요가 있는지 알 수 없다.</p>
+        <ul class="security-list">
+          <li><b>Community-first:</b> r/appleswap, r/hardwareswap 레딧 커뮤니티에 직접 씨딩. 거기 이미 iPhone 중고거래 하는 사람들이 있음.</li>
+          <li><b>Paid acquisition 금지:</b> 유기적 전환율로 PMF 확인 후 시작.</li>
+          <li><b>검증(Verification):</b> nonce 기반 가이드 attestation(뒤 섹션 참조) + IMEI/carrier 조회로 도난/사기 거래 차단.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Attestation Flow + HFMI 엔지니어링 리뷰 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">⚠️</div>엔지니어링 리스크 리뷰 (/plan-eng-review)</div>
+    <div class="section-desc">
+      <p><b>배경:</b> Phase 0 전략이 확정된 직후, 실제로 Week 1-2 안에 v0를 내놓을 수 있는지 두 개의 핵심 기술 컴포넌트를 엔지니어링 관점에서 스트레스 테스트했다. 그 과정에서 "계획서엔 멀쩡해 보이지만 실제로 구현하려 하면 막히는" 숨은 리스크가 15개 발견됐다. 이게 4/11 모임에서 반드시 결정해야 하는 이유다.</p>
+      <p><b>컴포넌트 1 — Attestation Flow (Hybrid C):</b> 셀러가 발송 전 iPhone 상태를 영상으로 찍고(nonce 스탬프 박혀 있음), 바이어가 수령 직후 다시 찍어서 두 영상을 매칭하는 검증 방식. "셀러가 말한 상태 = 실제 받은 상태" 를 증명해서 분쟁을 줄이는 게 목적. Apple Activation Lock API가 2017년에 닫혔기 때문에 Find My 기반 자동 검증이 불가능해서 이 방법을 선택했다.</p>
+      <p><b>컴포넌트 2 — HFMI v0 (Haggle Fair Market Index):</b> "이 기기의 공정 가격은 $X다" 를 실시간으로 계산해서 협상 기준점으로 쓰는 가격 지수. Swappa median을 쓰기로 했지만, 설계 초안에선 Gazelle(바이백 업체) + Back Market(리퍼브) + eBay 를 가중 평균하자고 되어 있었다. 문제는 이 방식이 투자자 미팅에서 즉시 반박당한다는 것.</p>
+    </div>
+
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>Attestation Flow — 8 리스크</h3><span class="badge-role">Critical</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">"영상 찍어서 매칭하면 끝" 이 아니다. 공격자가 어떻게 뚫을지 8가지 시나리오를 다 체크해야 한다.</p>
+        <ul class="security-list">
+          <li><b>R1 — Activation Lock blind spot:</b> Apple이 2017년에 Activation Lock API를 닫았다. 셀러가 공장 초기화하면 그 기기가 원래 도난품이었는지 확인할 방법이 없다. <b>대응:</b> IMEI DB 조회 + 통신사(carrier) 상태 이중 확인. 하지만 R6 참조.</li>
+          <li><b>R2 — Nonce는 replay만 막는다:</b> 영상에 우리가 발급한 랜덤 코드(nonce)를 박아두면 "옛날 영상 재사용"은 막을 수 있다. 하지만 딥페이크/영상 합성(compositing)은 못 막는다. <b>대응:</b> 실시간 liveness challenge(예: "지금 화면을 3번 두드려라") 추가 필요.</li>
+          <li><b>R3 — Two-device 문제:</b> 셀러가 iPhone 1대만 가지고 있으면, 그 iPhone을 자기 자신으로 촬영할 수 없다. 두 번째 기기(친구 폰, 웹캠 등)가 필수인데 UX가 무너진다. <b>대응:</b> 웹캠/데스크톱 기반 대체 플로우 설계.</li>
+          <li><b>R4 — 영상 저장/PII 설계 누락:</b> 영상에는 얼굴, 집 배경, 시리얼 번호 등 개인정보가 다 들어간다. 어디에 저장? 얼마나 보관? GDPR "잊혀질 권리" 요청 오면? 설계 문서에 한 줄도 없다. <b>대응:</b> S3 서버사이드 암호화 + 보존 기간(예: 분쟁 종결 + 90일) + erasure endpoint.</li>
+          <li><b>R5 — On-chain hash commit이 Week 1-2를 막는다:</b> 설계엔 영상 해시를 스마트 컨트랙트에 기록하기로 되어 있다. 그런데 CLAUDE.md 규칙 #8: <span class="mono">컨트랙트 배포는 Timelock 48시간 + multisig 필수</span>. Week 1-2 일정상 불가능. <b>대응:</b> v0는 off-chain DB에만 저장. on-chain은 Phase 1으로.</li>
+          <li><b>R6 — Carrier lookup API가 존재하지 않는다:</b> T-Mobile, Verizon, AT&T 모두 IMEI 기반 도난/차단 상태 조회 공개 API를 제공하지 않는다. 유료 3rd-party(IMEI.info, Swappa Check 등)를 써야 하는데 건당 비용 + 신뢰성 이슈. <b>대응:</b> Phase 0에선 "Unlocked only" 로 제한하고 carrier 검증은 Phase 1으로 연기.</li>
+          <li><b>R7 — DS precedent DB 유사도 검색 미설계:</b> 해자의 핵심인 판례 DB에서 "비슷한 분쟁 찾기"를 어떻게 할지 정해진 게 없다. pgvector + embedding 모델(OpenAI? 로컬?) + 청크 전략 전부 미정. <b>대응:</b> 4/11 이후 별도 설계 세션.</li>
+          <li><b>R8 — Battery Health OCR false positive:</b> 설계는 iOS 설정 스크린샷에서 배터리 헬스%를 OCR로 읽는다. 하지만 스크린샷은 포토샵으로 변조 가능. <b>대응:</b> 화면 녹화 영상 + 메뉴 진입 과정 전체 촬영 강제.</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>HFMI v0 — 7 리스크</h3><span class="badge-role">Critical</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">"여러 출처 가중 평균하면 더 정확해 보임" 이 함정. 실제론 투자자 설득 실패 + 구현 지연의 주범.</p>
+        <ul class="security-list">
+          <li><b>R1 — Gazelle/Back Market 가중 bias (치명적):</b> Gazelle은 "바이백" 업체다. 즉 소비자에게서 $400에 사서 $600에 되파는 구조. 바이백 가격은 retail median의 60-70%. 이걸 가중 평균에 넣으면 HFMI가 실제 시장가보다 낮아지고, "savings = Swappa_median − price" 공식이 과대 계상된다. <b>투자자가 3초 만에 지적할 이슈.</b> <b>대응:</b> Gazelle/Back Market 제거, eBay 단일 소스로.</li>
+          <li><b>R2 — eBay Browse API에 sold data가 없다 (설계 오류):</b> 설계 문서에 "eBay Browse API로 과거 성사 거래 수집"이라고 쓰여 있는데, Browse API는 현재 판매중 리스팅만 반환한다. 과거 낙찰가를 얻으려면 <span class="mono">findCompletedItems</span> (legacy Finding API) 또는 application-gated Marketplace Insights API를 써야 한다. <b>대응:</b> Finding API로 전환 + deprecation 리스크 문서화.</li>
+          <li><b>R3 — 스크래핑 ToS 위반 리스크:</b> Gazelle, Back Market 공식 API 없음 → 스크래핑이 유일. 둘 다 ToS에 명시적으로 금지. 법적 리스크 + IP 차단.</li>
+          <li><b>R4 — 5차원 그리드 sparse 문제:</b> 설계는 (model × storage × color × battery × condition) 5차원 그리드에 median을 채워넣는다. iPhone 14 Pro만 해도 조합이 수백 개. eBay 최근 30일 거래량으론 대부분 셀이 empty. <b>대응:</b> Grid median 포기, hedonic regression(회귀 모델)로 전환.</li>
+          <li><b>R5 — Weight 공개 시 gameability:</b> 가중치를 공개하면 셀러가 "특정 조건 조작하면 HFMI가 올라가서 내 savings가 높아 보임" 을 계산해 조작한다. 공개 안 하면 불투명.</li>
+          <li><b>R6 — Haggle 내부 거래 feedback loop:</b> 설계는 "시간이 지나면 Haggle 내부 거래 데이터 weight를 올린다". 하지만 Haggle 거래가 저렴할수록 HFMI가 낮아지고, HFMI가 낮아지면 savings도 낮아지고, savings=0이면 가치 제안이 붕괴된다. <b>자기 잠식 피드백 루프.</b> <b>대응:</b> 내부 데이터는 baseline에서 영구 제외.</li>
+          <li><b>R7 — 희귀 SKU cold start:</b> iPhone 13 Pro Max 1TB Alpine Green 같은 조합은 30일에 거래 5건 미만. 통계적으로 의미 없음. <b>대응:</b> 인접 SKU 보간 또는 "데이터 부족" 경고 UX.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p style="margin:16px 0 8px 0;"><b>결정 필요 항목 — 4/11 모임에서 반드시 합의해야 함:</b></p>
+    <table class="decision-table">
+      <thead><tr><th>#</th><th>결정 사항</th><th>권장 및 이유</th><th class="right">우선순위</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td class="bold">On-chain attestation hash commit을 v0에서 제외할 것인가?</td><td><b>YES 권장.</b> Timelock 48h + multisig 규칙을 우회할 방법 없음. v0는 off-chain Postgres에만 저장하고, on-chain anchoring은 Phase 1에서 진행. "Web3 감성" 때문에 Week 1-2 일정 깨면 안 됨.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">2</td><td class="bold">Phase 0를 Unlocked iPhone only로 제한할 것인가?</td><td><b>YES 권장.</b> Activation Lock API가 없는 이상 locked/carrier-locked 기기는 검증 불가능. Unlocked only로 제한하면 거래량은 줄지만 사기 리스크가 크게 떨어짐. Carrier lookup은 Phase 1으로 연기.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">3</td><td class="bold">HFMI v0 = eBay 단일 소스 + OLS hedonic regression?</td><td><b>YES 권장.</b> Gazelle/Back Market 가중 평균은 투자자 지적 이슈(바이백 bias). eBay Finding API 하나만 쓰고, 5차원 그리드 대신 hedonic 회귀 모델(가격 = β₀ + β₁·storage + β₂·battery + ...)로 단순화. 투자자 스토리도 "단일 public source, 통계적으로 방어 가능"으로 명확해짐.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">4</td><td>Week 1-2 v0 범위를 유지할 것인가, Week 3-4로 조정할 것인가?</td><td>위 리스크들을 전부 반영하면 Week 1-2는 비현실적. 특히 R3(two-device UX), R4(PII 저장), R7(precedent DB 설계)은 각각 며칠씩 걸림. <b>Week 3-4 조정 권장.</b></td><td class="right"><span class="sev medium">중간</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Admin Ops Inbox Step 55-58 완료 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(34,197,94,.15);">✅</div>Admin Ops Inbox Step 55-58 완료 (4/8)</div>
+    <div class="section-desc">
+      <p><strong>배경.</strong> Haggle 의 태그 시스템은 사용자가 자유롭게 붙인 자유 태그(free tag)가 일정 조건(사용 횟수, 승인율 등)을 만족하면 정식 용어(Term)로 승격되는 구조다. 반대로 오남용·중복 태그는 강등되어야 한다. 이 승격/강등 판단을 전부 사람이 하면 병목이 생기고, 전부 자동화하면 오작동 위험이 크다. 그래서 <strong>자동 규칙 엔진 + Admin 승인 큐(Inbox)</strong> 하이브리드 구조를 택했다.</p>
+      <p><strong>Step 55-58 이 하는 일.</strong> (1) 규칙 테이블과 관리자 액션 로그 DB 스키마를 만들고, (2) 규칙에 따라 태그를 자동으로 올리거나 내리는 cron 기반 서비스를 만들고, (3) 승격 후보 + 신고된 태그를 하나의 Admin 큐로 합치고, (4) 관리자가 큐를 읽고 처리할 수 있는 API 엔드포인트를 연결했다. 이걸로 태그 라이프사이클의 뼈대가 완성됐다.</p>
+      <p><strong>3man 워크플로우.</strong> Arch 가 설계(ARCHITECT-BRIEF) → Bob 이 구현 → Richard 가 리뷰. 이 4 step 이 그 워크플로우로 돌아간 첫 번째 완결 사이클이다. 품질 게이트가 실제로 작동하는지 확인하는 의미도 있었다.</p>
+    </div>
+    <table class="decision-table">
+      <thead><tr><th>Step</th><th>범위</th><th>테이블/엔드포인트</th><th class="right">상태</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">55</td><td class="bold">Admin Ops Inbox DB schema</td><td>tag_promotion_rules, admin_action_log</td><td class="right"><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">56</td><td class="bold">Tag Auto-Promotion 서비스</td><td>rule engine + cron evaluator</td><td class="right"><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">57</td><td class="bold">Admin Inbox Aggregator</td><td>pending promotions + flagged items unified queue</td><td class="right"><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">58A</td><td class="bold">Admin Read/Job/Rules Routes</td><td>GET /admin/inbox, POST /admin/rules, job dispatch</td><td class="right"><span class="sev low">완료</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4/11 모임 논의 안건 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">📋</div>4/11 모임 논의 안건</div>
+    <div class="section-desc">
+      <p>토요일 정기 모임. 이번 회차의 목표는 <strong>Phase 0 실행 착수 직전 "되돌릴 수 없는 결정"들을 확정하는 것</strong>이다. 4/8 에 office-hours + eng review 로 전략과 기술 리스크를 정리했으니, 이제 세 명이 모여서 최종 승인/반려하고 Week 1 월요일부터 코드가 나가야 한다. 항목마다 "왜 논의해야 하는가"를 같이 적어뒀다.</p>
+    </div>
+    <table class="decision-table">
+      <thead><tr><th>#</th><th>안건</th><th>논의 포인트 + 결정이 필요한 이유</th><th class="right">우선순위</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td class="bold">Phase 0 전략 리뷰 승인</td><td>Moat 를 "Judgment Precedent DB" 로 재정의하고, 카테고리를 iPhone 13/14/15 Pro 3 SKU 로 좁히고, 유통을 r/appleswap 씨딩으로 한정하는 결정. 이건 되돌리기 어려운 방향 전환이라 세 명이 다 동의해야 진행한다. <strong>반대가 1 명이라도 있으면 재논의.</strong></td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">2</td><td class="bold">Attestation v0 범위 확정</td><td>Eng review 결론: on-chain commit 은 Timelock 48h + multisig 규칙 때문에 Week 1-2 안에 안전하게 못 올린다. v0 는 off-chain Postgres only + Phase 1 에서 anchor. 또 iCloud Activation Lock 이 걸린 기기는 자동 검증이 불가능하니 <strong>unlocked 기기만 받는다</strong>는 제약도 확정해야 한다. 이 두 개가 명확하지 않으면 Bob 이 Week 1 에 뭘 짜야 할지 모른다.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">3</td><td class="bold">HFMI v0 아키텍처 확정</td><td>Eng review 결론: 원래 설계의 "Gazelle + Back Market 가중평균" 은 buyback 가격 편향 때문에 저평가된다. 대안은 (A) eBay Finding API sold-listings + OLS hedonic regression, (B) Multi-source + 편향 보정. A 가 더 정확하고 구현 간단. <strong>B 로 가면 데이터 계약 협상만 4 주 걸린다.</strong> Week 1 에 코드 짜기 전에 A/B 를 골라야 한다.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">4</td><td class="bold">Week 1-2 vs Week 3-4 타임라인 재조정</td><td>Eng review 에서 15 개 리스크가 나왔고 그중 3 개(on-chain commit, Find My 자동화, Phase 1.5 sneakers 사전 준비)는 Week 1-2 에 못 한다. 그럼 v0 범위를 줄일지, Week 3-4 까지 연기할지, 아니면 병렬화할지 결정해야 한다. Richard 의 리스크 평가가 필요.</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">5</td><td>r/appleswap 씨딩 메시지 초안 검토</td><td>Community-first 유통의 첫 번째 실행. r/appleswap 과 r/hardwareswap 모더레이터에게 보낼 DM 초안 + 첫 포스트 템플릿 리뷰. 톤이 "또 하나의 플랫폼 스팸" 으로 읽히면 그 순간 커뮤니티에서 차단된다. <strong>한 번 날리면 되돌릴 수 없으니 세 명이 읽고 승인.</strong></td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">6</td><td>Skill Marketplace 파일럿 (지난 안건 캐리오버)</td><td>4/7 모임에서 "Phase 2 feature" 로 판정났는데 공식 보류로 안 박아뒀음. 이번에 "Phase 0 끝날 때까지 건드리지 않는다" 로 명시하고 캐리오버 목록에서 제거. 이렇게 해야 attention 이 Phase 0 에 집중된다.</td><td class="right"><span class="sev low">낮음</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+<!-- ═══════════════════════════════════════ -->
 <!-- TAB 3: 향후 목표 -->
 <!-- ═══════════════════════════════════════ -->
 <div id="tab-future" class="tab-content">
@@ -1652,6 +1794,92 @@ Haggle Credits 가치 ↑
   <div class="section-desc">모임 후 정리한 변경사항. 최신순.</div>
 
   <div class="update-log">
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 59 Part B: Web Admin Mutations + Promotion Rules (Arch → Bob → Richard)</div>
+      <ul class="update-items">
+        <li><strong>Mutation UI</strong>: <code>ActionButtons.tsx</code> — <code>detail.type</code>로 분기해 태그(Approve/Reject/Merge)/분쟁(Escalate/Resolve buyer|seller|partial)/결제(Mark for review) 버튼 렌더. optimistic update: 성공 시 <code>onDone(id)</code>로 목록 refetch, 실패 시 에러 배너만</li>
+        <li><strong>MergeDialog</strong>: targetTagId 입력 모달 + Escape 키 capture-phase 리스너 (DetailDrawer의 bubble 리스너보다 먼저 실행돼 drawer 실수 닫힘 방지 — Richard nit 반영)</li>
+        <li><strong>Promotion Rules 페이지</strong>: <code>/admin/promotion-rules</code> — <code>PromotionRulesTable</code>로 inline edit (candidate/emerging min use·age, auto-promote count, enabled toggle), <code>default</code> 카테고리 delete는 클라이언트에서도 차단 (API 400 defense-in-depth), "Run Now" 버튼 → <code>POST /admin/jobs/tag-promote</code> + lastRun 표시</li>
+        <li><strong>InboxTable 리팩터</strong>: Part A 제네릭 컬럼 → <code>InboxTable&lt;K extends InboxType&gt;</code>로 per-type <code>ColumnDef</code> (태그: label/count/eligible, 분쟁: orderId/status/openedAt, 결제: orderId/amount/rail/failedAt). Richard Part A should-do #1 해결</li>
+        <li><strong>Retry affordance</strong>: <code>InboxTable</code> 에러 상태에 Retry 버튼 추가 (Part A should-do #2)</li>
+        <li><strong>타입 강화</strong>: <code>admin-api.ts</code>에 <code>TagInboxItem/DisputeInboxItem/PaymentInboxItem</code>, 판별 유니온 <code>AdminInboxDetail</code>, <code>InboxItemByType</code> 매핑 + 오버로드 <code>list&lt;K&gt;</code> 추가. <code>api.put</code> 메서드 추가</li>
+        <li><strong>편차</strong>: <code>disputeEscalate</code>는 <code>toTier: 2</code> 하드코드 + TODO 주석 (tier picker UX는 follow-up). <code>paymentMarkReview</code>는 canned note (free-form input은 post-MVP)</li>
+        <li><strong>Richard 리뷰</strong>: APPROVE WITH NITS — MergeDialog Escape 버그만 실사용자 UX 이슈로 즉시 수정, TODO 주석 추가. XSS 없음 (React auto-escape)</li>
+        <li><strong>테스트</strong>: 신규 <code>ActionButtons.test.tsx</code>(2) + <code>MergeDialog</code> 경로는 ActionButtons 스파이로 커버, <code>PromotionRulesTable.test.tsx</code>(1), <code>InboxTable.test.tsx</code>(+2 per-type columns + retry). Web 전체 <strong>12 tests / 7 files</strong> 통과 (6 → 12)</li>
+      </ul>
+    </div>
+
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 59 Part A: Web Admin 스캐폴드 + 읽기 전용 Inbox (Arch → Bob)</div>
+      <ul class="update-items">
+        <li><strong>Role guard</strong>: <code>app/(app)/admin/layout.tsx</code> 서버 컴포넌트 — Supabase <code>getUser()</code> → 없으면 <code>/claim</code>, <code>isAdminRole(user)</code> 실패 시 <code>/</code> redirect. 기존 <code>(app)/layout.tsx</code> 패턴 재사용</li>
+        <li><strong>typed API 래퍼</strong>: <code>lib/admin-api.ts</code> — <code>api-client.ts</code>가 이미 Supabase Bearer 주입하므로 그 위에 <code>adminApi.inbox.{summary, list, detail}</code> 만 얹음. <code>isAdminRole</code> 헬퍼 export</li>
+        <li><strong>Inbox 페이지</strong>: <code>/admin</code> — <code>SummaryCards</code>(4개) + <code>InboxTabs</code>(Tags/Disputes/Payments) + <code>InboxTable</code>(pagination) + <code>DetailDrawer</code>(row 클릭 → 상세). 모두 client component</li>
+        <li><strong>버그 수정</strong>: Bob 초안은 <code>InboxSummary</code> 평면 구조(<code>tagsPending/disputesOpen/paymentsFlagged</code>)였으나 실제 API는 nested(<code>tags.{pending,autoPromoteReady}, disputes.{open,underReview,waiting}, payments.{failed}</code>) → <code>admin-api.ts</code> 타입, <code>SummaryCards</code>, 테스트 fixture 즉시 정정</li>
+        <li><strong>테스트 인프라</strong>: <code>apps/web</code>에 vitest + @testing-library/react + jsdom 신규 devDep. <code>vitest.config.ts</code>, <code>src/test/setup.ts</code>, <code>@</code> alias 설정</li>
+        <li><strong>스모크 테스트 6개</strong>: <code>isAdminRole</code>(admin-api), <code>SummaryCards</code>(fetched counts), <code>InboxTabs</code>(활성 탭 토글), <code>InboxTable</code>(목록 렌더). 전부 통과</li>
+      </ul>
+    </div>
+
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 58 Part B: Admin Mutation Actions (Bob 빌드 → Richard 리뷰)</div>
+      <ul class="update-items">
+        <li><strong>6개 mutation 엔드포인트</strong>: <code>POST /admin/actions/{tag-approve, tag-reject, tag-merge, dispute-escalate, dispute-resolve, payment-mark-review}</code>. 모두 <code>requireAdmin</code> + Zod + 성공 시 <code>writeAuditLog</code>, 실패 경로는 audit log 미기록</li>
+        <li><strong>기존 서비스 재사용</strong>: <code>approveSuggestion/rejectSuggestion/mergeSuggestion</code> (tag), <code>DisputeService.resolve</code> + <code>updateDisputeRecord</code> + <code>createDisputeResolutionRecord</code> (dispute), 신규 <code>getPaymentIntentRowById/setPaymentIntentProviderContext</code> 헬퍼 추가 (payment — <code>providerContext</code> jsonb가 DTO에 노출 안 되어 raw helper 필요)</li>
+        <li><strong>에러 시맨틱</strong>: 400 invalid body, 404 not found, 409 already processed / tier not advancing / non-FAILED</li>
+        <li><strong>Dispute escalate</strong>: 전용 서비스 없음 → <code>routes/disputes.ts</code> 패턴 재활용해 <code>metadata.tier</code> 인라인 bump. tier 하향/동일 방지 409 가드 추가</li>
+        <li><strong>브리프 편차</strong>: dispute outcome enum은 실제 코드(<code>buyer_favor|seller_favor|partial_refund|no_action</code>) 사용, <code>rejectSuggestion</code>은 reason 파라미터 없음 → payload에만 기록, <code>DisputeService.resolve</code>의 summary 옵션 Zod에 추가</li>
+        <li><strong>Richard 리뷰</strong>: APPROVE WITH NITS — race safety 문서화는 defer, 3개 경로 테스트 추가 (tier-not-advancing 409, dispute already-resolved 409, payment NOT_FOUND 404), 불필요한 <code>as DisputeTier</code> cast와 중복 <code>escalated_by</code> 키 제거</li>
+        <li><strong>테스트</strong>: <code>admin-routes.test.ts</code> 14 → 28 (+14). API 전체 <strong>349 tests</strong> 통과 (305 → 349)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 58 Part A: Admin Read/Job/Rules Routes (Arch 설계 → Bob 빌드 → Richard 리뷰)</div>
+      <ul class="update-items">
+        <li><strong>설계 분할</strong>: Arch가 Step 58을 Part A(읽기 + job + rules CRUD, 10 endpoints) / Part B(6 mutation actions)로 분할. Part A 먼저 완료해 Web Step 59 언블록</li>
+        <li><strong>신규 헬퍼 서비스</strong>: <code>admin-action-log.service.ts</code> — <code>writeAuditLog(db, {actorId, actionType, targetType, targetId, payload})</code> + <code>AdminActionType</code> union (9개 타입). Part B도 재사용 예정</li>
+        <li><strong>신규 서비스</strong>: <code>promotion-rule.service.ts</code> — <code>listPromotionRules</code>, <code>getPromotionRule</code>, <code>upsertPromotionRule</code> (onConflictDoUpdate), <code>deletePromotionRule</code>, <code>getLastPromotionRun</code>. 라우트에서 raw Drizzle 대신 이 서비스를 호출해 테스트 모킹 단순화</li>
+        <li><strong>신규 라우트</strong>: <code>apps/api/src/routes/admin.ts</code> — 11개 엔드포인트 모두 <code>requireAdmin</code>, Zod validation. inbox 5개, jobs 2개 (<code>POST /admin/jobs/tag-promote</code>, <code>GET /last</code>), rules CRUD 4개</li>
+        <li><strong>DELETE default 차단</strong>: <code>DELETE /admin/promotion-rules/default</code>는 400 (fallback rule 보호). PUT은 upsert (before/after payload 로깅)</li>
+        <li><strong>actorId 안전성</strong>: Richard 리뷰 후 <code>?? "admin"</code> fallback 제거 (<code>admin_action_log.actor_id</code>가 uuid라 prod에서 crash). <code>requireAdmin</code>이 통과하면 <code>request.user.id</code>는 보장됨을 타입으로 강제</li>
+        <li><strong>Richard 리뷰</strong>: APPROVE WITH NITS — uuid 컬럼 확인 후 actorId fallback 제거, <code>getLastPromotionRun</code> 반환 타입 타이트닝 (<code>adminActionLog.$inferSelect | null</code>), <code>runPromotionJob</code>이 이미 내부에서 audit log 쓰는 것 주석으로 명시, PUT invalid body / GET 404 / PUT create 테스트 3개 추가</li>
+        <li><strong>테스트</strong>: <code>admin-routes.test.ts</code> 14개 (auth-gate 중심, tags.test.ts 패턴). API 전체 <strong>305 tests</strong> 통과 (291 → 305)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 57: Admin Inbox Aggregator (Bob 빌드 + Richard 리뷰)</div>
+      <ul class="update-items">
+        <li><strong>신규 서비스</strong>: <code>apps/api/src/services/admin-inbox.service.ts</code> — 읽기 전용 aggregator. 태그 pending, 분쟁, 결제 실패를 한 곳에서 조회</li>
+        <li><strong>공개 API</strong>: <code>getInboxSummary</code> (4개 섹션 카운트 + computedAt), <code>listPendingTags</code> (occurrence_count DESC + autoPromoteEligible 플래그), <code>listActiveDisputes</code> (active status 필터), <code>listFailedPayments</code> (FAILED만), <code>getInboxDetail</code> (polymorphic tag|dispute|payment)</li>
+        <li><strong>디폴트 rule 없음 → autoPromoteReady=0</strong> (throw 대신 graceful degrade)</li>
+        <li><strong>Schema 발견사항</strong>: <code>tag_suggestions</code>에 category 없음 → 필터 옵션 제거 / <code>dispute_cases</code>에 tier 없음 → <code>reasonCode</code>만 노출 / <code>payment_intents</code>에 failedAt 없음 → <code>updatedAt</code> + <code>providerContext</code> jsonb best-effort 파싱 / <code>amountMinor</code>는 numeric(18,0) → Number() 안전(cents), 주석 추가</li>
+        <li><strong>3man workflow 첫 적용</strong>: Bob(general-purpose agent)이 빌드 → Richard(quality-engineer agent) 리뷰 "APPROVE WITH NITS" → Bob이 Must-do 4개 + Should-do 5개 반영. dead import 제거, <code>tier</code> 필드 삭제, <code>ACTIVE_DISPUTE_STATUSES</code> 상수 재사용, orderBy assertion 강화, active status validation, amountMinor 정밀도 주석, <code>updatedAt→computedAt</code> 개명, <code>__internals</code> 삭제, 5개 함수 JSDoc 추가</li>
+        <li><strong>테스트</strong>: <code>admin-inbox.service.test.ts</code> 12개. API 전체 291 tests 통과 (279 → 291)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 56: Tag Auto-Promotion 서비스</div>
+      <ul class="update-items">
+        <li><strong>신규 서비스</strong>: <code>apps/api/src/services/tag-promotion.service.ts</code> — 두 단계 승격 오케스트레이터</li>
+        <li><strong>Phase A — promotePendingSuggestions</strong>: <code>tag_suggestions</code> 중 <code>occurrence_count ≥ default rule.suggestion_auto_promote_count</code>인 PENDING을 기존 <code>approveSuggestion()</code>로 자동 승인 (auto-merge 포함, category는 "uncategorized"로 생성 후 admin이 재분류)</li>
+        <li><strong>Phase B — promoteExistingTags</strong>: CANDIDATE/EMERGING 태그를 카테고리별 rule 기준(useCount + age_days)으로 한 단계 승격. 카테고리 rule이 없으면 "default" fallback, <code>enabled=false</code>면 skip</li>
+        <li><strong>runPromotionJob</strong>: 두 단계 순차 실행 → <code>PromotionReport</code>(promoted/merged/raised counts, perCategory breakdown, durationMs, errors) 생성 → <code>admin_action_log</code>에 <code>action_type="promotion.run"</code>으로 기록 (idempotent)</li>
+        <li><strong>에러 격리</strong>: 개별 suggestion/tag 실패는 <code>errors[]</code>에 수집하고 루프 계속. admin_action_log insert 실패도 report errors에 surface</li>
+        <li><strong>db 패키지</strong>: <code>gte</code>, <code>or</code>, <code>lte</code> 오퍼레이터를 <code>@haggle/db</code>에서 추가 re-export</li>
+        <li><strong>테스트</strong>: <code>tag-promotion.service.test.ts</code> 14개 모두 통과 — getRuleForCategory(3), promotePendingSuggestions(4), promoteExistingTags(5), runPromotionJob(2). API 전체 277 tests 통과 (263 기존 + 14 신규)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Step 55: Admin Ops Inbox DB 스키마 추가</div>
+      <ul class="update-items">
+        <li><strong>신규 테이블 2개</strong>: <code>tag_promotion_rules</code> (카테고리별 태그 승격 임계값) + <code>admin_action_log</code> (모든 admin 액션 append-only 감사 로그)</li>
+        <li><strong>tag_promotion_rules</strong>: category UNIQUE, candidate/emerging min_use + min_age_days, suggestion_auto_promote_count, enabled 토글, updated_by</li>
+        <li><strong>admin_action_log</strong>: actor_id + action_type + target_type/id(polymorphic) + payload(jsonb) + 3개 인덱스 (by actor, by action, by target)</li>
+        <li><strong>파일</strong>: <code>packages/db/src/schema/admin-ops.ts</code> (신규), <code>packages/db/src/schema/index.ts</code> (export 추가)</li>
+        <li><strong>Typecheck</strong>: @haggle/db 통과. 마이그레이션(drizzle-kit generate/push) 및 seed(condition/style/size/material/default rules)는 pending</li>
+        <li><strong>맥락</strong>: Admin Ops Inbox + Tag Auto-Promotion 플랜의 Phase 1. 이어서 Step 56(tag-promotion.service) → 57(admin-inbox.service) → 58(admin routes) → 59(web UI) 진행 예정</li>
+      </ul>
+    </div>
     <div class="update-entry">
       <div class="update-date">2026-04-08 — Phase 0 전략 확정: iPhone 14 Pro wedge + HFMI + Community-first</div>
       <ul class="update-items">
