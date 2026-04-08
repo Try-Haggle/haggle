@@ -225,7 +225,7 @@
     지난 안건(확정/완료), 현재 안건(이번 모임), 향후 목표(다음 단계)로 나눠 관리합니다.
   </p>
   <div class="meta">
-    <span>📅 마지막 업데이트: 2026-04-06</span>
+    <span>📅 마지막 업데이트: 2026-04-08</span>
     <span>🧪 940+ 테스트</span>
     <span>📦 pnpm monorepo</span>
   </div>
@@ -1355,7 +1355,8 @@ Engine Core: 역제안에 반영</div>
           <li>USDC → Haggle Credits <strong>on-ramp만</strong></li>
           <li>이전 불가 (지갑 간 전송 비활성)</li>
           <li>고정 가격: 1 Haggle Credits = $0.01</li>
-          <li>스킬 수수료 결제만 가능</li>
+          <li>스킬 수수료 + <strong>첫 디포짓 대체</strong> 가능</li>
+          <li><strong>가입 바우처</strong>: 신규 판매자에 Credits 지급 → 첫 디포짓으로 사용</li>
         </ul>
         <p style="margin-top:10px;font-size:.82rem;font-style:italic;">
           목표: 사용자 기반 확보, 투기 리스크 차단.
@@ -1508,15 +1509,15 @@ Haggle Credits 가치 ↑
 
   <!-- 결정 필요 항목 -->
   <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(249,115,22,.15);">🔔</div>4/7 모임 결정 필요 항목</div>
+    <div class="section-title"><div class="icon" style="background:rgba(249,115,22,.15);">🔔</div>4/11 모임 결정 필요 항목</div>
     <table class="biz-table">
       <thead><tr><th>#</th><th>안건</th><th class="right">우선순위</th></tr></thead>
       <tbody>
         <tr><td class="mono">1</td><td class="bold">캐릭터 마스크 이미지 제작 (Gemini? 디자이너?)</td><td class="right"><span class="sev critical">높음</span></td></tr>
         <tr><td class="mono">2</td><td class="bold">스킬 마켓플레이스 카테고리 우선순위 (전자기기 &rarr; 자동차 &rarr; 부동산?)</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">3</td><td>Haggle Credits on-ramp 가격 고정 정책 확정 ($0.01 peg)</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">4</td><td>Tier 0 스킬 우선 개발 범위</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">5</td><td>Term 승격 기준 (1000회? 500회?)</td><td class="right"><span class="sev low">낮음</span></td></tr>
+        <tr><td class="mono">3</td><td>Tier 0 스킬 우선 개발 범위</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">4</td><td>Term 승격 기준 (1000회? 500회?)</td><td class="right"><span class="sev low">낮음</span></td></tr>
+        <tr><td class="mono">5</td><td>태그 자동 promotion/demotion 임계값 (MVP 이후)</td><td class="right"><span class="sev low">낮음</span></td></tr>
       </tbody>
     </table>
   </section>
@@ -1651,6 +1652,42 @@ Haggle Credits 가치 ↑
   <div class="section-desc">모임 후 정리한 변경사항. 최신순.</div>
 
   <div class="update-log">
+    <div class="update-entry">
+      <div class="update-date">2026-04-08 — Phase 0 전략 확정: iPhone 14 Pro wedge + HFMI + Community-first</div>
+      <ul class="update-items">
+        <li><strong>gstack 설치 + /office-hours 세션 진행</strong>: Garry Tan 페르소나와 Phase 0 전략 검증</li>
+        <li><strong>해자 재정의</strong>: Primary = <em>Judgment Precedent DB</em>, Secondary = <em>HFMI</em> (Skills Marketplace는 Phase 2+로 재분류)</li>
+        <li><strong>Phase 0 wedge 확정</strong>: iPhone 14 Pro 단일 SKU (13 Pro 배터리 사이클, 15 Pro 공급 깊이 우려로 제외), 미국 시장</li>
+        <li><strong>North Star</strong>: <code>savings = max(0, HFMI_median(model, condition) − final_price)</code></li>
+        <li><strong>Gate 조건 (AND)</strong>: 평균 절약 ≥$50 &amp; 180일 내 500+ 거래 &amp; 분쟁율 ≤5% (90일 → 180일로 완화)</li>
+        <li><strong>Marketing narrow / Transaction wide</strong>: 랜딩은 14 Pro 단일 제품 내러티브, 실제 리스팅은 Apple 생태계 전체 허용 (Stripe/Airbnb 패턴)</li>
+        <li><strong>HFMI (Haggle Fair Market Index) 자체 구축</strong>: Swappa 파트너십 포기. Gazelle + Back Market + eBay sold + 내부 거래 데이터를 가중 평균. Cold start(w_haggle=0) → Mature(w_haggle=0.60) 점진 전이</li>
+        <li><strong>HFMI 구조적 우위</strong>: 경쟁사는 거래 "점" 데이터만 관측. Haggle은 협상 전체 분포(WTP, WTA, 양보 곡선, 실패 거래 reservation, attestation 연동 상태) 관측 → 시간이 갈수록 격차 확대</li>
+        <li><strong>검증 플로우 (Hybrid C)</strong>: Apple Activation Lock API 2017년 폐쇄로 자동화 불가 → nonce 기반 가이드 attestation (셀러 pre-ship + 바이어 post-receive delta) 필수 경로</li>
+        <li><strong>Distribution plan</strong>: Paid-first 포기(LTV:CAC 0.08). Community-first 확정 — Week 1-2 r/appleswap 파워셀러 50명 시딩, Week 3+ 바이어 오가닉, ~$10-17 블렌디드 CAC, 6개월 예산 ~$6,800</li>
+        <li><strong>Phase 1.5 재분류</strong>: 스니커즈는 "retention 증명을 위한 Series-A 전제 조건" (iPhone 24개월 교체 주기 한계)</li>
+        <li><strong>문서 산출물</strong>: <code>docs/strategy/office-hours/2026-04-08_phase0-electronics-wedge.md</code> (설계), <code>2026-04-08_distribution-plan-community-first.md</code> (실행 계획), Moat Strategy에 재정의 배너 추가</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-07 — 정기 모임: Haggle Credits 확정 + 태그 시스템 재설계</div>
+      <ul class="update-items">
+        <li><strong>HGC &rarr; Haggle Credits 리네이밍</strong>: 모든 문서/overview에서 용어 통일</li>
+        <li><strong>Closed-loop 영구 확정</strong>: off-ramp/DEX 상장/USDC 직접 정산 모두 MVP에서 영구 비활성. Steam/Disney 방식</li>
+        <li><strong>On-ramp 고정 가격</strong>: 1 Haggle Credits = $0.01 (USDC &rarr; Credits 단방향)</li>
+        <li><strong>가입 바우처 정책</strong>: "첫 거래 디포짓 무료" &rarr; "가입 시 Credits 지급" 교체. 첫 디포짓(분쟁 보증금 + 무게 버퍼)으로 사용 가능, 고가 제품 제외</li>
+        <li><strong>Credits 경제 분석</strong>: Purchased(부채) / Signup Voucher(마케팅) / Earned(영업비용) 3종 분리. 인플레 20% 임계 안전</li>
+        <li><strong>DS 패널 자격</strong>: 스테이킹 대신 <em>거래 이력 기반</em> 확정 (20+ 거래, trust 0.7+, 분쟁 0건, 계정 90일+, 고가 KYC)</li>
+        <li><strong>DS 패널 보상</strong>: USDC 지급. Credits는 <em>패널티/슬래싱 전용</em> (오판정 시 차감)</li>
+        <li><strong>LLM 에스컬레이션 비용 재설계</strong>: 상대방 유발 &rarr; 상대 부담, 신규 term 학습 &rarr; 플랫폼 R&D, 모호 케이스 &rarr; 플랫폼, 유저 고급 분석 요청 &rarr; 유저 (Option C 최소 범위 확정)</li>
+        <li><strong>태그 시스템 재설계</strong>: Recursive Self-Evolving Tag System 확정. DAG(다중 부모) + Information Gain + AI 배치 + recursive self-tuning</li>
+        <li><strong>태그 LLM 모델</strong>: <code>gpt-4o-mini</code> 확정 (Grok 4/Fast, Claude Haiku, Gemini Flash 비교 후). 기존 OpenAI SDK 재사용, JSON strict, 한/영 robust</li>
+        <li><strong>태그 배치 컨텍스트 엔지니어링</strong>: 후보 40&rarr;20 프리필터, few-shot 3개, ref id 매핑(t01~t20)으로 LLM typo 원천 차단, JSON schema strict mode</li>
+        <li><strong>태그 비용</strong>: 1M 리스팅당 $0.19 (캐시 60% 히트 시 $0.08). MVP 스케일 사실상 무료</li>
+        <li><strong>기존 코드 재사용</strong>: main에서 similar-listings.service.ts + embedding.service.ts + tag_idf_cache 풀. pgvector top-K + weightedJaccard 후보 수집에 재사용</li>
+        <li><strong>설계 문서</strong>: <code>docs/tag-system-design.md</code> 생성 (파이프라인 L0~L8, system prompt, few-shot 3개, output schema, recursive self-tuning 주기)</li>
+      </ul>
+    </div>
     <div class="update-entry">
       <div class="update-date">2026-04-06 — 엔진 ↔ API 통합 완료 (Step 42-48) + 버그 수정</div>
       <ul class="update-items">
@@ -1791,7 +1828,7 @@ Haggle Credits 가치 ↑
 <footer class="footer">
   <div>Haggle &mdash; AI 협상 + 온체인 결제 프로토콜</div>
   <div style="margin-top:8px;">이 문서는 매 모임 후 업데이트됩니다</div>
-  <div style="margin-top:4px;">마지막 업데이트: 2026-04-06</div>
+  <div style="margin-top:4px;">마지막 업데이트: 2026-04-08</div>
 </footer>
 
 <script>
