@@ -90,8 +90,8 @@ export function Nav({
     mode === "selling" ? "Switch to buying" : "Switch to selling";
 
   return (
-    <nav className="fixed top-0 inset-x-0 z-50 h-16 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
-      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+    <nav className="fixed top-0 inset-x-0 z-50 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md hidden md:block">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Left: Logo + Tabs */}
         <div className="flex items-center h-full gap-6">
           <Link

@@ -86,7 +86,7 @@ const WEIGHTS_DASHBOARD = {
 } as const;
 
 const SIMILARITY_THRESHOLD_DETAIL = 0.65; // Detail page: single listing comparison
-const SIMILARITY_THRESHOLD_DASHBOARD = 0.5; // Dashboard: same threshold as detail page
+const SIMILARITY_THRESHOLD_DASHBOARD = 0.6; // Dashboard: filter out low-relevance items
 
 // ─── Signal Functions ──────────────────────────────────
 
@@ -472,11 +472,14 @@ function computeFrequencyBoost(viewCount: number): number {
 
 /**
  * Compute and store Interest Vector for a user.
- * Weighted average of recent 50 viewed listings' embeddings.
+ * Weighted average of top 5 most-engaged listings' embeddings.
+ * Using fewer, high-engagement items keeps the vector discriminative
+ * (vs averaging 50 which produces a generic "product listing" vector).
  * Fire-and-forget — call without await from POST /api/viewed.
  */
 export async function recomputeInterestVector(db: Database, userId: string) {
-  // Fetch recent 50 viewed listings with their embeddings
+  // Fetch recent viewed listings with their embeddings, ordered by engagement
+  // Sort by: status weight (negotiating/completed > viewed) × view_count × recency
   const rows = await db.execute<{
     status: string;
     view_count: number;
@@ -493,8 +496,15 @@ export async function recomputeInterestVector(db: Database, userId: string) {
     WHERE bl.user_id = ${userId}
       AND le.status = 'completed'
       AND le.text_embedding IS NOT NULL
-    ORDER BY bl.last_viewed_at DESC
-    LIMIT 50
+    ORDER BY
+      CASE bl.status
+        WHEN 'completed' THEN 5
+        WHEN 'negotiating' THEN 3
+        WHEN 'viewed' THEN 1
+        ELSE 0.5
+      END * LEAST(bl.view_count, 5) DESC,
+      bl.last_viewed_at DESC
+    LIMIT 5
   `);
 
   const viewedRows = rows as unknown as Array<{
@@ -607,8 +617,15 @@ export async function getDashboardRecommendations(
     FROM buyer_listings bl
     JOIN listings_published lp ON lp.id = bl.published_listing_id
     WHERE bl.user_id = ${userId}
-    ORDER BY bl.last_viewed_at DESC
-    LIMIT 50
+    ORDER BY
+      CASE bl.status
+        WHEN 'completed' THEN 5
+        WHEN 'negotiating' THEN 3
+        WHEN 'viewed' THEN 1
+        ELSE 0.5
+      END * LEAST(bl.view_count, 5) DESC,
+      bl.last_viewed_at DESC
+    LIMIT 5
   `);
 
   const viewedRows = viewedData as unknown as Array<{
@@ -656,9 +673,7 @@ export async function getDashboardRecommendations(
     tags: uniqueTags.slice(0, 10),
   };
 
-  const MIN_RESULTS = 4;
-
-  // First try: exclude viewed listings
+  // Cross-category, exclude already viewed
   let results = await findSimilarListings(
     db,
     "__none__",
@@ -675,9 +690,23 @@ export async function getDashboardRecommendations(
     },
   );
 
-  // Fallback: if not enough results, include viewed listings to fill
-  if (results.length < MIN_RESULTS) {
-    const viewedIds = new Set(results.map((r) => r.candidate.id));
+  // Fallback: if < 4, fill with viewed items excluding the 4 most recent
+  // (the 4 most recent are already shown in "Recently Viewed" section)
+  if (results.length < 4) {
+    // Get the 4 most recently viewed listing IDs (shown in Recently Viewed)
+    const recentlyViewedIds = await db.execute(sql`
+      SELECT published_listing_id
+      FROM buyer_listings
+      WHERE user_id = ${userId}
+      ORDER BY last_viewed_at DESC
+      LIMIT 4
+    `);
+    const recentIds = new Set(
+      (recentlyViewedIds as unknown as Array<{ published_listing_id: string }>)
+        .map((r) => r.published_listing_id),
+    );
+    const existingIds = new Set(results.map((r) => r.candidate.id));
+
     const withViewed = await findSimilarListings(
       db,
       "__none__",
@@ -693,9 +722,8 @@ export async function getDashboardRecommendations(
         weights: WEIGHTS_DASHBOARD,
       },
     );
-    // Append only new ones (not already in results)
     for (const r of withViewed) {
-      if (!viewedIds.has(r.candidate.id)) {
+      if (!existingIds.has(r.candidate.id) && !recentIds.has(r.candidate.id)) {
         results.push(r);
         if (results.length >= limit) break;
       }

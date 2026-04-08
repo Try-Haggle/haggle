@@ -102,9 +102,37 @@ export function SimilarListings({
 
   return (
     <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-      <h2 className="mb-4 text-[18px] font-semibold text-white">
-        Similar Listings
-      </h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-[18px] font-semibold text-white">
+          Similar Listings
+        </h2>
+        {!loading && listings.length > 0 && (canScrollLeft || canScrollRight) && (
+          <div className="flex gap-2 xl:hidden">
+            <button
+              onClick={() => scroll("left")}
+              disabled={!canScrollLeft}
+              className={`flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 transition-colors ${
+                canScrollLeft ? "text-white hover:bg-slate-800 cursor-pointer" : "text-slate-700 cursor-default"
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <button
+              onClick={() => scroll("right")}
+              disabled={!canScrollRight}
+              className={`flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 transition-colors ${
+                canScrollRight ? "text-white hover:bg-slate-800 cursor-pointer" : "text-slate-700 cursor-default"
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -120,8 +148,8 @@ export function SimilarListings({
           ))}
         </div>
       ) : listings.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
             <svg
               viewBox="0 0 24 24"
               width="24"
@@ -137,7 +165,7 @@ export function SimilarListings({
               <path d="m21 21-4.3-4.3" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">
             No similar listings found yet
           </h3>
           <p className="text-sm text-slate-500">
@@ -184,7 +212,7 @@ function CarouselGrid({
       {canScrollLeft && (
         <button
           onClick={() => scroll("left")}
-          className="absolute -left-12 top-1/3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+          className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
         >
           <svg
             width="18"
@@ -203,7 +231,7 @@ function CarouselGrid({
       {canScrollRight && (
         <button
           onClick={() => scroll("right")}
-          className="absolute -right-12 top-1/3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+          className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
         >
           <svg
             width="18"

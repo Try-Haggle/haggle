@@ -518,7 +518,7 @@ export function NewListingWizard({ userId }: { userId: string }) {
 
     return (
       <main className="min-h-[calc(100vh-4rem)] px-4 py-6">
-        <div className="mx-auto max-w-[560px] pt-5 pb-10 text-center">
+        <div className="mx-auto max-w-[560px] pt-2 sm:pt-5 pb-10 text-center">
           {/* Success Icon — matches widget sparkle icon */}
           <div
             className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-xl"
@@ -1045,10 +1045,10 @@ export function NewListingWizard({ userId }: { userId: string }) {
             Your AI will handle buyer negotiations automatically. Choose a style and customize its approach.
           </p>
 
-          <div className="grid gap-7" style={{ gridTemplateColumns: "1fr 300px" }}>
+          <div className="grid gap-7 grid-cols-1 lg:grid-cols-[1fr_300px]">
             {/* Left: Agent cards */}
             <div>
-              <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                 {AGENT_PRESETS.map((agent) => {
                   const isSelected = selectedAgent?.id === agent.id;
                   return (

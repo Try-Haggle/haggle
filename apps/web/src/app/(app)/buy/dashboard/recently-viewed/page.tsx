@@ -71,8 +71,8 @@ export default async function RecentlyViewedPage() {
 
       {/* List */}
       {viewedListings.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
             <svg
               viewBox="0 0 24 24"
               width="24"
@@ -88,7 +88,7 @@ export default async function RecentlyViewedPage() {
               <path d="m21 21-4.3-4.3" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">
             No recently viewed listings
           </h3>
           <p className="text-sm text-slate-500">
