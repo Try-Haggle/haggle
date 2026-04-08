@@ -112,6 +112,98 @@
 
 ---
 
+## Negotiation Engine — Time & Prediction
+
+### TD-017: predictNextCrossing — confidence는 모델 충실도만
+- **현재**: `confidence = 1.0 - (llm_escalation_count / total_rounds_observed)` 단순 비율
+- **이유**: MVP는 상대방 엔진 행동 예측 정확도만 추적
+- **개선 시점**: 협상 데이터 누적 후 → (a) 파라미터 안정성, (b) 외부 이벤트 확률 추가
+- **영향도**: 중간 (스케줄러 정확도 향상)
+
+### TD-018: min_concession_unit — 상대 효용 미러링
+- **현재**: 자기 `utility_weights`로 상대방 효용을 추정 (대칭 가정)
+- **이유**: 실제 상대 weights 모름. MVP는 정직한 추정으로 시작
+- **개선 시점**: 상대 실제 반응 데이터 누적 후 → 베이지안 업데이트로 보정
+- **영향도**: 낮음 (정확도 향상)
+
+---
+
+## HOLD Mechanism
+
+### TD-019: Flash HOLD 시간 — 카테고리별 하드코딩
+- **현재**: `FLASH_MINUTES` 상수로 카테고리별 고정 (CLOTHING 3분, VEHICLES 10분, REAL_ESTATE 30분)
+- **개선 시점**: 데이터 누적 후 → ARP 엔진에 `flash_expiry_rate`, `flash_payment_success_rate` 시그널 추가하여 자동 학습
+- **영향도**: 낮음 (UX 미세조정)
+
+### TD-020: Buffer/Flash 통합 ARP 학습
+- **현재**: Buffer 기간만 ARP 엔진 시그널 (`ship_confirmation_*` 추가) 활용. Flash는 별도
+- **개선 시점**: ARP 메타튜너가 Buffer/Flash 두 채널을 동시 학습하도록 확장
+- **영향도**: 중간 (학습 정확도 향상)
+
+### TD-021: Counter-HOLD 판정 조건 — 고정 임계값
+- **현재**: `u_seller(offer) >= 0.85 × u_seller(p_limit)` 임계 0.85 하드코딩
+- **이유**: MVP는 단순 규칙
+- **개선 시점**: 카테고리·판매자별 학습 → 판매자 historical 수락률 기반 동적 조정
+- **영향도**: 낮음
+
+---
+
+## Session Quota & Anti-Abuse
+
+### TD-022: 세션 한계 수치 — 추측치
+- **현재**: (buyer × listing) 누적 5, (buyer × seller) 동시 10 — 데이터 없이 결정
+- **개선 시점**: MVP 런칭 후 1개월 분석 → 정직한 사용자 분포 P95 기준으로 재조정
+- **영향도**: 중간 (UX vs 악용 방지 균형)
+
+### TD-023: 판매자 수락 시점 Deposit (방어선 3)
+- **현재**: 미구현. Trust + 수수료 가속 페널티만 활용
+- **이유**: 스마트 컨트랙트 수정 필요. MVP 범위 외
+- **개선 시점**: 미배송 비율이 신규 판매자 1% 초과 시 → 거래액 1% USDC deposit 락 추가
+- **영향도**: 높음 (컨트랙트 변경)
+
+### TD-024: Velocity Check (방어선 6)
+- **현재**: 미구현. 동시 한계만으로 부분 차단
+- **이유**: 모니터링 인프라 필요
+- **개선 시점**: 사용자 베이스 10K 도달 시 → 1시간 내 비정상 수락 급증 자동 감지 + review 큐
+- **영향도**: 중간 (별도 워커 + 알림 인프라)
+
+### TD-025: 디바이스 핑거프린팅 (방어선 4 강화)
+- **현재**: 핸드폰 인증으로 1차 Sybil 방지
+- **개선 시점**: 핸드폰 우회 패턴 발견 시 → fingerprintJS 등 디바이스 fingerprinting 추가
+- **영향도**: 중간 (privacy 검토 필요)
+
+---
+
+## Subscription & Information Symmetry
+
+### TD-026: 구독 티어 확률·예측 도구
+- **현재**: Pro 티어 기능 미구현. MVP는 모두 동일 경험
+- **개선 시점**: MVP 런칭 후 사용자 피드백 기반 → "자기 데이터 분석 도구"만 Pro에 추가 (상대 정보 분석은 절대 금지 — 정보 비대칭 원칙)
+- **영향도**: 낮음 (점진적 추가 가능)
+
+### TD-027: 능력 비대칭 투명성 표시
+- **현재**: 미구현. 모든 사용자 동일 경험이라 불필요
+- **개선 시점**: 구독 티어별 차이 도입과 동시 → 세션 메타데이터에 양쪽 tier 노출, UI에 "고급 도구 사용 중" 배지
+- **영향도**: 낮음 (UI 추가만)
+
+---
+
+## Scheduler Infrastructure
+
+### TD-028: Wake 스케줄러 — Tier별 진화 전략
+- **현재 (Tier 1, MVP)**: Postgres index + 5초 polling, 별도 worker 프로세스
+  - `idx_wake ON negotiation_sessions(next_wake_at) WHERE status='ACTIVE'`
+  - `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1000`
+  - Adaptive interval: 2s (바쁨) ↔ 5s (보통) ↔ 10s (한가)
+  - 인터페이스 추상화: `WakeScheduler` 인터페이스로 구현체 교체 가능
+- **이유**: Single source of truth (Postgres), 인프라 추가 0, 협상 라운드는 분 단위라 ±5초 무의미
+- **개선 시점 (Tier 2)**: active_sessions > 100K OR DB CPU > 30% → Postgres + Redis ZSET 하이브리드 (PG=SoT, Redis=캐시)
+- **개선 시점 (Tier 3)**: active_sessions > 1M OR p99 wake latency > 500ms → 시간 기반 파티셔닝 (time-bucket sharding)
+- **개선 시점 (Tier 4)**: 1000만+ → 멀티 리전 샤딩
+- **영향도**: 높음 (스케일링 핵심), 인터페이스 추상화로 마이그레이션 비용 최소
+
+---
+
 ## How to Use This Document
 
 1. 새 tech debt 발견 시 `TD-XXX` 번호로 추가

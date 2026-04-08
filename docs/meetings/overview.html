@@ -225,14 +225,14 @@
     지난 안건(확정/완료), 현재 안건(이번 모임), 향후 목표(다음 단계)로 나눠 관리합니다.
   </p>
   <div class="meta">
-    <span>📅 마지막 업데이트: 2026-04-04</span>
-    <span>🧪 830+ 테스트</span>
+    <span>📅 마지막 업데이트: 2026-04-06</span>
+    <span>🧪 940+ 테스트</span>
     <span>📦 pnpm monorepo</span>
   </div>
 </section>
 
 <div class="stats">
-  <div class="stat green"><div class="num">830+</div><div class="label">테스트 전부 통과</div><div class="sublabel">trust + dispute + arp + tag + engine + skill</div></div>
+  <div class="stat green"><div class="num">940+</div><div class="label">테스트 전부 통과</div><div class="sublabel">engine 499 + trust 85 + dispute 117 + arp 57 + tag 71 + commerce 137</div></div>
   <div class="stat blue"><div class="num">8</div><div class="label">코어 패키지</div><div class="sublabel">Phase 1-5 foundation</div></div>
   <div class="stat purple"><div class="num">P1-5</div><div class="label">Phase 완료</div><div class="sublabel">Foundation → Skill Core</div></div>
   <div class="stat yellow"><div class="num">CI/CD</div><div class="label">자동화 추가</div><div class="sublabel">PR시 test + typecheck</div></div>
@@ -241,7 +241,7 @@
 <!-- Tab Bar -->
 <div class="tab-bar">
   <button class="active" onclick="showTab('past')">📋 지난 안건 (확정)</button>
-  <button onclick="showTab('current')">🔥 현재 안건 (4/4)</button>
+  <button onclick="showTab('current')">🔥 현재 안건 (4/7)</button>
   <button onclick="showTab('future')">🎯 향후 목표</button>
 </div>
 
@@ -345,352 +345,826 @@
     <div class="info-box" style="margin-top:16px;"><div class="info-title">Reddit Digital Collectibles 모델</div><p>"Digital Collectibles" 브랜딩 &rarr; <strong>20M 채택</strong>. 무료 지급 + 실제 용도 = 성공.</p></div>
   </section>
 
+  <!-- 4/4 모임 안건 (이전 완료) -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">🎮</div>게이미피케이션 (4/4 확정)</div>
+    <div class="section-desc">8종족, 마스크 기반 레이어 합성, CSS 애니메이션. ~1,613억+ 조합. 캐릭터 파이프라인 검증 완료 (Pure CSS/JS).</div>
+    <div class="arch-grid">
+      <div class="arch-card"><h3>캐릭터 시스템</h3><span class="badge-role">8종족 &middot; 6등급</span><ul class="security-list"><li><span class="check">✓</span><strong>8종족</strong> (16카테고리 그룹화)</li><li><span class="check">✓</span><strong>마스크 기반</strong> 레이어 합성 &mdash; Python 자동 0.065초/캐릭터</li><li><span class="check">✓</span><strong>CSS 애니메이션</strong> &mdash; 라이브러리 0개</li><li><span class="check">✓</span>캐릭터 등급: Common~Mythic (6단계)</li><li><span class="check">✓</span>레벨 기반 해금: Lv.1~50</li></ul></div>
+      <div class="arch-card"><h3>수익 모델 (4/4)</h3><span class="badge-role">MVP 2개 + 확장 4개</span><ul class="security-list"><li><span class="check">✓</span><strong>거래 수수료 1.5%</strong> (MVP)</li><li><span class="check">✓</span><strong>분쟁 비용 30%</strong> (MVP)</li><li><span style="color:var(--yellow);flex-shrink:0;">◯</span>코스메틱 직접 판매 (유저 100K+)</li><li><span style="color:var(--yellow);flex-shrink:0;">◯</span>NFT 마켓 거래 수수료 5%</li><li><span style="color:var(--yellow);flex-shrink:0;">◯</span>콜라보 수익 / DRaaS API</li></ul></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(34,197,94,.15);">💰</div>인프라 비용 구조 (확정)</div>
+    <div class="section-desc">
+      <strong>핵심 결론:</strong> Passive-Wait + Burst 아키텍처로 사용자당 월 <span style="color:var(--green);font-weight:700;">₩0.6~1.5</span> 수준.
+      경쟁사(항상 LLM 상주) 대비 <strong>수천~수만 배 저렴</strong>. 블록체인 gas만 별도 변수.
+    </div>
+
+    <div class="arch-card" style="margin-bottom:16px;">
+      <h3>아키텍처가 왜 싼가 &mdash; 3가지 이유</h3>
+      <ul class="security-list">
+        <li><span class="check">✓</span><strong>Passive 세션은 공짜</strong> &mdash; 협상 1시간 중 실제 CPU 사용 시간은 ~25ms (0.0007%). 나머지는 DB row 1줄로 존재. 경쟁사(Manus/ChatGPT Agent)는 항상 CPU 상주 &rarr; 수천 배 비쌈.</li>
+        <li><span class="check">✓</span><strong>Burst가 순수 함수</strong> &mdash; LLM 호출 없음. GPT-4 1회 호출 ~$0.01 vs 우리 burst ~$0.0000001. <strong>10만 배 차이</strong>. 에스컬레이션(협상의 ~1%)에만 LLM 사용.</li>
+        <li><span class="check">✓</span><strong>이벤트 드리븐, polling 없음</strong> &mdash; <code>wake_at</code> 인덱스 기반 정확한 타이밍. Passive 세션은 CPU 0. 10만 건이 대기 중이어도 비용 변화 없음.</li>
+      </ul>
+    </div>
+
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">시나리오별 월 비용 (블록체인 gas 제외)</h3>
+    <table class="cost-table">
+      <thead>
+        <tr>
+          <th>항목</th>
+          <th class="right">시나리오 A<br><span style="font-weight:400;color:var(--muted);font-size:.75rem;">100만 MAU, 10% DAU, 30만 동시 세션</span></th>
+          <th class="right">시나리오 B<br><span style="font-weight:400;color:var(--muted);font-size:.75rem;">100만 DAU, 200만 동시 세션</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Postgres (RDS r6g.large/xlarge + 스토리지)</td><td class="right cost-val">$205</td><td class="right cost-val">$560</td></tr>
+        <tr><td>API 컴퓨트 (Fastify, t3.medium &times; N)</td><td class="right cost-val">$90</td><td class="right cost-val">$240</td></tr>
+        <tr><td>스케줄러 (API 인스턴스에 얹음)</td><td class="right cost-val">$0</td><td class="right cost-val">$0</td></tr>
+        <tr><td>Bandwidth (egress)</td><td class="right cost-val">$9</td><td class="right cost-val">$27</td></tr>
+        <tr><td>Frontend (Vercel Pro + edge)</td><td class="right cost-val">$70</td><td class="right cost-val">$170</td></tr>
+        <tr><td>모니터링 / 로그</td><td class="right cost-val">$75</td><td class="right cost-val">$100</td></tr>
+        <tr style="background:rgba(34,197,94,.08);">
+          <td><strong>총합 / 월</strong></td>
+          <td class="right cost-val" style="font-size:1.1rem;"><strong>~$450</strong></td>
+          <td class="right cost-val" style="font-size:1.1rem;"><strong>~$1,100</strong></td>
+        </tr>
+        <tr>
+          <td class="cost-label">사용자당 / 월</td>
+          <td class="right cost-label"><strong>$0.00045 (₩0.6)</strong></td>
+          <td class="right cost-label"><strong>$0.0011 (₩1.5)</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">비용이 언제 얼마나 드는가 &mdash; 상세 분해</h3>
+    <div class="arch-grid">
+
+      <div class="arch-card">
+        <h3>Postgres</h3><span class="badge-role">세션당 ~5KB</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>스토리지:</strong> 세션 row ~1KB + 라운드 8개 &times; 500B = 5KB. 30만 동시 &rarr; 1.5GB. 30일 히스토리 &rarr; 20GB.</li>
+          <li><span class="check">✓</span><strong>인스턴스:</strong> r6g.large (2 vCPU / 16GB) $180/월. 쓰기 2000/sec 여유.</li>
+          <li><span class="check">✓</span><strong>언제 비싸지나:</strong> HOLD 평균 수명 10분&rarr;1시간 되면 passive 세션 10배 증가 &rarr; 16GB RAM 부족 &rarr; r6g.xlarge ($380). Read replica 필요 시 &times;2.</li>
+          <li><span class="check">✓</span><strong>쓰기 부하:</strong> 100만 MAU &times; 10 세션/월 &times; 8 라운드 &divide; 30일 &divide; 86400초 = <strong>~90 writes/sec 평균, 피크 ~500</strong>. 여유 있음.</li>
+        </ul>
+      </div>
+
+      <div class="arch-card">
+        <h3>API 컴퓨트</h3><span class="badge-role">burst당 ~5ms</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>Burst CPU:</strong> 라운드 5개 &times; 1ms = 5ms. 세션당 burst 5회 &rarr; <strong>25ms 총 CPU</strong>.</li>
+          <li><span class="check">✓</span><strong>월 총 CPU:</strong> 1000만 세션 &times; 25ms = 70시간/월. t3.medium 1대 (1460 CPU-h/월 가용)로 충분. HA용 3대 &rarr; $90.</li>
+          <li><span class="check">✓</span><strong>Fastify 처리량:</strong> 순수 함수 기준 30-70k req/sec/인스턴스. 우리 burst는 CPU 바운드라 보수적으로 <strong>5k req/sec/인스턴스</strong>.</li>
+          <li><span class="check">✓</span><strong>언제 비싸지나:</strong> 협상 복잡도 평균 라운드 5&rarr;20개 되면 CPU &times;4. 평균 burst 횟수 5&rarr;15되면 &times;3. 둘 다 겹치면 <strong>&times;12 &rarr; $1000/월</strong>.</li>
+        </ul>
+      </div>
+
+      <div class="arch-card">
+        <h3>LLM 에스컬레이션</h3><span class="badge-role">협상의 ~1%</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>기준선:</strong> 협상 1000만 건 &times; 1% &times; $0.01 (GPT-4o-mini 호출 1회) = <strong>$1,000/월</strong>.</li>
+          <li><span class="check">✓</span><strong>언제 비싸지나:</strong> 엔진 품질이 낮아 에스컬레이션 비율 1%&rarr;10% 되면 <strong>$10,000/월 (&times;10)</strong>. 엔진 품질이 LLM 비용을 직접 결정.</li>
+          <li><span class="check">✓</span><strong>완화 전략:</strong> 에스컬레이션 시점 Sonnet보다 Haiku 우선. 복잡 케이스만 상위 모델. 캐싱으로 반복 쿼리 절감.</li>
+          <li><span class="check">✓</span><strong>MVP 계획:</strong> 초기엔 LLM 완전 배제 (순수 엔진만). 에스컬레이션 시 세션을 PAUSED로 두고 사용자 개입 요청. v1.1에서 LLM 옵션 추가.</li>
+        </ul>
+      </div>
+
+      <div class="arch-card">
+        <h3>블록체인 Gas</h3><span class="badge-role">Base L2 · USDC</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>Base L2 비용:</strong> 정상 시 L2 실행비 ~$0.007, L1 데이터 수수료 $0.005~$0.02. <strong>평균 ~$0.01/tx</strong>. (Ethereum L1 혼잡 시 상승)</li>
+          <li><span class="check">✓</span><strong>결제 전환율 10% 가정:</strong> 100만 결제/월 &times; $0.01 = <strong>$10,000/월</strong>.</li>
+          <li><span class="check">✓</span><strong>부담 주체:</strong> 기본적으로 사용자 수수료에 포함. 플랫폼은 중계만. 단 "gasless UX"를 위해 일시 대납 후 정산할 수 있음 &mdash; 이 경우 유동성 필요.</li>
+          <li><span class="check">✓</span><strong>위험:</strong> Ethereum L1 혼잡 시 L1 수수료 10~100달러 스파이크 가능. 결제 지연/일괄 처리로 완화.</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">비용 리스크 매트릭스</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>리스크</th><th>기본 가정</th><th>최악 시나리오</th><th class="right">영향도</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="sev critical">HOT</span> LLM 에스컬레이션 비율</td>
+          <td>1%</td>
+          <td>10% &rarr; API 비용 &times;10</td>
+          <td class="right cost-val" style="color:var(--red);">+$9,000/월</td>
+        </tr>
+        <tr>
+          <td><span class="sev critical">HOT</span> L1 gas 스파이크</td>
+          <td>$0.01/tx</td>
+          <td>$0.10/tx &rarr; 사용자 UX 악화</td>
+          <td class="right cost-val" style="color:var(--red);">+$90,000/월 대납 시</td>
+        </tr>
+        <tr>
+          <td><span class="sev critical">HOT</span> HOLD 평균 수명</td>
+          <td>10분</td>
+          <td>1시간 &rarr; passive 세션 &times;6 &rarr; DB RAM 부족</td>
+          <td class="right cost-val" style="color:var(--orange);">+$400/월</td>
+        </tr>
+        <tr>
+          <td><span class="sev medium">MED</span> 평균 세션 수명</td>
+          <td>1시간</td>
+          <td>1일 &rarr; DB 사이즈 &times;10</td>
+          <td class="right cost-val" style="color:var(--yellow);">+$200/월</td>
+        </tr>
+        <tr>
+          <td><span class="sev medium">MED</span> 평균 라운드 수</td>
+          <td>8</td>
+          <td>20 &rarr; burst CPU &times;2.5</td>
+          <td class="right cost-val" style="color:var(--yellow);">+$135/월</td>
+        </tr>
+        <tr>
+          <td><span class="sev low">LOW</span> Cross-pressure 계산 비용</td>
+          <td>세션 3개 비교</td>
+          <td>세션 10개 &rarr; compareSessions O(n log n)</td>
+          <td class="right cost-val" style="color:var(--green);">+$50/월</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">구독 티어 &times; 원가 &times; 마진</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>티어</th><th class="right">가격/월</th><th class="right">동시 협상</th><th class="right">우리 원가</th><th class="right">마진율</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Free</strong></td>
+          <td class="right">$0</td>
+          <td class="right">3</td>
+          <td class="right cost-val">$0.001</td>
+          <td class="right cost-label">손실 (업셀로 회수)</td>
+        </tr>
+        <tr>
+          <td><strong>Basic</strong></td>
+          <td class="right cost-val">$5</td>
+          <td class="right">10</td>
+          <td class="right cost-val">$0.003</td>
+          <td class="right cost-val" style="color:var(--green);"><strong>99.94%</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Pro</strong></td>
+          <td class="right cost-val">$20</td>
+          <td class="right">50</td>
+          <td class="right cost-val">$0.015</td>
+          <td class="right cost-val" style="color:var(--green);"><strong>99.92%</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Enterprise</strong></td>
+          <td class="right cost-val">$200+</td>
+          <td class="right">무제한</td>
+          <td class="right cost-val">$0.15</td>
+          <td class="right cost-val" style="color:var(--green);"><strong>99.92%</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="analogy">
+      <div class="title">핵심 전략적 함의</div>
+      <p>
+        경쟁사는 사용자당 월 <strong>$3~20 원가</strong> &rarr; $5 요금제를 <strong>만들 수 없음</strong>.
+        우리는 passive 아키텍처로 <strong>₩0.6~1.5 원가</strong> &rarr; $5 Basic 플랜이 가능.
+        <strong>이것이 Haggle의 진짜 해자 중 하나</strong>. 100만 사용자 &times; 1% 전환 = 월 $50,000 수익 &rarr; 마진 98~99%.
+        구독 없이 거래 수수료 1.5%만으로도 흑자 가능.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(168,85,247,.15);">⚖️</div>공정성 프로토콜 (Fairness Protocol)</div>
+    <div class="section-desc">
+      Haggle이 "표준"이 되려면 기능이 아니라 <strong>원칙</strong>이 먼저여야 한다.
+      아래 5개 원칙은 HNP(Haggle Negotiation Protocol) 준수 여부를 결정짓는 필수 조항이며,
+      MVP 코드 전반에 구체적 메커니즘으로 이미 반영되어 있다.
+    </div>
+
+    <div class="arch-grid" style="margin-top:24px;">
+      <div class="arch-card">
+        <h3>1. 정보 비대칭 금지</h3>
+        <span class="badge-role">Information Symmetry</span>
+        <p style="margin-top:12px;">
+          구독 등급·수수료 지불 여부와 무관하게, <strong>상대방에 관한 정보</strong>는 양쪽 모두에게 동등하게 공개된다.
+          프리미엄 기능은 자기 데이터를 더 잘 이해하는 도구일 뿐, 상대를 더 잘 추측하는 도구가 아니다.
+        </p>
+        <p style="margin-top:10px;font-style:italic;color:var(--purple);">
+          "We sell better tools to understand yourself,<br/>
+          never better tools to exploit others."
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>2. 능력 비대칭의 투명성</h3>
+        <span class="badge-role">Capability Transparency</span>
+        <p style="margin-top:12px;">
+          한쪽이 고급 분석 도구를 사용하면, <strong>그 사실 자체는 상대에게 공개</strong>된다.
+          상대는 "고급 도구 상대"라는 맥락에서 대응할 수 있다.
+          세션 메타데이터에 양쪽 tier가 노출된다.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>3. 수락은 약속</h3>
+        <span class="badge-role">Acceptance is Commitment</span>
+        <p style="margin-top:12px;">
+          판매자가 오퍼를 수락하면 <strong>배송 의무가 발생</strong>한다.
+          불가피한 사정이 있다면 정직하게 빨리 취소하는 것이 침묵보다 가볍게 처리된다.
+          카테고리·금액별 데드라인은 ARP 엔진으로 자동 조정된다.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>4. 대칭적 의무</h3>
+        <span class="badge-role">Symmetric Obligation</span>
+        <p style="margin-top:12px;">
+          구매자의 결제 의무와 판매자의 배송 의무는 대칭적이다.
+          한쪽의 약속 불이행은 <strong>동일한 강도로 처리</strong>된다.
+          결제 미이행과 배송 미이행의 페널티 곡선은 동일.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>5. 정직한 불확실성</h3>
+        <span class="badge-role">Honest Uncertainty</span>
+        <p style="margin-top:12px;">
+          엔진의 모든 예측에는 <strong>신뢰도(confidence)</strong>가 함께 공개된다.
+          "확실한 정보"는 팔지 않는다. 모르는 것은 모른다고 말한다.
+          LLM 에스컬레이션 횟수 등이 confidence 계산에 반영된다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">⏸️</div>HOLD 메커니즘 (Buffer ↔ Flash)</div>
+    <div class="section-desc">
+      HOLD는 <strong>구매자의 콜 옵션</strong> — 협상 중 "지금 결제 가능" 상태로 전환되어
+      구매자가 즉시 결제를 선택할 수 있게 한다. 과도한 홀딩을 방지하기 위해
+      <strong>Buffer (여유) / Flash (긴박)</strong> 두 단계로 작동한다.
+    </div>
+
+    <div class="arch-grid" style="margin-top:24px;">
+      <div class="arch-card">
+        <h3>Buffer HOLD</h3>
+        <span class="badge-role">여유 창 · 카운터 소진형</span>
+        <p style="margin-top:12px;">
+          처음 3번의 HOLD는 카테고리별 넉넉한 시간 창을 제공.
+          구매자는 자리를 비워도 안심.
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li>CLOTHING / BOOKS: 4시간</li>
+          <li>ELECTRONICS_LARGE: 12시간</li>
+          <li>VEHICLES: 24시간</li>
+          <li>REAL_ESTATE: 48시간</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          <strong>카운터 스코프</strong>: (buyer_id, listing_id) 영구 누적.
+          세션 재생성으로 리셋 불가 → 악용 차단.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Flash HOLD</h3>
+        <span class="badge-role">긴박 창 · 세션당 3회</span>
+        <p style="margin-top:12px;">
+          Buffer 3회 소진 후 발동되는 HOLD. 매우 짧은 시간 창으로
+          <strong>즉시 결정</strong>을 요구. 여유 시간 없음.
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li>CLOTHING / BOOKS: 3분</li>
+          <li>ELECTRONICS_LARGE: 5분</li>
+          <li>VEHICLES: 10분</li>
+          <li>REAL_ESTATE: 30분</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          <strong>세션당 최대 3회</strong>. Buffer 3 + Flash 3 = 총 6회 HOLD 기회.
+          소진 후 HOLD 조건 충족해도 일반 COUNTER 오퍼로 처리되며 협상은 계속.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>판매자 설정</h3>
+        <span class="badge-role">3단계 레벨</span>
+        <p style="margin-top:12px;">
+          리스팅 생성 시 HOLD 동작 방식 선택. 디폴트는 "엔진이 알아서".
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li><strong>AUTO (권장)</strong>: 엔진이 Counter-HOLD 판정 — 판매자가 설정 없이도 구매자에게 HOLD 기회 제공</li>
+          <li><strong>MANUAL</strong>: 판매자가 직접 임계값 설정 — "이 가격 이상이면 HOLD"</li>
+          <li><strong>DISABLED</strong>: HOLD 비활성화 — 일반 협상만</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          max_holds 기본 3회, 판매자가 1~10 범위로 조정 가능.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Counter-HOLD 판정 조건</h3>
+        <span class="badge-role">엔진 자동 발동</span>
+        <p style="margin-top:12px;">
+          판매자가 AUTO 모드일 때, 엔진이 다음 <strong>세 조건 모두</strong>
+          충족 시 HOLD 자동 생성:
+        </p>
+        <ol style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li><code>u_seller(offer) ≥ 0.85 × u_seller(p_limit)</code><br/>현재 오퍼가 수락 임계 근처</li>
+          <li>Faratin 예측상 향후 X시간 내 더 나은 오퍼 확률 낮음</li>
+          <li><code>strategy.hold_willingness ≥ 0.5</code> (기본 0.7)</li>
+        </ol>
+      </div>
+
+      <div class="arch-card">
+        <h3>사용자 단순화</h3>
+        <span class="badge-role">UI 철학</span>
+        <p style="margin-top:12px;">
+          "Buffer" vs "Flash"는 <strong>내부 용어</strong>. 사용자에게는 오직 "HOLD" 하나.
+          구매자는 결제 가능 상태인지 아닌지만 인식하면 충분.
+        </p>
+        <p style="margin-top:10px;font-size:.85rem;">
+          차이는 <strong>남은 시간 표시</strong>로만 자연스럽게 드러남 —
+          "3시간 42분" (Buffer) vs "4분 23초" (Flash).
+        </p>
+        <p style="margin-top:10px;font-style:italic;color:var(--purple);font-size:.88rem;">
+          "코드는 복잡해도, 사용자가 느끼기엔 단순하게."
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>세션 생존 규칙</h3>
+        <span class="badge-role">HOLD ≠ 종료 조건</span>
+        <p style="margin-top:12px;">
+          HOLD 만료나 소진은 <strong>세션을 종료시키지 않음</strong>. 세션은 오직 다음 경우에만 종료:
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li>결제 완료 (ACCEPTED)</li>
+          <li>일반 협상 중 REJECT</li>
+          <li>세션 deadline 도달 (EXPIRED)</li>
+          <li>판매자가 다른 구매자와 체결 (SUPERSEDED)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🔢</div>세션 한계 (Session Quota)</div>
+    <div class="section-desc">
+      가격 탐색 봇·스토킹·엔진 부하 악용 차단을 위한 다층 한계.
+      양쪽 모두에게 대칭 적용 (철학 4번 — 대칭적 의무).
+    </div>
+
+    <div class="arch-grid" style="margin-top:24px;">
+      <div class="arch-card">
+        <h3>구매자 세션 한계</h3>
+        <span class="badge-role">3중 제한</span>
+        <ul style="margin-top:12px;font-size:.88rem;color:var(--muted);">
+          <li><strong>(buyer × listing) 동시 active</strong>: 1개<br/>
+              <span style="font-size:.82rem;">같은 제품 동시 협상 금지</span></li>
+          <li style="margin-top:8px;"><strong>(buyer × listing) 누적</strong>: 5개<br/>
+              <span style="font-size:.82rem;">같은 제품 평생 5번 협상 시도까지</span></li>
+          <li style="margin-top:8px;"><strong>(buyer × seller) 동시 active</strong>: 10개<br/>
+              <span style="font-size:.82rem;">같은 판매자 상점 내 동시 10개 협상까지</span></li>
+          <li style="margin-top:8px;"><strong>전역 동시 active</strong>: 구독 티어<br/>
+              <span style="font-size:.82rem;">Free 3 / Basic 10 / Pro 50 / Enterprise ∞</span></li>
+        </ul>
+        <p style="margin-top:10px;font-size:.82rem;">
+          <strong>예외</strong>: 판매자가 다른 구매자와 체결(SUPERSEDED)된 세션은 누적 카운트 제외 (구매자 책임 아님).
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>판매자 세션 한계</h3>
+        <span class="badge-role">대칭 적용</span>
+        <ul style="margin-top:12px;font-size:.88rem;color:var(--muted);">
+          <li><strong>(seller × buyer × listing) 동시</strong>: 1개</li>
+          <li style="margin-top:8px;"><strong>전역 동시 active 수락</strong>: 구독 티어 × Trust cap<br/>
+              <span style="font-size:.82rem;">Trust Score &lt; 50 이면 최대 5건 상한</span></li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          판매자는 수동적 응답자이므로 누적 한계는 없음.
+          단, 미배송 페널티가 자연스럽게 활동 제어 역할.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>판매자 구매자 차단권</h3>
+        <span class="badge-role">MVP 포함</span>
+        <p style="margin-top:12px;">
+          판매자가 특정 구매자와의 협상을 거부할 수 있는 권리.
+          악성 구매자 자정 장치.
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li><strong>리스팅 단위 차단</strong>: 이 상품에 한해 차단</li>
+          <li><strong>판매자 전체 차단</strong>: 이 판매자의 모든 상품에서 차단</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          차단된 구매자가 새 세션 시도 → 명확한 에러 ("판매자가 차단함").
+          판매자에게는 차단 이력 관리 UI 제공.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>악용 시나리오 차단</h3>
+        <span class="badge-role">검증</span>
+        <ul style="margin-top:12px;font-size:.85rem;color:var(--muted);">
+          <li><strong>가격 탐색 봇</strong> &rarr; Buffer/Flash 소진 후 HOLD 차단 + 5회 누적 후 세션 차단</li>
+          <li style="margin-top:6px;"><strong>판매자 부하 공격</strong> &rarr; 동시 10개 상한 + 구독 한계</li>
+          <li style="margin-top:6px;"><strong>세션 리셋 악용</strong> &rarr; (buyer × listing) 영구 누적 카운터</li>
+          <li style="margin-top:6px;"><strong>스토킹</strong> &rarr; 판매자 차단권</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;font-style:italic;color:var(--muted);">
+          정직한 사용자는 한계에 닿을 일 없음 (보통 1~2 세션으로 성사).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(14,165,233,.15);">⏰</div>Wake 스케줄러 (Tier별 진화)</div>
+    <div class="section-desc">
+      협상 엔진은 <strong>Passive-Wait</strong> 방식. 100만+ 동시 세션이 각자
+      <code>next_wake_at</code>을 가질 때 "지금 깨울 세션"을 어떻게 찾을 것인가.
+      단일 방법이 아니라 <strong>부하 구간별 다른 인프라</strong>를 단계적으로 도입.
+    </div>
+
+    <div class="arch-grid" style="margin-top:24px;">
+      <div class="arch-card">
+        <h3>Tier 1 — Postgres polling (MVP)</h3>
+        <span class="badge-role">현재</span>
+        <p style="margin-top:12px;font-size:.88rem;">
+          인프라 추가 0. Postgres index + 5초 polling.
+        </p>
+        <ul style="margin-top:10px;font-size:.82rem;color:var(--muted);">
+          <li><code>idx_wake</code> partial index (status='ACTIVE')</li>
+          <li><code>FOR UPDATE SKIP LOCKED LIMIT 1000</code></li>
+          <li>Adaptive interval: 2s ↔ 5s ↔ 10s</li>
+          <li>Worker는 별도 프로세스 (API 응답성 보호)</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.82rem;">
+          <strong>적정 규모</strong>: ~10만 동시 세션. 협상 라운드는 분 단위라 ±5초 무의미.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Tier 2 — PG + Redis ZSET</h3>
+        <span class="badge-role">10만~100만</span>
+        <p style="margin-top:12px;font-size:.88rem;">
+          Postgres = Source of Truth, Redis = Hot 캐시.
+        </p>
+        <ul style="margin-top:10px;font-size:.82rem;color:var(--muted);">
+          <li>Write: PG → Redis ZADD mirror</li>
+          <li>Read: Redis ZRANGEBYSCORE (ms latency)</li>
+          <li>Redis 죽어도 PG fallback → 안전</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.82rem;">
+          <strong>전환 트리거</strong>: active &gt; 100K OR DB CPU &gt; 30%.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Tier 3 — Time-Bucket Sharding</h3>
+        <span class="badge-role">100만~1000만</span>
+        <p style="margin-top:12px;font-size:.88rem;">
+          시간 기반 파티셔닝. 현재 시각 partition만 polling.
+        </p>
+        <ul style="margin-top:10px;font-size:.82rem;color:var(--muted);">
+          <li><code>wake_buckets_yyyy_mm_dd_hh</code> partition</li>
+          <li>99% 데이터 무시 (시간 locality)</li>
+          <li>Cold partition은 lazy load</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.82rem;">
+          <strong>전환 트리거</strong>: active &gt; 1M OR p99 &gt; 500ms.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Tier 4 — Geographic Sharding</h3>
+        <span class="badge-role">1000만+</span>
+        <p style="margin-top:12px;font-size:.88rem;">
+          멀티 리전. 각 리전 독립 스케줄러.
+        </p>
+        <ul style="margin-top:10px;font-size:.82rem;color:var(--muted);">
+          <li>US-East / EU-West / APAC shard</li>
+          <li>Logical replication for global SoT</li>
+          <li>Cross-region 협상은 anchor 리전 처리</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.82rem;font-style:italic;color:var(--muted);">
+          이 단계 도달 시 = 이미 유니콘. 그때 가서 정밀화.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>인터페이스 추상화</h3>
+        <span class="badge-role">마이그레이션 비용 최소</span>
+        <pre style="margin-top:12px;padding:10px;background:rgba(0,0,0,.3);border-radius:6px;font-size:.78rem;overflow-x:auto;"><code>interface WakeScheduler {
+  schedule(sessionId, wakeAt)
+  cancel(sessionId)
+  start()
+}</code></pre>
+        <p style="margin-top:10px;font-size:.82rem;">
+          Tier 전환 = 구현체 한 줄 교체. 비즈니스 로직 무영향.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>공통 최적화</h3>
+        <span class="badge-role">Tier 무관</span>
+        <ul style="margin-top:12px;font-size:.82rem;color:var(--muted);">
+          <li><strong>Coalesce</strong>: 같은 세션 다중 wake → 1개 병합 (write 50%↓)</li>
+          <li style="margin-top:6px;"><strong>Jitter</strong>: ±100ms 랜덤 → thundering herd 방지</li>
+          <li style="margin-top:6px;"><strong>Batching</strong>: 1000개씩 처리 (throughput 10x)</li>
+          <li style="margin-top:6px;"><strong>Backpressure</strong>: worker 포화 시 polling 중단</li>
+          <li style="margin-top:6px;"><strong>Adaptive polling</strong>: 부하 따라 2s↔10s</li>
+        </ul>
+      </div>
+    </div>
+
+    <p style="margin-top:24px;padding:16px;background:rgba(14,165,233,.08);border-left:3px solid #0ea5e9;border-radius:6px;font-size:.9rem;">
+      <strong>철학 매핑</strong>: 단순 &gt; 완벽 (Tier 1로 시작) · 안전 &gt; 편리 (모든 Tier에서 PG=SoT 유지) ·
+      Stateless (worker 수평 확장) · 점진 진화 (필요할 때만 다음 Tier로).
+    </p>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(34,197,94,.15);">🛡️</div>수락-배송 보호 메커니즘 (구현 반영)</div>
+    <div class="section-desc">
+      원칙 3·4를 코드 레벨에서 구현한 구체 메커니즘. 기존 패키지(<code>arp-core</code>, <code>trust-core</code>)를 재사용하여
+      <strong>추가 인프라 없이</strong> MVP 수준에서 악용 방지를 달성한다.
+    </div>
+
+    <div class="arch-grid" style="margin-top:24px;">
+      <div class="arch-card">
+        <h3>적응형 배송 데드라인</h3>
+        <span class="badge-role">ARP 엔진 재사용</span>
+        <p style="margin-top:12px;">
+          <code>arp-core</code>의 분쟁 리뷰 기간 로직을 <strong>배송 확인 데드라인</strong>에도 재사용.
+          카테고리·금액 tier별 기본값, 세그먼트 기반 자동 학습.
+        </p>
+        <ul style="margin-top:10px;font-size:.88rem;color:var(--muted);">
+          <li>CLOTHING: 12시간</li>
+          <li>ELECTRONICS_LARGE: 36시간</li>
+          <li>VEHICLES: 84시간</li>
+          <li>REAL_ESTATE: 168시간</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          Signal: <code>ship_confirmation_timeout_rate</code>, <code>ship_confirmation_p90_hours</code> 추가 &rarr; 세그먼트별 자동 조정.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>가속 페널티 (Exponential)</h3>
+        <span class="badge-role">trust-core + 수수료 차등</span>
+        <p style="margin-top:12px;">
+          정직한 자진 취소는 가볍게, 무응답 반복은 기하급수적으로 처벌.
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li><strong>자진 취소 (기한 내)</strong>: Trust −3</li>
+          <li><strong>무응답 1회</strong>: Trust −10, 수수료 +1%p (3개월), 공개 라벨 90일</li>
+          <li><strong>무응답 2회</strong>: Trust −25, 수수료 +3%p (6개월), 공개 라벨 90일</li>
+          <li><strong>무응답 3회</strong>: 거래 정지 + 수동 검토</li>
+          <li><strong>무응답 4회</strong>: 영구 정지 + 전화번호 블랙리스트</li>
+        </ul>
+      </div>
+
+      <div class="arch-card">
+        <h3>동시 수락 한계</h3>
+        <span class="badge-role">구독 × Trust 조합</span>
+        <p style="margin-top:12px;">
+          구독 티어의 동시 협상 한계가 그대로 <strong>동시 active 수락 한계</strong>로 작동. 별도 로직 불필요.
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li>Free: 3건</li>
+          <li>Basic: 10건</li>
+          <li>Pro: 50건</li>
+          <li>Enterprise: 무제한</li>
+        </ul>
+        <p style="margin-top:10px;font-size:.85rem;">
+          <strong>Trust Cap</strong>: Trust Score &lt; 50 이면 티어와 무관하게 최대 5건.
+          신규/악성 판매자의 타격 범위를 자동 제한.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Sybil 방지</h3>
+        <span class="badge-role">핸드폰 인증</span>
+        <p style="margin-top:12px;">
+          정지된 계정의 <strong>전화번호는 블랙리스트</strong>. 동일 번호로 재가입 불가.
+          "계정 새로 만들면 된다" 패턴 봉쇄.
+        </p>
+        <p style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          향후: 지갑 주소, 디바이스 핑거프린트 추가 (post-MVP).
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>공개 평판 라벨</h3>
+        <span class="badge-role">시장 기반 억제</span>
+        <p style="margin-top:12px;">
+          미배송 이력은 <strong>90일간 리스팅에 공개 라벨</strong>로 노출.
+          Trust Score보다 직관적인 경고 신호.
+        </p>
+        <p style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          "이 판매자는 최근 미배송 1건 있습니다 (2주 전)"<br/>
+          3회 누적 &rarr; 영구 라벨.
+        </p>
+      </div>
+
+      <div class="arch-card">
+        <h3>Post-MVP 강화</h3>
+        <span class="badge-role">로드맵</span>
+        <p style="margin-top:12px;">
+          MVP 이후 추가할 방어선.
+        </p>
+        <ul style="margin-top:10px;font-size:.85rem;color:var(--muted);">
+          <li><strong>수락 시점 Deposit</strong>: 거래액 1%, 송장 입력 시 즉시 환불 (스마트 컨트랙트 수정 필요)</li>
+          <li><strong>Velocity Check</strong>: 비정상 수락 급증 자동 감지 (모니터링 인프라)</li>
+          <li><strong>디바이스 핑거프린팅</strong>: 다중 계정 차단 강화</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="analogy" style="margin-top:24px;">
+      <div class="title">악용 시나리오 vs 정직한 판매자 UX</div>
+      <p>
+        <strong>악성 신규 판매자</strong>: 핸드폰 인증 &rarr; Trust 0 상태 (동시 수락 5건 상한) &rarr;
+        무응답 1회 즉시 Trust −10 + 공개 라벨 + 수수료 +1%p &rarr; 2회차부터 사실상 영업 불가능.
+        재가입 시도 &rarr; 핸드폰 블랙리스트에서 차단.
+      </p>
+      <p style="margin-top:12px;">
+        <strong>정직한 판매자</strong>: 리스팅 &rarr; 수락 &rarr; 송장 입력 (데드라인 내) &rarr;
+        배송 완료 &rarr; 정상 정산. 추가 부담 0. Trust Score 상승 &rarr; 자동으로 한계 해제.
+      </p>
+      <p style="margin-top:12px;">
+        <strong>실수한 판매자</strong>: 재고 소진 등 사정 발생 &rarr; 기한 내 자진 취소 &rarr;
+        Trust −3 (1회 실수는 거의 타격 없음) &rarr; 다음 거래부터 정상.
+        <em>"침묵보다 정직한 취소가 가볍다"</em>는 인센티브가 코드에 박혀 있음.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(59,130,246,.15);">⚖️</div>ODR 시장 분석 (4/4 확정)</div>
+    <div class="section-desc">글로벌 ODR 시장 $1.2B (2024) &rarr; $3.5B (2030). CAGR 18-22%. P2P + 온체인 결제 통합 ODR 솔루션 공백 &rarr; Haggle DRaaS 기회.</div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">🎭</div>NFT 시장 분석 (4/4 확정)</div>
+    <div class="section-desc">NFT 시장 성공/실패 패턴 분석 완료. Haggle = 거래 기반 획득 + 유틸리티 내재 + 투트랙 (Soulbound + Tradeable). 투기적 민팅 없음.</div>
+  </section>
+
 </div>
 
 <!-- ═══════════════════════════════════════ -->
-<!-- TAB 2: 현재 안건 (4/4 모임) -->
+<!-- TAB 2: 현재 안건 (4/7 모임) -->
 <!-- ═══════════════════════════════════════ -->
 <div id="tab-current" class="tab-content">
 
-  <!-- 게이미피케이션 -->
+  <!-- 엔진 Term Space 리네이밍 -->
   <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">🎮</div>게이미피케이션 (확정)</div>
-    <div class="section-desc">8종족, 마스크 기반 레이어 합성, CSS 애니메이션. ~1,613억+ 조합.</div>
-    <div class="arch-grid">
-      <div class="arch-card"><h3>캐릭터 시스템</h3><span class="badge-role">8종족 &middot; 16카테고리</span><ul class="security-list"><li><span class="check">✓</span><strong>8종족</strong> (16카테고리 그룹화)</li><li><span class="check">✓</span><strong>마스크 기반</strong> 레이어 합성 &mdash; Python 자동</li><li><span class="check">✓</span><strong>0.065초</strong>/캐릭터 생성</li><li><span class="check">✓</span><strong>CSS 애니메이션</strong> &mdash; 라이브러리 0개</li><li><span class="check">✓</span>크로스 드롭 15%</li></ul></div>
-      <div class="arch-card"><h3>조합 수</h3><span class="badge-role">사실상 유니크</span><div style="text-align:center;padding:20px 0;"><div style="font-size:2.4rem;font-weight:800;color:var(--accent);">~161.3B+</div><div style="color:var(--muted);font-size:.85rem;margin-top:4px;">가능한 조합 수</div><div style="color:var(--dim);font-size:.78rem;margin-top:2px;">중복 사실상 불가능</div></div></div>
-    </div>
-
-    <div style="margin-top:24px;margin-bottom:8px;font-weight:600;">캐릭터 등급 (6단계)</div>
-    <div class="rarity-grid">
-      <div class="rarity-item common">
-        <div class="rarity-name">⬜ Common</div>
-        <div class="rarity-sub">가장 흔한</div>
-        <div class="rarity-border">흰색 테두리</div>
-        <ul class="rarity-features">
-          <li>기본 색상 조합</li>
-          <li>기본 CSS 아이들 모션</li>
-          <li>프로필 표시</li>
-        </ul>
-        <div class="rarity-prob">~65-75%</div>
-      </div>
-      <div class="rarity-item uncommon">
-        <div class="rarity-name">🟩 Uncommon</div>
-        <div class="rarity-sub">약간 희귀</div>
-        <div class="rarity-border">초록 테두리</div>
-        <ul class="rarity-features">
-          <li>특별한 색 조합</li>
-          <li>Common 모션 + 고개 갸웃</li>
-          <li>프로필 초록 테두리 표시</li>
-        </ul>
-        <div class="rarity-prob">~15-18%</div>
-      </div>
-      <div class="rarity-item rare">
-        <div class="rarity-name">🟦 Rare</div>
-        <div class="rarity-sub">희귀</div>
-        <div class="rarity-border">파란 테두리</div>
-        <ul class="rarity-features">
-          <li>+ 무늬 (줄무늬/물방울/별)</li>
-          <li>240종 패턴 추가</li>
-          <li>전용 입장 이펙트</li>
-          <li>조합 수 &times;240 &rarr; ~1,613억</li>
-        </ul>
-        <div class="rarity-prob">~7-13%</div>
-      </div>
-      <div class="rarity-item epic">
-        <div class="rarity-name">🟪 Epic</div>
-        <div class="rarity-sub">매우 희귀</div>
-        <div class="rarity-border">보라 테두리</div>
-        <ul class="rarity-features">
-          <li>특수 색상 (홀로그램/네온/메탈릭)</li>
-          <li>전용 파티클 이펙트</li>
-          <li>협상 화면 보라빛 오라</li>
-          <li>프로필 뱃지 표시</li>
-        </ul>
-        <div class="rarity-prob">~2.5-8%</div>
-      </div>
-      <div class="rarity-item legendary">
-        <div class="rarity-name">🟨 Legendary</div>
-        <div class="rarity-sub">전설</div>
-        <div class="rarity-border">금색 테두리</div>
-        <ul class="rarity-features">
-          <li>전설 전용 디자인</li>
-          <li>투명/황금/우주 테마</li>
-          <li>금색 입장 + 오라 + 파티클</li>
-          <li>전설 전용 프레임</li>
-          <li>🔊 <strong>TTS 음성</strong> &mdash; 협상 중 캐릭터가 말함</li>
-          <li>전체 수천 종만 존재</li>
-        </ul>
-        <div class="rarity-prob">~0.4-4.5%</div>
-      </div>
-      <div class="rarity-item mythic">
-        <div class="rarity-name">🔴 Mythic</div>
-        <div class="rarity-sub">신화급</div>
-        <div class="rarity-border">홀로그램 테두리</div>
-        <ul class="rarity-features">
-          <li>종족당 1~3종 신화적 존재</li>
-          <li>구미호, 천룡, 피닉스 등</li>
-          <li>전용 풀스크린 등장 연출</li>
-          <li>🔊 <strong>TTS 음성</strong> &mdash; 종족 고유 목소리 + 감정 표현</li>
-          <li>모든 이펙트 해금</li>
-          <li>전체 <strong>24종</strong>만 존재</li>
-        </ul>
-        <div class="rarity-prob">~0.03-0.5%</div>
-      </div>
-    </div>
-
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">레벨 기반 커스터마이징 해금</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;">
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--green);font-weight:700;">Lv.1</span> &mdash; 캐릭터 1마리</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--green);font-weight:700;">Lv.5</span> &mdash; 악세서리 1슬롯</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--blue);font-weight:700;">Lv.10</span> &mdash; 배경 선택</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--blue);font-weight:700;">Lv.15</span> &mdash; 악세서리 2슬롯</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--accent2);font-weight:700;">Lv.20</span> &mdash; 날씨 이펙트</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--accent2);font-weight:700;">Lv.25</span> &mdash; 오라</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--yellow);font-weight:700;">Lv.30</span> &mdash; 프레임</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--yellow);font-weight:700;">Lv.40</span> &mdash; 전용 파티클</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;"><span style="color:var(--red);font-weight:700;">Lv.50</span> &mdash; 모든 해금 (~1,800건 거래)</div>
-    </div>
-
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">수집 업적</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;">
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏅 <strong>3종족 보유</strong> &mdash; "탐험가" 뱃지</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏅 <strong>5종족 보유</strong> &mdash; "수집가" 뱃지 + 배경</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.82rem;">🏆 <strong>8종족 전부</strong> &mdash; "마스터 수집가" + 특별 프레임</div>
-    </div>
-
-    <div class="formula-box">
-      <div class="formula">rate = base &times; ln(1 + amount/100) / sqrt(1 + total_minted/5000) &times; (remaining/max)</div>
-      <div class="formula-desc">거래액 높으면 확률 &uarr; &middot; 총 민팅 늘면 확률 &darr; &middot; 등급 소진 시 확률 &rarr; 0</div>
-    </div>
-
-    <div style="margin-top:24px;margin-bottom:12px;font-weight:600;">뽑기 타이밍</div>
-    <ul class="gacha-list">
-      <li><div class="gacha-icon">🔄</div><div><strong>매 거래</strong> &mdash; 일반 뽑기 1회</div></li>
-      <li><div class="gacha-icon">✨</div><div><strong>새 파라미터 조합</strong> &mdash; 보너스 뽑기</div></li>
-      <li><div class="gacha-icon">🆕</div><div><strong>새 카테고리</strong> &mdash; 종족 확정 뽑기</div></li>
-      <li><div class="gacha-icon">🏆</div><div><strong>마일스톤 달성</strong> &mdash; 등급 상승 뽑기</div></li>
-      <li><div class="gacha-icon">⚖️</div><div><strong>배심원 10건</strong> &mdash; 전용 뽑기</div></li>
-    </ul>
-  </section>
-
-  <!-- 캐릭터 파이프라인 + 라이브 데모 -->
-  <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🎨</div>캐릭터 파이프라인 (검증 완료)</div>
-    <div class="section-desc">전체 파이프라인 테스트 완료. Spine/Rive 불필요 확인. Pure CSS/JS로 최종 결정.</div>
-
-    <div style="margin-bottom:8px;font-weight:600;">테스트 결과</div>
-    <ul class="checklist">
-      <li><div class="box checked"></div>Gemini API &rarr; 캐릭터 이미지 생성 <span style="color:var(--green);font-size:.82rem;margin-left:auto;">$0.04</span></li>
-      <li><div class="box checked"></div>Python &rarr; 배경 제거 + defringe</li>
-      <li><div class="box checked"></div>Python &rarr; 색상 변형 (hue shift)</li>
-      <li><div class="box checked"></div>CSS &rarr; 애니메이션 (idle, happy, sad, thinking, surprised, excited)</li>
-      <li><div class="box checked"></div>악세서리 토글 (crown, glasses &mdash; 동시 작동)</li>
-      <li><div class="box checked"></div>표정 교체 (이미지 swap)</li>
-      <li style="opacity:.6;"><div class="box fail"></div>Spine &rarr; 동물/치비 리깅 <span style="color:var(--red);font-size:.82rem;margin-left:auto;">실패</span></li>
-      <li style="opacity:.6;"><div class="box fail"></div>Rive &rarr; CSS로 동일 결과 <span style="color:var(--dim);font-size:.82rem;margin-left:auto;">불필요</span></li>
-      <li><div class="box checked"></div>RiveMCP &rarr; .riv 생성 가능 <span style="color:var(--yellow);font-size:.82rem;margin-left:auto;">토큰 과다</span></li>
-    </ul>
-
-    <div style="margin-top:24px;margin-bottom:8px;font-weight:600;">프로덕션 파이프라인</div>
-    <div class="flow-diagram">
-      <div class="flow-steps">
-        <div class="flow-step">준비 (1회)<br><small style="color:var(--muted)">마스크 8장 &times; 8종족<br>= 64장</small></div>
-        <div class="flow-arrow">&rarr;</div>
-        <div class="flow-step highlight">Python 색칠<br><small style="color:var(--muted)">0.065초/캐릭터<br>비용 $0</small></div>
-        <div class="flow-arrow">&rarr;</div>
-        <div class="flow-step">CSS 렌더링<br><small style="color:var(--muted)">라이브러리 0<br>애니메이션 포함</small></div>
-      </div>
-      <div class="flow-explain">마스크 이미지 준비는 1회. 이후 캐릭터 생성은 <strong>완전 자동 + 무료</strong>.</div>
-    </div>
-
-    <!-- Live Chibi Fox Demo -->
-    <div class="fox-demo">
-      <div style="font-weight:700;font-size:1.1rem;margin-bottom:4px;">🦊 치비 여우 라이브 데모</div>
-      <div style="color:var(--dim);font-size:.82rem;margin-bottom:16px;">Pure CSS/JS &mdash; Rive 없음, 라이브러리 없음, 이미지만 교체하면 커스터마이징 완료</div>
-      <div class="fox-stage">
-        <div class="fox-wrapper" id="foxWrapper">
-          <img class="fox-img" id="foxNormal" src="assets/chibi_fox_clean.png">
-          <img class="fox-img hidden" id="foxHappy" src="assets/fox_happy_clean.png">
-          <img class="fox-img hidden" id="foxSad" src="assets/fox_sad_clean.png">
-          <img class="fox-acc crown visible" id="foxAcc" src="assets/crown_only_clean.png">
-        </div>
-      </div>
-      <div class="fox-controls">
-        <button onclick="foxMood('idle')">😊 Idle</button>
-        <button onclick="foxMood('happy')">🎉 Happy</button>
-        <button onclick="foxMood('sad')">😢 Sad</button>
-        <button onclick="foxMood('thinking')">🤔 Thinking</button>
-        <button onclick="foxMood('surprised')">😲 Surprised</button>
-        <button onclick="foxMood('excited')">⚡ Excited</button>
-        <button id="foxCrownBtn" class="fox-on" onclick="foxSetAcc('assets/crown_only_clean.png','crown')">👑 Crown</button>
-        <button id="foxGlassBtn" onclick="foxSetAcc('assets/glasses_clean.png','glasses')">👓 Glasses</button>
-        <button onclick="foxToggleAcc()">🎀 On/Off</button>
-      </div>
-      <div class="fox-status" id="foxStatus">버튼을 눌러보세요</div>
-      <div class="fox-note">실제 프로덕션과 동일한 방식. 이미지만 바꾸면 다른 종족으로 변환 가능.</div>
-    </div>
-  </section>
-
-  <!-- 수익 모델 -->
-  <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(16,185,129,.15);">💰</div>수익 모델</div>
-    <div class="section-desc">MVP 2개 수익원에서 시작, 단계적 6개 확장.</div>
-    <table class="biz-table">
-      <thead><tr><th>수익원</th><th>비율/내용</th><th>시기</th><th>상태</th></tr></thead>
-      <tbody>
-        <tr><td class="bold">거래 수수료</td><td class="mono green-text">1.5%</td><td>MVP</td><td><span class="sev low">READY</span></td></tr>
-        <tr><td class="bold">분쟁 비용</td><td class="mono green-text">30%</td><td>MVP</td><td><span class="sev low">READY</span></td></tr>
-        <tr><td>코스메틱 직접 판매</td><td class="dim-text">캐릭터 악세서리</td><td>유저 100K+</td><td><span class="sev medium">PLANNED</span></td></tr>
-        <tr><td>마켓 거래 수수료</td><td class="mono">5%</td><td>법률 검토 후</td><td><span class="sev medium">PLANNED</span></td></tr>
-        <tr><td>콜라보 수익</td><td class="dim-text">브랜드/IP</td><td>파트너십 후</td><td><span class="sev medium">PLANNED</span></td></tr>
-        <tr><td>DRaaS API</td><td class="dim-text">분쟁 해결 API 외부 제공</td><td>모듈화 후</td><td><span class="sev medium">PLANNED</span></td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <!-- NFT 시장 비교 분석 -->
-  <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">🎭</div>NFT 시장 분석 — 성공 vs 실패, 그리고 우리의 전략</div>
-    <div class="section-desc">NFT 시장의 성공/실패 패턴을 분석하고, Haggle 캐릭터 시스템이 왜 다른지 정리.</div>
-
-    <div class="arch-grid">
-      <div class="arch-card" style="border-color:var(--green);">
-        <h3 style="color:var(--green);">성공 프로젝트</h3><span class="badge-role">커뮤니티 + 유틸리티</span>
-        <ul class="security-list">
-          <li><span class="check">✓</span><strong>BAYC</strong> &mdash; 민팅 $190 &rarr; 피크 $400K. 커뮤니티 이벤트, IP 권리, APE 토큰 에어드랍. Yuga Labs $4B 밸류에이션</li>
-          <li><span class="check">✓</span><strong>Pudgy Penguins</strong> &mdash; 죽을 뻔 &rarr; 새 리더십 $2.5M 인수 &rarr; 월마트 장난감 $50M+ 매출. 물리적 제품으로 피벗</li>
-          <li><span class="check">✓</span><strong>CryptoPunks</strong> &mdash; 2017 퍼스트무버. 10,000개 고정 공급. 역사적 상징성</li>
-        </ul>
-      </div>
-      <div class="arch-card" style="border-color:var(--red);">
-        <h3 style="color:var(--red);">실패 프로젝트</h3><span class="badge-role">투기 + 미이행</span>
-        <ul class="security-list">
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>셀럽 NFT</strong> &mdash; 90-99% 가치 하락. Justin Bieber Ape $1.3M &rarr; $50K. 유틸리티 없음, 이름값만</li>
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>Generic PFP</strong> &mdash; 2021-22 PFP 프로젝트 ~95% 가치 0. 차별화 없음, 로드맵 미이행, 러그풀</li>
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>Pixelmon</strong> &mdash; $70M 모금 후 조악한 아트 전달. 과대 약속, 과소 이행</li>
-        </ul>
-      </div>
-    </div>
-
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">성공/실패 핵심 패턴</div>
-    <table class="biz-table">
-      <thead><tr><th style="color:var(--green);">성공 요인</th><th style="color:var(--red);">실패 패턴</th></tr></thead>
-      <tbody>
-        <tr><td>커뮤니티 중심 (유틸리티, 접근권)</td><td>투기만 가능한 가치 구조</td></tr>
-        <tr><td>IP 권리 / 실물 연계</td><td>민팅 후 로드맵 없음</td></tr>
-        <tr><td>NFT 너머의 브랜드 구축</td><td>셀럽 이름값에 의존</td></tr>
-        <tr><td>팀의 장기 실행력</td><td>익명/무책임 팀</td></tr>
-        <tr><td>희소성의 자연 형성</td><td>인위적 희소성 (한정판 마케팅)</td></tr>
-      </tbody>
-    </table>
-
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">현재 NFT 시장 (2025-26)</div>
-    <div class="info-box">
-      <div class="info-title">시장 현황</div>
-      <p>거래량 2022 피크 대비 <strong>~90% 감소</strong>. OpenSea &rarr; Blur 이동 후 둘 다 하락. 시장은 <strong>투기 &rarr; 유틸리티</strong>로 전환 중. Pudgy Penguins 모델 (물리+디지털 하이브리드)이 새 템플릿으로 부상.</p>
-    </div>
-
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:700;font-size:1.05rem;color:var(--accent);">Haggle은 왜 다른가?</div>
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🔄</div>엔진 리네이밍: Issue &rarr; Term (v1.1.0)</div>
+    <div class="section-desc">엔진 문서 전체에서 "Issue" 용어를 "Term"으로 변경. 프로토콜 표준화와 개발자 직관성 향상.</div>
     <div class="arch-grid">
       <div class="arch-card">
-        <h3>실패 패턴 회피</h3><span class="badge-role">Anti-Pattern</span>
+        <h3>변경 사유</h3><span class="badge-role">Naming</span>
         <ul class="security-list">
-          <li><span class="check">✓</span><strong>거래 기반 획득</strong> &mdash; 투기적 민팅 없음. 실제 거래로만 캐릭터 획득</li>
-          <li><span class="check">✓</span><strong>유틸리티 내재</strong> &mdash; 캐릭터 = 협상 AI 아바타. 프로필 + 신뢰도 시각화</li>
-          <li><span class="check">✓</span><strong>투트랙 NFT</strong> &mdash; 업적/뱃지는 Soulbound (거래 불가), 캐릭터는 마켓플레이스 거래 가능</li>
-          <li><span class="check">✓</span><strong>동적 희소성</strong> &mdash; 공급 자동 조절 (수식 기반). 인위적 한정판 아님</li>
+          <li><span class="check">✓</span><strong>"deal terms"</strong> &mdash; 비즈니스에서 자연스러운 용어</li>
+          <li><span class="check">✓</span>GitHub Issue/Bug와 혼동 방지</li>
+          <li><span class="check">✓</span>프로토콜 표준으로서 직관적</li>
+          <li><span class="check">✓</span>HNP 문서에서 "contract terms"와 일관성</li>
         </ul>
       </div>
       <div class="arch-card">
-        <h3>성공 패턴 채택</h3><span class="badge-role">Best Practice</span>
+        <h3>변경 범위</h3><span class="badge-role">7개 문서</span>
         <ul class="security-list">
-          <li><span class="check">✓</span><strong>커뮤니티 = 유저</strong> &mdash; 거래할수록 캐릭터 성장. 자연스러운 참여 루프</li>
-          <li><span class="check">✓</span><strong>수집 + 업적</strong> &mdash; 8종족 수집, 배심원 뱃지, 마스터 수집가 프레임</li>
-          <li><span class="check">✓</span><strong>레벨 해금</strong> &mdash; Lv.1~50 커스터마이징 진행형. 장기 리텐션 설계</li>
-          <li><span class="check">✓</span><strong>DB-First</strong> &mdash; MVP는 온체인 아님. 검증 후 투트랙 (Soulbound + Marketplace) 이행</li>
+          <li><span class="check">✓</span><code>Issue</code> &rarr; <code>Term</code> (인터페이스)</li>
+          <li><span class="check">✓</span><code>IssueSpace</code> &rarr; <code>TermSpace</code></li>
+          <li><span class="check">✓</span><code>IssueRegistry</code> &rarr; <code>TermRegistry</code></li>
+          <li><span class="check">✓</span><code>issue_space</code> &rarr; <code>term_space</code> (파라미터)</li>
+          <li><span class="check">✓</span><code>computeMultiIssueUtility</code> &rarr; <code>computeMultiTermUtility</code></li>
         </ul>
       </div>
-    </div>
-    <div class="warn-box"><div class="warn-title">핵심 차이 &mdash; 투트랙 전략</div>
-      <p style="margin-bottom:8px;">NFT 프로젝트는 <strong>"사서 되팔기"</strong>가 목적. Haggle 캐릭터는 <strong>"거래하면서 성장하기"</strong>가 목적.</p>
-      <p style="margin:0;"><strong>트랙 1 (Soulbound)</strong>: 업적 뱃지, 마스터 수집가 프레임, 배심원 ⭐ &mdash; 거래 불가. 순수 달성 보상.<br>
-      <strong>트랙 2 (Tradeable)</strong>: 캐릭터 자체는 마켓플레이스에서 거래 가능. 수수료 5% (법률 검토 후). 희귀 캐릭터 경제 형성.</p>
     </div>
   </section>
 
-  <!-- ODR 시장 분석 -->
+  <!-- Term 계층 구조 -->
   <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(59,130,246,.15);">⚖️</div>ODR (온라인 분쟁 해결) 시장 분석</div>
-    <div class="section-desc">글로벌 ODR 시장 $800M-$1.2B (2024) &rarr; $2.5-3.5B (2030 예상). CAGR 18-22%. Haggle DRaaS의 시장 기회.</div>
-
-    <div class="stats" style="margin:-10px auto 24px;padding:0;">
-      <div class="stat blue"><div class="num">$1.2B</div><div class="label">ODR 시장 규모 (2024)</div></div>
-      <div class="stat green"><div class="num">$3.5B</div><div class="label">예상 시장 (2030)</div></div>
-      <div class="stat purple"><div class="num">18-22%</div><div class="label">연평균 성장률</div></div>
-      <div class="stat yellow"><div class="num">60M</div><div class="label">eBay 연간 분쟁 건수</div></div>
+    <div class="section-title"><div class="icon" style="background:rgba(139,92,246,.15);">🏗️</div>Term 3계층 구조 (v1.1.0 신규)</div>
+    <div class="section-desc">Global &rarr; Category &rarr; Custom 3단계 Term 계층. 카테고리 확장과 Custom Term 호환성 해결.</div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>3계층 설계</h3><span class="badge-role">Term Hierarchy</span>
+        <table class="cost-table" style="margin-top:12px;">
+          <thead><tr><th>계층</th><th>범위</th><th>예시</th></tr></thead>
+          <tbody>
+            <tr><td><span class="sev low">GLOBAL</span></td><td>모든 카테고리 공통</td><td class="cost-label">price, shipping_method, warranty</td></tr>
+            <tr><td><span class="sev medium">CATEGORY</span></td><td>카테고리별 등록</td><td class="cost-label">battery_health (전자기기), mileage (자동차)</td></tr>
+            <tr><td><span class="sev high">CUSTOM</span></td><td>사용자 자유 생성</td><td class="cost-label">LLM 에스컬레이션 &rarr; UNKNOWN_TERM</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="arch-card">
+        <h3>Custom Term 프로토콜</h3><span class="badge-role">LLM Escalation</span>
+        <div class="flow" style="font-size:.78rem;">상대 엔진: custom term 수신
+  &darr;
+TermRegistry: "이 term 모르겠음"
+  &darr;
+ESCALATE(type: UNKNOWN_TERM)
+  &darr;
+LLM: term 해석 + 임시 V_j 생성
+  &darr;
+Engine Core: 역제안에 반영</div>
+      </div>
     </div>
+  </section>
 
-    <div style="margin-bottom:8px;font-weight:600;">주요 플레이어</div>
+  <!-- Term 승격 + 세션 핸드셰이크 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(16,185,129,.15);">📈</div>Term 승격 파이프라인 + 세션 핸드셰이크</div>
+    <div class="section-desc">Custom Term이 1000회+ 사용되면 Category Term으로 자동 승격. 세션 시작 시 TermSchema 버전 교환.</div>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>승격 파이프라인</h3><span class="badge-role">Custom &rarr; Category</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>1,000회+</strong> 사용 시 자동 감지</li>
+          <li><span class="check">✓</span>플랫폼 리뷰 &rarr; 표준 Term으로 승격</li>
+          <li><span class="check">✓</span>승격 시 <code>V_j</code> 평가 함수 공식 등록</li>
+          <li><span class="check">✓</span>기존 세션 하위 호환 유지</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>세션 핸드셰이크</h3><span class="badge-role">SessionInit / SessionAck</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>SessionInit</strong>: TermSchema 버전 + 지원 Term 목록</li>
+          <li><span class="check">✓</span><strong>SessionAck</strong>: 공통 Term 확인 + 미지원 Term 알림</li>
+          <li><span class="check">✓</span>버전 불일치 시 graceful degradation</li>
+          <li><span class="check">✓</span>미지원 CUSTOM term &rarr; LLM 에스컬레이션</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 스킬 마켓플레이스 + 수익 구조 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">🛒</div>스킬 마켓플레이스 수익 구조</div>
+    <div class="section-desc">1.5% 거래 수수료는 100% Haggle. 스킬은 별도 수수료. HGC 결제 시 할인.</div>
     <table class="biz-table">
-      <thead><tr><th>플레이어</th><th>영역</th><th>특징</th><th>한계</th></tr></thead>
+      <thead><tr><th>항목</th><th>수치</th><th>설명</th></tr></thead>
       <tbody>
-        <tr><td class="bold">eBay/PayPal</td><td>마켓플레이스 내부</td><td>연 60M 건 처리, 90% 자동 해결</td><td>자체 생태계만. 외부 사용 불가</td></tr>
-        <tr><td class="bold">Tyler Tech (Modria)</td><td>법원/정부</td><td>미국 법원 ODR 지배적</td><td>B2G만. 소비자 직접 접근 불가</td></tr>
-        <tr><td class="bold">Kleros</td><td>블록체인 중재</td><td>탈중앙 배심원, PNK 토큰, $10M+ 처리</td><td>범용. 커머스 최적화 아님</td></tr>
-        <tr><td class="bold">Aragon Court</td><td>DAO 거버넌스</td><td>ANT 토큰 기반</td><td>소규모. DAO 전용</td></tr>
-        <tr><td class="bold">Matterhorn</td><td>B2B SaaS</td><td>보험, 통신사 분쟁</td><td>P2P 커머스 미지원</td></tr>
+        <tr><td class="bold">거래 수수료</td><td class="mono green-text">1.5%</td><td>100% Haggle (스킬과 분리)</td></tr>
+        <tr><td class="bold">스킬 수수료</td><td class="mono">별도 과금</td><td>스킬별 가격 설정</td></tr>
+        <tr><td class="bold">개발자 분배</td><td class="mono green-text">70% USDC</td><td>개발자 70%, Haggle 30%</td></tr>
+        <tr><td class="bold">HGC 할인</td><td class="mono" style="color:var(--accent);">10-15%</td><td>HGC로 스킬 수수료 결제 시</td></tr>
       </tbody>
     </table>
+    <div class="info-box" style="margin-top:16px;"><div class="info-title">핵심 원칙</div><p>개발자는 <strong>USDC</strong>로 수익을 받아야 실질적 유인 제공. HGC는 <strong>할인 수단</strong>으로만 활용 (closed-loop, USDC on-ramp only).</p></div>
+  </section>
 
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:600;">시장 트렌드</div>
-    <ul class="gacha-list">
-      <li><div class="gacha-icon">🤖</div><div><strong>AI 자동 분류</strong> &mdash; 분쟁 자동 분류 + 해결 제안 (eBay 90% 자동 해결 달성)</div></li>
-      <li><div class="gacha-icon">⛓️</div><div><strong>블록체인 중재</strong> &mdash; Kleros 모델로 탈중앙 배심원 작동 검증 완료</div></li>
-      <li><div class="gacha-icon">📜</div><div><strong>규제 추진</strong> &mdash; EU ODR 플랫폼 (ec.europa.eu/odr), UNCITRAL ODR 기술 노트</div></li>
-      <li><div class="gacha-icon">💸</div><div><strong>비용 절감 압력</strong> &mdash; 전통 중재 비용 대비 ODR 70-90% 절감 가능</div></li>
-    </ul>
-
-    <div style="margin-top:20px;margin-bottom:8px;font-weight:700;font-size:1.05rem;color:var(--accent);">시장 공백 &amp; Haggle DRaaS 기회</div>
+  <!-- 스킬 3-Tier 구조 -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(59,130,246,.15);">📦</div>스킬 3-Tier 구조</div>
+    <div class="section-desc">Tier 0 (Haggle 기본, 무료) &rarr; Tier 1 (Haggle 프리미엄) &rarr; Tier 2 (3rd party). 카테고리 오픈 = Tier 0 완비 필수.</div>
     <div class="arch-grid">
-      <div class="arch-card" style="border-color:var(--red);">
-        <h3 style="color:var(--red);">현재 시장 공백</h3>
-        <ul class="security-list">
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span><strong>P2P + 온체인 결제</strong> 통합 ODR 솔루션 없음</li>
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>eBay/PayPal은 자체 생태계만 지원</li>
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>Kleros는 범용 (커머스 최적화 안 됨)</li>
-          <li><span style="color:var(--red);flex-shrink:0;">&times;</span>협상 + 결제 + 분쟁을 하나의 프로토콜로 묶은 서비스 없음</li>
-        </ul>
+      <div class="arch-card">
+        <h3>Tier 구조</h3><span class="badge-role">3 Tiers</span>
+        <table class="cost-table" style="margin-top:12px;">
+          <thead><tr><th>Tier</th><th>제공자</th><th>비용</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td><span class="sev low">Tier 0</span></td><td>Haggle</td><td class="cost-val">무료</td><td class="cost-label">기본 기능 (카테고리 최소 요건)</td></tr>
+            <tr><td><span class="sev medium">Tier 1</span></td><td>Haggle</td><td class="cost-val">유료</td><td class="cost-label">프리미엄 (고급 분석/전문 기능)</td></tr>
+            <tr><td><span class="sev high">Tier 2</span></td><td>3rd Party</td><td class="cost-val">유료</td><td class="cost-label">외부 전문가 스킬</td></tr>
+          </tbody>
+        </table>
       </div>
-      <div class="arch-card" style="border-color:var(--green);">
-        <h3 style="color:var(--green);">Haggle DRaaS 차별점</h3>
+      <div class="arch-card">
+        <h3>품질 검증 3단계</h3><span class="badge-role">Quality Gate</span>
         <ul class="security-list">
-          <li><span class="check">✓</span><strong>3계층 비용</strong> &mdash; T1: max(0.5%,$3), T2: max(2%,$12), T3: max(5%,$30)</li>
-          <li><span class="check">✓</span><strong>DS 패널</strong> &mdash; ⭐1-5 배심원 시스템, 전문가 태그, 경력 기반</li>
-          <li><span class="check">✓</span><strong>온체인 투표</strong> &mdash; Signed + Merkle 기반 투명한 판정</li>
-          <li><span class="check">✓</span><strong>프로토콜 내장</strong> &mdash; 협상 &rarr; 결제 &rarr; 배송 &rarr; 분쟁 일체형</li>
-          <li><span class="check">✓</span><strong>외부 제공 가능</strong> &mdash; DRaaS API로 타 플랫폼에도 분쟁 해결 서비스 제공</li>
+          <li><span class="check">✓</span><strong>Entry Gate</strong> &mdash; 50개 벤치마크 테스트 + 보증금</li>
+          <li><span class="check">✓</span><strong>Sandbox</strong> &mdash; 30일 "Beta" 뱃지, 제한 트래픽</li>
+          <li><span class="check">✓</span><strong>Monitoring</strong> &mdash; 실시간 정확도/분쟁율/평점/지연 추적</li>
+          <li><span class="check">✓</span>기준 미달 시 자동 비활성화</li>
         </ul>
       </div>
     </div>
-    <div class="info-box"><div class="info-title">DRaaS 수익 모델</div><p>분쟁 비용 30/70 분할 (패소자 70%, Haggle 30%). 외부 API 제공 시 추가 수수료. <strong>ODR 시장 $3.5B 중 P2P 커머스만 겨냥해도 $500M+ TAM.</strong></p></div>
   </section>
 
   <!-- 결정 필요 항목 -->
   <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(249,115,22,.15);">🔔</div>결정 필요 항목</div>
+    <div class="section-title"><div class="icon" style="background:rgba(249,115,22,.15);">🔔</div>4/7 모임 결정 필요 항목</div>
     <table class="biz-table">
       <thead><tr><th>#</th><th>안건</th><th class="right">우선순위</th></tr></thead>
       <tbody>
         <tr><td class="mono">1</td><td class="bold">캐릭터 마스크 이미지 제작 (Gemini? 디자이너?)</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">2</td><td>뽑기 연출 디자인 (알 깨기 애니메이션)</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">3</td><td>동적 희소성 base 값 최종 확정</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">4</td><td>Mythic 디자인 컨셉 (종족별 1~3종)</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">5</td><td>악세서리 초기 목록</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">6</td><td>콜라보 대상 리스트</td><td class="right"><span class="sev low">낮음</span></td></tr>
+        <tr><td class="mono">2</td><td class="bold">스킬 마켓플레이스 카테고리 우선순위 (전자기기 &rarr; 자동차 &rarr; 부동산?)</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">3</td><td>HGC 할인율 최종 확정 (10% vs 15%)</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">4</td><td>Tier 0 스킬 우선 개발 범위</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">5</td><td>Term 승격 기준 (1000회? 500회?)</td><td class="right"><span class="sev low">낮음</span></td></tr>
       </tbody>
     </table>
-    <div class="warn-box"><div class="warn-title">최우선 과제</div><strong>#1 마스크 이미지 제작</strong>은 캐릭터 시스템의 전제 조건입니다. 마스크 없이 캐릭터 생성 파이프라인 가동 불가.</div>
   </section>
 
 </div>
@@ -748,7 +1222,9 @@
         <li><span class="check">✓</span>신뢰 점수 + 배송 SLA + ARP</li>
         <li><span class="check">✓</span>DB 스키마 + API 라우트 (Phase 3-4)</li>
         <li><span class="check">✓</span>Skill 시스템 기반 (Phase 5a)</li>
-        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>웹앱 + API 통합</li>
+        <li><span class="check">✓</span>엔진 ↔ API 통합 (12 라우트, 이벤트 파이프라인)</li>
+        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>구매자 MCP 도구 (haggle_create_negotiation_session, haggle_submit_offer)</li>
+        <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>웹앱 UI 통합</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>USDC 결제 연동</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>배포 + 도메인 연결 (tryhaggle.ai)</li>
       </ul>
@@ -821,6 +1297,55 @@
   <div class="section-desc">모임 후 정리한 변경사항. 최신순.</div>
 
   <div class="update-log">
+    <div class="update-entry">
+      <div class="update-date">2026-04-06 — 엔진 ↔ API 통합 완료 (Step 42-48) + 버그 수정</div>
+      <ul class="update-items">
+        <li><strong>DB 스키마</strong>: negotiation_sessions, negotiation_rounds, negotiation_groups 3개 테이블 + 7개 인덱스 (Supabase 적용 완료)</li>
+        <li><strong>서비스 레이어</strong>: session/round/group CRUD + optimistic locking + row-level lock (SELECT FOR UPDATE)</li>
+        <li><strong>실행 브리지</strong>: session-reconstructor (DB &harr; 엔진 타입 변환) + negotiation-executor (트랜잭션 라운드 실행)</li>
+        <li><strong>1:N 그룹</strong>: snapshot-builder + group-executor (BATNA, 경쟁, supersede_losers, close_group)</li>
+        <li><strong>이벤트 디스패처</strong>: in-process 동기 실행 (Redis/SQS 교체 가능 인터페이스) + action-handlers</li>
+        <li><strong>API 라우트 12개</strong>: 세션 CRUD 7개 + 그룹 CRUD 5개 (Fastify + Zod 검증)</li>
+        <li><strong>모듈 경계</strong>: commerce-core에 negotiation 모듈 등록 (4개 이벤트 emit, 2개 consume)</li>
+        <li><strong>버그 수정</strong>: action-handlers raw SQL &rarr; Drizzle + 서비스 함수, executor auto-accept payload 누락 (buyer/seller/price), 그룹 ACCEPT 후 close_group 누락</li>
+        <li><strong>신규 라우트</strong>: GET /negotiations/sessions (유저별 세션 목록, role/status 필터)</li>
+        <li>1:N 방향 분석: 1_BUYER_N_SELLERS (주력), N_BUYERS_1_SELLER (수동 허용만 &mdash; 공정성 원칙)</li>
+        <li>동시성 안전: idempotency key + optimistic lock + row-level lock + 그룹 version lock</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-06 — 엔진 Full Pipeline Upgrade (Step 23-40)</div>
+      <ul class="update-items">
+        <li><strong>Term Space 구현</strong>: Term/TermSpace 타입 + multi-term 효용 평가기 (engine-core)</li>
+        <li><strong>computeUtility 분기</strong>: term_space 존재 시 multi-term 경로, 없으면 기존 4차원 (하위 호환)</li>
+        <li><strong>Hold 엔진</strong>: HoldContext 타입 + V_t 시간 압박 반영 (hold 만료 임박 시 effective_alpha 증가)</li>
+        <li><strong>Hold 경쟁자</strong>: n_hold_competitors &rarr; 경쟁 effective_n에 합산</li>
+        <li><strong>Hold 만료 재진입</strong>: hold_expired 세션 이벤트 + handleHoldExpired 핸들러</li>
+        <li><strong>Intent 강화</strong>: category/keyword 필터 (evaluateMatch 3번째 optional 파라미터)</li>
+        <li><strong>Rematch 정책</strong>: shouldRematchIntent + RematchPolicy (max 3회, cooldown)</li>
+        <li><strong>BATNA + Hold</strong>: compareSessions에 hold 신뢰도 조정 (SELLER_RESERVED +0.02, SOFT_HOLD+reprice -0.02)</li>
+        <li><strong>Pipeline Router</strong>: intent &rarr; session &rarr; settlement &rarr; payment 순수 함수 매핑 (commerce-core)</li>
+        <li><strong>MasterStrategy/RoundData</strong>: term_space, hold 필드 추가 + assembleContext 패스스루</li>
+        <li>테스트: engine-core 102 &rarr; 151 (+49), engine-session 167 &rarr; 211 (+44), commerce-core 116 &rarr; 137 (+21)</li>
+        <li>총 테스트: 940+ (기존 385개 회귀 테스트 변경 없이 통과)</li>
+      </ul>
+    </div>
+    <div class="update-entry">
+      <div class="update-date">2026-04-06 — 엔진 Term Space + 스킬 마켓플레이스</div>
+      <ul class="update-items">
+        <li>엔진 문서 전체 리네이밍: Issue &rarr; Term (v1.0.2 &rarr; v1.1.0)</li>
+        <li>Term 3계층 구조 도입: GLOBAL / CATEGORY / CUSTOM</li>
+        <li>Custom Term 프로토콜: LLM 에스컬레이션 (UNKNOWN_TERM)</li>
+        <li>Term 승격 파이프라인: Custom &rarr; 1000회+ &rarr; Category</li>
+        <li>세션 핸드셰이크: SessionInit/SessionAck TermSchema 버전 교환</li>
+        <li>스킬 마켓플레이스 수익 구조: 개발자 70% USDC / Haggle 30%</li>
+        <li>HGC 할인: 스킬 수수료 HGC 결제 시 10-15% 할인</li>
+        <li>스킬 3-Tier 구조: Tier 0 (무료 기본) / Tier 1 (프리미엄) / Tier 2 (3rd party)</li>
+        <li>스킬 품질 검증 3단계: Entry Gate (50 test + deposit) &rarr; Sandbox (30일) &rarr; Monitoring</li>
+        <li>Term-Based Package 협상: 다중 Term offer 평가 (logrolling 지원)</li>
+        <li>4/4 안건을 지난 안건 탭으로 이동, 4/7 모임 준비</li>
+      </ul>
+    </div>
     <div class="update-entry">
       <div class="update-date">2026-04-04 — 첫 번째 모임</div>
       <ul class="update-items">
@@ -912,7 +1437,7 @@
 <footer class="footer">
   <div>Haggle &mdash; AI 협상 + 온체인 결제 프로토콜</div>
   <div style="margin-top:8px;">이 문서는 매 모임 후 업데이트됩니다</div>
-  <div style="margin-top:4px;">마지막 업데이트: 2026-04-04</div>
+  <div style="margin-top:4px;">마지막 업데이트: 2026-04-06</div>
 </footer>
 
 <script>
