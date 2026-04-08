@@ -1,6 +1,19 @@
 # Haggle 해자 전략 (Moat Strategy)
 
-*Last Updated: 2026-03-30*
+*Last Updated: 2026-04-08*
+
+---
+
+> ## ⚠️ 2026-04-08 Moat Thesis 재정의 (via `/office-hours` session)
+>
+> **Primary moat가 재분류됐습니다.**
+>
+> - **Primary moat**: **Judgment Precedent DB** — DS 패널 판례 + attestation pairs가 시간·거래로만 축적됨. 코드·스마트컨트랙트는 포크 가능하지만 판례 DB는 복제 불가.
+> - **Secondary moat**: **Skills Marketplace** (Phase 2+ feature, not primary). 아래 Section 2의 "핵심 해자" 표현은 재분류 전 서술이며, 추후 리팩터 예정.
+>
+> **핵심 통찰**: AI 시대엔 코드가 해자가 아니다. Haggle은 "AI가 가능하게 했지만 AI로 복제할 수 없는" 회사 카테고리. Phase 0의 매 거래(attestation pair)가 이 해자의 벽돌 한 장씩을 쌓는다.
+>
+> 세부 근거 및 Phase 0 로드맵: [`docs/strategy/office-hours/2026-04-08_phase0-electronics-wedge.md`](./office-hours/2026-04-08_phase0-electronics-wedge.md)
 
 ---
 
