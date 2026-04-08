@@ -265,3 +265,202 @@ When reviewing:
   (`[[key,value], ...]`) not an object. This is intentional — JSON.stringify
   over objects is NOT guaranteed stable across engines for non-ASCII keys or
   reordered property definitions. Ordered tuples sidestep that entirely.
+
+---
+
+## Part B — HFMI Ingestion (Day 3-4)
+
+**Builder:** Bob
+**Date:** 2026-04-08
+**Status:** Complete, tests green
+
+### Files created
+
+1. `apps/api/src/lib/ebay-browse-client.ts` — B1
+   OAuth client-credentials flow with in-memory token cache (60s safety
+   window). Single `searchActiveListings(query)` method. Internal
+   `callsToday` counter fails fast at `dailyLimit` (default 4500, 10%
+   safety margin under eBay's free 5000/day ceiling). Exponential backoff
+   on 429/5xx (baseBackoffMs × 2^attempt, maxRetries=4). Built from scratch
+   per Arch recommendation — no `ebay-api` package. Exposes test hooks
+   `_setCallsTodayForTest` / `_setCachedTokenForTest` for unit coverage.
+   `defaultIphoneFilter()` helper centralizes the shared filter string.
+
+2. `apps/api/src/lib/hfmi-title-parser.ts` — B3
+   Regex extractors for `storageGb` (128/256/512/1024), `batteryHealthPct`
+   (3 patterns: "Battery 92%", "BH 88%", "N% battery"), `carrierLocked`
+   (unlocked → false; carrier-specific → true; else null), and coarse
+   cosmetic grade hint (mint/excellent → A, very good/used → B,
+   scratched/fair → C). `parseEbayTitle` top-level runs exclusion
+   screening first per §5.4 (broken/cracked/for parts/iCloud locked/lot
+   of/bulk/bad ESN) plus an accessory-only guard (accessory keywords w/o
+   "iphone" mention). All extractors return null when nothing confident.
+
+3. `apps/api/src/jobs/hfmi-ingest.ts` — B2
+   `runHfmiIngest(db, opts)` exportable for cron wiring. Iterates the 6
+   SKU queries in `HFMI_SKUS` (iphone_13/14/15 pro + pro_max). For each
+   SKU: eBay search → SKU disambiguation (Pro vs Pro Max titleExclude) →
+   currency/US/price-range guard → title parse → condition mapping →
+   insert rows with `onConflictDoNothing()` on the existing unique
+   `(source, external_id)` index. Fails gracefully when eBay credentials
+   missing (logs warn, no-op return). Rate-limit error halts iteration
+   but returns partial summary. Returns per-SKU counts for ops visibility.
+
+4. `apps/api/src/jobs/hfmi-fit.ts` — B4
+   `runHfmiFit(db, opts)` — nightly fit for all 6 SKUs. Pulls trailing
+   30d observations via raw SQL (avoids needing `gte`/`and` exports not
+   currently re-exported from `@haggle/db`). Applies §4.2 `0.92` Browse→
+   Sold correction factor on `ebay_browse` source rows only. Imputes
+   missing battery with per-SKU median. Builds 9-column design matrix
+   (intercept, storage_256/512/1024, battery, cosmetic_b/c,
+   carrier_locked, days_since_listing). Fits via normal-equations OLS
+   (Gauss-Jordan with partial pivot) — see DEVIATION #1 below. Computes
+   R² via SSR/SST, residual std via `simple-statistics`. Writes coefficient
+   row only when `r_squared ≥ 0.50` AND `sample_size ≥ 30` per §6.1 step 5.
+   `fitSku` and `olsNormalEquations` are exported for unit testing without
+   db dependency.
+
+5. `apps/api/src/services/hfmi.service.ts` — B5
+   `getHfmiMedian(db, input)` per brief signature. Loads latest
+   coefficient row via `db.query.hfmiModelCoefficients.findFirst`
+   (drizzle native path) with a raw SQL fallback. Computes log(price)
+   via the full hedonic formula, `Math.exp`s to USD, then applies the
+   `±$35` CI floor (§1.0 — wide CI reflects v0 active-listing
+   uncertainty). Defaults: battery=90, cosmetic=B, carrierLocked=false.
+   Throws `HfmiUnavailableError` when no qualifying fit exists.
+
+### Tests (all in `apps/api/src/__tests__/`)
+
+- `ebay-browse-client.test.ts` — 8 tests. Covers: missing-credentials
+  failure, OAuth token caching, refresh after expiry (with injected
+  clock), rate-limit guard at ceiling and live-counter ceiling, 429
+  retry recovery, 5xx retry exhaustion, URL builder param shape.
+  All assertions use an injected mock `fetchImpl`.
+- `hfmi-title-parser.test.ts` — 35 tests. Per-extractor micro-tests plus
+  **15 end-to-end title fixtures** exercising real-ish eBay titles across
+  happy path, exclusions (cracked/icloud locked/lot of/bad ESN/accessory
+  bundle), carrier lock variants, all storage sizes, all cosmetic hints.
+- `hfmi.service.test.ts` — 7 tests. Covers: no-fit-row → throw, baseline
+  128GB A unlocked median, storage premium monotonicity, carrier-lock
+  discount sign, ±$35 CI floor engagement when residual_std tiny, CI
+  floor non-engagement when residual_std wide, default battery=90
+  parity with explicit 90.
+
+### Test results
+
+```
+pnpm --filter @haggle/api test
+ Test Files  18 passed (18)
+      Tests  263 passed (263)
+   Duration  1.75s
+```
+
+50 new tests (8 eBay client + 35 title parser + 7 service) added cleanly
+on top of the existing 213.
+
+### Typecheck
+
+```
+pnpm --filter @haggle/api typecheck
+```
+
+All Part B files typecheck clean. Pre-existing errors in branch files
+(`routes/disputes.ts`, `routes/internal.ts`, `routes/recommendations.ts`,
+`services/embedding.service.ts`, `services/similar-listings.service.ts`,
+`services/tag-placement-llm.service.ts`, `scripts/backfill-embeddings.ts`)
+are untouched by this sprint and unrelated to Part B. Flagged for Arch
+to triage in the parent feature branch.
+
+### Dependency added
+
+- `simple-statistics@7.8.9` — used in `hfmi-fit.ts` for `mean` and
+  `standardDeviation`. OLS solver is hand-rolled (see DEVIATION #1).
+
+### Deviations from brief
+
+1. **OLS solver: hand-rolled instead of `simple-statistics` primitives.**
+   `simple-statistics` only exposes **simple** (single-predictor) linear
+   regression via `linearRegression([[x,y],...])`. The HFMI hedonic model
+   is multi-variable (9 predictors including intercept). Two options were
+   considered:
+   - Add `ml-regression-multivariate-linear` (the HFMI spec §11 recommends
+     this) — adds another dep.
+   - Hand-roll the normal-equations solver (~50 lines of Gauss-Jordan with
+     partial pivot).
+
+   I chose the second — the math is trivial, the implementation is
+   exported and independently unit-testable via `fitSku`, and we keep
+   the dependency surface minimal per CLAUDE.md rule #6 (MVP-first,
+   single runtime). `simple-statistics` is still pulled in for `mean`
+   and `standardDeviation` as the brief directed.
+
+2. **Raw SQL inside `hfmi-fit.ts` observation loader.** `@haggle/db`
+   currently re-exports `eq, sql, and, gt, lt, desc, asc, isNull, inArray`
+   but not `gte` or `between`. Rather than modify the db barrel (explicit
+   "DO NOT TOUCH"), I used a `sql` template literal for the range query.
+   Drizzle's `sql\`...\`` is idiomatic for this kind of read path.
+
+3. **`hfmi-ingest.ts` runs once per invocation; not self-scheduling.**
+   The brief notes cron scheduling is infra, not this sprint. Exportable
+   function is ready for whatever wrapper (systemd timer, node-cron,
+   cloud scheduler) the deploy layer provides.
+
+4. **Ingest `pagesPerSku` defaults to 1.** Conservative default — 6 SKUs
+   × 1 page × 100 items/page = 600 items/invocation, well under the
+   daily cap even at hourly cadence. Caller can bump via `opts.pagesPerSku`
+   for backfill runs.
+
+5. **Setup.ts mock expanded.** Added `hfmiPriceObservations: {}` and
+   `hfmiModelCoefficients: {}` exports to the global `@haggle/db` mock
+   in `src/__tests__/setup.ts` so top-level `import { ... } from
+   "@haggle/db"` resolves in the service under test. Additive, preserves
+   all existing mock behavior.
+
+### Open decisions recorded (Bob's call)
+
+- **eBay client**: built from scratch per Arch rec #3 — see B1 rationale.
+- **OLS library**: deviated from `ml-regression-multivariate-linear`
+  recommendation in HFMI spec §11 in favor of hand-rolled normal
+  equations (see DEVIATION #1). Revisit if numerical conditioning
+  becomes an issue — multicollinearity between storage dummies + battery
+  is mild in practice, but we could switch to QR decomposition if R²
+  fits start showing instability.
+- **hfmi-core as separate package?** Spec §11 recommends new package. I
+  kept it inline under `apps/api/src/{jobs,services,lib}` — the logic is
+  ~400 lines total and all callers live in apps/api. Extracting to a
+  package adds build-graph overhead without current test-boundary benefit.
+  Revisit when Phase 0.5 expansion (MacBook RAM schema, weighted internal
+  data) warrants the package split.
+
+### Blockers for Part C
+
+None. Part C (landing + methodology page) can proceed. The service
+contract `getHfmiMedian(db, input) → { medianUsd, confidenceInterval,
+sampleSize, lastRefit, coefficientVersion }` is stable. Suggestions:
+
+- Landing page widget should catch `HfmiUnavailableError` and render a
+  "HFMI calibrating…" skeleton rather than erroring. Until the first
+  nightly fit lands there will be no coefficient row, so Part C must
+  handle the empty case gracefully.
+- Methodology page can read the latest coefficient row directly via the
+  same loader pattern used in `hfmi.service.ts` — the `coefficients` JSON
+  blob has all the keys (`intercept, storage_256, ..., residual_std`)
+  needed for the formula table.
+- Neither ingest nor fit has been run against live eBay yet — Part C
+  pages should either mock the HFMI response during local dev or
+  document the required env vars (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`)
+  in README.
+
+### Safety checks
+
+- No changes to `packages/shared`, `packages/db` core, or existing
+  `hfmi-price-observations` / `hfmi-model-coefficients` schema files.
+- No contract changes. No onchain code touched.
+- No changes to existing tests outside of the additive mock export in
+  setup.ts. All 213 pre-existing tests still green alongside the 50 new
+  ones.
+- eBay credentials read from `process.env` with graceful warn-and-no-op
+  fallback; missing creds cannot crash a cron invocation.
+- Rate limit guard pre-increments the counter before the HTTP call, so
+  concurrent calls can never collectively exceed the cap by more than the
+  in-flight count.

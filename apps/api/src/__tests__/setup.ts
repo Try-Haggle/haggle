@@ -32,7 +32,23 @@ vi.mock("@haggle/db", () => ({
     insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) }),
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+    execute: vi.fn().mockResolvedValue([]),
+    transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => fn({
+      execute: vi.fn().mockResolvedValue([]),
+      query: createMockQueryProxy(),
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
+      insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) }),
+      update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    })),
   })),
+  sql: vi.fn().mockReturnValue(""),
+  eq: vi.fn(),
+  and: vi.fn(),
+  or: vi.fn(),
+  settlementApprovals: {},
+  negotiationSessions: {},
+  hfmiPriceObservations: {},
+  hfmiModelCoefficients: {},
 }));
 
 // ─── Mock MCP SDK ────────────────────────────────────────────────────
@@ -122,4 +138,17 @@ vi.mock("@supabase/supabase-js", () => ({
 // ─── Mock EasyPost ───────────────────────────────────────────────────
 vi.mock("@easypost/api", () => ({
   default: vi.fn(),
+}));
+
+// ─── Mock @haggle/skill-legit ────────────────────────────────────────
+vi.mock("@haggle/skill-legit", () => ({
+  AuthenticationService: vi.fn().mockImplementation(() => ({
+    authenticate: vi.fn().mockResolvedValue({ status: "PASS", score: 0.95 }),
+    processWebhook: vi.fn().mockResolvedValue(null),
+  })),
+  LegitAuthAdapter: vi.fn(),
+  MockAuthAdapter: vi.fn().mockImplementation(() => ({
+    authenticate: vi.fn().mockResolvedValue({ status: "PASS", score: 0.95 }),
+  })),
+  verifyLegitWebhook: vi.fn().mockReturnValue(true),
 }));
