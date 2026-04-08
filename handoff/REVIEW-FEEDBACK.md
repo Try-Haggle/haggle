@@ -1,37 +1,162 @@
-# Review Feedback — Step 13
-Date: 2026-04-04
-Ready for Builder: YES
+# Review Feedback — Step 55 (Attestation Commit Backend)
+
+## Round 2 — Verdict: **CLEAR**
+
+**Reviewer**: Richard
+**Date**: 2026-04-08 (Round 2)
+**Ready for Builder**: YES
+
+### C1 — IMEI normalization asymmetry — FIXED
+- `apps/api/src/lib/attestation-canonical-record.ts:55-57` — single `normalizeImei()` (digits-only).
+- `:66-98` — `buildCanonicalAttestationRecord()` normalizes once, passes to `canonicalizeAttestation()`, hashes, and returns `{record, canonicalString, commitHash}` as one unit. Record and hash-input are the same object — cannot drift.
+- `attestation.service.ts:129-137` — used in `createAttestationCommit`.
+- `attestation.service.ts:420-428` — used in `verifyAttestationCommit` symmetrically.
+- Regression test at `attestation.service.test.ts:157-216` commits `"123 456-789 012 345"`, asserts `result.commitHash` equals the reference hash computed from `"123456789012345"`, and captures the JSONB param to assert `canonical_payload.imei === "123456789012345"`. Round-trip proven.
+- `ATTESTATION_CANONICAL_VERSION` is re-exported from the untouched `attestation-hash.ts:30` — helper imports it rather than hard-coding `"v1"`.
+
+### C2 — 409 TOCTOU race — FIXED
+- `packages/db/migrations/005_attestation_unique_listing.sql:11-13` — adds `UNIQUE (listing_id)` via `uq_seller_attestation_commits_listing_id`.
+- `packages/db/src/schema/seller-attestation-commits.ts:52-54` — schema updated with `uniqueIndex` mirroring the migration.
+- `attestation.service.ts:139-189` — pre-SELECT removed, unconditional INSERT, catch block inspects **both** `err.code` AND `err.cause?.code` (line 182-184) before mapping 23505 → `AttestationConflictError`. Non-23505 errors re-thrown.
+- `PG_UNIQUE_VIOLATION = "23505"` constant at `:32`.
+- Regression test at `attestation.service.test.ts:135-155` rejects the INSERT with `{code: "23505"}` and asserts `AttestationConflictError` is thrown.
+
+### S1 — Internal error leak — FIXED
+- `attestation.service.ts:34-46` — new `AttestationStorageError` / `AttestationValidationError` typed errors.
+- `:101-121` — validation and storage failures wrapped in typed errors (no raw messages surfaced to the route).
+- `routes/attestation.ts:130-147` — three-branch dispatch: `AttestationConflictError` → 409 (code only), `AttestationValidationError | AttestationStorageError` → 400 `INVALID_COMMIT_REQUEST` (code only, `request.log.warn` for server-side), everything else → 500 `COMMIT_FAILED` (code only, `request.log.error`). No `err.message` leaks to the client.
+
+### S3 — Hand-constructed canonical records — FIXED
+- Grepped `attestation.service.ts` for manual `canonicalObj` / literal `version: "v1"` patterns — none remain. The only site that constructs the canonical shape is the helper at `lib/attestation-canonical-record.ts`, used twice (commit + verify).
+
+### Locked files — STILL UNTOUCHED
+- `git diff --stat apps/api/src/lib/attestation-hash.ts` → empty. Confirmed. ✓
+
+### Round 1 items intentionally not addressed
+- S2 (GET timing side-channel): Bob notes the code was already parallel via `Promise.all` at `:354-362` — confirmed, this is the best fix short of a constant-time pad. Accepted.
+- Nits N1-N4: out of scope for Round 2 per Bob's note. Log them to BUILD-LOG for a future pass; not blocking.
+
+### Summary
+All four Round-1 blockers land cleanly. The canonical-record helper is a good structural fix — it makes a C1-class divergence impossible to reintroduce by construction. The 23505 catch handles both raw-driver and wrapped-error shapes, which closes the realistic Drizzle-vs-postgres.js code-path concern. Typed errors in the route give us stable error codes without leaking internals. Tests exercise both regressions directly.
+
+Step 55 is clear. Ship it.
+
+— Richard
+
+---
+
+## Round 1 — Verdict: NEEDS FIXES (historical)
+
+**Reviewer**: Richard
+**Date**: 2026-04-08
+**Verdict**: **NEEDS FIXES**
+**Ready for Builder**: NO
+
+---
 
 ## Must Fix
 
-None.
+### C1 — IMEI hash/payload asymmetry (audit-trail corruption)
+- **File**: `apps/api/src/services/attestation.service.ts:114-139`
+- **What is wrong**: `canonicalizeAttestation()` is called with `input.imei = req.imei` (unmodified, line 117). The hash is computed over the raw IMEI the caller sent. But the `canonical_payload` JSONB written to the database at line 134 stores `imei: input.imei.replace(/\D/g, "")` — the *stripped* form. The bytes that were hashed and the bytes stored in `canonical_payload` are not the same object.
+
+  Consequence: if a client ever submits an IMEI with a space, dash, or any non-digit, the **stored `canonical_payload` no longer represents the bytes that produced `commit_hash`**. Any auditor, dispute-core consumer, or future migration that re-hashes `canonical_payload` will get a hash that does not match `commit_hash`. The audit trail — the entire point of this feature — is broken on the first formatted IMEI.
+
+  Tests pass today only because every fixture uses the pure-digit IMEI `"123456789012345"` where the strip is a no-op.
+
+  Same asymmetry exists in `verifyAttestationCommit` at lines 403-412 vs 421: hash uses `submitted.imei` raw, divergence-diff uses stripped.
+
+- **How to fix**: Normalize once at the boundary. At the top of `createAttestationCommit`:
+  ```ts
+  const normalizedImei = req.imei.replace(/\D/g, "");
+  ```
+  Pass `normalizedImei` as `input.imei` to `canonicalizeAttestation`, as the `canonicalObj.imei` field, and as the `convert_to(...)` argument to pgsodium. Do the same at the top of `verifyAttestationCommit`. Then every downstream artifact — hash, canonical_payload JSONB, ciphertext, diff — agrees byte-for-byte.
+
+  Add one test: formatted IMEI `"123 456-789 012 345"` commits successfully, and the stored `canonical_payload.imei` hashes (via `canonicalizeAttestation`) back to the stored `commit_hash`.
+
+### C2 — 409 duplicate-commit TOCTOU race
+- **File**: `apps/api/src/services/attestation.service.ts:85-93`
+- **What is wrong**: The "already committed?" check is a `SELECT ... LIMIT 1` followed by an unconditional `INSERT`. Two concurrent requests from the same seller for the same listing can both pass the SELECT and both INSERT, producing two attestation rows for one listing — silently breaking the append-only invariant the brief calls out ("append-only" in ARCHITECT-BRIEF §API Surface, endpoint 2). `seller_attestation_commits` may or may not have `UNIQUE (listing_id)`; Bob did not verify this, and the code does not catch a unique-violation error if one is raised.
+- **How to fix**: Either
+  - (preferred) confirm the schema has `UNIQUE (listing_id)` on `seller_attestation_commits`, drop the pre-SELECT, wrap the INSERT in try/catch, and translate Postgres error code `23505` into `AttestationConflictError`; or
+  - if the schema lacks the constraint, escalate to Arch — that is a migration, not an app-level fix.
+
+  Add a test that simulates a unique-violation error from `db.execute` during the INSERT and asserts `AttestationConflictError` is thrown.
+- **Why this blocks**: silent duplicate commits defeat the canonical-hash audit trail and are exploitable by a racing seller who wants to commit a "clean" attestation and a "degraded" attestation side-by-side.
+
+---
 
 ## Should Fix
 
-- `commerce-api.ts:74-85` — `openDispute` signature has 4 parameters (`orderId`, `reasonCode`, `description`, `openedBy`), but the brief specified 3 (`orderId`, `reasonCode`, `openedBy`). Bob added `description` as a separate parameter and sends it in the request body. The dashboard call site at `commerce-dashboard.tsx:735-739` correctly passes all 4 args. This is a signature deviation from the brief. The addition is reasonable — a dispute without a description is not useful — but the brief's signature used `unknown` return types and 3 params. Log as spec deviation. No action required unless Arch wants strict adherence.
+### S1 — Commit route leaks internal error messages as 400
+- **File**: `apps/api/src/routes/attestation.ts:128-137`
+- **What is wrong**: Any non-`AttestationConflictError` throw is returned as `400 { error: "COMMIT_FAILED", message: (err as Error).message }`. That means:
+  - `attestation: photo not found in bucket: {listingId}/front.jpg` — leaks the internal storage path shape to the client.
+  - Supabase network errors, pgsodium key-missing errors, DB constraint violations — all surface their raw `.message` to whoever called the API.
+- **Recommendation**: Split the catch into two branches. Validation-shaped errors (photo not found, path mismatch) → `400` with a stable error code and no `message`. Infrastructure errors → `500 { error: "COMMIT_FAILED" }` with the raw error sent only to `request.log.error`. The presign handler at lines 89-92 already follows this pattern — mirror it.
 
-- `commerce-api.ts:11-46` — The brief specified `unknown` for all response type fields (`{ payment: unknown }`, `{ dispute: unknown }`, `{ trust_score: unknown }`). Bob replaced these with typed interfaces (`PaymentResponse`, `DisputeResponse`, `ShipmentResponse`, `TrustScoreResponse`) with specific fields. This is strictly better than `unknown` — it gives the dashboard type-safe access to `res.payment.id` and `res.trust_score.settlement_reliability`. Noting as positive drift. No action required.
+### S2 — GET 404 obfuscation has a timing side-channel
+- **File**: `apps/api/src/services/attestation.service.ts:321-345`
+- **What is wrong**: The authorized branch generates `N` signed view URLs via sequential `createAttestationViewUrl` calls (line 342, inside `Promise.all` but each call is an independent HTTPS round-trip to Supabase). An unauthorized or missing-row caller returns immediately. A patient attacker can distinguish "exists + I'm not authorized" from "doesn't exist" by measuring response latency. The brief explicitly requires 404 obfuscation.
+- **Recommendation**: Not a blocker for MVP, but log it in BUILD-LOG under Known Risks so Arch can decide. If Arch wants it tightened, the cheap fix is a constant-time delay on the null branch (e.g. ~200ms) or pre-resolving the view URLs in parallel with the auth check so the happy path collapses.
 
-- `commerce-dashboard.tsx:591-592` — `isDemoMode` checks `!address.startsWith("0x") || address.includes("...")`. Bob flagged this himself in the review request. The mock addresses in `commerce-engine.ts` use the `0x1a2B...buyer` format, so the `"..."` check works. But if someone edits the buyer wallet address field (which is editable in APPROVAL phase) to remove the `"..."`, the heuristic breaks and API calls would fire against a non-existent server. Low risk in practice — there is no real API server in demo mode anyway, so the calls would fail and be caught by try/catch. But an explicit `isDemo` flag on state would be cleaner. Escalating below since it touches `commerce-engine.ts` which is out of scope for this step.
+### S3 — `canonical_payload` reconstructed by hand instead of derived from hash input
+- **File**: `apps/api/src/services/attestation.service.ts:130-139`
+- **What is wrong**: `canonicalObj` is built field-by-field in the service, separately from the `AttestationInput` passed to `canonicalizeAttestation`. That separation is exactly what enabled the C1 bug. `version: "v1"` is also hard-coded here and in the verify path at lines 417-426; it should be a shared constant.
+- **Recommendation**: After fixing C1, build `canonicalObj` **from the same `input` object** that went into `canonicalizeAttestation` — either by keeping a parallel plain-object representation or by JSON-parsing the canonical string. Define a local `CANONICAL_VERSION = "v1"` constant at the top of the service and reference it in both places (do not modify `attestation-hash.ts` — just mirror the literal into a service-local constant).
 
-- `commerce-dashboard.tsx:718-727` — Payment pipeline runs `quote -> authorize -> settle` sequentially in an async IIFE. If `quotePayment` succeeds but `authorizePayment` fails, the full local state reverts to pre-payment. The server-side payment is now in a "quoted" state while the UI shows pre-payment. This is acceptable for MVP — the next "Process Payment" click would re-run the whole pipeline. But in production, partial server state will need reconciliation (e.g., check payment status before re-running). No action required now.
+---
 
-- `commerce-dashboard.tsx:755` — `useCallback` has an empty dependency array `[]`. The callback reads `serverIds.current` (ref — stable) and calls `setState` with updater function (stable). `isDemoMode` is a module-level function (stable). `showApiError` is module-level (stable). `commerceApi` is a module import (stable). `createInitialState` is imported (stable). All dependencies are stable, so the empty array is correct. No issue.
+## Nit
 
-- `commerce-dashboard.tsx:696-709` — The `buyer_approve`/`seller_approve` case calls `preparePayment` conditionally, checking `snap.approval_state`. The brief says to call `preparePayment()` on the "Prepare Payment" button, but there is no separate "Prepare Payment" button — the flow goes from approval directly to payment phase. Bob wired `preparePayment` to fire when the last approval completes (transitioning to PAYMENT phase). This is a reasonable interpretation. The condition at line 699 (`snap.approval_state === "MUTUALLY_ACCEPTABLE" || snap.approval_state === "AWAITING_SELLER_APPROVAL"`) will match on either approval click, but `preparePayment` only fires if `serverIds.current.orderId` exists — which it never does in demo mode. In non-demo mode with a real orderId, this could fire `preparePayment` twice (once on buyer approve, once on seller approve). The second call would be redundant. Low risk — the API should be idempotent. No action required.
+### N1 — Presign response includes `token` field not in the brief
+- **File**: `apps/api/src/routes/attestation.ts:83-88`, `apps/api/src/services/supabase-storage.service.ts:47-76`
+- **What is wrong**: ARCHITECT-BRIEF §API Surface endpoint 1 specifies `{ uploadUrl, storagePath, expiresIn }`. Bob adds `token`. Probably required by the Supabase upload flow on the client side, but it is drift from spec.
+- **Recommendation**: Either drop `token` or add one line to BUILD-LOG Deviations explaining why the wizard needs it. I suspect it's the latter — Supabase signed uploads need the token alongside the URL — but it should be documented.
 
-- `commerce-dashboard.tsx:620-645` — Trust score fetch on mount. The `useEffect` depends on `state?.negotiation.buyer_id` with an eslint-disable. If `isDemoMode` returns true (which it will for the default mock state), the effect returns early and no API call fires. Correct behavior. The eslint-disable is justified — `seller_id` does not need to be in the deps because it is always set alongside `buyer_id` in `createInitialState`. Acceptable.
+### N2 — `contentType` parsed but never used
+- **File**: `apps/api/src/routes/attestation.ts:32-36`, consumed at line 58
+- **What is wrong**: `presignSchema` requires `contentType`, but the handler never consults it. No MIME allowlist, not forwarded to Supabase. It exists only to satisfy validation.
+- **Recommendation**: Replace `z.string().min(1)` with `z.enum(["image/jpeg","image/png","image/webp"])`. Two-line change, closes a missing allowlist the next security pass would flag anyway.
 
-## Escalate to Architect
+### N3 — Missing test: authorized-caller case with no buyer yet
+- **File**: `apps/api/src/__tests__/attestation.service.test.ts:238-293`
+- **What is wrong**: Access-control tests cover seller / buyer / admin / unrelated-caller-with-buyer / missing. Not covered: **stranger calls, commit exists, no order exists yet**. This is the default state for every listing between attestation-commit and first purchase — the most common production state — and it's the exact branch where `getListingBuyerId` returns `null`.
+- **Recommendation**: Add a sixth test: `db` returns `[fixedCommitRow()]` on call 0, `[]` on call 1. Caller id is a stranger. Assert `res === null`.
 
-- **`isDemoMode` heuristic vs explicit flag** — The current `isDemoMode` function at `commerce-dashboard.tsx:587-593` uses wallet address string inspection. Bob raised this in the review request as an open question. Adding `isDemo: boolean` to `CommerceState` in `commerce-engine.ts` would be more reliable, but that file is not in scope for this step. Arch should decide: (a) add `isDemo` to the engine state in a follow-up step, (b) accept the heuristic as sufficient for MVP, or (c) expand this step's scope to include the engine change.
+### N4 — `validateAttestationStoragePath` sanitizes after comparison
+- **File**: `apps/api/src/lib/supabase-storage-paths.ts:90-113`
+- **What is wrong**: The function compares `pathListingId !== listingId` at line 108 before calling `sanitizeListingIdSegment` on either side at line 111. The `TRAVERSAL_RE` check at line 97 catches `..` already, so this is not exploitable as-is — defense in depth only.
+- **Recommendation**: Call `sanitizeListingIdSegment(listingId)` once at the top, before the comparison. Fail closed on malformed `listingId` even if callers forgot to pre-sanitize.
 
-- **Missing API calls for simulation actions** — `commerce-dashboard.tsx:749-751` explicitly skips API calls for `submit_shipping`, `advance_shipment`, `delivery_exception`, `start_ai_review`, `resolve_dispute`. The brief listed shipment and dispute resolution as integration points. Bob's comment says "No API calls for" these actions. If the API endpoints do not exist yet, this is correct — you cannot call what does not exist. Arch should confirm these endpoints are deferred to a later step, or if they were expected in this step.
+---
 
 ## Cleared
 
-2 files reviewed against the Step 13 brief.
+### Verified clean
+- **`attestation-hash.ts` untouched**: `git diff --stat apps/api/src/lib/attestation-hash.ts` is empty on the working tree. Canonical hash utility is not modified. ✓
+- **`requireAuth` on all 3 endpoints**: `routes/attestation.ts:50` (presign), `:99` (commit), `:144` (GET). ✓
+- **Filename sanitization**: `sanitizeAttestationFilename` is tight — regex `/^[A-Za-z0-9._-]+$/`, no leading dot, length 1..128, no unicode, must contain non-dot chars. Separate `TRAVERSAL_RE` catches `..` segments. Path builder never concatenates raw user input into the bucket name. ✓
+- **Storage-path validation**: `validateAttestationStoragePath` accepts both `{listingId}/{filename}` and `attestation-evidence/{listingId}/{filename}` shapes, rejects anything with ≠2 segments post-strip, and re-validates both segments against the sanitizers. ✓
+- **Supabase SDK usage**: `createSignedUploadUrl`, `list()`-as-head, `createSignedUrl` are reasonable given this is the first attestation-storage code in the repo. Lazy client init with clear error at first call if env vars missing, test hook `_setSupabaseClientForTest` exposed cleanly. ✓
+- **pgsodium / Vault usage**: `pgsodium.crypto_aead_det_encrypt(plaintext, aad=listingId, key_id)` with key resolved via `(SELECT id FROM pgsodium.key WHERE name = 'attestation_imei_key' LIMIT 1)`. AAD is bound to `listingId` as the brief requires (line 159). Plaintext IMEI is never returned from any service function; GET surfaces only `imeiEncrypted`. ✓ (subject to C1 fix — the encryption call is correct, but the plaintext fed into it must match the plaintext fed into the hash)
+- **409 mapping in route**: `AttestationConflictError` → `409 ATTESTATION_ALREADY_COMMITTED` at routes:129-131. ✓ (the *raising* logic has C2 race — the mapping itself is fine)
+- **404-obfuscation funnel**: All seller / buyer / admin / unauthorized cases flow through one `getAttestationForViewer` function that returns `null` for both "no row" and "not authorized". Route maps null → 404 without discriminating. Access-control matrix tests cover all four buckets. ✓ (modulo the timing side-channel in S2)
+- **Route-level test coverage**: 15 tests spanning 401 unauth (×3 endpoints), 400 on invalid body / disallowed filename, 403 non-seller (×2), 404 missing listing, 409 duplicate, 201 commit happy, 200 presign happy, 404 unauthorized-or-missing GET, 404 malformed listingId segment, 200 authorized GET with view URL. ✓
+- **Canonical hash input re-use at verify time**: `verifyAttestationCommit` reconstructs `AttestationInput` with the same field names and re-calls `canonicalizeAttestation` — the hash-match round-trip is correct on the raw-IMEI path (tests prove this). ✓ (again, modulo C1 on the payload-storage side)
 
-**commerce-api.ts**: 9 exported async functions matching the brief's specified set: `preparePayment`, `getPaymentStatus`, `quotePayment`, `authorizePayment`, `settlePayment`, `openDispute`, `getDisputeByOrder`, `getShipmentByOrder`, `getTrustScore`. All use the `api` import from `@/lib/api-client` as specified. Endpoints match the brief's URL patterns exactly. Return types are stronger than the brief's `unknown` — typed interfaces with specific fields. `openDispute` has one extra parameter (`description`) beyond the brief. No unauthorized endpoints. Correct.
+---
 
-**commerce-dashboard.tsx**: Optimistic UI pattern implemented correctly — local `dispatch` (via `setState` updater) fires first for instant UI, then API calls fire in background, with `revert()` on failure. `isDemoMode` guard skips all API calls when no real server IDs exist. Every API call is wrapped in try/catch or `.catch()` — no unhandled promise rejections, no UI crashes on API failure. Trust score fetch fires on mount via `useEffect` with `Promise.allSettled` (non-blocking, handles partial failure). Local state machines (`commerce-engine.ts` imports) are fully preserved — all 11 action cases in `handleAction` still dispatch through the local engine functions. `serverIds` ref tracks API-assigned IDs across renders without triggering re-renders. Reset action clears `serverIds`. No removal of any existing UI components or local state logic. Correct.
+## Summary
+
+Two Must-Fix items block this step.
+
+**C1** silently corrupts the audit trail the moment a seller submits an IMEI with a space or dash. The structure is right, but the normalization is applied in one place and not the other — a finishing error, not a design error. One-line fix plus a test.
+
+**C2** is a race condition that defeats append-only under concurrent load. The right fix depends on whether the schema has a UNIQUE constraint on `listing_id`; Bob should check, and if it doesn't, escalate to Arch for a migration.
+
+Everything else is tight: sanitization is real, the access-control funnel is clean, `requireAuth` is on every route, canonical hash is untouched, the dispute-core `verifyAttestationCommit` hook returns the shape the brief specified, and test coverage is broad.
+
+Bob — fix C1 and C2, add the two missing tests (formatted IMEI round-trip, unique-violation path), address S1 inline (five minutes, mirror the presign pattern), and log S2/S3 to BUILD-LOG. Nits N1-N4 fit in the same cycle if you have the time. Re-submit and I will turn it around fast.
+
+— Richard

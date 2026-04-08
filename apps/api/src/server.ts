@@ -20,6 +20,14 @@ import { registerTagRoutes } from "./routes/tags.js";
 import { registerIntentRoutes } from "./routes/intents.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
+import { registerSettlementApprovalRoutes } from "./routes/settlement-approvals.js";
+import { registerNegotiationRoutes } from "./routes/negotiations.js";
+import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
+import { registerGroupRoutes } from "./routes/groups.js";
+import { registerAdminRoutes } from "./routes/admin.js";
+import { registerAttestationRoutes } from "./routes/attestation.js";
+import { createEventDispatcher } from "./lib/event-dispatcher.js";
+import { registerActionHandlers } from "./lib/action-handlers.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -55,14 +63,19 @@ export async function createServer() {
     timestamp: new Date().toISOString(),
   }));
 
+  // ─── Negotiation Engine Routes ──────────────────────────
+  const eventDispatcher = createEventDispatcher();
+  registerActionHandlers(eventDispatcher, db);
+
   // ─── MCP Routes ──────────────────────────────────────────
-  registerMcpRoutes(app, db);
+  registerMcpRoutes(app, db, eventDispatcher);
 
   // ─── Commerce Routes ─────────────────────────────────────
   registerPaymentRoutes(app, db);
   registerShipmentRoutes(app, db);
   registerDisputeRoutes(app, db);
   registerSettlementReleaseRoutes(app, db);
+  registerSettlementApprovalRoutes(app, db);
   registerAuthenticationRoutes(app, db);
 
   // ─── Trust, DS Rating, ARP, Tag Routes ──────────────────
@@ -80,6 +93,17 @@ export async function createServer() {
   registerPublicListingRoutes(app, db);
   registerDraftRoutes(app, db);
   registerBuyerListingsRoutes(app, db);
+
+  // ─── Negotiation Session & Group Routes ─────────────────
+  registerNegotiationRoutes(app, db, eventDispatcher);
+  registerGroupRoutes(app, db, eventDispatcher);
+  registerSimulateRoute(app);
+
+  // ─── Admin Ops Routes ────────────────────────────────────
+  registerAdminRoutes(app, db);
+
+  // ─── Attestation Routes ──────────────────────────────────
+  registerAttestationRoutes(app, db);
 
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 

@@ -7,6 +7,7 @@ import {
   timestamp,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { listingsPublished } from "./listings-published.js";
 
@@ -49,6 +50,8 @@ export const sellerAttestationCommits = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (table) => [
+    // Append-only: at most one commit per listing. Enforced by migration 005.
+    uniqueIndex("uq_seller_attestation_commits_listing_id").on(table.listingId),
     index("idx_seller_attestation_commits_listing").on(table.listingId),
     index("idx_seller_attestation_commits_seller_committed").on(
       table.sellerId,

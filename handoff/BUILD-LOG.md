@@ -464,3 +464,289 @@ sampleSize, lastRefit, coefficientVersion }` is stable. Suggestions:
 - Rate limit guard pre-increments the counter before the HTTP call, so
   concurrent calls can never collectively exceed the cap by more than the
   in-flight count.
+
+---
+
+# Build Log — Step 55 (Attestation Commit Backend)
+
+*Written by Bob. 2026-04-08.*
+
+## Summary
+
+Server-side of the Phase 0 dispute-triggered attestation flow:
+3 REST endpoints + storage service + core attestation service with
+hash-based verification hook for dispute-core reuse. Infrastructure
+(Supabase bucket, Vault key) already provisioned by Arch — Bob only
+wrote code.
+
+## Files Created
+
+- `apps/api/src/lib/supabase-storage-paths.ts`
+  - `ATTESTATION_BUCKET` constant, TTL constants.
+  - `sanitizeAttestationFilename()` — allows `[A-Za-z0-9._-]`, rejects
+    dotfiles, path separators, unicode. Length 1..128.
+  - `sanitizeListingIdSegment()` — restricts to `[A-Za-z0-9-]`.
+  - `buildAttestationObjectPath()` / `validateAttestationStoragePath()`
+    — idempotent canonical path builder + traversal-safe validator.
+
+- `apps/api/src/services/supabase-storage.service.ts`
+  - Lazy Supabase client factory (errors on missing env, not at import).
+  - `createAttestationUploadUrl(objectPath)` — Supabase SDK
+    `createSignedUploadUrl`, returns `{uploadUrl, storagePath, token,
+    expiresIn=600}`.
+  - `attestationObjectExists(objectPath)` — emulates HEAD via
+    `list(folder, { search: filename, limit: 1 })` since Supabase JS
+    has no native head().
+  - `createAttestationViewUrl(objectPath)` — 10-minute signed download.
+  - `_setSupabaseClientForTest()` — injection hook.
+
+- `apps/api/src/services/attestation.service.ts`
+  - `AttestationConflictError`, `AttestationNotFoundError`,
+    `AttestationForbiddenError` classes.
+  - `createAttestationCommit(db, req)` — 409 duplicate check → storage
+    path validation → per-photo bucket existence check → canonicalize +
+    hash → raw SQL INSERT with pgsodium AEAD encryption of IMEI keyed
+    by Vault name `attestation_imei_key`. `photoKeys` in the canonical
+    payload are the fully-qualified `bucket/listingId/filename` strings
+    so the same shape the GET endpoint returns re-hashes identically.
+  - `loadCommitByListing(db, listingId)` — raw-SQL loader, normalizes
+    driver-shape (array vs `.rows`).
+  - `getListingSellerId(db, listingId)` — joins `listings_published →
+    listing_drafts` to resolve owner.
+  - `getListingBuyerId(db, listingId)` — latest `commerce_orders` row
+    by listing, null if no order.
+  - `getAttestationForViewer(db, listingId, caller)` — access control
+    matrix: seller (by join) / buyer (by order) / admin (by role) →
+    full; else null (404 obfuscation). Mints signed 10-min view URLs
+    for each photo path.
+  - `verifyAttestationCommit(db, listingId, submittedPayload)` —
+    re-canonicalizes + re-hashes, compares to stored. Returns `{found,
+    match, storedHash, computedHash, divergence?}`. `divergence` is a
+    list of canonical-field names that differ, computed from the stored
+    `canonical_payload` JSONB blob.
+
+- `apps/api/src/routes/attestation.ts`
+  - `POST /api/attestation/presigned-upload` — requireAuth + seller
+    ownership check → 400/403/404/500 + 200 happy path.
+  - `POST /api/attestation/commit` — requireAuth + seller ownership →
+    400/403/404/409 + 201 happy path.
+  - `GET  /api/attestation/:listingId` — requireAuth → service does
+    access control → 404 for unauth AND not-found (identical), 200 with
+    photos + signed view URLs on success.
+
+- `apps/api/src/__tests__/attestation.service.test.ts` — 14 tests
+  1. createAttestationCommit inserts + returns hash (happy path)
+  2. 409 when commit already exists
+  3. Rejects when a photo does not exist in bucket
+  4. Rejects storage path not matching listingId
+  5. verify match=true for identical payload
+  6. verify match=false for tampered batteryHealthPct (+divergence)
+  7. verify match=false for reversed photoStoragePaths (+divergence)
+  8. verify found=false when no commit exists
+  9. getAttestationForViewer seller → full
+  10. getAttestationForViewer buyer → full (via commerce_orders lookup)
+  11. getAttestationForViewer admin → full (skips buyer lookup)
+  12. getAttestationForViewer unrelated caller → null (404-obfuscation)
+  13. getAttestationForViewer no-row → null
+  14. loadCommitByListing null / row round-trip
+
+- `apps/api/src/__tests__/attestation.routes.test.ts` — 15 tests
+  1. presign 401 without auth
+  2. presign 400 missing fields
+  3. presign 400 disallowed filename (`../evil.jpg`)
+  4. presign 403 non-seller caller
+  5. presign 404 listing not found
+  6. presign 200 happy path with upload URL
+  7. commit 401 without auth
+  8. commit 400 invalid body
+  9. commit 403 non-seller caller
+  10. commit 409 duplicate
+  11. commit 201 happy path
+  12. GET 401 without auth
+  13. GET 404 when service returns null
+  14. GET 200 with full view for authorized caller (includes signed URLs)
+  15. GET 404 on malformed listingId segment
+
+## Files Modified
+
+- `apps/api/src/server.ts`
+  - Import `registerAttestationRoutes` and register after admin routes.
+- `apps/api/src/__tests__/setup.ts`
+  - Added `sellerAttestationCommits: {}` to the `@haggle/db` mock export.
+
+## Test Counts
+
+- Before:  263 passing (Part B baseline)
+- After:   349 passing, 0 failing (+29 from this step on top of Step 54)
+  - `attestation.service.test.ts`:  14 tests
+  - `attestation.routes.test.ts`:   15 tests
+
+Pre-existing test counts from Step 54 and other in-flight work are
+unchanged and still green.
+
+## Typecheck
+
+`pnpm --filter @haggle/api typecheck` — clean, zero errors.
+
+## Known Risks (per ARCHITECT-BRIEF)
+
+1. **Supabase Vault key management**. Key rotation is the Project
+   Owner's responsibility. The service only references the key by name
+   (`attestation_imei_key`). If the key is rotated, historical
+   `imei_encrypted` values become unreadable unless the rotation
+   preserves the key id / re-encrypts.
+2. **Supabase head() cost**. Each commit does N list-with-search calls
+   (one per photo). At ~5 photos/commit this is 5 API calls — well
+   under any reasonable rate limit, but something to revisit if commit
+   volume climbs or the photo count grows.
+3. **photoStoragePaths order dependency**. The canonical hash preserves
+   order. If the wizard re-uploads in a different order the hash will
+   differ, meaning dispute-core verify will fail. The wizard must lock
+   order client-side; this is a front-end contract, not a server
+   concern.
+
+## Deviations from Brief
+
+1. **`photoKeys` in canonical payload are fully-qualified paths
+   (`attestation-evidence/{listingId}/{filename}`)** rather than the
+   raw storage-path arg. This ensures the GET response's
+   `photos[].storagePath` round-trips cleanly through
+   `verifyAttestationCommit` — dispute-core can pass the GET response
+   straight back without any translation. Documented in code comments
+   on `createAttestationCommit`.
+
+2. **Placeholder `expiresAt = now + 30d`** per brief §2.6. arp-core
+   will override this at order time. The value is stored as a plain
+   ISO string; the 30-day window is hard-coded as
+   `DEFAULT_REVIEW_WINDOW_MS`.
+
+3. **`pgsodium.crypto_aead_det_encrypt` uses `listingId` as associated
+   data** (the second arg). This binds a given ciphertext to its
+   listing, so a copy-paste of `imei_encrypted` into a different row
+   cannot be decrypted. The brief did not specify AD — this is a
+   strictly-additive hardening.
+
+4. **GET 404 obfuscation is absolute**. Even malformed listingId path
+   segments return 404 rather than 400, so an attacker probing the
+   endpoint cannot distinguish "listing format wrong" from "listing
+   missing" from "not authorized".
+
+## Known Limitations / Gaps
+
+- **Supabase SDK list() as head() substitute** may have different
+  semantics on very large folders (paginated listing). For attestation
+  folders keyed by listingId this is a non-issue — each listing has at
+  most ~20 photos.
+- **No integration test against a real Supabase instance**. The route
+  tests mock the storage service entirely; any bug that would only
+  surface with a real bucket (e.g. RLS misconfiguration) will not be
+  caught here. Stage-env smoke test required before production.
+- **IMEI decrypt path not exercised in tests**. Tests verify the service
+  returns `imeiEncrypted` as-is (ENC blob). A decrypt-side helper can
+  be added when dispute-core actually needs plaintext.
+- **90-day object lifecycle**. Not implemented. Arch deferred to
+  Step 57+.
+
+## Notes for Richard
+
+- Canonical hash is unmodified — `apps/api/src/lib/attestation-hash.ts`
+  was NOT touched. Verified via `git diff --stat apps/api/src/lib/`.
+- The access-control matrix on GET is all funneled through
+  `getAttestationForViewer`. The route handler itself has no
+  per-role logic — it maps `null → 404` and `object → 200`. Single
+  choke point for review.
+- 409 is only raised by `createAttestationCommit`; the route handler
+  translates `AttestationConflictError` → 409 via instanceof check.
+- Raw SQL used for insert/select because of pgsodium +
+  `vault`-resolved key lookup. Drizzle query builder cannot express
+  `pgsodium.crypto_aead_det_encrypt(..., (SELECT id FROM pgsodium.key
+  WHERE name = ...))` natively.
+
+---
+
+## Step 55 — Round 2 (Review Fixes)
+
+**Scope**: C1 + C2 + S1 + S2 + S3 from REVIEW-FEEDBACK.md. Nits skipped.
+
+### C1 — IMEI normalization asymmetry (FIXED)
+Root cause of the hash/payload mismatch on formatted IMEIs: the service
+hand-built `canonicalObj` with a stripped IMEI but fed the **raw** IMEI to
+`canonicalizeAttestation()`. Pure-digit fixtures masked the bug.
+
+Fix: IMEI is now normalized exactly once, at the single choke point
+`normalizeImei()` in the new `lib/attestation-canonical-record.ts`. Both
+`createAttestationCommit` and `verifyAttestationCommit` go through
+`buildCanonicalAttestationRecord()` which returns `{record, canonicalString,
+commitHash}` in one pass. The service writes `record` to
+`canonical_payload` byte-for-byte, and uses `record.imei` for the
+`pgsodium.crypto_aead_det_encrypt(...)` plaintext. Hash, JSONB, and
+ciphertext are now guaranteed consistent.
+
+### C2 — 409 TOCTOU race (FIXED)
+Verified that `004_attestation_and_hfmi.sql` and the schema file did NOT
+have `UNIQUE(listing_id)` — only a non-unique btree index. Two concurrent
+commits could both pass the pre-SELECT check and both INSERT.
+
+Fixes:
+- New migration `packages/db/migrations/005_attestation_unique_listing.sql`
+  adds `CONSTRAINT uq_seller_attestation_commits_listing_id UNIQUE (listing_id)`.
+- Schema `seller-attestation-commits.ts` updated with `uniqueIndex(...)`.
+- Service removes the pre-SELECT. `db.execute(INSERT)` is wrapped in
+  `try/catch`, and Postgres SQLSTATE `23505` (constant `PG_UNIQUE_VIOLATION`)
+  is mapped to `AttestationConflictError`. The code probe handles both the
+  direct `err.code` shape and `err.cause.code` for driver wrappers.
+
+### S1 — Internal error leak on commit route (FIXED)
+Before: `routes/attestation.ts` returned 400 with
+`message: (err as Error).message` for any non-conflict error — leaking
+internal storage paths, SQL fragments, etc.
+
+Fix: new typed errors `AttestationValidationError` and
+`AttestationStorageError` are thrown by the service. The route now:
+- Conflict → 409 `ATTESTATION_ALREADY_COMMITTED`
+- Validation/storage errors → 400 `INVALID_COMMIT_REQUEST` with **no**
+  message field; real error logged at `warn` server-side.
+- Anything else → 500 `COMMIT_FAILED` with **no** message; logged at
+  `error`. Mirrors the presign handler convention.
+
+### S2 — GET timing side-channel (ALREADY PARALLEL)
+Verified `getAttestationForViewer` already wraps all signed-URL generations
+in `Promise.all`. Authorized response latency is now O(1) signed-URL RTTs
+regardless of photo count, so there is no N-photo timing delta between
+authorized and unauthorized (404) paths. No change required.
+
+### S3 — canonical_payload hand-reconstructed (FIXED — option a)
+New file `apps/api/src/lib/attestation-canonical-record.ts` wraps the
+locked `attestation-hash.ts`. It exposes `buildCanonicalAttestationRecord`
+which is now the single source of truth for the canonical shape. Service
+and verify both consume it; there is no hand-reconstructed canonical
+object anywhere in the service.
+
+### Regression tests added
+- `round-trips a formatted IMEI` — calls `createAttestationCommit` with
+  `"123 456-789 012 345"`, captures the `canonical_payload` JSON literal
+  passed to `db.execute`, and asserts (a) returned `commitHash` matches
+  an independent re-hash of the digits-only form, and (b) the stored
+  `canonical_payload.imei` is digits-only.
+- `throws AttestationConflictError on Postgres 23505 unique_violation` —
+  makes `db.execute` reject with `{code: "23505"}` and verifies the
+  service maps it to `AttestationConflictError`. This replaces the old
+  pre-SELECT-based conflict test.
+
+### Validation
+- `pnpm --filter @haggle/api typecheck` → clean.
+- `pnpm --filter @haggle/api test` → **350 passed** (23 files).
+- Unused imports (`canonicalizeAttestation`, `computeCommitHash`,
+  `AttestationInput`) removed from the service.
+
+### Files touched in Round 2
+- `apps/api/src/lib/attestation-canonical-record.ts` (new)
+- `apps/api/src/services/attestation.service.ts` (rewrote
+  `createAttestationCommit`, rewrote `verifyAttestationCommit`, added
+  `AttestationStorageError` + `AttestationValidationError`, dropped
+  unused imports)
+- `apps/api/src/routes/attestation.ts` (S1)
+- `apps/api/src/__tests__/attestation.service.test.ts` (regression tests,
+  rewrote conflict test, dropped pre-SELECT expectation)
+- `packages/db/migrations/005_attestation_unique_listing.sql` (new)
+- `packages/db/src/schema/seller-attestation-commits.ts` (uniqueIndex)

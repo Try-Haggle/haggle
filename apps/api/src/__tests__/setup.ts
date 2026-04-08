@@ -49,6 +49,7 @@ vi.mock("@haggle/db", () => ({
   negotiationSessions: {},
   hfmiPriceObservations: {},
   hfmiModelCoefficients: {},
+  sellerAttestationCommits: {},
 }));
 
 // ─── Mock MCP SDK ────────────────────────────────────────────────────
