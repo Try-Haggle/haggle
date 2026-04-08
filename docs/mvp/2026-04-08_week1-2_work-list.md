@@ -2,7 +2,7 @@
 
 Generated 2026-04-08 from `/plan-eng-review` session
 Status: READY FOR BOB (Builder)
-Scope: iPhone 14 Pro wedge, US market, 2-week sprint
+Scope: iPhone 13/14/15 Pro family (6 SKUs), 14 Pro primary Gate, US market, 2-week sprint
 
 ---
 
@@ -14,10 +14,10 @@ Scope: iPhone 14 Pro wedge, US market, 2-week sprint
    - Review period managed by existing `arp-core` package
    - Evidence submission only when `dispute-core` triggers
 2. **No onchain commit in v0** — Postgres append-only audit log. Onchain attestation deferred to Phase 0.5.
-3. **HFMI = eBay-only Hedonic** — single source, OLS regression, Gazelle/Back Market demoted to anchor-only (sanity checks).
+3. **HFMI = Browse API + Terapeak hybrid** — eBay Finding API deprecated. v0 uses Browse API (active listings with correction factor) + weekly manual Terapeak sold snapshots. Marketplace Insights API application submitted Day 1 for Phase 0.5. Gazelle/Back Market demoted to anchor-only.
 4. **Unlocked devices only** — carrier-locked inventory (~40%) excluded from v0.
 5. **Consumer UI free, API monetization Phase 1** — schema design in Phase 0, build deferred.
-6. **Marketing narrow / transaction wide** — landing page = 14 Pro only, listings = full Apple ecosystem allowed.
+6. **Marketing narrow / transaction wide** — landing page = 14 Pro narrative, HFMI coverage = 13/14/15 Pro family, listings = full Apple ecosystem allowed.
 
 ---
 
@@ -134,11 +134,14 @@ log(price) ~ intercept
 
 | Source | Method | v0 Weight | Notes |
 |---|---|---|---|
-| eBay sold listings | Finding API `findCompletedItems` | **1.0** | Primary |
-| Marketplace Insights API | Application submitted | 0 | Phase 0.5 when approved |
+| **eBay Browse API** | `item_summary/search`, free OAuth | **primary** | Active listings; apply ~0.92 correction factor to approximate sold |
+| **Terapeak (manual)** | Weekly CSV export via eBay Store account ($22/mo) | **secondary** | True sold data; calibrates correction factor |
+| Marketplace Insights API | Application submitted Day 1 | 0 | Phase 0.5 when approved (2-4 weeks) |
 | Gazelle | Manual sampling weekly | anchor | Sanity check: HFMI < Gazelle ⇒ alarm |
 | Back Market | Manual sampling weekly | anchor | Sanity check: HFMI > Back Market refurb ⇒ alarm |
 | Haggle internal | Own completed txns | 0 | Phase 0.5 when ≥50 txns |
+
+**Note**: eBay Finding API `findCompletedItems` is deprecated and no longer free at scale. See §4.1 of `2026-04-08_hfmi-spec.md` for full rationale.
 
 ### Public Methodology Page
 
@@ -174,7 +177,7 @@ Rate limiting + auth stubs only. Consumer UI calls internal endpoint directly.
 - ❌ Haggle internal weight ramping
 - ❌ Marketplace Insights API integration (waiting on approval)
 - ❌ Public API rate limiting / billing
-- ❌ Multi-SKU grid (14 Pro only)
+- ❌ Non-Pro iPhone models, MacBook, iPad (v0 = 13/14/15 Pro family, 6 SKUs)
 
 ---
 
@@ -220,7 +223,7 @@ Rate limiting + auth stubs only. Consumer UI calls internal endpoint directly.
 - [ ] Hash commit function + canonical JSON spec
 
 **Day 3-4 — HFMI Core**
-- [ ] eBay Finding API client + rate limit wrapper
+- [ ] eBay Browse API OAuth client + rate limit wrapper + Terapeak CSV importer
 - [ ] `hfmi_price_observations` ingestion job (cron, hourly)
 - [ ] OLS regression fitter (`simple-statistics`)
 - [ ] `HFMI_median()` query function
@@ -271,7 +274,7 @@ Rate limiting + auth stubs only. Consumer UI calls internal endpoint directly.
 
 1. `attestation-core` as new package vs merge into `dispute-core`?
 2. OLS regression: TypeScript (`simple-statistics`) vs Python microservice?
-3. eBay Finding API client: build from scratch vs existing npm package?
+3. eBay Browse API client: build from scratch (~200 lines) vs `ebay-api` npm package?
 4. S3 direct upload vs presigned URL through API?
 5. Mobile web attestation wizard: PWA vs plain responsive web?
 
