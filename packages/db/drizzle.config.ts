@@ -24,6 +24,10 @@ export default defineConfig({
     "./src/schema/tags.ts",
     "./src/schema/waiting-intents.ts",
     "./src/schema/skills.ts",
+    "./src/schema/negotiation-sessions.ts",
+    "./src/schema/seller-attestation-commits.ts",
+    "./src/schema/hfmi-price-observations.ts",
+    "./src/schema/hfmi-model-coefficients.ts",
   ],
   out: "./drizzle",
   dbCredentials: {
