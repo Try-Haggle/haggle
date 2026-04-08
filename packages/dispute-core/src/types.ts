@@ -42,6 +42,9 @@ export interface DisputeCase {
   opened_at: string;
   evidence: DisputeEvidence[];
   resolution?: DisputeResolution;
+  // Optional fields mirrored from DB row (camelCase) for route-level access
+  metadata?: Record<string, unknown> | null;
+  refundAmountMinor?: string | null;
 }
 
 // ---------------------------------------------------------------------------

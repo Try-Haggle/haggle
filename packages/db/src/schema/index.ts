@@ -31,4 +31,11 @@ export { negotiationGroups, negotiationSessions, negotiationRounds } from "./neg
 export { sellerAttestationCommits } from "./seller-attestation-commits.js";
 export { hfmiPriceObservations } from "./hfmi-price-observations.js";
 export { hfmiModelCoefficients } from "./hfmi-model-coefficients.js";
+export { tagPromotionRules, adminActionLog } from "./admin-ops.js";
+export { listingEmbeddings } from "./listing-embeddings.js";
+export { recommendationLogs } from "./recommendation-logs.js";
+export { tagIdfCache } from "./tag-idf-cache.js";
+export { buyerInterestVectors } from "./buyer-interest-vectors.js";
+export { categoryRelatedness } from "./category-relatedness.js";
+export { vector } from "./pgvector.js";
 // TODO(slice-6): export { users } from "./users.js";

@@ -31,6 +31,8 @@ function mapDisputeCase(
     opened_at: row.openedAt.toISOString(),
     evidence,
     resolution,
+    metadata: row.metadata ?? null,
+    refundAmountMinor: row.refundAmountMinor ?? null,
   };
 }
 
@@ -121,7 +123,8 @@ export async function updateDisputeRecord(
     .set({
       status: dispute.status,
       resolutionSummary: dispute.resolution?.summary,
-      refundAmountMinor: dispute.resolution?.refund_amount_minor?.toString(),
+      refundAmountMinor: dispute.resolution?.refund_amount_minor?.toString() ?? dispute.refundAmountMinor ?? undefined,
+      metadata: dispute.metadata ?? undefined,
       resolvedAt: dispute.resolution?.resolved_at ? new Date(dispute.resolution.resolved_at) : undefined,
       closedAt: dispute.status === "CLOSED" ? new Date() : undefined,
       updatedAt: new Date(),
