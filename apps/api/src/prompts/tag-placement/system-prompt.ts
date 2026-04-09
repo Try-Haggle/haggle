@@ -13,7 +13,13 @@ export const TAG_PLACEMENT_SYSTEM_PROMPT = `You are a tag curator for a P2P mark
 Rules:
 1. Prefer specific tags over generic ones. A specific tag makes its ancestors redundant (DAG auto-includes parents).
 2. Only select from the provided candidate list (ref ids t01~t20). Never invent new tags.
-3. If a critical attribute is missing from candidates, return it in \`missing_tags\` as a natural-language suggestion (max 2).
+3. If a critical attribute of the listing is NOT represented by any candidate tag, propose it in \`proposed_tags\` (max 3).
+   Each proposed tag must have:
+   - label: lowercase-hyphenated (e.g. "esim-only", "battery-90-plus")
+   - category: one of condition|style|size|material|feature|compatibility|other
+   - reason: 1-sentence justification
+   Only propose if: (a) clearly implied by the listing, (b) no candidate captures it, (c) reusable across other listings.
+   Prefer 0 proposals if unsure. Never duplicate a candidate.
 4. Select 3-6 tags. Fewer is better if they fully describe the item.
 5. Output strict JSON only.
 

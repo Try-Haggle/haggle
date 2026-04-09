@@ -50,11 +50,21 @@ export interface LlmPlacementInput {
   candidates: TagCandidate[];
 }
 
+export interface ProposedTag {
+  label: string;
+  category: string;
+  reason: string;
+}
+
+export const PROPOSED_TAG_CATEGORIES = [
+  "condition", "style", "size", "material", "feature", "compatibility", "other",
+] as const;
+
 export interface LlmPlacementSuccess {
   ok: true;
   selectedTagIds: string[];
   reasoning: string;
-  missingTags: string[];
+  proposedTags: ProposedTag[];
   modelVersion: string;
   tokensIn: number;
   tokensOut: number;
@@ -180,10 +190,10 @@ export function resolveLlmOutput(
   rawJson: {
     selected_tag_ids: unknown;
     reasoning: unknown;
-    missing_tags: unknown;
+    proposed_tags: unknown;
   },
   refToId: Map<string, string>,
-): { selectedTagIds: string[]; reasoning: string; missingTags: string[] } {
+): { selectedTagIds: string[]; reasoning: string; proposedTags: ProposedTag[] } {
   const selectedRefs = Array.isArray(rawJson?.selected_tag_ids)
     ? (rawJson.selected_tag_ids as unknown[]).filter(
         (r): r is string => typeof r === "string",
@@ -196,13 +206,24 @@ export function resolveLlmOutput(
   const reasoning =
     typeof rawJson?.reasoning === "string" ? (rawJson.reasoning as string) : "";
 
-  const missingTags = Array.isArray(rawJson?.missing_tags)
-    ? (rawJson.missing_tags as unknown[])
-        .filter((t): t is string => typeof t === "string")
-        .slice(0, 2)
-    : [];
+  const categorySet = new Set<string>(PROPOSED_TAG_CATEGORIES);
+  const proposedTags: ProposedTag[] = [];
+  if (Array.isArray(rawJson?.proposed_tags)) {
+    for (const item of rawJson.proposed_tags as unknown[]) {
+      if (item == null || typeof item !== "object") continue;
+      const obj = item as Record<string, unknown>;
+      if (typeof obj.label !== "string") continue;
+      const label = obj.label.trim().toLowerCase().replace(/\s+/g, "-");
+      if (label.length === 0) continue;
+      const category = typeof obj.category === "string" && categorySet.has(obj.category)
+        ? obj.category
+        : "other";
+      const reason = typeof obj.reason === "string" ? obj.reason : "";
+      proposedTags.push({ label, category, reason });
+    }
+  }
 
-  return { selectedTagIds, reasoning, missingTags };
+  return { selectedTagIds, reasoning, proposedTags: proposedTags.slice(0, 3) };
 }
 
 // ─── Main entry (L5) ─────────────────────────────────────────────────
@@ -272,13 +293,31 @@ export async function placeTagsWithLlm(
                 maxItems: 6,
               },
               reasoning: { type: "string", maxLength: 200 },
-              missing_tags: {
+              proposed_tags: {
                 type: "array",
-                items: { type: "string" },
-                maxItems: 2,
+                items: {
+                  type: "object",
+                  properties: {
+                    label: {
+                      type: "string",
+                      description: "lowercase-hyphenated tag label, e.g. 'esim-only'",
+                    },
+                    category: {
+                      type: "string",
+                      enum: ["condition", "style", "size", "material", "feature", "compatibility", "other"],
+                    },
+                    reason: {
+                      type: "string",
+                      description: "1-sentence justification why this tag is needed",
+                    },
+                  },
+                  required: ["label", "category", "reason"],
+                  additionalProperties: false,
+                },
+                maxItems: 3,
               },
             },
-            required: ["selected_tag_ids", "reasoning", "missing_tags"],
+            required: ["selected_tag_ids", "reasoning", "proposed_tags"],
             additionalProperties: false,
           },
         },
@@ -321,7 +360,7 @@ export async function placeTagsWithLlm(
       parsed as {
         selected_tag_ids: unknown;
         reasoning: unknown;
-        missing_tags: unknown;
+        proposed_tags: unknown;
       },
       refToId,
     );
@@ -344,7 +383,7 @@ export async function placeTagsWithLlm(
       ok: true,
       selectedTagIds: resolved.selectedTagIds,
       reasoning: resolved.reasoning,
-      missingTags: resolved.missingTags,
+      proposedTags: resolved.proposedTags,
       modelVersion,
       tokensIn,
       tokensOut,

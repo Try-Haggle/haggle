@@ -62,7 +62,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"iphone-17-pro implies iphone-17/iphone/phone/apple via DAG ancestors","missing_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"iphone-17-pro implies iphone-17/iphone/phone/apple via DAG ancestors","proposed_tags":[]}',
       },
     ],
   },
@@ -91,7 +91,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"galaxy-s24-ultra implies galaxy-s24/galaxy/android/phone via DAG","missing_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"galaxy-s24-ultra implies galaxy-s24/galaxy/android/phone via DAG","proposed_tags":[{"label":"s-pen-support","category":"feature","reason":"S24 Ultra includes S Pen, not captured by any candidate"}]}',
       },
     ],
   },
@@ -120,7 +120,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"leather-jacket implies jacket/outerwear/clothing via DAG","missing_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"leather-jacket implies jacket/outerwear/clothing via DAG","proposed_tags":[]}',
       },
     ],
   },
@@ -149,7 +149,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"air-jordan-1 implies jordan/sneaker/shoe/nike via DAG","missing_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"air-jordan-1 implies jordan/sneaker/shoe/nike via DAG","proposed_tags":[]}',
       },
     ],
   },
@@ -183,7 +183,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02"],"reasoning":"switch implies nintendo/console/gaming; OLED variant missing","missing_tags":["switch-oled"]}',
+          '{"selected_tag_ids":["t01","t02"],"reasoning":"switch implies nintendo/console/gaming; OLED variant missing","proposed_tags":[{"label":"switch-oled","category":"feature","reason":"OLED variant is a key differentiator not in candidates"}]}',
       },
     ],
   },
@@ -212,7 +212,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"ps5-slim implies ps5/playstation/console/sony via DAG","missing_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"ps5-slim implies ps5/playstation/console/sony via DAG","proposed_tags":[]}',
       },
     ],
   },
@@ -241,7 +241,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03"],"reasoning":"dyson-v15-detect implies dyson/vacuum/appliance/home via DAG","missing_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03"],"reasoning":"dyson-v15-detect implies dyson/vacuum/appliance/home via DAG","proposed_tags":[]}',
       },
     ],
   },
@@ -268,7 +268,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03"],"reasoning":"no brand/model available; generic attribute tags only","missing_tags":["brand-unknown"]}',
+          '{"selected_tag_ids":["t01","t02","t03"],"reasoning":"no brand/model available; generic attribute tags only","proposed_tags":[{"label":"brand-unknown","category":"other","reason":"no brand identified, useful for filtering unbranded items"}]}',
       },
     ],
   },

@@ -26,11 +26,11 @@ describe("FEW_SHOT_POOL", () => {
       const parsed = JSON.parse(example.messages[1].content) as {
         selected_tag_ids: unknown;
         reasoning: unknown;
-        missing_tags: unknown;
+        proposed_tags: unknown;
       };
       expect(Array.isArray(parsed.selected_tag_ids)).toBe(true);
       expect(typeof parsed.reasoning).toBe("string");
-      expect(Array.isArray(parsed.missing_tags)).toBe(true);
+      expect(Array.isArray(parsed.proposed_tags)).toBe(true);
     }
   });
 });
