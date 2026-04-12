@@ -29,3 +29,7 @@ Thumbs.db
 packages/contracts/out/
 packages/contracts/cache/
 .gstack/
+.playwright-mcp/
+.serena/
+apps/api/.local/
+apps/web/.vercel/
