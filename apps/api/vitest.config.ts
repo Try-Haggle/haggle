@@ -3,7 +3,7 @@ import path from "node:path";
 
 export default defineConfig({
   test: {
-    include: ["src/__tests__/**/*.test.ts"],
+    include: ["src/__tests__/**/*.test.ts", "src/negotiation/**/*.test.ts"],
     environment: "node",
     setupFiles: ["src/__tests__/setup.ts"],
     env: {
@@ -21,6 +21,10 @@ export default defineConfig({
       "@haggle/payment-core/heavy/viem-contracts": path.resolve(
         __dirname,
         "src/__tests__/stubs/payment-heavy.ts",
+      ),
+      "@haggle/skill-legit": path.resolve(
+        __dirname,
+        "src/__tests__/stubs/skill-legit.ts",
       ),
     },
   },

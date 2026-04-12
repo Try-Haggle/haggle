@@ -1,5 +1,15 @@
 import { randomBytes } from "node:crypto";
-import { type Database, listingDrafts, listingsPublished, eq, and, gt } from "@haggle/db";
+import {
+  type Database,
+  listingDrafts,
+  listingsPublished,
+  tags,
+  eq,
+  and,
+  gt,
+  inArray,
+} from "@haggle/db";
+import { placeListingTags } from "./tag-placement.service.js";
 
 /** Fields that can be patched via haggle_apply_patch. */
 const PATCHABLE_FIELDS = [
@@ -154,6 +164,46 @@ export async function publishDraft(db: Database, draftId: string) {
       snapshotJson: draft as unknown as Record<string, unknown>,
     })
     .returning();
+
+  // ── Tag placement (best-effort) ──
+  // Failure here must NOT fail publish. Updates snapshot_json.tags
+  // with LLM-selected tag labels when successful.
+  try {
+    const placement = await placeListingTags(db, {
+      title: draft.title ?? "",
+      description: draft.description ?? "",
+      category: draft.category ?? null,
+      priceBand: null, // MVP: skip
+      listingId: published.id,
+      sourceEmbedding: null, // embedding not yet available at publish time
+    });
+
+    if (placement.selectedTagIds.length > 0) {
+      // Resolve ids → labels for snapshot update
+      const tagRows = await db
+        .select({ id: tags.id, name: tags.name })
+        .from(tags)
+        .where(inArray(tags.id, placement.selectedTagIds));
+      const labels = tagRows.map((r) => r.name);
+
+      if (labels.length > 0) {
+        const updatedSnapshot = {
+          ...(published.snapshotJson as Record<string, unknown>),
+          tags: labels,
+        };
+        await db
+          .update(listingsPublished)
+          .set({ snapshotJson: updatedSnapshot })
+          .where(eq(listingsPublished.id, published.id));
+      }
+    }
+  } catch (err) {
+    // Placement failure must NOT fail publish.
+    console.warn(
+      `[publish] tag placement failed for listing ${published.id}:`,
+      err,
+    );
+  }
 
   // Update draft status (+ claim info only if needed)
   const updateSet: Record<string, unknown> = {

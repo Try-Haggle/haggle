@@ -24,6 +24,20 @@ interface SupabaseJwtPayload {
 
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 
+if (!SUPABASE_JWT_SECRET) {
+  const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+  if (isProduction) {
+    console.error(
+      "🚨 [SECURITY] SUPABASE_JWT_SECRET is not set in PRODUCTION! " +
+      "JWT tokens will NOT be verified. Set this variable immediately.",
+    );
+  } else {
+    console.warn(
+      "⚠️  [auth] SUPABASE_JWT_SECRET not set — JWT verification disabled (dev passthrough)",
+    );
+  }
+}
+
 function verifySupabaseJwt(token: string): SupabaseJwtPayload {
   if (!SUPABASE_JWT_SECRET) {
     // No secret configured — decode without verification (local dev passthrough)

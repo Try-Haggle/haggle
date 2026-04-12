@@ -21,6 +21,14 @@ import {
   upsertExpertTag,
   createMergeLog,
 } from "../services/tag.service.js";
+import {
+  listSuggestions,
+  getSuggestionById,
+  approveSuggestion,
+  rejectSuggestion,
+  mergeSuggestion,
+  type SuggestionStatus,
+} from "../services/tag-suggestion.service.js";
 
 const createTagSchema = z.object({
   name: z.string().min(1),
@@ -43,6 +51,15 @@ const qualifyExpertSchema = z.object({
   user_id: z.string().min(1),
   case_count: z.number().int().min(0),
   accuracy: z.number().min(0).max(1),
+});
+
+const approveSuggestionSchema = z.object({
+  category: z.string().min(1),
+  initial_status: z.enum(["CANDIDATE", "EMERGING", "OFFICIAL"]).optional(),
+});
+
+const mergeSuggestionSchema = z.object({
+  target_tag_id: z.string().min(1),
 });
 
 export function registerTagRoutes(app: FastifyInstance, db: Database) {
@@ -297,6 +314,97 @@ export function registerTagRoutes(app: FastifyInstance, db: Database) {
       });
 
       return reply.send({ qualified, expert_tag: expertTag });
+    },
+  );
+
+  // ─── Tag Suggestions (Admin) ─────────────────────────────────
+
+  // GET /tag-suggestions
+  app.get<{
+    Querystring: { status?: string; limit?: string; offset?: string };
+  }>(
+    "/tag-suggestions",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const { status, limit, offset } = request.query;
+      const rows = await listSuggestions(db, {
+        status: status as SuggestionStatus | undefined,
+        limit: limit ? parseInt(limit, 10) : 50,
+        offset: offset ? parseInt(offset, 10) : 0,
+        orderBy: "occurrence_desc",
+      });
+      return reply.send({ suggestions: rows });
+    },
+  );
+
+  // GET /tag-suggestions/:id
+  app.get<{ Params: { id: string } }>(
+    "/tag-suggestions/:id",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const row = await getSuggestionById(db, request.params.id);
+      if (!row) return reply.code(404).send({ error: "Not found" });
+      return reply.send(row);
+    },
+  );
+
+  // POST /tag-suggestions/:id/approve
+  app.post<{ Params: { id: string } }>(
+    "/tag-suggestions/:id/approve",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const parsed = approveSuggestionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_APPROVE_REQUEST", issues: parsed.error.issues });
+      }
+      const userId =
+        ((request as { user?: { id?: string } }).user?.id) ?? "admin";
+      const result = await approveSuggestion(db, request.params.id, {
+        reviewedBy: userId,
+        category: parsed.data.category,
+        initialStatus: parsed.data.initial_status,
+      });
+      if (!result.ok) return reply.code(400).send(result);
+      return reply.send(result);
+    },
+  );
+
+  // POST /tag-suggestions/:id/reject
+  app.post<{ Params: { id: string } }>(
+    "/tag-suggestions/:id/reject",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const userId =
+        ((request as { user?: { id?: string } }).user?.id) ?? "admin";
+      const result = await rejectSuggestion(db, request.params.id, userId);
+      if (!result.ok) return reply.code(400).send(result);
+      return reply.send(result);
+    },
+  );
+
+  // POST /tag-suggestions/:id/merge
+  app.post<{ Params: { id: string } }>(
+    "/tag-suggestions/:id/merge",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const parsed = mergeSuggestionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_MERGE_REQUEST", issues: parsed.error.issues });
+      }
+      const userId =
+        ((request as { user?: { id?: string } }).user?.id) ?? "admin";
+      const result = await mergeSuggestion(
+        db,
+        request.params.id,
+        parsed.data.target_tag_id,
+        userId,
+      );
+      if (!result.ok) return reply.code(400).send(result);
+      return reply.send(result);
     },
   );
 }

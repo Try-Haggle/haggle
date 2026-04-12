@@ -96,7 +96,7 @@ Return JSON matching the schema.`,
     ],
   },
 
-  // #3 — fashion — Vintage leather jacket (verbatim from legacy inline)
+  // #3 — fashion — Vintage leather jacket (teaches description mining + material proposal)
   {
     category: "fashion",
     categoryKeywords: ["fashion", "clothing", "apparel", "jacket", "shoe"],
@@ -105,8 +105,8 @@ Return JSON matching the schema.`,
         role: "user",
         content: `LISTING:
 title: 빈티지 가죽 자켓 M사이즈 브라운
-description: (none)
-category_path: (none)
+description: Schott Perfecto 618 from the 1970s. Real cowhide leather, heavy YKK zippers. Some patina on elbows. Made in USA.
+category_path: Men's Clothing > Coats & Jackets
 
 CANDIDATES:
 t01 leather-jacket [idf=3.1, parent=t05]
@@ -120,12 +120,12 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"leather-jacket implies jacket/outerwear/clothing via DAG","proposed_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"leather-jacket implies jacket/outerwear/clothing via DAG","proposed_tags":[{"label":"schott-perfecto","category":"style","reason":"specific iconic model name buyers search for"},{"label":"cowhide","category":"material","reason":"leather type explicitly stated in description"}]}',
       },
     ],
   },
 
-  // #4 — fashion — Nike Air Jordan 1 (NEW)
+  // #4 — fashion — Nike Air Jordan 1 (teaches colorway + condition detail)
   {
     category: "fashion",
     categoryKeywords: ["fashion", "shoe", "sneaker"],
@@ -134,14 +134,13 @@ Return JSON matching the schema.`,
         role: "user",
         content: `LISTING:
 title: Nike Air Jordan 1 High OG Chicago size 10 used
-description: (none)
-category_path: (none)
+description: 8/10 condition. Slight creasing on toe box, soles have some outdoor wear. Comes with original box and extra laces.
+category_path: Sneakers
 
 CANDIDATES:
 t01 air-jordan-1 [idf=3.9, parent=t05]
-t02 chicago [idf=2.4]
-t03 size-10 [idf=1.3]
-t04 used [idf=1.1]
+t02 size-10 [idf=1.3]
+t03 used [idf=1.1]
 t05 jordan [idf=3.0]
 
 Return JSON matching the schema.`,
@@ -149,7 +148,7 @@ Return JSON matching the schema.`,
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03","t04"],"reasoning":"air-jordan-1 implies jordan/sneaker/shoe/nike via DAG","proposed_tags":[]}',
+          '{"selected_tag_ids":["t01","t02","t03"],"reasoning":"air-jordan-1 implies jordan/sneaker/shoe/nike via DAG","proposed_tags":[{"label":"chicago","category":"style","reason":"Chicago is the specific colorway buyers search for"}]}',
       },
     ],
   },
@@ -217,7 +216,7 @@ Return JSON matching the schema.`,
     ],
   },
 
-  // #7 — home — Dyson V15 Detect (NEW)
+  // #7 — home — Herman Miller Aeron (teaches furniture size + variant)
   {
     category: "home",
     categoryKeywords: ["home", "kitchen", "furniture", "appliance"],
@@ -225,23 +224,23 @@ Return JSON matching the schema.`,
       {
         role: "user",
         content: `LISTING:
-title: Dyson V15 Detect cordless vacuum like-new
-description: (none)
-category_path: (none)
+title: Herman Miller Aeron Size B Fully Loaded Remastered 2021
+description: Graphite frame, PostureFit SL, adjustable arms, tilt limiter. Mesh clean, no sags. 12-year warranty transferable. Pickup only Brooklyn.
+category_path: Furniture > Office
 
 CANDIDATES:
-t01 dyson-v15-detect [idf=4.1, parent=t05]
-t02 cordless [idf=2.0]
-t03 like-new [idf=1.7]
-t04 vacuum [idf=2.5]
-t05 dyson [idf=3.3]
+t01 herman-miller [idf=4.5]
+t02 aeron [idf=5.0, parent=t01]
+t03 office-chair [idf=2.0]
+t04 ergonomic [idf=2.5]
+t05 used [idf=1.0]
 
 Return JSON matching the schema.`,
       },
       {
         role: "assistant",
         content:
-          '{"selected_tag_ids":["t01","t02","t03"],"reasoning":"dyson-v15-detect implies dyson/vacuum/appliance/home via DAG","proposed_tags":[]}',
+          '{"selected_tag_ids":["t02","t04","t05"],"reasoning":"aeron implies herman-miller/office-chair via DAG","proposed_tags":[{"label":"size-b","category":"size","reason":"chair size B is a key fit attribute buyers filter by"},{"label":"fully-loaded","category":"feature","reason":"fully loaded config distinguishes from base model"},{"label":"remastered","category":"other","reason":"remastered version is a distinct product generation"}]}',
       },
     ],
   },
