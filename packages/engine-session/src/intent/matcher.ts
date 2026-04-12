@@ -2,17 +2,61 @@ import { computeUtility } from '@haggle/engine-core';
 import type { NegotiationContext } from '@haggle/engine-core';
 import type { WaitingIntent, MatchCandidate, MatchResult } from './types.js';
 
+/** Options for enhanced intent matching with category/keyword filtering. */
+export interface MatchOptions {
+  listing_category?: string;
+  listing_keywords?: string[];
+  /** Bonus added to u_total per keyword match (default 0.05). */
+  keyword_bonus?: number;
+}
+
+const DEFAULT_KEYWORD_BONUS = 0.05;
+
+/**
+ * Check if an intent's category matches the listing category.
+ * Empty or undefined categories always match.
+ */
+function categoryMatches(intent: WaitingIntent, listingCategory?: string): boolean {
+  if (!listingCategory || !intent.category) return true;
+  return intent.category.toLowerCase() === listingCategory.toLowerCase();
+}
+
+/**
+ * Count how many of the intent's keywords match the listing keywords.
+ */
+function countKeywordMatches(intent: WaitingIntent, listingKeywords?: string[]): number {
+  if (!listingKeywords || listingKeywords.length === 0 || intent.keywords.length === 0) return 0;
+  const lowerListing = new Set(listingKeywords.map(k => k.toLowerCase()));
+  return intent.keywords.filter(k => lowerListing.has(k.toLowerCase())).length;
+}
+
 /**
  * Evaluate a single intent against a context (listing data assembled into NegotiationContext).
+ * When options are provided, applies category filtering and keyword bonus.
  */
 export function evaluateMatch(
   intent: WaitingIntent,
   context: NegotiationContext,
+  options?: MatchOptions,
 ): MatchCandidate {
   const result = computeUtility(context);
+  let utotal = result.u_total;
+
+  if (options) {
+    // Category mismatch → set utility to 0 (will be rejected)
+    if (!categoryMatches(intent, options.listing_category)) {
+      return { intent, utotal: 0 };
+    }
+
+    // Keyword bonus
+    const matches = countKeywordMatches(intent, options.listing_keywords);
+    const bonus = matches * (options.keyword_bonus ?? DEFAULT_KEYWORD_BONUS);
+    utotal = Math.min(utotal + bonus, 1);
+  }
+
   return {
     intent,
-    utotal: result.u_total,
+    utotal,
   };
 }
 
@@ -23,10 +67,11 @@ export function evaluateMatch(
 export function evaluateIntents(
   intents: WaitingIntent[],
   contextBuilder: (intent: WaitingIntent) => NegotiationContext,
+  options?: MatchOptions,
 ): MatchResult {
   const candidates = intents.map(intent => {
     const ctx = contextBuilder(intent);
-    return evaluateMatch(intent, ctx);
+    return evaluateMatch(intent, ctx, options);
   });
 
   const matched = candidates.filter(c =>

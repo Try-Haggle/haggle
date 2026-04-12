@@ -1,4 +1,4 @@
-import type { UtilityWeights, CompetitionContext } from '@haggle/engine-core';
+import type { UtilityWeights, CompetitionContext, HoldContext, TermSpace } from '@haggle/engine-core';
 
 /** Full negotiation strategy for a single product/session. */
 export interface MasterStrategy {
@@ -21,6 +21,8 @@ export interface MasterStrategy {
   gamma?: number;
   created_at: number;
   expires_at: number;
+  /** Optional multi-term space for multi-dimensional negotiation. */
+  term_space?: TermSpace;
 }
 
 /** Per-round situational data provided by the application layer. */
@@ -32,4 +34,6 @@ export interface RoundData {
   n_success: number;
   n_dispute_losses: number;
   competition?: CompetitionContext;
+  /** Optional hold state affecting time pressure. */
+  hold?: HoldContext;
 }

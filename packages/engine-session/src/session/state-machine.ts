@@ -12,7 +12,8 @@ export type SessionEvent =
   | 'user_reject'
   | 'superseded'
   | 'escalate'
-  | 'escalation_resolved';
+  | 'escalation_resolved'
+  | 'hold_expired';
 
 /** Terminal states that do not accept any transitions. */
 const TERMINAL_STATES: ReadonlySet<SessionStatus> = new Set([
@@ -40,6 +41,7 @@ const TRANSITIONS: Record<string, Partial<Record<SessionEvent, SessionStatus>>> 
     user_reject: 'REJECTED',
     superseded: 'SUPERSEDED',
     escalate: 'WAITING',
+    hold_expired: 'ACTIVE',
   },
   NEAR_DEAL: {
     user_accept: 'ACCEPTED',
@@ -48,6 +50,7 @@ const TRANSITIONS: Record<string, Partial<Record<SessionEvent, SessionStatus>>> 
     timeout: 'EXPIRED',
     superseded: 'SUPERSEDED',
     escalate: 'WAITING',
+    hold_expired: 'ACTIVE',
   },
   STALLED: {
     strategy_update: 'ACTIVE',

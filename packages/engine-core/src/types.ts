@@ -76,6 +76,18 @@ export interface CompetitionContext {
    */
   best_alternative: number;
   market_position: number;
+  /** Additional competitors who have a hold on the item. */
+  n_hold_competitors?: number;
+}
+
+/** Hold state affecting negotiation urgency and competition. */
+export interface HoldContext {
+  is_held: boolean;
+  hold_kind?: 'SOFT_HOLD' | 'SELLER_RESERVED';
+  held_price_minor?: number;
+  hold_remaining_ms?: number;
+  hold_total_ms?: number;
+  resume_reprice_required: boolean;
 }
 
 /** Full negotiation context — input to Engine Core. */
@@ -87,6 +99,10 @@ export interface NegotiationContext {
   relationship: RelationshipContext;
   competition?: CompetitionContext;
   gamma?: number;
+  /** Optional multi-term space. When provided, uses multi-term evaluation path. */
+  term_space?: import('./term/types.js').TermSpace;
+  /** Optional hold context for time pressure from inventory holds. */
+  hold?: HoldContext;
 }
 
 /** Utility calculation result. */

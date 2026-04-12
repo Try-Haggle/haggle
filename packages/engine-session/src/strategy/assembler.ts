@@ -37,5 +37,7 @@ export function assembleContext(strategy: MasterStrategy, roundData: RoundData):
     },
     competition: roundData.competition,
     gamma: strategy.gamma,
+    term_space: strategy.term_space,
+    hold: roundData.hold,
   };
 }

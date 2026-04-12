@@ -50,6 +50,11 @@ export interface SessionSnapshot {
   session_id: string;
   utility: UtilityResult;
   thresholds: DecisionThresholds;
+  /** Optional hold status for BATNA bonus/penalty adjustment. */
+  hold_status?: {
+    hold_kind?: 'SOFT_HOLD' | 'SELLER_RESERVED';
+    resume_reprice_required?: boolean;
+  };
 }
 
 export interface SessionCompareResult {

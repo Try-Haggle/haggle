@@ -16,7 +16,8 @@ export function adjustVpForCompetition(
   gamma: number = DEFAULT_GAMMA,
 ): number {
   if (!comp) return vp;
+  const effectiveN = comp.n_competitors + (comp.n_hold_competitors ?? 0);
   const competitionSignal = comp.competitive_pressure ?? comp.market_position;
-  const adjustment = 1 + gamma * Math.log(comp.n_competitors + 1) * competitionSignal;
+  const adjustment = 1 + gamma * Math.log(effectiveN + 1) * competitionSignal;
   return clamp(vp * adjustment, 0, 1);
 }

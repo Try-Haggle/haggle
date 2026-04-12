@@ -7,9 +7,14 @@ export type {
   RiskContext,
   RelationshipContext,
   CompetitionContext,
+  HoldContext,
   UtilityResult,
 } from './types.js';
 export { EngineError } from './types.js';
+
+// Term Space types + evaluator
+export type { TermType, TermLayer, TermDomain, Term, TermSpace } from './term/types.js';
+export { evaluateTerm, computeMultiTermUtility, validateTermSpace } from './term/evaluator.js';
 
 // Decision types
 export type {
