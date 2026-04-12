@@ -124,6 +124,7 @@
 
   .security-list { list-style:none; margin-top:14px; }
   .security-list li { padding:6px 0; font-size:.88rem; color:var(--muted); display:flex; align-items:flex-start; gap:8px; }
+  .arch-card .security-list li { display:block; }
   .check { color:var(--green); flex-shrink:0; }
   .fail { color:var(--red); flex-shrink:0; }
 
@@ -203,6 +204,105 @@
   .update-entry .update-items { list-style:none; }
   .update-entry .update-items li { padding:3px 0; font-size:.85rem; color:var(--muted); }
   .update-entry .update-items li::before { content:'·'; margin-right:8px; color:var(--dim); }
+
+  /* Tag Garden E2E dashboard */
+  .tg-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:16px 0; }
+  .tg-stat { background:rgba(15,23,42,.5); border:1px solid var(--border); border-radius:12px; padding:14px; text-align:center; }
+  .tg-stat .tg-num { font-size:1.6rem; font-weight:800; }
+  .tg-stat .tg-label { color:var(--dim); font-size:.75rem; margin-top:2px; }
+  .tg-stat.tg-green .tg-num { color:var(--green); }
+  .tg-stat.tg-blue .tg-num { color:var(--blue); }
+  .tg-stat.tg-purple .tg-num { color:var(--accent2); }
+  .tg-stat.tg-yellow .tg-num { color:var(--yellow); }
+
+  .tg-card { background:rgba(15,23,42,.3); border:1px solid var(--border); border-radius:14px; margin-bottom:16px; overflow:hidden; }
+  .tg-card-head { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .tg-card-head:hover { background:rgba(99,102,241,.04); }
+  .tg-card-title { display:flex; align-items:center; gap:8px; font-weight:700; font-size:.95rem; }
+  .tg-badge { padding:3px 12px; border-radius:16px; font-size:.75rem; font-weight:700; }
+  .tg-badge.tg-pass { background:rgba(16,185,129,.15); color:var(--green); }
+  .tg-badge.tg-partial { background:rgba(245,158,11,.15); color:var(--yellow); }
+  .tg-badge.tg-fail { background:rgba(239,68,68,.15); color:var(--red); }
+  .tg-card-body { display:none; padding:0; }
+  .tg-card-body.tg-open { display:block; }
+
+  .tg-listing { padding:14px 18px; border-bottom:1px solid var(--border); }
+  .tg-listing-title { font-weight:700; color:#fff; font-size:.95rem; margin-bottom:6px; }
+  .tg-listing-meta { color:var(--dim); font-size:.82rem; margin-bottom:8px; }
+  .tg-listing-desc { color:var(--muted); font-size:.84rem; line-height:1.75; background:rgba(15,23,42,.5); border-radius:8px; padding:10px 14px; }
+
+  .tg-section { padding:12px 18px; border-bottom:1px solid var(--border); }
+  .tg-section h5 { font-size:.82rem; font-weight:700; color:var(--muted); margin-bottom:8px; }
+  .tg-tags { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px; }
+  .tg-tag { display:inline-block; padding:2px 9px; border-radius:12px; font-size:.73rem; font-weight:500; border:1px solid var(--border); }
+  .tg-tag.tg-ngram { border-color:var(--green); color:var(--green); background:rgba(16,185,129,.06); }
+  .tg-tag.tg-official { border-color:var(--blue); color:var(--blue); background:rgba(59,130,246,.04); }
+  .tg-tag.tg-expected { border-color:var(--accent); color:var(--accent); background:rgba(99,102,241,.06); }
+  .tg-tag.tg-match { border-color:var(--green); color:var(--green); background:rgba(16,185,129,.08); }
+  .tg-tag.tg-missed { border-color:var(--red); color:var(--red); background:rgba(239,68,68,.08); }
+  .tg-tag.tg-extra { border-color:var(--yellow); color:var(--yellow); background:rgba(245,158,11,.06); }
+
+  .tg-compare { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--border); }
+  @media(max-width:700px) { .tg-compare { grid-template-columns:1fr; } }
+  .tg-compare-col { padding:12px 18px; }
+  .tg-compare-col:first-child { border-right:1px solid var(--border); }
+  .tg-compare-col h5 { font-size:.82rem; font-weight:700; margin-bottom:8px; }
+  .tg-reason { font-size:.78rem; color:var(--dim); font-style:italic; margin-top:6px; }
+  .tg-llm-meta { font-size:.72rem; color:var(--dim); font-family:'JetBrains Mono','Fira Code',monospace; margin-top:4px; }
+
+  .tg-grade { padding:12px 18px; }
+  .tg-grade-row { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+  .tg-grade-label { font-size:.78rem; color:var(--muted); min-width:80px; font-weight:600; }
+  .tg-bar { flex:1; height:18px; background:rgba(255,255,255,.05); border-radius:9px; position:relative; overflow:hidden; }
+  .tg-bar-fill { height:100%; border-radius:9px; }
+  .tg-bar-fill.tg-green-bar { background:linear-gradient(90deg,rgba(16,185,129,.35),rgba(16,185,129,.65)); }
+  .tg-bar-fill.tg-yellow-bar { background:linear-gradient(90deg,rgba(245,158,11,.35),rgba(245,158,11,.65)); }
+  .tg-bar-fill.tg-red-bar { background:linear-gradient(90deg,rgba(239,68,68,.35),rgba(239,68,68,.65)); }
+  .tg-bar-pct { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:.7rem; font-weight:700; }
+  .tg-cmp-detail { display:flex; flex-wrap:wrap; gap:4px; margin:3px 0 3px 90px; align-items:center; font-size:.75rem; }
+  .tg-cmp-icon { font-weight:700; }
+
+  .tg-garden-toggle { cursor:pointer; padding:12px 18px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border); border-radius:12px; background:rgba(15,23,42,.3); margin-top:12px; }
+  .tg-garden-toggle:hover { background:rgba(99,102,241,.04); }
+  .tg-garden-body { display:none; margin-top:8px; }
+  .tg-garden-body.tg-open { display:block; }
+  .tg-tag-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+  .tg-tag-table th { text-align:left; padding:6px 10px; border-bottom:2px solid var(--border); color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.4px; }
+  .tg-tag-table td { padding:5px 10px; border-bottom:1px solid rgba(30,41,59,.35); }
+  .tg-tag-table tr:hover td { background:rgba(99,102,241,.02); }
+  .tg-cat-badge { display:inline-block; padding:1px 7px; border-radius:8px; font-size:.68rem; background:rgba(99,102,241,.1); color:var(--accent); }
+
+  /* Negotiation Demo v2 — 6-Stage Pipeline */
+  .nd-ph { padding:6px 14px;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.5px;background:rgba(30,41,59,.5);color:var(--dim);border:1px solid var(--border);transition:all .3s; }
+  .nd-ph.nd-active { background:rgba(99,102,241,.15);color:#a5b4fc;border-color:rgba(99,102,241,.4);box-shadow:0 0 12px rgba(99,102,241,.15); }
+  .nd-ph.nd-done { background:rgba(16,185,129,.1);color:#6ee7b7;border-color:rgba(16,185,129,.3); }
+  .nd-ph-arrow { color:var(--dim);font-size:.85rem;padding:0 4px; }
+  .nd-stage { background:var(--card);border:1px solid var(--border);border-radius:12px;margin:8px 0;overflow:hidden;transition:border-color .3s; }
+  .nd-stage.nd-stage-llm { border-left:3px solid var(--accent); }
+  .nd-stage.nd-stage-code { border-left:3px solid var(--green); }
+  .nd-stage-hdr { display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;user-select:none; }
+  .nd-stage-hdr:hover { background:rgba(99,102,241,.04); }
+  .nd-stage-tag { padding:2px 8px;border-radius:10px;font-size:.65rem;font-weight:700;letter-spacing:.3px; }
+  .nd-stage-tag.llm { background:rgba(99,102,241,.15);color:#a5b4fc; }
+  .nd-stage-tag.code { background:rgba(16,185,129,.12);color:#6ee7b7; }
+  .nd-stage-name { font-size:.82rem;font-weight:700;color:var(--text); }
+  .nd-stage-desc { font-size:.72rem;color:var(--dim);margin-left:auto; }
+  .nd-stage-body { display:none;padding:0 14px 14px;font-size:.78rem; }
+  .nd-stage-body.open { display:block; }
+  .nd-json { background:#0a0e1a;border:1px solid rgba(30,41,59,.6);border-radius:8px;padding:10px 12px;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.72rem;line-height:1.7;color:#94a3b8;overflow-x:auto;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all; }
+  .nd-json .nd-key { color:#a5b4fc; }
+  .nd-json .nd-str { color:#6ee7b7; }
+  .nd-json .nd-num { color:#fbbf24; }
+  .nd-json .nd-bool { color:#f472b6; }
+  .nd-prompt-toggle { font-size:.72rem;color:var(--accent);cursor:pointer;text-decoration:underline;margin:6px 0;display:inline-block; }
+  .nd-cost-badge { display:inline-block;padding:2px 8px;border-radius:8px;font-size:.65rem;background:rgba(245,158,11,.1);color:#fbbf24;margin-left:8px; }
+  .nd-latency-badge { display:inline-block;padding:2px 8px;border-radius:8px;font-size:.65rem;background:rgba(99,102,241,.1);color:#a5b4fc;margin-left:4px; }
+  .nd-input-group { display:flex;flex-direction:column;gap:6px;margin:8px 0; }
+  .nd-input-group label { font-size:.75rem;color:var(--muted);font-weight:600; }
+  .nd-input-group input,.nd-input-group textarea { background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:.85rem; }
+  .nd-input-group textarea { min-height:60px;resize:vertical; }
+  .nd-api-cfg { display:flex;align-items:center;gap:8px;margin:10px 0;padding:8px 12px;background:rgba(30,41,59,.3);border-radius:8px;font-size:.75rem;color:var(--dim); }
+  .nd-api-cfg input { background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:.75rem;width:280px; }
 
   @media(max-width:768px) { .card-grid,.arch-grid { grid-template-columns:1fr; } .level-grid { grid-template-columns:1fr 1fr; } .hero h1 { font-size:2rem; } .tab-bar button { font-size:.82rem; padding:10px 12px; } }
   @media(max-width:480px) { .level-grid { grid-template-columns:1fr; } }
@@ -536,6 +636,386 @@
         구독 없이 거래 수수료 1.5%만으로도 흑자 가능.
       </p>
     </div>
+  </section>
+
+  <!-- LLM 엔진 전환 동기 + AI 결제 생태계 (4/11 업데이트) -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">🔄</div>LLM 엔진 전환 동기 &amp; AI 결제 생태계 (4/11 업데이트)</div>
+    <div class="section-desc">
+      기존 rule-based 엔진은 <code>engine-core</code>의 term 시스템(<code>TermSpace</code>, <code>computeMultiTermUtility()</code>)으로
+      가격 외 조건도 수학적으로 평가 가능하다. 하지만 <strong>자연어 이해, 전략 적응, 에이전트 생태계 참여</strong>에 구조적 한계가 있다.
+      x402 Foundation 출범(2026.4.2)으로 AI 에이전트 간 자율 결제가 업계 표준이 되는 시점에서, LLM 전환은 선택이 아닌 필수.
+    </div>
+
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">Rule-Based vs LLM — 무엇이 달라지나</h3>
+    <table class="biz-table">
+      <thead>
+        <tr><th>역량</th><th>Rule-Based (현재)</th><th>LLM 엔진</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="bold">다중 조건 협상</td><td>✓ TermSpace + 수학적 효용 계산 가능</td><td>✓ 동일 + 자연어로 조건 트레이드 제안 가능</td></tr>
+        <tr><td class="bold">상대 메시지 이해</td><td>✗ 숫자만 파싱. "급하진 않아요" → 해석 불가</td><td>✓ 의도·감정·긴급도 추출. 전략에 반영</td></tr>
+        <tr><td class="bold">자연어 응답</td><td>✗ 템플릿 기반. 상황별 적응 불가</td><td>✓ 맥락 맞는 설득적 메시지 생성</td></tr>
+        <tr><td class="bold">전략 적응</td><td>△ Faratin 곡선 고정 패턴</td><td>✓ 상대 패턴 감지 → 동적 전략 전환</td></tr>
+        <tr><td class="bold">유저 지시 반영</td><td>✗ 파라미터 변경만 가능</td><td>✓ "배송비는 절대 양보하지마" → 자연어 이해 후 반영</td></tr>
+        <tr><td class="bold">스킬 확장</td><td>코드 수정 필요 (개발자만)</td><td>스킬 설정으로 즉시 확장 (마켓플레이스)</td></tr>
+        <tr><td class="bold">에이전트 생태계</td><td>✗ 자연어 API 불가 → x402/MPP 참여 불가</td><td>✓ 자연어 API → AI 에이전트 간 협상 가능</td></tr>
+        <tr style="background:rgba(16,185,129,.06);"><td class="bold">비용</td><td class="mono">~$0.0000001/라운드</td><td class="mono">~$0.0004/라운드 (마진 0.4% 차이)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="analogy">
+      <div class="title">전환 요약</div>
+      <p>
+        기존 term 시스템의 수학적 기반은 <strong>그대로 유지</strong>한다 (<code>computeCounterOffer</code>, <code>computeMultiTermUtility</code>, floor 가드레일).
+        LLM은 이 수학 위에 <strong>"자연어 이해 + 전략 판단 + 메시지 생성 + 기억"</strong>을 얹는 것이다.
+        Math가 "안전한 범위"를 정하고, LLM이 "그 안에서 최적의 선택"을 한다.
+        비용 영향은 마진 0.4%p — 제품 품질 도약 대비 무시 가능.
+      </p>
+    </div>
+
+    <!-- x402 + AI 결제 생태계 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">AI 결제 생태계 — x402 Foundation &amp; 업계 동향 (2026.4)</h3>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>x402 Foundation (Linux Foundation)</h3><span class="badge-role">2026-04-02 설립</span>
+        <div class="desc">
+          Coinbase가 x402 프로토콜을 <strong>Linux Foundation에 기부</strong>하며 <strong>x402 Foundation</strong> 설립.
+          HTTP 402 (Payment Required) 위에 스테이블코인 결제를 임베드하는 오픈 표준.
+          Coinbase 독점 → 중립 재단으로 거버넌스 이관.
+        </div>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>규모:</strong> 1.19억 건 처리, 연간 $600M 거래량, 50만 AI 월렛</li>
+          <li><span class="check">✓</span><strong>수수료:</strong> 프로토콜 수수료 0%</li>
+          <li><span class="check">✓</span>
+            <strong>재단 멤버:</strong>
+            <span style="color:var(--green);">결제</span> Stripe, Visa, Mastercard, Amex, Adyen, Fiserv &nbsp;|&nbsp;
+            <span style="color:var(--blue);">클라우드</span> AWS, Google, Microsoft &nbsp;|&nbsp;
+            <span style="color:var(--accent);">크립토</span> Circle, Base, Solana, Polygon &nbsp;|&nbsp;
+            <span style="color:var(--yellow);">커머스</span> Shopify, KakaoPay, Ant International
+          </li>
+          <li><span class="check">✓</span><strong>의미:</strong> Stripe + Visa + Mastercard가 같은 재단에 참여 → 사실상 업계 표준 확정</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>경쟁 프로토콜 현황</h3><span class="badge-role">2026 Q1-Q2</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>Stripe MPP</strong> (2026.3.18) — Machine Payments Protocol. AI 에이전트용 프로그래밍 가능한 결제. 기존 카드 레일 + fiat.</li>
+          <li><span class="check">✓</span><strong>Visa Trusted Agent</strong> (2026.4.8) — AI 에이전트에 "신뢰 등급" 부여. 카드 레일 체크아웃.</li>
+          <li><span class="check">✓</span><strong>Ant Group Anvita</strong> (2026.4.2) — AI 에이전트가 자산 보유·거래·결제. x402 통합.</li>
+          <li><span class="check">✓</span><strong>Santander &times; Mastercard</strong> — 유럽 최초 AI 에이전트 라이브 결제 (규제 은행 프레임워크 내).</li>
+          <li><span class="check">✓</span><strong>McKinsey 전망:</strong> 2030년 AI 에이전트 중개 글로벌 소비자 거래 $3조~$5조.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="analogy">
+      <div class="title">Haggle의 위치: "얼마를 보낼지 결정하는 표준"</div>
+      <p>
+        x402 = "AI가 돈을 보내는 표준". Stripe MPP = "AI가 카드로 결제하는 표준".
+        <strong>Haggle = "얼마를 보낼지 협상하는 표준"</strong>.
+        결제 레일(x402/MPP)과 결합하면: 외부 AI 에이전트 → x402로 Haggle API 호출 → Haggle이 협상 대행 → 합의 후 x402로 USDC 정산.
+        이 시나리오에서 rule-based 엔진은 자연어 통신 불가로 <strong>참여 자체가 불가능</strong>. LLM 전환이 생태계 진입 티켓.
+      </p>
+    </div>
+    <p style="font-size:.82rem;color:var(--dim);margin-bottom:20px;">
+      출처:
+      <a href="https://www.linuxfoundation.org/press/linux-foundation-is-launching-the-x402-foundation-and-welcoming-the-contribution-of-the-x402-protocol" style="color:var(--blue);">Linux Foundation 공식 발표</a>,
+      <a href="https://www.coindesk.com/tech/2026/04/02/coinbase-s-ai-payments-system-joins-linux-foundation-gathers-support-from-google-stripe-aws-and-others" style="color:var(--blue);">CoinDesk</a>,
+      <a href="https://www.axios.com/2026/04/08/visa-ai-agent-payments-platform" style="color:var(--blue);">Axios (Visa)</a>,
+      <a href="https://news.aibase.com/news/26364" style="color:var(--blue);">AIBase (Stripe MPP)</a>
+    </p>
+  </section>
+
+  <!-- LLM 협상 엔진 비용 & 마진 분석 (4/11 업데이트) -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(16,185,129,.15);">📊</div>LLM 협상 엔진 — 비용 &amp; 마진 분석 (4/11 업데이트)</div>
+    <div class="section-desc">
+      Step 56-57에서 LLM 협상 엔진을 구현하면서, 기존 rule-based 전용 비용 모델을 <strong>LLM 포함</strong> 모델로 업데이트.
+      핵심: LLM을 매 라운드 사용해도 <strong>거래당 변동비 $0.074, 마진 98.9%</strong>. 스케일에서 마진이 <strong>올라가는</strong> 구조.
+    </div>
+
+    <!-- 단위 경제학 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">거래 1건당 단위 경제학 ($500 iPhone Pro 기준)</h3>
+    <table class="biz-table">
+      <thead>
+        <tr><th>항목</th><th>내역</th><th class="right">금액</th></tr>
+      </thead>
+      <tbody>
+        <tr class="highlight-row">
+          <td class="bold">수익</td>
+          <td>거래 수수료 1.5%</td>
+          <td class="right mono green-text bold">$7.50</td>
+        </tr>
+        <tr><td rowspan="6" class="bold" style="vertical-align:top;">비용</td><td>LLM — 양쪽 AI (전략대화 + 협상 10라운드)</td><td class="right mono">$0.009</td></tr>
+        <tr><td>USDC 가스 (Base L2 에스크로 lock + release)</td><td class="right mono">$0.01</td></tr>
+        <tr><td>IMEI 검증 API</td><td class="right mono">$0.05</td></tr>
+        <tr><td>인프라 (DB + 서버 배분)</td><td class="right mono">$0.003</td></tr>
+        <tr><td>알림 (푸시 + 이메일)</td><td class="right mono">$0.005</td></tr>
+        <tr style="background:rgba(16,185,129,.06);"><td class="bold">비용 합계</td><td class="right mono bold">$0.078</td></tr>
+        <tr class="highlight-row">
+          <td class="bold">순이익</td>
+          <td></td>
+          <td class="right mono green-text bold">$7.422 (마진 98.9%)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="analogy">
+      <div class="title">비교: eBay 수수료 13% ($65/거래) vs Haggle 수수료 1.5% ($7.50/거래)</div>
+      <p>
+        eBay는 높은 수수료로 CS 인력, 결제 처리(카드사 2.9%), 큐레이션 비용을 충당 &rarr; 마진 ~70%.
+        Haggle은 <strong>USDC 결제(가스 $0.01)</strong>, <strong>AI CS(인건비 ≈ 0)</strong>, <strong>자동 매칭(큐레이션 0)</strong>으로
+        수수료 1.5%에서도 <strong>마진 98.9%</strong> 달성. 이것이 프로토콜 인프라의 구조적 우위.
+      </p>
+    </div>
+
+    <!-- LLM 비용 상세 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">LLM 비용 상세 — 모델별 세션당 비용</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>모델</th><th class="right">Input/M tok</th><th class="right">Output/M tok</th><th class="right">세션당 비용</th><th>용도</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Grok 4.1 Fast</td><td class="right cost-val">$0.20</td><td class="right cost-val">$0.50</td><td class="right cost-val">$0.004</td><td class="cost-label">Free 티어 (기본)</td></tr>
+        <tr><td>GPT-5.2</td><td class="right cost-val">$1.75</td><td class="right cost-val">$14.00</td><td class="right cost-val">$0.050</td><td class="cost-label">Pro 티어</td></tr>
+        <tr><td>Claude Opus 4.6 / Grok 4</td><td class="right cost-val">$5.00</td><td class="right cost-val">$25.00</td><td class="right cost-val">$0.090</td><td class="cost-label">Elite 티어</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.82rem;color:var(--dim);margin-bottom:20px;">
+      ※ 세션 = 전략대화 5턴 + 협상 10라운드 기준 (~18K tok). Prompt Caching 적용 시 75% 절감.
+      가격 출처: <a href="https://intuitionlabs.ai/articles/ai-api-pricing-comparison-grok-gemini-openai-claude" style="color:var(--blue);">IntuitionLabs 2026</a>,
+      <a href="https://docs.x.ai/developers/models" style="color:var(--blue);">xAI Docs</a>
+    </p>
+
+    <!-- 파이프라인 구조 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">LLM 호출 구조 — 라운드당 1회, 나머지 코드</h3>
+    <div class="flow-diagram">
+      <div class="flow-steps">
+        <div class="flow-step">Parse + Store<br><span style="font-size:.7rem;color:var(--dim);">코드 ~1ms</span></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step">Math Guard<br><span style="font-size:.7rem;color:var(--dim);">코드 ~2ms</span></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step highlight">LLM 1회<br><span style="font-size:.7rem;color:var(--accent);">~2-5초</span></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step">Validate<br><span style="font-size:.7rem;color:var(--dim);">코드 ~1ms</span></div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step">Persist<br><span style="font-size:.7rem;color:var(--dim);">코드 ~3ms</span></div>
+      </div>
+      <div class="flow-explain">
+        LLM은 "이해 + 판단 + 응답 + 기억 갱신"을 한 번에 처리. 별도 요약/정리 호출 없음.<br>
+        Math Guard가 floor 위반을 코드로 차단 &rarr; LLM이 뚫려도 가격 안전.
+      </div>
+    </div>
+
+    <!-- 유저 개입 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">유저 개입 메커니즘 &amp; 추가 비용</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>개입 유형</th><th>처리 방식</th><th class="right">추가 LLM 호출</th><th class="right">추가 비용</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>HOLD → 재개 (엔진이 판단)</td><td>푸시 알림 → 유저 응답 → 다음 라운드 반영</td><td class="right">0회</td><td class="right cost-val">$0</td></tr>
+        <tr><td>PAUSE (유저가 실시간 관전 중)</td><td>현재 라운드 완료 후 WAITING → 유저 결정</td><td class="right">0회</td><td class="right cost-val">$0</td></tr>
+        <tr><td>전략 수정 (floor, 스타일 변경)</td><td>MasterStrategy DB 업데이트 → 즉시 반영</td><td class="right">0회</td><td class="right cost-val">$0</td></tr>
+        <tr><td>직접 메시지 작성</td><td>유저 의도 반영 + 안전 메시지 생성</td><td class="right">1회</td><td class="right cost-val">~$0.0004</td></tr>
+        <tr><td>전략 대화 재진입</td><td>전략 재수립 대화 (2-3턴)</td><td class="right">2-3회</td><td class="right cost-val">~$0.001</td></tr>
+        <tr style="background:rgba(16,185,129,.06);"><td><strong>세션당 평균 (개입 ~0.5회)</strong></td><td></td><td class="right"><strong>~0.3회</strong></td><td class="right cost-val"><strong>~$0.0005</strong></td></tr>
+      </tbody>
+    </table>
+
+    <!-- 구독 + HC 과금 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">과금 구조: 구독 + HC(Haggle Credits)</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>티어</th><th class="right">가격/월</th><th>LLM 모델</th><th class="right">월 세션</th><th>주요 기능</th><th class="right">우리 원가</th><th class="right">마진</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Free</strong></td>
+          <td class="right">$0</td>
+          <td>Grok 4.1 Fast</td>
+          <td class="right">5</td>
+          <td class="cost-label">자동 협상, 기본 스크리닝</td>
+          <td class="right cost-val">~$0.02</td>
+          <td class="right cost-label">손실 (업셀 회수)</td>
+        </tr>
+        <tr>
+          <td><strong>Pro</strong></td>
+          <td class="right cost-val">$9.99</td>
+          <td>GPT-5.2 / Gemini Pro</td>
+          <td class="right">무제한</td>
+          <td class="cost-label">+ 실시간 관전, PAUSE, 패턴 리포트, 복기</td>
+          <td class="right cost-val">~$1.50</td>
+          <td class="right cost-val" style="color:var(--green);"><strong>85%</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Elite</strong></td>
+          <td class="right cost-val">$29.99</td>
+          <td>Opus / Grok 4</td>
+          <td class="right">무제한</td>
+          <td class="cost-label">+ 멀티세션, 우선매칭, 커스텀 BuddyTone, 프리미엄 스킬</td>
+          <td class="right cost-val">~$4.50</td>
+          <td class="right cost-val" style="color:var(--green);"><strong>85%</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:.82rem;color:var(--dim);margin-bottom:8px;">
+      <strong>HC (종량제):</strong> 1 HC = $0.01. Pro 모델 1세션 = 5 HC ($0.05), Elite 모델 = 10 HC ($0.10).
+      구독 없이 필요할 때만 좋은 모델 사용 가능. <strong>HC = 선불이므로 공격자가 LLM 비용 공격 시 자기 돈 소모.</strong>
+    </p>
+    <p style="font-size:.82rem;color:var(--dim);margin-bottom:20px;">
+      <strong>전환율 근거:</strong> SaaS Freemium → Paid 업계 평균 3-5%, 상위 6-8%
+      (<a href="https://firstpagesage.com/seo-blog/saas-freemium-conversion-rates/" style="color:var(--blue);">First Page Sage 2026</a>).
+      Haggle은 "Pro로 $30 더 아꼈습니다" 같은 ROI가 즉시 보이므로 5% 예측 (Pro 4% + Elite 1%).
+    </p>
+
+    <!-- 스케일별 마진 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">스케일별 수익 &amp; 마진 — 마진이 올라가는 구조</h3>
+    <table class="biz-table">
+      <thead>
+        <tr>
+          <th>항목</th>
+          <th class="right">Phase 0<br><span style="font-weight:400;font-size:.7rem;">1K 유저</span></th>
+          <th class="right">Phase 1<br><span style="font-weight:400;font-size:.7rem;">10K 유저</span></th>
+          <th class="right">Growth<br><span style="font-weight:400;font-size:.7rem;">100K 유저</span></th>
+          <th class="right">Scale<br><span style="font-weight:400;font-size:.7rem;">1M 유저</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="5" style="background:rgba(99,102,241,.06);font-weight:600;font-size:.8rem;color:var(--accent);">유저 &amp; 전환</td></tr>
+        <tr><td class="dim-text">구독 전환율</td><td class="right mono">5%</td><td class="right mono">5%</td><td class="right mono">5%</td><td class="right mono">5%</td></tr>
+        <tr><td class="dim-text">총 세션 (월)</td><td class="right mono">2,370</td><td class="right mono">23,700</td><td class="right mono">237,000</td><td class="right mono">2,370,000</td></tr>
+        <tr><td class="dim-text">거래 전환율</td><td class="right mono">15%</td><td class="right mono">20%</td><td class="right mono">25%</td><td class="right mono">25%</td></tr>
+        <tr><td class="dim-text">월 거래 수</td><td class="right mono">356</td><td class="right mono">4,740</td><td class="right mono">59,250</td><td class="right mono">592,500</td></tr>
+        <tr><td class="dim-text">평균 거래가</td><td class="right mono">$500</td><td class="right mono">$500</td><td class="right mono">$480</td><td class="right mono">$450</td></tr>
+
+        <tr><td colspan="5" style="background:rgba(16,185,129,.06);font-weight:600;font-size:.8rem;color:var(--green);">수익</td></tr>
+        <tr><td>거래 수수료 (1.5%)</td><td class="right mono">$2,670</td><td class="right mono">$35,550</td><td class="right mono">$426,600</td><td class="right mono">$3,998,438</td></tr>
+        <tr><td>Pro 구독 (4%)</td><td class="right mono">$400</td><td class="right mono">$3,996</td><td class="right mono">$39,960</td><td class="right mono">$399,600</td></tr>
+        <tr><td>Elite 구독 (1%)</td><td class="right mono">$300</td><td class="right mono">$2,999</td><td class="right mono">$29,990</td><td class="right mono">$299,900</td></tr>
+        <tr><td>HC 판매</td><td class="right mono">$50</td><td class="right mono">$500</td><td class="right mono">$5,000</td><td class="right mono">$50,000</td></tr>
+        <tr class="highlight-row"><td class="bold">총 수익</td><td class="right mono bold">$3,420</td><td class="right mono bold">$43,045</td><td class="right mono bold">$501,550</td><td class="right mono bold">$4,747,938</td></tr>
+
+        <tr><td colspan="5" style="background:rgba(239,68,68,.06);font-weight:600;font-size:.8rem;color:var(--red);">비용</td></tr>
+        <tr><td>LLM (Free + Pro + Elite)</td><td class="right mono">$37</td><td class="right mono">$371</td><td class="right mono">$3,153</td><td class="right mono">$25,190</td></tr>
+        <tr><td>거래 연동 (가스 + IMEI + 알림)</td><td class="right mono">$28</td><td class="right mono">$343</td><td class="right mono">$2,964</td><td class="right mono">$23,700</td></tr>
+        <tr><td>인프라 (DB + 서버 + CDN + 모니터링)</td><td class="right mono">$135</td><td class="right mono">$350</td><td class="right mono">$1,800</td><td class="right mono">$6,300</td></tr>
+        <tr><td>인건비 (계약직 법무/세무)</td><td class="right mono">$0</td><td class="right mono">$0</td><td class="right mono">$3,000</td><td class="right mono">$5,000</td></tr>
+        <tr style="background:rgba(239,68,68,.06);"><td class="bold">총 비용</td><td class="right mono bold">$200</td><td class="right mono bold">$1,064</td><td class="right mono bold">$10,917</td><td class="right mono bold">$60,190</td></tr>
+
+        <tr><td colspan="5" style="background:rgba(16,185,129,.06);font-weight:600;font-size:.8rem;color:var(--green);">결과</td></tr>
+        <tr class="highlight-row"><td class="bold">순이익</td><td class="right mono green-text bold">$3,220</td><td class="right mono green-text bold">$41,981</td><td class="right mono green-text bold">$490,633</td><td class="right mono green-text bold">$4,687,748</td></tr>
+        <tr class="highlight-row"><td class="bold">순마진</td><td class="right mono green-text bold">94.2%</td><td class="right mono green-text bold">97.5%</td><td class="right mono green-text bold">97.8%</td><td class="right mono green-text bold">98.7%</td></tr>
+      </tbody>
+    </table>
+
+    <div class="analogy">
+      <div class="title">마진이 스케일에서 올라가는 4가지 이유</div>
+      <p>
+        <strong>1. 인프라 sublinear:</strong> 유저 1000배 증가 시 DB 비용 40배만 증가 ($25 → $2,000).<br>
+        <strong>2. LLM 볼륨 할인 + 캐시:</strong> Scale에서 20% API 할인 + Prompt Cache 적중률 80%.<br>
+        <strong>3. IMEI 벌크 단가:</strong> $0.05 → $0.02 (벌크 계약).<br>
+        <strong>4. 인건비 ≈ 0:</strong> CS = AI 처리, 분쟁 = DS 패널 자동화, 정산 = 스마트 컨트랙트. 법무/세무 계약직만.
+      </p>
+    </div>
+
+    <!-- 전환율 근거 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">전환율 현실성 검증</h3>
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>구독 전환율 5%</h3><span class="badge-role">Benchmark</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>업계 평균:</strong> Freemium → Paid 3-5%, 상위 6-8%, Slack급 10-12%</li>
+          <li><span class="check">✓</span><strong>Haggle 유리점:</strong> "Pro로 $30 더 아꼈습니다" — ROI가 즉시, 숫자로 보임</li>
+          <li><span class="check">✓</span><strong>Haggle 불리점:</strong> 대부분 월 1-2건 거래 → 구독 부담. HC(종량제)로 일부 흡수</li>
+          <li><span class="check">✓</span><strong>구성:</strong> Pro 4% + Elite 1%. Elite는 딜러/리셀러 등 고빈도 거래자</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h3>거래 전환율 15-25%</h3><span class="badge-role">Funnel</span>
+        <ul class="security-list">
+          <li><span class="check">✓</span><strong>"세션"의 정의:</strong> 양쪽 매칭 후 실제 협상 진입. 리스팅 전체가 아님</li>
+          <li><span class="check">✓</span><strong>비교:</strong> eBay 경매 참여→낙찰 ~40%, Swappa listing→sale ~25-35%</li>
+          <li><span class="check">✓</span><strong>Phase 0 (15%):</strong> 신규 플랫폼 낮은 신뢰, 유저 이탈, ZOPA 미존재</li>
+          <li><span class="check">✓</span><strong>Growth (25%):</strong> AI 정교화 + 리뷰 축적 + 스크리닝 강화</li>
+          <li><span class="check">✓</span><strong>불성립 비용:</strong> 세션당 ~$0.003 (3라운드 평균) — 마진에 미미한 영향</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 감도 분석 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">감도 분석 — 최악 시나리오에서도 마진 95%</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>변수</th><th>기본</th><th>비관</th><th>극단</th><th class="right">마진 영향</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>구독 전환율</td><td>5%</td><td>2%</td><td>1%</td><td class="right" style="color:var(--yellow);">수익 -3.2%</td></tr>
+        <tr><td>거래 전환율</td><td>20%</td><td>12%</td><td>8%</td><td class="right" style="color:var(--red);">수익 -60%</td></tr>
+        <tr><td>평균 거래가</td><td>$500</td><td>$350</td><td>$250</td><td class="right" style="color:var(--red);">수익 -50%</td></tr>
+        <tr><td>LLM 가격 상승</td><td>현재</td><td>&times;2</td><td>&times;5</td><td class="right" style="color:var(--yellow);">마진 -1.5%p</td></tr>
+        <tr><td>봇 공격 비용</td><td>$0</td><td>$50/일</td><td>$500/일</td><td class="right" style="color:var(--yellow);">마진 -0.5%p</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:.82rem;color:var(--dim);margin-bottom:20px;">
+      <strong>최악 조합</strong> (구독 2% + 거래 12% + 거래가 $350): 수익 대폭 감소하지만 <strong>마진율은 95% 유지</strong>.
+      변동비가 거래에 비례하므로 거래가 줄면 비용도 같이 줄기 때문.
+    </p>
+
+    <!-- 공격 방어 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">LLM 비용 공격 방어</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>공격 유형</th><th>방어 메커니즘</th><th class="right">최대 피해</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="sev critical">HOT</span> 라운드 폭탄 (무한 역제안)</td>
+          <td>세션당 max_rounds 15, 유저당 동시 5세션, 시간당 10세션, 이메일 인증</td>
+          <td class="right cost-val">~$50/일</td>
+        </tr>
+        <tr>
+          <td><span class="sev critical">HOT</span> 대규모 봇 공격</td>
+          <td>Cloudflare Bot Management, 글로벌 LLM 호출 1000/분 캡, 이상탐지 $50/일 알림</td>
+          <td class="right cost-val">$460/일 (캡)</td>
+        </tr>
+        <tr>
+          <td><span class="sev medium">MED</span> Prompt Injection</td>
+          <td>Structured Output (JSON만 파싱) + Math Guard (floor 강제) + 패턴 스크리닝</td>
+          <td class="right cost-val">$0 (금전 피해 없음)</td>
+        </tr>
+        <tr>
+          <td><span class="sev medium">MED</span> 전략대화 남용</td>
+          <td>전략대화 10턴 하드캡, 미완성 시 기본 프리셋 강제</td>
+          <td class="right cost-val">~$5/일</td>
+        </tr>
+        <tr>
+          <td><span class="sev low">LOW</span> 가격 조작 (비정상 제안)</td>
+          <td>Math Guard floor 규칙 + validator HARD 규칙 (코드 강제, LLM 무관)</td>
+          <td class="right cost-val">$0 (코드가 차단)</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:.82rem;color:var(--dim);margin-bottom:20px;">
+      <strong>핵심 방어 원칙:</strong> Free 유저 = 세션 캡, 유료 유저 = 자기 돈으로 HC 구매, 가격 안전 = Math Guard(코드)가 LLM과 독립적으로 보장.
+      LLM이 완전히 뚫려도 가격 가드레일은 코드로 강제되므로 <strong>금전적 피해 = 0</strong>.
+    </p>
+
+    <!-- 비용 비율 트렌드 -->
+    <h3 style="margin:20px 0 8px 0;font-size:1rem;color:var(--text);">비용 비율 트렌드 — 스케일에서 비용 비중 감소</h3>
+    <table class="cost-table">
+      <thead>
+        <tr><th>비용 항목</th><th class="right">Phase 0</th><th class="right">Phase 1</th><th class="right">Growth</th><th class="right">Scale</th><th>특성</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>LLM</td><td class="right">0.4%</td><td class="right">0.4%</td><td class="right">0.3%</td><td class="right cost-val">0.3%</td><td class="cost-label">볼륨 할인 + 캐시</td></tr>
+        <tr><td>거래 연동</td><td class="right">0.8%</td><td class="right">0.8%</td><td class="right">0.6%</td><td class="right cost-val">0.5%</td><td class="cost-label">IMEI 벌크 단가</td></tr>
+        <tr><td>인프라</td><td class="right">1.4%</td><td class="right">0.4%</td><td class="right">0.2%</td><td class="right cost-val">0.1%</td><td class="cost-label">Sublinear 스케일링</td></tr>
+        <tr><td>인건비</td><td class="right">0%</td><td class="right">0%</td><td class="right">0.3%</td><td class="right cost-val">0.1%</td><td class="cost-label">법무/세무 계약직만</td></tr>
+        <tr style="background:rgba(16,185,129,.06);"><td><strong>총 비용/수익</strong></td><td class="right"><strong>5.8%</strong></td><td class="right"><strong>2.5%</strong></td><td class="right"><strong>2.2%</strong></td><td class="right cost-val"><strong>1.3%</strong></td><td></td></tr>
+      </tbody>
+    </table>
   </section>
 
   <section class="section">
@@ -1526,147 +2006,919 @@ Haggle Credits 가치 ↑
 <!-- ═══════════════════════════════════════ -->
 <div id="tab-current" class="tab-content">
 
-  <!-- Phase 0 전략 확정 -->
-  <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(239,68,68,.15);">🎯</div>Phase 0 전략 확정 (4/8 업데이트)</div>
-    <div class="section-desc">
-      <p><b>배경:</b> 지난 주까지 Haggle은 "AI 협상 + 결제 프로토콜"이라는 넓은 포지셔닝으로 진행하고 있었다. 하지만 YC 오피스아워 스타일의 프리미스 챌린지(/office-hours 세션)를 돌려본 결과, "누가 이걸 실제로 필사적으로 원하는가?" 라는 질문에 답을 못했다. 범용 프로토콜은 아무도 간절히 원하지 않는다. 그래서 4/8에 전체 방향을 "가장 좁은 쐐기(wedge)"로 재정의했다.</p>
-      <p><b>결론:</b> Phase 0는 <b>"중고 iPhone Pro 가격 최적화 도구"</b>로 시작한다. "마켓플레이스"가 아니다. eBay나 Swappa를 대체하는 게 아니라, 이미 거기서 사고팔고 있는 사람들에게 "AI가 협상 붙여서 평균보다 $50+ 더 싸게 사게 해줌"이라는 단일 가치만 판다. 성공 측정도 이 한 문장으로 환원된다.</p>
-    </div>
-    <div class="arch-grid">
-      <div class="arch-card">
-        <h3>해자(Moat) 재정의</h3><span class="badge-role">Moat</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">"코드는 해자가 아니다. AI 시대엔 복제 비용이 0에 수렴한다. 그렇다면 Haggle이 시간이 갈수록 복제 불가능해지는 자산은 무엇인가?"</p>
-        <ul class="security-list">
-          <li><b>Primary — Judgment Precedent DB:</b> 분쟁 발생 시 DS(Dispute Settlement) 패널이 판결한 판례 + 셀러/바이어 attestation(증거) 쌍. 거래가 쌓여야만 생기는 데이터. 스마트 컨트랙트는 포크할 수 있어도 "지난 2년간 1만 건의 분쟁이 어떻게 해결됐는지"는 복제 불가.</li>
-          <li><b>Secondary — Skills Marketplace:</b> 협상 스킬(전략) 마켓. Phase 2+ 기능이지 지금의 해자는 아님.</li>
-          <li><b>핵심 프레임</b>: Haggle은 "AI가 가능하게 했지만, AI로 복제할 수 없는" 카테고리여야 한다.</li>
-        </ul>
-      </div>
-      <div class="arch-card">
-        <h3>Wedge — 가장 좁은 진입점</h3><span class="badge-role">Category</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">"모든 중고거래" ❌ → "미국에서 iPhone 13/14/15 Pro 3개 모델만" ✅</p>
-        <ul class="security-list">
-          <li><b>카테고리:</b> Electronics only, 그 중에서도 iPhone 13/14/15 Pro 3 SKU만. 미국 시장 한정.</li>
-          <li><b>이유:</b> (1) 가격 표준화(Swappa median 존재) (2) 검증 가능(IMEI, 배터리 헬스) (3) 고가($500+)라 $50 절약이 유의미 (4) 구매자 집중(r/appleswap 같은 커뮤니티 존재).</li>
-          <li><b>North Star:</b> AI가 만들어낸 1건당 평균 절약액 vs Swappa 30일 median. 목표 ≥ $50/txn.</li>
-          <li><b>Attribution 공식:</b> <span class="mono">savings = max(0, Swappa_30d_median − final_price)</span> — 단일 baseline, 게이밍 불가.</li>
-        </ul>
-      </div>
-      <div class="arch-card">
-        <h3>Phase 1.5 진입 게이트 (AND 조건)</h3><span class="badge-role">Gate</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">"언제 다음 카테고리로 확장해도 되는가?" 세 가지 조건이 <b>모두</b> 충족되어야 Phase 1.5 시작.</p>
-        <ul class="security-list">
-          <li><b>Magnitude:</b> 거래당 평균 절약액 ≥ $50 AND</li>
-          <li><b>Scale:</b> 90일간 유효 거래 ≥ 500건 AND</li>
-          <li><b>Dispute rate:</b> 분쟁 발생률 ≤ 5%</li>
-          <li><b>Phase 1.5 내용:</b> Sneakers(스니커즈)를 retention engine으로 추가. 이유: iPhone은 24개월 재구매 주기라 LTV가 낮다. Sneakers는 월 단위 반복 구매라 retention 붙음. <b>Series-A 투자 유치 전제조건이지 선택이 아니다.</b></li>
-        </ul>
-      </div>
-      <div class="arch-card">
-        <h3>유통(GTM) 전략</h3><span class="badge-role">GTM</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">"Paid 광고는 PMF 전까지 금지." 돈 태워서 성장하면 진짜 수요가 있는지 알 수 없다.</p>
-        <ul class="security-list">
-          <li><b>Community-first:</b> r/appleswap, r/hardwareswap 레딧 커뮤니티에 직접 씨딩. 거기 이미 iPhone 중고거래 하는 사람들이 있음.</li>
-          <li><b>Paid acquisition 금지:</b> 유기적 전환율로 PMF 확인 후 시작.</li>
-          <li><b>검증(Verification):</b> nonce 기반 가이드 attestation(뒤 섹션 참조) + IMEI/carrier 조회로 도난/사기 거래 차단.</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- Attestation Flow + HFMI 엔지니어링 리뷰 -->
-  <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(245,158,11,.15);">⚠️</div>엔지니어링 리스크 리뷰 (/plan-eng-review)</div>
-    <div class="section-desc">
-      <p><b>배경:</b> Phase 0 전략이 확정된 직후, 실제로 Week 1-2 안에 v0를 내놓을 수 있는지 두 개의 핵심 기술 컴포넌트를 엔지니어링 관점에서 스트레스 테스트했다. 그 과정에서 "계획서엔 멀쩡해 보이지만 실제로 구현하려 하면 막히는" 숨은 리스크가 15개 발견됐다. 이게 4/11 모임에서 반드시 결정해야 하는 이유다.</p>
-      <p><b>컴포넌트 1 — Attestation Flow (Hybrid C):</b> 셀러가 발송 전 iPhone 상태를 영상으로 찍고(nonce 스탬프 박혀 있음), 바이어가 수령 직후 다시 찍어서 두 영상을 매칭하는 검증 방식. "셀러가 말한 상태 = 실제 받은 상태" 를 증명해서 분쟁을 줄이는 게 목적. Apple Activation Lock API가 2017년에 닫혔기 때문에 Find My 기반 자동 검증이 불가능해서 이 방법을 선택했다.</p>
-      <p><b>컴포넌트 2 — HFMI v0 (Haggle Fair Market Index):</b> "이 기기의 공정 가격은 $X다" 를 실시간으로 계산해서 협상 기준점으로 쓰는 가격 지수. Swappa median을 쓰기로 했지만, 설계 초안에선 Gazelle(바이백 업체) + Back Market(리퍼브) + eBay 를 가중 평균하자고 되어 있었다. 문제는 이 방식이 투자자 미팅에서 즉시 반박당한다는 것.</p>
-    </div>
-
-    <div class="arch-grid">
-      <div class="arch-card">
-        <h3>Attestation Flow — 8 리스크</h3><span class="badge-role">Critical</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">"영상 찍어서 매칭하면 끝" 이 아니다. 공격자가 어떻게 뚫을지 8가지 시나리오를 다 체크해야 한다.</p>
-        <ul class="security-list">
-          <li><b>R1 — Activation Lock blind spot:</b> Apple이 2017년에 Activation Lock API를 닫았다. 셀러가 공장 초기화하면 그 기기가 원래 도난품이었는지 확인할 방법이 없다. <b>대응:</b> IMEI DB 조회 + 통신사(carrier) 상태 이중 확인. 하지만 R6 참조.</li>
-          <li><b>R2 — Nonce는 replay만 막는다:</b> 영상에 우리가 발급한 랜덤 코드(nonce)를 박아두면 "옛날 영상 재사용"은 막을 수 있다. 하지만 딥페이크/영상 합성(compositing)은 못 막는다. <b>대응:</b> 실시간 liveness challenge(예: "지금 화면을 3번 두드려라") 추가 필요.</li>
-          <li><b>R3 — Two-device 문제:</b> 셀러가 iPhone 1대만 가지고 있으면, 그 iPhone을 자기 자신으로 촬영할 수 없다. 두 번째 기기(친구 폰, 웹캠 등)가 필수인데 UX가 무너진다. <b>대응:</b> 웹캠/데스크톱 기반 대체 플로우 설계.</li>
-          <li><b>R4 — 영상 저장/PII 설계 누락:</b> 영상에는 얼굴, 집 배경, 시리얼 번호 등 개인정보가 다 들어간다. 어디에 저장? 얼마나 보관? GDPR "잊혀질 권리" 요청 오면? 설계 문서에 한 줄도 없다. <b>대응:</b> S3 서버사이드 암호화 + 보존 기간(예: 분쟁 종결 + 90일) + erasure endpoint.</li>
-          <li><b>R5 — On-chain hash commit이 Week 1-2를 막는다:</b> 설계엔 영상 해시를 스마트 컨트랙트에 기록하기로 되어 있다. 그런데 CLAUDE.md 규칙 #8: <span class="mono">컨트랙트 배포는 Timelock 48시간 + multisig 필수</span>. Week 1-2 일정상 불가능. <b>대응:</b> v0는 off-chain DB에만 저장. on-chain은 Phase 1으로.</li>
-          <li><b>R6 — Carrier lookup API가 존재하지 않는다:</b> T-Mobile, Verizon, AT&T 모두 IMEI 기반 도난/차단 상태 조회 공개 API를 제공하지 않는다. 유료 3rd-party(IMEI.info, Swappa Check 등)를 써야 하는데 건당 비용 + 신뢰성 이슈. <b>대응:</b> Phase 0에선 "Unlocked only" 로 제한하고 carrier 검증은 Phase 1으로 연기.</li>
-          <li><b>R7 — DS precedent DB 유사도 검색 미설계:</b> 해자의 핵심인 판례 DB에서 "비슷한 분쟁 찾기"를 어떻게 할지 정해진 게 없다. pgvector + embedding 모델(OpenAI? 로컬?) + 청크 전략 전부 미정. <b>대응:</b> 4/11 이후 별도 설계 세션.</li>
-          <li><b>R8 — Battery Health OCR false positive:</b> 설계는 iOS 설정 스크린샷에서 배터리 헬스%를 OCR로 읽는다. 하지만 스크린샷은 포토샵으로 변조 가능. <b>대응:</b> 화면 녹화 영상 + 메뉴 진입 과정 전체 촬영 강제.</li>
-        </ul>
-      </div>
-      <div class="arch-card">
-        <h3>HFMI v0 — 7 리스크</h3><span class="badge-role">Critical</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">"여러 출처 가중 평균하면 더 정확해 보임" 이 함정. 실제론 투자자 설득 실패 + 구현 지연의 주범.</p>
-        <ul class="security-list">
-          <li><b>R1 — Gazelle/Back Market 가중 bias (치명적):</b> Gazelle은 "바이백" 업체다. 즉 소비자에게서 $400에 사서 $600에 되파는 구조. 바이백 가격은 retail median의 60-70%. 이걸 가중 평균에 넣으면 HFMI가 실제 시장가보다 낮아지고, "savings = Swappa_median − price" 공식이 과대 계상된다. <b>투자자가 3초 만에 지적할 이슈.</b> <b>대응:</b> Gazelle/Back Market 제거, eBay 단일 소스로.</li>
-          <li><b>R2 — eBay Browse API에 sold data가 없다 (설계 오류):</b> 설계 문서에 "eBay Browse API로 과거 성사 거래 수집"이라고 쓰여 있는데, Browse API는 현재 판매중 리스팅만 반환한다. 과거 낙찰가를 얻으려면 <span class="mono">findCompletedItems</span> (legacy Finding API) 또는 application-gated Marketplace Insights API를 써야 한다. <b>대응:</b> Finding API로 전환 + deprecation 리스크 문서화.</li>
-          <li><b>R3 — 스크래핑 ToS 위반 리스크:</b> Gazelle, Back Market 공식 API 없음 → 스크래핑이 유일. 둘 다 ToS에 명시적으로 금지. 법적 리스크 + IP 차단.</li>
-          <li><b>R4 — 5차원 그리드 sparse 문제:</b> 설계는 (model × storage × color × battery × condition) 5차원 그리드에 median을 채워넣는다. iPhone 14 Pro만 해도 조합이 수백 개. eBay 최근 30일 거래량으론 대부분 셀이 empty. <b>대응:</b> Grid median 포기, hedonic regression(회귀 모델)로 전환.</li>
-          <li><b>R5 — Weight 공개 시 gameability:</b> 가중치를 공개하면 셀러가 "특정 조건 조작하면 HFMI가 올라가서 내 savings가 높아 보임" 을 계산해 조작한다. 공개 안 하면 불투명.</li>
-          <li><b>R6 — Haggle 내부 거래 feedback loop:</b> 설계는 "시간이 지나면 Haggle 내부 거래 데이터 weight를 올린다". 하지만 Haggle 거래가 저렴할수록 HFMI가 낮아지고, HFMI가 낮아지면 savings도 낮아지고, savings=0이면 가치 제안이 붕괴된다. <b>자기 잠식 피드백 루프.</b> <b>대응:</b> 내부 데이터는 baseline에서 영구 제외.</li>
-          <li><b>R7 — 희귀 SKU cold start:</b> iPhone 13 Pro Max 1TB Alpine Green 같은 조합은 30일에 거래 5건 미만. 통계적으로 의미 없음. <b>대응:</b> 인접 SKU 보간 또는 "데이터 부족" 경고 UX.</li>
-        </ul>
-      </div>
-    </div>
-
-    <p style="margin:16px 0 8px 0;"><b>결정 필요 항목 — 4/11 모임에서 반드시 합의해야 함:</b></p>
-    <table class="decision-table">
-      <thead><tr><th>#</th><th>결정 사항</th><th>권장 및 이유</th><th class="right">우선순위</th></tr></thead>
-      <tbody>
-        <tr><td class="mono">1</td><td class="bold">On-chain attestation hash commit을 v0에서 제외할 것인가?</td><td><b>YES 권장.</b> Timelock 48h + multisig 규칙을 우회할 방법 없음. v0는 off-chain Postgres에만 저장하고, on-chain anchoring은 Phase 1에서 진행. "Web3 감성" 때문에 Week 1-2 일정 깨면 안 됨.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">2</td><td class="bold">Phase 0를 Unlocked iPhone only로 제한할 것인가?</td><td><b>YES 권장.</b> Activation Lock API가 없는 이상 locked/carrier-locked 기기는 검증 불가능. Unlocked only로 제한하면 거래량은 줄지만 사기 리스크가 크게 떨어짐. Carrier lookup은 Phase 1으로 연기.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">3</td><td class="bold">HFMI v0 = eBay 단일 소스 + OLS hedonic regression?</td><td><b>YES 권장.</b> Gazelle/Back Market 가중 평균은 투자자 지적 이슈(바이백 bias). eBay Finding API 하나만 쓰고, 5차원 그리드 대신 hedonic 회귀 모델(가격 = β₀ + β₁·storage + β₂·battery + ...)로 단순화. 투자자 스토리도 "단일 public source, 통계적으로 방어 가능"으로 명확해짐.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">4</td><td>Week 1-2 v0 범위를 유지할 것인가, Week 3-4로 조정할 것인가?</td><td>위 리스크들을 전부 반영하면 Week 1-2는 비현실적. 특히 R3(two-device UX), R4(PII 저장), R7(precedent DB 설계)은 각각 며칠씩 걸림. <b>Week 3-4 조정 권장.</b></td><td class="right"><span class="sev medium">중간</span></td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <!-- Admin Ops Inbox Step 55-58 완료 -->
-  <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(34,197,94,.15);">✅</div>Admin Ops Inbox Step 55-58 완료 (4/8)</div>
-    <div class="section-desc">
-      <p><strong>배경.</strong> Haggle 의 태그 시스템은 사용자가 자유롭게 붙인 자유 태그(free tag)가 일정 조건(사용 횟수, 승인율 등)을 만족하면 정식 용어(Term)로 승격되는 구조다. 반대로 오남용·중복 태그는 강등되어야 한다. 이 승격/강등 판단을 전부 사람이 하면 병목이 생기고, 전부 자동화하면 오작동 위험이 크다. 그래서 <strong>자동 규칙 엔진 + Admin 승인 큐(Inbox)</strong> 하이브리드 구조를 택했다.</p>
-      <p><strong>Step 55-58 이 하는 일.</strong> (1) 규칙 테이블과 관리자 액션 로그 DB 스키마를 만들고, (2) 규칙에 따라 태그를 자동으로 올리거나 내리는 cron 기반 서비스를 만들고, (3) 승격 후보 + 신고된 태그를 하나의 Admin 큐로 합치고, (4) 관리자가 큐를 읽고 처리할 수 있는 API 엔드포인트를 연결했다. 이걸로 태그 라이프사이클의 뼈대가 완성됐다.</p>
-      <p><strong>3man 워크플로우.</strong> Arch 가 설계(ARCHITECT-BRIEF) → Bob 이 구현 → Richard 가 리뷰. 이 4 step 이 그 워크플로우로 돌아간 첫 번째 완결 사이클이다. 품질 게이트가 실제로 작동하는지 확인하는 의미도 있었다.</p>
-    </div>
-    <table class="decision-table">
-      <thead><tr><th>Step</th><th>범위</th><th>테이블/엔드포인트</th><th class="right">상태</th></tr></thead>
-      <tbody>
-        <tr><td class="mono">55</td><td class="bold">Admin Ops Inbox DB schema</td><td>tag_promotion_rules, admin_action_log</td><td class="right"><span class="sev low">완료</span></td></tr>
-        <tr><td class="mono">56</td><td class="bold">Tag Auto-Promotion 서비스</td><td>rule engine + cron evaluator</td><td class="right"><span class="sev low">완료</span></td></tr>
-        <tr><td class="mono">57</td><td class="bold">Admin Inbox Aggregator</td><td>pending promotions + flagged items unified queue</td><td class="right"><span class="sev low">완료</span></td></tr>
-        <tr><td class="mono">58A</td><td class="bold">Admin Read/Job/Rules Routes</td><td>GET /admin/inbox, POST /admin/rules, job dispatch</td><td class="right"><span class="sev low">완료</span></td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <!-- 4/11 모임 논의 안건 -->
+  <!-- 4/11 모임 논의 안건 (업데이트: LLM 전환 + AI 생태계 추가) -->
   <section class="section">
     <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">📋</div>4/11 모임 논의 안건</div>
     <div class="section-desc">
-      <p>토요일 정기 모임. 이번 회차의 목표는 <strong>Phase 0 실행 착수 직전 "되돌릴 수 없는 결정"들을 확정하는 것</strong>이다. 4/8 에 office-hours + eng review 로 전략과 기술 리스크를 정리했으니, 이제 세 명이 모여서 최종 승인/반려하고 Week 1 월요일부터 코드가 나가야 한다. 항목마다 "왜 논의해야 하는가"를 같이 적어뒀다.</p>
+      <p>토요일 정기 모임. 이번 회차의 핵심 논의: <strong>(1) LLM 협상 엔진 전환 결정, (2) AI 결제 생태계 포지셔닝, (3) Phase 0 실행 착수 확정</strong>. AI Agent 경제가 급속히 표준화되고 있어서 타이밍이 중요하다.</p>
+    </div>
+
+    <!-- ── 안건 A: Rule-Based vs LLM 장단점 비교 ── -->
+    <div class="info-box" style="margin-bottom:20px">
+      <div class="info-title">🧠 안건 A — Rule-Based vs LLM 엔진: 장단점 비교</div>
+      <p style="margin:8px 0">두 엔진 모두 자연어 기반으로 설계됐고, 다중 조건(Term) 협상을 지원한다. 교체가 아니라 <b>계층 추가</b> 관점에서 각각의 장단점을 비교.</p>
+    </div>
+
+    <div class="arch-grid">
+      <div class="arch-card">
+        <h3>Rule-Based 엔진</h3><span class="badge-role">현재</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">engine-core(Faratin 곡선) + engine-session(상태 머신) + TermSpace(다중 조건) + intent matcher(자연어 매칭)</p>
+        <p style="font-size:13px;font-weight:600;color:#22c55e;margin:12px 0 6px 0;">장점</p>
+        <ul class="security-list">
+          <li><b>비용 $0:</b> LLM 호출 없음. 라운드당 <50ms, 인프라 비용만 발생.</li>
+          <li><b>결정론적:</b> 같은 입력 → 같은 출력. 디버깅과 테스트가 쉽고 결과 예측 가능.</li>
+          <li><b>수학적 최적:</b> Faratin 양보 곡선이 이론적으로 증명된 전략 실행. 감정/편향 없음.</li>
+          <li><b>자연어 지원:</b> intent matcher가 사용자 메시지를 파싱해 구조화된 입력으로 변환. 이미 동작 중.</li>
+          <li><b>다중 조건 협상:</b> TermSpace + computeMultiTermUtility로 가격 외 조건(배터리, 보증 등) 처리.</li>
+          <li><b>외부 의존성 0:</b> 서드파티 API 장애에 영향 없음. 자체 완결.</li>
+          <li><b>실전 검증:</b> 640+ tests, 전체 파이프라인 동작 확인. 프로덕션 배포 가능 상태.</li>
+        </ul>
+        <p style="font-size:13px;font-weight:600;color:#ef4444;margin:12px 0 6px 0;">단점</p>
+        <ul class="security-list">
+          <li><b>정형 입력 한계:</b> intent matcher가 커버하지 못하는 비정형 표현은 처리 불가. "솔직히 이 가격이면 좀 고민되는데" 같은 뉘앙스 해석 어려움.</li>
+          <li><b>전략 고정:</b> β 파라미터가 사전 정의. 상대방 패턴이 바뀌어도 실시간 전략 전환 불가.</li>
+          <li><b>메시지 단조:</b> 템플릿 기반 응답. 자연스러운 대화 흐름이나 개성 표현 제한적.</li>
+          <li><b>Agent 프로토콜 미지원:</b> x402, Stripe MPP 같은 AI Agent 간 통신 프로토콜에 직접 참여 불가.</li>
+          <li><b>신규 상황 대응:</b> 설계에 없는 시나리오(예: 상대방이 전혀 새로운 조건 제시)엔 fallback만 가능.</li>
+        </ul>
+      </div>
+
+      <div class="arch-card">
+        <h3>LLM 엔진 (Step 56-57)</h3><span class="badge-role">신규</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">Rule-Based 위에 LLM 레이어 추가. RefereeService(Coach + Validate + Auto-fix) + BuddyTone 렌더링.</p>
+        <p style="font-size:13px;font-weight:600;color:#22c55e;margin:12px 0 6px 0;">장점</p>
+        <ul class="security-list">
+          <li><b>전략 적응:</b> 상대방 패턴(BOULWARE/CONCEDER/LINEAR)을 EMA로 분석, 실시간으로 β 조정.</li>
+          <li><b>자연어 자유도:</b> 비정형 메시지를 직접 이해하고, BuddyTone 기반 자연스러운 응답 생성.</li>
+          <li><b>사용자 지시:</b> "최대한 버텨봐", "이번엔 빨리 끝내자" 같은 대화형 전략 수정 가능.</li>
+          <li><b>Agent Economy:</b> x402/Stripe MPP 생태계에서 다른 AI Agent와 직접 협상 가능.</li>
+          <li><b>안전장치 내장:</b> Math Guard(코드 강제) + Referee(validate + auto-fix) → LLM 출력이 비합리적이면 차단.</li>
+          <li><b>구현 완료:</b> 20 source files, 640 tests pass. Feature flag로 즉시 전환 가능.</li>
+        </ul>
+        <p style="font-size:13px;font-weight:600;color:#ef4444;margin:12px 0 6px 0;">단점 + 대응</p>
+        <table class="decision-table" style="font-size:12px;margin:4px 0;">
+          <thead><tr><th>단점</th><th>대응 (이미 구현 or 계획)</th></tr></thead>
+          <tbody>
+            <tr><td><b>비용 발생:</b> 세션당 $0.004~$0.090</td><td>OPENING/CLOSING은 rule-based(LLM 0회). BARGAINING만 LLM 호출 → 실제 비용 60% 절감. 구독/HC로 사용자 부담 전가 시 마진 98.9%.</td></tr>
+            <tr><td><b>비결정론적:</b> 같은 입력 → 다른 출력</td><td>Structured Output(JSON 강제) + Referee validator가 7개 규칙으로 출력 검증. HARD violation은 auto-fix(최대 2회 재시도). 가격은 Math Guard가 코드로 강제 → LLM이 뭘 출력하든 floor 아래로 못 내려감.</td></tr>
+            <tr><td><b>레이턴시:</b> 2-15초/호출</td><td>협상은 실시간 채팅이 아니라 비동기 턴제. 상대방 응답 대기 시간(분~시간) 대비 2-15초는 무시 가능. Reasoning 모드(15s)는 gap &lt;10%일 때만 트리거.</td></tr>
+            <tr><td><b>외부 의존성:</b> xAI API 장애</td><td>LLM 실패 시 DefaultEngineSkill(rule-based)로 자동 fallback. 사용자에게 품질 저하 없이 라운드 진행. fallback 비율 모니터링으로 장애 감지.</td></tr>
+            <tr><td><b>할루시네이션:</b> 부정확 정보 생성</td><td>가격: Math Guard가 floor/ceiling 코드 강제. 조건: Referee validator가 phase 허용 액션 검증. 메시지: TemplateMessageRenderer가 BuddyTone 범위 내로 제한. LLM은 "판단"만, "실행"은 전부 코드.</td></tr>
+            <tr><td><b>TX 스케일:</b> row lock 10-15초</td><td>MVP 규모(동시 10-20 세션)에서는 문제 없음. Phase 2: lock → read → release → LLM → re-lock → verify version → persist 패턴으로 200x 개선.</td></tr>
+            <tr><td><b>공격 표면:</b> LLM 비용 유발 공격</td><td>5중 방어: (1) 이메일 인증 (2) 세션당 15라운드 cap (3) 사용자당 분당 3세션 (4) HC 선불(공격자 자비 부담) (5) 글로벌 LLM 호출 1000/min cap($460/일 상한).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- ── 안건 A-2: LLM 엔진 실제 작동 구조 ── -->
+    <div class="arch-grid" style="margin-top:20px">
+      <div class="arch-card" style="grid-column: 1 / -1;">
+        <h3>LLM 엔진 — Phase별 실제 작동 구조</h3><span class="badge-role">Architecture</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">협상은 5단계(Phase)로 진행된다. <b>LLM은 BARGAINING의 COUNTER 액션에서만 호출</b>되고, 나머지는 전부 rule-based가 처리한다. 모든 phase에서 Referee(검증 + 메시지 렌더링)는 공통 실행.</p>
+
+        <table class="decision-table" style="font-size:12px;margin:12px 0;">
+          <thead><tr><th>Phase</th><th>허용 액션</th><th>의사결정 주체</th><th>LLM 호출</th><th>설명</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="bold">① DISCOVERY</td>
+              <td><span class="mono">DISCOVER</span></td>
+              <td>기존 시스템 (엔진 범위 밖)</td>
+              <td>❌ 0회</td>
+              <td>매물 탐색, 질문, 조건 파악. embedding 검색 + intent matcher + HFMI가 처리. 협상 엔진은 관여 안 함.</td>
+            </tr>
+            <tr>
+              <td class="bold">② OPENING</td>
+              <td><span class="mono">COUNTER</span> (초기 제안)</td>
+              <td>DefaultEngineSkill (rule-based)</td>
+              <td>❌ 0회</td>
+              <td>Faratin 곡선으로 첫 제안 가격 계산. target에서 10% 마진 적용한 anchoring. 수학적으로 결정론적.</td>
+            </tr>
+            <tr style="background:rgba(99,102,241,.06);">
+              <td class="bold">③ BARGAINING</td>
+              <td><span class="mono">COUNTER, ACCEPT, REJECT, HOLD</span></td>
+              <td>Skill → <b>LLM 증강</b> → Referee</td>
+              <td>✅ <b>1회/라운드</b></td>
+              <td>핵심 협상 구간. Skill이 먼저 rule-based 판단 → <b>COUNTER일 때만</b> LLM이 가격/전략/메시지를 재판단 → Referee가 검증 + auto-fix + 메시지 렌더링. ACCEPT/REJECT/HOLD은 LLM 없이 Skill이 직접 결정.</td>
+            </tr>
+            <tr>
+              <td class="bold">④ CLOSING</td>
+              <td><span class="mono">CONFIRM, HOLD, REJECT</span></td>
+              <td>DefaultEngineSkill (rule-based)</td>
+              <td>❌ 0회</td>
+              <td>양측이 합의 가격 확인. Skill이 자동 CONFIRM. 상대방이 번복하면 BARGAINING으로 revert.</td>
+            </tr>
+            <tr>
+              <td class="bold">⑤ SETTLEMENT</td>
+              <td>없음 (terminal)</td>
+              <td>—</td>
+              <td>❌ 0회</td>
+              <td>결제 실행 단계. 협상 완료. 더 이상 액션 없음.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:13px;font-weight:600;margin:16px 0 8px 0;">라운드 실행 파이프라인 (BARGAINING 기준)</p>
+        <div style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;line-height:1.8;overflow-x:auto;color:#94a3b8;">
+          <span style="color:#64748b;">상대방 오퍼 도착</span><br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">① Screening</b> ─── 스팸/저품질 메시지 필터 (6 regex + trust score) ─── 스팸이면 즉시 REJECT<br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">② Memory 재구성</b> ─── DB → CoreMemory + RoundFact[] + OpponentPattern (순수 코드)<br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">③ Coach</b> ─── Faratin 곡선 + EMA 상대 분석 → 추천 가격/전략 산출 (순수 코드)<br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">④ Phase 판정</b> ─── 현재 phase 확인 + 전이 이벤트 감지 (순수 코드)<br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">⑤ Skill 판단</b> ─── DefaultEngineSkill.evaluateOffer() — rule-based 의사결정 (순수 코드)<br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ target 이상이면 → ACCEPT <span style="color:#10b981;">(LLM 건너뜀)</span><br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ floor 초과하면 → REJECT <span style="color:#10b981;">(LLM 건너뜀)</span><br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 그 사이면 → COUNTER (아래로 진행)<br>
+          │<br>
+          ├─ <b style="color:#6366f1;">⑥ LLM 호출</b> ─── BARGAINING + COUNTER일 때만 실행 ── <b style="color:#6366f1;">유일한 LLM 호출 지점</b><br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ shouldUseReasoning() → General or Reasoning 모드 결정<br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ GrokFastAdapter.buildPrompt() → Compact encoding + Differential Context<br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ xai-client.callLLM() → Structured Output (JSON 강제)<br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ parseResponse() → ProtocolDecision 추출<br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 실패 시 → ⑤의 Skill 결정으로 자동 fallback<br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">⑦ Referee</b> ─── Coach(추천) + Validator(7규칙) + Auto-fix(HARD 위반 최대 2회) (순수 코드)<br>
+          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <span style="color:#f59e0b;">Math Guard: floor 위반 → 코드가 강제 차단 (LLM 출력 무시)</span><br>
+          │<br>
+          ├─ <b style="color:#e2e8f0;">⑧ Message Render</b> ─── BuddyTone 기반 메시지 생성 (순수 코드, 템플릿 엔진)<br>
+          │<br>
+          └─ <b style="color:#e2e8f0;">⑨ Persist</b> ─── Round 저장 + Session 업데이트 + Event dispatch (DB)<br>
+        </div>
+
+        <p style="font-size:13px;color:#64748b;margin:12px 0 4px 0;"><b>15라운드 세션 예시:</b> OPENING 1회(rule) + BARGAINING ~12회(그 중 COUNTER ~10회 → LLM 10회, ACCEPT/REJECT ~2회 → rule) + CLOSING 1~2회(rule) = <b>LLM 호출 총 ~10회</b>. ACCEPT/REJECT/HOLD 결정은 rule-based Skill이 수학적으로 판단하므로 LLM이 관여하지 않음.</p>
+
+        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:16px 0 6px 0;">구현 현황</p>
+        <ul class="security-list">
+          <li><b>Step 56:</b> LLM Engine 본체 — 20 files, 158 tests (types, protocol rules, term system, memory, referee, skill, adapter, renderer, phase machine, screening)</li>
+          <li><b>Step 57:</b> DB 통합 — xAI client, memory-reconstructor, llm-negotiation-executor, executor-factory. 640 tests pass.</li>
+          <li><b>Feature Flag:</b> <span class="mono">NEGOTIATION_ENGINE=llm|rule</span> env 전환. rule 경로 100% 미변경.</li>
+        </ul>
+
+        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">모임에서 결정할 것</p>
+        <ul class="security-list">
+          <li>Phase 0에서 LLM 모드를 활성화할 것인가, rule-based로 시작할 것인가?</li>
+          <li>비용 구조: Free tier는 rule-based only? 아니면 Grok Fast LLM 포함?</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── 안건 B: AI 결제 생태계 뉴스 ── -->
+    <div class="arch-grid" style="margin-top:24px">
+      <div class="arch-card" style="grid-column: 1 / -1;">
+        <h3>🌐 안건 B — AI 결제 생태계 뉴스 (2026년 3-4월)</h3><span class="badge-role">News</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">AI Agent가 직접 결제하는 시대가 시작됐다. Haggle 포지셔닝에 직접 영향을 주는 최근 움직임들.</p>
+        <table class="decision-table" style="font-size:12px;margin:12px 0;">
+          <thead><tr><th>날짜</th><th>주체</th><th>내용</th><th>Haggle 영향</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">4/2</td><td class="bold">Coinbase → Linux Foundation</td><td><b>x402 Foundation 출범.</b> HTTP 402 기반 AI Agent 결제 프로토콜. Coinbase가 독점하지 않고 기부. 멤버: Stripe, Visa, Mastercard, AWS, Google, Microsoft, Shopify, Circle(USDC), Akamai, Cloudflare.</td><td>x402는 "얼마를 보낼지"는 결정 안 함. <b>Haggle = "얼마를 보낼지 결정하는 레이어"로 포지셔닝 가능.</b></td></tr>
+            <tr><td class="mono">3월</td><td class="bold">Stripe</td><td><b>Machine Payment Protocol (MPP) 발표.</b> AI Agent가 Stripe 결제 직접 실행. 가맹점 300만+ 즉시 호환.</td><td>가격 협상 기능 없음. Haggle이 MPP 위에서 협상 레이어 제공 가능.</td></tr>
+            <tr><td class="mono">4월</td><td class="bold">Visa</td><td><b>Trusted Agent Framework 발표.</b> AI Agent에 "신뢰 토큰" 발급, 기존 Visa 결제망에서 자율 결제.</td><td>카드 네트워크 기반(스테이블코인 불필요). Visa 종속이지만 시장 규모 거대.</td></tr>
+            <tr><td class="mono">4월</td><td class="bold">Ant Group</td><td><b>Anvita</b> — 알리페이 기반 AI Agent 결제. 중국/동남아 타겟, 위안화 + 로컬 통화.</td><td>서양 시장과 별도 생태계. 직접 경쟁 아닌 병렬 시장.</td></tr>
+            <tr><td class="mono">4월</td><td class="bold">Santander × Mastercard</td><td>은행 계좌 직접 연결 AI 결제. 유럽 PSD3 규제 대응. 파일럿 단계.</td><td>유럽 시장 진출 시 참고. 현재 Phase 0(US only)엔 무관.</td></tr>
+            <tr><td class="mono">3월</td><td class="bold">McKinsey</td><td>AI Agent 경제 전망: <b>2028년 $47B → 2030년 $120B.</b> "모든 SaaS가 AI Agent 결제를 지원하게 될 것."</td><td>시장 자체가 폭발 성장. "결제 레일은 이미 있다. 빠진 건 가격 결정 레이어."</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">모임에서 논의할 것</p>
+        <ul class="security-list">
+          <li>Haggle을 "P2P 마켓의 협상 도구"로만 볼 것인가, "AI Agent 간 가격 결정 프로토콜"로 포지셔닝할 것인가?</li>
+          <li>Agent-to-Agent 협상 인터페이스를 Phase 1에 설계할 것인가, Phase 0 이후로 미룰 것인가?</li>
+          <li>x402 Foundation 가입/참여 여부 — 시기상조인가, 얼리 무버 이점이 있는가?</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── 안건 D: Living Negotiation Memo ── -->
+    <div class="arch-grid" style="margin-top:24px">
+      <div class="arch-card" style="grid-column: 1 / -1;">
+        <h3>🧠 안건 D — Living Negotiation Memo (2-Layer 압축 구조)</h3><span class="badge-role">Architecture</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0 12px 0;">LLM의 "기억"을 어떻게 관리할 것인가. 매 라운드마다 전체 히스토리를 보내면 토큰 폭발 → <b>Living Memo</b>로 고정 크기 유지. 핵심: 팩트(Shared)와 전략(Private)을 분리해서 투명성 + 중립성 확보.</p>
+
+        <table class="decision-table" style="font-size:12px;margin:0 0 12px 0;">
+          <thead><tr><th>Layer</th><th>내용</th><th>누가 보나</th><th>용도</th></tr></thead>
+          <tbody>
+            <tr style="background:rgba(16,185,129,.06);">
+              <td class="bold">Shared Layer</td>
+              <td>가격 궤적, 조건 원장, 검증 로그, Phase 이력, 최근 3라운드 원본</td>
+              <td>양쪽 모두 (hash 검증)</td>
+              <td>분쟁 시 DS 패널 증거. Agent-to-Agent 동기화.</td>
+            </tr>
+            <tr>
+              <td class="bold">Private Layer</td>
+              <td>내 target/floor, 상대 패턴 분석, 전술 추천, 리스크 레지스터</td>
+              <td>나만</td>
+              <td>LLM 의사결정 근거. 상대에게 절대 노출 안 됨.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:13px;font-weight:600;margin:12px 0 6px 0;">Codec 압축 — 토큰 61% 절감</p>
+        <div style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;line-height:1.6;overflow-x:auto;color:#94a3b8;">
+<b style="color:#10b981;">--- SHARED ---</b><br>
+<b style="color:#e2e8f0;">NS:</b>sess_abc|BARG|R7/15|47m|h:8f2a<br>
+<b style="color:#e2e8f0;">PT:</b>B585,660,680,700|S760,740,725,720|g2000↓|Bm11500|Sm4000<br>
+<b style="color:#e2e8f0;">CL:</b>charger_incl/S/R3/✓R4|ship_method/USPS_pri/B/R5/?|ship_cost/seller_pays/B/R5/✗R6<br>
+<b style="color:#e2e8f0;">VL:</b>imei/R4/CLEAN/T-Mo,unlocked,!bl/v_8f2k/$0|bat_hp/R6/?/await_diag<br>
+<b style="color:#e2e8f0;">VB:</b>bat_hp<br>
+<b style="color:#e2e8f0;">PH:</b>OPEN→BARG@R2/COM|cur:BARG|rev:0<br>
+<b style="color:#e2e8f0;">RM3:</b><br>
+R5/B:"배송비 판매자 부담이면 $680 가능한데요"<br>
+R6/S:"배송비는 각자 부담이 맞는 것 같아요. $720은 어떠세요?"<br>
+R7/B:"USPS Priority로 보내주시면 $700에 할게요"<br>
+<b style="color:#6366f1;">--- PRIVATE ---</b><br>
+<b style="color:#e2e8f0;">SS:</b>buyer|t65000|f78000|c70000|flex0.615|used61%|rem8|tp0.47|FAUTO|balanced<br>
+<b style="color:#e2e8f0;">OM:</b>LINEAR/0.78|agg0.45|cr0.033|avg1333|ef68000/0.6<br>
+<b style="color:#e2e8f0;">TR:</b>COUNTER@70500|"gap$2K,+$500→opp-$500,bat=leverage"<br>
+<b style="color:#e2e8f0;">RR:</b>bat_hp/92/M/"$30-50Δ,&lt;80%=REJECT"/R6_verifying<br>
+<b style="color:#e2e8f0;">RT:</b>0.72|imei+.2,bat-.1,coop+.12
+        </div>
+
+        <table class="decision-table" style="font-size:12px;margin:12px 0;">
+          <thead><tr><th>지표</th><th>JSON (비압축)</th><th>Codec (압축)</th><th>절감</th></tr></thead>
+          <tbody>
+            <tr><td>Shared Layer</td><td class="mono">~450 토큰</td><td class="mono bold" style="color:var(--green);">~120 토큰</td><td class="mono">73%</td></tr>
+            <tr><td>Recent Messages (3개)</td><td class="mono">~150 토큰</td><td class="mono bold" style="color:var(--green);">~120 토큰</td><td class="mono">20%</td></tr>
+            <tr><td>Private Layer</td><td class="mono">~400 토큰</td><td class="mono bold" style="color:var(--green);">~150 토큰</td><td class="mono">63%</td></tr>
+            <tr class="highlight-row"><td class="bold">합계</td><td class="mono">~1000 토큰</td><td class="mono bold" style="color:var(--green);">~390 토큰</td><td class="mono bold">61%</td></tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">비용 영향 — 전 Phase LLM인데 기존과 동일</p>
+        <table class="decision-table" style="font-size:12px;margin:0 0 12px 0;">
+          <thead><tr><th>비교</th><th>LLM 범위</th><th>세션당 비용</th><th>월 10K 세션</th></tr></thead>
+          <tbody>
+            <tr><td>기존 (BARGAINING COUNTER만)</td><td>COUNTER ~10회</td><td class="mono">$0.0020</td><td class="mono">$20</td></tr>
+            <tr style="background:rgba(16,185,129,.06);"><td class="bold">신규 (전 Phase, Codec 압축)</td><td class="bold">전 라운드 ~13회 × 4 stage</td><td class="mono bold" style="color:var(--green);">$0.0022</td><td class="mono bold" style="color:var(--green);">$22</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12px;color:#64748b;">Codec 압축(61%)이 LLM 범위 확장 비용을 상쇄. <b>비용 +10%로 기능 300% 확장.</b></p>
+
+        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">모임에서 결정할 것</p>
+        <ul class="security-list">
+          <li>Living Memo 2-Layer 구조 확정 여부</li>
+          <li>Codec 포맷 확정 (위 예시 기준) — HNP 스펙에 Shared Layer 포맷 포함할 것인지</li>
+          <li>Recent Messages 윈도우 크기: 3개 vs 5개</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── 안건 E: Skill 검증 + Haggle 인증 ── -->
+    <div class="arch-grid" style="margin-top:20px">
+      <div class="arch-card" style="grid-column: 1 / -1;">
+        <h3>🔐 안건 E — Skill 검증 서비스 + Haggle 인증</h3><span class="badge-role">Trust</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0 12px 0;">협상 중 상대방이 주장하는 조건(배터리 92%, IMEI clean 등)을 <b>Skill이 실제로 검증</b>하고, Haggle이 결과를 <b>서명(attestation)</b>해서 위조 불가하게 만드는 구조.</p>
+
+        <p style="font-size:13px;font-weight:600;margin:0 0 6px 0;">검증 플로우</p>
+        <div style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;line-height:1.7;overflow-x:auto;color:#94a3b8;">
+<b style="color:#e2e8f0;">① 요청</b> ─── 구매자: "IMEI 확인 가능해요?" → LLM UNDERSTAND: request_verification(imei)<br>
+<b style="color:#e2e8f0;">② 알림</b> ─── 판매자에게: "검증 요청됨. 비용: 무료. [수락] [거절] [자동수락✓]"<br>
+<b style="color:#e2e8f0;">③ 실행</b> ─── 판매자 수락 → IMEI 입력 → <b style="color:#6366f1;">Skill.verify("imei", "352438...")</b><br>
+│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 캐리어 API 호출 → T-Mobile, unlocked, not blacklisted<br>
+<b style="color:#e2e8f0;">④ 인증</b> ─── <b style="color:#f59e0b;">Haggle이 결과에 플랫폼 키로 서명</b><br>
+│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ attestation = sign(platform_key, hash(session+round+term+result+ts))<br>
+<b style="color:#e2e8f0;">⑤ 기록</b> ─── Shared Layer VL에 저장 → 분쟁 시 증거<br>
+<b style="color:#e2e8f0;">⑥ 반영</b> ─── LLM이 다음 라운드에서 "IMEI 검증 완료" 반영 → 가격/신뢰 조정
+        </div>
+
+        <p style="font-size:13px;font-weight:600;margin:12px 0 6px 0;">위조 방지 — 왜 유저가 사기칠 수 없는가</p>
+        <table class="decision-table" style="font-size:12px;margin:0 0 12px 0;">
+          <thead><tr><th>공격</th><th>방어</th></tr></thead>
+          <tbody>
+            <tr><td>"검증 완료"라고 거짓 주장</td><td>VL에 attestation_id 없으면 미검증. Skill이 실행해야만 기록 생성.</td></tr>
+            <tr><td>검증 결과를 위조</td><td>Haggle 플랫폼 키로 서명. 키 없이 서명 생성 불가능.</td></tr>
+            <tr><td>과거 검증 결과를 다른 세션에 재사용</td><td>서명에 session_id + round 포함. 다른 세션에서 무효.</td></tr>
+            <tr><td>Haggle이 기록 조작</td><td>attestation hash를 Base L2에 온체인 앵커링 (선택적). 블록체인 기록은 불변.</td></tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:13px;font-weight:600;margin:12px 0 6px 0;">Electronics 검증 항목 (Phase 0)</p>
+        <table class="decision-table" style="font-size:12px;margin:0 0 12px 0;">
+          <thead><tr><th>항목</th><th>검증 방법</th><th>비용</th><th>자동수락</th><th>CLOSING 차단?</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">IMEI</td><td>캐리어 API</td><td class="mono" style="color:var(--green);">무료</td><td>가능</td><td>✅ 필수</td></tr>
+            <tr><td class="bold">carrier_lock</td><td>캐리어 API</td><td class="mono" style="color:var(--green);">무료</td><td>가능</td><td>✅ 필수</td></tr>
+            <tr><td class="bold">battery_health</td><td>진단앱 스크린샷</td><td class="mono" style="color:var(--green);">무료</td><td>불가(사진)</td><td>❌ 권장</td></tr>
+            <tr><td>cosmetic_grade</td><td>AI 사진 분석</td><td class="mono">$0.50</td><td>가능</td><td>❌ 선택</td></tr>
+            <tr><td>stolen_check</td><td>도난DB 조회</td><td class="mono">$1.99</td><td>가능</td><td>❌ 선택</td></tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">모임에서 결정할 것</p>
+        <ul class="security-list">
+          <li>Phase 0에서 검증 서비스 범위: IMEI + carrier_lock만? 아니면 battery_health까지?</li>
+          <li>유료 검증(cosmetic, stolen) 수익 모델: Haggle이 마진을 붙일 것인가?</li>
+          <li>on-chain 앵커링: Phase 0에서 할 것인가, Phase 1로 미룰 것인가?</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── 안건 C: 결정 사항 테이블 ── -->
+    <div class="info-box" style="margin-bottom:12px;margin-top:24px">
+      <div class="info-title">📋 안건 C — Phase 0 실행 결정 사항</div>
     </div>
     <table class="decision-table">
       <thead><tr><th>#</th><th>안건</th><th>논의 포인트 + 결정이 필요한 이유</th><th class="right">우선순위</th></tr></thead>
       <tbody>
-        <tr><td class="mono">1</td><td class="bold">Phase 0 전략 리뷰 승인</td><td>Moat 를 "Judgment Precedent DB" 로 재정의하고, 카테고리를 iPhone 13/14/15 Pro 3 SKU 로 좁히고, 유통을 r/appleswap 씨딩으로 한정하는 결정. 이건 되돌리기 어려운 방향 전환이라 세 명이 다 동의해야 진행한다. <strong>반대가 1 명이라도 있으면 재논의.</strong></td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">2</td><td class="bold">Attestation v0 범위 확정</td><td>Eng review 결론: on-chain commit 은 Timelock 48h + multisig 규칙 때문에 Week 1-2 안에 안전하게 못 올린다. v0 는 off-chain Postgres only + Phase 1 에서 anchor. 또 iCloud Activation Lock 이 걸린 기기는 자동 검증이 불가능하니 <strong>unlocked 기기만 받는다</strong>는 제약도 확정해야 한다. 이 두 개가 명확하지 않으면 Bob 이 Week 1 에 뭘 짜야 할지 모른다.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">3</td><td class="bold">HFMI v0 아키텍처 확정</td><td>Eng review 결론: 원래 설계의 "Gazelle + Back Market 가중평균" 은 buyback 가격 편향 때문에 저평가된다. 대안은 (A) eBay Finding API sold-listings + OLS hedonic regression, (B) Multi-source + 편향 보정. A 가 더 정확하고 구현 간단. <strong>B 로 가면 데이터 계약 협상만 4 주 걸린다.</strong> Week 1 에 코드 짜기 전에 A/B 를 골라야 한다.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">4</td><td class="bold">Week 1-2 vs Week 3-4 타임라인 재조정</td><td>Eng review 에서 15 개 리스크가 나왔고 그중 3 개(on-chain commit, Find My 자동화, Phase 1.5 sneakers 사전 준비)는 Week 1-2 에 못 한다. 그럼 v0 범위를 줄일지, Week 3-4 까지 연기할지, 아니면 병렬화할지 결정해야 한다. Richard 의 리스크 평가가 필요.</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">5</td><td>r/appleswap 씨딩 메시지 초안 검토</td><td>Community-first 유통의 첫 번째 실행. r/appleswap 과 r/hardwareswap 모더레이터에게 보낼 DM 초안 + 첫 포스트 템플릿 리뷰. 톤이 "또 하나의 플랫폼 스팸" 으로 읽히면 그 순간 커뮤니티에서 차단된다. <strong>한 번 날리면 되돌릴 수 없으니 세 명이 읽고 승인.</strong></td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">6</td><td>Skill Marketplace 파일럿 (지난 안건 캐리오버)</td><td>4/7 모임에서 "Phase 2 feature" 로 판정났는데 공식 보류로 안 박아뒀음. 이번에 "Phase 0 끝날 때까지 건드리지 않는다" 로 명시하고 캐리오버 목록에서 제거. 이렇게 해야 attention 이 Phase 0 에 집중된다.</td><td class="right"><span class="sev low">낮음</span></td></tr>
+        <tr><td class="mono">1</td><td class="bold">LLM-Native 파이프라인 전환 승인</td><td>BARGAINING COUNTER만 LLM → <b>전 Phase LLM-Native 6-Stage 파이프라인</b>으로 재설계 (UNDERSTAND→CONTEXT→DECIDE→VALIDATE→RESPOND→PERSIST). Codec 압축(61%)으로 <b>비용 $0.0022/세션 (기존 대비 +10%)</b>. Skill을 "지식+검증 모듈"로 재정의, Living Memo 2-Layer 구조 도입. <a href="../engine/26_LLM_Native_협상_파이프라인.md" style="color:var(--accent);">설계문서 →</a></td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">2</td><td class="bold">구독제 + HC(Haggle Credits) 설계 리뷰</td><td>Free(Grok Fast) / Pro $9.99(GPT-5.2) / Elite $29.99(Opus) 3-tier + HC(1=$0.01) 종량제. 전환율 가정: 구독 5%, 거래성사 15-25%. <b>마진이 스케일에 따라 증가(94.2%→98.7%)</b>하는 구조. 공격 방어(Rate limit + HC 선불)도 포함. 세 명이 tier별 가격/기능 최종 확정.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">3</td><td class="bold">AI Agent 생태계 전략 확정</td><td>x402 Foundation 출범 + Stripe MPP + Visa Trusted Agent. Haggle을 "가격 결정 프로토콜"로 포지셔닝할 것인지, P2P 마켓에만 집중할 것인지. <b>이 결정이 API 설계와 LLM 파이프라인 방향을 좌우한다.</b> Agent-to-Agent 협상 인터페이스를 Phase 1에 넣을지 논의.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">4</td><td class="bold">Phase 0 전략 리뷰 승인</td><td>Moat를 "Judgment Precedent DB"로 재정의, 카테고리를 iPhone 13/14/15 Pro 3 SKU로 한정, 유통을 r/appleswap 씨딩으로 제한. 되돌리기 어려운 방향 전환이라 세 명 전원 동의 필요. <strong>반대 1명이라도 있으면 재논의.</strong></td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">5</td><td class="bold">Attestation v0 + HFMI v0 범위 확정</td><td>Attestation: on-chain commit은 v0 제외(off-chain Postgres only), unlocked 기기만 허용. HFMI: eBay Finding API + hedonic regression (Gazelle/Back Market 가중평균 폐기). 이 두 아키텍처가 확정돼야 Week 1 코딩 시작 가능.</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">6</td><td>r/appleswap 씨딩 메시지 초안 검토</td><td>Community-first 유통의 첫 실행. 모더레이터 DM 초안 + 첫 포스트 템플릿. 톤이 "플랫폼 스팸"으로 읽히면 차단. <strong>한 번 날리면 되돌릴 수 없으니 세 명이 승인.</strong></td><td class="right"><span class="sev low">낮음</span></td></tr>
       </tbody>
     </table>
   </section>
 
+
+  <!-- ═══ Tag Garden E2E Dashboard (auto-generated 2026-04-09 22:12:20) ═══ -->
+  
+
+
+  <!-- ═══ Tag Garden E2E Dashboard (auto-generated 2026-04-09 22:17:30) ═══ -->
+  
+
+
+  <!-- ═══ Tag Garden E2E Dashboard (auto-generated 2026-04-09 22:20:45) ═══ -->
+  
+
+
+  <!-- ═══ Tag Garden E2E Dashboard (auto-generated 2026-04-09 22:35:27) ═══ -->
+  <!-- TAG_GARDEN_START -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(16,185,129,.15);">🌻</div>Tag Garden E2E 대시보드</div>
+    <div class="section-desc">
+      <p>실제 DB 태그(174개) + LLM 태그 배치 통합 테스트 결과. 5개 테스트 리스팅에 대해 gpt-4o-mini로 태그를 선택/제안하고, 예상 정답과 비교 채점. 마지막 실행: <b>2026-04-09 22:35:27</b></p>
+    </div>
+
+    <!-- 요약 stats -->
+    <div class="tg-stats">
+      <div class="tg-stat tg-yellow"><div class="tg-num">60%</div><div class="tg-label">평균 점수</div></div>
+      <div class="tg-stat tg-green"><div class="tg-num">1/5</div><div class="tg-label">PASS</div></div>
+      <div class="tg-stat tg-purple"><div class="tg-num">174</div><div class="tg-label">전체 태그</div></div>
+      <div class="tg-stat tg-blue"><div class="tg-num">$0.0013</div><div class="tg-label">총 비용</div></div>
+      <div class="tg-stat tg-yellow"><div class="tg-num">12.9s</div><div class="tg-label">총 시간</div></div>
+    </div>
+
+    <!-- 요약 테이블 -->
+    <table class="decision-table" style="margin-bottom:20px">
+      <thead><tr><th></th><th>리스팅</th><th class="right">선택</th><th class="right">제안</th><th class="right">종합</th><th class="right">비용</th><th class="right">판정</th></tr></thead>
+      <tbody>
+        <tr><td>🎧</td><td class="bold">AirPods Max Silver</td><td class="right mono">50%</td><td class="right mono">33%</td><td class="right mono bold">42%</td><td class="right mono" style="color:var(--dim)">$0.00027</td><td class="right"><span class="sev medium">PARTIAL</span></td></tr><tr><td>💻</td><td class="bold">MacBook Pro M3 Space Black</td><td class="right mono">50%</td><td class="right mono">67%</td><td class="right mono bold">59%</td><td class="right mono" style="color:var(--dim)">$0.00026</td><td class="right"><span class="sev medium">PARTIAL</span></td></tr><tr><td>👟</td><td class="bold">Jordan 1 Chicago Lost &amp; Found</td><td class="right mono">50%</td><td class="right mono">67%</td><td class="right mono bold">59%</td><td class="right mono" style="color:var(--dim)">$0.00025</td><td class="right"><span class="sev medium">PARTIAL</span></td></tr><tr><td>🎵</td><td class="bold">Sony WH-1000XM5</td><td class="right mono">80%</td><td class="right mono">0%</td><td class="right mono bold">40%</td><td class="right mono" style="color:var(--dim)">$0.00028</td><td class="right"><span class="sev medium">PARTIAL</span></td></tr><tr><td>🪑</td><td class="bold">Herman Miller Aeron Size B</td><td class="right mono">100%</td><td class="right mono">100%</td><td class="right mono bold">100%</td><td class="right mono" style="color:var(--dim)">$0.00025</td><td class="right"><span class="sev low">PASS</span></td></tr>
+      </tbody>
+    </table>
+
+    <!-- 비용 분석 -->
+    <div class="info-box" style="margin-bottom:16px">
+      <div class="info-title">💰 비용 분석</div>
+      <p>리스팅당 <b>$0.00026</b> · 1,000건 예상 <b>$0.26</b> · 리스팅당 <b>2.6s</b> · 모델: gpt-4o-mini</p>
+    </div>
+
+    <!-- 개별 테스트 (아코디언) -->
+    <p style="font-size:.88rem;color:var(--muted);margin-bottom:12px">📋 리스팅별 상세 — 클릭해서 펼치기</p>
+    
+      <div class="tg-card">
+        <div class="tg-card-head" onclick="this.nextElementSibling.classList.toggle('tg-open')">
+          <div class="tg-card-title">
+            <span>🎧</span>
+            <span style="color:var(--dim);font-size:.82rem">#1</span>
+            <span>AirPods Max Silver</span>
+          </div>
+          <span class="tg-badge tg-partial">PARTIAL 42%</span>
+        </div>
+        <div class="tg-card-body">
+          <div class="tg-listing">
+            <div class="tg-listing-title">AirPods Max Silver - barely used, with Smart Case</div>
+            <div class="tg-listing-meta">📂 Headphones &nbsp;&nbsp; 💰 $200-$500</div>
+            <div class="tg-listing-desc">Selling my AirPods Max in Silver. Bought from Apple Store 4 months ago. Used maybe 10 times total - I just prefer in-ear buds. Active Noise Cancellation works flawlessly, spatial audio is incredible for movies. Comes with the original Smart Case. Battery easily lasts 15+ hours. Will ship in original box with all accessories.</div>
+          </div>
+
+          <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--muted);line-height:1.8">
+            <div style="margin-bottom:8px">
+              <b style="color:var(--text)">태그 배치란?</b> LLM이 리스팅을 보고 두 가지를 한다:<br>
+              &nbsp;&nbsp;• <b>선택</b> — DB에 이미 있는 태그 중 이 리스팅에 맞는 것을 골라냄 (예: apple, headphones)<br>
+              &nbsp;&nbsp;• <b>제안</b> — DB에 없지만 필요하다고 판단한 새 태그를 제안함 (예: airpods-max, silver)
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--dim)">
+              <span><span class="tg-tag tg-ngram">제목/설명 매칭</span> 리스팅에서 직접 찾은 후보</span>
+              <span><span class="tg-tag tg-official">공식/신흥</span> DB의 OFFICIAL·EMERGING 태그</span>
+              <span><span class="tg-tag tg-expected">예상 정답</span> 사람이 기대하는 정답</span>
+              <span><span class="tg-tag tg-match">일치</span> 정답과 일치</span>
+              <span><span class="tg-tag tg-missed">누락</span> 정답인데 놓침</span>
+              <span><span class="tg-tag tg-extra">추가</span> 정답에 없지만 LLM이 추가</span>
+            </div>
+          </div>
+
+          <div class="tg-section">
+            <h5>📋 DB 후보 태그 (20개)</h5>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🟢 매칭</span><span class="tg-tag tg-ngram">case</span><span class="tg-tag tg-ngram">airpods</span><span class="tg-tag tg-ngram">accessories</span><span class="tg-tag tg-ngram">apple</span></div>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🔵 공식</span><span class="tg-tag tg-official">macbook</span><span class="tg-tag tg-official">laptop</span><span class="tg-tag tg-official">appliance</span><span class="tg-tag tg-official">wireless</span><span class="tg-tag tg-official">fitness</span><span class="tg-tag tg-official">kitchen</span><span class="tg-tag tg-official">sneakers</span><span class="tg-tag tg-official">sedan</span><span class="tg-tag tg-official">bluetooth</span><span class="tg-tag tg-official">exercise</span><span class="tg-tag tg-official">headphones</span><span class="tg-tag tg-official">shoes</span><span class="tg-tag tg-official">sports</span><span class="tg-tag tg-official">car</span><span class="tg-tag tg-official">denim</span><span class="tg-tag tg-official">furniture</span></div>
+          </div>
+
+          <div class="tg-compare">
+            <div class="tg-compare-col">
+              <h5>🎯 예상 정답</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-expected">apple</span><span class="tg-tag tg-expected">headphones</span><span class="tg-tag tg-expected">wireless</span><span class="tg-tag tg-expected">noise-cancelling</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-expected">silver</span><span class="tg-tag tg-expected">barely-used</span><span class="tg-tag tg-expected">airpods-max</span></div>
+              <div class="tg-reason">색상·상태·제품명이 기존 태그에 없음</div>
+            </div>
+            <div class="tg-compare-col">
+              <h5>🤖 LLM 결과</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-extra">airpods</span><span class="tg-tag tg-match">apple</span><span class="tg-tag tg-match">headphones</span><span class="tg-tag tg-extra">case</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-match" title="The listing explicitly states the condition as 'barely used', which is not captured by any candidate.">barely-used <small>[condition]</small></span><span class="tg-tag tg-extra" title="Active Noise Cancellation is a key feature mentioned in the description that buyers may search for.">active-noise-cancellation <small>[feature]</small></span><span class="tg-tag tg-extra" title="Spatial audio is highlighted as a significant feature for movies, which is not covered by existing tags.">spatial-audio <small>[feature]</small></span></div>
+              <div class="tg-reason">"airpods implies apple/headphones via DAG, and the case is a specific accessory included with the listing."</div>
+              <div class="tg-llm-meta">3898ms · 1242+146tok · $0.00027</div>
+            </div>
+          </div>
+
+          <div class="tg-grade">
+            <div class="tg-grade-row">
+              <span class="tg-grade-label">선택</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:50%"></div><span class="tg-bar-pct">50%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">apple</span><span class="tg-tag tg-match">headphones</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">wireless</span><span class="tg-tag tg-missed">noise-cancelling</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--yellow)">+</span> <span class="tg-tag tg-extra">airpods</span><span class="tg-tag tg-extra">case</span></div>
+            <div class="tg-grade-row" style="margin-top:6px">
+              <span class="tg-grade-label">제안</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-red-bar" style="width:33%"></div><span class="tg-bar-pct">33%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">barely-used</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">silver</span><span class="tg-tag tg-missed">airpods-max</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--yellow)">+</span> <span class="tg-tag tg-extra">active-noise-cancellation</span><span class="tg-tag tg-extra">spatial-audio</span></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <span style="font-size:.85rem;font-weight:700;min-width:80px">종합</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:42%"></div><span class="tg-bar-pct">42%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tg-card">
+        <div class="tg-card-head" onclick="this.nextElementSibling.classList.toggle('tg-open')">
+          <div class="tg-card-title">
+            <span>💻</span>
+            <span style="color:var(--dim);font-size:.82rem">#2</span>
+            <span>MacBook Pro M3 Space Black</span>
+          </div>
+          <span class="tg-badge tg-partial">PARTIAL 59%</span>
+        </div>
+        <div class="tg-card-body">
+          <div class="tg-listing">
+            <div class="tg-listing-title">MacBook Pro 14&quot; M3 Pro 18GB/512GB Space Black - mint condition</div>
+            <div class="tg-listing-meta">📂 Laptops &nbsp;&nbsp; 💰 $1000+</div>
+            <div class="tg-listing-desc">Upgrading to M4 so letting this go. MacBook Pro 14-inch, M3 Pro chip, 18GB unified memory, 512GB SSD. Space Black. 120 battery cycles. Always used with case and screen protector. Zero scratches. Includes original MagSafe charger + USB-C cable + original box.</div>
+          </div>
+
+          <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--muted);line-height:1.8">
+            <div style="margin-bottom:8px">
+              <b style="color:var(--text)">태그 배치란?</b> LLM이 리스팅을 보고 두 가지를 한다:<br>
+              &nbsp;&nbsp;• <b>선택</b> — DB에 이미 있는 태그 중 이 리스팅에 맞는 것을 골라냄 (예: apple, headphones)<br>
+              &nbsp;&nbsp;• <b>제안</b> — DB에 없지만 필요하다고 판단한 새 태그를 제안함 (예: airpods-max, silver)
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--dim)">
+              <span><span class="tg-tag tg-ngram">제목/설명 매칭</span> 리스팅에서 직접 찾은 후보</span>
+              <span><span class="tg-tag tg-official">공식/신흥</span> DB의 OFFICIAL·EMERGING 태그</span>
+              <span><span class="tg-tag tg-expected">예상 정답</span> 사람이 기대하는 정답</span>
+              <span><span class="tg-tag tg-match">일치</span> 정답과 일치</span>
+              <span><span class="tg-tag tg-missed">누락</span> 정답인데 놓침</span>
+              <span><span class="tg-tag tg-extra">추가</span> 정답에 없지만 LLM이 추가</span>
+            </div>
+          </div>
+
+          <div class="tg-section">
+            <h5>📋 DB 후보 태그 (20개)</h5>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🟢 매칭</span><span class="tg-tag tg-ngram">case</span><span class="tg-tag tg-ngram">usb-c</span><span class="tg-tag tg-ngram">macbook</span></div>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🔵 공식</span><span class="tg-tag tg-official">laptop</span><span class="tg-tag tg-official">appliance</span><span class="tg-tag tg-official">wireless</span><span class="tg-tag tg-official">fitness</span><span class="tg-tag tg-official">kitchen</span><span class="tg-tag tg-official">sneakers</span><span class="tg-tag tg-official">sedan</span><span class="tg-tag tg-official">bluetooth</span><span class="tg-tag tg-official">apple</span><span class="tg-tag tg-official">exercise</span><span class="tg-tag tg-official">headphones</span><span class="tg-tag tg-official">shoes</span><span class="tg-tag tg-official">sports</span><span class="tg-tag tg-official">car</span><span class="tg-tag tg-official">denim</span><span class="tg-tag tg-official">furniture</span><span class="tg-tag tg-official">noise-cancelling</span></div>
+          </div>
+
+          <div class="tg-compare">
+            <div class="tg-compare-col">
+              <h5>🎯 예상 정답</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-expected">macbook</span><span class="tg-tag tg-expected">laptop</span><span class="tg-tag tg-expected">apple</span><span class="tg-tag tg-expected">pro</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-expected">space-black</span><span class="tg-tag tg-expected">512gb</span><span class="tg-tag tg-expected">mint</span></div>
+              <div class="tg-reason">색상·용량·상태가 누락</div>
+            </div>
+            <div class="tg-compare-col">
+              <h5>🤖 LLM 결과</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-match">macbook</span><span class="tg-tag tg-match">apple</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-extra" title="the size of the MacBook is explicitly stated as 14 inches, which is a key specification.">size-14-inch <small>[size]</small></span><span class="tg-tag tg-match" title="the listing specifies 'mint condition', which is important for buyers looking for high-quality used items.">condition-mint <small>[condition]</small></span><span class="tg-tag tg-match" title="the storage capacity of 512GB is explicitly mentioned and is a key feature for potential buyers.">storage-512gb <small>[size]</small></span></div>
+              <div class="tg-reason">"macbook and apple tags capture the product identity and brand, while other tags are not relevant"</div>
+              <div class="tg-llm-meta">1983ms · 1205+139tok · $0.00026</div>
+            </div>
+          </div>
+
+          <div class="tg-grade">
+            <div class="tg-grade-row">
+              <span class="tg-grade-label">선택</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:50%"></div><span class="tg-bar-pct">50%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">macbook</span><span class="tg-tag tg-match">apple</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">laptop</span><span class="tg-tag tg-missed">pro</span></div>
+            <div class="tg-grade-row" style="margin-top:6px">
+              <span class="tg-grade-label">제안</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-green-bar" style="width:67%"></div><span class="tg-bar-pct">67%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">512gb ≈ storage-512gb</span><span class="tg-tag tg-match">mint ≈ condition-mint</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">space-black</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--yellow)">+</span> <span class="tg-tag tg-extra">size-14-inch</span></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <span style="font-size:.85rem;font-weight:700;min-width:80px">종합</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:59%"></div><span class="tg-bar-pct">59%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tg-card">
+        <div class="tg-card-head" onclick="this.nextElementSibling.classList.toggle('tg-open')">
+          <div class="tg-card-title">
+            <span>👟</span>
+            <span style="color:var(--dim);font-size:.82rem">#3</span>
+            <span>Jordan 1 Chicago Lost &amp; Found</span>
+          </div>
+          <span class="tg-badge tg-partial">PARTIAL 59%</span>
+        </div>
+        <div class="tg-card-body">
+          <div class="tg-listing">
+            <div class="tg-listing-title">Jordan 1 Retro High OG 'Chicago Lost and Found' Size 9.5 VNDS</div>
+            <div class="tg-listing-meta">📂 Sneakers &nbsp;&nbsp; 💰 $200-$500</div>
+            <div class="tg-listing-desc">Jordan 1 Chicago Lost and Found DZ5485-612. Size 9.5 US Men's. VNDS - tried on indoors once on carpet, soles are clean. Cracked paint on midsole is factory intentional. Comes with OG all: box, extra laces, tissue paper, hang tag.</div>
+          </div>
+
+          <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--muted);line-height:1.8">
+            <div style="margin-bottom:8px">
+              <b style="color:var(--text)">태그 배치란?</b> LLM이 리스팅을 보고 두 가지를 한다:<br>
+              &nbsp;&nbsp;• <b>선택</b> — DB에 이미 있는 태그 중 이 리스팅에 맞는 것을 골라냄 (예: apple, headphones)<br>
+              &nbsp;&nbsp;• <b>제안</b> — DB에 없지만 필요하다고 판단한 새 태그를 제안함 (예: airpods-max, silver)
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--dim)">
+              <span><span class="tg-tag tg-ngram">제목/설명 매칭</span> 리스팅에서 직접 찾은 후보</span>
+              <span><span class="tg-tag tg-official">공식/신흥</span> DB의 OFFICIAL·EMERGING 태그</span>
+              <span><span class="tg-tag tg-expected">예상 정답</span> 사람이 기대하는 정답</span>
+              <span><span class="tg-tag tg-match">일치</span> 정답과 일치</span>
+              <span><span class="tg-tag tg-missed">누락</span> 정답인데 놓침</span>
+              <span><span class="tg-tag tg-extra">추가</span> 정답에 없지만 LLM이 추가</span>
+            </div>
+          </div>
+
+          <div class="tg-section">
+            <h5>📋 DB 후보 태그 (20개)</h5>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🟢 매칭</span><span class="tg-tag tg-ngram">jordan</span><span class="tg-tag tg-ngram">retro</span></div>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🔵 공식</span><span class="tg-tag tg-official">macbook</span><span class="tg-tag tg-official">laptop</span><span class="tg-tag tg-official">appliance</span><span class="tg-tag tg-official">wireless</span><span class="tg-tag tg-official">fitness</span><span class="tg-tag tg-official">kitchen</span><span class="tg-tag tg-official">sneakers</span><span class="tg-tag tg-official">sedan</span><span class="tg-tag tg-official">bluetooth</span><span class="tg-tag tg-official">apple</span><span class="tg-tag tg-official">exercise</span><span class="tg-tag tg-official">headphones</span><span class="tg-tag tg-official">shoes</span><span class="tg-tag tg-official">sports</span><span class="tg-tag tg-official">car</span><span class="tg-tag tg-official">denim</span><span class="tg-tag tg-official">furniture</span><span class="tg-tag tg-official">noise-cancelling</span></div>
+          </div>
+
+          <div class="tg-compare">
+            <div class="tg-compare-col">
+              <h5>🎯 예상 정답</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-expected">sneakers</span><span class="tg-tag tg-expected">shoes</span><span class="tg-tag tg-expected">nike</span><span class="tg-tag tg-expected">retro</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-expected">chicago</span><span class="tg-tag tg-expected">size-9-5</span><span class="tg-tag tg-expected">vnds</span></div>
+              <div class="tg-reason">컬러웨이·사이즈·상태가 핵심 필터</div>
+            </div>
+            <div class="tg-compare-col">
+              <h5>🤖 LLM 결과</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-extra">jordan</span><span class="tg-tag tg-match">retro</span><span class="tg-tag tg-match">sneakers</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-match" title="size 9.5 is explicitly stated and important for buyers looking for specific fit">size-9-5 <small>[size]</small></span><span class="tg-tag tg-match" title="VNDS (Very Near Deadstock) condition is a specific detail that buyers may search for">vnds <small>[condition]</small></span></div>
+              <div class="tg-reason">"jordan and retro specify the model and style, while sneakers indicates the category"</div>
+              <div class="tg-llm-meta">2162ms · 1230+101tok · $0.00025</div>
+            </div>
+          </div>
+
+          <div class="tg-grade">
+            <div class="tg-grade-row">
+              <span class="tg-grade-label">선택</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:50%"></div><span class="tg-bar-pct">50%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">sneakers</span><span class="tg-tag tg-match">retro</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">shoes</span><span class="tg-tag tg-missed">nike</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--yellow)">+</span> <span class="tg-tag tg-extra">jordan</span></div>
+            <div class="tg-grade-row" style="margin-top:6px">
+              <span class="tg-grade-label">제안</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-green-bar" style="width:67%"></div><span class="tg-bar-pct">67%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">size-9-5</span><span class="tg-tag tg-match">vnds</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">chicago</span></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <span style="font-size:.85rem;font-weight:700;min-width:80px">종합</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:59%"></div><span class="tg-bar-pct">59%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tg-card">
+        <div class="tg-card-head" onclick="this.nextElementSibling.classList.toggle('tg-open')">
+          <div class="tg-card-title">
+            <span>🎵</span>
+            <span style="color:var(--dim);font-size:.82rem">#4</span>
+            <span>Sony WH-1000XM5</span>
+          </div>
+          <span class="tg-badge tg-partial">PARTIAL 40%</span>
+        </div>
+        <div class="tg-card-body">
+          <div class="tg-listing">
+            <div class="tg-listing-title">Sony WH-1000XM5 Black - excellent condition</div>
+            <div class="tg-listing-meta">📂 Headphones &nbsp;&nbsp; 💰 $100-$200</div>
+            <div class="tg-listing-desc">Sony WH-1000XM5 wireless noise cancelling headphones in black. 30 hours battery life. LDAC and 360 Reality Audio support. Multipoint connection (2 devices). USB-C charging. Comes with original case and cable.</div>
+          </div>
+
+          <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--muted);line-height:1.8">
+            <div style="margin-bottom:8px">
+              <b style="color:var(--text)">태그 배치란?</b> LLM이 리스팅을 보고 두 가지를 한다:<br>
+              &nbsp;&nbsp;• <b>선택</b> — DB에 이미 있는 태그 중 이 리스팅에 맞는 것을 골라냄 (예: apple, headphones)<br>
+              &nbsp;&nbsp;• <b>제안</b> — DB에 없지만 필요하다고 판단한 새 태그를 제안함 (예: airpods-max, silver)
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--dim)">
+              <span><span class="tg-tag tg-ngram">제목/설명 매칭</span> 리스팅에서 직접 찾은 후보</span>
+              <span><span class="tg-tag tg-official">공식/신흥</span> DB의 OFFICIAL·EMERGING 태그</span>
+              <span><span class="tg-tag tg-expected">예상 정답</span> 사람이 기대하는 정답</span>
+              <span><span class="tg-tag tg-match">일치</span> 정답과 일치</span>
+              <span><span class="tg-tag tg-missed">누락</span> 정답인데 놓침</span>
+              <span><span class="tg-tag tg-extra">추가</span> 정답에 없지만 LLM이 추가</span>
+            </div>
+          </div>
+
+          <div class="tg-section">
+            <h5>📋 DB 후보 태그 (20개)</h5>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🟢 매칭</span><span class="tg-tag tg-ngram">case</span><span class="tg-tag tg-ngram">sony</span><span class="tg-tag tg-ngram">noise-cancelling</span><span class="tg-tag tg-ngram">usb-c</span><span class="tg-tag tg-ngram">headphones</span><span class="tg-tag tg-ngram">wireless</span></div>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🔵 공식</span><span class="tg-tag tg-official">macbook</span><span class="tg-tag tg-official">laptop</span><span class="tg-tag tg-official">appliance</span><span class="tg-tag tg-official">fitness</span><span class="tg-tag tg-official">kitchen</span><span class="tg-tag tg-official">sneakers</span><span class="tg-tag tg-official">sedan</span><span class="tg-tag tg-official">bluetooth</span><span class="tg-tag tg-official">apple</span><span class="tg-tag tg-official">exercise</span><span class="tg-tag tg-official">shoes</span><span class="tg-tag tg-official">sports</span><span class="tg-tag tg-official">car</span><span class="tg-tag tg-official">denim</span></div>
+          </div>
+
+          <div class="tg-compare">
+            <div class="tg-compare-col">
+              <h5>🎯 예상 정답</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-expected">sony</span><span class="tg-tag tg-expected">headphones</span><span class="tg-tag tg-expected">bluetooth</span><span class="tg-tag tg-expected">noise-cancelling</span><span class="tg-tag tg-expected">wireless</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-expected">wh-1000xm5</span><span class="tg-tag tg-expected">black</span></div>
+              <div class="tg-reason">모델명·색상이 누락</div>
+            </div>
+            <div class="tg-compare-col">
+              <h5>🤖 LLM 결과</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-match">sony</span><span class="tg-tag tg-match">noise-cancelling</span><span class="tg-tag tg-extra">usb-c</span><span class="tg-tag tg-match">headphones</span><span class="tg-tag tg-match">wireless</span><span class="tg-tag tg-extra">case</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-extra" title="The listing explicitly states the condition as 'excellent', which is not captured by any candidate.">excellent-condition <small>[condition]</small></span><span class="tg-tag tg-extra" title="The listing mentions a specific battery life of 30 hours, which is a key feature not covered by existing tags.">30-hours-battery-life <small>[feature]</small></span><span class="tg-tag tg-extra" title="The ability to connect to two devices simultaneously is a specific feature that buyers may search for.">multipoint-connection <small>[feature]</small></span></div>
+              <div class="tg-reason">"sony wh-1000xm5 implies headphones/sony/noise-cancelling/wireless via DAG"</div>
+              <div class="tg-llm-meta">3112ms · 1228+155tok · $0.00028</div>
+            </div>
+          </div>
+
+          <div class="tg-grade">
+            <div class="tg-grade-row">
+              <span class="tg-grade-label">선택</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-green-bar" style="width:80%"></div><span class="tg-bar-pct">80%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">sony</span><span class="tg-tag tg-match">headphones</span><span class="tg-tag tg-match">noise-cancelling</span><span class="tg-tag tg-match">wireless</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">bluetooth</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--yellow)">+</span> <span class="tg-tag tg-extra">usb-c</span><span class="tg-tag tg-extra">case</span></div>
+            <div class="tg-grade-row" style="margin-top:6px">
+              <span class="tg-grade-label">제안</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-red-bar" style="width:0%"></div><span class="tg-bar-pct">0%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--red)">✗</span> <span class="tg-tag tg-missed">wh-1000xm5</span><span class="tg-tag tg-missed">black</span></div><div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--yellow)">+</span> <span class="tg-tag tg-extra">excellent-condition</span><span class="tg-tag tg-extra">30-hours-battery-life</span><span class="tg-tag tg-extra">multipoint-connection</span></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <span style="font-size:.85rem;font-weight:700;min-width:80px">종합</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-yellow-bar" style="width:40%"></div><span class="tg-bar-pct">40%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tg-card">
+        <div class="tg-card-head" onclick="this.nextElementSibling.classList.toggle('tg-open')">
+          <div class="tg-card-title">
+            <span>🪑</span>
+            <span style="color:var(--dim);font-size:.82rem">#5</span>
+            <span>Herman Miller Aeron Size B</span>
+          </div>
+          <span class="tg-badge tg-pass">PASS 100%</span>
+        </div>
+        <div class="tg-card-body">
+          <div class="tg-listing">
+            <div class="tg-listing-title">Herman Miller Aeron Size B - Fully Loaded, Remastered (2021)</div>
+            <div class="tg-listing-meta">📂 Furniture &nbsp;&nbsp; 💰 $500-$1000</div>
+            <div class="tg-listing-desc">WFH setup downsizing. Herman Miller Aeron Remastered (2021 model), Size B. Fully loaded: PostureFit SL, adjustable arms, tilt limiter, forward tilt. Mesh is clean with no sags or tears. All adjustments work perfectly. 12-year warranty is transferable. Local pickup only in Brooklyn.</div>
+          </div>
+
+          <div style="padding:12px 18px;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--muted);line-height:1.8">
+            <div style="margin-bottom:8px">
+              <b style="color:var(--text)">태그 배치란?</b> LLM이 리스팅을 보고 두 가지를 한다:<br>
+              &nbsp;&nbsp;• <b>선택</b> — DB에 이미 있는 태그 중 이 리스팅에 맞는 것을 골라냄 (예: apple, headphones)<br>
+              &nbsp;&nbsp;• <b>제안</b> — DB에 없지만 필요하다고 판단한 새 태그를 제안함 (예: airpods-max, silver)
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:.72rem;color:var(--dim)">
+              <span><span class="tg-tag tg-ngram">제목/설명 매칭</span> 리스팅에서 직접 찾은 후보</span>
+              <span><span class="tg-tag tg-official">공식/신흥</span> DB의 OFFICIAL·EMERGING 태그</span>
+              <span><span class="tg-tag tg-expected">예상 정답</span> 사람이 기대하는 정답</span>
+              <span><span class="tg-tag tg-match">일치</span> 정답과 일치</span>
+              <span><span class="tg-tag tg-missed">누락</span> 정답인데 놓침</span>
+              <span><span class="tg-tag tg-extra">추가</span> 정답에 없지만 LLM이 추가</span>
+            </div>
+          </div>
+
+          <div class="tg-section">
+            <h5>📋 DB 후보 태그 (20개)</h5>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🟢 매칭</span><span class="tg-tag tg-ngram">pickup</span></div>
+            <div class="tg-tags"><span style="font-size:.72rem;color:var(--dim);font-weight:600;min-width:70px">🔵 공식</span><span class="tg-tag tg-official">macbook</span><span class="tg-tag tg-official">laptop</span><span class="tg-tag tg-official">appliance</span><span class="tg-tag tg-official">wireless</span><span class="tg-tag tg-official">fitness</span><span class="tg-tag tg-official">kitchen</span><span class="tg-tag tg-official">sneakers</span><span class="tg-tag tg-official">sedan</span><span class="tg-tag tg-official">bluetooth</span><span class="tg-tag tg-official">apple</span><span class="tg-tag tg-official">exercise</span><span class="tg-tag tg-official">headphones</span><span class="tg-tag tg-official">shoes</span><span class="tg-tag tg-official">sports</span><span class="tg-tag tg-official">car</span><span class="tg-tag tg-official">denim</span><span class="tg-tag tg-official">furniture</span><span class="tg-tag tg-official">noise-cancelling</span><span class="tg-tag tg-official">usb-c</span></div>
+          </div>
+
+          <div class="tg-compare">
+            <div class="tg-compare-col">
+              <h5>🎯 예상 정답</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-expected">furniture</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-expected">size-b</span><span class="tg-tag tg-expected">fully-loaded</span><span class="tg-tag tg-expected">remastered</span></div>
+              <div class="tg-reason">사이즈·풀옵션·모델 세대가 핵심</div>
+            </div>
+            <div class="tg-compare-col">
+              <h5>🤖 LLM 결과</h5>
+              <div class="tg-tags" style="margin-bottom:4px"><span style="font-size:.7rem;color:var(--dim)">선택</span><span class="tg-tag tg-match">furniture</span></div>
+              <div class="tg-tags"><span style="font-size:.7rem;color:var(--dim)">제안</span><span class="tg-tag tg-match" title="size B is a key fit attribute buyers filter by">size-b <small>[size]</small></span><span class="tg-tag tg-match" title="fully loaded config distinguishes from base model">fully-loaded <small>[feature]</small></span><span class="tg-tag tg-match" title="remastered version is a distinct product generation">remastered <small>[other]</small></span></div>
+              <div class="tg-reason">"furniture is the only relevant category tag available"</div>
+              <div class="tg-llm-meta">1713ms · 1281+89tok · $0.00025</div>
+            </div>
+          </div>
+
+          <div class="tg-grade">
+            <div class="tg-grade-row">
+              <span class="tg-grade-label">선택</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-green-bar" style="width:100%"></div><span class="tg-bar-pct">100%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">furniture</span></div>
+            <div class="tg-grade-row" style="margin-top:6px">
+              <span class="tg-grade-label">제안</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-green-bar" style="width:100%"></div><span class="tg-bar-pct">100%</span></div>
+            </div>
+            <div class="tg-cmp-detail"><span class="tg-cmp-icon" style="color:var(--green)">✓</span> <span class="tg-tag tg-match">size-b</span><span class="tg-tag tg-match">fully-loaded</span><span class="tg-tag tg-match">remastered</span></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <span style="font-size:.85rem;font-weight:700;min-width:80px">종합</span>
+              <div class="tg-bar"><div class="tg-bar-fill tg-green-bar" style="width:100%"></div><span class="tg-bar-pct">100%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    <!-- Tag Garden 전체 태그 (접기) -->
+    <div class="tg-garden-toggle" onclick="document.getElementById('tg-garden-body').classList.toggle('tg-open')">
+      <span style="font-weight:700;font-size:.92rem">🌳 Tag Garden — 전체 태그 (174개)</span>
+      <span style="color:var(--dim);font-size:.82rem">클릭해서 펼치기 ▾</span>
+    </div>
+    <div class="tg-garden-body" id="tg-garden-body">
+      <div style="background:rgba(15,23,42,.3);border:1px solid var(--border);border-radius:0 0 12px 12px;padding:18px">
+        <div style="margin-bottom:16px"><h5 style="font-size:.88rem;font-weight:700;margin-bottom:6px">🌳 OFFICIAL <span style="color:var(--dim);font-weight:400">(26)</span></h5>
+      <table class="tg-tag-table"><thead><tr><th>이름</th><th style="text-align:right">사용</th><th style="text-align:right">IDF</th><th>카테고리</th></tr></thead><tbody><tr><td>laptop</td><td class="mono" style="text-align:right">6</td><td class="mono" style="text-align:right">2.23</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>macbook</td><td class="mono" style="text-align:right">6</td><td class="mono" style="text-align:right">2.23</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>appliance</td><td class="mono" style="text-align:right">5</td><td class="mono" style="text-align:right">2.42</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>wireless</td><td class="mono" style="text-align:right">5</td><td class="mono" style="text-align:right">2.42</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>apple</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>bluetooth</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>exercise</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>fitness</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>headphones</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>kitchen</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>sedan</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>shoes</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>sneakers</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">2.64</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>sports</td><td class="mono" style="text-align:right">4</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr><tr><td>car</td><td class="mono" style="text-align:right">3</td><td class="mono" style="text-align:right">2.93</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>denim</td><td class="mono" style="text-align:right">3</td><td class="mono" style="text-align:right">2.93</td><td><span class="tg-cat-badge">material</span></td></tr><tr><td>furniture</td><td class="mono" style="text-align:right">3</td><td class="mono" style="text-align:right">2.93</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>noise-cancelling</td><td class="mono" style="text-align:right">3</td><td class="mono" style="text-align:right">2.93</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>racket</td><td class="mono" style="text-align:right">3</td><td class="mono" style="text-align:right">2.93</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>usb-c</td><td class="mono" style="text-align:right">3</td><td class="mono" style="text-align:right">2.93</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>music</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr><tr><td>electronics</td><td class="mono" style="text-align:right">0</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr><tr><td>fashion</td><td class="mono" style="text-align:right">0</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr><tr><td>gaming</td><td class="mono" style="text-align:right">0</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr><tr><td>home</td><td class="mono" style="text-align:right">0</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr><tr><td>vehicles</td><td class="mono" style="text-align:right">0</td><td class="mono" style="text-align:right">0.00</td><td><span class="tg-cat-badge">category</span></td></tr></tbody></table></div><div style="margin-bottom:16px"><h5 style="font-size:.88rem;font-weight:700;margin-bottom:6px">🌿 EMERGING <span style="color:var(--dim);font-weight:400">(18)</span></h5>
+      <table class="tg-tag-table"><thead><tr><th>이름</th><th style="text-align:right">사용</th><th style="text-align:right">IDF</th><th>카테고리</th></tr></thead><tbody><tr><td>4k</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>accessories</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>bike</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>cycling</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>electric</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>jacket</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>jeans</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>keyboard</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>levis</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>mid-century</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>nike</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>outdoor</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>retro</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>smart-home</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>sony</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>tablet</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>tennis</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>vintage</td><td class="mono" style="text-align:right">2</td><td class="mono" style="text-align:right">3.33</td><td><span class="tg-cat-badge">condition</span></td></tr></tbody></table></div><div style="margin-bottom:16px"><h5 style="font-size:.88rem;font-weight:700;margin-bottom:6px">🌱 CANDIDATE <span style="color:var(--dim);font-weight:400">(130)</span></h5>
+      <table class="tg-tag-table"><thead><tr><th>이름</th><th style="text-align:right">사용</th><th style="text-align:right">IDF</th><th>카테고리</th></tr></thead><tbody><tr><td>accessory</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>adidas</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>air-fryer</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>air-purifier</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>airpods</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>android</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>audiophile</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>automatic</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>badminton</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>bag</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>baking</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>bedroom</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>blender</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>bmw</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>board-game</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>bookshelf</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>bose</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>bowflex</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>breville</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>burton</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>caldigit</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>callaway</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>camera</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>case</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>catan</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>classic</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>club</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>coffee</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>coffee-table</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>cowboy</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>cruiser</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>dell</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>desk</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>digital</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>dock</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>dresser</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>driver</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>dumbbells</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>dunk</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>dyson</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>ergonomic</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>espresso</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>ev</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>fan</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>fender</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>fleece</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">material</span></td></tr><tr><td>ford</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>galaxy</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>game</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>golf</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>guitar</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>harley</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>hdr</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>head</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>honda</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>hue</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>ikea</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>ipad</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>iron</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>jbl</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>jordan</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>keychron</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>kitchenaid</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>led</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>lenovo</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>lg</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>lighting</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>lululemon</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>luxury</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>mat</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>mechanical</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>mirrorless</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>mixer</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>monitor</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>motorcycle</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>nespresso</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>new-balance</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>nordictrack</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>oled</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>open-back</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>oven</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>patagonia</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>peloton</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>philips</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>photography</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>piano</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>pickup</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>portable</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>pro-staff</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>protective</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>ray-ban</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>running</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>samsung</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>seiko</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>sennheiser</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>skiing</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>sleeve</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>smoothie</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>snowboard</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>speaker</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>stand</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>storage</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>stratocaster</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>sunglasses</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>sweater</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>table</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>tabletop</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>tesla</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>thinkpad</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>toyota</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>truck</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>trucker</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>ultrabook</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>ultraboost</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>vitamix</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>walnut</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">material</span></td></tr><tr><td>watch</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>wayfarer</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>weights</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>west-elm</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>western</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">style</span></td></tr><tr><td>wilson</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>winter</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">activity</span></td></tr><tr><td>wired</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">feature</span></td></tr><tr><td>wood</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">material</span></td></tr><tr><td>wrangler</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>xps</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>yamaha</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr><tr><td>yoga</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">product</span></td></tr><tr><td>yonex</td><td class="mono" style="text-align:right">1</td><td class="mono" style="text-align:right">4.03</td><td><span class="tg-cat-badge">brand</span></td></tr></tbody></table></div>
+        <h5 style="font-size:.88rem;font-weight:700;margin:16px 0 8px">🔗 DAG Edges (126개)</h5>
+        <div style="display:flex;flex-wrap:wrap"><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">appliance <span style="color:var(--green)">→</span> air-purifier</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">appliance <span style="color:var(--green)">→</span> fan</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">appliance <span style="color:var(--green)">→</span> iron</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">blender <span style="color:var(--green)">→</span> smoothie</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">board-game <span style="color:var(--green)">→</span> catan</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">camera <span style="color:var(--green)">→</span> photography</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">car <span style="color:var(--green)">→</span> sedan</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">coffee <span style="color:var(--green)">→</span> espresso</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">cycling <span style="color:var(--green)">→</span> bike</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> airpods</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> apple</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> bose</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> caldigit</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> camera</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> dell</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> headphones</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> ipad</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> jbl</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> keyboard</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> keychron</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> laptop</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> lenovo</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> lg</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> monitor</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> samsung</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> seiko</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> sennheiser</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> smart-home</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> sony</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> speaker</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">electronics <span style="color:var(--green)">→</span> tablet</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> accessories</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> adidas</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> bag</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> jacket</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> jeans</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> levis</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> lululemon</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> new-balance</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> nike</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> patagonia</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> ray-ban</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> shoes</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> sunglasses</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> sweater</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fashion <span style="color:var(--green)">→</span> wrangler</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> bowflex</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> dumbbells</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> exercise</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> mat</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> nordictrack</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> peloton</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">fitness <span style="color:var(--green)">→</span> weights</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">furniture <span style="color:var(--green)">→</span> bookshelf</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">furniture <span style="color:var(--green)">→</span> coffee-table</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">furniture <span style="color:var(--green)">→</span> desk</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">furniture <span style="color:var(--green)">→</span> dresser</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">furniture <span style="color:var(--green)">→</span> mid-century</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">furniture <span style="color:var(--green)">→</span> table</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">gaming <span style="color:var(--green)">→</span> board-game</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">gaming <span style="color:var(--green)">→</span> tabletop</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">golf <span style="color:var(--green)">→</span> callaway</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">golf <span style="color:var(--green)">→</span> club</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">golf <span style="color:var(--green)">→</span> driver</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">guitar <span style="color:var(--green)">→</span> stratocaster</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">headphones <span style="color:var(--green)">→</span> noise-cancelling</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> appliance</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> bedroom</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> dyson</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> furniture</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> ikea</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> kitchen</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> lighting</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> philips</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">home <span style="color:var(--green)">→</span> west-elm</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> air-fryer</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> baking</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> blender</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> breville</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> kitchenaid</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> mixer</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> nespresso</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> oven</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">kitchen <span style="color:var(--green)">→</span> vitamix</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">laptop <span style="color:var(--green)">→</span> macbook</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">laptop <span style="color:var(--green)">→</span> thinkpad</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">laptop <span style="color:var(--green)">→</span> ultrabook</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">laptop <span style="color:var(--green)">→</span> xps</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">laptop <span style="color:var(--green)">→</span> yoga</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">lighting <span style="color:var(--green)">→</span> hue</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">monitor <span style="color:var(--green)">→</span> 4k</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">monitor <span style="color:var(--green)">→</span> hdr</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">monitor <span style="color:var(--green)">→</span> oled</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">motorcycle <span style="color:var(--green)">→</span> cruiser</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">motorcycle <span style="color:var(--green)">→</span> harley</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">music <span style="color:var(--green)">→</span> fender</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">music <span style="color:var(--green)">→</span> guitar</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">music <span style="color:var(--green)">→</span> piano</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">music <span style="color:var(--green)">→</span> yamaha</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">shoes <span style="color:var(--green)">→</span> sneakers</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">skiing <span style="color:var(--green)">→</span> burton</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">skiing <span style="color:var(--green)">→</span> snowboard</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sneakers <span style="color:var(--green)">→</span> dunk</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sneakers <span style="color:var(--green)">→</span> jordan</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sneakers <span style="color:var(--green)">→</span> ultraboost</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> badminton</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> cycling</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> fitness</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> golf</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> head</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> racket</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> running</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> skiing</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> tennis</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> wilson</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">sports <span style="color:var(--green)">→</span> yonex</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">truck <span style="color:var(--green)">→</span> pickup</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> bmw</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> car</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> ford</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> honda</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> motorcycle</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> tesla</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> toyota</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">vehicles <span style="color:var(--green)">→</span> truck</span><span style="display:inline-block;margin:2px 8px 2px 0;font-size:.82rem;color:var(--muted)">wireless <span style="color:var(--green)">→</span> bluetooth</span></div>
+      </div>
+    </div>
+  </section>
+  <!-- TAG_GARDEN_END -->
+
+  <!-- ═══ 6-Stage LLM-Native Pipeline Demo (Doc 26) ═══ -->
+  <!-- NEG_LIFECYCLE_START -->
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">🧠</div>6-Stage LLM-Native 파이프라인 검증</div>
+    <div class="section-desc">
+      <p>Doc 26 확정 설계 기반. 실제 xAI (Grok 4 Fast) API를 호출하여 <b>8개 구조화 출력 단계</b>를 검증합니다.<br>
+      각 Stage를 클릭하면 prompt 원문 → LLM raw response → parsed JSON을 투명하게 확인할 수 있습니다.</p>
+
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 8px;">
+        <span class="nd-stage-tag llm">0a STRATEGY</span>
+        <span class="nd-stage-tag llm">0b TERMS</span>
+        <span class="nd-stage-tag llm">① UNDERSTAND</span>
+        <span class="nd-stage-tag code">② CONTEXT</span>
+        <span class="nd-stage-tag llm">③ DECIDE</span>
+        <span class="nd-stage-tag code">④ VALIDATE</span>
+        <span class="nd-stage-tag llm">⑤ RESPOND</span>
+        <span class="nd-stage-tag code">⑥ PERSIST</span>
+      </div>
+
+      <!-- 한국어 Stage 설명 -->
+      <details style="margin:10px 0;cursor:pointer;">
+        <summary style="font-size:.78rem;font-weight:600;color:var(--accent);list-style:none;">📖 각 Stage가 무엇을 테스트하는지 보기 ▾</summary>
+        <div style="margin-top:10px;font-size:.75rem;line-height:1.8;color:var(--muted);background:rgba(99,102,241,.04);border:1px solid rgba(99,102,241,.12);border-radius:10px;padding:14px 16px;">
+          <p style="margin:0 0 8px;font-weight:700;color:var(--text);">🔬 초기화 (Init) — LLM ×2회 호출</p>
+          <table style="width:100%;border-collapse:collapse;font-size:.73rem;">
+            <tr><td style="padding:4px 8px;color:#a5b4fc;font-weight:600;white-space:nowrap;vertical-align:top;">0a 전략 생성</td>
+                <td style="padding:4px 8px;">아이템 정보 + 시장 가격을 LLM에 전달 → <b>구매 전략 JSON</b> 생성<br><span style="color:var(--dim);">검증: target_price, floor_price, negotiation_style 등이 올바른 JSON인가?</span></td></tr>
+            <tr><td style="padding:4px 8px;color:#a5b4fc;font-weight:600;white-space:nowrap;vertical-align:top;">0b 조건 분석</td>
+                <td style="padding:4px 8px;">전략 + 12개 표준 Terms를 LLM에 전달 → <b>우선순위 분석 JSON</b> 생성<br><span style="color:var(--dim);">검증: priority_terms[], deal_breakers[]가 타당한 구조인가?</span></td></tr>
+          </table>
+
+          <p style="margin:16px 0 8px;font-weight:700;color:var(--text);">🔄 매 라운드 (Round) — LLM ×3회 + 코드 ×3회 = 6-Stage</p>
+          <table style="width:100%;border-collapse:collapse;font-size:.73rem;">
+            <tr><td style="padding:4px 8px;color:#818cf8;font-weight:600;white-space:nowrap;vertical-align:top;">① UNDERSTAND<br><span style="font-size:.6rem;color:#6366f1;">LLM</span></td>
+                <td style="padding:4px 8px;">판매자 메시지를 LLM이 파싱 → <b>구조화된 의도</b> (가격, 조건, 감정 등)<br><span style="color:var(--dim);">검증: price_offer가 숫자인가? sentiment가 enum 값인가?</span></td></tr>
+            <tr><td style="padding:4px 8px;color:#22d3ee;font-weight:600;white-space:nowrap;vertical-align:top;">② CONTEXT<br><span style="font-size:.6rem;color:#06b6d4;">CODE</span></td>
+                <td style="padding:4px 8px;">코드가 Living Memo(기억) + Skill(규칙) + Coach(Faratin 양보곡선) 조립<br><span style="color:var(--dim);">검증: 코칭 가격이 합리적 범위인가? 경고가 올바르게 감지되는가?</span></td></tr>
+            <tr><td style="padding:4px 8px;color:#818cf8;font-weight:600;white-space:nowrap;vertical-align:top;">③ DECIDE<br><span style="font-size:.6rem;color:#6366f1;">LLM</span></td>
+                <td style="padding:4px 8px;">전체 컨텍스트를 LLM에 전달 → <b>ProtocolDecision</b> (action, price, reasoning, tactic)<br><span style="color:var(--dim);">검증: action이 ACCEPT/COUNTER/REJECT 중 하나인가? price가 boundary 안인가?</span></td></tr>
+            <tr><td style="padding:4px 8px;color:#22d3ee;font-weight:600;white-space:nowrap;vertical-align:top;">④ VALIDATE<br><span style="font-size:.6rem;color:#06b6d4;">CODE</span></td>
+                <td style="padding:4px 8px;">Referee가 7개 규칙으로 검증 (수학적 범위, 프로토콜 위반 등)<br><span style="color:var(--dim);">검증: HARD violation → 자동 수정, SOFT violation → 경고 기록</span></td></tr>
+            <tr><td style="padding:4px 8px;color:#818cf8;font-weight:600;white-space:nowrap;vertical-align:top;">⑤ RESPOND<br><span style="font-size:.6rem;color:#6366f1;">LLM</span></td>
+                <td style="padding:4px 8px;">검증된 결정을 LLM이 자연어 메시지로 변환<br><span style="color:var(--dim);">검증: 가격이 메시지에 정확히 반영되는가? 톤이 적절한가?</span></td></tr>
+            <tr><td style="padding:4px 8px;color:#22d3ee;font-weight:600;white-space:nowrap;vertical-align:top;">⑥ PERSIST<br><span style="font-size:.6rem;color:#06b6d4;">CODE</span></td>
+                <td style="padding:4px 8px;">메모리(Living Memo) 갱신 + Phase 전이 판단<br><span style="color:var(--dim);">검증: OPENING→BARGAINING→CLOSING 전이가 올바른가?</span></td></tr>
+          </table>
+
+          <p style="margin:12px 0 0;font-size:.7rem;color:var(--dim);">
+            💡 <b>LLM 단계</b>는 보라색 — 클릭하면 System Prompt, User Prompt, Raw Response를 볼 수 있습니다.<br>
+            💡 <b>CODE 단계</b>는 청록색 — 클릭하면 Input/Output JSON을 볼 수 있습니다.<br>
+            💡 비용은 Grok 4 Fast 기준 (input $0.20/M, output $0.50/M). 전체 세션 약 $0.002 이하.
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <!-- API 서버 설정 -->
+    <div class="nd-api-cfg">
+      <span>API Server:</span>
+      <input id="ndApiUrl" type="text" value="http://localhost:3001" placeholder="http://localhost:3001">
+      <span style="color:var(--dim);font-size:.68rem;">XAI_API_KEY가 서버에 설정되어 있어야 합니다</span>
+    </div>
+
+    <!-- ── Init 화면 ── -->
+    <div id="ndInit">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;">
+          <div style="font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:10px;">📱 아이템 정보</div>
+          <div class="nd-input-group">
+            <label>Title</label><input id="ndItemTitle" value="iPhone 15 Pro 256GB Natural Titanium">
+            <label>Condition</label><input id="ndItemCond" value="battery 92%, screen mint, T-Mobile unlocked">
+            <label>Swappa 30d Median ($)</label><input id="ndSwappa" type="number" value="920">
+          </div>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;">
+          <div style="font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:10px;">💰 가격 설정</div>
+          <div class="nd-input-group">
+            <label>Seller Ask ($)</label><input id="ndSellerAsk" type="number" value="920">
+            <label>Seller Floor ($)</label><input id="ndSellerFloor" type="number" value="700">
+            <label>Buyer Max Budget ($)</label><input id="ndBuyerMax" type="number" value="950">
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;margin:20px 0;">
+        <button id="ndInitBtn" onclick="ndDoInit()" style="padding:14px 40px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:24px;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;">
+          🧠 전략 생성 시작 (LLM 호출)
+        </button>
+        <p style="color:var(--dim);font-size:.72rem;margin-top:8px;">Stage 0a + 0b: LLM이 구매 전략과 Term 우선순위를 생성합니다</p>
+      </div>
+    </div>
+
+    <!-- ── Init 결과 ── -->
+    <div id="ndInitResult" style="display:none;"></div>
+
+    <!-- ── Round 진행 UI ── -->
+    <div id="ndLive" style="display:none;">
+
+      <!-- Phase 인디케이터 -->
+      <div style="display:flex;align-items:center;gap:0;margin:16px 0;justify-content:center;flex-wrap:wrap;">
+        <div id="ndPh_OPENING" class="nd-ph">OPENING</div>
+        <div class="nd-ph-arrow">→</div>
+        <div id="ndPh_BARGAINING" class="nd-ph">BARGAINING</div>
+        <div class="nd-ph-arrow">→</div>
+        <div id="ndPh_CLOSING" class="nd-ph">CLOSING</div>
+        <div class="nd-ph-arrow">→</div>
+        <div id="ndPh_SETTLEMENT" class="nd-ph">SETTLEMENT</div>
+      </div>
+
+      <!-- 실시간 지표 -->
+      <div class="tg-stats" style="margin:12px 0;">
+        <div class="tg-stat"><div class="tg-num" id="ndRound" style="color:var(--accent);">0</div><div class="tg-label">라운드</div></div>
+        <div class="tg-stat"><div class="tg-num" id="ndGap" style="color:#f59e0b;">—</div><div class="tg-label">Gap</div></div>
+        <div class="tg-stat"><div class="tg-num" id="ndSeller" style="color:#ef4444;">—</div><div class="tg-label">Seller</div></div>
+        <div class="tg-stat"><div class="tg-num" id="ndBuyer" style="color:#10b981;">—</div><div class="tg-label">Buyer</div></div>
+        <div class="tg-stat"><div class="tg-num" id="ndCost" style="color:var(--dim);">$0</div><div class="tg-label">누적 비용</div></div>
+        <div class="tg-stat"><div class="tg-num" id="ndTokens" style="color:var(--dim);">0</div><div class="tg-label">누적 토큰</div></div>
+      </div>
+
+      <!-- 가격 수렴 차트 -->
+      <div style="background:#0f172a;border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0;">
+        <p style="font-size:.8rem;font-weight:600;color:var(--dim);margin:0 0 8px 0;">가격 수렴 차트</p>
+        <canvas id="ndChart" width="700" height="200" style="width:100%;height:200px;"></canvas>
+      </div>
+
+      <!-- 라운드 컨트롤 -->
+      <div style="display:flex;gap:10px;align-items:center;justify-content:center;margin:16px 0;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:.75rem;color:var(--dim);">Seller 제안가 ($):</label>
+          <input id="ndSellerInput" type="number" style="width:90px;background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:.85rem;">
+          <span id="ndSellerAuto" style="font-size:.65rem;color:var(--dim);">← Faratin 자동</span>
+        </div>
+        <button id="ndNextBtn" onclick="ndDoRound()" style="padding:10px 28px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:20px;font-size:.88rem;font-weight:700;cursor:pointer;font-family:inherit;">
+          다음 라운드 → (6-Stage)
+        </button>
+        <button id="ndAutoBtn" onclick="ndAutoRun()" style="padding:10px 22px;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);border-radius:20px;font-size:.85rem;cursor:pointer;font-family:inherit;">자동 진행 ⚡</button>
+        <button onclick="ndReset()" style="padding:10px 22px;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim);border-radius:20px;font-size:.85rem;cursor:pointer;font-family:inherit;">리셋</button>
+      </div>
+
+      <!-- 파이프라인 상세 (접이식 Stage별) -->
+      <div id="ndPipelineStages"></div>
+
+      <!-- 결과 요약 -->
+      <div id="ndResult" style="display:none;background:linear-gradient(135deg,rgba(16,185,129,.06),rgba(99,102,241,.06));border:1px solid rgba(16,185,129,.2);border-radius:14px;padding:20px;margin:16px 0;text-align:center;"></div>
+    </div>
+
+    <!-- 로딩 오버레이 -->
+    <div id="ndLoading" style="display:none;text-align:center;padding:40px;">
+      <div style="font-size:1.5rem;animation:ndPulse 1s ease-in-out infinite;">🧠</div>
+      <p id="ndLoadMsg" style="color:var(--muted);font-size:.85rem;margin-top:8px;">LLM 호출 중...</p>
+    </div>
+  </section>
+  <!-- NEG_LIFECYCLE_END -->
+
 </div>
 
-<!-- ═══════════════════════════════════════ -->
 <!-- TAB 3: 향후 목표 -->
 <!-- ═══════════════════════════════════════ -->
 <div id="tab-future" class="tab-content">
@@ -1794,6 +3046,30 @@ Haggle Credits 가치 ↑
   <div class="section-desc">모임 후 정리한 변경사항. 최신순.</div>
 
   <div class="update-log">
+    <div class="update-entry">
+      <div class="update-date">2026-04-10 — LLM 협상 엔진 Phase 1+2 전체 설계 확정</div>
+      <ul class="update-items">
+        <li><strong>LLM 협상 엔진 전체 설계 확정</strong>: CEO 설계 문서 2건(<code>Haggle_LLM_Memory_Architecture.md</code>, <code>Haggle_Strategic_BigPicture_20260410.md</code>)을 기반으로 Step 56 ARCHITECT-BRIEF 작성. 기존 engine-core/engine-session 변경 없이 <code>apps/api/src/negotiation/</code> 아래 신규 구축</li>
+        <li><strong>5-Phase 전체 구현</strong>: DISCOVERY &rarr; OPENING &rarr; BARGAINING &rarr; CLOSING &rarr; SETTLEMENT. 단순화 없음. 각 Phase 전환 시 Checkpoint 자동 저장 + 되감기(Revert) 지원</li>
+        <li><strong>4개 Human Intervention Mode</strong>: FULL_AUTO, APPROVE_ONLY, HYBRID, MANUAL. 라운드 중에도 모드 전환 가능. HYBRID는 Phase별 자동/수동 설정</li>
+        <li><strong>Protocol-Native Memory Store</strong>: Core Memory(~500 tok, 상수) + Session Memory(PostgreSQL) + Checkpoint(Phase 전환 스냅샷). 외부 Memory API(Mem0, Letta 등) 불필요 &mdash; 프로토콜 데이터 자체가 메모리</li>
+        <li><strong>Referee 심판 모델</strong>: Coach(Faratin 수학 + Buddy DNA) &rarr; Skill/LLM 응답 &rarr; Validate(7규칙) &rarr; Record. HARD violation은 DefaultEngineSkill fallback, SOFT violation은 1회 재시도</li>
+        <li><strong>Auto-Mode Screening</strong>: 판매자 자동 모드에서 첫 3라운드 Tier 1 모델로 스팸 필터링. 진지한 상대만 고급 모델로 전환</li>
+        <li><strong>Buddy DNA 통합</strong>: Core Memory에 <code>buddy_dna</code> 필드 포함. style/preferred_tactic/category_experience가 코칭 정밀도에 반영</li>
+        <li><strong class="red-text">Late-Round LLM Skip 폐기 (핵심 결정)</strong>: 후반 라운드에서도 조건 폭탄(상대가 새 조건 추가), 전략 전환(BOULWARE 패턴), CLOSING 합의 확인 등 LLM 창의성이 필수. 모든 라운드에서 LLM 호출 유지. DefaultEngineSkill은 HARD violation fallback 시에만 사용</li>
+        <li><strong>비용 영향</strong>: 기존 선형 대비 절감률 82% &rarr; <strong>64%</strong>. 100K MAU 기준 월간 $650 &rarr; $1,300 (Tier 1). 토큰 상수화(~1,500 tok/round)가 핵심 절감 수단. $0.000325/round 추가 비용으로 협상 품질 유지가 합리적</li>
+        <li><strong>비용 상세 (v1)</strong>: Skip 제거만 적용 — 라운드당 $0.000325, 10라운드 양쪽 $0.0065. 기존 선형 대비 64% 절감</li>
+        <li><strong class="red-text">Protocol/Presentation 분리 (핵심 결정)</strong>: LLM은 <code>ProtocolDecision</code>(JSON: action/price/terms/reasoning)만 반환. 사용자에게 보여줄 message는 <code>TemplateMessageRenderer</code>가 템플릿 기반으로 생성 (LLM 불필요). 이유: (1) 프로토콜 표준화 — Skill은 결정만 내리면 됨, (2) 출력 토큰 50%+ 절감, (3) 말투/스타일은 프로토콜에 무의미, (4) FULL_AUTO에서 LLM 없이 메시지 생성 가능</li>
+        <li><strong>Term Taxonomy 표준화</strong>: 9개 표준 카테고리(FINANCIAL, LOGISTICS, CONDITION, WARRANTY, BUNDLE, TIMING, VERIFICATION, SERVICE, CUSTOM). <code>SkillTermDeclaration</code> 인터페이스로 Skill 제작자가 지원 Term 선언. Custom Term은 <code>parent_category</code> fallback으로 Skill 간 호환성 보장. 사용자가 직접 <code>value_assessment</code> 제공 (AI가 평가하지 않음)</li>
+        <li><strong>토큰 최적화 5종</strong>: (1) Structured Output — JSON 강제, 출력 토큰 70% 절감. (2) Differential Context — 변경분만 전송. (3) 압축 인코딩 — 약어 기반 Core Memory 50% 절감. (4) Phase별 토큰 예산 — DISCOVERY 800tok ~ CLOSING 2,000tok. (5) Protocol/Presentation 분리 — message 생성 비용 0</li>
+        <li><strong>비용 상세 (v2, 최종)</strong>: 모든 최적화 적용 — 라운드당 ~$0.00015, 10라운드 양쪽 ~$0.0015. 100K MAU ~$300/월. <strong>기존 선형 대비 ~85% 절감</strong></li>
+        <li><strong>BuddyTone</strong>: 같은 ProtocolDecision을 버디별 말투로 다르게 표현. 5종 스타일(professional/friendly/analytical/assertive/casual) + signature_phrases 사용자 커스텀 가능. 향후 TTS 확장 시 BuddyVoice와 분리</li>
+        <li><strong>Phase 2 다중 세션 설계 완료 (Step 59~61)</strong>: 기존 engine-core/engine-session의 Group/BATNA 코드가 이미 존재함을 확인하고, LLM 시스템과의 연결(Bridge) 설계. (1) Step 59: Cross-Pressure Bridge — GroupAction[]→CoreMemory 주입, Competition-Aware Coach, 주입 규칙 5개 엄격 준수. (2) Step 60: WebSocket 실시간 이벤트 — 11종 이벤트 타입, EventDispatcher→WS 브릿지. (3) Step 61: Anti-Sniping(5분/3분/최대2회) + Re-evaluation(새 리스팅/4시간/세션종료) + Session Pool(WAITING 승격/강등) + LLM Call Queue(동시성 제한)</li>
+        <li><strong>전체 구현 범위</strong>: Phase 1(Step 56, ~20파일, ~160 테스트) + Phase 2(Step 59~61, ~14파일, ~92 테스트) = <strong>~34파일, ~252 테스트</strong>. DB 스키마 Phase 1(3개) + Phase 2(3개) = 6개 테이블 추가</li>
+        <li><strong>문서 정리</strong>: 설계 문서 2건(<code>Haggle_LLM_Memory_Architecture.md</code>, <code>Haggle_Strategic_BigPicture_20260410.md</code>) 내용을 ARCHITECT-BRIEF에 완전 통합 후 삭제. 용어 변경: "토큰 상수화" → "토큰 바운딩" (실제 1,000~3,500 tok 범위)</li>
+      </ul>
+    </div>
+
     <div class="update-entry">
       <div class="update-date">2026-04-08 — Step 59 Part B: Web Admin Mutations + Promotion Rules (Arch → Bob → Richard)</div>
       <ul class="update-items">
@@ -2109,6 +3385,385 @@ function foxSetAcc(src, type) {
   else document.getElementById('foxGlassBtn').classList.add('fox-on');
   document.getElementById('foxStatus').textContent = (type === 'crown' ? '👑 왕관' : '👓 안경') + ' 장착!';
 }
+
+// ═══════════════════════════════════════════════════════
+// 6-Stage LLM-Native Pipeline Demo (Doc 26)
+// 실제 xAI API 호출. 각 Stage의 structured output 검증.
+// ═══════════════════════════════════════════════════════
+(function() {
+  'use strict';
+
+  let S = null; // { demoId, phase, round, done, history[], totalCost, totalTokens, sellerAsk, sellerFloor, phaseDoneSet }
+  let autoTimer = null;
+
+  function $(id) { return document.getElementById(id); }
+  function apiBase() { return ($('ndApiUrl')?.value || 'http://localhost:3001').replace(/\/$/, ''); }
+
+  // ── Faratin for seller auto-price ──
+  function sellerFaratin(round, maxRounds, askPrice, floorPrice) {
+    const t = Math.min(round / maxRounds, 1);
+    return Math.round(askPrice + (floorPrice - askPrice) * Math.pow(t, 0.8));
+  }
+
+  // ── JSON syntax highlighting ──
+  function highlightJSON(obj) {
+    const str = JSON.stringify(obj, null, 2);
+    return str.replace(/"([^"]+)":/g, '<span class="nd-key">"$1"</span>:')
+              .replace(/: "([^"]*)"/g, ': <span class="nd-str">"$1"</span>')
+              .replace(/: (\d+\.?\d*)/g, ': <span class="nd-num">$1</span>')
+              .replace(/: (true|false)/g, ': <span class="nd-bool">$1</span>');
+  }
+
+  // ── Render a stage card ──
+  function renderStageCard(stage, index) {
+    const isLlm = stage.is_llm;
+    const tag = isLlm ? '<span class="nd-stage-tag llm">LLM</span>' : '<span class="nd-stage-tag code">CODE</span>';
+    const costStr = stage.tokens ? `<span class="nd-cost-badge">${stage.tokens.prompt}+${stage.tokens.completion} tok</span>` : '';
+    const latStr = `<span class="nd-latency-badge">${stage.latency_ms}ms</span>`;
+
+    let bodyHtml = '';
+
+    if (isLlm) {
+      bodyHtml += `<div class="nd-prompt-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">▶ System Prompt 보기 (LLM에 보낸 시스템 지시문)</div>`;
+      bodyHtml += `<div class="nd-json" style="display:none;margin-bottom:8px;color:#64748b;">${escHtml(stage.system_prompt || '')}</div>`;
+      bodyHtml += `<div class="nd-prompt-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">▶ User Prompt 보기 (LLM에 보낸 데이터)</div>`;
+      bodyHtml += `<div class="nd-json" style="display:none;margin-bottom:8px;color:#64748b;">${escHtml(stage.user_prompt || '')}</div>`;
+      bodyHtml += `<div class="nd-prompt-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">▶ Raw LLM Response (LLM 원본 응답)</div>`;
+      bodyHtml += `<div class="nd-json" style="display:none;margin-bottom:8px;color:#94a3b8;">${escHtml(typeof stage.raw_response === 'string' ? stage.raw_response : JSON.stringify(stage.raw_response, null, 2))}</div>`;
+    } else {
+      bodyHtml += `<div class="nd-prompt-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">▶ Input 보기 (코드에 들어간 입력값)</div>`;
+      bodyHtml += `<div class="nd-json" style="display:none;margin-bottom:8px;">${highlightJSON(stage.input || {})}</div>`;
+      bodyHtml += `<div class="nd-prompt-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">▶ Output 보기 (코드가 산출한 결과)</div>`;
+      bodyHtml += `<div class="nd-json" style="display:none;margin-bottom:8px;">${highlightJSON(stage.output || {})}</div>`;
+    }
+    bodyHtml += `<div style="font-size:.72rem;color:var(--dim);margin-top:4px;">📋 파싱된 결과 (최종 구조화 출력):</div>`;
+    bodyHtml += `<div class="nd-json">${highlightJSON(stage.parsed || {})}</div>`;
+
+    const stageDesc = {
+      '0a_STRATEGY_GENERATION': '아이템+시장 데이터 → 구매 전략 JSON 생성',
+      '0b_TERM_ANALYSIS': '전략+12개 Terms → 우선순위 분석 JSON 생성',
+      '1_UNDERSTAND': '자연어 메시지 → 구조화 의도 파싱 (가격, 조건, 감정)',
+      '2_CONTEXT': 'Living Memo + Skill + Coach(Faratin 곡선) 조립',
+      '3_DECIDE': '전체 컨텍스트 → ProtocolDecision JSON (action, price, tactic)',
+      '4_VALIDATE': 'Referee 7개 규칙 검증 (수학적 범위 + 프로토콜 위반)',
+      '5_RESPOND': '검증된 결정 → 자연어 협상 메시지 변환',
+      '6_PERSIST_TRANSITION': 'Living Memo 갱신 + Phase 전이 판단',
+    }[stage.stage] || '';
+
+    return `<div class="nd-stage ${isLlm ? 'nd-stage-llm' : 'nd-stage-code'}">
+      <div class="nd-stage-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
+        ${tag}
+        <span class="nd-stage-name">${stage.stage}</span>
+        <span class="nd-stage-desc">${stageDesc}</span>
+        ${costStr}${latStr}
+      </div>
+      <div class="nd-stage-body">${bodyHtml}</div>
+    </div>`;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Render Phase Indicator ──
+  function renderPhase() {
+    if (!S) return;
+    ['OPENING','BARGAINING','CLOSING','SETTLEMENT'].forEach(p => {
+      const el = $('ndPh_' + p);
+      if (!el) return;
+      el.classList.remove('nd-active', 'nd-done');
+      if (p === S.phase) el.classList.add('nd-active');
+      else if (S.phaseDoneSet.has(p)) el.classList.add('nd-done');
+    });
+  }
+
+  // ── Render Stats ──
+  function renderStats() {
+    if (!S) return;
+    $('ndRound').textContent = S.round;
+    const last = S.history.length > 0 ? S.history[S.history.length - 1] : null;
+    $('ndSeller').textContent = last ? '$' + last.sellerPrice : '—';
+    $('ndBuyer').textContent = last ? '$' + last.buyerPrice : '—';
+    $('ndGap').textContent = last ? '$' + last.gap : '—';
+    $('ndCost').textContent = '$' + S.totalCost.toFixed(4);
+    $('ndTokens').textContent = S.totalTokens.toLocaleString();
+  }
+
+  // ── Render Chart ──
+  function renderChart() {
+    const canvas = $('ndChart');
+    if (!canvas || !S || S.history.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const allPrices = S.history.flatMap(h => [h.sellerPrice * 100, h.buyerPrice * 100].filter(p => p > 0));
+    if (allPrices.length === 0) return;
+    const pMin = Math.min(...allPrices) - 5000;
+    const pMax = Math.max(...allPrices) + 5000;
+    const rMax = Math.max(S.history.length, 3);
+
+    const pad = { l: 55, r: 20, t: 15, b: 25 };
+    const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+    function x(r) { return pad.l + ((r - 1) / (rMax - 1)) * cW; }
+    function y(p) { return pad.t + (1 - (p - pMin) / (pMax - pMin)) * cH; }
+
+    // Grid
+    ctx.strokeStyle = 'rgba(30,41,59,.5)'; ctx.lineWidth = 0.5;
+    for (let i = 0; i < 5; i++) {
+      const yy = pad.t + (i / 4) * cH;
+      ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(W - pad.r, yy); ctx.stroke();
+      ctx.fillStyle = '#475569'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+      ctx.fillText('$' + ((pMax - (i / 4) * (pMax - pMin)) / 100).toFixed(0), pad.l - 6, yy + 3);
+    }
+
+    // Lines
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath();
+    S.history.forEach((h, i) => { const v = h.sellerPrice * 100; i === 0 ? ctx.moveTo(x(i+1), y(v)) : ctx.lineTo(x(i+1), y(v)); }); ctx.stroke();
+
+    ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.beginPath();
+    S.history.filter(h => h.buyerPrice > 0).forEach((h, i) => { const v = h.buyerPrice * 100; i === 0 ? ctx.moveTo(x(h.round), y(v)) : ctx.lineTo(x(h.round), y(v)); }); ctx.stroke();
+
+    // Dots
+    S.history.forEach((h, i) => {
+      ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(x(i+1), y(h.sellerPrice*100), 4, 0, Math.PI*2); ctx.fill();
+      if (h.buyerPrice > 0) { ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(x(i+1), y(h.buyerPrice*100), 4, 0, Math.PI*2); ctx.fill(); }
+    });
+
+    // Legend
+    ctx.font = '10px sans-serif'; const lx = pad.l + 8;
+    ctx.fillStyle = '#ef4444'; ctx.fillRect(lx, pad.t+4, 14, 3); ctx.fillText('Seller', lx+18, pad.t+9);
+    ctx.fillStyle = '#10b981'; ctx.fillRect(lx+70, pad.t+4, 14, 3); ctx.fillText('Buyer', lx+88, pad.t+9);
+  }
+
+  // ── Loading state ──
+  function showLoading(msg) {
+    $('ndLoading').style.display = '';
+    $('ndLoadMsg').textContent = msg || 'LLM 호출 중...';
+  }
+  function hideLoading() { $('ndLoading').style.display = 'none'; }
+
+  // ── API call wrapper ──
+  async function apiCall(path, body) {
+    const resp = await fetch(apiBase() + '/negotiations/demo' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  // ── INIT ──
+  window.ndDoInit = async function() {
+    $('ndInitBtn').disabled = true;
+    $('ndInitBtn').textContent = '⏳ LLM 호출 중...';
+    showLoading('Stage 0a (Strategy) + 0b (Terms) LLM 호출 중...');
+
+    try {
+      const body = {
+        item: {
+          title: $('ndItemTitle').value,
+          condition: $('ndItemCond').value,
+          swappa_median: Number($('ndSwappa').value),
+        },
+        seller: {
+          ask_price: Number($('ndSellerAsk').value),
+          floor_price: Number($('ndSellerFloor').value),
+        },
+        buyer_budget: { max_budget: Number($('ndBuyerMax').value) },
+      };
+
+      const data = await apiCall('/init', body);
+
+      // Init state
+      S = {
+        demoId: data.demo_id,
+        phase: 'OPENING',
+        round: 0,
+        done: false,
+        history: [],
+        totalCost: data.cost.total_usd,
+        totalTokens: data.cost.total_tokens.prompt + data.cost.total_tokens.completion,
+        sellerAsk: body.seller.ask_price,
+        sellerFloor: body.seller.floor_price,
+        maxRounds: 15,
+        phaseDoneSet: new Set(),
+      };
+
+      // Show init results
+      const ir = $('ndInitResult');
+      ir.style.display = 'block';
+      ir.innerHTML = `<div style="margin:16px 0;">
+        <div style="font-size:.9rem;font-weight:700;color:var(--muted);margin-bottom:8px;">✅ 초기화 완료 — LLM 전략 + Term 분석 결과</div>
+        <div style="font-size:.75rem;color:var(--dim);margin-bottom:12px;">
+          비용: $${data.cost.total_usd.toFixed(5)} | 토큰: ${data.cost.total_tokens.prompt}+${data.cost.total_tokens.completion}
+        </div>
+        ${data.pipeline.map((s, i) => renderStageCard(s, i)).join('')}
+        <div style="margin-top:12px;padding:12px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;">
+          <div style="font-size:.78rem;font-weight:700;color:#10b981;margin-bottom:6px;">LLM 생성 전략 요약</div>
+          <div class="nd-json" style="max-height:200px;">${highlightJSON(data.strategy)}</div>
+        </div>
+      </div>`;
+
+      // Show round UI
+      $('ndInit').style.display = 'none';
+      $('ndLive').style.display = 'block';
+
+      // Set initial seller price
+      const sp = sellerFaratin(1, S.maxRounds, S.sellerAsk, S.sellerFloor);
+      $('ndSellerInput').value = sp;
+      $('ndSellerAuto').textContent = '← Faratin 자동: $' + sp;
+
+      renderPhase();
+      renderStats();
+
+    } catch (err) {
+      alert('Init 실패: ' + err.message + '\n\nAPI 서버가 실행 중인지, XAI_API_KEY가 설정되어 있는지 확인하세요.');
+    } finally {
+      hideLoading();
+      $('ndInitBtn').disabled = false;
+      $('ndInitBtn').textContent = '🧠 전략 생성 시작 (LLM 호출)';
+    }
+  };
+
+  // ── ROUND ──
+  window.ndDoRound = async function() {
+    if (!S || S.done) return;
+
+    const sellerPrice = Number($('ndSellerInput').value);
+    if (!sellerPrice || sellerPrice <= 0) { alert('Seller 제안가를 입력하세요.'); return; }
+
+    $('ndNextBtn').disabled = true;
+    $('ndNextBtn').textContent = '⏳ 6-Stage 실행 중...';
+    showLoading(`Round ${S.round + 1}: 6-Stage 파이프라인 실행 중 (LLM ×3 호출)...`);
+
+    try {
+      const data = await apiCall('/' + S.demoId + '/round', { seller_price: sellerPrice });
+
+      S.round = data.round;
+      S.phase = data.phase;
+      S.done = data.state.done;
+      S.totalCost = data.cost.total_usd;
+      S.totalTokens = data.cost.total_tokens.prompt + data.cost.total_tokens.completion;
+
+      const buyerPrice = data.state.buyer_price > 0 ? data.state.buyer_price / 100 : 0;
+      S.history.push({
+        round: data.round,
+        sellerPrice: sellerPrice,
+        buyerPrice: buyerPrice,
+        gap: Math.abs(sellerPrice - buyerPrice),
+        phase: data.phase,
+        action: data.final.decision.action,
+        message: data.final.rendered_message,
+      });
+
+      // Phase tracking
+      if (data.final.phase_transition && data.final.phase_transition.transitioned) {
+        S.phaseDoneSet.add(data.final.phase_transition.from);
+      }
+      if (S.done && data.final.decision.action === 'ACCEPT') {
+        S.phaseDoneSet.add(S.phase);
+        S.phase = 'SETTLEMENT';
+        S.phaseDoneSet.add('SETTLEMENT');
+      }
+
+      // Render pipeline stages
+      const stagesEl = $('ndPipelineStages');
+      const actionKo = {COUNTER:'역제안', ACCEPT:'수락', REJECT:'거절', NEAR_DEAL:'거의합의', ESCALATE:'에스컬레이션'}[data.final.decision.action] || '';
+      const roundHeader = `<div style="font-size:.85rem;font-weight:700;color:var(--muted);margin:16px 0 8px;padding:10px 14px;background:rgba(99,102,241,.06);border-radius:8px;">
+        <div style="margin-bottom:4px;">
+          Round ${data.round} — ${data.phase} 단계
+          &nbsp;|&nbsp; LLM 결정: <span style="color:#a5b4fc;font-weight:800">${data.final.decision.action}</span> <span style="font-size:.72rem;color:var(--dim);">(${actionKo})</span>
+          ${data.state.reasoning_mode ? '<span style="color:#f59e0b;font-size:.7rem;margin-left:8px;">[추론 모드 ON]</span>' : ''}
+          ${data.final.validation.auto_fix_applied ? '<span style="color:#fbbf24;font-size:.7rem;margin-left:8px;">⚠️ Referee 자동수정 적용</span>' : ''}
+          &nbsp;|&nbsp; 이번 라운드 비용: $${data.cost.round_usd.toFixed(6)}
+        </div>
+        <div style="font-size:.78rem;font-weight:400;color:#6ee7b7;">💬 AI 생성 메시지: "${escHtml(data.final.rendered_message)}"</div>
+      </div>`;
+      stagesEl.insertAdjacentHTML('beforeend', roundHeader);
+      data.pipeline.forEach((s, i) => { stagesEl.insertAdjacentHTML('beforeend', renderStageCard(s, i)); });
+
+      // Update UI
+      renderPhase();
+      renderStats();
+      renderChart();
+
+      // Next seller price
+      if (!S.done) {
+        const nextSp = sellerFaratin(S.round + 1, S.maxRounds, S.sellerAsk, S.sellerFloor);
+        $('ndSellerInput').value = nextSp;
+        $('ndSellerAuto').textContent = '← Faratin 자동: $' + nextSp;
+      }
+
+      if (S.done) {
+        $('ndNextBtn').style.opacity = '0.3';
+        $('ndNextBtn').style.pointerEvents = 'none';
+        if (autoTimer) { clearInterval(autoTimer); autoTimer = null; $('ndAutoBtn').textContent = '자동 진행 ⚡'; }
+
+        // Result
+        const r = $('ndResult');
+        const accepted = data.final.decision.action === 'ACCEPT';
+        r.style.display = 'block';
+        r.innerHTML = accepted
+          ? `<div style="font-size:1.6rem;margin-bottom:8px;">🤝</div>
+             <div style="font-size:1.1rem;font-weight:800;color:#10b981;margin-bottom:6px;">거래 성사!</div>
+             <div style="font-size:.88rem;color:var(--muted);line-height:1.7;">
+               최종 가격: <b style="color:#e2e8f0">$${buyerPrice.toFixed(0)}</b> |
+               라운드: <b>${S.round}</b> |
+               총 LLM 비용: <b>$${S.totalCost.toFixed(4)}</b> |
+               총 토큰: <b>${S.totalTokens.toLocaleString()}</b>
+             </div>`
+          : `<div style="font-size:1.6rem;margin-bottom:8px;">${data.final.decision.action === 'REJECT' ? '❌' : '⏰'}</div>
+             <div style="font-size:1.1rem;font-weight:800;color:#fbbf24;margin-bottom:6px;">${data.final.decision.action === 'REJECT' ? '거래 거절' : '라운드 초과'}</div>
+             <div style="font-size:.88rem;color:var(--muted);">LLM 비용: $${S.totalCost.toFixed(4)} | 토큰: ${S.totalTokens.toLocaleString()}</div>`;
+      }
+
+    } catch (err) {
+      alert('Round 실패: ' + err.message);
+    } finally {
+      hideLoading();
+      $('ndNextBtn').disabled = false;
+      $('ndNextBtn').textContent = '다음 라운드 → (6-Stage)';
+    }
+  };
+
+  // ── Auto Run ──
+  window.ndAutoRun = async function() {
+    if (!S) return;
+    if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = null;
+      $('ndAutoBtn').textContent = '자동 진행 ⚡';
+      return;
+    }
+    $('ndAutoBtn').textContent = '⏸ 일시정지';
+    // Use interval that waits for each round to complete
+    async function runOne() {
+      if (!S || S.done) { clearInterval(autoTimer); autoTimer = null; $('ndAutoBtn').textContent = '자동 진행 ⚡'; return; }
+      await window.ndDoRound();
+    }
+    autoTimer = setInterval(runOne, 5000); // 5s between rounds (LLM calls take time)
+  };
+
+  // ── Reset ──
+  window.ndReset = function() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    S = null;
+    $('ndInit').style.display = '';
+    $('ndInitResult').style.display = 'none';
+    $('ndInitResult').innerHTML = '';
+    $('ndLive').style.display = 'none';
+    $('ndPipelineStages').innerHTML = '';
+    $('ndResult').style.display = 'none';
+    $('ndAutoBtn').textContent = '자동 진행 ⚡';
+    const canvas = $('ndChart');
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  };
+})();
 </script>
 </body>
 </html>

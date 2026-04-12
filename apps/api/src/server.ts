@@ -23,6 +23,7 @@ import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js
 import { registerSettlementApprovalRoutes } from "./routes/settlement-approvals.js";
 import { registerNegotiationRoutes } from "./routes/negotiations.js";
 import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
+import { registerDemoRoute } from "./routes/negotiation-demo.js";
 import { registerGroupRoutes } from "./routes/groups.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerAttestationRoutes } from "./routes/attestation.js";
@@ -42,13 +43,17 @@ export async function createServer() {
   // ─── CORS ────────────────────────────────────────────────
   // ChatGPT requires these origins to connect to the MCP server.
   await app.register(cors, {
-    origin: [
-      "https://chatgpt.com",
-      "https://chat.openai.com",
-      /\.vercel\.app$/,
-      "https://tryhaggle.ai",
-      /^http:\/\/localhost:\d+$/,
-    ],
+    origin: (origin, cb) => {
+      // Allow: ChatGPT, Vercel, tryhaggle.ai, localhost, file:// (null)
+      const allowed = !origin                       // same-origin / file:// (null)
+        || origin === 'null'                         // file:// protocol
+        || origin === 'https://chatgpt.com'
+        || origin === 'https://chat.openai.com'
+        || origin === 'https://tryhaggle.ai'
+        || /\.vercel\.app$/.test(origin)
+        || /^http:\/\/localhost:\d+$/.test(origin);
+      cb(null, allowed);
+    },
     methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
@@ -98,6 +103,7 @@ export async function createServer() {
   registerNegotiationRoutes(app, db, eventDispatcher);
   registerGroupRoutes(app, db, eventDispatcher);
   registerSimulateRoute(app);
+  registerDemoRoute(app);
 
   // ─── Admin Ops Routes ────────────────────────────────────
   registerAdminRoutes(app, db);
