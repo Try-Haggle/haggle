@@ -1,468 +1,300 @@
-# Architect Brief — Step 65
+# Architect Brief — Step 66
 
 *Written by Arch. 2026-04-12.*
 *Overwrite this file each step — it is not a log, it is the current active brief.*
 
 ---
 
-## Step 65 — 6-Stage Pipeline 리팩토링 + 모듈화
+## Step 66 — Phase B: P0 차별화 기능 (Explainability + L5 Signals + Checkpoint 영속화)
 
 ### Context
 
-Doc 29 (`docs/engine/29_6Stage_리팩토링_구현계획.md`)에 따라 현재 13-step 모노리스 executor(`lib/llm-negotiation-executor.ts`)를 6-Stage 독립 모듈로 분리한다.
+Step 65에서 6-Stage 파이프라인 + 타입 기반(L5Signals, RoundExplainability, MemoSnapshot)이 완성됐다. 이제 Doc 28 P0 기능을 실제 작동하게 만든다.
 
-**왜 지금 하는가:**
-1. Doc 28 P0 기능(SHA-256 해시, Explainability, L5 Signals)을 넣으려면 Stage별 경계가 있어야 함
-2. 외부 에이전트가 Stage 2(Context), 4(Validate), 6(Persist)만 골라 쓸 수 있는 구조 필요
-3. 현재 `context-assembly.ts`가 dead code (executor가 호출하지 않음)
+**이미 완료된 것 (Step 65):**
+- `RoundExplainability` 타입 정의 + `validateStage()`에서 생성
+- `L5Signals` 인터페이스 정의
+- `memo-manager.ts` SHA-256 해시 + 스냅샷
+- `memo-codec.ts` Compressed/Raw 인코딩
 
-**기준 문서:**
-- `docs/engine/26_LLM_Native_협상_파이프라인.md` — 6-Stage 설계
-- `docs/engine/29_6Stage_리팩토링_구현계획.md` — 구현 계획
+**이번 Step에서 할 것:**
+1. Explainability를 프로덕션 API 응답에 노출
+2. L5 Signals 서비스 (시장 데이터 주입 경로)
+3. Checkpoint DB 영속화
+4. 외부 에이전트용 Stage별 API 라우트
 
 **기존 코드 변경 금지:**
-- `negotiation/referee/` — coach.ts, validator.ts, referee-service.ts 그대로 사용
-- `negotiation/skills/` — default-engine-skill.ts 그대로 사용
-- `negotiation/memory/` — core-memory.ts, session-memory.ts, checkpoint-store.ts 그대로 사용
-- `negotiation/phase/` — phase-machine.ts 그대로 사용
-- `negotiation/adapters/xai-client.ts` — 그대로 사용
-
----
-
-### 설계 원칙
-
-1. **각 Stage는 순수 함수** — DB 의존 없음 (Stage 6 persist 제외)
-2. **외부 export** — 모든 Stage 함수를 named export하여 외부 에이전트 호출 가능
-3. **기존 테스트 보존** — 기존 14개 시나리오 그룹(640 tests) 깨지지 않도록 legacy 래퍼 유지
-4. **Feature flag 전환** — `NEGOTIATION_PIPELINE=legacy|staged` (default: legacy)
+- `negotiation/referee/` — 전부 그대로
+- `negotiation/skills/` — 전부 그대로
+- `negotiation/stages/` — Step 65에서 만든 것 그대로 (import만)
+- `negotiation/memo/` — Step 65에서 만든 것 그대로 (import만)
+- `lib/llm-negotiation-executor.ts` — 삭제 금지
 
 ---
 
 ### 서브스텝 구조
 
-| Step | 내용 | 의존성 | 예상 LOC |
-|------|------|--------|----------|
-| 65-A | 타입 + 인터페이스 확장 | 없음 | ~120 |
-| 65-B | memo-codec.ts + memo-manager.ts | 65-A | ~180 |
-| 65-C | 6 Stage 함수 + pipeline 오케스트레이터 | 65-A, 65-B | ~450 |
-| 65-D | executor.ts (DB TX 래퍼 + feature flag) | 65-C | ~200 |
-| 65-E | 테스트 | 65-C, 65-D | ~300 |
+| Step | 내용 | 예상 LOC |
+|------|------|----------|
+| 66-A | Explainability API 노출 | ~80 |
+| 66-B | L5 Signals 서비스 | ~120 |
+| 66-C | Checkpoint DB 영속화 | ~150 |
+| 66-D | 외부 에이전트용 Stage API 라우트 | ~200 |
+| 66-E | 테스트 | ~250 |
 
 ---
 
-## Step 65-A — 타입 + 인터페이스 확장
+## Step 66-A — Explainability API 노출
 
-### 수정: `negotiation/types.ts`
+### 수정: `routes/negotiations.ts`
 
-**1. L5Signals 인터페이스 추가**
+`POST /negotiations/:sessionId/rounds` 응답에 `explainability` 필드 추가.
 
-```typescript
-export interface L5Signals {
-  market?: {
-    avg_sold_price_30d: number;
-    price_trend: 'rising' | 'stable' | 'falling';
-    active_listings_count: number;
-    source_prices: Array<{ platform: string; price: number }>;
-  };
-  competition?: {
-    concurrent_sessions: number;
-    best_competing_offer?: number;
-  };
-  category?: {
-    avg_discount_rate: number;
-    avg_rounds_to_deal: number;
-  };
-}
-```
-
-**2. RoundExplainability 인터페이스 추가**
+현재 staged executor의 `executeStagedNegotiationRound()`가 반환하는 결과에 이미 `PipelineResult.explainability`가 포함되어 있다. 이걸 API 응답에 포함시키면 된다.
 
 ```typescript
-export interface RoundExplainability {
-  round: number;
-  coach_recommendation: {
-    price: number;
-    basis: string;
-    acceptable_range: { min: number; max: number };
-  };
-  decision: {
-    source: 'llm' | 'skill';
-    price?: number;
-    action: string;
-    tactic_used?: string;
-    reasoning_summary: string;
-  };
-  referee_result: {
-    violations: Array<{
-      rule: string;
-      severity: 'HARD' | 'SOFT';
-      detail: string;
-    }>;
-    action: 'PASS' | 'WARN_AND_PASS' | 'AUTO_FIX' | 'BLOCK';
-    auto_fix_applied: boolean;
-  };
-  final_output: {
-    price?: number;
-    action: string;
-  };
-}
-```
-
-**3. ModelAdapter 확장** — 기존 필드 유지, 2개 추가
-
-```typescript
-export interface ModelAdapter {
-  // 기존 유지
-  readonly modelId: string;
-  readonly tier: 'basic' | 'standard' | 'advanced' | 'frontier';
-  buildSystemPrompt(skillContext: string): string;
-  buildUserPrompt(
-    memory: CoreMemory,
-    recentFacts: RoundFact[],
-    signals?: string[],
-    prevMemory?: CoreMemory,
-  ): string;
-  parseResponse(raw: string): ProtocolDecision;
-  coachingLevel(): 'DETAILED' | 'STANDARD' | 'LIGHT';
-
+// 응답 확장
+{
+  // 기존 필드 유지
+  round_number: number,
+  action: string,
+  price: number,
+  message: string,
+  phase: string,
   // 신규
-  readonly location: 'remote' | 'local';
-  readonly capabilities: readonly ('parse' | 'reason' | 'generate')[];
+  explainability?: RoundExplainability,  // NEGOTIATION_PIPELINE=staged일 때만
 }
 ```
 
-**4. StageConfig 인터페이스 추가**
+**규칙:**
+- `NEGOTIATION_PIPELINE=legacy`이면 `explainability` 필드 없음 (기존 동작 유지)
+- `NEGOTIATION_PIPELINE=staged`이면 `explainability` 포함
+- 클라이언트에게 선택권: `?include_explainability=true` 쿼리 파라미터
+
+### 신규: `GET /negotiations/:sessionId/decisions`
+
+세션의 전체 라운드별 의사결정 로그 조회 API.
 
 ```typescript
-export interface StageConfig {
-  adapters: {
-    UNDERSTAND: ModelAdapter;
-    DECIDE: ModelAdapter;
-    RESPOND: ModelAdapter;
-  };
-  modes: {
-    RESPOND: 'template' | 'llm';
-    VALIDATE: 'full' | 'lite';
-  };
-  memoEncoding: 'codec' | 'raw';
-  reasoningEnabled: boolean;
+// Response
+{
+  session_id: string,
+  decisions: RoundExplainability[],  // 라운드 순서대로
 }
 ```
 
-**5. Stage Input/Output 타입들** — `negotiation/pipeline/types.ts`에 신규 파일로
-
-```typescript
-// Stage 1
-export interface UnderstandInput {
-  raw_message: string;
-  sender_role: 'buyer' | 'seller';
-}
-export interface UnderstandOutput {
-  price_offer?: number;
-  action_intent: 'OFFER' | 'COUNTER' | 'ACCEPT' | 'REJECT' | 'QUESTION' | 'INFO';
-  conditions: Record<string, unknown>;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  raw_text: string;
-}
-
-// Stage 2
-export interface ContextInput {
-  understood: UnderstandOutput;
-  memory: CoreMemory;
-  facts: RoundFact[];
-  opponent: OpponentPattern;
-  skill: NegotiationSkill;
-  l5_signals?: L5Signals;
-}
-export interface ContextOutput {
-  layers: ContextLayers;
-  coaching: RefereeCoaching;
-  memo_snapshot: string;
-}
-
-// Stage 3
-export interface DecideInput {
-  context: ContextOutput;
-  adapter: ModelAdapter;
-  skill: NegotiationSkill;
-  phase: NegotiationPhase;
-  config: StageConfig;
-  memory: CoreMemory;
-  facts: RoundFact[];
-  opponent: OpponentPattern;
-}
-export interface DecideOutput {
-  decision: ProtocolDecision;
-  source: 'llm' | 'skill';
-  reasoning_mode: boolean;
-  llm_raw?: string;
-  tokens?: { prompt: number; completion: number };
-  latency_ms?: number;
-}
-
-// Stage 4
-export interface ValidateInput {
-  decision: DecideOutput;
-  coaching: RefereeCoaching;
-  memory: CoreMemory;
-  phase: NegotiationPhase;
-}
-export interface ValidateOutput {
-  final_decision: ProtocolDecision;
-  validation: ValidationResult;
-  auto_fix_applied: boolean;
-  retry_count: number;
-  explainability: RoundExplainability;
-}
-
-// Stage 5
-export interface RespondInput {
-  validated: ValidateOutput;
-  memory: CoreMemory;
-  adapter: ModelAdapter;
-  skill: NegotiationSkill;
-  config: StageConfig;
-}
-export interface RespondOutput {
-  message: string;
-  tone: string;
-  llm_raw?: string;
-  tokens?: { prompt: number; completion: number };
-}
-
-// Stage 6
-export interface PersistInput {
-  session_id: string;
-  round_number: number;
-  decision: ValidateOutput;
-  response: RespondOutput;
-  memory: CoreMemory;
-  memo_hash: string;
-  explainability: RoundExplainability;
-}
-export interface PersistOutput {
-  phase_transition?: { from: string; to: string; event: string };
-  session_done: boolean;
-}
-
-// Pipeline 전체
-export interface PipelineResult {
-  round: number;
-  phase: string;
-  stages: {
-    understand: UnderstandOutput;
-    context: ContextOutput;
-    decide: DecideOutput;
-    validate: ValidateOutput;
-    respond: RespondOutput;
-    persist: PersistOutput;
-  };
-  explainability: RoundExplainability;
-  cost: { tokens: number; usd: number; latency_ms: number };
-  done: boolean;
-}
-```
-
-### 수정: `negotiation/adapters/grok-fast-adapter.ts`
-
-기존 코드에 `location`과 `capabilities` 필드 2개만 추가:
-
-```typescript
-readonly location = 'remote' as const;
-readonly capabilities = ['parse', 'reason', 'generate'] as const;
-```
-
-- Flag: 기존 메서드는 건드리지 않는다. 필드 추가만.
+- Flag: 이 API는 DB에 저장된 explainability 데이터를 조회한다. Step 66-C에서 checkpoint에 explainability를 함께 저장한다.
 
 ---
 
-## Step 65-B — memo-codec.ts + memo-manager.ts
+## Step 66-B — L5 Signals 서비스
 
-### 신규: `negotiation/memo/memo-codec.ts` (~100줄)
+### 신규: `services/l5-signals.service.ts` (~120줄)
 
-Living Memo Compressed Codec (Doc 26 §3 규격).
-
-```typescript
-export type MemoEncoding = 'codec' | 'raw';
-
-/** Compressed Codec — ~390 tokens */
-export function encodeCompressed(memory: CoreMemory): string;
-
-/** Raw JSON — ~1000 tokens */
-export function encodeRaw(memory: CoreMemory): string;
-
-/** 자동 선택 */
-export function encodeMemo(memory: CoreMemory, encoding: MemoEncoding): string;
-```
-
-**Compressed 형식 (Shared Layer):**
-```
-NS:BARGAINING|R3/10|buyer|FULL_AUTO
-PT:85000→90000|gap:5000(5.6%)
-CL:rec:87000|tactic:reciprocal|opp:CONCEDER|conv:0.72
-RM:R1:COUNTER@88000→92000|R2:COUNTER@86000→91000|R3:COUNTER@85000→90000
-```
-
-**Compressed 형식 (Private Layer):**
-```
-SS:t:83000|f:95000|β:1.5
-OM:CONCEDER(0.78)|ema:0.65|shifts:0
-TA:warranty_period=important|battery_health=critical
-TR:V7:SOFT@R2(양보과다)|auto_fix:0
-```
-
-- Flag: `GrokFastAdapter.buildUserPrompt()`이 이미 `S:|B:|C:` 인코딩을 한다. 그것과 **별개**로 `memo-codec.ts`는 6-Stage pipeline의 Stage 2에서 사용하는 독립 모듈이다. 기존 adapter 인코딩을 건드리지 않는다.
-
-### 신규: `negotiation/memo/memo-manager.ts` (~80줄)
+외부 시장 데이터를 L5Signals 형식으로 변환하는 서비스.
 
 ```typescript
-import { createHash } from 'crypto';
+export interface L5SignalsProvider {
+  getMarketSignals(params: {
+    category: string;
+    item_model: string;
+    condition?: string;
+  }): Promise<L5Signals>;
+}
 
-export interface MemoSnapshot {
-  shared: string;
-  private: string;
-  hash: string;         // SHA-256(shared)
+/**
+ * 초기 구현: 하드코딩된 Swappa 기준 데이터.
+ * 향후: Swappa API, eBay API 등 실제 크롤링/API 연동.
+ */
+export class StaticL5SignalsProvider implements L5SignalsProvider {
+  async getMarketSignals(params): Promise<L5Signals> {
+    // Phase 0: iPhone Pro 카테고리 기준 정적 데이터
+    return {
+      market: {
+        avg_sold_price_30d: getSwappaMedian(params.item_model),
+        price_trend: 'stable',
+        active_listings_count: 0,  // 미구현
+        source_prices: [],          // 미구현
+      },
+      category: {
+        avg_discount_rate: 0.12,    // 전자제품 평균 12% 할인
+        avg_rounds_to_deal: 4.2,    // 평균 4.2 라운드
+      },
+    };
+  }
+}
+```
+
+**Swappa 기준 데이터 (하드코딩, Phase 0):**
+
+```typescript
+const SWAPPA_MEDIANS: Record<string, number> = {
+  'iphone-15-pro-128': 85000,      // $850 (minor units)
+  'iphone-15-pro-256': 92000,      // $920
+  'iphone-15-pro-512': 105000,     // $1,050
+  'iphone-14-pro-128': 62000,      // $620
+  'iphone-14-pro-256': 68000,      // $680
+  'iphone-13-pro-128': 45000,      // $450
+  'iphone-13-pro-256': 50000,      // $500
+};
+```
+
+- Flag: 실제 API 연동은 이 Step 범위 밖. 인터페이스와 정적 provider만 구현. 향후 `SwappaApiProvider`, `EbayApiProvider` 등으로 교체 가능한 구조.
+
+### 연동: Pipeline에서 L5 Signals 주입
+
+`negotiation/pipeline/executor.ts` 수정:
+- `executeStagedNegotiationRound()` 에서 L5SignalsProvider를 호출
+- 결과를 Stage 2 Context의 `l5_signals` 파라미터로 전달
+
+---
+
+## Step 66-C — Checkpoint DB 영속화
+
+### 수정: `negotiation/memory/checkpoint-store.ts`
+
+현재 in-memory `Map` 기반 → DB 저장 옵션 추가.
+
+**접근 방식:** 기존 in-memory 인터페이스는 유지하고, DB 저장 콜백을 optional로 받는다.
+
+```typescript
+export interface CheckpointPersistence {
+  save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+  load(sessionId: string): Promise<Checkpoint[]>;
+}
+
+// 기존 CheckpointStore에 persistence 옵션 추가
+export class CheckpointStore {
+  constructor(private persistence?: CheckpointPersistence) {}
+
+  async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
+    // 기존 in-memory 저장
+    this.store.set(...);
+    // DB 저장 (있으면)
+    await this.persistence?.save(sessionId, checkpoint);
+  }
+}
+```
+
+**Checkpoint에 explainability 포함:**
+
+```typescript
+// Checkpoint 타입 확장 (types.ts)
+interface Checkpoint {
+  // 기존 필드 유지
+  phase: NegotiationPhase;
   round: number;
+  memory: CoreMemory;
   timestamp: number;
+  version: number;
+  // 신규
+  explainability?: RoundExplainability;
+  memo_hash?: string;
 }
+```
 
-export function computeMemoHash(sharedMemo: string): string {
-  return createHash('sha256').update(sharedMemo).digest('hex');
-}
+- Flag: 실제 DB 테이블 생성(migration)은 이 Step에서 하지 않는다. `CheckpointPersistence` 인터페이스만 정의하고, in-memory 기본 동작은 유지. 향후 `PostgresCheckpointPersistence` 구현 시 migration 추가.
+- Flag: `checkpoint-store.ts`는 "변경 금지" 목록에 없다 (negotiation/memory/의 core-memory, session-memory, checkpoint-store 중 checkpoint-store만 수정 대상). **단, 기존 테스트가 깨지면 안 된다.** `persistence` 파라미터가 optional이므로 기존 코드는 무변경 동작.
 
-export function createSnapshot(
+---
+
+## Step 66-D — 외부 에이전트용 Stage API 라우트
+
+### 신규: `routes/negotiation-stages.ts` (~200줄)
+
+외부 에이전트가 개별 Stage를 호출할 수 있는 API.
+
+```
+POST /negotiations/stages/context    ← Stage 2
+POST /negotiations/stages/validate   ← Stage 4
+POST /negotiations/stages/respond    ← Stage 5
+```
+
+**Stage 2 — Context:**
+```typescript
+// Request
+{
+  understood: UnderstandOutput,
   memory: CoreMemory,
-  round: number,
-  encoding: MemoEncoding,
-): MemoSnapshot;
+  facts: RoundFact[],
+  opponent: OpponentPattern,
+  skill_id: string,              // → TermRegistry에서 skill 조회
+  l5_signals?: L5Signals,
+}
+// Response
+{
+  layers: ContextLayers,
+  coaching: RefereeCoaching,
+  memo_snapshot: string,
+}
+```
 
-export function verifyMemoIntegrity(snapshot: MemoSnapshot): boolean;
+**Stage 4 — Validate:**
+```typescript
+// Request
+{
+  decision: ProtocolDecision,
+  coaching: RefereeCoaching,
+  memory: CoreMemory,
+  phase: NegotiationPhase,
+}
+// Response
+{
+  final_decision: ProtocolDecision,
+  validation: ValidationResult,
+  auto_fix_applied: boolean,
+  explainability: RoundExplainability,
+}
+```
+
+**Stage 5 — Respond:**
+```typescript
+// Request
+{
+  validated: ValidateOutput,
+  memory: CoreMemory,
+  skill_id: string,
+}
+// Response
+{
+  message: string,
+  tone: string,
+}
+```
+
+**인증:**
+- 이 라우트들은 API 키 인증 필요 (기존 auth middleware 사용)
+- `x-haggle-actor-id` 헤더 필수
+
+### 서버 등록
+
+`server.ts` 수정:
+```typescript
+import { registerStageRoutes } from './routes/negotiation-stages.js';
+// ...
+registerStageRoutes(app, db);
 ```
 
 ---
 
-## Step 65-C — 6 Stage 함수 + pipeline
-
-### 신규 디렉토리: `negotiation/stages/`
-
-| 파일 | 함수 | 내용 |
-|------|------|------|
-| `understand.ts` | `understand()` | LLM 파싱 (structured input bypass 지원) |
-| `context.ts` | `assembleStageContext()` | 기존 `context-assembly.ts` 로직 흡수 + coach 호출 + memo-codec |
-| `decide.ts` | `decide()` | Skill rule-based → optional LLM. 기존 executor Step 8 로직 추출 |
-| `validate.ts` | `validateStage()` | referee-service.process() 래핑 + RoundExplainability 생성 |
-| `respond.ts` | `respond()` | template 모드(기존 renderer) / LLM 모드 분기 |
-| `persist.ts` | `persist()` | DB 저장 + phase 전이 + memo hash 기록 |
-| `index.ts` | re-export | 6개 함수 전부 named export |
-
-### 핵심 규칙
-
-1. **understand.ts** — 현재 프로덕션은 `offerPriceMinor`를 직접 받으므로, structured input이 이미 있으면 LLM 호출 없이 바로 `UnderstandOutput`을 만드는 bypass 경로 필수.
-
-2. **context.ts** — 기존 `adapters/context-assembly.ts`의 `assembleContextLayers()` 로직을 가져온다. 추가로 `computeCoaching()`도 여기서 호출하여 `ContextOutput.coaching`에 포함. L5Signals 파라미터는 optional (현재는 빈 객체).
-
-3. **decide.ts** — 기존 executor의 핵심 분기 로직 추출:
-   - BARGAINING + COUNTER일 때 → `callLLM()` + `adapter.parseResponse()`
-   - 그 외 → `skill.evaluateOffer()` 또는 `skill.generateMove()`
-   - `DecideOutput.source`로 누가 결정했는지 기록
-
-4. **validate.ts** — `RefereeService.process()`를 호출하되, `RoundExplainability` 구조체를 만들어 반환. HARD violation auto-fix 루프는 referee-service에 이미 있으므로 그대로 위임.
-
-5. **respond.ts** — config.modes.RESPOND에 따라 분기:
-   - `'template'`: 기존 `TemplateMessageRenderer.render()` 사용
-   - `'llm'`: 미래용 LLM 메시지 생성 (현재는 template fallback)
-
-6. **persist.ts** — 이 Stage만 DB 의존. 기존 executor의 Step 11~13 로직(persist round + update session + event dispatch) 추출.
-
-### 신규: `negotiation/pipeline/pipeline.ts` (~100줄)
-
-```typescript
-export async function executePipeline(
-  session: SessionState,
-  message: string | UnderstandOutput,  // raw text 또는 이미 파싱된 입력
-  deps: PipelineDeps,
-): Promise<PipelineResult>;
-```
-
-6개 Stage를 순차 호출하는 오케스트레이터. 각 Stage 결과를 `PipelineResult.stages`에 누적.
-
-- Flag: `context-assembly.ts`는 **삭제하지 않는다.** `context.ts`가 그 로직을 import하여 사용해도 되고, 복사해도 된다. 기존 import 경로가 깨지면 안 됨.
-
----
-
-## Step 65-D — executor.ts (DB TX 래퍼)
-
-### 신규: `negotiation/pipeline/executor.ts` (~200줄)
-
-기존 `lib/llm-negotiation-executor.ts`를 대체하는 새 진입점.
-
-```typescript
-export async function executeNegotiationRound(
-  sessionId: string,
-  offerPriceMinor: number,
-  actorId: string,
-  db: Database,
-  eventDispatcher: EventDispatcher,
-): Promise<RoundResult>;
-```
-
-내부 흐름:
-1. BEGIN TX + SELECT FOR UPDATE
-2. Terminal/expiry check
-3. Memory reconstruction (기존 `memory-reconstructor.ts` 사용)
-4. Screening (기존 `auto-screening.ts` 사용)
-5. **`executePipeline()` 호출** ← 여기서 6-Stage 실행
-6. COMMIT
-
-### Feature Flag 전환
-
-`lib/executor-factory.ts` 수정:
-
-```typescript
-// NEGOTIATION_PIPELINE=legacy → 기존 llm-negotiation-executor
-// NEGOTIATION_PIPELINE=staged → 새 pipeline/executor
-```
-
-- Flag: 기존 `llm-negotiation-executor.ts`는 **삭제하지 않는다.** Feature flag로 전환 가능하게 두고, 새 executor가 기존 14개 시나리오 테스트를 전부 통과한 후 legacy 제거.
-
----
-
-## Step 65-E — 테스트
-
-### 단위 테스트 (각 Stage)
+## Step 66-E — 테스트
 
 | 파일 | 내용 |
 |------|------|
-| `stages/__tests__/understand.test.ts` | structured input bypass, 텍스트 파싱 |
-| `stages/__tests__/context.test.ts` | L0~L5 조립, coaching 포함, codec 인코딩 |
-| `stages/__tests__/decide.test.ts` | LLM/Skill 분기, reasoning 모드 |
-| `stages/__tests__/validate.test.ts` | V1~V7, auto-fix, explainability 구조 |
-| `stages/__tests__/respond.test.ts` | template/LLM 모드 전환 |
-| `memo/__tests__/memo-codec.test.ts` | compressed/raw 인코딩·디코딩 |
-| `memo/__tests__/memo-manager.test.ts` | SHA-256 해시, 스냅샷 생성·검증 |
-
-### 통합 테스트
-
-| 파일 | 내용 |
-|------|------|
-| `pipeline/__tests__/pipeline.test.ts` | 6-Stage 순차 실행 E2E |
-| `pipeline/__tests__/hybrid.test.ts` | 외부 에이전트 Stage 혼합 호출 시뮬레이션 |
-
-### 기존 테스트 보존
-
-- 기존 640 tests 전부 통과해야 함
-- Feature flag `NEGOTIATION_PIPELINE=legacy`에서 기존 경로 테스트
-- Feature flag `NEGOTIATION_PIPELINE=staged`에서 새 경로 테스트
+| `__tests__/explainability-api.test.ts` | decisions 조회 API, include_explainability 파라미터 |
+| `__tests__/l5-signals.test.ts` | StaticL5SignalsProvider, Swappa median 조회 |
+| `__tests__/checkpoint-persistence.test.ts` | in-memory 기본 동작 유지, persistence 콜백 호출 검증 |
+| `__tests__/stage-routes.test.ts` | Stage 2/4/5 API 호출, 입력 검증, 응답 구조 |
 
 ---
 
 ## 빌드 순서
 
 ```
-65-A → 65-B → 65-C → 65-D → 65-E
+66-A → 66-B → 66-C → 66-D → 66-E
 ```
 
-65-A가 끝나면 65-B와 65-C의 타입 의존성이 해결되므로, Bob이 순차 진행.
+66-A와 66-B는 독립적이라 병행 가능하지만, Bob은 순차 진행.
 
 ---
 
@@ -470,12 +302,13 @@ export async function executeNegotiationRound(
 
 1. `negotiation/referee/` — 전부 그대로
 2. `negotiation/skills/` — 전부 그대로
-3. `negotiation/memory/` — core-memory, session-memory, checkpoint-store 그대로
-4. `negotiation/phase/` — 전부 그대로
-5. `negotiation/adapters/xai-client.ts` — 그대로
-6. `lib/llm-negotiation-executor.ts` — 삭제 금지, feature flag로 병행
-7. 기존 640 tests — 전부 통과
+3. `negotiation/stages/` — Step 65 그대로 (import만)
+4. `negotiation/memo/` — Step 65 그대로 (import만)
+5. `negotiation/phase/` — 전부 그대로
+6. `negotiation/adapters/xai-client.ts` — 그대로
+7. `lib/llm-negotiation-executor.ts` — 삭제 금지
+8. 기존 752 tests — 전부 통과
 
 ---
 
-*끝. Bob은 65-A부터 시작.*
+*끝. Bob은 66-A부터 시작.*

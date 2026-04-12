@@ -222,6 +222,10 @@ export interface Checkpoint {
   total_rounds_at_checkpoint: number;
   both_agreed: boolean;
   created_at: number;
+  /** Round explainability snapshot (staged pipeline only) */
+  explainability?: RoundExplainability;
+  /** SHA-256 hash of memo snapshot at checkpoint time */
+  memo_hash?: string;
 }
 
 /** 되감기 규칙 */

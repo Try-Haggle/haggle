@@ -279,6 +279,62 @@ NEGOTIATION_PIPELINE=staged  → new pipeline/executor.ts
 - Pipeline executor DB tests require full DB setup — deferred to integration test suite.
 - L5 Signals are placeholder (empty) in production; real market data integration is Doc 28 scope.
 
+## Step 66 — Phase B: P0 차별화 기능
+
+*Written by Bob. 2026-04-12.*
+
+### Summary
+
+Implemented Doc 28 P0 features: Explainability API exposure, L5 Signals service, Checkpoint DB persistence interface, and external agent Stage API routes. 37 new tests, all 789 tests pass.
+
+### Files Created (6)
+
+**66-B: L5 Signals**
+- `apps/api/src/services/l5-signals.service.ts` (~110 lines) — L5SignalsProvider interface, StaticL5SignalsProvider with hardcoded Swappa medians for Phase 0 iPhone Pro SKUs, condition-based price adjustment
+
+**66-D: Stage Routes**
+- `apps/api/src/routes/negotiation-stages.ts` (~260 lines) — POST /negotiations/stages/context, /validate, /respond with Zod validation, pipeline mode guard, auth + actor header requirement
+
+**66-E: Tests**
+- `apps/api/src/__tests__/explainability-api.test.ts` — 4 tests: RoundExplainability structure, decisions extraction from metadata
+- `apps/api/src/__tests__/l5-signals.test.ts` — 14 tests: Swappa medians, condition adjustments, provider singleton
+- `apps/api/src/__tests__/checkpoint-persistence.test.ts` — 11 tests: in-memory basic ops, explainability/memo_hash fields, persistence backend integration
+- `apps/api/src/__tests__/stage-routes.test.ts` — 8 tests: pipeline mode guard, request/response structure validation
+
+### Files Modified (5)
+
+- `apps/api/src/negotiation/types.ts` — Added `explainability?: RoundExplainability` and `memo_hash?: string` to Checkpoint interface (lines 224-227)
+- `apps/api/src/negotiation/memory/checkpoint-store.ts` — Added `CheckpointPersistence` interface, constructor param, `hydrate()` method, persistence.save() call in save()
+- `apps/api/src/negotiation/pipeline/executor.ts` — Added `explainability` to PersistRoundParams and return object, L5 signals fetch via getL5SignalsProvider(), extractItemModel() helper
+- `apps/api/src/routes/negotiations.ts` — Added `include_explainability` query param to POST offers, added GET /negotiations/sessions/:id/decisions endpoint
+- `apps/api/src/server.ts` — Registered negotiation-stages route
+
+### Test Counts
+
+- Before: 752 tests
+- After: 789 tests (752 + 37 new)
+- New test files: 4
+- All pass
+
+### Feature Flag Behavior
+
+- `NEGOTIATION_PIPELINE=legacy` (default): No explainability in offer response, stage routes return 404
+- `NEGOTIATION_PIPELINE=staged`: Explainability available via `?include_explainability=true`, stage routes active
+
+### Key Decisions
+
+1. **Explainability in metadata** — Stored in round metadata.explainability field for decisions endpoint retrieval without separate DB table.
+2. **L5 Signals non-fatal** — Provider.getMarketSignals() failure is caught and pipeline continues without signals. No round should fail because of market data unavailability.
+3. **CheckpointPersistence is optional** — Constructor param defaults to undefined, preserving all existing behavior. No migration required.
+4. **Stage routes use default skill/adapter** — External agents get DefaultEngineSkill + GrokFastAdapter. Future: skill_id param will resolve from TermRegistry.
+5. **Condition multiplier in L5** — fair=0.90, good=1.00, mint=1.05. Simple linear adjustment for Phase 0.
+
+### Known Gaps
+
+- Stage routes always use empty previousMoves[] for validation (stateless). External agents responsible for providing full context.
+- Actual DB migration for CheckpointPersistence deferred (interface-only in this step).
+- Stage 1 (Understand) and Stage 3 (Decide) not exposed as individual routes per brief scope.
+
 ## Notes for Richard
 
 1. Verify `ProtocolDecision` has no `message` field anywhere — search for

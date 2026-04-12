@@ -22,6 +22,7 @@ import { registerSkillRoutes } from "./routes/skills.js";
 import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 import { registerSettlementApprovalRoutes } from "./routes/settlement-approvals.js";
 import { registerNegotiationRoutes } from "./routes/negotiations.js";
+import { registerStageRoutes } from "./routes/negotiation-stages.js";
 import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
 import { registerDemoRoute } from "./routes/negotiation-demo.js";
 import { registerGroupRoutes } from "./routes/groups.js";
@@ -101,6 +102,7 @@ export async function createServer() {
 
   // ─── Negotiation Session & Group Routes ─────────────────
   registerNegotiationRoutes(app, db, eventDispatcher);
+  registerStageRoutes(app, db);
   registerGroupRoutes(app, db, eventDispatcher);
   registerSimulateRoute(app);
   registerDemoRoute(app);

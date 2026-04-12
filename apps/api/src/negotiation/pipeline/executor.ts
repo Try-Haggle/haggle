@@ -43,6 +43,7 @@ import {
   type DbRoundForMemory,
 } from '../memory/memory-reconstructor.js';
 import { DEFAULT_BUDDY_DNA, shouldUseReasoning } from '../config.js';
+import { getL5SignalsProvider } from '../../services/l5-signals.service.js';
 
 import { executePipeline } from './pipeline.js';
 import { understandFromStructured } from '../stages/understand.js';
@@ -202,7 +203,17 @@ export async function executeStagedNegotiationRound(
       return await persistHoldRound(tx as unknown as Database, dbSession, input, nextRound, updatedMemory, coaching, currentPhase, intervention);
     }
 
-    // 8. Execute 6-Stage Pipeline
+    // 8. Fetch L5 market signals
+    const l5Provider = getL5SignalsProvider();
+    const l5Signals = await l5Provider.getMarketSignals({
+      category: 'electronics',
+      item_model: extractItemModel(dbSession.strategySnapshot),
+    }).catch((err) => {
+      console.warn('[executor] L5 signals fetch failed, continuing without:', (err as Error).message);
+      return undefined;
+    });  // Non-fatal: continue without signals
+
+    // 9. Execute 6-Stage Pipeline
     const stageConfig = buildDefaultStageConfig();
     const understood = understandFromStructured(input.offerPriceMinor, role === 'buyer' ? 'seller' : 'buyer');
 
@@ -222,6 +233,7 @@ export async function executeStagedNegotiationRound(
         previousMoves,
         round: nextRound,
         memoEncoding: 'codec',
+        l5_signals: l5Signals,
       },
     );
 
@@ -258,6 +270,7 @@ export async function executeStagedNegotiationRound(
       message,
       llmTokensUsed: pipelineResult.cost.tokens,
       reasoningUsed: pipelineResult.stages.decide.reasoning_mode,
+      explainability: pipelineResult.explainability,
     });
   });
 
@@ -296,6 +309,7 @@ interface PersistRoundParams {
   message: string;
   llmTokensUsed: number;
   reasoningUsed: boolean;
+  explainability?: import('../types.js').RoundExplainability;
 }
 
 async function persistPipelineRound(tx: Database, params: PersistRoundParams): Promise<RoundExecutionResult> {
@@ -327,6 +341,7 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
       tactic: decision.tactic_used,
       reasoning: decision.reasoning,
       engine: 'staged-pipeline',
+      explainability: params.explainability ?? undefined,
     },
     idempotencyKey: input.idempotencyKey,
     coaching: coaching as unknown as Record<string, unknown>,
@@ -384,6 +399,7 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
     message,
     phase,
     reasoningUsed,
+    explainability: params.explainability,
   } as RoundExecutionResult;
 }
 
@@ -510,6 +526,11 @@ function extractPreviousMoves(dbRounds: DbRound[]): ProtocolDecision[] {
       reasoning: (r.metadata as Record<string, unknown>)?.reasoning as string ?? '',
       tactic_used: (r.metadata as Record<string, unknown>)?.tactic as string | undefined,
     }));
+}
+
+function extractItemModel(strategy: Record<string, unknown>): string {
+  const model = strategy.item_model ?? strategy.itemModel ?? strategy.model;
+  return typeof model === 'string' ? model : 'iphone-14-pro-128';
 }
 
 function computePriceDeviation(offerPrice: number, targetPrice: number): number {
