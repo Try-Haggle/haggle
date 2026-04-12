@@ -1,4 +1,4 @@
-# Review Request — Step 66 (Phase B: P0 차별화 기능)
+# Review Request — Step 67 (P2: 미래 대비 구조)
 
 **Builder:** Bob
 **Date:** 2026-04-12
@@ -6,84 +6,88 @@
 
 ## Scope
 
-Doc 28 P0 features: Explainability API 노출, L5 Signals 서비스, Checkpoint DB 영속화 인터페이스, 외부 에이전트용 Stage API 라우트. 기존 752 tests 전부 통과 + 37 new = 789 total.
+Doc 28 P2 features: Validator Lite 모드 + HARD 히트율 추적, Codec/Raw 동적 전환, 카테고리/금액별 파이프라인 프리셋, Skill Factory 인터페이스. 기존 789 tests 전부 통과 + 54 new = 843 total.
 
 ## Architecture Change
 
 ```
-[66-A] POST /offers → explainability in response (when staged + ?include_explainability=true)
-       GET /sessions/:id/decisions → round-by-round explainability log
+[67-A] validateMove(move, mem, coaching, prevMoves, phase, mode='full')
+       mode='lite' → V1-V3 HARD only, V4-V7 SOFT skipped
+       ViolationTracker → HARD hit rate tracking → recommended mode
 
-[66-B] executeStagedRound → getL5SignalsProvider() → pipeline deps.l5_signals
-       StaticL5SignalsProvider → hardcoded Swappa medians
+[67-B] resolveMemoEncoding({ encoding, modelContextWindow?, tokenCostPerM? })
+       'auto' → context 500K+ AND cost < $0.05/M → 'raw', else 'codec'
+       pipeline.ts resolves before Stage 2 and Stage 6
 
-[66-C] CheckpointStore(persistence?) → in-memory + optional DB callback
-       Checkpoint { ...existing, explainability?, memo_hash? }
+[67-C] PIPELINE_PRESETS: quick(<$100)/standard($100-500)/premium($500-5K)/enterprise($5K+)
+       getPresetForAmount(cents) → { max_rounds, phases, reasoning_enabled, respond_mode }
 
-[66-D] POST /negotiations/stages/context  → Stage 2 (external agent)
-       POST /negotiations/stages/validate → Stage 4 (external agent)
-       POST /negotiations/stages/respond  → Stage 5 (external agent)
+[67-D] SkillFactory → createFromTemplate(template) → TemplateSkill (wraps DefaultEngineSkill)
+       DefaultSkillFactory auto-registers electronics template
 ```
 
-## Files Created (6)
+## Files Created (8)
 
-- `apps/api/src/services/l5-signals.service.ts`
-  L5SignalsProvider 인터페이스 + StaticL5SignalsProvider (Swappa hardcoded medians, condition multiplier). Singleton 관리 + test reset.
+- `apps/api/src/negotiation/referee/violation-tracker.ts`
+  ViolationTracker class: record(), getStats(), getRecommendedMode(), reset(). LITE_THRESHOLD=0.01, MIN_SAMPLE_SIZE=100.
 
-- `apps/api/src/routes/negotiation-stages.ts`
-  Stage 2/4/5 API 라우트. Zod 스키마 검증, pipeline mode guard (`NEGOTIATION_PIPELINE=staged` 필수), auth + `x-haggle-actor-id` 헤더 필수.
+- `apps/api/src/negotiation/config/pipeline-presets.ts`
+  PipelinePreset interface, PIPELINE_PRESETS array (4 tiers), getPresetForAmount(), getPresetByName().
 
-- `apps/api/src/__tests__/explainability-api.test.ts` — 4 tests
-- `apps/api/src/__tests__/l5-signals.test.ts` — 14 tests
-- `apps/api/src/__tests__/checkpoint-persistence.test.ts` — 11 tests
-- `apps/api/src/__tests__/stage-routes.test.ts` — 8 tests
+- `apps/api/src/negotiation/skills/skill-factory.ts`
+  SkillTemplate, SkillFactory interface, DefaultSkillFactory, TemplateSkill (wraps DefaultEngineSkill).
+
+- `apps/api/src/negotiation/referee/__tests__/violation-tracker.test.ts` — 10 tests
+- `apps/api/src/negotiation/referee/__tests__/validator-lite.test.ts` — 8 tests
+- `apps/api/src/negotiation/config/__tests__/pipeline-presets.test.ts` — 18 tests
+- `apps/api/src/negotiation/config/__tests__/memo-encoding.test.ts` — 10 tests
+- `apps/api/src/negotiation/skills/__tests__/skill-factory.test.ts` — 8 tests
 
 ## Files Modified (5)
 
-- `apps/api/src/negotiation/types.ts:215-227`
-  Checkpoint에 `explainability?: RoundExplainability`, `memo_hash?: string` 추가.
+- `apps/api/src/negotiation/config.ts:19-55`
+  ValidationMode, getValidationMode(), MemoEncodingConfig, getMemoEncoding(), resolveMemoEncoding().
 
-- `apps/api/src/negotiation/memory/checkpoint-store.ts:1-153`
-  CheckpointPersistence 인터페이스 추가, constructor에 optional persistence 파라미터, save()에서 persistence?.save() 호출, hydrate() 메서드 추가. 기존 API 시그니처 100% 호환.
+- `apps/api/src/negotiation/referee/validator.ts:8,25,73-81`
+  Import ValidationMode. Optional `mode` param (default 'full'). Lite early-return after V3.
 
-- `apps/api/src/negotiation/pipeline/executor.ts:47,207-218,288-300,370-389,523-527`
-  L5 signals 주입 (getL5SignalsProvider), explainability를 PersistRoundParams에 추가, 반환 결과에 explainability 포함, round metadata에 explainability 저장.
+- `apps/api/src/negotiation/types.ts:350`
+  StageConfig.memoEncoding: `'codec' | 'raw'` → `'auto' | 'codec' | 'raw'`.
 
-- `apps/api/src/routes/negotiations.ts:162,220-226,373-398`
-  POST offers에 `include_explainability` 쿼리 파라미터 추가, GET /sessions/:id/decisions 엔드포인트 추가.
+- `apps/api/src/negotiation/pipeline/types.ts:24-25,158`
+  Import MemoEncodingConfig. PipelineDeps.memoEncoding type widened.
 
-- `apps/api/src/server.ts:24,103`
-  registerStageRoutes import + 호출 추가.
+- `apps/api/src/negotiation/pipeline/pipeline.ts:20,52-57,99`
+  Import resolveMemoEncoding. Resolve encoding before Stage 2 and Stage 6.
 
 ## Files NOT Touched
 
-- `negotiation/referee/` — 전부 미변경
-- `negotiation/skills/` — 전부 미변경
-- `negotiation/stages/` — Step 65 그대로 (import만)
-- `negotiation/memo/` — memo-codec.ts, memo-manager.ts 미변경 (checkpoint-store.ts만 수정)
-- `negotiation/phase/` — 전부 미변경
-- `negotiation/adapters/xai-client.ts` — 미변경
-- `lib/llm-negotiation-executor.ts` — 삭제 안 함
+- `negotiation/referee/coach.ts` — unchanged
+- `negotiation/referee/referee-service.ts` — unchanged
+- `negotiation/skills/default-engine-skill.ts` — unchanged
+- `negotiation/stages/*` — unchanged
+- `negotiation/memo/*` — unchanged
+- `lib/llm-negotiation-executor.ts` — unchanged
 
 ## Validation
 
 ```
 pnpm --filter @haggle/api typecheck   # 2 pre-existing errors (llm-executor-integration.test.ts), 0 in new/modified files
-pnpm --filter @haggle/api test        # 789 passed (0 failing)
+pnpm --filter @haggle/api test        # 843 passed (0 failing)
 ```
 
 ## Key Review Points (Richard)
 
-1. **Feature flag 안전성** — `NEGOTIATION_PIPELINE=legacy`이면 explainability 필드 미포함, stage routes 404 반환. 기존 동작 100% 보존.
+1. **Validator Lite backward compat** — `mode` parameter is optional with default `'full'`. All 9 existing validator tests pass unchanged. Verify no caller needs updating.
 
-2. **CheckpointStore 하위 호환** — persistence 파라미터가 optional이라 `new CheckpointStore()` 기존 호출 전부 동일 동작. 기존 checkpoint 테스트 통과 확인.
+2. **StageConfig type widening** — `memoEncoding` now accepts `'auto'`. Existing code always passes `'codec'` explicitly, so no runtime behavior change. Verify no downstream type narrowing breaks.
 
-3. **L5 Signals non-fatal** — executor에서 `.catch(() => undefined)`로 감싸서 market data 실패 시 pipeline 중단 없음. 이 패턴이 에러를 삼키지 않는지 확인.
+3. **resolveMemoEncoding boundary values** — `> 500_000` (not `>=`) and `< 0.05` (not `<=`). Tests cover exact boundaries. Verify this matches Doc 28 intent.
 
-4. **Explainability in metadata** — round metadata JSON에 explainability 저장. 대량 데이터 시 metadata 필드 크기 문제 가능성 (Phase 1: 별도 테이블 고려).
+4. **Pipeline presets are data-only** — Not wired into executor.ts in this step. The executor still uses `DEFAULT_MAX_ROUNDS` and `buildDefaultStageConfig()`. Future step should call `getPresetForAmount(dbSession.listingPriceMinor)` and apply preset to StageConfig. Verify this is acceptable as P2 prep-only.
 
-5. **Stage routes stateless** — validateStage에 previousMoves=[] 전달. 외부 에이전트가 충분한 컨텍스트 없이 호출하면 V6_STAGNATION 등 판정이 부정확할 수 있음. API 문서에 명시 필요.
+5. **SkillFactory wraps DefaultEngineSkill** — TemplateSkill delegates generateMove/evaluateOffer to DefaultEngineSkill instance. Template only overrides metadata (getLLMContext, getTactics, getConstraints, getTermDeclaration). Verify this delegation pattern is acceptable vs. template-based behavior override.
 
-6. **Swappa medians 하드코딩** — Phase 0 정적 데이터. 가격 변동 반영 안 됨. Phase 1: API 연동 시 StaticL5SignalsProvider를 SwappaApiProvider로 교체하면 됨 (인터페이스 변경 불필요).
+6. **ViolationTracker is in-memory** — No DB persistence. Session-scoped usage only. Verify Phase 1 plan for cross-session HARD rate aggregation is separate.
 
-7. **extractItemModel fallback** — strategy_snapshot에 item_model 없으면 `iphone-14-pro-128` 하드코딩. Phase 0 전용이라 허용 가능하지만, Phase 1에서 다른 카테고리 추가 시 수정 필요.
+7. **Preset range contiguity** — Tests verify PIPELINE_PRESETS have contiguous non-overlapping ranges [0, 10K), [10K, 50K), [50K, 500K), [500K, Inf). Verify boundary at $100 (10K cents) aligns with business logic.

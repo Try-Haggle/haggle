@@ -1,4 +1,4 @@
-# Review Feedback — Step 66 (Phase B: P0 Explainability + L5 Signals + Checkpoint Persistence + Stage Routes)
+# Review Feedback — Step 67 (P2: 미래 대비 구조)
 
 **Reviewer**: Richard
 **Date**: 2026-04-12
@@ -14,23 +14,17 @@ None.
 
 ## Should Fix
 
-### S1 — `executor.ts:211` `.catch(() => undefined)` swallows L5 Signals errors silently
+### S1 — `pipeline.ts:54-56` resolveMemoEncoding called without model metadata
 
-- **File**: `apps/api/src/negotiation/pipeline/executor.ts:211`
-- **What is wrong**: L5 Signals fetch failure is caught and discarded without any logging. Non-fatal is correct per the brief. But if the static provider itself throws (e.g., future provider with network calls), there is zero observability. Same class of issue as S2 from Step 65 review.
-- **Recommendation**: Change to `.catch((err) => { console.warn('[staged-executor] L5 signals fallback:', (err as Error).message); return undefined; })`. Under 1 minute. Not blocking because the static provider cannot throw in Phase 0.
+- **File**: `apps/api/src/negotiation/pipeline/pipeline.ts:54-56`
+- **What is wrong**: The call `resolveMemoEncoding({ encoding: deps.memoEncoding as '...' })` omits `modelContextWindow` and `tokenCostPerM`. The function defaults these to `0` and `999` respectively, which means `auto` will always resolve to `codec`. The brief's pseudocode at Step 67-B shows passing `deps.config.adapters.DECIDE.contextWindow` and `deps.config.tokenCostPerM`, but neither field exists on `ModelAdapter` or `StageConfig` yet.
+- **Recommendation**: This is functionally correct for Phase 0 because `auto → codec` is the safe default, and the threshold logic itself is tested in `memo-encoding.test.ts`. Add a brief comment at line 54 explaining that `modelContextWindow`/`tokenCostPerM` will be wired when `ModelAdapter` gains those fields. Under 1 minute. Not blocking because the auto-to-codec fallback is intentionally conservative.
 
-### S2 — `negotiation-stages.ts:277` `previousMoves` hardcoded to empty array
+### S2 — `pipeline/types.ts:159` redundant union type
 
-- **File**: `apps/api/src/routes/negotiation-stages.ts:277`
-- **What is wrong**: Bob documented this in REVIEW-REQUEST point 5 and the brief's Stage 4 spec does not include `previousMoves` in the request body. The validate route passes `[]` which means V6_STAGNATION detection will not work for external agents calling this route. This is a known limitation, not a bug.
-- **Recommendation**: Add a brief JSDoc comment at line 277 explaining why `[]` is intentional and what the limitation is. Under 1 minute. Not blocking because it matches the brief's stateless design intent.
-
-### S3 — Stage route tests validate schemas but do not exercise actual route handlers
-
-- **File**: `apps/api/src/__tests__/stage-routes.test.ts`
-- **What is wrong**: Tests verify data structures and mock the pipeline mode guard, but never call the actual Fastify route handlers (no `app.inject()`). The pipeline mode guard test at lines 19-29 just checks the mock return value, not the guard's 404 behavior. Schema validation tests at lines 32-58 construct request bodies and assert field values without running them through Zod.
-- **Recommendation**: Not blocking for Step 66 because the route logic is thin (Zod parse + stage function call + response mapping) and the stage functions themselves are tested in Step 65. However, for Phase 1 an integration test with `app.inject()` should cover the auth + guard + parse + response chain end-to-end. Log to BUILD-LOG.
+- **File**: `apps/api/src/negotiation/pipeline/types.ts:159`
+- **What is wrong**: `memoEncoding: MemoEncoding | MemoEncodingConfig` where `MemoEncoding = 'codec' | 'raw'` and `MemoEncodingConfig = 'auto' | 'codec' | 'raw'`. The union simplifies to just `MemoEncodingConfig`. Having both types in the union suggests two independent concepts when they are a subset relationship.
+- **Recommendation**: Change to `memoEncoding: MemoEncodingConfig` and remove the `MemoEncoding` import if unused. Under 1 minute. Not blocking because the types are equivalent at runtime.
 
 ---
 
@@ -42,52 +36,56 @@ None.
 
 ## Cleared
 
-### Key Review Point 1 — Explainability only exposed when staged + client opts in: PASS
+### Key Review Point 1 — Validator Lite backward compat: PASS
 
-`routes/negotiations.ts:162` — `Querystring` generic includes `include_explainability?: string`. At line 226, the guard is `request.query.include_explainability === 'true'` AND `extended.explainability` must be truthy. When `NEGOTIATION_PIPELINE=legacy`, the executor returns no `explainability` field, so even if a client sends `?include_explainability=true`, the response omits it. Double-gate pattern: pipeline mode + client opt-in.
+`validator.ts:27` — `mode: ValidationMode = 'full'` is optional with default. The existing signature (`move, memory, coaching, previousMoves, currentPhase`) still works without the sixth argument. Test `validator-lite.test.ts:108-117` explicitly confirms the default mode detects V4. All 9 existing validator tests pass unchanged because they never pass a `mode` argument.
 
-`GET /sessions/:id/decisions` at lines 373-400: extracts `explainability` from round metadata. Legacy rounds have no `metadata.explainability`, so the filter at line 393 returns an empty array. Safe.
+The lite early-return at lines 74-81 is correct: it returns after V1-V3 checks, including only existing violations (all HARD at that point). `passed` checks total violation count, `hardPassed` filters for HARD only. Both fields are populated before the early return.
 
-### Key Review Point 2 — L5 Signals non-fatal, static data correct: PASS
+### Key Review Point 2 — ViolationTracker hit rate and mode recommendation: PASS
 
-`executor.ts:207-211` — `getL5SignalsProvider()` returns the singleton. `.catch(() => undefined)` ensures pipeline continues without signals. The `l5_signals` parameter at line 233 is optional in `executePipeline()`.
+`violation-tracker.ts:50` — hit rate: `hard_violations / total_rounds`. Correct. Division-by-zero guarded at line 50: `this._totalRounds > 0 ? ... : 0`.
 
-`l5-signals.service.ts:28-36` — Swappa medians match the brief exactly: 13 Pro 128=$450, 13 Pro 256=$500, 14 Pro 128=$620, 14 Pro 256=$680, 15 Pro 128=$850, 15 Pro 256=$920, 15 Pro 512=$1050 (all in minor units). Condition multipliers at lines 67-69: fair=0.90, mint=1.05, good=1.0 (default). Reasonable for Phase 0 iPhone Pro. 14 tests cover all SKUs, conditions, normalization, and singleton management.
+`getRecommendedMode()` at line 62: returns `'full'` until `MIN_SAMPLE_SIZE` (100) rounds recorded, then `rate < LITE_THRESHOLD` (0.01) for `'lite'`. Tests at lines 68-70 (below min sample), 73-77 (200 clean rounds = lite), 79-85 (2/100 = 2% = full). Correct.
 
-`extractItemModel` at line 528-531 checks `strategy.item_model`, `strategy.itemModel`, `strategy.model` with fallback to `'iphone-14-pro-128'`. Phase 0 only.
+The brief mentions "Lite에서 HARD 히트 발생 → 자동으로 full 복귀 + 경고 로그." The tracker does not implement auto-revert itself; it is a data provider. Auto-revert would be the caller's responsibility (the executor reading `getRecommendedMode()` and switching). This is the correct separation of concerns for a P2 prep step. The tracker is in-memory and session-scoped -- cross-session aggregation is explicitly Phase 1 scope per the review request.
 
-### Key Review Point 3 — Checkpoint persistence optional, backward compatible: PASS
+### Key Review Point 3 — resolveMemoEncoding boundary values: PASS
 
-`checkpoint-store.ts:38` — constructor accepts `persistence?: CheckpointPersistence`. When omitted, `this.persistence` is undefined. Line 55: `if (this.persistence)` guards the DB write. Line 80: `if (!this.persistence) return` short-circuits hydrate. Existing callers using `new CheckpointStore()` see zero behavior change.
+`config.ts:54` — `> 500_000` (strict greater-than, not >=) and `< 0.05` (strict less-than, not <=). Tests in `memo-encoding.test.ts` cover all four boundaries: exact 500K returns codec (line 47-56), 500_001 returns raw (line 58-66), exact $0.05 returns codec (line 68-77), $0.049 returns raw (line 79-87). Both conditions are AND. Defaults are conservative: `modelContextWindow ?? 0` and `tokenCostPerM ?? 999`. Missing both fields always returns codec. Correct.
 
-`types.ts:226-228` — `explainability?: RoundExplainability` and `memo_hash?: string` are optional fields on `Checkpoint`. Existing checkpoint code that omits them still type-checks. Test at `checkpoint-persistence.test.ts:163-168` confirms backward compat explicitly.
+### Key Review Point 4 — Pipeline presets boundary values: PASS
 
-11 tests cover: basic in-memory CRUD (5), explainability in checkpoint (2), persistence backend callbacks (3), no-persistence default (1). Revert logic tested with free-first and cost-second scenarios.
+`pipeline-presets.ts:21-62` — Four tiers with contiguous ranges: [0, 10K), [10K, 50K), [50K, 500K), [500K, Infinity). `getPresetForAmount` uses `>= min_amount && < max_amount`, so boundary values go to the higher tier (e.g., exactly 10000 cents = standard, not quick). Tests at lines 90-93 verify contiguity (`PRESETS[i].min_amount === PRESETS[i-1].max_amount`) and lines 96-99 verify start at 0 and end at Infinity. Boundary tests at lines 15-19 ($99.99 = quick), 20-23 ($100 = standard), 30-33 ($500 = premium), 40-43 ($5000 = enterprise). No gaps, no overlaps.
 
-### Key Review Point 4 — Stage routes: auth + pipeline guard + input validation: PASS
+Fallback at line 72 returns `PIPELINE_PRESETS[1]!` (standard) for any amount that falls through. Only possible for negative amounts, which cannot occur in production (cents are unsigned). Reasonable defensive fallback.
 
-`negotiation-stages.ts:222` — `preHandler: [requireAuth, guardStagedPipeline]` on all three routes. Auth runs first via `requireAuth` (imported from existing middleware). `guardStagedPipeline` at lines 201-217 checks `getPipelineMode() !== 'staged'` and returns 404, then validates `x-haggle-actor-id` header and returns 400 if missing.
+Presets are data-only in this step. Not wired to the executor. Acceptable as P2 prep per the brief.
 
-Zod schemas are thorough: `contextRequestSchema` (lines 125-132), `validateRequestSchema` (lines 162-174), `respondRequestSchema` (lines 189-193). All use `.safeParse()` with 400 response on failure including Zod issues. Enum values match the pipeline types.
+### Key Review Point 5 — SkillFactory wrapping pattern: PASS
 
-`server.ts:25,105` — `registerStageRoutes(app, db)` registered after negotiation routes. No `eventDispatcher` needed (stage routes are stateless calls).
+`skill-factory.ts:58-108` — `TemplateSkill` holds a private `_base: DefaultEngineSkill` and a `_template: SkillTemplate`. Template overrides metadata methods: `getLLMContext()`, `getTactics()`, `getConstraints()`, `getTermDeclaration()`. Behavior methods `generateMove()` and `evaluateOffer()` delegate to `this._base`. Clean composition: the base skill handles negotiation logic, the template provides category-specific metadata.
 
-### Key Review Point 5 — Test count: 789 (752 + 37 new): CONSISTENT
+`DefaultEngineSkill` is not modified. Verified via `git diff HEAD` on that file: empty output.
 
-New test files: explainability-api (4) + l5-signals (14) + checkpoint-persistence (11) + stage-routes (8) = 37. Bob reports 789 total = 752 existing + 37 new. Consistent.
+`DefaultSkillFactory` constructor calls `registerElectronicsTemplate()` which calls `createFromTemplate()`, storing both the template and the created skill. `listTemplates()` and `getSkillForCategory()` work correctly. Test at line 64-93 verifies that `generateMove` delegates successfully to the base skill and returns a valid `ProtocolDecision`.
 
-### Protected files: PASS
+### Key Review Point 6 — Protected files: PASS
 
-`git diff HEAD` against `negotiation/referee/`, `negotiation/skills/`, `negotiation/stages/`, `negotiation/memo/`, `negotiation/phase/`, `negotiation/adapters/xai-client.ts` produces empty output. `lib/llm-negotiation-executor.ts` still exists at its original path (not deleted). All protected files are untouched.
+`git diff HEAD` against `negotiation/referee/coach.ts`, `negotiation/referee/referee-service.ts`, `negotiation/skills/default-engine-skill.ts`, `negotiation/stages/*`, `negotiation/memo/*` produces empty output. All protected files are untouched.
+
+### Test count — 54 new tests across 5 files: CONSISTENT
+
+violation-tracker (10) + validator-lite (8) + pipeline-presets (18) + memo-encoding (10) + skill-factory (8) = 54. Bob reports 789 existing + 54 new = 843 total. Consistent.
 
 ---
 
 ## Summary
 
-Clean implementation of all four sub-steps. Explainability is properly gated behind both pipeline mode and client opt-in. L5 Signals uses a pluggable provider interface with correct Phase 0 static data. Checkpoint persistence is optional with zero impact on existing callers. Stage routes have auth, pipeline mode guard, and Zod validation on all three endpoints. Protected files are untouched. Test count is consistent.
+Solid P2 prep work. All four sub-steps implement the correct interfaces and logic per the brief. Validator lite mode preserves backward compatibility through an optional default parameter. ViolationTracker correctly computes hit rates with conservative minimum sample size. Memo encoding auto-resolution has correct boundary logic, though the pipeline call currently cannot trigger the raw path (see S1 -- acceptable for Phase 0). Pipeline presets have contiguous non-overlapping ranges with proper boundary handling. SkillFactory cleanly wraps DefaultEngineSkill without modifying it. Protected files are untouched. 843 tests pass.
 
-Should Fix items are minor: silent error swallowing (S1), missing comment on known limitation (S2), shallow route tests (S3). None are blocking.
+Should Fix items are cosmetic: missing comment on incomplete wiring (S1), redundant union type (S2). Neither is blocking.
 
-Step 66 is clear.
+Step 67 is clear.
 
 -- Richard

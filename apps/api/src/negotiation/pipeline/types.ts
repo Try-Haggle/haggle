@@ -21,7 +21,7 @@ import type {
   StageConfig,
   BuddyDNA,
 } from '../types.js';
-import type { MemoEncoding } from '../memo/memo-codec.js';
+import type { MemoEncodingConfig } from '../config.js';
 
 // =========================================
 // Stage 1: Understand
@@ -155,7 +155,7 @@ export interface PipelineDeps {
   previousMoves: ProtocolDecision[];
   round: number;
   l5_signals?: L5Signals;
-  memoEncoding: MemoEncoding;
+  memoEncoding: MemoEncodingConfig;
   /** DB persist callback — only Stage 6 uses this */
   persistFn?: (input: PersistInput) => Promise<PersistOutput>;
 }

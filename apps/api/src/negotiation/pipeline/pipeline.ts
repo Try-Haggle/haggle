@@ -18,6 +18,7 @@ import { validateStage } from '../stages/validate.js';
 import { respond } from '../stages/respond.js';
 import { persist } from '../stages/persist.js';
 import { createSnapshot } from '../memo/memo-manager.js';
+import { resolveMemoEncoding } from '../config.js';
 
 // Token cost estimate: $0.0015 per 1K tokens (grok-fast tier)
 const USD_PER_1K_TOKENS = 0.0015;
@@ -49,6 +50,13 @@ export async function executePipeline(
     understandOutput = message;
   }
 
+  // ─── Resolve memo encoding (auto → codec|raw) ───
+  // NOTE: modelContextWindow and tokenCostPerM are not yet available from adapter config.
+  // Until StageConfig exposes these, 'auto' always resolves to 'codec' (safe default).
+  const resolvedEncoding = resolveMemoEncoding({
+    encoding: deps.memoEncoding as 'auto' | 'codec' | 'raw',
+  });
+
   // ─── Stage 2: Context ───
   const contextOutput = assembleStageContext(
     {
@@ -60,7 +68,7 @@ export async function executePipeline(
       l5_signals: deps.l5_signals,
     },
     deps.config.adapters.DECIDE,
-    deps.memoEncoding,
+    resolvedEncoding,
   );
 
   // ─── Stage 3: Decide ───
@@ -99,7 +107,7 @@ export async function executePipeline(
   const memoSnapshot = createSnapshot(
     { ...deps.memory, coaching: contextOutput.coaching },
     deps.round,
-    deps.memoEncoding,
+    resolvedEncoding,
     deps.facts.slice(-5),
   );
 

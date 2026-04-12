@@ -347,7 +347,7 @@ export interface StageConfig {
     RESPOND: 'template' | 'llm';
     VALIDATE: 'full' | 'lite';
   };
-  memoEncoding: 'codec' | 'raw';
+  memoEncoding: 'auto' | 'codec' | 'raw';
   reasoningEnabled: boolean;
 }
 

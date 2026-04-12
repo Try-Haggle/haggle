@@ -335,6 +335,63 @@ Implemented Doc 28 P0 features: Explainability API exposure, L5 Signals service,
 - Actual DB migration for CheckpointPersistence deferred (interface-only in this step).
 - Stage 1 (Understand) and Stage 3 (Decide) not exposed as individual routes per brief scope.
 
+## Step 67 — P2: 미래 대비 구조
+
+*Written by Bob. 2026-04-12.*
+
+### Summary
+
+Implemented Doc 28 P2 features: Validator Lite mode with HARD hit-rate tracking, Codec/Raw dynamic encoding switch, amount-based pipeline presets, and Skill Factory interface. 54 new tests, all 843 tests pass.
+
+### Files Created (5)
+
+**67-A: Validator Lite + Violation Tracker**
+- `apps/api/src/negotiation/referee/violation-tracker.ts` (~75 lines) — ViolationTracker class with HARD hit-rate tracking, recommended mode calculation (lite when rate < 1% with 100+ sample), reset for tests.
+
+**67-C: Pipeline Presets**
+- `apps/api/src/negotiation/config/pipeline-presets.ts` (~75 lines) — 4 amount-based presets (quick/standard/premium/enterprise), getPresetForAmount(), getPresetByName(). Contiguous non-overlapping ranges from $0 to Infinity.
+
+**67-D: Skill Factory**
+- `apps/api/src/negotiation/skills/skill-factory.ts` (~155 lines) — SkillTemplate type, SkillFactory interface, DefaultSkillFactory with electronics template pre-registered. TemplateSkill wraps DefaultEngineSkill (no modification to original).
+
+**67-E: Tests (5 files)**
+- `apps/api/src/negotiation/referee/__tests__/violation-tracker.test.ts` — 10 tests
+- `apps/api/src/negotiation/referee/__tests__/validator-lite.test.ts` — 8 tests
+- `apps/api/src/negotiation/config/__tests__/pipeline-presets.test.ts` — 18 tests
+- `apps/api/src/negotiation/config/__tests__/memo-encoding.test.ts` — 10 tests
+- `apps/api/src/negotiation/skills/__tests__/skill-factory.test.ts` — 8 tests
+
+### Files Modified (5)
+
+- `apps/api/src/negotiation/config.ts` — Added ValidationMode type + getValidationMode(), MemoEncodingConfig type + getMemoEncoding() + resolveMemoEncoding()
+- `apps/api/src/negotiation/referee/validator.ts` — Added optional `mode: ValidationMode = 'full'` parameter. Lite mode returns early after V1-V3, skipping V4-V7 SOFT rules. Existing calls unaffected (default 'full').
+- `apps/api/src/negotiation/types.ts` — StageConfig.memoEncoding type widened from `'codec' | 'raw'` to `'auto' | 'codec' | 'raw'`
+- `apps/api/src/negotiation/pipeline/types.ts` — PipelineDeps.memoEncoding type widened to accept MemoEncodingConfig ('auto')
+- `apps/api/src/negotiation/pipeline/pipeline.ts` — Added resolveMemoEncoding() call before Stage 2 and Stage 6 to resolve 'auto' to 'codec'|'raw'
+
+### Test Counts
+
+- Before: 789 tests
+- After: 843 tests (789 + 54 new)
+- New test files: 5
+- All pass
+
+### Key Decisions
+
+1. **Validator Lite early return** — Placed after V1-V3 checks, before V4. Clean separation, no refactoring of existing validation logic.
+2. **resolveMemoEncoding is pure** — Takes explicit params, no env dependency. Pipeline calls it with whatever encoding is in PipelineDeps.
+3. **Pipeline presets are data-only** — No side effects. Executor can optionally use getPresetForAmount() to override StageConfig fields. Not wired in this step (data structure ready).
+4. **SkillFactory wraps, doesn't modify** — TemplateSkill delegates generateMove/evaluateOffer to DefaultEngineSkill. Template only overrides metadata (context, tactics, constraints, terms).
+
+### Files NOT Touched
+
+- `negotiation/referee/coach.ts` — unchanged
+- `negotiation/referee/referee-service.ts` — unchanged
+- `negotiation/skills/default-engine-skill.ts` — unchanged
+- `negotiation/stages/*` — unchanged
+- `negotiation/memo/*` — unchanged
+- `lib/llm-negotiation-executor.ts` — unchanged
+
 ## Notes for Richard
 
 1. Verify `ProtocolDecision` has no `message` field anywhere — search for
