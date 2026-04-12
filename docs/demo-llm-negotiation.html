@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haggle LLM 협상 데모 — grok-4-fast</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0b0d;
+    color: #e0e0e0;
+    font-family: -apple-system, 'Pretendard', 'Noto Sans KR', sans-serif;
+    line-height: 1.6;
+    padding: 24px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  a { color: #3498db; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 32px 0;
+    border-bottom: 1px solid #1a1d24;
+    margin-bottom: 32px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #3498db, #2ecc71);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .header .subtitle {
+    color: #888;
+    font-size: 14px;
+  }
+
+  /* Summary Cards */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .summary-card {
+    background: #12141a;
+    border: 1px solid #1e2130;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .summary-card .label {
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .summary-card .value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .summary-card .sub {
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+  }
+  .summary-card.deal { border-color: #2ecc7144; }
+  .summary-card.deal .value { color: #2ecc71; }
+  .summary-card.cost { border-color: #f39c1244; }
+  .summary-card.cost .value { color: #f39c12; }
+
+  /* Price Chart */
+  .chart-section {
+    background: #12141a;
+    border: 1px solid #1e2130;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+  .chart-section h2 {
+    font-size: 16px;
+    margin-bottom: 16px;
+    color: #ccc;
+  }
+  .chart-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .chart-label { width: 50px; text-align: right; color: #888; }
+  .chart-price { width: 50px; text-align: right; }
+  .chart-fill { height: 22px; border-radius: 4px; min-width: 4px; transition: width 0.3s; }
+  .chart-fill.buyer { background: linear-gradient(90deg, #3498db, #2980b9); }
+  .chart-fill.seller { background: linear-gradient(90deg, #e74c3c, #c0392b); }
+  .chart-fill.deal { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+  .market-line {
+    border-top: 2px dashed #f39c1266;
+    margin: 8px 0;
+    position: relative;
+    margin-left: 108px;
+  }
+  .market-line span {
+    position: absolute;
+    top: -10px;
+    right: 0;
+    font-size: 11px;
+    color: #f39c12;
+    background: #12141a;
+    padding: 0 4px;
+  }
+
+  /* Round Cards */
+  .rounds-section h2 {
+    font-size: 16px;
+    color: #ccc;
+    margin-bottom: 16px;
+  }
+  .round-card {
+    background: #12141a;
+    border: 1px solid #1e2130;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .round-card.accept { border-color: #2ecc7144; }
+  .round-card.reject { border-color: #e74c3c44; }
+
+  .round-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #0e1016;
+    border-bottom: 1px solid #1e2130;
+  }
+  .round-badge {
+    background: #1e2130;
+    color: #888;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+  .role-icon { font-size: 18px; }
+  .role-name { font-weight: 600; flex: 1; }
+  .action-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 6px;
+  }
+  .action-badge.counter { background: #3498db22; color: #3498db; }
+  .action-badge.accept { background: #2ecc7122; color: #2ecc71; }
+  .action-badge.reject { background: #e74c3c22; color: #e74c3c; }
+
+  .round-body { padding: 16px; }
+  .price-flow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    font-size: 15px;
+  }
+  .price-flow .arrow { color: #666; font-size: 18px; }
+  .price-flow strong { color: #fff; }
+
+  .message-bubble {
+    background: #1a1d24;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    border-left: 3px solid;
+  }
+  .message-bubble.buyer { border-color: #3498db; }
+  .message-bubble.seller { border-color: #e74c3c; }
+
+  .reasoning {
+    font-size: 13px;
+    color: #999;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: #0e101688;
+    border-radius: 8px;
+  }
+  .reasoning-label { color: #bbb; font-weight: 600; }
+
+  .meta-row {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: #666;
+  }
+  .meta-item { white-space: nowrap; }
+
+  /* Prompt Details */
+  .prompt-detail {
+    margin-top: 12px;
+    border-top: 1px solid #1e2130;
+    padding-top: 8px;
+  }
+  .prompt-detail summary {
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    user-select: none;
+  }
+  .prompt-detail summary:hover { color: #3498db; }
+  .prompt-section { margin-top: 8px; }
+  .prompt-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #888;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .prompt-text {
+    background: #080a0d;
+    border: 1px solid #1a1d24;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #aaa;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  /* Pricing Section */
+  .pricing-section {
+    background: #12141a;
+    border: 1px solid #f39c1233;
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 32px;
+  }
+  .pricing-section h2 {
+    font-size: 16px;
+    color: #f39c12;
+    margin-bottom: 16px;
+  }
+  .pricing-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .pricing-table th, .pricing-table td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid #1e2130;
+    font-size: 13px;
+  }
+  .pricing-table th { color: #888; font-weight: 600; }
+  .pricing-table td { color: #ccc; }
+  .pricing-table .total-row { font-weight: 700; color: #f39c12; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid #1a1d24;
+    font-size: 12px;
+    color: #555;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🤖 Haggle LLM 협상 데모</h1>
+  <div class="subtitle">
+    iPhone 15 Pro 256GB Space Black (미개봉) | 모델: grok-4-fast | 2026. 4. 10.
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="summary-grid">
+  <div class="summary-card deal">
+    <div class="label">🎉 최종 가격</div>
+    <div class="value">$960</div>
+    <div class="sub">시장가 대비 8.6% 절약</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">📊 시장가</div>
+    <div class="value">$1050</div>
+    <div class="sub">Swappa 30d median</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">🔄 라운드</div>
+    <div class="value">6회</div>
+    <div class="sub">11회 API 호출</div>
+  </div>
+  <div class="summary-card cost">
+    <div class="label">💰 총 비용</div>
+    <div class="value">$0.0017</div>
+    <div class="sub">6,683 tokens</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">⏱️ 소요 시간</div>
+    <div class="value">26.9s</div>
+    <div class="sub">실제 API 응답 시간 포함</div>
+  </div>
+</div>
+
+<!-- Price Chart -->
+<div class="chart-section">
+  <h2>📈 가격 수렴 차트</h2>
+  <div class="chart-bar"><span class="chart-label">Start</span><span class="chart-price">$1120</span><div class="chart-fill seller" style="width: 90%"></div></div>
+<div class="chart-bar"><span class="chart-label">R1 B</span><span class="chart-price">$850</span><div class="chart-fill buyer" style="width: 2%"></div></div>
+<div class="chart-bar"><span class="chart-label">R1 S</span><span class="chart-price">$1120</span><div class="chart-fill seller" style="width: 90%"></div></div>
+<div class="chart-bar"><span class="chart-label">R2 B</span><span class="chart-price">$870</span><div class="chart-fill buyer" style="width: 6.666666666666667%"></div></div>
+<div class="chart-bar"><span class="chart-label">R2 S</span><span class="chart-price">$1080</span><div class="chart-fill seller" style="width: 76.66666666666667%"></div></div>
+<div class="chart-bar"><span class="chart-label">R3 B</span><span class="chart-price">$890</span><div class="chart-fill buyer" style="width: 13.333333333333334%"></div></div>
+<div class="chart-bar"><span class="chart-label">R3 S</span><span class="chart-price">$1040</span><div class="chart-fill seller" style="width: 63.33333333333333%"></div></div>
+<div class="chart-bar"><span class="chart-label">R4 B</span><span class="chart-price">$910</span><div class="chart-fill buyer" style="width: 20%"></div></div>
+<div class="chart-bar"><span class="chart-label">R4 S</span><span class="chart-price">$1000</span><div class="chart-fill seller" style="width: 50%"></div></div>
+<div class="chart-bar"><span class="chart-label">R5 B</span><span class="chart-price">$930</span><div class="chart-fill buyer" style="width: 26.666666666666668%"></div></div>
+<div class="chart-bar"><span class="chart-label">R5 S</span><span class="chart-price">$960</span><div class="chart-fill seller" style="width: 36.666666666666664%"></div></div>
+<div class="chart-bar"><span class="chart-label">R6 B</span><span class="chart-price">$960</span><div class="chart-fill deal" style="width: 36.666666666666664%"></div><span style="color:#2ecc71;font-weight:700"> ✅ DEAL</span></div>
+  <div class="market-line" style="margin-left: 108px;">
+    <span>📊 시장가 $1050</span>
+  </div>
+</div>
+
+<!-- Rounds -->
+<div class="rounds-section">
+  <h2>🔄 라운드별 상세</h2>
+  <div class="round-card counter"><div class="round-header"><span class="round-badge">R1</span><span class="role-icon">🛒</span><span class="role-name">Alice (구매자 AI)</span><span class="action-badge counter">역제안 → $850</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$1120</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$850</strong></span></div><div class="message-bubble buyer">"안녕하세요! 미개봉 아이폰 15 프로 256GB 스페이스 블랙이네요. 스와파 기준 최근 30일 중간가가 $1050 정도인데, 비슷한 상태의 중고나 새상품 거래 보면 $900대 초반에 나오는 게 많아요. 처음 제안으로 $850 어때요? 합리적인 가격으로 거래하고 싶어요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Seller's initial offer is $1120, which is 7% above market price of $1050 and exceeds my max limit, so I need to counter low to start negotiations. Starting at $850 (about 19% below market) allows room to concede gradually toward my target of $880 while citing comparables.</div><div class="meta-row"><span class="meta-item">📥 463 in</span><span class="meta-item">📤 167 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 2836ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a buyer's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $880 (ideal)
+- Maximum price: $1,000 (hard limit — NEVER accept above this)
+- You want to save money but also close a fair deal
+- Be strategic: start low, concede gradually, justify your offers
+
+STRATEGY GUIDELINES:
+- Round 1-2: Offer 15-20% below market. Cite comparable prices.
+- Round 3-4: Concede $20-40 per round if seller is reasonable.
+- Round 5+: If close to agreement, make final best offer.
+- Accept if price ≤ $960 and seller seems firm.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the seller — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 1 ===
+You received an seller's offer: $1120
+
+This is round 1 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:850,&quot;reasoning&quot;:&quot;Seller's initial offer is $1120, which is 7% above market price of $1050 and exceeds my max limit, so I need to counter low to start negotiations. Starting at $850 (about 19% below market) allows room to concede gradually toward my target of $880 while citing comparables.&quot;,&quot;message_to_opponent&quot;:&quot;안녕하세요! 미개봉 아이폰 15 프로 256GB 스페이스 블랙이네요. 스와파 기준 최근 30일 중간가가 $1050 정도인데, 비슷한 상태의 중고나 새상품 거래 보면 $900대 초반에 나오는 게 많아요. 처음 제안으로 $850 어때요? 합리적인 가격으로 거래하고 싶어요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R1</span><span class="role-icon">🏪</span><span class="role-name">Bob (판매자 AI)</span><span class="action-badge counter">역제안 → $1120</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$850</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$1120</strong></span></div><div class="message-bubble seller">"안녕하세요! 이 iPhone 15 Pro 256GB Space Black은 미개봉 새 제품으로 상태가 완벽합니다. 시장가보다 프리미엄 컨디션이라 $1,120에 시작할게요. 어떻게 생각하세요?"</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Buyer's initial offer of $850 is well below the market price of $1050 and my minimum of $920, so I need to anchor high at $1120 to emphasize the premium unopened condition and start negotiations favorably.</div><div class="meta-row"><span class="meta-item">📥 457 in</span><span class="meta-item">📤 119 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 1738ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a seller's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $1,100 (ideal)
+- Minimum price: $920 (hard limit — NEVER accept below this)
+- You want to maximize revenue but also close the deal
+- The item is sealed/unopened — premium condition
+
+STRATEGY GUIDELINES:
+- Round 1: List at $1,120 (above market, premium condition).
+- Round 2-3: Concede $30-50 per round if buyer is reasonable.
+- Round 4-5: Show willingness to close, but protect minimum.
+- Accept if price ≥ $960 and buyer seems serious.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the buyer — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 1 ===
+You received an buyer's offer: $850
+
+This is round 1 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:1120,&quot;reasoning&quot;:&quot;Buyer's initial offer of $850 is well below the market price of $1050 and my minimum of $920, so I need to anchor high at $1120 to emphasize the premium unopened condition and start negotiations favorably.&quot;,&quot;message_to_opponent&quot;:&quot;안녕하세요! 이 iPhone 15 Pro 256GB Space Black은 미개봉 새 제품으로 상태가 완벽합니다. 시장가보다 프리미엄 컨디션이라 $1,120에 시작할게요. 어떻게 생각하세요?&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R2</span><span class="role-icon">🛒</span><span class="role-name">Alice (구매자 AI)</span><span class="action-badge counter">역제안 → $870</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$1120</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$870</strong></span></div><div class="message-bubble buyer">"$1120는 시장가보다 좀 높아서요. 비슷한 새 상품이 $1050 정도에 거래되던데, $870으로 어때요? 조금씩 맞춰가요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Seller is firm at $1120, which is above market; in round 2, I'll concede slightly from my $850 to $870 to show willingness while staying 17% below market to negotiate down.</div><div class="meta-row"><span class="meta-item">📥 484 in</span><span class="meta-item">📤 101 out</span><span class="meta-item">💰 $0.0001</span><span class="meta-item">⏱️ 2444ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a buyer's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $880 (ideal)
+- Maximum price: $1,000 (hard limit — NEVER accept above this)
+- You want to save money but also close a fair deal
+- Be strategic: start low, concede gradually, justify your offers
+
+STRATEGY GUIDELINES:
+- Round 1-2: Offer 15-20% below market. Cite comparable prices.
+- Round 3-4: Concede $20-40 per round if seller is reasonable.
+- Round 5+: If close to agreement, make final best offer.
+- Accept if price ≤ $960 and seller seems firm.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the seller — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 2 ===
+You received an seller's offer: $1120
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+
+This is round 2 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:870,&quot;reasoning&quot;:&quot;Seller is firm at $1120, which is above market; in round 2, I'll concede slightly from my $850 to $870 to show willingness while staying 17% below market to negotiate down.&quot;,&quot;message_to_opponent&quot;:&quot;$1120는 시장가보다 좀 높아서요. 비슷한 새 상품이 $1050 정도에 거래되던데, $870으로 어때요? 조금씩 맞춰가요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R2</span><span class="role-icon">🏪</span><span class="role-name">Bob (판매자 AI)</span><span class="action-badge counter">역제안 → $1080</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$870</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$1080</strong></span></div><div class="message-bubble seller">"870은 여전히 낮게 느껴지네요. 미개봉 새 제품이라 상태가 최고예요. 1080으로 어떻게 생각하세요?"</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Buyer's $870 offer is a minimal $20 increase from their initial lowball and remains well below market value and my minimum; counter by conceding $40 from the starting list price to encourage negotiation while protecting the target.</div><div class="meta-row"><span class="meta-item">📥 478 in</span><span class="meta-item">📤 96 out</span><span class="meta-item">💰 $0.0001</span><span class="meta-item">⏱️ 2604ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a seller's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $1,100 (ideal)
+- Minimum price: $920 (hard limit — NEVER accept below this)
+- You want to maximize revenue but also close the deal
+- The item is sealed/unopened — premium condition
+
+STRATEGY GUIDELINES:
+- Round 1: List at $1,120 (above market, premium condition).
+- Round 2-3: Concede $30-50 per round if buyer is reasonable.
+- Round 4-5: Show willingness to close, but protect minimum.
+- Accept if price ≥ $960 and buyer seems serious.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the buyer — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 2 ===
+You received an buyer's offer: $870
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+
+This is round 2 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:1080,&quot;reasoning&quot;:&quot;Buyer's $870 offer is a minimal $20 increase from their initial lowball and remains well below market value and my minimum; counter by conceding $40 from the starting list price to encourage negotiation while protecting the target.&quot;,&quot;message_to_opponent&quot;:&quot;870은 여전히 낮게 느껴지네요. 미개봉 새 제품이라 상태가 최고예요. 1080으로 어떻게 생각하세요?&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R3</span><span class="role-icon">🛒</span><span class="role-name">Alice (구매자 AI)</span><span class="action-badge counter">역제안 → $890</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$1080</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$890</strong></span></div><div class="message-bubble buyer">"1080은 여전히 시장가보다 높아요. 비슷한 상태의 기기들이 900대 초반에 거래되던데, 890으로 어때요? 합리적인 가격으로 마무리하고 싶어요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Seller conceded $40 from $1120 to $1080, showing some flexibility; in Round 3, I'll concede $20 from my previous $870 to keep momentum toward target while staying below market.</div><div class="meta-row"><span class="meta-item">📥 499 in</span><span class="meta-item">📤 107 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 2825ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a buyer's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $880 (ideal)
+- Maximum price: $1,000 (hard limit — NEVER accept above this)
+- You want to save money but also close a fair deal
+- Be strategic: start low, concede gradually, justify your offers
+
+STRATEGY GUIDELINES:
+- Round 1-2: Offer 15-20% below market. Cite comparable prices.
+- Round 3-4: Concede $20-40 per round if seller is reasonable.
+- Round 5+: If close to agreement, make final best offer.
+- Accept if price ≤ $960 and seller seems firm.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the seller — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 3 ===
+You received an seller's offer: $1080
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+
+This is round 3 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:890,&quot;reasoning&quot;:&quot;Seller conceded $40 from $1120 to $1080, showing some flexibility; in Round 3, I'll concede $20 from my previous $870 to keep momentum toward target while staying below market.&quot;,&quot;message_to_opponent&quot;:&quot;1080은 여전히 시장가보다 높아요. 비슷한 상태의 기기들이 900대 초반에 거래되던데, 890으로 어때요? 합리적인 가격으로 마무리하고 싶어요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R3</span><span class="role-icon">🏪</span><span class="role-name">Bob (판매자 AI)</span><span class="action-badge counter">역제안 → $1040</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$890</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$1040</strong></span></div><div class="message-bubble seller">"890은 여전히 낮아요. 미개봉 새 제품이라 프리미엄 가치가 있으니 1040으로 맞춰볼까요? 합리적인 가격으로 가깝게 가고 있어요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Buyer's offer is still below market and minimum, but they're incrementally increasing, so concede $40 to keep momentum and draw them closer to target without dropping too low.</div><div class="meta-row"><span class="meta-item">📥 493 in</span><span class="meta-item">📤 96 out</span><span class="meta-item">💰 $0.0001</span><span class="meta-item">⏱️ 2528ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a seller's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $1,100 (ideal)
+- Minimum price: $920 (hard limit — NEVER accept below this)
+- You want to maximize revenue but also close the deal
+- The item is sealed/unopened — premium condition
+
+STRATEGY GUIDELINES:
+- Round 1: List at $1,120 (above market, premium condition).
+- Round 2-3: Concede $30-50 per round if buyer is reasonable.
+- Round 4-5: Show willingness to close, but protect minimum.
+- Accept if price ≥ $960 and buyer seems serious.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the buyer — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 3 ===
+You received an buyer's offer: $890
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+
+This is round 3 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:1040,&quot;reasoning&quot;:&quot;Buyer's offer is still below market and minimum, but they're incrementally increasing, so concede $40 to keep momentum and draw them closer to target without dropping too low.&quot;,&quot;message_to_opponent&quot;:&quot;890은 여전히 낮아요. 미개봉 새 제품이라 프리미엄 가치가 있으니 1040으로 맞춰볼까요? 합리적인 가격으로 가깝게 가고 있어요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R4</span><span class="role-icon">🛒</span><span class="role-name">Alice (구매자 AI)</span><span class="action-badge counter">역제안 → $910</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$1040</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$910</strong></span></div><div class="message-bubble buyer">"1040은 여전히 시장가에 가까워서 부담스럽네요. 비슷한 상태의 기기들이 900대 초반에 거래되는 걸 봤어요. 910으로 어때요? 합리적인 가격으로 마무리하고 싶어요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Seller is conceding gradually by $40 each round, so I'll concede $20 from my previous offer to keep momentum toward target while staying below $1000. This positions us closer to agreement without rushing.</div><div class="meta-row"><span class="meta-item">📥 514 in</span><span class="meta-item">📤 114 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 2326ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a buyer's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $880 (ideal)
+- Maximum price: $1,000 (hard limit — NEVER accept above this)
+- You want to save money but also close a fair deal
+- Be strategic: start low, concede gradually, justify your offers
+
+STRATEGY GUIDELINES:
+- Round 1-2: Offer 15-20% below market. Cite comparable prices.
+- Round 3-4: Concede $20-40 per round if seller is reasonable.
+- Round 5+: If close to agreement, make final best offer.
+- Accept if price ≤ $960 and seller seems firm.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the seller — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 4 ===
+You received an seller's offer: $1040
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+  Round 3: Buyer $890 ↔ Seller $1040
+
+This is round 4 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:910,&quot;reasoning&quot;:&quot;Seller is conceding gradually by $40 each round, so I'll concede $20 from my previous offer to keep momentum toward target while staying below $1000. This positions us closer to agreement without rushing.&quot;,&quot;message_to_opponent&quot;:&quot;1040은 여전히 시장가에 가까워서 부담스럽네요. 비슷한 상태의 기기들이 900대 초반에 거래되는 걸 봤어요. 910으로 어때요? 합리적인 가격으로 마무리하고 싶어요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R4</span><span class="role-icon">🏪</span><span class="role-name">Bob (판매자 AI)</span><span class="action-badge counter">역제안 → $1000</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$910</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$1000</strong></span></div><div class="message-bubble seller">"910은 아직 좀 낮아요. 미개봉 새 제품이라 프리미엄 가치가 있으니 1000으로 어때요? 합리적인 가격으로 마무리하고 싶어요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Buyer's $910 is below the $920 minimum, so reject and counter at $1000 to continue conceding gradually ($40 from $1040) while staying above target and protecting the floor; buyer shows seriousness by incremental increases.</div><div class="meta-row"><span class="meta-item">📥 508 in</span><span class="meta-item">📤 107 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 2025ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a seller's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $1,100 (ideal)
+- Minimum price: $920 (hard limit — NEVER accept below this)
+- You want to maximize revenue but also close the deal
+- The item is sealed/unopened — premium condition
+
+STRATEGY GUIDELINES:
+- Round 1: List at $1,120 (above market, premium condition).
+- Round 2-3: Concede $30-50 per round if buyer is reasonable.
+- Round 4-5: Show willingness to close, but protect minimum.
+- Accept if price ≥ $960 and buyer seems serious.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the buyer — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 4 ===
+You received an buyer's offer: $910
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+  Round 3: Buyer $890 ↔ Seller $1040
+
+This is round 4 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:1000,&quot;reasoning&quot;:&quot;Buyer's $910 is below the $920 minimum, so reject and counter at $1000 to continue conceding gradually ($40 from $1040) while staying above target and protecting the floor; buyer shows seriousness by incremental increases.&quot;,&quot;message_to_opponent&quot;:&quot;910은 아직 좀 낮아요. 미개봉 새 제품이라 프리미엄 가치가 있으니 1000으로 어때요? 합리적인 가격으로 마무리하고 싶어요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R5</span><span class="role-icon">🛒</span><span class="role-name">Alice (구매자 AI)</span><span class="action-badge counter">역제안 → $930</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$1000</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$930</strong></span></div><div class="message-bubble buyer">"930불로 하면 어떨까요? 이 가격이면 바로 구매할게요, 시장가보다 훨씬 싸게 나와서요."</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Seller is firm at $1000 after gradual concessions, but per strategy for round 5+, I'm making a final best offer by conceding $20 from my previous $910 to inch closer without exceeding my $960 acceptance threshold yet.</div><div class="meta-row"><span class="meta-item">📥 529 in</span><span class="meta-item">📤 96 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 2937ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a buyer's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $880 (ideal)
+- Maximum price: $1,000 (hard limit — NEVER accept above this)
+- You want to save money but also close a fair deal
+- Be strategic: start low, concede gradually, justify your offers
+
+STRATEGY GUIDELINES:
+- Round 1-2: Offer 15-20% below market. Cite comparable prices.
+- Round 3-4: Concede $20-40 per round if seller is reasonable.
+- Round 5+: If close to agreement, make final best offer.
+- Accept if price ≤ $960 and seller seems firm.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the seller — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 5 ===
+You received an seller's offer: $1000
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+  Round 3: Buyer $890 ↔ Seller $1040
+  Round 4: Buyer $910 ↔ Seller $1000
+
+This is round 5 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:930,&quot;reasoning&quot;:&quot;Seller is firm at $1000 after gradual concessions, but per strategy for round 5+, I'm making a final best offer by conceding $20 from my previous $910 to inch closer without exceeding my $960 acceptance threshold yet.&quot;,&quot;message_to_opponent&quot;:&quot;930불로 하면 어떨까요? 이 가격이면 바로 구매할게요, 시장가보다 훨씬 싸게 나와서요.&quot;}</pre></div></details></div></div>
+<div class="round-card counter"><div class="round-header"><span class="round-badge">R5</span><span class="role-icon">🏪</span><span class="role-name">Bob (판매자 AI)</span><span class="action-badge counter">역제안 → $960</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$930</strong></span><span class="arrow">→</span><span class="outgoing">역제안: <strong>$960</strong></span></div><div class="message-bubble seller">"930불은 아직 좀 낮아요. 미개봉 새 상품이라 프리미엄 컨디션 고려해서 960불로 맞춰드릴게요. 이 가격이면 딜 성사시키기 좋을 것 같아요!"</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Buyer's offer of $930 is above the hard minimum of $920 but below the $960 acceptance threshold; countering at $960 continues the pattern of $40 concessions and positions for potential acceptance if they meet it, as they seem serious with steady increases.</div><div class="meta-row"><span class="meta-item">📥 523 in</span><span class="meta-item">📤 119 out</span><span class="meta-item">💰 $0.0002</span><span class="meta-item">⏱️ 2272ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a seller's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $1,100 (ideal)
+- Minimum price: $920 (hard limit — NEVER accept below this)
+- You want to maximize revenue but also close the deal
+- The item is sealed/unopened — premium condition
+
+STRATEGY GUIDELINES:
+- Round 1: List at $1,120 (above market, premium condition).
+- Round 2-3: Concede $30-50 per round if buyer is reasonable.
+- Round 4-5: Show willingness to close, but protect minimum.
+- Accept if price ≥ $960 and buyer seems serious.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the buyer — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 5 ===
+You received an buyer's offer: $930
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+  Round 3: Buyer $890 ↔ Seller $1040
+  Round 4: Buyer $910 ↔ Seller $1000
+
+This is round 5 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;COUNTER&quot;,&quot;price&quot;:960,&quot;reasoning&quot;:&quot;Buyer's offer of $930 is above the hard minimum of $920 but below the $960 acceptance threshold; countering at $960 continues the pattern of $40 concessions and positions for potential acceptance if they meet it, as they seem serious with steady increases.&quot;,&quot;message_to_opponent&quot;:&quot;930불은 아직 좀 낮아요. 미개봉 새 상품이라 프리미엄 컨디션 고려해서 960불로 맞춰드릴게요. 이 가격이면 딜 성사시키기 좋을 것 같아요!&quot;}</pre></div></details></div></div>
+<div class="round-card accept"><div class="round-header"><span class="round-badge">R6</span><span class="role-icon">🛒</span><span class="role-name">Alice (구매자 AI)</span><span class="action-badge accept">ACCEPT</span></div><div class="round-body"><div class="price-flow"><span class="incoming">받은 제안: <strong>$960</strong></span></div><div class="message-bubble buyer">"960불러주셔서 감사합니다. 이 가격으로 구매하겠습니다!"</div><div class="reasoning"><span class="reasoning-label">🧠 내부 추론:</span> Seller's offer of $960 meets my acceptance criteria of ≤$960, and given the consistent concessions from both sides, it's a reasonable deal that saves money without hitting my hard limit.</div><div class="meta-row"><span class="meta-item">📥 542 in</span><span class="meta-item">📤 71 out</span><span class="meta-item">💰 $0.0001</span><span class="meta-item">⏱️ 2357ms</span></div><details class="prompt-detail"><summary>프롬프트 보기</summary><div class="prompt-section"><div class="prompt-label">System Prompt</div><pre class="prompt-text">You are a buyer's AI negotiation agent on Haggle, a P2P marketplace.
+
+ITEM: iPhone 15 Pro 256GB Space Black (미개봉)
+MARKET PRICE (Swappa 30d median): $1050
+
+YOUR CONSTRAINTS:
+- Target price: $880 (ideal)
+- Maximum price: $1,000 (hard limit — NEVER accept above this)
+- You want to save money but also close a fair deal
+- Be strategic: start low, concede gradually, justify your offers
+
+STRATEGY GUIDELINES:
+- Round 1-2: Offer 15-20% below market. Cite comparable prices.
+- Round 3-4: Concede $20-40 per round if seller is reasonable.
+- Round 5+: If close to agreement, make final best offer.
+- Accept if price ≤ $960 and seller seems firm.
+
+RESPOND IN JSON:
+{
+  &quot;action&quot;: &quot;COUNTER&quot; | &quot;ACCEPT&quot; | &quot;REJECT&quot;,
+  &quot;price&quot;: &lt;your counter-offer price as integer, or accepted price&gt;,
+  &quot;reasoning&quot;: &quot;&lt;1-2 sentences explaining your internal decision logic&gt;&quot;,
+  &quot;message_to_opponent&quot;: &quot;&lt;what you'd say to the seller — natural, conversational Korean&gt;&quot;
+}</pre></div><div class="prompt-section"><div class="prompt-label">User Prompt</div><pre class="prompt-text">=== Round 6 ===
+You received an seller's offer: $960
+
+NEGOTIATION HISTORY:
+  Round 1: Buyer $850 ↔ Seller $1120
+  Round 2: Buyer $870 ↔ Seller $1080
+  Round 3: Buyer $890 ↔ Seller $1040
+  Round 4: Buyer $910 ↔ Seller $1000
+  Round 5: Buyer $930 ↔ Seller $960
+
+This is round 6 of maximum 8.
+
+Decide: COUNTER (with your price), ACCEPT, or REJECT.</pre></div><div class="prompt-section"><div class="prompt-label">Raw Response</div><pre class="prompt-text">{&quot;action&quot;:&quot;ACCEPT&quot;,&quot;price&quot;:960,&quot;reasoning&quot;:&quot;Seller's offer of $960 meets my acceptance criteria of ≤$960, and given the consistent concessions from both sides, it's a reasonable deal that saves money without hitting my hard limit.&quot;,&quot;message_to_opponent&quot;:&quot;960불러주셔서 감사합니다. 이 가격으로 구매하겠습니다!&quot;}</pre></div></details></div></div>
+</div>
+
+<!-- Pricing Info -->
+<div class="pricing-section">
+  <h2>💰 Grok 4 Fast 가격 정보</h2>
+  <table class="pricing-table">
+    <thead>
+      <tr><th>항목</th><th>수량</th><th>단가</th><th>비용</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>R1 🛒 구매자</td><td>463 in + 167 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R1 🏪 판매자</td><td>457 in + 119 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R2 🛒 구매자</td><td>484 in + 101 out</td><td>$0.2/M + $0.5/M</td><td>$0.0001</td></tr>
+<tr><td>R2 🏪 판매자</td><td>478 in + 96 out</td><td>$0.2/M + $0.5/M</td><td>$0.0001</td></tr>
+<tr><td>R3 🛒 구매자</td><td>499 in + 107 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R3 🏪 판매자</td><td>493 in + 96 out</td><td>$0.2/M + $0.5/M</td><td>$0.0001</td></tr>
+<tr><td>R4 🛒 구매자</td><td>514 in + 114 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R4 🏪 판매자</td><td>508 in + 107 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R5 🛒 구매자</td><td>529 in + 96 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R5 🏪 판매자</td><td>523 in + 119 out</td><td>$0.2/M + $0.5/M</td><td>$0.0002</td></tr>
+<tr><td>R6 🛒 구매자</td><td>542 in + 71 out</td><td>$0.2/M + $0.5/M</td><td>$0.0001</td></tr>
+      <tr class="total-row">
+        <td>합계</td>
+        <td>5,490 in + 1,193 out</td>
+        <td></td>
+        <td>$0.0017</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="margin-top:16px; font-size:13px; color:#888;">
+    <p>📋 <strong>Grok 4 Fast 가격표</strong></p>
+    <p>• Input: $0.20 / 1M tokens ($0.0002 / 1K tokens)</p>
+    <p>• Output: $0.50 / 1M tokens ($0.0005 / 1K tokens)</p>
+    <p>• Context window: 2M tokens</p>
+    <p>• Reasoning mode 사용 시: 동일 토큰 단가지만 reasoning tokens이 output으로 청구되어 실질 비용 증가</p>
+    <p style="margin-top:8px;">📊 <strong>비교</strong>: Claude Sonnet $3/$15 | GPT-4o $2.5/$10 | Grok 4 $2/$10</p>
+    <p style="color:#f39c12; margin-top:4px;">→ Grok 4 Fast는 가장 저렴한 Tier. 협상 한 건당 ~$0.001 수준.</p>
+  </div>
+</div>
+
+<div class="footer">
+  Haggle AI Negotiation Protocol — <a href="https://tryhaggle.ai">tryhaggle.ai</a><br>
+  Generated: 2026-04-10T22:22:15.173Z
+</div>
+
+</body>
+</html>

@@ -81,11 +81,11 @@
 
 이 항목들은 P0 이후 바로 해결되어야 표준 문서 완성도가 올라갑니다.
 
-### P1-1. 다중 이슈 엔진과 wire payload 불일치
+### P1-1. 다중 Term 엔진과 wire payload 불일치
 
-- 문제: 엔진 문서는 다중 이슈 협상을 전제하지만 wire는 사실상 `price` 단일 필드입니다.
+- 문제: 엔진 문서는 다중 Term 협상을 전제하지만 wire는 사실상 `price` 단일 필드입니다.
 - 영향: 문서상 기능과 표준상 기능이 어긋납니다.
-- 보강: proposal을 issue-set 기반 구조로 승격
+- 보강: proposal을 term-set 기반 구조로 승격
 
 ### P1-2. CANCEL / ACK / RESUME 부재
 

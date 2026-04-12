@@ -172,11 +172,11 @@ pnpm --filter @haggle/engine-session test
 
 | 문서 | 내용 |
 |------|------|
-| [MVP_Final_Implementation_Plan.md](./docs/MVP_Final_Implementation_Plan.md) | MVP vertical slice 계획 |
-| [MVP_TECH_DEBT.md](./docs/MVP_TECH_DEBT.md) | MVP 의도적 단순화 추적 |
-| [Main_Branch_Release_Policy.md](./docs/Main_Branch_Release_Policy.md) | main 브랜치 운영 원칙 |
-| [Haggle_Moat_Strategy.md](./docs/Haggle_Moat_Strategy.md) | 해자 전략 + 파트너 리서치 |
+| [mvp/](./docs/mvp/00_INDEX.md) | MVP 계획, 기술 부채, 운영 정책 |
 | [engine/](./docs/engine/00_INDEX.md) | 엔진 + HNP 프로토콜 기술 사양 |
+| [contracts/](./docs/contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 |
+| [strategy/](./docs/strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 |
+| [features/](./docs/features/00_INDEX.md) | 기능 설계 (태그, 분쟁, 게이미피케이션) |
 
 **문서 관리 규칙:** 구현 완료 → `docs/archive/` 이동. 임시 작업 → `docs/wip/` (완료 시 삭제).
 

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Haggle 전략 기반 자동 협상 데모</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0b0d; color:#e0e0e0; font-family:-apple-system,'Pretendard',sans-serif; line-height:1.5; padding:20px; }
+.header { text-align:center; margin-bottom:24px; }
+.header h1 { font-size:24px; background:linear-gradient(135deg,#3498db,#2ecc71); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.header .sub { color:#888; font-size:14px; margin-top:4px; }
+
+.summary-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:24px; }
+.s-card { background:#12131a; border-radius:8px; padding:12px; text-align:center; border:1px solid #1e2130; }
+.s-card .s-title { color:#888; font-size:11px; text-transform:uppercase; }
+.s-card .s-value { font-size:22px; font-weight:700; margin-top:4px; }
+.s-card .s-value.deal { color:#2ecc71; }
+.s-card .s-value.nodeal { color:#e74c3c; }
+
+.section { margin-bottom:24px; }
+.section h2 { font-size:16px; color:#ccc; margin-bottom:12px; border-bottom:1px solid #1e2130; padding-bottom:8px; }
+
+.strategies { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+.strategy-card { background:#12131a; border-radius:8px; padding:16px; }
+.strategy-card h3 { font-size:14px; margin-bottom:8px; }
+.strategy-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.s-item { display:flex; justify-content:space-between; font-size:12px; padding:2px 0; }
+.s-label { color:#888; }
+.s-val { color:#fff; font-weight:600; font-family:'SF Mono',monospace; }
+
+.chart-container { background:#12131a; border-radius:8px; padding:20px; margin-bottom:24px; text-align:center; }
+.chart-legend { display:flex; gap:20px; justify-content:center; margin-top:8px; font-size:12px; }
+.legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+
+.round-card { background:#12131a; border-radius:8px; padding:16px; margin-bottom:12px; border:1px solid #1e2130; }
+.round-header { display:flex; justify-content:space-between; margin-bottom:12px; }
+.round-num { font-weight:700; color:#fff; }
+.round-gap { color:#f39c12; font-weight:600; font-size:13px; }
+.round-body { display:grid; grid-template-columns:1fr 40px 1fr; gap:12px; }
+.party-label { font-size:12px; font-weight:600; margin-bottom:4px; }
+.price-tag { font-size:18px; font-weight:700; color:#f39c12; margin-bottom:8px; }
+.decision-badge { font-size:10px; padding:2px 6px; border-radius:4px; background:#1e2130; color:#888; font-weight:600; vertical-align:middle; }
+.vs-divider { display:flex; align-items:center; justify-content:center; color:#555; font-weight:700; font-size:12px; }
+
+.utility-bars { margin-bottom:8px; }
+.u-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.u-label { font-size:10px; color:#888; width:45px; text-align:right; }
+.u-bar { flex:1; height:8px; background:#1a1b2e; border-radius:4px; overflow:hidden; }
+.u-bar > div { height:100%; border-radius:4px; transition:width 0.3s; }
+.u-val { font-size:10px; color:#aaa; width:40px; font-family:'SF Mono',monospace; }
+
+.msg-bubble { font-size:12px; padding:6px 10px; border-radius:8px; margin-top:6px; }
+.buyer-msg { background:#1a365d; border-left:3px solid #3498db; }
+.seller-msg { background:#2d1a1a; border-left:3px solid #e74c3c; }
+
+.round-tokens { font-size:11px; color:#666; margin-top:8px; text-align:center; border-top:1px solid #1e2130; padding-top:6px; }
+
+.cost-table { width:100%; border-collapse:collapse; font-size:12px; }
+.cost-table th { text-align:left; color:#888; padding:6px 8px; border-bottom:1px solid #1e2130; }
+.cost-table td { padding:6px 8px; border-bottom:1px solid #0e0f15; font-family:'SF Mono',monospace; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Haggle 전략 기반 자동 협상 데모</h1>
+  <div class="sub">iPhone 15 Pro 256GB Space Black (미개봉) | 시장가 $1050 | 모델: grok-4-fast</div>
+</div>
+
+<div class="summary-cards">
+  <div class="s-card"><div class="s-title">결과</div><div class="s-value deal">DEAL</div></div>
+  <div class="s-card"><div class="s-title">최종 가격</div><div class="s-value">$967</div></div>
+  <div class="s-card"><div class="s-title">절약</div><div class="s-value">$83 (7.9%)</div></div>
+  <div class="s-card"><div class="s-title">라운드</div><div class="s-value">5</div></div>
+  <div class="s-card"><div class="s-title">토큰</div><div class="s-value">3,707</div></div>
+  <div class="s-card"><div class="s-title">LLM 비용</div><div class="s-value">$0.0008</div></div>
+  <div class="s-card"><div class="s-title">소요 시간</div><div class="s-value">13.9s</div></div>
+  <div class="s-card"><div class="s-title">수락자</div><div class="s-value">CROSSED</div></div>
+</div>
+
+<div class="section">
+  <h2>전략 비교</h2>
+  <div class="strategies">
+    <div class="strategy-card" style="border-left:4px solid #3498db">
+      <h3 style="color:#3498db">Alice (구매자)</h3>
+      <div class="strategy-grid">
+        <div class="s-item"><span class="s-label">목표가</span><span class="s-val">$880</span></div>
+        <div class="s-item"><span class="s-label">한계가</span><span class="s-val">$1000</span></div>
+        <div class="s-item"><span class="s-label">beta</span><span class="s-val">1</span></div>
+        <div class="s-item"><span class="s-label">u_threshold</span><span class="s-val">0.55</span></div>
+        <div class="s-item"><span class="s-label">u_aspiration</span><span class="s-val">0.78</span></div>
+        <div class="s-item"><span class="s-label">w_p</span><span class="s-val">0.45</span></div>
+        <div class="s-item"><span class="s-label">w_t</span><span class="s-val">0.2</span></div>
+        <div class="s-item"><span class="s-label">w_r</span><span class="s-val">0.15</span></div>
+        <div class="s-item"><span class="s-label">w_s</span><span class="s-val">0.2</span></div>
+        <div class="s-item"><span class="s-label">persona</span><span class="s-val">price-sensitive-buyer</span></div>
+      </div>
+    </div>
+    <div class="strategy-card" style="border-left:4px solid #e74c3c">
+      <h3 style="color:#e74c3c">Bob (판매자)</h3>
+      <div class="strategy-grid">
+        <div class="s-item"><span class="s-label">목표가</span><span class="s-val">$1120</span></div>
+        <div class="s-item"><span class="s-label">한계가</span><span class="s-val">$920</span></div>
+        <div class="s-item"><span class="s-label">beta</span><span class="s-val">1</span></div>
+        <div class="s-item"><span class="s-label">u_threshold</span><span class="s-val">0.5</span></div>
+        <div class="s-item"><span class="s-label">u_aspiration</span><span class="s-val">0.8</span></div>
+        <div class="s-item"><span class="s-label">w_p</span><span class="s-val">0.5</span></div>
+        <div class="s-item"><span class="s-label">w_t</span><span class="s-val">0.15</span></div>
+        <div class="s-item"><span class="s-label">w_r</span><span class="s-val">0.15</span></div>
+        <div class="s-item"><span class="s-label">w_s</span><span class="s-val">0.2</span></div>
+        <div class="s-item"><span class="s-label">persona</span><span class="s-val">firm-but-fair-seller</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>가격 수렴 차트</h2>
+  <div class="chart-container">
+    <svg width="680" height="220" viewBox="-10 -10 700 230">
+      <path d="M0,178 L150,165 L300,149 L450,131 L600,117" fill="none" stroke="#3498db" stroke-width="2"/>
+      <path d="M0,22 L150,45 L300,73 L450,102 L600,125" fill="none" stroke="#e74c3c" stroke-width="2"/>
+      <line x1="0" y1="121" x2="600" y2="121" stroke="#2ecc71" stroke-width="2" stroke-dasharray="8,4"/><text x="605" y="125" fill="#2ecc71" font-size="12">Deal $967</text>
+      <circle cx="0" cy="178" r="4" fill="#3498db"/><text x="0" y="168" fill="#3498db" text-anchor="middle" font-size="11">$890</text><circle cx="150" cy="165" r="4" fill="#3498db"/><text x="150" y="155" fill="#3498db" text-anchor="middle" font-size="11">$907</text><circle cx="300" cy="149" r="4" fill="#3498db"/><text x="300" y="139" fill="#3498db" text-anchor="middle" font-size="11">$929</text><circle cx="450" cy="131" r="4" fill="#3498db"/><text x="450" y="121" fill="#3498db" text-anchor="middle" font-size="11">$953</text><circle cx="600" cy="117" r="4" fill="#3498db"/><text x="600" y="107" fill="#3498db" text-anchor="middle" font-size="11">$972</text>
+      <circle cx="0" cy="22" r="4" fill="#e74c3c"/><text x="0" y="40" fill="#e74c3c" text-anchor="middle" font-size="11">$1100</text><circle cx="150" cy="45" r="4" fill="#e74c3c"/><text x="150" y="63" fill="#e74c3c" text-anchor="middle" font-size="11">$1069</text><circle cx="300" cy="73" r="4" fill="#e74c3c"/><text x="300" y="91" fill="#e74c3c" text-anchor="middle" font-size="11">$1031</text><circle cx="450" cy="102" r="4" fill="#e74c3c"/><text x="450" y="120" fill="#e74c3c" text-anchor="middle" font-size="11">$992</text><circle cx="600" cy="125" r="4" fill="#e74c3c"/><text x="600" y="143" fill="#e74c3c" text-anchor="middle" font-size="11">$961</text>
+    </svg>
+    <div class="chart-legend">
+      <span><span class="legend-dot" style="background:#3498db"></span> Alice (구매자)</span>
+      <span><span class="legend-dot" style="background:#e74c3c"></span> Bob (판매자)</span>
+      <span><span class="legend-dot" style="background:#2ecc71"></span> 최종 거래가</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>라운드별 상세</h2>
+  <div class="round-card">
+      <div class="round-header">
+        <span class="round-num">Round 1</span>
+        <span class="round-gap">Gap $210</span>
+      </div>
+      <div class="round-body">
+        <div class="party buyer-side">
+          <div class="party-label" style="color:#3498db">Alice (구매자)</div>
+          <div class="price-tag">$890 <span class="decision-badge">COUNTER</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:42.430334067242455%;background:#3498db"></div></div><span class="u-val">0.424</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:2%;background:#2ecc71"></div></div><span class="u-val">0.000</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:99.1516703362123%;background:#f39c12"></div></div><span class="u-val">0.992</span></div>
+          </div>
+          <div class="msg-bubble buyer-msg">"890불 어때요? 미개봉 iPhone 15 Pro 새 제품이잖아요!"</div>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="party seller-side">
+          <div class="party-label" style="color:#e74c3c">Bob (판매자)</div>
+          <div class="price-tag">$1100 <span class="decision-badge">COUNTER</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:37.44553524982835%;background:#e74c3c"></div></div><span class="u-val">0.374</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:2%;background:#2ecc71"></div></div><span class="u-val">0.000</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:98.97023499885572%;background:#f39c12"></div></div><span class="u-val">0.990</span></div>
+          </div>
+          <div class="msg-bubble seller-msg">"미개봉 iPhone 15 Pro 256GB, 1100불 어때요? 새 제품이라요!"</div>
+        </div>
+      </div>
+      <div class="round-tokens">
+        Alice: 313+25tok $0.0001
+         | Bob: 315+29tok $0.0001
+      </div>
+    </div>
+<div class="round-card">
+      <div class="round-header">
+        <span class="round-num">Round 2</span>
+        <span class="round-gap">Gap $162</span>
+      </div>
+      <div class="round-body">
+        <div class="party buyer-side">
+          <div class="party-label" style="color:#3498db">Alice (구매자)</div>
+          <div class="price-tag">$907 <span class="decision-badge">COUNTER</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:42.259508920306175%;background:#3498db"></div></div><span class="u-val">0.423</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:2%;background:#2ecc71"></div></div><span class="u-val">0.000</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:98.29754460153089%;background:#f39c12"></div></div><span class="u-val">0.983</span></div>
+          </div>
+          <div class="msg-bubble buyer-msg">"907불 어때요? 미개봉 iPhone 프로 새 거예요."</div>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="party seller-side">
+          <div class="party-label" style="color:#e74c3c">Bob (판매자)</div>
+          <div class="price-tag">$1069 <span class="decision-badge">COUNTER</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:37.315190524521704%;background:#e74c3c"></div></div><span class="u-val">0.373</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:2%;background:#2ecc71"></div></div><span class="u-val">0.000</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:98.10127016347799%;background:#f39c12"></div></div><span class="u-val">0.981</span></div>
+          </div>
+          <div class="msg-bubble seller-msg">"907불은 좀 낮아요. 1069불로 어때? 미개봉 프로 새거예요!"</div>
+        </div>
+      </div>
+      <div class="round-tokens">
+        Alice: 329+21tok $0.0001
+         | Bob: 331+28tok $0.0001
+      </div>
+    </div>
+<div class="round-card">
+      <div class="round-header">
+        <span class="round-num">Round 3</span>
+        <span class="round-gap">Gap $102</span>
+      </div>
+      <div class="round-body">
+        <div class="party buyer-side">
+          <div class="party-label" style="color:#3498db">Alice (구매자)</div>
+          <div class="price-tag">$929 <span class="decision-badge">COUNTER</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:42.06143239219637%;background:#3498db"></div></div><span class="u-val">0.421</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:2%;background:#2ecc71"></div></div><span class="u-val">0.000</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:97.30716196098184%;background:#f39c12"></div></div><span class="u-val">0.973</span></div>
+          </div>
+          <div class="msg-bubble buyer-msg">"929불 어때요? 미개봉 15 프로 새 제품이잖아요."</div>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="party seller-side">
+          <div class="party-label" style="color:#e74c3c">Bob (판매자)</div>
+          <div class="price-tag">$1031 <span class="decision-badge">NEAR_DEAL</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:58.872756564766036%;background:#e74c3c"></div></div><span class="u-val">0.589</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:43.41792774341453%;background:#2ecc71"></div></div><span class="u-val">0.434</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:97.09195128705849%;background:#f39c12"></div></div><span class="u-val">0.971</span></div>
+          </div>
+          <div class="msg-bubble seller-msg">"1031에 어때요? 미개봉 새 프로예요! 😊"</div>
+        </div>
+      </div>
+      <div class="round-tokens">
+        Alice: 345+23tok $0.0001
+         | Bob: 351+21tok $0.0001
+      </div>
+    </div>
+<div class="round-card">
+      <div class="round-header">
+        <span class="round-num">Round 4</span>
+        <span class="round-gap">Gap $39</span>
+      </div>
+      <div class="round-body">
+        <div class="party buyer-side">
+          <div class="party-label" style="color:#3498db">Alice (구매자)</div>
+          <div class="price-tag">$953 <span class="decision-badge">COUNTER</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:41.79405741279327%;background:#3498db"></div></div><span class="u-val">0.418</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:2%;background:#2ecc71"></div></div><span class="u-val">0.000</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:95.97028706396635%;background:#f39c12"></div></div><span class="u-val">0.960</span></div>
+          </div>
+          <div class="msg-bubble buyer-msg">"미개봉 아이폰15프로 256GB에 953불로 해주세요! 😊"</div>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="party seller-side">
+          <div class="party-label" style="color:#e74c3c">Bob (판매자)</div>
+          <div class="price-tag">$992 <span class="decision-badge">NEAR_DEAL</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:70.20574723030285%;background:#e74c3c"></div></div><span class="u-val">0.702</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:66.49364096070337%;background:#2ecc71"></div></div><span class="u-val">0.665</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:95.72617833300778%;background:#f39c12"></div></div><span class="u-val">0.957</span></div>
+          </div>
+          <div class="msg-bubble seller-msg">"992에 미개봉 15 프로 어때? 새거라 이게 최선이야!"</div>
+        </div>
+      </div>
+      <div class="round-tokens">
+        Alice: 360+25tok $0.0001
+         | Bob: 364+25tok $0.0001
+      </div>
+    </div>
+<div class="round-card">
+      <div class="round-header">
+        <span class="round-num">Round 5</span>
+        <span class="round-gap">Gap $11</span>
+      </div>
+      <div class="round-body">
+        <div class="party buyer-side">
+          <div class="party-label" style="color:#3498db">Alice (구매자)</div>
+          <div class="price-tag">$972 <span class="decision-badge">NEAR_DEAL</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:62.180200623889114%;background:#3498db"></div></div><span class="u-val">0.622</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:45.81569099913263%;background:#2ecc71"></div></div><span class="u-val">0.458</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:94.81569837139719%;background:#f39c12"></div></div><span class="u-val">0.948</span></div>
+          </div>
+          <div class="msg-bubble buyer-msg">"972로 가요, 미개봉 프로 새거라 괜찮아요!"</div>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="party seller-side">
+          <div class="party-label" style="color:#e74c3c">Bob (판매자)</div>
+          <div class="price-tag">$961 <span class="decision-badge">NEAR_DEAL</span></div>
+          <div class="utility-bars">
+            <div class="u-row"><span class="u-label">U_total</span><div class="u-bar"><div style="width:74.21370610316832%;background:#e74c3c"></div></div><span class="u-val">0.742</span></div>
+            <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:74.86448511604031%;background:#2ecc71"></div></div><span class="u-val">0.749</span></div>
+            <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:94.54309030098777%;background:#f39c12"></div></div><span class="u-val">0.945</span></div>
+          </div>
+          <div class="msg-bubble seller-msg">"961로 가요, 미개봉 프로 새거예요! 어때요?"</div>
+        </div>
+      </div>
+      <div class="round-tokens">
+        Alice: 379+22tok $0.0001
+         | Bob: 379+22tok $0.0001
+      </div>
+    </div>
+</div>
+
+<div class="section">
+  <h2>LLM 비용 상세</h2>
+  <table class="cost-table">
+    <thead><tr><th>Round</th><th>Alice 입력</th><th>Alice 출력</th><th>Bob 입력</th><th>Bob 출력</th><th>비용</th></tr></thead>
+    <tbody>
+    <tr><td>R1</td><td>313</td><td>25</td><td>315</td><td>29</td><td>$0.0002</td></tr>
+<tr><td>R2</td><td>329</td><td>21</td><td>331</td><td>28</td><td>$0.0002</td></tr>
+<tr><td>R3</td><td>345</td><td>23</td><td>351</td><td>21</td><td>$0.0002</td></tr>
+<tr><td>R4</td><td>360</td><td>25</td><td>364</td><td>25</td><td>$0.0002</td></tr>
+<tr><td>R5</td><td>379</td><td>22</td><td>379</td><td>22</td><td>$0.0002</td></tr>
+    <tr style="font-weight:700;border-top:2px solid #333"><td>합계</td><td colspan="4">3,707 토큰</td><td>$0.0008</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div style="text-align:center;color:#555;font-size:11px;margin-top:20px">
+  Generated by Haggle Strategy Auto-Negotiation Demo | 2026-04-11T18:53:16.829Z
+</div>
+</body>
+</html>
