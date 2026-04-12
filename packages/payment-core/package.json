@@ -11,6 +11,14 @@
     "./lite": {
       "types": "./src/lite.ts",
       "default": "./dist/lite.js"
+    },
+    "./heavy/real-x402-adapter": {
+      "types": "./src/real-x402-adapter.ts",
+      "default": "./dist/real-x402-adapter.js"
+    },
+    "./heavy/viem-contracts": {
+      "types": "./src/viem-contracts.ts",
+      "default": "./dist/viem-contracts.js"
     }
   },
   "scripts": {

@@ -7,3 +7,5 @@ export * from "./trust-ledger.js";
 export * from "./trust-policy.js";
 export * from "./hold-expiration.js";
 export * from "./order-lifecycle.js";
+export * from "./pipeline-events.js";
+export * from "./pipeline-router.js";

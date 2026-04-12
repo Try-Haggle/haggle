@@ -28,4 +28,16 @@ export const COMMERCE_MODULE_BOUNDARIES: ModuleBoundary[] = [
     consumes_events: ["payment.chargeback.received", "shipment.delivery_exception", "shipment.delivered"],
     can_run_as_standalone_service: true,
   },
+  {
+    name: "negotiation",
+    owns_entities: ["negotiation_session", "negotiation_round", "negotiation_group"],
+    emits_events: [
+      "negotiation.session.created",
+      "negotiation.round.executed",
+      "negotiation.agreed",
+      "negotiation.session.terminal",
+    ],
+    consumes_events: ["intent.matched", "hold.expired"],
+    can_run_as_standalone_service: true,
+  },
 ];
