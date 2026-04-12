@@ -7,7 +7,11 @@ export const tags = pgTable("tags", {
   status: text("status", { enum: ["CANDIDATE", "EMERGING", "OFFICIAL", "DEPRECATED"] }).notNull().default("CANDIDATE"),
   category: text("category").notNull(),
   useCount: integer("use_count").notNull().default(0),
+  // legacy — use tag_edges for DAG (multi-parent). Kept for backwards compat.
   parentId: uuid("parent_id"),
+  idf: numeric("idf", { precision: 8, scale: 4 }).notNull().default("0"),
+  createdBy: text("created_by", { enum: ["LLM", "USER", "ADMIN", "IMPORT"] }).notNull().default("USER"),
+  aliases: text("aliases").array().notNull().default([]),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
