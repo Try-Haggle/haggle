@@ -164,18 +164,18 @@ Prices in minor units (cents). $700 = 70000`;
 
 function buildUnderstandPrompt(sellerMessage: string): { system: string; user: string } {
   return {
-    system: `You are Stage 1 (UNDERSTAND) of the Haggle Negotiation Protocol.
-Parse the seller's message into structured intent.
-Respond ONLY with valid JSON:
+    system: `당신은 Haggle 협상 프로토콜의 Stage 1 (UNDERSTAND) 모듈입니다.
+판매자의 메시지를 분석하여 구조화된 의도로 파싱하세요.
+반드시 유효한 JSON만 응답하세요:
 {
-  "price_offer": number (minor units, e.g. $700 = 70000),
+  "price_offer": number (소수점 단위, 예: $700 = 70000),
   "conditions_proposed": [{"term": string, "value": any}],
   "conditions_claimed": [{"term": string, "value": any, "verified": false}],
   "sentiment": "cooperative"|"firm"|"aggressive"|"passive",
   "tactic_detected": string,
   "message_type": "offer"|"counter"|"conditional_offer"|"rejection"|"acceptance"|"question"
 }`,
-    user: `SELLER MESSAGE: "${sellerMessage}"`,
+    user: `판매자 메시지: "${sellerMessage}"`,
   };
 }
 
@@ -185,28 +185,28 @@ function buildDecidePrompt(session: DemoSession, coaching: RefereeCoaching, unde
   const tactics = skill.getTactics().join(', ');
 
   return {
-    system: `You are Stage 3 (DECIDE) of the Haggle Negotiation Protocol — BUYER side.
+    system: `당신은 Haggle 협상 프로토콜의 Stage 3 (DECIDE) — 구매자 측 모듈입니다.
 ${CODEC_LEGEND}
 
-## Category Knowledge
+## 카테고리 지식
 ${skillCtx}
-Available tactics: ${tactics}
-Constraints:
+사용 가능한 전술: ${tactics}
+제약 조건:
 ${constraints}
 
-## Rules
-1. NEVER exceed your floor price (max you'll pay)
-2. Follow phase-appropriate actions:
-   - OPENING: COUNTER (initial offer)
+## 규칙
+1. 절대로 floor price(최대 지불 의향 가격)를 초과하지 마세요
+2. Phase에 맞는 행동을 하세요:
+   - OPENING: COUNTER (첫 제안)
    - BARGAINING: COUNTER, ACCEPT, REJECT, HOLD
    - CLOSING: CONFIRM, HOLD
-3. Always provide reasoning (internal, not shown to opponent)
+3. reasoning은 반드시 한국어로 작성 (내부용, 상대방에게 안 보임)
 
-Respond ONLY with valid JSON:
+반드시 유효한 JSON만 응답하세요:
 {
   "action": "COUNTER"|"ACCEPT"|"REJECT"|"HOLD"|"DISCOVER"|"CONFIRM",
-  "price": number (minor units),
-  "reasoning": string,
+  "price": number (소수점 단위),
+  "reasoning": string (한국어),
   "tactic_used": string,
   "non_price_terms": {},
   "phase_assessment": "OPENING"|"BARGAINING"|"CLOSING",
@@ -216,31 +216,32 @@ Respond ONLY with valid JSON:
 ${encodeSharedMemo(session)}
 ${encodePrivateMemo(session)}
 
-## Coaching
-Recommended price: $${coaching.recommended_price} (minor: ${coaching.recommended_price})
-Range: $${coaching.acceptable_range.min}-$${coaching.acceptable_range.max}
-Tactic: ${coaching.suggested_tactic}
-Opponent: ${coaching.opponent_pattern}
-Time pressure: ${(coaching.time_pressure * 100).toFixed(0)}%
-${coaching.warnings.length > 0 ? 'Warnings: ' + coaching.warnings.join('; ') : ''}
+## 코칭 지시
+추천 가격: $${coaching.recommended_price} (소수점: ${coaching.recommended_price})
+허용 범위: $${coaching.acceptable_range.min}-$${coaching.acceptable_range.max}
+추천 전술: ${coaching.suggested_tactic}
+상대방 패턴: ${coaching.opponent_pattern}
+시간 압박: ${(coaching.time_pressure * 100).toFixed(0)}%
+${coaching.warnings.length > 0 ? '경고: ' + coaching.warnings.join('; ') : ''}
 
-## Seller's Move (from UNDERSTAND)
-Price: $${understood.price_offer} (${understood.message_type})
-Sentiment: ${understood.sentiment}
-Tactic: ${understood.tactic_detected}
-${understood.conditions_proposed.length > 0 ? 'Conditions proposed: ' + JSON.stringify(understood.conditions_proposed) : ''}`,
+## 판매자 행동 (UNDERSTAND 결과)
+제안 가격: $${understood.price_offer} (${understood.message_type})
+감정: ${understood.sentiment}
+전술: ${understood.tactic_detected}
+${understood.conditions_proposed.length > 0 ? '제안 조건: ' + JSON.stringify(understood.conditions_proposed) : ''}`,
   };
 }
 
 function buildRespondPrompt(decision: ProtocolDecision, phase: NegotiationPhase, recentFacts: RoundFact[]): { system: string; user: string } {
   return {
-    system: `You are Stage 5 (RESPOND) of the Haggle Negotiation Protocol — BUYER side.
-Generate a natural, human-like buyer message. Style: professional, neutral formality, no emoji.
-Keep it 1-2 sentences. Don't reveal strategy or floor price.
-Respond ONLY with valid JSON: { "message": string }`,
-    user: `DECISION: ${JSON.stringify(decision)}
-PHASE: ${phase}
-${recentFacts.length > 0 ? 'LAST EXCHANGE: Seller offered $' + recentFacts[recentFacts.length - 1]!.seller_offer : ''}`,
+    system: `당신은 Haggle 협상 프로토콜의 Stage 5 (RESPOND) — 구매자 측 모듈입니다.
+자연스럽고 사람다운 한국어 구매자 메시지를 생성하세요.
+스타일: 정중하고 전문적, 이모지 사용 금지, 1-2문장.
+전략이나 floor price는 절대 노출하지 마세요.
+반드시 유효한 JSON만 응답하세요: { "message": string (한국어) }`,
+    user: `결정 내용: ${JSON.stringify(decision)}
+현재 Phase: ${phase}
+${recentFacts.length > 0 ? '직전 교환: 판매자 제안 $' + recentFacts[recentFacts.length - 1]!.seller_offer : ''}`,
   };
 }
 
@@ -366,22 +367,23 @@ export function registerDemoRoute(app: FastifyInstance) {
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
       '0a_STRATEGY_GENERATION',
-      `You are a buyer strategy advisor for the Haggle protocol.
-Given an item listing and market data, generate a structured buying strategy.
-Respond ONLY with valid JSON:
+      `당신은 Haggle 프로토콜의 구매 전략 어드바이저입니다.
+아이템 정보와 시장 데이터를 분석하여 구매 전략을 생성하세요.
+approach와 key_concerns는 반드시 한국어로 작성하세요.
+반드시 유효한 JSON만 응답하세요:
 {
-  "target_price": number (minor units — cents, e.g. $750 = 75000),
-  "floor_price": number (minor units — absolute max buyer will pay),
+  "target_price": number (소수점 단위 — 센트, 예: $750 = 75000),
+  "floor_price": number (소수점 단위 — 구매자가 지불할 절대 최대 금액),
   "opening_tactic": "anchoring"|"reciprocal_concession"|"bundling",
-  "approach": string (1 sentence),
-  "key_concerns": [string],
+  "approach": string (한국어, 1문장),
+  "key_concerns": [string (한국어)],
   "negotiation_style": "aggressive"|"balanced"|"defensive"
 }`,
-      `ITEM: ${item.title}
-CONDITION: ${item.condition}
-MARKET: Swappa 30-day median $${item.swappa_median}
-SELLER ASK: $${seller.ask_price}
-MY MAX BUDGET: $${buyer_budget.max_budget}`,
+      `아이템: ${item.title}
+상태: ${item.condition}
+시장가: Swappa 30일 중간값 $${item.swappa_median}
+판매자 희망가: $${seller.ask_price}
+내 최대 예산: $${buyer_budget.max_budget}`,
       parseJSON<DemoStrategy>,
     );
     traces.push(strategyTrace);
@@ -394,17 +396,18 @@ MY MAX BUDGET: $${buyer_budget.max_budget}`,
 
     const termTrace = await traceLLMCall<TermAnalysis>(
       '0b_TERM_ANALYSIS',
-      `You are a negotiation term analyst for the Haggle protocol.
-Given a strategy and available terms, analyze which terms matter most for this deal.
-Respond ONLY with valid JSON:
+      `당신은 Haggle 프로토콜의 협상 조건 분석가입니다.
+전략과 사용 가능한 조건 목록을 분석하여 이 거래에서 중요한 조건을 판단하세요.
+rationale은 반드시 한국어로 작성하세요.
+반드시 유효한 JSON만 응답하세요:
 {
-  "priority_terms": [{"id": string, "importance": "critical"|"important"|"nice_to_have", "target_value": string, "rationale": string}],
-  "deal_breakers": [{"id": string, "condition": string, "rationale": string}]
+  "priority_terms": [{"id": string, "importance": "critical"|"important"|"nice_to_have", "target_value": string, "rationale": string (한국어)}],
+  "deal_breakers": [{"id": string, "condition": string, "rationale": string (한국어)}]
 }`,
-      `STRATEGY: target=$${(strategy.target_price / 100).toFixed(0)}, floor=$${(strategy.floor_price / 100).toFixed(0)}, style=${strategy.negotiation_style}
-AVAILABLE TERMS:
+      `전략: 목표=$${(strategy.target_price / 100).toFixed(0)}, 최대=$${(strategy.floor_price / 100).toFixed(0)}, 스타일=${strategy.negotiation_style}
+사용 가능한 조건:
 ${termsForPrompt}
-ITEM CONDITION: ${item.condition}`,
+아이템 상태: ${item.condition}`,
       parseJSON<TermAnalysis>,
     );
     traces.push(termTrace);
@@ -507,7 +510,7 @@ ITEM CONDITION: ${item.condition}`,
     // Stage 1: UNDERSTAND (LLM)
     // Test: LLM이 자연어 메시지를 구조화된 의도로 파싱하는가?
     // ────────────────────────────────────────────────
-    const sellerText = seller_message ?? `I can do $${seller_price} for this. What do you think?`;
+    const sellerText = seller_message ?? `$${seller_price}에 드릴 수 있습니다. 어떻게 생각하세요?`;
     const understandPrompts = buildUnderstandPrompt(sellerText);
 
     const understandTrace = await traceLLMCall<UnderstandResult>(
