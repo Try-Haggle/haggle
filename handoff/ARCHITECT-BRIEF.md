@@ -1,147 +1,481 @@
-# Architect Brief
-*Written by Architect. Read by Builder and Reviewer.*
+# Architect Brief — Step 65
+
+*Written by Arch. 2026-04-12.*
 *Overwrite this file each step — it is not a log, it is the current active brief.*
 
 ---
 
-## Step 55 — Attestation Commit Backend (Supabase Storage)
+## Step 65 — 6-Stage Pipeline 리팩토링 + 모듈화
 
 ### Context
 
-Part A (Step 54-후속)에서 `seller_attestation_commits` 테이블 + `attestation-hash.ts` 유틸 완성. 이번 스텝은 **외부에서 호출 가능한 REST 엔드포인트 + 저장소 연동 + 검증 서비스**를 붙인다.
+Doc 29 (`docs/engine/29_6Stage_리팩토링_구현계획.md`)에 따라 현재 13-step 모노리스 executor(`lib/llm-negotiation-executor.ts`)를 6-Stage 독립 모듈로 분리한다.
 
-프론트엔드 판매 위자드는 Project Owner가 별도로 만든다. **이 스텝은 서버측만.**
+**왜 지금 하는가:**
+1. Doc 28 P0 기능(SHA-256 해시, Explainability, L5 Signals)을 넣으려면 Stage별 경계가 있어야 함
+2. 외부 에이전트가 Stage 2(Context), 4(Validate), 6(Persist)만 골라 쓸 수 있는 구조 필요
+3. 현재 `context-assembly.ts`가 dead code (executor가 호출하지 않음)
 
-### Locked Decisions
+**기준 문서:**
+- `docs/engine/26_LLM_Native_협상_파이프라인.md` — 6-Stage 설계
+- `docs/engine/29_6Stage_리팩토링_구현계획.md` — 구현 계획
 
-1. **저장소 = Supabase Storage** (S3 아님). 이유: 이미 `@supabase/supabase-js`가 deps에 있음, 신규 자격증명 불필요, presigned upload 네이티브 지원.
-2. **Bucket name**: `attestation-evidence` (Project Owner가 Supabase 대시보드에서 생성. Bob은 코드만 작성, 버킷 생성 자체는 인프라.)
-3. **Bucket privacy**: Private (public read 금지). RLS 또는 signed URL로만 접근.
-4. **90일 lifecycle**: 이번 스텝에서는 구현 안 함. Step 57+에서 Supabase cron 또는 Edge Function으로 처리. 이번엔 `expires_at` 컬럼만 정확히 기록.
-5. **IMEI 암호화**: **Supabase Vault (pgsodium) 사용**. `imei_encrypted` 컬럼에 Vault로 암호화된 ciphertext 저장. 읽기 시 `vault.decrypted_secrets` view 또는 `pgsodium.crypto_aead_det_decrypt()` 사용. Vault key는 Supabase 대시보드에서 Project Owner가 생성(`attestation_imei_key`). Bob은 SQL/서비스 레이어에서 encrypt/decrypt 호출만 작성. 평문 저장 금지.
-6. **Canonical hash**: 기존 `apps/api/src/lib/attestation-hash.ts` 그대로 사용. 수정 금지.
+**기존 코드 변경 금지:**
+- `negotiation/referee/` — coach.ts, validator.ts, referee-service.ts 그대로 사용
+- `negotiation/skills/` — default-engine-skill.ts 그대로 사용
+- `negotiation/memory/` — core-memory.ts, session-memory.ts, checkpoint-store.ts 그대로 사용
+- `negotiation/phase/` — phase-machine.ts 그대로 사용
+- `negotiation/adapters/xai-client.ts` — 그대로 사용
 
-### API Surface
+---
 
-**1) `POST /api/attestation/presigned-upload`**
-- 판매자 위자드가 각 사진 업로드 직전에 호출
-- Request body:
-  ```json
-  { "listingId": "uuid", "filename": "front.jpg", "contentType": "image/jpeg" }
-  ```
-- Response:
-  ```json
-  { "uploadUrl": "https://...signed...", "storagePath": "attestation-evidence/{listingId}/front.jpg", "expiresIn": 600 }
-  ```
-- 제약: 인증 필수(`requireAuth`), 호출자가 해당 listing의 seller여야 함
-- Supabase SDK: `supabase.storage.from('attestation-evidence').createSignedUploadUrl(path)`
-- 파일명 sanitization: filename은 alphanumeric + `.` 만 허용, 나머지는 거부
+### 설계 원칙
 
-**2) `POST /api/attestation/commit`**
-- 모든 사진 업로드 완료 후 위자드 submit 시 호출
-- Request body:
-  ```json
-  {
-    "listingId": "uuid",
-    "imei": "123456789012345",
-    "batteryHealthPct": 92,
-    "findMyOff": true,
-    "photoStoragePaths": ["attestation-evidence/{listingId}/front.jpg", ...]
-  }
-  ```
-- 처리 순서:
-  1. 인증 + seller 소유권 검증
-  2. 해당 listing에 이미 commit 있으면 409 Conflict (append-only)
-  3. 모든 `photoStoragePaths`가 실제 Supabase에 존재하는지 head 요청으로 확인
-  4. `canonicalizeAttestation()` 호출 → canonical string
-  5. `computeCommitHash()` → sha256
-  6. `sellerAttestationCommits` insert (expiresAt = now + 30일, 임시값, 실제 리뷰 기간은 arp-core가 주문 단계에서 따로 계산)
-  7. 응답: `{ commitId, commitHash, committedAt }`
-- 실패 시 rollback 정책: upload된 파일은 그대로 둔다 (90일 cron이 치움). DB insert만 롤백.
+1. **각 Stage는 순수 함수** — DB 의존 없음 (Stage 6 persist 제외)
+2. **외부 export** — 모든 Stage 함수를 named export하여 외부 에이전트 호출 가능
+3. **기존 테스트 보존** — 기존 14개 시나리오 그룹(640 tests) 깨지지 않도록 legacy 래퍼 유지
+4. **Feature flag 전환** — `NEGOTIATION_PIPELINE=legacy|staged` (default: legacy)
 
-**3) `GET /api/attestation/:listingId`**
-- 분쟁 시 조회용
-- 인증 필수. 접근 제어:
-  - seller 본인 → 전체 반환
-  - buyer (해당 listing 구매자) → 전체 반환
-  - admin → 전체 반환
-  - 그 외 → 404 (존재 여부 숨김)
-- Response: commit row + signed view URLs (10분 유효) for each photo path
-- IMEI는 `imei_encrypted` 필드명으로 그대로 반환 (암호화 미구현이지만 계약은 유지)
+---
 
-**4) 서비스: `verifyAttestationCommit(listingId, submittedPayload)`**
-- 라우트 아님. 서비스 함수. `dispute-core`에서 호출 예정.
-- 처리:
-  1. DB에서 stored commit 조회
-  2. `submittedPayload`를 다시 canonicalize + hash
-  3. stored `commitHash`와 비교
-  4. `{ match: boolean, storedHash, computedHash, divergence?: string[] }` 반환
-- 단위 테스트: 동일 payload → match true / field 1개 변경 → match false / photoStoragePaths 순서 뒤섞임 → match false
+### 서브스텝 구조
 
-### 파일 구조
+| Step | 내용 | 의존성 | 예상 LOC |
+|------|------|--------|----------|
+| 65-A | 타입 + 인터페이스 확장 | 없음 | ~120 |
+| 65-B | memo-codec.ts + memo-manager.ts | 65-A | ~180 |
+| 65-C | 6 Stage 함수 + pipeline 오케스트레이터 | 65-A, 65-B | ~450 |
+| 65-D | executor.ts (DB TX 래퍼 + feature flag) | 65-C | ~200 |
+| 65-E | 테스트 | 65-C, 65-D | ~300 |
 
-```
-apps/api/src/
-├── routes/attestation.ts           ← 신규 (3개 엔드포인트)
-├── services/
-│   ├── attestation.service.ts      ← 신규 (commit, read, verify)
-│   └── supabase-storage.service.ts ← 신규 (presigned URL, head 존재 체크)
-├── lib/attestation-hash.ts          ← 기존 (수정 금지)
-└── __tests__/
-    ├── attestation.service.test.ts ← 신규 (hash verify, access control, 409 conflict)
-    └── attestation.routes.test.ts  ← 신규 (엔드포인트 레벨, 인증 포함)
+---
+
+## Step 65-A — 타입 + 인터페이스 확장
+
+### 수정: `negotiation/types.ts`
+
+**1. L5Signals 인터페이스 추가**
+
+```typescript
+export interface L5Signals {
+  market?: {
+    avg_sold_price_30d: number;
+    price_trend: 'rising' | 'stable' | 'falling';
+    active_listings_count: number;
+    source_prices: Array<{ platform: string; price: number }>;
+  };
+  competition?: {
+    concurrent_sessions: number;
+    best_competing_offer?: number;
+  };
+  category?: {
+    avg_discount_rate: number;
+    avg_rounds_to_deal: number;
+  };
+}
 ```
 
-### 제약
+**2. RoundExplainability 인터페이스 추가**
 
-- **DO NOT TOUCH**: `packages/shared`, `packages/db` 코어, `apps/api/src/lib/attestation-hash.ts`, 기존 route 파일들.
-- **DO NOT ADD**: 새 npm 패키지. Supabase SDK는 이미 있음.
-- **DO NOT**: 프론트 코드 손대기. 이번 스텝은 서버만.
-- **DO**: IMEI는 Supabase Vault로 암호화. insert 시 `pgsodium.crypto_aead_det_encrypt()`, select 시 `vault.decrypted_secrets` 또는 decrypt 함수. Vault key 이름: `attestation_imei_key` (Project Owner가 대시보드에서 생성).
-- **DO NOT**: 90일 TTL cron 구현. Step 57+.
-- **DO**: 기존 `requireAuth` 미들웨어 패턴 따르기 — `apps/api/src/routes/tags.ts` 참고.
-- **DO**: 기존 에러 응답 형식 따르기.
-- **DO**: 모든 path/filename 입력 sanitization.
-- **DO**: Supabase 버킷명/경로 상수는 `apps/api/src/lib/supabase-storage-paths.ts`에 분리.
+```typescript
+export interface RoundExplainability {
+  round: number;
+  coach_recommendation: {
+    price: number;
+    basis: string;
+    acceptable_range: { min: number; max: number };
+  };
+  decision: {
+    source: 'llm' | 'skill';
+    price?: number;
+    action: string;
+    tactic_used?: string;
+    reasoning_summary: string;
+  };
+  referee_result: {
+    violations: Array<{
+      rule: string;
+      severity: 'HARD' | 'SOFT';
+      detail: string;
+    }>;
+    action: 'PASS' | 'WARN_AND_PASS' | 'AUTO_FIX' | 'BLOCK';
+    auto_fix_applied: boolean;
+  };
+  final_output: {
+    price?: number;
+    action: string;
+  };
+}
+```
 
-### Environment Variables
+**3. ModelAdapter 확장** — 기존 필드 유지, 2개 추가
 
-기존에 이미 있어야 할 것들 (확인만, 추가 금지):
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+```typescript
+export interface ModelAdapter {
+  // 기존 유지
+  readonly modelId: string;
+  readonly tier: 'basic' | 'standard' | 'advanced' | 'frontier';
+  buildSystemPrompt(skillContext: string): string;
+  buildUserPrompt(
+    memory: CoreMemory,
+    recentFacts: RoundFact[],
+    signals?: string[],
+    prevMemory?: CoreMemory,
+  ): string;
+  parseResponse(raw: string): ProtocolDecision;
+  coachingLevel(): 'DETAILED' | 'STANDARD' | 'LIGHT';
 
-Bob 확인사항: `apps/api/.env.example`에 위 두 개가 있는지 grep. 없으면 `.env.example`에만 추가 (실제 값은 Project Owner가 설정).
+  // 신규
+  readonly location: 'remote' | 'local';
+  readonly capabilities: readonly ('parse' | 'reason' | 'generate')[];
+}
+```
 
-### Known Risks (BUILD-LOG에 기록)
+**4. StageConfig 인터페이스 추가**
 
-1. **Supabase Vault key 관리** — key rotation은 Project Owner 책임. Bob은 key 이름만 참조.
-2. **Supabase head() 호출 비용** — commit 당 N개 (사진 수) head 요청. 사진 5개 기준 5 calls. 무시 가능.
-3. **PhotoStoragePaths 순서 의존성** — canonical hash는 순서 보존. 판매자가 재업로드 시 순서 바뀌면 hash 달라짐. 위자드 UX에서 순서 고정 필요 — 프론트 책임.
+```typescript
+export interface StageConfig {
+  adapters: {
+    UNDERSTAND: ModelAdapter;
+    DECIDE: ModelAdapter;
+    RESPOND: ModelAdapter;
+  };
+  modes: {
+    RESPOND: 'template' | 'llm';
+    VALIDATE: 'full' | 'lite';
+  };
+  memoEncoding: 'codec' | 'raw';
+  reasoningEnabled: boolean;
+}
+```
 
-### Success Criteria
+**5. Stage Input/Output 타입들** — `negotiation/pipeline/types.ts`에 신규 파일로
 
-- [ ] 3개 엔드포인트 구현 완료
-- [ ] `verifyAttestationCommit()` 서비스 구현 + 단위 테스트 3개 이상
-- [ ] 접근 제어 테스트 (seller/buyer/admin/기타)
-- [ ] 409 Conflict 중복 commit 테스트
-- [ ] `pnpm --filter @haggle/api typecheck` clean
-- [ ] `pnpm --filter @haggle/api test` green (기존 263 + 신규)
-- [ ] `pnpm test` 전체 green
-- [ ] BUILD-LOG에 Known Risks 3개 명시
-- [ ] REVIEW-REQUEST.md 작성
+```typescript
+// Stage 1
+export interface UnderstandInput {
+  raw_message: string;
+  sender_role: 'buyer' | 'seller';
+}
+export interface UnderstandOutput {
+  price_offer?: number;
+  action_intent: 'OFFER' | 'COUNTER' | 'ACCEPT' | 'REJECT' | 'QUESTION' | 'INFO';
+  conditions: Record<string, unknown>;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  raw_text: string;
+}
 
-### Build Order (Bob)
+// Stage 2
+export interface ContextInput {
+  understood: UnderstandOutput;
+  memory: CoreMemory;
+  facts: RoundFact[];
+  opponent: OpponentPattern;
+  skill: NegotiationSkill;
+  l5_signals?: L5Signals;
+}
+export interface ContextOutput {
+  layers: ContextLayers;
+  coaching: RefereeCoaching;
+  memo_snapshot: string;
+}
 
-1. Supabase storage 서비스 (`supabase-storage.service.ts`) — presigned URL, head 체크
-2. Attestation 서비스 (`attestation.service.ts`) — commit, read, verify
-3. Attestation 라우트 (`attestation.ts`) — 3개 엔드포인트 + 인증
-4. 단위 테스트
-5. 통합 테스트 (라우트 레벨)
-6. BUILD-LOG 업데이트 (append, don't overwrite)
-7. REVIEW-REQUEST.md 작성
+// Stage 3
+export interface DecideInput {
+  context: ContextOutput;
+  adapter: ModelAdapter;
+  skill: NegotiationSkill;
+  phase: NegotiationPhase;
+  config: StageConfig;
+  memory: CoreMemory;
+  facts: RoundFact[];
+  opponent: OpponentPattern;
+}
+export interface DecideOutput {
+  decision: ProtocolDecision;
+  source: 'llm' | 'skill';
+  reasoning_mode: boolean;
+  llm_raw?: string;
+  tokens?: { prompt: number; completion: number };
+  latency_ms?: number;
+}
 
-### Handoff
+// Stage 4
+export interface ValidateInput {
+  decision: DecideOutput;
+  coaching: RefereeCoaching;
+  memory: CoreMemory;
+  phase: NegotiationPhase;
+}
+export interface ValidateOutput {
+  final_decision: ProtocolDecision;
+  validation: ValidationResult;
+  auto_fix_applied: boolean;
+  retry_count: number;
+  explainability: RoundExplainability;
+}
 
-Bob: 이 브리프 + `apps/api/src/lib/attestation-hash.ts` + `packages/db/src/schema/seller-attestation-commits.ts` 읽고 시작. 의문점은 ARCHITECT-BRIEF 확인 요청으로 돌려보내. 브리프 불완전하다고 느끼면 코드 한 줄도 쓰지 말 것.
+// Stage 5
+export interface RespondInput {
+  validated: ValidateOutput;
+  memory: CoreMemory;
+  adapter: ModelAdapter;
+  skill: NegotiationSkill;
+  config: StageConfig;
+}
+export interface RespondOutput {
+  message: string;
+  tone: string;
+  llm_raw?: string;
+  tokens?: { prompt: number; completion: number };
+}
 
-Richard: Bob이 REVIEW-REQUEST 쓰면 대기. 핵심 리뷰 포인트는 접근 제어(특히 `GET /attestation/:listingId`의 404 숨김), canonical hash 무수정 확인, 그리고 Supabase SDK 사용 패턴이 기존 코드 컨벤션과 일치하는지.
+// Stage 6
+export interface PersistInput {
+  session_id: string;
+  round_number: number;
+  decision: ValidateOutput;
+  response: RespondOutput;
+  memory: CoreMemory;
+  memo_hash: string;
+  explainability: RoundExplainability;
+}
+export interface PersistOutput {
+  phase_transition?: { from: string; to: string; event: string };
+  session_done: boolean;
+}
+
+// Pipeline 전체
+export interface PipelineResult {
+  round: number;
+  phase: string;
+  stages: {
+    understand: UnderstandOutput;
+    context: ContextOutput;
+    decide: DecideOutput;
+    validate: ValidateOutput;
+    respond: RespondOutput;
+    persist: PersistOutput;
+  };
+  explainability: RoundExplainability;
+  cost: { tokens: number; usd: number; latency_ms: number };
+  done: boolean;
+}
+```
+
+### 수정: `negotiation/adapters/grok-fast-adapter.ts`
+
+기존 코드에 `location`과 `capabilities` 필드 2개만 추가:
+
+```typescript
+readonly location = 'remote' as const;
+readonly capabilities = ['parse', 'reason', 'generate'] as const;
+```
+
+- Flag: 기존 메서드는 건드리지 않는다. 필드 추가만.
+
+---
+
+## Step 65-B — memo-codec.ts + memo-manager.ts
+
+### 신규: `negotiation/memo/memo-codec.ts` (~100줄)
+
+Living Memo Compressed Codec (Doc 26 §3 규격).
+
+```typescript
+export type MemoEncoding = 'codec' | 'raw';
+
+/** Compressed Codec — ~390 tokens */
+export function encodeCompressed(memory: CoreMemory): string;
+
+/** Raw JSON — ~1000 tokens */
+export function encodeRaw(memory: CoreMemory): string;
+
+/** 자동 선택 */
+export function encodeMemo(memory: CoreMemory, encoding: MemoEncoding): string;
+```
+
+**Compressed 형식 (Shared Layer):**
+```
+NS:BARGAINING|R3/10|buyer|FULL_AUTO
+PT:85000→90000|gap:5000(5.6%)
+CL:rec:87000|tactic:reciprocal|opp:CONCEDER|conv:0.72
+RM:R1:COUNTER@88000→92000|R2:COUNTER@86000→91000|R3:COUNTER@85000→90000
+```
+
+**Compressed 형식 (Private Layer):**
+```
+SS:t:83000|f:95000|β:1.5
+OM:CONCEDER(0.78)|ema:0.65|shifts:0
+TA:warranty_period=important|battery_health=critical
+TR:V7:SOFT@R2(양보과다)|auto_fix:0
+```
+
+- Flag: `GrokFastAdapter.buildUserPrompt()`이 이미 `S:|B:|C:` 인코딩을 한다. 그것과 **별개**로 `memo-codec.ts`는 6-Stage pipeline의 Stage 2에서 사용하는 독립 모듈이다. 기존 adapter 인코딩을 건드리지 않는다.
+
+### 신규: `negotiation/memo/memo-manager.ts` (~80줄)
+
+```typescript
+import { createHash } from 'crypto';
+
+export interface MemoSnapshot {
+  shared: string;
+  private: string;
+  hash: string;         // SHA-256(shared)
+  round: number;
+  timestamp: number;
+}
+
+export function computeMemoHash(sharedMemo: string): string {
+  return createHash('sha256').update(sharedMemo).digest('hex');
+}
+
+export function createSnapshot(
+  memory: CoreMemory,
+  round: number,
+  encoding: MemoEncoding,
+): MemoSnapshot;
+
+export function verifyMemoIntegrity(snapshot: MemoSnapshot): boolean;
+```
+
+---
+
+## Step 65-C — 6 Stage 함수 + pipeline
+
+### 신규 디렉토리: `negotiation/stages/`
+
+| 파일 | 함수 | 내용 |
+|------|------|------|
+| `understand.ts` | `understand()` | LLM 파싱 (structured input bypass 지원) |
+| `context.ts` | `assembleStageContext()` | 기존 `context-assembly.ts` 로직 흡수 + coach 호출 + memo-codec |
+| `decide.ts` | `decide()` | Skill rule-based → optional LLM. 기존 executor Step 8 로직 추출 |
+| `validate.ts` | `validateStage()` | referee-service.process() 래핑 + RoundExplainability 생성 |
+| `respond.ts` | `respond()` | template 모드(기존 renderer) / LLM 모드 분기 |
+| `persist.ts` | `persist()` | DB 저장 + phase 전이 + memo hash 기록 |
+| `index.ts` | re-export | 6개 함수 전부 named export |
+
+### 핵심 규칙
+
+1. **understand.ts** — 현재 프로덕션은 `offerPriceMinor`를 직접 받으므로, structured input이 이미 있으면 LLM 호출 없이 바로 `UnderstandOutput`을 만드는 bypass 경로 필수.
+
+2. **context.ts** — 기존 `adapters/context-assembly.ts`의 `assembleContextLayers()` 로직을 가져온다. 추가로 `computeCoaching()`도 여기서 호출하여 `ContextOutput.coaching`에 포함. L5Signals 파라미터는 optional (현재는 빈 객체).
+
+3. **decide.ts** — 기존 executor의 핵심 분기 로직 추출:
+   - BARGAINING + COUNTER일 때 → `callLLM()` + `adapter.parseResponse()`
+   - 그 외 → `skill.evaluateOffer()` 또는 `skill.generateMove()`
+   - `DecideOutput.source`로 누가 결정했는지 기록
+
+4. **validate.ts** — `RefereeService.process()`를 호출하되, `RoundExplainability` 구조체를 만들어 반환. HARD violation auto-fix 루프는 referee-service에 이미 있으므로 그대로 위임.
+
+5. **respond.ts** — config.modes.RESPOND에 따라 분기:
+   - `'template'`: 기존 `TemplateMessageRenderer.render()` 사용
+   - `'llm'`: 미래용 LLM 메시지 생성 (현재는 template fallback)
+
+6. **persist.ts** — 이 Stage만 DB 의존. 기존 executor의 Step 11~13 로직(persist round + update session + event dispatch) 추출.
+
+### 신규: `negotiation/pipeline/pipeline.ts` (~100줄)
+
+```typescript
+export async function executePipeline(
+  session: SessionState,
+  message: string | UnderstandOutput,  // raw text 또는 이미 파싱된 입력
+  deps: PipelineDeps,
+): Promise<PipelineResult>;
+```
+
+6개 Stage를 순차 호출하는 오케스트레이터. 각 Stage 결과를 `PipelineResult.stages`에 누적.
+
+- Flag: `context-assembly.ts`는 **삭제하지 않는다.** `context.ts`가 그 로직을 import하여 사용해도 되고, 복사해도 된다. 기존 import 경로가 깨지면 안 됨.
+
+---
+
+## Step 65-D — executor.ts (DB TX 래퍼)
+
+### 신규: `negotiation/pipeline/executor.ts` (~200줄)
+
+기존 `lib/llm-negotiation-executor.ts`를 대체하는 새 진입점.
+
+```typescript
+export async function executeNegotiationRound(
+  sessionId: string,
+  offerPriceMinor: number,
+  actorId: string,
+  db: Database,
+  eventDispatcher: EventDispatcher,
+): Promise<RoundResult>;
+```
+
+내부 흐름:
+1. BEGIN TX + SELECT FOR UPDATE
+2. Terminal/expiry check
+3. Memory reconstruction (기존 `memory-reconstructor.ts` 사용)
+4. Screening (기존 `auto-screening.ts` 사용)
+5. **`executePipeline()` 호출** ← 여기서 6-Stage 실행
+6. COMMIT
+
+### Feature Flag 전환
+
+`lib/executor-factory.ts` 수정:
+
+```typescript
+// NEGOTIATION_PIPELINE=legacy → 기존 llm-negotiation-executor
+// NEGOTIATION_PIPELINE=staged → 새 pipeline/executor
+```
+
+- Flag: 기존 `llm-negotiation-executor.ts`는 **삭제하지 않는다.** Feature flag로 전환 가능하게 두고, 새 executor가 기존 14개 시나리오 테스트를 전부 통과한 후 legacy 제거.
+
+---
+
+## Step 65-E — 테스트
+
+### 단위 테스트 (각 Stage)
+
+| 파일 | 내용 |
+|------|------|
+| `stages/__tests__/understand.test.ts` | structured input bypass, 텍스트 파싱 |
+| `stages/__tests__/context.test.ts` | L0~L5 조립, coaching 포함, codec 인코딩 |
+| `stages/__tests__/decide.test.ts` | LLM/Skill 분기, reasoning 모드 |
+| `stages/__tests__/validate.test.ts` | V1~V7, auto-fix, explainability 구조 |
+| `stages/__tests__/respond.test.ts` | template/LLM 모드 전환 |
+| `memo/__tests__/memo-codec.test.ts` | compressed/raw 인코딩·디코딩 |
+| `memo/__tests__/memo-manager.test.ts` | SHA-256 해시, 스냅샷 생성·검증 |
+
+### 통합 테스트
+
+| 파일 | 내용 |
+|------|------|
+| `pipeline/__tests__/pipeline.test.ts` | 6-Stage 순차 실행 E2E |
+| `pipeline/__tests__/hybrid.test.ts` | 외부 에이전트 Stage 혼합 호출 시뮬레이션 |
+
+### 기존 테스트 보존
+
+- 기존 640 tests 전부 통과해야 함
+- Feature flag `NEGOTIATION_PIPELINE=legacy`에서 기존 경로 테스트
+- Feature flag `NEGOTIATION_PIPELINE=staged`에서 새 경로 테스트
+
+---
+
+## 빌드 순서
+
+```
+65-A → 65-B → 65-C → 65-D → 65-E
+```
+
+65-A가 끝나면 65-B와 65-C의 타입 의존성이 해결되므로, Bob이 순차 진행.
+
+---
+
+## 변경하면 안 되는 것
+
+1. `negotiation/referee/` — 전부 그대로
+2. `negotiation/skills/` — 전부 그대로
+3. `negotiation/memory/` — core-memory, session-memory, checkpoint-store 그대로
+4. `negotiation/phase/` — 전부 그대로
+5. `negotiation/adapters/xai-client.ts` — 그대로
+6. `lib/llm-negotiation-executor.ts` — 삭제 금지, feature flag로 병행
+7. 기존 640 tests — 전부 통과
+
+---
+
+*끝. Bob은 65-A부터 시작.*

@@ -24,7 +24,7 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
-| v1.0.2 | 2026-03-07 | **다중 이슈 엔진 업그레이드**: (1) 이슈 타입 시스템 + Offer Inverter, (2) 6종 이동 분류 (Jonker Fig.2), (3) 베이지안 상대방 모델 + Reputation Prior, (4) 동적 마감 (Faratin 4.2.1), (5) 선택 정책, (6) 전술 엔진. v1.0.1 하위 호환. |
+| v1.0.2 | 2026-03-07 | **다중 Term 엔진 업그레이드**: (1) Term 타입 시스템 + Offer Inverter, (2) 6종 이동 분류 (Jonker Fig.2), (3) 베이지안 상대방 모델 + Reputation Prior, (4) 동적 마감 (Faratin 4.2.1), (5) 선택 정책, (6) 전술 엔진. v1.0.1 하위 호환. |
 | v1.0.1 | 2026-03-04 | 엔진 4-Gap: OpponentModel (EMA), 동적 베타, 효용 공간 양보 곡선, AC_next. AgentStats 시스템. |
 | v1.0.0 | 2026-02-17 | 초판. 4차원 효용 + Decision Maker + Faratin 양보 곡선. |
 
@@ -37,7 +37,7 @@
 | # | 파일 | 내용 | 핵심 키워드 |
 |---|------|------|------------|
 | 01 | [01_아키텍처_개요.md](./01_아키텍처_개요.md) | 4-Layer 시스템 구조, 설계 원칙, Hot/Cold Path | L0~L3, 결정론, 스킬 경계 |
-| 02 | [02_효용_함수.md](./02_효용_함수.md) | V_p, V_t, V_r, V_s 전체 수식 + 다중 이슈 일반화 | U_total, 가중치, Protobuf |
+| 02 | [02_효용_함수.md](./02_효용_함수.md) | V_p, V_t, V_r, V_s 전체 수식 + 다중 Term 일반화 | U_total, 가중치, Protobuf |
 | 03 | [03_양보_곡선_역산.md](./03_양보_곡선_역산.md) | Faratin 곡선, 동적 베타, AC_next, 동적 마감, Offer Inverter | β, U_target, invertVp |
 | 04 | [04_상대방_모델.md](./04_상대방_모델.md) | 3종/6종 이동 분류, EMA 추적기, 베이지안 모델, Reputation Prior | classifyMove, OpponentModel |
 | 05 | [05_의사결정_전술.md](./05_의사결정_전술.md) | Decision Maker 규칙, 전술 엔진, 미러링 전략, 선택 정책 | ACCEPT/COUNTER/ESCALATE |
@@ -65,6 +65,11 @@
 | 22 | [22_에이전트_스탯_UI_매핑.md](./22_%EC%97%90%EC%9D%B4%EC%A0%84%ED%8A%B8_%EC%8A%A4%ED%83%AF_UI_%EB%A7%A4%ED%95%91.md) | 엔진 능력치를 제품 UI로 번역하는 기준 | Stats UI Mapping |
 | 23 | [23_HNP_시도제한_정책.md](./23_HNP_%EC%8B%9C%EB%8F%84%EC%A0%9C%ED%95%9C_%EC%A0%95%EC%B1%85.md) | 무료 서비스 기준 anti-probing 정책과 quota 표준 | Attempt Control |
 | 24 | [24_남용_탐지_정책.md](./24_%EB%82%A8%EC%9A%A9_%ED%83%90%EC%A7%80_%EC%A0%95%EC%B1%85.md) | 정상 유입과 남용 자동화를 구분하는 행동 기반 방어 기준 | Abuse Detection |
+| 25 | [25_LLM_협상_아키텍처.md](./25_LLM_협상_아키텍처.md) | 심판-선수 모델, Living Context, 4원칙, Model-Agnostic, Skill 인식 | Referee, Coach, Living Context |
+| 26 | [26_LLM_Native_협상_파이프라인.md](./26_LLM_Native_협상_파이프라인.md) | 6-Stage LLM-Native 파이프라인, Living Memo Codec, Referee 시스템 | UNDERSTAND→RESPOND, Codec |
+| 27 | [27_LLM_엔진_구현_현황.md](./27_LLM_엔진_구현_현황.md) | 6-Stage 파이프라인 구현 현황, 디렉토리 맵, 비용 분석, 마이그레이션 계획 | Implementation Status |
+| 28 | [28_엔진_전략_분석_및_진화_로드맵.md](./28_엔진_전략_분석_및_진화_로드맵.md) | 대기업 구조적 한계 분석, 철학 점검, LLM 발전 연동 전략 | Strategy & Evolution |
+| 29 | [29_6Stage_리팩토링_구현계획.md](./29_6Stage_리팩토링_구현계획.md) | 13-step→6-Stage 리팩토링, Stage별 독립 모듈, 외부 에이전트 하이브리드 호출 | Refactoring Plan |
 
 ---
 
@@ -80,6 +85,11 @@
 - **사용자 설정이 궁금하면**: `06_에이전트_스탯.md`
 - **구현 계획이 궁금하면**: `07_구현_계획.md`
 - **LLM 사용 정책이 궁금하면**: `08_LLM_정책.md` + `13_LLM_비용.md`
+- **LLM 협상 아키텍처가 궁금하면**: `25_LLM_협상_아키텍처.md` (심판 모델, Living Context, Skill 인식)
+- **LLM-Native 파이프라인 설계가 궁금하면**: `26_LLM_Native_협상_파이프라인.md` (6-Stage, Living Memo Codec, Referee)
+- **LLM 엔진 구현 현황이 궁금하면**: `27_LLM_엔진_구현_현황.md` (디렉토리 맵, 비용 분석, 마이그레이션 계획)
+- **엔진 전략과 진화 방향이 궁금하면**: `28_엔진_전략_분석_및_진화_로드맵.md` (대기업 한계, 철학 점검, LLM 발전 연동)
+- **6-Stage 리팩토링 구현 계획이 궁금하면**: `29_6Stage_리팩토링_구현계획.md` (모듈화, 외부 API, 마이그레이션)
 - **세션/매칭 흐름이 궁금하면**: `09_세션_오케스트레이션.md` + `10_이벤트_매칭.md`
 - **멀티 세션 협상이 궁금하면**: `11_협상_토폴로지.md` + `12_장기협상_HNP.md`
 - **HNP를 외부 표준으로 강화하려면**: `18_HNP_표준화_프로파일.md` + `19_HNP_Core_버저닝.md` + `20_HNP_적합성_테스트_부록.md`
