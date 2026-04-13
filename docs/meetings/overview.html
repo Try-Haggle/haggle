@@ -2275,13 +2275,96 @@ Haggle Credits 가치 ↑
         <tr><td class="mono">3</td><td class="bold">보증금 비율 — 협상 대상으로</td><td>고정 비율이 아니라 <b>보증금 비율 자체를 AI 협상 대상으로</b>. "15% 걸 테니 예약해줘" vs "5%면 충분하지 않아?" — 이 방향이 맞는지 + 기본값(default)은 얼마로 할지.</td><td class="right"><span class="sev critical">높음</span></td></tr>
         <tr><td class="mono">4</td><td class="bold">SETTLEMENT sub-state 재검토</td><td>sub-state 방향은 확정. <b>3개(reserved→inspecting→confirmed)로 부족 — <code>renegotiating</code>(즉석 재협상 중) + <code>cancelled</code>(노쇼/만료/합의불가) 추가 후보.</b> 5-state가 맞는지 논의.</td><td class="right"><span class="sev critical">높음</span></td></tr>
         <tr><td class="mono">5</td><td class="bold">즉석 재협상 세션 구조</td><td>불일치 발견 시 새 세션(child) 생성 vs 기존 세션 revert. <b>기록 보존 + UX 관점에서 결정.</b></td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">6</td><td class="bold">구현 일정 (Step 68~)</td><td>Doc 28 P0-P2 완료(Step 65-67). 직거래 기능은 <b>Step 68부터</b>. 3man team으로 진행할 것인지 확인.</td><td class="right"><span class="sev low">낮음</span></td></tr>
+        <tr><td class="mono">6</td><td class="bold">버디 캐릭터 톤 결정</td><td>귀여운(A) vs 유능한(B) vs 밸런스(C). <b>타겟 20-30대 미국인 기준 어떤 톤이 맞는지.</b> Duolingo/Cash App/Waze 참고.</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">7</td><td class="bold">Phase 0 게이미피케이션 범위</td><td><b>절약 리포트(공유 카드)만 Phase 0 포함</b>, 나머지(레벨/칭호/랭킹)는 Phase 1. 이 방향이 맞는지 + 스타일 프로필은 어떻게 할지.</td><td class="right"><span class="sev medium">중간</span></td></tr>
+        <tr><td class="mono">8</td><td class="bold">구현 일정 (Step 68~)</td><td>Doc 28 P0-P2 완료(Step 65-67). 직거래 + 게이미피케이션은 <b>Step 68부터</b>. 3man team으로 진행할 것인지 확인.</td><td class="right"><span class="sev low">낮음</span></td></tr>
       </tbody>
     </table>
+
+    <!-- ── 안건 E: 게이미피케이션 + 버디 시스템 ── -->
+    <div class="card" style="margin-top:24px">
+      <div class="card-header">
+        <h3>🎮 안건 E — 게이미피케이션 & 버디 시스템 설계 방향</h3><span class="badge-role">Product / Branding</span>
+      </div>
+      <div class="card-body">
+        <p style="margin-bottom:16px;">AI 협상 에이전트("버디")에 캐릭터성을 부여하고, 거래 실적 기반 게이미피케이션을 도입하는 방향. <b>핵심 원칙: 감정 표현은 반드시 실제 성과에 연동.</b></p>
+
+        <!-- E-1: 버디 톤 -->
+        <div class="info-box" style="margin-bottom:16px">
+          <div class="info-title">E-1. 버디 캐릭터 톤 — 어디까지?</div>
+        </div>
+        <table class="decision-table" style="font-size:12px;margin-bottom:20px;">
+          <thead><tr><th>톤</th><th>느낌</th><th>예시</th><th>레퍼런스</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">A) 귀여운 캐릭터</td><td>친근, 애착 형성</td><td>"이번에 좀 잘했지? 😎"</td><td>Duolingo 올빼미, 카카오뱅크</td></tr>
+            <tr><td class="bold">B) 유능한 에이전트</td><td>신뢰, 전문성</td><td>"$85 절약 완료. 시장 대비 9.2% 할인."</td><td>Bloomberg Terminal, Stripe</td></tr>
+            <tr><td class="bold">C) 친근 + 유능</td><td>밸런스</td><td>"판매자를 $750까지 끌어내렸습니다 💪"</td><td>Cash App, Waze</td></tr>
+          </tbody>
+        </table>
+        <p><b>논의 포인트:</b> 타겟(20-30대 미국 iPhone 거래자) 기준, 어떤 톤이 맞는지. C가 유력하지만 구체적 경계선 합의 필요.</p>
+
+        <!-- E-2: 성과 연동 원칙 -->
+        <div class="info-box" style="margin-bottom:16px;margin-top:20px">
+          <div class="info-title">E-2. 게이미피케이션 원칙 — ✅ 해도 되는 것 vs ❌ 안 되는 것</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+          <div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:8px;padding:12px;">
+            <div style="font-weight:600;color:var(--green);margin-bottom:8px;">✅ 해도 되는 것 (성과 연동)</div>
+            <ul style="font-size:12px;margin:0;padding-left:16px;">
+              <li>실제 절약 금액 기반 축하</li>
+              <li>거래 실적 기반 레벨업 / 칭호</li>
+              <li>협상 스타일별 버디 성격 변화</li>
+              <li>누적 절약액 트래커</li>
+              <li>성사율, 평균 절약률 같은 실제 통계</li>
+            </ul>
+          </div>
+          <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px;">
+            <div style="font-weight:600;color:var(--red);margin-bottom:8px;">❌ 안 되는 것 (행동 유도)</div>
+            <ul style="font-size:12px;margin:0;padding-left:16px;">
+              <li>거래 안 하면 버디가 슬퍼함 (Robinhood식)</li>
+              <li>의미없는 배지, 가짜 레벨업</li>
+              <li>귀여움 뒤에 수수료/리스크 숨기기</li>
+              <li>"더 공격적으로!" 같은 방향 유도</li>
+              <li>스트릭/연속 거래 압박</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- E-3: 구체적 게이미피케이션 요소 -->
+        <div class="info-box" style="margin-bottom:16px">
+          <div class="info-title">E-3. Phase 0 게이미피케이션 후보 요소</div>
+        </div>
+        <table class="decision-table" style="font-size:12px;margin-bottom:16px;">
+          <thead><tr><th>#</th><th>요소</th><th>설명</th><th>Phase 0?</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">1</td><td class="bold">절약 리포트</td><td>거래 완료 시 "Swappa 대비 $X 절약" 카드. 공유 가능(바이럴).</td><td><span class="sev critical">포함</span></td></tr>
+            <tr><td class="mono">2</td><td class="bold">협상 스타일 프로필</td><td>공격형/밸런스형/수비형 — 거래 패턴 분석 기반</td><td><span class="sev medium">검토</span></td></tr>
+            <tr><td class="mono">3</td><td class="bold">버디 레벨</td><td>거래 수 + 절약액 기반 레벨업. 레벨별 버디 외형 변화?</td><td><span class="sev low">후순위</span></td></tr>
+            <tr><td class="mono">4</td><td class="bold">칭호 시스템</td><td>"가격 저격수", "윈윈 메이커" 등 실적 기반 칭호</td><td><span class="sev low">후순위</span></td></tr>
+            <tr><td class="mono">5</td><td class="bold">시즌 랭킹</td><td>월간 최고 절약률 리더보드</td><td><span class="sev low">후순위</span></td></tr>
+          </tbody>
+        </table>
+        <p><b>추천:</b> Phase 0은 <b>#1 절약 리포트만</b> 확실하게. #2 스타일 프로필은 협상 엔진 데이터가 이미 있으니 검토. 나머지는 유저 반응 보고 Phase 1에서. "적게 시작, 데이터 보고 확장" 원칙.</p>
+
+        <!-- E-4: Haggle이 Robinhood과 다른 이유 -->
+        <div class="info-box" style="margin-bottom:16px;margin-top:20px">
+          <div class="info-title">E-4. 왜 Haggle은 Robinhood 실수를 반복하지 않는가</div>
+        </div>
+        <table class="decision-table" style="font-size:12px;">
+          <thead><tr><th></th><th>Robinhood</th><th>Haggle</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">수익 구조</td><td>거래 ↑ = 수익 ↑ (PFOF)</td><td>거래당 고정 1.5% — 유도 인센티브 없음</td></tr>
+            <tr><td class="bold">축하 대상</td><td>거래 행위 자체</td><td>절약 성과 (실제 금액)</td></tr>
+            <tr><td class="bold">이해충돌</td><td>있음 (과도한 거래 유도)</td><td>없음 (많이 깎아도 Haggle 수익 동일)</td></tr>
+            <tr><td class="bold">유저 피해 가능성</td><td>과도한 거래 → 손실</td><td>과도한 절약 → 유저 이득</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </section>
 
 </div>
-
 
 <!-- TAB 3: 향후 목표 -->
 <!-- ═══════════════════════════════════════ -->
