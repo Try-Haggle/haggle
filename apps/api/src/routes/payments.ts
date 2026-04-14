@@ -4,6 +4,7 @@ import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
 import { eq, and, userWallets, webhookIdempotency } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
+import { createOnrampSession, getStripeConfig, verifyStripeWebhook } from "../payments/stripe-onramp.js";
 
 // ---------------------------------------------------------------------------
 // Webhook idempotency helpers (DB-backed)
@@ -704,6 +705,98 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       provider: "stripe",
       received_at: new Date().toISOString(),
       payload: request.body,
+    });
+  });
+
+  // ─── Stripe Onramp: Create session ─────────────────────────────────
+  // POST /payments/:id/onramp/session
+  // Creates a Stripe Crypto Onramp session for fiat → USDC on Base.
+  // Returns client_secret for embedding the payment widget in frontend.
+
+  const onrampSchema = z.object({
+    destination_wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    buyer_email: z.string().email().optional(),
+  });
+
+  app.post<{ Params: { id: string } }>(
+    "/payments/:id/onramp/session",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const stripeConfig = getStripeConfig();
+      if (!stripeConfig.enabled) {
+        return reply.code(503).send({
+          error: "STRIPE_NOT_CONFIGURED",
+          message: "Stripe onramp is not available. Use x402 direct USDC payment.",
+        });
+      }
+
+      const { id } = request.params;
+      const parsed = onrampSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_INPUT", issues: parsed.error.issues });
+      }
+
+      // Load payment intent to get amount
+      const intent = await getPaymentIntentById(db, id);
+      if (!intent) {
+        return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+      }
+
+      // Verify requester is the buyer
+      if (intent.buyer_id !== request.user!.id) {
+        return reply.code(403).send({ error: "FORBIDDEN" });
+      }
+
+      const amountMinor = intent.amount.amount_minor;
+
+      try {
+        const session = await createOnrampSession({
+          destinationWallet: parsed.data.destination_wallet,
+          amountMinor,
+          buyerEmail: parsed.data.buyer_email,
+          paymentIntentId: id,
+          clientIp: request.ip,
+        });
+
+        return reply.send({
+          onramp_session_id: session.sessionId,
+          client_secret: session.clientSecret,
+          hosted_url: session.hostedUrl,
+          status: session.status,
+          stripe_publishable_key: stripeConfig.publishableKey,
+          amount_usd: (amountMinor / 100).toFixed(2),
+          destination_network: "base",
+          destination_currency: "usdc",
+        });
+      } catch (err) {
+        return reply.code(502).send({
+          error: "ONRAMP_SESSION_FAILED",
+          message: err instanceof Error ? err.message : "Failed to create onramp session",
+        });
+      }
+    },
+  );
+
+  // ─── Stripe Onramp: Check availability ─────────────────────────────
+  // GET /payments/onramp/status
+  // Returns whether Stripe onramp is available + supported currencies.
+
+  app.get("/payments/onramp/status", async (_request, reply) => {
+    const config = getStripeConfig();
+    return reply.send({
+      available: config.enabled,
+      provider: "stripe",
+      supported_destination: {
+        currency: "usdc",
+        network: "base",
+      },
+      supported_source: ["usd"],
+      fee_info: {
+        stripe_fee_pct: 1.5,
+        haggle_fee_pct: 1.5,
+        total_buyer_fee_pct: 3.0,
+        note: "Stripe 1.5% + Haggle 1.5% = 3% total. No hidden fees.",
+      },
     });
   });
 }

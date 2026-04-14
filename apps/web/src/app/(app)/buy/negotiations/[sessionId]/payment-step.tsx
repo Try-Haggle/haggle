@@ -19,12 +19,17 @@ const USDC_ABI = [
   },
 ] as const;
 
+type PaymentMethod = "crypto" | "card";
+
 type PaymentStepStatus =
+  | "select_method"
   | "connect_wallet"
   | "check_balance"
   | "approve_usdc"
   | "sign_x402"
   | "submit"
+  | "onramp_loading"
+  | "onramp_active"
   | "complete"
   | "error";
 
@@ -39,10 +44,12 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const { data: balance } = useBalance({ address });
   const { writeContract, isPending: isWriting } = useWriteContract();
 
-  const [step, setStep] = useState<PaymentStepStatus>("connect_wallet");
+  const [method, setMethod] = useState<PaymentMethod | null>(null);
+  const [step, setStep] = useState<PaymentStepStatus>("select_method");
   const [error, setError] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [onrampClientSecret, setOnrampClientSecret] = useState<string | null>(null);
 
   // Amount in USDC (6 decimals)
   const amountUsdc = (amountMinor / 100).toFixed(2);
@@ -63,6 +70,13 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       }
       const data = await res.json();
       setPaymentIntentId(data.intent?.id ?? null);
+      // Route based on payment method
+      if (method === "card") {
+        setStep("onramp_loading");
+        // Trigger onramp after setting paymentIntentId
+        setTimeout(() => handleStripeOnramp(), 0);
+        return;
+      }
       setStep("check_balance");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -114,6 +128,51 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
           },
         },
       );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStep("error");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleStripeOnramp() {
+    if (!paymentIntentId || !address) return;
+    setIsLoading(true);
+    setStep("onramp_loading");
+    setError(null);
+    try {
+      const res = await fetch(`/api/payments/${paymentIntentId}/onramp/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination_wallet: address,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Failed to create onramp session");
+      }
+      const data = await res.json();
+      setOnrampClientSecret(data.client_secret);
+      setStep("onramp_active");
+
+      // Load Stripe onramp widget
+      if (typeof window !== "undefined" && data.client_secret) {
+        // @ts-expect-error — @stripe/crypto loaded dynamically, types installed separately
+        const { loadStripeOnramp } = await import("@stripe/crypto") as { loadStripeOnramp: (key: string) => Promise<{ createSession: (opts: { clientSecret: string }) => { mount: (el: string) => void; addEventListener: (event: string, cb: (e: unknown) => void) => void } } | null> };
+        const stripeOnramp = await loadStripeOnramp(data.stripe_publishable_key);
+        if (stripeOnramp) {
+          const session = stripeOnramp.createSession({ clientSecret: data.client_secret });
+          session.mount("#stripe-onramp-element");
+          session.addEventListener("onramp_session_updated", (e: unknown) => {
+            const event = e as { payload?: { session?: { status?: string } } };
+            if (event.payload?.session?.status === "fulfillment_complete") {
+              setStep("complete");
+            }
+          });
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");
@@ -183,9 +242,51 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Complete Payment</h2>
         <p className="text-sm text-gray-500">
-          {amountUsdc} {currency} via USDC on Base
+          ${amountUsdc} {currency}
         </p>
       </div>
+
+      {/* Payment method selection */}
+      {step === "select_method" && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">Choose how to pay:</p>
+          <button
+            onClick={() => { setMethod("card"); setStep("connect_wallet"); }}
+            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
+          >
+            <span className="text-2xl">💳</span>
+            <div>
+              <div className="font-medium">Pay with Card</div>
+              <div className="text-xs text-gray-500">Credit/debit card via Stripe → USDC on Base. 3% total fee.</div>
+            </div>
+          </button>
+          <button
+            onClick={() => { setMethod("crypto"); setStep("connect_wallet"); }}
+            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
+          >
+            <span className="text-2xl">🔗</span>
+            <div>
+              <div className="font-medium">Pay with USDC</div>
+              <div className="text-xs text-gray-500">Direct USDC from your wallet on Base. 1.5% fee.</div>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Stripe onramp widget container */}
+      {step === "onramp_active" && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">Complete payment with your card:</p>
+          <div id="stripe-onramp-element" className="min-h-[400px] rounded-lg border" />
+        </div>
+      )}
+
+      {step === "onramp_loading" && (
+        <div className="py-8 text-center text-gray-500">
+          <div className="animate-spin inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full mb-2" />
+          <p className="text-sm">Setting up card payment...</p>
+        </div>
+      )}
 
       {/* Step indicator */}
       <div className="flex items-center space-x-2 overflow-x-auto pb-2">
