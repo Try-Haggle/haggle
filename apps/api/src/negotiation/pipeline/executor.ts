@@ -38,9 +38,10 @@ import { checkIntervention } from '../phase/human-intervention.js';
 import { computeBriefing } from '../referee/briefing.js';
 import { computeCoachingAsync } from '../referee/coach.js';
 import type { RefereeBriefing } from '../skills/skill-types.js';
-import { SkillStack, registerSkill, getRegisteredSkills } from '../skills/skill-stack.js';
+import { SkillStack, registerSkill } from '../skills/skill-stack.js';
 import { ElectronicsKnowledgeSkill } from '../skills/electronics-knowledge.js';
 import { FaratinCoachingSkill } from '../skills/faratin-coaching.js';
+import { HaggleEngineSkill } from '../skills/haggle-engine-skill.js';
 
 import {
   reconstructCoreMemory,
@@ -65,6 +66,8 @@ const skill = new DefaultEngineSkill();
 const adapter = new GrokFastAdapter();
 
 // Register built-in skills (once at startup)
+// HaggleEngineSkill: free default — 4D utility, Faratin curves, rule-based decisions
+registerSkill(new HaggleEngineSkill());
 registerSkill(new ElectronicsKnowledgeSkill());
 registerSkill(new FaratinCoachingSkill());
 
