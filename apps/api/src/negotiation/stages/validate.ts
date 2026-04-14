@@ -10,10 +10,10 @@ import type {
   ProtocolDecision,
   RoundExplainability,
   ValidationResult,
-  RefereeCoaching,
   CoreMemory,
   NegotiationPhase,
 } from '../types.js';
+import type { RefereeBriefing } from '../skills/skill-types.js';
 import { validateMove } from '../referee/validator.js';
 
 const MAX_RETRY = 2;
@@ -29,16 +29,18 @@ export function validateStage(
   input: ValidateInput,
   previousMoves: ProtocolDecision[],
 ): ValidateOutput {
-  const { decision: decideOutput, coaching, memory, phase } = input;
+  const { decision: decideOutput, briefing, memory, phase } = input;
   let currentDecision = { ...decideOutput.decision };
 
   // Validate + auto-fix loop
+  // NOTE: validateMove still accepts RefereeCoaching (from CoreMemory.coaching).
+  // During transition, pass memory.coaching for V7 rule (large concession check).
   let validation: ValidationResult;
   let retryCount = 0;
   let autoFixApplied = false;
   const allViolations: import('../types.js').ValidationViolation[] = [];
 
-  validation = validateMove(currentDecision, memory, coaching, previousMoves, phase);
+  validation = validateMove(currentDecision, memory, memory.coaching, previousMoves, phase);
   allViolations.push(...validation.violations);
 
   while (!validation.hardPassed && retryCount < MAX_RETRY) {
@@ -50,14 +52,14 @@ export function validateStage(
       }
     }
     retryCount++;
-    validation = validateMove(currentDecision, memory, coaching, previousMoves, phase);
+    validation = validateMove(currentDecision, memory, memory.coaching, previousMoves, phase);
     allViolations.push(...validation.violations);
   }
 
   // Build RoundExplainability — use all violations (including pre-fix) for audit
   const explainability = buildExplainability(
     memory.session.round,
-    coaching,
+    briefing,
     decideOutput.source,
     decideOutput.decision,
     currentDecision,
@@ -81,7 +83,7 @@ export function validateStage(
 
 function buildExplainability(
   round: number,
-  coaching: RefereeCoaching,
+  briefing: RefereeBriefing,
   source: 'llm' | 'skill',
   originalDecision: ProtocolDecision,
   finalDecision: ProtocolDecision,
@@ -107,9 +109,11 @@ function buildExplainability(
   return {
     round,
     coach_recommendation: {
-      price: coaching.recommended_price,
-      basis: coaching.suggested_tactic,
-      acceptable_range: coaching.acceptable_range,
+      // Briefing is facts-only; coaching recommendations now come from skills.
+      // Provide briefing facts for explainability audit trail.
+      price: 0, // No longer recommended by referee — skill responsibility
+      basis: `opponent:${briefing.opponentPattern}|stagnation:${briefing.stagnation}`,
+      acceptable_range: { min: 0, max: 0 },
     },
     decision: {
       source,

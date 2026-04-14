@@ -88,7 +88,8 @@ describe('Hybrid: External agent cherry-picks stages', () => {
     );
 
     expect(result.layers).toBeDefined();
-    expect(result.coaching.recommended_price).toBeGreaterThan(0);
+    expect(result.briefing).toBeDefined();
+    expect(result.briefing.opponentPattern).toBeDefined();
     expect(result.memo_snapshot).toContain('NS:');
   });
 
@@ -102,7 +103,15 @@ describe('Hybrid: External agent cherry-picks stages', () => {
     const result = validateStage(
       {
         decision: externalDecision,
-        coaching: makeMemory().coaching,
+        briefing: {
+          opponentPattern: 'LINEAR',
+          timePressure: 0.3,
+          gapTrend: [],
+          opponentMoves: [],
+          stagnation: false,
+          utilitySnapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_total: 0.6 },
+          warnings: [],
+        },
         memory: makeMemory(),
         phase: 'BARGAINING',
       },
@@ -165,8 +174,8 @@ describe('Hybrid: External agent cherry-picks stages', () => {
     const validation = validateStage(
       {
         decision: agentDecision,
-        coaching: context.coaching,
-        memory: { ...memory, coaching: context.coaching },
+        briefing: context.briefing,
+        memory,
         phase: 'BARGAINING',
       },
       [],
@@ -177,7 +186,7 @@ describe('Hybrid: External agent cherry-picks stages', () => {
     // Agent calls Stage 5
     const response = respond({
       validated: validation,
-      memory: { ...memory, coaching: context.coaching },
+      memory,
       adapter,
       skill,
       config: makeConfig(),

@@ -4,6 +4,7 @@ import { GrokFastAdapter } from '../../adapters/grok-fast-adapter.js';
 import { DefaultEngineSkill } from '../../skills/default-engine-skill.js';
 import type { CoreMemory, OpponentPattern, StageConfig, RefereeCoaching, ContextLayers } from '../../types.js';
 import type { ContextOutput, DecideInput } from '../../pipeline/types.js';
+import type { RefereeBriefing } from '../../skills/skill-types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
 const adapter = new GrokFastAdapter();
@@ -58,7 +59,20 @@ function makeConfig(): StageConfig {
   };
 }
 
+function makeBriefing(): RefereeBriefing {
+  return {
+    opponentPattern: 'LINEAR',
+    timePressure: 0.3,
+    gapTrend: [],
+    opponentMoves: [],
+    stagnation: false,
+    utilitySnapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_total: 0.6 },
+    warnings: [],
+  };
+}
+
 function makeContextOutput(): ContextOutput {
+  const briefing = makeBriefing();
   return {
     layers: {
       L0_protocol: 'protocol',
@@ -68,8 +82,10 @@ function makeContextOutput(): ContextOutput {
       L4_history: '',
       L5_signals: '',
     },
-    coaching: makeCoaching(),
+    briefing,
+    coaching: briefing,
     memo_snapshot: 'NS:BARGAINING',
+    skills_applied: [],
   };
 }
 

@@ -78,7 +78,7 @@ export async function executePipeline(
     skill: deps.skill,
     phase: deps.phase,
     config: deps.config,
-    memory: { ...deps.memory, coaching: contextOutput.coaching },
+    memory: deps.memory,
     facts: deps.facts,
     opponent: deps.opponent,
   });
@@ -87,8 +87,8 @@ export async function executePipeline(
   const validateOutput = validateStage(
     {
       decision: decideOutput,
-      coaching: contextOutput.coaching,
-      memory: { ...deps.memory, coaching: contextOutput.coaching },
+      briefing: contextOutput.briefing,
+      memory: deps.memory,
       phase: deps.phase,
     },
     deps.previousMoves,
@@ -97,7 +97,7 @@ export async function executePipeline(
   // ─── Stage 5: Respond ───
   const respondOutput = respond({
     validated: validateOutput,
-    memory: { ...deps.memory, coaching: contextOutput.coaching },
+    memory: deps.memory,
     adapter: deps.config.adapters.RESPOND,
     skill: deps.skill,
     config: deps.config,
@@ -105,7 +105,7 @@ export async function executePipeline(
 
   // ─── Stage 6: Persist ───
   const memoSnapshot = createSnapshot(
-    { ...deps.memory, coaching: contextOutput.coaching },
+    deps.memory,
     deps.round,
     resolvedEncoding,
     deps.facts.slice(-5),
@@ -116,7 +116,7 @@ export async function executePipeline(
     round_number: deps.round,
     decision: validateOutput,
     response: respondOutput,
-    memory: { ...deps.memory, coaching: contextOutput.coaching },
+    memory: deps.memory,
     memo_hash: memoSnapshot.hash,
     explainability: validateOutput.explainability,
   };

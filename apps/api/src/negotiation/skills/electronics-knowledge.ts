@@ -37,6 +37,7 @@ const manifest: SkillManifest = {
   ],
   hooks: ['understand', 'decide', 'validate', 'respond'],
   pricing: { model: 'free' },
+  verification: { status: 'haggle_verified', verifiedAt: '2026-04-14', verifiedBy: 'haggle-core', securityAudit: true },
 };
 
 // ─── Term hints for UNDERSTAND stage ────────────────────────────

@@ -1,19 +1,19 @@
 /**
  * Stage 2: Context Assembly
  *
- * Assembles L0-L5 context layers, computes coaching, and encodes memo snapshot.
- * Absorbs logic from adapters/context-assembly.ts + coach integration + memo-codec.
+ * Assembles L0-L5 context layers, computes briefing, and encodes memo snapshot.
+ * Absorbs logic from adapters/context-assembly.ts + briefing integration + memo-codec.
  */
 
 import type { ContextInput, ContextOutput } from '../pipeline/types.js';
 import { assembleContextLayers } from '../adapters/context-assembly.js';
-import { computeCoaching } from '../referee/coach.js';
+import { computeBriefing } from '../referee/briefing.js';
 import { encodeMemo, type MemoEncoding } from '../memo/memo-codec.js';
 
 /**
  * Assemble full negotiation context for a round.
  *
- * 1. Compute coaching (referee recommendations)
+ * 1. Compute briefing (referee facts-only observations)
  * 2. Assemble L0-L5 context layers
  * 3. Encode memo snapshot for LLM consumption
  */
@@ -24,41 +24,37 @@ export function assembleStageContext(
 ): ContextOutput {
   const { memory, facts, opponent, skill, l5_signals } = input;
 
-  // 1. Compute coaching
-  const coaching = computeCoaching(
-    memory,
-    facts,
-    opponent,
-    memory.buddy_dna,
-  );
+  // 1. Compute briefing (facts-only, replaces coaching)
+  const briefing = computeBriefing(memory, facts, opponent);
 
   // 2. Build L5 signal strings
   const signalStrings = buildL5SignalStrings(l5_signals);
 
   // 3. Assemble L0-L5 layers using existing context-assembly module
+  // NOTE: assembleContextLayers still expects RefereeCoaching for L3 layer.
+  // During transition, pass memory.coaching (old RefereeCoaching from CoreMemory).
   const layers = assembleContextLayers({
     skill,
     adapter,
-    memory: {
-      ...memory,
-      coaching, // Use freshly computed coaching
-    },
+    memory,
     recentFacts: facts.slice(-5),
-    coaching,
+    coaching: memory.coaching,
     signals: signalStrings,
   });
 
   // 4. Encode memo snapshot
   const memoSnapshot = encodeMemo(
-    { ...memory, coaching },
+    memory,
     memoEncoding,
     facts.slice(-5),
   );
 
   return {
     layers,
-    coaching,
+    briefing,
+    coaching: briefing, // deprecated alias
     memo_snapshot: memoSnapshot,
+    skills_applied: [],
   };
 }
 

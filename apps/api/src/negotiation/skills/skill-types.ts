@@ -53,6 +53,31 @@ export interface SkillManifest {
     model: 'free' | 'per_call' | 'per_session' | 'subscription';
     costCents?: number;
   };
+
+  /** Verification status — shown as badge to users (투명성 철학) */
+  verification: {
+    status: 'unverified' | 'self_tested' | 'community_reviewed' | 'haggle_verified';
+    verifiedAt?: string;
+    verifiedBy?: string;
+    securityAudit?: boolean;
+  };
+}
+
+/** Badge emoji for verification levels */
+export const VERIFICATION_BADGES: Record<SkillManifest['verification']['status'], string> = {
+  unverified: '⬜',
+  self_tested: '🟡',
+  community_reviewed: '🟢',
+  haggle_verified: '✅',
+};
+
+/** Skill usage record included in round responses */
+export interface SkillAppliedRecord {
+  id: string;
+  name: string;
+  type: SkillType;
+  badge: string;
+  verification_status: SkillManifest['verification']['status'];
 }
 
 // ─── Hook Contexts & Results ─────────────────────────────────────

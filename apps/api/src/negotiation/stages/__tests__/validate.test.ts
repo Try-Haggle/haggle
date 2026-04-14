@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateStage } from '../validate.js';
 import type { ValidateInput } from '../../pipeline/types.js';
 import type { CoreMemory, ProtocolDecision, RefereeCoaching } from '../../types.js';
+import type { RefereeBriefing } from '../../skills/skill-types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
 function makeCoaching(overrides?: Partial<RefereeCoaching>): RefereeCoaching {
@@ -15,6 +16,19 @@ function makeCoaching(overrides?: Partial<RefereeCoaching>): RefereeCoaching {
     time_pressure: 0.3,
     utility_snapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_quality: 0.5, u_total: 0.6 },
     strategic_hints: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+function makeBriefing(overrides?: Partial<RefereeBriefing>): RefereeBriefing {
+  return {
+    opponentPattern: 'LINEAR',
+    timePressure: 0.3,
+    gapTrend: [],
+    opponentMoves: [],
+    stagnation: false,
+    utilitySnapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_total: 0.6 },
     warnings: [],
     ...overrides,
   };
@@ -55,7 +69,7 @@ describe('Stage 4: validateStage', () => {
           source: 'skill',
           reasoning_mode: false,
         },
-        coaching: makeCoaching(),
+        briefing: makeBriefing(),
         memory: makeMemory(),
         phase: 'BARGAINING',
       },
@@ -77,7 +91,7 @@ describe('Stage 4: validateStage', () => {
           source: 'skill',
           reasoning_mode: false,
         },
-        coaching: makeCoaching(),
+        briefing: makeBriefing(),
         memory: makeMemory(),
         phase: 'BARGAINING',
       },
@@ -98,7 +112,7 @@ describe('Stage 4: validateStage', () => {
           source: 'skill',
           reasoning_mode: false,
         },
-        coaching: makeCoaching(),
+        briefing: makeBriefing(),
         memory: makeMemory(),
         phase: 'DISCOVERY',
       },
@@ -122,7 +136,7 @@ describe('Stage 4: validateStage', () => {
           source: 'skill',
           reasoning_mode: false,
         },
-        coaching: makeCoaching(),
+        briefing: makeBriefing(),
         memory,
         phase: 'BARGAINING',
       },
@@ -149,7 +163,7 @@ describe('Stage 4: validateStage', () => {
           source: 'skill',
           reasoning_mode: false,
         },
-        coaching: makeCoaching(),
+        briefing: makeBriefing(),
         memory: makeMemory(),
         phase: 'BARGAINING',
       },
@@ -171,7 +185,7 @@ describe('Stage 4: validateStage', () => {
           source: 'llm',
           reasoning_mode: true,
         },
-        coaching: makeCoaching(),
+        briefing: makeBriefing(),
         memory: makeMemory(),
         phase: 'BARGAINING',
       },
@@ -180,7 +194,8 @@ describe('Stage 4: validateStage', () => {
 
     const exp = result.explainability;
     expect(exp.round).toBe(3);
-    expect(exp.coach_recommendation.price).toBe(87000);
+    // Briefing is facts-only; coach_recommendation.price is now 0 (skill responsibility)
+    expect(exp.coach_recommendation.price).toBe(0);
     expect(exp.decision.source).toBe('llm');
     expect(exp.decision.action).toBe('COUNTER');
     expect(exp.decision.price).toBe(86000);

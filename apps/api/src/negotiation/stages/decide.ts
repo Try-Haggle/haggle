@@ -41,8 +41,8 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
         gap: memory.boundaries.gap,
         gapRatio: memory.boundaries.gap /
           Math.abs(memory.boundaries.my_target - memory.boundaries.my_floor || 1),
-        coachWarnings: context.coaching.warnings,
-        opponentPattern: context.coaching.opponent_pattern,
+        coachWarnings: context.briefing.warnings,
+        opponentPattern: context.briefing.opponentPattern as import('../types.js').OpponentPatternType,
         softViolationCount: 0,
       });
 

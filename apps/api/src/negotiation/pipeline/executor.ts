@@ -35,7 +35,9 @@ import { GrokFastAdapter } from '../adapters/grok-fast-adapter.js';
 import { screenMessage } from '../screening/auto-screening.js';
 import { tryTransition, detectPhaseEvent } from '../phase/phase-machine.js';
 import { checkIntervention } from '../phase/human-intervention.js';
-import { computeCoachingAsync, computeCoaching } from '../referee/coach.js';
+import { computeBriefing } from '../referee/briefing.js';
+import { computeCoachingAsync } from '../referee/coach.js';
+import type { RefereeBriefing } from '../skills/skill-types.js';
 
 import {
   reconstructCoreMemory,
@@ -165,7 +167,7 @@ export async function executeStagedNegotiationRound(
     const facts = reconstructRoundFacts(roundsForMemory, dbSession.role);
     const opponentPattern = reconstructOpponentPattern(facts, role);
 
-    // Compute coaching first (needed for CoreMemory)
+    // Compute coaching first (needed for CoreMemory.coaching which is still RefereeCoaching type)
     // Uses trust score from DB when counterpartyId is available
     const dummyMemory = buildInitialMemory(dbSession, facts);
     const coaching = await computeCoachingAsync(
@@ -177,8 +179,11 @@ export async function executeStagedNegotiationRound(
       dbSession.counterpartyId,
     );
 
-    // Full CoreMemory with actual coaching
+    // Full CoreMemory with actual coaching (RefereeCoaching, needed for validator + context-assembly)
     const memory = reconstructCoreMemory(dbSession, dbSession.strategySnapshot, coaching);
+
+    // Compute briefing (facts-only, replaces coaching in pipeline ContextOutput)
+    const briefing = computeBriefing(memory, facts, opponentPattern);
 
     // Update memory with incoming offer
     const updatedMemory: CoreMemory = {
@@ -258,6 +263,7 @@ export async function executeStagedNegotiationRound(
         buddyDna: DEFAULT_BUDDY_DNA,
         previousMoves,
         round: nextRound,
+        briefing,
         memoEncoding: 'codec',
         l5_signals: l5Signals,
       },
@@ -267,7 +273,7 @@ export async function executeStagedNegotiationRound(
     const finalDecision = pipelineResult.stages.validate.final_decision;
     const message = pipelineResult.stages.respond.message;
     const validation = pipelineResult.stages.validate.validation;
-    const pipelineCoaching = pipelineResult.stages.context.coaching;
+    const pipelineBriefing = pipelineResult.stages.context.briefing;
 
     // Post-decision phase transition
     const postDecisionEvent = detectPhaseEvent(
@@ -284,13 +290,15 @@ export async function executeStagedNegotiationRound(
     }
 
     // Persist to DB
+    // NOTE: persistPipelineRound still takes RefereeCoaching for DB column compatibility.
+    // Pass the original coaching object (from computeCoachingAsync).
     const roundResult = await persistPipelineRound(tx as unknown as Database, {
       dbSession,
       input,
       nextRound,
       decision: finalDecision,
       memory: updatedMemory,
-      coaching: pipelineCoaching,
+      coaching,
       validation,
       phase: currentPhase,
       message,
@@ -300,6 +308,7 @@ export async function executeStagedNegotiationRound(
     });
 
     // Stage 6 post-persist: flush round facts with hash chain
+    // coaching_given uses the old coaching for backward compat with RoundFact schema
     const currentFact: import('../types.js').RoundFact = {
       round: nextRound,
       phase: currentPhase,
@@ -310,11 +319,11 @@ export async function executeStagedNegotiationRound(
       seller_tactic: input.senderRole === 'SELLER' ? undefined : (finalDecision.tactic_used ?? undefined),
       conditions_changed: {},
       coaching_given: {
-        recommended: pipelineCoaching.recommended_price,
-        tactic: pipelineCoaching.suggested_tactic,
+        recommended: coaching.recommended_price,
+        tactic: coaching.suggested_tactic,
       },
       coaching_followed: finalDecision.price != null
-        ? Math.abs(finalDecision.price - pipelineCoaching.recommended_price) < 500
+        ? Math.abs(finalDecision.price - coaching.recommended_price) < 500
         : false,
       human_intervened: false,
       timestamp: Date.now(),

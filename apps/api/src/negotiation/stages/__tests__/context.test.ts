@@ -54,7 +54,7 @@ const defaultOpponent: OpponentPattern = {
 };
 
 describe('Stage 2: assembleStageContext', () => {
-  it('returns layers, coaching, and memo_snapshot', () => {
+  it('returns layers, briefing, and memo_snapshot', () => {
     const memory = makeMemory();
     const result = assembleStageContext(
       {
@@ -73,8 +73,9 @@ describe('Stage 2: assembleStageContext', () => {
     expect(result.layers.L1_model).toBeTruthy();
     expect(result.layers.L2_skill).toBeTruthy();
     expect(result.layers.L3_coaching).toBeTruthy();
-    expect(result.coaching).toBeDefined();
-    expect(result.coaching.recommended_price).toBeGreaterThan(0);
+    expect(result.briefing).toBeDefined();
+    expect(result.briefing.opponentPattern).toBeDefined();
+    expect(result.briefing.utilitySnapshot).toBeDefined();
     expect(result.memo_snapshot).toBeTruthy();
   });
 
@@ -175,6 +176,8 @@ describe('Stage 2: assembleStageContext', () => {
       adapter,
     );
 
-    expect(result.coaching.convergence_rate).toBeGreaterThan(0);
+    // Briefing provides gap trend instead of convergence rate
+    expect(result.briefing.gapTrend).toBeDefined();
+    expect(result.briefing.utilitySnapshot).toBeDefined();
   });
 });

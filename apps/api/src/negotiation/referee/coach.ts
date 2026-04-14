@@ -1,3 +1,5 @@
+/** @deprecated Use RefereeBriefing (briefing.ts) + FaratinCoachingSkill instead. */
+
 import type {
   CoreMemory,
   RoundFact,

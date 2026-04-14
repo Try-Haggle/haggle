@@ -13,7 +13,6 @@ import type {
   ModelAdapter,
   NegotiationPhase,
   ProtocolDecision,
-  RefereeCoaching,
   ValidationResult,
   ContextLayers,
   L5Signals,
@@ -21,6 +20,8 @@ import type {
   StageConfig,
   BuddyDNA,
 } from '../types.js';
+import type { RefereeBriefing, SkillAppliedRecord } from '../skills/skill-types.js';
+import type { SkillStack } from '../skills/skill-stack.js';
 import type { MemoEncodingConfig } from '../config.js';
 
 // =========================================
@@ -55,8 +56,11 @@ export interface ContextInput {
 
 export interface ContextOutput {
   layers: ContextLayers;
-  coaching: RefereeCoaching;
+  briefing: RefereeBriefing;
+  /** @deprecated Use briefing instead. Alias kept for transition. */
+  coaching: RefereeBriefing;
   memo_snapshot: string;
+  skills_applied: SkillAppliedRecord[];
 }
 
 // =========================================
@@ -89,7 +93,7 @@ export interface DecideOutput {
 
 export interface ValidateInput {
   decision: DecideOutput;
-  coaching: RefereeCoaching;
+  briefing: RefereeBriefing;
   memory: CoreMemory;
   phase: NegotiationPhase;
 }
@@ -146,6 +150,7 @@ export interface PersistOutput {
 
 export interface PipelineDeps {
   skill: NegotiationSkill;
+  skillStack?: SkillStack;
   config: StageConfig;
   memory: CoreMemory;
   facts: RoundFact[];
@@ -154,6 +159,7 @@ export interface PipelineDeps {
   buddyDna: BuddyDNA;
   previousMoves: ProtocolDecision[];
   round: number;
+  briefing: RefereeBriefing;
   l5_signals?: L5Signals;
   memoEncoding: MemoEncodingConfig;
   /** DB persist callback — only Stage 6 uses this */

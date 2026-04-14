@@ -40,6 +40,7 @@ const manifest: SkillManifest = {
   categoryTags: ['*'],  // applies to all categories
   hooks: ['decide'],
   pricing: { model: 'free' },
+  verification: { status: 'haggle_verified', verifiedAt: '2026-04-14', verifiedBy: 'haggle-core', securityAudit: true },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────

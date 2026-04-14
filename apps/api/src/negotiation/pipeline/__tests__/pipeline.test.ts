@@ -73,6 +73,15 @@ function makeDeps(overrides?: Partial<PipelineDeps>): PipelineDeps {
     buddyDna: DEFAULT_BUDDY_DNA,
     previousMoves: [],
     round: 4,
+    briefing: {
+      opponentPattern: 'LINEAR',
+      timePressure: 0.3,
+      gapTrend: [],
+      opponentMoves: [],
+      stagnation: false,
+      utilitySnapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_total: 0.6 },
+      warnings: [],
+    },
     memoEncoding: 'codec',
     ...overrides,
   };

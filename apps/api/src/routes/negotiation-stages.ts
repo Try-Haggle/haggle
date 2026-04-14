@@ -28,9 +28,9 @@ import type {
   OpponentPattern,
   NegotiationPhase,
   ProtocolDecision,
-  RefereeCoaching,
   L5Signals,
 } from '../negotiation/types.js';
+import type { RefereeBriefing } from '../negotiation/skills/skill-types.js';
 import type { UnderstandOutput, DecideOutput, ValidateOutput } from '../negotiation/pipeline/types.js';
 
 // ---------------------------------------------------------------------------
@@ -140,6 +140,22 @@ const protocolDecisionSchema = z.object({
   tactic_used: z.string().optional(),
 });
 
+const briefingSchema = z.object({
+  opponentPattern: z.string(),
+  timePressure: z.number(),
+  gapTrend: z.array(z.number()),
+  opponentMoves: z.array(z.number()),
+  stagnation: z.boolean(),
+  utilitySnapshot: z.object({
+    u_price: z.number(),
+    u_time: z.number(),
+    u_risk: z.number(),
+    u_total: z.number(),
+  }),
+  warnings: z.array(z.string()),
+});
+
+/** @deprecated Use briefingSchema. Kept for backward compat with external agents. */
 const coachingSchema = z.object({
   recommended_price: z.number(),
   acceptable_range: z.object({ min: z.number(), max: z.number() }),
@@ -168,7 +184,9 @@ const validateRequestSchema = z.object({
     tokens: z.object({ prompt: z.number(), completion: z.number() }).optional(),
     latency_ms: z.number().optional(),
   }),
-  coaching: coachingSchema,
+  briefing: briefingSchema.optional(),
+  /** @deprecated Use briefing. */
+  coaching: coachingSchema.optional(),
   memory: coreMemorySchema,
   phase: z.enum(['DISCOVERY', 'OPENING', 'BARGAINING', 'CLOSING', 'SETTLEMENT']),
 });
@@ -246,8 +264,10 @@ export function registerStageRoutes(app: FastifyInstance, _db: Database) {
 
       return reply.code(200).send({
         layers: contextOutput.layers,
-        coaching: contextOutput.coaching,
+        briefing: contextOutput.briefing,
+        coaching: contextOutput.coaching, // deprecated alias
         memo_snapshot: contextOutput.memo_snapshot,
+        skills_applied: contextOutput.skills_applied,
       });
     },
   );
@@ -267,10 +287,26 @@ export function registerStageRoutes(app: FastifyInstance, _db: Database) {
 
       const data = parsed.data;
 
+      // Accept either briefing (new) or coaching (deprecated) from request
+      const briefing: RefereeBriefing = data.briefing ?? {
+        opponentPattern: data.coaching?.opponent_pattern ?? 'UNKNOWN',
+        timePressure: data.coaching?.time_pressure ?? 0,
+        gapTrend: [],
+        opponentMoves: [],
+        stagnation: false,
+        utilitySnapshot: {
+          u_price: data.coaching?.utility_snapshot?.u_price ?? 0,
+          u_time: data.coaching?.utility_snapshot?.u_time ?? 0,
+          u_risk: data.coaching?.utility_snapshot?.u_risk ?? 0,
+          u_total: data.coaching?.utility_snapshot?.u_total ?? 0,
+        },
+        warnings: data.coaching?.warnings ?? [],
+      };
+
       const validateOutput = validateStage(
         {
           decision: data.decision as DecideOutput,
-          coaching: data.coaching as RefereeCoaching,
+          briefing,
           memory: data.memory as unknown as CoreMemory,
           phase: data.phase as NegotiationPhase,
         },
