@@ -2514,6 +2514,25 @@ Haggle Credits 가치 ↑
         <li><strong>태그 가든 → HFMI 계단식 리졸버</strong>: 5단계 폴백 — L1(model+storage+condition) → L2(model+storage) → L3(model 전체) → L4(시리즈 통합, 예: iPhone 15 Pro+Max 합산) → L5(카테고리). 최소 10건 이상 레벨에서 중간값 사용. L5 시그널 서비스에 자동 연결</li>
         <li><strong>DB 마이그레이션 0011</strong>: hfmi_price_observations + hfmi_model_coefficients 테이블 생성 SQL 준비 (Supabase 복구 후 실행 대기)</li>
         <li><strong>데이터 분석</strong>: 시드(합성) vs eBay(실거래) 비교 — iPhone 15 Pro 시드가 실제보다 23% 저평가. 시드 데이터 폐기, 크롤 데이터를 HFMI 기반으로 전환 결정</li>
+        <li><strong>HFMI 수수료 보정</strong>: 크로스 플랫폼 가격 비교 시 수수료 정규화. eBay 13.25%, BackMarket 10%, Swappa 6.5% → Haggle 1.5% 기준으로 보정. <code>adjusted_price_usd</code> 컬럼 추가 (마이그레이션 0012). eBay $521 → 보정 후 $459 (Haggle 판매자 기준 동등 가격)</li>
+        <li><strong>내부 거래 데이터 피드백 루프</strong>: 협상 완료 시 합의 가격 자동 HFMI 적재 (<code>source: haggle_internal</code>, 2x 가중치). 거래가 쌓일수록 외부 데이터 의존 감소 → 데이터 해자. Intelligence API 판매용 자산</li>
+        <li><strong class="red-text">결제 수수료 정책 (핵심 결정)</strong>:
+          <ul>
+            <li><strong>Haggle 수수료 1.5%</strong> — 결제 방식 무관, 항상 고정</li>
+            <li><strong>USDC 직접 결제</strong>: 총 1.5% (Haggle만). 가스비 Haggle 대납 (~$0.001/tx)</li>
+            <li><strong>카드 결제 (Stripe Onramp)</strong>: 총 3% (Haggle 1.5% + Stripe 1.5%). 추가 1.5%는 구매자 부담</li>
+            <li><strong>판매자 수령액 동일</strong>: 결제 방식과 무관하게 판매자는 같은 금액 수령. USDC 자연 유도</li>
+          </ul>
+        </li>
+        <li><strong>지갑 + 결제 인프라</strong>:
+          <ul>
+            <li><strong>판매자 지갑</strong>: 정산 시 필요 (리스팅 시 불필요). Coinbase Smart Wallet(이메일만으로 생성, 셀프 커스터디) + MetaMask/Rainbow/WalletConnect 지원</li>
+            <li><strong>구매자 결제</strong>: 💳 카드(Stripe Onramp → USDC on Base) 또는 🔗 USDC 직접</li>
+            <li><strong>Coinbase Offramp</strong>: USDC → USD 은행 입금 수수료 0%. Stripe Connect 대비 ~3% 절약</li>
+            <li><strong>Gas Relayer</strong>: Haggle이 가스비 대납. 사용자 ETH 불필요, USDC만 있으면 됨</li>
+            <li><strong>Non-Custodial 원칙 준수</strong>: Haggle은 유저 키를 절대 보유하지 않음. Coinbase Smart Wallet = 셀프 커스터디</li>
+          </ul>
+        </li>
         <li><strong class="red-text">Coaching → Briefing 파이프라인 리팩토링 (핵심 결정)</strong>: 설계 문서(doc 25 §4.2) 준수. RefereeCoaching(추천가/전술 포함) → RefereeBriefing(사실만: 갭추세/상대패턴/교착여부/유틸리티). 코칭 추천은 FaratinCoachingSkill(advisor 타입)로 이전. 12개 파일 변경, 모든 Stage에서 briefing 기반으로 전환. coach.ts @deprecated 처리</li>
         <li><strong>프롬프트 인젝션 가드 (3단계 방어)</strong>: <code>guards/prompt-guard.ts</code> — (1) 패턴 매칭(extraction/override/jailbreak/구조 인젝션 40+ 패턴), (2) 구조 검증(프로그래밍 키워드/API 경로/특수문자 비율), (3) 카나리아 토큰(시스템 프롬프트에 세션별 고유 토큰 삽입, LLM 응답에 노출되면 즉시 차단). L0 규칙에 "절대 내부 로직 노출 금지" 명시. 철학: 안전 &gt; 편리</li>
         <li><strong>Skill 검증 배지 시스템 (4레벨)</strong>: ⬜ unverified → 🟡 self_tested → 🟢 community_reviewed → ✅ haggle_verified. SkillManifest에 verification 필드 추가. 라운드 응답에 <code>skills_applied</code> 포함 — 사용자가 어떤 Skill이 참여했는지 확인 가능. LLM 컨텍스트에도 <code>SKILLS_ACTIVE</code> 주입 — LLM이 미검증 Skill의 조언을 더 신중하게 판단. 철학: 투명 &gt; 효율</li>
