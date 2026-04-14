@@ -11,6 +11,7 @@
 
 import { hfmiPriceObservations, type Database } from "@haggle/db";
 import { extractTagAttributes } from "./hfmi-tag-resolver.js";
+import { adjustPriceForSource } from "./hfmi-fee-adjustment.js";
 
 export interface AgreedPriceEvent {
   sessionId: string;
@@ -50,6 +51,9 @@ export async function recordAgreedPrice(
 
     const priceUsd = event.finalPriceMinor / 100;
 
+    // haggle_internal: adjusted = observed (no fee adjustment needed)
+    const adjustedPrice = adjustPriceForSource(priceUsd, "haggle_internal");
+
     await db
       .insert(hfmiPriceObservations)
       .values({
@@ -60,6 +64,7 @@ export async function recordAgreedPrice(
         cosmeticGrade: (tagAttrs.condition as "A" | "B" | "C") ?? null,
         carrierLocked: false,
         observedPriceUsd: String(priceUsd),
+        adjustedPriceUsd: String(adjustedPrice),
         observedAt: new Date(),
         externalId: `haggle_${event.sessionId}`,
         rawPayload: {

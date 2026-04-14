@@ -46,6 +46,13 @@ export const hfmiPriceObservations = pgTable(
       precision: 10,
       scale: 2,
     }).notNull(),
+    /** Fee-normalized price: seller net on Haggle (1.5% fee) equivalent.
+     *  Formula: observed × (1 - source_fee) / (1 - 0.015)
+     *  haggle_internal = observed (no adjustment). */
+    adjustedPriceUsd: numeric("adjusted_price_usd", {
+      precision: 10,
+      scale: 2,
+    }),
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
     // e.g. eBay itemId — used for dedup across re-fetches.
     externalId: text("external_id"),

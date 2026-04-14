@@ -347,17 +347,24 @@ async function main() {
   /** Escape single quotes for safe SQL string interpolation */
   const esc = (s: string) => s.replace(/'/g, "''");
 
+  // Fee adjustment: eBay 13% fee → normalize to Haggle 1.5% fee
+  // adjusted = observed × (1 - 0.13) / (1 - 0.015) = observed × 0.87 / 0.985
+  const EBAY_ADJUSTMENT = 0.87 / 0.985;
+
   const sqlValues = allObservations
     .map(
-      (o) =>
-        `  ('${esc(o.source)}', '${esc(o.model)}', ${o.storage_gb ?? "NULL"}, ${o.battery_health_pct ?? "NULL"}, '${esc(o.cosmetic_grade)}', ${o.carrier_locked}, ${o.observed_price_usd}, '${esc(o.observed_at)}', '${esc(o.external_id)}')`,
+      (o) => {
+        const adjusted = Math.round(o.observed_price_usd * EBAY_ADJUSTMENT * 100) / 100;
+        return `  ('${esc(o.source)}', '${esc(o.model)}', ${o.storage_gb ?? "NULL"}, ${o.battery_health_pct ?? "NULL"}, '${esc(o.cosmetic_grade)}', ${o.carrier_locked}, ${o.observed_price_usd}, ${adjusted}, '${esc(o.observed_at)}', '${esc(o.external_id)}')`;
+      },
     )
     .join(",\n");
 
   const sqlContent = `-- eBay Electronics Full Crawl — ${new Date().toISOString().slice(0, 10)}
 -- ${grandTotal} observations across ${Object.keys(categoryStats).length} categories
+-- Prices fee-adjusted: eBay 13% → Haggle 1.5% equivalent
 INSERT INTO hfmi_price_observations
-  (source, model, storage_gb, battery_health_pct, cosmetic_grade, carrier_locked, observed_price_usd, observed_at, external_id)
+  (source, model, storage_gb, battery_health_pct, cosmetic_grade, carrier_locked, observed_price_usd, adjusted_price_usd, observed_at, external_id)
 VALUES
 ${sqlValues}
 ON CONFLICT (source, external_id) DO NOTHING;\n`;

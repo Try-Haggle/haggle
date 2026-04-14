@@ -189,15 +189,16 @@ export async function getMedianPrice(
       ? sql` AND cosmetic_grade = ${condition}`
       : sql``;
 
+  // Use adjusted_price_usd (fee-normalized) when available, fallback to observed_price_usd
   const raw = await db.execute(sql`
     SELECT
-      observed_price_usd::float8 AS price,
+      COALESCE(adjusted_price_usd, observed_price_usd)::float8 AS price,
       source,
       observed_at
     FROM ${hfmiPriceObservations}
     WHERE model = ${model}
       AND observed_at > ${cutoff.toISOString()}${storageClause}${conditionClause}
-    ORDER BY observed_price_usd::float8
+    ORDER BY COALESCE(adjusted_price_usd, observed_price_usd)::float8
   `);
 
   const rows =
