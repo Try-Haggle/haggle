@@ -7,6 +7,18 @@ export interface CreateIntentResponse {
   };
 }
 
+export async function getBuyerSessions(userId: string, listingId: string) {
+  const data = await api.get<{
+    sessions: Array<{
+      id: string;
+      listing_id: string;
+      status: string;
+      current_round: number;
+    }>;
+  }>(`/negotiations/sessions?user_id=${userId}&role=BUYER`);
+  return (data.sessions ?? []).filter((s) => s.listing_id === listingId);
+}
+
 export async function createBuyerIntent(params: {
   userId: string;
   category: string;

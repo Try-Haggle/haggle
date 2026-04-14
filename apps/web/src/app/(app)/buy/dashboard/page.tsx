@@ -17,6 +17,16 @@ export interface ViewedListing {
   targetPrice: string | null;
 }
 
+export interface ActiveNegotiation {
+  id: string;
+  listing_id: string;
+  status: string;
+  current_round: number;
+  last_offer_price_minor: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export default async function BuyerDashboardPage() {
   const supabase = await createClient();
   const {
@@ -39,5 +49,20 @@ export default async function BuyerDashboardPage() {
     // API down — dashboard still renders with empty state
   }
 
-  return <BuyerDashboardContent viewedListings={viewedListings} />;
+  let activeNegotiations: ActiveNegotiation[] = [];
+  try {
+    const data = await serverApi.get<{ sessions: ActiveNegotiation[] }>(
+      `/negotiations/sessions?user_id=${user.id}&role=BUYER`,
+    );
+    activeNegotiations = data.sessions ?? [];
+  } catch {
+    // API down — dashboard still renders with empty state
+  }
+
+  return (
+    <BuyerDashboardContent
+      viewedListings={viewedListings}
+      activeNegotiations={activeNegotiations}
+    />
+  );
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MarketingNav } from "@/components/marketing-nav";
 
 export default function MarketingLayout({
@@ -18,6 +19,12 @@ export default function MarketingLayout({
             <a href="https://tryhaggle.ai" className="hover:text-slate-300 transition-colors">
               tryhaggle.ai
             </a>
+            <Link href="/terms" className="hover:text-slate-300 transition-colors">
+              Terms
+            </Link>
+            <Link href="/privacy" className="hover:text-slate-300 transition-colors">
+              Privacy
+            </Link>
           </div>
         </div>
       </footer>

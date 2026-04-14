@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ViewedListing } from "./page";
+import type { ViewedListing, ActiveNegotiation } from "./page";
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -15,10 +15,35 @@ function formatTimeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+function statusBadgeClass(status: string): string {
+  const map: Record<string, string> = {
+    ACTIVE: "text-cyan-400 bg-cyan-500/10",
+    NEAR_DEAL: "text-emerald-400 bg-emerald-500/10",
+    ACCEPTED: "text-emerald-400 bg-emerald-500/15",
+    REJECTED: "text-red-400 bg-red-500/10",
+    STALLED: "text-amber-400 bg-amber-500/10",
+    EXPIRED: "text-slate-500 bg-slate-800",
+    WAITING: "text-amber-400 bg-amber-500/10",
+  };
+  return map[status] ?? "text-slate-400 bg-slate-800";
+}
+
+function formatMinorPrice(priceMinor: number | null): string {
+  if (priceMinor === null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(priceMinor / 100);
+}
+
 export function BuyerDashboardContent({
   viewedListings,
+  activeNegotiations,
 }: {
   viewedListings: ViewedListing[];
+  activeNegotiations: ActiveNegotiation[];
 }) {
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
@@ -63,17 +88,54 @@ export function BuyerDashboardContent({
 
       {/* Active Negotiations */}
       <h2 className="text-lg font-bold text-white mb-4">Active Negotiations</h2>
-      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
+      {activeNegotiations.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-slate-300 mb-1">No active negotiations</h3>
+          <p className="text-sm text-slate-500">
+            Start a negotiation on a listing to track it here.
+          </p>
         </div>
-        <h3 className="text-lg font-semibold text-slate-300 mb-1">No active negotiations</h3>
-        <p className="text-sm text-slate-500">
-          Start a negotiation on a listing to track it here.
-        </p>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          {activeNegotiations.map((neg) => (
+            <Link
+              key={neg.id}
+              href={`/buy/negotiations/${neg.id}`}
+              className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
+            >
+              <div className="shrink-0 h-12 w-12 rounded-lg bg-slate-800 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-semibold text-white truncate font-mono">
+                    {neg.id.slice(0, 8)}...
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(neg.status)}`}>
+                    {neg.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Round {neg.current_round} · Last offer: {formatMinorPrice(neg.last_offer_price_minor)}
+                </p>
+              </div>
+              <div className="shrink-0 text-right mr-1">
+                <p className="text-xs text-slate-500">{formatTimeAgo(neg.updated_at)}</p>
+              </div>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

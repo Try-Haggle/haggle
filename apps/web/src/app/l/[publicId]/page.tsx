@@ -47,6 +47,7 @@ export default async function BuyerListingPage({
 
   const userInfo = user
     ? {
+        id: user.id,
         email: user.email ?? "",
         name: (user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null,
         avatarUrl: (user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as string | null,

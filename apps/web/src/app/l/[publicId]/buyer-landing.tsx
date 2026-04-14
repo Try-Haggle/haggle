@@ -11,7 +11,7 @@ import {
 } from "@/lib/buyer-agents";
 import { Nav } from "@/components/nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
-import { createBuyerIntent, triggerMatch } from "./negotiation-api";
+import { createBuyerIntent, triggerMatch, getBuyerSessions } from "./negotiation-api";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -131,9 +131,16 @@ function RadarChart({ stats }: { stats: BuyerAgentStats }) {
 /* ─── Main Component ──────────────────────────────────────── */
 
 interface UserInfo {
+  id: string;
   email: string;
   name: string | null;
   avatarUrl: string | null;
+}
+
+interface HfmiData {
+  median: number;
+  sample_count: number;
+  period_days: 30;
 }
 
 export function BuyerLanding({ listing, user, isOwner = false }: { listing: Listing; user: UserInfo | null; isOwner?: boolean }) {
@@ -143,6 +150,7 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
   );
   const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
+  const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
 
   const currentStats: BuyerAgentStats = selectedAgent?.stats ?? DEFAULT_BUYER_STATS;
   const deadline = timeRemaining(listing.sellingDeadline);
@@ -159,6 +167,21 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
       is_owner: isOwner,
     });
   }, []);
+
+  // Fetch HFMI fair market price (non-blocking)
+  useEffect(() => {
+    if (!listing.category || !listing.category.includes("iphone")) return;
+    const model = listing.category.toLowerCase().replace(/\s+/g, "_");
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
+    fetch(`${apiBase}/hfmi/${encodeURIComponent(model)}/median`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: HfmiData | null) => {
+        if (data?.median) setHfmiData(data);
+      })
+      .catch(() => {
+        // Non-fatal: HFMI unavailable
+      });
+  }, [listing.category]);
 
   return (
     <main className="min-h-screen bg-bg-primary">
@@ -223,6 +246,16 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
                   <p className="mt-3 text-3xl font-bold text-emerald-400 md:text-4xl">
                     {formatPrice(listing.targetPrice)}
                   </p>
+
+                  {hfmiData && (
+                    <p className="mt-1 text-sm text-slate-400">
+                      Fair Market Price:{" "}
+                      <span className="font-medium text-slate-300">
+                        {formatPrice(hfmiData.median.toString())}
+                      </span>{" "}
+                      <span className="text-xs text-slate-500">(HFMI, {hfmiData.sample_count} obs)</span>
+                    </p>
+                  )}
 
                   {/* Tags */}
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -504,7 +537,7 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
                         }
 
                         await createBuyerIntent({
-                          userId: user.email,
+                          userId: user.id,
                           category: listing.category || "general",
                           keywords: listing.tags || [],
                           listingId: listing.id,
@@ -516,14 +549,27 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
                         setNegotiationMessage("Your negotiation agent is set up! Matching you with the seller...");
 
                         try {
-                          const match = await triggerMatch(listing.category || "general", listing.id);
-                          if (match.match_result.matched.length > 0) {
-                            setNegotiationMessage("Match found! Your agent will start negotiating shortly.");
-                          } else {
-                            setNegotiationMessage("Intent registered! You\u2019ll be notified when negotiation begins.");
+                          await triggerMatch(listing.category || "general", listing.id);
+                          setNegotiationMessage("Match found! Redirecting to negotiation...");
+                          // Try to find the newly created session and redirect
+                          try {
+                            const sessions = await getBuyerSessions(user.id, listing.id);
+                            if (sessions.length > 0) {
+                              window.location.href = `/buy/negotiations/${sessions[0].id}`;
+                              return;
+                            }
+                          } catch {
+                            // Fall through to dashboard redirect
                           }
+                          setNegotiationMessage("Negotiation started! Check your dashboard.");
+                          setTimeout(() => {
+                            window.location.href = "/buy/dashboard";
+                          }, 1500);
                         } catch {
-                          setNegotiationMessage("Intent registered! Matching will happen shortly.");
+                          setNegotiationMessage("Intent registered! Check your dashboard for updates.");
+                          setTimeout(() => {
+                            window.location.href = "/buy/dashboard";
+                          }, 1500);
                         }
                       } catch (err) {
                         setNegotiationState("error");

@@ -52,5 +52,5 @@ export default async function ListingDetailPage({
     redirect("/sell/dashboard");
   }
 
-  return <DetailContent listing={listing} />;
+  return <DetailContent listing={listing} sellerId={user.id} />;
 }

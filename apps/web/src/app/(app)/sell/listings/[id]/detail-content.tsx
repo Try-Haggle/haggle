@@ -4,12 +4,97 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import type { ListingDetail } from "./page";
 import { useAmplitude } from "@/providers/amplitude-provider";
+import { api } from "@/lib/api-client";
+import { AttestationWizard } from "./attestation-wizard";
 
-export function DetailContent({ listing }: { listing: ListingDetail }) {
+interface AttestationStatus {
+  listingId: string;
+  committed: boolean;
+  imei?: string;
+  batteryHealthPct?: number;
+  findMyOff?: boolean;
+  createdAt?: string;
+}
+
+interface NegotiationSession {
+  id: string;
+  listing_id: string;
+  status: string;
+  current_round: number;
+  last_offer_price_minor: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function formatMinorPrice(priceMinor: number | null): string {
+  if (priceMinor === null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(priceMinor / 100);
+}
+
+function statusBadgeClass(status: string): string {
+  const map: Record<string, string> = {
+    ACTIVE: "text-cyan-400 bg-cyan-500/10",
+    NEAR_DEAL: "text-emerald-400 bg-emerald-500/10",
+    ACCEPTED: "text-emerald-400 bg-emerald-500/15",
+    REJECTED: "text-red-400 bg-red-500/10",
+    STALLED: "text-amber-400 bg-amber-500/10",
+    EXPIRED: "text-slate-500 bg-slate-800",
+    WAITING: "text-amber-400 bg-amber-500/10",
+  };
+  return map[status] ?? "text-slate-400 bg-slate-800";
+}
+
+function negoTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+export function DetailContent({ listing, sellerId }: { listing: ListingDetail; sellerId?: string }) {
   const [copied, setCopied] = useState(false);
+  const [sessions, setSessions] = useState<NegotiationSession[]>([]);
+  const [attestation, setAttestation] = useState<AttestationStatus | null>(null);
+  const [attestationLoading, setAttestationLoading] = useState(true);
+  const [showWizard, setShowWizard] = useState(false);
 
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
+
+  useEffect(() => {
+    if (!sellerId) return;
+    api
+      .get<{ sessions: NegotiationSession[] }>(
+        `/negotiations/sessions?user_id=${sellerId}&role=SELLER`,
+      )
+      .then((data) => {
+        const filtered = (data.sessions ?? []).filter(
+          (s) => s.listing_id === listing.id,
+        );
+        setSessions(filtered);
+      })
+      .catch(() => {
+        // API down — no sessions shown
+      });
+  }, [sellerId, listing.id]);
+
+  useEffect(() => {
+    setAttestationLoading(true);
+    api
+      .get<AttestationStatus>(`/api/attestation/${listing.id}`)
+      .then((data) => setAttestation(data))
+      .catch(() => setAttestation(null))
+      .finally(() => setAttestationLoading(false));
+  }, [listing.id]);
 
   const shareUrl = `${origin}/l/${listing.publicId}`;
   const price = listing.targetPrice
@@ -97,6 +182,16 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
       </div>
 
       {/* KPI Cards */}
+      {(() => {
+        const totalCount = sessions.length;
+        const withOffers = sessions.filter((s) => s.last_offer_price_minor !== null);
+        const avgOffer = withOffers.length > 0
+          ? Math.round(withOffers.reduce((acc, s) => acc + (s.last_offer_price_minor ?? 0), 0) / withOffers.length)
+          : null;
+        const bestOffer = withOffers.length > 0
+          ? Math.max(...withOffers.map((s) => s.last_offer_price_minor ?? 0))
+          : null;
+        return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <KpiCard
           icon={
@@ -106,7 +201,7 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
           }
           iconColor="text-cyan-400"
           iconBg="bg-cyan-500/10"
-          value="0"
+          value={String(totalCount)}
           label="Total Negotiations"
         />
         <KpiCard
@@ -118,7 +213,7 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
           }
           iconColor="text-emerald-400"
           iconBg="bg-emerald-500/10"
-          value={"\u2014"}
+          value={avgOffer !== null ? formatMinorPrice(avgOffer) : "\u2014"}
           label="Avg. Offer Price"
         />
         <KpiCard
@@ -130,7 +225,7 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
           }
           iconColor="text-purple-400"
           iconBg="bg-purple-500/10"
-          value={"\u2014"}
+          value={bestOffer !== null ? formatMinorPrice(bestOffer) : "\u2014"}
           label="Best Offer"
         />
         <KpiCard
@@ -146,21 +241,111 @@ export function DetailContent({ listing }: { listing: ListingDetail }) {
           label="Time Left"
         />
       </div>
+        );
+      })()}
+
+      {/* Attestation Status */}
+      <div className="mb-8">
+        <h2 className="text-lg font-bold text-white mb-4">Verification</h2>
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4 flex items-center gap-4">
+          {attestationLoading ? (
+            <p className="text-sm text-slate-500">Checking verification status...</p>
+          ) : attestation?.committed ? (
+            <>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-400">Verified</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  IMEI verified · Battery {attestation.batteryHealthPct}% · Find My off
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-white">Not Verified</p>
+                <p className="text-xs text-slate-400 mt-0.5">Complete attestation to increase buyer confidence</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWizard(true)}
+                className="shrink-0 rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-600 transition-colors"
+              >
+                Complete Attestation
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Negotiation History */}
       <h2 className="text-lg font-bold text-white mb-4">Negotiation History</h2>
-      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
+      {sessions.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-slate-300 mb-1">No negotiations yet</h3>
+          <p className="text-sm text-slate-500">
+            Share your link to start receiving offers from buyers&apos; AI agents
+          </p>
         </div>
-        <h3 className="text-lg font-semibold text-slate-300 mb-1">No negotiations yet</h3>
-        <p className="text-sm text-slate-500">
-          Share your link to start receiving offers from buyers&apos; AI agents
-        </p>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          {sessions.map((neg) => (
+            <Link
+              key={neg.id}
+              href={`/sell/negotiations/${neg.id}`}
+              className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <span className="text-sm font-semibold text-white truncate font-mono">
+                    {neg.id.slice(0, 8)}...
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(neg.status)}`}>
+                    {neg.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Round {neg.current_round} · Last offer: {formatMinorPrice(neg.last_offer_price_minor)}
+                </p>
+              </div>
+              <div className="shrink-0 text-right mr-1">
+                <p className="text-xs text-slate-500">{negoTimeAgo(neg.updated_at)}</p>
+              </div>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {showWizard && (
+        <AttestationWizard
+          listingId={listing.id}
+          onComplete={() => {
+            setShowWizard(false);
+            setAttestation({ listingId: listing.id, committed: true });
+          }}
+          onCancel={() => setShowWizard(false)}
+        />
+      )}
     </main>
   );
 }
