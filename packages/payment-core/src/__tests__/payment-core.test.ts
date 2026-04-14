@@ -929,6 +929,11 @@ describe("RealX402Adapter", () => {
         mode: "human_wallet" as const,
         wallet: buyerWallet,
       }),
+      resolve_settlement_signature: async (_intent: PaymentIntent) => ({
+        signature: "0xdeadbeef" as `0x${string}`,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+        signer_nonce: BigInt(0),
+      }),
       ...overrides,
     };
   }

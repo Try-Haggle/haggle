@@ -24,7 +24,7 @@ export class ScaffoldSettlementRouterContract implements SettlementRouterContrac
     readonly asset: "USDC",
   ) {}
 
-  async quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "approval_snapshot_hash">): Promise<SettlementRouterQuote> {
+  async quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote> {
     return {
       quote_id: createId("router_quote"),
       network: this.network,

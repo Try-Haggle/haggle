@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { createId } from "./id.js";
+import type { Hex } from "viem";
 import type {
   PaymentIntent,
   Refund,
@@ -35,6 +35,12 @@ export interface X402FeePolicy {
   wallet: PaymentPartyWallet;
 }
 
+export interface X402SettlementSignatureContext {
+  signature: Hex;
+  deadline: bigint;
+  signer_nonce: bigint;
+}
+
 export interface X402AdapterConfig {
   facilitator_url: string;
   network: "base" | "base-sepolia";
@@ -44,29 +50,17 @@ export interface X402AdapterConfig {
   dispute_registry?: DisputeRegistryContract;
   resolve_seller_payout_target(sellerId: string): Promise<X402SellerPayoutTarget>;
   resolve_buyer_authorization(intent: PaymentIntent): Promise<X402BuyerAuthorizationContext>;
+  /**
+   * Resolve the EIP-712 backend signature for a settlement.
+   * In production this calls the signing service. In test/mock, returns a stub.
+   */
+  resolve_settlement_signature(intent: PaymentIntent): Promise<X402SettlementSignatureContext>;
 }
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-function createDeterministicHash(input: string): string {
-  return createHash("sha256").update(input).digest("hex").slice(0, 16);
-}
-
-function hashApprovalSnapshot(intent: PaymentIntent): string {
-  return createDeterministicHash(
-    JSON.stringify({
-      order_id: intent.order_id,
-      payment_intent_id: intent.id,
-      seller_id: intent.seller_id,
-      buyer_id: intent.buyer_id,
-      selected_rail: intent.selected_rail,
-      amount: intent.amount,
-      authorization_mode: intent.buyer_authorization_mode ?? "human_wallet",
-    }),
-  );
-}
 
 function splitAmount(amountMinor: number, feeBps: number): { seller_amount_minor: number; haggle_fee_minor: number } {
   const haggle_fee_minor = Math.floor((amountMinor * feeBps) / 10_000);
@@ -108,7 +102,6 @@ export class RealX402Adapter implements PaymentProvider {
         currency: intent.amount.currency,
         amount_minor: haggle_fee_minor,
       },
-      reservation_id: undefined,
     });
 
     return {
@@ -152,8 +145,11 @@ export class RealX402Adapter implements PaymentProvider {
   }
 
   async settle(intent: PaymentIntent): Promise<SettlePaymentResult> {
-    const buyerAuth = await this.config.resolve_buyer_authorization(intent);
-    const sellerTarget = await this.config.resolve_seller_payout_target(intent.seller_id);
+    const [buyerAuth, sellerTarget, sigCtx] = await Promise.all([
+      this.config.resolve_buyer_authorization(intent),
+      this.config.resolve_seller_payout_target(intent.seller_id),
+      this.config.resolve_settlement_signature(intent),
+    ]);
     const { seller_amount_minor, haggle_fee_minor } = splitAmount(
       intent.amount.amount_minor,
       this.config.fee_policy.fee_bps,
@@ -177,7 +173,9 @@ export class RealX402Adapter implements PaymentProvider {
         currency: intent.amount.currency,
         amount_minor: haggle_fee_minor,
       },
-      approval_snapshot_hash: hashApprovalSnapshot(intent),
+      signature: sigCtx.signature,
+      deadline: sigCtx.deadline,
+      signer_nonce: sigCtx.signer_nonce,
     };
 
     const result = await this.config.settlement_router.execute(request);

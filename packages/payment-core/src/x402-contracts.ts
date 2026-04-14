@@ -1,3 +1,4 @@
+import type { Hex } from "viem";
 import type { BuyerAuthorizationMode, Money, PaymentPartyWallet } from "./types.js";
 
 export interface SettlementRouterQuote {
@@ -23,8 +24,12 @@ export interface SettlementRouterExecutionRequest {
   seller_amount: Money;
   haggle_fee_amount: Money;
   quote_id?: string;
-  approval_snapshot_hash: string;
-  reservation_id?: string;
+  /** EIP-712 signature from the authorized backend signer (EOA or EIP-1271). */
+  signature: Hex;
+  /** Unix timestamp deadline after which the signature is invalid. */
+  deadline: bigint;
+  /** Must match the contract's current signerNonce to prevent replay after key rotation. */
+  signer_nonce: bigint;
 }
 
 export interface SettlementRouterExecutionResult {
@@ -58,7 +63,7 @@ export interface SettlementRouterContract {
   readonly network: string;
   readonly asset: "USDC";
   readonly capabilities: SettlementRouterCapabilities;
-  quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "approval_snapshot_hash">): Promise<SettlementRouterQuote>;
+  quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote>;
   execute(request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult>;
 }
 
