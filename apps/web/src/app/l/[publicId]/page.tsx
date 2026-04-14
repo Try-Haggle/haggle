@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { serverApi, apiServerFireAndForget } from "@/lib/api-server";
 import { BuyerLanding } from "./buyer-landing";
+import { SimilarListings } from "./similar-listings";
 
 interface ListingData {
   id: string;
@@ -68,5 +69,10 @@ export default async function BuyerListingPage({
 
   const isOwner = !!(user && data.sellerId && user.id === data.sellerId);
 
-  return <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} />;
+  return (
+    <>
+      <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} />
+      <SimilarListings publicId={publicId} userId={user?.id ?? null} />
+    </>
+  );
 }

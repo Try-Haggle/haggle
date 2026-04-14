@@ -26,8 +26,8 @@ export default async function BuyAgentsPage() {
       </div>
       <p className="text-sm text-slate-400 mb-8">Customize AI agents for your negotiations</p>
 
-      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
+      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
             <path d="M12 8V4H8" />
             <rect width="16" height="12" x="4" y="8" rx="2" />
@@ -37,7 +37,7 @@ export default async function BuyAgentsPage() {
             <path d="M9 13v2" />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-slate-300 mb-1">Coming Soon</h3>
+        <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">Coming Soon</h3>
         <p className="text-sm text-slate-500">
           Create and manage your buying agents here. For now, choose from preset agents when starting a negotiation.
         </p>

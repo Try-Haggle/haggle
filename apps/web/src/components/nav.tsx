@@ -11,6 +11,7 @@ interface NavProps {
   userEmail: string;
   userName?: string | null;
   userAvatarUrl?: string | null;
+  modeOverride?: Mode;
 }
 
 const SELL_TABS = [
@@ -25,15 +26,30 @@ const BUY_TABS = [
   { label: "Staging", href: "/staging" },
 ];
 
-export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
+export function Nav({
+  userEmail,
+  userName,
+  userAvatarUrl,
+  modeOverride,
+}: NavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Derive mode from URL path
-  const mode: Mode = pathname.startsWith("/buy") ? "buying" : "selling";
+  // Derive mode from URL path, override prop, or localStorage (for /l/ pages)
+  const deriveMode = (): Mode => {
+    if (modeOverride) return modeOverride;
+    if (pathname.startsWith("/buy")) return "buying";
+    if (pathname.startsWith("/sell")) return "selling";
+    // /l/ pages: preserve previous mode from localStorage
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("haggle_mode") as Mode) ?? "buying";
+    }
+    return "buying";
+  };
+  const mode: Mode = deriveMode();
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
   // Keep localStorage in sync with URL-derived mode
@@ -72,11 +88,12 @@ export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
   };
 
   const logoHref = mode === "buying" ? "/buy/dashboard" : "/sell/dashboard";
-  const switchLabel = mode === "selling" ? "Switch to buying" : "Switch to selling";
+  const switchLabel =
+    mode === "selling" ? "Switch to buying" : "Switch to selling";
 
   return (
-    <nav className="fixed top-0 inset-x-0 z-50 h-16 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
-      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+    <nav className="fixed top-0 inset-x-0 z-50 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md hidden md:block">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Left: Logo + Tabs */}
         <div className="flex items-center h-full gap-6">
           <Link
@@ -94,13 +111,12 @@ export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
                 <Link
                   key={tab.href}
                   href={tab.href}
-                  className="px-3 py-1 text-sm font-medium text-white transition-colors"
+                  className="relative px-3 py-1 text-sm font-medium text-white transition-colors"
                 >
-                  <span className={`inline-block pb-1 border-b-2 ${
-                    isActive ? "border-cyan-400" : "border-transparent"
-                  }`}>
-                    {tab.label}
-                  </span>
+                  {tab.label}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-cyan-400 rounded-full" />
+                  )}
                 </Link>
               );
             })}
@@ -136,7 +152,16 @@ export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
                   {(userName || userEmail).charAt(0).toUpperCase()}
                 </div>
               )}
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
@@ -152,7 +177,16 @@ export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
                   onClick={() => setMenuOpen(false)}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
                 >
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <circle cx="12" cy="12" r="3" />
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                   </svg>
@@ -162,7 +196,16 @@ export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
                   onClick={handleLogout}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
                 >
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                     <polyline points="16 17 21 12 16 7" />
                     <line x1="21" y1="12" x2="9" y2="12" />

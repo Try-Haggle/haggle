@@ -178,7 +178,7 @@ export function SettingsContent({
       <div className="mb-8">
         <button
           onClick={() => router.push("/sell/dashboard")}
-          className="mb-4 flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+          className="mb-4 hidden md:flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
         >
           <svg
             viewBox="0 0 24 24"
@@ -201,8 +201,8 @@ export function SettingsContent({
       </div>
 
       {/* ── Profile Section ────────────────────────────── */}
-      <section className="rounded-xl border border-slate-800 bg-bg-card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Profile</h2>
+      <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Profile</h2>
 
         {/* Avatar */}
         <div className="mb-5">
@@ -294,8 +294,8 @@ export function SettingsContent({
       </section>
 
       {/* ── Password Section ───────────────────────────── */}
-      <section className="rounded-xl border border-slate-800 bg-bg-card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-white mb-1">Password</h2>
+      <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-white mb-1">Password</h2>
         <p className="text-sm text-slate-500 mb-4">
           {isOAuth
             ? "You signed in with Google. Set a password to also sign in with email."
@@ -354,8 +354,8 @@ export function SettingsContent({
       </section>
 
       {/* ── Delete Account Section ─────────────────────── */}
-      <section className="rounded-xl border border-red-900/50 bg-bg-card p-6">
-        <h2 className="text-lg font-semibold text-red-400 mb-1">
+      <section className="rounded-xl border border-red-900/50 bg-bg-card p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-semibold text-red-400 mb-1">
           Delete Account
         </h2>
         <p className="text-sm text-slate-500 mb-4">
@@ -411,6 +411,41 @@ export function SettingsContent({
           </div>
         )}
       </section>
+
+      {/* Mobile-only: Mode Switch + Sign Out */}
+      <div className="mt-6 space-y-3 md:hidden">
+        <button
+          onClick={() => {
+            const currentMode = window.location.pathname.startsWith("/buy") ? "buying" : "selling";
+            router.push(currentMode === "selling" ? "/buy/dashboard" : "/sell/dashboard");
+          }}
+          className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-bg-card p-4 text-sm text-slate-300 hover:border-slate-700 transition-colors cursor-pointer"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400">
+            <path d="M8 3 4 7l4 4" />
+            <path d="M4 7h16" />
+            <path d="m16 21 4-4-4-4" />
+            <path d="M20 17H4" />
+          </svg>
+          Switch mode
+        </button>
+
+        <button
+          onClick={async () => {
+            const supabaseClient = createClient();
+            await supabaseClient.auth.signOut();
+            router.push("/claim");
+          }}
+          className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-bg-card p-4 text-sm text-slate-400 hover:border-slate-700 transition-colors cursor-pointer"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }

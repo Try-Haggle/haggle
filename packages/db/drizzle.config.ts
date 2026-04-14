@@ -28,6 +28,11 @@ export default defineConfig({
     "./src/schema/seller-attestation-commits.ts",
     "./src/schema/hfmi-price-observations.ts",
     "./src/schema/hfmi-model-coefficients.ts",
+    "./src/schema/listing-embeddings.ts",
+    "./src/schema/tag-idf-cache.ts",
+    "./src/schema/buyer-interest-vectors.ts",
+    "./src/schema/recommendation-logs.ts",
+    "./src/schema/category-relatedness.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

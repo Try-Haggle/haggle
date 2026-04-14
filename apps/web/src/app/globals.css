@@ -18,6 +18,15 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Hide scrollbar for carousel */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Date input calendar icon */
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
