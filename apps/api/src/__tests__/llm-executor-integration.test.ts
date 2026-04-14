@@ -130,7 +130,7 @@ function makeInput(overrides: Partial<RoundExecutionInput> = {}): RoundExecution
     idempotencyKey: `idem-round-${Date.now()}`,
     roundData: {
       r_score: 0.7,
-      elapsed_ms: 60000,
+      t_elapsed: 60000,
     },
     nowMs: NOW,
     ...overrides,
@@ -318,7 +318,7 @@ describe('LLM Executor — Integration', () => {
       const result = await executeLLMNegotiationRound(
         db as any,
         makeInput({ offerPriceMinor: 86000 }),
-      ) as Record<string, unknown>;
+      ) as unknown as Record<string, unknown>;
 
       expect(result.message).toBeTypeOf('string');
       expect(result.phase).toBeTypeOf('string');

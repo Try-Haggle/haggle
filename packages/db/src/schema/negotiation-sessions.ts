@@ -44,6 +44,7 @@ export const negotiationSessions = pgTable(
       enum: [
         "CREATED", "ACTIVE", "NEAR_DEAL", "STALLED",
         "ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "WAITING",
+        "NEGOTIATING_VERSION", "FAILED_COMPATIBILITY",
       ],
     }).notNull().default("CREATED"),
     buyerId: uuid("buyer_id").notNull(),

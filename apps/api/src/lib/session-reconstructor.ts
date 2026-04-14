@@ -148,7 +148,7 @@ export interface RoundPersistData {
 }
 
 export interface SessionUpdateData {
-  status: "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING";
+  status: "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING" | "NEGOTIATING_VERSION" | "FAILED_COMPATIBILITY";
   currentRound: number;
   roundsNoConcession: number;
   lastOfferPriceMinor: string;

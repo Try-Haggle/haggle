@@ -56,7 +56,7 @@ function makeFacts(count: number): RoundFact[] {
       gap: 20000 - i * 6000,
       decision: 'COUNTER',
       timestamp: Date.now(),
-    } as RoundFact);
+    } as unknown as RoundFact);
   }
   return facts;
 }
@@ -66,7 +66,7 @@ function makeOpponent(): OpponentPattern {
     aggression: 0.5,
     concession_rate: 0.03,
     pattern_history: [],
-  } as OpponentPattern;
+  } as unknown as OpponentPattern;
 }
 
 function makeHookContext(stage: string, overrides?: Partial<HookContext>): HookContext {
@@ -303,7 +303,7 @@ describe('RefereeBriefing (Facts Only)', () => {
     expect(briefing.utilitySnapshot.u_total).toBeGreaterThan(0);
 
     // Does NOT have recommendations
-    const briefingAny = briefing as Record<string, unknown>;
+    const briefingAny = briefing as unknown as Record<string, unknown>;
     expect(briefingAny.recommended_price).toBeUndefined();
     expect(briefingAny.acceptable_range).toBeUndefined();
     expect(briefingAny.suggested_tactic).toBeUndefined();
@@ -314,9 +314,9 @@ describe('RefereeBriefing (Facts Only)', () => {
     const memory = makeMemory();
     // Facts with barely changing gap
     const stalledFacts: RoundFact[] = [
-      { round_number: 1, buyer_offer: 84000, seller_offer: 86000, gap: 2000 } as RoundFact,
-      { round_number: 2, buyer_offer: 84050, seller_offer: 85950, gap: 1900 } as RoundFact,
-      { round_number: 3, buyer_offer: 84100, seller_offer: 85900, gap: 1800 } as RoundFact,
+      { round_number: 1, buyer_offer: 84000, seller_offer: 86000, gap: 2000 } as unknown as RoundFact,
+      { round_number: 2, buyer_offer: 84050, seller_offer: 85950, gap: 1900 } as unknown as RoundFact,
+      { round_number: 3, buyer_offer: 84100, seller_offer: 85900, gap: 1800 } as unknown as RoundFact,
     ];
 
     const briefing = computeBriefing(memory, stalledFacts, null);

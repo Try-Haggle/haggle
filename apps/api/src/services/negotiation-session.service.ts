@@ -9,7 +9,8 @@ import {
 type SessionRole = "BUYER" | "SELLER";
 type SessionStatus =
   | "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED"
-  | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING";
+  | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING"
+  | "NEGOTIATING_VERSION" | "FAILED_COMPATIBILITY";
 
 // ---------------------------------------------------------------------------
 // Create
