@@ -13,7 +13,9 @@ export type SessionEvent =
   | 'superseded'
   | 'escalate'
   | 'escalation_resolved'
-  | 'hold_expired';
+  | 'hold_expired'
+  | 'version_agreed'
+  | 'version_failed';
 
 /** Terminal states that do not accept any transitions. */
 const TERMINAL_STATES: ReadonlySet<SessionStatus> = new Set([
@@ -21,6 +23,7 @@ const TERMINAL_STATES: ReadonlySet<SessionStatus> = new Set([
   'REJECTED',
   'EXPIRED',
   'SUPERSEDED',
+  'FAILED_COMPATIBILITY',
 ]);
 
 /**
@@ -64,6 +67,10 @@ const TRANSITIONS: Record<string, Partial<Record<SessionEvent, SessionStatus>>> 
     timeout: 'EXPIRED',
     superseded: 'SUPERSEDED',
     user_reject: 'REJECTED',
+  },
+  NEGOTIATING_VERSION: {
+    version_agreed: 'CREATED',
+    version_failed: 'FAILED_COMPATIBILITY',
   },
 };
 

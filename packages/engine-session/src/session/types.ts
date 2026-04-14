@@ -11,7 +11,9 @@ export type SessionStatus =
   | 'REJECTED'
   | 'EXPIRED'
   | 'SUPERSEDED'
-  | 'WAITING';
+  | 'WAITING'
+  | 'NEGOTIATING_VERSION'
+  | 'FAILED_COMPATIBILITY';
 
 /** A single negotiation round record. */
 export interface NegotiationRound {
