@@ -8,7 +8,7 @@ export default async function BuyAgentsPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/claim");
+    redirect("/sign-in");
   }
 
   return (

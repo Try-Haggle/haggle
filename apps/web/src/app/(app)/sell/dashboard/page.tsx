@@ -30,7 +30,7 @@ export default async function DashboardPage({
   if (!user) {
     const params = await searchParams;
     const claimParam = params.claim ? `?token=${params.claim}` : "";
-    redirect(`/claim${claimParam}`);
+    redirect(`/sign-up${claimParam}`);
   }
 
   // Process claim if token is present

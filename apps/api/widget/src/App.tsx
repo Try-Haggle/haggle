@@ -757,7 +757,7 @@ export default function App() {
                   className="btn-primary listing-live__dashboard-btn"
                   onClick={() => {
                     // TODO: change to https://tryhaggle.ai for production
-                    window.open(`http://localhost:3000/claim?token=${publishResult.claimToken}`, "_blank");
+                    window.open(`http://localhost:3000/sign-up?token=${publishResult.claimToken}`, "_blank");
                   }}
                 >
                   Go to Dashboard
