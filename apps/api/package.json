@@ -27,6 +27,7 @@
   "dependencies": {
     "@easypost/api": "^7.0.0",
     "@fastify/cors": "^11.0.0",
+    "@fastify/websocket": "^11.2.0",
     "@haggle/arp-core": "workspace:*",
     "@haggle/commerce-core": "workspace:*",
     "@haggle/db": "workspace:*",

@@ -34,6 +34,8 @@ import { registerHfmiRoutes } from "./routes/hfmi.js";
 import { registerPresetRoutes } from "./routes/presets.js";
 import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
+import websocket from "@fastify/websocket";
+import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
@@ -139,7 +141,9 @@ export async function createServer() {
   registerBuddyRoutes(app, db);
   registerGamificationRoutes(app, db);
 
-  // TODO(post-mvp): Register WebSocket handler for real-time updates
+  // ─── WebSocket ───────────────────────────────────────────
+  await app.register(websocket);
+  await registerWebSocketRoutes(app);
 
   return app;
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
+import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
 import type { NegotiationSession } from "./page";
 
 interface Round {
@@ -107,31 +108,26 @@ export function NegotiationChat({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [rounds.length]);
 
-  // Poll for updates every 5 seconds (only when not terminal)
-  const pollSession = useCallback(async () => {
+  // Reload session + rounds data
+  const reloadSession = useCallback(async () => {
     try {
-      const stateData = await api.get<SessionState>(
-        `/negotiations/sessions/${session.id}/state`,
-      );
-      // If version changed, reload full session + rounds
-      if (stateData.version !== (session as NegotiationSession & { version?: number }).version) {
-        const fullData = await api.get<{
-          session: NegotiationSession & { version: number };
-          rounds: Round[];
-        }>(`/negotiations/sessions/${session.id}`);
-        setSession(fullData.session);
-        setRounds(fullData.rounds);
-      }
+      const fullData = await api.get<{
+        session: NegotiationSession & { version: number };
+        rounds: Round[];
+      }>(`/negotiations/sessions/${session.id}`);
+      setSession(fullData.session);
+      setRounds(fullData.rounds);
     } catch {
-      // Silent — poll failure doesn't break UI
+      // Silent — update failure doesn't break UI
     }
-  }, [session.id, session]);
+  }, [session.id]);
 
-  useEffect(() => {
-    if (isTerminal) return;
-    const interval = setInterval(pollSession, 5000);
-    return () => clearInterval(interval);
-  }, [isTerminal, pollSession]);
+  // Real-time updates via WebSocket (falls back to 5s polling)
+  const { connectionMode } = useNegotiationWs({
+    sessionId: session.id,
+    onUpdate: reloadSession,
+    isTerminal,
+  });
 
   async function handleSubmitOffer(e: React.FormEvent) {
     e.preventDefault();

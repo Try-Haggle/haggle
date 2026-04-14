@@ -11,6 +11,7 @@ import type { RoundData } from "@haggle/engine-session";
 import type { RoundResult, EscalationRequest } from "@haggle/engine-session";
 
 import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
+import { broadcastToSession } from "../ws/negotiation-ws.js";
 import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
 import {
   reconstructSession,
@@ -216,6 +217,19 @@ export async function executeNegotiationRound(
       escalation: roundResult.escalation,
     };
   });
+
+  // --- Post-commit: broadcast real-time update via WebSocket ---
+  if (!result.idempotent) {
+    broadcastToSession(input.sessionId, {
+      type: "round_update",
+      payload: {
+        round: result.roundNo,
+        status: result.sessionStatus,
+        offer: result.outgoingPrice,
+        decision: result.decision,
+      },
+    });
+  }
 
   // --- Post-commit: dispatch pipeline events for terminal states ---
   if (eventDispatcher && !result.idempotent) {
