@@ -28,6 +28,19 @@ export { tagEdges, tagSuggestions, tagPlacementCache } from "./tag-graph.js";
 export { waitingIntents, intentMatches } from "./waiting-intents.js";
 export { skills, skillExecutions } from "./skills.js";
 export { negotiationGroups, negotiationSessions, negotiationRounds } from "./negotiation-sessions.js";
+export {
+  negotiationRoundFacts,
+  negotiationVerifications,
+  negotiationEscalations,
+  negotiationCheckpoints,
+  llmTelemetry,
+} from "./negotiation-moat.js";
+export {
+  marketMicrostructure,
+  negotiationGraph,
+  tacticEffectiveness,
+  priceDiscovery,
+} from "./negotiation-analytics.js";
 export { sellerAttestationCommits } from "./seller-attestation-commits.js";
 export { hfmiPriceObservations } from "./hfmi-price-observations.js";
 export { hfmiModelCoefficients } from "./hfmi-model-coefficients.js";
@@ -39,3 +52,9 @@ export { buyerInterestVectors } from "./buyer-interest-vectors.js";
 export { categoryRelatedness } from "./category-relatedness.js";
 export { vector } from "./pgvector.js";
 // TODO(slice-6): export { users } from "./users.js";
+export { userWallets } from "./user-wallets.js";
+export { webhookIdempotency } from "./webhook-idempotency.js";
+export { buddies } from "./buddies.js";
+export { buddyTrades } from "./buddy-trades.js";
+export { agentLevels } from "./agent-levels.js";
+export { skillPresets } from "./skill-presets.js";

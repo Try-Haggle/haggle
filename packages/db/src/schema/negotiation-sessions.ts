@@ -69,12 +69,37 @@ export const negotiationSessions = pgTable(
     coachingSnapshot: jsonb("coaching_snapshot").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Data moat columns (Doc 30 — session summary)
+    outcome: text("outcome", { enum: ["DEAL", "REJECT", "TIMEOUT", "WALKAWAY"] }),
+    discountRate: numeric("discount_rate", { precision: 5, scale: 4 }),
+    totalDurationMinutes: numeric("total_duration_minutes", { precision: 10, scale: 1 }),
+    buyerPattern: text("buyer_pattern", { enum: ["BOULWARE", "LINEAR", "CONCEDER"] }),
+    sellerPattern: text("seller_pattern", { enum: ["BOULWARE", "LINEAR", "CONCEDER"] }),
+    priceTrajectory: jsonb("price_trajectory").$type<number[]>(),
+    concessionRates: jsonb("concession_rates").$type<number[]>(),
+    tacticsUsed: jsonb("tactics_used").$type<string[]>(),
+    tacticsSuccess: jsonb("tactics_success").$type<Record<string, boolean>>(),
+    conditionsExchanged: jsonb("conditions_exchanged").$type<string[]>(),
+    refereeHardViolations: integer("referee_hard_violations").default(0),
+    refereeSoftViolations: integer("referee_soft_violations").default(0),
+    coachVsActualAvgDeviation: integer("coach_vs_actual_avg_deviation"),
+    itemValueRange: text("item_value_range"),
+    // Data moat — session-level snapshots (Doc 31 §3.6)
+    opponentModel: jsonb("opponent_model").$type<Record<string, unknown>>(),
+    coreMemorySnapshot: jsonb("core_memory_snapshot").$type<Record<string, unknown>>(),
+    memoHash: text("memo_hash"),
+    sessionFactChainHash: text("session_fact_chain_hash"),
+    // Gamification columns (Step 0009)
+    presetId: uuid("preset_id"),
+    buddyId: uuid("buddy_id"),
+    skillsUsed: jsonb("skills_used").$type<string[]>(),
   },
   (table) => [
     index("negotiation_sessions_group_status_idx").on(table.groupId, table.status),
     index("negotiation_sessions_buyer_status_idx").on(table.buyerId, table.status),
     index("negotiation_sessions_seller_status_idx").on(table.sellerId, table.status),
     index("negotiation_sessions_listing_idx").on(table.listingId),
+    index("negotiation_sessions_outcome_idx").on(table.outcome),
   ],
 );
 
@@ -114,9 +139,18 @@ export const negotiationRounds = pgTable(
     message: text("message"),
     phaseAtRound: text("phase_at_round"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Data moat columns (Doc 30 — round-level process data)
+    tacticUsed: text("tactic_used"),
+    opponentTacticDetected: text("opponent_tactic_detected"),
+    concessionRate: numeric("concession_rate", { precision: 8, scale: 6 }),
+    coachRecommendedMinor: numeric("coach_recommended_minor", { precision: 18, scale: 0 }),
+    deviationFromCoach: integer("deviation_from_coach"),
+    refereeViolations: jsonb("referee_violations").$type<{ rule: string; severity: 'HARD' | 'SOFT' }[]>(),
+    llmLatencyMs: integer("llm_latency_ms"),
   },
   (table) => [
     index("negotiation_rounds_session_round_idx").on(table.sessionId, table.roundNo),
     uniqueIndex("negotiation_rounds_idempotency_key_idx").on(table.idempotencyKey),
+    index("negotiation_rounds_tactic_idx").on(table.tacticUsed),
   ],
 );
