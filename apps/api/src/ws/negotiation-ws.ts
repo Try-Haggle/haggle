@@ -134,7 +134,7 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
           return;
         }
 
-        // Verify signature with HMAC-SHA256
+        // Verify signature with HMAC-SHA256 (timing-safe comparison)
         const crypto = require("node:crypto");
         const signingInput = `${parts[0]}.${parts[1]}`;
         const expectedSig = crypto
@@ -142,9 +142,38 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
           .update(signingInput)
           .digest("base64url");
 
-        if (expectedSig !== parts[2]) {
+        // Use timing-safe comparison to prevent timing attacks
+        const sigBuffer = Buffer.from(parts[2]);
+        const expectedBuffer = Buffer.from(expectedSig);
+        if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
           socket.close(4001, "Invalid token");
           return;
+        }
+
+        // Verify user is a participant in this session
+        // payload.sub = userId; check against session participants
+        const userId = payload.sub;
+        if (!userId) {
+          socket.close(4001, "Invalid token: no user");
+          return;
+        }
+
+        // Session-level authorization: verify user belongs to this session
+        // Query DB for session ownership (buyer_id or seller_id matches userId)
+        try {
+          const sessionRows = await app.inject({
+            method: "GET",
+            url: `/negotiations/sessions/${sessionId}`,
+            headers: { authorization: `Bearer ${token}` },
+          });
+          if (sessionRows.statusCode !== 200) {
+            socket.close(4003, "Not authorized for this session");
+            return;
+          }
+        } catch {
+          // If session check fails, allow connection but log warning
+          // (DB might be temporarily unavailable)
+          app.log.warn({ sessionId, userId }, "WS session auth check failed, allowing connection");
         }
 
         // Add to channel

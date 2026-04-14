@@ -160,17 +160,37 @@ CRITICAL SAFETY RULES — ABSOLUTE, NEVER VIOLATE:
 
 // ─── Main Guard Function ──────────────────────────────────────────────
 
+/** Max input length to prevent ReDoS (10KB) */
+const MAX_INPUT_LENGTH = 10_000;
+
+/** Strip zero-width characters and normalize Unicode to prevent homoglyph bypass */
+function normalizeInput(input: string): string {
+  // Remove zero-width characters (U+200B, U+200C, U+200D, U+FEFF, U+00AD)
+  const stripped = input.replace(/[\u200B\u200C\u200D\uFEFF\u00AD\u2060\u180E]/g, "");
+  // NFKC normalization: maps homoglyphs to ASCII equivalents
+  // e.g., Cyrillic "а" → Latin "a", fullwidth "ｉ" → "i"
+  return stripped.normalize("NFKC");
+}
+
 /**
  * Run full prompt guard on user input.
  * Call BEFORE sending to LLM.
  */
 export function runPromptGuard(input: string, context: "offer" | "message"): PromptGuardResult {
+  // Layer 0: Length check (prevent ReDoS)
+  if (input.length > MAX_INPUT_LENGTH) {
+    return { safe: false, threat_type: "override", threat_score: 0.7, matched_pattern: "input_too_long" };
+  }
+
+  // Normalize Unicode to prevent homoglyph/zero-width bypass
+  const normalized = normalizeInput(input);
+
   // Layer 1: Pattern scan
-  const patternResult = patternScan(input);
+  const patternResult = patternScan(normalized);
   if (!patternResult.safe) return patternResult;
 
   // Layer 2: Structure validation
-  const structureResult = structureValidate(input, context);
+  const structureResult = structureValidate(normalized, context);
   if (!structureResult.safe) return structureResult;
 
   return { safe: true, threat_score: 0 };

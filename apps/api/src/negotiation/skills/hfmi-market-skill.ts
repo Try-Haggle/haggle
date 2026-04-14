@@ -109,8 +109,9 @@ export class HfmiMarketSkill implements SkillRuntime {
           ],
         },
       };
-    } catch {
+    } catch (err) {
       // Non-fatal: market data failure does not block negotiation
+      console.warn("[hfmi-market-skill] lookup failed:", (err as Error).message);
       return { content: {} };
     }
   }

@@ -287,10 +287,11 @@ async function main() {
   console.log(`CSV: ${csvPath}`);
 
   // ── Write SQL ───────────────────────────────────────────────────────
+  const esc = (s: string) => s.replace(/'/g, "''");
   const values = allObservations
     .map(
       (o) =>
-        `  ('${o.source}', '${o.model}', ${o.storage_gb}, ${o.battery_health_pct ?? "NULL"}, '${o.cosmetic_grade}', ${o.carrier_locked}, ${o.observed_price_usd}, '${o.observed_at}', '${o.external_id}')`,
+        `  ('${esc(o.source)}', '${esc(o.model)}', ${o.storage_gb}, ${o.battery_health_pct ?? "NULL"}, '${esc(o.cosmetic_grade)}', ${o.carrier_locked}, ${o.observed_price_usd}, '${esc(o.observed_at)}', '${esc(o.external_id)}')`,
     )
     .join(",\n");
 

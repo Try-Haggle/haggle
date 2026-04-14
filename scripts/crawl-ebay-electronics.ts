@@ -344,10 +344,13 @@ async function main() {
   console.log(`\nCSV: ${csvPath}`);
 
   // ── Write SQL ───────────────────────────────────────────────────
+  /** Escape single quotes for safe SQL string interpolation */
+  const esc = (s: string) => s.replace(/'/g, "''");
+
   const sqlValues = allObservations
     .map(
       (o) =>
-        `  ('${o.source}', '${o.model}', ${o.storage_gb ?? "NULL"}, ${o.battery_health_pct ?? "NULL"}, '${o.cosmetic_grade}', ${o.carrier_locked}, ${o.observed_price_usd}, '${o.observed_at}', '${o.external_id}')`,
+        `  ('${esc(o.source)}', '${esc(o.model)}', ${o.storage_gb ?? "NULL"}, ${o.battery_health_pct ?? "NULL"}, '${esc(o.cosmetic_grade)}', ${o.carrier_locked}, ${o.observed_price_usd}, '${esc(o.observed_at)}', '${esc(o.external_id)}')`,
     )
     .join(",\n");
 

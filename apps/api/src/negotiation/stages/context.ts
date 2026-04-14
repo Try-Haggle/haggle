@@ -6,6 +6,9 @@
  */
 
 import type { ContextInput, ContextOutput } from '../pipeline/types.js';
+import type { SkillAppliedRecord } from '../skills/skill-types.js';
+import { VERIFICATION_BADGES } from '../skills/skill-types.js';
+import type { SkillStack } from '../skills/skill-stack.js';
 import { assembleContextLayers } from '../adapters/context-assembly.js';
 import { computeBriefing } from '../referee/briefing.js';
 import { encodeMemo, type MemoEncoding } from '../memo/memo-codec.js';
@@ -21,6 +24,7 @@ export function assembleStageContext(
   input: ContextInput,
   adapter: import('../types.js').ModelAdapter,
   memoEncoding: MemoEncoding = 'codec',
+  skillStack?: SkillStack,
 ): ContextOutput {
   const { memory, facts, opponent, skill, l5_signals } = input;
 
@@ -30,7 +34,12 @@ export function assembleStageContext(
   // 2. Build L5 signal strings
   const signalStrings = buildL5SignalStrings(l5_signals);
 
-  // 3. Assemble L0-L5 layers using existing context-assembly module
+  // 3. Build skill verification strings for LLM context (투명성 철학)
+  const skillsApplied = buildSkillAppliedRecords(skillStack);
+  const skillVerificationStrings = buildSkillVerificationStrings(skillStack);
+  signalStrings.push(...skillVerificationStrings);
+
+  // 4. Assemble L0-L5 layers using existing context-assembly module
   // NOTE: assembleContextLayers still expects RefereeCoaching for L3 layer.
   // During transition, pass memory.coaching (old RefereeCoaching from CoreMemory).
   const layers = assembleContextLayers({
@@ -42,7 +51,7 @@ export function assembleStageContext(
     signals: signalStrings,
   });
 
-  // 4. Encode memo snapshot
+  // 5. Encode memo snapshot
   const memoSnapshot = encodeMemo(
     memory,
     memoEncoding,
@@ -54,7 +63,7 @@ export function assembleStageContext(
     briefing,
     coaching: briefing, // deprecated alias
     memo_snapshot: memoSnapshot,
-    skills_applied: [],
+    skills_applied: skillsApplied,
   };
 }
 
@@ -95,4 +104,45 @@ function buildL5SignalStrings(
   }
 
   return parts;
+}
+
+// ---------------------------------------------------------------------------
+// Skill Verification — injected into LLM context for transparency
+// ---------------------------------------------------------------------------
+
+/**
+ * Build skill verification strings for LLM context.
+ * LLM sees which skills are active and their trust level,
+ * so it can weigh unverified skill advice with more caution.
+ */
+function buildSkillVerificationStrings(skillStack?: SkillStack): string[] {
+  if (!skillStack) return [];
+
+  const skills = skillStack.getSkills();
+  if (skills.length === 0) return [];
+
+  const lines = skills.map((s) => {
+    const m = s.manifest;
+    const badge = VERIFICATION_BADGES[m.verification.status];
+    const audit = m.verification.securityAudit ? ",security_audited" : "";
+    return `${badge} ${m.name} (${m.type},${m.verification.status}${audit})`;
+  });
+
+  return [`SKILLS_ACTIVE:${lines.join("|")}`];
+}
+
+/**
+ * Build SkillAppliedRecord[] for round response transparency.
+ * Users see exactly which skills participated and their verification status.
+ */
+function buildSkillAppliedRecords(skillStack?: SkillStack): SkillAppliedRecord[] {
+  if (!skillStack) return [];
+
+  return skillStack.getSkills().map((s) => ({
+    id: s.manifest.id,
+    name: s.manifest.name,
+    type: s.manifest.type,
+    badge: VERIFICATION_BADGES[s.manifest.verification.status],
+    verification_status: s.manifest.verification.status,
+  }));
 }
