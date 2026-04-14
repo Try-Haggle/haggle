@@ -6,6 +6,14 @@ import { api } from "@/lib/api-client";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
 import type { NegotiationSession } from "./page";
 
+interface SkillBadge {
+  id: string;
+  name: string;
+  type: string;
+  badge: string;
+  verification_status: string;
+}
+
 interface Round {
   id: string;
   round_no: number;
@@ -16,6 +24,14 @@ interface Round {
   utility: number | null;
   decision: string | null;
   created_at: string;
+  /** AI-generated natural language message */
+  message?: string;
+  /** Message for the other party (different locale) */
+  message_counterparty?: string;
+  /** Skills that participated in this round */
+  skills_applied?: SkillBadge[];
+  /** Response locale */
+  locale?: string;
 }
 
 interface SessionState {
@@ -245,23 +261,30 @@ export function NegotiationChat({
             No rounds yet. Submit an offer to begin.
           </div>
         ) : (
-          <div className="divide-y divide-slate-800/60 max-h-96 overflow-y-auto">
+          <div className="space-y-1 max-h-[500px] overflow-y-auto p-4">
             {rounds.map((round) => {
               const isMine = round.sender_role === role;
+              // Show counterparty message if available and we're the other side
+              const displayMessage = isMine
+                ? round.message
+                : round.message_counterparty ?? round.message;
+
               return (
                 <div
                   key={round.id}
-                  className={`flex gap-3 p-4 ${isMine ? "bg-cyan-500/3" : ""}`}
+                  className={`flex ${isMine ? "justify-end" : "justify-start"} animate-fade-in`}
                 >
-                  {/* Avatar */}
-                  <div className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${isMine ? "bg-cyan-500/15 text-cyan-400" : "bg-slate-800 text-slate-400"}`}>
-                    {round.sender_role === "BUYER" ? "B" : "S"}
-                  </div>
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
+                  <div
+                    className={`rounded-xl px-4 py-3 max-w-sm sm:max-w-md ${
+                      isMine
+                        ? "bg-cyan-500/10 border border-cyan-500/20"
+                        : "bg-slate-800 border border-slate-700"
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center gap-2 mb-1">
                       <span className={`text-xs font-semibold ${isMine ? "text-cyan-400" : "text-slate-400"}`}>
-                        {round.sender_role === "BUYER" ? "Buyer" : "Seller"} · Round {round.round_no}
+                        {isMine ? "🤖 Your AI" : round.sender_role === "BUYER" ? "🤖 Buyer AI" : "🤖 Seller AI"} · R{round.round_no}
                       </span>
                       {round.decision && (
                         <span className={`text-xs font-medium ${decisionBadge(round.decision)}`}>
@@ -270,22 +293,46 @@ export function NegotiationChat({
                       )}
                       <span className="ml-auto text-xs text-slate-600">{timeAgo(round.created_at)}</span>
                     </div>
+
+                    {/* Natural language message bubble */}
+                    {displayMessage && (
+                      <p className="text-sm text-slate-200 whitespace-pre-wrap mb-2">
+                        {displayMessage}
+                      </p>
+                    )}
+
+                    {/* Price */}
                     <div className="flex items-center gap-3 flex-wrap">
                       {round.price_minor !== null && (
-                        <span className="text-sm font-semibold text-white">
-                          Offered: {formatMinor(round.price_minor)}
+                        <span className={`text-lg font-bold ${isMine ? "text-cyan-400" : "text-blue-400"}`}>
+                          {formatMinor(round.price_minor)}
                         </span>
                       )}
                       {round.counter_price_minor !== null && (
                         <span className="text-sm text-slate-400">
-                          Counter: {formatMinor(round.counter_price_minor)}
+                          → {formatMinor(round.counter_price_minor)}
+                        </span>
+                      )}
+                      {round.utility !== null && (
+                        <span className="text-xs text-slate-500 ml-auto">
+                          {(round.utility * 100).toFixed(0)}%
                         </span>
                       )}
                     </div>
-                    {round.utility !== null && (
-                      <p className="text-xs text-slate-600 mt-0.5">
-                        Utility: {(round.utility * 100).toFixed(1)}%
-                      </p>
+
+                    {/* Skills applied badges */}
+                    {round.skills_applied && round.skills_applied.length > 0 && (
+                      <div className="flex items-center gap-1 mt-2 flex-wrap">
+                        {round.skills_applied.map((skill) => (
+                          <span
+                            key={skill.id}
+                            className="inline-flex items-center gap-0.5 rounded-full bg-slate-700/50 px-2 py-0.5 text-[10px] text-slate-400"
+                            title={`${skill.name} (${skill.verification_status})`}
+                          >
+                            {skill.badge} {skill.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
