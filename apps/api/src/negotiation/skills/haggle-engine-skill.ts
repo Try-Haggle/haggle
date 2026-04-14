@@ -57,14 +57,14 @@ const manifest: SkillManifest = {
 
 /** Default max duration per category (ms) */
 const CATEGORY_MAX_DURATION: Record<string, number> = {
-  electronics: 24 * 60 * 60 * 1000,     // 24h
-  smartphones: 24 * 60 * 60 * 1000,     // 24h
-  laptops: 48 * 60 * 60 * 1000,         // 48h
-  tablets: 24 * 60 * 60 * 1000,         // 24h
-  gaming: 24 * 60 * 60 * 1000,          // 24h
-  audio: 24 * 60 * 60 * 1000,           // 24h
-  sneakers: 12 * 60 * 60 * 1000,        // 12h (hype items move fast)
-  default: 24 * 60 * 60 * 1000,         // 24h
+  electronics: 7 * 24 * 60 * 60 * 1000,   // 7일
+  smartphones: 7 * 24 * 60 * 60 * 1000,   // 7일
+  laptops: 14 * 24 * 60 * 60 * 1000,      // 14일 (고가)
+  tablets: 7 * 24 * 60 * 60 * 1000,       // 7일
+  gaming: 7 * 24 * 60 * 60 * 1000,        // 7일
+  audio: 7 * 24 * 60 * 60 * 1000,         // 7일
+  sneakers: 3 * 24 * 60 * 60 * 1000,      // 3일 (hype items move fast)
+  default: 7 * 24 * 60 * 60 * 1000,       // 7일
 };
 
 /** Urgency → Faratin beta multiplier (lower beta = concede faster) */
@@ -72,8 +72,20 @@ const URGENCY_BETA_MULTIPLIER: Record<string, number> = {
   low: 1.3,      // 느긋 — 양보 매우 느림
   normal: 1.0,   // 기본
   high: 0.7,     // 급함 — 양보 빠름
-  urgent: 0.4,   // 매우 급함 — 매우 빠른 양보
+  urgent: 0.5,   // 매우 급함 — 빠른 양보 (0.4→0.5로 상향, 너무 빠르면 위험)
 };
+
+/**
+ * Floor protection ratio — urgency가 아무리 높아도
+ * floor 기준 이 비율 이상은 양보하지 않음.
+ *
+ * 예: floor=$500, FLOOR_PROTECTION=0.90
+ *   buyer: 최대 $500 * 0.90 = $450까지 → 아니, floor 자체가 한계
+ *   seller: floor의 90% 지점에서 멈춤 → $500 + ($target-$500)*0.10
+ *
+ * 실제로는: Faratin의 p_limit을 floor에서 10% 안쪽으로 제한
+ */
+const FLOOR_PROTECTION_RATIO = 0.90;
 
 /** Urgency → time pressure alpha amplifier (higher = steeper decay) */
 const URGENCY_ALPHA_AMPLIFIER: Record<string, number> = {
@@ -189,12 +201,20 @@ export class HaggleEngineSkill implements SkillRuntime {
     const baseBeta = deriveBeta(opponentPattern);
     const adjustedBeta = baseBeta * urgencyBetaMul;
 
+    // Floor protection: even with urgency=urgent, never concede past 90% of range to floor
+    // p_protected keeps a 10% buffer between the concession limit and the absolute floor
+    const range = Math.abs(boundaries.my_target - boundaries.my_floor);
+    const buffer = range * (1 - FLOOR_PROTECTION_RATIO);
+    const p_protected = session.role === "buyer"
+      ? boundaries.my_floor - buffer   // buyer: don't go higher than floor - buffer
+      : boundaries.my_floor + buffer;  // seller: don't go lower than floor + buffer
+
     const faratinPrice = computeCounterOffer({
       p_start: boundaries.my_target,
-      p_limit: boundaries.my_floor,
-      t: tElapsed,  // REAL time ratio, not round ratio
+      p_limit: p_protected,  // protected floor, not raw floor
+      t: tElapsed,
       T: 1,
-      beta: adjustedBeta,  // urgency-adjusted
+      beta: adjustedBeta,
     });
 
     // Engine-core decision recommendation
@@ -272,15 +292,23 @@ export class HaggleEngineSkill implements SkillRuntime {
       };
     }
 
-    // BARGAINING — Faratin curve with real time + urgency
+    // BARGAINING — Faratin curve with real time + urgency + floor protection
     const tElapsed = computeRealTimeElapsed(memory);
     const urgency = session.urgency ?? "normal";
     const urgencyBetaMul = URGENCY_BETA_MULTIPLIER[urgency] ?? 1.0;
     const beta = deriveBeta(opponentPattern) * urgencyBetaMul;
+
+    // Floor protection: keep 10% buffer
+    const range = Math.abs(boundaries.my_target - boundaries.my_floor);
+    const buffer = range * (1 - FLOOR_PROTECTION_RATIO);
+    const p_protected = session.role === "buyer"
+      ? boundaries.my_floor - buffer
+      : boundaries.my_floor + buffer;
+
     const price = computeCounterOffer({
       p_start: boundaries.my_target,
-      p_limit: boundaries.my_floor,
-      t: tElapsed,  // REAL time, not round ratio
+      p_limit: p_protected,
+      t: tElapsed,
       T: 1,
       beta,
     });
