@@ -6,7 +6,8 @@
  * Internal processing stays in English (token savings).
  */
 
-export type SupportedLocale = "en" | "ko" | "ja" | "zh" | "es" | "fr" | "de";
+/** US Top 5 + East Asian languages */
+export type SupportedLocale = "en" | "es" | "zh" | "tl" | "vi" | "ko" | "ja";
 
 interface DetectionResult {
   locale: SupportedLocale;
@@ -25,8 +26,11 @@ const JAPANESE_REGEX = /[\u3040-\u309F\u30A0-\u30FF\u31F0-\u31FF]/g;
 /** Chinese: CJK Unified Ideographs (shared with Japanese Kanji) */
 const CJK_REGEX = /[\u4E00-\u9FFF\u3400-\u4DBF]/g;
 
-/** Latin extended (accented chars for European languages) */
-const LATIN_EXTENDED_REGEX = /[\u00C0-\u024F]/g;
+/** Vietnamese-specific diacritics (ơ, ư, ă, đ, etc.) */
+const VIETNAMESE_REGEX = /[\u01A0\u01A1\u01AF\u01B0\u0102\u0103\u0110\u0111\u1EA0-\u1EF9]/g;
+
+/** Spanish-specific (ñ, ¿, ¡) */
+const SPANISH_MARKERS = /[ñ¿¡]/g;
 
 // ─── Detection ────────────────────────────────────────────────────────
 
@@ -70,7 +74,21 @@ export function detectLanguage(text: string): DetectionResult {
     return { locale: "zh", confidence: Math.min(1, cjkRatio + 0.2), script: "cjk" };
   }
 
+  // Vietnamese: Latin + specific diacritics (ơ, ư, ă, đ)
+  const vietnameseCount = (clean.match(VIETNAMESE_REGEX) || []).length;
+  if (vietnameseCount >= 2) {
+    return { locale: "vi", confidence: Math.min(1, vietnameseCount / total + 0.5), script: "vietnamese_latin" };
+  }
+
+  // Spanish: ñ, ¿, ¡ markers
+  const spanishCount = (clean.match(SPANISH_MARKERS) || []).length;
+  if (spanishCount >= 1) {
+    return { locale: "es", confidence: Math.min(1, spanishCount / total + 0.5), script: "spanish_latin" };
+  }
+
   // Default: English (Latin script)
+  // Note: Tagalog (tl) uses plain Latin — indistinguishable from English by script.
+  // Tagalog users should set locale manually in their profile settings.
   return { locale: "en", confidence: 0.7, script: "latin" };
 }
 
@@ -80,12 +98,12 @@ export function detectLanguage(text: string): DetectionResult {
 export function getLocaleName(locale: SupportedLocale): string {
   const names: Record<SupportedLocale, string> = {
     en: "English",
+    es: "Español",
+    zh: "中文",
+    tl: "Filipino",
+    vi: "Tiếng Việt",
     ko: "한국어",
     ja: "日本語",
-    zh: "中文",
-    es: "Español",
-    fr: "Français",
-    de: "Deutsch",
   };
   return names[locale] ?? "English";
 }

@@ -71,18 +71,48 @@ function respondWithTemplate(input: RespondInput): RespondOutput {
   const { final_decision } = validated;
   const { buddy_dna } = memory;
 
-  const locale = resolveLocale(memory);
+  const myLocale = resolveLocale(memory);
+  const counterpartyLocale = resolveCounterpartyLocale(memory);
 
+  // Render message in the locale the counterparty should see
+  // (this message is sent TO the other party)
   const message = templateRenderer.render(final_decision, {
     phase: memory.session.phase,
     role: memory.session.role,
-    locale,
+    locale: myLocale,
     activeTerms: memory.terms.active,
     tone: buddy_dna.tone,
   });
 
+  // If counterparty has a different locale, render a second message for them
+  let messageCounterparty: string | undefined;
+  if (counterpartyLocale && counterpartyLocale !== myLocale) {
+    messageCounterparty = templateRenderer.render(final_decision, {
+      phase: memory.session.phase,
+      role: memory.session.role,
+      locale: counterpartyLocale,
+      activeTerms: memory.terms.active,
+      tone: buddy_dna.tone,
+    });
+  }
+
   return {
     message,
+    message_counterparty: messageCounterparty,
+    locale: myLocale,
+    locale_counterparty: counterpartyLocale !== myLocale ? counterpartyLocale : undefined,
     tone: buddy_dna.tone.style,
   };
+}
+
+/**
+ * Resolve the counterparty's locale.
+ * Used to generate a second message in their language.
+ */
+function resolveCounterpartyLocale(memory: import('../types.js').CoreMemory): SupportedLocale {
+  const sessionAny = memory.session as Record<string, unknown>;
+  if (typeof sessionAny.counterparty_locale === 'string') {
+    return sessionAny.counterparty_locale as SupportedLocale;
+  }
+  return 'en'; // default: counterparty uses English
 }

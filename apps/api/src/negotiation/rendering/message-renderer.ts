@@ -24,9 +24,16 @@ export class TemplateMessageRenderer implements MessageRenderer {
     const { tone, role, phase, locale } = context;
 
     // Route to locale-specific templates
-    let message = locale === 'ko'
-      ? this.getKoreanTemplate(action, price, tone, role, phase)
-      : this.getActionTemplate(action, price, tone, role, phase);
+    let message: string;
+    switch (locale) {
+      case 'ko': message = this.getKoreanTemplate(action, price, tone, role, phase); break;
+      case 'ja': message = this.getJapaneseTemplate(action, price, tone, role, phase); break;
+      case 'zh': message = this.getChineseTemplate(action, price, tone, role, phase); break;
+      case 'es': message = this.getSpanishTemplate(action, price, tone, role, phase); break;
+      case 'vi': message = this.getVietnameseTemplate(action, price, tone, role, phase); break;
+      case 'tl': message = this.getTagalogTemplate(action, price, tone, role, phase); break;
+      default:   message = this.getActionTemplate(action, price, tone, role, phase); break;
+    }
 
     // Append non-price terms if present
     if (non_price_terms && Object.keys(non_price_terms).length > 0) {
@@ -227,6 +234,111 @@ export class TemplateMessageRenderer implements MessageRenderer {
 
       default:
         return `결정: ${action}${priceStr ? ` (${priceStr})` : ''}`;
+    }
+  }
+
+  // ─── Japanese Templates ────────────────────────────────────────────
+
+  private getJapaneseTemplate(
+    action: ProtocolDecision['action'],
+    price: number | undefined,
+    tone: BuddyTone,
+    role: 'buyer' | 'seller',
+    phase: NegotiationPhase,
+  ): string {
+    const p = price ? `$${price}` : '';
+    switch (action) {
+      case 'COUNTER': return tone.style === 'professional' ? `${p}をご提案いたします。` : `${p}はいかがでしょうか？`;
+      case 'ACCEPT': return tone.style === 'professional' ? `${p ? `${p}で` : ''}合意いたします。` : `${p ? `${p}で` : ''}取引成立！`;
+      case 'REJECT': return tone.style === 'professional' ? 'ご提案ありがとうございますが、この条件では難しいです。' : 'すみません、ちょっと難しいです。別の価格はどうですか？';
+      case 'HOLD': return '少々お待ちください。条件を確認しています。';
+      case 'DISCOVER': return role === 'buyer' ? '商品の状態について詳しく教えていただけますか？' : '何でもお聞きください。詳細をお伝えします。';
+      case 'CONFIRM': return `${p ? `${p}で` : ''}確定します。決済に進みます。`;
+      default: return `決定: ${action}${p ? ` (${p})` : ''}`;
+    }
+  }
+
+  // ─── Chinese Templates ────────────────────────────────────────────
+
+  private getChineseTemplate(
+    action: ProtocolDecision['action'],
+    price: number | undefined,
+    tone: BuddyTone,
+    role: 'buyer' | 'seller',
+    phase: NegotiationPhase,
+  ): string {
+    const p = price ? `$${price}` : '';
+    switch (action) {
+      case 'COUNTER': return tone.style === 'professional' ? `我提议${p}。` : `${p}怎么样？`;
+      case 'ACCEPT': return tone.style === 'professional' ? `${p ? `以${p}` : ''}达成协议。` : `${p ? `${p}` : ''}成交！`;
+      case 'REJECT': return tone.style === 'professional' ? '感谢您的报价，但这个条件我无法接受。' : '不好意思，这个价格不太合适。能换个价格吗？';
+      case 'HOLD': return '请稍等，我需要确认一下条件。';
+      case 'DISCOVER': return role === 'buyer' ? '能详细介绍一下商品状况吗？' : '请随时提问，我会详细说明。';
+      case 'CONFIRM': return `${p ? `以${p}` : ''}确认成交，进入付款。`;
+      default: return `决定: ${action}${p ? ` (${p})` : ''}`;
+    }
+  }
+
+  // ─── Spanish Templates ─────────────────────────────────────────────
+
+  private getSpanishTemplate(
+    action: ProtocolDecision['action'],
+    price: number | undefined,
+    tone: BuddyTone,
+    role: 'buyer' | 'seller',
+    phase: NegotiationPhase,
+  ): string {
+    const p = price ? `$${price}` : '';
+    switch (action) {
+      case 'COUNTER': return tone.style === 'professional' ? `Me gustaría proponer ${p}.` : `¿Qué te parece ${p}?`;
+      case 'ACCEPT': return tone.style === 'professional' ? `De acuerdo${p ? ` en ${p}` : ''}. Procedamos.` : `¡Trato hecho${p ? ` en ${p}` : ''}!`;
+      case 'REJECT': return tone.style === 'professional' ? 'Agradezco la oferta, pero no puedo aceptar estos términos.' : 'Lo siento, ese precio no me funciona. ¿Puedes ofrecer algo mejor?';
+      case 'HOLD': return 'Permíteme un momento para revisar las condiciones.';
+      case 'DISCOVER': return role === 'buyer' ? '¿Podrías darme más detalles sobre el estado del producto?' : '¡Pregunta lo que quieras! Con gusto te informo.';
+      case 'CONFIRM': return `Confirmado${p ? ` en ${p}` : ''}. Procedemos al pago.`;
+      default: return `Decisión: ${action}${p ? ` (${p})` : ''}`;
+    }
+  }
+
+  // ─── Vietnamese Templates ─────────────────────────────────────────
+
+  private getVietnameseTemplate(
+    action: ProtocolDecision['action'],
+    price: number | undefined,
+    tone: BuddyTone,
+    role: 'buyer' | 'seller',
+    phase: NegotiationPhase,
+  ): string {
+    const p = price ? `$${price}` : '';
+    switch (action) {
+      case 'COUNTER': return tone.style === 'professional' ? `Tôi đề xuất mức giá ${p}.` : `${p} được không bạn?`;
+      case 'ACCEPT': return tone.style === 'professional' ? `Đồng ý${p ? ` với giá ${p}` : ''}. Tiến hành giao dịch.` : `Deal${p ? ` ${p}` : ''}! Tuyệt vời!`;
+      case 'REJECT': return tone.style === 'professional' ? 'Cảm ơn bạn đã đề nghị, nhưng tôi không thể chấp nhận mức giá này.' : 'Xin lỗi, giá này hơi cao. Bạn có thể giảm được không?';
+      case 'HOLD': return 'Xin chờ một chút, tôi cần xem xét lại điều kiện.';
+      case 'DISCOVER': return role === 'buyer' ? 'Bạn có thể cho tôi biết thêm về tình trạng sản phẩm không?' : 'Bạn cứ hỏi, tôi sẽ trả lời chi tiết.';
+      case 'CONFIRM': return `Xác nhận${p ? ` giá ${p}` : ''}. Chuyển sang thanh toán.`;
+      default: return `Quyết định: ${action}${p ? ` (${p})` : ''}`;
+    }
+  }
+
+  // ─── Tagalog Templates ────────────────────────────────────────────
+
+  private getTagalogTemplate(
+    action: ProtocolDecision['action'],
+    price: number | undefined,
+    tone: BuddyTone,
+    role: 'buyer' | 'seller',
+    phase: NegotiationPhase,
+  ): string {
+    const p = price ? `$${price}` : '';
+    switch (action) {
+      case 'COUNTER': return tone.style === 'professional' ? `Gusto kong mag-alok ng ${p}.` : `Paano kung ${p}?`;
+      case 'ACCEPT': return tone.style === 'professional' ? `Payag ako${p ? ` sa ${p}` : ''}. Ituloy natin.` : `Deal${p ? ` sa ${p}` : ''}! Ayos!`;
+      case 'REJECT': return tone.style === 'professional' ? 'Salamat sa alok, pero hindi ko matanggap ang presyong ito.' : 'Pasensya na, medyo mataas. Pwede bang mas mababa?';
+      case 'HOLD': return 'Sandali lang, ire-review ko muna ang mga kondisyon.';
+      case 'DISCOVER': return role === 'buyer' ? 'Pwede bang malaman ang condition ng product?' : 'Tanong mo lang, sasagutin ko lahat!';
+      case 'CONFIRM': return `Confirmed${p ? ` sa ${p}` : ''}. Proceed na tayo sa payment.`;
+      default: return `Desisyon: ${action}${p ? ` (${p})` : ''}`;
     }
   }
 

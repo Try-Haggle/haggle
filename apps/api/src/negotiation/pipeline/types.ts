@@ -120,6 +120,12 @@ export interface RespondInput {
 
 export interface RespondOutput {
   message: string;
+  /** Localized message for the OTHER party (if different locale) */
+  message_counterparty?: string;
+  /** Detected locale used for this response */
+  locale: string;
+  /** Counterparty locale (if different) */
+  locale_counterparty?: string;
   tone: string;
   llm_raw?: string;
   tokens?: { prompt: number; completion: number };
