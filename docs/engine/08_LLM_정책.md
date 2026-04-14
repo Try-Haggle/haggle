@@ -4,6 +4,12 @@
 **범위:** LLM 호출 지점, 에스컬레이션 트리거, 제어 장치, 캐싱, 호출 빈도 예측
 **관련 문서:** [00_INDEX.md](./00_INDEX.md) | [01_아키텍처_개요.md](./01_아키텍처_개요.md) | [05_의사결정_전술.md](./05_의사결정_전술.md)
 
+> **⚠️ v2.0 전환 완료:** 이 문서는 **v1.x Engine-First 아키텍처 기준**으로 작성되었으며, 현재는 역사적 참고 문서입니다.
+> v2.0에서는 **매 라운드 6-Stage LLM Pipeline이 기본**이며, Engine Core는 Referee(심판) 역할입니다.
+> - **현행 아키텍처:** [25_LLM_협상_설계.md](./25_LLM_협상_설계.md)
+> - **현행 비용 분석:** [13_LLM_비용.md](./13_LLM_비용.md) (실측 기반)
+> - 아래의 에스컬레이션 트리거(§2) 및 제어 장치(§3)는 DefaultEngineSkill 폴백 시에만 적용됩니다.
+
 ---
 
 ## 1. LLM 호출 지점
@@ -204,7 +210,7 @@ Proposal Parser가 미인식 요소를 감지하면 즉시 `ESCALATE(UNKNOWN_PRO
 | 미인식 요소 (번들, 트레이드인 등) | `UNKNOWN_PROPOSAL` | 항상 | Proposal Parser가 파싱 불가한 요소 감지 |
 | 비표준 결제 조건 (할부, 에스크로 등) | `UNKNOWN_PROPOSAL` | 항상 | 가격 외 결제 조건이 비표준 형식 |
 | 수량 할인 제안 | `UNKNOWN_PROPOSAL` | 항상 | 단가 × 수량 구조를 효용으로 변환 필요 |
-| 4라운드+ 교착 (`rounds_no_concession ≥ 4`) | `STRATEGY_REVIEW` | 가능 | 양쪽 모두 양보 없이 4라운드 이상 경과 |
+| 4라운드+ 교착 (`rounds_no_concession ≥ 4`) | `STRATEGY_REVIEW` | 가능 | 양쪽 모두 양보 없이 4라운드 이상 경과. 참고: 세션 상태는 2라운드 교착 시 STALLED로 전이되지만([09_세션_오케스트레이션.md](./09_세션_오케스트레이션.md) §2.3), LLM 에스컬레이션은 4라운드 기준. |
 | 시장가 10%+ 급변 | `STRATEGY_REVIEW` | 가능 | 외부 시장 데이터에서 급격한 가격 변동 감지 |
 | `V_t < 0.05` AND 합의 불가 | `STRATEGY_REVIEW` | 예 | 마감 임박 + 현재 전략으로 합의 불가능 |
 | 사용자 전략 변경 요청 | `STRATEGY_REVIEW` | 가능 | 사용자가 세션 도중 전략 조정 요청 |

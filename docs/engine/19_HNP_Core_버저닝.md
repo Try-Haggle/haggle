@@ -2,7 +2,57 @@
 
 **문서:** Haggle Engine Architecture v1.0.2 — HNP Core Versioning and Compatibility Policy
 **범위:** HNP core revision 체계, capability/extension versioning, 호환성 규칙, 협상 알고리즘
-**관련 문서:** [00_INDEX.md](./00_INDEX.md) | [18_HNP_표준화_프로파일.md](./18_HNP_표준화_프로파일.md) | [20_HNP_적합성_테스트_부록.md](./20_HNP_적합성_테스트_부록.md) | [21_HNP_에이전트_프로파일_및_툴링.md](./21_HNP_에이전트_프로파일_및_툴링.md) | [23_HNP_시도제한_정책.md](./23_HNP_%EC%8B%9C%EB%8F%84%EC%A0%9C%ED%95%9C_%EC%A0%95%EC%B1%85.md)
+**관련 문서:** [00_INDEX.md](./00_INDEX.md) | [20_HNP_적합성_테스트_부록.md](./20_HNP_적합성_테스트_부록.md) | [21_HNP_에이전트_프로파일_및_툴링.md](./21_HNP_에이전트_프로파일_및_툴링.md) | [23_HNP_시도제한_정책.md](./23_HNP_%EC%8B%9C%EB%8F%84%EC%A0%9C%ED%95%9C_%EC%A0%95%EC%B1%85.md)
+
+---
+
+## 0. 표준화 결함 배경 (구 18번 문서 요약)
+
+### 0.1 진단 요약
+
+현재 HNP는 **협상 엔진 내부 메시지 모델**로는 유용하지만, **독립 구현체 간 상호운용 표준**으로는 아직 부족합니다.
+
+> 현재 HNP는 "무엇을 협상하는가"는 잘 설명하지만, "서로 다른 두 에이전트가 어떻게 안전하게, 같은 의미로, 같은 결과를 내며 협상하는가"는 아직 충분히 고정하지 못했습니다.
+
+### 0.2 P0 결함 목록
+
+이 항목들은 해결되지 않으면 HNP를 외부 표준으로 내세우기 어렵습니다.
+
+| # | 결함 | 문제 | 보강 |
+|---|------|------|------|
+| P0-1 | Core 버전 협상 부재 | 상대가 어떤 HNP core revision과 capability를 지원하는지 확인하는 절차가 없음 | 이 문서의 `/.well-known/hnp` + core revision negotiation |
+| P0-2 | Canonical envelope 부재 | `message_id`, `idempotency_key`, `sequence`, `expires_at`, `sender_agent_id` 없음 → 중복 처리, 재전송, 서명 검증 기준 없음 | envelope와 payload 분리, envelope를 core로 고정 |
+| P0-3 | ACCEPT 대상 불명확 | `ACCEPT`가 어떤 제안을 수락하는지 문서와 타입이 고정하지 않음 | `accepted_message_id`, `accepted_proposal_id` 필수화 |
+| P0-4 | 부동소수점 가격 표현 | `price: number` → 플랫폼/언어별 반올림 차이로 최종 합의가 엇갈릴 수 있음 | wire에서는 `Money { currency, units_minor }` 사용 |
+| P0-5 | 프로토콜 오류와 협상 행위의 혼재 | `ESCALATE`(도메인 행위)와 프로토콜 계층 `ERROR`가 분리 안 됨 | `ERROR` 메시지와 표준 오류 코드를 core에 추가 |
+| P0-6 | 인증/무결성 규정 부족 | 서명 방식, 키 배포, replay 방지 규칙 미고정 | TLS + detached JWS + `jwks_uri` + expiry/idempotency 규정 |
+| P0-7 | 적합성 테스트 부재 | 독립 구현체가 같은 결과를 내는지 검증할 golden vector 없음 | [20_HNP_적합성_테스트_부록.md](./20_HNP_적합성_테스트_부록.md) |
+
+> P1/P2 결함(다중 Term, CANCEL/ACK/RESUME, transport binding, privacy boundary 등)과 에이전트 프로파일·툴링은 [20_HNP_적합성_테스트_부록.md](./20_HNP_적합성_테스트_부록.md), [21_HNP_에이전트_프로파일_및_툴링.md](./21_HNP_에이전트_프로파일_및_툴링.md)에서 각각 다룹니다.
+
+### 0.3 문서-구현 불일치
+
+현재 구현체 `packages/engine-session/src/protocol/types.ts`의 `HnpMessage`는 아래 수준입니다.
+
+```ts
+interface HnpMessage {
+  session_id: string;
+  round: number;
+  type: HnpMessageType;
+  price: number;
+  sender_role: HnpRole;
+  timestamp: number;
+  metadata?: Record<string, unknown>;
+}
+```
+
+이 구조는 내부 MVP에는 충분하지만, 표준으로는 부족합니다. 불일치 포인트는 다음과 같습니다.
+
+1. `round`는 UI/도메인 표현에 가깝고, 표준 순서 규칙은 `sequence`가 필요합니다.
+2. `price: number`는 wire 안정성이 없습니다.
+3. `metadata` 자유형은 extension 경계를 무너뜨립니다.
+4. `sender_role`만 있고 `sender_agent_id`가 없습니다.
+5. 수락 대상 바인딩이 없습니다.
 
 ---
 
@@ -240,4 +290,4 @@ HNP는 **core revision은 날짜 기반**, **capability/extension은 semver**로
 
 ---
 
-*이전 문서: [18_HNP_표준화_프로파일.md](./18_HNP_표준화_프로파일.md) | 다음 문서: [20_HNP_적합성_테스트_부록.md](./20_HNP_적합성_테스트_부록.md) | [00_INDEX.md로 돌아가기](./00_INDEX.md)*
+*다음 문서: [20_HNP_적합성_테스트_부록.md](./20_HNP_적합성_테스트_부록.md) | [00_INDEX.md로 돌아가기](./00_INDEX.md)*
