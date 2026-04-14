@@ -315,7 +315,6 @@ export class HaggleEngineSkill implements SkillRuntime {
 
     // Near-deal detection
     const gap = Math.abs(boundaries.current_offer - boundaries.opponent_offer);
-    const range = Math.abs(boundaries.my_target - boundaries.my_floor);
     if (range > 0 && gap / range < 0.05) {
       return {
         action: "ACCEPT",
