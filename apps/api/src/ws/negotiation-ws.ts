@@ -101,7 +101,7 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
   app.get(
     "/ws/negotiations/:sessionId",
     { websocket: true },
-    (socket: WebSocket, req) => {
+    async (socket: WebSocket, req) => {
       const sessionId = (req.params as { sessionId: string }).sessionId;
 
       // Auth: verify JWT from query param
