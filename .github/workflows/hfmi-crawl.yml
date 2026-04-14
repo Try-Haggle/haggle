@@ -1,0 +1,76 @@
+name: HFMI Daily Price Crawl
+
+on:
+  schedule:
+    # Run daily at 03:00 UTC (12:00 KST)
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run eBay electronics crawl
+        run: npx tsx scripts/crawl-ebay-electronics.ts
+        env:
+          NODE_ENV: production
+
+      - name: Insert to database
+        if: env.DATABASE_URL != ''
+        run: |
+          # Use the generated SQL file to insert data
+          echo "Inserting $(wc -l < scripts/ebay-electronics-full.csv) observations..."
+          npx tsx scripts/run-hfmi-migration.ts || true
+          # Direct SQL insert via node
+          node -e "
+            const fs = require('fs');
+            const postgres = require('${{ github.workspace }}/packages/db/node_modules/postgres');
+            const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+            const sqlContent = fs.readFileSync('scripts/ebay-electronics-full.sql', 'utf-8');
+            sql.unsafe(sqlContent)
+              .then(() => { console.log('Insert complete'); return sql.end(); })
+              .catch(e => { console.error('Insert failed:', e.message); sql.end(); process.exit(1); });
+          "
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Upload crawl artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hfmi-crawl-${{ github.run_number }}
+          path: |
+            scripts/ebay-electronics-full.csv
+            scripts/ebay-electronics-full.sql
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "## HFMI Crawl Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          TOTAL=$(tail -n +2 scripts/ebay-electronics-full.csv | wc -l)
+          echo "- **Total observations:** $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Date:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Category Breakdown" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n +2 scripts/ebay-electronics-full.csv | cut -d',' -f2 | sort | uniq -c | sort -rn >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
