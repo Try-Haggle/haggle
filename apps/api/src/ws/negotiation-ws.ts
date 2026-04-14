@@ -159,22 +159,20 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
         }
 
         // Session-level authorization: verify user belongs to this session
-        // Query DB for session ownership (buyer_id or seller_id matches userId)
-        try {
-          const sessionRows = await app.inject({
-            method: "GET",
-            url: `/negotiations/sessions/${sessionId}`,
-            headers: { authorization: `Bearer ${token}` },
-          });
-          if (sessionRows.statusCode !== 200) {
+        // Fire-and-forget: check async, close socket if unauthorized
+        app.inject({
+          method: "GET",
+          url: `/negotiations/sessions/${sessionId}`,
+          headers: { authorization: `Bearer ${token}` },
+        }).then((res) => {
+          if (res.statusCode !== 200) {
+            app.log.warn({ sessionId, userId }, "WS unauthorized for session");
             socket.close(4003, "Not authorized for this session");
-            return;
           }
-        } catch {
-          // If session check fails, allow connection but log warning
-          // (DB might be temporarily unavailable)
+        }).catch(() => {
+          // DB unavailable — allow connection, log warning
           app.log.warn({ sessionId, userId }, "WS session auth check failed, allowing connection");
-        }
+        });
 
         // Add to channel
         const channel = getOrCreateChannel(sessionId);

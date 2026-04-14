@@ -95,21 +95,19 @@ export async function executePipeline(
       // Inject market data from HfmiMarketSkill into context output
       if (contextHookResult.decide?.marketData) {
         for (const md of contextHookResult.decide.marketData) {
-          contextOutput.layers.l5 = (contextOutput.layers.l5 || '') +
-            `\nMKT_SKILL:${md.source}:$${md.price}`;
+          contextOutput.layers.L5_signals += `\nMKT_SKILL:${md.source}:$${md.price}`;
         }
       }
       // Inject knowledge body from ElectronicsKnowledgeSkill
       for (const [skillId, result] of Object.entries(contextHookResult.bySkill)) {
         const body = (result.content as Record<string, unknown>).body;
         if (typeof body === 'string') {
-          contextOutput.layers.l2 = (contextOutput.layers.l2 || '') + `\n[${skillId}] ${body}`;
+          contextOutput.layers.L2_skill += `\n[${skillId}] ${body}`;
         }
         // Merge observations
         const obs = (result.content as Record<string, unknown>).observations;
         if (Array.isArray(obs)) {
-          contextOutput.layers.l5 = (contextOutput.layers.l5 || '') +
-            '\n' + obs.join('\n');
+          contextOutput.layers.L5_signals += '\n' + obs.join('\n');
         }
       }
     } catch { /* non-fatal: skills failing doesn't block pipeline */ }
@@ -139,7 +137,7 @@ export async function executePipeline(
 
   // Inject advisories into context L3 layer (optional, LLM may ignore)
   if (skillAdvisories.length > 0) {
-    contextOutput.layers.l3 = (contextOutput.layers.l3 || '') +
+    contextOutput.layers.L3_coaching +=
       '\n## Advisor Notes (optional, you may ignore)\n' +
       skillAdvisories.map(a => `- ${a}`).join('\n');
   }

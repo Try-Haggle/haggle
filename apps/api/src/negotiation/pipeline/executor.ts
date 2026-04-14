@@ -261,7 +261,7 @@ export async function executeStagedNegotiationRound(
     const previousMoves = extractPreviousMoves(dbRounds);
 
     // Build SkillStack for this session based on item tags/category
-    const sessionCategory = (dbSession as Record<string, unknown>).category as string | undefined;
+    const sessionCategory = (dbSession as unknown as Record<string, unknown>).category as string | undefined;
     const itemTags = sessionCategory ? [sessionCategory] : ['electronics'];
     const skillStack = SkillStack.fromTags(itemTags);
 

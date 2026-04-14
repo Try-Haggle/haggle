@@ -130,7 +130,7 @@ function computeRealTimeElapsed(memory: CoreMemory, nowMs?: number): number {
 function compute4DUtility(memory: CoreMemory): UtilityResult | null {
   try {
     const { boundaries } = memory;
-    const strategy = memory.strategy;
+    const strategy = (memory as unknown as Record<string, unknown>).strategy as unknown;
     if (!strategy) return null;
 
     const tElapsed = computeRealTimeElapsed(memory);
@@ -144,7 +144,7 @@ function compute4DUtility(memory: CoreMemory): UtilityResult | null {
       n_dispute_losses: 0,
     };
 
-    const ctx = assembleContext(strategy, roundData);
+    const ctx = assembleContext(strategy as Parameters<typeof assembleContext>[0], roundData);
     return computeUtility(ctx);
   } catch {
     return null;
@@ -220,18 +220,16 @@ export class HaggleEngineSkill implements SkillRuntime {
     // Engine-core decision recommendation
     const utility = compute4DUtility(memory);
     let engineAction: string | undefined;
-    if (utility && memory.strategy) {
+    const strategyObj = (memory as unknown as Record<string, unknown>).strategy as Record<string, unknown> | undefined;
+    if (utility && strategyObj) {
       const thresholds = {
-        u_threshold: memory.strategy.u_threshold ?? 0.4,
-        u_aspiration: memory.strategy.u_aspiration ?? 0.7,
-        max_rounds: session.max_rounds,
-        rounds_no_concession_limit: 4,
+        u_threshold: (strategyObj.u_threshold as number) ?? 0.4,
+        u_aspiration: (strategyObj.u_aspiration as number) ?? 0.7,
       };
       const decision = makeDecision(utility, thresholds, {
-        current_round: session.round,
         rounds_no_concession: 0,
       });
-      engineAction = decision;
+      engineAction = decision.action;
     }
 
     return {
