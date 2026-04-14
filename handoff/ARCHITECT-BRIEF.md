@@ -1,314 +1,139 @@
-# Architect Brief — Step 67
+# Architect Brief — WebSocket + Gamification UI + Typecheck Fix
 
-*Written by Arch. 2026-04-12.*
+*Written by Arch. 2026-04-14.*
 
 ---
 
-## Step 67 — P2: 미래 대비 구조 (Validator Lite + Codec 동적 전환 + 파이프라인 분기)
+## Overview
+
+세 가지 독립적인 작업을 순서대로 구현한다:
+1. TypeScript 에러 13건 해결 (기반 정리)
+2. WebSocket 실시간 업데이트 (폴링 교체)
+3. 게이미피케이션 UI 페이지 연결
+
+---
+
+## Task A — TypeScript 에러 수정 (13건)
 
 ### Context
+`pnpm typecheck`에서 @haggle/api 패키지 13건 에러.
 
-Step 65-66으로 P0/P1 완료. P2는 LLM 발전에 대비하는 구조적 스위치를 미리 만드는 것.
+### Known Issues
+1. `llm-executor-integration.test.ts:133,318` — 타입 불일치
+2. `session-reconstructor.ts:191` — `NEGOTIATING_VERSION` 세션 상태 누락
+3. `skill-stack.test.ts` — RoundFact/OpponentPattern/RefereeBriefing 필수 속성 누락
 
-**Doc 28 P2 항목:**
-- #9: Codec/Raw 동적 전환 — `memo-codec.ts`가 이미 codec/raw 둘 다 지원. config에서 자동 전환 로직만 추가.
-- #10: Validator Lite 모드 — HARD만 검증하는 경량 모드. HARD 히트율 모니터링.
-- #11: 카테고리/금액별 파이프라인 분기 — 금액 구간에 따라 라운드 수, Phase 스킵, Reasoning 활성화 차등.
-- #12: Skill Factory — 카테고리 확장 시 스킬 생성 편의. (이번 Step에서는 인터페이스만.)
+### Approach
+- 각 에러 읽고 → 타입 정의 수정 또는 테스트 코드 수정
+- 기존 로직 변경 없이 타입만 맞춤
+- 수정 후 `pnpm typecheck` 클린 확인
 
-**변경 금지:**
-- `negotiation/referee/coach.ts`, `referee-service.ts` — 그대로
-- `negotiation/skills/default-engine-skill.ts` — 그대로
-- `negotiation/stages/` — 그대로 (config 참조만)
-- `lib/llm-negotiation-executor.ts` — 삭제 금지
-- 기존 789 tests 전부 통과
-
----
-
-### 서브스텝
-
-| Step | 내용 | 예상 LOC |
-|------|------|----------|
-| 67-A | Validator Lite 모드 + HARD 히트율 추적 | ~120 |
-| 67-B | Codec/Raw 동적 전환 로직 | ~60 |
-| 67-C | 카테고리/금액별 파이프라인 프리셋 | ~150 |
-| 67-D | Skill Factory 인터페이스 | ~100 |
-| 67-E | 테스트 | ~200 |
+### Quality Gate
+- `pnpm typecheck` → 0 errors
 
 ---
 
-## Step 67-A — Validator Lite 모드
+## Task B — WebSocket 실시간 업데이트
 
-### 수정: `negotiation/config.ts`
+### Context
+- `apps/api/src/server.ts:142` — `TODO(post-mvp): Register WebSocket handler`
+- `apps/web/src/app/(app)/buy/negotiations/[sessionId]/negotiation-chat.tsx:110-134` — 5초 폴링
+- 판매자: `apps/web/src/app/(app)/sell/negotiations/[sessionId]/page.tsx`
 
-```typescript
-export type ValidationMode = 'full' | 'lite';
+### Design Decisions
+- **Hono WebSocket**: `hono/ws`의 `upgradeWebSocket` 사용
+- **채널 구조**: `/ws/negotiations/:sessionId` — 세션별 1채널
+- **메시지 타입**:
+  ```typescript
+  type WsMessage =
+    | { type: 'round_update'; payload: { round: number; status: string; offer?: number } }
+    | { type: 'status_change'; payload: { status: string; previousStatus: string } }
+    | { type: 'ping' }
+    | { type: 'pong' }
+  ```
+- **인증**: 연결 시 `?token=JWT` 쿼리 파라미터로 인증
+- **폴백**: WS 연결 실패 시 기존 5초 폴링 자동 폴백
+- **서버 측**: 라운드 저장 후 해당 세션 채널에 broadcast
+- **하트비트**: 30초 간격 ping/pong
+- **메모리 기반**: 채널 맵은 in-memory Map (MVP 단계, Redis 불필요)
 
-export function getValidationMode(): ValidationMode {
-  return (process.env.VALIDATION_MODE as ValidationMode) ?? 'full';
-}
+### Files
+```
+CREATE  apps/api/src/ws/negotiation-ws.ts        — WS 핸들러 + 채널 관리
+MODIFY  apps/api/src/server.ts                    — WS 라우트 등록 (TODO 교체)
+CREATE  apps/web/src/hooks/use-negotiation-ws.ts  — WS 연결 + 폴백 훅
+MODIFY  apps/web/.../negotiation-chat.tsx          — 폴링 → useNegotiationWs 훅
+MODIFY  apps/web/.../sell/negotiations/.../page.tsx — 판매자도 WS 훅 사용
 ```
 
-### 신규: `negotiation/referee/violation-tracker.ts` (~80줄)
+### Constraints
+- Hono Node.js adapter WS 호환 확인 → 안 되면 `ws` 라이브러리 직접 사용
+- 연결 해제 시 자동 정리
+- 클라이언트: reconnect 3회 시도 → 실패 시 폴링 전환
 
-HARD violation 히트율을 추적하여 Lite 모드 전환 판단 근거를 제공하는 모듈.
-
-```typescript
-export interface ViolationStats {
-  total_rounds: number;
-  hard_violations: number;
-  hard_hit_rate: number;         // hard_violations / total_rounds
-  last_hard_violation?: {
-    round: number;
-    rule: string;
-    timestamp: number;
-  };
-  recommended_mode: ValidationMode;  // rate < 0.01 → 'lite', else 'full'
-}
-
-export class ViolationTracker {
-  /** 라운드 결과 기록 */
-  record(validation: ValidationResult): void;
-
-  /** 현재 통계 조회 */
-  getStats(): ViolationStats;
-
-  /** 추천 모드 (30일 기준 HARD 히트율 < 1% → lite) */
-  getRecommendedMode(): ValidationMode;
-
-  /** 리셋 (테스트용) */
-  reset(): void;
-}
-```
-
-**Lite 모드 동작:**
-- `'full'`: V1~V7 전부 검증 (현재 동작)
-- `'lite'`: V1~V3 HARD만 검증, V4~V7 SOFT 스킵
-- Lite에서 HARD 히트 발생 → 자동으로 full 복귀 + 경고 로그
-
-### 수정: `negotiation/referee/validator.ts`
-
-기존 `validateMove()` 함수에 mode 파라미터 추가:
-
-```typescript
-export function validateMove(
-  decision: ProtocolDecision,
-  coaching: RefereeCoaching,
-  memory: CoreMemory,
-  phase: NegotiationPhase,
-  previousMoves: NegotiationMove[],
-  mode: ValidationMode = 'full',  // 기본값 full → 기존 동작 유지
-): ValidationResult;
-```
-
-- Flag: `mode` 파라미터는 **optional이고 default 'full'**이므로 기존 호출부 변경 없이 동작. 기존 테스트 무변경.
+### Quality Gate
+- WS 연결 성공 로그 확인
+- 라운드 업데이트 실시간 수신
+- 연결 실패 시 폴링 정상 동작
 
 ---
 
-## Step 67-B — Codec/Raw 동적 전환
+## Task C — 게이미피케이션 UI
 
-### 수정: `negotiation/config.ts`
+### Context
+- API 완성: 7개 엔드포인트 (`/gamification/me/level`, `/gamification/leaderboard`, `/buddies` 등)
+- DB 완성: buddies, agent_levels, buddy_trades 테이블
+- Service 완성: gamification.service.ts
+- **UI 없음**
 
-```typescript
-export type MemoEncoding = 'auto' | 'codec' | 'raw';
-
-export function getMemoEncoding(): MemoEncoding {
-  return (process.env.MEMO_ENCODING as MemoEncoding) ?? 'auto';
-}
-
-/**
- * auto 모드: 모델 컨텍스트 윈도우와 토큰 단가 기준 자동 선택
- */
-export function resolveMemoEncoding(config: {
-  modelContextWindow?: number;
-  tokenCostPerM?: number;
-  encoding: MemoEncoding;
-}): 'codec' | 'raw' {
-  if (config.encoding !== 'auto') return config.encoding;
-
-  // 컨텍스트 500K+ AND 토큰 $0.05/M 이하 → raw
-  if ((config.modelContextWindow ?? 0) > 500_000 && (config.tokenCostPerM ?? 999) < 0.05) {
-    return 'raw';
-  }
-  return 'codec';
-}
+### 참고할 API 엔드포인트
+```
+GET  /gamification/me/level        → { level, xp, next_level_xp, stats }
+GET  /gamification/leaderboard     → [{ user_id, level, volume, savings }]
+GET  /buddies                      → [{ id, name, species, rarity, level }]
+GET  /buddies/:id                  → { ...buddy, trades: [...] }
+POST /buddies/:id/reveal           → { buddy, animation_seed }
+PATCH /buddies/:id/name            → { buddy }
+GET  /buddies/:id/trades           → [{ outcome, saving_pct, rounds }]
 ```
 
-### 수정: `negotiation/pipeline/pipeline.ts`
-
-Stage 2 Context에서 `resolveMemoEncoding()`을 사용하여 인코딩 결정:
-
-```typescript
-const resolvedEncoding = resolveMemoEncoding({
-  modelContextWindow: deps.config.adapters.DECIDE.contextWindow,
-  tokenCostPerM: deps.config.tokenCostPerM,
-  encoding: deps.config.memoEncoding,
-});
+### Files to Create
+```
+CREATE  apps/web/src/app/(app)/profile/buddies/page.tsx         — 버디 목록 (그리드)
+CREATE  apps/web/src/app/(app)/profile/buddies/[id]/page.tsx    — 버디 상세 + 거래 히스토리
+CREATE  apps/web/src/app/(app)/profile/level/page.tsx           — 레벨/XP 프로그레스
+CREATE  apps/web/src/app/(app)/leaderboard/page.tsx             — 글로벌 랭킹 테이블
 ```
 
-- Flag: `StageConfig.memoEncoding` 타입을 `'codec' | 'raw'`에서 `'auto' | 'codec' | 'raw'`로 확장. 기존 테스트는 `'codec'`을 명시적으로 사용하므로 영향 없음.
+### Design
+- **버디 카드**: 종(species) 아이콘 + 이름 + 레어리티 뱃지 + 레벨
+- **레벨 페이지**: XP 프로그레스 바 + 현재 레벨 + 다음 레벨까지
+- **리더보드**: 탭 (level/volume/savings/deals) + 순위 테이블
+- 기존 앱 디자인 패턴 따름 (Tailwind, 다크 배경 기반)
+- 서버 컴포넌트 기본, 인터랙션 필요한 부분만 client
+
+### Constraints
+- 버디 종 아이콘: emoji 사용 (🦊🐰🐻🐱🦉🐉🦅🐺)
+- 레어리티 색상: COMMON(gray) UNCOMMON(green) RARE(blue) EPIC(purple) LEGENDARY(orange) MYTHIC(red)
+- reveal 애니메이션: CSS transition + scale 변환 (심플)
+- 반응형 필수 (모바일 우선)
+- `/profile` 네비게이션에 버디/레벨 링크 추가
+
+### Quality Gate
+- 4개 페이지 렌더링 확인
+- API 호출 → 데이터 표시 정상
+- 모바일 레이아웃 확인
 
 ---
 
-## Step 67-C — 카테고리/금액별 파이프라인 프리셋
+## Build Order
 
-### 신규: `negotiation/config/pipeline-presets.ts` (~100줄)
-
-금액 구간에 따른 파이프라인 설정 프리셋.
-
-```typescript
-export interface PipelinePreset {
-  name: string;
-  min_amount: number;            // minor units (cents)
-  max_amount: number;
-  max_rounds: number;
-  phases: NegotiationPhase[];    // 사용할 Phase 목록
-  reasoning_enabled: boolean;    // Stage 3에서 reasoning mode 사용 여부
-  respond_mode: 'template' | 'llm';
-  description: string;
-}
-
-export const PIPELINE_PRESETS: PipelinePreset[] = [
-  {
-    name: 'quick',
-    min_amount: 0,
-    max_amount: 10000,           // < $100
-    max_rounds: 3,
-    phases: ['OPENING', 'BARGAINING', 'SETTLEMENT'],  // DISCOVERY, CLOSING 스킵
-    reasoning_enabled: false,
-    respond_mode: 'template',
-    description: '저가 거래 간소화 모드 (1-3 라운드)',
-  },
-  {
-    name: 'standard',
-    min_amount: 10000,
-    max_amount: 50000,           // $100~$500
-    max_rounds: 10,
-    phases: ['DISCOVERY', 'OPENING', 'BARGAINING', 'CLOSING', 'SETTLEMENT'],
-    reasoning_enabled: false,
-    respond_mode: 'template',
-    description: '표준 5-Phase 모드',
-  },
-  {
-    name: 'premium',
-    min_amount: 50000,
-    max_amount: 500000,          // $500~$5,000
-    max_rounds: 15,
-    phases: ['DISCOVERY', 'OPENING', 'BARGAINING', 'CLOSING', 'SETTLEMENT'],
-    reasoning_enabled: true,
-    respond_mode: 'llm',
-    description: '고가 거래 전체 파이프라인 + Reasoning',
-  },
-  {
-    name: 'enterprise',
-    min_amount: 500000,
-    max_amount: Infinity,        // > $5,000
-    max_rounds: 20,
-    phases: ['DISCOVERY', 'OPENING', 'BARGAINING', 'CLOSING', 'SETTLEMENT'],
-    reasoning_enabled: true,
-    respond_mode: 'llm',
-    description: '초고가 거래 + 확장 라운드',
-  },
-];
-
-/** 금액으로 프리셋 조회 */
-export function getPresetForAmount(amountMinor: number): PipelinePreset;
-
-/** 이름으로 프리셋 조회 */
-export function getPresetByName(name: string): PipelinePreset | undefined;
+```
+Task A (typecheck) → Task B (WebSocket) → Task C (gamification UI)
 ```
 
-### 연동: `negotiation/pipeline/executor.ts`
-
-staged executor에서 세션의 `ask_price` (또는 `listing_price`)로 프리셋을 자동 선택:
-
-```typescript
-const preset = getPresetForAmount(dbSession.listingPriceMinor);
-// preset.max_rounds → 세션 최대 라운드
-// preset.reasoning_enabled → StageConfig에 반영
-// preset.respond_mode → StageConfig에 반영
-```
-
-- Flag: 프리셋 선택은 **staged pipeline에서만 적용**. legacy는 기존 `DEFAULT_MAX_ROUNDS` 사용.
+타입 에러부터 정리해야 이후 작업이 깨끗하게 빌드됨.
 
 ---
 
-## Step 67-D — Skill Factory 인터페이스
-
-### 신규: `negotiation/skills/skill-factory.ts` (~100줄)
-
-새 카테고리 스킬 생성 시 사용할 팩토리 인터페이스와 기본 구현.
-
-```typescript
-export interface SkillTemplate {
-  category: string;
-  terms: CategoryTerm[];
-  constraints: SkillConstraint[];
-  tactics: string[];
-  llm_context: string;
-  market_reference?: {
-    baseline_source: string;
-    avg_discount_rate: number;
-  };
-}
-
-export interface SkillFactory {
-  /** 템플릿에서 NegotiationSkill 생성 */
-  createFromTemplate(template: SkillTemplate): NegotiationSkill;
-
-  /** 등록된 템플릿 목록 */
-  listTemplates(): SkillTemplate[];
-
-  /** 카테고리로 스킬 조회 */
-  getSkillForCategory(category: string): NegotiationSkill | undefined;
-}
-
-/**
- * 기본 구현: 하드코딩된 electronics 템플릿만.
- * 향후: DB에서 템플릿 로드, 동적 스킬 생성.
- */
-export class DefaultSkillFactory implements SkillFactory {
-  private templates = new Map<string, SkillTemplate>();
-  private skills = new Map<string, NegotiationSkill>();
-
-  constructor() {
-    // Phase 0: electronics 템플릿 등록
-    this.registerElectronicsTemplate();
-  }
-
-  createFromTemplate(template: SkillTemplate): NegotiationSkill {
-    // DefaultEngineSkill을 base로, template 값으로 오버라이드
-  }
-
-  getSkillForCategory(category: string): NegotiationSkill | undefined {
-    return this.skills.get(category);
-  }
-}
-```
-
-- Flag: `DefaultEngineSkill`은 **수정하지 않는다.** Factory가 생성하는 스킬은 DefaultEngineSkill을 내부적으로 래핑하되, template의 terms/constraints/tactics를 주입한다.
-- Flag: 이번 Step에서는 인터페이스 + electronics 기본 등록만. 실제 다른 카테고리 스킬은 Phase 1에서 추가.
-
----
-
-## Step 67-E — 테스트
-
-| 파일 | 내용 |
-|------|------|
-| `referee/__tests__/violation-tracker.test.ts` | 히트율 계산, 모드 추천, auto-revert |
-| `referee/__tests__/validator-lite.test.ts` | lite 모드에서 SOFT 스킵, HARD 검증 |
-| `config/__tests__/pipeline-presets.test.ts` | 금액별 프리셋 선택, 경계값 |
-| `config/__tests__/memo-encoding.test.ts` | auto/codec/raw 전환 로직 |
-| `skills/__tests__/skill-factory.test.ts` | 템플릿 등록, 스킬 생성, 카테고리 조회 |
-
----
-
-## 빌드 순서
-
-```
-67-A → 67-B → 67-C → 67-D → 67-E
-```
-
----
-
-*끝. Bob은 67-A부터 시작.*
+*끝. Bob은 Task A부터 시작.*
