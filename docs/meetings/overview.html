@@ -2419,6 +2419,11 @@ Haggle Credits 가치 ↑
         <li><span class="check">✓</span>DB 스키마 + API 라우트 (Phase 3-4)</li>
         <li><span class="check">✓</span>Skill 시스템 기반 (Phase 5a)</li>
         <li><span class="check">✓</span>엔진 ↔ API 통합 (12 라우트, 이벤트 파이프라인)</li>
+        <li><span class="check">✓</span>인증 + 보안 (JWT, rate limiting, HMAC webhook)</li>
+        <li><span class="check">✓</span>WebSocket 실시간 업데이트 (폴링 폴백)</li>
+        <li><span class="check">✓</span>게이미피케이션 UI (버디, 레벨, 리더보드)</li>
+        <li><span class="check">✓</span>HFMI 시장가 인덱스 (eBay 크롤러 + 태그→가격 리졸버)</li>
+        <li><span class="check">✓</span>TypeScript 0 에러 (API 패키지)</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>구매자 MCP 도구 (haggle_create_negotiation_session, haggle_submit_offer)</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>웹앱 UI 통합</li>
         <li><span style="color:var(--yellow);flex-shrink:0;">◯</span>USDC 결제 연동</li>
@@ -2493,6 +2498,25 @@ Haggle Credits 가치 ↑
   <div class="section-desc">모임 후 정리한 변경사항. 최신순.</div>
 
   <div class="update-log">
+    <div class="update-entry">
+      <div class="update-date">2026-04-14 — MVP 인프라 통합 + HFMI 시장 데이터 파이프라인</div>
+      <ul class="update-items">
+        <li><strong>TypeScript 에러 전량 수정</strong>: @haggle/api typecheck 13건 → 0건. SessionStatus에 NEGOTIATING_VERSION/FAILED_COMPATIBILITY 추가 (engine-session, DB 스키마, 서비스 전체 동기화)</li>
+        <li><strong>WebSocket 실시간 업데이트</strong>: @fastify/websocket 기반 <code>/ws/negotiations/:sessionId</code> 채널. JWT 쿼리 파라미터 인증, 30초 하트비트, 자동 정리. 클라이언트 <code>useNegotiationWs</code> 훅 — 자동 재연결 3회, 실패 시 5초 폴링 폴백. 기존 negotiation-chat.tsx 폴링 교체</li>
+        <li><strong>게이미피케이션 UI 4페이지</strong>: <code>/profile/level</code>(XP 프로그레스바+통계), <code>/profile/buddies</code>(버디 그리드, 종 이모지+레어리티 뱃지), <code>/profile/buddies/[id]</code>(상세+거래 히스토리), <code>/leaderboard</code>(탭 전환 랭킹 테이블)</li>
+        <li><strong>HFMI 시장가 인덱스 파이프라인</strong>:
+          <ul>
+            <li>eBay Sold Listings 크롤러 (Playwright headless Chrome) — 32개 검색 쿼리, 5개 카테고리 (스마트폰/노트북/태블릿/게임/오디오), <strong>1,881건 실거래 데이터</strong> 수집</li>
+            <li>GitHub Actions 크론잡 — 매일 03:00 UTC 자동 크롤링 + DB 삽입</li>
+            <li><strong>중요: eBay 데이터는 참고용(bootstrap)일 뿐, 가격 제약 아님</strong>. 수수료 구조 차이(eBay 13% vs Haggle 1.5%)로 동일 제품도 적정가 다름. Haggle 내부 거래 데이터가 쌓이면 외부 데이터 가중치 점진 감소 설계</li>
+          </ul>
+        </li>
+        <li><strong>태그 가든 → HFMI 계단식 리졸버</strong>: 5단계 폴백 — L1(model+storage+condition) → L2(model+storage) → L3(model 전체) → L4(시리즈 통합, 예: iPhone 15 Pro+Max 합산) → L5(카테고리). 최소 10건 이상 레벨에서 중간값 사용. L5 시그널 서비스에 자동 연결</li>
+        <li><strong>DB 마이그레이션 0011</strong>: hfmi_price_observations + hfmi_model_coefficients 테이블 생성 SQL 준비 (Supabase 복구 후 실행 대기)</li>
+        <li><strong>데이터 분석</strong>: 시드(합성) vs eBay(실거래) 비교 — iPhone 15 Pro 시드가 실제보다 23% 저평가. 시드 데이터 폐기, 크롤 데이터를 HFMI 기반으로 전환 결정</li>
+      </ul>
+    </div>
+
     <div class="update-entry">
       <div class="update-date">2026-04-10 — LLM 협상 엔진 Phase 1+2 전체 설계 확정</div>
       <ul class="update-items">
@@ -2779,7 +2803,7 @@ Haggle Credits 가치 ↑
 <footer class="footer">
   <div>Haggle &mdash; AI 협상 + 온체인 결제 프로토콜</div>
   <div style="margin-top:8px;">이 문서는 매 모임 후 업데이트됩니다</div>
-  <div style="margin-top:4px;">마지막 업데이트: 2026-04-08</div>
+  <div style="margin-top:4px;">마지막 업데이트: 2026-04-14</div>
 </footer>
 
 <script>
