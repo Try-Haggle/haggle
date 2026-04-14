@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(chmod:*)",
-      "mcp__plugin_telegram_telegram__reply"
+      "mcp__plugin_telegram_telegram__reply",
+      "Bash(mkdir -p ~/.claude/channels/telegram/approved)",
+      "Bash(echo -n \"7923744356\")",
+      "Read(//Users/jeonghaengheo/.claude/channels/telegram/approved/**)",
+      "Bash(echo \"7923744356\")"
     ]
   }
 }

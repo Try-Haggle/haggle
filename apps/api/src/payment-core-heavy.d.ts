@@ -37,6 +37,12 @@ declare module "@haggle/payment-core/heavy/real-x402-adapter" {
     wallet: PaymentPartyWallet;
   }
 
+  export interface X402SettlementSignatureContext {
+    signature: `0x${string}`;
+    deadline: bigint;
+    signer_nonce: bigint;
+  }
+
   export interface X402AdapterConfig {
     facilitator_url: string;
     network: "base" | "base-sepolia";
@@ -46,6 +52,7 @@ declare module "@haggle/payment-core/heavy/real-x402-adapter" {
     dispute_registry?: DisputeRegistryContract;
     resolve_seller_payout_target(sellerId: string): Promise<X402SellerPayoutTarget>;
     resolve_buyer_authorization(intent: PaymentIntent): Promise<X402BuyerAuthorizationContext>;
+    resolve_settlement_signature(intent: PaymentIntent): Promise<X402SettlementSignatureContext>;
   }
 
   export class RealX402Adapter implements PaymentProvider {
@@ -87,7 +94,7 @@ declare module "@haggle/payment-core/heavy/viem-contracts" {
       assetAddress: `0x${string}`,
     );
     quote(
-      request: Omit<SettlementRouterExecutionRequest, "quote_id" | "approval_snapshot_hash">,
+      request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">,
     ): Promise<SettlementRouterQuote>;
     execute(
       request: SettlementRouterExecutionRequest,

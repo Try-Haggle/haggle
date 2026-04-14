@@ -134,7 +134,7 @@ pnpm --filter @haggle/engine-session test
 ## 핵심 규칙 (Development Principles)
 
 1. **Protocol-First**: 모든 기능은 HNP 프로토콜 위에 구축
-2. **Cost-Aware**: LLM 호출 최소화, Hot Path(규칙 기반) 비율 극대화
+2. **Cost-Aware**: Codec 압축 + 저비용 모델(Grok-4-Fast)로 LLM 비용 최소화 (~$0.005/세션)
 3. **Stateless Engine**: 수평 확장 가능한 설계
 4. **Event-Driven**: 모듈 간 직접 의존 금지, 이벤트로 통신
 5. **Open Protocol, Closed Engine**: HNP 스펙은 공개, 엔진 로직은 비공개

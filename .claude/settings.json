@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "telegram@local-plugins": true
+  }
+}
