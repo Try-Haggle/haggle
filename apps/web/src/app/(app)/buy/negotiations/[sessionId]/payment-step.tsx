@@ -55,7 +55,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const amountUsdc = (amountMinor / 100).toFixed(2);
 
   async function handlePrepare() {
-    if (!isConnected || !address) return;
+    // For crypto payments, wallet must be connected.
+    // For card payments, wallet is optional (Stripe handles it).
+    if (method === "crypto" && (!isConnected || !address)) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -256,8 +258,10 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
           >
             <span className="text-2xl">💳</span>
             <div>
-              <div className="font-medium">Pay with Card</div>
-              <div className="text-xs text-gray-500">Credit/debit card via Stripe → USDC on Base. 3% total fee.</div>
+              <div className="font-medium">Pay with Card (${amountUsdc} + Stripe fee)</div>
+              <div className="text-xs text-gray-500">
+                Credit/debit card via Stripe. 3% total fee. No wallet needed &mdash; Stripe handles everything.
+              </div>
             </div>
           </button>
           <button
@@ -266,8 +270,11 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
           >
             <span className="text-2xl">🔗</span>
             <div>
-              <div className="font-medium">Pay with USDC</div>
-              <div className="text-xs text-gray-500">Direct USDC from your wallet on Base. 1.5% fee.</div>
+              <div className="font-medium">Pay with USDC (${amountUsdc})</div>
+              <div className="text-xs text-gray-500">Direct USDC from your wallet on Base. 1.5% fee. Gas paid by Haggle.</div>
+              <div className="text-xs text-blue-600 mt-1">
+                Don&apos;t have a wallet? Create one instantly with Coinbase &mdash; just your email
+              </div>
             </div>
           </button>
         </div>
@@ -319,18 +326,47 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       <div className="space-y-4">
         {step === "connect_wallet" && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Connect your wallet to proceed with payment.
-            </p>
-            <ConnectButton />
-            {isConnected && (
-              <button
-                onClick={handlePrepare}
-                disabled={isLoading}
-                className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
-              >
-                {isLoading ? "Preparing..." : "Continue"}
-              </button>
+            {method === "card" && !isConnected ? (
+              <>
+                <p className="text-sm text-gray-600">
+                  Connect a wallet to receive your USDC, or continue without one.
+                  Stripe will handle the card payment and conversion.
+                </p>
+                <ConnectButton />
+                <div className="relative flex items-center py-2">
+                  <div className="flex-grow border-t border-gray-200" />
+                  <span className="mx-3 text-xs text-gray-400">or</span>
+                  <div className="flex-grow border-t border-gray-200" />
+                </div>
+                <button
+                  onClick={handlePrepare}
+                  disabled={isLoading}
+                  className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? "Preparing..." : "Continue without wallet"}
+                </button>
+                <p className="text-xs text-gray-400 text-center">
+                  Stripe will convert your card payment to USDC automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600">
+                  {method === "crypto"
+                    ? "Connect your wallet to pay with USDC."
+                    : "Connect your wallet to proceed with payment."}
+                </p>
+                <ConnectButton />
+                {isConnected && (
+                  <button
+                    onClick={handlePrepare}
+                    disabled={isLoading}
+                    className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+                  >
+                    {isLoading ? "Preparing..." : "Continue"}
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}

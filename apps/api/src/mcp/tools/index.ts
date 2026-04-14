@@ -472,6 +472,20 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
           style,
         } = params;
 
+        // Validate price relationship: target must be less than max
+        if (target_price >= max_price) {
+          return {
+            isError: true,
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                error: "INVALID_PRICE_RANGE",
+                message: "target_price must be less than max_price. target_price is your ideal price, max_price is your walk-away point.",
+              }),
+            }],
+          };
+        }
+
         // Style presets — individual params override these
         const presets = getStylePreset(style);
 
@@ -482,6 +496,21 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         const alphaTime = params.alpha_time ?? presets.alpha_time ?? 0.25;
         const alphaReputation = params.alpha_reputation ?? presets.alpha_reputation ?? 0.2;
         const alphaSatisfaction = params.alpha_satisfaction ?? presets.alpha_satisfaction ?? 0.15;
+
+        // Validate alpha weights sum to ~1.0 (tolerance: 0.95-1.05)
+        const alphaSum = alphaPrice + alphaTime + alphaReputation + alphaSatisfaction;
+        if (alphaSum < 0.95 || alphaSum > 1.05) {
+          return {
+            isError: true,
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                error: "INVALID_ALPHA_WEIGHTS",
+                message: `Alpha weights must sum to ~1.0 (got ${alphaSum.toFixed(3)}). Adjust alpha_price (${alphaPrice}), alpha_time (${alphaTime}), alpha_reputation (${alphaReputation}), alpha_satisfaction (${alphaSatisfaction}).`,
+              }),
+            }],
+          };
+        }
 
         const session = await createSession(db, {
           listingId: listing_id,

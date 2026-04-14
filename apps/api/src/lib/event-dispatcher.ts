@@ -118,6 +118,11 @@ function toCommerceEvent(event: PipelineEvent): CommercePipelineEvent | null {
         heldPriceMinor: p.held_price_minor as number,
       };
 
+    // Non-terminal state events — logged for analytics, no commerce action needed yet
+    case "negotiation.near_deal":
+    case "negotiation.stalled":
+      return null; // No commerce-core routing needed; events dispatched for WS/analytics only
+
     default:
       return null;
   }

@@ -126,8 +126,9 @@ export async function executeNegotiationRound(
       throw new Error("SESSION_MAX_ROUNDS_EXCEEDED");
     }
 
-    // 2c. Check expiry — auto-expire if past deadline
-    if (dbSession.expiresAt && dbSession.expiresAt.getTime() < input.nowMs) {
+    // 2c. Check expiry — auto-expire if past deadline (use server time, not client-provided nowMs)
+    const serverNowMs = Date.now();
+    if (dbSession.expiresAt && dbSession.expiresAt.getTime() < serverNowMs) {
       await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
         status: "EXPIRED",
       });
@@ -299,6 +300,37 @@ function buildTerminalEvent(
         intent_id: session?.intentId ?? undefined,
       },
       idempotency_key: `neg_terminal_${sessionId}_${sessionStatus}`,
+      timestamp: Date.now(),
+    };
+  }
+
+  if (sessionStatus === "NEAR_DEAL") {
+    return {
+      domain: "negotiation",
+      type: "negotiation.near_deal",
+      payload: {
+        session_id: sessionId,
+        decision,
+        buyer_id: session?.buyerId ?? "",
+        seller_id: session?.sellerId ?? "",
+      },
+      idempotency_key: `neg_near_deal_${sessionId}`,
+      timestamp: Date.now(),
+    };
+  }
+
+  if (sessionStatus === "STALLED") {
+    return {
+      domain: "negotiation",
+      type: "negotiation.stalled",
+      payload: {
+        session_id: sessionId,
+        decision,
+        buyer_id: session?.buyerId ?? "",
+        seller_id: session?.sellerId ?? "",
+        intent_id: session?.intentId ?? undefined,
+      },
+      idempotency_key: `neg_stalled_${sessionId}`,
       timestamp: Date.now(),
     };
   }

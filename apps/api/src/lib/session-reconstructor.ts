@@ -106,10 +106,52 @@ export function reconstructSession(
   };
 }
 
-/** Reconstruct a MasterStrategy from the JSONB snapshot stored in DB. */
+/**
+ * Reconstruct a MasterStrategy from the JSONB snapshot stored in DB.
+ *
+ * MCP tools store a human-friendly format (alpha as object, thresholds, concession),
+ * but the engine expects flat MasterStrategy fields. This adapter handles both:
+ * - Legacy/direct MasterStrategy format (pass through)
+ * - MCP snapshot format (transform to MasterStrategy)
+ */
 export function reconstructStrategy(snapshot: Record<string, unknown>): MasterStrategy {
-  // The snapshot is the MasterStrategy serialized as-is at session creation.
-  return snapshot as unknown as MasterStrategy;
+  // If snapshot already has engine-native `weights` field, it's a MasterStrategy — pass through
+  if (snapshot.weights && typeof snapshot.weights === "object") {
+    return snapshot as unknown as MasterStrategy;
+  }
+
+  // MCP format: { alpha: {price,time,reputation,satisfaction}, thresholds: {...}, concession: {...} }
+  const alpha = snapshot.alpha as Record<string, number> | undefined;
+  const thresholds = snapshot.thresholds as Record<string, number> | undefined;
+  const concession = snapshot.concession as Record<string, number> | undefined;
+
+  const wP = alpha?.price ?? 0.4;
+  const wT = alpha?.time ?? 0.25;
+  const wR = alpha?.reputation ?? 0.2;
+  const wS = alpha?.satisfaction ?? 0.15;
+
+  return {
+    id: (snapshot.id as string) ?? "mcp_generated",
+    user_id: (snapshot.user_id as string) ?? "",
+    weights: { w_p: wP, w_t: wT, w_r: wR, w_s: wS },
+    p_target: (snapshot.p_target as number) ?? 0,
+    p_limit: (snapshot.p_reservation as number) ?? (snapshot.p_limit as number) ?? 0,
+    alpha: wT, // time utility curve exponent (assembler uses strategy.alpha for time)
+    beta: concession?.beta ?? 0.6,
+    t_deadline: (snapshot.t_max as number) ?? 24 * 60 * 60 * 1000,
+    v_t_floor: (snapshot.v_t_floor as number) ?? 0.1,
+    n_threshold: (snapshot.n_threshold as number) ?? 3,
+    v_s_base: (snapshot.v_s_base as number) ?? 0.5,
+    w_rep: wR,
+    w_info: 1 - wR,
+    u_threshold: thresholds?.accept ?? 0.78,
+    u_aspiration: thresholds?.near_deal ?? 0.72,
+    persona: (snapshot.role as string) ?? "BUYER",
+    gamma: (snapshot.gamma as number) ?? undefined,
+    created_at: Date.now(),
+    expires_at: Date.now() + ((snapshot.t_max as number) ?? 24 * 60 * 60 * 1000),
+    term_space: snapshot.term_space as MasterStrategy["term_space"],
+  } satisfies MasterStrategy;
 }
 
 /** Build an incoming HNP message from an offer submission. */

@@ -7,8 +7,22 @@ import { registerTools } from "./tools/index.js";
 import { registerResources } from "./resources.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 
-/** Active MCP sessions keyed by session ID */
-const sessions = new Map<string, StreamableHTTPServerTransport>();
+/** Active MCP sessions keyed by session ID, with creation timestamp for TTL */
+const sessions = new Map<string, { transport: StreamableHTTPServerTransport; createdAt: number }>();
+
+/** Max session lifetime: 2 hours. Sweep every 5 minutes. */
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of sessions) {
+    if (now - entry.createdAt > SESSION_TTL_MS) {
+      entry.transport.close().catch(() => {});
+      sessions.delete(id);
+    }
+  }
+}, SWEEP_INTERVAL_MS).unref(); // unref() so the timer doesn't prevent process exit
 
 function createMcpServer(db: Database, eventDispatcher?: EventDispatcher): McpServer {
   const mcp = new McpServer({
@@ -32,7 +46,7 @@ export function registerMcpRoutes(app: FastifyInstance, db: Database, eventDispa
 
     // Existing session — forward request
     if (sessionId && sessions.has(sessionId)) {
-      const transport = sessions.get(sessionId)!;
+      const { transport } = sessions.get(sessionId)!;
       await transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body);
       return reply.hijack();
     }
@@ -55,7 +69,7 @@ export function registerMcpRoutes(app: FastifyInstance, db: Database, eventDispa
 
     // Store session AFTER handleRequest — sessionId is assigned during initialize
     if (transport.sessionId) {
-      sessions.set(transport.sessionId, transport);
+      sessions.set(transport.sessionId, { transport, createdAt: Date.now() });
     }
     return reply.hijack();
   });
@@ -68,7 +82,7 @@ export function registerMcpRoutes(app: FastifyInstance, db: Database, eventDispa
       return reply.status(400).send({ error: "Invalid or missing session ID" });
     }
 
-    const transport = sessions.get(sessionId)!;
+    const { transport } = sessions.get(sessionId)!;
     await transport.handleRequest(request.raw as IncomingMessage, reply.raw, request.body);
     return reply.hijack();
   });
@@ -78,7 +92,7 @@ export function registerMcpRoutes(app: FastifyInstance, db: Database, eventDispa
     const sessionId = request.headers["mcp-session-id"] as string | undefined;
 
     if (sessionId && sessions.has(sessionId)) {
-      const transport = sessions.get(sessionId)!;
+      const { transport } = sessions.get(sessionId)!;
       await transport.close();
       sessions.delete(sessionId);
     }

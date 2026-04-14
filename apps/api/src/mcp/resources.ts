@@ -17,7 +17,14 @@ export function registerResources(server: McpServer) {
     import.meta.dirname,
     "../../widget/dist/index.html",
   );
-  const html = readFileSync(htmlPath, "utf-8");
+
+  let html: string;
+  try {
+    html = readFileSync(htmlPath, "utf-8");
+  } catch {
+    console.warn(`[mcp/resources] Widget HTML not found at ${htmlPath}. Listing widget will be unavailable. Run 'pnpm --filter widget build' to generate it.`);
+    html = `<!DOCTYPE html><html><body><p>Widget not available. Build the widget first.</p></body></html>`;
+  }
 
   registerAppResource(
     server,

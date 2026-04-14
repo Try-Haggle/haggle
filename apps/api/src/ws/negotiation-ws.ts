@@ -159,22 +159,27 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
         }
 
         // Session-level authorization: verify user belongs to this session
-        // Fire-and-forget: check async, close socket if unauthorized
-        app.inject({
-          method: "GET",
-          url: `/negotiations/sessions/${sessionId}`,
-          headers: { authorization: `Bearer ${token}` },
-        }).then((res) => {
+        // Add to channel ONLY after auth succeeds
+        let authorized = true;
+        try {
+          const res = await app.inject({
+            method: "GET",
+            url: `/negotiations/sessions/${sessionId}`,
+            headers: { authorization: `Bearer ${token}` },
+          });
           if (res.statusCode !== 200) {
             app.log.warn({ sessionId, userId }, "WS unauthorized for session");
             socket.close(4003, "Not authorized for this session");
+            authorized = false;
           }
-        }).catch(() => {
+        } catch {
           // DB unavailable — allow connection, log warning
           app.log.warn({ sessionId, userId }, "WS session auth check failed, allowing connection");
-        });
+        }
 
-        // Add to channel
+        if (!authorized) return;
+
+        // Add to channel only after authorization check
         const channel = getOrCreateChannel(sessionId);
         channel.add(socket);
 
@@ -183,10 +188,18 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
           "WS client connected",
         );
 
-        // Heartbeat
+        // Heartbeat — wrap in try-catch to prevent uncaught exceptions if socket closes mid-send
         const heartbeat = setInterval(() => {
-          if (socket.readyState === socket.OPEN) {
-            socket.send(JSON.stringify({ type: "pong" }));
+          try {
+            if (socket.readyState === socket.OPEN) {
+              socket.send(JSON.stringify({ type: "pong" }));
+            } else {
+              clearInterval(heartbeat);
+              removeFromChannel(sessionId, socket);
+            }
+          } catch {
+            clearInterval(heartbeat);
+            removeFromChannel(sessionId, socket);
           }
         }, HEARTBEAT_INTERVAL_MS);
 
