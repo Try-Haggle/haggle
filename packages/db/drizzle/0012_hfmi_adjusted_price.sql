@@ -12,10 +12,23 @@ ALTER TABLE "hfmi_price_observations"
   ADD COLUMN IF NOT EXISTS "adjusted_price_usd" numeric(10, 2);
 
 -- Backfill existing rows with fee adjustment
--- ebay_sold/ebay_browse: 13% fee
+-- Verified rates (2026-04):
+--   eBay: 13.25% FVF (Cell Phones, Computers, Gaming — non-store ≤$7500)
+--   BackMarket: 10% flat
+--   Swappa: ~6.5% (3% + PayPal 3.49%)
+--   Gazelle: ~20% buyback discount
+--   Haggle: 1.5%
+
+-- ebay_sold/ebay_browse: 13.25% fee
 UPDATE "hfmi_price_observations"
-  SET "adjusted_price_usd" = ROUND("observed_price_usd" * 0.87 / 0.985, 2)
+  SET "adjusted_price_usd" = ROUND("observed_price_usd" * 0.8675 / 0.985, 2)
   WHERE source IN ('ebay_sold', 'ebay_browse')
+    AND "adjusted_price_usd" IS NULL;
+
+-- terapeak_manual/marketplace_insights: eBay-sourced data (13.25%)
+UPDATE "hfmi_price_observations"
+  SET "adjusted_price_usd" = ROUND("observed_price_usd" * 0.8675 / 0.985, 2)
+  WHERE source IN ('terapeak_manual', 'marketplace_insights')
     AND "adjusted_price_usd" IS NULL;
 
 -- backmarket: 10% fee
@@ -24,9 +37,9 @@ UPDATE "hfmi_price_observations"
   WHERE source = 'backmarket'
     AND "adjusted_price_usd" IS NULL;
 
--- gazelle: 8% fee estimate
+-- gazelle: ~20% buyback discount
 UPDATE "hfmi_price_observations"
-  SET "adjusted_price_usd" = ROUND("observed_price_usd" * 0.92 / 0.985, 2)
+  SET "adjusted_price_usd" = ROUND("observed_price_usd" * 0.80 / 0.985, 2)
   WHERE source = 'gazelle'
     AND "adjusted_price_usd" IS NULL;
 
@@ -34,10 +47,4 @@ UPDATE "hfmi_price_observations"
 UPDATE "hfmi_price_observations"
   SET "adjusted_price_usd" = "observed_price_usd"
   WHERE source = 'haggle_internal'
-    AND "adjusted_price_usd" IS NULL;
-
--- terapeak_manual/marketplace_insights: assume eBay-like (13%)
-UPDATE "hfmi_price_observations"
-  SET "adjusted_price_usd" = ROUND("observed_price_usd" * 0.87 / 0.985, 2)
-  WHERE source IN ('terapeak_manual', 'marketplace_insights')
     AND "adjusted_price_usd" IS NULL;

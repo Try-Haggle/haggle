@@ -13,6 +13,7 @@ import type { RoundResult, EscalationRequest } from "@haggle/engine-session";
 import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
 import { broadcastToSession } from "../ws/negotiation-ws.js";
 import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
+import { DEFAULT_MAX_ROUNDS } from "../negotiation/config.js";
 import {
   reconstructSession,
   reconstructStrategy,
@@ -115,7 +116,17 @@ export async function executeNegotiationRound(
       throw new Error(`SESSION_TERMINAL: ${dbSession.status}`);
     }
 
-    // 2b. Check expiry — auto-expire if past deadline
+    // 2b. Check max rounds — auto-reject if exceeded
+    const maxRounds = (dbSession.strategySnapshot as Record<string, unknown>)?.max_rounds as number | undefined
+      ?? DEFAULT_MAX_ROUNDS;
+    if (dbSession.currentRound >= maxRounds) {
+      await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
+        status: "REJECTED",
+      });
+      throw new Error("SESSION_MAX_ROUNDS_EXCEEDED");
+    }
+
+    // 2c. Check expiry — auto-expire if past deadline
     if (dbSession.expiresAt && dbSession.expiresAt.getTime() < input.nowMs) {
       await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
         status: "EXPIRED",

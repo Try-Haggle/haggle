@@ -8,6 +8,7 @@ import {
   patchDraft,
   validateDraft,
   publishDraft,
+  claimListing,
 } from "../../services/draft.service.js";
 import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import { LISTING_RESOURCE_URI } from "../resources.js";
@@ -630,7 +631,68 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
     },
   );
 
-  // TODO(slice-6): haggle_claim — 24시간 소유권 연결
+  // ─── haggle_claim ────────────────────────────────────────
+  // 리스팅 소유권을 사용자에게 연결 (24시간 내 claim token 검증)
+  server.tool(
+    "haggle_claim",
+    "Claim ownership of a published listing using the claim token. The token was provided when the listing was published via haggle_publish_listing. Must be claimed within 24 hours before it expires. This links the listing to a real user account.",
+    {
+      claim_token: z.string().min(1).describe("The claim token returned by haggle_publish_listing"),
+      user_id: z.string().uuid().describe("The authenticated user's ID to link to the listing"),
+    },
+    async ({ claim_token, user_id }) => {
+      try {
+        const result = await claimListing(db, claim_token, user_id);
+
+        if (!result.ok) {
+          const errorMessages: Record<string, string> = {
+            invalid_token: "Claim token not found or listing is not published.",
+            expired: "Claim token has expired (24-hour window). You need to re-publish the listing.",
+            already_claimed: "This listing has already been claimed by another user.",
+          };
+
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: result.error,
+                  message: errorMessages[result.error] ?? "Claim failed",
+                }),
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: true,
+                draft_id: result.draftId,
+                user_id,
+                message: "Listing claimed successfully! The listing is now linked to your account.",
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                error: err instanceof Error ? err.message : "Claim failed",
+              }),
+            },
+          ],
+        };
+      }
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
