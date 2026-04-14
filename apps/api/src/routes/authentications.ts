@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAuth } from "../middleware/require-auth.js";
 import { disputeEvidence } from "@haggle/db";
 import {
   AuthenticationService,
@@ -51,7 +52,7 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   const authService = new AuthenticationService(providers);
 
   // POST /authentications — request authentication
-  app.post("/authentications", async (request, reply) => {
+  app.post("/authentications", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = createAuthSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_AUTH_REQUEST", issues: parsed.error.issues });
@@ -101,7 +102,7 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   });
 
   // GET /authentications/:id
-  app.get("/authentications/:id", async (request, reply) => {
+  app.get("/authentications/:id", { preHandler: [requireAuth] }, async (request, reply) => {
     const row = await getAuthenticationById(db, (request.params as { id: string }).id);
     if (!row) {
       return reply.code(404).send({ error: "AUTHENTICATION_NOT_FOUND" });
@@ -110,7 +111,7 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   });
 
   // GET /authentications/by-listing/:listingId
-  app.get("/authentications/by-listing/:listingId", async (request, reply) => {
+  app.get("/authentications/by-listing/:listingId", { preHandler: [requireAuth] }, async (request, reply) => {
     const rows = await getAuthenticationsByListingId(
       db,
       (request.params as { listingId: string }).listingId,
@@ -119,7 +120,7 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   });
 
   // GET /authentications/by-order/:orderId
-  app.get("/authentications/by-order/:orderId", async (request, reply) => {
+  app.get("/authentications/by-order/:orderId", { preHandler: [requireAuth] }, async (request, reply) => {
     const rows = await getAuthenticationsByOrderId(
       db,
       (request.params as { orderId: string }).orderId,
@@ -128,7 +129,7 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   });
 
   // POST /authentications/:id/apply — manually apply authentication result
-  app.post("/authentications/:id/apply", async (request, reply) => {
+  app.post("/authentications/:id/apply", { preHandler: [requireAuth] }, async (request, reply) => {
     const row = await getAuthenticationById(db, (request.params as { id: string }).id);
     if (!row) {
       return reply.code(404).send({ error: "AUTHENTICATION_NOT_FOUND" });
@@ -156,7 +157,11 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
   app.post("/authentications/webhooks/legitapp", {
     config: { rawBody: true },
   }, async (request, reply) => {
-    // Verify webhook signature if secret is configured
+    // Verify webhook signature — reject in production if secret is not configured
+    const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+    if (!legitWebhookSecret && isProduction) {
+      return reply.code(401).send({ error: "WEBHOOK_SECRET_NOT_CONFIGURED" });
+    }
     if (legitWebhookSecret) {
       const rawBody = (request as unknown as { rawBody?: string | Buffer }).rawBody ?? JSON.stringify(request.body);
       const isValid = verifyLegitWebhook(

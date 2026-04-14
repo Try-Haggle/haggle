@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { getTestApp, closeTestApp, AUTH_HEADERS, ADMIN_HEADERS } from "./helpers.js";
 
-// ─── Mock service layers ─────────────────────────────────────────────
+// --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
@@ -109,11 +109,12 @@ describe("Dispute routes", () => {
     await closeTestApp();
   });
 
-  // ─── POST /disputes — schema validation ──────────────────────
+  // POST /disputes - schema validation
   it("POST /disputes returns 400 without body", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes",
+      headers: AUTH_HEADERS,
       payload: {},
     });
     expect(res.statusCode).toBe(400);
@@ -124,6 +125,7 @@ describe("Dispute routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes",
+      headers: AUTH_HEADERS,
       payload: { order_id: "ord_123" }, // missing reason_code and opened_by
     });
     expect(res.statusCode).toBe(400);
@@ -135,6 +137,7 @@ describe("Dispute routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes",
+      headers: AUTH_HEADERS,
       payload: {
         order_id: "ord_123",
         reason_code: "TOTALLY_INVALID_CODE",
@@ -145,31 +148,34 @@ describe("Dispute routes", () => {
     expect(res.json().error).toBe("INVALID_REASON_CODE");
   });
 
-  // ─── GET /disputes/:id ───────────────────────────────────────
+  // GET /disputes/:id
   it("GET /disputes/:id returns 404 for nonexistent dispute", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/disputes/nonexistent-id",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("DISPUTE_NOT_FOUND");
   });
 
-  // ─── GET /disputes/by-order/:orderId ──────────────────────────
+  // GET /disputes/by-order/:orderId
   it("GET /disputes/by-order/:orderId returns 404 for unknown order", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/disputes/by-order/ord_unknown",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("DISPUTE_NOT_FOUND");
   });
 
-  // ─── POST /disputes/deposits/expire ──────────────────────────
+  // POST /disputes/deposits/expire (requireAdmin)
   it("POST /disputes/deposits/expire returns 200 with forfeited count", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes/deposits/expire",
+      headers: ADMIN_HEADERS,
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -179,11 +185,12 @@ describe("Dispute routes", () => {
     expect(body.forfeited_count).toBe(0);
   });
 
-  // ─── POST /disputes/:id/escalate ─────────────────────────────
+  // POST /disputes/:id/escalate
   it("POST /disputes/:id/escalate returns 404 for nonexistent dispute", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes/nonexistent/escalate",
+      headers: AUTH_HEADERS,
       payload: { escalated_by: "buyer" },
     });
     expect(res.statusCode).toBe(404);
@@ -194,17 +201,19 @@ describe("Dispute routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes/some-id/escalate",
+      headers: AUTH_HEADERS,
       payload: { escalated_by: "invalid_role" },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("INVALID_ESCALATE_REQUEST");
   });
 
-  // ─── POST /disputes/:id/deposit ──────────────────────────────
+  // POST /disputes/:id/deposit
   it("POST /disputes/:id/deposit returns 404 when no deposit exists", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/disputes/some-id/deposit",
+      headers: AUTH_HEADERS,
       payload: { amount_cents: 500 },
     });
     expect(res.statusCode).toBe(404);

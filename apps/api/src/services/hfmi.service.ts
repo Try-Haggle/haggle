@@ -12,6 +12,7 @@
 import {
   type Database,
   hfmiModelCoefficients,
+  hfmiPriceObservations,
   sql,
 } from "@haggle/db";
 
@@ -157,6 +158,116 @@ async function loadLatestCoefficients(
     sampleSize: row.sampleSize,
     fittedAt: row.fittedAt,
     fitVersion: row.fitVersion,
+  };
+}
+
+// ─── Median price from raw observations ───────────────────────────────
+
+export interface MedianPriceResult {
+  median: number;
+  sample_count: number;
+  period_days: 30;
+}
+
+/**
+ * Compute median observed_price_usd from the last 30 days of observations.
+ * Returns null if there are no matching rows.
+ */
+export async function getMedianPrice(
+  db: Database,
+  model: string,
+  storage?: number,
+  condition?: string,
+): Promise<MedianPriceResult | null> {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Build optional filter fragments
+  const storageClause =
+    storage !== undefined ? sql` AND storage_gb = ${storage}` : sql``;
+  const conditionClause =
+    condition === "A" || condition === "B" || condition === "C"
+      ? sql` AND cosmetic_grade = ${condition}`
+      : sql``;
+
+  const raw = await db.execute(sql`
+    SELECT observed_price_usd::float8 AS price
+    FROM ${hfmiPriceObservations}
+    WHERE model = ${model}
+      AND observed_at > ${cutoff.toISOString()}${storageClause}${conditionClause}
+    ORDER BY observed_price_usd::float8
+  `);
+
+  const rows =
+    (raw as unknown as { rows?: Record<string, unknown>[] }).rows ??
+    (raw as unknown as Record<string, unknown>[]);
+
+  const prices = (rows as Record<string, unknown>[])
+    .map((r) => Number(r.price))
+    .filter((p) => p > 0);
+
+  if (prices.length === 0) return null;
+
+  const mid = Math.floor(prices.length / 2);
+  const median =
+    prices.length % 2 === 0
+      ? (prices[mid - 1] + prices[mid]) / 2
+      : prices[mid];
+
+  return {
+    median: roundUsd(median),
+    sample_count: prices.length,
+    period_days: 30,
+  };
+}
+
+// ─── Hedonic estimate from coefficients ───────────────────────────────
+
+export interface HedonicEstimateResult {
+  estimate: number;
+  sampleSize: number;
+  fitVersion: string;
+  lastRefit: Date;
+}
+
+export interface HedonicParams {
+  storageGb: number;
+  batteryHealthPct?: number;
+  cosmeticGrade?: "A" | "B" | "C";
+  carrierLocked?: boolean;
+}
+
+/**
+ * Apply the latest fitted coefficients to get a hedonic price estimate.
+ * Returns null if no qualified fit exists.
+ */
+export async function getHedonicEstimate(
+  db: Database,
+  model: string,
+  params: HedonicParams,
+): Promise<HedonicEstimateResult | null> {
+  const row = await loadLatestCoefficients(db, model as HfmiModelId);
+  if (!row) return null;
+
+  const coef = row.coefficients;
+  const battery = params.batteryHealthPct ?? 90;
+  const cosmetic = params.cosmeticGrade ?? "B";
+  const carrierLocked = params.carrierLocked ?? false;
+
+  const logP =
+    num(coef.intercept) +
+    num(coef.storage_256) * (params.storageGb === 256 ? 1 : 0) +
+    num(coef.storage_512) * (params.storageGb === 512 ? 1 : 0) +
+    num(coef.storage_1024) * (params.storageGb === 1024 ? 1 : 0) +
+    num(coef.battery) * battery +
+    num(coef.cosmetic_b) * (cosmetic === "B" ? 1 : 0) +
+    num(coef.cosmetic_c) * (cosmetic === "C" ? 1 : 0) +
+    num(coef.carrier_locked) * (carrierLocked ? 1 : 0);
+
+  return {
+    estimate: roundUsd(Math.exp(logP)),
+    sampleSize: row.sampleSize,
+    fitVersion: row.fitVersion,
+    lastRefit: row.fittedAt,
   };
 }
 

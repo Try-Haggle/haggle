@@ -2,11 +2,13 @@
  * L5 Signals Service
  *
  * Provides external market data in L5Signals format for pipeline context assembly.
- * Phase 0: Static Swappa median data for iPhone Pro SKUs.
+ * Phase 0: Static Swappa baseline + optional HFMI DB median.
  * Future: SwappaApiProvider, EbayApiProvider, etc.
  */
 
 import type { L5Signals } from '../negotiation/types.js';
+import type { Database } from "@haggle/db";
+import { getMedianPrice } from './hfmi.service.js';
 
 // ---------------------------------------------------------------------------
 // Provider Interface
@@ -18,6 +20,58 @@ export interface L5SignalsProvider {
     item_model: string;
     condition?: string;
   }): Promise<L5Signals>;
+}
+
+// ---------------------------------------------------------------------------
+// HFMI-enriched Provider (Phase 0 + DB median)
+// ---------------------------------------------------------------------------
+
+/**
+ * Enriches the static Swappa baseline with a live HFMI DB median when
+ * available. The HFMI lookup is non-fatal: if it fails or returns null,
+ * the Swappa baseline is returned unchanged.
+ */
+export class HfmiEnrichedL5SignalsProvider implements L5SignalsProvider {
+  private readonly db: Database;
+  private readonly static: StaticL5SignalsProvider;
+
+  constructor(db: Database) {
+    this.db = db;
+    this.static = new StaticL5SignalsProvider();
+  }
+
+  async getMarketSignals(params: {
+    category: string;
+    item_model: string;
+    condition?: string;
+  }): Promise<L5Signals> {
+    const base = await this.static.getMarketSignals(params);
+
+    try {
+      // Derive HFMI model id from item_model (e.g. "iphone-15-pro-256" → "iphone_15_pro")
+      const hfmiModel = params.item_model
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/-\d+gb?$/, '')   // strip storage suffix
+        .replace(/-/g, '_');
+
+      const medianResult = await getMedianPrice(this.db, hfmiModel);
+      if (medianResult && base.market) {
+        base.market = {
+          ...base.market,
+          avg_sold_price_30d: Math.round(medianResult.median * 100), // convert USD → minor units
+          source_prices: [
+            ...base.market.source_prices,
+            { platform: 'hfmi', price: Math.round(medianResult.median * 100) },
+          ],
+        };
+      }
+    } catch {
+      // Non-fatal: HFMI signal failure does not block context assembly
+    }
+
+    return base;
+  }
 }
 
 // ---------------------------------------------------------------------------

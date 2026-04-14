@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
 
-// ─── Mock service layers ─────────────────────────────────────────────
+// --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
@@ -131,21 +131,23 @@ describe("Trust routes", () => {
     await closeTestApp();
   });
 
-  // ─── GET /trust/:actorId ─────────────────────────────────────
+  // GET /trust/:actorId
   it("GET /trust/:actorId returns 404 for unknown actor", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/trust/unknown-actor-id",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("TRUST_SCORE_NOT_FOUND");
   });
 
-  // ─── GET /trust/:actorId/:role ───────────────────────────────
+  // GET /trust/:actorId/:role
   it("GET /trust/:actorId/:role returns 404 for unknown actor with valid role", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/trust/unknown-actor-id/buyer",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("TRUST_SCORE_NOT_FOUND");
@@ -155,12 +157,13 @@ describe("Trust routes", () => {
     const res = await app.inject({
       method: "GET",
       url: "/trust/some-actor/invalid_role",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("INVALID_ROLE");
   });
 
-  // ─── POST /trust/:actorId/compute — admin required ──────────
+  // POST /trust/:actorId/compute - admin required (no auth = 401)
   it("POST /trust/:actorId/compute returns 401 without auth", async () => {
     const res = await app.inject({
       method: "POST",
@@ -174,17 +177,18 @@ describe("Trust routes", () => {
     expect(res.json().error).toBe("AUTH_REQUIRED");
   });
 
-  // ─── GET /trust/:actorId/snapshot ────────────────────────────
+  // GET /trust/:actorId/snapshot
   it("GET /trust/:actorId/snapshot returns 404 for unknown actor", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/trust/unknown-actor/snapshot",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("TRUST_SNAPSHOT_NOT_FOUND");
   });
 
-  // ─── POST /trust/:actorId/compute — validation ──────────────
+  // POST /trust/:actorId/compute - validation (auth required first)
   it("POST /trust/:actorId/compute returns 400 with invalid body (no role)", async () => {
     // Even though auth would fail first, we verify the route exists
     const res = await app.inject({
@@ -192,7 +196,7 @@ describe("Trust routes", () => {
       url: "/trust/actor-123/compute",
       payload: { completed_transactions: 10 },
     });
-    // Auth middleware runs first — 401
+    // Auth middleware runs first - 401
     expect(res.statusCode).toBe(401);
   });
 });

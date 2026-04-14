@@ -2,20 +2,31 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
+import { eq, and, userWallets, webhookIdempotency } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 
 // ---------------------------------------------------------------------------
-// Webhook idempotency cache (MVP: in-memory Set with TTL cleanup)
+// Webhook idempotency helpers (DB-backed)
 // Prevents duplicate processing when x402 facilitator retries webhooks.
+// Survives restarts and works across horizontal replicas.
 // ---------------------------------------------------------------------------
-const WEBHOOK_TTL_MS = 60 * 60 * 1000; // 1 hour
-const processedWebhookEvents = new Set<string>();
-
-function markWebhookProcessed(eventId: string): void {
-  processedWebhookEvents.add(eventId);
-  setTimeout(() => {
-    processedWebhookEvents.delete(eventId);
-  }, WEBHOOK_TTL_MS);
+async function isWebhookDuplicate(
+  db: Database,
+  idempotencyKey: string,
+  source: string,
+  responseStatus: number,
+): Promise<boolean> {
+  const result = await db
+    .insert(webhookIdempotency)
+    .values({
+      idempotencyKey,
+      source,
+      responseStatus,
+    })
+    .onConflictDoNothing()
+    .returning({ id: webhookIdempotency.id });
+  // If no rows returned, the key already existed → duplicate
+  return result.length === 0;
 }
 
 import {
@@ -116,14 +127,36 @@ const x402SubmitSchema = z.object({
   verify_only: z.boolean().optional(),
 });
 
-function requireWebhookSignature(headers: Record<string, unknown>, provider: "x402" | "stripe") {
-  const key =
-    provider === "x402"
-      ? (headers["x-haggle-x402-signature"] as string | undefined)
-      : (headers["stripe-signature"] as string | undefined);
+import { createHmac, timingSafeEqual } from "node:crypto";
 
-  if (!key || typeof key !== "string") {
-    throw new Error(`missing ${provider} webhook signature`);
+function requireWebhookSignature(
+  headers: Record<string, unknown>,
+  rawBody: string | Buffer,
+  provider: "x402",
+): void {
+  const secret = process.env.HAGGLE_X402_WEBHOOK_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("HAGGLE_X402_WEBHOOK_SECRET is not configured");
+    }
+    // In development/test, skip HMAC verification if secret is absent
+    return;
+  }
+
+  const receivedSig = headers["x-haggle-x402-signature"];
+  if (!receivedSig || typeof receivedSig !== "string") {
+    throw new Error("missing x-haggle-x402-signature header");
+  }
+
+  const expectedSig = createHmac("sha256", secret)
+    .update(typeof rawBody === "string" ? rawBody : rawBody.toString("utf8"))
+    .digest("hex");
+
+  const receivedBuf = Buffer.from(receivedSig.replace(/^sha256=/, ""), "hex");
+  const expectedBuf = Buffer.from(expectedSig, "hex");
+
+  if (receivedBuf.length !== expectedBuf.length || !timingSafeEqual(receivedBuf, expectedBuf)) {
+    throw new Error("invalid x402 webhook signature");
   }
 }
 
@@ -265,8 +298,31 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+
+    // Resolve seller wallet: DB first, fall back to ENV
+    const networkName = x402Config.network.startsWith("eip155:") ? "base" : (x402Config.network as string);
+    const dbSellerWallet = await db
+      .select({ walletAddress: userWallets.walletAddress })
+      .from(userWallets)
+      .where(
+        and(
+          eq(userWallets.userId, intent.seller_id),
+          eq(userWallets.network, networkName),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]?.walletAddress ?? null);
+
+    const sellerWalletAddress =
+      dbSellerWallet ?? process.env.HAGGLE_X402_SELLER_WALLET ?? null;
+
     const result = await service.quoteIntent(intent);
-    await updateStoredPaymentIntent(db, result.intent, result.metadata);
+    // Merge seller_wallet into metadata so x402 requirements can resolve it
+    const metadata = {
+      ...(result.metadata ?? {}),
+      ...(sellerWalletAddress ? { seller_wallet: sellerWalletAddress } : {}),
+    };
+    await updateStoredPaymentIntent(db, result.intent, metadata);
     if (result.trust_triggers.length > 0) {
       await applyTrustTriggers(db, {
         order_id: result.intent.order_id,
@@ -275,7 +331,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         triggers: result.trust_triggers,
       });
     }
-    return reply.send(result);
+    return reply.send({ ...result, metadata });
   });
 
   app.get("/payments/:id/x402/requirements", async (request, reply) => {
@@ -548,11 +604,12 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/webhooks/x402", async (request, reply) => {
+  app.post("/payments/webhooks/x402", { config: { rawBody: true } }, async (request, reply) => {
     try {
-      requireWebhookSignature(request.headers as Record<string, unknown>, "x402");
+      const rawBody = (request as unknown as { rawBody?: string | Buffer }).rawBody ?? JSON.stringify(request.body);
+      requireWebhookSignature(request.headers as Record<string, unknown>, rawBody, "x402");
     } catch (error) {
-      return reply.code(400).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
+      return reply.code(401).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
     }
 
     const body = request.body as { event_type?: string; payment_intent_id?: string; event_id?: string; id?: string; [key: string]: unknown };
@@ -565,7 +622,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
     // Idempotency: derive a stable event ID and skip if already processed
     const webhookEventId = body.event_id ?? body.id ?? `${eventType}:${paymentIntentId}`;
-    if (processedWebhookEvents.has(webhookEventId)) {
+    const duplicate = await isWebhookDuplicate(db, webhookEventId, "x402", 200);
+    if (duplicate) {
       return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
     }
 
@@ -593,7 +651,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               });
             }
           }
-          markWebhookProcessed(webhookEventId);
+
           return reply.send({ accepted: true, action: "settled" });
         }
 
@@ -610,7 +668,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               });
             }
           }
-          markWebhookProcessed(webhookEventId);
+
           return reply.send({ accepted: true, action: "failed" });
         }
 
@@ -619,7 +677,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
             const result = service.cancelIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
           }
-          markWebhookProcessed(webhookEventId);
+
           return reply.send({ accepted: true, action: "expired" });
         }
 
@@ -634,10 +692,11 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
   });
 
   app.post("/payments/webhooks/stripe", async (request, reply) => {
-    try {
-      requireWebhookSignature(request.headers as Record<string, unknown>, "stripe");
-    } catch (error) {
-      return reply.code(400).send({ error: "INVALID_STRIPE_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
+    // Stripe webhook signature verification is handled via stripe.webhooks.constructEvent()
+    // in the full Stripe integration. For now, require the stripe-signature header to be present.
+    const stripeSig = (request.headers as Record<string, unknown>)["stripe-signature"];
+    if (!stripeSig) {
+      return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "missing stripe-signature header" });
     }
 
     return reply.send({

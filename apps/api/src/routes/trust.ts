@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { requireAdmin } from "../middleware/require-auth.js";
+import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import { computeTrustScore } from "@haggle/trust-core";
 import type { TrustInput } from "@haggle/trust-core";
 import {
@@ -27,6 +27,7 @@ export function registerTrustRoutes(app: FastifyInstance, db: Database) {
   // GET /trust/:actorId
   app.get<{ Params: { actorId: string } }>(
     "/trust/:actorId",
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { actorId } = request.params;
       const row = await getTrustScore(db, actorId);
@@ -40,6 +41,7 @@ export function registerTrustRoutes(app: FastifyInstance, db: Database) {
   // GET /trust/:actorId/:role
   app.get<{ Params: { actorId: string; role: string } }>(
     "/trust/:actorId/:role",
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { actorId, role } = request.params;
       if (role !== "buyer" && role !== "seller" && role !== "combined") {
@@ -93,6 +95,7 @@ export function registerTrustRoutes(app: FastifyInstance, db: Database) {
   // GET /trust/:actorId/snapshot
   app.get<{ Params: { actorId: string } }>(
     "/trust/:actorId/snapshot",
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { actorId } = request.params;
       const data = await getTrustSnapshot(db, actorId);

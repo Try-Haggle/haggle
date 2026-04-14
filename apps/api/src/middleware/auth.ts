@@ -27,9 +27,9 @@ const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
 if (!SUPABASE_JWT_SECRET) {
   const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
   if (isProduction) {
-    console.error(
-      "🚨 [SECURITY] SUPABASE_JWT_SECRET is not set in PRODUCTION! " +
-      "JWT tokens will NOT be verified. Set this variable immediately.",
+    throw new Error(
+      "[SECURITY] SUPABASE_JWT_SECRET is not set in production. " +
+      "Server startup aborted to prevent unauthenticated access.",
     );
   } else {
     console.warn(

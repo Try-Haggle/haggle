@@ -242,7 +242,7 @@ export async function executeLLMNegotiationRound(
     let llmTokensUsed = 0;
     let reasoningUsed = false;
 
-    // 8a. Skill evaluateOffer (rule-based hot path)
+    // 8a. Skill evaluateOffer (rule-based baseline, LLM augments)
     decision = await skill.evaluateOffer(
       updatedMemory,
       { price: input.offerPriceMinor },

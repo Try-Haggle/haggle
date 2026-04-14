@@ -25,11 +25,22 @@ function createMockQueryProxy(): unknown {
   );
 }
 
+function createMockInsert() {
+  return vi.fn().mockReturnValue({
+    values: vi.fn().mockReturnValue({
+      onConflictDoNothing: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: "mock-id" }]),
+      }),
+      returning: vi.fn().mockResolvedValue([]),
+    }),
+  });
+}
+
 vi.mock("@haggle/db", () => ({
   createDb: vi.fn(() => ({
     query: createMockQueryProxy(),
     select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
-    insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) }),
+    insert: createMockInsert(),
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
     execute: vi.fn().mockResolvedValue([]),
@@ -37,7 +48,7 @@ vi.mock("@haggle/db", () => ({
       execute: vi.fn().mockResolvedValue([]),
       query: createMockQueryProxy(),
       select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
-      insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) }),
+      insert: createMockInsert(),
       update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     })),
   })),
@@ -45,11 +56,26 @@ vi.mock("@haggle/db", () => ({
   eq: vi.fn(),
   and: vi.fn(),
   or: vi.fn(),
+  asc: vi.fn(),
+  desc: vi.fn(),
+  gt: vi.fn(),
+  gte: vi.fn(),
+  lt: vi.fn(),
+  lte: vi.fn(),
+  isNull: vi.fn(),
+  inArray: vi.fn(),
   settlementApprovals: {},
   negotiationSessions: {},
+  negotiationCheckpoints: {},
+  negotiationRoundFacts: {},
+  llmTelemetry: {},
+  trustScores: { actorId: {}, score: {}, actorRole: {} },
   hfmiPriceObservations: {},
   hfmiModelCoefficients: {},
   sellerAttestationCommits: {},
+  // Table references used directly in route handlers (not via services)
+  webhookIdempotency: { id: "id", idempotencyKey: "idempotencyKey", source: "source", responseStatus: "responseStatus" },
+  userWallets: { walletAddress: "walletAddress", userId: "userId", network: "network" },
 }));
 
 // ─── Mock MCP SDK ────────────────────────────────────────────────────

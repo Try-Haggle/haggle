@@ -7,6 +7,7 @@ import {
   eq,
   desc,
 } from "@haggle/db";
+import { requireAuth } from "../middleware/require-auth.js";
 
 export function registerBuyerListingsRoutes(
   app: FastifyInstance,
@@ -14,14 +15,15 @@ export function registerBuyerListingsRoutes(
 ) {
   // POST /api/viewed — record a listing view for a logged-in buyer
   app.post<{
-    Body: { userId: string; publicId: string };
-  }>("/api/viewed", async (request, reply) => {
-    const { userId, publicId } = request.body ?? {};
+    Body: { publicId: string };
+  }>("/api/viewed", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+    const { publicId } = request.body ?? {};
 
-    if (!userId || !publicId) {
+    if (!publicId) {
       return reply
         .status(400)
-        .send({ ok: false, error: "userId and publicId are required" });
+        .send({ ok: false, error: "publicId is required" });
     }
 
     // Resolve publicId → published listing ID
@@ -97,17 +99,9 @@ export function registerBuyerListingsRoutes(
     }
   });
 
-  // GET /api/viewed?userId= — fetch buyer's recently viewed listings
-  app.get<{
-    Querystring: { userId: string };
-  }>("/api/viewed", async (request, reply) => {
-    const { userId } = request.query;
-
-    if (!userId) {
-      return reply
-        .status(400)
-        .send({ ok: false, error: "userId is required" });
-    }
+  // GET /api/viewed — fetch buyer's recently viewed listings
+  app.get("/api/viewed", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
 
     const rows = await db
       .select({

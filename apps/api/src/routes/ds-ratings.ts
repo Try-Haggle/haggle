@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAdmin } from "../middleware/require-auth.js";
 import { computeDSScore, checkPromotion } from "@haggle/dispute-core";
 import type { DSTier } from "@haggle/dispute-core";
 import {
@@ -55,6 +56,7 @@ export function registerDSRatingRoutes(app: FastifyInstance, db: Database) {
   // POST /ds-ratings/:reviewerId/compute
   app.post<{ Params: { reviewerId: string } }>(
     "/ds-ratings/:reviewerId/compute",
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { reviewerId } = request.params;
       const parsed = computeDSSchema.safeParse(request.body);

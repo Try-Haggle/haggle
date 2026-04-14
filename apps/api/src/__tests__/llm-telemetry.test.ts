@@ -10,6 +10,7 @@ import {
   classifyLLMError,
   usageExtractors,
   withLLMTelemetry,
+  setTelemetryDb,
 } from "../lib/llm-telemetry.js";
 
 const META = {
@@ -159,6 +160,71 @@ describe("classifyLLMError", () => {
     ).toBe("server_error");
     expect(classifyLLMError(new Error("something weird")).errorType).toBe(
       "unknown",
+    );
+  });
+});
+
+describe("withLLMTelemetry - DB mode", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    // Reset DB to null between tests
+    setTelemetryDb(null as unknown as import("@haggle/db").Database);
+  });
+
+  it("inserts into DB when LLM_TELEMETRY=db and db is registered", async () => {
+    vi.stubEnv("LLM_TELEMETRY", "db");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const mockInsert = vi.fn().mockReturnValue({
+      values: vi.fn().mockResolvedValue([]),
+    });
+    const mockDb = { insert: mockInsert } as unknown as import("@haggle/db").Database;
+    setTelemetryDb(mockDb);
+
+    const payload = { answer: 42, usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } };
+    await withLLMTelemetry({ ...META, sessionId: "sess-1", roundNo: 2 }, async () => payload, {
+      extractUsage: (r) => ({ promptTokens: r.usage.prompt_tokens, completionTokens: r.usage.completion_tokens, totalTokens: r.usage.total_tokens }),
+    });
+
+    // Give the void promise a chance to settle
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not insert into DB when LLM_TELEMETRY=1 (console only)", async () => {
+    vi.stubEnv("LLM_TELEMETRY", "1");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    const mockInsert = vi.fn().mockReturnValue({
+      values: vi.fn().mockResolvedValue([]),
+    });
+    const mockDb = { insert: mockInsert } as unknown as import("@haggle/db").Database;
+    setTelemetryDb(mockDb);
+
+    await withLLMTelemetry(META, async () => "ok");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("continues normally when DB insert throws", async () => {
+    vi.stubEnv("LLM_TELEMETRY", "db");
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const mockInsert = vi.fn().mockReturnValue({
+      values: vi.fn().mockRejectedValue(new Error("DB is down")),
+    });
+    const mockDb = { insert: mockInsert } as unknown as import("@haggle/db").Database;
+    setTelemetryDb(mockDb);
+
+    // Should not throw
+    const result = await withLLMTelemetry(META, async () => "ok");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(result).toBe("ok");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[llm-telemetry] DB insert failed:"),
+      expect.any(String),
     );
   });
 });

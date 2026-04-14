@@ -113,8 +113,8 @@ export async function callLLM(
     ...(maxTokens && { max_tokens: maxTokens }),
   };
 
-  // xAI reasoning mode (if supported via parameter)
-  if (reasoning) {
+  // xAI reasoning mode — only supported on reasoning-capable models (not grok-4-fast)
+  if (reasoning && !model.includes('fast')) {
     body.reasoning_effort = 'high';
   }
 

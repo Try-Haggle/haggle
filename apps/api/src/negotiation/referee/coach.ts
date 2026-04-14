@@ -7,6 +7,7 @@ import type {
   OpponentPatternType,
 } from '../types.js';
 import { computeCounterOffer } from '@haggle/engine-core';
+import { eq, trustScores, type Database } from '@haggle/db';
 
 // ─── Style-based margin for opening anchor ───
 const STYLE_MARGIN: Record<BuddyDNA['style'], number> = {
@@ -20,13 +21,58 @@ const EMA_ALPHA = 0.3;
 
 /**
  * Compute referee coaching for the current round.
- * Pure function — no side effects, no I/O.
+ * When db + counterpartyId are supplied, queries the counterparty's combined
+ * trust score from the DB and uses it to set u_risk. Falls back to 0.5 if
+ * the query fails or the arguments are omitted.
+ */
+export async function computeCoachingAsync(
+  memory: CoreMemory,
+  recentFacts: RoundFact[],
+  opponentPattern: OpponentPattern | null,
+  buddyDna: BuddyDNA,
+  db: Database,
+  counterpartyId: string,
+): Promise<RefereeCoaching> {
+  let u_risk = 0.5;
+  try {
+    const rows = await db
+      .select({ score: trustScores.score })
+      .from(trustScores)
+      .where(eq(trustScores.actorId, counterpartyId))
+      .limit(1);
+    const row = rows[0];
+    if (row) {
+      const parsed = parseFloat(String(row.score));
+      if (!Number.isNaN(parsed)) {
+        u_risk = clamp01(parsed / 100);
+      }
+    }
+  } catch {
+    // Non-fatal: fall back to default
+    u_risk = 0.5;
+  }
+  return _computeCoaching(memory, recentFacts, opponentPattern, buddyDna, u_risk);
+}
+
+/**
+ * Synchronous version — no DB, uses 0.5 defaults for u_risk/u_quality.
+ * Kept for callers that cannot pass a DB instance.
  */
 export function computeCoaching(
   memory: CoreMemory,
   recentFacts: RoundFact[],
   opponentPattern: OpponentPattern | null,
   buddyDna: BuddyDNA,
+): RefereeCoaching {
+  return _computeCoaching(memory, recentFacts, opponentPattern, buddyDna, 0.5);
+}
+
+function _computeCoaching(
+  memory: CoreMemory,
+  recentFacts: RoundFact[],
+  opponentPattern: OpponentPattern | null,
+  buddyDna: BuddyDNA,
+  u_risk: number,
 ): RefereeCoaching {
   const { session, boundaries } = memory;
   const { phase, role, rounds_remaining, max_rounds, round } = session;
@@ -94,7 +140,7 @@ export function computeCoaching(
     : 0.5;
   const u_price = clamp01(u_price_raw);
   const u_time = 1 - time_pressure;
-  const u_risk = 0.5; // placeholder — real risk comes from trust-core
+  // u_risk comes from trust-core DB query (counterparty combined score / 100), or 0.5 fallback
   const u_quality = 0.5; // placeholder
   const u_total = u_price * 0.5 + u_time * 0.2 + u_risk * 0.15 + u_quality * 0.15;
 

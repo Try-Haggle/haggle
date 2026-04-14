@@ -137,6 +137,11 @@ export function createPaymentServiceFromEnv() {
         wallet: paymentWalletFromMap(intent.buyer_id, buyerWalletMap[intent.buyer_id], walletNetwork, "external"),
       };
     },
+    async resolve_settlement_signature(_intent: PaymentIntent) {
+      // TODO: call backend signing service to produce EIP-712 signature.
+      // The signature is validated on-chain by the settlement router contract.
+      throw new Error("resolve_settlement_signature not implemented — configure a signing service");
+    },
   });
 
   return new PaymentService({

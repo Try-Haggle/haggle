@@ -13,13 +13,16 @@
  * 6. COMMIT
  */
 
-import { sql, type Database } from '@haggle/db';
+import { sql, eq, negotiationSessions, type Database } from '@haggle/db';
 import type { RoundExecutionInput, RoundExecutionResult } from '../../lib/negotiation-executor.js';
 import { mapRawToDbSession } from '../../lib/negotiation-executor.js';
 import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from '../../services/negotiation-round.service.js';
 import { getSessionById, updateSessionState } from '../../services/negotiation-session.service.js';
 import type { EventDispatcher, PipelineEvent } from '../../lib/event-dispatcher.js';
 import type { DbSession, DbRound } from '../../lib/session-reconstructor.js';
+import { CheckpointStore } from '../memory/checkpoint-store.js';
+import { PgCheckpointPersistence } from '../memory/pg-checkpoint-persistence.js';
+import { PgRoundFactSink } from '../memory/pg-round-fact-sink.js';
 
 import type {
   NegotiationPhase,
@@ -32,7 +35,7 @@ import { GrokFastAdapter } from '../adapters/grok-fast-adapter.js';
 import { screenMessage } from '../screening/auto-screening.js';
 import { tryTransition, detectPhaseEvent } from '../phase/phase-machine.js';
 import { checkIntervention } from '../phase/human-intervention.js';
-import { computeCoaching } from '../referee/coach.js';
+import { computeCoachingAsync, computeCoaching } from '../referee/coach.js';
 
 import {
   reconstructCoreMemory,
@@ -55,6 +58,17 @@ import type { PersistInput, PersistOutput } from './types.js';
 
 const skill = new DefaultEngineSkill();
 const adapter = new GrokFastAdapter();
+
+// Lazy-initialized DB-backed singletons (require db instance at first call)
+let _checkpointStore: CheckpointStore | null = null;
+const roundFactSink = new PgRoundFactSink();
+
+function getCheckpointStore(db: Database): CheckpointStore {
+  if (!_checkpointStore) {
+    _checkpointStore = new CheckpointStore(new PgCheckpointPersistence(db));
+  }
+  return _checkpointStore;
+}
 
 const TERMINAL_STATUSES = new Set(['ACCEPTED', 'REJECTED', 'EXPIRED', 'SUPERSEDED']);
 
@@ -124,6 +138,10 @@ export async function executeStagedNegotiationRound(
     }
 
     // 4. Load rounds + reconstruct memory
+    // Hydrate checkpoint store from DB for this session
+    const checkpointStore = getCheckpointStore(tx as unknown as Database);
+    await checkpointStore.hydrate(input.sessionId);
+
     const dbRounds = await getRoundsBySessionId(tx as unknown as Database, input.sessionId) as DbRound[];
     const nextRound = dbSession.currentRound + 1;
 
@@ -148,8 +166,16 @@ export async function executeStagedNegotiationRound(
     const opponentPattern = reconstructOpponentPattern(facts, role);
 
     // Compute coaching first (needed for CoreMemory)
+    // Uses trust score from DB when counterpartyId is available
     const dummyMemory = buildInitialMemory(dbSession, facts);
-    const coaching = computeCoaching(dummyMemory, facts, opponentPattern, DEFAULT_BUDDY_DNA);
+    const coaching = await computeCoachingAsync(
+      dummyMemory,
+      facts,
+      opponentPattern,
+      DEFAULT_BUDDY_DNA,
+      tx as unknown as Database,
+      dbSession.counterpartyId,
+    );
 
     // Full CoreMemory with actual coaching
     const memory = reconstructCoreMemory(dbSession, dbSession.strategySnapshot, coaching);
@@ -258,7 +284,7 @@ export async function executeStagedNegotiationRound(
     }
 
     // Persist to DB
-    return await persistPipelineRound(tx as unknown as Database, {
+    const roundResult = await persistPipelineRound(tx as unknown as Database, {
       dbSession,
       input,
       nextRound,
@@ -272,6 +298,42 @@ export async function executeStagedNegotiationRound(
       reasoningUsed: pipelineResult.stages.decide.reasoning_mode,
       explainability: pipelineResult.explainability,
     });
+
+    // Stage 6 post-persist: flush round facts with hash chain
+    const currentFact: import('../types.js').RoundFact = {
+      round: nextRound,
+      phase: currentPhase,
+      buyer_offer: input.senderRole === 'BUYER' ? input.offerPriceMinor : (finalDecision.price ?? 0),
+      seller_offer: input.senderRole === 'SELLER' ? input.offerPriceMinor : (finalDecision.price ?? 0),
+      gap: updatedMemory.boundaries.gap,
+      buyer_tactic: input.senderRole === 'BUYER' ? undefined : (finalDecision.tactic_used ?? undefined),
+      seller_tactic: input.senderRole === 'SELLER' ? undefined : (finalDecision.tactic_used ?? undefined),
+      conditions_changed: {},
+      coaching_given: {
+        recommended: pipelineCoaching.recommended_price,
+        tactic: pipelineCoaching.suggested_tactic,
+      },
+      coaching_followed: finalDecision.price != null
+        ? Math.abs(finalDecision.price - pipelineCoaching.recommended_price) < 500
+        : false,
+      human_intervened: false,
+      timestamp: Date.now(),
+    };
+    roundFactSink.add(input.sessionId, nextRound, currentFact);
+    const finalHashes = await roundFactSink.flush(tx as unknown as Database);
+    const sessionChainHash = finalHashes.get(input.sessionId) ?? null;
+
+    // Terminal snapshot: save opponent_model, core_memory_snapshot, session_fact_chain_hash
+    if (TERMINAL_STATUSES.has(roundResult.sessionStatus) && sessionChainHash) {
+      await (tx as unknown as Database).update(negotiationSessions).set({
+        opponentModel: opponentPattern as unknown as Record<string, unknown> ?? undefined,
+        coreMemorySnapshot: updatedMemory as unknown as Record<string, unknown>,
+        sessionFactChainHash: sessionChainHash,
+        updatedAt: new Date(),
+      }).where(eq(negotiationSessions.id, input.sessionId));
+    }
+
+    return roundResult;
   });
 
   // --- Post-commit: dispatch pipeline events ---

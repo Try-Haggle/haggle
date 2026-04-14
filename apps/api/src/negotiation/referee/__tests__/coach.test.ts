@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { computeCoaching } from '../coach.js';
+import { describe, it, expect, vi } from 'vitest';
+import { computeCoaching, computeCoachingAsync } from '../coach.js';
 import type { CoreMemory, RoundFact, BuddyDNA } from '../../types.js';
 
 const BUDDY: BuddyDNA = {
@@ -109,5 +109,46 @@ describe('computeCoaching', () => {
     const defCoach = computeCoaching(makeMemory(), [], null, defensive);
 
     expect(aggCoach.strategic_hints).not.toEqual(defCoach.strategic_hints);
+  });
+});
+
+// ─── computeCoachingAsync ───────────────────────────────────────────────────
+
+/**
+ * Build a mock DB that simulates a Drizzle query chain returning the given rows.
+ * The mock ignores all arguments — it just returns rows for any query.
+ */
+function makeMockDb(rows: unknown[]): import('@haggle/db').Database {
+  const chain = { limit: vi.fn().mockResolvedValue(rows) };
+  const withWhere = { where: vi.fn().mockReturnValue(chain) };
+  const withFrom = { from: vi.fn().mockReturnValue(withWhere) };
+  return { select: vi.fn().mockReturnValue(withFrom) } as unknown as import('@haggle/db').Database;
+}
+
+describe('computeCoachingAsync', () => {
+  it('uses trust score from DB when available', async () => {
+    // Trust score 80 → u_risk = 0.8
+    const mockDb = makeMockDb([{ score: '80.0000' }]);
+    const coaching = await computeCoachingAsync(makeMemory(), [], null, BUDDY, mockDb, 'counterparty-uuid');
+    // u_risk should be 80/100 = 0.8
+    expect(coaching.utility_snapshot.u_risk).toBeCloseTo(0.8, 2);
+    // Verify DB was queried
+    expect((mockDb.select as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
+  });
+
+  it('falls back to 0.5 when DB query fails', async () => {
+    const chain = { limit: vi.fn().mockRejectedValue(new Error('DB connection error')) };
+    const withWhere = { where: vi.fn().mockReturnValue(chain) };
+    const withFrom = { from: vi.fn().mockReturnValue(withWhere) };
+    const mockDb = { select: vi.fn().mockReturnValue(withFrom) } as unknown as import('@haggle/db').Database;
+
+    const coaching = await computeCoachingAsync(makeMemory(), [], null, BUDDY, mockDb, 'counterparty-uuid');
+    expect(coaching.utility_snapshot.u_risk).toBeCloseTo(0.5, 2);
+  });
+
+  it('falls back to 0.5 when DB returns no rows', async () => {
+    const mockDb = makeMockDb([]);
+    const coaching = await computeCoachingAsync(makeMemory(), [], null, BUDDY, mockDb, 'counterparty-uuid');
+    expect(coaching.utility_snapshot.u_risk).toBeCloseTo(0.5, 2);
   });
 });

@@ -57,7 +57,7 @@ export class DefaultEngineSkill implements NegotiationSkill {
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
   ): Promise<ProtocolDecision> {
-    // Rule-based Hot Path — no LLM needed for simple cases
+    // Rule-based fallback — used when LLM is unavailable or for non-BARGAINING phases
     const { session, boundaries } = memory;
 
     if (phase === 'DISCOVERY') {

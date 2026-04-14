@@ -15,13 +15,13 @@ import { callLLM } from '../adapters/xai-client.js';
  *
  * Decision routing:
  * - BARGAINING + COUNTER → LLM augmentation (with skill fallback)
- * - All other cases → Skill rule-based (hot path)
+ * - All other cases → Skill rule-based (fallback when LLM unavailable)
  */
 export async function decide(input: DecideInput): Promise<DecideOutput> {
   const { context, adapter, skill, phase, config, memory, facts, opponent } = input;
   const startMs = Date.now();
 
-  // Step 1: Skill evaluateOffer (rule-based hot path)
+  // Step 1: Skill evaluateOffer (rule-based fallback, LLM augments in BARGAINING)
   const incomingOffer = memory.boundaries.opponent_offer;
   let decision: ProtocolDecision = await skill.evaluateOffer(
     memory,

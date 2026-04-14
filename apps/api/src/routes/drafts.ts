@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { type Database, listingDrafts, eq } from "@haggle/db";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   createDraft,
   getDraftById,
@@ -11,14 +12,8 @@ import {
 
 export function registerDraftRoutes(app: FastifyInstance, db: Database) {
   // POST /api/drafts — create a new empty draft
-  app.post<{
-    Body: { userId: string };
-  }>("/api/drafts", async (request, reply) => {
-    const { userId } = request.body ?? {};
-
-    if (!userId) {
-      return reply.status(401).send({ ok: false, error: "unauthorized", message: "userId is required" });
-    }
+  app.post("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
 
     const draft = await createDraft(db);
 
@@ -36,17 +31,18 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database) {
   // PATCH /api/drafts/:id — update draft fields
   app.patch<{
     Params: { id: string };
-    Body: DraftPatch & { userId?: string };
-  }>("/api/drafts/:id", async (request, reply) => {
+    Body: DraftPatch;
+  }>("/api/drafts/:id", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params;
-    const { userId, ...patch } = request.body ?? {};
+    const userId = request.user!.id;
+    const patch = request.body ?? {};
 
     // Verify ownership
     const existing = await getDraftById(db, id);
     if (!existing) {
       return reply.status(404).send({ ok: false, error: "not_found" });
     }
-    if (!userId || existing.userId !== userId) {
+    if (existing.userId !== userId) {
       return reply.status(403).send({ ok: false, error: "forbidden", message: "Not the owner of this draft" });
     }
 
@@ -58,16 +54,15 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database) {
   // POST /api/drafts/:id/validate — pre-publish validation
   app.post<{
     Params: { id: string };
-    Body: { userId?: string };
-  }>("/api/drafts/:id/validate", async (request, reply) => {
+  }>("/api/drafts/:id/validate", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params;
-    const { userId } = request.body ?? {};
+    const userId = request.user!.id;
 
     const draft = await getDraftById(db, id);
     if (!draft) {
       return reply.status(404).send({ ok: false, error: "not_found" });
     }
-    if (!userId || draft.userId !== userId) {
+    if (draft.userId !== userId) {
       return reply.status(403).send({ ok: false, error: "forbidden" });
     }
 
@@ -83,16 +78,15 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database) {
   // POST /api/drafts/:id/publish — validate + publish
   app.post<{
     Params: { id: string };
-    Body: { userId?: string };
-  }>("/api/drafts/:id/publish", async (request, reply) => {
+  }>("/api/drafts/:id/publish", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params;
-    const { userId } = request.body ?? {};
+    const userId = request.user!.id;
 
     const draft = await getDraftById(db, id);
     if (!draft) {
       return reply.status(404).send({ ok: false, error: "not_found" });
     }
-    if (!userId || draft.userId !== userId) {
+    if (draft.userId !== userId) {
       return reply.status(403).send({ ok: false, error: "forbidden" });
     }
 

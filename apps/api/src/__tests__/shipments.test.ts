@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
 
-// ─── Mock service layers ─────────────────────────────────────────────
+// --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
@@ -109,11 +109,12 @@ describe("Shipment routes", () => {
     await closeTestApp();
   });
 
-  // ─── POST /shipments — schema validation ─────────────────────
+  // POST /shipments - schema validation
   it("POST /shipments returns 400 without body", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/shipments",
+      headers: AUTH_HEADERS,
       payload: {},
     });
     expect(res.statusCode).toBe(400);
@@ -124,6 +125,7 @@ describe("Shipment routes", () => {
     const res = await app.inject({
       method: "POST",
       url: "/shipments",
+      headers: AUTH_HEADERS,
       payload: { order_id: "ord_123" }, // missing seller_id and buyer_id
     });
     expect(res.statusCode).toBe(400);
@@ -131,52 +133,57 @@ describe("Shipment routes", () => {
     expect(res.json().issues).toBeDefined();
   });
 
-  // ─── GET /shipments/:id ──────────────────────────────────────
+  // GET /shipments/:id
   it("GET /shipments/:id returns 404 for nonexistent shipment", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/shipments/nonexistent-id",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("SHIPMENT_NOT_FOUND");
   });
 
-  // ─── GET /shipments/by-order/:orderId ─────────────────────────
+  // GET /shipments/by-order/:orderId
   it("GET /shipments/by-order/:orderId returns 404 for unknown order", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/shipments/by-order/ord_unknown",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("SHIPMENT_NOT_FOUND");
   });
 
-  // ─── POST /shipments/:id/event — validation ──────────────────
+  // POST /shipments/:id/event - validation
   it("POST /shipments/:id/event returns 404 for nonexistent shipment", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/shipments/nonexistent/event",
+      headers: AUTH_HEADERS,
       payload: { event_type: "ship" },
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("SHIPMENT_NOT_FOUND");
   });
 
-  // ─── POST /shipments/:id/label ────────────────────────────────
+  // POST /shipments/:id/label
   it("POST /shipments/:id/label returns 404 for nonexistent shipment", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/shipments/nonexistent/label",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("SHIPMENT_NOT_FOUND");
   });
 
-  // ─── POST /shipments/rates — validation ───────────────────────
+  // POST /shipments/rates - validation
   it("POST /shipments/rates returns 400 without body", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/shipments/rates",
+      headers: AUTH_HEADERS,
       payload: {},
     });
     expect(res.statusCode).toBe(400);

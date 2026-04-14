@@ -1,20 +1,33 @@
 /**
- * LLM Telemetry shim (Step 60).
+ * LLM Telemetry shim (Step 60 / Step 74-B).
  *
  * Wraps any async LLM / embedding / Replicate call to capture usage,
- * latency, and error shape, emitting a single structured JSON log line.
+ * latency, and error shape, emitting a single structured JSON log line
+ * and optionally persisting to the llm_telemetry DB table.
  *
  * Design notes:
- *  - Gated by `process.env.LLM_TELEMETRY === "1"`; defaults OFF.
- *  - No DB sink in MVP — stdout JSON only. The `meta` shape is designed so
- *    a future DB sink is a drop-in addition (one new emitter), no
- *    call-site changes.
+ *  - Console logging gated by `process.env.LLM_TELEMETRY === "1"`.
+ *  - DB logging gated by `process.env.LLM_TELEMETRY === "db"`.
+ *    Register a DB instance via `setTelemetryDb()` before use.
  *  - Every telemetry side-effect is wrapped in try/catch. Telemetry must
  *    never alter behavior: inner results are returned unchanged, inner
  *    errors are rethrown unchanged.
  *
  * See handoff/ARCHITECT-BRIEF-step60-62.md §Step 60.
  */
+
+import { llmTelemetry, type Database } from "@haggle/db";
+
+// ─── Module-level DB instance (set via setTelemetryDb) ───
+let _telemetryDb: Database | null = null;
+
+/**
+ * Register a DB instance for DB-mode telemetry persistence.
+ * Call once at app startup when LLM_TELEMETRY=db.
+ */
+export function setTelemetryDb(db: Database): void {
+  _telemetryDb = db;
+}
 
 export type LLMService =
   | "openai.chat"
@@ -29,6 +42,10 @@ export interface LLMTelemetryMeta {
   operation: string;
   /** Optional correlation id (listing id, session id, etc). */
   correlationId?: string | null;
+  /** Optional session ID for DB telemetry row */
+  sessionId?: string | null;
+  /** Optional round number for DB telemetry row */
+  roundNo?: number | null;
 }
 
 export interface LLMTelemetryUsage {
@@ -53,7 +70,11 @@ export interface WithLLMTelemetryOptions<T> {
 }
 
 function isEnabled(): boolean {
-  return process.env.LLM_TELEMETRY === "1";
+  return process.env.LLM_TELEMETRY === "1" || process.env.LLM_TELEMETRY === "db";
+}
+
+function isDbMode(): boolean {
+  return process.env.LLM_TELEMETRY === "db";
 }
 
 function emit(record: LLMTelemetryRecord): void {
@@ -63,6 +84,34 @@ function emit(record: LLMTelemetryRecord): void {
     console.info("[llm-telemetry] " + JSON.stringify(record));
   } catch {
     // Swallow — telemetry must never break the caller.
+  }
+}
+
+async function emitToDb(record: LLMTelemetryRecord, meta: LLMTelemetryMeta & { sessionId?: string; roundNo?: number }): Promise<void> {
+  if (!_telemetryDb) return;
+  try {
+    // Map operation to a valid stage enum value, defaulting to UNDERSTAND
+    const validStages = ["UNDERSTAND", "CONTEXT", "DECIDE", "VALIDATE", "RESPOND", "MEMO_UPDATE"] as const;
+    type ValidStage = typeof validStages[number];
+    const operationUpper = record.operation.toUpperCase() as ValidStage;
+    const stage: ValidStage = validStages.includes(operationUpper) ? operationUpper : "UNDERSTAND";
+
+    await _telemetryDb.insert(llmTelemetry).values({
+      sessionId: meta.sessionId ?? null,
+      roundNo: meta.roundNo ?? null,
+      stage,
+      model: record.model,
+      inputTokens: record.usage?.promptTokens ?? 0,
+      outputTokens: record.usage?.completionTokens ?? 0,
+      latencyMs: record.latencyMs,
+      costMinor: null,
+      reasoningUsed: false,
+      error: record.errorMessage ?? null,
+    });
+  } catch (err) {
+    // Non-fatal: log warning and continue
+    // eslint-disable-next-line no-console
+    console.warn("[llm-telemetry] DB insert failed:", (err as Error).message ?? String(err));
   }
 }
 
@@ -160,6 +209,7 @@ export async function withLLMTelemetry<T>(
   options?: WithLLMTelemetryOptions<T>,
 ): Promise<T> {
   const enabled = isEnabled();
+  const dbMode = isDbMode();
   const start = Date.now();
 
   try {
@@ -171,7 +221,7 @@ export async function withLLMTelemetry<T>(
       } catch {
         usage = null;
       }
-      emit({
+      const record: LLMTelemetryRecord = {
         service: meta.service,
         model: meta.model,
         operation: meta.operation,
@@ -182,7 +232,15 @@ export async function withLLMTelemetry<T>(
         errorMessage: null,
         usage,
         timestamp: new Date().toISOString(),
-      });
+      };
+      emit(record);
+      if (dbMode) {
+        void emitToDb(record, {
+          ...meta,
+          sessionId: meta.sessionId ?? undefined,
+          roundNo: meta.roundNo ?? undefined,
+        });
+      }
     }
     return result;
   } catch (err) {
@@ -196,7 +254,7 @@ export async function withLLMTelemetry<T>(
       } catch {
         // Swallow classification failures.
       }
-      emit({
+      const record: LLMTelemetryRecord = {
         service: meta.service,
         model: meta.model,
         operation: meta.operation,
@@ -207,7 +265,15 @@ export async function withLLMTelemetry<T>(
         errorMessage,
         usage: null,
         timestamp: new Date().toISOString(),
-      });
+      };
+      emit(record);
+      if (dbMode) {
+        void emitToDb(record, {
+          ...meta,
+          sessionId: meta.sessionId ?? undefined,
+          roundNo: meta.roundNo ?? undefined,
+        });
+      }
     }
     throw err;
   }

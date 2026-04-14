@@ -8,7 +8,7 @@
  *   Stage 0a: Strategy Generation  — LLM이 아이템+시장 데이터 → 구매 전략 JSON 생성
  *   Stage 0b: Term Analysis        — LLM이 전략+Term 목록 → 우선순위 분석 JSON 생성
  *   Stage 1:  UNDERSTAND           — LLM이 상대 메시지 → 구조화 의도 파싱
- *   Stage 2:  CONTEXT              — 코드가 Living Memo + Skill + Coach 조립
+ *   Stage 2:  CONTEXT              — 코드가 Briefing + SkillStack + Memo 조립
  *   Stage 3:  DECIDE               — LLM이 전 컨텍스�� → ProtocolDecision 생성
  *   Stage 4:  VALIDATE             — 코드(Referee)가 Math/Protocol Guard 실행
  *   Stage 5:  RESPOND              — LLM이 결정 → 자연어 메시지 생성
@@ -20,7 +20,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { callLLM } from '../negotiation/adapters/xai-client.js';
 import { GrokFastAdapter } from '../negotiation/adapters/grok-fast-adapter.js';
-import { DefaultEngineSkill } from '../negotiation/skills/default-engine-skill.js';
+import { SkillStack, registerSkill } from '../negotiation/skills/skill-stack.js';
+import { ElectronicsKnowledgeSkill } from '../negotiation/skills/electronics-knowledge.js';
+import { FaratinCoachingSkill } from '../negotiation/skills/faratin-coaching.js';
+import { computeBriefing } from '../negotiation/referee/briefing.js';
 import { computeCoaching } from '../negotiation/referee/coach.js';
 import { validateMove } from '../negotiation/referee/validator.js';
 import { tryTransition, detectPhaseEvent } from '../negotiation/phase/phase-machine.js';
@@ -32,10 +35,11 @@ import type {
   OpponentPattern,
   ProtocolDecision,
   NegotiationPhase,
-  RefereeCoaching,
   ValidationResult,
   ActiveTerm,
 } from '../negotiation/types.js';
+import type { RefereeBriefing, SkillManifest } from '../negotiation/skills/skill-types.js';
+import type { MergedHookResult } from '../negotiation/skills/skill-stack.js';
 
 // ─── Types ──────────────────────────────────────────
 
@@ -89,8 +93,16 @@ interface DecideResult extends ProtocolDecision {
   near_deal?: boolean;
 }
 
+/** Tag Garden item tags — derived from title at init, immutable per session */
+interface ItemTag {
+  path: string;          // e.g. "electronics/phones/iphone"
+  status: 'OFFICIAL' | 'EMERGING' | 'CANDIDATE';
+  idf?: number;          // inverse document frequency (optional, from DB)
+}
+
 interface DemoSession {
   id: string;
+  language: string;
   item: { title: string; condition: string; swappa_median: number };
   seller: { ask_price: number; floor_price: number };
   buyer_budget: { max_budget: number };
@@ -102,146 +114,248 @@ interface DemoSession {
   previousMoves: ProtocolDecision[];
   round: number;
   phase: NegotiationPhase;
+  preset: string;
+  activeSkills: string[];
   done: boolean;
   totalCost: number;
   totalTokens: { prompt: number; completion: number };
   initTraces: StageTrace[];
+  tags: ItemTag[];
 }
 
 // ─── In-memory store ────────────────────────────────
 
 const sessions = new Map<string, DemoSession>();
-const skill = new DefaultEngineSkill();
 const adapter = new GrokFastAdapter();
 const buddyDna = DEFAULT_BUDDY_DNA;
 
-// ─── Codec (Doc 26 §3.2 simplified for demo) ───────
+// ─── Preset → Skill config mapping ────
+const PRESET_MAP: Record<string, { advisor: string; config: { buddyStyle: string } }> = {
+  lowest_price: { advisor: 'faratin-coaching-v1', config: { buddyStyle: 'aggressive' } },
+  balanced:     { advisor: 'faratin-coaching-v1', config: { buddyStyle: 'balanced' } },
+  safe_first:   { advisor: 'faratin-coaching-v1', config: { buddyStyle: 'defensive' } },
+};
+
+// ─── Skill v2 registration (module-level, runs once) ────
+registerSkill(new ElectronicsKnowledgeSkill());
+registerSkill(new FaratinCoachingSkill({ buddyStyle: 'balanced' }));
+
+// ─── NSV v1 (Negotiation State Vector) ──────────────
+// HNP protocol standard for fixed-size negotiation state encoding.
+// O(1) regardless of round count — encodes dynamics, not history.
+/** Derive Tag Garden tags from item title (demo: rule-based; production: LLM L5 pipeline) */
+function deriveItemTags(title: string): ItemTag[] {
+  const lower = title.toLowerCase();
+  const tags: ItemTag[] = [];
+
+  // ── Phones ──
+  if (/iphone/.test(lower)) {
+    tags.push({ path: 'electronics/phones/iphone', status: 'OFFICIAL' });
+    if (/pro\s*max/.test(lower)) tags.push({ path: 'electronics/phones/iphone/pro-max', status: 'OFFICIAL' });
+    else if (/pro/.test(lower)) tags.push({ path: 'electronics/phones/iphone/pro', status: 'OFFICIAL' });
+  } else if (/galaxy\s*s|galaxy\s*z|samsung/.test(lower)) {
+    tags.push({ path: 'electronics/phones/samsung', status: 'OFFICIAL' });
+    if (/ultra/.test(lower)) tags.push({ path: 'electronics/phones/samsung/ultra', status: 'OFFICIAL' });
+    if (/fold|flip/.test(lower)) tags.push({ path: 'electronics/phones/samsung/foldable', status: 'EMERGING' });
+  } else if (/pixel/.test(lower)) {
+    tags.push({ path: 'electronics/phones/pixel', status: 'OFFICIAL' });
+  } else if (/oneplus/.test(lower)) {
+    tags.push({ path: 'electronics/phones/oneplus', status: 'EMERGING' });
+
+  // ── Tablets ──
+  } else if (/ipad/.test(lower)) {
+    tags.push({ path: 'electronics/tablets/ipad', status: 'OFFICIAL' });
+    if (/pro/.test(lower)) tags.push({ path: 'electronics/tablets/ipad/pro', status: 'OFFICIAL' });
+    if (/air/.test(lower)) tags.push({ path: 'electronics/tablets/ipad/air', status: 'OFFICIAL' });
+  } else if (/galaxy\s*tab/.test(lower)) {
+    tags.push({ path: 'electronics/tablets/samsung', status: 'OFFICIAL' });
+
+  // ── Laptops ──
+  } else if (/macbook/.test(lower)) {
+    tags.push({ path: 'electronics/laptops/macbook', status: 'OFFICIAL' });
+    if (/pro/.test(lower)) tags.push({ path: 'electronics/laptops/macbook/pro', status: 'OFFICIAL' });
+    if (/air/.test(lower)) tags.push({ path: 'electronics/laptops/macbook/air', status: 'OFFICIAL' });
+  } else if (/thinkpad/.test(lower)) {
+    tags.push({ path: 'electronics/laptops/thinkpad', status: 'OFFICIAL' });
+  } else if (/xps|dell/.test(lower)) {
+    tags.push({ path: 'electronics/laptops/dell', status: 'EMERGING' });
+
+  // ── Wearables ──
+  } else if (/apple\s*watch/.test(lower)) {
+    tags.push({ path: 'electronics/wearables/apple-watch', status: 'OFFICIAL' });
+    if (/ultra/.test(lower)) tags.push({ path: 'electronics/wearables/apple-watch/ultra', status: 'OFFICIAL' });
+  } else if (/galaxy\s*watch/.test(lower)) {
+    tags.push({ path: 'electronics/wearables/galaxy-watch', status: 'EMERGING' });
+  } else if (/airpods/.test(lower)) {
+    tags.push({ path: 'electronics/wearables/airpods', status: 'OFFICIAL' });
+    if (/pro/.test(lower)) tags.push({ path: 'electronics/wearables/airpods/pro', status: 'OFFICIAL' });
+    if (/max/.test(lower)) tags.push({ path: 'electronics/wearables/airpods/max', status: 'OFFICIAL' });
+
+  // ── Audio ──
+  } else if (/headphone|earphone|earbud|speaker|soundbar/.test(lower)) {
+    tags.push({ path: 'electronics/audio', status: 'OFFICIAL' });
+    if (/sony|wh-?1000|wf-?1000/.test(lower)) tags.push({ path: 'electronics/audio/sony', status: 'OFFICIAL' });
+    if (/bose/.test(lower)) tags.push({ path: 'electronics/audio/bose', status: 'OFFICIAL' });
+
+  // ── Gaming ──
+  } else if (/playstation|ps5|ps4/.test(lower)) {
+    tags.push({ path: 'electronics/gaming/playstation', status: 'OFFICIAL' });
+  } else if (/xbox/.test(lower)) {
+    tags.push({ path: 'electronics/gaming/xbox', status: 'OFFICIAL' });
+  } else if (/nintendo|switch/.test(lower)) {
+    tags.push({ path: 'electronics/gaming/nintendo', status: 'OFFICIAL' });
+  } else if (/gpu|rtx|rx\s?\d|graphics\s*card/.test(lower)) {
+    tags.push({ path: 'electronics/components/gpu', status: 'OFFICIAL' });
+
+  // ── Cameras ──
+  } else if (/camera|dslr|mirrorless/.test(lower)) {
+    tags.push({ path: 'electronics/cameras', status: 'OFFICIAL' });
+    if (/sony\s*a[67]|sony\s*alpha/.test(lower)) tags.push({ path: 'electronics/cameras/sony', status: 'OFFICIAL' });
+    if (/canon\s*eos|canon\s*r\d/.test(lower)) tags.push({ path: 'electronics/cameras/canon', status: 'OFFICIAL' });
+    if (/gopro/.test(lower)) tags.push({ path: 'electronics/cameras/gopro', status: 'OFFICIAL' });
+  }
+
+  // ── Attributes (cross-category) ──
+  const storageMatch = lower.match(/(\d+)\s*(?:gb|tb)/);
+  if (storageMatch) {
+    const size = parseInt(storageMatch[1]!, 10);
+    const unit = lower.includes('tb') ? 'tb' : 'gb';
+    const effectiveGb = unit === 'tb' ? size * 1024 : size;
+    if (effectiveGb >= 512) tags.push({ path: 'attributes/storage/high', status: 'OFFICIAL' });
+    else if (effectiveGb >= 256) tags.push({ path: 'attributes/storage/mid', status: 'OFFICIAL' });
+    else tags.push({ path: 'attributes/storage/base', status: 'OFFICIAL' });
+  }
+
+  // Fallback — still electronics, just unrecognized model
+  if (tags.length === 0) {
+    tags.push({ path: 'electronics/uncategorized', status: 'CANDIDATE' });
+  }
+
+  return tags;
+}
 
 function encodeSharedMemo(session: DemoSession): string {
   const m = session.memory;
+  const b = m.boundaries;
+
   const lines = [
-    '--- SHARED ---',
-    `NS:demo_${session.id}|${m.session.phase}|R${m.session.round}/${m.session.max_rounds}`,
+    '--- NSV v2 SHARED ---',
+    `NS:${m.session.phase}|R${m.session.round}/${m.session.max_rounds}|buyer`,
+    `PT:${b.current_offer}⇄${b.opponent_offer}|gap:${b.gap}`,
   ];
-  // Price trajectory
-  const buyerPrices = session.facts.map(f => f.buyer_offer).join(',');
-  const sellerPrices = session.facts.map(f => f.seller_offer).join(',');
-  if (buyerPrices) {
-    const lastGap = session.facts.length > 0 ? session.facts[session.facts.length - 1]!.gap : 0;
-    lines.push(`PT:B${buyerPrices}|S${sellerPrices}|g${lastGap}`);
+
+  // TG: Tag Garden extension — item classification (fixed per session)
+  if (session.tags.length > 0) {
+    const tagStr = session.tags
+      .filter(t => t.status === 'OFFICIAL' || t.status === 'EMERGING')
+      .slice(0, 3)  // max 3 tags for token efficiency
+      .map(t => `${t.path}(${t.status[0]})`)  // O=OFFICIAL, E=EMERGING
+      .join(',');
+    lines.push(`TG:${tagStr}`);
   }
-  // Recent messages (last 3 facts)
-  const recent = session.facts.slice(-3);
-  if (recent.length > 0) {
-    lines.push('RM:');
-    for (const f of recent) {
-      lines.push(`R${f.round}/S:$${f.seller_offer} B:$${f.buyer_offer}`);
-    }
-  }
+
   return lines.join('\n');
 }
 
 function encodePrivateMemo(session: DemoSession): string {
   const m = session.memory;
   const b = m.boundaries;
+
+  // Room: how much of my range I've used (0%=at target, 100%=at floor)
+  const range = Math.abs(b.my_floor - b.my_target);
+  const used = Math.abs(b.current_offer - b.my_target);
+  const roomPct = range > 0 ? ((used / range) * 100).toFixed(0) : '0';
+
   const lines = [
-    '--- PRIVATE ---',
-    `SS:buyer|t${b.my_target}|f${b.my_floor}|c${b.current_offer}|o${b.opponent_offer}|g${b.gap}`,
+    '--- NSV v2 PRIVATE ---',
+    `SS:t:${b.my_target}|f:${b.my_floor}|room:${roomPct}%`,
   ];
   if (session.opponentPattern) {
     const op = session.opponentPattern;
-    lines.push(`OM:${op.aggression > 0.7 ? 'BOULWARE' : op.aggression < 0.3 ? 'CONCEDER' : 'LINEAR'}|agg${op.aggression.toFixed(2)}|cr${op.concession_rate.toFixed(3)}`);
+    const label = op.aggression > 0.7 ? 'BOULWARE' : op.aggression < 0.3 ? 'CONCEDER' : 'LINEAR';
+    lines.push(`OM:${label}|agg:${op.aggression.toFixed(2)}|cr:${op.concession_rate.toFixed(3)}`);
   }
   return lines.join('\n');
 }
 
 // ─── Prompts ────────────────────────────────────────
 
-const CODEC_LEGEND = `=== HNP Memo Codec v1.0 ===
-Shared: NS=State, PT=PriceTrajectory(B=buyer,S=seller,g=gap), RM=RecentMessages
-Private: SS=Strategy(t=target,f=floor,c=current,o=opponent,g=gap), OM=OpponentModel
-Prices in minor units (cents). $700 = 70000`;
+const NSV_LEGEND = `=== NSV v2 (Negotiation State Vector) ===
+Shared: NS=State PT=Position(gap) TG=TagGarden(item tags)
+Private: SS=Strategy(target,floor,room%) OM=OpponentModel(type,aggression,concession_rate)
+Prices in minor units. $700=70000. O=OFFICIAL E=EMERGING`;
 
 function buildUnderstandPrompt(sellerMessage: string): { system: string; user: string } {
   return {
-    system: `당신은 Haggle 협상 프로토콜의 Stage 1 (UNDERSTAND) 모듈입니다.
-판매자의 메시지를 분석하여 구조화된 의도로 파싱하세요.
-반드시 유효한 JSON만 응답하세요:
-{
-  "price_offer": number (소수점 단위, 예: $700 = 70000),
-  "conditions_proposed": [{"term": string, "value": any}],
-  "conditions_claimed": [{"term": string, "value": any, "verified": false}],
-  "sentiment": "cooperative"|"firm"|"aggressive"|"passive",
-  "tactic_detected": string,
-  "message_type": "offer"|"counter"|"conditional_offer"|"rejection"|"acceptance"|"question"
-}`,
-    user: `판매자 메시지: "${sellerMessage}"`,
+    system: `You are Haggle protocol Stage 1 (UNDERSTAND). Parse seller message into structured intent.
+Respond with valid JSON only:
+{"price_offer":number(minor units,e.g.$700=70000),"conditions_proposed":[{"term":string,"value":any}],"conditions_claimed":[{"term":string,"value":any,"verified":false}],"sentiment":"cooperative"|"firm"|"aggressive"|"passive","tactic_detected":string,"message_type":"offer"|"counter"|"conditional_offer"|"rejection"|"acceptance"|"question"}`,
+    user: `Seller message: "${sellerMessage}"`,
   };
 }
 
-function buildDecidePrompt(session: DemoSession, coaching: RefereeCoaching, understood: UnderstandResult): { system: string; user: string } {
-  const skillCtx = skill.getLLMContext();
-  const constraints = skill.getConstraints().map(c => `- ${c.rule}: ${c.description}`).join('\n');
-  const tactics = skill.getTactics().join(', ');
+function buildDecidePrompt(
+  session: DemoSession,
+  briefing: RefereeBriefing,
+  skillResult: MergedHookResult,
+  understood: UnderstandResult,
+): { system: string; user: string } {
+  const decide = skillResult.decide;
+  const categoryBrief = decide?.categoryBrief ?? '';
+  const tactics = decide?.tactics?.join(', ') ?? '';
+  const valuationRules = decide?.valuationRules?.map(r => `- ${r}`).join('\n') ?? '';
 
   return {
-    system: `당신은 Haggle 협상 프로토콜의 Stage 3 (DECIDE) — 구매자 측 모듈입니다.
-${CODEC_LEGEND}
+    system: `You are Haggle protocol Stage 3 (DECIDE) — buyer side.
+${NSV_LEGEND}
 
-## 카테고리 지식
-${skillCtx}
-사용 가능한 전술: ${tactics}
-제약 조건:
-${constraints}
+## Category Knowledge
+${categoryBrief}
+Tactics: ${tactics}
+Valuation Rules:
+${valuationRules}
 
-## 규칙
-1. 절대로 floor price(최대 지불 의향 가격)를 초과하지 마세요
-2. Phase에 맞는 행동을 하세요:
-   - OPENING: COUNTER (첫 제안)
-   - BARGAINING: COUNTER, ACCEPT, REJECT, HOLD
-   - CLOSING: CONFIRM, HOLD
-3. reasoning은 반드시 한국어로 작성 (내부용, 상대방에게 안 보임)
+## Rules
+1. NEVER exceed floor price (max willingness to pay)
+2. Phase-valid actions: OPENING→COUNTER | BARGAINING→COUNTER,ACCEPT,REJECT,HOLD | CLOSING→CONFIRM,HOLD
+3. reasoning: internal only, never shown to counterparty
 
-반드시 유효한 JSON만 응답하세요:
-{
-  "action": "COUNTER"|"ACCEPT"|"REJECT"|"HOLD"|"DISCOVER"|"CONFIRM",
-  "price": number (소수점 단위),
-  "reasoning": string (한국어),
-  "tactic_used": string,
-  "non_price_terms": {},
-  "phase_assessment": "OPENING"|"BARGAINING"|"CLOSING",
-  "near_deal": boolean
-}`,
-    user: `## Living Memo
+Respond with valid JSON only:
+{"action":"COUNTER"|"ACCEPT"|"REJECT"|"HOLD"|"DISCOVER"|"CONFIRM","price":number(minor units),"reasoning":string,"tactic_used":string,"non_price_terms":{},"phase_assessment":"OPENING"|"BARGAINING"|"CLOSING","near_deal":boolean}`,
+    user: `## NSV (Negotiation State Vector)
 ${encodeSharedMemo(session)}
 ${encodePrivateMemo(session)}
 
-## 코칭 지시
-추천 가격: $${coaching.recommended_price} (소수점: ${coaching.recommended_price})
-허용 범위: $${coaching.acceptable_range.min}-$${coaching.acceptable_range.max}
-추천 전술: ${coaching.suggested_tactic}
-상대방 패턴: ${coaching.opponent_pattern}
-시간 압박: ${(coaching.time_pressure * 100).toFixed(0)}%
-${coaching.warnings.length > 0 ? '경고: ' + coaching.warnings.join('; ') : ''}
+## Briefing (Facts)
+opponent:${briefing.opponentPattern} time_pressure:${(briefing.timePressure * 100).toFixed(0)}%
+utility:u_total=${briefing.utilitySnapshot.u_total} u_price=${briefing.utilitySnapshot.u_price}
+stagnation:${briefing.stagnation} gap_trend:[${briefing.gapTrend.join(',')}]
+${briefing.warnings.length > 0 ? 'warnings:' + briefing.warnings.join(';') : ''}
 
-## 판매자 행동 (UNDERSTAND 결과)
-제안 가격: $${understood.price_offer} (${understood.message_type})
-감정: ${understood.sentiment}
-전술: ${understood.tactic_detected}
-${understood.conditions_proposed.length > 0 ? '제안 조건: ' + JSON.stringify(understood.conditions_proposed) : ''}`,
+## Advisories (May ignore)
+${(decide?.advisories ?? []).map(a =>
+  `[${a.skillId}] rec_price:${a.recommendedPrice ?? '-'} tactic:${a.suggestedTactic ?? '-'}${a.acceptableRange ? ` range:${a.acceptableRange.min}-${a.acceptableRange.max}` : ''}${a.observations?.length ? ' obs:' + a.observations.join(';') : ''}`
+).join('\n') || 'none'}
+
+## Seller Action (UNDERSTAND)
+price:$${understood.price_offer}(${understood.message_type}) sentiment:${understood.sentiment} tactic:${understood.tactic_detected}
+${understood.conditions_proposed.length > 0 ? 'conditions:' + JSON.stringify(understood.conditions_proposed) : ''}`,
   };
 }
 
-function buildRespondPrompt(decision: ProtocolDecision, phase: NegotiationPhase, recentFacts: RoundFact[]): { system: string; user: string } {
+function buildRespondPrompt(decision: ProtocolDecision, phase: NegotiationPhase, recentFacts: RoundFact[], language: string): { system: string; user: string } {
+  const langInstruction = language === 'en'
+    ? 'Write in natural English.'
+    : `Write in ${language}. The message MUST be in ${language}.`;
   return {
-    system: `당신은 Haggle 협상 프로토콜의 Stage 5 (RESPOND) — 구매자 측 모듈입니다.
-자연스럽고 사람다운 한국어 구매자 메시지를 생성하세요.
-스타일: 정중하고 전문적, 이모지 사용 금지, 1-2문장.
-전략이나 floor price는 절대 노출하지 마세요.
-반드시 유효한 JSON만 응답하세요: { "message": string (한국어) }`,
-    user: `결정 내용: ${JSON.stringify(decision)}
-현재 Phase: ${phase}
-${recentFacts.length > 0 ? '직전 교환: 판매자 제안 $' + recentFacts[recentFacts.length - 1]!.seller_offer : ''}`,
+    system: `You are Haggle protocol Stage 5 (RESPOND) — buyer side.
+Generate a natural, human-like buyer message. Style: polite, professional, no emoji, 1-2 sentences.
+Never reveal strategy or floor price.
+${langInstruction}
+Respond with valid JSON only: {"message":string}`,
+    user: `Decision: ${JSON.stringify(decision)}
+Phase: ${phase}
+${recentFacts.length > 0 ? 'Last exchange: seller offered $' + recentFacts[recentFacts.length - 1]!.seller_offer : ''}`,
   };
 }
 
@@ -260,6 +374,12 @@ const initSchema = z.object({
   buyer_budget: z.object({
     max_budget: z.number().default(950),
   }).default({}),
+  language: z.string().default('en'),
+  preset: z.enum(['lowest_price', 'balanced', 'safe_first', 'custom']).default('balanced'),
+  custom_skills: z.object({
+    advisor: z.string(),
+    advisor_config: z.record(z.unknown()).optional(),
+  }).optional(),
 });
 
 const roundSchema = z.object({
@@ -308,7 +428,7 @@ function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median: numbe
       warnings: [],
     },
     buddy_dna: buddyDna,
-    skill_summary: skill.getLLMContext(),
+    skill_summary: '',  // populated by SkillStack at runtime
   };
 }
 
@@ -361,29 +481,27 @@ export function registerDemoRoute(app: FastifyInstance) {
       return reply.code(400).send({ error: 'INVALID_REQUEST', issues: parsed.error.issues });
     }
 
-    const { item, seller, buyer_budget } = parsed.data;
+    const { item, seller, buyer_budget, language, preset, custom_skills } = parsed.data;
     const traces: StageTrace[] = [];
 
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
       '0a_STRATEGY_GENERATION',
-      `당신은 Haggle 프로토콜의 구매 전략 어드바이저입니다.
-아이템 정보와 시장 데이터를 분석하여 구매 전략을 생성하세요.
-approach와 key_concerns는 반드시 한국어로 작성하세요.
-반드시 유효한 JSON만 응답하세요:
+      `You are Haggle protocol buying strategy advisor. Analyze item info and market data to generate a purchase strategy.
+Respond with valid JSON only:
 {
-  "target_price": number (소수점 단위 — 센트, 예: $750 = 75000),
-  "floor_price": number (소수점 단위 — 구매자가 지불할 절대 최대 금액),
+  "target_price": number (minor units/cents, e.g. $750=75000),
+  "floor_price": number (minor units — buyer's absolute max),
   "opening_tactic": "anchoring"|"reciprocal_concession"|"bundling",
-  "approach": string (한국어, 1문장),
-  "key_concerns": [string (한국어)],
+  "approach": string (1 sentence),
+  "key_concerns": [string],
   "negotiation_style": "aggressive"|"balanced"|"defensive"
 }`,
-      `아이템: ${item.title}
-상태: ${item.condition}
-시장가: Swappa 30일 중간값 $${item.swappa_median}
-판매자 희망가: $${seller.ask_price}
-내 최대 예산: $${buyer_budget.max_budget}`,
+      `Item: ${item.title}
+Condition: ${item.condition}
+Market: Swappa 30d median $${item.swappa_median}
+Seller ask: $${seller.ask_price}
+My max budget: $${buyer_budget.max_budget}`,
       parseJSON<DemoStrategy>,
     );
     traces.push(strategyTrace);
@@ -396,18 +514,13 @@ approach와 key_concerns는 반드시 한국어로 작성하세요.
 
     const termTrace = await traceLLMCall<TermAnalysis>(
       '0b_TERM_ANALYSIS',
-      `당신은 Haggle 프로토콜의 협상 조건 분석가입니다.
-전략과 사용 가능한 조건 목록을 분석하여 이 거래에서 중요한 조건을 판단하세요.
-rationale은 반드시 한국어로 작성하세요.
-반드시 유효한 JSON만 응답하세요:
-{
-  "priority_terms": [{"id": string, "importance": "critical"|"important"|"nice_to_have", "target_value": string, "rationale": string (한국어)}],
-  "deal_breakers": [{"id": string, "condition": string, "rationale": string (한국어)}]
-}`,
-      `전략: 목표=$${(strategy.target_price / 100).toFixed(0)}, 최대=$${(strategy.floor_price / 100).toFixed(0)}, 스타일=${strategy.negotiation_style}
-사용 가능한 조건:
+      `You are Haggle protocol term analyst. Analyze strategy and available terms to determine important conditions for this deal.
+Respond with valid JSON only:
+{"priority_terms":[{"id":string,"importance":"critical"|"important"|"nice_to_have","target_value":string,"rationale":string}],"deal_breakers":[{"id":string,"condition":string,"rationale":string}]}`,
+      `Strategy: target=$${(strategy.target_price / 100).toFixed(0)}, max=$${(strategy.floor_price / 100).toFixed(0)}, style=${strategy.negotiation_style}
+Available terms:
 ${termsForPrompt}
-아이템 상태: ${item.condition}`,
+Item condition: ${item.condition}`,
       parseJSON<TermAnalysis>,
     );
     traces.push(termTrace);
@@ -428,8 +541,20 @@ ${termsForPrompt}
       round_introduced: 0,
     }));
 
+    // Session-level skill stack based on preset
+    const advisorConfig = preset === 'custom' && custom_skills
+      ? { advisor: custom_skills.advisor, config: custom_skills.advisor_config ?? {} }
+      : PRESET_MAP[preset] ?? PRESET_MAP.balanced;
+
+    const sessionBuddyStyle = ((advisorConfig.config as Record<string, unknown>).buddyStyle ?? 'balanced') as 'aggressive' | 'balanced' | 'defensive';
+    const sessionSkillStack = SkillStack.of(
+      new ElectronicsKnowledgeSkill(),
+      new FaratinCoachingSkill({ buddyStyle: sessionBuddyStyle }),
+    );
+
     const session: DemoSession = {
       id,
+      language,
       item,
       seller,
       buyer_budget,
@@ -441,10 +566,13 @@ ${termsForPrompt}
       previousMoves: [],
       round: 0,
       phase: 'OPENING',
+      preset,
+      activeSkills: sessionSkillStack.getManifests().map(m => m.id),
       done: false,
       totalCost: 0,
       totalTokens: { prompt: 0, completion: 0 },
       initTraces: traces,
+      tags: deriveItemTags(item.title),
     };
 
     // Accumulate init costs
@@ -452,7 +580,7 @@ ${termsForPrompt}
       if (t.tokens) {
         session.totalTokens.prompt += t.tokens.prompt;
         session.totalTokens.completion += t.tokens.completion;
-        // Grok 4 Fast pricing: $0.05/1K input, $0.15/1K output
+        // Grok 4 Fast pricing: $0.20/1M input, $0.50/1M output
         session.totalCost += (t.tokens.prompt * 0.0000002) + (t.tokens.completion * 0.0000005);
       }
     }
@@ -461,12 +589,17 @@ ${termsForPrompt}
 
     return reply.send({
       demo_id: id,
+      language,
+      preset,
+      active_skills: session.activeSkills,
       stages_tested: [
-        '0a_STRATEGY_GENERATION — LLM이 아이템+시장→구매전략 JSON',
-        '0b_TERM_ANALYSIS — LLM이 전략+Terms→우선순위 JSON',
+        '0a_STRATEGY_GENERATION — LLM: item+market→buying strategy JSON',
+        '0b_TERM_ANALYSIS — LLM: strategy+terms→priority JSON',
       ],
       strategy,
       terms,
+      tags: session.tags,
+      skills: sessionSkillStack.getManifests(),
       initial_memory: memory,
       pipeline: traces.map(t => ({
         stage: t.stage,
@@ -510,7 +643,7 @@ ${termsForPrompt}
     // Stage 1: UNDERSTAND (LLM)
     // Test: LLM이 자연어 메시지를 구조화된 의도로 파싱하는가?
     // ────────────────────────────────────────────────
-    const sellerText = seller_message ?? `$${seller_price}에 드릴 수 있습니다. 어떻게 생각하세요?`;
+    const sellerText = seller_message ?? `I can do $${seller_price}. What do you think?`;
     const understandPrompts = buildUnderstandPrompt(sellerText);
 
     const understandTrace = await traceLLMCall<UnderstandResult>(
@@ -535,6 +668,14 @@ ${termsForPrompt}
     session.memory.session.rounds_remaining = session.memory.session.max_rounds - session.round;
     session.memory.session.phase = session.phase;
 
+    // Briefing: facts only (replaces old coaching in LLM prompt)
+    const briefing = computeBriefing(
+      session.memory,
+      session.facts,
+      session.opponentPattern,
+    );
+
+    // Coaching: still needed for validateMove (internal, not shown to LLM)
     const coaching = computeCoaching(
       session.memory,
       session.facts,
@@ -542,6 +683,23 @@ ${termsForPrompt}
       buddyDna,
     );
     session.memory.coaching = coaching;
+
+    // Skill v2: reconstruct session-level SkillStack from preset
+    const roundAdvisorConfig = session.preset === 'custom'
+      ? PRESET_MAP.balanced
+      : PRESET_MAP[session.preset] ?? PRESET_MAP.balanced;
+    const roundBuddyStyle = ((roundAdvisorConfig.config as Record<string, unknown>).buddyStyle ?? 'balanced') as 'aggressive' | 'balanced' | 'defensive';
+    const skillStack = SkillStack.of(
+      new ElectronicsKnowledgeSkill(),
+      new FaratinCoachingSkill({ buddyStyle: roundBuddyStyle }),
+    );
+    const skillDecideResult = await skillStack.dispatchHook({
+      stage: 'decide',
+      memory: session.memory,
+      recentFacts: session.facts,
+      opponentPattern: session.opponentPattern,
+      phase: session.phase,
+    });
 
     const sharedMemo = encodeSharedMemo(session);
     const privateMemo = encodePrivateMemo(session);
@@ -554,13 +712,19 @@ ${termsForPrompt}
         recent_facts_count: session.facts.length,
       },
       output: {
-        coaching,
-        shared_memo_codec: sharedMemo,
-        private_memo_codec: privateMemo,
-        skill_context: skill.getLLMContext(),
-        constraints: skill.getConstraints(),
+        nsv_shared: sharedMemo,
+        nsv_private: privateMemo,
+        briefing,
+        advisories: skillDecideResult.decide?.advisories ?? [],
+        skills_dispatched: Object.keys(skillDecideResult.bySkill),
+        tags: session.tags,
       },
-      parsed: { coaching, memo: sharedMemo + '\n' + privateMemo },
+      parsed: {
+        nsv_shared: sharedMemo,
+        nsv_private: privateMemo,
+        briefing,
+        advisories: skillDecideResult.decide?.advisories ?? [],
+      },
       latency_ms: Date.now() - ctxStart,
       is_llm: false,
     };
@@ -571,13 +735,13 @@ ${termsForPrompt}
     // Test: LLM이 전체 컨텍스트 → ProtocolDecision JSON을 올바르게 생성하는가?
     //       모든 Phase에서 적절한 action을 선택하는가?
     // ────────────────────────────────────────────────
-    const decidePrompts = buildDecidePrompt(session, coaching, understood);
+    const decidePrompts = buildDecidePrompt(session, briefing, skillDecideResult, understood);
 
     // Reasoning mode trigger (Doc 26: code decides, not LLM)
     const gapRatio = session.memory.boundaries.my_floor > 0
       ? session.memory.boundaries.gap / Math.abs(session.memory.boundaries.my_floor - session.memory.boundaries.my_target)
       : 1;
-    const useReasoning = gapRatio < 0.10 || coaching.warnings.length >= 2;
+    const useReasoning = gapRatio < 0.10 || briefing.warnings.length >= 2;
 
     const decideTrace = await traceLLMCall<DecideResult>(
       '3_DECIDE',
@@ -602,6 +766,16 @@ ${termsForPrompt}
     //       HARD violation 시 auto-fix가 작동하는가?
     // ────────────────────────────────────────────────
     const valStart = Date.now();
+
+    // Skill v2: dispatch validate hooks → additional hard/soft rules
+    const skillValidateResult = await skillStack.dispatchHook({
+      stage: 'validate',
+      memory: session.memory,
+      recentFacts: session.facts,
+      opponentPattern: session.opponentPattern,
+      phase: session.phase,
+    });
+
     let validation: ValidationResult = validateMove(
       decision,
       session.memory,
@@ -609,6 +783,24 @@ ${termsForPrompt}
       session.previousMoves,
       session.phase,
     );
+
+    // Merge skill validation rules into result
+    if (skillValidateResult.validate) {
+      for (const rule of skillValidateResult.validate.hardRules) {
+        validation.violations.push({
+          rule: `[skill:${rule.skillId}] ${rule.rule}`,
+          severity: 'HARD',
+          guidance: rule.description,
+        });
+      }
+      for (const rule of skillValidateResult.validate.softRules) {
+        validation.violations.push({
+          rule: `[skill:${rule.skillId}] ${rule.rule}`,
+          severity: 'SOFT',
+          guidance: rule.description,
+        });
+      }
+    }
 
     let autoFixApplied = false;
     const originalDecision = { ...decision };
@@ -628,7 +820,11 @@ ${termsForPrompt}
 
     const validateTrace: StageTrace<ValidationResult> = {
       stage: '4_VALIDATE',
-      input: { original_decision: originalDecision, memory_boundaries: session.memory.boundaries },
+      input: {
+        original_decision: originalDecision,
+        memory_boundaries: session.memory.boundaries,
+        skill_rules: skillValidateResult.validate ?? null,
+      },
       output: { validation, auto_fix_applied: autoFixApplied, final_decision: decision },
       parsed: validation,
       latency_ms: Date.now() - valStart,
@@ -641,7 +837,7 @@ ${termsForPrompt}
     // Test: LLM이 ProtocolDecision → 자연어 메시지를 올바르게 생성하는가?
     //       TemplateMessageRenderer를 대체할 수 있는가?
     // ────────────────────────────────────────────────
-    const respondPrompts = buildRespondPrompt(decision, session.phase, session.facts);
+    const respondPrompts = buildRespondPrompt(decision, session.phase, session.facts, session.language);
 
     const respondTrace = await traceLLMCall<{ message: string }>(
       '5_RESPOND',
@@ -674,8 +870,13 @@ ${termsForPrompt}
       gap: session.memory.boundaries.gap,
       buyer_tactic: decision.tactic_used,
       conditions_changed: {},
-      coaching_given: { recommended: coaching.recommended_price, tactic: coaching.suggested_tactic },
-      coaching_followed: decision.price !== undefined && Math.abs(decision.price - coaching.recommended_price) < coaching.recommended_price * 0.05,
+      coaching_given: {
+        recommended: skillDecideResult.decide?.advisories?.[0]?.recommendedPrice ?? 0,
+        tactic: skillDecideResult.decide?.advisories?.[0]?.suggestedTactic ?? '',
+      },
+      coaching_followed: decision.price !== undefined &&
+        skillDecideResult.decide?.advisories?.[0]?.recommendedPrice !== undefined &&
+        Math.abs(decision.price - skillDecideResult.decide.advisories[0].recommendedPrice) < skillDecideResult.decide.advisories[0].recommendedPrice * 0.05,
       human_intervened: false,
       timestamp: Date.now(),
     };
@@ -764,9 +965,9 @@ ${termsForPrompt}
       phase: session.phase,
       stages_tested: [
         '1_UNDERSTAND — LLM이 자연어→구조화 의도 파싱',
-        '2_CONTEXT — 코드가 Memo+Skill+Coach 조립',
+        '2_CONTEXT — 코드가 Briefing+SkillStack 조립',
         '3_DECIDE — LLM이 전체 컨텍스트→ProtocolDecision',
-        '4_VALIDATE — 코드(Referee)가 Math/Protocol Guard',
+        '4_VALIDATE — 코드(Referee)+Skill 규칙 검증',
         '5_RESPOND — LLM이 결정→자연어 메시지',
         '6_PERSIST_TRANSITION — 코드가 Memo갱신+Phase전이',
       ],

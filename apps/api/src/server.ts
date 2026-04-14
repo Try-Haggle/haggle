@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createDb } from "@haggle/db";
 import authPlugin from "./middleware/auth.js";
+import { globalRateLimit } from "./middleware/rate-limit.js";
 import { registerMcpRoutes } from "./mcp/router.js";
 import { registerClaimRoutes } from "./routes/claim.js";
 import { registerListingsRoutes } from "./routes/listings.js";
@@ -28,8 +29,14 @@ import { registerDemoRoute } from "./routes/negotiation-demo.js";
 import { registerGroupRoutes } from "./routes/groups.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerAttestationRoutes } from "./routes/attestation.js";
+import { registerWalletRoutes } from "./routes/wallets.js";
+import { registerHfmiRoutes } from "./routes/hfmi.js";
+import { registerPresetRoutes } from "./routes/presets.js";
+import { registerBuddyRoutes } from "./routes/buddies.js";
+import { registerGamificationRoutes } from "./routes/gamification.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
+import { setTelemetryDb } from "./lib/llm-telemetry.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -40,6 +47,11 @@ export async function createServer() {
 
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(process.env.DATABASE_URL!);
+
+  // ─── LLM Telemetry DB sink ─────────────────────────────────
+  if (process.env.LLM_TELEMETRY === "db") {
+    setTelemetryDb(db);
+  }
 
   // ─── CORS ────────────────────────────────────────────────
   // ChatGPT requires these origins to connect to the MCP server.
@@ -59,6 +71,9 @@ export async function createServer() {
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
   });
+
+  // ─── Rate Limiting ───────────────────────────────────────
+  app.addHook("preHandler", globalRateLimit);
 
   // ─── Auth Middleware ──────────────────────────────────────
   await app.register(authPlugin);
@@ -112,6 +127,17 @@ export async function createServer() {
 
   // ─── Attestation Routes ──────────────────────────────────
   registerAttestationRoutes(app, db);
+
+  // ─── Wallet Routes ───────────────────────────────────────
+  registerWalletRoutes(app, db);
+
+  // ─── HFMI Routes ────────────────────────────────────────
+  registerHfmiRoutes(app, db);
+
+  // ─── Gamification Routes ───────────────────────────────
+  registerPresetRoutes(app, db);
+  registerBuddyRoutes(app, db);
+  registerGamificationRoutes(app, db);
 
   // TODO(post-mvp): Register WebSocket handler for real-time updates
 

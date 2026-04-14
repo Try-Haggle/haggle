@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY, computeDisputeCost, createDepositRequirement } from "@haggle/dispute-core";
 import type { DisputeCase, DisputeEvidence, DisputeReasonCode, DisputeTier } from "@haggle/dispute-core";
 import {
@@ -70,7 +71,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const paymentService = createPaymentServiceFromEnv();
 
   // POST /disputes — open a new dispute
-  app.post("/disputes", async (request, reply) => {
+  app.post("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = openDisputeSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_DISPUTE_REQUEST", issues: parsed.error.issues });
@@ -105,7 +106,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
   // POST /disputes/deposits/expire — admin/cron: forfeit expired deposits
   // Registered BEFORE /:id routes to avoid route collision
-  app.post("/disputes/deposits/expire", async (_request, reply) => {
+  app.post("/disputes/deposits/expire", { preHandler: [requireAdmin] }, async (_request, reply) => {
     const expired = await getPendingExpiredDeposits(db);
     let forfeited = 0;
     for (const deposit of expired) {
@@ -116,7 +117,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/escalate — escalate T1→T2→T3 with auto deposit
-  app.post<{ Params: { id: string } }>("/disputes/:id/escalate", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/disputes/:id/escalate", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params;
     const parsed = escalateSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -126,6 +127,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     const dispute = await getDisputeById(db, id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+    }
+
+    // Ownership check: only buyer or seller of the order can escalate
+    const order = await getCommerceOrderByOrderId(db, dispute.order_id);
+    if (order && order.buyerId !== request.user!.id && order.sellerId !== request.user!.id) {
+      return reply.code(403).send({ error: "FORBIDDEN", message: "Only buyer or seller can escalate this dispute" });
     }
 
     // Determine current tier from metadata or default to T1
@@ -181,7 +188,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /disputes/:id
-  app.get("/disputes/:id", async (request, reply) => {
+  app.get("/disputes/:id", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -190,7 +197,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /disputes/by-order/:orderId
-  app.get("/disputes/by-order/:orderId", async (request, reply) => {
+  app.get("/disputes/by-order/:orderId", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeByOrderId(db, (request.params as { orderId: string }).orderId);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -199,7 +206,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/review — start review
-  app.post("/disputes/:id/review", async (request, reply) => {
+  app.post("/disputes/:id/review", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -218,7 +225,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/request-buyer-evidence
-  app.post("/disputes/:id/request-buyer-evidence", async (request, reply) => {
+  app.post("/disputes/:id/request-buyer-evidence", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -237,7 +244,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/request-seller-evidence
-  app.post("/disputes/:id/request-seller-evidence", async (request, reply) => {
+  app.post("/disputes/:id/request-seller-evidence", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -256,7 +263,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/evidence — add evidence
-  app.post("/disputes/:id/evidence", async (request, reply) => {
+  app.post("/disputes/:id/evidence", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -290,7 +297,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/resolve — resolve the dispute
-  app.post("/disputes/:id/resolve", async (request, reply) => {
+  app.post("/disputes/:id/resolve", { preHandler: [requireAdmin] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -369,7 +376,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/close — close the dispute
-  app.post("/disputes/:id/close", async (request, reply) => {
+  app.post("/disputes/:id/close", { preHandler: [requireAuth] }, async (request, reply) => {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -388,7 +395,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/deposit — mark deposit as paid
-  app.post<{ Params: { id: string } }>("/disputes/:id/deposit", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/disputes/:id/deposit", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params;
     const parsed = depositSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -412,7 +419,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /disputes/:id/deposit — get deposit for a dispute
-  app.get<{ Params: { id: string } }>("/disputes/:id/deposit", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/disputes/:id/deposit", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params;
     const deposit = await getDepositByDisputeId(db, id);
     if (!deposit) {

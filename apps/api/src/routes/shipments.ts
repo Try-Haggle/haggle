@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
   ShippingService,
   MockCarrierAdapter,
@@ -191,7 +192,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   }
 
   // POST /shipments — create shipment for an order
-  app.post("/shipments", async (request, reply) => {
+  app.post("/shipments", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = createShipmentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_SHIPMENT_REQUEST", issues: parsed.error.issues });
@@ -209,7 +210,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /shipments/:id
-  app.get("/shipments/:id", async (request, reply) => {
+  app.get("/shipments/:id", { preHandler: [requireAuth] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -218,7 +219,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /shipments/by-order/:orderId
-  app.get("/shipments/by-order/:orderId", async (request, reply) => {
+  app.get("/shipments/by-order/:orderId", { preHandler: [requireAuth] }, async (request, reply) => {
     const shipment = await getShipmentByOrderId(db, (request.params as { orderId: string }).orderId);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -227,7 +228,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /shipments/:id/label — create shipping label
-  app.post("/shipments/:id/label", async (request, reply) => {
+  app.post("/shipments/:id/label", { preHandler: [requireAuth] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -246,7 +247,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /shipments/:id/event — record a shipment event
-  app.post("/shipments/:id/event", async (request, reply) => {
+  app.post("/shipments/:id/event", { preHandler: [requireAuth] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -273,7 +274,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /shipments/:id/track — poll carrier for tracking update
-  app.post("/shipments/:id/track", async (request, reply) => {
+  app.post("/shipments/:id/track", { preHandler: [requireAuth] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -318,7 +319,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     }),
   });
 
-  app.post("/shipments/rates", async (request, reply) => {
+  app.post("/shipments/rates", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = rateRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_RATE_REQUEST", issues: parsed.error.issues });
@@ -400,8 +401,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   app.post("/shipments/webhooks/easypost", {
     config: { rawBody: true },
   }, async (request, reply) => {
-    // Verify webhook signature if secret is configured
-    if (easypostWebhookSecret) {
+    // In production, reject webhooks if secret is not configured.
+    if (!easypostWebhookSecret) {
+      if (process.env.NODE_ENV === "production") {
+        return reply.code(401).send({ error: "EASYPOST_WEBHOOK_SECRET_NOT_CONFIGURED" });
+      }
+      // In development/test, skip signature verification.
+    } else {
       const rawBody = (request as unknown as { rawBody?: string | Buffer }).rawBody ?? JSON.stringify(request.body);
       const isValid = verifyEasyPostWebhook(
         rawBody,
