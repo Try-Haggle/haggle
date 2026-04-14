@@ -9,6 +9,7 @@
 import type { L5Signals } from '../negotiation/types.js';
 import type { Database } from "@haggle/db";
 import { getMedianPrice } from './hfmi.service.js';
+import { resolveHfmiFromTags, extractTagAttributes, type TagAttributes } from './hfmi-tag-resolver.js';
 
 // ---------------------------------------------------------------------------
 // Provider Interface
@@ -19,6 +20,7 @@ export interface L5SignalsProvider {
     category: string;
     item_model: string;
     condition?: string;
+    tag_garden?: Array<{ name: string; category?: string }> | Record<string, string>;
   }): Promise<L5Signals>;
 }
 
@@ -44,11 +46,32 @@ export class HfmiEnrichedL5SignalsProvider implements L5SignalsProvider {
     category: string;
     item_model: string;
     condition?: string;
+    tag_garden?: Array<{ name: string; category?: string }> | Record<string, string>;
   }): Promise<L5Signals> {
     const base = await this.static.getMarketSignals(params);
 
     try {
-      // Derive HFMI model id from item_model (e.g. "iphone-15-pro-256" → "iphone_15_pro")
+      // Strategy 1: Use tag garden for cascading resolution (preferred)
+      if (params.tag_garden) {
+        const tagAttrs = extractTagAttributes(params.tag_garden);
+        const resolution = await resolveHfmiFromTags(this.db, tagAttrs);
+        if (resolution && base.market) {
+          base.market = {
+            ...base.market,
+            avg_sold_price_30d: Math.round(resolution.median_usd * 100),
+            source_prices: [
+              ...base.market.source_prices,
+              {
+                platform: `hfmi_L${resolution.confidence_level}`,
+                price: Math.round(resolution.median_usd * 100),
+              },
+            ],
+          };
+          return base;
+        }
+      }
+
+      // Strategy 2: Fallback to direct model lookup
       const hfmiModel = params.item_model
         .toLowerCase()
         .replace(/\s+/g, '-')
@@ -59,7 +82,7 @@ export class HfmiEnrichedL5SignalsProvider implements L5SignalsProvider {
       if (medianResult && base.market) {
         base.market = {
           ...base.market,
-          avg_sold_price_30d: Math.round(medianResult.median * 100), // convert USD → minor units
+          avg_sold_price_30d: Math.round(medianResult.median * 100),
           source_prices: [
             ...base.market.source_prices,
             { platform: 'hfmi', price: Math.round(medianResult.median * 100) },
