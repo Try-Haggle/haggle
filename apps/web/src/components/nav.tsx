@@ -16,11 +16,13 @@ interface NavProps {
 const SELL_TABS = [
   { label: "Dashboard", href: "/sell/dashboard" },
   { label: "Agents", href: "/sell/agents" },
+  { label: "Staging", href: "/staging" },
 ];
 
 const BUY_TABS = [
   { label: "Dashboard", href: "/buy/dashboard" },
   { label: "Agents", href: "/buy/agents" },
+  { label: "Staging", href: "/staging" },
 ];
 
 export function Nav({ userEmail, userName, userAvatarUrl }: NavProps) {
