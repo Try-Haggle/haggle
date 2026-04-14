@@ -38,6 +38,9 @@ import { checkIntervention } from '../phase/human-intervention.js';
 import { computeBriefing } from '../referee/briefing.js';
 import { computeCoachingAsync } from '../referee/coach.js';
 import type { RefereeBriefing } from '../skills/skill-types.js';
+import { SkillStack, registerSkill, getRegisteredSkills } from '../skills/skill-stack.js';
+import { ElectronicsKnowledgeSkill } from '../skills/electronics-knowledge.js';
+import { FaratinCoachingSkill } from '../skills/faratin-coaching.js';
 
 import {
   reconstructCoreMemory,
@@ -60,6 +63,10 @@ import type { PersistInput, PersistOutput } from './types.js';
 
 const skill = new DefaultEngineSkill();
 const adapter = new GrokFastAdapter();
+
+// Register built-in skills (once at startup)
+registerSkill(new ElectronicsKnowledgeSkill());
+registerSkill(new FaratinCoachingSkill());
 
 // Lazy-initialized DB-backed singletons (require db instance at first call)
 let _checkpointStore: CheckpointStore | null = null;
@@ -250,11 +257,17 @@ export async function executeStagedNegotiationRound(
 
     const previousMoves = extractPreviousMoves(dbRounds);
 
+    // Build SkillStack for this session based on item tags/category
+    const sessionCategory = (dbSession as Record<string, unknown>).category as string | undefined;
+    const itemTags = sessionCategory ? [sessionCategory] : ['electronics'];
+    const skillStack = SkillStack.fromTags(itemTags);
+
     const pipelineResult = await executePipeline(
       understood,
       input.offerPriceMinor,
       {
         skill,
+        skillStack,
         config: stageConfig,
         memory: updatedMemory,
         facts: facts.slice(-5),

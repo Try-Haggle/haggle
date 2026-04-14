@@ -57,6 +57,22 @@ export async function executePipeline(
     encoding: deps.memoEncoding as 'auto' | 'codec' | 'raw',
   });
 
+  // ─── Build hook context for SkillStack ───
+  const hookContext = deps.skillStack ? {
+    memory: deps.memory,
+    recentFacts: deps.facts.slice(-5),
+    opponentPattern: deps.opponent,
+    phase: deps.phase,
+  } : null;
+
+  // ─── Stage 1.5: Skill 'understand' hook ───
+  if (deps.skillStack && hookContext) {
+    try {
+      await deps.skillStack.dispatchHook({ ...hookContext, stage: 'understand' });
+      // termHints from understand hook can enrich future NLP parsing
+    } catch { /* non-fatal */ }
+  }
+
   // ─── Stage 2: Context ───
   const contextOutput = assembleStageContext(
     {
@@ -69,9 +85,65 @@ export async function executePipeline(
     },
     deps.config.adapters.DECIDE,
     resolvedEncoding,
+    deps.skillStack,
   );
 
+  // ─── Stage 2.5: Skill 'context' hook (knowledge + market data) ───
+  if (deps.skillStack && hookContext) {
+    try {
+      const contextHookResult = await deps.skillStack.dispatchHook({ ...hookContext, stage: 'context' });
+      // Inject market data from HfmiMarketSkill into context output
+      if (contextHookResult.decide?.marketData) {
+        for (const md of contextHookResult.decide.marketData) {
+          contextOutput.layers.l5 = (contextOutput.layers.l5 || '') +
+            `\nMKT_SKILL:${md.source}:$${md.price}`;
+        }
+      }
+      // Inject knowledge body from ElectronicsKnowledgeSkill
+      for (const [skillId, result] of Object.entries(contextHookResult.bySkill)) {
+        const body = (result.content as Record<string, unknown>).body;
+        if (typeof body === 'string') {
+          contextOutput.layers.l2 = (contextOutput.layers.l2 || '') + `\n[${skillId}] ${body}`;
+        }
+        // Merge observations
+        const obs = (result.content as Record<string, unknown>).observations;
+        if (Array.isArray(obs)) {
+          contextOutput.layers.l5 = (contextOutput.layers.l5 || '') +
+            '\n' + obs.join('\n');
+        }
+      }
+    } catch { /* non-fatal: skills failing doesn't block pipeline */ }
+  }
+
   // ─── Stage 3: Decide ───
+  // First, get skill advisories for the decide stage
+  let skillAdvisories: string[] = [];
+  if (deps.skillStack && hookContext) {
+    try {
+      const decideHookResult = await deps.skillStack.dispatchHook({ ...hookContext, stage: 'decide' });
+      if (decideHookResult.decide?.advisories) {
+        for (const adv of decideHookResult.decide.advisories) {
+          if (adv.recommendedPrice) {
+            skillAdvisories.push(`Advisor(${adv.skillId}): suggested price $${(adv.recommendedPrice / 100).toFixed(2)}`);
+          }
+          if (adv.suggestedTactic) {
+            skillAdvisories.push(`Advisor(${adv.skillId}): tactic=${adv.suggestedTactic}`);
+          }
+          if (adv.observations) {
+            skillAdvisories.push(...adv.observations.map(o => `Advisor(${adv.skillId}): ${o}`));
+          }
+        }
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // Inject advisories into context L3 layer (optional, LLM may ignore)
+  if (skillAdvisories.length > 0) {
+    contextOutput.layers.l3 = (contextOutput.layers.l3 || '') +
+      '\n## Advisor Notes (optional, you may ignore)\n' +
+      skillAdvisories.map(a => `- ${a}`).join('\n');
+  }
+
   const decideOutput = await decide({
     context: contextOutput,
     adapter: deps.config.adapters.DECIDE,
@@ -93,6 +165,21 @@ export async function executePipeline(
     },
     deps.previousMoves,
   );
+
+  // ─── Stage 4.5: Skill 'validate' hook (custom rules) ───
+  if (deps.skillStack && hookContext) {
+    try {
+      const validateHookResult = await deps.skillStack.dispatchHook({ ...hookContext, stage: 'validate' });
+      // Future: merge skill hard/soft rules with validateOutput
+      // For now, log any skill-provided rules for observability
+      if (validateHookResult.validate) {
+        const { hardRules, softRules } = validateHookResult.validate;
+        if (hardRules.length > 0 || softRules.length > 0) {
+          console.info('[pipeline] skill validation rules:', { hard: hardRules.length, soft: softRules.length });
+        }
+      }
+    } catch { /* non-fatal */ }
+  }
 
   // ─── Stage 5: Respond ───
   const respondOutput = respond({
