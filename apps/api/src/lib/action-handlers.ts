@@ -8,6 +8,7 @@
 import { settlementApprovals, negotiationSessions, eq, type Database } from "@haggle/db";
 import { updateIntentStatus } from "../services/intent.service.js";
 import { getSessionById } from "../services/negotiation-session.service.js";
+import { recordAgreedPrice } from "../services/price-observation-sink.js";
 import type { EventDispatcher } from "./event-dispatcher.js";
 
 /**
@@ -53,6 +54,19 @@ export function registerActionHandlers(
         },
       })
       .onConflictDoNothing();
+
+    // ── Record agreed price to HFMI (data moat) ──
+    // Non-fatal: price recording failure never blocks settlement creation
+    await recordAgreedPrice(db, {
+      sessionId: action.sessionId,
+      finalPriceMinor: action.agreedPriceMinor,
+      buyerId: action.buyerId,
+      sellerId: action.sellerId,
+      listingId: session.listingId,
+      category: (session as unknown as Record<string, unknown>).category as string | undefined,
+    }).catch((err) => {
+      console.error("[action-handlers] price-sink error:", (err as Error).message);
+    });
   });
 
   // ── create_payment_intent ──────────────────────────────────

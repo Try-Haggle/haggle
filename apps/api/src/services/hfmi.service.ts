@@ -190,7 +190,10 @@ export async function getMedianPrice(
       : sql``;
 
   const raw = await db.execute(sql`
-    SELECT observed_price_usd::float8 AS price
+    SELECT
+      observed_price_usd::float8 AS price,
+      source,
+      observed_at
     FROM ${hfmiPriceObservations}
     WHERE model = ${model}
       AND observed_at > ${cutoff.toISOString()}${storageClause}${conditionClause}
@@ -201,21 +204,56 @@ export async function getMedianPrice(
     (raw as unknown as { rows?: Record<string, unknown>[] }).rows ??
     (raw as unknown as Record<string, unknown>[]);
 
-  const prices = (rows as Record<string, unknown>[])
-    .map((r) => Number(r.price))
-    .filter((p) => p > 0);
+  if (rows.length === 0) return null;
 
-  if (prices.length === 0) return null;
+  // Source-weighted median: haggle_internal counts 2x, external counts 1x.
+  // This makes HFMI progressively shift toward internal data as trades accumulate.
+  // Time decay: observations older than 15 days get 0.5x weight.
+  const now = Date.now();
+  const HALF_PERIOD_MS = 15 * 24 * 60 * 60 * 1000;
+  const SOURCE_WEIGHT: Record<string, number> = {
+    haggle_internal: 2.0,
+    ebay_sold: 1.0,
+    ebay_browse: 0.8,
+    terapeak_manual: 1.0,
+    backmarket: 0.8,
+    gazelle: 0.8,
+  };
 
-  const mid = Math.floor(prices.length / 2);
+  const weightedPrices: number[] = [];
+  let totalSamples = 0;
+
+  for (const r of rows as Record<string, unknown>[]) {
+    const price = Number(r.price);
+    if (price <= 0) continue;
+
+    const source = String(r.source ?? "");
+    const sourceWeight = SOURCE_WEIGHT[source] ?? 1.0;
+
+    // Time decay: recent data is more valuable
+    const observedAt = new Date(String(r.observed_at)).getTime();
+    const age = now - observedAt;
+    const timeWeight = age > HALF_PERIOD_MS ? 0.5 : 1.0;
+
+    const weight = Math.round(sourceWeight * timeWeight);
+    for (let i = 0; i < Math.max(1, weight); i++) {
+      weightedPrices.push(price);
+    }
+    totalSamples++;
+  }
+
+  if (weightedPrices.length === 0) return null;
+
+  weightedPrices.sort((a, b) => a - b);
+  const mid = Math.floor(weightedPrices.length / 2);
   const median =
-    prices.length % 2 === 0
-      ? (prices[mid - 1] + prices[mid]) / 2
-      : prices[mid];
+    weightedPrices.length % 2 === 0
+      ? (weightedPrices[mid - 1] + weightedPrices[mid]) / 2
+      : weightedPrices[mid];
 
   return {
     median: roundUsd(median),
-    sample_count: prices.length,
+    sample_count: totalSamples,
     period_days: 30,
   };
 }
