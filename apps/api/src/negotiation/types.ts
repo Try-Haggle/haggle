@@ -144,6 +144,12 @@ export interface CoreMemory {
     role: 'buyer' | 'seller';
     max_rounds: number;
     intervention_mode: HumanInterventionMode;
+    /** Session creation timestamp in epoch ms — used for real-time t_elapsed */
+    created_at_ms?: number;
+    /** Session max duration in ms — category-dependent (default 24h for electronics) */
+    max_duration_ms?: number;
+    /** Urgency signal: higher = faster concession + more time pressure */
+    urgency?: 'low' | 'normal' | 'high' | 'urgent';
   };
   boundaries: {
     my_target: number;

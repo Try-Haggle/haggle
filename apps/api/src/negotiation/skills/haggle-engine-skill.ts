@@ -53,24 +53,81 @@ const manifest: SkillManifest = {
   },
 };
 
+// ─── Time Constants ───────────────────────────────────────────────────
+
+/** Default max duration per category (ms) */
+const CATEGORY_MAX_DURATION: Record<string, number> = {
+  electronics: 24 * 60 * 60 * 1000,     // 24h
+  smartphones: 24 * 60 * 60 * 1000,     // 24h
+  laptops: 48 * 60 * 60 * 1000,         // 48h
+  tablets: 24 * 60 * 60 * 1000,         // 24h
+  gaming: 24 * 60 * 60 * 1000,          // 24h
+  audio: 24 * 60 * 60 * 1000,           // 24h
+  sneakers: 12 * 60 * 60 * 1000,        // 12h (hype items move fast)
+  default: 24 * 60 * 60 * 1000,         // 24h
+};
+
+/** Urgency → Faratin beta multiplier (lower beta = concede faster) */
+const URGENCY_BETA_MULTIPLIER: Record<string, number> = {
+  low: 1.3,      // 느긋 — 양보 매우 느림
+  normal: 1.0,   // 기본
+  high: 0.7,     // 급함 — 양보 빠름
+  urgent: 0.4,   // 매우 급함 — 매우 빠른 양보
+};
+
+/** Urgency → time pressure alpha amplifier (higher = steeper decay) */
+const URGENCY_ALPHA_AMPLIFIER: Record<string, number> = {
+  low: 0.8,
+  normal: 1.0,
+  high: 1.5,
+  urgent: 2.5,
+};
+
+// ─── Real-Time Elapsed ────────────────────────────────────────────────
+
+/**
+ * Compute real-time t_elapsed ratio [0, 1].
+ * Uses actual wall-clock time, not round count.
+ *
+ * t_elapsed = (now - session_created_at) / max_duration
+ *
+ * Urgency amplifies: "빨리 팔고 싶다" → effective max_duration shrinks.
+ */
+function computeRealTimeElapsed(memory: CoreMemory, nowMs?: number): number {
+  const session = memory.session;
+  const now = nowMs ?? Date.now();
+
+  const createdAt = session.created_at_ms ?? now;
+  const maxDuration = session.max_duration_ms ?? CATEGORY_MAX_DURATION.default;
+  const urgency = session.urgency ?? "normal";
+
+  // Urgency shrinks effective deadline
+  const urgencyFactor = URGENCY_ALPHA_AMPLIFIER[urgency] ?? 1.0;
+  const effectiveMaxDuration = maxDuration / urgencyFactor;
+
+  const elapsed = now - createdAt;
+  return Math.min(1, Math.max(0, elapsed / effectiveMaxDuration));
+}
+
 // ─── Utility Helper ───────────────────────────────────────────────────
 
 /**
  * Compute 4D utility using engine-core's real computeUtility.
- * Maps CoreMemory fields to NegotiationContext.
+ * Uses REAL elapsed time (wall clock), not round count.
  */
 function compute4DUtility(memory: CoreMemory): UtilityResult | null {
   try {
-    const { session, boundaries } = memory;
+    const { boundaries } = memory;
     const strategy = memory.strategy;
     if (!strategy) return null;
 
-    // Build NegotiationContext from CoreMemory
+    const tElapsed = computeRealTimeElapsed(memory);
+
     const roundData = {
       p_effective: boundaries.opponent_offer,
       r_score: 0.5, // default trust score without DB
       i_completeness: 1.0,
-      t_elapsed: session.round / Math.max(session.max_rounds, 1),
+      t_elapsed: tElapsed, // REAL time, not round ratio
       n_success: 0,
       n_dispute_losses: 0,
     };
@@ -123,16 +180,21 @@ export class HaggleEngineSkill implements SkillRuntime {
     const { memory, recentFacts, opponentPattern, phase } = context;
     const { session, boundaries } = memory;
 
-    // Faratin counter-offer price
-    const t =
-      session.max_rounds > 0 ? session.round / session.max_rounds : 0;
-    const beta = deriveBeta(opponentPattern);
+    // Real-time elapsed for Faratin curve (not round-based)
+    const tElapsed = computeRealTimeElapsed(memory);
+
+    // Urgency adjusts concession speed
+    const urgency = session.urgency ?? "normal";
+    const urgencyBetaMul = URGENCY_BETA_MULTIPLIER[urgency] ?? 1.0;
+    const baseBeta = deriveBeta(opponentPattern);
+    const adjustedBeta = baseBeta * urgencyBetaMul;
+
     const faratinPrice = computeCounterOffer({
       p_start: boundaries.my_target,
       p_limit: boundaries.my_floor,
-      t,
+      t: tElapsed,  // REAL time ratio, not round ratio
       T: 1,
-      beta,
+      beta: adjustedBeta,  // urgency-adjusted
     });
 
     // Engine-core decision recommendation
@@ -157,7 +219,7 @@ export class HaggleEngineSkill implements SkillRuntime {
         recommendedPrice: Math.round(faratinPrice),
         suggestedTactic: "reciprocal_concession",
         observations: [
-          `Engine-core Faratin: $${(faratinPrice / 100).toFixed(2)} (beta=${beta.toFixed(1)}, t=${t.toFixed(2)})`,
+          `Engine-core Faratin: $${(faratinPrice / 100).toFixed(2)} (beta=${adjustedBeta.toFixed(1)}, t_real=${tElapsed.toFixed(3)}, urgency=${urgency})`,
           ...(engineAction ? [`Engine-core decision: ${engineAction}`] : []),
           ...(utility
             ? [
@@ -210,14 +272,15 @@ export class HaggleEngineSkill implements SkillRuntime {
       };
     }
 
-    // BARGAINING — Faratin curve
-    const t =
-      session.max_rounds > 0 ? session.round / session.max_rounds : 0;
-    const beta = deriveBeta(opponentPattern);
+    // BARGAINING — Faratin curve with real time + urgency
+    const tElapsed = computeRealTimeElapsed(memory);
+    const urgency = session.urgency ?? "normal";
+    const urgencyBetaMul = URGENCY_BETA_MULTIPLIER[urgency] ?? 1.0;
+    const beta = deriveBeta(opponentPattern) * urgencyBetaMul;
     const price = computeCounterOffer({
       p_start: boundaries.my_target,
       p_limit: boundaries.my_floor,
-      t,
+      t: tElapsed,  // REAL time, not round ratio
       T: 1,
       beta,
     });
@@ -237,7 +300,7 @@ export class HaggleEngineSkill implements SkillRuntime {
     return {
       action: "COUNTER",
       price: Math.round(price),
-      reasoning: `Faratin curve counter at t=${t.toFixed(2)}, beta=${beta.toFixed(1)}.`,
+      reasoning: `Faratin curve counter at t_real=${tElapsed.toFixed(3)}, beta=${beta.toFixed(1)}, urgency=${urgency}.`,
       tactic_used: "reciprocal_concession",
     };
   }
