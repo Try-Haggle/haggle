@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/require-auth.js";
 import {
   createDraft,
   getDraftById,
+  getDraftsByUserId,
   patchDraft,
   validateDraft,
   publishDraft,
@@ -11,6 +12,23 @@ import {
 } from "../services/draft.service.js";
 
 export function registerDraftRoutes(app: FastifyInstance, db: Database) {
+  // GET /api/drafts — list user's in-progress drafts
+  app.get("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+    const drafts = await getDraftsByUserId(db, userId);
+    return reply.send({ ok: true, drafts });
+  });
+
+  // GET /api/drafts/:id — get a single draft
+  app.get<{ Params: { id: string } }>("/api/drafts/:id", { preHandler: [requireAuth] }, async (request, reply) => {
+    const { id } = request.params;
+    const userId = request.user!.id;
+    const draft = await getDraftById(db, id);
+    if (!draft) return reply.status(404).send({ ok: false, error: "not_found" });
+    if (draft.userId !== userId) return reply.status(403).send({ ok: false, error: "forbidden" });
+    return reply.send({ ok: true, draft });
+  });
+
   // POST /api/drafts — create a new empty draft
   app.post("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
     const userId = request.user!.id;
