@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import type { ListingSummary } from "./page";
+import type { ListingSummary, DraftSummary } from "./page";
 import { useAmplitude } from "@/providers/amplitude-provider";
 
+const STEP_LABELS = ["Photo", "Details", "Category", "Pricing", "AI Agent"];
 
 export function DashboardContent({
   userEmail,
   claimResult,
   listings,
+  drafts = [],
 }: {
   userEmail: string;
   claimResult: { ok: boolean; error?: string } | null;
   listings: ListingSummary[];
+  drafts?: DraftSummary[];
 }) {
   const { track } = useAmplitude();
   const activeCount = listings.filter((l) => l.status === "published").length;
@@ -143,6 +146,18 @@ export function DashboardContent({
         />
       </div>
 
+      {/* Drafts Section */}
+      {drafts.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-white mb-4">Drafts</h2>
+          <div className="space-y-3">
+            {drafts.map((draft) => (
+              <DraftCard key={draft.id} draft={draft} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Listings Section */}
       <h2 className="text-lg font-bold text-white mb-4">Your Listings</h2>
 
@@ -261,6 +276,64 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
       </svg>
     </Link>
   );
+}
+
+function DraftCard({ draft }: { draft: DraftSummary }) {
+  const stepLabel = STEP_LABELS[Math.min(draft.currentStep - 1, 4)] ?? "Photo";
+  const updatedAgo = formatTimeAgo(draft.updatedAt);
+
+  return (
+    <Link
+      href={`/sell/listings/new?draftId=${draft.id}`}
+      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-dashed border-slate-700 bg-bg-card/30 p-3 sm:p-4 hover:border-cyan-500/50 transition-colors"
+    >
+      {/* Photo or placeholder */}
+      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-slate-800 overflow-hidden flex items-center justify-center">
+        {draft.photoUrl ? (
+          <img src={draft.photoUrl} alt={draft.title ?? "Draft"} className="h-full w-full object-cover" />
+        ) : (
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="font-semibold text-white truncate text-sm sm:text-base">
+            {draft.draftName || draft.title || "Untitled Draft"}
+          </span>
+          <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400">
+            draft
+          </span>
+        </div>
+        <p className="text-xs sm:text-sm text-slate-400">
+          {draft.title ? `${draft.title} · ${updatedAgo}` : updatedAgo}
+        </p>
+      </div>
+
+      {/* Resume button */}
+      <div className="shrink-0 flex items-center gap-2">
+        <span className="hidden sm:inline text-xs font-medium text-cyan-400">Resume</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </div>
+    </Link>
+  );
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 function ShareButton({ publicId }: { publicId: string }) {
