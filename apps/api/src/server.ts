@@ -47,6 +47,23 @@ export async function createServer() {
     },
   });
 
+  // ─── Raw Body Capture (for webhook signature verification) ──
+  // Override the default JSON parser to store the raw buffer on the request.
+  // Stripe and x402 webhooks require the exact raw bytes for HMAC verification.
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (_req, body, done) => {
+      // Store raw buffer on request for webhook handlers
+      (_req as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
+      try {
+        done(null, JSON.parse((body as Buffer).toString()));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(process.env.DATABASE_URL!);
 

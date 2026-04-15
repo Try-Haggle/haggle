@@ -42,7 +42,7 @@ import { computeWeightBuffer } from "@haggle/shipping-core";
 import {
   createSettlementReleaseRecord,
 } from "../services/settlement-release.service.js";
-import { createPaymentServiceFromEnv, getX402EnvConfig } from "../payments/providers.js";
+import { createPaymentServiceFromEnv, getX402EnvConfig, getRealStripeAdapterOrNull } from "../payments/providers.js";
 import {
   createPaymentAuthorizationRecord,
   createPaymentSettlementRecord,
@@ -607,7 +607,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post("/payments/webhooks/x402", { config: { rawBody: true } }, async (request, reply) => {
     try {
-      const rawBody = (request as unknown as { rawBody?: string | Buffer }).rawBody ?? JSON.stringify(request.body);
+      const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
+      if (!rawBody) {
+        return reply.code(500).send({ error: "INTERNAL_ERROR", message: "Raw body not available for signature verification" });
+      }
       requireWebhookSignature(request.headers as Record<string, unknown>, rawBody, "x402");
     } catch (error) {
       return reply.code(401).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
@@ -688,23 +691,124 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     } catch (error) {
       // Log but don't fail — webhooks must return 200 to avoid retries
       console.error("x402 webhook processing error:", error);
-      return reply.send({ accepted: true, action: "error", message: String(error) });
+      return reply.send({ accepted: true, action: "error", message: "Webhook processing failed" });
     }
   });
 
-  app.post("/payments/webhooks/stripe", async (request, reply) => {
-    // Stripe webhook signature verification is handled via stripe.webhooks.constructEvent()
-    // in the full Stripe integration. For now, require the stripe-signature header to be present.
+  app.post("/payments/webhooks/stripe", { config: { rawBody: true } }, async (request, reply) => {
     const stripeSig = (request.headers as Record<string, unknown>)["stripe-signature"];
-    if (!stripeSig) {
+    if (!stripeSig || typeof stripeSig !== "string") {
       return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "missing stripe-signature header" });
     }
 
+    const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
+    if (!rawBody) {
+      return reply.code(500).send({ error: "INTERNAL_ERROR", message: "Raw body not available for signature verification" });
+    }
+    const stripeAdapter = getRealStripeAdapterOrNull();
+
+    // --- Real mode: use Stripe SDK signature verification ---
+    if (stripeAdapter) {
+      let event;
+      try {
+        event = stripeAdapter.constructWebhookEvent(rawBody, stripeSig);
+      } catch (err) {
+        return reply.code(401).send({
+          error: "INVALID_STRIPE_WEBHOOK",
+          message: err instanceof Error ? err.message : "Webhook signature verification failed",
+        });
+      }
+
+      // Idempotency check
+      const duplicate = await isWebhookDuplicate(db, event.id, "stripe", 200);
+      if (duplicate) {
+        return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
+      }
+
+      // Handle crypto onramp fulfillment
+      const { RealStripeAdapter } = await import("../payments/real-stripe-adapter.js");
+      if (RealStripeAdapter.isOnrampFulfillmentComplete(event)) {
+        const paymentIntentId = RealStripeAdapter.extractPaymentIntentId(event);
+        if (paymentIntentId) {
+          const intent = await getPaymentIntentById(db, paymentIntentId);
+          if (intent && intent.status !== "SETTLED") {
+            // Verify event data matches stored intent
+            const eventObj = event.data?.object as unknown as { metadata?: Record<string, string> } | undefined;
+            const eventOrderId = eventObj?.metadata?.order_id;
+            if (eventOrderId && eventOrderId !== intent.order_id) {
+              console.error(`Stripe webhook order_id mismatch: event=${eventOrderId}, intent=${intent.order_id}`);
+              return reply.code(400).send({ error: "ORDER_ID_MISMATCH" });
+            }
+
+            try {
+              // Transition: AUTHORIZED → SETTLEMENT_PENDING → SETTLED
+              if (intent.status === "AUTHORIZED") {
+                const pending = service.markSettlementPending(intent);
+                await updateStoredPaymentIntent(db, pending.intent);
+                intent.status = pending.intent.status;
+                intent.updated_at = pending.intent.updated_at;
+              }
+
+              const result = await service.settleIntent(intent);
+              await updateStoredPaymentIntent(db, result.intent, {
+                ...(result.metadata ?? {}),
+                stripe_event_id: event.id,
+                stripe_event_type: event.type,
+              });
+              if (result.value) {
+                await createPaymentSettlementRecord(db, result.value);
+              }
+              if (result.trust_triggers.length > 0) {
+                await applyTrustTriggers(db, {
+                  order_id: result.intent.order_id,
+                  buyer_id: result.intent.buyer_id,
+                  seller_id: result.intent.seller_id,
+                  triggers: result.trust_triggers,
+                });
+              }
+
+              // Auto-create settlement release + shipment
+              await autoCreateSettlementRelease(db, result.intent);
+              await updateCommerceOrderStatus(db, result.intent.order_id, "PAID");
+              const shipment = await autoCreateShipment(db, result.intent);
+              if (shipment) {
+                await updateCommerceOrderStatus(db, result.intent.order_id, "FULFILLMENT_PENDING");
+              }
+
+              return reply.send({ accepted: true, action: "settled", payment_intent_id: paymentIntentId });
+            } catch (error) {
+              console.error("Stripe webhook settlement error:", error);
+              return reply.send({ accepted: true, action: "error", message: "Settlement processing failed" });
+            }
+          }
+        }
+      }
+
+      return reply.send({
+        accepted: true,
+        action: "processed",
+        event_type: event.type,
+        event_id: event.id,
+      });
+    }
+
+    // --- Mock mode: verify signature manually using our verifyStripeWebhook ---
+    const config = getStripeConfig();
+    if (config.webhookSecret) {
+      const valid = verifyStripeWebhook(rawBody, stripeSig, config.webhookSecret);
+      if (!valid) {
+        return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "Webhook signature verification failed" });
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "STRIPE_WEBHOOK_SECRET not configured" });
+    }
+
+    // In mock mode, just acknowledge receipt
     return reply.send({
       accepted: true,
       provider: "stripe",
+      mode: "mock",
       received_at: new Date().toISOString(),
-      payload: request.body,
     });
   });
 
@@ -747,6 +851,24 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         return reply.code(403).send({ error: "FORBIDDEN" });
       }
 
+      // Verify destination wallet belongs to the buyer
+      const buyerWallets = await db
+        .select({ walletAddress: userWallets.walletAddress })
+        .from(userWallets)
+        .where(
+          and(
+            eq(userWallets.userId, intent.buyer_id),
+            eq(userWallets.walletAddress, parsed.data.destination_wallet.toLowerCase()),
+          ),
+        )
+        .limit(1);
+      if (buyerWallets.length === 0) {
+        return reply.code(403).send({
+          error: "WALLET_NOT_REGISTERED",
+          message: "Destination wallet is not registered to the buyer. Register your wallet first.",
+        });
+      }
+
       const amountMinor = intent.amount.amount_minor;
 
       try {
@@ -769,9 +891,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           destination_currency: "usdc",
         });
       } catch (err) {
+        console.error("Stripe onramp session creation failed:", err);
         return reply.code(502).send({
           error: "ONRAMP_SESSION_FAILED",
-          message: err instanceof Error ? err.message : "Failed to create onramp session",
+          message: "Failed to create onramp session. Please try again.",
         });
       }
     },

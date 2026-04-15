@@ -143,13 +143,13 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
     const nextTier = (currentTier + 1) as DisputeTier;
 
-    // Compute cost for next tier using dispute-core
-    const amountCents = dispute.refundAmountMinor
-      ? parseInt(String(dispute.refundAmountMinor))
+    // Compute cost for next tier using dispute-core — use order amount as GMV basis
+    const amountCents = order?.amountMinor
+      ? parseInt(String(order.amountMinor))
       : 0;
 
     if (amountCents <= 0) {
-      return reply.code(400).send({ error: "INVALID_DISPUTE_AMOUNT", message: "Dispute must have a positive refund amount for escalation" });
+      return reply.code(400).send({ error: "INVALID_DISPUTE_AMOUNT", message: "Order must have a positive amount for escalation" });
     }
 
     const cost = computeDisputeCost(amountCents, nextTier);

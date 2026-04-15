@@ -21,7 +21,6 @@ export const disputeCases = pgTable("dispute_cases", {
   openedBy: text("opened_by", { enum: ["buyer", "seller", "system"] }).notNull(),
   openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   resolutionSummary: text("resolution_summary"),
-  refundAmountMinor: numeric("refund_amount_minor", { precision: 18, scale: 0 }),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   closedAt: timestamp("closed_at", { withTimezone: true }),

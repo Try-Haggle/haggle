@@ -14,6 +14,8 @@ import { ViemDisputeRegistryContract, ViemSettlementRouterContract } from "@hagg
 import { createPublicClient, createWalletClient, http, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
+import { createSettlementSigner } from "./settlement-signer.js";
+import { RealStripeAdapter } from "./real-stripe-adapter.js";
 
 interface WalletMapEntry {
   wallet_address: string;
@@ -50,13 +52,54 @@ function paymentWalletFromMap(
   };
 }
 
+function createStripeAdapterFromEnv() {
+  const stripeMode = process.env.STRIPE_MODE ?? "mock";
+  if (stripeMode !== "real") {
+    return new MockStripeAdapter();
+  }
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secretKey) {
+    throw new Error("STRIPE_MODE=real requires STRIPE_SECRET_KEY");
+  }
+  if (!webhookSecret) {
+    throw new Error("STRIPE_MODE=real requires STRIPE_WEBHOOK_SECRET");
+  }
+
+  // Dynamic import avoided — stripe is a direct dependency of apps/api
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Stripe = require("stripe").default ?? require("stripe");
+  const stripe = new Stripe(secretKey, { apiVersion: "2025-04-30.basil" });
+
+  return new RealStripeAdapter({
+    stripe,
+    webhookSecret,
+    defaultDestinationWallet: process.env.HAGGLE_STRIPE_DESTINATION_WALLET,
+    destinationNetwork: "base",
+  });
+}
+
+/**
+ * Get the RealStripeAdapter instance if STRIPE_MODE=real, otherwise null.
+ * Used by the webhook route to access constructWebhookEvent().
+ */
+export function getRealStripeAdapterOrNull(): RealStripeAdapter | null {
+  const stripeMode = process.env.STRIPE_MODE ?? "mock";
+  if (stripeMode !== "real") return null;
+  const adapter = createStripeAdapterFromEnv();
+  if (adapter instanceof RealStripeAdapter) return adapter;
+  return null;
+}
+
 export function createPaymentServiceFromEnv() {
   const x402Mode = process.env.HAGGLE_X402_MODE ?? "mock";
+  const stripeAdapter = createStripeAdapterFromEnv();
 
   if (x402Mode !== "real") {
     return new PaymentService({
       x402: new MockX402Adapter(),
-      stripe: new MockStripeAdapter(),
+      stripe: stripeAdapter,
     });
   }
 
@@ -137,16 +180,17 @@ export function createPaymentServiceFromEnv() {
         wallet: paymentWalletFromMap(intent.buyer_id, buyerWalletMap[intent.buyer_id], walletNetwork, "external"),
       };
     },
-    async resolve_settlement_signature(_intent: PaymentIntent) {
-      // TODO: call backend signing service to produce EIP-712 signature.
-      // The signature is validated on-chain by the settlement router contract.
-      throw new Error("resolve_settlement_signature not implemented — configure a signing service");
-    },
+    resolve_settlement_signature: createSettlementSigner({
+      buyerAddressResolver: (intent) =>
+        (buyerWalletMap[intent.buyer_id]?.wallet_address ?? intent.buyer_id) as Address,
+      sellerAddressResolver: (intent) =>
+        (sellerWalletMap[intent.seller_id]?.wallet_address ?? intent.seller_id) as Address,
+    }),
   });
 
   return new PaymentService({
     x402,
-    stripe: new MockStripeAdapter(),
+    stripe: stripeAdapter,
   });
 }
 

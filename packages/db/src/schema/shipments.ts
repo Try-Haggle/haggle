@@ -26,7 +26,7 @@ export const shipments = pgTable("shipments", {
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   shipmentInputDueAt: timestamp("shipment_input_due_at", { withTimezone: true }),
   shippingFeeMinor: numeric("shipping_fee_minor", { precision: 18, scale: 0 }),
-  currency: text("currency").default("USD"),
+  currency: text("currency").notNull().default("USD"),
   declaredWeightOz: numeric("declared_weight_oz", { precision: 10, scale: 2 }),
   labelUrl: text("label_url"),
   rateMinor: numeric("rate_minor", { precision: 18, scale: 0 }),
