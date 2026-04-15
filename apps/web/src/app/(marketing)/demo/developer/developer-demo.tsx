@@ -439,7 +439,7 @@ export function DeveloperDemo() {
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-600/30 to-transparent" />
               <span className="text-sm font-bold text-white bg-cyan-500/10 px-4 py-1 rounded-full border border-cyan-500/30">
-                가입은 얼마나 쉬운가?
+                온보딩은 얼마나 쉬운가?
               </span>
               <div className="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-600/30 to-transparent" />
             </div>
