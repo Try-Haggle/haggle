@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAmplitude } from "@/providers/amplitude-provider";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
 
 interface RecommendedListing {
   publicId: string;
