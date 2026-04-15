@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://haggle-production-7dee.up.railway.app";
 
 function makeDevToken(sub: string): string {
   const header = btoa(JSON.stringify({ alg: "HS256" })).replace(/=/g, "");
