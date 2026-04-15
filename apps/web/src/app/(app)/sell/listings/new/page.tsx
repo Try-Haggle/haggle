@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { NewListingWizard } from "./new-listing-wizard";
 
-export default async function NewListingPage() {
+export default async function NewListingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ draftId?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -12,5 +16,7 @@ export default async function NewListingPage() {
     redirect("/sign-in");
   }
 
-  return <NewListingWizard userId={user.id} />;
+  const params = await searchParams;
+
+  return <NewListingWizard userId={user.id} resumeDraftId={params.draftId} />;
 }

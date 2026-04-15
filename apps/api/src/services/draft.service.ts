@@ -23,6 +23,8 @@ const PATCHABLE_FIELDS = [
   "floorPrice",
   "sellingDeadline",
   "strategyConfig",
+  "currentStep",
+  "draftName",
 ] as const;
 
 type PatchableField = (typeof PATCHABLE_FIELDS)[number];
@@ -231,6 +233,19 @@ export async function publishDraft(db: Database, draftId: string) {
     draft: updatedDraft,
     published,
   };
+}
+
+// ─── Draft Listing (for resume) ─────────────────────────────
+
+/** Fetch all in-progress drafts for a given user. */
+export async function getDraftsByUserId(db: Database, userId: string) {
+  const rows = await db
+    .select()
+    .from(listingDrafts)
+    .where(and(eq(listingDrafts.userId, userId), eq(listingDrafts.status, "draft")))
+    .orderBy(listingDrafts.updatedAt);
+
+  return rows;
 }
 
 // ─── Dashboard Queries ──────────────────────────────────────

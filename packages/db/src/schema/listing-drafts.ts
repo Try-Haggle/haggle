@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, numeric, jsonb, integer } from "drizzle-orm/pg-core";
 
 export const listingDrafts = pgTable("listing_drafts", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -8,6 +8,8 @@ export const listingDrafts = pgTable("listing_drafts", {
   userId: uuid("user_id"), // nullable — linked after claim
   claimToken: text("claim_token"),
   claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
+  currentStep: integer("current_step").notNull().default(1),
+  draftName: text("draft_name"),
   title: text("title"),
   description: text("description"),
   tags: text("tags").array(),

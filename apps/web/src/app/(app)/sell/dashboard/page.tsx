@@ -16,6 +16,18 @@ export interface ListingSummary {
   publicId: string;
 }
 
+export interface DraftSummary {
+  id: string;
+  draftName: string | null;
+  title: string | null;
+  category: string | null;
+  condition: string | null;
+  photoUrl: string | null;
+  targetPrice: string | null;
+  currentStep: number;
+  updatedAt: string;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -48,17 +60,20 @@ export default async function DashboardPage({
     }
   }
 
-  // Fetch user's listings
+  // Fetch user's listings and drafts in parallel
   let listings: ListingSummary[] = [];
+  let drafts: DraftSummary[] = [];
   try {
-    const data = await serverApi.get<{ ok: boolean; listings: ListingSummary[] }>(
-      `/api/listings?userId=${user.id}`,
-    );
-    if (data.ok) {
-      listings = data.listings;
-    }
+    const [listingsData, draftsData] = await Promise.all([
+      serverApi.get<{ ok: boolean; listings: ListingSummary[] }>(
+        `/api/listings?userId=${user.id}`,
+      ),
+      serverApi.get<{ ok: boolean; drafts: DraftSummary[] }>(`/api/drafts`),
+    ]);
+    if (listingsData.ok) listings = listingsData.listings;
+    if (draftsData.ok) drafts = draftsData.drafts;
   } catch {
-    // Listings will be empty — dashboard still renders
+    // Listings/drafts will be empty — dashboard still renders
   }
 
   return (
@@ -66,6 +81,7 @@ export default async function DashboardPage({
       userEmail={user.email ?? ""}
       claimResult={claimResult}
       listings={listings}
+      drafts={drafts}
     />
   );
 }
