@@ -47,6 +47,9 @@ describe('callLLM', () => {
   });
 
   it('uses reasoning mode when flag is set', async () => {
+    // Use a non-fast model so reasoning_effort is included
+    vi.stubEnv('XAI_MODEL', 'grok-4');
+
     globalThis.fetch = mockFetchResponse({
       choices: [{ message: { content: '{"action":"ACCEPT","reasoning":"reasoning mode"}' }, finish_reason: 'stop' }],
       usage: { prompt_tokens: 200, completion_tokens: 100 },
