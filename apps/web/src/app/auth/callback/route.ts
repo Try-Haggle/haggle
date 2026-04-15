@@ -30,5 +30,5 @@ export async function GET(request: Request) {
   }
 
   // Auth error — redirect to claim page with error
-  return NextResponse.redirect(`${origin}/claim?error=auth_failed`);
+  return NextResponse.redirect(`${origin}/?error=auth_failed`);
 }

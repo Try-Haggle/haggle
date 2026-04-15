@@ -15,7 +15,7 @@ export default async function AppLayout({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/claim");
+    redirect("/sign-in");
   }
 
   const userName = (user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null;

@@ -84,7 +84,7 @@ export function Nav({
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/claim");
+    router.push("/sign-in");
   };
 
   const logoHref = mode === "buying" ? "/buy/dashboard" : "/sell/dashboard";

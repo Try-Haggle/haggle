@@ -193,7 +193,7 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
           <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
             <span className="text-lg font-bold text-white">Haggle</span>
             <a
-              href={`/claim?returnTo=/l/${listing.publicId}`}
+              href="/sign-in"
               className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
             >
               Sign in

@@ -85,7 +85,10 @@ export function SettingsContent({
           .upload(path, avatarFile, { upsert: true });
 
         if (uploadErr) {
-          setProfileMsg({ type: "error", text: `Upload failed: ${uploadErr.message}` });
+          setProfileMsg({
+            type: "error",
+            text: `Upload failed: ${uploadErr.message}`,
+          });
           setProfileSaving(false);
           return;
         }
@@ -157,7 +160,7 @@ export function SettingsContent({
       await api.delete("/api/account");
 
       await supabase.auth.signOut();
-      router.push("/claim");
+      router.push("/sign-in");
     } catch (err) {
       const message =
         err instanceof ApiError
@@ -202,7 +205,9 @@ export function SettingsContent({
 
       {/* ── Profile Section ────────────────────────────── */}
       <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Profile</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-white mb-4">
+          Profile
+        </h2>
 
         {/* Avatar */}
         <div className="mb-5">
@@ -295,7 +300,9 @@ export function SettingsContent({
 
       {/* ── Password Section ───────────────────────────── */}
       <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-1">Password</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-white mb-1">
+          Password
+        </h2>
         <p className="text-sm text-slate-500 mb-4">
           {isOAuth
             ? "You signed in with Google. Set a password to also sign in with email."
@@ -373,8 +380,7 @@ export function SettingsContent({
         ) : (
           <div className="rounded-lg border border-red-800/50 bg-red-950/20 p-4">
             <p className="text-sm text-slate-300 mb-3">
-              Type{" "}
-              <span className="font-mono text-red-400">{email}</span> to
+              Type <span className="font-mono text-red-400">{email}</span> to
               confirm:
             </p>
             <input
@@ -416,12 +422,26 @@ export function SettingsContent({
       <div className="mt-6 space-y-3 md:hidden">
         <button
           onClick={() => {
-            const currentMode = window.location.pathname.startsWith("/buy") ? "buying" : "selling";
-            router.push(currentMode === "selling" ? "/buy/dashboard" : "/sell/dashboard");
+            const currentMode = window.location.pathname.startsWith("/buy")
+              ? "buying"
+              : "selling";
+            router.push(
+              currentMode === "selling" ? "/buy/dashboard" : "/sell/dashboard",
+            );
           }}
           className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-bg-card p-4 text-sm text-slate-300 hover:border-slate-700 transition-colors cursor-pointer"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-cyan-400"
+          >
             <path d="M8 3 4 7l4 4" />
             <path d="M4 7h16" />
             <path d="m16 21 4-4-4-4" />
@@ -434,11 +454,20 @@ export function SettingsContent({
           onClick={async () => {
             const supabaseClient = createClient();
             await supabaseClient.auth.signOut();
-            router.push("/claim");
+            router.push("/sign-in");
           }}
           className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-bg-card p-4 text-sm text-slate-400 hover:border-slate-700 transition-colors cursor-pointer"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
             <polyline points="16 17 21 12 16 7" />
             <line x1="21" y1="12" x2="9" y2="12" />

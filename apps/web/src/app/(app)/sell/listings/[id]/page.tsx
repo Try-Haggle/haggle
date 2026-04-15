@@ -31,7 +31,7 @@ export default async function ListingDetailPage({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/claim");
+    redirect("/sign-in");
   }
 
   const { id } = await params;

@@ -24,7 +24,7 @@ export default async function RecentlyViewedPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/claim");
+    redirect("/sign-in");
   }
 
   let viewedListings: ViewedListing[] = [];

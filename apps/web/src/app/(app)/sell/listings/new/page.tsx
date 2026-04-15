@@ -9,7 +9,7 @@ export default async function NewListingPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/claim");
+    redirect("/sign-in");
   }
 
   return <NewListingWizard userId={user.id} />;
