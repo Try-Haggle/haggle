@@ -329,6 +329,9 @@ importers:
         specifier: workspace:*
         version: link:../commerce-core
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.11
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.11)(jiti@2.6.1)(jsdom@25.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))(lightningcss@1.31.1)(tsx@4.21.0)

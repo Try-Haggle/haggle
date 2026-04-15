@@ -14,6 +14,15 @@ COPY packages/db/package.json packages/db/tsconfig.json packages/db/
 COPY packages/engine-core/package.json packages/engine-core/tsconfig.json packages/engine-core/
 COPY packages/engine-session/package.json packages/engine-session/tsconfig.json packages/engine-session/
 COPY packages/contracts/package.json packages/contracts/tsconfig.json packages/contracts/
+COPY packages/arp-core/package.json packages/arp-core/tsconfig.json packages/arp-core/
+COPY packages/commerce-core/package.json packages/commerce-core/tsconfig.json packages/commerce-core/
+COPY packages/dispute-core/package.json packages/dispute-core/tsconfig.json packages/dispute-core/
+COPY packages/payment-core/package.json packages/payment-core/tsconfig.json packages/payment-core/
+COPY packages/shipping-core/package.json packages/shipping-core/tsconfig.json packages/shipping-core/
+COPY packages/skill-core/package.json packages/skill-core/tsconfig.json packages/skill-core/
+COPY packages/skill-legit/package.json packages/skill-legit/tsconfig.json packages/skill-legit/
+COPY packages/tag-core/package.json packages/tag-core/tsconfig.json packages/tag-core/
+COPY packages/trust-core/package.json packages/trust-core/tsconfig.json packages/trust-core/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
