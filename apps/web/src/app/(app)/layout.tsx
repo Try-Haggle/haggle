@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { Nav } from "@/components/nav";
 
@@ -13,7 +14,10 @@ export default async function AppLayout({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/sign-in");
+    const hdrs = await headers();
+    const pathname = hdrs.get("x-pathname");
+    const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+    redirect(`/sign-in${next}`);
   }
 
   const userName = (user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null;
