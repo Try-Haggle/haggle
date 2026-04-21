@@ -19,12 +19,26 @@ interface ListingData {
   sellingDeadline: string | null;
 }
 
+const VALID_ORIGINS = ["browse", "buy-dashboard", "sell-dashboard"] as const;
+type Origin = (typeof VALID_ORIGINS)[number];
+
+function parseOrigin(raw: string | undefined): Origin | null {
+  if (!raw) return null;
+  return (VALID_ORIGINS as readonly string[]).includes(raw)
+    ? (raw as Origin)
+    : null;
+}
+
 export default async function BuyerListingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ publicId: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { publicId } = await params;
+  const { from: fromRaw } = await searchParams;
+  const from = parseOrigin(fromRaw);
 
   let data: { ok: boolean; listing: ListingData; sellerId?: string | null };
   try {
@@ -71,8 +85,8 @@ export default async function BuyerListingPage({
 
   return (
     <>
-      <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} />
-      <SimilarListings publicId={publicId} userId={user?.id ?? null} />
+      <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} from={from} />
+      <SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />
     </>
   );
 }

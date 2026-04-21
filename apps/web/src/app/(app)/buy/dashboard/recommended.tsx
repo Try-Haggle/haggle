@@ -213,7 +213,7 @@ export function RecommendedForYou({ userId }: { userId: string }) {
             {listings.map((item) => (
               <a
                 key={item.publicId}
-                href={`/l/${item.publicId}`}
+                href={`/l/${item.publicId}?from=buy-dashboard`}
                 onClick={() => {
                   fetch(
                     `${API_URL}/api/recommendations/log/${item.logId}/click`,

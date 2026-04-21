@@ -143,7 +143,21 @@ interface HfmiData {
   period_days: 30;
 }
 
-export function BuyerLanding({ listing, user, isOwner = false }: { listing: Listing; user: UserInfo | null; isOwner?: boolean }) {
+type Origin = "browse" | "buy-dashboard" | "sell-dashboard";
+
+const ORIGIN_LABEL: Record<Origin, string> = {
+  browse: "Back to Browse",
+  "buy-dashboard": "Back to Dashboard",
+  "sell-dashboard": "Back to Dashboard",
+};
+
+const ORIGIN_HREF: Record<Origin, string> = {
+  browse: "/browse",
+  "buy-dashboard": "/buy/dashboard",
+  "sell-dashboard": "/sell/dashboard",
+};
+
+export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
   const { track } = useAmplitude();
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
@@ -203,6 +217,28 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
       )}
 
       <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: user ? "calc(64px + 2rem)" : "calc(56px + 2rem)" }}>
+        {/* ── Back link (if originated from a known surface) ── */}
+        {from && (
+          <a
+            href={ORIGIN_HREF[from]}
+            className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            {ORIGIN_LABEL[from]}
+          </a>
+        )}
+
         {/* ── Item Overview (top, prominent) ──────────────── */}
         <section className="mb-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
