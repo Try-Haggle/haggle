@@ -1,7 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
+import {
+  type Database,
+  eq as eqOp,
+  and as andOp,
+  orderAddresses,
+  shipments as shipmentsTable,
+  userSavedAddresses,
+} from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
+import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import {
   ShippingService,
   MockCarrierAdapter,
@@ -32,7 +40,7 @@ import type { ShipmentStatus } from "@haggle/shipping-core";
 import { createId } from "@haggle/dispute-core";
 import type { DisputeCase } from "@haggle/dispute-core";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
-import { updateCommerceOrderStatus } from "../services/payment-record.service.js";
+import { updateCommerceOrderStatus, getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 
 type ShipmentEventType = Parameters<typeof transitionShipmentStatus>[1];
 
@@ -70,6 +78,7 @@ const webhookSchema = z.object({
 });
 
 export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
+  const { requireShipmentOwner } = createOwnershipMiddleware(db);
   const easypostApiKey = process.env.EASYPOST_API_KEY;
   const easypostWebhookSecret = process.env.EASYPOST_WEBHOOK_SECRET;
 
@@ -198,6 +207,17 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "INVALID_SHIPMENT_REQUEST", issues: parsed.error.issues });
     }
 
+    // Verify requester is the seller of the referenced order
+    if (request.user?.role !== "admin") {
+      const order = await getCommerceOrderByOrderId(db, parsed.data.order_id);
+      if (!order) {
+        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      }
+      if (request.user!.id !== order.sellerId) {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "Only the seller can create a shipment" });
+      }
+    }
+
     const shipment = await createShipmentRecord(
       db,
       parsed.data.order_id,
@@ -227,8 +247,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ shipment });
   });
 
-  // POST /shipments/:id/label — create shipping label
-  app.post("/shipments/:id/label", { preHandler: [requireAuth] }, async (request, reply) => {
+  // POST /shipments/:id/label — create shipping label (seller only)
+  app.post("/shipments/:id/label", { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -246,8 +266,556 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     }
   });
 
-  // POST /shipments/:id/event — record a shipment event
-  app.post("/shipments/:id/event", { preHandler: [requireAuth] }, async (request, reply) => {
+  // POST /shipments/:id/prepare — seller provides from-address + parcel, gets rate quotes
+  const prepareSchema = z.object({
+    from_address_id: z.string().uuid().optional(),
+    from_address: z.object({
+      name: z.string(),
+      street1: z.string(),
+      street2: z.string().optional(),
+      city: z.string(),
+      state: z.string(),
+      zip: z.string(),
+      country: z.string().default("US"),
+      phone: z.string().optional(),
+    }).optional(),
+    parcel: z.object({
+      length_in: z.number().positive(),
+      width_in: z.number().positive(),
+      height_in: z.number().positive(),
+      weight_oz: z.number().positive(),
+    }),
+  }).refine(
+    (data) => (data.from_address_id != null) !== (data.from_address != null),
+    { message: "Provide exactly one of from_address_id or from_address" },
+  );
+
+  app.post("/shipments/:id/prepare", { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] }, async (request, reply) => {
+    const shipmentId = (request.params as { id: string }).id;
+    const shipment = await getShipmentById(db, shipmentId);
+    if (!shipment) {
+      return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+    }
+
+    if (shipment.status !== "LABEL_PENDING") {
+      return reply.code(400).send({ error: "INVALID_STATUS", message: "Shipment must be in LABEL_PENDING status" });
+    }
+
+    const parsed = prepareSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_PREPARE_REQUEST", issues: parsed.error.issues });
+    }
+
+    const { from_address_id, from_address: rawFromAddress, parcel } = parsed.data;
+
+    // Resolve from_address
+    let fromAddress: { name: string; street1: string; street2?: string; city: string; state: string; zip: string; country: string; phone?: string };
+    if (from_address_id) {
+      const savedAddr = await db.query.userSavedAddresses.findFirst({
+        where: (fields, ops) => ops.and(
+          ops.eq(fields.id, from_address_id),
+          ops.eq(fields.userId, request.user!.id),
+        ),
+      });
+      if (!savedAddr) {
+        return reply.code(404).send({ error: "ADDRESS_NOT_FOUND", message: "Saved address not found or does not belong to you" });
+      }
+      fromAddress = {
+        name: savedAddr.name,
+        street1: savedAddr.street1,
+        street2: savedAddr.street2 ?? undefined,
+        city: savedAddr.city,
+        state: savedAddr.state,
+        zip: savedAddr.zip,
+        country: savedAddr.country,
+        phone: savedAddr.phone ?? undefined,
+      };
+    } else {
+      fromAddress = rawFromAddress!;
+    }
+
+    // Save seller's from_address to order_addresses
+    // Upsert: delete existing seller address for this order, then insert
+    await db.delete(orderAddresses).where(
+      andOp(
+        eqOp(orderAddresses.orderId, shipment.order_id),
+        eqOp(orderAddresses.role, "seller"),
+      ),
+    );
+    await db.insert(orderAddresses).values({
+      orderId: shipment.order_id,
+      role: "seller",
+      name: fromAddress.name,
+      street1: fromAddress.street1,
+      street2: fromAddress.street2,
+      city: fromAddress.city,
+      state: fromAddress.state,
+      zip: fromAddress.zip,
+      country: fromAddress.country,
+      phone: fromAddress.phone,
+    });
+
+    // Look up buyer's address
+    const buyerAddr = await db.query.orderAddresses.findFirst({
+      where: (fields, ops) => ops.and(
+        ops.eq(fields.orderId, shipment.order_id),
+        ops.eq(fields.role, "buyer"),
+      ),
+    });
+    if (!buyerAddr) {
+      return reply.code(400).send({ error: "BUYER_ADDRESS_MISSING", message: "Buyer has not provided shipping address" });
+    }
+
+    const toAddress = {
+      name: buyerAddr.name,
+      street1: buyerAddr.street1,
+      street2: buyerAddr.street2 ?? undefined,
+      city: buyerAddr.city,
+      state: buyerAddr.state,
+      zip: buyerAddr.zip,
+      country: buyerAddr.country,
+      phone: buyerAddr.phone ?? undefined,
+    };
+
+    // Update shipment with parcel dimensions
+    await db.update(shipmentsTable).set({
+      parcelLengthIn: String(parcel.length_in),
+      parcelWidthIn: String(parcel.width_in),
+      parcelHeightIn: String(parcel.height_in),
+      parcelWeightOz: String(parcel.weight_oz),
+      declaredWeightOz: String(parcel.weight_oz),
+      updatedAt: new Date(),
+    }).where(eqOp(shipmentsTable.id, shipmentId));
+
+    // Get rate quotes — reuse the same logic as POST /shipments/rates
+    const weightBuffer = computeWeightBuffer(parcel.weight_oz);
+
+    if (easypostApiKey) {
+      try {
+        const EasyPost = (await import("@easypost/api")).default;
+        const client = new EasyPost(easypostApiKey);
+        const epShipment = await client.Shipment.create({
+          from_address: {
+            name: fromAddress.name,
+            street1: fromAddress.street1,
+            street2: fromAddress.street2,
+            city: fromAddress.city,
+            state: fromAddress.state,
+            zip: fromAddress.zip,
+            country: fromAddress.country,
+          },
+          to_address: {
+            name: toAddress.name,
+            street1: toAddress.street1,
+            street2: toAddress.street2,
+            city: toAddress.city,
+            state: toAddress.state,
+            zip: toAddress.zip,
+            country: toAddress.country,
+          },
+          parcel: {
+            weight: parcel.weight_oz,
+            length: parcel.length_in,
+            width: parcel.width_in,
+            height: parcel.height_in,
+          },
+        });
+
+        const rates = (epShipment.rates ?? []).map((r: any) => ({
+          id: r.id ?? undefined,
+          carrier: r.carrier ?? "unknown",
+          service: r.service ?? "unknown",
+          rate: r.rate ?? "0",
+          rate_minor: Math.round(parseFloat(r.rate ?? "0") * 100),
+          est_delivery_days: r.est_delivery_days ?? null,
+          easypost_shipment_id: epShipment.id,
+        }));
+
+        const updatedShipment = await getShipmentById(db, shipmentId);
+        return reply.send({
+          shipment: updatedShipment,
+          rates,
+          weight_buffer_minor: weightBuffer.buffer_amount_minor,
+          source: "easypost",
+        });
+      } catch (error) {
+        console.error("EasyPost rate fetch failed in /prepare, falling back to mock rates:", error);
+      }
+    }
+
+    // Mock rates fallback
+    const mockRates = [
+      { id: "rate_mock_ground", carrier: "USPS", service: "GroundAdvantage", rate: "5.50", rate_minor: 550, est_delivery_days: 5 },
+      { id: "rate_mock_priority", carrier: "USPS", service: "Priority", rate: "8.25", rate_minor: 825, est_delivery_days: 3 },
+      { id: "rate_mock_express", carrier: "USPS", service: "Express", rate: "26.35", rate_minor: 2635, est_delivery_days: 1 },
+      { id: "rate_mock_ups", carrier: "UPS", service: "Ground", rate: "9.50", rate_minor: 950, est_delivery_days: 5 },
+      { id: "rate_mock_fedex", carrier: "FedEx", service: "Ground", rate: "9.75", rate_minor: 975, est_delivery_days: 5 },
+    ];
+
+    const updatedShipment = await getShipmentById(db, shipmentId);
+    return reply.send({
+      shipment: updatedShipment,
+      rates: mockRates,
+      weight_buffer_minor: weightBuffer.buffer_amount_minor,
+      source: "mock",
+    });
+  });
+
+  // POST /shipments/:id/purchase-label — seller selects a rate and purchases label
+  const purchaseLabelSchema = z.object({
+    rate_id: z.string().min(1, "rate_id is required"),
+  });
+
+  app.post("/shipments/:id/purchase-label", { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] }, async (request, reply) => {
+    const shipmentId = (request.params as { id: string }).id;
+    const shipment = await getShipmentById(db, shipmentId);
+    if (!shipment) {
+      return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+    }
+
+    if (shipment.status !== "LABEL_PENDING") {
+      return reply.code(400).send({ error: "INVALID_STATUS", message: "Shipment must be in LABEL_PENDING status (label not yet created)" });
+    }
+
+    // Verify parcel dimensions exist (seller must run /prepare first)
+    const shipmentRow = await db.query.shipments.findFirst({
+      where: (fields, ops) => ops.eq(fields.id, shipmentId),
+    });
+    if (!shipmentRow?.parcelWeightOz) {
+      return reply.code(400).send({ error: "PARCEL_NOT_SET", message: "Run POST /shipments/:id/prepare first to set parcel dimensions" });
+    }
+
+    const parsed = purchaseLabelSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_PURCHASE_REQUEST", issues: parsed.error.issues });
+    }
+
+    const { rate_id } = parsed.data;
+
+    // Store selected_rate_id
+    await db.update(shipmentsTable).set({
+      selectedRateId: rate_id,
+      updatedAt: new Date(),
+    }).where(eqOp(shipmentsTable.id, shipmentId));
+
+    // If EasyPost is available and rate_id looks like an EasyPost rate, buy the label via EasyPost
+    if (easypostApiKey && rate_id.startsWith("rate_") && !rate_id.startsWith("rate_mock_")) {
+      try {
+        const EasyPost = (await import("@easypost/api")).default;
+        const client = new EasyPost(easypostApiKey);
+
+        // Re-create the EasyPost shipment with the same addresses/parcel to buy the selected rate.
+        // /prepare returns easypost_shipment_id per rate, but the spec only sends rate_id back.
+        // Creating a new EP shipment with identical params is idempotent and gives us fresh rates.
+        const sellerAddr = await db.query.orderAddresses.findFirst({
+          where: (fields, ops) => ops.and(
+            ops.eq(fields.orderId, shipment.order_id),
+            ops.eq(fields.role, "seller"),
+          ),
+        });
+        const buyerAddr = await db.query.orderAddresses.findFirst({
+          where: (fields, ops) => ops.and(
+            ops.eq(fields.orderId, shipment.order_id),
+            ops.eq(fields.role, "buyer"),
+          ),
+        });
+
+        if (!sellerAddr || !buyerAddr) {
+          return reply.code(400).send({ error: "ADDRESSES_MISSING", message: "Seller or buyer address not found" });
+        }
+
+        const epShipment = await client.Shipment.create({
+          from_address: {
+            name: sellerAddr.name,
+            street1: sellerAddr.street1,
+            street2: sellerAddr.street2 ?? undefined,
+            city: sellerAddr.city,
+            state: sellerAddr.state,
+            zip: sellerAddr.zip,
+            country: sellerAddr.country,
+            phone: sellerAddr.phone ?? undefined,
+          },
+          to_address: {
+            name: buyerAddr.name,
+            street1: buyerAddr.street1,
+            street2: buyerAddr.street2 ?? undefined,
+            city: buyerAddr.city,
+            state: buyerAddr.state,
+            zip: buyerAddr.zip,
+            country: buyerAddr.country,
+            phone: buyerAddr.phone ?? undefined,
+          },
+          parcel: {
+            weight: parseFloat(shipmentRow.parcelWeightOz),
+            length: shipmentRow.parcelLengthIn ? parseFloat(shipmentRow.parcelLengthIn) : undefined,
+            width: shipmentRow.parcelWidthIn ? parseFloat(shipmentRow.parcelWidthIn) : undefined,
+            height: shipmentRow.parcelHeightIn ? parseFloat(shipmentRow.parcelHeightIn) : undefined,
+          },
+        });
+
+        // Find the matching rate by carrier+service from the rate_id, or just buy cheapest
+        const matchingRate = epShipment.rates?.find((r: any) => r.id === rate_id);
+        const rateToBuy = matchingRate ?? epShipment.lowestRate();
+
+        const boughtShipment = await client.Shipment.buy(epShipment.id, rateToBuy);
+
+        // Update shipment in DB
+        await db.update(shipmentsTable).set({
+          status: "LABEL_CREATED",
+          carrier: rateToBuy.carrier ?? shipment.carrier,
+          trackingNumber: boughtShipment.tracking_code ?? undefined,
+          labelUrl: boughtShipment.postage_label?.label_url ?? undefined,
+          rateMinor: String(Math.round(parseFloat(rateToBuy.rate ?? "0") * 100)),
+          labelCreatedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eqOp(shipmentsTable.id, shipmentId));
+
+        // Record shipment event for LABEL_CREATED
+        await insertShipmentEvent(db, {
+          id: `evt_${Date.now()}`,
+          shipment_id: shipmentId,
+          status: "LABEL_CREATED",
+          occurred_at: new Date().toISOString(),
+          carrier_raw_status: boughtShipment.status ?? "pre_transit",
+          message: `Label purchased via EasyPost (${rateToBuy.carrier} ${rateToBuy.service})`,
+        });
+
+        const finalShipment = await getShipmentById(db, shipmentId);
+        return reply.send({
+          shipment: finalShipment,
+          label_url: boughtShipment.postage_label?.label_url ?? null,
+          tracking_number: boughtShipment.tracking_code ?? null,
+        });
+      } catch (error) {
+        return reply.code(400).send({
+          error: "LABEL_PURCHASE_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Mock label purchase fallback
+    const mockTrackingNumber = `MOCK${Date.now()}`;
+    const mockLabelUrl = `https://mock-labels.example.com/${mockTrackingNumber}.pdf`;
+
+    await db.update(shipmentsTable).set({
+      status: "LABEL_CREATED",
+      carrier: "mock",
+      trackingNumber: mockTrackingNumber,
+      labelUrl: mockLabelUrl,
+      rateMinor: rate_id === "rate_mock_ground" ? "550"
+        : rate_id === "rate_mock_priority" ? "825"
+        : rate_id === "rate_mock_express" ? "2635"
+        : rate_id === "rate_mock_ups" ? "950"
+        : rate_id === "rate_mock_fedex" ? "975"
+        : "550",
+      labelCreatedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eqOp(shipmentsTable.id, shipmentId));
+
+    // Record shipment event for LABEL_CREATED
+    await insertShipmentEvent(db, {
+      id: `evt_${Date.now()}`,
+      shipment_id: shipmentId,
+      status: "LABEL_CREATED",
+      occurred_at: new Date().toISOString(),
+      carrier_raw_status: "pre_transit",
+      message: "Label purchased (mock)",
+    });
+
+    // Sync order status
+    await updateCommerceOrderStatus(db, shipment.order_id, "FULFILLMENT_ACTIVE");
+
+    const finalShipment = await getShipmentById(db, shipmentId);
+    return reply.send({
+      shipment: finalShipment,
+      label_url: mockLabelUrl,
+      tracking_number: mockTrackingNumber,
+    });
+  });
+
+  // POST /shipments/:id/return-label — buyer creates return label after dispute buyer_favor
+  app.post("/shipments/:id/return-label", { preHandler: [requireAuth, requireShipmentOwner({ role: "buyer" })] }, async (request, reply) => {
+    const shipmentId = (request.params as { id: string }).id;
+    const shipment = await getShipmentById(db, shipmentId);
+    if (!shipment) {
+      return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+    }
+
+    // Validate: dispute for this order exists and outcome is buyer_favor
+    const dispute = await getDisputeByOrderId(db, shipment.order_id);
+    if (!dispute) {
+      return reply.code(400).send({ error: "NO_DISPUTE", message: "No dispute found for this order" });
+    }
+
+    // Check resolution outcome from dispute_resolutions table
+    const resolutionRow = await db.query.disputeResolutions.findFirst({
+      where: (fields, ops) => ops.eq(fields.disputeId, dispute.id),
+      orderBy: (fields, { desc: descFn }) => [descFn(fields.createdAt)],
+    });
+    if (!resolutionRow || resolutionRow.outcome !== "buyer_favor") {
+      return reply.code(400).send({
+        error: "DISPUTE_NOT_BUYER_FAVOR",
+        message: "Return label can only be created when dispute outcome is buyer_favor",
+      });
+    }
+
+    // Look up addresses from order_addresses
+    const buyerAddr = await db.query.orderAddresses.findFirst({
+      where: (fields, ops) => ops.and(
+        ops.eq(fields.orderId, shipment.order_id),
+        ops.eq(fields.role, "buyer"),
+      ),
+    });
+    const sellerAddr = await db.query.orderAddresses.findFirst({
+      where: (fields, ops) => ops.and(
+        ops.eq(fields.orderId, shipment.order_id),
+        ops.eq(fields.role, "seller"),
+      ),
+    });
+
+    if (!buyerAddr) {
+      return reply.code(400).send({ error: "BUYER_ADDRESS_MISSING", message: "Buyer address not found" });
+    }
+    if (!sellerAddr) {
+      return reply.code(400).send({ error: "SELLER_ADDRESS_MISSING", message: "Seller address not found" });
+    }
+
+    // Create a new shipment record with type 'return'
+    const returnShipmentRow = await createShipmentRecord(
+      db,
+      shipment.order_id,
+      shipment.seller_id,
+      shipment.buyer_id,
+    );
+
+    // Mark the new shipment as return type
+    await db.update(shipmentsTable).set({
+      shipmentType: "return",
+      updatedAt: new Date(),
+    }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
+
+    // Attempt to create a return label via carrier
+    const fromAddress = {
+      name: buyerAddr.name,
+      street1: buyerAddr.street1,
+      street2: buyerAddr.street2 ?? undefined,
+      city: buyerAddr.city,
+      state: buyerAddr.state,
+      zip: buyerAddr.zip,
+      country: buyerAddr.country,
+      phone: buyerAddr.phone ?? undefined,
+    };
+    const toAddress = {
+      name: sellerAddr.name,
+      street1: sellerAddr.street1,
+      street2: sellerAddr.street2 ?? undefined,
+      city: sellerAddr.city,
+      state: sellerAddr.state,
+      zip: sellerAddr.zip,
+      country: sellerAddr.country,
+      phone: sellerAddr.phone ?? undefined,
+    };
+
+    // Use parcel info from the original shipment if available
+    const originalRow = await db.query.shipments.findFirst({
+      where: (fields, ops) => ops.eq(fields.id, shipmentId),
+    });
+
+    let labelUrl: string | null = null;
+    let trackingNumber: string | null = null;
+
+    if (easypostApiKey && originalRow?.parcelWeightOz) {
+      try {
+        const EasyPost = (await import("@easypost/api")).default;
+        const client = new EasyPost(easypostApiKey);
+        const epShipment = await client.Shipment.create({
+          from_address: {
+            name: fromAddress.name,
+            street1: fromAddress.street1,
+            street2: fromAddress.street2,
+            city: fromAddress.city,
+            state: fromAddress.state,
+            zip: fromAddress.zip,
+            country: fromAddress.country,
+          },
+          to_address: {
+            name: toAddress.name,
+            street1: toAddress.street1,
+            street2: toAddress.street2,
+            city: toAddress.city,
+            state: toAddress.state,
+            zip: toAddress.zip,
+            country: toAddress.country,
+          },
+          parcel: {
+            weight: parseFloat(originalRow.parcelWeightOz),
+            length: originalRow.parcelLengthIn ? parseFloat(originalRow.parcelLengthIn) : undefined,
+            width: originalRow.parcelWidthIn ? parseFloat(originalRow.parcelWidthIn) : undefined,
+            height: originalRow.parcelHeightIn ? parseFloat(originalRow.parcelHeightIn) : undefined,
+          },
+          is_return: true,
+        });
+
+        const lowestRate = epShipment.lowestRate();
+        const boughtShipment = await client.Shipment.buy(epShipment.id, lowestRate);
+
+        trackingNumber = boughtShipment.tracking_code ?? null;
+        labelUrl = boughtShipment.postage_label?.label_url ?? null;
+
+        await db.update(shipmentsTable).set({
+          status: "LABEL_CREATED",
+          carrier: lowestRate.carrier ?? "USPS",
+          trackingNumber: trackingNumber ?? undefined,
+          labelUrl: labelUrl ?? undefined,
+          rateMinor: String(Math.round(parseFloat(lowestRate.rate ?? "0") * 100)),
+          labelCreatedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
+      } catch (error) {
+        console.error("EasyPost return label creation failed, falling back to mock:", error);
+      }
+    }
+
+    // Mock fallback
+    if (!trackingNumber) {
+      const mockTracking = `RET${Date.now()}`;
+      const mockLabel = `https://mock-labels.example.com/${mockTracking}.pdf`;
+
+      trackingNumber = mockTracking;
+      labelUrl = mockLabel;
+
+      await db.update(shipmentsTable).set({
+        status: "LABEL_CREATED",
+        carrier: "mock",
+        trackingNumber: mockTracking,
+        labelUrl: mockLabel,
+        rateMinor: "550",
+        labelCreatedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
+    }
+
+    // Record event
+    await insertShipmentEvent(db, {
+      id: `evt_${Date.now()}`,
+      shipment_id: returnShipmentRow.id,
+      status: "LABEL_CREATED",
+      occurred_at: new Date().toISOString(),
+      carrier_raw_status: "pre_transit",
+      message: "Return label created",
+    });
+
+    const finalShipment = await getShipmentById(db, returnShipmentRow.id);
+    return reply.code(201).send({
+      shipment: finalShipment,
+      label_url: labelUrl,
+      tracking_number: trackingNumber,
+    });
+  });
+
+  // POST /shipments/:id/event — record a shipment event (seller only)
+  app.post("/shipments/:id/event", { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });

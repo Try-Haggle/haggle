@@ -51,14 +51,41 @@ export async function updateDepositStatus(
   extraFields?: {
     depositedAt?: Date;
     resolvedAt?: Date;
+    metadata?: Record<string, unknown>;
   },
+) {
+  const setFields: Record<string, unknown> = {
+    status,
+    updatedAt: new Date(),
+  };
+  if (extraFields?.depositedAt !== undefined) {
+    setFields.depositedAt = extraFields.depositedAt;
+  }
+  if (extraFields?.resolvedAt !== undefined) {
+    setFields.resolvedAt = extraFields.resolvedAt;
+  }
+  if (extraFields?.metadata !== undefined) {
+    setFields.metadata = extraFields.metadata;
+  }
+
+  const [row] = await db
+    .update(disputeDeposits)
+    .set(setFields)
+    .where(eq(disputeDeposits.id, depositId))
+    .returning();
+
+  return row;
+}
+
+export async function updateDepositMetadata(
+  db: Database,
+  depositId: string,
+  metadata: Record<string, unknown>,
 ) {
   const [row] = await db
     .update(disputeDeposits)
     .set({
-      status,
-      depositedAt: extraFields?.depositedAt,
-      resolvedAt: extraFields?.resolvedAt,
+      metadata,
       updatedAt: new Date(),
     })
     .where(eq(disputeDeposits.id, depositId))
@@ -76,7 +103,8 @@ export async function getPendingExpiredDeposits(db: Database) {
         eq(disputeDeposits.status, "PENDING"),
         lt(disputeDeposits.deadlineAt, sql`now()`),
       ),
-    );
+    )
+    .limit(100);
 
   return rows;
 }

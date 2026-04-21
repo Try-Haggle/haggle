@@ -19,6 +19,7 @@ export const shipments = pgTable("shipments", {
   })
     .notNull()
     .default("LABEL_PENDING"),
+  shipmentType: text("shipment_type").notNull().default("outbound"),
   carrier: text("carrier"),
   trackingNumber: text("tracking_number"),
   labelCreatedAt: timestamp("label_created_at", { withTimezone: true }),
@@ -28,6 +29,11 @@ export const shipments = pgTable("shipments", {
   shippingFeeMinor: numeric("shipping_fee_minor", { precision: 18, scale: 0 }),
   currency: text("currency").notNull().default("USD"),
   declaredWeightOz: numeric("declared_weight_oz", { precision: 10, scale: 2 }),
+  parcelLengthIn: numeric("parcel_length_in", { precision: 10, scale: 2 }),
+  parcelWidthIn: numeric("parcel_width_in", { precision: 10, scale: 2 }),
+  parcelHeightIn: numeric("parcel_height_in", { precision: 10, scale: 2 }),
+  parcelWeightOz: numeric("parcel_weight_oz", { precision: 10, scale: 2 }),
+  selectedRateId: text("selected_rate_id"),
   labelUrl: text("label_url"),
   rateMinor: numeric("rate_minor", { precision: 18, scale: 0 }),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),

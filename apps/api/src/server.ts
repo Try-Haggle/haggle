@@ -34,11 +34,15 @@ import { registerHfmiRoutes } from "./routes/hfmi.js";
 import { registerPresetRoutes } from "./routes/presets.js";
 import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
+import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
+import { registerAddressRoutes } from "./routes/addresses.js";
+import { registerOrderRoutes } from "./routes/orders.js";
 import websocket from "@fastify/websocket";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
+import { initCronJobs } from "./jobs/runner.js";
 
 export async function createServer() {
   const app = Fastify({
@@ -117,6 +121,7 @@ export async function createServer() {
   registerSettlementReleaseRoutes(app, db);
   registerSettlementApprovalRoutes(app, db);
   registerAuthenticationRoutes(app, db);
+  registerAddressRoutes(app, db);
 
   // ─── Trust, DS Rating, ARP, Tag Routes ──────────────────
   registerTrustRoutes(app, db);
@@ -158,9 +163,18 @@ export async function createServer() {
   registerBuddyRoutes(app, db);
   registerGamificationRoutes(app, db);
 
+  // ─── Order Routes ─────────────────────────────────────
+  registerOrderRoutes(app, db);
+
+  // ─── Demo / E2E Test Routes ────────────────────────────
+  registerDemoE2ERoutes(app, db);
+
   // ─── WebSocket ───────────────────────────────────────────
   await app.register(websocket);
   await registerWebSocketRoutes(app);
+
+  // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
+  initCronJobs(db);
 
   return app;
 }

@@ -32,7 +32,7 @@ export const disputeEvidence = pgTable("dispute_evidence", {
   id: uuid("id").defaultRandom().primaryKey(),
   disputeId: uuid("dispute_id").notNull(),
   submittedBy: text("submitted_by", { enum: ["buyer", "seller", "system"] }).notNull(),
-  type: text("type", { enum: ["text", "image", "tracking_snapshot", "payment_proof", "other"] }).notNull(),
+  type: text("type", { enum: ["text", "image", "video", "tracking_snapshot", "payment_proof", "other"] }).notNull(),
   uri: text("uri"),
   text: text("text"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

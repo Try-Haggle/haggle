@@ -4,6 +4,7 @@ import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
 import { eq, and, userWallets, webhookIdempotency } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
+import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { createOnrampSession, getStripeConfig, verifyStripeWebhook } from "../payments/stripe-onramp.js";
 
 // ---------------------------------------------------------------------------
@@ -221,6 +222,7 @@ async function autoCreateShipment(db: Database, intent: PaymentIntent) {
 }
 
 export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
+  const { requirePaymentOwner } = createOwnershipMiddleware(db);
   const service = createPaymentServiceFromEnv();
   const x402Config = getX402EnvConfig();
   const x402Facilitator =
@@ -229,7 +231,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       : null;
 
   // ─── GET payment by ID ──────────────────────────────────────
-  app.get<{ Params: { id: string } }>("/payments/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/payments/:id", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, request.params.id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });
@@ -294,7 +296,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
-  app.post("/payments/:id/quote", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/quote", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -368,7 +370,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(requirement);
   });
 
-  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -460,7 +462,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
-  app.post("/payments/:id/authorize", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/authorize", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -481,7 +483,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -499,7 +501,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/settle", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/settle", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -531,7 +533,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ ...result, settlement_release: settlementRelease, shipment });
   });
 
-  app.post("/payments/:id/fail", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/fail", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -549,7 +551,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/cancel", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/cancel", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -567,7 +569,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/refund", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/refund", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -824,7 +826,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post<{ Params: { id: string } }>(
     "/payments/:id/onramp/session",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requirePaymentOwner()] },
     async (request, reply) => {
       const stripeConfig = getStripeConfig();
       if (!stripeConfig.enabled) {
