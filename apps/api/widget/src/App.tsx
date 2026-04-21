@@ -10,19 +10,14 @@ import {
   STAT_META,
   type AgentStats,
 } from "./agentPresets";
+import { LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
 
 const STEPS = [{ label: "Item Details" }, { label: "Pricing" }, { label: "AI Agent" }];
 
-const CATEGORIES = [
-  { value: "electronics", label: "Electronics" },
-  { value: "clothing", label: "Clothing" },
-  { value: "furniture", label: "Furniture" },
-  { value: "collectibles", label: "Collectibles" },
-  { value: "sports", label: "Sports" },
-  { value: "vehicles", label: "Vehicles" },
-  { value: "books", label: "Books" },
-  { value: "other", label: "Other" },
-];
+const CATEGORIES = LISTING_CATEGORIES.map((value) => ({
+  value,
+  label: LISTING_CATEGORY_LABELS[value],
+}));
 
 const CONDITIONS = [
   { value: "new", label: "New" },

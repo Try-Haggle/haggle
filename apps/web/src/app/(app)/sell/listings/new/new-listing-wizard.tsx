@@ -5,19 +5,14 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import { api } from "@/lib/api-client";
+import { LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
-const CATEGORIES = [
-  { value: "electronics", label: "Electronics" },
-  { value: "clothing", label: "Clothing" },
-  { value: "furniture", label: "Furniture" },
-  { value: "collectibles", label: "Collectibles" },
-  { value: "sports", label: "Sports" },
-  { value: "vehicles", label: "Vehicles" },
-  { value: "books", label: "Books" },
-  { value: "other", label: "Other" },
-];
+const CATEGORIES = LISTING_CATEGORIES.map((value) => ({
+  value,
+  label: LISTING_CATEGORY_LABELS[value],
+}));
 
 const CONDITIONS = [
   { value: "new", label: "New" },
