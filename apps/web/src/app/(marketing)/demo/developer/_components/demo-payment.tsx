@@ -435,9 +435,9 @@ export function DemoPayment({ agreedPrice, itemTitle, rounds, onBack }: DemoPaym
               </p>
               <button
                 onClick={onBack}
-                className="rounded-lg border border-slate-700 px-6 py-2 text-sm font-medium text-slate-300 hover:border-slate-500 hover:text-white transition-colors cursor-pointer"
+                className="rounded-lg bg-blue-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-600 transition-colors cursor-pointer"
               >
-                데모로 돌아가기
+                배송 단계로 이동 &rarr;
               </button>
             </div>
           </div>

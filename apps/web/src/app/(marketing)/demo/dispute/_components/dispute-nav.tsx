@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   { href: "/demo/dispute", label: "Overview", exact: true },
-  { href: "/demo/dispute/buyer", label: "Buyer", color: "cyan" },
-  { href: "/demo/dispute/seller", label: "Seller", color: "violet" },
-  { href: "/demo/dispute/panel", label: "Panel (T2)", color: "amber" },
-  { href: "/demo/dispute/reviewer", label: "Reviewer", color: "emerald" },
+  { href: "/demo/dispute/disputes", label: "Disputes" },
+  { href: "/demo/dispute/buyer", label: "Buyer (T1)", color: "cyan" },
+  { href: "/demo/dispute/seller", label: "Seller (T1)", color: "violet" },
+  { href: "/demo/dispute/reviewer-dashboard", label: "Reviewer Dashboard", color: "emerald" },
+  { href: "/demo/dispute/reviewer-qualify", label: "Qualify Test", color: "emerald" },
+  { href: "/demo/dispute/reviewer", label: "Reviewer Vote", color: "emerald" },
 ] as const;
 
 export function DisputeNav() {

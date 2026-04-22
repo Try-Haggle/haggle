@@ -10,7 +10,6 @@ import { RoundControl } from "./_components/round-control";
 import { StateGauge } from "./_components/utility-bar";
 import { DbTableView } from "./_components/db-table-view";
 import { CostBadge } from "./_components/cost-badge";
-import { DemoPayment } from "./_components/demo-payment";
 import { DemoSignupShowcase } from "./_components/demo-signup-showcase";
 
 /* ── State Machine ──────────────────────────── */
@@ -21,8 +20,7 @@ type DemoState =
   | "READY"
   | "ROUND_RUNNING"
   | "ROUND_DONE"
-  | "SESSION_DONE"
-  | "PAYMENT";
+  | "SESSION_DONE";
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -395,7 +393,14 @@ export function DeveloperDemo() {
                 <div className="flex items-center justify-center gap-3">
                   {latestRound.final.decision.action === "ACCEPT" && (
                     <button
-                      onClick={() => setDemoState("PAYMENT")}
+                      onClick={() => {
+                        sessionStorage.setItem("haggle_checkout", JSON.stringify({
+                          price: latestRound.final.decision.price,
+                          item: initResponse?.strategy.approach ?? "iPhone 14 Pro 128GB",
+                          rounds: rounds.length,
+                        }));
+                        window.location.href = "/demo/checkout";
+                      }}
                       className="rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors cursor-pointer"
                     >
                       결제 페이지로 이동 &rarr;
@@ -411,25 +416,6 @@ export function DeveloperDemo() {
               </div>
             )}
 
-            {/* ── PAYMENT ── */}
-            {demoState === "PAYMENT" && latestRound && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-600/50 to-transparent" />
-                  <span className="text-sm font-bold text-white bg-emerald-500/10 px-4 py-1 rounded-full border border-emerald-500/30">
-                    결제 단계
-                  </span>
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-600/50 to-transparent" />
-                </div>
-
-                <DemoPayment
-                  agreedPrice={latestRound.final.decision.price}
-                  itemTitle={initResponse?.strategy.approach ? "MacBook Pro" : "아이템"}
-                  rounds={rounds.length}
-                  onBack={handleReset}
-                />
-              </div>
-            )}
           </div>
         )}
 
