@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { disputeEvidence as disputeEvidenceTable, refunds as refundsTable, eq, and } from "@haggle/db";
+import { disputeEvidence as disputeEvidenceTable, refunds as refundsTable, eq, and, sql } from "@haggle/db";
 import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY, computeDisputeCost, createDepositRequirement } from "@haggle/dispute-core";
@@ -58,6 +58,7 @@ import {
 import { refundDeposit } from "../payments/deposit-refunder.js";
 import { executeRefund } from "../payments/refund-executor.js";
 import { isAddress } from "viem";
+import { assignReviewersToDispute } from "./reviewer.js";
 
 const openDisputeSchema = z.object({
   order_id: z.string(),
@@ -114,10 +115,162 @@ const resolveDisputeSchema = z.object({
   refund_amount_minor: z.number().optional(),
 });
 
+const listDisputesQuerySchema = z.object({
+  role: z.enum(["buyer", "seller", "all"]).default("all"),
+  status: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
 export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const disputeService = new DisputeService();
   const paymentService = createPaymentServiceFromEnv();
   const { requireDisputeParty } = createOwnershipMiddleware(db);
+
+  // GET /disputes — list authenticated user's disputes
+  app.get("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
+    const parsed = listDisputesQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_QUERY", issues: parsed.error.issues });
+    }
+
+    const { role, status, limit, offset } = parsed.data;
+    const userId = request.user!.id;
+
+    // Build raw SQL query joining dispute_cases → commerce_orders → settlement_approvals
+    // to get item info and determine user role
+    const statusFilter = status ? sql`AND dc.status = ${status}` : sql``;
+
+    let roleFilter = sql``;
+    if (role === "buyer") {
+      roleFilter = sql`AND co.buyer_id = ${userId}`;
+    } else if (role === "seller") {
+      roleFilter = sql`AND co.seller_id = ${userId}`;
+    }
+
+    // Count total
+    const countRaw = await db.execute(sql`
+      SELECT COUNT(*)::text AS total
+      FROM dispute_cases dc
+      JOIN commerce_orders co ON co.id = dc.order_id
+      WHERE (co.buyer_id = ${userId} OR co.seller_id = ${userId})
+      ${statusFilter}
+      ${roleFilter}
+    `);
+    const countRows = (countRaw as unknown as { rows?: Record<string, unknown>[] }).rows ?? [];
+    const total = parseInt((countRows[0]?.total as string) ?? "0");
+
+    // Needs-action ordering: WAITING states first, then OPEN, UNDER_REVIEW, then resolved/closed
+    interface DisputeListRow {
+      id: string;
+      order_id: string;
+      reason_code: string;
+      status: string;
+      opened_by: string;
+      opened_at: string;
+      metadata: Record<string, unknown> | null;
+      resolution_summary: string | null;
+      buyer_id: string;
+      seller_id: string;
+      amount_minor: string | null;
+      order_snapshot: Record<string, unknown> | null;
+      final_amount_minor: string | null;
+      terms_snapshot: Record<string, unknown> | null;
+      refund_amount_minor: string | null;
+      resolution_outcome: string | null;
+    }
+
+    const rawResult = await db.execute(sql`
+      SELECT
+        dc.id,
+        dc.order_id,
+        dc.reason_code,
+        dc.status,
+        dc.opened_by,
+        dc.opened_at::text AS opened_at,
+        dc.metadata,
+        dc.resolution_summary,
+        co.buyer_id,
+        co.seller_id,
+        co.amount_minor,
+        co.order_snapshot,
+        sa.final_amount_minor,
+        sa.terms_snapshot,
+        dr.refund_amount_minor,
+        dr.outcome AS resolution_outcome
+      FROM dispute_cases dc
+      JOIN commerce_orders co ON co.id = dc.order_id
+      LEFT JOIN settlement_approvals sa ON sa.id = co.settlement_approval_id
+      LEFT JOIN dispute_resolutions dr ON dr.dispute_id = dc.id
+      WHERE (co.buyer_id = ${userId} OR co.seller_id = ${userId})
+      ${statusFilter}
+      ${roleFilter}
+      ORDER BY
+        CASE dc.status
+          WHEN 'WAITING_FOR_BUYER' THEN 1
+          WHEN 'WAITING_FOR_SELLER' THEN 2
+          WHEN 'OPEN' THEN 3
+          WHEN 'UNDER_REVIEW' THEN 4
+          WHEN 'RESOLVED_BUYER_FAVOR' THEN 5
+          WHEN 'RESOLVED_SELLER_FAVOR' THEN 5
+          WHEN 'PARTIAL_REFUND' THEN 5
+          WHEN 'CLOSED' THEN 6
+          ELSE 5
+        END,
+        dc.created_at DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `);
+    const dataRows = (rawResult as unknown as { rows?: DisputeListRow[] }).rows ?? [];
+
+    const disputes = dataRows.map((row) => {
+      const isBuyer = row.buyer_id === userId;
+      const userRole = isBuyer ? "buyer" : "seller";
+
+      // Determine needs_action based on status and role
+      let needsAction = false;
+      if (row.status === "WAITING_FOR_BUYER" && isBuyer) needsAction = true;
+      if (row.status === "WAITING_FOR_SELLER" && !isBuyer) needsAction = true;
+      if (row.status === "OPEN" && row.opened_by !== userRole) needsAction = true;
+
+      // Extract item title from terms_snapshot or order_snapshot
+      const terms = row.terms_snapshot as Record<string, unknown> | null;
+      const orderSnap = row.order_snapshot as Record<string, unknown> | null;
+      const orderTerms = orderSnap?.terms as Record<string, unknown> | undefined;
+      const itemTitle =
+        (terms?.item_name as string | undefined) ??
+        (orderTerms?.item_name as string | undefined) ??
+        (orderTerms?.listing_id as string | undefined) ??
+        null;
+
+      const amountMinor = row.final_amount_minor
+        ? parseInt(row.final_amount_minor)
+        : row.amount_minor
+          ? parseInt(row.amount_minor)
+          : null;
+
+      const tier = row.metadata ? (row.metadata as Record<string, unknown>).tier as number | null ?? null : null;
+
+      return {
+        id: row.id,
+        order_id: row.order_id,
+        reason_code: row.reason_code,
+        status: row.status,
+        tier,
+        opened_by: row.opened_by,
+        opened_at: row.opened_at,
+        user_role: userRole as "buyer" | "seller",
+        counterparty_name: null as string | null, // User names not available in current schema
+        item_title: itemTitle,
+        amount_minor: amountMinor,
+        needs_action: needsAction,
+        resolution_outcome: row.resolution_outcome ?? null,
+        refund_amount_minor: row.refund_amount_minor ? parseInt(row.refund_amount_minor) : null,
+      };
+    });
+
+    return reply.send({ disputes, total, limit, offset });
+  });
 
   // POST /disputes — open a new dispute
   app.post("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -243,12 +396,33 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    // Auto-assign reviewers for T2/T3 escalation
+    let reviewerAssignment = null;
+    if (nextTier >= 2 && order) {
+      try {
+        reviewerAssignment = await assignReviewersToDispute(
+          db,
+          id,
+          nextTier,
+          amountCents,
+          order.buyerId,
+          order.sellerId,
+        );
+      } catch (assignErr) {
+        console.error(
+          "[disputes] Auto-assign reviewers failed:",
+          assignErr instanceof Error ? assignErr.message : String(assignErr),
+        );
+      }
+    }
+
     return reply.send({
       dispute_id: id,
       previous_tier: currentTier,
       new_tier: nextTier,
       cost,
       deposit,
+      reviewer_assignment: reviewerAssignment,
     });
   });
 
