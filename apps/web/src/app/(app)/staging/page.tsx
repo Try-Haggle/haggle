@@ -125,6 +125,14 @@ const COMMON_FEATURES: FlowStep[] = [
 
 const DEMO_PAGES: FlowStep[] = [
   {
+    num: "D0",
+    title: "E2E Demo (Quick Start)",
+    description: "Skip negotiation — start from payment and walk through shipping + dispute",
+    href: "/demo/e2e",
+    status: "ready",
+    features: ["Mock X402 payment", "Shipment events", "Dispute flow", "Activity log"],
+  },
+  {
     num: "D1",
     title: "Try Demo (User)",
     description: "Interactive negotiation demo — no sign-up needed",
