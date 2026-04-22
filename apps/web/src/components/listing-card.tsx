@@ -7,6 +7,7 @@ export interface ListingCardListing {
   condition: string | null;
   photoUrl: string | null;
   targetPrice: string | null;
+  publishedAt?: string;
 }
 
 function formatPrice(price: string | null): string {
@@ -30,6 +31,18 @@ function formatCondition(condition: string | null): string {
     poor: "Poor",
   };
   return map[condition] ?? condition;
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
 }
 
 export function ListingCard({
@@ -100,8 +113,15 @@ export function ListingCard({
             <span>{formatCondition(listing.condition)}</span>
           )}
         </div>
-        <div className="text-base font-semibold text-emerald-400">
-          {formatPrice(listing.targetPrice)}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-base font-semibold text-emerald-400">
+            {formatPrice(listing.targetPrice)}
+          </div>
+          {listing.publishedAt && (
+            <div className="text-xs text-slate-500">
+              {formatTimeAgo(listing.publishedAt)}
+            </div>
+          )}
         </div>
         {matchReasons && matchReasons.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
