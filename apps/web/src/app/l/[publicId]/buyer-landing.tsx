@@ -216,7 +216,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
         </nav>
       )}
 
-      <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: user ? "calc(64px + 2rem)" : "calc(56px + 2rem)" }}>
+      <div className={`mx-auto max-w-6xl px-4 pb-8 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
         {/* ── Back link (if originated from a known surface) ── */}
         {from && (
           <a
@@ -374,10 +374,10 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
             seller&apos;s agent to get you the best price.
           </p>
 
-          <div className="grid gap-7" style={{ gridTemplateColumns: "1fr 300px" }}>
-            {/* Left: Agent cards (2x2) */}
+          <div className="grid gap-6 md:gap-7 md:grid-cols-[1fr_300px]">
+            {/* Left: Agent cards (2x2 on desktop, stacked on mobile) */}
             <div>
-              <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                 {BUYER_AGENT_PRESETS.map((agent) => {
                   const isSelected = selectedAgent?.id === agent.id;
                   return (
@@ -452,9 +452,9 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
               </div>
             </div>
 
-            {/* Right: Agent Profile */}
+            {/* Right: Agent Profile (below cards on mobile, sticky side panel on desktop) */}
             <div>
-              <div className="sticky top-6">
+              <div className="md:sticky md:top-6">
                 {/* Profile Header */}
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-[12px] font-bold tracking-[0.06em]" style={{ color: "#f1f5f9" }}>AGENT PROFILE</h3>
