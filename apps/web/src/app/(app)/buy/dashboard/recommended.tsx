@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAmplitude } from "@/providers/amplitude-provider";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
+import { api } from "@/lib/api-client";
 
 interface RecommendedListing {
   publicId: string;
@@ -50,13 +49,17 @@ export function RecommendedForYou({ userId }: { userId: string }) {
   const [canScrollRight, setCanScrollRight] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/recommendations/dashboard?userId=${userId}`)
-      .then((res) => res.json())
+    api
+      .get<{
+        ok: boolean;
+        listings?: RecommendedListing[];
+        meta?: { source?: string };
+      }>(`/api/recommendations/dashboard`)
       .then((data) => {
         if (data.ok) {
           setListings(data.listings ?? []);
           setSource(data.meta?.source ?? "empty");
-          if (data.listings?.length > 0) {
+          if (data.listings && data.listings.length > 0) {
             track("recommendation_impressed", {
               context: "dashboard",
               count: data.listings.length,
@@ -170,7 +173,7 @@ export function RecommendedForYou({ userId }: { userId: string }) {
           {canScrollLeft && (
             <button
               onClick={() => scroll("left")}
-              className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+              className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
             >
               <svg
                 width="18"
@@ -189,7 +192,7 @@ export function RecommendedForYou({ userId }: { userId: string }) {
           {canScrollRight && (
             <button
               onClick={() => scroll("right")}
-              className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+              className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
             >
               <svg
                 width="18"
@@ -215,12 +218,9 @@ export function RecommendedForYou({ userId }: { userId: string }) {
                 key={item.publicId}
                 href={`/l/${item.publicId}`}
                 onClick={() => {
-                  fetch(
-                    `${API_URL}/api/recommendations/log/${item.logId}/click`,
-                    {
-                      method: "PATCH",
-                    },
-                  ).catch(() => {});
+                  api
+                    .patch(`/api/recommendations/log/${item.logId}/click`)
+                    .catch(() => {});
                   track("recommendation_clicked", {
                     context: "dashboard",
                     recommended_listing_id: item.publicId,

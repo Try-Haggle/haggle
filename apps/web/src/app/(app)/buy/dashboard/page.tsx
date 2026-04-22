@@ -61,6 +61,7 @@ export default async function BuyerDashboardPage() {
 
   return (
     <BuyerDashboardContent
+      userId={user.id}
       viewedListings={viewedListings}
       activeNegotiations={activeNegotiations}
     />

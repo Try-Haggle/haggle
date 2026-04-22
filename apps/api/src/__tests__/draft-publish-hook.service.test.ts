@@ -48,6 +48,10 @@ vi.mock("../services/tag-placement.service.js", () => ({
   placeListingTags: vi.fn(),
 }));
 
+vi.mock("../services/embedding.service.js", () => ({
+  triggerEmbeddingGeneration: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { publishDraft } from "../services/draft.service.js";
 import { placeListingTags } from "../services/tag-placement.service.js";
 
