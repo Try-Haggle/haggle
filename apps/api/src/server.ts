@@ -10,6 +10,9 @@ import { registerAccountRoutes } from "./routes/account.js";
 import { registerPublicListingRoutes } from "./routes/public-listing.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
+import { registerSimilarListingsRoutes } from "./routes/similar-listings.js";
+import { registerRecommendationsRoutes } from "./routes/recommendations.js";
+import { registerInternalRoutes } from "./routes/internal.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerShipmentRoutes } from "./routes/shipments.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
@@ -116,6 +119,9 @@ export async function createServer() {
   registerPublicListingRoutes(app, db);
   registerDraftRoutes(app, db);
   registerBuyerListingsRoutes(app, db);
+  registerSimilarListingsRoutes(app, db);
+  registerRecommendationsRoutes(app, db);
+  registerInternalRoutes(app, db);
 
   // ─── Negotiation Session & Group Routes ─────────────────
   registerNegotiationRoutes(app, db, eventDispatcher);

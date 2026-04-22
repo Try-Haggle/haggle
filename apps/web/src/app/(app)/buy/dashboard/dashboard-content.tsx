@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import type { ViewedListing, ActiveNegotiation } from "./page";
+import { RecommendedForYou } from "./recommended";
+
+const RECENTLY_VIEWED_INITIAL_SHOW = 4;
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -39,9 +42,11 @@ function formatMinorPrice(priceMinor: number | null): string {
 }
 
 export function BuyerDashboardContent({
+  userId,
   viewedListings,
   activeNegotiations,
 }: {
+  userId: string;
   viewedListings: ViewedListing[];
   activeNegotiations: ActiveNegotiation[];
 }) {
@@ -62,8 +67,21 @@ export function BuyerDashboardContent({
         </div>
       </div>
 
+      {/* Recommended for You */}
+      <RecommendedForYou userId={userId} />
+
       {/* Recently Viewed Listings */}
-      <h2 className="text-lg font-bold text-white mb-4">Recently Viewed</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-white">Recently Viewed</h2>
+        {viewedListings.length > RECENTLY_VIEWED_INITIAL_SHOW && (
+          <Link
+            href="/buy/dashboard/recently-viewed"
+            className="text-sm text-slate-400 transition-colors hover:text-white"
+          >
+            View all →
+          </Link>
+        )}
+      </div>
 
       {viewedListings.length === 0 ? (
         <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center mb-8">
@@ -80,7 +98,7 @@ export function BuyerDashboardContent({
         </div>
       ) : (
         <div className="space-y-3 mb-8">
-          {viewedListings.map((listing) => (
+          {viewedListings.slice(0, RECENTLY_VIEWED_INITIAL_SHOW).map((listing) => (
             <ViewedListingCard key={listing.id} listing={listing} />
           ))}
         </div>

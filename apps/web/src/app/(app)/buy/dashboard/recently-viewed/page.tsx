@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { serverApi } from "@/lib/api-server";
 import type { ViewedListing } from "../page";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
 
 function formatTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -29,10 +28,9 @@ export default async function RecentlyViewedPage() {
 
   let viewedListings: ViewedListing[] = [];
   try {
-    const res = await fetch(`${API_URL}/api/viewed?userId=${user.id}`, {
-      cache: "no-store",
-    });
-    const data = await res.json();
+    const data = await serverApi.get<{ ok: boolean; listings: ViewedListing[] }>(
+      `/api/viewed`,
+    );
     if (data.ok) {
       viewedListings = data.listings;
     }

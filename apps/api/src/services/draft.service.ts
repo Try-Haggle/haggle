@@ -10,6 +10,7 @@ import {
   inArray,
 } from "@haggle/db";
 import { placeListingTags } from "./tag-placement.service.js";
+import { triggerEmbeddingGeneration } from "./embedding.service.js";
 
 /** Fields that can be patched via haggle_apply_patch. */
 const PATCHABLE_FIELDS = [
@@ -222,6 +223,13 @@ export async function publishDraft(db: Database, draftId: string) {
     .set(updateSet)
     .where(eq(listingDrafts.id, draftId))
     .returning();
+
+  // Trigger embedding generation (pending row: await, OpenAI call: fire-and-forget)
+  await triggerEmbeddingGeneration(
+    db,
+    published.id,
+    published.snapshotJson as Record<string, unknown>,
+  );
 
   return {
     publicId,
