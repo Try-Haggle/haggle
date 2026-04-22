@@ -173,7 +173,7 @@ function ViewedListingCard({ listing }: { listing: ViewedListing }) {
 
   return (
     <Link
-      href={`/l/${listing.publicId}`}
+      href={`/l/${listing.publicId}?from=buy-dashboard`}
       className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
     >
       {/* Photo or placeholder */}

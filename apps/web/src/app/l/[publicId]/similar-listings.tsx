@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAmplitude } from "@/providers/amplitude-provider";
+import { ListingCard } from "@/components/listing-card";
 import { api } from "@/lib/api-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
@@ -18,35 +19,14 @@ interface SimilarListing {
   logId: string;
 }
 
-function formatPrice(price: string | null): string {
-  if (!price) return "$0";
-  const n = parseFloat(price);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function formatCondition(condition: string | null): string {
-  if (!condition) return "";
-  const map: Record<string, string> = {
-    new: "New",
-    like_new: "Like New",
-    good: "Good",
-    fair: "Fair",
-    poor: "Poor",
-  };
-  return map[condition] ?? condition;
-}
-
 export function SimilarListings({
   publicId,
   userId,
+  from = null,
 }: {
   publicId: string;
   userId?: string | null;
+  from?: "browse" | "buy-dashboard" | "sell-dashboard" | null;
 }) {
   const { track } = useAmplitude();
   const [listings, setListings] = useState<SimilarListing[]>([]);
@@ -182,6 +162,7 @@ export function SimilarListings({
           canScrollLeft={canScrollLeft}
           canScrollRight={canScrollRight}
           scroll={scroll}
+          from={from}
         />
       )}
     </section>
@@ -198,6 +179,7 @@ function CarouselGrid({
   canScrollLeft,
   canScrollRight,
   scroll,
+  from,
 }: {
   listings: SimilarListing[];
   publicId: string;
@@ -206,6 +188,7 @@ function CarouselGrid({
   canScrollLeft: boolean;
   canScrollRight: boolean;
   scroll: (direction: "left" | "right") => void;
+  from: "browse" | "buy-dashboard" | "sell-dashboard" | null;
 }) {
   return (
     <div className="relative">
@@ -254,9 +237,14 @@ function CarouselGrid({
         style={{ scrollSnapType: "x mandatory" }}
       >
         {listings.map((item) => (
-          <a
+          <ListingCard
             key={item.publicId}
-            href={`/l/${item.publicId}`}
+            listing={item}
+            matchReasons={item.matchReasons}
+            imageAspect="square"
+            from={from}
+            className="w-[calc(50%-6px)] shrink-0 sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]"
+            style={{ scrollSnapAlign: "start" }}
             onClick={() => {
               api
                 .patch(`/api/recommendations/log/${item.logId}/click`)
@@ -267,59 +255,7 @@ function CarouselGrid({
                 recommended_listing_id: item.publicId,
               });
             }}
-            className="group w-[calc(50%-6px)] shrink-0 cursor-pointer rounded-xl border border-slate-800 bg-slate-900/50 p-3 transition-colors hover:border-slate-700 hover:bg-slate-800/50 sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]"
-            style={{ scrollSnapAlign: "start" }}
-          >
-            <div className="mb-3 aspect-square overflow-hidden rounded-lg bg-slate-800">
-              {item.photoUrl ? (
-                <img
-                  src={item.photoUrl}
-                  alt={item.title}
-                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-slate-600">
-                  <svg
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <path d="m21 15-5-5L5 21" />
-                  </svg>
-                </div>
-              )}
-            </div>
-            <h3 className="mb-1 truncate text-[13px] font-medium text-white">
-              {item.title}
-            </h3>
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-400">
-              {item.category && (
-                <span className="capitalize">{item.category}</span>
-              )}
-              {item.category && item.condition && <span>·</span>}
-              {item.condition && <span>{formatCondition(item.condition)}</span>}
-            </div>
-            <div className="text-[15px] font-semibold text-emerald-400">
-              {formatPrice(item.targetPrice)}
-            </div>
-            {item.matchReasons.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {item.matchReasons.slice(0, 2).map((reason) => (
-                  <span
-                    key={reason}
-                    className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400"
-                  >
-                    {reason}
-                  </span>
-                ))}
-              </div>
-            )}
-          </a>
+          />
         ))}
       </div>
     </div>

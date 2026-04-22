@@ -2,10 +2,12 @@ export type ListingStatus = "draft" | "published" | "expired";
 
 export type ListingCategory =
   | "electronics"
-  | "fashion"
-  | "home"
+  | "clothing"
+  | "furniture"
+  | "collectibles"
   | "sports"
   | "vehicles"
+  | "books"
   | "other";
 
 export type ItemCondition =

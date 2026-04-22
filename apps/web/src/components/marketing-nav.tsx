@@ -17,12 +17,24 @@ export function MarketingNav() {
   return (
     <nav className="fixed top-0 inset-x-0 z-50 h-16 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
       <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
-        {/* Logo */}
-        <Link href="/" className="text-lg font-bold text-white hover:text-cyan-400 transition-colors">
-          Haggle
-        </Link>
+        {/* Left: Logo + neutral Browse link */}
+        <div className="flex items-center gap-6">
+          <Link href="/" className="text-lg font-bold text-white hover:text-cyan-400 transition-colors">
+            Haggle
+          </Link>
+          <Link
+            href="/browse"
+            className={`hidden sm:inline text-sm font-medium transition-colors ${
+              pathname.startsWith("/browse")
+                ? "text-cyan-400"
+                : "text-slate-300 hover:text-white"
+            }`}
+          >
+            Browse
+          </Link>
+        </div>
 
-        {/* Desktop links */}
+        {/* Desktop links — marketing pages */}
         <div className="hidden sm:flex items-center gap-1">
           {NAV_LINKS.map((link) => {
             const isActive = pathname === link.href;
@@ -64,6 +76,13 @@ export function MarketingNav() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="sm:hidden border-t border-slate-800 bg-bg-primary/95 backdrop-blur-md px-4 py-3">
+          <Link
+            href="/browse"
+            onClick={() => setMobileOpen(false)}
+            className="block py-2.5 text-sm text-slate-300 hover:text-white"
+          >
+            Browse
+          </Link>
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}

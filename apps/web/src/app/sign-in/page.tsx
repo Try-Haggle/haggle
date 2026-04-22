@@ -26,6 +26,14 @@ function SignInForm() {
 
   const error = searchParams.get("error");
   const token = searchParams.get("token");
+  const nextParam = searchParams.get("next");
+
+  // Safety: only honour same-origin relative paths to prevent open redirect.
+  const safeNext =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+      ? nextParam
+      : null;
+  const defaultNext = safeNext ?? "/buy/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,7 +47,7 @@ function SignInForm() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        router.replace("/buy/dashboard");
+        router.replace(defaultNext);
       } else {
         setCheckingAuth(false);
       }
@@ -75,7 +83,7 @@ function SignInForm() {
 
     const nextPath = token
       ? `/sell/dashboard?claim=${token}`
-      : "/buy/dashboard";
+      : defaultNext;
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -206,7 +214,13 @@ function SignInForm() {
           {/* Sign up link */}
           <p className="text-center text-sm text-slate-400">
             Don&apos;t have an account?{" "}
-            <Link href={token ? `/sign-up?token=${encodeURIComponent(token)}` : "/sign-up"} className="text-cyan-400 hover:text-cyan-300 transition-colors">
+            <Link href={(() => {
+              const params = new URLSearchParams();
+              if (token) params.set("token", token);
+              if (safeNext) params.set("next", safeNext);
+              const qs = params.toString();
+              return qs ? `/sign-up?${qs}` : "/sign-up";
+            })()} className="text-cyan-400 hover:text-cyan-300 transition-colors">
               Sign up
             </Link>
           </p>

@@ -143,7 +143,21 @@ interface HfmiData {
   period_days: 30;
 }
 
-export function BuyerLanding({ listing, user, isOwner = false }: { listing: Listing; user: UserInfo | null; isOwner?: boolean }) {
+type Origin = "browse" | "buy-dashboard" | "sell-dashboard";
+
+const ORIGIN_LABEL: Record<Origin, string> = {
+  browse: "Back to Browse",
+  "buy-dashboard": "Back to Dashboard",
+  "sell-dashboard": "Back to Dashboard",
+};
+
+const ORIGIN_HREF: Record<Origin, string> = {
+  browse: "/browse",
+  "buy-dashboard": "/buy/dashboard",
+  "sell-dashboard": "/sell/dashboard",
+};
+
+export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
   const { track } = useAmplitude();
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
@@ -202,7 +216,29 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
         </nav>
       )}
 
-      <div className="mx-auto max-w-6xl px-4 pb-8" style={{ paddingTop: user ? "calc(64px + 2rem)" : "calc(56px + 2rem)" }}>
+      <div className={`mx-auto max-w-6xl px-4 pb-8 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
+        {/* ── Back link (if originated from a known surface) ── */}
+        {from && (
+          <a
+            href={ORIGIN_HREF[from]}
+            className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            {ORIGIN_LABEL[from]}
+          </a>
+        )}
+
         {/* ── Item Overview (top, prominent) ──────────────── */}
         <section className="mb-10">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -338,10 +374,10 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
             seller&apos;s agent to get you the best price.
           </p>
 
-          <div className="grid gap-7" style={{ gridTemplateColumns: "1fr 300px" }}>
-            {/* Left: Agent cards (2x2) */}
+          <div className="grid gap-6 md:gap-7 md:grid-cols-[1fr_300px]">
+            {/* Left: Agent cards (2x2 on desktop, stacked on mobile) */}
             <div>
-              <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
                 {BUYER_AGENT_PRESETS.map((agent) => {
                   const isSelected = selectedAgent?.id === agent.id;
                   return (
@@ -416,9 +452,9 @@ export function BuyerLanding({ listing, user, isOwner = false }: { listing: List
               </div>
             </div>
 
-            {/* Right: Agent Profile */}
+            {/* Right: Agent Profile (below cards on mobile, sticky side panel on desktop) */}
             <div>
-              <div className="sticky top-6">
+              <div className="md:sticky md:top-6">
                 {/* Profile Header */}
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-[12px] font-bold tracking-[0.06em]" style={{ color: "#f1f5f9" }}>AGENT PROFILE</h3>

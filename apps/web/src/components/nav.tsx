@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -21,6 +21,7 @@ const SELL_TABS = [
 ];
 
 const BUY_TABS = [
+  { label: "Browse", href: "/browse" },
   { label: "Dashboard", href: "/buy/dashboard" },
   { label: "Agents", href: "/buy/agents" },
   { label: "Staging", href: "/staging" },
@@ -33,17 +34,27 @@ export function Nav({
   modeOverride,
 }: NavProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Derive mode from URL path, override prop, or localStorage (for /l/ pages)
+  // On /l/ pages, `?from=` indicates the origin surface so we can keep the
+  // originating tab highlighted and preserve buyer/seller mode.
+  const from = pathname.startsWith("/l/") ? searchParams.get("from") : null;
+
+  // Derive mode from URL path, origin param, override prop, or localStorage.
   const deriveMode = (): Mode => {
     if (modeOverride) return modeOverride;
     if (pathname.startsWith("/buy")) return "buying";
     if (pathname.startsWith("/sell")) return "selling";
-    // /l/ pages: preserve previous mode from localStorage
+    // Browse is a buyer-side discovery surface
+    if (pathname.startsWith("/browse")) return "buying";
+    // /l/ pages: use from param to infer the originating mode
+    if (from === "browse" || from === "buy-dashboard") return "buying";
+    if (from === "sell-dashboard") return "selling";
+    // /l/ pages w/o origin: preserve previous mode from localStorage
     if (typeof window !== "undefined") {
       return (localStorage.getItem("haggle_mode") as Mode) ?? "buying";
     }
@@ -51,6 +62,16 @@ export function Nav({
   };
   const mode: Mode = deriveMode();
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
+
+  // For /l/ pages, resolve which tab href should be highlighted based on origin.
+  const activeHrefFromOrigin: string | null =
+    from === "browse"
+      ? "/browse"
+      : from === "buy-dashboard"
+        ? "/buy/dashboard"
+        : from === "sell-dashboard"
+          ? "/sell/dashboard"
+          : null;
 
   // Keep localStorage in sync with URL-derived mode
   useEffect(() => {
@@ -106,7 +127,9 @@ export function Nav({
           {/* Navigation Tabs */}
           <div className="flex items-center gap-1">
             {tabs.map((tab) => {
-              const isActive = pathname.startsWith(tab.href);
+              const isActive = activeHrefFromOrigin
+                ? tab.href === activeHrefFromOrigin
+                : pathname.startsWith(tab.href);
               return (
                 <Link
                   key={tab.href}

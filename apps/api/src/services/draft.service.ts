@@ -6,7 +6,10 @@ import {
   tags,
   eq,
   and,
+  or,
   gt,
+  isNull,
+  desc,
   inArray,
 } from "@haggle/db";
 import { placeListingTags } from "./tag-placement.service.js";
@@ -335,6 +338,47 @@ export async function getPublishedListingByPublicId(
     .where(eq(listingsPublished.publicId, publicId));
 
   return rows[0] ?? null;
+}
+
+/**
+ * List published listings for public browsing. No auth required.
+ * Filters out expired drafts and listings past their sellingDeadline.
+ * Returns only fields safe for public exposure (no floorPrice, strategyConfig, or sellerId).
+ */
+export async function listPublishedListings(
+  db: Database,
+  opts: { category?: string; limit?: number } = {},
+) {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const now = new Date();
+
+  const conditions = [
+    eq(listingDrafts.status, "published"),
+    or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
+  ];
+
+  if (opts.category) {
+    conditions.push(eq(listingDrafts.category, opts.category));
+  }
+
+  const rows = await db
+    .select({
+      publicId: listingsPublished.publicId,
+      publishedAt: listingsPublished.publishedAt,
+      title: listingDrafts.title,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      tags: listingDrafts.tags,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(and(...conditions))
+    .orderBy(desc(listingsPublished.publishedAt))
+    .limit(limit);
+
+  return rows;
 }
 
 // ─── Claim ──────────────────────────────────────────────────
