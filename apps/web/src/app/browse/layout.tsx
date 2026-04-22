@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Nav } from "@/components/nav";
+import { BottomNav } from "@/components/bottom-nav";
 
 export default async function BrowseLayout({
   children,
@@ -49,7 +50,13 @@ export default async function BrowseLayout({
         </nav>
       )}
 
-      <div style={{ paddingTop: user ? "64px" : "56px" }}>{children}</div>
+      {user ? (
+        <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
+      ) : (
+        <div style={{ paddingTop: "56px" }}>{children}</div>
+      )}
+
+      {user && <BottomNav />}
     </>
   );
 }
