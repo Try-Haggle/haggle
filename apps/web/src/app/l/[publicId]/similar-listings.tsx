@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import { ListingCard } from "@/components/listing-card";
+import { api } from "@/lib/api-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
 
@@ -195,7 +196,7 @@ function CarouselGrid({
       {canScrollLeft && (
         <button
           onClick={() => scroll("left")}
-          className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+          className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
         >
           <svg
             width="18"
@@ -214,7 +215,7 @@ function CarouselGrid({
       {canScrollRight && (
         <button
           onClick={() => scroll("right")}
-          className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+          className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
         >
           <svg
             width="18"
@@ -245,9 +246,9 @@ function CarouselGrid({
             className="w-[calc(50%-6px)] shrink-0 sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]"
             style={{ scrollSnapAlign: "start" }}
             onClick={() => {
-              fetch(`${API_URL}/api/recommendations/log/${item.logId}/click`, {
-                method: "PATCH",
-              }).catch(() => {});
+              api
+                .patch(`/api/recommendations/log/${item.logId}/click`)
+                .catch(() => {});
               track("recommendation_clicked", {
                 context: "detail_page",
                 source_listing_id: publicId,

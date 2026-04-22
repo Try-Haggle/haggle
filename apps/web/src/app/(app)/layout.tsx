@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { Nav } from "@/components/nav";
+import { BottomNav } from "@/components/bottom-nav";
 
 export default async function AppLayout({
   children,
@@ -26,7 +27,8 @@ export default async function AppLayout({
   return (
     <>
       <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
-      <div className="pt-16">{children}</div>
+      <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
+      <BottomNav />
     </>
   );
 }
