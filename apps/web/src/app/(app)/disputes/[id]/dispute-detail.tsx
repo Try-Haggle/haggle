@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import type { Dispute, DisputeEvidence } from "./page";
+import { AdvisorChat } from "./_components/advisor-chat";
 
 const EVIDENCE_TYPES = [
   { value: "text", label: "Text Description" },
@@ -561,6 +562,11 @@ export function DisputeDetail({
           )}
         </div>
       )}
+
+      {/* AI Advisor Chat */}
+      <div className="mb-6">
+        <AdvisorChat disputeId={dispute.id} userRole={userRole} />
+      </div>
 
       {/* Activity log */}
       <ActivityLog dispute={dispute} />

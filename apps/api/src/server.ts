@@ -36,6 +36,7 @@ import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
 import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
 import { registerReviewerRoutes } from "./routes/reviewer.js";
+import { registerAdvisorRoutes } from "./routes/advisor.js";
 import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerOrderRoutes } from "./routes/orders.js";
 import websocket from "@fastify/websocket";
@@ -169,6 +170,9 @@ export async function createServer() {
 
   // ─── Reviewer / DS Panel Routes ──────────────────────────
   registerReviewerRoutes(app, db);
+
+  // ─── AI Advisor Routes ──────────────────────────────────
+  registerAdvisorRoutes(app, db);
 
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
