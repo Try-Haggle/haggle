@@ -9,9 +9,9 @@
  *   Stage 0b: Term Analysis        — LLM이 전략+Term 목록 → 우선순위 분석 JSON 생성
  *   Stage 1:  UNDERSTAND           — LLM이 상대 메시지 → 구조화 의도 파싱
  *   Stage 2:  CONTEXT              — 코드가 Briefing + SkillStack + Memo 조립
- *   Stage 3:  DECIDE               — LLM이 전 컨텍스�� → ProtocolDecision 생성
+ *   Stage 3:  DECIDE               — LLM이 전 컨텍스트 → ProtocolDecision 생성
  *   Stage 4:  VALIDATE             — 코드(Referee)가 Math/Protocol Guard 실행
- *   Stage 5:  RESPOND              — LLM이 결정 → 자연어 메시지 생성
+ *   Stage 5:  RESPOND              — 코드가 검증된 결정 → 사용자 메시지 렌더링
  *   Stage 6:  PERSIST+TRANSITION   — 코드가 Memo 갱신 + Phase 전이
  *
  * Zero DB. No auth. In-memory sessions.
@@ -91,6 +91,17 @@ interface UnderstandResult {
 interface DecideResult extends ProtocolDecision {
   phase_assessment?: string;
   near_deal?: boolean;
+}
+
+interface RespondResult {
+  message: string;
+  action: ProtocolDecision['action'];
+  amount_minor?: number;
+  amount_display?: string;
+  currency: 'USD';
+  locale: string;
+  template: string;
+  non_price_terms: Record<string, unknown>;
 }
 
 /** Tag Garden item tags — derived from title at init, immutable per session */
@@ -356,6 +367,117 @@ Respond with valid JSON only: {"message":string}`,
     user: `Decision: ${JSON.stringify(decision)}
 Phase: ${phase}
 ${recentFacts.length > 0 ? 'Last exchange: seller offered $' + recentFacts[recentFacts.length - 1]!.seller_offer : ''}`,
+  };
+}
+
+function formatMoneyMinor(amountMinor: number | undefined): string {
+  if (amountMinor === undefined || amountMinor === null) return '';
+  const amount = amountMinor > 1000 ? amountMinor / 100 : amountMinor;
+  return Number.isInteger(amount) ? `$${amount.toFixed(0)}` : `$${amount.toFixed(2)}`;
+}
+
+function hasTerms(terms: Record<string, unknown> | undefined): boolean {
+  return Boolean(terms && Object.keys(terms).length > 0);
+}
+
+function formatTerms(terms: Record<string, unknown> | undefined, locale: string): string {
+  if (!hasTerms(terms)) return '';
+
+  const rendered = Object.entries(terms!)
+    .map(([key, value]) => {
+      if (typeof value === 'boolean') return value ? key : `${key}: no`;
+      if (typeof value === 'string' || typeof value === 'number') return `${key}: ${value}`;
+      return `${key}: ${JSON.stringify(value)}`;
+    })
+    .join(', ');
+
+  if (locale === 'ko') return ` 조건: ${rendered}.`;
+  return ` Terms: ${rendered}.`;
+}
+
+function renderStructuredResponse(
+  decision: ProtocolDecision,
+  language: string,
+): RespondResult {
+  const locale = language || 'en';
+  const amount = formatMoneyMinor(decision.price);
+  const terms = decision.non_price_terms ?? {};
+  let message: string;
+  let template: string;
+
+  if (locale === 'ko') {
+    switch (decision.action) {
+      case 'ACCEPT':
+        template = 'ko.accept';
+        message = `${amount}에 합의하겠습니다. 계약 진행 부탁드립니다.`;
+        break;
+      case 'COUNTER':
+        template = 'ko.counter';
+        message = `${amount}으로 제안드립니다. 이 조건이면 서로 진행하기 좋겠습니다.`;
+        break;
+      case 'CONFIRM':
+        template = 'ko.confirm';
+        message = `${amount} 조건으로 최종 확인하겠습니다. 결제와 배송 보호를 진행해 주세요.`;
+        break;
+      case 'REJECT':
+        template = 'ko.reject';
+        message = '이번 조건으로는 진행하기 어렵겠습니다. 제안 감사합니다.';
+        break;
+      case 'HOLD':
+        template = 'ko.hold';
+        message = '조건을 조금 더 확인한 뒤 답변드리겠습니다.';
+        break;
+      case 'DISCOVER':
+        template = 'ko.discover';
+        message = '진행 전에 상태, 배송, 보호 조건을 조금 더 확인하고 싶습니다.';
+        break;
+      default:
+        template = 'ko.default';
+        message = amount ? `${amount} 조건으로 진행을 검토하겠습니다.` : '조건을 확인하겠습니다.';
+    }
+  } else {
+    switch (decision.action) {
+      case 'ACCEPT':
+        template = 'en.accept';
+        message = `I agree at ${amount}. Please proceed with the transaction.`;
+        break;
+      case 'COUNTER':
+        template = 'en.counter';
+        message = `I can offer ${amount}. That should be a fair path forward for both sides.`;
+        break;
+      case 'CONFIRM':
+        template = 'en.confirm';
+        message = `I confirm the deal at ${amount}. Please proceed with payment and shipping protection.`;
+        break;
+      case 'REJECT':
+        template = 'en.reject';
+        message = 'I cannot move forward on these terms. Thank you for the offer.';
+        break;
+      case 'HOLD':
+        template = 'en.hold';
+        message = 'I need to review the details before moving forward.';
+        break;
+      case 'DISCOVER':
+        template = 'en.discover';
+        message = 'Before moving forward, I would like to confirm the condition, shipping, and protection terms.';
+        break;
+      default:
+        template = 'en.default';
+        message = amount ? `I will review the offer at ${amount}.` : 'I will review the offer.';
+    }
+  }
+
+  message += formatTerms(terms, locale);
+
+  return {
+    message,
+    action: decision.action,
+    amount_minor: decision.price,
+    amount_display: amount || undefined,
+    currency: 'USD',
+    locale,
+    template,
+    non_price_terms: terms,
   };
 }
 
@@ -833,18 +955,29 @@ Item condition: ${item.condition}`,
     stages.push(validateTrace);
 
     // ────────────────────────────────────────────────
-    // Stage 5: RESPOND (LLM)
-    // Test: LLM이 ProtocolDecision → 자연어 메시지를 올바르게 생성하는가?
-    //       TemplateMessageRenderer를 대체할 수 있는가?
+    // Stage 5: RESPOND (structured renderer)
+    // User-facing text must be rendered from validated ProtocolDecision.
+    // LLM decides action/price/terms; code owns formatting, currency, and final message.
     // ────────────────────────────────────────────────
-    const respondPrompts = buildRespondPrompt(decision, session.phase, session.facts, session.language);
-
-    const respondTrace = await traceLLMCall<{ message: string }>(
-      '5_RESPOND',
-      respondPrompts.system,
-      respondPrompts.user,
-      parseJSON<{ message: string }>,
-    );
+    const respondStart = Date.now();
+    const respondResult = renderStructuredResponse(decision, session.language);
+    const respondTrace: StageTrace<RespondResult> = {
+      stage: '5_RESPOND',
+      input: {
+        final_decision: decision,
+        locale: session.language,
+        render_contract: {
+          price_source: 'ProtocolDecision.price',
+          currency: 'USD',
+          unit: 'minor',
+          llm_free_text: false,
+        },
+      },
+      output: respondResult,
+      parsed: respondResult,
+      latency_ms: Date.now() - respondStart,
+      is_llm: false,
+    };
     stages.push(respondTrace);
     const renderedMessage = respondTrace.parsed.message;
 
@@ -968,7 +1101,7 @@ Item condition: ${item.condition}`,
         '2_CONTEXT — 코드가 Briefing+SkillStack 조립',
         '3_DECIDE — LLM이 전체 컨텍스트→ProtocolDecision',
         '4_VALIDATE — 코드(Referee)+Skill 규칙 검증',
-        '5_RESPOND — LLM이 결정→자연어 메시지',
+        '5_RESPOND — 코드가 결정→구조화된 사용자 메시지 렌더링',
         '6_PERSIST_TRANSITION — 코드가 Memo갱신+Phase전이',
       ],
       pipeline: stages.map(s => ({
