@@ -9,7 +9,8 @@ export interface DisputeEvidence {
   type: "text" | "image" | "tracking_snapshot" | "payment_proof" | "other";
   uri?: string;
   text?: string;
-  submitted_at: string;
+  submitted_at?: string;
+  created_at?: string;
 }
 
 export interface Dispute {

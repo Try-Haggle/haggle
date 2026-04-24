@@ -215,6 +215,7 @@ describe("E2E: Payment lifecycle", () => {
     const res = await app.inject({
       method: "GET",
       url: `/payments/${PAYMENT_ID}`,
+      headers: BUYER_AUTH,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("PAYMENT_NOT_FOUND");

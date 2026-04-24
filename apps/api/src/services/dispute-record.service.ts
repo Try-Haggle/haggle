@@ -157,5 +157,5 @@ export async function createDisputeResolutionRecord(
     summary: resolution.summary,
     refundAmountMinor: resolution.refund_amount_minor?.toString(),
     resolvedAt: resolution.resolved_at ? new Date(resolution.resolved_at) : undefined,
-  });
+  }).onConflictDoNothing({ target: disputeResolutions.disputeId });
 }

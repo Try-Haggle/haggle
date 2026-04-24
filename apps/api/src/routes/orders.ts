@@ -103,6 +103,37 @@ export function registerOrderRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // GET /orders/:orderId — single order lookup for order/dispute detail screens
+  // ---------------------------------------------------------------------------
+
+  app.get<{ Params: { orderId: string } }>(
+    "/orders/:orderId",
+    { preHandler: [requireAuth, requireOrderOwner()] },
+    async (request, reply) => {
+      const order = await getCommerceOrderByOrderId(db, request.params.orderId);
+      if (!order) {
+        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      }
+
+      return reply.send({
+        order: {
+          id: order.id,
+          settlement_approval_id: order.settlementApprovalId,
+          listing_id: order.listingId,
+          seller_id: order.sellerId,
+          buyer_id: order.buyerId,
+          status: order.status,
+          currency: order.currency,
+          amount_minor: Number(order.amountMinor),
+          order_snapshot: order.orderSnapshot,
+          created_at: order.createdAt.toISOString(),
+          updated_at: order.updatedAt.toISOString(),
+        },
+      });
+    },
+  );
+
   /**
    * POST /orders/:orderId/confirm-delivery
    *

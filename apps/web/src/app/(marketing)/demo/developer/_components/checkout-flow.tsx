@@ -3627,7 +3627,7 @@ function rollBuddy() {
 }
 
 type DisputeMode = false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller";
-type DeliveredPhase = "delivered" | "confirming" | "confirmed" | "egg_appear" | "egg_crack" | "egg_hatch" | "buddy_reveal" | "complete" | "dispute";
+type DeliveredPhase = "delivered" | "confirming" | "confirmed" | "egg_offer" | "egg_crack" | "egg_hatch" | "buddy_reveal" | "complete" | "done" | "dispute";
 
 const Step7 = ({
   s,
@@ -3656,13 +3656,16 @@ const Step7 = ({
       setTimeout(() => {
         const b = rollBuddy();
         setBuddy(b);
-        setPhase("egg_appear");
-        setTimeout(() => setPhase("egg_crack"), 1500);
-        setTimeout(() => setPhase("egg_hatch"), 2800);
-        setTimeout(() => setPhase("buddy_reveal"), 3500);
-        setTimeout(() => setPhase("complete"), 5000);
+        setPhase("egg_offer");
       }, 1200);
     }, 1000);
+  }
+
+  function handleOpenEgg() {
+    setPhase("egg_crack");
+    setTimeout(() => setPhase("egg_hatch"), 1300);
+    setTimeout(() => setPhase("buddy_reveal"), 2100);
+    setTimeout(() => setPhase("complete"), 3600);
   }
 
   const apvScenarios = [
@@ -4248,11 +4251,69 @@ const Step7 = ({
         </Card>
       )}
 
-      {/* ── Egg Appear ── */}
-      {(phase === "egg_appear" || phase === "egg_crack" || phase === "egg_hatch") && (
+      {/* ── Optional reward intro ── */}
+      {phase === "egg_offer" && buddy && (
+        <Card accent="cyan" style={{ marginBottom: 14, padding: 28 }}>
+          <Row justify="space-between" align="center" wrap gap={16}>
+            <Row gap={14} align="center" style={{ flex: 1, minWidth: 260 }}>
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  background: C.cyanBg,
+                  border: `1px solid ${C.cyanBd}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 30,
+                }}
+              >
+                🥚
+              </div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>
+                  축하해요, 에그가 떨어졌어요
+                </div>
+                <div style={{ fontSize: 12, color: C.mute, marginTop: 5, lineHeight: 1.55 }}>
+                  거래는 이미 완료됐습니다. 에그와 버디는 선택형 보상이라 지금 열어도 되고,
+                  관심 없으면 다음 거래로 넘어가도 됩니다.
+                </div>
+              </div>
+            </Row>
+            <Row gap={8} wrap>
+              <Btn v="secondary" onClick={() => setPhase("done")}>
+                나중에 보기
+              </Btn>
+              <Btn onClick={handleOpenEgg}>
+                에그 열기
+              </Btn>
+            </Row>
+          </Row>
+        </Card>
+      )}
+
+      {phase === "done" && (
+        <Card accent="em" style={{ marginBottom: 14, padding: 22 }}>
+          <Row gap={12} align="center">
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: C.emBg, border: `1px solid ${C.emBd}`, color: C.emFg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Ic.check size={20} sw={2.5} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Trade complete</div>
+              <div style={{ fontSize: 12, color: C.mute, marginTop: 3 }}>
+                에그는 보상함에 저장됩니다. 버디를 몰라도 거래는 그대로 사용할 수 있습니다.
+              </div>
+            </div>
+          </Row>
+        </Card>
+      )}
+
+      {/* ── Egg open ── */}
+      {(phase === "egg_crack" || phase === "egg_hatch") && (
         <Card style={{ marginBottom: 14, padding: 40, textAlign: "center" }}>
           <div style={{ fontSize: 12, color: C.mute, marginBottom: 16, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", textTransform: "uppercase", letterSpacing: "0.14em" }}>
-            Trade complete — you earned a buddy!
+            Optional reward layer
           </div>
           <div style={{
             fontSize: phase === "egg_crack" ? 72 : phase === "egg_hatch" ? 84 : 64,
@@ -4264,7 +4325,6 @@ const Step7 = ({
             🥚
           </div>
           <div style={{ fontSize: 13, color: C.dim, marginTop: 12, fontWeight: 500 }}>
-            {phase === "egg_appear" && "An egg appeared..."}
             {phase === "egg_crack" && "It's cracking!"}
             {phase === "egg_hatch" && "Hatching...!"}
           </div>
@@ -4500,7 +4560,7 @@ const Step7 = ({
       )}
 
       {/* ── Final actions ── */}
-      {(phase === "complete" || (phase === "dispute" && (disputeMode === "resolved_buyer" || disputeMode === "resolved_partial" || disputeMode === "resolved_seller"))) && (
+      {((phase === "complete" || phase === "done") || (phase === "dispute" && (disputeMode === "resolved_buyer" || disputeMode === "resolved_partial" || disputeMode === "resolved_seller"))) && (
         <Row justify="flex-end" gap={10}>
           <Btn v="secondary" onClick={reset} icon={<Ic.restart size={14} />}>
             Run demo again

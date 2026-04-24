@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { disputeEvidence as disputeEvidenceTable, refunds as refundsTable, eq, and, sql } from "@haggle/db";
+import { disputeEvidence as disputeEvidenceTable, eq, and, sql } from "@haggle/db";
 import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY, computeDisputeCost, createDepositRequirement } from "@haggle/dispute-core";
@@ -12,18 +12,12 @@ import {
   getDisputeByOrderId,
   updateDisputeRecord,
   addDisputeEvidenceRecord,
-  createDisputeResolutionRecord,
 } from "../services/dispute-record.service.js";
 import {
   createDisputeUploadUrl,
   disputeEvidenceExists,
   createDisputeViewUrl,
 } from "../services/dispute-storage.service.js";
-import {
-  anchorDisputeOnChain,
-  computeEvidenceMerkleRoot,
-  computeResolutionHash,
-} from "../chain/dispute-anchoring.js";
 import {
   ALLOWED_EVIDENCE_TYPES,
   EVIDENCE_LIMITS,
@@ -34,6 +28,7 @@ import {
   validateDisputeStoragePath,
 } from "../lib/dispute-storage-paths.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
+import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import {
   getDepositByDisputeId,
   createDeposit,
@@ -43,56 +38,50 @@ import {
 } from "../services/dispute-deposit.service.js";
 import {
   getCommerceOrderByOrderId,
-  getPaymentIntentByOrderId,
-  getPaymentIntentRowById,
   updateCommerceOrderStatus,
-  createRefundRecord,
 } from "../services/payment-record.service.js";
-import { createPaymentServiceFromEnv } from "../payments/providers.js";
-import type { Refund } from "@haggle/payment-core";
 import {
   initiateDepositCollection,
   confirmUsdcDeposit,
-  type DepositPaymentRail,
 } from "../payments/deposit-collector.js";
-import { refundDeposit } from "../payments/deposit-refunder.js";
-import { executeRefund } from "../payments/refund-executor.js";
 import { isAddress } from "viem";
 import { assignReviewersToDispute } from "./reviewer.js";
+import { INPUT_LIMITS } from "../lib/input-limits.js";
 
 const openDisputeSchema = z.object({
-  order_id: z.string(),
-  reason_code: z.string(),
+  order_id: z.string().max(INPUT_LIMITS.shortTextChars),
+  reason_code: z.string().max(INPUT_LIMITS.shortTextChars),
   opened_by: z.enum(["buyer", "seller", "system"]),
   evidence: z
     .array(
       z.object({
         submitted_by: z.enum(["buyer", "seller", "system"]),
         type: z.enum(["text", "image", "video", "tracking_snapshot", "payment_proof", "other"]),
-        uri: z.string().optional(),
-        text: z.string().optional(),
+        uri: z.string().url().max(INPUT_LIMITS.uriChars).optional(),
+        text: z.string().max(INPUT_LIMITS.longTextChars).optional(),
       }),
     )
+    .max(10)
     .optional(),
 });
 
 const addEvidenceSchema = z.object({
   submitted_by: z.enum(["buyer", "seller", "system"]),
   type: z.enum(["text", "image", "video", "tracking_snapshot", "payment_proof", "other"]),
-  uri: z.string().optional(),
-  text: z.string().optional(),
+  uri: z.string().url().max(INPUT_LIMITS.uriChars).optional(),
+  text: z.string().max(INPUT_LIMITS.longTextChars).optional(),
 });
 
 const uploadUrlSchema = z.object({
   filename: z.string().min(1).max(128),
-  content_type: z.string(),
+  content_type: z.string().max(INPUT_LIMITS.shortTextChars),
   file_size_bytes: z.number().int().min(1),
 });
 
 const commitEvidenceSchema = z.object({
-  storage_path: z.string().min(1),
+  storage_path: z.string().min(1).max(INPUT_LIMITS.uriChars),
   type: z.enum(["image", "video"]),
-  description: z.string().max(500).optional(),
+  description: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
 });
 
 const depositSchema = z.object({
@@ -106,12 +95,12 @@ const confirmUsdcSchema = z.object({
 
 const escalateSchema = z.object({
   escalated_by: z.enum(["buyer", "seller", "system"]),
-  reason: z.string().optional(),
+  reason: z.string().max(INPUT_LIMITS.disputeSummaryChars).optional(),
 });
 
 const resolveDisputeSchema = z.object({
   outcome: z.enum(["buyer_favor", "seller_favor", "partial_refund"]),
-  summary: z.string(),
+  summary: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars),
   refund_amount_minor: z.number().optional(),
 });
 
@@ -124,7 +113,6 @@ const listDisputesQuerySchema = z.object({
 
 export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const disputeService = new DisputeService();
-  const paymentService = createPaymentServiceFromEnv();
   const { requireDisputeParty } = createOwnershipMiddleware(db);
 
   // GET /disputes — list authenticated user's disputes
@@ -302,7 +290,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     }
 
     const evidence = (parsed.data.evidence ?? []).map((e) => ({
-      submitted_by: e.submitted_by,
+      submitted_by: request.user?.role === "admin" ? e.submitted_by : derivedOpenedBy,
       type: e.type,
       uri: e.uri,
       text: e.text,
@@ -528,7 +516,32 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     }
 
     try {
-      const result = disputeService.addEvidence(dispute, parsed.data);
+      const order =
+        ((request as unknown as Record<string, unknown>).orderResource as {
+          id: string;
+          buyerId: string;
+          sellerId: string;
+        } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+
+      if (!order) {
+        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      }
+
+      let submittedBy: "buyer" | "seller" | "system";
+      if (request.user?.role === "admin") {
+        submittedBy = parsed.data.submitted_by;
+      } else if (request.user!.id === order.buyerId) {
+        submittedBy = "buyer";
+      } else if (request.user!.id === order.sellerId) {
+        submittedBy = "seller";
+      } else {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+      }
+
+      const result = disputeService.addEvidence(dispute, {
+        ...parsed.data,
+        submitted_by: submittedBy,
+      });
       await updateDisputeRecord(db, result.dispute);
       if (result.value) {
         await addDisputeEvidenceRecord(db, result.value);
@@ -563,10 +576,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
     try {
       const result = disputeService.resolve(dispute, parsed.data);
-      await updateDisputeRecord(db, result.dispute);
-      if (result.value) {
-        await createDisputeResolutionRecord(db, dispute.id, result.value);
+      if (!result.value) {
+        return reply.code(400).send({ error: "RESOLUTION_FAILED", message: "Resolution result missing" });
       }
+
+      const finalization = await finalizeDisputeResolution(db, dispute, result.value, result.dispute);
+
       // Resolve buyer/seller from the commerce order
       const order = await getCommerceOrderByOrderId(db, dispute.order_id);
 
@@ -579,191 +594,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      // Auto-refund on buyer_favor / partial_refund; close on seller_favor
-      let autoRefundResult = null;
-      if (parsed.data.outcome === "buyer_favor" || parsed.data.outcome === "partial_refund") {
-        const intent = await getPaymentIntentByOrderId(db, dispute.order_id);
-        if (intent) {
-          const refundAmountMinor =
-            parsed.data.refund_amount_minor ?? intent.amount.amount_minor;
-          const refund: Refund = {
-            id:
-              typeof globalThis.crypto?.randomUUID === "function"
-                ? globalThis.crypto.randomUUID()
-                : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            payment_intent_id: intent.id,
-            amount: {
-              currency: intent.amount.currency,
-              amount_minor: refundAmountMinor,
-            },
-            reason_code: `dispute_${parsed.data.outcome}`,
-            status: "REQUESTED",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          try {
-            autoRefundResult = await paymentService.refundIntent(intent, refund);
-            await createRefundRecord(
-              db,
-              autoRefundResult.refund,
-              typeof autoRefundResult.metadata?.provider_reference === "string"
-                ? autoRefundResult.metadata.provider_reference
-                : null,
-            );
-          } catch {
-            // Refund attempt failed — log but don't fail the resolution
-          }
-
-          // Fire-and-forget: execute real refund via USDC/Stripe/mock rail
-          // Double-refund prevention: only execute if no completed refund exists
-          const existingCompleted = await db
-            .select({ id: refundsTable.id })
-            .from(refundsTable)
-            .where(and(
-              eq(refundsTable.paymentIntentId, intent.id),
-              eq(refundsTable.status, "COMPLETED"),
-            ));
-
-          if (existingCompleted.length === 0) {
-            // Look up buyer's wallet address
-            let buyerWalletAddress: string | undefined;
-            try {
-              const walletRow = await db.query.userWallets.findFirst({
-                where: (fields, ops) => ops.and(
-                  ops.eq(fields.userId, order?.buyerId ?? ""),
-                  ops.eq(fields.isPrimary, true),
-                ),
-              });
-              buyerWalletAddress = walletRow?.walletAddress;
-            } catch {
-              // Wallet lookup failed — continue without
-            }
-
-            // Determine rail from the original payment intent
-            const refundRail = intent.selected_rail === "stripe" ? "stripe" as const : "usdc" as const;
-
-            // Get Stripe PI if applicable
-            let stripePaymentIntentId: string | undefined;
-            if (refundRail === "stripe") {
-              try {
-                const intentRow = await getPaymentIntentRowById(db, intent.id);
-                const provCtx = intentRow?.providerContext as Record<string, unknown> | null;
-                stripePaymentIntentId = provCtx?.stripe_payment_intent_id as string | undefined;
-              } catch {
-                // Provider context lookup failed
-              }
-            }
-
-            executeRefund({
-              order_id: dispute.order_id,
-              buyer_wallet_address: buyerWalletAddress,
-              amount_cents: refundAmountMinor,
-              rail: refundRail,
-              reason: `dispute_${parsed.data.outcome}`,
-              stripe_payment_intent_id: stripePaymentIntentId,
-            })
-              .then(async (refundExecResult) => {
-                try {
-                  await db
-                    .update(refundsTable)
-                    .set({
-                      status: "COMPLETED",
-                      providerReference: refundExecResult.tx_hash ?? refundExecResult.refund_id ?? null,
-                      updatedAt: new Date(),
-                    })
-                    .where(eq(refundsTable.id, refund.id));
-                } catch (updateErr) {
-                  console.error(
-                    "[disputes] Refund record update failed:",
-                    updateErr instanceof Error ? updateErr.message : String(updateErr),
-                  );
-                }
-              })
-              .catch((refundErr) => {
-                console.error(
-                  "[disputes] Real refund execution failed (fire-and-forget):",
-                  refundErr instanceof Error ? refundErr.message : String(refundErr),
-                );
-              });
-          }
-        }
-        await updateCommerceOrderStatus(db, dispute.order_id, "REFUNDED");
-      } else if (parsed.data.outcome === "seller_favor") {
-        await updateCommerceOrderStatus(db, dispute.order_id, "CLOSED");
-
-        // Refund deposit to seller (fire-and-forget)
-        const deposit = await getDepositByDisputeId(db, dispute.id);
-        if (deposit && deposit.status === "DEPOSITED") {
-          const depositMeta = deposit.metadata as Record<string, unknown> | null;
-          const depositRail = (depositMeta?.rail as DepositPaymentRail) ?? "mock";
-
-          refundDeposit({
-            deposit_id: deposit.id,
-            amount_cents: deposit.amountCents,
-            seller_wallet_address: depositMeta?.wallet_address as string | undefined,
-            stripe_payment_intent_id: depositMeta?.stripe_payment_intent_id as string | undefined,
-            rail: depositRail,
-          })
-            .then(async (refundResult) => {
-              await updateDepositStatus(db, deposit.id, "REFUNDED", {
-                resolvedAt: new Date(),
-                metadata: {
-                  ...(depositMeta ?? {}),
-                  refund_tx_hash: refundResult.tx_hash,
-                  refund_id: refundResult.refund_id,
-                  refunded_at: new Date().toISOString(),
-                },
-              });
-            })
-            .catch((refundErr) => {
-              console.error(
-                "[disputes] Deposit refund failed (fire-and-forget):",
-                refundErr instanceof Error ? refundErr.message : String(refundErr),
-              );
-            });
-        }
-      }
-
-      // Fire-and-forget: anchor dispute resolution on-chain.
-      // Never awaited — anchoring failure must not block the HTTP response.
-      if (result.value) {
-        try {
-          const evidenceRootHash = computeEvidenceMerkleRoot(dispute.evidence);
-          const resolutionHash = computeResolutionHash(result.value);
-
-          // Store pending anchor metadata before the async call
-          await updateDisputeRecord(db, {
-            ...result.dispute,
-            metadata: {
-              ...(result.dispute.metadata as Record<string, unknown> ?? {}),
-              pending_anchor: true,
-              anchor_evidence_root: evidenceRootHash,
-              anchor_resolution_hash: resolutionHash,
-            },
-          });
-
-          // Fire-and-forget — do NOT await
-          anchorDisputeOnChain({
-            orderId: dispute.order_id,
-            disputeCaseId: dispute.id,
-            evidence: dispute.evidence,
-            resolution: result.value,
-          }).catch((anchorErr) => {
-            console.error(
-              "[disputes] On-chain anchoring failed (fire-and-forget):",
-              anchorErr instanceof Error ? anchorErr.message : String(anchorErr),
-            );
-          });
-        } catch (anchorSetupErr) {
-          // Setup failure (metadata update, hash computation) — log and continue
-          console.error(
-            "[disputes] Anchor setup failed:",
-            anchorSetupErr instanceof Error ? anchorSetupErr.message : String(anchorSetupErr),
-          );
-        }
-      }
-
-      return reply.send({ ...result, auto_refund: autoRefundResult });
+      return reply.send({
+        ...result,
+        dispute: finalization.dispute,
+        auto_refund: finalization.auto_refund,
+        deposit_refund: finalization.deposit_refund,
+      });
     } catch (error) {
       return reply.code(400).send({
         error: "RESOLUTION_FAILED",
@@ -777,6 +613,16 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     const dispute = await getDisputeById(db, (request.params as { id: string }).id);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+    }
+    if ((process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && request.user?.role !== "admin") {
+      const order = await getCommerceOrderByOrderId(db, dispute.order_id);
+      const openerUserId = dispute.opened_by === "buyer" ? order?.buyerId : order?.sellerId;
+      if (!openerUserId || request.user?.id !== openerUserId) {
+        return reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Only the party who opened the dispute can close it in production",
+        });
+      }
     }
 
     try {
@@ -833,6 +679,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         amount_cents: amountCents,
         seller_wallet_address: parsed.data.wallet_address,
         seller_user_id: userId,
+        rail: parsed.data.rail,
       });
 
       const rail = result.rail;

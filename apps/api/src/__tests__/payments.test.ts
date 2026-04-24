@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import jwt from "jsonwebtoken";
+import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
@@ -20,6 +21,7 @@ vi.mock("../services/payment-record.service.js", () => ({
 vi.mock("../services/settlement-release.service.js", () => ({
   createSettlementReleaseRecord: vi.fn().mockResolvedValue(null),
   getSettlementReleaseByOrderId: vi.fn().mockResolvedValue(null),
+  getSettlementReleaseById: vi.fn().mockResolvedValue(null),
   updateSettlementReleaseRecord: vi.fn().mockResolvedValue(null),
 }));
 
@@ -119,11 +121,60 @@ describe("Payment routes", () => {
     expect(body.timestamp).toBeDefined();
   });
 
+  it("rejects inline settlement approvals for non-admin users in production", async () => {
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    process.env.VERCEL_ENV = "production";
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    const token = jwt.sign(
+      { sub: "test-user-001", email: "test@haggle.ai", role: "authenticated" },
+      "test-secret",
+    );
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/prepare",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          settlement_approval: {
+            id: "sa_inline",
+            approval_state: "APPROVED",
+            seller_policy: {
+              mode: "AUTO_WITHIN_POLICY",
+              fulfillment_sla: { shipment_input_due_days: 3 },
+              responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+            },
+            terms: {
+              listing_id: "listing_1",
+              seller_id: "seller_1",
+              buyer_id: "test-user-001",
+              final_amount_minor: 1000,
+              currency: "USD",
+              selected_payment_rail: "x402",
+            },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("INLINE_SETTLEMENT_APPROVAL_DISABLED");
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = originalVercelEnv;
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+    }
+  });
+
   // GET /payments/:id
   it("GET /payments/:id returns 404 for unknown payment", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/payments/nonexistent-id",
+      headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("PAYMENT_NOT_FOUND");

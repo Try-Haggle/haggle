@@ -10,7 +10,8 @@ import {
   completeBufferRelease,
   computeReleasePhase,
 } from "@haggle/payment-core";
-import { requireAuth } from "../middleware/require-auth.js";
+import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import {
   createSettlementReleaseRecord,
   getSettlementReleaseById,
@@ -43,8 +44,10 @@ const applyAdjustmentSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Database) {
+  const { requireOrderOwner } = createOwnershipMiddleware(db);
+
   // POST /settlement-releases — Create a new settlement release
-  app.post("/settlement-releases", async (request, reply) => {
+  app.post("/settlement-releases", { preHandler: [requireAdmin] }, async (request, reply) => {
     const parsed = createReleaseSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_REQUEST", issues: parsed.error.issues });
@@ -68,11 +71,23 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   });
 
   // GET /settlement-releases/:id — Get release by ID
-  app.get("/settlement-releases/:id", async (request, reply) => {
+  app.get("/settlement-releases/:id", { preHandler: [requireAuth] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const release = await getSettlementReleaseById(db, id);
     if (!release) {
       return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
+    }
+    if (request.user?.role !== "admin") {
+      const order = await db.query.commerceOrders.findFirst({
+        where: (fields, ops) => ops.eq(fields.id, release.order_id),
+      });
+      if (!order) {
+        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      }
+      const userId = request.user!.id;
+      if (userId !== order.buyerId && userId !== order.sellerId) {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+      }
     }
     return reply.send({
       release,
@@ -81,7 +96,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   });
 
   // GET /settlement-releases/by-order/:orderId — Get release by order ID
-  app.get("/settlement-releases/by-order/:orderId", async (request, reply) => {
+  app.get("/settlement-releases/by-order/:orderId", { preHandler: [requireAuth, requireOrderOwner()] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
     const release = await getSettlementReleaseByOrderId(db, orderId);
     if (!release) {
@@ -94,7 +109,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   });
 
   // POST /settlement-releases/:id/confirm-delivery — Confirm delivery
-  app.post("/settlement-releases/:id/confirm-delivery", async (request, reply) => {
+  app.post("/settlement-releases/:id/confirm-delivery", { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const release = await getSettlementReleaseById(db, id);
     if (!release) {
@@ -124,7 +139,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   });
 
   // POST /settlement-releases/:id/complete-buyer-review — Complete buyer review
-  app.post("/settlement-releases/:id/complete-buyer-review", async (request, reply) => {
+  app.post("/settlement-releases/:id/complete-buyer-review", { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const release = await getSettlementReleaseById(db, id);
     if (!release) {
@@ -149,7 +164,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   });
 
   // POST /settlement-releases/:id/apply-adjustment — Apply APV weight adjustment
-  app.post("/settlement-releases/:id/apply-adjustment", async (request, reply) => {
+  app.post("/settlement-releases/:id/apply-adjustment", { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const release = await getSettlementReleaseById(db, id);
     if (!release) {
@@ -179,7 +194,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   });
 
   // POST /settlement-releases/:id/release-buffer — Release weight buffer
-  app.post("/settlement-releases/:id/release-buffer", async (request, reply) => {
+  app.post("/settlement-releases/:id/release-buffer", { preHandler: [requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const release = await getSettlementReleaseById(db, id);
     if (!release) {
@@ -213,7 +228,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   // POST /settlement-releases/by-order/:orderId/buyer-confirm — Buyer confirms receipt
   app.post(
     "/settlement-releases/by-order/:orderId/buyer-confirm",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requireOrderOwner({ role: "buyer" })] },
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
       const release = await getSettlementReleaseByOrderId(db, orderId);
@@ -242,7 +257,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
   // POST /settlement-releases/by-order/:orderId/complete-buffer — Complete buffer release
   app.post(
     "/settlement-releases/by-order/:orderId/complete-buffer",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
       const { orderId } = request.params as { orderId: string };
       const release = await getSettlementReleaseByOrderId(db, orderId);

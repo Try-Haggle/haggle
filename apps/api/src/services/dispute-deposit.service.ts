@@ -19,6 +19,16 @@ export async function getDepositByDisputeId(db: Database, disputeId: string) {
   return rows[0] ?? null;
 }
 
+export async function getDepositById(db: Database, depositId: string) {
+  const rows = await db
+    .select()
+    .from(disputeDeposits)
+    .where(eq(disputeDeposits.id, depositId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export async function createDeposit(
   db: Database,
   data: {

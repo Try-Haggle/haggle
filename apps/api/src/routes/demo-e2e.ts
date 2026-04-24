@@ -23,6 +23,19 @@ const createDemoOrderSchema = z.object({
   item_title: z.string().default("iPhone 14 Pro 128GB Space Black"),
 });
 
+function canAccessOrder(
+  user: { id: string; role?: string } | undefined,
+  order: { buyerId: string; sellerId: string },
+): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  return user.id === order.buyerId || user.id === order.sellerId;
+}
+
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
 export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
   /**
    * POST /demo/e2e/create-order
@@ -30,6 +43,13 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
    * can immediately start the payment → shipping → dispute flow.
    */
   app.post("/demo/e2e/create-order", { preHandler: [requireAuth] }, async (request, reply) => {
+    if (isProductionRuntime() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DEMO_E2E_DISABLED",
+        message: "Demo order creation is disabled in production",
+      });
+    }
+
     const parsed = createDemoOrderSchema.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_REQUEST", issues: parsed.error.issues });
@@ -129,6 +149,9 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
     if (!order) {
       return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
     }
+    if (!canAccessOrder(request.user, order)) {
+      return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+    }
 
     return reply.send({
       order: {
@@ -156,6 +179,9 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
     if (!order) {
       return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
     }
+    if (!canAccessOrder(request.user, order)) {
+      return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+    }
     return reply.send({
       order: {
         id: order.id,
@@ -175,6 +201,14 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
    */
   app.get("/payments/by-order/:orderId", { preHandler: [requireAuth] }, async (request, reply) => {
     const { orderId } = request.params as { orderId: string };
+    const order = await getCommerceOrderByOrderId(db, orderId);
+    if (!order) {
+      return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+    }
+    if (!canAccessOrder(request.user, order)) {
+      return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+    }
+
     const payment = await getPaymentIntentByOrderId(db, orderId);
     if (!payment) {
       return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });

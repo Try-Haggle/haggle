@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import type { Dispute, DisputeEvidence } from "./page";
@@ -37,6 +37,10 @@ function formatDate(dateStr: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function evidenceTimestamp(evidence: DisputeEvidence): string {
+  return evidence.submitted_at ?? evidence.created_at ?? new Date().toISOString();
 }
 
 // ─── Timeline ───────────────────────────────────────────────────
@@ -194,6 +198,29 @@ interface ActivityEvent {
   icon: "open" | "evidence" | "review" | "resolve" | "close";
 }
 
+interface DisputeDeposit {
+  id: string;
+  disputeId: string;
+  tier: number;
+  amountCents: number;
+  status: "PENDING" | "DEPOSITED" | "FORFEITED" | "REFUNDED";
+  deadlineAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+interface DepositCollection {
+  rail: "usdc" | "stripe" | "mock";
+  status: "pending" | "completed";
+  usdc_approval?: {
+    spender_address: string;
+    token_address: string;
+    amount_wei: string;
+    chain_id: number;
+  };
+  stripe_client_secret?: string;
+  stripe_payment_intent_id?: string;
+}
+
 function buildActivityLog(dispute: Dispute): ActivityEvent[] {
   const events: ActivityEvent[] = [];
 
@@ -206,7 +233,7 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
   for (const ev of dispute.evidence) {
     events.push({
       label: `${ev.submitted_by} submitted ${ev.type} evidence`,
-      timestamp: ev.submitted_at,
+      timestamp: evidenceTimestamp(ev),
       icon: "evidence",
     });
   }
@@ -293,7 +320,7 @@ function EvidenceItem({ evidence }: { evidence: DisputeEvidence }) {
       <div className="flex items-center gap-2 mb-1">
         <span className="text-xs font-medium text-slate-300">{typeLabel}</span>
         <span className="text-xs text-slate-500">by {evidence.submitted_by}</span>
-        <span className="ml-auto text-xs text-slate-600">{formatDate(evidence.submitted_at)}</span>
+        <span className="ml-auto text-xs text-slate-600">{formatDate(evidenceTimestamp(evidence))}</span>
       </div>
       {evidence.text && (
         <p className="text-sm text-slate-300 mt-1">{evidence.text}</p>
@@ -331,6 +358,10 @@ export function DisputeDetail({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [deposit, setDeposit] = useState<DisputeDeposit | null>(null);
+  const [depositRail, setDepositRail] = useState<"usdc" | "stripe">("usdc");
+  const [depositWallet, setDepositWallet] = useState("");
+  const [depositCollection, setDepositCollection] = useState<DepositCollection | null>(null);
 
   const badge = statusBadge(dispute.status);
   const isResolved =
@@ -353,6 +384,24 @@ export function DisputeDetail({
   const isSellerWaiting =
     userRole === "seller" &&
     (dispute.status === "WAITING_FOR_SELLER" || dispute.status === "OPEN");
+
+  const canEscalate = !isResolved && dispute.status !== "UNDER_REVIEW";
+
+  async function loadDeposit() {
+    const result = await api.get<{ deposit: DisputeDeposit }>(`/disputes/${dispute.id}/deposit`).catch(() => null);
+    setDeposit(result?.deposit ?? null);
+  }
+
+  useEffect(() => {
+    loadDeposit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispute.id]);
+
+  async function reloadDispute() {
+    const result = await api.get<{ dispute: Dispute }>(`/disputes/${dispute.id}`);
+    setDispute(result.dispute);
+    await loadDeposit();
+  }
 
   async function handleSubmitEvidence(e: React.FormEvent) {
     e.preventDefault();
@@ -378,6 +427,61 @@ export function DisputeDetail({
       setSuccess("Evidence submitted successfully");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit evidence");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleEscalate() {
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await api.post<{ dispute: Dispute; deposit?: DisputeDeposit }>(`/disputes/${dispute.id}/escalate`, {
+        escalated_by: userRole,
+      });
+      setDispute(result.dispute);
+      setDeposit(result.deposit ?? null);
+      setSuccess("Dispute escalated");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to escalate dispute");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleStartDeposit() {
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await api.post<{ deposit: DisputeDeposit; collection: DepositCollection }>(`/disputes/${dispute.id}/deposit`, {
+        rail: depositRail,
+        wallet_address: depositWallet || undefined,
+      });
+      setDeposit(result.deposit);
+      setDepositCollection(result.collection);
+      setSuccess(result.collection.rail === "usdc" ? "USDC approval instructions created" : "Deposit session created");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start deposit");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleConfirmUsdcDeposit() {
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await api.post<{ deposit: DisputeDeposit; tx_hash?: string }>(`/disputes/${dispute.id}/deposit/confirm-usdc`, {
+        wallet_address: depositWallet,
+      });
+      setDeposit(result.deposit);
+      setSuccess(result.tx_hash ? `Deposit confirmed: ${result.tx_hash}` : "Deposit confirmed");
+      await reloadDispute();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to confirm deposit");
     } finally {
       setSubmitting(false);
     }
@@ -456,6 +560,96 @@ export function DisputeDetail({
       {/* Cost Breakdown */}
       {effectiveAmount > 0 && (
         <CostBreakdown amountMinor={effectiveAmount} currentTier={currentTier} />
+      )}
+
+      {!isResolved && (
+        <div className="rounded-xl border border-slate-800 bg-bg-card/50 overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white">Review Escalation</span>
+            {deposit && (
+              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-300">
+                {deposit.status}
+              </span>
+            )}
+          </div>
+          <div className="p-4 space-y-3">
+            {canEscalate && (
+              <button
+                type="button"
+                onClick={handleEscalate}
+                disabled={submitting}
+                className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-40"
+              >
+                Escalate Review
+              </button>
+            )}
+
+            {deposit && (
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">Seller deposit</span>
+                  <span className="font-semibold text-white">${(deposit.amountCents / 100).toFixed(2)}</span>
+                </div>
+                {deposit.deadlineAt && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-400">Deadline</span>
+                    <span className="text-slate-300">{formatDate(deposit.deadlineAt)}</span>
+                  </div>
+                )}
+
+                {userRole === "seller" && deposit.status === "PENDING" && (
+                  <div className="space-y-2 border-t border-slate-800 pt-3">
+                    <select
+                      value={depositRail}
+                      onChange={(event) => setDepositRail(event.target.value as "usdc" | "stripe")}
+                      className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                    >
+                      <option value="usdc">USDC</option>
+                      <option value="stripe">Stripe Onramp</option>
+                    </select>
+                    <input
+                      value={depositWallet}
+                      onChange={(event) => setDepositWallet(event.target.value)}
+                      placeholder="0x wallet address"
+                      className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleStartDeposit}
+                        disabled={submitting}
+                        className="rounded-lg bg-violet-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-600 disabled:opacity-40"
+                      >
+                        Start Deposit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmUsdcDeposit}
+                        disabled={submitting || !depositWallet}
+                        className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-300 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
+                      >
+                        Confirm USDC
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {depositCollection?.usdc_approval && (
+                  <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-200 space-y-1">
+                    <p>Spender: <span className="font-mono">{depositCollection.usdc_approval.spender_address}</span></p>
+                    <p>Token: <span className="font-mono">{depositCollection.usdc_approval.token_address}</span></p>
+                    <p>Amount wei: <span className="font-mono">{depositCollection.usdc_approval.amount_wei}</span></p>
+                  </div>
+                )}
+                {depositCollection?.stripe_client_secret && (
+                  <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-200">
+                    Stripe deposit session created.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Evidence list */}

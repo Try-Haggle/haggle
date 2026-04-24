@@ -463,6 +463,24 @@ export function Demo() {
           <p className="text-slate-400">Pick your side, tune both AI engines, and watch them negotiate.</p>
         </div>
 
+        <div className="mx-auto mb-6 max-w-3xl rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Lumen Tutorial</p>
+              <h2 className="mt-1 text-lg font-semibold text-white">거래 흐름 튜토리얼 해보기</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                리스팅, 오퍼, 결제, 정산을 먼저 체험하고 거래 완료 뒤 선택형 에그/버디 레이어를 확인합니다.
+              </p>
+            </div>
+            <Link
+              href="/demo/developer"
+              className="shrink-0 rounded-xl bg-cyan-600 px-5 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-cyan-500"
+            >
+              Open Trade Tutorial
+            </Link>
+          </div>
+        </div>
+
         {/* Perspective + Item */}
         <div className="flex flex-col items-center gap-4 mb-6">
           <div className="inline-flex rounded-xl border border-slate-700 bg-bg-card p-1">

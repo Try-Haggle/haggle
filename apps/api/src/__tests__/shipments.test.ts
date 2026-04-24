@@ -189,4 +189,29 @@ describe("Shipment routes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("INVALID_RATE_REQUEST");
   });
+
+  it("POST /shipments/rates rejects oversized address fields", async () => {
+    const address = {
+      name: "x".repeat(513),
+      street1: "1 Market St",
+      city: "San Francisco",
+      state: "CA",
+      zip: "94105",
+      country: "US",
+    };
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/shipments/rates",
+      headers: AUTH_HEADERS,
+      payload: {
+        from_address: address,
+        to_address: { ...address, name: "Buyer" },
+        parcel: { weight_oz: 16 },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_RATE_REQUEST");
+  });
 });

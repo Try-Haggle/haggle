@@ -95,6 +95,18 @@ vi.mock("../services/dispute-record.service.js", () => ({
   createDisputeResolutionRecord: vi.fn(async () => {}),
 }));
 
+vi.mock("../services/dispute-resolution-finalizer.js", () => ({
+  finalizeDisputeResolution: vi.fn(async (_db: unknown, dispute: Record<string, unknown>, resolution: Record<string, unknown>, resolvedDispute: Record<string, unknown>) => {
+    disputeStore.set(dispute.id as string, resolvedDispute);
+    return {
+      dispute: resolvedDispute,
+      auto_refund: null,
+      deposit_refund: null,
+      resolution,
+    };
+  }),
+}));
+
 const paymentStore = new Map<string, Record<string, unknown>>();
 const setProviderContextMock = vi.fn(
   async (_db: unknown, id: string, ctx: Record<string, unknown>) => {
@@ -123,6 +135,10 @@ vi.mock("../services/payment-record.service.js", () => ({
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/trust-ledger.service.js", () => ({
+  applyTrustTriggers: vi.fn().mockResolvedValue(null),
 }));
 
 // DisputeService is used directly by admin.ts for resolve; stub the

@@ -13,6 +13,8 @@ const DEMO_ITEMS = [
   { title: "AirPods Pro 2nd Gen", amount: 15000, emoji: "headphones" },
 ] as const;
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 export default function DemoE2EPage() {
   const router = useRouter();
   const [selected, setSelected] = useState(0);
@@ -66,6 +68,12 @@ export default function DemoE2EPage() {
           Test the full flow: Payment &rarr; Shipping &rarr; Delivery &rarr; Dispute
         </p>
       </div>
+
+      {IS_PRODUCTION && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300 mb-6">
+          Demo order creation is disabled in production.
+        </div>
+      )}
 
       {/* How it works */}
       <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-5 mb-6">
@@ -142,7 +150,7 @@ export default function DemoE2EPage() {
 
       <button
         onClick={handleCreate}
-        disabled={creating}
+        disabled={creating || IS_PRODUCTION}
         className="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         {creating ? "Creating order..." : "Start E2E Demo"}

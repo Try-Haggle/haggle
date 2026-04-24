@@ -20,9 +20,10 @@ import {
   computeDisputeCost,
   REVIEWER_SHARE,
 } from "@haggle/dispute-core";
-import type { ReviewerVote, DisputeTier } from "@haggle/dispute-core";
-import { getDisputeById, updateDisputeRecord } from "../services/dispute-record.service.js";
+import type { ReviewerVote, DisputeTier, DisputeResolution } from "@haggle/dispute-core";
+import { getDisputeById } from "../services/dispute-record.service.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
+import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 
 // ---------------------------------------------------------------------------
 // Qualification test cases (hardcoded precedent cases for MVP)
@@ -717,9 +718,47 @@ async function tallyDisputeVotes(
       reward_cents: reward,
       in_majority: inMajority,
     });
+  }
 
-    // Update reviewer profile: earnings + decrement active_slots + increment cases_reviewed
-    if (inMajority && reward > 0) {
+  const unvotedAssignments = assignments.filter((a) => a.voteValue === null);
+
+  // Resolve dispute using the same money-movement finalizer as admin resolution.
+  const resolveStatus =
+    outcome === "buyer_favor"
+      ? "RESOLVED_BUYER_FAVOR"
+      : outcome === "seller_favor"
+        ? "RESOLVED_SELLER_FAVOR"
+        : "PARTIAL_REFUND";
+
+  const resolution: DisputeResolution = {
+    outcome,
+    summary: `DS Panel vote: weighted median ${aggregation.weighted_median}, strength ${aggregation.strength}, method ${aggregation.method}`,
+    refund_amount_minor: refundAmountMinor,
+    resolved_at: new Date().toISOString(),
+  };
+
+  await finalizeDisputeResolution(db, dispute, resolution, {
+    ...dispute,
+    status: resolveStatus as typeof dispute.status,
+    resolution,
+    metadata: {
+      ...(dispute.metadata as Record<string, unknown> ?? {}),
+      tally_result: {
+        weighted_median: aggregation.weighted_median,
+        strength: aggregation.strength,
+        method: aggregation.method,
+        outcome,
+        voter_count: votedAssignments.length,
+        majority_count: majorityCount,
+        total_reward_cents: totalRewardCents,
+      },
+    },
+  });
+
+  // Reviewer accounting is applied only after resolution side effects succeed.
+  for (const a of votedAssignments) {
+    const reward = rewards.find((r) => r.reviewer_id === a.reviewerId)?.reward_cents ?? 0;
+    if (reward > 0) {
       await db
         .update(reviewerProfiles)
         .set({
@@ -741,8 +780,7 @@ async function tallyDisputeVotes(
     }
   }
 
-  // Also decrement active_slots for unvoted assignments
-  const unvotedAssignments = assignments.filter((a) => a.voteValue === null);
+  // Also decrement active_slots for unvoted assignments after finalization.
   for (const a of unvotedAssignments) {
     await db
       .update(reviewerProfiles)
@@ -752,37 +790,6 @@ async function tallyDisputeVotes(
       })
       .where(eq(reviewerProfiles.userId, a.reviewerId));
   }
-
-  // Resolve dispute: update status and metadata
-  const resolveStatus =
-    outcome === "buyer_favor"
-      ? "RESOLVED_BUYER_FAVOR"
-      : outcome === "seller_favor"
-        ? "RESOLVED_SELLER_FAVOR"
-        : "PARTIAL_REFUND";
-
-  await updateDisputeRecord(db, {
-    ...dispute,
-    status: resolveStatus as typeof dispute.status,
-    resolution: {
-      outcome,
-      summary: `DS Panel vote: weighted median ${aggregation.weighted_median}, strength ${aggregation.strength}, method ${aggregation.method}`,
-      refund_amount_minor: refundAmountMinor,
-      resolved_at: new Date().toISOString(),
-    },
-    metadata: {
-      ...(dispute.metadata as Record<string, unknown> ?? {}),
-      tally_result: {
-        weighted_median: aggregation.weighted_median,
-        strength: aggregation.strength,
-        method: aggregation.method,
-        outcome,
-        voter_count: votedAssignments.length,
-        majority_count: majorityCount,
-        total_reward_cents: totalRewardCents,
-      },
-    },
-  });
 
   return {
     outcome,

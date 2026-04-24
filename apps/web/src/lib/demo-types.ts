@@ -32,6 +32,8 @@ export interface DemoInitRequest {
   language?: string;
   preset?: PresetName;
   custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
+  buyer_agent_id?: string;
+  seller_agent_id?: string;
 }
 
 // ─── Init Response ───
@@ -77,6 +79,10 @@ export interface DemoInitResponse {
   stages_tested: string[];
   strategy: DemoStrategy;
   terms: TermAnalysis;
+  lumen_profiles?: {
+    buyer_agent: LumenVoiceProfile;
+    seller_agent: LumenVoiceProfile;
+  };
   skills?: SkillManifestInfo[];
   initial_memory: Record<string, unknown>;
   pipeline: StageTrace[];
@@ -84,6 +90,16 @@ export interface DemoInitResponse {
     total_usd: number;
     total_tokens: { prompt: number; completion: number };
   };
+}
+
+export interface LumenVoiceProfile {
+  id: string;
+  name: string;
+  role: string;
+  voiceStyle: string[];
+  speaksLike: string;
+  avoid: string[];
+  prompt: string;
 }
 
 // ─── Round Response ───

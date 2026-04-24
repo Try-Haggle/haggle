@@ -33,6 +33,10 @@ const createAuthSchema = z.object({
   auto_apply_result: z.boolean().optional(),
 });
 
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
 export function registerAuthenticationRoutes(app: FastifyInstance, db: Database) {
   const legitApiKey = process.env.LEGITAPP_API_KEY;
   const legitWebhookSecret = process.env.LEGITAPP_WEBHOOK_SECRET;
@@ -61,6 +65,13 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
     const { listing_id, order_id, dispute_id, category, turnaround, requester, cost_minor, publish_policy, auto_apply_result } = parsed.data;
 
     try {
+      if (isProductionRuntime() && !legitApiKey) {
+        return reply.code(503).send({
+          error: "AUTH_PROVIDER_NOT_CONFIGURED",
+          message: "LEGITAPP_API_KEY is required for product authentication in production",
+        });
+      }
+
       const providerName = legitApiKey ? "legitapp" : "mock_auth";
       const result = await authService.requestAuthentication(
         {
@@ -130,6 +141,13 @@ export function registerAuthenticationRoutes(app: FastifyInstance, db: Database)
 
   // POST /authentications/:id/apply — manually apply authentication result
   app.post("/authentications/:id/apply", { preHandler: [requireAuth] }, async (request, reply) => {
+    if (isProductionRuntime() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "MANUAL_AUTH_APPLY_DISABLED",
+        message: "Authentication results must be applied by provider webhook or admin in production",
+      });
+    }
+
     const row = await getAuthenticationById(db, (request.params as { id: string }).id);
     if (!row) {
       return reply.code(404).send({ error: "AUTHENTICATION_NOT_FOUND" });

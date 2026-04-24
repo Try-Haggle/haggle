@@ -4,12 +4,12 @@ import { resolve } from "node:path";
 // Load .env from monorepo root, then local apps/api/.env (local overrides root)
 dotenv.config({ path: resolve(import.meta.dirname, "../../../.env") });
 dotenv.config({ path: resolve(import.meta.dirname, "../.env") });
-import { createServer } from "./server.js";
 
 const PORT = parseInt(process.env.PORT || "3001", 10);
 const HOST = process.env.HOST || "0.0.0.0";
 
 async function main() {
+  const { createServer } = await import("./server.js");
   const server = await createServer();
 
   await server.listen({ port: PORT, host: HOST });

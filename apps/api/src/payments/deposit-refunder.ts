@@ -78,6 +78,9 @@ export async function refundDeposit(
 ): Promise<RefundDepositResult> {
   switch (params.rail) {
     case "mock":
+      if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+        throw new Error("Mock deposit refunds are disabled in production");
+      }
       return {
         refund_id: `mock_refund_${params.deposit_id}_${Date.now()}`,
       };

@@ -9,9 +9,9 @@
  *   Stage 0b: Term Analysis        — LLM이 전략+Term 목록 → 우선순위 분석 JSON 생성
  *   Stage 1:  UNDERSTAND           — LLM이 상대 메시지 → 구조화 의도 파싱
  *   Stage 2:  CONTEXT              — 코드가 Briefing + SkillStack + Memo 조립
- *   Stage 3:  DECIDE               — LLM이 전 컨텍스�� → ProtocolDecision 생성
+ *   Stage 3:  DECIDE               — LLM이 전 컨텍스트 → ProtocolDecision 생성
  *   Stage 4:  VALIDATE             — 코드(Referee)가 Math/Protocol Guard 실행
- *   Stage 5:  RESPOND              — LLM이 결정 → 자연어 메시지 생성
+ *   Stage 5:  RESPOND              — 코드가 검증된 결정 → 사용자 메시지 렌더링
  *   Stage 6:  PERSIST+TRANSITION   — 코드가 Memo 갱신 + Phase 전이
  *
  * Zero DB. No auth. In-memory sessions.
@@ -29,6 +29,12 @@ import { validateMove } from '../negotiation/referee/validator.js';
 import { tryTransition, detectPhaseEvent } from '../negotiation/phase/phase-machine.js';
 import { ELECTRONICS_TERMS } from '../negotiation/term/standard-terms.js';
 import { DEFAULT_BUDDY_DNA, DEFAULT_MAX_ROUNDS } from '../negotiation/config.js';
+import {
+  AGENT_PROFILE_IDS,
+  buildCachedVoiceContext,
+  getAgentVoiceProfile,
+  type LumenVoiceProfile,
+} from '../negotiation/lumen-persona-profiles.js';
 import type {
   CoreMemory,
   RoundFact,
@@ -93,6 +99,17 @@ interface DecideResult extends ProtocolDecision {
   near_deal?: boolean;
 }
 
+interface RespondResult {
+  message: string;
+  action: ProtocolDecision['action'];
+  amount_minor?: number;
+  amount_display?: string;
+  currency: 'USD';
+  locale: string;
+  template: string;
+  non_price_terms: Record<string, unknown>;
+}
+
 /** Tag Garden item tags — derived from title at init, immutable per session */
 interface ItemTag {
   path: string;          // e.g. "electronics/phones/iphone"
@@ -121,6 +138,10 @@ interface DemoSession {
   totalTokens: { prompt: number; completion: number };
   initTraces: StageTrace[];
   tags: ItemTag[];
+  lumenProfiles: {
+    buyer_agent: LumenVoiceProfile;
+    seller_agent: LumenVoiceProfile;
+  };
 }
 
 // ─── In-memory store ────────────────────────────────
@@ -285,6 +306,12 @@ Shared: NS=State PT=Position(gap) TG=TagGarden(item tags)
 Private: SS=Strategy(target,floor,room%) OM=OpponentModel(type,aggression,concession_rate)
 Prices in minor units. $700=70000. O=OFFICIAL E=EMERGING`;
 
+const HAGGLE_PLATFORM_CONTEXT = `=== Haggle Platform Defaults (cached) ===
+- Haggle always provides payment protection and shipping protection for marketplace transactions.
+- These default protections are not negotiable concessions and must not be listed in non_price_terms.
+- Only include non_price_terms when the seller introduces a non-default condition, such as local pickup, included accessories, warranty, shipping payer, insurance payer, timing, inspection, IMEI status, or unlock status.
+- If the seller merely says payment protection, shipping protection, protected checkout, or protected shipping, treat it as platform-default context, not an added condition.`;
+
 function buildUnderstandPrompt(sellerMessage: string): { system: string; user: string } {
   return {
     system: `You are Haggle protocol Stage 1 (UNDERSTAND). Parse seller message into structured intent.
@@ -308,6 +335,7 @@ function buildDecidePrompt(
   return {
     system: `You are Haggle protocol Stage 3 (DECIDE) — buyer side.
 ${NSV_LEGEND}
+${HAGGLE_PLATFORM_CONTEXT}
 
 ## Category Knowledge
 ${categoryBrief}
@@ -359,6 +387,190 @@ ${recentFacts.length > 0 ? 'Last exchange: seller offered $' + recentFacts[recen
   };
 }
 
+function formatMoneyMinor(amountMinor: number | undefined): string {
+  if (amountMinor === undefined || amountMinor === null) return '';
+  const amount = amountMinor > 1000 ? amountMinor / 100 : amountMinor;
+  return Number.isInteger(amount) ? `$${amount.toFixed(0)}` : `$${amount.toFixed(2)}`;
+}
+
+function hasTerms(terms: Record<string, unknown> | undefined): boolean {
+  return Boolean(terms && Object.keys(terms).length > 0);
+}
+
+const PLATFORM_DEFAULT_TERM_KEYS = new Set([
+  'payment_protection',
+  'shipping_protection',
+  'protected_checkout',
+  'protected_shipping',
+]);
+
+const PLATFORM_DEFAULT_TERM_PHRASES = [
+  'payment protection',
+  'shipping protection',
+  'protected checkout',
+  'protected shipping',
+  'shipping_protection',
+  'payment_protection',
+];
+
+const TERM_LABELS_EN: Record<string, string> = {
+  payment_protection: 'payment protection',
+  shipping_protection: 'shipping protection',
+  payment_method: 'payment method',
+  shipping: 'shipping',
+  quick_process: 'quick processing',
+  confirm_conditions: 'final condition check',
+  condition: 'deal condition',
+  speed: 'quick processing',
+  'move quickly': 'quick processing',
+};
+
+function isPlatformDefaultTerm(key: string, value: unknown): boolean {
+  const normalizedKey = key.toLowerCase().replace(/\s+/g, '_');
+  if (PLATFORM_DEFAULT_TERM_KEYS.has(normalizedKey)) return true;
+
+  if (typeof value === 'boolean') return false;
+
+  const normalizedValue = String(value).toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!normalizedValue) return false;
+
+  return PLATFORM_DEFAULT_TERM_PHRASES.some(phrase => normalizedValue === phrase || normalizedValue.includes(phrase));
+}
+
+function normalizeNonPriceTerms(terms: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!terms) return {};
+
+  return Object.fromEntries(
+    Object.entries(terms).filter(([key, value]) => !isPlatformDefaultTerm(key, value)),
+  );
+}
+
+function humanizeTermKey(key: string): string {
+  return TERM_LABELS_EN[key] ?? key.replace(/_/g, ' ');
+}
+
+function humanizeTermValue(value: unknown): string {
+  if (typeof value === 'boolean') return value ? '' : 'excluded';
+  if (typeof value === 'string') return humanizeTermKey(value);
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.map(item => humanizeTermValue(item)).filter(Boolean).join(', ');
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => {
+        const renderedValue = humanizeTermValue(item);
+        return renderedValue ? `${humanizeTermKey(key)} ${renderedValue}` : humanizeTermKey(key);
+      })
+      .join(', ');
+  }
+  return '';
+}
+
+function formatTerms(terms: Record<string, unknown> | undefined, locale: string): string {
+  const normalizedTerms = normalizeNonPriceTerms(terms);
+  if (!hasTerms(normalizedTerms)) return '';
+
+  const rendered = Object.entries(normalizedTerms)
+    .map(([key, value]) => {
+      const label = humanizeTermKey(key);
+      const renderedValue = humanizeTermValue(value);
+      if (key === 'speed' && renderedValue === 'quick processing') return renderedValue;
+      if (typeof value === 'boolean') return value ? label : `${label} ${renderedValue}`;
+      if (!renderedValue || renderedValue === label) return label;
+      return `${label} ${renderedValue}`;
+    })
+    .filter(Boolean)
+    .join(', ');
+
+  if (!rendered) return '';
+  return ` Additional terms: ${rendered}.`;
+}
+
+function renderStructuredResponse(
+  decision: ProtocolDecision,
+  language: string,
+): RespondResult {
+  const locale = language || 'en';
+  const amount = formatMoneyMinor(decision.price);
+  const terms = normalizeNonPriceTerms(decision.non_price_terms);
+  let message: string;
+  let template: string;
+
+  if (locale === 'ko') {
+    switch (decision.action) {
+      case 'ACCEPT':
+        template = 'ko.accept';
+        message = `${amount}에 합의하겠습니다. 계약 진행 부탁드립니다.`;
+        break;
+      case 'COUNTER':
+        template = 'ko.counter';
+        message = `${amount}으로 제안드립니다. 이 조건이면 서로 진행하기 좋겠습니다.`;
+        break;
+      case 'CONFIRM':
+        template = 'ko.confirm';
+        message = `${amount} 조건으로 최종 확인하겠습니다. 결제와 배송 보호를 진행해 주세요.`;
+        break;
+      case 'REJECT':
+        template = 'ko.reject';
+        message = '이번 조건으로는 진행하기 어렵겠습니다. 제안 감사합니다.';
+        break;
+      case 'HOLD':
+        template = 'ko.hold';
+        message = '조건을 조금 더 확인한 뒤 답변드리겠습니다.';
+        break;
+      case 'DISCOVER':
+        template = 'ko.discover';
+        message = '진행 전에 상태, 배송, 보호 조건을 조금 더 확인하고 싶습니다.';
+        break;
+      default:
+        template = 'ko.default';
+        message = amount ? `${amount} 조건으로 진행을 검토하겠습니다.` : '조건을 확인하겠습니다.';
+    }
+  } else {
+    switch (decision.action) {
+      case 'ACCEPT':
+        template = 'en.accept';
+        message = `I agree at ${amount}. Please proceed with the transaction.`;
+        break;
+      case 'COUNTER':
+        template = 'en.counter';
+        message = `I can offer ${amount}. That should be a fair path forward for both sides.`;
+        break;
+      case 'CONFIRM':
+        template = 'en.confirm';
+        message = `I confirm the deal at ${amount}. Please proceed with payment and shipping protection.`;
+        break;
+      case 'REJECT':
+        template = 'en.reject';
+        message = 'I cannot move forward on these terms. Thank you for the offer.';
+        break;
+      case 'HOLD':
+        template = 'en.hold';
+        message = 'I need to review the details before moving forward.';
+        break;
+      case 'DISCOVER':
+        template = 'en.discover';
+        message = 'Before moving forward, I would like to confirm the condition, shipping, and protection terms.';
+        break;
+      default:
+        template = 'en.default';
+        message = amount ? `I will review the offer at ${amount}.` : 'I will review the offer.';
+    }
+  }
+
+  message += formatTerms(terms, locale);
+
+  return {
+    message,
+    action: decision.action,
+    amount_minor: decision.price,
+    amount_display: amount || undefined,
+    currency: 'USD',
+    locale,
+    template,
+    non_price_terms: terms,
+  };
+}
+
 // ─── Schema ─────────────────────────────────────────
 
 const initSchema = z.object({
@@ -380,6 +592,8 @@ const initSchema = z.object({
     advisor: z.string(),
     advisor_config: z.record(z.unknown()).optional(),
   }).optional(),
+  buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default('vel'),
+  seller_agent_id: z.enum(AGENT_PROFILE_IDS).default('dealer_hana'),
 });
 
 const roundSchema = z.object({
@@ -481,8 +695,21 @@ export function registerDemoRoute(app: FastifyInstance) {
       return reply.code(400).send({ error: 'INVALID_REQUEST', issues: parsed.error.issues });
     }
 
-    const { item, seller, buyer_budget, language, preset, custom_skills } = parsed.data;
+    const {
+      item,
+      seller,
+      buyer_budget,
+      language,
+      preset,
+      custom_skills,
+      buyer_agent_id,
+      seller_agent_id,
+    } = parsed.data;
     const traces: StageTrace[] = [];
+    const lumenProfiles = {
+      buyer_agent: getAgentVoiceProfile(buyer_agent_id),
+      seller_agent: getAgentVoiceProfile(seller_agent_id),
+    };
 
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
@@ -573,6 +800,7 @@ Item condition: ${item.condition}`,
       totalTokens: { prompt: 0, completion: 0 },
       initTraces: traces,
       tags: deriveItemTags(item.title),
+      lumenProfiles,
     };
 
     // Accumulate init costs
@@ -599,6 +827,7 @@ Item condition: ${item.condition}`,
       strategy,
       terms,
       tags: session.tags,
+      lumen_profiles: session.lumenProfiles,
       skills: sessionSkillStack.getManifests(),
       initial_memory: memory,
       pipeline: traces.map(t => ({
@@ -718,12 +947,17 @@ Item condition: ${item.condition}`,
         advisories: skillDecideResult.decide?.advisories ?? [],
         skills_dispatched: Object.keys(skillDecideResult.bySkill),
         tags: session.tags,
+        lumen_profiles: session.lumenProfiles,
       },
       parsed: {
         nsv_shared: sharedMemo,
         nsv_private: privateMemo,
         briefing,
         advisories: skillDecideResult.decide?.advisories ?? [],
+        lumen_voice_context: {
+          buyer: buildCachedVoiceContext(session.lumenProfiles.buyer_agent.id),
+          seller: buildCachedVoiceContext(session.lumenProfiles.seller_agent.id),
+        },
       },
       latency_ms: Date.now() - ctxStart,
       is_llm: false,
@@ -757,7 +991,7 @@ Item condition: ${item.condition}`,
       price: decideTrace.parsed.price,
       reasoning: decideTrace.parsed.reasoning,
       tactic_used: decideTrace.parsed.tactic_used,
-      non_price_terms: decideTrace.parsed.non_price_terms,
+      non_price_terms: normalizeNonPriceTerms(decideTrace.parsed.non_price_terms),
     };
 
     // ────────────────────────────────────────────────
@@ -833,18 +1067,32 @@ Item condition: ${item.condition}`,
     stages.push(validateTrace);
 
     // ────────────────────────────────────────────────
-    // Stage 5: RESPOND (LLM)
-    // Test: LLM이 ProtocolDecision → 자연어 메시지를 올바르게 생성하는가?
-    //       TemplateMessageRenderer를 대체할 수 있는가?
+    // Stage 5: RESPOND (structured renderer)
+    // User-facing text must be rendered from validated ProtocolDecision.
+    // LLM decides action/price/terms; code owns formatting, currency, and final message.
     // ────────────────────────────────────────────────
-    const respondPrompts = buildRespondPrompt(decision, session.phase, session.facts, session.language);
-
-    const respondTrace = await traceLLMCall<{ message: string }>(
-      '5_RESPOND',
-      respondPrompts.system,
-      respondPrompts.user,
-      parseJSON<{ message: string }>,
-    );
+    const respondStart = Date.now();
+    const respondResult = renderStructuredResponse(decision, session.language);
+    const respondTrace: StageTrace<RespondResult> = {
+      stage: '5_RESPOND',
+      input: {
+        final_decision: decision,
+        locale: session.language,
+        render_contract: {
+          price_source: 'ProtocolDecision.price',
+          currency: 'USD',
+          unit: 'minor',
+          llm_free_text: false,
+          voice_profiles_cached: true,
+          current_renderer: 'structured_template',
+        },
+        lumen_voice_context: buildCachedVoiceContext(session.lumenProfiles.buyer_agent.id),
+      },
+      output: respondResult,
+      parsed: respondResult,
+      latency_ms: Date.now() - respondStart,
+      is_llm: false,
+    };
     stages.push(respondTrace);
     const renderedMessage = respondTrace.parsed.message;
 
@@ -915,7 +1163,7 @@ Item condition: ${item.condition}`,
     }
 
     // Terminal check
-    if (decision.action === 'ACCEPT') {
+    if (decision.action === 'ACCEPT' || session.phase === 'SETTLEMENT') {
       session.done = true;
       session.phase = 'SETTLEMENT';
       session.memory.session.phase = 'SETTLEMENT';
@@ -968,7 +1216,7 @@ Item condition: ${item.condition}`,
         '2_CONTEXT — 코드가 Briefing+SkillStack 조립',
         '3_DECIDE — LLM이 전체 컨텍스트→ProtocolDecision',
         '4_VALIDATE — 코드(Referee)+Skill 규칙 검증',
-        '5_RESPOND — LLM이 결정→자연어 메시지',
+        '5_RESPOND — 코드가 결정→구조화된 사용자 메시지 렌더링',
         '6_PERSIST_TRANSITION — 코드가 Memo갱신+Phase전이',
       ],
       pipeline: stages.map(s => ({
@@ -1027,6 +1275,7 @@ Item condition: ${item.condition}`,
       done: session.done,
       strategy: session.strategy,
       terms: session.terms,
+      lumen_profiles: session.lumenProfiles,
       memory: session.memory,
       facts: session.facts,
       cost: { total_usd: session.totalCost, total_tokens: session.totalTokens },

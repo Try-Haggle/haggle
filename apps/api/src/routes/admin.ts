@@ -35,12 +35,14 @@ import {
 import {
   getDisputeById,
   updateDisputeRecord,
-  createDisputeResolutionRecord,
 } from "../services/dispute-record.service.js";
+import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import {
+  getCommerceOrderByOrderId,
   getPaymentIntentRowById,
   setPaymentIntentProviderContext,
 } from "../services/payment-record.service.js";
+import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { DisputeService } from "@haggle/dispute-core";
 
 // ─── Schemas ──────────────────────────────────────────────────────────
@@ -510,13 +512,31 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database) {
           message: error instanceof Error ? error.message : String(error),
         });
       }
-      await updateDisputeRecord(db, result.dispute);
-      if (result.value) {
-        await createDisputeResolutionRecord(
-          db,
-          dispute.id,
-          result.value,
-        );
+      if (!result.value) {
+        return reply.code(409).send({
+          error: "DISPUTE_RESOLVE_FAILED",
+          message: "Resolution result missing",
+        });
+      }
+
+      let finalization;
+      try {
+        finalization = await finalizeDisputeResolution(db, dispute, result.value, result.dispute);
+      } catch (error) {
+        return reply.code(500).send({
+          error: "DISPUTE_FINALIZATION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      if (result.trust_triggers.length > 0) {
+        const order = await getCommerceOrderByOrderId(db, dispute.order_id);
+        await applyTrustTriggers(db, {
+          order_id: dispute.order_id,
+          buyer_id: order?.buyerId ?? "",
+          seller_id: order?.sellerId ?? "",
+          triggers: result.trust_triggers,
+        });
       }
       await writeAuditLog(db, {
         actorId,
@@ -528,7 +548,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database) {
           refund_amount_minor: parsed.data.refundAmountMinor ?? null,
         },
       });
-      return reply.send({ dispute: result.dispute });
+      return reply.send({ dispute: finalization.dispute });
     },
   );
 

@@ -32,6 +32,7 @@ export interface DepositCollectionRequest {
   /** Seller's wallet address — required for USDC rail */
   seller_wallet_address?: string;
   seller_user_id: string;
+  rail?: DepositPaymentRail;
 }
 
 export interface DepositCollectionResult {
@@ -86,9 +87,19 @@ const ERC20_TRANSFER_FROM_ABI = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getDepositCollectionMode(): DepositPaymentRail {
+function getDepositCollectionMode(requestedRail?: DepositPaymentRail): DepositPaymentRail {
+  if (requestedRail) {
+    if (requestedRail === "mock" && (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production")) {
+      throw new Error("Mock dispute deposits are disabled in production");
+    }
+    return requestedRail;
+  }
+
   const mode = process.env.DEPOSIT_COLLECTION_MODE;
   if (mode === "usdc" || mode === "stripe") return mode;
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    throw new Error("DEPOSIT_COLLECTION_MODE must be usdc or stripe in production");
+  }
   return "mock";
 }
 
@@ -142,7 +153,7 @@ function getDepositDestinationWallet(): string {
 export async function initiateDepositCollection(
   req: DepositCollectionRequest,
 ): Promise<DepositCollectionResult> {
-  const rail = getDepositCollectionMode();
+  const rail = getDepositCollectionMode(req.rail);
 
   switch (rail) {
     case "mock":

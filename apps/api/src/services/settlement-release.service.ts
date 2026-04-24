@@ -98,7 +98,16 @@ export async function createSettlementReleaseRecord(
       createdAt: new Date(release.created_at),
       updatedAt: new Date(release.updated_at),
     })
+    .onConflictDoNothing({ target: settlementReleases.orderId })
     .returning();
+
+  if (!row) {
+    const existing = await getSettlementReleaseByOrderId(db, release.order_id);
+    if (!existing) {
+      throw new Error(`settlement release insert conflicted but no row found for order ${release.order_id}`);
+    }
+    return existing;
+  }
 
   return mapRelease(row);
 }

@@ -75,6 +75,9 @@ function centsToUsdcWei(amountCents: number): bigint {
 function getRefundMode(): RefundRail {
   const mode = process.env.REFUND_MODE;
   if (mode === "usdc" || mode === "stripe") return mode;
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    throw new Error("REFUND_MODE must be usdc or stripe in production");
+  }
   return "mock";
 }
 
@@ -97,6 +100,9 @@ export async function executeRefund(
 
   switch (rail) {
     case "mock":
+      if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+        throw new Error("Mock refunds are disabled in production");
+      }
       return {
         refund_id: `mock_refund_${params.order_id}_${Date.now()}`,
       };
@@ -156,10 +162,7 @@ async function executeStripeRefund(
   params: ExecuteRefundParams,
 ): Promise<ExecuteRefundResult> {
   if (!params.stripe_payment_intent_id) {
-    // If no Stripe PI available, record as manual
-    return {
-      refund_id: `stripe_manual_refund_${params.order_id}_${Date.now()}`,
-    };
+    throw new Error("Stripe refund requires stripe_payment_intent_id");
   }
 
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;

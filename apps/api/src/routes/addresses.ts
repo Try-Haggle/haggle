@@ -4,6 +4,7 @@ import type { Database } from "@haggle/db";
 import { eq, and, orderAddresses, userSavedAddresses, commerceOrders } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
+import { INPUT_LIMITS } from "../lib/input-limits.js";
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -14,28 +15,28 @@ const STATE_RE = /^[A-Z]{2}$/;
 
 const orderAddressSchema = z.object({
   role: z.enum(["buyer", "seller"]),
-  name: z.string().min(1, "name is required"),
-  company: z.string().optional(),
-  street1: z.string().min(1, "street1 is required"),
-  street2: z.string().optional(),
-  city: z.string().min(1, "city is required"),
+  name: z.string().min(1, "name is required").max(INPUT_LIMITS.mediumTextChars),
+  company: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  street1: z.string().min(1, "street1 is required").max(INPUT_LIMITS.mediumTextChars),
+  street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  city: z.string().min(1, "city is required").max(INPUT_LIMITS.mediumTextChars),
   state: z.string().regex(STATE_RE, "state must be 2 uppercase letters"),
   zip: z.string().regex(ZIP_RE, "zip must be 5 digits"),
   country: z.string().default("US"),
-  phone: z.string().optional(),
+  phone: z.string().max(32).optional(),
   email: z.string().email().optional(),
 });
 
 const savedAddressSchema = z.object({
-  label: z.string().optional(),
-  name: z.string().min(1, "name is required"),
-  street1: z.string().min(1, "street1 is required"),
-  street2: z.string().optional(),
-  city: z.string().min(1, "city is required"),
+  label: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
+  name: z.string().min(1, "name is required").max(INPUT_LIMITS.mediumTextChars),
+  street1: z.string().min(1, "street1 is required").max(INPUT_LIMITS.mediumTextChars),
+  street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  city: z.string().min(1, "city is required").max(INPUT_LIMITS.mediumTextChars),
   state: z.string().regex(STATE_RE, "state must be 2 uppercase letters"),
   zip: z.string().regex(ZIP_RE, "zip must be 5 digits"),
   country: z.string().default("US"),
-  phone: z.string().optional(),
+  phone: z.string().max(32).optional(),
   is_default: z.boolean().optional(),
 });
 

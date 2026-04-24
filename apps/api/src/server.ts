@@ -45,12 +45,17 @@ import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
 import { initCronJobs } from "./jobs/runner.js";
+import { getRuntimeConfig, isCorsOriginAllowed } from "./config/runtime.js";
+import { configuredJsonBodyLimit } from "./lib/input-limits.js";
 
 export async function createServer() {
+  const runtimeConfig = getRuntimeConfig();
+  const jsonBodyLimit = configuredJsonBodyLimit();
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || "info",
     },
+    bodyLimit: jsonBodyLimit,
   });
 
   // ─── Raw Body Capture (for webhook signature verification) ──
@@ -62,6 +67,13 @@ export async function createServer() {
     (_req, body, done) => {
       // Store raw buffer on request for webhook handlers
       (_req as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
+      if ((body as Buffer).byteLength > jsonBodyLimit) {
+        const err = new Error(`JSON body exceeds ${jsonBodyLimit} bytes`) as Error & { statusCode?: number; code?: string };
+        err.statusCode = 413;
+        err.code = "FST_ERR_CTP_BODY_TOO_LARGE";
+        done(err, undefined);
+        return;
+      }
       try {
         done(null, JSON.parse((body as Buffer).toString()));
       } catch (err) {
@@ -71,7 +83,7 @@ export async function createServer() {
   );
 
   // ─── Database ──────────────────────────────────────────────
-  const db = createDb(process.env.DATABASE_URL!);
+  const db = createDb(runtimeConfig.databaseUrl);
 
   // ─── LLM Telemetry DB sink ─────────────────────────────────
   if (process.env.LLM_TELEMETRY === "db") {
@@ -82,15 +94,7 @@ export async function createServer() {
   // ChatGPT requires these origins to connect to the MCP server.
   await app.register(cors, {
     origin: (origin, cb) => {
-      // Allow: ChatGPT, Vercel, tryhaggle.ai, localhost, file:// (null)
-      const allowed = !origin                       // same-origin / file:// (null)
-        || origin === 'null'                         // file:// protocol
-        || origin === 'https://chatgpt.com'
-        || origin === 'https://chat.openai.com'
-        || origin === 'https://tryhaggle.ai'
-        || /\.vercel\.app$/.test(origin)
-        || /^http:\/\/localhost:\d+$/.test(origin);
-      cb(null, allowed);
+      cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
     methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],

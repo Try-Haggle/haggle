@@ -570,7 +570,7 @@ export function Landing() {
             <a href="#docs">Docs</a>
           </div>
           <div className="nav-spacer" />
-          <Link href="/demo/try" className="btn btn-primary btn-sm">
+          <Link href="/demo" className="btn btn-primary btn-sm">
             Try Demo →
           </Link>
         </nav>
@@ -592,8 +592,8 @@ export function Landing() {
                   Haggle is the standard for AI-powered negotiation. Your agent bargains, the smart contract settles — <strong>1.5% total fee</strong>, non-custodial, final in seconds.
                 </p>
                 <div className="sh-ctas">
-                  <Link href="/demo/try" className="btn btn-primary">Try AI Negotiation →</Link>
-                  <a href="#pricing" className="btn btn-ghost">See How Much You Save</a>
+                  <Link href="/demo" className="btn btn-primary">Try AI Negotiation →</Link>
+                  <Link href="/demo/developer" className="btn btn-ghost">Try Trade Tutorial</Link>
                 </div>
                 <div className="sh-caption">
                   <span className="idx" id="hg-shIdx">01</span>
@@ -1004,7 +1004,8 @@ export function Landing() {
               <span className="plus">+$82.35</span>
             </div>
             <div className="ctas">
-              <Link href="/demo/try" className="btn btn-primary">Try AI Negotiation — Free Demo</Link>
+              <Link href="/demo" className="btn btn-primary">Try AI Negotiation — Free Demo</Link>
+              <Link href="/demo/developer" className="btn btn-ghost">Try Trade Tutorial</Link>
               <button className="btn btn-ghost">Join Waitlist</button>
             </div>
             <div style={{ marginTop: 18, fontSize: 13, color: "rgba(255,255,255,.7)", position: "relative" }}>
@@ -1028,7 +1029,7 @@ export function Landing() {
               <h5>Product</h5>
               <a href="#how">How it works</a>
               <a href="#pricing">Pricing</a>
-              <Link href="/demo/try">Demo</Link>
+              <Link href="/demo">Demo</Link>
               <a href="#docs">API Docs</a>
             </div>
             <div>

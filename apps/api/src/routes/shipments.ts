@@ -41,6 +41,7 @@ import { createId } from "@haggle/dispute-core";
 import type { DisputeCase } from "@haggle/dispute-core";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { updateCommerceOrderStatus, getCommerceOrderByOrderId } from "../services/payment-record.service.js";
+import { INPUT_LIMITS, boundedJson } from "../lib/input-limits.js";
 
 type ShipmentEventType = Parameters<typeof transitionShipmentStatus>[1];
 
@@ -59,23 +60,36 @@ function statusToEventType(status: ShipmentStatus): ShipmentEventType | null {
 }
 
 const createShipmentSchema = z.object({
-  order_id: z.string(),
-  seller_id: z.string(),
-  buyer_id: z.string(),
-  carrier: z.string().optional(),
-  shipment_input_due_at: z.string().optional(),
+  order_id: z.string().max(INPUT_LIMITS.shortTextChars),
+  seller_id: z.string().max(INPUT_LIMITS.shortTextChars),
+  buyer_id: z.string().max(INPUT_LIMITS.shortTextChars),
+  carrier: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
+  shipment_input_due_at: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
 });
 
 const recordEventSchema = z.object({
-  event_type: z.string(),
-  raw_status: z.string().optional(),
-  payload: z.record(z.any()).optional(),
+  event_type: z.string().max(INPUT_LIMITS.shortTextChars),
+  raw_status: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  payload: boundedJson(z.record(z.any()), INPUT_LIMITS.jsonPayloadBytes, "shipment event payload").optional(),
 });
 
 const webhookSchema = z.object({
-  carrier: z.string(),
-  payload: z.record(z.any()),
+  carrier: z.string().max(INPUT_LIMITS.shortTextChars),
+  payload: boundedJson(z.record(z.any()), INPUT_LIMITS.jsonPayloadBytes, "carrier webhook payload"),
 });
+
+function requiresRealShippingProvider(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function realShippingUnavailable(error?: unknown) {
+  return {
+    error: "REAL_SHIPPING_PROVIDER_UNAVAILABLE",
+    message: error instanceof Error
+      ? error.message
+      : "EasyPost is required for shipping in production",
+  };
+}
 
 export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   const { requireShipmentOwner } = createOwnershipMiddleware(db);
@@ -166,9 +180,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     }
   }
 
-  async function persistAndRespond(
+  async function persistShipmentUpdate(
     result: { shipment: import("@haggle/shipping-core").Shipment; trust_triggers: import("@haggle/commerce-core").TrustTriggerEvent[] },
-    reply: import("fastify").FastifyReply,
     db: Database,
     context: { buyer_id: string; seller_id: string },
     newEvent?: import("@haggle/shipping-core").ShipmentEvent,
@@ -179,7 +192,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     }
 
     // Sync order status with shipment status
-    if (result.shipment.status === "IN_TRANSIT") {
+    if (result.shipment.status === "LABEL_CREATED" || result.shipment.status === "IN_TRANSIT") {
       await updateCommerceOrderStatus(db, result.shipment.order_id, "FULFILLMENT_ACTIVE");
     } else if (result.shipment.status === "DELIVERED") {
       await updateCommerceOrderStatus(db, result.shipment.order_id, "DELIVERED");
@@ -197,6 +210,16 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         triggers: result.trust_triggers,
       });
     }
+  }
+
+  async function persistAndRespond(
+    result: { shipment: import("@haggle/shipping-core").Shipment; trust_triggers: import("@haggle/commerce-core").TrustTriggerEvent[] },
+    reply: import("fastify").FastifyReply,
+    db: Database,
+    context: { buyer_id: string; seller_id: string },
+    newEvent?: import("@haggle/shipping-core").ShipmentEvent,
+  ) {
+    await persistShipmentUpdate(result, db, context, newEvent);
     return reply.send(result);
   }
 
@@ -218,6 +241,11 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       }
     }
 
+    const existingShipment = await getShipmentByOrderId(db, parsed.data.order_id, "outbound");
+    if (existingShipment) {
+      return reply.send({ shipment: existingShipment, idempotent: true });
+    }
+
     const shipment = await createShipmentRecord(
       db,
       parsed.data.order_id,
@@ -230,7 +258,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // GET /shipments/:id
-  app.get("/shipments/:id", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/shipments/:id", { preHandler: [requireAuth, requireShipmentOwner()] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -244,6 +272,12 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
     }
+    if (request.user?.role !== "admin") {
+      const userId = request.user!.id;
+      if (userId !== shipment.buyer_id && userId !== shipment.seller_id) {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+      }
+    }
     return reply.send({ shipment });
   });
 
@@ -254,7 +288,10 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
     }
 
-    const carrier = shipment.carrier ?? "mock";
+    const carrier = shipment.carrier ?? (requiresRealShippingProvider() ? "easypost" : "mock");
+    if (requiresRealShippingProvider() && !easypostApiKey) {
+      return reply.code(503).send(realShippingUnavailable());
+    }
     try {
       const result = await shippingService.createLabel({ ...shipment, carrier });
       await persistAndRespond(result, reply, db, { buyer_id: shipment.buyer_id, seller_id: shipment.seller_id });
@@ -270,14 +307,14 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   const prepareSchema = z.object({
     from_address_id: z.string().uuid().optional(),
     from_address: z.object({
-      name: z.string(),
-      street1: z.string(),
-      street2: z.string().optional(),
-      city: z.string(),
-      state: z.string(),
-      zip: z.string(),
-      country: z.string().default("US"),
-      phone: z.string().optional(),
+      name: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      street1: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+      city: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      state: z.string().min(2).max(32),
+      zip: z.string().min(3).max(16),
+      country: z.string().max(2).default("US"),
+      phone: z.string().max(32).optional(),
     }).optional(),
     parcel: z.object({
       length_in: z.number().positive(),
@@ -439,8 +476,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           source: "easypost",
         });
       } catch (error) {
+        if (requiresRealShippingProvider()) {
+          return reply.code(502).send(realShippingUnavailable(error));
+        }
         console.error("EasyPost rate fetch failed in /prepare, falling back to mock rates:", error);
       }
+    }
+
+    if (requiresRealShippingProvider()) {
+      return reply.code(503).send(realShippingUnavailable());
     }
 
     // Mock rates fallback
@@ -463,7 +507,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
   // POST /shipments/:id/purchase-label — seller selects a rate and purchases label
   const purchaseLabelSchema = z.object({
-    rate_id: z.string().min(1, "rate_id is required"),
+    rate_id: z.string().min(1, "rate_id is required").max(INPUT_LIMITS.mediumTextChars),
   });
 
   app.post("/shipments/:id/purchase-label", { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] }, async (request, reply) => {
@@ -580,6 +624,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           message: `Label purchased via EasyPost (${rateToBuy.carrier} ${rateToBuy.service})`,
         });
 
+        await updateCommerceOrderStatus(db, shipment.order_id, "FULFILLMENT_ACTIVE");
+
         const finalShipment = await getShipmentById(db, shipmentId);
         return reply.send({
           shipment: finalShipment,
@@ -592,6 +638,10 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           message: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    if (requiresRealShippingProvider()) {
+      return reply.code(503).send(realShippingUnavailable());
     }
 
     // Mock label purchase fallback
@@ -681,19 +731,26 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "SELLER_ADDRESS_MISSING", message: "Seller address not found" });
     }
 
-    // Create a new shipment record with type 'return'
-    const returnShipmentRow = await createShipmentRecord(
+    const existingReturnShipment = await getShipmentByOrderId(db, shipment.order_id, "return");
+    if (existingReturnShipment && existingReturnShipment.status !== "LABEL_PENDING") {
+      return reply.send({
+        shipment: existingReturnShipment,
+        label_url: null,
+        tracking_number: existingReturnShipment.tracking_number ?? null,
+        idempotent: true,
+      });
+    }
+
+    // Create or reuse the return shipment record. Reusing a pending row lets a
+    // failed label attempt retry without creating duplicate return shipments.
+    const returnShipmentRow = existingReturnShipment ?? await createShipmentRecord(
       db,
       shipment.order_id,
       shipment.seller_id,
       shipment.buyer_id,
+      undefined,
+      { shipmentType: "return" },
     );
-
-    // Mark the new shipment as return type
-    await db.update(shipmentsTable).set({
-      shipmentType: "return",
-      updatedAt: new Date(),
-    }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
 
     // Attempt to create a return label via carrier
     const fromAddress = {
@@ -773,12 +830,19 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           updatedAt: new Date(),
         }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
       } catch (error) {
+        if (requiresRealShippingProvider()) {
+          return reply.code(502).send(realShippingUnavailable(error));
+        }
         console.error("EasyPost return label creation failed, falling back to mock:", error);
       }
     }
 
     // Mock fallback
     if (!trackingNumber) {
+      if (requiresRealShippingProvider()) {
+        return reply.code(503).send(realShippingUnavailable());
+      }
+
       const mockTracking = `RET${Date.now()}`;
       const mockLabel = `https://mock-labels.example.com/${mockTracking}.pdf`;
 
@@ -816,6 +880,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
   // POST /shipments/:id/event — record a shipment event (seller only)
   app.post("/shipments/:id/event", { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] }, async (request, reply) => {
+    if (requiresRealShippingProvider() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "MANUAL_SHIPMENT_EVENTS_DISABLED",
+        message: "Carrier webhooks must drive shipment status in production",
+      });
+    }
+
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -842,7 +913,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /shipments/:id/track — poll carrier for tracking update
-  app.post("/shipments/:id/track", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/shipments/:id/track", { preHandler: [requireAuth, requireShipmentOwner()] }, async (request, reply) => {
     const shipment = await getShipmentById(db, (request.params as { id: string }).id);
     if (!shipment) {
       return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
@@ -862,22 +933,22 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   // POST /shipments/rates — get shipping rate quotes
   const rateRequestSchema = z.object({
     from_address: z.object({
-      name: z.string(),
-      street1: z.string(),
-      street2: z.string().optional(),
-      city: z.string(),
-      state: z.string(),
-      zip: z.string(),
-      country: z.string().default("US"),
+      name: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      street1: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+      city: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      state: z.string().min(2).max(32),
+      zip: z.string().min(3).max(16),
+      country: z.string().max(2).default("US"),
     }),
     to_address: z.object({
-      name: z.string(),
-      street1: z.string(),
-      street2: z.string().optional(),
-      city: z.string(),
-      state: z.string(),
-      zip: z.string(),
-      country: z.string().default("US"),
+      name: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      street1: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      street2: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+      city: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
+      state: z.string().min(2).max(32),
+      zip: z.string().min(3).max(16),
+      country: z.string().max(2).default("US"),
     }),
     parcel: z.object({
       weight_oz: z.number().positive(),
@@ -944,9 +1015,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           source: "easypost",
         });
       } catch (error) {
-        // Fall through to mock rates on EasyPost failure
+        if (requiresRealShippingProvider()) {
+          return reply.code(502).send(realShippingUnavailable(error));
+        }
         console.error("EasyPost rate fetch failed, falling back to mock rates:", error);
       }
+    }
+
+    if (requiresRealShippingProvider()) {
+      return reply.code(503).send(realShippingUnavailable());
     }
 
     // Mock rates fallback
@@ -1052,18 +1129,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         eventType,
       );
       const newEvent = result.shipment.events[result.shipment.events.length - 1];
-      await updateShipmentRecord(db, result.shipment);
-      if (newEvent) {
-        await insertShipmentEvent(db, newEvent);
-      }
-      if (result.trust_triggers.length > 0) {
-        await applyTrustTriggers(db, {
-          order_id: result.shipment.order_id,
-          buyer_id: shipment.buyer_id,
-          seller_id: shipment.seller_id,
-          triggers: result.trust_triggers,
-        });
-      }
+      await persistShipmentUpdate(result, db, { buyer_id: shipment.buyer_id, seller_id: shipment.seller_id }, newEvent);
       return reply.send({
         accepted: true,
         tracking_code: parsed.tracking_code,
@@ -1077,6 +1143,10 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
   // POST /shipments/webhooks/:carrier — generic carrier webhook (fallback)
   app.post("/shipments/webhooks/:carrier", async (request, reply) => {
+    if (requiresRealShippingProvider()) {
+      return reply.code(404).send({ error: "CARRIER_WEBHOOK_NOT_CONFIGURED" });
+    }
+
     const { carrier } = request.params as { carrier: string };
     return reply.send({
       accepted: true,
