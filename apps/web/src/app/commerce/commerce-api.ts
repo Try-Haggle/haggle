@@ -48,25 +48,25 @@ export interface TrustScoreResponse {
 // ─── Payment Actions ────────────────────────────────────────
 
 export async function preparePayment(approvalId: string): Promise<PaymentResponse> {
-  return api.post<PaymentResponse>("/api/payments/prepare", {
-    approval_id: approvalId,
+  return api.post<PaymentResponse>("/payments/prepare", {
+    settlement_approval_id: approvalId,
   });
 }
 
 export async function getPaymentStatus(paymentId: string): Promise<PaymentResponse> {
-  return api.get<PaymentResponse>(`/api/payments/${paymentId}`);
+  return api.get<PaymentResponse>(`/payments/${paymentId}`);
 }
 
 export async function quotePayment(paymentId: string): Promise<PaymentResponse> {
-  return api.post<PaymentResponse>(`/api/payments/${paymentId}/quote`);
+  return api.post<PaymentResponse>(`/payments/${paymentId}/quote`);
 }
 
 export async function authorizePayment(paymentId: string): Promise<PaymentResponse> {
-  return api.post<PaymentResponse>(`/api/payments/${paymentId}/authorize`);
+  return api.post<PaymentResponse>(`/payments/${paymentId}/authorize`);
 }
 
 export async function settlePayment(paymentId: string): Promise<PaymentResponse> {
-  return api.post<PaymentResponse>(`/api/payments/${paymentId}/settle`);
+  return api.post<PaymentResponse>(`/payments/${paymentId}/settle`);
 }
 
 // ─── Dispute Actions ────────────────────────────────────────
@@ -77,7 +77,7 @@ export async function openDispute(
   description: string,
   openedBy: string,
 ): Promise<DisputeResponse> {
-  return api.post<DisputeResponse>("/api/disputes", {
+  return api.post<DisputeResponse>("/disputes", {
     order_id: orderId,
     reason_code: reasonCode,
     description,
@@ -86,17 +86,17 @@ export async function openDispute(
 }
 
 export async function getDisputeByOrder(orderId: string): Promise<DisputeResponse> {
-  return api.get<DisputeResponse>(`/api/disputes/order/${orderId}`);
+  return api.get<DisputeResponse>(`/disputes/by-order/${orderId}`);
 }
 
 // ─── Shipment Actions ───────────────────────────────────────
 
 export async function getShipmentByOrder(orderId: string): Promise<ShipmentResponse> {
-  return api.get<ShipmentResponse>(`/api/shipments/order/${orderId}`);
+  return api.get<ShipmentResponse>(`/shipments/by-order/${orderId}`);
 }
 
 // ─── Trust ──────────────────────────────────────────────────
 
 export async function getTrustScore(userId: string): Promise<TrustScoreResponse> {
-  return api.get<TrustScoreResponse>(`/api/trust/${userId}`);
+  return api.get<TrustScoreResponse>(`/trust/${userId}`);
 }

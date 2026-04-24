@@ -38,6 +38,9 @@ importers:
       '@haggle/commerce-core':
         specifier: workspace:*
         version: link:../../packages/commerce-core
+      '@haggle/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@haggle/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -107,6 +110,9 @@ importers:
       simple-statistics:
         specifier: ^7.8.9
         version: 7.8.9
+      stripe:
+        specifier: ^22.0.1
+        version: 22.0.1(@types/node@22.19.11)
       viem:
         specifier: ^2.39.3
         version: 2.47.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
@@ -4545,6 +4551,15 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
+
+  stripe@22.0.1:
+    resolution: {integrity: sha512-Yw764pZ6s8Xu4CtUZdD5uWOkw6gc9xzO9OKylCuj1gMhMDLbyGbDtaPNNSFE4mB6njYSHESYIVbF1iIzUfAl2g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
@@ -10159,6 +10174,10 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
+
+  stripe@22.0.1(@types/node@22.19.11):
+    optionalDependencies:
+      '@types/node': 22.19.11
 
   styled-jsx@5.1.6(@babel/core@7.29.0)(react@19.2.4):
     dependencies:

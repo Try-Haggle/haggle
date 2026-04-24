@@ -11,12 +11,13 @@ import { getTestApp, closeTestApp } from "../helpers.js";
 
 // ─── Service mocks ────────────────────────────────────────────────────
 
-const { mockCreateDisputeRecord, mockGetDisputeById, mockUpdateDisputeRecord, mockAddEvidence } =
+const { mockCreateDisputeRecord, mockGetDisputeById, mockUpdateDisputeRecord, mockAddEvidence, mockGetCommerceOrderByOrderId } =
   vi.hoisted(() => ({
     mockCreateDisputeRecord: vi.fn(),
     mockGetDisputeById: vi.fn(),
     mockUpdateDisputeRecord: vi.fn(),
     mockAddEvidence: vi.fn(),
+    mockGetCommerceOrderByOrderId: vi.fn(),
   }));
 
 vi.mock("../../services/dispute-record.service.js", () => ({
@@ -45,8 +46,9 @@ vi.mock("../../services/payment-record.service.js", () => ({
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
-  getCommerceOrderByOrderId: vi.fn().mockResolvedValue(null),
+  getCommerceOrderByOrderId: (...args: unknown[]) => mockGetCommerceOrderByOrderId(...args),
   getPaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../../services/settlement-release.service.js", () => ({
@@ -196,6 +198,16 @@ vi.mock("../../lib/action-handlers.js", () => ({
 const DISPUTE_ID = "dispute-e2e-001";
 const ORDER_ID = "order-e2e-001";
 
+function makeOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: ORDER_ID,
+    buyerId: "buyer-e2e-001",
+    sellerId: "seller-e2e-001",
+    amountMinor: 77000,
+    ...overrides,
+  };
+}
+
 function makeDispute(overrides: Record<string, unknown> = {}) {
   return {
     id: DISPUTE_ID,
@@ -221,6 +233,8 @@ describe("E2E: Dispute lifecycle", () => {
 
   beforeAll(async () => {
     app = await getTestApp();
+    // Default: return null unless overridden per-test
+    mockGetCommerceOrderByOrderId.mockResolvedValue(null);
   });
 
   afterAll(async () => {
@@ -231,6 +245,7 @@ describe("E2E: Dispute lifecycle", () => {
 
   it("Step 1 — POST /disputes opens a new T1 dispute", async () => {
     mockCreateDisputeRecord.mockResolvedValue(makeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(makeOrder());
 
     const res = await app.inject({
       method: "POST",
@@ -264,6 +279,7 @@ describe("E2E: Dispute lifecycle", () => {
 
   it("Step 2 — GET /disputes/:id returns the open dispute", async () => {
     mockGetDisputeById.mockResolvedValue(makeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(makeOrder());
 
     const res = await app.inject({
       method: "GET",
@@ -283,8 +299,9 @@ describe("E2E: Dispute lifecycle", () => {
   // ── Step 3: Escalate T1 → T2 ─────────────────────────────────────
 
   it("Step 3 — POST /disputes/:id/escalate returns 400 when dispute has no refund amount", async () => {
-    // Without a positive refund_amount_minor, escalate returns 400
+    // Without a positive order amount, escalate returns 400 INVALID_DISPUTE_AMOUNT
     mockGetDisputeById.mockResolvedValue(makeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValue(makeOrder({ amountMinor: null }));
 
     const res = await app.inject({
       method: "POST",

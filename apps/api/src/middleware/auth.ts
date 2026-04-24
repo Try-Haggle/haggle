@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import fp from "fastify-plugin";
 import jwt from "jsonwebtoken";
+import { isProductionRuntime } from "../config/runtime.js";
 
 export interface AuthUser {
   id: string;
@@ -22,24 +23,17 @@ interface SupabaseJwtPayload {
   app_metadata?: { role?: string };
 }
 
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
-
-if (!SUPABASE_JWT_SECRET) {
-  const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-  if (isProduction) {
-    throw new Error(
-      "[SECURITY] SUPABASE_JWT_SECRET is not set in production. " +
-      "Server startup aborted to prevent unauthenticated access.",
-    );
-  } else {
-    console.warn(
-      "⚠️  [auth] SUPABASE_JWT_SECRET not set — JWT verification disabled (dev passthrough)",
-    );
-  }
-}
-
 function verifySupabaseJwt(token: string): SupabaseJwtPayload {
-  if (!SUPABASE_JWT_SECRET) {
+  const supabaseJwtSecret = process.env.SUPABASE_JWT_SECRET;
+
+  if (!supabaseJwtSecret) {
+    if (isProductionRuntime()) {
+      throw new Error(
+        "[SECURITY] SUPABASE_JWT_SECRET is not set in production. " +
+        "Server startup aborted to prevent unauthenticated access.",
+      );
+    }
+
     // No secret configured — decode without verification (local dev passthrough)
     const decoded = jwt.decode(token) as SupabaseJwtPayload | null;
     if (!decoded || !decoded.sub) {
@@ -48,7 +42,7 @@ function verifySupabaseJwt(token: string): SupabaseJwtPayload {
     return decoded;
   }
 
-  const payload = jwt.verify(token, SUPABASE_JWT_SECRET) as SupabaseJwtPayload;
+  const payload = jwt.verify(token, supabaseJwtSecret) as SupabaseJwtPayload;
   if (!payload.sub) {
     throw new Error("Invalid JWT payload: missing sub");
   }
@@ -56,6 +50,12 @@ function verifySupabaseJwt(token: string): SupabaseJwtPayload {
 }
 
 async function authPlugin(app: FastifyInstance) {
+  if (!process.env.SUPABASE_JWT_SECRET && !isProductionRuntime()) {
+    app.log.warn(
+      "[auth] SUPABASE_JWT_SECRET not set; JWT verification disabled for local/test runtime",
+    );
+  }
+
   app.decorateRequest("user", undefined);
 
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {

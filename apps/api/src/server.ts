@@ -37,21 +37,56 @@ import { registerHfmiRoutes } from "./routes/hfmi.js";
 import { registerPresetRoutes } from "./routes/presets.js";
 import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
+import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
+import { registerReviewerRoutes } from "./routes/reviewer.js";
+import { registerAdvisorRoutes } from "./routes/advisor.js";
+import { registerAddressRoutes } from "./routes/addresses.js";
+import { registerOrderRoutes } from "./routes/orders.js";
 import websocket from "@fastify/websocket";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
+import { initCronJobs } from "./jobs/runner.js";
+import { getRuntimeConfig, isCorsOriginAllowed } from "./config/runtime.js";
+import { configuredJsonBodyLimit } from "./lib/input-limits.js";
 
 export async function createServer() {
+  const runtimeConfig = getRuntimeConfig();
+  const jsonBodyLimit = configuredJsonBodyLimit();
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || "info",
     },
+    bodyLimit: jsonBodyLimit,
   });
 
+  // ─── Raw Body Capture (for webhook signature verification) ──
+  // Override the default JSON parser to store the raw buffer on the request.
+  // Stripe and x402 webhooks require the exact raw bytes for HMAC verification.
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (_req, body, done) => {
+      // Store raw buffer on request for webhook handlers
+      (_req as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
+      if ((body as Buffer).byteLength > jsonBodyLimit) {
+        const err = new Error(`JSON body exceeds ${jsonBodyLimit} bytes`) as Error & { statusCode?: number; code?: string };
+        err.statusCode = 413;
+        err.code = "FST_ERR_CTP_BODY_TOO_LARGE";
+        done(err, undefined);
+        return;
+      }
+      try {
+        done(null, JSON.parse((body as Buffer).toString()));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // ─── Database ──────────────────────────────────────────────
-  const db = createDb(process.env.DATABASE_URL!);
+  const db = createDb(runtimeConfig.databaseUrl);
 
   // ─── LLM Telemetry DB sink ─────────────────────────────────
   if (process.env.LLM_TELEMETRY === "db") {
@@ -62,15 +97,7 @@ export async function createServer() {
   // ChatGPT requires these origins to connect to the MCP server.
   await app.register(cors, {
     origin: (origin, cb) => {
-      // Allow: ChatGPT, Vercel, tryhaggle.ai, localhost, file:// (null)
-      const allowed = !origin                       // same-origin / file:// (null)
-        || origin === 'null'                         // file:// protocol
-        || origin === 'https://chatgpt.com'
-        || origin === 'https://chat.openai.com'
-        || origin === 'https://tryhaggle.ai'
-        || /\.vercel\.app$/.test(origin)
-        || /^http:\/\/localhost:\d+$/.test(origin);
-      cb(null, allowed);
+      cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
     methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
@@ -103,6 +130,7 @@ export async function createServer() {
   registerSettlementReleaseRoutes(app, db);
   registerSettlementApprovalRoutes(app, db);
   registerAuthenticationRoutes(app, db);
+  registerAddressRoutes(app, db);
 
   // ─── Trust, DS Rating, ARP, Tag Routes ──────────────────
   registerTrustRoutes(app, db);
@@ -147,9 +175,24 @@ export async function createServer() {
   registerBuddyRoutes(app, db);
   registerGamificationRoutes(app, db);
 
+  // ─── Order Routes ─────────────────────────────────────
+  registerOrderRoutes(app, db);
+
+  // ─── Reviewer / DS Panel Routes ──────────────────────────
+  registerReviewerRoutes(app, db);
+
+  // ─── AI Advisor Routes ──────────────────────────────────
+  registerAdvisorRoutes(app, db);
+
+  // ─── Demo / E2E Test Routes ────────────────────────────
+  registerDemoE2ERoutes(app, db);
+
   // ─── WebSocket ───────────────────────────────────────────
   await app.register(websocket);
   await registerWebSocketRoutes(app);
+
+  // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
+  initCronJobs(db);
 
   return app;
 }

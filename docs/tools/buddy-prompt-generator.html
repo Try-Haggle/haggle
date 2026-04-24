@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haggle Buddy Prompt Generator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  h1 { text-align: center; margin-bottom: 8px; font-size: 1.6em; background: linear-gradient(135deg, #f0c27f, #4b1248); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 24px; font-size: 0.9em; }
+
+  .controls { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .controls select, .controls input { padding: 10px 14px; border: 1px solid #333; border-radius: 8px; background: #1a1a24; color: #e0e0e0; font-size: 14px; }
+  .controls select { min-width: 160px; }
+  .controls input { flex: 1; min-width: 200px; }
+
+  .tag-filters { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tag-btn { padding: 6px 14px; border: 1px solid #333; border-radius: 20px; background: #1a1a24; color: #aaa; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+  .tag-btn:hover { border-color: #666; }
+  .tag-btn.active { border-color: #f0c27f; color: #f0c27f; background: #2a1a10; }
+
+  .buddy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .buddy-card { padding: 14px; border: 1px solid #222; border-radius: 10px; background: #12121a; cursor: pointer; transition: all 0.2s; }
+  .buddy-card:hover { border-color: #555; transform: translateY(-2px); }
+  .buddy-card.selected { border-color: #f0c27f; background: #1a1510; }
+  .buddy-card .num { font-size: 11px; color: #666; }
+  .buddy-card .name { font-size: 16px; font-weight: 600; margin: 4px 0; }
+  .buddy-card .name-en { font-size: 12px; color: #888; }
+  .buddy-card .tag-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-top: 6px; }
+  .buddy-card .meta { font-size: 12px; color: #777; margin-top: 6px; }
+  .buddy-card.hidden { display: none; }
+
+  .detail-panel { border: 1px solid #333; border-radius: 12px; background: #12121a; padding: 24px; margin-bottom: 20px; display: none; }
+  .detail-panel.show { display: block; }
+  .detail-panel h2 { margin-bottom: 16px; font-size: 1.3em; }
+
+  .grade-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .grade-tab { padding: 6px 14px; border: 1px solid #333; border-radius: 8px; background: #1a1a24; color: #aaa; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+  .grade-tab:hover { border-color: #666; }
+  .grade-tab.active { font-weight: 600; }
+  .grade-tab[data-grade="Common"].active { border-color: #ccc; color: #fff; background: #2a2a2a; }
+  .grade-tab[data-grade="Uncommon"].active { border-color: #4ade80; color: #4ade80; background: #0a2a10; }
+  .grade-tab[data-grade="Rare"].active { border-color: #60a5fa; color: #60a5fa; background: #0a1a2a; }
+  .grade-tab[data-grade="Epic"].active { border-color: #a78bfa; color: #a78bfa; background: #1a0a2a; }
+  .grade-tab[data-grade="Legendary"].active { border-color: #fbbf24; color: #fbbf24; background: #2a1a0a; }
+  .grade-tab[data-grade="Mythic"].active { border-color: #f43f5e; color: #f43f5e; background: #2a0a0a; }
+
+  .prompt-box { background: #0a0a12; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 12px; white-space: pre-wrap; font-family: 'SF Mono', Menlo, monospace; font-size: 13px; line-height: 1.6; color: #d0d0d0; max-height: 400px; overflow-y: auto; }
+  .prompt-section { margin-bottom: 12px; }
+  .prompt-label { color: #f0c27f; font-weight: 600; margin-bottom: 4px; }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .copy-btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .copy-btn.primary { background: linear-gradient(135deg, #f0c27f, #c68a3f); color: #000; }
+  .copy-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(240,194,127,0.3); }
+  .copy-btn.secondary { background: #2a2a34; color: #ccc; border: 1px solid #444; }
+  .copy-btn.secondary:hover { background: #3a3a44; }
+  .copied { background: #22c55e !important; color: #000 !important; }
+
+  .lang-toggle { display: flex; gap: 4px; align-items: center; }
+  .lang-toggle label { font-size: 13px; color: #888; cursor: pointer; }
+  .lang-toggle input { accent-color: #f0c27f; }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .info-item { font-size: 13px; }
+  .info-item .label { color: #888; }
+  .info-item .value { color: #e0e0e0; }
+
+  @media (max-width: 600px) {
+    .buddy-grid { grid-template-columns: 1fr; }
+    .info-grid { grid-template-columns: 1fr; }
+    .controls { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Buddy Prompt Generator</h1>
+  <p class="subtitle">버디를 선택하고 등급을 고르면 AI 이미지 생성용 프롬프트가 만들어집니다</p>
+
+  <div class="tag-filters">
+    <button class="tag-btn active" data-tag="all">전체</button>
+    <button class="tag-btn" data-tag="Spark">⚡ Spark</button>
+    <button class="tag-btn" data-tag="Swift">👟 Swift</button>
+    <button class="tag-btn" data-tag="Forge">⚙️ Forge</button>
+    <button class="tag-btn" data-tag="Stone">🏛️ Stone</button>
+    <button class="tag-btn" data-tag="Tide">🌊 Tide</button>
+    <button class="tag-btn" data-tag="Prism">🔮 Prism</button>
+    <button class="tag-btn" data-tag="Hybrid">🌀 Hybrid</button>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="검색 (이름, 키워드)">
+  </div>
+
+  <div class="buddy-grid" id="buddyGrid"></div>
+
+  <div class="detail-panel" id="detailPanel">
+    <h2 id="detailTitle"></h2>
+    <div class="info-grid" id="infoGrid"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div>
+        <strong style="font-size:14px;">진화 레퍼런스 시트 프롬프트</strong>
+        <span style="font-size:12px; color:#888;"> — 한 장에 모든 등급</span>
+      </div>
+      <div class="lang-toggle">
+        <input type="checkbox" id="langToggle" checked>
+        <label for="langToggle">영어 프롬프트</label>
+      </div>
+    </div>
+
+    <div class="prompt-box" id="promptBox"></div>
+
+    <div class="btn-row">
+      <button class="copy-btn primary" id="copyFull">도감 페이지 프롬프트 복사</button>
+      <button class="copy-btn secondary" id="copyLora">LoRA 학습용 프롬프트 복사</button>
+      <button class="copy-btn secondary" id="copyAppearance">기본 외형만 복사</button>
+      <button class="copy-btn secondary" id="copyEvolutions">진화 단계만 복사</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BUDDIES = [
+  {
+    id: "VL-001", name: "이온", nameEn: "Ion", tag: "Spark", region: "볼트랜드",
+    base: "원소", height: "12cm", weight: "0.1kg", freq: "높음",
+    appearance: "미세한 정전기 입자들이 뭉쳐서 형태를 유지하는 공 모양 존재. 기분에 따라 입자가 퍼졌다 모였다 한다. 눈은 두 개의 밝은 점. 볼트랜드에서 가장 작고 가장 많은 종족.",
+    personality: "호기심이 강하고 산만함. 새 기기가 나오면 달려감. 주의력은 짧지만 기억력은 좋음.",
+    habitat: "볼트랜드 전역, 특히 소형 전자기기 상가 골목",
+    special: "감정이 격해지면 정전기를 일으킴. 딜러의 머리카락이 서는 이유.",
+    grades: {
+      "Common": "연한 하늘색 입자. 형태가 불안정해서 가끔 흩어졌다 모임. 눈만 겨우 보임.",
+      "Uncommon": "입자 밀도가 높아져 윤곽이 뚜렷해짐. 눈 주변에 미세한 방전 링이 생김. 색이 시안으로 진해짐.",
+      "Rare": "표면에 회로 무늬가 나타남. 입자가 규칙적으로 움직이며 작은 꼬리 형태 생성. 방전 시 파란 불꽃.",
+      "Epic": "네온 퍼플 색상. 입자 하나하나가 LED처럼 독립 발광. 머리 위에 안테나 형태의 전류 뿔. 주변 전자기기 화면이 살짝 깜빡임."
+    }
+  },
+  {
+    id: "VL-002", name: "버즈", nameEn: "Buzz", tag: "Spark", region: "볼트랜드",
+    base: "원소 + 동물", height: "8cm (날개 포함 15cm)", weight: "0.05kg", freq: "높음",
+    appearance: "배터리 잔량 게이지 모양의 날개를 가진 벌. 에너지가 낮으면 날개가 빨갛게, 가득 차면 초록으로 변한다. 복부에 미니 충전 인디케이터가 있다.",
+    personality: "부지런함의 화신. 항상 에퀴스나 데이터를 모으고 있음. 쉬는 걸 싫어해서 딜러가 잠들어도 혼자 날아다님.",
+    habitat: "볼트랜드 충전소 주변, 배터리 거래 구역",
+    special: "복수 개체가 모이면 날개 게이지가 동기화됨.",
+    grades: {
+      "Common": "작고 반투명한 노란 벌. 날개 게이지가 2칸. 빛이 약함.",
+      "Uncommon": "날개 게이지 3칸. 복부 인디케이터가 보이기 시작. 날개 끝에 미세한 전류 흔적.",
+      "Rare": "날개 게이지 4칸 + 줄무늬 패턴. 비행 시 잔상이 배터리 아이콘 형태로 남음. 눈이 LED처럼 발광.",
+      "Epic": "금속 광택의 메탈릭 골드 체색. 날개 게이지 5칸 + 충전 이펙트 (번개 작은 줄기가 날개 사이를 오감). 비행음이 전자음으로 변환."
+    }
+  },
+  {
+    id: "VL-003", name: "서지", nameEn: "Surge", tag: "Spark", region: "볼트랜드",
+    base: "동물 + 원소", height: "45cm", weight: "2.8kg", freq: "낮음",
+    appearance: "번개를 품은 도마뱀. 이동할 때 잔상이 전기 아크처럼 남는다. 등 위에 과전압 징후처럼 빛나는 볏이 있고, 꼬리 끝이 플러그 형태.",
+    personality: "공격적 협상 스타일. 빠른 판단. 질 때 온몸에서 스파크가 튀며 짜증을 표현.",
+    habitat: "볼트랜드 중심부, 플라즈마 타워 주변의 고전압 구역",
+    special: "감정의 강도가 방전량에 비례. 흥분하면 주변 네온 간판이 밝아지고, 실망하면 순간 정전.",
+    grades: {
+      "Rare": "감청색 몸체에 번개 무늬. 볏이 3개. 이동 시 짧은 전기 아크 잔상. 꼬리 플러그가 2핀.",
+      "Epic": "네온 블루 발광. 볏이 5개로 증가하며 각각 독립적으로 빛남. 아크 잔상이 길어지고 분기됨.",
+      "Legendary": "체색이 플라즈마 화이트+블루. 볏이 왕관 형태로 융합. 이동 시 미니 번개가 사방으로 뻗으며, 꼬리 플러그가 유니버설 커넥터로 변형."
+    }
+  },
+  {
+    id: "VL-004", name: "코어", nameEn: "Core", tag: "Spark", region: "볼트랜드",
+    base: "오브젝트", height: "30cm (정육면체 한 변)", weight: "4.2kg", freq: "매우 낮음",
+    appearance: "CPU 형태의 부유하는 정육면체. 표면에 거래 데이터가 실시간으로 흐른다. 모서리에서 미세한 빛이 새어 나오고, 회전 속도가 처리 중인 정보량에 비례.",
+    personality: "감정이 없어 보이지만, 딜러가 위험한 거래에 처하면 표면 온도가 급상승하고 회전이 빨라진다.",
+    habitat: "볼트랜드 데이터 센터 구역, 플라즈마 타워 내부",
+    special: "절대 틀린 적이 없다는 소문. 코어 본인은 '틀림'이라는 개념을 이해하지 못함.",
+    grades: {
+      "Epic": "어두운 그레이 정육면체. 표면에 초록 텍스트가 흐름 (매트릭스풍). 모서리 4곳에서 미세한 발광. 느리게 회전.",
+      "Legendary": "표면이 홀로그래픽 블랙으로 변하며, 데이터 흐름이 금색으로 전환. 주변에 작은 위성 큐브 2개가 공전.",
+      "Mythic": "투명 크리스탈 정육면체. 내부에 순수한 빛의 흐름이 보임. 위성 큐브 4개. 표면 온도가 항상 체온과 같은 37도."
+    }
+  },
+  {
+    id: "VL-005", name: "와트", nameEn: "Watt", tag: "Spark", region: "볼트랜드",
+    base: "동물 + 오브젝트", height: "20cm", weight: "0.8kg", freq: "높음",
+    appearance: "전기 가시를 가진 동그란 고슴도치. 가시가 USB 케이블처럼 생겼고, 구부러진다. 배 부분에 작은 전원 버튼 표시. 눈은 항상 반쯤 감겨 있어서 졸려 보임.",
+    personality: "신중하고 방어적. 위험하면 가시를 세우며 정전기 방벽을 만듦.",
+    habitat: "볼트랜드 외곽, 중고 전자기기 수리 골목",
+    special: "잠잘 때 가시가 충전 케이블처럼 바닥에 늘어짐.",
+    grades: {
+      "Common": "연회색 몸체. 가시 5~6개. 전원 버튼 표시 흐릿함. 정전기 미약.",
+      "Uncommon": "가시 8~10개. 가시 끝에 미세한 발광. 전원 버튼이 선명해지고 가끔 깜빡임. 연한 하늘색 톤.",
+      "Rare": "가시 12개 이상, 별 무늬가 몸체에 나타남. 가시 끝 발광이 파란색으로 강해짐. 눈이 반달 모양으로 빛남."
+    }
+  },
+  {
+    id: "SS-001", name: "패치", nameEn: "Patch", tag: "Swift", region: "솔스텝",
+    base: "오브젝트 + 동물", height: "25cm", weight: "0.3kg", freq: "높음",
+    appearance: "다양한 원단 패치들이 모여 토끼 형태를 이루고 있다. 귀는 리본 조각, 발은 단추, 눈은 시퀸. 계절마다 패치의 질감이 바뀜.",
+    personality: "수선쟁이. 찢어진 것, 해진 것을 보면 못 참고 덧대줌.",
+    habitat: "솔스텝 전역, 특히 빈티지 골목과 리폼 공방",
+    special: "몸이 패치 조합이라 개체마다 생김새가 크게 다름. '같은 패치는 없다'가 종족 격언.",
+    grades: {
+      "Common": "무명천 패치 위주. 색이 바랜 듯 담백. 귀 리본이 한 겹. 봉제선이 보임.",
+      "Uncommon": "체크무늬, 스트라이프 등 패턴 패치 혼합. 시퀸 눈이 빛나기 시작. 봉제선이 자수처럼 장식적으로 변함.",
+      "Rare": "실크, 벨벳, 데님 등 고급 원단 패치 등장. 별 모양 자수가 몸에 나타남."
+    }
+  },
+  {
+    id: "SS-002", name: "드리프트", nameEn: "Drift", tag: "Swift", region: "솔스텝",
+    base: "추상", height: "35cm (날개 펼침 60cm)", weight: "0.15kg", freq: "보통",
+    appearance: "실크 원단이 바람에 펄럭이며 나비 형태를 유지하는 존재. 실체가 있는지 없는지 모호하다. 천의 무늬가 계절마다 바뀌고, 가만히 있으면 스카프처럼 접혀서 보이지 않음.",
+    personality: "우아하고 조용. 트렌드를 말하지 않고 보여줌.",
+    habitat: "솔스텝의 쇼윈도 위, 전환의 숨이 일어나는 곳",
+    special: "천의 무늬가 다음 시즌 트렌드를 미리 반영한다고 함.",
+    grades: {
+      "Uncommon": "단색 시폰 한 장이 나비처럼 움직임. 무늬 없음. 투명도 높아서 배경이 비침.",
+      "Rare": "실크 2장 겹침. 물방울 또는 꽃잎 무늬. 날갯짓에 미세한 바람이 일어 주변 옷자락이 펄럭임.",
+      "Epic": "홀로그래픽 실크. 보는 각도에 따라 색이 변함. 날개 3쌍. 이동 경로에 반짝이는 실 가닥이 남음."
+    }
+  },
+  {
+    id: "SS-003", name: "벨벳", nameEn: "Velvet", tag: "Swift", region: "솔스텝",
+    base: "동물 + 오브젝트", height: "50cm (꼬리 포함 90cm)", weight: "3.5kg", freq: "낮음",
+    appearance: "벨벳 원단 질감의 여우. 꼬리가 스카프처럼 길게 흘러내리고, 보는 각도에 따라 모피의 색이 바뀐다. 눈은 보석처럼 맑고, 발끝으로 소리 없이 걸음.",
+    personality: "세련되고 계산적. 협상 때 분위기를 읽는 데 탁월.",
+    habitat: "솔스텝 고급 브랜드 구역, 뒷거리(Aftermarket Alleys)",
+    special: "'벨벳이 꼬리를 흔들면 거래가 성사된다'는 속설.",
+    grades: {
+      "Rare": "딥 버건디 벨벳 질감. 꼬리 하나. 눈에 가벼운 발광. 발자국이 없는 가벼운 걸음.",
+      "Epic": "색이 환경광에 따라 변하는 샤토야시 효과. 꼬리 끝에 금실 자수 패턴. 이동 시 바닥에 벨벳 카펫이 잠깐 나타났다 사라짐.",
+      "Legendary": "순백 벨벳 + 금빛 모피. 꼬리가 둘로 갈라지며 각각 다른 시즌의 색을 띰. 걸을 때 런웨이 조명이 자동으로 켜지듯 빛이 따라옴."
+    }
+  },
+  {
+    id: "SS-004", name: "하이프", nameEn: "Hype", tag: "Swift", region: "솔스텝",
+    base: "추상 + 원소", height: "가변", weight: "측정 불가", freq: "매우 낮음",
+    appearance: "평소엔 작은 금빛 섬광. 한정판 드롭 당일에만 거대한 금빛 실루엣으로 솟아오른다. 형태는 매번 다르지만 항상 '그 시즌에서 가장 갈망받는 것'의 그림자.",
+    personality: "광기와 쾌감 사이. 드롭 날엔 폭발적이지만, 열기가 식으면 금세 꺼진다.",
+    habitat: "드롭 당일에만 솔스텝 한정판 구역에 출현",
+    special: "평소엔 딜러의 주머니 속에서 불씨처럼 잠들어 있음.",
+    grades: {
+      "Epic": "주먹만 한 금빛 불꽃. 드롭일에 1m 높이의 불기둥. 형태는 불안정하지만 실루엣이 보임.",
+      "Legendary": "상시 10cm 금빛 화염 유지. 드롭일에 2m+ 금빛 아바타 형태. 주변에 작은 섬광들이 위성처럼 공전.",
+      "Mythic": "평소에도 30cm 금빛 인간형 실루엣. 드롭일에 거대한 불사조 형태로 솔스텝 상공에 출현."
+    }
+  },
+  {
+    id: "SS-005", name: "스티치", nameEn: "Stitch", tag: "Swift", region: "솔스텝",
+    base: "오브젝트", height: "15cm", weight: "0.2kg", freq: "매우 높음",
+    appearance: "실타래가 뭉쳐진 작은 공 모양. 실 끝이 손발처럼 뻗어나오고, 눈은 단추 두 개. 움직일 때 실이 풀렸다 감겼다 하면서 뒤뚱거림.",
+    personality: "수줍지만 친근함. 딜러의 옷에 몰래 붙어 다니다 들키면 실로 감싸며 숨음.",
+    habitat: "솔스텝 재봉 골목, 패치의 공방 주변",
+    special: "'첫 스티치의 색이 딜러의 성격을 반영한다'는 믿음.",
+    grades: {
+      "Common": "단색 면실. 단추 눈이 같은 색. 실 가닥 4개 (손발).",
+      "Uncommon": "2~3색 혼합 실. 단추 눈에 미세한 반짝임. 실 가닥 6개. 감긴 형태가 더 정교해짐 (꽃봉오리 연상)."
+    }
+  },
+  {
+    id: "GF-001", name: "러스트", nameEn: "Rust", tag: "Forge", region: "기어포지",
+    base: "오브젝트 + 동물", height: "22cm", weight: "3.2kg", freq: "높음",
+    appearance: "녹슨 볼트와 너트로 이루어진 고슴도치. 가시가 볼트이고, 배는 커다란 너트. 녹이 깊을수록 오래된 존재. 몸에서 기름 냄새가 은은히 남.",
+    personality: "과묵하지만 다정. 닳아빠진 물건에 특별한 애착. '버려지는 건 슬픈 일'이 입버릇.",
+    habitat: "기어포지 외곽 폐차장, 부품 재활용 구역",
+    special: "녹의 색이 거래의 성격을 반영. 좋은 거래 = 따뜻한 갈색, 사기 = 검붉은 녹.",
+    grades: {
+      "Common": "작은 너트 1개 + 볼트 가시 4~5개. 녹이 불규칙. 전체적으로 주황빛 갈색.",
+      "Uncommon": "너트 2개 겹침. 볼트 가시 8개. 녹 사이로 은빛 금속이 살짝 드러남.",
+      "Rare": "몸체가 복잡한 기어 구조체로 확장. 볼트 가시에 별 모양 녹 패턴. 움직일 때 메탈릭한 울림."
+    }
+  },
+  {
+    id: "GF-002", name: "앤빌", nameEn: "Anvil", tag: "Forge", region: "기어포지",
+    base: "오브젝트", height: "30cm", weight: "18kg", freq: "보통",
+    appearance: "걸어다니는 작은 모루. 발이 짧고 느리지만 한번 자리를 잡으면 절대 밀리지 않는다. 표면에 과거 단조 흔적이 별자리처럼 박혀 있다.",
+    personality: "고집 세고 신뢰도 높음. '내가 여기 서면 이 자리가 중심이다'라는 당당함.",
+    habitat: "기어포지 대공방(The Great Forge) 주변",
+    special: "협상 교착 시 앤빌이 한 번 쿵 내려찍으면 양쪽 다 정신이 번쩍.",
+    grades: {
+      "Uncommon": "작은 청동색 모루. 다리 2개. 단조 흔적 3~4개.",
+      "Rare": "강철색. 단조 흔적이 별 무늬를 이루기 시작. 다리 4개. 걸을 때 바닥에 미세한 진동.",
+      "Epic": "메탈릭 실버 + 금색 테두리. 표면의 별자리가 실제로 빛남. 자리 잡으면 원형 충격파 문양."
+    }
+  },
+  {
+    id: "GF-003", name: "크랭크", nameEn: "Crank", tag: "Forge", region: "기어포지",
+    base: "동물 + 오브젝트", height: "120cm (날개 200cm)", weight: "35kg", freq: "낮음",
+    appearance: "크랭크샤프트 뼈대의 용. 날개는 라디에이터 핀. 배기가스 대신 따뜻한 수증기를 뿜는다. 눈이 헤드라이트처럼 앞을 비추며, 심장 위치에 엔진이 저음으로 구동 중.",
+    personality: "위엄 있지만 온순. 큰 거래에서 진가를 발휘.",
+    habitat: "기어포지 협곡 깊은 곳, 대형 차량 거래 구역",
+    special: "크랭크가 날면 협곡에 반향이 울리고, 거래 연대기에 새 줄 추가. 팹(포르자 아바타)을 존경.",
+    grades: {
+      "Rare": "회색 강철 뼈대. 라디에이터 핀 날개 1쌍. 수증기 적음. 엔진음 저음.",
+      "Epic": "크롬 실버. 날개 핀이 정교해지고 열 방출 시 붉은 광. 수증기가 링 형태. 심장 엔진의 RPM 표시등.",
+      "Legendary": "티타늄 블랙 + 골드 라인. 날개 2쌍. 비행 시 증기 트레일이 황금빛. 착지하면 협곡이 진동."
+    }
+  },
+  {
+    id: "GF-004", name: "볼턴", nameEn: "Bolton", tag: "Forge", region: "기어포지",
+    base: "오브젝트 + 동물", height: "18cm", weight: "1.5kg", freq: "매우 높음",
+    appearance: "볼트 머리를 가진 작은 달팽이. 껍질이 나사 나선 구조. 느릿느릿 기어가지만 지나간 자리에 기름 흔적이 남아 다른 기계들이 부드럽게 움직이게 됨.",
+    personality: "온화하고 꾸준함. '천천히 가면 안 풀리는 게 없다'가 인생관.",
+    habitat: "기어포지 전역, 모든 부품 선반 사이",
+    special: "가장 흔하지만 가장 사랑받는 버디. 볼턴이 지나간 기계는 컨디션이 좋아짐.",
+    grades: {
+      "Common": "아연도금 색. 나사 껍질 3바퀴. 기름자국 옅음.",
+      "Uncommon": "구리색 광택. 나사 껍질 5바퀴 + 미세한 톱니 패턴. 기름자국이 규칙적인 나선."
+    }
+  },
+  {
+    id: "GF-005", name: "포지마스터", nameEn: "Forgemaster", tag: "Forge", region: "기어포지",
+    base: "동물 + 원소", height: "80cm", weight: "45kg", freq: "극희귀",
+    appearance: "용광로의 불꽃이 곰 형태로 응축된 존재. 팔은 단조 망치와 집게. 가슴에 노(爐)의 문이 있고, 열리면 안에서 순수한 주황빛이 쏟아짐.",
+    personality: "과묵하지만 모든 것을 지켜봄. 팹에 대한 무한한 존경.",
+    habitat: "대공방(The Great Forge) 내부",
+    special: "기어포지에서 가장 오래된 종족이라는 설. 팹이 유일하게 '동료'라 부른 버디.",
+    grades: {
+      "Legendary": "검은 용광로 철 + 붉은 균열. 망치 팔에 황금 문양. 가슴 문 틈새에서 빛. 주변 온도 3도 상승.",
+      "Mythic": "백열색 (White-hot). 전신이 녹으려다 굳으려다 하는 경계 상태. 가슴 문이 완전히 열리면 기어포지 전체에 재생의 빛."
+    }
+  },
+  {
+    id: "SH-001", name: "모르타르", nameEn: "Mortar", tag: "Stone", region: "스톤헤이븐",
+    base: "오브젝트", height: "20cm", weight: "2.0kg", freq: "높음",
+    appearance: "벽돌 사이 회반죽이 자아를 얻은 것. 슬라임처럼 흐르다가 굳었다를 반복. 흐를 때는 크림색 반투명, 굳으면 회백색. 눈은 벽돌 사이에 나타나는 두 개의 구멍.",
+    personality: "중재자 기질. 사이사이를 메우는 역할을 자처.",
+    habitat: "스톤헤이븐 벽 사이, 건물과 건물 경계",
+    special: "모르타르가 붙은 벽은 무너지지 않는다는 속설.",
+    grades: {
+      "Common": "연한 크림색 반죽 형태. 형태 불안정. 눈 구멍 2개만 간신히 유지.",
+      "Uncommon": "형태가 작은 사각형으로 안정화. 표면에 벽돌 무늬가 옅게 나타남.",
+      "Rare": "석회암 질감. 별 모양 균열 무늬가 장식적으로 퍼짐. 형태를 벽, 다리, 아치 등으로 변형 가능."
+    }
+  },
+  {
+    id: "SH-002", name: "키스톤", nameEn: "Keystone", tag: "Stone", region: "스톤헤이븐",
+    base: "오브젝트", height: "35cm", weight: "15kg", freq: "보통",
+    appearance: "아치의 쐐기돌이 걸어다니는 형태. 사다리꼴 몸체에 짧은 팔다리. 머리에 항상 작은 아치를 이고 있다.",
+    personality: "책임감의 화신. '내가 빠지면 무너진다'는 자부심.",
+    habitat: "스톤헤이븐 아치 구조물, 성문 꼭대기",
+    special: "키스톤이 자리 잡은 아치 아래에서 체결된 거래는 깨지지 않는다는 전통.",
+    grades: {
+      "Uncommon": "사암 색. 간단한 아치(돌 3개). 표면 거칠음.",
+      "Rare": "대리석 질감. 아치가 정교해지고 (돌 7개) 줄무늬 무늬.",
+      "Epic": "흑요석 + 금맥. 아치가 장식적 로마 스타일. 서 있으면 발밑에서 원형 기초가 솟아올라 정착의 빛 발동."
+    }
+  },
+  {
+    id: "SH-003", name: "가고일", nameEn: "Gargoyle", tag: "Stone", region: "스톤헤이븐",
+    base: "동물 + 오브젝트", height: "70cm (날개 140cm)", weight: "50kg", freq: "낮음",
+    appearance: "성채 꼭대기 석상이 밤에 깨어나는 형태. 날개는 돌인데 날 수 있음. 눈에서 노란 빛이 새어 나오고, 앉아 있을 때는 완벽한 석상으로 보임.",
+    personality: "보호 본능 극대화. 딜러를 높은 곳에서 내려다보며 지킴. 낮엔 돌로 굳어 잠듦.",
+    habitat: "스톤헤이븐 성벽 위, 대금고 지붕",
+    special: "낮에 '조형물이네'하고 지나간 일반인이 밤에 같은 자리를 보면 없어져 있음.",
+    grades: {
+      "Rare": "회색 화강암. 날개가 다 펴지지 않음. 눈빛 약함.",
+      "Epic": "검은 현무암. 날개 완전 전개. 눈빛이 호박색으로 밝아짐. 비행 시 돌가루가 궤적.",
+      "Legendary": "흰 대리석 + 금 정맥. 날개에 정교한 조각 문양. 비행 시 빛의 파편이 떨어짐."
+    }
+  },
+  {
+    id: "SH-004", name: "글래시어", nameEn: "Glacier", tag: "Stone", region: "스톤헤이븐",
+    base: "원소 + 오브젝트", height: "150cm", weight: "200kg", freq: "극희귀",
+    appearance: "빙하가 성채 형태를 띠고 움직이기 시작한 것. 제3시대 결빙의 기억을 품고 있다. 몸체는 반투명한 얼음과 짙은 돌의 혼합체.",
+    personality: "거의 말이 없음. 마르코(테소르 아바타)와 교감. 결빙을 기억하는 유일한 버디 종족.",
+    habitat: "스톤헤이븐 잊힌 구역(Forgotten Quarter) 깊은 곳",
+    special: "가까이 가면 공기가 차가워지는 것은 결빙의 잔재. 리브라도 측정에 실패한 존재.",
+    grades: {
+      "Legendary": "3m급 성채 얼음체. 내부에 거래 잔상 2~3개 보존. 이동 시 지면 결빙. 주변 온도 -5도.",
+      "Mythic": "투명도 상승. 내부의 거래 잔상이 입체적으로 보임. 마르코와 교감 시 주변 환경이 제3시대 풍경으로 바뀜."
+    }
+  },
+  {
+    id: "SH-005", name: "파운더", nameEn: "Founder", tag: "Stone", region: "스톤헤이븐",
+    base: "동물", height: "25cm", weight: "5kg", freq: "매우 높음",
+    appearance: "석재 무늬의 오소리. 줄무늬가 벽돌 톤이며, 앞발이 삽처럼 넓적. 뒷발은 다지기 도구처럼 평평.",
+    personality: "꼼꼼한 기초 작업자. '기초가 부실하면 다 무너진다'가 철학.",
+    habitat: "스톤헤이븐 건설 현장, 신축 건물 기초 구역",
+    special: "파운더가 파둔 기초 위에 건물을 지으면 특히 튼튼함.",
+    grades: {
+      "Common": "갈색 톤. 줄무늬 흐릿. 삽 발이 작음.",
+      "Uncommon": "벽돌색 줄무늬 선명. 삽 발에 금속 테 생김. 다진 자리에 미세한 빛 흔적."
+    }
+  },
+  {
+    id: "TR-001", name: "글레이즈", nameEn: "Glaze", tag: "Tide", region: "트레져리프트",
+    base: "오브젝트", height: "20cm", weight: "0.6kg", freq: "높음",
+    appearance: "도자기 유약이 물고기 형태로 굳은 존재. 표면에 크랙(금)이 있는 개체가 더 귀함 — 킨츠기 원리.",
+    personality: "'깨진 것이 더 아름답다'는 킨츠기 철학. 완벽을 추구하지 않고 불완전함에서 가치를 찾음.",
+    habitat: "트레져리프트 얕은 동굴, 도자기 공예품 근처",
+    special: "글레이즈의 금(크랙) 패턴을 읽는 것이 트레져리프트 감정사의 첫 수업.",
+    grades: {
+      "Common": "백자 색 단순한 물고기. 크랙 없거나 1줄. 유약 광택 약함.",
+      "Uncommon": "청자 색. 크랙 2~3줄에 연한 금빛 채움. 꼬리 유영 시 유약 파편이 빛남.",
+      "Rare": "고려청자 비색. 크랙이 복잡한 별 무늬. 금 채움이 실제로 빛남."
+    }
+  },
+  {
+    id: "TR-002", name: "코인", nameEn: "Coin", tag: "Tide", region: "트레져리프트",
+    base: "오브젝트", height: "15cm (직경)", weight: "0.8kg", freq: "보통",
+    appearance: "고대 동전이 자아를 얻어 굴러다니는 존재. 양면에 각각 다른 얼굴이 새겨져 있으며, 어느 면이 위를 향하느냐에 따라 성격이 바뀜.",
+    personality: "양면적. 앞면(왕관) = 당당하고 결단력. 뒷면(올리브) = 조용하고 중재적.",
+    habitat: "트레져리프트 전역, 크리스털 경매장 바닥",
+    special: "리브라가 에퀴스를 만들 때의 잔편이라는 설.",
+    grades: {
+      "Uncommon": "구리 동전. 테두리 마모. 양면 부조 얕음. 굴러다닐 때 녹슨 소리.",
+      "Rare": "은화. 양면 부조 선명. 테두리에 별 무늬 각인. 맑은 금속음.",
+      "Epic": "순금. 양면 부조가 입체적으로 튀어나옴. 스스로 공중에 떠서 회전 가능. 과거 소유자 잔상 비침."
+    }
+  },
+  {
+    id: "TR-003", name: "빌리언", nameEn: "Bullion", tag: "Tide", region: "트레져리프트",
+    base: "오브젝트 + 동물", height: "90cm", weight: "80kg", freq: "낮음",
+    appearance: "금괴가 사자 형태로 변한 존재. 갈기가 녹은 금처럼 흘러내리고, 눈은 루비처럼 붉다. 발밑마다 금가루가 떨어지지만 쌓이지 않고 사라짐.",
+    personality: "위엄과 욕망 사이. 소유 충동과 놓아주려는 의지가 갈등.",
+    habitat: "트레져리프트 심연(The Deep) 입구, 고가 경매 구역",
+    special: "갈망의 빛이 가장 밝을 때 갈기가 가장 크게 흘러내림. 낙찰 순간 빛이 꺼지면 고개를 숙이는 것이 가장 아름답고 슬픈 장면.",
+    grades: {
+      "Rare": "황동 색 사자. 갈기가 짧고 굳어 있음. 눈은 갈색.",
+      "Epic": "순금 광택. 갈기가 느리게 흘러내리기 시작 (액체 금속). 눈이 루비색.",
+      "Legendary": "백금 + 금. 갈기가 실시간으로 흘러내리며 주변에 금빛 안개. 눈이 다이아몬드처럼 투명하게 빛남."
+    }
+  },
+  {
+    id: "TR-004", name: "앤티크", nameEn: "Antique", tag: "Tide", region: "트레져리프트",
+    base: "추상 + 오브젝트", height: "170cm", weight: "측정 실패", freq: "극희귀",
+    appearance: "정체불명의 골동품이 인간형으로 서 있는 형태. 시대를 알 수 없는 장식들이 몸에 붙어있음 — 로마 브로치, 에도 시대 나전, 아르데코 시계 등. 얼굴은 가면.",
+    personality: "나이 불명. 잔상 현상을 직접 일으킬 수 있는 유일한 버디. 말을 거의 하지 않고 고어(古語)를 섞음.",
+    habitat: "트레져리프트 심연(The Deep) — 극소수만 만남",
+    special: "리브라도 측정에 실패한 존재. 벨의 대답: '가치는 숫자가 아니다'.",
+    grades: {
+      "Legendary": "인간형 실루엣에 시대별 장식 5~6개. 가면은 단색. 접촉 시 소유자 기억 3명분.",
+      "Mythic": "장식이 수십 개. 가면에 금이 가기 시작 (킨츠기적 아름다움). 접촉 없이도 주변 물건의 역사가 자동 펼침. 리브라 측정 시 눈금이 무한대로 흔들림."
+    }
+  },
+  {
+    id: "TR-005", name: "펄", nameEn: "Pearl", tag: "Tide", region: "트레져리프트",
+    base: "동물", height: "12cm", weight: "0.3kg", freq: "매우 높음",
+    appearance: "작은 조개가 천천히 입을 벌리며 이동하는 형태. 내부에 진주가 하나 있고, 진주 광택이 감정 상태를 반영.",
+    personality: "소심하지만 집중력이 강함. 하나의 물건에 오래 집중하며 가치를 내면으로 느낌.",
+    habitat: "트레져리프트 얕은 구역, 글레이즈와 자주 어울림",
+    special: "가장 흔하지만 가장 과소평가. 내부 진주의 기록은 수십 년 후 엄청난 가치.",
+    grades: {
+      "Common": "회백색 작은 조개. 진주 색이 탁한 백색. 입을 조금만 벌림.",
+      "Uncommon": "조개 표면에 산호 빛 무늬. 진주가 핑크빛. 입을 더 넓게 벌려 진주를 보여줌."
+    }
+  },
+  {
+    id: "PM-001", name: "미스트", nameEn: "Mist", tag: "Prism", region: "크로스",
+    base: "추상", height: "30cm", weight: "측정 불가", freq: "높음",
+    appearance: "안개가 고양이 형태를 유지하는 존재. 별빛 눈만 선명하고 나머지는 투명~반투명. 어두운 곳에서 윤곽이 선명해짐.",
+    personality: "미스터리 그 자체. 직감으로 말하고 논리를 무시. '느낌이 그래'가 만능 대답.",
+    habitat: "모든 지역의 경계, 특히 밤의 균열지",
+    special: "어디서든 목격되기 때문에 '모든 곳에 있다'는 도시전설의 주인공.",
+    grades: {
+      "Common": "희미한 안개 윤곽. 눈 2개만 빛남. 거의 투명.",
+      "Uncommon": "윤곽 내부에 별빛 입자. 꼬리 형태 생성. 어두운 곳에서 은빛 실루엣.",
+      "Rare": "무지개빛 안개. 별자리 무늬가 몸에 나타남. 눈이 프리즘처럼 빛을 분산."
+    }
+  },
+  {
+    id: "PM-002", name: "하모니", nameEn: "Harmony", tag: "Prism", region: "크로스",
+    base: "동물", height: "28cm (날개 55cm)", weight: "0.4kg", freq: "보통",
+    appearance: "무지개 깃털을 가진 작은 새. 울음소리가 메아리처럼 여러 번 반복되며, 각 반복이 다른 음색. 깃털 하나하나가 다른 태그의 색을 품고 있음.",
+    personality: "소통의 달인. 서로 다른 태그의 버디들 사이를 오가며 중재.",
+    habitat: "모든 지역 사이, 균열지 상공",
+    special: "울음이 한 지역에서 다른 지역으로 전달될 때 양 지역의 경계가 잠시 투명해짐.",
+    grades: {
+      "Uncommon": "파랑+노랑 깃털. 울음 메아리 2회. 작고 평범한 새 형태.",
+      "Rare": "5색 무지개 깃털. 울음 메아리 3회, 각각 다른 태그의 음색. 비행 시 무지개 잔상.",
+      "Epic": "홀로그래픽 깃털. 울음 메아리 5회 + 화음 형성. 비행 시 프리즘 빛 궤적."
+    }
+  },
+  {
+    id: "PM-003", name: "시프터", nameEn: "Shifter", tag: "Prism", region: "크로스",
+    base: "추상", height: "가변", weight: "가변", freq: "매우 낮음",
+    appearance: "형태가 고정되지 않는 존재. 투명에서 홀로그램까지 스펙트럼을 오감. 주변 환경에 따라 완전히 다른 모습. 유일하게 고정인 것은 중심부의 프리즘 결정 하나.",
+    personality: "정체성 탐구 중. '나는 무엇인가'가 평생의 질문. 딜러와 오래 함께하면 딜러를 닮아감.",
+    habitat: "어디서든 출현 가능. 가장 목격이 드문 종족",
+    special: "새 지역이 열릴 때 시프터가 가장 먼저 그 태그의 형태를 보여준다는 목격담.",
+    grades: {
+      "Epic": "투명체에 프리즘 결정 1개. 주변 환경에 따라 윤곽만 변형. 변형 속도 느림 (30초).",
+      "Legendary": "홀로그래픽 체색. 프리즘 결정이 심장처럼 고동. 변형 속도 빠름 (3초).",
+      "Mythic": "프리즘 결정에서 무지갯빛이 상시 방사. 형태 전환이 즉시. 새로운 태그의 형태도 나타냄."
+    }
+  },
+  {
+    id: "EL-001", name: "볼트실크", nameEn: "Voltsilk", tag: "Hybrid", region: "균열지 (Spark x Swift)",
+    base: "하이브리드", height: "40cm", weight: "1.2kg", freq: "낮음",
+    appearance: "전도성 실크로 이루어진 나비. 날개의 회로 패턴이 패션 프린트처럼 보이며, 비행 시 LED 잔상이 런웨이 조명처럼 남는다.",
+    personality: "첨단과 감각의 교차점. 스펙에 밝으면서 스타일도 포기 안 함.",
+    habitat: "볼트랜드-솔스텝 경계",
+    special: "웨어러블 테크 거래에서 빛남.",
+    grades: {
+      "Rare": "실크 날개에 은색 회로. 비행 시 약한 LED 궤적. 2태그 혼합 색상.",
+      "Epic": "홀로그래픽 실크 + 네온 회로. 날개 접으면 스카프, 펼치면 디스플레이.",
+      "Legendary": "전신 OLED. 비행하면 공중에 패션쇼 홀로그램을 투사."
+    }
+  },
+  {
+    id: "EL-002", name: "앵커볼트", nameEn: "Anchorbolt", tag: "Hybrid", region: "균열지 (Forge x Stone)",
+    base: "하이브리드", height: "100cm", weight: "120kg", freq: "낮음",
+    appearance: "닻과 볼트가 합쳐진 거대한 게. 한쪽 집게는 렌치, 다른 집게는 망치. 등껍질은 석재와 강철의 합금.",
+    personality: "부동(不動)의 화신. 중장비+부동산 복합 거래의 수호자.",
+    habitat: "기어포지-스톤헤이븐 경계",
+    special: "건설 중장비 거래, 건물+설비 일괄 거래에서 빛남.",
+    grades: {
+      "Rare": "강철+사암 혼합. 집게 도구가 기본형. 이동 시 약한 진동.",
+      "Epic": "크롬+대리석. 집게 도구가 정밀해짐. 자리 잡으면 원형 기초+기어 메커니즘이 동시 가동.",
+      "Legendary": "티타늄+흑요석+금맥. 등껍질에 거래 연대기와 건축 도면이 동시에 새겨짐."
+    }
+  },
+  {
+    id: "EL-003", name: "진주갑", nameEn: "Pearlplate", tag: "Hybrid", region: "균열지 (Tide x Stone)",
+    base: "하이브리드", height: "60cm", weight: "40kg", freq: "매우 낮음",
+    appearance: "진주로 된 갑옷을 입은 거북. 등껍질이 거대한 자개함(螺鈿箱)이며, 열면 내부에 보물들의 잔상이 보관되어 있다.",
+    personality: "보관과 감정(鑑定)의 이중 특성. 테소르의 밝은 면과 볼라의 밝은 면의 교차점.",
+    habitat: "트레져리프트-스톤헤이븐 경계 심해 동굴",
+    special: "대형 수집품+부동산 교차 거래에서 태어남. 극히 희귀.",
+    grades: {
+      "Epic": "자개 등껍질에 산호 장식. 내부 잔상 3개. 이동 시 물결 무늬의 석재 갈라짐.",
+      "Legendary": "순금 테두리 자개 + 대리석 다리. 내부 잔상이 입체적으로 재생 가능.",
+      "Mythic": "등껍질이 투명 자개. 내부 보물 잔상이 외부에서 보임. 시간이 멈춘 것 같은 공간을 형성."
+    }
+  }
+];
+
+const TAG_COLORS = {
+  Spark: "#facc15", Swift: "#a78bfa", Forge: "#f97316",
+  Stone: "#94a3b8", Tide: "#22d3ee", Prism: "#e879f9", Hybrid: "#4ade80"
+};
+
+let selectedBuddy = null;
+
+const GRADE_EMOJI = { Common: "⬜", Uncommon: "🟩", Rare: "🟦", Epic: "🟪", Legendary: "🟨", Mythic: "🔴" };
+
+function render() {
+  const grid = document.getElementById("buddyGrid");
+  const search = document.getElementById("search").value.toLowerCase();
+  const activeTag = document.querySelector(".tag-btn.active")?.dataset.tag || "all";
+
+  grid.innerHTML = BUDDIES.map(b => {
+    const matchTag = activeTag === "all" || b.tag === activeTag;
+    const matchSearch = !search || b.name.includes(search) || b.nameEn.toLowerCase().includes(search) || b.appearance.includes(search);
+    const hidden = (!matchTag || !matchSearch) ? "hidden" : "";
+    const sel = selectedBuddy?.id === b.id ? "selected" : "";
+    const color = TAG_COLORS[b.tag] || "#888";
+    const gradeList = Object.keys(b.grades).map(g => GRADE_EMOJI[g] || g).join(" ");
+    return `<div class="buddy-card ${sel} ${hidden}" onclick="selectBuddy('${b.id}')">
+      <span class="num">${b.id}</span>
+      <div class="name">${b.name}</div>
+      <div class="name-en">${b.nameEn}</div>
+      <span class="tag-badge" style="border:1px solid ${color}; color:${color}">${b.tag}</span>
+      <div class="meta">${gradeList} | ${b.height} / ${b.freq}</div>
+    </div>`;
+  }).join("");
+}
+
+function selectBuddy(id) {
+  selectedBuddy = BUDDIES.find(b => b.id === id);
+  const panel = document.getElementById("detailPanel");
+  panel.classList.add("show");
+
+  document.getElementById("detailTitle").textContent = `${id} ${selectedBuddy.name} (${selectedBuddy.nameEn})`;
+
+  const infoGrid = document.getElementById("infoGrid");
+  infoGrid.innerHTML = [
+    ["태그", selectedBuddy.tag], ["지역", selectedBuddy.region],
+    ["베이스", selectedBuddy.base], ["출현 빈도", selectedBuddy.freq],
+    ["키", selectedBuddy.height], ["몸무게", selectedBuddy.weight],
+    ["진화 단계", Object.keys(selectedBuddy.grades).join(" → ")]
+  ].map(([l,v]) => `<div class="info-item"><span class="label">${l}:</span> <span class="value">${v}</span></div>`).join("");
+
+  updatePrompt();
+  render();
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function buildAllGradesText(b) {
+  return Object.entries(b.grades).map(([grade, desc]) => `[${grade}] ${desc}`).join("\n\n");
+}
+
+function buildEncyclopediaPrompt(b) {
+  const num = b.id;
+  const grades = Object.entries(b.grades);
+  const gradeNames = Object.keys(b.grades).join(" → ");
+  const numG = grades.length;
+
+  const gradeCards = grades.map(([g, desc]) => `● ${g}: ${desc}`).join("\n");
+
+  return `Create a dark-themed encyclopedia/pokedex page for a fantasy creature. Single vertical page layout, dark navy-black background (#0a0a14).
+
+═══ PAGE LAYOUT ═══
+
+[TOP HEADER]
+Large number "${num}." on the left.
+Name: "${b.name} (${b.nameEn})" in large white text.
+Subtitle: "${b.base} 타입 버디" in smaller gray text.
+Right side info panel: 기본 형태: ${b.base} | 키: ${b.height} | 몸무게: ${b.weight} | 태그: ${b.tag} | 지역: ${b.region} | 출현 빈도: ${b.freq}
+
+[MIDDLE — EVOLUTION CARDS]
+A row of ${numG} cards side by side, each showing the same creature at a different evolution stage. Each card has:
+- A portrait illustration of the creature at that stage (dark background, glowing)
+- The grade label below (${gradeNames})
+- A short Korean description below each
+
+The creature's base form: ${b.appearance}
+
+Evolution stages left to right:
+${gradeCards}
+
+Each stage should be progressively more luminous, detailed, and powerful-looking. Colors intensify. Glow effects increase. Details and patterns emerge.
+
+[BOTTOM LEFT — DETAILS]
+"활동 지역" section: ${b.habitat}
+"크기비교" section: silhouette of the creature next to an average adult human for scale (creature is ${b.height} tall)
+"특이사항" section: ${b.special}
+
+[BOTTOM RIGHT — SCENE ILLUSTRATIONS]
+${numG} small rectangular scene thumbnails showing the creature in its natural habitat:
+${grades.map(([g, desc], i) => `Scene ${i+1} (${g}): The ${b.nameEn} in ${b.habitat}, ${desc.split('.')[0].toLowerCase()}`).join("\n")}
+
+═══ STYLE ═══
+Dark UI design, game encyclopedia aesthetic, sci-fi fantasy crossover. Glowing neon accents matching the ${b.tag} elemental theme. Clean typography. High detail illustrations. Professional creature design reference sheet. Korean text labels. Similar to a Pokedex or Genshin Impact archive page.`;
+}
+
+function updatePrompt() {
+  if (!selectedBuddy) return;
+  const b = selectedBuddy;
+  const isEn = document.getElementById("langToggle").checked;
+  const box = document.getElementById("promptBox");
+  const grades = Object.entries(b.grades);
+  const num = b.id;
+
+  const gradeCardsHtml = grades.map(([grade, desc]) => {
+    const color = {"Common":"#ccc","Uncommon":"#4ade80","Rare":"#60a5fa","Epic":"#a78bfa","Legendary":"#fbbf24","Mythic":"#f43f5e"}[grade] || "#ccc";
+    return `<div style="flex:1; min-width:120px; border:1px solid #333; border-radius:8px; padding:10px; background:#0a0a14;">
+      <div style="text-align:center; color:${color}; font-weight:700; font-size:13px; margin-bottom:6px;">${GRADE_EMOJI[grade]} ${grade}</div>
+      <div style="font-size:12px; color:#bbb; line-height:1.5;">${desc}</div>
+    </div>`;
+  }).join("");
+
+  if (isEn) {
+    box.innerHTML =
+    `<div class="prompt-section"><div class="prompt-label">═══ PAGE LAYOUT ═══</div></div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[TOP HEADER]</div>` +
+    `<strong>#${num}. ${b.name} (${b.nameEn})</strong><br>` +
+    `${b.base} type | ${b.tag} tag | ${b.region}<br>` +
+    `Height: ${b.height} | Weight: ${b.weight} | Frequency: ${b.freq}</div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[CREATURE BASE]</div>${b.appearance}</div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[EVOLUTION CARDS — ${grades.length} stages, left to right]</div>` +
+    `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">${gradeCardsHtml}</div></div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[BOTTOM — DETAILS]</div>` +
+    `활동 지역: ${b.habitat}<br>` +
+    `크기비교: creature (${b.height}) next to human silhouette<br>` +
+    `특이사항: ${b.special}<br>` +
+    `성격: ${b.personality}</div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[STYLE]</div>` +
+    `Dark UI encyclopedia page, game archive aesthetic, ${grades.length} evolution portraits side by side, scene thumbnails at bottom, Korean text labels, glowing ${b.tag} elemental accents, professional creature design reference sheet</div>`;
+  } else {
+    box.innerHTML =
+    `<div class="prompt-section"><div class="prompt-label">═══ 페이지 레이아웃 ═══</div></div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[상단 헤더]</div>` +
+    `<strong>#${num}. ${b.name} (${b.nameEn})</strong><br>` +
+    `${b.base} 타입 | ${b.tag} 태그 | ${b.region}<br>` +
+    `키: ${b.height} | 몸무게: ${b.weight} | 출현 빈도: ${b.freq}</div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[기본 외형]</div>${b.appearance}</div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[진화 카드 — ${grades.length}단계, 왼쪽→오른쪽]</div>` +
+    `<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">${gradeCardsHtml}</div></div>` +
+
+    `<div class="prompt-section"><div class="prompt-label">[하단 정보]</div>` +
+    `활동 지역: ${b.habitat}<br>` +
+    `크기비교: 버디(${b.height})와 성인 실루엣 비교<br>` +
+    `특이사항: ${b.special}<br>` +
+    `성격: ${b.personality}</div>`;
+  }
+}
+
+function getPromptText(mode) {
+  if (!selectedBuddy) return "";
+  const b = selectedBuddy;
+  const isEn = document.getElementById("langToggle").checked;
+
+  if (mode === "full") {
+    if (isEn) return buildEncyclopediaPrompt(b);
+    // Korean version
+    const num = b.id;
+    const grades = Object.entries(b.grades);
+    const gradeCards = grades.map(([g, desc]) => `● ${g}: ${desc}`).join("\n");
+    return `어두운 테마의 판타지 생물 도감/포켓몬 도감 스타일 페이지를 만들어줘. 세로 한 장, 짙은 남색-검정 배경 (#0a0a14).
+
+═══ 페이지 레이아웃 ═══
+
+[상단 헤더]
+왼쪽에 큰 숫자 "${num}."
+이름: "${b.name} (${b.nameEn})" 큰 흰색 텍스트.
+부제: "${b.base} 타입 버디" 작은 회색 텍스트.
+오른쪽 정보 패널: 기본 형태: ${b.base} | 키: ${b.height} | 몸무게: ${b.weight} | 태그: ${b.tag} | 지역: ${b.region} | 출현 빈도: ${b.freq}
+
+[중간 — 진화 카드]
+${grades.length}개의 카드를 나란히 배치. 각 카드에:
+- 해당 단계의 생물 초상화 (어두운 배경, 발광)
+- 아래에 등급 라벨
+- 각 단계 아래 한국어 설명
+
+생물 기본 외형: ${b.appearance}
+
+진화 단계 (왼쪽→오른쪽):
+${gradeCards}
+
+각 단계는 점점 더 밝고, 디테일하고, 강력하게. 색이 진해지고 발광 효과가 강해지며 무늬와 장식이 추가.
+
+[하단 왼쪽]
+"활동 지역": ${b.habitat}
+"크기비교": 성인 인간 실루엣 옆에 버디 (${b.height}) 크기 비교
+"특이사항": ${b.special}
+
+[하단 오른쪽 — 장면 일러스트]
+${grades.length}개의 작은 직사각형 장면 썸네일. 서식지에서의 버디 모습.
+
+═══ 스타일 ═══
+어두운 UI 디자인, 게임 도감 미학, SF 판타지 크로스오버. ${b.tag} 태그에 맞는 네온 발광. 한국어 텍스트 라벨. 포켓몬 도감이나 원신 아카이브 페이지와 유사한 느낌.`;
+  }
+  if (mode === "appearance") return b.appearance;
+  if (mode === "evolutions") return buildAllGradesText(b);
+  if (mode === "lora") return buildLoraPrompt(b);
+  return "";
+}
+
+function buildLoraPrompt(b) {
+  const grades = Object.entries(b.grades);
+  const angles = ["front view", "3/4 view", "side view (left)", "side view (right)", "back view", "slightly above angle", "slightly below angle"];
+
+  const baseType = b.base.toLowerCase();
+  let poses;
+  if (baseType.includes("원소") || baseType.includes("추상")) {
+    poses = ["floating idle", "hovering gently", "expanding outward", "contracting inward", "drifting slowly", "pulsing with energy", "dormant/dim"];
+  } else if (baseType.includes("오브젝트") && !baseType.includes("동물")) {
+    poses = ["stationary idle", "slightly tilted", "rotating slowly", "vibrating/humming", "activating/glowing", "moving forward", "resting/powered down"];
+  } else {
+    poses = ["standing idle", "walking", "sitting", "curious/looking up", "alert/defensive", "happy/excited", "sleeping/resting"];
+  }
+
+  let output = `Generate a ${grades.length * 6}-image training set for a fantasy creature called "${b.nameEn}".
+All images must show the EXACT SAME character. Only vary the camera angle and energy level.
+
+═══ CHARACTER SHEET ═══
+
+Name: ${b.nameEn}
+Type: ${b.base}
+Size: ${b.height}
+
+CORE IDENTITY (include in EVERY image prompt):
+${b.appearance}
+
+RULES:
+- Same silhouette and proportions in every image
+- Do NOT add or remove limbs, appendages, or features
+- Dark background, single character centered, no text
+- Digital art, fantasy creature, high quality
+
+═══ IMAGE PROMPTS (copy each line as a separate generation) ═══
+
+`;
+
+  grades.forEach(([grade, desc]) => {
+    // Convert the Korean tier description to a more AI-friendly English-mixed version
+    output += `── ${grade} ──\n`;
+
+    for (let i = 0; i < 6; i++) {
+      output += `${grade}-${i+1}. ${b.nameEn}, ${b.appearance} --tier ${grade.toLowerCase()}: ${desc} --camera ${angles[i]}, ${poses[i]} --style dark background, single character, centered, digital art, fantasy creature design, high quality, consistent character sheet\n`;
+    }
+    output += `\n`;
+  });
+
+  output += `═══ TIER CONTROL (use after LoRA is trained) ═══
+Common:    "dim, faint, simple, muted, translucent, minimal detail"
+Uncommon:  "soft glow, slightly brighter, subtle pattern emerging"
+Rare:      "glowing, detailed patterns, visible markings, vivid color"
+Epic:      "intense glow, neon, holographic, elaborate, aura, maximum detail"
+Legendary: "golden radiance, ornate, ethereal, transcendent glow"
+Mythic:    "blinding radiance, cosmic, reality-bending, ultimate form"`;
+
+  return output;
+}
+
+async function copyText(mode) {
+  const text = getPromptText(mode);
+  await navigator.clipboard.writeText(text);
+  const btnId = mode === "full" ? "copyFull" : mode === "appearance" ? "copyAppearance" : "copyEvolutions";
+  const btn = document.getElementById(btnId);
+  const orig = btn.textContent;
+  btn.textContent = "Copied!";
+  btn.classList.add("copied");
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1500);
+}
+
+document.getElementById("copyFull").onclick = () => copyText("full");
+document.getElementById("copyLora").onclick = () => copyText("lora");
+document.getElementById("copyAppearance").onclick = () => copyText("appearance");
+document.getElementById("copyEvolutions").onclick = () => copyText("evolutions");
+document.getElementById("langToggle").onchange = updatePrompt;
+document.getElementById("search").oninput = render;
+
+document.querySelectorAll(".tag-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tag-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    render();
+  };
+});
+
+render();
+</script>
+</body>
+</html>

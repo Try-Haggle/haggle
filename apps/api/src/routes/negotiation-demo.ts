@@ -29,6 +29,12 @@ import { validateMove } from '../negotiation/referee/validator.js';
 import { tryTransition, detectPhaseEvent } from '../negotiation/phase/phase-machine.js';
 import { ELECTRONICS_TERMS } from '../negotiation/term/standard-terms.js';
 import { DEFAULT_BUDDY_DNA, DEFAULT_MAX_ROUNDS } from '../negotiation/config.js';
+import {
+  AGENT_PROFILE_IDS,
+  buildCachedVoiceContext,
+  getAgentVoiceProfile,
+  type LumenVoiceProfile,
+} from '../negotiation/lumen-persona-profiles.js';
 import type {
   CoreMemory,
   RoundFact,
@@ -132,6 +138,10 @@ interface DemoSession {
   totalTokens: { prompt: number; completion: number };
   initTraces: StageTrace[];
   tags: ItemTag[];
+  lumenProfiles: {
+    buyer_agent: LumenVoiceProfile;
+    seller_agent: LumenVoiceProfile;
+  };
 }
 
 // ─── In-memory store ────────────────────────────────
@@ -481,7 +491,7 @@ function renderStructuredResponse(
 ): RespondResult {
   const locale = language || 'en';
   const amount = formatMoneyMinor(decision.price);
-  const terms = decision.non_price_terms ?? {};
+  const terms = normalizeNonPriceTerms(decision.non_price_terms);
   let message: string;
   let template: string;
 
@@ -582,6 +592,8 @@ const initSchema = z.object({
     advisor: z.string(),
     advisor_config: z.record(z.unknown()).optional(),
   }).optional(),
+  buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default('vel'),
+  seller_agent_id: z.enum(AGENT_PROFILE_IDS).default('dealer_hana'),
 });
 
 const roundSchema = z.object({
@@ -683,8 +695,21 @@ export function registerDemoRoute(app: FastifyInstance) {
       return reply.code(400).send({ error: 'INVALID_REQUEST', issues: parsed.error.issues });
     }
 
-    const { item, seller, buyer_budget, language, preset, custom_skills } = parsed.data;
+    const {
+      item,
+      seller,
+      buyer_budget,
+      language,
+      preset,
+      custom_skills,
+      buyer_agent_id,
+      seller_agent_id,
+    } = parsed.data;
     const traces: StageTrace[] = [];
+    const lumenProfiles = {
+      buyer_agent: getAgentVoiceProfile(buyer_agent_id),
+      seller_agent: getAgentVoiceProfile(seller_agent_id),
+    };
 
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
@@ -775,6 +800,7 @@ Item condition: ${item.condition}`,
       totalTokens: { prompt: 0, completion: 0 },
       initTraces: traces,
       tags: deriveItemTags(item.title),
+      lumenProfiles,
     };
 
     // Accumulate init costs
@@ -801,6 +827,7 @@ Item condition: ${item.condition}`,
       strategy,
       terms,
       tags: session.tags,
+      lumen_profiles: session.lumenProfiles,
       skills: sessionSkillStack.getManifests(),
       initial_memory: memory,
       pipeline: traces.map(t => ({
@@ -920,12 +947,17 @@ Item condition: ${item.condition}`,
         advisories: skillDecideResult.decide?.advisories ?? [],
         skills_dispatched: Object.keys(skillDecideResult.bySkill),
         tags: session.tags,
+        lumen_profiles: session.lumenProfiles,
       },
       parsed: {
         nsv_shared: sharedMemo,
         nsv_private: privateMemo,
         briefing,
         advisories: skillDecideResult.decide?.advisories ?? [],
+        lumen_voice_context: {
+          buyer: buildCachedVoiceContext(session.lumenProfiles.buyer_agent.id),
+          seller: buildCachedVoiceContext(session.lumenProfiles.seller_agent.id),
+        },
       },
       latency_ms: Date.now() - ctxStart,
       is_llm: false,
@@ -1051,7 +1083,10 @@ Item condition: ${item.condition}`,
           currency: 'USD',
           unit: 'minor',
           llm_free_text: false,
+          voice_profiles_cached: true,
+          current_renderer: 'structured_template',
         },
+        lumen_voice_context: buildCachedVoiceContext(session.lumenProfiles.buyer_agent.id),
       },
       output: respondResult,
       parsed: respondResult,
@@ -1240,6 +1275,7 @@ Item condition: ${item.condition}`,
       done: session.done,
       strategy: session.strategy,
       terms: session.terms,
+      lumen_profiles: session.lumenProfiles,
       memory: session.memory,
       facts: session.facts,
       cost: { total_usd: session.totalCost, total_tokens: session.totalTokens },

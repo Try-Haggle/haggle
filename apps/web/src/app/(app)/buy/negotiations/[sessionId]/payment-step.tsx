@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAccount, useBalance, useWriteContract } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { parseUnits } from "viem";
+import { api } from "@/lib/api-client";
 
 // USDC contract ABI (minimal: approve)
 const USDC_ABI = [
@@ -55,28 +56,25 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const amountUsdc = (amountMinor / 100).toFixed(2);
 
   async function handlePrepare() {
-    // For crypto payments, wallet must be connected.
-    // For card payments, wallet is optional (Stripe handles it).
-    if (method === "crypto" && (!isConnected || !address)) return;
+    if (!isConnected || !address) {
+      setError("Connect a wallet before continuing.");
+      setStep("connect_wallet");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/payments/prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId }),
+      const data = await api.post<{ intent?: { id?: string } }>("/payments/prepare", {
+        settlement_approval_id: sessionId,
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Failed to prepare payment");
+      const intentId = data.intent?.id;
+      if (!intentId) {
+        throw new Error("Payment intent was not returned");
       }
-      const data = await res.json();
-      setPaymentIntentId(data.intent?.id ?? null);
+      setPaymentIntentId(intentId);
       // Route based on payment method
       if (method === "card") {
-        setStep("onramp_loading");
-        // Trigger onramp after setting paymentIntentId
-        setTimeout(() => handleStripeOnramp(), 0);
+        await handleStripeOnramp(intentId);
         return;
       }
       setStep("check_balance");
@@ -93,14 +91,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/payments/${paymentIntentId}/quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Failed to get quote");
-      }
+      await api.post(`/payments/${paymentIntentId}/quote`);
       setStep("approve_usdc");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -138,25 +129,23 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
     }
   }
 
-  async function handleStripeOnramp() {
-    if (!paymentIntentId || !address) return;
+  async function handleStripeOnramp(intentId = paymentIntentId) {
+    if (!intentId || !address) {
+      setError("Connect a registered wallet before starting card onramp.");
+      setStep("error");
+      return;
+    }
     setIsLoading(true);
     setStep("onramp_loading");
     setError(null);
     try {
-      const res = await fetch(`/api/payments/${paymentIntentId}/onramp/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destination_wallet: address,
-        }),
+      const data = await api.post<{
+        client_secret?: string;
+        stripe_publishable_key: string;
+      }>(`/payments/${intentId}/onramp/session`, {
+        destination_wallet: address,
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Failed to create onramp session");
-      }
-      const data = await res.json();
-      setOnrampClientSecret(data.client_secret);
+      setOnrampClientSecret(data.client_secret ?? null);
       setStep("onramp_active");
 
       // Load Stripe onramp widget
@@ -189,12 +178,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
     setError(null);
     try {
       // Get x402 requirements
-      const reqRes = await fetch(`/api/payments/${paymentIntentId}/x402/requirements`);
-      if (!reqRes.ok) {
-        const data = await reqRes.json();
-        throw new Error(data.error ?? "Failed to get payment requirements");
-      }
-      const requirements = await reqRes.json();
+      const requirements = await api.get<{ accepts?: Array<{ network?: string }> }>(
+        `/payments/${paymentIntentId}/x402/requirements`,
+      );
 
       // Build x402 payment payload envelope
       const paymentPayload = {
@@ -208,16 +194,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
         paymentRequirements: requirements,
       };
 
-      const submitRes = await fetch(`/api/payments/${paymentIntentId}/x402/submit-signature`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payment_payload: paymentPayload }),
-      });
-
-      if (!submitRes.ok) {
-        const data = await submitRes.json();
-        throw new Error(data.error ?? "Payment submission failed");
-      }
+      await api.post(`/payments/${paymentIntentId}/x402/submit-signature`, { payment_payload: paymentPayload });
 
       setStep("complete");
     } catch (err) {
@@ -329,24 +306,11 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
             {method === "card" && !isConnected ? (
               <>
                 <p className="text-sm text-gray-600">
-                  Connect a wallet to receive your USDC, or continue without one.
-                  Stripe will handle the card payment and conversion.
+                  Connect the wallet that should receive USDC after your card payment.
                 </p>
                 <ConnectButton />
-                <div className="relative flex items-center py-2">
-                  <div className="flex-grow border-t border-gray-200" />
-                  <span className="mx-3 text-xs text-gray-400">or</span>
-                  <div className="flex-grow border-t border-gray-200" />
-                </div>
-                <button
-                  onClick={handlePrepare}
-                  disabled={isLoading}
-                  className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? "Preparing..." : "Continue without wallet"}
-                </button>
                 <p className="text-xs text-gray-400 text-center">
-                  Stripe will convert your card payment to USDC automatically.
+                  The connected wallet must be registered to your Haggle account.
                 </p>
               </>
             ) : (

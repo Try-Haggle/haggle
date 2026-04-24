@@ -1,17 +1,22 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { initDemo, executeRound } from "@/lib/demo-api";
-import type { DemoInitResponse, DemoRoundResponse, StageTrace } from "@/lib/demo-types";
+import type { DemoInitRequest, DemoInitResponse, DemoRoundResponse, StageTrace } from "@/lib/demo-types";
 import { SessionInitPanel } from "./_components/session-init-panel";
 import { PipelineViewer } from "./_components/pipeline-viewer";
 import { RoundControl } from "./_components/round-control";
 import { StateGauge } from "./_components/utility-bar";
 import { DbTableView } from "./_components/db-table-view";
 import { CostBadge } from "./_components/cost-badge";
-import { DemoPayment } from "./_components/demo-payment";
 import { DemoSignupShowcase } from "./_components/demo-signup-showcase";
+import { AutoTradeShowcase } from "./_components/auto-trade-showcase";
+import {
+  AncientBeingSelector,
+  NegotiationAvatarCoach,
+  type AncientBeingId,
+} from "./_components/negotiation-avatar-coach";
 
 /* ── State Machine ──────────────────────────── */
 
@@ -21,8 +26,7 @@ type DemoState =
   | "READY"
   | "ROUND_RUNNING"
   | "ROUND_DONE"
-  | "SESSION_DONE"
-  | "PAYMENT";
+  | "SESSION_DONE";
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -30,6 +34,41 @@ type DemoState =
 function minor(v: number): string {
   if (v > 1000) return `$${(v / 100).toFixed(0)}`;
   return `$${v}`;
+}
+
+function minorToDollarNumber(v: number): number {
+  return v > 1000 ? Math.round(v / 100) : v;
+}
+
+const AUTO_TRADE_PARAMS = {
+  item: {
+    title: "iPhone 15 Pro 256GB Natural Titanium",
+    condition: "battery 92%, screen mint, T-Mobile unlocked",
+    swappa_median: 920,
+  },
+  seller: { ask_price: 920, floor_price: 782 },
+  buyer_budget: { max_budget: 950 },
+  language: "ko",
+  preset: "balanced",
+} as const;
+
+const AUTO_SELLER_TURNS = [
+  {
+    seller_price: 920,
+    seller_message: "상태가 좋아서 첫 가격은 그대로 유지하고 싶습니다.",
+  },
+  {
+    seller_price: 900,
+    seller_message: "빠르게 진행할 수 있다면 $900까지는 맞춰드릴 수 있습니다.",
+  },
+  {
+    seller_price: 880,
+    seller_message: "$880이면 진행하겠습니다.",
+  },
+] as const;
+
+function pause(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /* ── Main Component ─────────────────────────── */
@@ -40,7 +79,9 @@ export function DeveloperDemo() {
   const [initResponse, setInitResponse] = useState<DemoInitResponse | null>(null);
   const [rounds, setRounds] = useState<DemoRoundResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [buyerAncientId, setBuyerAncientId] = useState<AncientBeingId>("vel");
+  const [sellerAncientId, setSellerAncientId] = useState<AncientBeingId>("dealer_hana");
+  const [autoTradeRunning, setAutoTradeRunning] = useState(false);
 
   /* ── Cost Tracking ── */
   const totalCost = (() => {
@@ -58,23 +99,17 @@ export function DeveloperDemo() {
     return { usd, prompt, completion };
   })();
 
-  /* ── Auto-scroll ── */
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [rounds, demoState]);
-
   /* ── Initialize ── */
   const handleInit = useCallback(
-    async (params: {
-      item: { title: string; condition: string; swappa_median: number };
-      seller: { ask_price: number; floor_price: number };
-      buyer_budget: { max_budget: number };
-      language: string;
-    }) => {
+    async (params: DemoInitRequest) => {
       setError(null);
       setDemoState("INITIALIZING");
       try {
-        const resp = await initDemo(params);
+        const resp = await initDemo({
+          ...params,
+          buyer_agent_id: buyerAncientId,
+          seller_agent_id: sellerAncientId,
+        });
         setInitResponse(resp);
         setDemoId(resp.demo_id);
         setRounds([]);
@@ -84,7 +119,7 @@ export function DeveloperDemo() {
         setDemoState("IDLE");
       }
     },
-    [],
+    [buyerAncientId, sellerAncientId],
   );
 
   /* ── Execute Round ── */
@@ -111,12 +146,70 @@ export function DeveloperDemo() {
 
   /* ── Reset ── */
   const handleReset = () => {
+    setAutoTradeRunning(false);
     setDemoState("IDLE");
     setDemoId(null);
     setInitResponse(null);
     setRounds([]);
     setError(null);
   };
+
+  const handleRunAutoTrade = useCallback(async () => {
+    setError(null);
+    setAutoTradeRunning(true);
+    setDemoState("INITIALIZING");
+    setDemoId(null);
+    setInitResponse(null);
+    setRounds([]);
+
+    try {
+      const init = await initDemo({
+        ...AUTO_TRADE_PARAMS,
+        buyer_agent_id: buyerAncientId,
+        seller_agent_id: sellerAncientId,
+      });
+      setInitResponse(init);
+      setDemoId(init.demo_id);
+      setDemoState("READY");
+      await pause(650);
+
+      let latestRound: DemoRoundResponse | null = null;
+      let sessionDone = false;
+
+      for (const turn of AUTO_SELLER_TURNS) {
+        setDemoState("ROUND_RUNNING");
+        const round = await executeRound(init.demo_id, turn);
+        latestRound = round;
+        setRounds((prev) => [...prev, round]);
+
+        if (round.state.done) {
+          sessionDone = true;
+          setDemoState("SESSION_DONE");
+          break;
+        }
+
+        setDemoState("ROUND_DONE");
+        await pause(850);
+      }
+
+      if (!sessionDone && latestRound?.final.decision.price) {
+        setDemoState("ROUND_RUNNING");
+        const acceptRound = await executeRound(init.demo_id, {
+          seller_price: minorToDollarNumber(latestRound.final.decision.price),
+          seller_message: "좋습니다. 그 가격으로 진행하겠습니다.",
+        });
+        setRounds((prev) => [...prev, acceptRound]);
+        setDemoState(acceptRound.state.done ? "SESSION_DONE" : "ROUND_DONE");
+      } else if (!sessionDone) {
+        setDemoState("ROUND_DONE");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "자동 거래 실행에 실패했습니다");
+      setDemoState("IDLE");
+    } finally {
+      setAutoTradeRunning(false);
+    }
+  }, [buyerAncientId, sellerAncientId]);
 
   /* ── Derived ── */
   const latestRound = rounds.length > 0 ? rounds[rounds.length - 1] : null;
@@ -149,9 +242,39 @@ export function DeveloperDemo() {
           </div>
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <AncientBeingSelector
+            selectedId={buyerAncientId}
+            onSelect={setBuyerAncientId}
+            title="구매자 에이전트"
+            description="보유한 고대 존재, 딜러, 버디 중 구매자 측 에이전트를 선택하세요."
+            defaultLabel="구매자: 벨"
+            testId="buyer-agent-selector"
+          />
+          <AncientBeingSelector
+            selectedId={sellerAncientId}
+            onSelect={setSellerAncientId}
+            title="판매자 에이전트"
+            description="보유한 고대 존재, 딜러, 버디 중 판매자 측 에이전트를 선택하세요."
+            defaultLabel="판매자: 하나"
+            testId="seller-agent-selector"
+          />
+        </div>
+
+        <AutoTradeShowcase
+          demoState={demoState}
+          initResponse={initResponse}
+          rounds={rounds}
+          buyerAncientId={buyerAncientId}
+          sellerAncientId={sellerAncientId}
+          autoTradeRunning={autoTradeRunning}
+          onRunAutoTrade={handleRunAutoTrade}
+          onReset={handleReset}
+        />
+
         {/* Cost Badge */}
         {demoState !== "IDLE" && (
-          <div className="flex justify-end mb-4">
+          <div className="mt-4 flex justify-end mb-4">
             <CostBadge
               totalUsd={totalCost.usd}
               promptTokens={totalCost.prompt}
@@ -274,7 +397,7 @@ export function DeveloperDemo() {
             />
 
             {/* ── Round Results ── */}
-            {rounds.map((round) => (
+            {rounds.map((round, index) => (
               <div key={round.round} className="space-y-4">
                 {/* Round Separator */}
                 <div className="flex items-center gap-3 pt-6">
@@ -285,29 +408,11 @@ export function DeveloperDemo() {
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-600 to-transparent" />
                 </div>
 
-                {/* AI Message Preview */}
-                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="text-lg mt-0.5">🤖</span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-semibold text-cyan-400">AI 구매자 메시지</span>
-                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                          round.final.decision.action === "ACCEPT"
-                            ? "bg-emerald-500/20 text-emerald-300"
-                            : round.final.decision.action === "REJECT"
-                              ? "bg-red-500/20 text-red-300"
-                              : "bg-cyan-500/20 text-cyan-300"
-                        }`}>
-                          {round.final.decision.action}
-                        </span>
-                      </div>
-                      <p className="text-sm text-white leading-relaxed">
-                        {round.final.rendered_message}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <NegotiationAvatarCoach
+                  round={round}
+                  previousRound={rounds[index - 1]}
+                  selectedId={buyerAncientId}
+                />
 
                 {/* State Gauge */}
                 <StateGauge round={round} />
@@ -321,14 +426,14 @@ export function DeveloperDemo() {
                   }`}>
                     <span>{round.final.validation.passed ? "✓" : "⚠"}</span>
                     <span>
-                      검증: HARD {round.final.validation.hard_passed ? "통과" : "실패"}
+                      안전 확인: 핵심 규칙 {round.final.validation.hard_passed ? "통과" : "확인 필요"}
                       {round.final.validation.violations.length > 0 && (
-                        <> | 위반 {round.final.validation.violations.length}건
+                        <> | 점검 {round.final.validation.violations.length}건
                           ({round.final.validation.violations.filter(v => v.severity === 'HARD').length} HARD,
                           {" "}{round.final.validation.violations.filter(v => v.severity === 'SOFT').length} SOFT)
                         </>
                       )}
-                      {round.final.validation.auto_fix_applied && " | 자동 수정 적용됨"}
+                      {round.final.validation.auto_fix_applied && " | 안전 범위로 정리됨"}
                     </span>
                   </div>
                 )}
@@ -395,7 +500,14 @@ export function DeveloperDemo() {
                 <div className="flex items-center justify-center gap-3">
                   {latestRound.final.decision.action === "ACCEPT" && (
                     <button
-                      onClick={() => setDemoState("PAYMENT")}
+                      onClick={() => {
+                        sessionStorage.setItem("haggle_checkout", JSON.stringify({
+                          price: latestRound.final.decision.price,
+                          item: initResponse?.strategy.approach ?? "iPhone 14 Pro 128GB",
+                          rounds: rounds.length,
+                        }));
+                        window.location.href = "/demo/checkout";
+                      }}
                       className="rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors cursor-pointer"
                     >
                       결제 페이지로 이동 &rarr;
@@ -411,25 +523,6 @@ export function DeveloperDemo() {
               </div>
             )}
 
-            {/* ── PAYMENT ── */}
-            {demoState === "PAYMENT" && latestRound && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-600/50 to-transparent" />
-                  <span className="text-sm font-bold text-white bg-emerald-500/10 px-4 py-1 rounded-full border border-emerald-500/30">
-                    결제 단계
-                  </span>
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-600/50 to-transparent" />
-                </div>
-
-                <DemoPayment
-                  agreedPrice={latestRound.final.decision.price}
-                  itemTitle={initResponse?.strategy.approach ? "MacBook Pro" : "아이템"}
-                  rounds={rounds.length}
-                  onBack={handleReset}
-                />
-              </div>
-            )}
           </div>
         )}
 
@@ -447,7 +540,6 @@ export function DeveloperDemo() {
           </div>
         )}
 
-        <div ref={bottomRef} />
       </section>
 
       <style jsx global>{`

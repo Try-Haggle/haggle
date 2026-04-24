@@ -16,7 +16,7 @@ export interface DisputeEvidence {
   id: string;
   dispute_id: string;
   submitted_by: "buyer" | "seller" | "system";
-  type: "text" | "image" | "tracking_snapshot" | "payment_proof" | "other";
+  type: "text" | "image" | "video" | "tracking_snapshot" | "payment_proof" | "other";
   uri?: string;
   text?: string;
   created_at: string;

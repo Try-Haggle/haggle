@@ -341,7 +341,7 @@
 <!-- Tab Bar -->
 <div class="tab-bar">
   <button class="active" onclick="showTab('past')">📋 지난 안건 (확정)</button>
-  <button onclick="showTab('current')">🔥 현재 안건 (4/14)</button>
+  <button onclick="showTab('current')">🔥 현재 안건 (4/21)</button>
   <button onclick="showTab('future')">🎯 향후 목표</button>
 </div>
 
@@ -2028,339 +2028,133 @@ Haggle Credits 가치 ↑
     </div>
   </section>
 
+  <!-- ═══════════════════════════════════════ -->
+  <!-- 4/14 모임 확정 (지난 안건으로 이동) -->
+  <!-- ═══════════════════════════════════════ -->
+
+  <section class="section">
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">📋</div>4/14 모임 확정 사항</div>
+    <div class="section-desc">직거래 보증금 설계, 게이미피케이션 버디 방향 확정.</div>
+
+    <table class="decision-table">
+      <thead><tr><th>#</th><th>안건</th><th>결정</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">A</td><td class="bold">직거래 시나리오 검토</td><td>7개 시나리오 중 Phase 0에 5개 포함 (보증금 + 시간 제한 + 현장 검수 + 즉석 재협상 + 양방향 보증금). on-chain 보증금 확정.</td><td><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">B</td><td class="bold">보증금 메커니즘 설계</td><td>보증금 비율 자체를 AI 협상 대상으로 결정. HaggleEscrow 컨트랙트에 deposit/forfeit 로직 추가.</td><td><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">C</td><td class="bold">SETTLEMENT sub-state</td><td>sub-state 방향 확정. reserved → inspecting → confirmed + renegotiating/cancelled 후보 논의.</td><td><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">D</td><td class="bold">버디 캐릭터 톤</td><td>"친근 + 유능" (C안) 확정. Cash App/Waze 레퍼런스. 성과 연동 원칙 확정.</td><td><span class="sev low">완료</span></td></tr>
+        <tr><td class="mono">E</td><td class="bold">게이미피케이션 범위</td><td>Phase 0은 절약 리포트(공유 카드)만 포함. 나머지(레벨/칭호/랭킹)는 Phase 1.</td><td><span class="sev low">완료</span></td></tr>
+      </tbody>
+    </table>
+
+    <div class="info-box" style="margin-top:12px">
+      <div class="info-title">🏗️ 구현 진행 (4/14 → 4/18 사이)</div>
+      <ul class="security-list">
+        <li><b>Payment:</b> DB migration, EIP-712 signer, Stripe adapter + 보안 강화</li>
+        <li><b>Web:</b> Developer Demo에 결제/배송/분쟁 컴포넌트 통합, 지갑 생성 플로우</li>
+        <li><b>Contracts:</b> HaggleSettlementRouter + HaggleDisputeRegistry 코드/테스트 완료</li>
+      </ul>
+    </div>
+  </section>
+
 </div>
 
 <!-- ═══════════════════════════════════════ -->
-<!-- TAB 2: 현재 안건 (4/14 모임) -->
+<!-- TAB 2: 현재 안건 (4/18 모임) -->
 <!-- ═══════════════════════════════════════ -->
 <div id="tab-current" class="tab-content">
 
-  <!-- 4/14 모임 논의 안건 -->
+  <!-- 4/21 모임 논의 안건 -->
   <section class="section">
-    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">📋</div>4/14 모임 논의 안건</div>
+    <div class="section-title"><div class="icon" style="background:rgba(99,102,241,.15);">📋</div>4/21 모임 논의 안건</div>
     <div class="section-desc">
-      <p>화요일 정기 모임. 이번 회차의 핵심 논의: <strong>(1) 직거래(Local Meetup) 지원 시나리오 검토, (2) 구속력 있는 예약 보증금 메커니즘 설계, (3) Phase 0에 포함할 직거래 기능 범위 확정</strong>. Electronics 직거래가 높은 비중을 차지하므로, 안전하고 신뢰할 수 있는 직거래 경험이 차별화 포인트.</p>
+      <p>월요일 정기 모임. 이번 회차의 핵심 논의: <strong>(1) 결제 → 배송 → 분쟁 E2E 데모 리뷰, (2) Base Sepolia 테스트넷 배포 준비, (3) 개발 진행 현황 점검, (4) 분쟁 비용 부담 정책 확정</strong>. MVP 결제/배송/분쟁 파이프라인이 전체 구현 완료되어, 데모 리뷰와 테스트넷 배포 일정을 확정하는 것이 핵심.</p>
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 안건 A: 직거래(Local Meetup) 시나리오 검토 -->
+    <!-- 안건 A+B: 데모 리뷰로 대체 -->
+    <div class="info-box" style="margin-bottom:20px">
+      <div class="info-title">💳 안건 A+B — 결제/배송/분쟁 E2E 데모 시연</div>
+      <p style="margin:8px 0">Developer Demo에서 결제 &rarr; 배송 &rarr; 분쟁 전체 플로우를 <b>라이브 데모</b>로 확인. 별도 슬라이드 논의 없이 데모 시연으로 대체.</p>
+      <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+        <a href="http://localhost:3000/demo/developer" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background:var(--accent);color:#fff;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;transition:opacity .15s;">💳 결제/배송 데모 &rarr;</a>
+        <a href="http://localhost:3000/demo/dispute" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background:#10b981;color:#fff;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;transition:opacity .15s;">⚖️ 분쟁 Resolution Center &rarr;</a>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 안건 C: 개발 진행 현황 -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <div class="info-box" style="margin-bottom:20px">
-      <div class="info-title">🤝 안건 A — 직거래(Local Meetup) 지원 시나리오</div>
-      <p style="margin:8px 0">Electronics 직거래에서 발생하는 핵심 문제들과 Haggle이 제공할 수 있는 솔루션. <b>각 시나리오의 Phase 0 포함 여부를 결정</b>해야 한다.</p>
+      <div class="info-title">🏗️ 안건 C &mdash; 개발 진행 현황</div>
+      <p style="margin:8px 0">4/14 이후 구현 완료된 항목 점검.</p>
+    </div>
+
+    <table class="decision-table">
+      <thead><tr><th>영역</th><th>상태</th><th>내용</th></tr></thead>
+      <tbody>
+        <tr><td class="bold">API</td><td><span class="sev low">완료</span></td><td>결제/배송/분쟁 라우트 전체 구현. DB migration, EIP-712 signer, Stripe adapter + 보안 강화.</td></tr>
+        <tr><td class="bold">Web</td><td><span class="sev low">완료</span></td><td>Developer Demo에 결제/배송/분쟁 컴포넌트 통합. 지갑 생성 플로우 + Sign-up 쇼케이스 확장.</td></tr>
+        <tr><td class="bold">Contracts</td><td><span class="sev medium">배포 대기</span></td><td>HaggleSettlementRouter + HaggleDisputeRegistry 코드/테스트 완료. Base Sepolia 배포 대기 중.</td></tr>
+        <tr><td class="bold">shipping-core</td><td><span class="sev medium">부분 완료</span></td><td>MockCarrier 동작 확인. EasyPost API 키 발급 후 실제 캐리어 연동 예정.</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 안건 D: 분쟁 비용 부담 정책 확정 -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <div class="info-box" style="margin-bottom:20px;margin-top:32px">
+      <div class="info-title">⚖️ 안건 D &mdash; 분쟁 비용 부담 정책 확정</div>
+      <p style="margin:8px 0">% 판결(부분 환불) 시 분쟁비를 누가 부담하는지 기준 확정. <b>박빙 투표 규칙 제거 + 50% 기준선 도입</b>.</p>
     </div>
 
     <div class="arch-grid">
 
-      <!-- 시나리오 1: 구속력 있는 예약 보증금 -->
       <div class="arch-card">
-        <h3>💰 시나리오 1 — 예약 보증금 (Binding Deposit)</h3><span class="badge-role">핵심</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">기존 HOLD와 다른 <b>구속력 있는 예약</b>. 구매자가 소액 보증금을 걸어 거래를 예약하고, 노쇼 시 보증금이 판매자에게 귀속.</p>
-
-        <p style="font-size:13px;font-weight:600;color:#22c55e;margin:12px 0 6px 0;">작동 방식</p>
-        <ul class="security-list">
-          <li><b>구매자</b>: 거래 금액의 5~15% 보증금을 escrow에 예치 (USDC)</li>
-          <li><b>판매자</b>: "예약 확정" 알림 수신. 다른 구매자에게는 "예약됨" 표시</li>
-          <li><b>거래 성사</b>: 보증금이 거래 대금의 일부로 전환 (나머지만 추가 결제)</li>
-          <li><b>구매자 노쇼</b>: 보증금 전액 판매자에게 귀속 → 판매자 시간 보상</li>
-          <li><b>판매자 노쇼</b>: 보증금 구매자에게 환불 + 판매자 신뢰 점수 하락</li>
-        </ul>
-
-        <p style="font-size:13px;font-weight:600;color:#ef4444;margin:12px 0 6px 0;">설계 질문</p>
-        <ul class="security-list">
-          <li>보증금 비율: 고정 (예: 10%)? 아니면 금액 구간별 차등?</li>
-          <li>양방향 보증금: 판매자도 보증금을 걸어야 하나? ("예약해놓고 더 비싸게 팔았어" 방지)</li>
-          <li>스마트 컨트랙트: HaggleEscrow에 deposit/release/forfeit 로직 추가? 아니면 off-chain?</li>
-          <li>시간 제한: 보증금 후 몇 시간 내 만남 필수? (24h? 48h?)</li>
-        </ul>
-
-        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">HOLD와의 차이</p>
-        <table class="decision-table" style="font-size:12px;margin:4px 0;">
-          <thead><tr><th>항목</th><th>HOLD (기존)</th><th>Binding Deposit (신규)</th></tr></thead>
-          <tbody>
-            <tr><td>구속력</td><td>없음 (협상 일시정지)</td><td><b>있음 (돈이 걸림)</b></td></tr>
-            <tr><td>자금 이동</td><td>없음</td><td><b>escrow에 예치</b></td></tr>
-            <tr><td>노쇼 페널티</td><td>없음</td><td><b>보증금 몰수</b></td></tr>
-            <tr><td>용도</td><td>협상 중 생각할 시간</td><td><b>직거래 만남 예약</b></td></tr>
-            <tr><td>Phase</td><td>BARGAINING</td><td><b>CLOSING → MEETUP</b></td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 시나리오 2: 시간 제한 예약 -->
-      <div class="arch-card">
-        <h3>⏰ 시나리오 2 — 시간 제한 예약 (Time-Bounded Reservation)</h3><span class="badge-role">핵심</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">보증금을 걸고 나서 무기한 질질 끄는 것을 방지. 자동 만료 + 자동 환불/몰수.</p>
-
-        <ul class="security-list">
-          <li><b>시간 제한</b>: 보증금 예치 후 24h(같은 도시) / 48h(타 지역) 내 만남 필수</li>
-          <li><b>자동 만료</b>: 시간 초과 → 자동 취소 + 보증금 처리 (누구 귀책인지 판단)</li>
-          <li><b>연장 요청</b>: 양측 합의 시 1회 연장 가능 (최대 +24h)</li>
-          <li><b>날씨/긴급</b>: 불가항력 사유 시 양측 동의로 보증금 반환</li>
-        </ul>
-      </div>
-
-      <!-- 시나리오 3: 현장 검수 프로토콜 -->
-      <div class="arch-card">
-        <h3>🔍 시나리오 3 — 현장 검수 프로토콜 (On-Site Inspection)</h3><span class="badge-role">중요</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">만나서 아이템을 확인하는 구조화된 체크리스트. 검수 완료 → 앱에서 승인 → 결제.</p>
-
-        <ul class="security-list">
-          <li><b>iPhone 체크리스트</b>: IMEI 확인 → 배터리 확인 → Find My 해제 → 외관 → 기능 테스트</li>
-          <li><b>가이드 attestation</b>: 각 항목 검수 시 앱에서 체크 + 사진 (선택)</li>
-          <li><b>검수 완료</b>: 양측 서명 → 보증금 + 잔액 결제 트리거</li>
-          <li><b>검수 실패</b>: 설명과 다른 경우 → 즉석 재협상 or 취소 (보증금 반환)</li>
-        </ul>
-      </div>
-
-      <!-- 시나리오 4: 즉석 가격 조정 -->
-      <div class="arch-card">
-        <h3>🔄 시나리오 4 — 즉석 가격 조정 (On-Site Renegotiation)</h3><span class="badge-role">중요</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">현장에서 상태가 설명과 다를 때 AI가 새 가격을 제안.</p>
-
-        <ul class="security-list">
-          <li><b>트리거</b>: "배터리가 92%가 아니라 85%네" → 검수 항목 불일치 감지</li>
-          <li><b>AI 재계산</b>: 불일치 항목 기반으로 공정 가격 재산출 (L5 Signals + Term 가중치)</li>
-          <li><b>양측 승인</b>: 새 가격에 양측 동의 → 수정된 금액으로 결제</li>
-          <li><b>합의 불가</b>: 거래 취소 → 보증금 반환 (상태 불일치는 판매자 귀책 아님)</li>
-          <li><b>차별화</b>: 다른 플랫폼은 "사기였다 vs 아니다"만 판단. <b>Haggle은 "그럼 공정 가격이 얼마야"를 AI가 제안</b></li>
-        </ul>
-      </div>
-
-      <!-- 시나리오 5: 안전 거래 장소 -->
-      <div class="arch-card">
-        <h3>📍 시나리오 5 — 안전 거래 장소 추천 (Safe Meetup Spots)</h3><span class="badge-role">Phase 1</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">경찰서 로비, 공공장소 등 안전한 만남 장소를 위치 기반으로 추천.</p>
-
-        <ul class="security-list">
-          <li><b>SafeTradeStation</b>: 미국 경찰서/소방서의 "Internet Purchase Exchange Zone" DB</li>
-          <li><b>공공장소</b>: 스타벅스, 도서관 등 CCTV + 사람 많은 장소</li>
-          <li><b>중간 지점</b>: 양측 위치 기반 최적 만남 장소 제안</li>
-          <li><b>안전 알림</b>: 만남 시작/종료 시 자동 알림 (긴급 연락처)</li>
-        </ul>
-      </div>
-
-      <!-- 시나리오 6: 대리인 거래 -->
-      <div class="arch-card">
-        <h3>👤 시나리오 6 — 대리인 거래 (Proxy Meetup)</h3><span class="badge-role">Phase 2</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">본인이 못 가면 대리인 지정. 인증 코드로 대리인 검증.</p>
-
-        <ul class="security-list">
-          <li><b>대리인 지정</b>: 앱에서 대리인 이름 + 연락처 등록</li>
-          <li><b>인증</b>: 일회용 QR 코드 or 6자리 PIN → 상대방이 확인</li>
-          <li><b>검수 권한</b>: 대리인도 검수 체크리스트 실행 가능</li>
-          <li><b>결제 권한</b>: 대리인은 결제 승인만 (금액 변경 불가)</li>
-        </ul>
-      </div>
-
-      <!-- 시나리오 7: 양방향 보증금 -->
-      <div class="arch-card">
-        <h3>🔒 시나리오 7 — 양방향 보증금 (Mutual Deposit)</h3><span class="badge-role">중요</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">판매자도 보증금 → "예약해놓고 다른 사람한테 더 비싸게 팔았어" 방지.</p>
-
-        <ul class="security-list">
-          <li><b>구매자 보증금</b>: 거래 금액의 10% → 노쇼 시 판매자에게</li>
-          <li><b>판매자 보증금</b>: 거래 금액의 5% → 판매 취소 시 구매자에게</li>
-          <li><b>비대칭 이유</b>: 판매자가 물건을 가지고 있으므로 기회비용이 더 크다. 구매자 보증금 > 판매자 보증금이 공정.</li>
-          <li><b>양측 이행</b>: 정상 거래 완료 → 양쪽 보증금 모두 반환/전환</li>
-        </ul>
-      </div>
-
-    </div>
-
-    <!-- ── 안건 B: 추천 — Phase 0 포함 범위 ── -->
-    <div class="arch-grid" style="margin-top:24px">
-      <div class="arch-card" style="grid-column: 1 / -1;">
-        <h3>🎯 안건 B — 추천: Phase 0에 포함할 직거래 기능</h3><span class="badge-role">Recommendation</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">7개 시나리오 중 Phase 0(iPhone 직거래 MVP)에 포함할 범위 추천. 핵심 기준: <b>사용자 보호 + 구현 복잡도 + 차별화 임팩트</b>.</p>
+        <h3>📐 50% 기준선 규칙</h3><span class="badge-role">확정 제안</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">% 판결 시 분쟁비 부담자를 결정하는 단일 기준.</p>
 
         <table class="decision-table" style="font-size:12px;margin:12px 0;">
-          <thead><tr><th>시나리오</th><th>Phase</th><th>이유</th><th>임팩트</th></tr></thead>
+          <thead><tr><th>환불 비율</th><th>의미</th><th>분쟁비 부담</th></tr></thead>
           <tbody>
-            <tr style="background:rgba(16,185,129,.06);">
-              <td class="bold">1. 예약 보증금</td>
-              <td><span class="sev critical">Phase 0</span></td>
-              <td>직거래 최대 페인포인트(노쇼) 직접 해결. 스마트 컨트랙트 escrow에 deposit 로직 추가하면 기술적으로도 자연스러움.</td>
-              <td class="bold" style="color:#22c55e">매우 높음</td>
-            </tr>
-            <tr style="background:rgba(16,185,129,.06);">
-              <td class="bold">2. 시간 제한 예약</td>
-              <td><span class="sev critical">Phase 0</span></td>
-              <td>보증금과 반드시 세트. 시간 제한 없으면 보증금이 무기한 묶여 악용 가능.</td>
-              <td class="bold" style="color:#22c55e">높음</td>
-            </tr>
-            <tr style="background:rgba(16,185,129,.06);">
-              <td class="bold">3. 현장 검수</td>
-              <td><span class="sev critical">Phase 0</span></td>
-              <td>iPhone 직거래에서 검수는 필수. 구조화된 체크리스트가 분쟁 예방의 핵심. Attestation 시스템과 연결.</td>
-              <td class="bold" style="color:#22c55e">높음</td>
-            </tr>
-            <tr style="background:rgba(16,185,129,.06);">
-              <td class="bold">4. 즉석 재협상</td>
-              <td><span class="sev critical">Phase 0</span></td>
-              <td><b>Haggle만의 차별화</b>. 다른 플랫폼은 "사기 vs 아님"만 판단. Haggle은 "공정 가격이 얼마야"를 AI가 제안. 6-Stage 파이프라인 직접 활용.</td>
-              <td class="bold" style="color:#22c55e">매우 높음</td>
-            </tr>
-            <tr style="background:rgba(245,158,11,.06);">
-              <td class="bold">7. 양방향 보증금</td>
-              <td><span class="sev medium">Phase 0</span></td>
-              <td>보증금이 구매자만이면 불공정. 판매자 보증금도 있어야 양쪽 신뢰. 단, 비대칭 비율(구매자 10% / 판매자 5%)로 시작.</td>
-              <td class="bold" style="color:#22c55e">높음</td>
-            </tr>
-            <tr>
-              <td>5. 안전 거래 장소</td>
-              <td><span class="sev low">Phase 1</span></td>
-              <td>SafeTradeStation DB 수집 + 위치 API 연동 필요. Phase 0에서는 텍스트 가이드로 대체 가능.</td>
-              <td style="color:#64748b">중간</td>
-            </tr>
-            <tr>
-              <td>6. 대리인 거래</td>
-              <td><span class="sev low">Phase 2</span></td>
-              <td>인증 + 권한 위임 구조가 복잡. Phase 0에서 수요 검증 후 결정.</td>
-              <td style="color:#64748b">낮음</td>
-            </tr>
+            <tr><td class="bold">≥ 50%</td><td>판매자가 더 (또는 동등하게) 잘못</td><td style="color:#ef4444"><b>판매자</b> (디포짓에서)</td></tr>
+            <tr><td class="bold">&lt; 50%</td><td>구매자 주장이 대부분 기각</td><td style="color:#ef4444"><b>구매자</b> (에스크로에서)</td></tr>
           </tbody>
         </table>
 
-        <p style="font-size:13px;font-weight:600;color:#6366f1;margin:12px 0 6px 0;">Phase 0 직거래 플로우 (추천안)</p>
         <div style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;line-height:1.8;overflow-x:auto;color:#94a3b8;">
-          <span style="color:#64748b;">협상 완료 (CLOSING → SETTLEMENT 합의)</span><br>
-          │<br>
-          ├─ <b style="color:#e2e8f0;">① 보증금 예치</b> ─── 구매자 10% + 판매자 5% → escrow<br>
-          │<br>
-          ├─ <b style="color:#e2e8f0;">② 만남 예약</b> ─── 장소 + 시간 설정 (24h 제한 시작)<br>
-          │<br>
-          ├─ <b style="color:#e2e8f0;">③ 현장 검수</b> ─── iPhone 체크리스트 (IMEI, 배터리, Find My, 외관)<br>
-          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 검수 통과 → ④로<br>
-          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <b style="color:#f59e0b;">불일치 발견 → 즉석 재협상</b> (AI 가격 재산출)<br>
-          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├─ 양측 동의 → 수정 가격으로 ④<br>
-          │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 합의 불가 → 취소 (보증금 반환)<br>
-          │<br>
-          ├─ <b style="color:#10b981;">④ 양측 서명</b> ─── 앱에서 "거래 확인" 버튼 → 양쪽 attestation<br>
-          │<br>
-          └─ <b style="color:#10b981;">⑤ 결제 완료</b> ─── 보증금 전환 + 잔액 결제 → escrow release<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 양측 보증금 반환/전환
+          <b style="color:#6366f1;">예시 1:</b> $1K 주문, 환불 60% → 판매자 부담 ($20 디포짓에서)<br>
+          <b style="color:#6366f1;">예시 2:</b> $1K 주문, 환불 30% → 구매자 부담 ($20 에스크로에서)<br>
+          <b style="color:#6366f1;">예시 3:</b> $1K 주문, 환불 50% → 판매자 부담 (동등 = 구매자 보호)<br>
+          <b style="color:#f59e0b;">근거:</b> Haggle 원칙 "안전 &gt; 편리, 공정 &gt; 수익" → 50%는 구매자 유리
         </div>
       </div>
-    </div>
 
-    <!-- ── 안건 C: 기술 설계 질문 ── -->
-    <div class="arch-grid" style="margin-top:24px">
-      <div class="arch-card" style="grid-column: 1 / -1;">
-        <h3>🏗️ 안건 C — 기술 설계 질문</h3><span class="badge-role">Architecture</span>
-        <p style="font-size:13px;color:#64748b;margin:8px 0;">직거래 기능 구현 시 결정해야 할 아키텍처 질문들.</p>
+      <div class="arch-card">
+        <h3>🗑️ 박빙 투표 규칙 제거</h3><span class="badge-role">확정</span>
+        <p style="font-size:13px;color:#64748b;margin:8px 0;">1표 차 판정 시 플랫폼 추가 수취 규칙 삭제.</p>
 
-        <table class="decision-table" style="font-size:12px;margin:12px 0;">
-          <thead><tr><th>#</th><th>질문</th><th>옵션</th><th>추천</th></tr></thead>
-          <tbody>
-            <tr><td class="mono">1</td><td class="bold">보증금은 on-chain(스마트 컨트랙트) vs off-chain(DB)?</td><td>A) HaggleEscrow에 deposit 로직 추가<br>B) DB에서 관리, 분쟁 시 수동 처리</td><td><b>A — on-chain 확정</b>. 이미 escrow 컨트랙트 있고, 보증금 몰수가 코드로 강제돼야 신뢰도 확보.</td></tr>
-            <tr><td class="mono">2</td><td class="bold">새로운 Phase가 필요한가?</td><td>A) MEETUP Phase 추가 (SETTLEMENT 전)<br>B) SETTLEMENT 내부 sub-state로 처리</td><td><b>B — sub-state 방향 확정, 상태 수 재검토 필요</b>. 3개(reserved→inspecting→confirmed)로 부족할 수 있음 — <code>renegotiating</code>(즉석 재협상 중)과 <code>cancelled</code>(노쇼/시간만료/합의불가) 추가 후보. 즉석 재협상이 Phase 0에 들어가면 "검수 중 vs 재협상 중" 구분이 필수.</td></tr>
-            <tr><td class="mono">3</td><td class="bold">즉석 재협상은 새 세션? 기존 세션 연장?</td><td>A) 새 세션 생성 (parent_session_id 참조)<br>B) 기존 세션에서 BARGAINING으로 revert</td><td><b>A — 새 세션</b>. 원래 협상 기록 보존 + 재협상은 범위가 다름 (가격만, 조건 고정).</td></tr>
-            <tr><td class="mono">4</td><td class="bold">보증금 비율은 고정 vs 가변?</td><td>A) 고정 10%/5%<br>B) 금액 구간별 차등 (Pipeline Presets 연동)<br>C) 신뢰 점수 기반 (높으면 낮은 보증금)<br>D) <b>비율 자체를 협상 대상으로</b></td><td><b>D — 협상으로 결정</b>. 보증금 비율도 AI가 양측 조건 기반으로 협상. "내가 15% 걸 테니 예약해줘" vs "5%면 충분하지 않아?" 같은 흥정 가능. Haggle다운 접근.</td></tr>
-            <tr><td class="mono">5</td><td class="bold">노쇼 판정 기준?</td><td>A) 시간 만료 = 자동 노쇼<br>B) 상대방 신고 + 위치 확인<br>C) 양측 체크인 필수 (위치 기반)</td><td><b>A + C</b>. 시간 만료 자동 + 만남 장소 근처 GPS 체크인으로 이중 확인.</td></tr>
-          </tbody>
-        </table>
+        <ul class="security-list">
+          <li><b>제거 대상</b>: 마진 1일 때 리뷰어 풀에서 1인분을 플랫폼이 추가 확보하는 규칙</li>
+          <li><b>제거 이유</b>: 복잡도 대비 효과 미미 ($2-3 수준), 리뷰어 보수 공식 단순화 우선</li>
+          <li><b>변경 후</b>: T2/T3 항상 고정 70% 리뷰어 / 30% 플랫폼. 예외 없음.</li>
+          <li><b>코드 영향</b>: 미구현 상태였으므로 문서만 제거 완료 (분쟁_시스템_v2.md)</li>
+        </ul>
       </div>
+
     </div>
 
-    <!-- ── 안건 D: 결정 사항 요약 ── -->
+    <!-- ── 안건 D 결정 필요 ── -->
     <div class="info-box" style="margin-bottom:12px;margin-top:24px">
-      <div class="info-title">📋 안건 D — 4/14 모임 결정 사항</div>
+      <div class="info-title">📋 안건 D 결정 필요</div>
     </div>
-    <table class="decision-table">
-      <thead><tr><th>#</th><th>안건</th><th>논의 포인트</th><th class="right">우선순위</th></tr></thead>
+    <table class="decision-table" style="font-size:12px;margin-bottom:24px;">
+      <thead><tr><th>#</th><th>결정 사항</th><th>논의 포인트</th><th class="right">우선순위</th></tr></thead>
       <tbody>
-        <tr><td class="mono">1</td><td class="bold">직거래 시나리오 Phase 0 범위 확정</td><td>7개 시나리오 중 Phase 0 포함: 보증금(1) + 시간 제한(2) + 현장 검수(3) + 즉석 재협상(4) + 양방향 보증금(7). <b>5개 세트로 갈 것인지, 축소할 것인지.</b></td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">2</td><td class="bold">보증금 on-chain 구현</td><td>HaggleEscrow 컨트랙트에 deposit/forfeit 로직 추가. <b>확정 — 스마트 컨트랙트 변경이므로 보안 리뷰 일정 논의.</b></td><td class="right"><span class="sev low">확정</span></td></tr>
-        <tr><td class="mono">3</td><td class="bold">보증금 비율 — 협상 대상으로</td><td>고정 비율이 아니라 <b>보증금 비율 자체를 AI 협상 대상으로</b>. "15% 걸 테니 예약해줘" vs "5%면 충분하지 않아?" — 이 방향이 맞는지 + 기본값(default)은 얼마로 할지.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">4</td><td class="bold">SETTLEMENT sub-state 재검토</td><td>sub-state 방향은 확정. <b>3개(reserved→inspecting→confirmed)로 부족 — <code>renegotiating</code>(즉석 재협상 중) + <code>cancelled</code>(노쇼/만료/합의불가) 추가 후보.</b> 5-state가 맞는지 논의.</td><td class="right"><span class="sev critical">높음</span></td></tr>
-        <tr><td class="mono">5</td><td class="bold">즉석 재협상 세션 구조</td><td>불일치 발견 시 새 세션(child) 생성 vs 기존 세션 revert. <b>기록 보존 + UX 관점에서 결정.</b></td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">6</td><td class="bold">버디 캐릭터 톤 결정</td><td>귀여운(A) vs 유능한(B) vs 밸런스(C). <b>타겟 20-30대 미국인 기준 어떤 톤이 맞는지.</b> Duolingo/Cash App/Waze 참고.</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">7</td><td class="bold">Phase 0 게이미피케이션 범위</td><td><b>절약 리포트(공유 카드)만 Phase 0 포함</b>, 나머지(레벨/칭호/랭킹)는 Phase 1. 이 방향이 맞는지 + 스타일 프로필은 어떻게 할지.</td><td class="right"><span class="sev medium">중간</span></td></tr>
-        <tr><td class="mono">8</td><td class="bold">구현 일정 (Step 68~)</td><td>Doc 28 P0-P2 완료(Step 65-67). 직거래 + 게이미피케이션은 <b>Step 68부터</b>. 3man team으로 진행할 것인지 확인.</td><td class="right"><span class="sev low">낮음</span></td></tr>
+        <tr><td class="mono">1</td><td class="bold">50% 기준선 확정</td><td>환불 ≥50% = 판매자 부담, &lt;50% = 구매자 부담. 동의 여부.</td><td class="right"><span class="sev critical">높음</span></td></tr>
+        <tr><td class="mono">2</td><td class="bold">박빙 투표 규칙 제거 확인</td><td>문서에서 이미 제거. 팀 동의 확인.</td><td class="right"><span class="sev medium">중간</span></td></tr>
       </tbody>
     </table>
-
-    <!-- ── 안건 E: 게이미피케이션 + 버디 시스템 ── -->
-    <div class="card" style="margin-top:24px">
-      <div class="card-header">
-        <h3>🎮 안건 E — 게이미피케이션 & 버디 시스템 설계 방향</h3><span class="badge-role">Product / Branding</span>
-      </div>
-      <div class="card-body">
-        <p style="margin-bottom:16px;">AI 협상 에이전트("버디")에 캐릭터성을 부여하고, 거래 실적 기반 게이미피케이션을 도입하는 방향. <b>핵심 원칙: 감정 표현은 반드시 실제 성과에 연동.</b></p>
-
-        <!-- E-1: 버디 톤 -->
-        <div class="info-box" style="margin-bottom:16px">
-          <div class="info-title">E-1. 버디 캐릭터 톤 — 어디까지?</div>
-        </div>
-        <table class="decision-table" style="font-size:12px;margin-bottom:20px;">
-          <thead><tr><th>톤</th><th>느낌</th><th>예시</th><th>레퍼런스</th></tr></thead>
-          <tbody>
-            <tr><td class="bold">A) 귀여운 캐릭터</td><td>친근, 애착 형성</td><td>"이번에 좀 잘했지? 😎"</td><td>Duolingo 올빼미, 카카오뱅크</td></tr>
-            <tr><td class="bold">B) 유능한 에이전트</td><td>신뢰, 전문성</td><td>"$85 절약 완료. 시장 대비 9.2% 할인."</td><td>Bloomberg Terminal, Stripe</td></tr>
-            <tr><td class="bold">C) 친근 + 유능</td><td>밸런스</td><td>"판매자를 $750까지 끌어내렸습니다 💪"</td><td>Cash App, Waze</td></tr>
-          </tbody>
-        </table>
-        <p><b>논의 포인트:</b> 타겟(20-30대 미국 iPhone 거래자) 기준, 어떤 톤이 맞는지. C가 유력하지만 구체적 경계선 합의 필요.</p>
-
-        <!-- E-2: 성과 연동 원칙 -->
-        <div class="info-box" style="margin-bottom:16px;margin-top:20px">
-          <div class="info-title">E-2. 게이미피케이션 원칙 — ✅ 해도 되는 것 vs ❌ 안 되는 것</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-          <div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:8px;padding:12px;">
-            <div style="font-weight:600;color:var(--green);margin-bottom:8px;">✅ 해도 되는 것 (성과 연동)</div>
-            <ul style="font-size:12px;margin:0;padding-left:16px;">
-              <li>실제 절약 금액 기반 축하</li>
-              <li>거래 실적 기반 레벨업 / 칭호</li>
-              <li>협상 스타일별 버디 성격 변화</li>
-              <li>누적 절약액 트래커</li>
-              <li>성사율, 평균 절약률 같은 실제 통계</li>
-            </ul>
-          </div>
-          <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:12px;">
-            <div style="font-weight:600;color:var(--red);margin-bottom:8px;">❌ 안 되는 것 (행동 유도)</div>
-            <ul style="font-size:12px;margin:0;padding-left:16px;">
-              <li>거래 안 하면 버디가 슬퍼함 (Robinhood식)</li>
-              <li>의미없는 배지, 가짜 레벨업</li>
-              <li>귀여움 뒤에 수수료/리스크 숨기기</li>
-              <li>"더 공격적으로!" 같은 방향 유도</li>
-              <li>스트릭/연속 거래 압박</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- E-3: 구체적 게이미피케이션 요소 -->
-        <div class="info-box" style="margin-bottom:16px">
-          <div class="info-title">E-3. Phase 0 게이미피케이션 후보 요소</div>
-        </div>
-        <table class="decision-table" style="font-size:12px;margin-bottom:16px;">
-          <thead><tr><th>#</th><th>요소</th><th>설명</th><th>Phase 0?</th></tr></thead>
-          <tbody>
-            <tr><td class="mono">1</td><td class="bold">절약 리포트</td><td>거래 완료 시 "Swappa 대비 $X 절약" 카드. 공유 가능(바이럴).</td><td><span class="sev critical">포함</span></td></tr>
-            <tr><td class="mono">2</td><td class="bold">협상 스타일 프로필</td><td>공격형/밸런스형/수비형 — 거래 패턴 분석 기반</td><td><span class="sev medium">검토</span></td></tr>
-            <tr><td class="mono">3</td><td class="bold">버디 레벨</td><td>거래 수 + 절약액 기반 레벨업. 레벨별 버디 외형 변화?</td><td><span class="sev low">후순위</span></td></tr>
-            <tr><td class="mono">4</td><td class="bold">칭호 시스템</td><td>"가격 저격수", "윈윈 메이커" 등 실적 기반 칭호</td><td><span class="sev low">후순위</span></td></tr>
-            <tr><td class="mono">5</td><td class="bold">시즌 랭킹</td><td>월간 최고 절약률 리더보드</td><td><span class="sev low">후순위</span></td></tr>
-          </tbody>
-        </table>
-        <p><b>추천:</b> Phase 0은 <b>#1 절약 리포트만</b> 확실하게. #2 스타일 프로필은 협상 엔진 데이터가 이미 있으니 검토. 나머지는 유저 반응 보고 Phase 1에서. "적게 시작, 데이터 보고 확장" 원칙.</p>
-
-        <!-- E-4: Haggle이 Robinhood과 다른 이유 -->
-        <div class="info-box" style="margin-bottom:16px;margin-top:20px">
-          <div class="info-title">E-4. 왜 Haggle은 Robinhood 실수를 반복하지 않는가</div>
-        </div>
-        <table class="decision-table" style="font-size:12px;">
-          <thead><tr><th></th><th>Robinhood</th><th>Haggle</th></tr></thead>
-          <tbody>
-            <tr><td class="bold">수익 구조</td><td>거래 ↑ = 수익 ↑ (PFOF)</td><td>거래당 고정 1.5% — 유도 인센티브 없음</td></tr>
-            <tr><td class="bold">축하 대상</td><td>거래 행위 자체</td><td>절약 성과 (실제 금액)</td></tr>
-            <tr><td class="bold">이해충돌</td><td>있음 (과도한 거래 유도)</td><td>없음 (많이 깎아도 Haggle 수익 동일)</td></tr>
-            <tr><td class="bold">유저 피해 가능성</td><td>과도한 거래 → 손실</td><td>과도한 절약 → 유저 이득</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
 
   </section>
 

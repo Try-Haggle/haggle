@@ -9,7 +9,8 @@ export interface DisputeEvidence {
   type: "text" | "image" | "tracking_snapshot" | "payment_proof" | "other";
   uri?: string;
   text?: string;
-  submitted_at: string;
+  submitted_at?: string;
+  created_at?: string;
 }
 
 export interface Dispute {
@@ -23,6 +24,14 @@ export interface Dispute {
   updated_at: string;
   metadata?: Record<string, unknown>;
   refundAmountMinor?: number | null;
+}
+
+interface OrderInfo {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  amount_minor: number;
+  order_snapshot: Record<string, unknown>;
 }
 
 export default async function DisputeDetailPage({
@@ -42,6 +51,7 @@ export default async function DisputeDetailPage({
   const { id } = await params;
 
   let dispute: Dispute | null = null;
+  let order: OrderInfo | null = null;
   try {
     const data = await serverApi.get<{ dispute: Dispute }>(`/disputes/${id}`);
     dispute = data.dispute;
@@ -53,5 +63,24 @@ export default async function DisputeDetailPage({
     redirect("/buy/dashboard");
   }
 
-  return <DisputeDetail dispute={dispute} userId={user.id} />;
+  // Fetch order to determine user role
+  try {
+    const orderData = await serverApi.get<{ order: OrderInfo }>(`/orders/${dispute.order_id}`);
+    order = orderData.order;
+  } catch {
+    // Order fetch may fail — continue without role info
+  }
+
+  const userRole: "buyer" | "seller" =
+    order && user.id === order.buyer_id ? "buyer" : "seller";
+  const amountMinor = order?.amount_minor ?? null;
+
+  return (
+    <DisputeDetail
+      dispute={dispute}
+      userId={user.id}
+      userRole={userRole}
+      amountMinor={amountMinor}
+    />
+  );
 }

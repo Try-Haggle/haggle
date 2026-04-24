@@ -32,7 +32,7 @@ function mapDisputeCase(
     evidence,
     resolution,
     metadata: row.metadata ?? null,
-    refundAmountMinor: row.refundAmountMinor ?? null,
+    refundAmountMinor: resolution?.refund_amount_minor?.toString() ?? null,
   };
 }
 
@@ -123,7 +123,6 @@ export async function updateDisputeRecord(
     .set({
       status: dispute.status,
       resolutionSummary: dispute.resolution?.summary,
-      refundAmountMinor: dispute.resolution?.refund_amount_minor?.toString() ?? dispute.refundAmountMinor ?? undefined,
       metadata: dispute.metadata ?? undefined,
       resolvedAt: dispute.resolution?.resolved_at ? new Date(dispute.resolution.resolved_at) : undefined,
       closedAt: dispute.status === "CLOSED" ? new Date() : undefined,
@@ -158,5 +157,5 @@ export async function createDisputeResolutionRecord(
     summary: resolution.summary,
     refundAmountMinor: resolution.refund_amount_minor?.toString(),
     resolvedAt: resolution.resolved_at ? new Date(resolution.resolved_at) : undefined,
-  });
+  }).onConflictDoNothing({ target: disputeResolutions.disputeId });
 }

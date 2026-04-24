@@ -1,4 +1,4 @@
-# Session Checkpoint — 2026-04-03
+# Session Checkpoint — 2026-04-15
 
 *Read this before reading anything else. If it covers current state, skip BUILD-LOG.*
 
@@ -6,31 +6,37 @@
 
 ## Where We Stopped
 
-Phase 3 infrastructure: Step 1 (tag-core) complete. Steps 2-4 briefed and ready.
-Next action: Bob builds Step 2 (DB schemas).
+Payment/Shipping/Dispute 통합 시작. ARCHITECT-BRIEF 작성 완료 (Step 70-73).
+Next action: Bob builds Step 70 (DB Migration).
 
 ---
 
 ## What Was Decided This Session
 
-- Phase 3 split into 3 steps: Step 2 (DB), Step 3 (Services), Step 4 (API Routes)
-- Architect design review completed — 6 CEO decisions all approved:
-  1. ARP NULL handling: COALESCE unique index
-  2. Trust score: single row UPSERT (no history table for MVP)
-  3. Trust compute: admin-only endpoint, event-driven for users
-  4. API versioning: none (flat paths `/trust`, `/ds-ratings`, etc.)
-  5. Tag merge: semi-automatic (system suggests, admin approves)
-  6. Deposit routes: inside existing disputes.ts
-- API framework is Fastify (not Hono as CLAUDE.md says)
-- Service pattern: thin CRUD functions in `apps/api/src/services/`
-- Route pattern: `register*Routes(app: FastifyInstance, db: Database)` with Zod validation
-- commerce-core / payment-core / shipping-core have build errors (known, not blocking Phase 3)
+- Branch: feature/payment-shipping-dispute (main에서 분기, 10 commits ahead)
+- Step 번호: 70부터 시작 (이전 BUILD-LOG는 Step 67까지)
+- Build Order: Step 70 (DB) → 71 (EIP-712 Signature) → 72 (Deploy Script) → 73 (Stripe)
+- 유저 직접 필요 항목: EasyPost API Key, Base RPC, CDP Key, 멀티시그 지갑, Relayer 지갑+ETH, Fee Wallet
+- Supabase: 해결 완료
+- API 서버: Railway URL 설정됨, 배포 상태 미확인
+
+---
+
+## Current State
+
+- payment-core: 로직 완성, Mock 어댑터만 사용 중
+- shipping-core: EasyPost 어댑터 코드 있음, API 키 필요
+- dispute-core: 로직 완성, 외부 의존성 없음
+- commerce-core: 파이프라인 로직 완성
+- 컨트랙트: ABI + 테스트 있음, 배포 안 됨 (주소 null)
+- DB: payment/shipment/commerce 테이블 마이그레이션 누락
+- providers.ts: resolve_settlement_signature throw Error("not implemented")
 
 ---
 
 ## Still Open
 
-- None — brief is complete, ready for Bob.
+- Step 70 Bob 빌드 대기 중
 
 ---
 

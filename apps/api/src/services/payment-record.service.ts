@@ -265,7 +265,15 @@ export async function createPaymentSettlementRecord(
       status: settlement.status,
       settledAt: settlement.settled_at ? new Date(settlement.settled_at) : null,
     })
+    .onConflictDoNothing({ target: paymentSettlements.paymentIntentId })
     .returning();
+
+  if (!row) {
+    const existing = await db.query.paymentSettlements.findFirst({
+      where: (fields, ops) => ops.eq(fields.paymentIntentId, settlement.payment_intent_id),
+    });
+    return existing ?? null;
+  }
 
   return row;
 }

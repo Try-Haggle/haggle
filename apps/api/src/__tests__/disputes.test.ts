@@ -98,6 +98,38 @@ vi.mock("../services/draft.service.js", () => ({
   publishDraft: vi.fn().mockResolvedValue(null),
 }));
 
+// Import mocked service functions for per-test overrides
+import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
+import { getDisputeById } from "../services/dispute-record.service.js";
+
+const mockGetCommerceOrderByOrderId = getCommerceOrderByOrderId as ReturnType<typeof vi.fn>;
+const mockGetDisputeById = getDisputeById as ReturnType<typeof vi.fn>;
+
+/** Fake order that satisfies the ownership middleware. */
+function fakeOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ord_123",
+    buyerId: "test-user-001",
+    sellerId: "test-seller-001",
+    amountMinor: 50000,
+    ...overrides,
+  };
+}
+
+/** Fake dispute record. */
+function fakeDispute(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "some-id",
+    order_id: "ord_123",
+    reason_code: "ITEM_NOT_AS_DESCRIBED",
+    opened_by: "buyer",
+    status: "OPEN",
+    evidence: [],
+    metadata: { tier: 1 },
+    ...overrides,
+  };
+}
+
 describe("Dispute routes", () => {
   let app: FastifyInstance;
 
@@ -133,7 +165,32 @@ describe("Dispute routes", () => {
     expect(res.json().issues).toBeDefined();
   });
 
+  it("POST /disputes rejects oversized evidence text", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes",
+      headers: AUTH_HEADERS,
+      payload: {
+        order_id: "ord_123",
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        opened_by: "buyer",
+        evidence: [
+          {
+            submitted_by: "buyer",
+            type: "text",
+            text: "x".repeat(10_001),
+          },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_DISPUTE_REQUEST");
+  });
+
   it("POST /disputes returns 400 with invalid reason_code", async () => {
+    // Route checks order existence before reason_code validity
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder());
+
     const res = await app.inject({
       method: "POST",
       url: "/disputes",
@@ -198,6 +255,10 @@ describe("Dispute routes", () => {
   });
 
   it("POST /disputes/:id/escalate returns 400 with invalid body", async () => {
+    // requireDisputeParty middleware needs dispute + order to exist
+    mockGetDisputeById.mockResolvedValueOnce(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder());
+
     const res = await app.inject({
       method: "POST",
       url: "/disputes/some-id/escalate",
@@ -210,6 +271,10 @@ describe("Dispute routes", () => {
 
   // POST /disputes/:id/deposit
   it("POST /disputes/:id/deposit returns 404 when no deposit exists", async () => {
+    // requireDisputeParty middleware needs dispute + order to exist
+    mockGetDisputeById.mockResolvedValueOnce(fakeDispute());
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder());
+
     const res = await app.inject({
       method: "POST",
       url: "/disputes/some-id/deposit",

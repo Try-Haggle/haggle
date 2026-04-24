@@ -6,8 +6,11 @@
  */
 import { vi } from "vitest";
 
+process.env.NODE_ENV ??= "test";
+process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/haggle_test";
+
 // ─── Mock @haggle/db ─────────────────────────────────────────────────
-// createServer() calls createDb(process.env.DATABASE_URL!) which would
+// createServer() validates DATABASE_URL before calling createDb(), which would
 // try to connect to PostgreSQL. We intercept it and return a proxy object
 // that returns undefined/empty for all query operations.
 function createMockQueryProxy(): unknown {
@@ -75,7 +78,14 @@ vi.mock("@haggle/db", () => ({
   sellerAttestationCommits: {},
   // Table references used directly in route handlers (not via services)
   webhookIdempotency: { id: "id", idempotencyKey: "idempotencyKey", source: "source", responseStatus: "responseStatus" },
-  userWallets: { walletAddress: "walletAddress", userId: "userId", network: "network" },
+  refunds: { id: "id", paymentIntentId: "paymentIntentId", status: "status" },
+  disputeResolutions: { disputeId: "disputeId" },
+  disputeCases: { id: "id" },
+  commerceOrders: { id: "id" },
+  shipments: { id: "id", trackingNumber: "trackingNumber" },
+  shipmentEvents: { shipmentId: "shipmentId" },
+  settlementReleases: { id: "id" },
+  userWallets: { walletAddress: "walletAddress", userId: "userId", network: "network", isPrimary: "isPrimary" },
 }));
 
 // ─── Mock MCP SDK ────────────────────────────────────────────────────
@@ -146,8 +156,29 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
       buffer_amount_minor: Math.ceil(weightOz * 5),
     }),
     verifyEasyPostWebhook: vi.fn().mockReturnValue(true),
-    parseEasyPostWebhookPayload: vi.fn().mockReturnValue(null),
-    parseEasyPostInvoicePayload: vi.fn().mockReturnValue(null),
+    parseEasyPostWebhookPayload: vi.fn((body: unknown) => {
+      const result = (body as { result?: Record<string, unknown> } | null)?.result;
+      if (!result?.tracking_code || !result.status || !result.carrier) return null;
+      const statusMap: Record<string, string> = {
+        pre_transit: "LABEL_CREATED",
+        in_transit: "IN_TRANSIT",
+        out_for_delivery: "OUT_FOR_DELIVERY",
+        delivered: "DELIVERED",
+        failure: "DELIVERY_EXCEPTION",
+        return_to_sender: "RETURN_IN_TRANSIT",
+        returned: "RETURNED",
+      };
+      return {
+        tracking_code: result.tracking_code,
+        status: statusMap[String(result.status)] ?? "IN_TRANSIT",
+        carrier: result.carrier,
+        tracking_details: [],
+      };
+    }),
+    parseEasyPostInvoicePayload: vi.fn((body: unknown) => {
+      const event = body as { description?: string } | null;
+      return event?.description?.startsWith("shipment_invoice") ? null : null;
+    }),
   };
 });
 

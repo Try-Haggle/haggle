@@ -37,8 +37,12 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const { user_id } = request.query;
+      const requesterId = request.user!.id;
       if (!user_id) {
         return reply.code(400).send({ error: "MISSING_USER_ID" });
+      }
+      if (request.user?.role !== "admin" && user_id !== requesterId) {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "Cannot query another user's approvals" });
       }
 
       const rows = await db.query.settlementApprovals.findMany({
@@ -65,6 +69,13 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
 
       if (!row) {
         return reply.code(404).send({ error: "APPROVAL_NOT_FOUND" });
+      }
+      if (
+        request.user?.role !== "admin" &&
+        request.user!.id !== row.buyerId &&
+        request.user!.id !== row.sellerId
+      ) {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
       }
 
       return reply.send({ approval: mapRow(row) });

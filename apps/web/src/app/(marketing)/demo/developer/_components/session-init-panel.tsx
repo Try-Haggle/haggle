@@ -28,7 +28,7 @@ interface SessionInitPanelProps {
     seller: { ask_price: number; floor_price: number };
     buyer_budget: { max_budget: number };
     language: string;
-    preset?: string;
+    preset?: PresetName;
     custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
   }) => void;
   loading: boolean;
@@ -40,7 +40,7 @@ export function SessionInitPanel({ onInitialize, loading }: SessionInitPanelProp
   const [swappaMedian, setSwappaMedian] = useState(920);
   const [askPrice, setAskPrice] = useState(920);
   const [maxBudget, setMaxBudget] = useState(950);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState("ko");
   const [preset, setPreset] = useState<PresetName>("balanced");
   const [customEnabled, setCustomEnabled] = useState(false);
   const [customAdvisor, setCustomAdvisor] = useState("faratin-coaching-v1");

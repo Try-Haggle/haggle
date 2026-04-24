@@ -58,3 +58,7 @@ export { buddies } from "./buddies.js";
 export { buddyTrades } from "./buddy-trades.js";
 export { agentLevels } from "./agent-levels.js";
 export { skillPresets } from "./skill-presets.js";
+export { orderAddresses, userSavedAddresses } from "./addresses.js";
+export { chainSyncCursors } from "./chain-sync.js";
+export { reviewerAssignments, reviewerProfiles } from "./reviewer.js";
+export { advisorMessages } from "./advisor-messages.js";

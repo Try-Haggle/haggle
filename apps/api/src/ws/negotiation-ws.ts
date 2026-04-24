@@ -14,6 +14,8 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import jwt from "jsonwebtoken";
+import { isProductionRuntime } from "../config/runtime.js";
 
 // Minimal WebSocket interface matching ws package (avoids module resolution issues in pnpm)
 interface WebSocket {
@@ -56,6 +58,11 @@ const channels = new Map<string, Set<WebSocket>>();
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+interface SupabaseJwtPayload {
+  sub: string;
+  exp?: number;
+}
+
 function getOrCreateChannel(sessionId: string): Set<WebSocket> {
   let channel = channels.get(sessionId);
   if (!channel) {
@@ -95,6 +102,28 @@ export function getSessionClientCount(sessionId: string): number {
   return channels.get(sessionId)?.size ?? 0;
 }
 
+function verifyWebSocketJwt(token: string): SupabaseJwtPayload {
+  const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+
+  if (!jwtSecret) {
+    if (isProductionRuntime()) {
+      throw new Error("SUPABASE_JWT_SECRET is required for WebSocket auth in production");
+    }
+
+    const decoded = jwt.decode(token) as SupabaseJwtPayload | null;
+    if (!decoded?.sub) {
+      throw new Error("Invalid JWT payload");
+    }
+    return decoded;
+  }
+
+  const payload = jwt.verify(token, jwtSecret) as SupabaseJwtPayload;
+  if (!payload.sub) {
+    throw new Error("Invalid JWT payload: missing sub");
+  }
+  return payload;
+}
+
 // ─── Route Registration ──────────────────────────────────────────────
 
 export async function registerWebSocketRoutes(app: FastifyInstance): Promise<void> {
@@ -113,40 +142,12 @@ export async function registerWebSocketRoutes(app: FastifyInstance): Promise<voi
         return;
       }
 
-      // Verify token using the same JWT_SECRET as auth middleware
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        socket.close(4500, "Server misconfigured");
-        return;
-      }
-
       try {
-        // Simple JWT verification (same approach as auth middleware)
-        const parts = token.split(".");
-        if (parts.length !== 3) throw new Error("Invalid JWT");
-
-        const payloadStr = Buffer.from(parts[1], "base64url").toString();
-        const payload = JSON.parse(payloadStr);
+        const payload = verifyWebSocketJwt(token);
 
         // Check expiry
         if (payload.exp && payload.exp * 1000 < Date.now()) {
           socket.close(4001, "Token expired");
-          return;
-        }
-
-        // Verify signature with HMAC-SHA256 (timing-safe comparison)
-        const crypto = require("node:crypto");
-        const signingInput = `${parts[0]}.${parts[1]}`;
-        const expectedSig = crypto
-          .createHmac("sha256", jwtSecret)
-          .update(signingInput)
-          .digest("base64url");
-
-        // Use timing-safe comparison to prevent timing attacks
-        const sigBuffer = Buffer.from(parts[2]);
-        const expectedBuffer = Buffer.from(expectedSig);
-        if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
-          socket.close(4001, "Invalid token");
           return;
         }
 

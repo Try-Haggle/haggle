@@ -6,6 +6,12 @@ import {
 } from "@haggle/db";
 import type { Shipment, ShipmentStatus, ShipmentEvent } from "@haggle/shipping-core";
 
+type ShipmentType = "outbound" | "return";
+
+interface CreateShipmentRecordOptions {
+  shipmentType?: ShipmentType;
+}
+
 function toIso(value: Date | string | null | undefined): string | undefined {
   if (!value) return undefined;
   return value instanceof Date ? value.toISOString() : value;
@@ -15,6 +21,7 @@ function toIso(value: Date | string | null | undefined): string | undefined {
 export interface ShipmentRow extends Shipment {
   seller_id: string;
   buyer_id: string;
+  shipment_type: string;
 }
 
 function mapShipment(row: typeof shipments.$inferSelect): ShipmentRow {
@@ -23,6 +30,7 @@ function mapShipment(row: typeof shipments.$inferSelect): ShipmentRow {
     order_id: row.orderId,
     seller_id: row.sellerId,
     buyer_id: row.buyerId,
+    shipment_type: row.shipmentType,
     status: row.status as ShipmentStatus,
     carrier: row.carrier ?? "unknown",
     tracking_number: row.trackingNumber ?? undefined,
@@ -33,24 +41,61 @@ function mapShipment(row: typeof shipments.$inferSelect): ShipmentRow {
   };
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { code, cause } = error as { code?: unknown; cause?: unknown };
+  return code === "23505" || isUniqueViolation(cause);
+}
+
+async function findShipmentByOrderIdAndType(
+  db: Database,
+  orderId: string,
+  shipmentType: ShipmentType,
+): Promise<ShipmentRow | null> {
+  const row = await db.query.shipments.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.orderId, orderId),
+      ops.eq(fields.shipmentType, shipmentType),
+    ),
+  });
+  return row ? mapShipment(row) : null;
+}
+
 export async function createShipmentRecord(
   db: Database,
   orderId: string,
   sellerId: string,
   buyerId: string,
   shipmentInputDueAt?: string,
+  options: CreateShipmentRecordOptions = {},
 ): Promise<ShipmentRow> {
-  const [row] = await db
-    .insert(shipments)
-    .values({
-      orderId,
-      sellerId,
-      buyerId,
-      status: "LABEL_PENDING",
-      shipmentInputDueAt: shipmentInputDueAt ? new Date(shipmentInputDueAt) : undefined,
-    })
-    .returning();
-  return mapShipment(row);
+  const shipmentType = options.shipmentType ?? "outbound";
+
+  if (shipmentType === "outbound") {
+    const existing = await findShipmentByOrderIdAndType(db, orderId, shipmentType);
+    if (existing) return existing;
+  }
+
+  try {
+    const [row] = await db
+      .insert(shipments)
+      .values({
+        orderId,
+        sellerId,
+        buyerId,
+        shipmentType,
+        status: "LABEL_PENDING",
+        shipmentInputDueAt: shipmentInputDueAt ? new Date(shipmentInputDueAt) : undefined,
+      })
+      .returning();
+    return mapShipment(row);
+  } catch (error) {
+    if (shipmentType === "outbound" && isUniqueViolation(error)) {
+      const existing = await findShipmentByOrderIdAndType(db, orderId, shipmentType);
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
 export async function getShipmentById(db: Database, id: string): Promise<ShipmentRow | null> {
@@ -75,9 +120,16 @@ export async function getShipmentById(db: Database, id: string): Promise<Shipmen
   return shipment;
 }
 
-export async function getShipmentByOrderId(db: Database, orderId: string): Promise<ShipmentRow | null> {
+export async function getShipmentByOrderId(
+  db: Database,
+  orderId: string,
+  shipmentType: ShipmentType = "outbound",
+): Promise<ShipmentRow | null> {
   const row = await db.query.shipments.findFirst({
-    where: (fields, ops) => ops.eq(fields.orderId, orderId),
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.orderId, orderId),
+      ops.eq(fields.shipmentType, shipmentType),
+    ),
   });
   if (!row) return null;
   return getShipmentById(db, row.id);

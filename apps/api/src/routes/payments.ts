@@ -4,6 +4,7 @@ import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
 import { eq, and, userWallets, webhookIdempotency } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
+import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { createOnrampSession, getStripeConfig, verifyStripeWebhook } from "../payments/stripe-onramp.js";
 
 // ---------------------------------------------------------------------------
@@ -11,23 +12,34 @@ import { createOnrampSession, getStripeConfig, verifyStripeWebhook } from "../pa
 // Prevents duplicate processing when x402 facilitator retries webhooks.
 // Survives restarts and works across horizontal replicas.
 // ---------------------------------------------------------------------------
-async function isWebhookDuplicate(
+async function hasWebhookBeenProcessed(
+  db: Database,
+  idempotencyKey: string,
+  source: string,
+): Promise<boolean> {
+  const existing = await db.query.webhookIdempotency.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.idempotencyKey, idempotencyKey),
+      ops.eq(fields.source, source),
+    ),
+  });
+  return Boolean(existing);
+}
+
+async function recordWebhookProcessed(
   db: Database,
   idempotencyKey: string,
   source: string,
   responseStatus: number,
-): Promise<boolean> {
-  const result = await db
+): Promise<void> {
+  await db
     .insert(webhookIdempotency)
     .values({
       idempotencyKey,
       source,
       responseStatus,
     })
-    .onConflictDoNothing()
-    .returning({ id: webhookIdempotency.id });
-  // If no rows returned, the key already existed → duplicate
-  return result.length === 0;
+    .onConflictDoNothing();
 }
 
 import {
@@ -41,26 +53,31 @@ import {
 import { computeWeightBuffer } from "@haggle/shipping-core";
 import {
   createSettlementReleaseRecord,
+  getSettlementReleaseByOrderId,
 } from "../services/settlement-release.service.js";
-import { createPaymentServiceFromEnv, getX402EnvConfig } from "../payments/providers.js";
+import { createPaymentServiceFromEnv, getX402EnvConfig, getRealStripeAdapterOrNull } from "../payments/providers.js";
 import {
   createPaymentAuthorizationRecord,
   createPaymentSettlementRecord,
   createRefundRecord,
   createStoredPaymentIntent,
   ensureCommerceOrderForApproval,
+  getCommerceOrderByOrderId,
   getPaymentIntentById,
+  getPaymentIntentByOrderId,
   getSettlementApprovalById,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
-import { createShipmentRecord } from "../services/shipment-record.service.js";
+import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
+import { getDepositById, updateDepositStatus } from "../services/dispute-deposit.service.js";
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
+import { INPUT_LIMITS, boundedJson } from "../lib/input-limits.js";
 
 const settlementApprovalSchema = z.object({
-  id: z.string(),
+  id: z.string().max(INPUT_LIMITS.shortTextChars),
   approval_state: z.enum([
     "NEGOTIATING",
     "MUTUALLY_ACCEPTABLE",
@@ -84,24 +101,24 @@ const settlementApprovalSchema = z.object({
     auto_approval_price_guard_minor: z.number().optional(),
   }),
   terms: z.object({
-    listing_id: z.string(),
-    seller_id: z.string(),
-    buyer_id: z.string(),
-    final_amount_minor: z.number(),
-    currency: z.string(),
+    listing_id: z.string().max(INPUT_LIMITS.shortTextChars),
+    seller_id: z.string().max(INPUT_LIMITS.shortTextChars),
+    buyer_id: z.string().max(INPUT_LIMITS.shortTextChars),
+    final_amount_minor: z.number().int().positive(),
+    currency: z.string().max(8),
     selected_payment_rail: z.enum(["x402", "stripe"]),
-    shipment_input_due_at: z.string().optional(),
+    shipment_input_due_at: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
   }),
-  hold_snapshot: z.any().optional(),
-  buyer_approved_at: z.string().optional(),
-  seller_approved_at: z.string().optional(),
-  created_at: z.string(),
-  updated_at: z.string(),
+  hold_snapshot: boundedJson(z.any(), INPUT_LIMITS.jsonPayloadBytes, "hold_snapshot").optional(),
+  buyer_approved_at: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  seller_approved_at: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  created_at: z.string().max(INPUT_LIMITS.mediumTextChars),
+  updated_at: z.string().max(INPUT_LIMITS.mediumTextChars),
 });
 
 const preparePaymentSchema = z
   .object({
-    settlement_approval_id: z.string().optional(),
+    settlement_approval_id: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
     settlement_approval: settlementApprovalSchema.optional(),
     buyer_authorization_mode: z.enum(["human_wallet", "agent_wallet"]).optional(),
   })
@@ -111,22 +128,48 @@ const preparePaymentSchema = z
   });
 
 const refundSchema = z.object({
-  payment_intent_id: z.string(),
+  payment_intent_id: z.string().max(INPUT_LIMITS.shortTextChars),
   amount_minor: z.number().int().positive(),
-  currency: z.string(),
-  reason_code: z.string(),
+  currency: z.string().max(8),
+  reason_code: z.string().max(INPUT_LIMITS.shortTextChars),
 });
 
 const x402SubmitSchema = z.object({
-  payment_payload: z.object({
+  payment_payload: boundedJson(z.object({
     x402Version: z.literal(1),
     scheme: z.literal("exact"),
-    network: z.string(),
-    payload: z.record(z.any()),
-    paymentRequirements: z.any().optional(),
-  }),
+    network: z.string().max(INPUT_LIMITS.shortTextChars),
+    payload: boundedJson(z.record(z.any()), INPUT_LIMITS.paymentPayloadBytes, "x402 payload"),
+    paymentRequirements: boundedJson(z.any(), INPUT_LIMITS.paymentPayloadBytes, "x402 payment requirements").optional(),
+  }), INPUT_LIMITS.paymentPayloadBytes, "x402 payment payload"),
   verify_only: z.boolean().optional(),
 });
+
+type PaymentRail = "x402" | "stripe";
+
+function requiresRealPaymentProviders(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function getProductionPaymentRailError(rail: PaymentRail) {
+  if (!requiresRealPaymentProviders()) return null;
+
+  if (rail === "x402" && process.env.HAGGLE_X402_MODE !== "real") {
+    return {
+      error: "PAYMENT_RAIL_NOT_CONFIGURED",
+      message: "HAGGLE_X402_MODE=real is required for x402 payments in production",
+    };
+  }
+
+  if (rail === "stripe" && process.env.STRIPE_MODE !== "real") {
+    return {
+      error: "PAYMENT_RAIL_NOT_CONFIGURED",
+      message: "STRIPE_MODE=real is required for Stripe payments in production",
+    };
+  }
+
+  return null;
+}
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
@@ -176,51 +219,132 @@ async function resolveSettlementApproval(
  * Calculates weight buffer from a default parcel weight (can be overridden
  * when actual shipment weight is known).
  */
-async function autoCreateSettlementRelease(
+async function ensureSettlementReleaseForPayment(
   db: Database,
   intent: PaymentIntent,
   declaredWeightOz?: number,
 ) {
-  try {
-    const weightOz = declaredWeightOz ?? 16; // default 1lb if unknown
-    const buffer = computeWeightBuffer(weightOz);
-    const bufferMinor = buffer.buffer_amount_minor;
-
-    const release = createSettlementRelease({
-      payment_intent_id: intent.id,
-      order_id: intent.order_id,
-      product_amount: {
-        currency: intent.amount.currency,
-        amount_minor: intent.amount.amount_minor - bufferMinor,
-      },
-      buffer_amount: {
-        currency: intent.amount.currency,
-        amount_minor: bufferMinor,
-      },
-    });
-
-    await createSettlementReleaseRecord(db, release);
-    return release;
-  } catch {
-    // Non-critical: log but don't fail the settlement
-    return null;
+  const existing = await getSettlementReleaseByOrderId(db, intent.order_id);
+  if (existing) {
+    return existing;
   }
+
+  const weightOz = declaredWeightOz ?? 16; // default 1lb if unknown
+  const buffer = computeWeightBuffer(weightOz);
+  const bufferMinor = buffer.buffer_amount_minor;
+
+  const release = createSettlementRelease({
+    payment_intent_id: intent.id,
+    order_id: intent.order_id,
+    product_amount: {
+      currency: intent.amount.currency,
+      amount_minor: intent.amount.amount_minor - bufferMinor,
+    },
+    buffer_amount: {
+      currency: intent.amount.currency,
+      amount_minor: bufferMinor,
+    },
+  });
+
+  return await createSettlementReleaseRecord(db, release);
 }
 
 /**
  * Auto-create a shipment record after payment settles.
- * Non-critical — failures are swallowed so the settlement response is not affected.
  */
-async function autoCreateShipment(db: Database, intent: PaymentIntent) {
-  try {
-    return await createShipmentRecord(db, intent.order_id, intent.seller_id, intent.buyer_id);
-  } catch {
-    // Non-critical: log but don't fail the settlement
+async function ensureShipmentForPayment(db: Database, intent: PaymentIntent) {
+  const existing = await getShipmentByOrderId(db, intent.order_id);
+  if (existing) {
+    return { shipment: existing, created: false };
+  }
+  const shipment = await createShipmentRecord(db, intent.order_id, intent.seller_id, intent.buyer_id);
+  return { shipment, created: true };
+}
+
+async function finalizeSettledPayment(db: Database, intent: PaymentIntent) {
+  const settlementRelease = await ensureSettlementReleaseForPayment(db, intent);
+
+  const order = await getCommerceOrderByOrderId(db, intent.order_id);
+  const orderStatus = order?.status;
+  if (!orderStatus || orderStatus === "APPROVED" || orderStatus === "PAYMENT_PENDING") {
+    await updateCommerceOrderStatus(db, intent.order_id, "PAID");
+  }
+
+  const shipmentResult = await ensureShipmentForPayment(db, intent);
+  if (
+    shipmentResult.created
+    && (!orderStatus || orderStatus === "APPROVED" || orderStatus === "PAYMENT_PENDING" || orderStatus === "PAID")
+  ) {
+    await updateCommerceOrderStatus(db, intent.order_id, "FULFILLMENT_PENDING");
+  }
+
+  return {
+    settlementRelease,
+    shipment: shipmentResult.shipment,
+    shipmentCreated: shipmentResult.created,
+  };
+}
+
+async function finalizeStripeDepositFulfillment(
+  db: Database,
+  depositCorrelationId: string,
+  event: { id: string; type: string; data?: { object?: unknown } },
+) {
+  if (!depositCorrelationId.startsWith("deposit_")) {
     return null;
   }
+
+  const depositId = depositCorrelationId.slice("deposit_".length);
+  if (!depositId) {
+    throw new Error("INVALID_DEPOSIT_CORRELATION_ID");
+  }
+
+  const deposit = await getDepositById(db, depositId);
+  if (!deposit) {
+    return { accepted: true, action: "ignored", reason: "unknown_deposit" };
+  }
+  if (deposit.status === "DEPOSITED") {
+    return { accepted: true, action: "deposit_already_confirmed", deposit_id: depositId };
+  }
+  if (deposit.status !== "PENDING") {
+    return { accepted: true, action: "ignored", reason: `deposit_${deposit.status.toLowerCase()}` };
+  }
+
+  const eventObject = event.data?.object as Record<string, unknown> | undefined;
+  const stripeSessionId = eventObject?.id as string | undefined;
+  const depositMeta = deposit.metadata as Record<string, unknown> | null;
+  if (depositMeta?.rail !== "stripe") {
+    throw new Error("DEPOSIT_RAIL_MISMATCH");
+  }
+  if (
+    typeof depositMeta.stripe_payment_intent_id === "string"
+    && stripeSessionId
+    && depositMeta.stripe_payment_intent_id !== stripeSessionId
+  ) {
+    throw new Error("DEPOSIT_STRIPE_SESSION_MISMATCH");
+  }
+
+  const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
+    depositedAt: new Date(),
+    metadata: {
+      ...(depositMeta ?? {}),
+      stripe_event_id: event.id,
+      stripe_event_type: event.type,
+      stripe_session_id: stripeSessionId ?? depositMeta?.stripe_payment_intent_id,
+      confirmed_at: new Date().toISOString(),
+    },
+  });
+
+  return {
+    accepted: true,
+    action: "deposit_confirmed",
+    deposit_id: depositId,
+    deposit: updated,
+  };
 }
 
 export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
+  const { requirePaymentOwner } = createOwnershipMiddleware(db);
   const service = createPaymentServiceFromEnv();
   const x402Config = getX402EnvConfig();
   const x402Facilitator =
@@ -229,7 +353,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       : null;
 
   // ─── GET payment by ID ──────────────────────────────────────
-  app.get<{ Params: { id: string } }>("/payments/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/payments/:id", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, request.params.id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });
@@ -241,6 +365,17 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     const parsed = preparePaymentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_PAYMENT_PREPARE_REQUEST", issues: parsed.error.issues });
+    }
+    if (
+      requiresRealPaymentProviders()
+      && parsed.data.settlement_approval
+      && !parsed.data.settlement_approval_id
+      && request.user?.role !== "admin"
+    ) {
+      return reply.code(403).send({
+        error: "INLINE_SETTLEMENT_APPROVAL_DISABLED",
+        message: "Use a stored settlement_approval_id for production payments",
+      });
     }
 
     const actor = {
@@ -263,7 +398,26 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    const railError = getProductionPaymentRailError(ready.selected_rail);
+    if (railError) {
+      return reply.code(503).send(railError);
+    }
+
     const order = await ensureCommerceOrderForApproval(db, settlementApproval);
+
+    const existingIntent = await getPaymentIntentByOrderId(db, order.id);
+    if (existingIntent && existingIntent.status !== "CANCELED" && existingIntent.status !== "FAILED") {
+      return reply.send({
+        intent: existingIntent,
+        order,
+        participants: {
+          buyer_id: ready.buyer_id,
+          seller_id: ready.seller_id,
+        },
+        settlement_context: ready,
+        idempotent: true,
+      });
+    }
 
     const intent = service.createIntent({
       order_id: order.id,
@@ -294,10 +448,14 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
-  app.post("/payments/:id/quote", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/quote", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    const railError = getProductionPaymentRailError(intent.selected_rail);
+    if (railError) {
+      return reply.code(503).send(railError);
     }
 
     // Resolve seller wallet: DB first, fall back to ENV
@@ -335,7 +493,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ ...result, metadata });
   });
 
-  app.get("/payments/:id/x402/requirements", async (request, reply) => {
+  app.get("/payments/:id/x402/requirements", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -368,7 +526,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(requirement);
   });
 
-  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -442,28 +600,31 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         triggers: result.trust_triggers,
       });
     }
-    // Auto-create Settlement Release (Payment Protection)
-    const settlementRelease = await autoCreateSettlementRelease(db, result.intent);
-
-    // Auto-transition order status and create shipment
-    await updateCommerceOrderStatus(db, result.intent.order_id, "PAID");
-    const shipment = await autoCreateShipment(db, result.intent);
-    if (shipment) {
-      await updateCommerceOrderStatus(db, result.intent.order_id, "FULFILLMENT_PENDING");
-    }
+    const finalization = await finalizeSettledPayment(db, result.intent);
 
     return reply.send({
       settlement: settle,
       payment: result,
-      settlement_release: settlementRelease,
-      shipment,
+      settlement_release: finalization.settlementRelease,
+      shipment: finalization.shipment,
     });
   });
 
-  app.post("/payments/:id/authorize", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/authorize", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+    if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DIRECT_PAYMENT_MUTATION_DISABLED",
+        message: "Use the rail-specific payment flow in production",
+      });
+    }
+
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    const railError = getProductionPaymentRailError(intent.selected_rail);
+    if (railError) {
+      return reply.code(503).send(railError);
     }
     const result = await service.authorizeIntent(intent);
     await updateStoredPaymentIntent(db, result.intent, result.metadata);
@@ -481,10 +642,21 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+    if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DIRECT_PAYMENT_MUTATION_DISABLED",
+        message: "Payment settlement state is controlled by provider flow in production",
+      });
+    }
+
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    const railError = getProductionPaymentRailError(intent.selected_rail);
+    if (railError) {
+      return reply.code(503).send(railError);
     }
     const result = service.markSettlementPending(intent);
     await updateStoredPaymentIntent(db, result.intent);
@@ -499,10 +671,21 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/settle", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/settle", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+    if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DIRECT_PAYMENT_MUTATION_DISABLED",
+        message: "Payment settlement is controlled by provider webhook or x402 facilitator in production",
+      });
+    }
+
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    const railError = getProductionPaymentRailError(intent.selected_rail);
+    if (railError) {
+      return reply.code(503).send(railError);
     }
     const result = await service.settleIntent(intent);
     await updateStoredPaymentIntent(db, result.intent, result.metadata);
@@ -518,20 +701,23 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
-    // Auto-create Settlement Release (Payment Protection)
-    const settlementRelease = await autoCreateSettlementRelease(db, result.intent);
+    const finalization = await finalizeSettledPayment(db, result.intent);
 
-    // Auto-transition order status and create shipment
-    await updateCommerceOrderStatus(db, result.intent.order_id, "PAID");
-    const shipment = await autoCreateShipment(db, result.intent);
-    if (shipment) {
-      await updateCommerceOrderStatus(db, result.intent.order_id, "FULFILLMENT_PENDING");
-    }
-
-    return reply.send({ ...result, settlement_release: settlementRelease, shipment });
+    return reply.send({
+      ...result,
+      settlement_release: finalization.settlementRelease,
+      shipment: finalization.shipment,
+    });
   });
 
-  app.post("/payments/:id/fail", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/fail", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+    if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DIRECT_PAYMENT_MUTATION_DISABLED",
+        message: "Payment failure state is controlled by provider webhook or admin in production",
+      });
+    }
+
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -549,7 +735,14 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/cancel", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/cancel", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+    if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DIRECT_PAYMENT_MUTATION_DISABLED",
+        message: "Direct payment cancellation requires a dedicated cancellation workflow in production",
+      });
+    }
+
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -567,10 +760,21 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     return reply.send(result);
   });
 
-  app.post("/payments/:id/refund", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/payments/:id/refund", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+    if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
+      return reply.code(403).send({
+        error: "DIRECT_REFUND_DISABLED",
+        message: "Direct refunds require admin review in production",
+      });
+    }
+
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    const railError = getProductionPaymentRailError(intent.selected_rail);
+    if (railError) {
+      return reply.code(503).send(railError);
     }
     const parsed = refundSchema.safeParse({
       ...(request.body as Record<string, unknown>),
@@ -607,7 +811,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post("/payments/webhooks/x402", { config: { rawBody: true } }, async (request, reply) => {
     try {
-      const rawBody = (request as unknown as { rawBody?: string | Buffer }).rawBody ?? JSON.stringify(request.body);
+      const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
+      if (!rawBody) {
+        return reply.code(500).send({ error: "INTERNAL_ERROR", message: "Raw body not available for signature verification" });
+      }
       requireWebhookSignature(request.headers as Record<string, unknown>, rawBody, "x402");
     } catch (error) {
       return reply.code(401).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
@@ -623,7 +830,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
     // Idempotency: derive a stable event ID and skip if already processed
     const webhookEventId = body.event_id ?? body.id ?? `${eventType}:${paymentIntentId}`;
-    const duplicate = await isWebhookDuplicate(db, webhookEventId, "x402", 200);
+    const duplicate = await hasWebhookBeenProcessed(db, webhookEventId, "x402");
     if (duplicate) {
       return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
     }
@@ -633,10 +840,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       // Ignore events for unknown intents (idempotent)
       return reply.send({ accepted: true, action: "ignored", reason: "unknown_intent" });
     }
+    const railError = getProductionPaymentRailError(intent.selected_rail);
+    if (railError) {
+      return reply.code(503).send({ accepted: false, action: "error", ...railError });
+    }
 
     try {
       switch (eventType) {
         case "settlement.confirmed": {
+          let settledIntent = intent;
           if (intent.status !== "SETTLED") {
             const result = await service.settleIntent(intent);
             await updateStoredPaymentIntent(db, result.intent, result.metadata);
@@ -651,9 +863,18 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
                 triggers: result.trust_triggers,
               });
             }
+            settledIntent = result.intent;
           }
 
-          return reply.send({ accepted: true, action: "settled" });
+          const finalization = await finalizeSettledPayment(db, settledIntent);
+
+          await recordWebhookProcessed(db, webhookEventId, "x402", 200);
+          return reply.send({
+            accepted: true,
+            action: "settled",
+            settlement_release: finalization.settlementRelease,
+            shipment: finalization.shipment,
+          });
         }
 
         case "settlement.failed": {
@@ -670,6 +891,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
             }
           }
 
+          await recordWebhookProcessed(db, webhookEventId, "x402", 200);
           return reply.send({ accepted: true, action: "failed" });
         }
 
@@ -679,32 +901,153 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
             await updateStoredPaymentIntent(db, result.intent);
           }
 
+          await recordWebhookProcessed(db, webhookEventId, "x402", 200);
           return reply.send({ accepted: true, action: "expired" });
         }
 
         default:
+          await recordWebhookProcessed(db, webhookEventId, "x402", 200);
           return reply.send({ accepted: true, action: "ignored", reason: "unknown_event" });
       }
     } catch (error) {
-      // Log but don't fail — webhooks must return 200 to avoid retries
       console.error("x402 webhook processing error:", error);
-      return reply.send({ accepted: true, action: "error", message: String(error) });
+      return reply.code(500).send({ accepted: false, action: "error", message: "Webhook processing failed" });
     }
   });
 
-  app.post("/payments/webhooks/stripe", async (request, reply) => {
-    // Stripe webhook signature verification is handled via stripe.webhooks.constructEvent()
-    // in the full Stripe integration. For now, require the stripe-signature header to be present.
+  app.post("/payments/webhooks/stripe", { config: { rawBody: true } }, async (request, reply) => {
     const stripeSig = (request.headers as Record<string, unknown>)["stripe-signature"];
-    if (!stripeSig) {
+    if (!stripeSig || typeof stripeSig !== "string") {
       return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "missing stripe-signature header" });
     }
 
+    const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody;
+    if (!rawBody) {
+      return reply.code(500).send({ error: "INTERNAL_ERROR", message: "Raw body not available for signature verification" });
+    }
+    const stripeAdapter = getRealStripeAdapterOrNull();
+    if (!stripeAdapter && requiresRealPaymentProviders()) {
+      return reply.code(503).send({
+        error: "PAYMENT_RAIL_NOT_CONFIGURED",
+        message: "STRIPE_MODE=real is required for Stripe webhooks in production",
+      });
+    }
+
+    // --- Real mode: use Stripe SDK signature verification ---
+    if (stripeAdapter) {
+      let event;
+      try {
+        event = stripeAdapter.constructWebhookEvent(rawBody, stripeSig);
+      } catch (err) {
+        return reply.code(401).send({
+          error: "INVALID_STRIPE_WEBHOOK",
+          message: err instanceof Error ? err.message : "Webhook signature verification failed",
+        });
+      }
+
+      // Idempotency check
+      const duplicate = await hasWebhookBeenProcessed(db, event.id, "stripe");
+      if (duplicate) {
+        return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
+      }
+
+      // Handle crypto onramp fulfillment
+      const { RealStripeAdapter } = await import("../payments/real-stripe-adapter.js");
+      if (RealStripeAdapter.isOnrampFulfillmentComplete(event)) {
+        const paymentIntentId = RealStripeAdapter.extractPaymentIntentId(event);
+        if (paymentIntentId) {
+          try {
+            const depositResult = await finalizeStripeDepositFulfillment(db, paymentIntentId, event);
+            if (depositResult) {
+              await recordWebhookProcessed(db, event.id, "stripe", 200);
+              return reply.send(depositResult);
+            }
+          } catch (error) {
+            console.error("Stripe deposit fulfillment error:", error);
+            return reply.code(500).send({ accepted: false, action: "error", message: "Deposit fulfillment processing failed" });
+          }
+
+          const intent = await getPaymentIntentById(db, paymentIntentId);
+          if (intent && intent.status !== "SETTLED") {
+            // Verify event data matches stored intent
+            const eventObj = event.data?.object as unknown as { metadata?: Record<string, string> } | undefined;
+            const eventOrderId = eventObj?.metadata?.order_id;
+            if (eventOrderId && eventOrderId !== intent.order_id) {
+              console.error(`Stripe webhook order_id mismatch: event=${eventOrderId}, intent=${intent.order_id}`);
+              return reply.code(400).send({ error: "ORDER_ID_MISMATCH" });
+            }
+
+            try {
+              // Transition: AUTHORIZED → SETTLEMENT_PENDING → SETTLED
+              if (intent.status === "AUTHORIZED") {
+                const pending = service.markSettlementPending(intent);
+                await updateStoredPaymentIntent(db, pending.intent);
+                intent.status = pending.intent.status;
+                intent.updated_at = pending.intent.updated_at;
+              }
+
+              const result = await service.settleIntent(intent);
+              await updateStoredPaymentIntent(db, result.intent, {
+                ...(result.metadata ?? {}),
+                stripe_event_id: event.id,
+                stripe_event_type: event.type,
+              });
+              if (result.value) {
+                await createPaymentSettlementRecord(db, result.value);
+              }
+              if (result.trust_triggers.length > 0) {
+                await applyTrustTriggers(db, {
+                  order_id: result.intent.order_id,
+                  buyer_id: result.intent.buyer_id,
+                  seller_id: result.intent.seller_id,
+                  triggers: result.trust_triggers,
+                });
+              }
+
+              const finalization = await finalizeSettledPayment(db, result.intent);
+
+              await recordWebhookProcessed(db, event.id, "stripe", 200);
+              return reply.send({
+                accepted: true,
+                action: "settled",
+                payment_intent_id: paymentIntentId,
+                settlement_release: finalization.settlementRelease,
+                shipment: finalization.shipment,
+              });
+            } catch (error) {
+              console.error("Stripe webhook settlement error:", error);
+              return reply.code(500).send({ accepted: false, action: "error", message: "Settlement processing failed" });
+            }
+          }
+        }
+      }
+
+      await recordWebhookProcessed(db, event.id, "stripe", 200);
+      return reply.send({
+        accepted: true,
+        action: "processed",
+        event_type: event.type,
+        event_id: event.id,
+      });
+    }
+
+    // --- Mock mode: verify signature manually using our verifyStripeWebhook ---
+    const config = getStripeConfig();
+    if (config.webhookSecret) {
+      const valid = verifyStripeWebhook(rawBody, stripeSig, config.webhookSecret);
+      if (!valid) {
+        return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "Webhook signature verification failed" });
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "STRIPE_WEBHOOK_SECRET not configured" });
+    }
+
+    // In mock mode, just acknowledge receipt
     return reply.send({
       accepted: true,
       provider: "stripe",
+      mode: "mock",
       received_at: new Date().toISOString(),
-      payload: request.body,
     });
   });
 
@@ -720,7 +1063,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post<{ Params: { id: string } }>(
     "/payments/:id/onramp/session",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requirePaymentOwner()] },
     async (request, reply) => {
       const stripeConfig = getStripeConfig();
       if (!stripeConfig.enabled) {
@@ -741,10 +1084,32 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       if (!intent) {
         return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
       }
+      const railError = getProductionPaymentRailError(intent.selected_rail);
+      if (railError) {
+        return reply.code(503).send(railError);
+      }
 
       // Verify requester is the buyer
       if (intent.buyer_id !== request.user!.id) {
         return reply.code(403).send({ error: "FORBIDDEN" });
+      }
+
+      // Verify destination wallet belongs to the buyer
+      const buyerWallets = await db
+        .select({ walletAddress: userWallets.walletAddress })
+        .from(userWallets)
+        .where(
+          and(
+            eq(userWallets.userId, intent.buyer_id),
+            eq(userWallets.walletAddress, parsed.data.destination_wallet.toLowerCase()),
+          ),
+        )
+        .limit(1);
+      if (buyerWallets.length === 0) {
+        return reply.code(403).send({
+          error: "WALLET_NOT_REGISTERED",
+          message: "Destination wallet is not registered to the buyer. Register your wallet first.",
+        });
       }
 
       const amountMinor = intent.amount.amount_minor;
@@ -769,9 +1134,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           destination_currency: "usdc",
         });
       } catch (err) {
+        console.error("Stripe onramp session creation failed:", err);
         return reply.code(502).send({
           error: "ONRAMP_SESSION_FAILED",
-          message: err instanceof Error ? err.message : "Failed to create onramp session",
+          message: "Failed to create onramp session. Please try again.",
         });
       }
     },
