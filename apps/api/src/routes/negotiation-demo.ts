@@ -1048,7 +1048,7 @@ Item condition: ${item.condition}`,
     }
 
     // Terminal check
-    if (decision.action === 'ACCEPT') {
+    if (decision.action === 'ACCEPT' || session.phase === 'SETTLEMENT') {
       session.done = true;
       session.phase = 'SETTLEMENT';
       session.memory.session.phase = 'SETTLEMENT';
