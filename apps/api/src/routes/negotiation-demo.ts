@@ -380,19 +380,64 @@ function hasTerms(terms: Record<string, unknown> | undefined): boolean {
   return Boolean(terms && Object.keys(terms).length > 0);
 }
 
+const TERM_LABELS_KO: Record<string, string> = {
+  payment_protection: '결제 보호',
+  shipping_protection: '배송 보호',
+  payment_method: '결제 방식',
+  shipping: '배송',
+  quick_process: '빠른 진행',
+  confirm_conditions: '조건 최종 확인',
+  condition: '진행 조건',
+};
+
+const TERM_LABELS_EN: Record<string, string> = {
+  payment_protection: 'payment protection',
+  shipping_protection: 'shipping protection',
+  payment_method: 'payment method',
+  shipping: 'shipping',
+  quick_process: 'quick processing',
+  confirm_conditions: 'final condition check',
+  condition: 'deal condition',
+};
+
+function humanizeTermKey(key: string, locale: string): string {
+  const labels = locale === 'ko' ? TERM_LABELS_KO : TERM_LABELS_EN;
+  return labels[key] ?? key.replace(/_/g, ' ');
+}
+
+function humanizeTermValue(value: unknown, locale: string): string {
+  if (typeof value === 'boolean') return value ? '' : locale === 'ko' ? '제외' : 'excluded';
+  if (typeof value === 'string') return humanizeTermKey(value, locale);
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.map(item => humanizeTermValue(item, locale)).filter(Boolean).join(', ');
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => {
+        const renderedValue = humanizeTermValue(item, locale);
+        return renderedValue ? `${humanizeTermKey(key, locale)} ${renderedValue}` : humanizeTermKey(key, locale);
+      })
+      .join(', ');
+  }
+  return '';
+}
+
 function formatTerms(terms: Record<string, unknown> | undefined, locale: string): string {
   if (!hasTerms(terms)) return '';
 
   const rendered = Object.entries(terms!)
     .map(([key, value]) => {
-      if (typeof value === 'boolean') return value ? key : `${key}: no`;
-      if (typeof value === 'string' || typeof value === 'number') return `${key}: ${value}`;
-      return `${key}: ${JSON.stringify(value)}`;
+      const label = humanizeTermKey(key, locale);
+      const renderedValue = humanizeTermValue(value, locale);
+      if (typeof value === 'boolean') return value ? label : `${label} ${renderedValue}`;
+      if (!renderedValue || renderedValue === label) return label;
+      return `${label} ${renderedValue}`;
     })
+    .filter(Boolean)
     .join(', ');
 
-  if (locale === 'ko') return ` 조건: ${rendered}.`;
-  return ` Terms: ${rendered}.`;
+  if (!rendered) return '';
+  if (locale === 'ko') return ` 추가 조건은 ${rendered}입니다.`;
+  return ` Additional terms: ${rendered}.`;
 }
 
 function renderStructuredResponse(
