@@ -388,6 +388,8 @@ const TERM_LABELS_EN: Record<string, string> = {
   quick_process: 'quick processing',
   confirm_conditions: 'final condition check',
   condition: 'deal condition',
+  speed: 'quick processing',
+  'move quickly': 'quick processing',
 };
 
 function humanizeTermKey(key: string): string {
@@ -417,6 +419,7 @@ function formatTerms(terms: Record<string, unknown> | undefined, locale: string)
     .map(([key, value]) => {
       const label = humanizeTermKey(key);
       const renderedValue = humanizeTermValue(value);
+      if (key === 'speed' && renderedValue === 'quick processing') return renderedValue;
       if (typeof value === 'boolean') return value ? label : `${label} ${renderedValue}`;
       if (!renderedValue || renderedValue === label) return label;
       return `${label} ${renderedValue}`;
