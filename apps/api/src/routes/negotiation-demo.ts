@@ -296,6 +296,12 @@ Shared: NS=State PT=Position(gap) TG=TagGarden(item tags)
 Private: SS=Strategy(target,floor,room%) OM=OpponentModel(type,aggression,concession_rate)
 Prices in minor units. $700=70000. O=OFFICIAL E=EMERGING`;
 
+const HAGGLE_PLATFORM_CONTEXT = `=== Haggle Platform Defaults (cached) ===
+- Haggle always provides payment protection and shipping protection for marketplace transactions.
+- These default protections are not negotiable concessions and must not be listed in non_price_terms.
+- Only include non_price_terms when the seller introduces a non-default condition, such as local pickup, included accessories, warranty, shipping payer, insurance payer, timing, inspection, IMEI status, or unlock status.
+- If the seller merely says payment protection, shipping protection, protected checkout, or protected shipping, treat it as platform-default context, not an added condition.`;
+
 function buildUnderstandPrompt(sellerMessage: string): { system: string; user: string } {
   return {
     system: `You are Haggle protocol Stage 1 (UNDERSTAND). Parse seller message into structured intent.
@@ -319,6 +325,7 @@ function buildDecidePrompt(
   return {
     system: `You are Haggle protocol Stage 3 (DECIDE) — buyer side.
 ${NSV_LEGEND}
+${HAGGLE_PLATFORM_CONTEXT}
 
 ## Category Knowledge
 ${categoryBrief}
@@ -380,6 +387,22 @@ function hasTerms(terms: Record<string, unknown> | undefined): boolean {
   return Boolean(terms && Object.keys(terms).length > 0);
 }
 
+const PLATFORM_DEFAULT_TERM_KEYS = new Set([
+  'payment_protection',
+  'shipping_protection',
+  'protected_checkout',
+  'protected_shipping',
+]);
+
+const PLATFORM_DEFAULT_TERM_PHRASES = [
+  'payment protection',
+  'shipping protection',
+  'protected checkout',
+  'protected shipping',
+  'shipping_protection',
+  'payment_protection',
+];
+
 const TERM_LABELS_EN: Record<string, string> = {
   payment_protection: 'payment protection',
   shipping_protection: 'shipping protection',
@@ -391,6 +414,26 @@ const TERM_LABELS_EN: Record<string, string> = {
   speed: 'quick processing',
   'move quickly': 'quick processing',
 };
+
+function isPlatformDefaultTerm(key: string, value: unknown): boolean {
+  const normalizedKey = key.toLowerCase().replace(/\s+/g, '_');
+  if (PLATFORM_DEFAULT_TERM_KEYS.has(normalizedKey)) return true;
+
+  if (typeof value === 'boolean') return false;
+
+  const normalizedValue = String(value).toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!normalizedValue) return false;
+
+  return PLATFORM_DEFAULT_TERM_PHRASES.some(phrase => normalizedValue === phrase || normalizedValue.includes(phrase));
+}
+
+function normalizeNonPriceTerms(terms: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!terms) return {};
+
+  return Object.fromEntries(
+    Object.entries(terms).filter(([key, value]) => !isPlatformDefaultTerm(key, value)),
+  );
+}
 
 function humanizeTermKey(key: string): string {
   return TERM_LABELS_EN[key] ?? key.replace(/_/g, ' ');
@@ -413,9 +456,10 @@ function humanizeTermValue(value: unknown): string {
 }
 
 function formatTerms(terms: Record<string, unknown> | undefined, locale: string): string {
-  if (!hasTerms(terms)) return '';
+  const normalizedTerms = normalizeNonPriceTerms(terms);
+  if (!hasTerms(normalizedTerms)) return '';
 
-  const rendered = Object.entries(terms!)
+  const rendered = Object.entries(normalizedTerms)
     .map(([key, value]) => {
       const label = humanizeTermKey(key);
       const renderedValue = humanizeTermValue(value);
@@ -915,7 +959,7 @@ Item condition: ${item.condition}`,
       price: decideTrace.parsed.price,
       reasoning: decideTrace.parsed.reasoning,
       tactic_used: decideTrace.parsed.tactic_used,
-      non_price_terms: decideTrace.parsed.non_price_terms,
+      non_price_terms: normalizeNonPriceTerms(decideTrace.parsed.non_price_terms),
     };
 
     // ────────────────────────────────────────────────
