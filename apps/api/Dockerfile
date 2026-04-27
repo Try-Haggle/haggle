@@ -14,12 +14,14 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
 COPY packages/engine-core/package.json packages/engine-core/
 COPY packages/engine-session/package.json packages/engine-session/
+COPY packages/contracts/package.json packages/contracts/
 COPY packages/payment-core/package.json packages/payment-core/
 COPY packages/trust-core/package.json packages/trust-core/
 COPY packages/dispute-core/package.json packages/dispute-core/
 COPY packages/arp-core/package.json packages/arp-core/
 COPY packages/tag-core/package.json packages/tag-core/
 COPY packages/shipping-core/package.json packages/shipping-core/
+COPY packages/skill-core/package.json packages/skill-core/
 COPY packages/skill-legit/package.json packages/skill-legit/
 COPY packages/commerce-core/package.json packages/commerce-core/
 RUN pnpm install --frozen-lockfile --prod=false
@@ -32,11 +34,13 @@ RUN pnpm --filter @haggle/shared build && \
     pnpm --filter @haggle/db build && \
     pnpm --filter @haggle/engine-core build && \
     pnpm --filter @haggle/engine-session build && \
+    pnpm --filter @haggle/contracts build && \
     pnpm --filter @haggle/trust-core build && \
     pnpm --filter @haggle/dispute-core build && \
     pnpm --filter @haggle/arp-core build && \
     pnpm --filter @haggle/tag-core build && \
     pnpm --filter @haggle/shipping-core build && \
+    pnpm --filter @haggle/skill-core build && \
     pnpm --filter @haggle/skill-legit build && \
     pnpm --filter @haggle/payment-core build && \
     pnpm --filter @haggle/commerce-core build && \

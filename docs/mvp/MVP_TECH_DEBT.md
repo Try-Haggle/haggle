@@ -204,6 +204,16 @@
 
 ---
 
+## Auth / Security
+
+### TD-029: Supabase JWT 검증 — Legacy HS256 secret 의존
+- **현재**: API와 WebSocket 인증은 `SUPABASE_JWT_SECRET`을 사용한 `jsonwebtoken.verify()` 기반이다. 운영 복구는 Supabase의 Legacy JWT Secret을 Railway `SUPABASE_JWT_SECRET` 변수에 넣어 처리한다.
+- **이유**: Supabase 프로젝트는 JWT Signing Keys가 ECC P-256으로 이관되어 있으나, 서버 코드는 아직 JWKS 기반 비대칭 키 검증을 지원하지 않는다.
+- **개선 시점**: legacy secret 의존을 제거하기 전 → Supabase Auth JWKS endpoint(`{SUPABASE_URL}/auth/v1/.well-known/jwks.json`) 기반 검증으로 전환하고, HTTP auth와 WebSocket auth가 동일 verifier를 쓰게 통합한다.
+- **영향도**: 중간 (인증 미들웨어와 WebSocket 인증 경로 변경, `jose` 등 JOSE/JWKS 라이브러리 추가 필요)
+
+---
+
 ## How to Use This Document
 
 1. 새 tech debt 발견 시 `TD-XXX` 번호로 추가

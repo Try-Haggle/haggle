@@ -5,7 +5,7 @@ Last updated: 2026-04-23
 ## Environment
 
 - Set `NODE_ENV=production` in production.
-- Set the real `SUPABASE_JWT_SECRET` in production and staging.
+- Set the real `SUPABASE_JWT_SECRET` in production and staging. Current recovery path uses Supabase's Legacy JWT Secret.
 - Confirm `DATABASE_URL` points to the intended production or staging database.
 - Configure `HAGGLE_CORS_ORIGINS` with exact allowed origins only. Add preview URLs explicitly if a trusted preview must call the API.
 - Optionally tune `HAGGLE_MAX_JSON_BODY_BYTES`; default is 262144 bytes. Keep it low unless a specific webhook/provider requires more.
@@ -55,6 +55,10 @@ Last updated: 2026-04-23
 - For USDC dispute deposits, confirm sellers can approve the returned spender/token/amount and then complete `/deposit/confirm-usdc`.
 - Decide the production UX for Stripe crypto-onramp refunds that still require manual processing.
 - Keep `/demo/e2e/create-order` and mock-only commerce demos out of production user flows.
+
+## Technical Debt
+
+- Supabase Auth JWT verification currently depends on `SUPABASE_JWT_SECRET` / legacy HS256 verification. The project has migrated JWT Signing Keys to ECC P-256, so replace local `jsonwebtoken.verify(..., SUPABASE_JWT_SECRET)` checks with JWKS verification against the Supabase Auth JWKS endpoint before retiring the legacy secret.
 
 ## Staging Smoke Test
 
