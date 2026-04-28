@@ -1,4 +1,4 @@
-name: HFMI Daily Price Crawl
+name: HFMI Daily Price Collection
 
 on:
   schedule:
@@ -7,9 +7,9 @@ on:
   workflow_dispatch: # Allow manual trigger
 
 jobs:
-  crawl:
+  collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -25,19 +25,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: npx playwright install chromium
+        run: pnpm exec playwright install chromium
 
-      - name: Run eBay electronics crawl
-        run: npx tsx scripts/crawl-ebay-electronics.ts
+      - name: Run eBay electronics market data collection
+        run: pnpm --filter @haggle/api exec tsx ../../scripts/crawl-ebay-electronics.ts
         env:
           NODE_ENV: production
 
       - name: Insert to database
-        if: env.DATABASE_URL != ''
         run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is not configured; skipping database insert."
+            exit 0
+          fi
+
           # Use the generated SQL file to insert data
           echo "Inserting $(wc -l < scripts/ebay-electronics-full.csv) observations..."
-          npx tsx scripts/run-hfmi-migration.ts || true
+          pnpm --filter @haggle/api exec tsx ../../scripts/run-hfmi-migration.ts || true
           # Direct SQL insert via node
           node -e "
             const fs = require('fs');
@@ -51,10 +55,10 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Upload crawl artifacts
+      - name: Upload market data artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hfmi-crawl-${{ github.run_number }}
+          name: hfmi-market-data-${{ github.run_number }}
           path: |
             scripts/ebay-electronics-full.csv
             scripts/ebay-electronics-full.sql
@@ -62,7 +66,7 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## HFMI Crawl Results" >> $GITHUB_STEP_SUMMARY
+          echo "## HFMI Market Data Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           TOTAL=$(tail -n +2 scripts/ebay-electronics-full.csv | wc -l)
           echo "- **Total observations:** $TOTAL" >> $GITHUB_STEP_SUMMARY
