@@ -72,6 +72,74 @@ describe('Stage 1: understand', () => {
       expect(result.price_offer).toBe(800);
     });
 
+    it('classifies conversation type and links extracted information to engine context', () => {
+      const result = understand({
+        raw_message: 'I can do $780 if battery health is 90% and shipping is insured.',
+        sender_role: 'buyer',
+      });
+
+      expect(result.conversation_type).toBe('PRICE_NEGOTIATION');
+      expect(result.information_links).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ connects_to: 'pricing', entity_type: 'price' }),
+          expect.objectContaining({ connects_to: 'condition', entity_type: 'battery_health' }),
+          expect.objectContaining({ connects_to: 'terms', entity_type: 'shipping' }),
+        ]),
+      );
+      expect(result.missing_information).toEqual([]);
+    });
+
+    it('identifies missing information when the user asks a condition question', () => {
+      const result = understand({
+        raw_message: 'What is the battery health, is it unlocked, and is shipping included?',
+        sender_role: 'buyer',
+      });
+
+      expect(result.conversation_type).toBe('INFORMATION_REQUEST');
+      expect(result.missing_information).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            slot: 'battery_health',
+            question: '중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?',
+            question_source: 'tag_garden',
+            tag_slot_id: 'battery_health',
+            enforcement: 'hard',
+            answer_options: ['90% 이상만', '85% 이상까지 허용', '80%대도 가격 좋으면 허용', '상관없음'],
+          }),
+          expect.objectContaining({
+            slot: 'carrier_lock',
+            question: '언락 모델이 필수인가요?',
+            question_source: 'tag_garden',
+            tag_slot_id: 'carrier_lock',
+          }),
+          expect.objectContaining({
+            slot: 'shipping_terms',
+            question_source: 'tag_garden',
+            tag_slot_id: 'shipping_terms',
+          }),
+        ]),
+      );
+    });
+
+    it('flags trust safety risks as high-priority missing information', () => {
+      const result = understand({
+        raw_message: 'Text me directly and I can pay with Zelle.',
+        sender_role: 'buyer',
+      });
+
+      expect(result.conversation_type).toBe('TRUST_SAFETY');
+      expect(result.information_links).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ connects_to: 'trust' }),
+        ]),
+      );
+      expect(result.missing_information).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ slot: 'payment_safety', priority: 'high' }),
+        ]),
+      );
+    });
+
     it('handles empty text gracefully', () => {
       const result = understand({
         raw_message: '',
@@ -80,6 +148,7 @@ describe('Stage 1: understand', () => {
       expect(result.action_intent).toBe('INFO');
       expect(result.sentiment).toBe('neutral');
       expect(result.price_offer).toBeUndefined();
+      expect(result.conversation_type).toBe('READINESS_DISCOVERY');
     });
 
     it('preserves raw text', () => {

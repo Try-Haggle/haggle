@@ -11,12 +11,14 @@ import type { RoundData } from "@haggle/engine-session";
 import type { RoundResult, EscalationRequest } from "@haggle/engine-session";
 
 import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
+import { recordRoundConversationSignals } from "../services/conversation-signal-sink.js";
 import { broadcastToSession } from "../ws/negotiation-ws.js";
 import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
 import { DEFAULT_MAX_ROUNDS } from "../negotiation/config.js";
 import {
   reconstructSession,
   reconstructStrategy,
+  getStrategyTimeWindow,
   buildIncomingOffer,
   extractPersistData,
   type DbSession,
@@ -32,8 +34,29 @@ import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
 export interface RoundExecutionInput {
   sessionId: string;
   offerPriceMinor: number;
+  /** Optional natural-language message submitted with the offer. */
+  messageText?: string;
   senderRole: "BUYER" | "SELLER";
   idempotencyKey: string;
+  /** Optional HNP envelope identifiers for protocol-level replay/order/proposal audit. */
+  protocol?: {
+    specVersion: string;
+    capability: string;
+    messageId: string;
+    proposalId: string;
+    proposalHash?: string;
+    currency?: string;
+    issues?: Array<{
+      issue_id: string;
+      value: string | number | boolean;
+      unit?: string;
+      kind?: "NEGOTIABLE" | "INFORMATIONAL";
+    }>;
+    settlementPreconditions?: string[];
+    sequence: number;
+    senderAgentId: string;
+    expiresAtMs: number;
+  };
   /** Per-round situational data (trust score, elapsed time, etc.) from API layer */
   roundData: Partial<RoundData>;
   nowMs: number;
@@ -166,12 +189,18 @@ export async function executeNegotiationRound(
       input.nowMs,
     );
 
+    const timeWindow = getStrategyTimeWindow(
+      dbSession.strategySnapshot,
+      engineSession.created_at,
+      dbSession.expiresAt?.getTime(),
+    );
+
     // 6. Build complete RoundData with defaults
     const roundData: RoundData = {
       p_effective: input.offerPriceMinor,
       r_score: 0.5,
       i_completeness: 0.5,
-      t_elapsed: input.nowMs - engineSession.created_at,
+      t_elapsed: Math.max(0, input.nowMs - timeWindow.startMs),
       n_success: 0,
       n_dispute_losses: 0,
       ...input.roundData,
@@ -192,8 +221,23 @@ export async function executeNegotiationRound(
       input.offerPriceMinor,
       input.idempotencyKey,
     );
+    if (input.protocol) {
+      roundPersist.metadata = {
+        ...(roundPersist.metadata ?? {}),
+        protocol: { hnp: input.protocol },
+      };
+    }
 
     const createdRound = await createRound(tx as unknown as Database, roundPersist);
+    await recordSignalsForCreatedRound(
+      tx as unknown as Database,
+      dbSession,
+      input,
+      createdRound.id,
+      createdRound.roundNo,
+      roundResult.message.price,
+      String(roundResult.decision),
+    );
 
     const updated = await updateSessionState(
       tx as unknown as Database,
@@ -262,6 +306,35 @@ export async function executeNegotiationRound(
   }
 
   return result;
+}
+
+async function recordSignalsForCreatedRound(
+  tx: Database,
+  dbSession: DbSession,
+  input: RoundExecutionInput,
+  roundId: string,
+  roundNo: number,
+  outgoingPriceMinor: number,
+  decision: string,
+): Promise<void> {
+  const incomingText = input.messageText ?? `Offer: $${(input.offerPriceMinor / 100).toFixed(2)}`;
+  const outgoingText = `${decision}: $${(outgoingPriceMinor / 100).toFixed(2)}`;
+
+  await recordRoundConversationSignals(tx, {
+    sessionId: input.sessionId,
+    roundId,
+    roundNo,
+    listingId: dbSession.listingId,
+    buyerId: dbSession.buyerId,
+    sellerId: dbSession.sellerId,
+    incomingRole: input.senderRole,
+    agentRole: dbSession.role,
+    incomingText,
+    outgoingText,
+    engine: "rule",
+    idempotencyKey: input.idempotencyKey,
+    decision,
+  });
 }
 
 // ---------------------------------------------------------------------------

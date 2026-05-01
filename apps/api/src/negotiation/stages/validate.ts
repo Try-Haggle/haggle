@@ -7,7 +7,7 @@
 
 import type { ValidateInput, ValidateOutput } from '../pipeline/types.js';
 import type {
-  ProtocolDecision,
+  EngineDecision,
   RoundExplainability,
   ValidationResult,
   CoreMemory,
@@ -27,7 +27,7 @@ const MAX_RETRY = 2;
  */
 export function validateStage(
   input: ValidateInput,
-  previousMoves: ProtocolDecision[],
+  previousMoves: EngineDecision[],
 ): ValidateOutput {
   const { decision: decideOutput, briefing, memory, phase } = input;
   let currentDecision = { ...decideOutput.decision };
@@ -85,8 +85,8 @@ function buildExplainability(
   round: number,
   briefing: RefereeBriefing,
   source: 'llm' | 'skill',
-  originalDecision: ProtocolDecision,
-  finalDecision: ProtocolDecision,
+  originalDecision: EngineDecision,
+  finalDecision: EngineDecision,
   allViolations: import('../types.js').ValidationViolation[],
   finalValidation: ValidationResult,
   autoFixApplied: boolean,

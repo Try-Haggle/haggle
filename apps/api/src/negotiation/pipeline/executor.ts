@@ -26,7 +26,7 @@ import { PgRoundFactSink } from '../memory/pg-round-fact-sink.js';
 
 import type {
   NegotiationPhase,
-  ProtocolDecision,
+  EngineDecision,
   CoreMemory,
   StageConfig,
 } from '../types.js';
@@ -53,9 +53,12 @@ import {
 } from '../memory/memory-reconstructor.js';
 import { DEFAULT_BUDDY_DNA, shouldUseReasoning } from '../config.js';
 import { getL5SignalsProvider } from '../../services/l5-signals.service.js';
+import { recordRoundConversationSignals } from '../../services/conversation-signal-sink.js';
+import { loadUserMemoryBrief } from '../../services/user-memory-card.service.js';
+import { loadEvermemoBrief } from '../../services/evermemo-bridge.service.js';
 
 import { executePipeline } from './pipeline.js';
-import { understandFromStructured } from '../stages/understand.js';
+import { understand, understandFromStructured } from '../stages/understand.js';
 import type { PersistInput, PersistOutput } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -141,6 +144,14 @@ export async function executeStagedNegotiationRound(
         status: 'EXPIRED',
       });
       throw new Error('SESSION_EXPIRED');
+    }
+
+    const maxRounds = extractNum(dbSession.strategySnapshot, 'max_rounds') ?? 15;
+    if (dbSession.currentRound >= maxRounds) {
+      await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
+        status: 'REJECTED',
+      });
+      throw new Error('ROUND_LIMIT_EXCEEDED');
     }
 
     // 3. Double-check idempotency inside TX
@@ -256,9 +267,23 @@ export async function executeStagedNegotiationRound(
 
     // 9. Execute 6-Stage Pipeline
     const stageConfig = buildDefaultStageConfig();
-    const understood = understandFromStructured(input.offerPriceMinor, role === 'buyer' ? 'seller' : 'buyer');
+    const senderRole = role === 'buyer' ? 'seller' : 'buyer';
+    const understood = input.messageText
+      ? {
+          ...understand({ raw_message: input.messageText, sender_role: senderRole }),
+          price_offer: input.offerPriceMinor,
+        }
+      : understandFromStructured(input.offerPriceMinor, senderRole);
 
     const previousMoves = extractPreviousMoves(dbRounds);
+    const memoryBrief = await loadUserMemoryBrief(tx as unknown as Database, {
+      userId: userIdForAgentRole(dbSession),
+    });
+    const evermemoBrief = await loadEvermemoBrief(tx as unknown as Database, {
+      userId: userIdForAgentRole(dbSession),
+      query: buildEvermemoRetrievalQuery(dbSession, input, understood),
+      topK: 5,
+    });
 
     // Build SkillStack for this session based on item tags/category
     const sessionCategory = (dbSession as unknown as Record<string, unknown>).category as string | undefined;
@@ -282,6 +307,8 @@ export async function executeStagedNegotiationRound(
         briefing,
         memoEncoding: 'codec',
         l5_signals: l5Signals,
+        memory_brief: memoryBrief,
+        evermemo_brief: evermemoBrief,
       },
     );
 
@@ -388,7 +415,7 @@ interface PersistRoundParams {
   dbSession: DbSession;
   input: RoundExecutionInput;
   nextRound: number;
-  decision: ProtocolDecision;
+  decision: EngineDecision;
   memory: CoreMemory;
   coaching: import('../types.js').RefereeCoaching;
   validation: import('../types.js').ValidationResult;
@@ -407,7 +434,7 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
   const outgoingPrice = decision.price ?? input.offerPriceMinor;
   const messageType = mapActionToMessageType(decision.action, nextRound);
 
-  await createRound(tx, {
+  const createdRound = await createRound(tx, {
     sessionId: input.sessionId,
     roundNo: nextRound,
     senderRole: input.senderRole,
@@ -428,6 +455,7 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
       tactic: decision.tactic_used,
       reasoning: decision.reasoning,
       engine: 'staged-pipeline',
+      protocol: input.protocol ? { hnp: input.protocol } : undefined,
       explainability: params.explainability ?? undefined,
     },
     idempotencyKey: input.idempotencyKey,
@@ -438,6 +466,8 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
     message,
     phaseAtRound: phase,
   });
+
+  await recordSignalsForCreatedRound(tx, params, createdRound.id, outgoingPrice);
 
   const roundsNoConcession = decision.action === 'COUNTER' && decision.price
     ? (Math.abs(decision.price - (Number(dbSession.lastOfferPriceMinor) || 0)) < 1
@@ -469,7 +499,7 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
 
   return {
     idempotent: false,
-    roundId: 'staged-' + input.sessionId + '-' + nextRound,
+    roundId: createdRound.id,
     roundNo: nextRound,
     decision: dbDecision,
     outgoingPrice,
@@ -490,6 +520,56 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
   } as RoundExecutionResult;
 }
 
+async function recordSignalsForCreatedRound(
+  tx: Database,
+  params: PersistRoundParams,
+  roundId: string,
+  outgoingPrice: number,
+): Promise<void> {
+  const { dbSession, input, nextRound, message } = params;
+  const incomingText = input.messageText ?? `Offer: $${(input.offerPriceMinor / 100).toFixed(2)}`;
+  const outgoingText = message || `Counter: $${(outgoingPrice / 100).toFixed(2)}`;
+
+  await recordRoundConversationSignals(tx, {
+    sessionId: input.sessionId,
+    roundId,
+    roundNo: nextRound,
+    listingId: dbSession.listingId,
+    buyerId: dbSession.buyerId,
+    sellerId: dbSession.sellerId,
+    incomingRole: input.senderRole,
+    agentRole: dbSession.role,
+    incomingText,
+    outgoingText,
+    engine: 'staged-pipeline',
+    idempotencyKey: input.idempotencyKey,
+    decision: params.decision.action,
+  });
+}
+
+function userIdForAgentRole(dbSession: DbSession): string {
+  return dbSession.role === 'BUYER' ? dbSession.buyerId : dbSession.sellerId;
+}
+
+function buildEvermemoRetrievalQuery(
+  dbSession: DbSession,
+  input: RoundExecutionInput,
+  understood: ReturnType<typeof understand> | ReturnType<typeof understandFromStructured>,
+): string {
+  return [
+    "Haggle negotiation memory retrieval",
+    `role: ${dbSession.role}`,
+    `listing_id: ${dbSession.listingId}`,
+    `incoming_offer_minor: ${input.offerPriceMinor}`,
+    `intent: ${understood.action_intent}`,
+    understood.conversation_type ? `conversation_type: ${understood.conversation_type}` : null,
+    understood.missing_information?.length
+      ? `missing_information: ${understood.missing_information.map((need) => need.slot).join(",")}`
+      : null,
+    input.messageText ? `message: ${input.messageText}` : null,
+  ].filter((part): part is string => Boolean(part)).join("\n");
+}
+
 async function persistSpamRound(
   tx: Database,
   dbSession: DbSession,
@@ -498,7 +578,7 @@ async function persistSpamRound(
   memory: CoreMemory,
   coaching: import('../types.js').RefereeCoaching,
 ): Promise<RoundExecutionResult> {
-  const spamDecision: ProtocolDecision = {
+  const spamDecision: EngineDecision = {
     action: 'REJECT',
     reasoning: 'Screening blocked: spam detected',
   };
@@ -527,7 +607,7 @@ async function persistHoldRound(
   phase: NegotiationPhase,
   intervention: { pendingReview?: { reason: string } },
 ): Promise<RoundExecutionResult> {
-  const holdDecision: ProtocolDecision = {
+  const holdDecision: EngineDecision = {
     action: 'HOLD',
     reasoning: intervention.pendingReview?.reason ?? 'Human approval required.',
   };
@@ -604,11 +684,11 @@ function extractNum(obj: Record<string, unknown>, key: string): number | null {
   return null;
 }
 
-function extractPreviousMoves(dbRounds: DbRound[]): ProtocolDecision[] {
+function extractPreviousMoves(dbRounds: DbRound[]): EngineDecision[] {
   return dbRounds
     .filter((r) => r.decision)
     .map((r) => ({
-      action: r.decision as ProtocolDecision['action'],
+      action: r.decision as EngineDecision['action'],
       price: r.counterPriceMinor ? Number(r.counterPriceMinor) : undefined,
       reasoning: (r.metadata as Record<string, unknown>)?.reasoning as string ?? '',
       tactic_used: (r.metadata as Record<string, unknown>)?.tactic as string | undefined,

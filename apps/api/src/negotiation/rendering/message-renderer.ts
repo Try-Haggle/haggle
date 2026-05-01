@@ -1,6 +1,6 @@
 import type {
   MessageRenderer,
-  ProtocolDecision,
+  EngineDecision,
   NegotiationPhase,
   ActiveTerm,
   BuddyTone,
@@ -16,10 +16,10 @@ interface RenderContext {
 
 /**
  * Template-based Message Renderer.
- * Converts ProtocolDecision → user-facing message using BuddyTone.
+ * Converts EngineDecision → user-facing message using BuddyTone.
  */
 export class TemplateMessageRenderer implements MessageRenderer {
-  render(decision: ProtocolDecision, context: RenderContext): string {
+  render(decision: EngineDecision, context: RenderContext): string {
     const { action, price, non_price_terms } = decision;
     const { tone, role, phase, locale } = context;
 
@@ -58,7 +58,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   }
 
   private getActionTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -166,7 +166,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   // ─── Korean Templates ──────────────────────────────────────────────
 
   private getKoreanTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -240,7 +240,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   // ─── Japanese Templates ────────────────────────────────────────────
 
   private getJapaneseTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -261,7 +261,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   // ─── Chinese Templates ────────────────────────────────────────────
 
   private getChineseTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -282,7 +282,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   // ─── Spanish Templates ─────────────────────────────────────────────
 
   private getSpanishTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -303,7 +303,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   // ─── Vietnamese Templates ─────────────────────────────────────────
 
   private getVietnameseTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -324,7 +324,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
   // ─── Tagalog Templates ────────────────────────────────────────────
 
   private getTagalogTemplate(
-    action: ProtocolDecision['action'],
+    action: EngineDecision['action'],
     price: number | undefined,
     tone: BuddyTone,
     role: 'buyer' | 'seller',
@@ -355,7 +355,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     return 'Terms: ' + entries.map(([k, v]) => `${k}: ${String(v)}`).join(', ');
   }
 
-  private addEmoji(message: string, action: ProtocolDecision['action']): string {
+  private addEmoji(message: string, action: EngineDecision['action']): string {
     const emojiMap: Record<string, string> = {
       COUNTER: '💬',
       ACCEPT: '🤝',

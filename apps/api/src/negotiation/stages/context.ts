@@ -12,6 +12,8 @@ import type { SkillStack } from '../skills/skill-stack.js';
 import { assembleContextLayers } from '../adapters/context-assembly.js';
 import { computeBriefing } from '../referee/briefing.js';
 import { encodeMemo, type MemoEncoding } from '../memo/memo-codec.js';
+import { formatUserMemoryBriefSignals } from '../../services/user-memory-card.service.js';
+import { formatEvermemoBriefSignals } from '../../services/evermemo-bridge.service.js';
 
 /**
  * Assemble full negotiation context for a round.
@@ -26,13 +28,16 @@ export function assembleStageContext(
   memoEncoding: MemoEncoding = 'codec',
   skillStack?: SkillStack,
 ): ContextOutput {
-  const { memory, facts, opponent, skill, l5_signals } = input;
+  const { memory, facts, opponent, skill, l5_signals, memory_brief, evermemo_brief } = input;
 
   // 1. Compute briefing (facts-only, replaces coaching)
   const briefing = computeBriefing(memory, facts, opponent);
 
   // 2. Build L5 signal strings
   const signalStrings = buildL5SignalStrings(l5_signals);
+  signalStrings.push(...buildUnderstandingSignalStrings(input.understood));
+  signalStrings.push(...formatUserMemoryBriefSignals(memory_brief));
+  signalStrings.push(...formatEvermemoBriefSignals(evermemo_brief));
 
   // 3. Build skill verification strings for LLM context (투명성 철학)
   const skillsApplied = buildSkillAppliedRecords(skillStack);
@@ -101,6 +106,34 @@ function buildL5SignalStrings(
   if (signals.category) {
     const cat = signals.category;
     parts.push(`CAT:avg_disc:${(cat.avg_discount_rate * 100).toFixed(1)}%|avg_rounds:${cat.avg_rounds_to_deal}`);
+  }
+
+  return parts;
+}
+
+function buildUnderstandingSignalStrings(
+  understood: ContextInput['understood'],
+): string[] {
+  const parts: string[] = [];
+
+  if (understood.conversation_type) {
+    parts.push(`UTYPE:${understood.conversation_type}|intent:${understood.action_intent}|sentiment:${understood.sentiment}`);
+  }
+
+  if (understood.information_links && understood.information_links.length > 0) {
+    parts.push(
+      ...understood.information_links.slice(0, 8).map((link) => (
+        `ULINK:${link.connects_to}:${link.entity_type}=${link.value}|conf:${link.confidence.toFixed(2)}`
+      )),
+    );
+  }
+
+  if (understood.missing_information && understood.missing_information.length > 0) {
+    parts.push(
+      ...understood.missing_information.slice(0, 4).map((need) => (
+        `UNEED:${need.priority}:${need.slot}|reason:${need.reason}|ask:${need.question}`
+      )),
+    );
   }
 
   return parts;

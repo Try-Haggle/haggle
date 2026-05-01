@@ -25,6 +25,7 @@ import type { RoundExecutionInput, RoundExecutionResult } from "./negotiation-ex
 import { mapRawToDbSession } from "./negotiation-executor.js";
 import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
 import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
+import { recordRoundConversationSignals } from "../services/conversation-signal-sink.js";
 import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
 import type { DbSession, DbRound } from "./session-reconstructor.js";
 
@@ -422,6 +423,8 @@ async function persistLLMRound(
     phaseAtRound: phase,
   });
 
+  await recordSignalsForCreatedRound(tx, params, createdRound.id, outgoingPrice);
+
   // Track concession
   const roundsNoConcession = decision.action === 'COUNTER' && decision.price
     ? (Math.abs(decision.price - (Number(dbSession.lastOfferPriceMinor) || 0)) < 1
@@ -477,6 +480,33 @@ async function persistLLMRound(
     phase,
     reasoningUsed,
   } as RoundExecutionResult;
+}
+
+async function recordSignalsForCreatedRound(
+  tx: Database,
+  params: PersistParams,
+  roundId: string,
+  outgoingPrice: number,
+): Promise<void> {
+  const { dbSession, input, nextRound, message } = params;
+  const incomingText = input.messageText ?? `Offer: $${(input.offerPriceMinor / 100).toFixed(2)}`;
+  const outgoingText = message || `Counter: $${(outgoingPrice / 100).toFixed(2)}`;
+
+  await recordRoundConversationSignals(tx, {
+    sessionId: input.sessionId,
+    roundId,
+    roundNo: nextRound,
+    listingId: dbSession.listingId,
+    buyerId: dbSession.buyerId,
+    sellerId: dbSession.sellerId,
+    incomingRole: input.senderRole,
+    agentRole: dbSession.role,
+    incomingText,
+    outgoingText,
+    engine: "llm",
+    idempotencyKey: input.idempotencyKey,
+    decision: params.decision.action,
+  });
 }
 
 // ---------------------------------------------------------------------------

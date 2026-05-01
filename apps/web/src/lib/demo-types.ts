@@ -26,9 +26,10 @@ export interface StageTrace {
 export type PresetName = 'lowest_price' | 'balanced' | 'safe_first' | 'custom';
 
 export interface DemoInitRequest {
-  item?: { title?: string; condition?: string; swappa_median?: number };
-  seller?: { ask_price?: number; floor_price?: number };
-  buyer_budget?: { max_budget?: number };
+  user_id?: string;
+  item?: { title?: string; condition?: string; swappa_median_minor?: number };
+  seller?: { ask_price_minor?: number; floor_price_minor?: number };
+  buyer_budget?: { max_budget_minor?: number };
   language?: string;
   preset?: PresetName;
   custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
@@ -71,6 +72,19 @@ export interface SkillManifestInfo {
   hooks: string[];
 }
 
+export interface HilMemorySummary {
+  applied: boolean;
+  user_id: string | null;
+  signals: string[];
+  cards: Array<{
+    card_type: string;
+    memory_key: string;
+    summary: string;
+    strength: number;
+    memory: Record<string, unknown>;
+  }>;
+}
+
 export interface DemoInitResponse {
   demo_id: string;
   language: string;
@@ -79,6 +93,7 @@ export interface DemoInitResponse {
   stages_tested: string[];
   strategy: DemoStrategy;
   terms: TermAnalysis;
+  hil_memory?: HilMemorySummary;
   lumen_profiles?: {
     buyer_agent: LumenVoiceProfile;
     seller_agent: LumenVoiceProfile;
@@ -139,6 +154,7 @@ export interface DemoRoundResponse {
   final: {
     decision: ProtocolDecision;
     rendered_message: string;
+    hil_memory?: HilMemorySummary;
     validation: ValidationInfo;
     phase_transition: PhaseTransition | null;
   };

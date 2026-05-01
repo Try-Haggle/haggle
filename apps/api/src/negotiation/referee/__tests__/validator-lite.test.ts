@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateMove } from '../validator.js';
-import type { ProtocolDecision, CoreMemory, RefereeCoaching } from '../../types.js';
+import type { EngineDecision, CoreMemory, RefereeCoaching } from '../../types.js';
 
 function makeMemory(overrides: Record<string, unknown> = {}): CoreMemory {
   return {
@@ -34,14 +34,14 @@ const COACHING: RefereeCoaching = {
 
 describe('validateMove — lite mode', () => {
   it('should still detect V1 HARD violation in lite mode', () => {
-    const move: ProtocolDecision = { action: 'COUNTER', price: 700, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 700, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, [], 'BARGAINING', 'lite');
     expect(result.hardPassed).toBe(false);
     expect(result.violations.some((v) => v.rule === 'V1')).toBe(true);
   });
 
   it('should still detect V2 HARD violation in lite mode', () => {
-    const move: ProtocolDecision = { action: 'CONFIRM', price: 540, reasoning: 'test' };
+    const move: EngineDecision = { action: 'CONFIRM', price: 540, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, [], 'BARGAINING', 'lite');
     expect(result.violations.some((v) => v.rule === 'V2')).toBe(true);
   });
@@ -53,17 +53,17 @@ describe('validateMove — lite mode', () => {
         role: 'buyer', max_rounds: 15, intervention_mode: 'FULL_AUTO',
       },
     });
-    const move: ProtocolDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
     const result = validateMove(move, memory, COACHING, [], 'BARGAINING', 'lite');
     expect(result.violations.some((v) => v.rule === 'V3')).toBe(true);
   });
 
   it('should skip V4 (concession reversal) in lite mode', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 500, reasoning: 'r1' },
       { action: 'COUNTER', price: 520, reasoning: 'r2' },
     ];
-    const move: ProtocolDecision = { action: 'COUNTER', price: 510, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 510, reasoning: 'test' };
     // full mode would catch V4
     const fullResult = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING', 'full');
     expect(fullResult.violations.some((v) => v.rule === 'V4')).toBe(true);
@@ -73,13 +73,13 @@ describe('validateMove — lite mode', () => {
   });
 
   it('should skip V5 (stagnation) in lite mode', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 520, reasoning: 'r1' },
       { action: 'COUNTER', price: 520, reasoning: 'r2' },
       { action: 'COUNTER', price: 521, reasoning: 'r3' },
       { action: 'COUNTER', price: 521, reasoning: 'r4' },
     ];
-    const move: ProtocolDecision = { action: 'COUNTER', price: 521, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 521, reasoning: 'test' };
     const fullResult = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING', 'full');
     expect(fullResult.violations.some((v) => v.rule === 'V5')).toBe(true);
     const liteResult = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING', 'lite');
@@ -87,10 +87,10 @@ describe('validateMove — lite mode', () => {
   });
 
   it('should skip V7 (large concession) in lite mode', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 520, reasoning: 'r1' },
     ];
-    const move: ProtocolDecision = { action: 'COUNTER', price: 610, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 610, reasoning: 'test' };
     const fullResult = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING', 'full');
     expect(fullResult.violations.some((v) => v.rule === 'V7')).toBe(true);
     const liteResult = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING', 'lite');
@@ -98,7 +98,7 @@ describe('validateMove — lite mode', () => {
   });
 
   it('should pass cleanly in lite mode when no HARD violations', () => {
-    const move: ProtocolDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, [], 'BARGAINING', 'lite');
     expect(result.passed).toBe(true);
     expect(result.hardPassed).toBe(true);
@@ -106,11 +106,11 @@ describe('validateMove — lite mode', () => {
   });
 
   it('should default to full mode when mode not specified', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 500, reasoning: 'r1' },
       { action: 'COUNTER', price: 520, reasoning: 'r2' },
     ];
-    const move: ProtocolDecision = { action: 'COUNTER', price: 510, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 510, reasoning: 'test' };
     // No mode arg — should detect V4 (full mode)
     const result = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING');
     expect(result.violations.some((v) => v.rule === 'V4')).toBe(true);

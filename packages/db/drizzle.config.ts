@@ -33,6 +33,7 @@ export default defineConfig({
     "./src/schema/buyer-interest-vectors.ts",
     "./src/schema/recommendation-logs.ts",
     "./src/schema/category-relatedness.ts",
+    "./src/schema/intelligence-layer.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

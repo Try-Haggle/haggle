@@ -5,14 +5,21 @@ import { useState } from "react";
 interface RoundControlProps {
   roundNumber: number;
   lastBuyerPrice: number;
-  onExecute: (params: { seller_price: number; seller_message?: string }) => void;
+  onExecute: (params: { seller_price_minor: number; seller_message?: string }) => void;
   loading: boolean;
   disabled: boolean;
 }
 
-/** Convert minor units to dollars */
-function minorToDollar(v: number): number {
-  return v > 1000 ? Math.round(v / 100) : v;
+function dollarsToMinor(v: number): number {
+  return Math.round(v * 100);
+}
+
+function formatMinor(v: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: v % 100 === 0 ? 0 : 2,
+  }).format(v / 100);
 }
 
 const PRESETS = [
@@ -31,19 +38,17 @@ export function RoundControl({
   const [sellerPrice, setSellerPrice] = useState(920);
   const [sellerMessage, setSellerMessage] = useState("");
 
-  const buyerDollar = minorToDollar(lastBuyerPrice);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onExecute({
-      seller_price: sellerPrice,
+      seller_price_minor: dollarsToMinor(sellerPrice),
       seller_message: sellerMessage.trim() || undefined,
     });
   };
 
   const handleAcceptBuyer = () => {
     onExecute({
-      seller_price: buyerDollar,
+      seller_price_minor: lastBuyerPrice,
       seller_message: "그 가격에 판매하겠습니다.",
     });
   };
@@ -87,7 +92,7 @@ export function RoundControl({
             disabled={loading || disabled}
             className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            ${buyerDollar} 수락
+            {formatMinor(lastBuyerPrice)} 수락
           </button>
         )}
       </div>

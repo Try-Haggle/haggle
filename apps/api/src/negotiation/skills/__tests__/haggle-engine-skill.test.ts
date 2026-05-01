@@ -1,7 +1,7 @@
 /**
  * HaggleEngineSkill Tests
  *
- * Tests real-time t_elapsed, urgency beta multiplier, floor protection,
+ * Tests deadline progress, continuous time-value curves, floor protection,
  * 4D utility snapshot, decide hook observations, and generateMove fallback.
  */
 
@@ -26,8 +26,8 @@ function makeMemory(overrides?: {
       role: "buyer",
       intervention_mode: "FULL_AUTO",
       created_at_ms: Date.now() - 3600_000, // 1 hour ago
+      deadline_at_ms: Date.now() + (7 * 24 - 1) * 3600_000,
       max_duration_ms: 7 * 24 * 3600_000, // 7 days
-      urgency: "normal",
       ...(overrides?.session ?? {}),
     },
     boundaries: {
@@ -123,16 +123,16 @@ function makeHookContext(
 describe("HaggleEngineSkill", () => {
   const skill = new HaggleEngineSkill();
 
-  describe("Real-time t_elapsed", () => {
-    it("computes t_elapsed based on wall-clock time", async () => {
+  describe("Deadline progress", () => {
+    it("computes deadline progress from wall-clock time", async () => {
       const oneHourAgo = Date.now() - 3600_000;
       const sevenDaysMs = 7 * 24 * 3600_000;
 
       const memory = makeMemory({
         session: {
           created_at_ms: oneHourAgo,
+          deadline_at_ms: oneHourAgo + sevenDaysMs,
           max_duration_ms: sevenDaysMs,
-          urgency: "normal",
         },
       });
 
@@ -140,40 +140,45 @@ describe("HaggleEngineSkill", () => {
       const result = await skill.onHook(ctx);
       const observations = result.content.observations as string[];
 
-      // t_elapsed = 1h / 168h ~ 0.006
-      const tRealMatch = observations
+      // progress = 1h / 168h ~ 0.006
+      const progressMatch = observations
         .join(" ")
-        .match(/t_real=(\d+\.\d+)/);
-      expect(tRealMatch).toBeTruthy();
-      const tReal = parseFloat(tRealMatch![1]!);
-      expect(tReal).toBeGreaterThan(0.004);
-      expect(tReal).toBeLessThan(0.01);
+        .match(/deadline_progress=(\d+\.\d+)/);
+      expect(progressMatch).toBeTruthy();
+      const progress = parseFloat(progressMatch![1]!);
+      expect(progress).toBeGreaterThan(0.004);
+      expect(progress).toBeLessThan(0.01);
     });
   });
 
-  describe("Urgency beta multiplier", () => {
-    it("high urgency produces lower beta than normal", async () => {
-      const normalMemory = makeMemory({
-        session: { urgency: "normal" },
+  describe("Continuous time curve", () => {
+    it("later deadlines produce more concession with the same beta", async () => {
+      const now = Date.now();
+      const earlyMemory = makeMemory({
+        session: {
+          created_at_ms: now - 3600_000,
+          deadline_at_ms: now + 9 * 3600_000,
+          max_duration_ms: 10 * 3600_000,
+        },
       });
-      const highMemory = makeMemory({
-        session: { urgency: "high" },
+      const lateMemory = makeMemory({
+        session: {
+          created_at_ms: now - 9 * 3600_000,
+          deadline_at_ms: now + 3600_000,
+          max_duration_ms: 10 * 3600_000,
+        },
       });
 
-      const normalCtx = makeHookContext("decide", { memory: normalMemory });
-      const highCtx = makeHookContext("decide", { memory: highMemory });
+      const earlyCtx = makeHookContext("decide", { memory: earlyMemory });
+      const lateCtx = makeHookContext("decide", { memory: lateMemory });
 
-      const normalResult = await skill.onHook(normalCtx);
-      const highResult = await skill.onHook(highCtx);
+      const earlyResult = await skill.onHook(earlyCtx);
+      const lateResult = await skill.onHook(lateCtx);
 
-      const normalObs = (normalResult.content.observations as string[]).join(" ");
-      const highObs = (highResult.content.observations as string[]).join(" ");
+      const earlyPrice = earlyResult.content.recommendedPrice as number;
+      const latePrice = lateResult.content.recommendedPrice as number;
 
-      const normalBeta = parseFloat(normalObs.match(/beta=(\d+\.\d+)/)![1]!);
-      const highBeta = parseFloat(highObs.match(/beta=(\d+\.\d+)/)![1]!);
-
-      // high urgency: beta * 0.7, normal: beta * 1.0
-      expect(highBeta).toBeLessThan(normalBeta);
+      expect(latePrice).toBeGreaterThan(earlyPrice);
     });
   });
 
@@ -185,8 +190,8 @@ describe("HaggleEngineSkill", () => {
         session: {
           role: "seller",
           created_at_ms: Date.now() - 6 * 24 * 3600_000, // 6 days ago
+          deadline_at_ms: Date.now() + 3600_000,
           max_duration_ms: 7 * 24 * 3600_000,
-          urgency: "urgent",
         },
         boundaries: {
           my_target: 80000, // $800
@@ -215,8 +220,8 @@ describe("HaggleEngineSkill", () => {
         session: {
           role: "buyer",
           created_at_ms: Date.now() - 6 * 24 * 3600_000,
+          deadline_at_ms: Date.now() + 3600_000,
           max_duration_ms: 7 * 24 * 3600_000,
-          urgency: "urgent",
         },
         boundaries: {
           my_target: 80000, // $800
@@ -261,7 +266,7 @@ describe("HaggleEngineSkill", () => {
   });
 
   describe("Decide hook observations", () => {
-    it("returns observations with Faratin price, urgency, t_real", async () => {
+    it("returns observations with Faratin price and deadline progress", async () => {
       const ctx = makeHookContext("decide");
       const result = await skill.onHook(ctx);
 
@@ -274,8 +279,8 @@ describe("HaggleEngineSkill", () => {
       );
       expect(faratinObs).toBeDefined();
       expect(faratinObs).toMatch(/beta=/);
-      expect(faratinObs).toMatch(/t_real=/);
-      expect(faratinObs).toMatch(/urgency=/);
+      expect(faratinObs).toMatch(/deadline_progress=/);
+      expect(faratinObs).toMatch(/remaining_ms=/);
     });
 
     it("includes engine-core decision when utility is available", async () => {

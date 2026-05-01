@@ -12,7 +12,7 @@ import type {
   NegotiationSkill,
   ModelAdapter,
   NegotiationPhase,
-  ProtocolDecision,
+  EngineDecision,
   ValidationResult,
   ContextLayers,
   L5Signals,
@@ -23,6 +23,8 @@ import type {
 import type { RefereeBriefing, SkillAppliedRecord } from '../skills/skill-types.js';
 import type { SkillStack } from '../skills/skill-stack.js';
 import type { MemoEncodingConfig } from '../config.js';
+import type { UserMemoryBrief } from '../../services/user-memory-card.service.js';
+import type { EvermemoBrief } from '../../services/evermemo-bridge.service.js';
 
 // =========================================
 // Stage 1: Understand
@@ -33,12 +35,66 @@ export interface UnderstandInput {
   sender_role: 'buyer' | 'seller';
 }
 
+export type ConversationType =
+  | 'PRICE_NEGOTIATION'
+  | 'INFORMATION_REQUEST'
+  | 'INFORMATION_PROVIDED'
+  | 'CONDITION_NEGOTIATION'
+  | 'LOGISTICS_NEGOTIATION'
+  | 'TRUST_SAFETY'
+  | 'READINESS_DISCOVERY'
+  | 'CLOSING_CONFIRMATION'
+  | 'SMALL_TALK';
+
+export interface InformationLink {
+  signal_type: string;
+  entity_type: string;
+  key: string;
+  value: string;
+  confidence: number;
+  connects_to:
+    | 'pricing'
+    | 'product'
+    | 'condition'
+    | 'terms'
+    | 'trust'
+    | 'demand'
+    | 'outcome'
+    | 'memory'
+    | 'market';
+}
+
+export interface MissingInformationNeed {
+  slot:
+    | 'product_identity'
+    | 'price_anchor'
+    | 'budget_boundary'
+    | 'condition_summary'
+    | 'battery_health'
+    | 'carrier_lock'
+    | 'verification_status'
+    | 'warranty_status'
+    | 'shipping_terms'
+    | 'payment_safety'
+    | 'buyer_priority';
+  priority: 'high' | 'medium' | 'low';
+  reason: string;
+  question: string;
+  question_source?: 'tag_garden' | 'fallback';
+  tag_slot_id?: string;
+  enforcement?: 'hard' | 'soft';
+  answer_options?: string[];
+}
+
 export interface UnderstandOutput {
   price_offer?: number;
   action_intent: 'OFFER' | 'COUNTER' | 'ACCEPT' | 'REJECT' | 'QUESTION' | 'INFO';
   conditions: Record<string, unknown>;
   sentiment: 'positive' | 'neutral' | 'negative';
   raw_text: string;
+  conversation_type?: ConversationType;
+  information_links?: InformationLink[];
+  missing_information?: MissingInformationNeed[];
 }
 
 // =========================================
@@ -52,6 +108,8 @@ export interface ContextInput {
   opponent: OpponentPattern;
   skill: NegotiationSkill;
   l5_signals?: L5Signals;
+  memory_brief?: UserMemoryBrief | null;
+  evermemo_brief?: EvermemoBrief | null;
 }
 
 export interface ContextOutput {
@@ -79,7 +137,7 @@ export interface DecideInput {
 }
 
 export interface DecideOutput {
-  decision: ProtocolDecision;
+  decision: EngineDecision;
   source: 'llm' | 'skill';
   reasoning_mode: boolean;
   llm_raw?: string;
@@ -99,7 +157,7 @@ export interface ValidateInput {
 }
 
 export interface ValidateOutput {
-  final_decision: ProtocolDecision;
+  final_decision: EngineDecision;
   validation: ValidationResult;
   auto_fix_applied: boolean;
   retry_count: number;
@@ -163,10 +221,12 @@ export interface PipelineDeps {
   opponent: OpponentPattern;
   phase: NegotiationPhase;
   buddyDna: BuddyDNA;
-  previousMoves: ProtocolDecision[];
+  previousMoves: EngineDecision[];
   round: number;
   briefing: RefereeBriefing;
   l5_signals?: L5Signals;
+  memory_brief?: UserMemoryBrief | null;
+  evermemo_brief?: EvermemoBrief | null;
   memoEncoding: MemoEncodingConfig;
   /** DB persist callback — only Stage 6 uses this */
   persistFn?: (input: PersistInput) => Promise<PersistOutput>;

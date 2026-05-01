@@ -158,6 +158,9 @@ export function reconstructCoreMemory(
       role,
       max_rounds: maxRounds,
       intervention_mode: interventionMode,
+      created_at_ms: extractTimeValueMillis(strategy, 'listed_at_ms') ?? dbSession.createdAt.getTime(),
+      deadline_at_ms: extractTimeValueMillis(strategy, 'deadline_at_ms'),
+      max_duration_ms: extractTimeValueMillis(strategy, 't_total_ms') ?? extractNumber(strategy, 't_max') ?? undefined,
     },
     boundaries: {
       my_target: myTarget,
@@ -287,4 +290,17 @@ function extractNumber(obj: Record<string, unknown>, key: string): number | null
     return Number.isNaN(parsed) ? null : parsed;
   }
   return null;
+}
+
+function extractTimeValueMillis(strategy: Record<string, unknown>, key: string): number | undefined {
+  const timeValue = strategy.time_value as Record<string, unknown> | undefined;
+  const value = timeValue?.[key] ?? strategy[key];
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string') {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
 }

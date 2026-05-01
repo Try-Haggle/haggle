@@ -26,6 +26,7 @@ import { registerSkillRoutes } from "./routes/skills.js";
 import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
 import { registerSettlementApprovalRoutes } from "./routes/settlement-approvals.js";
 import { registerNegotiationRoutes } from "./routes/negotiations.js";
+import { registerHnpProfileRoutes } from "./routes/hnp-profile.js";
 import { registerStageRoutes } from "./routes/negotiation-stages.js";
 import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
 import { registerDemoRoute } from "./routes/negotiation-demo.js";
@@ -34,6 +35,8 @@ import { registerAdminRoutes } from "./routes/admin.js";
 import { registerAttestationRoutes } from "./routes/attestation.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerHfmiRoutes } from "./routes/hfmi.js";
+import { registerIntelligenceRoutes } from "./routes/intelligence.js";
+import { registerIntelligenceDemoRoutes } from "./routes/intelligence-demo.js";
 import { registerPresetRoutes } from "./routes/presets.js";
 import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
@@ -115,6 +118,7 @@ export async function createServer() {
     status: "ok",
     timestamp: new Date().toISOString(),
   }));
+  registerHnpProfileRoutes(app);
 
   // ─── Negotiation Engine Routes ──────────────────────────
   const eventDispatcher = createEventDispatcher();
@@ -156,7 +160,7 @@ export async function createServer() {
   registerStageRoutes(app, db);
   registerGroupRoutes(app, db, eventDispatcher);
   registerSimulateRoute(app);
-  registerDemoRoute(app);
+  registerDemoRoute(app, db);
 
   // ─── Admin Ops Routes ────────────────────────────────────
   registerAdminRoutes(app, db);
@@ -169,6 +173,8 @@ export async function createServer() {
 
   // ─── HFMI Routes ────────────────────────────────────────
   registerHfmiRoutes(app, db);
+  registerIntelligenceRoutes(app, db);
+  registerIntelligenceDemoRoutes(app, db);
 
   // ─── Gamification Routes ───────────────────────────────
   registerPresetRoutes(app, db);

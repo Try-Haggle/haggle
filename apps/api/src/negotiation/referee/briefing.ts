@@ -11,6 +11,7 @@
 
 import type { CoreMemory, RoundFact, OpponentPattern } from '../types.js';
 import type { RefereeBriefing } from '../skills/skill-types.js';
+import { computeSessionTimePressure } from '../time-pressure.js';
 
 /**
  * Compute referee briefing from session state.
@@ -22,10 +23,10 @@ export function computeBriefing(
   opponentPattern: OpponentPattern | null,
 ): RefereeBriefing {
   const { session, boundaries } = memory;
-  const { max_rounds, rounds_remaining, round } = session;
+  const { rounds_remaining } = session;
 
-  // ── Time pressure (fact: fraction of rounds elapsed) ──
-  const timePressure = max_rounds > 0 ? 1 - rounds_remaining / max_rounds : 0;
+  // ── Time pressure (fact: deadline/time-window elapsed, rounds as fallback) ──
+  const timePressure = computeSessionTimePressure(session);
 
   // ── Gap trend (last N gaps, factual) ──
   const gapTrend = recentFacts.slice(-5).map(f => f.gap);

@@ -2,7 +2,7 @@ import type {
   ModelAdapter,
   CoreMemory,
   RoundFact,
-  ProtocolDecision,
+  EngineDecision,
   NegotiationPhase,
 } from '../types.js';
 import { PHASE_TOKEN_BUDGET as TOKEN_BUDGET } from '../types.js';
@@ -70,7 +70,7 @@ export class GrokFastAdapter implements ModelAdapter {
     return parts.join('\n');
   }
 
-  parseResponse(raw: string): ProtocolDecision {
+  parseResponse(raw: string): EngineDecision {
     // Strip markdown code blocks if present
     let cleaned = raw.trim();
     if (cleaned.startsWith('```')) {
@@ -88,7 +88,7 @@ export class GrokFastAdapter implements ModelAdapter {
         throw new Error('Missing or invalid "reasoning" field');
       }
 
-      const decision: ProtocolDecision = {
+      const decision: EngineDecision = {
         action: parsed.action,
         reasoning: parsed.reasoning,
       };
@@ -109,7 +109,7 @@ export class GrokFastAdapter implements ModelAdapter {
       const actionMatch = cleaned.match(/"action"\s*:\s*"(\w+)"/);
       if (actionMatch) {
         return {
-          action: actionMatch[1] as ProtocolDecision['action'],
+          action: actionMatch[1] as EngineDecision['action'],
           reasoning: `Parse recovery from malformed response: ${(err as Error).message}`,
         };
       }

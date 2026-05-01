@@ -1,5 +1,5 @@
 import type {
-  ProtocolDecision,
+  EngineDecision,
   NegotiationPhase,
   HumanInterventionMode,
   HybridModeConfig,
@@ -10,7 +10,7 @@ export interface InterventionResult {
   autoApproved: boolean;
   /** If not auto-approved, what the user needs to review */
   pendingReview?: {
-    decision: ProtocolDecision;
+    decision: EngineDecision;
     phase: NegotiationPhase;
     reason: string;
   };
@@ -28,7 +28,7 @@ const DEFAULT_HYBRID_CONFIG: HybridModeConfig = {
  * Determine if a decision needs human approval based on intervention mode.
  */
 export function checkIntervention(
-  decision: ProtocolDecision,
+  decision: EngineDecision,
   phase: NegotiationPhase,
   mode: HumanInterventionMode,
   hybridConfig?: HybridModeConfig,
@@ -87,9 +87,9 @@ export function checkIntervention(
  * Merges user overrides into the original decision.
  */
 export function applyHumanOverride(
-  original: ProtocolDecision,
-  override: Partial<ProtocolDecision>,
-): ProtocolDecision {
+  original: EngineDecision,
+  override: Partial<EngineDecision>,
+): EngineDecision {
   return {
     ...original,
     ...override,

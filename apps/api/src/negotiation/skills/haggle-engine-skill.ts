@@ -15,11 +15,9 @@ import {
   computeUtility,
   makeDecision,
   computeCounterOffer,
-  type NegotiationContext,
   type UtilityResult,
-  type DecisionAction,
 } from "@haggle/engine-core";
-import { assembleContext } from "@haggle/engine-session";
+import { assembleContext, buildTimeValueWindow } from "@haggle/engine-session";
 
 import type {
   SkillManifest,
@@ -32,7 +30,7 @@ import type {
   RoundFact,
   OpponentPattern,
   NegotiationPhase,
-  ProtocolDecision,
+  EngineDecision,
 } from "../types.js";
 
 const manifest: SkillManifest = {
@@ -55,29 +53,11 @@ const manifest: SkillManifest = {
 
 // ─── Time Constants ───────────────────────────────────────────────────
 
-/** Default max duration per category (ms) */
-const CATEGORY_MAX_DURATION: Record<string, number> = {
-  electronics: 7 * 24 * 60 * 60 * 1000,   // 7일
-  smartphones: 7 * 24 * 60 * 60 * 1000,   // 7일
-  laptops: 14 * 24 * 60 * 60 * 1000,      // 14일 (고가)
-  tablets: 7 * 24 * 60 * 60 * 1000,       // 7일
-  gaming: 7 * 24 * 60 * 60 * 1000,        // 7일
-  audio: 7 * 24 * 60 * 60 * 1000,         // 7일
-  sneakers: 3 * 24 * 60 * 60 * 1000,      // 3일 (hype items move fast)
-  default: 7 * 24 * 60 * 60 * 1000,       // 7일
-};
-
-/** Urgency → Faratin beta multiplier (lower beta = concede faster) */
-const URGENCY_BETA_MULTIPLIER: Record<string, number> = {
-  low: 1.3,      // 느긋 — 양보 매우 느림
-  normal: 1.0,   // 기본
-  high: 0.7,     // 급함 — 양보 빠름
-  urgent: 0.5,   // 매우 급함 — 빠른 양보 (0.4→0.5로 상향, 너무 빠르면 위험)
-};
+const DEFAULT_TIME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Floor protection ratio — urgency가 아무리 높아도
- * floor 기준 이 비율 이상은 양보하지 않음.
+ * Floor protection ratio — time pressure가 아무리 높아도
+ * absolute floor까지 바로 양보하지 않음.
  *
  * 예: floor=$500, FLOOR_PROTECTION=0.90
  *   buyer: 최대 $500 * 0.90 = $450까지 → 아니, floor 자체가 한계
@@ -87,38 +67,21 @@ const URGENCY_BETA_MULTIPLIER: Record<string, number> = {
  */
 const FLOOR_PROTECTION_RATIO = 0.90;
 
-/** Urgency → time pressure alpha amplifier (higher = steeper decay) */
-const URGENCY_ALPHA_AMPLIFIER: Record<string, number> = {
-  low: 0.8,
-  normal: 1.0,
-  high: 1.5,
-  urgent: 2.5,
-};
-
 // ─── Real-Time Elapsed ────────────────────────────────────────────────
 
 /**
- * Compute real-time t_elapsed ratio [0, 1].
- * Uses actual wall-clock time, not round count.
- *
- * t_elapsed = (now - session_created_at) / max_duration
- *
- * Urgency amplifies: "빨리 팔고 싶다" → effective max_duration shrinks.
+ * Compute the continuous time-value window.
+ * Uses actual wall-clock time and the listing/session deadline, not urgency labels.
  */
-function computeRealTimeElapsed(memory: CoreMemory, nowMs?: number): number {
+function computeTimeWindow(memory: CoreMemory, nowMs?: number) {
   const session = memory.session;
-  const now = nowMs ?? Date.now();
 
-  const createdAt = session.created_at_ms ?? now;
-  const maxDuration = session.max_duration_ms ?? CATEGORY_MAX_DURATION.default;
-  const urgency = session.urgency ?? "normal";
-
-  // Urgency shrinks effective deadline
-  const urgencyFactor = URGENCY_ALPHA_AMPLIFIER[urgency] ?? 1.0;
-  const effectiveMaxDuration = maxDuration / urgencyFactor;
-
-  const elapsed = now - createdAt;
-  return Math.min(1, Math.max(0, elapsed / effectiveMaxDuration));
+  return buildTimeValueWindow({
+    listedAtMs: session.created_at_ms,
+    deadlineAtMs: session.deadline_at_ms,
+    nowMs,
+    fallbackTotalMs: session.max_duration_ms ?? DEFAULT_TIME_WINDOW_MS,
+  });
 }
 
 // ─── Utility Helper ───────────────────────────────────────────────────
@@ -133,13 +96,13 @@ function compute4DUtility(memory: CoreMemory): UtilityResult | null {
     const strategy = (memory as unknown as Record<string, unknown>).strategy as unknown;
     if (!strategy) return null;
 
-    const tElapsed = computeRealTimeElapsed(memory);
+    const timeWindow = computeTimeWindow(memory);
 
     const roundData = {
       p_effective: boundaries.opponent_offer,
       r_score: 0.5, // default trust score without DB
       i_completeness: 1.0,
-      t_elapsed: tElapsed, // REAL time, not round ratio
+      t_elapsed: timeWindow.elapsedMs,
       n_success: 0,
       n_dispute_losses: 0,
     };
@@ -192,16 +155,12 @@ export class HaggleEngineSkill implements SkillRuntime {
     const { memory, recentFacts, opponentPattern, phase } = context;
     const { session, boundaries } = memory;
 
-    // Real-time elapsed for Faratin curve (not round-based)
-    const tElapsed = computeRealTimeElapsed(memory);
-
-    // Urgency adjusts concession speed
-    const urgency = session.urgency ?? "normal";
-    const urgencyBetaMul = URGENCY_BETA_MULTIPLIER[urgency] ?? 1.0;
+    // Real-time elapsed for Faratin curve (not round-based, no urgency labels)
+    const timeWindow = computeTimeWindow(memory);
     const baseBeta = deriveBeta(opponentPattern);
-    const adjustedBeta = baseBeta * urgencyBetaMul;
+    const adjustedBeta = baseBeta;
 
-    // Floor protection: even with urgency=urgent, never concede past 90% of range to floor
+    // Floor protection: even near deadline, never concede straight to the absolute floor
     // p_protected keeps a 10% buffer between the concession limit and the absolute floor
     const range = Math.abs(boundaries.my_target - boundaries.my_floor);
     const buffer = range * (1 - FLOOR_PROTECTION_RATIO);
@@ -212,8 +171,8 @@ export class HaggleEngineSkill implements SkillRuntime {
     const faratinPrice = computeCounterOffer({
       p_start: boundaries.my_target,
       p_limit: p_protected,  // protected floor, not raw floor
-      t: tElapsed,
-      T: 1,
+      t: timeWindow.elapsedMs,
+      T: timeWindow.totalMs,
       beta: adjustedBeta,
     });
 
@@ -237,7 +196,7 @@ export class HaggleEngineSkill implements SkillRuntime {
         recommendedPrice: Math.round(faratinPrice),
         suggestedTactic: "reciprocal_concession",
         observations: [
-          `Engine-core Faratin: $${(faratinPrice / 100).toFixed(2)} (beta=${adjustedBeta.toFixed(1)}, t_real=${tElapsed.toFixed(3)}, urgency=${urgency})`,
+          `Engine-core Faratin: $${(faratinPrice / 100).toFixed(2)} (beta=${adjustedBeta.toFixed(1)}, deadline_progress=${timeWindow.progress.toFixed(3)}, remaining_ms=${Math.round(timeWindow.remainingMs)})`,
           ...(engineAction ? [`Engine-core decision: ${engineAction}`] : []),
           ...(utility
             ? [
@@ -258,7 +217,7 @@ export class HaggleEngineSkill implements SkillRuntime {
     recentFacts: RoundFact[],
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision> {
+  ): Promise<EngineDecision> {
     const { session, boundaries } = memory;
 
     if (phase === "DISCOVERY") {
@@ -290,11 +249,9 @@ export class HaggleEngineSkill implements SkillRuntime {
       };
     }
 
-    // BARGAINING — Faratin curve with real time + urgency + floor protection
-    const tElapsed = computeRealTimeElapsed(memory);
-    const urgency = session.urgency ?? "normal";
-    const urgencyBetaMul = URGENCY_BETA_MULTIPLIER[urgency] ?? 1.0;
-    const beta = deriveBeta(opponentPattern) * urgencyBetaMul;
+    // BARGAINING — Faratin curve with real time + floor protection
+    const timeWindow = computeTimeWindow(memory);
+    const beta = deriveBeta(opponentPattern);
 
     // Floor protection: keep 10% buffer
     const range = Math.abs(boundaries.my_target - boundaries.my_floor);
@@ -306,8 +263,8 @@ export class HaggleEngineSkill implements SkillRuntime {
     const price = computeCounterOffer({
       p_start: boundaries.my_target,
       p_limit: p_protected,
-      t: tElapsed,
-      T: 1,
+      t: timeWindow.elapsedMs,
+      T: timeWindow.totalMs,
       beta,
     });
 
@@ -325,7 +282,7 @@ export class HaggleEngineSkill implements SkillRuntime {
     return {
       action: "COUNTER",
       price: Math.round(price),
-      reasoning: `Faratin curve counter at t_real=${tElapsed.toFixed(3)}, beta=${beta.toFixed(1)}, urgency=${urgency}.`,
+      reasoning: `Faratin curve counter at deadline_progress=${timeWindow.progress.toFixed(3)}, beta=${beta.toFixed(1)}.`,
       tactic_used: "reciprocal_concession",
     };
   }

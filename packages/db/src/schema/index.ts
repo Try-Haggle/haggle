@@ -44,6 +44,17 @@ export {
 export { sellerAttestationCommits } from "./seller-attestation-commits.js";
 export { hfmiPriceObservations } from "./hfmi-price-observations.js";
 export { hfmiModelCoefficients } from "./hfmi-model-coefficients.js";
+export {
+  conversationMarketSignals,
+  conversationSignalSources,
+  evermemoEvents,
+  evermemos,
+  memoryEligibilitySnapshots,
+  termIntelligenceEvidence,
+  termIntelligenceTerms,
+  userMemoryCards,
+  userMemoryEvents,
+} from "./intelligence-layer.js";
 export { tagPromotionRules, adminActionLog } from "./admin-ops.js";
 export { listingEmbeddings } from "./listing-embeddings.js";
 export { recommendationLogs } from "./recommendation-logs.js";

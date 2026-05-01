@@ -6,7 +6,7 @@ import type {
   RoundFact,
   OpponentPattern,
   NegotiationPhase,
-  ProtocolDecision,
+  EngineDecision,
 } from '../types.js';
 import { computeCounterOffer } from '@haggle/engine-core';
 import { ELECTRONICS_TERMS } from '../term/standard-terms.js';
@@ -56,7 +56,7 @@ export class DefaultEngineSkill implements NegotiationSkill {
     recentFacts: RoundFact[],
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision> {
+  ): Promise<EngineDecision> {
     // Rule-based fallback — used when LLM is unavailable or for non-BARGAINING phases
     const { session, boundaries } = memory;
 
@@ -125,7 +125,7 @@ export class DefaultEngineSkill implements NegotiationSkill {
     incomingOffer: { price: number; non_price_terms?: Record<string, unknown> },
     recentFacts: RoundFact[],
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision> {
+  ): Promise<EngineDecision> {
     const { boundaries, session } = memory;
 
     // Auto-accept if at or better than target

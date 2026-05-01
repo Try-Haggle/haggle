@@ -16,7 +16,7 @@ import type {
   RoundFact,
   OpponentPattern,
   NegotiationPhase,
-  ProtocolDecision,
+  EngineDecision,
   CategoryTerm,
 } from '../types.js';
 
@@ -165,7 +165,7 @@ export interface SkillRuntime {
     recentFacts: RoundFact[],
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision>;
+  ): Promise<EngineDecision>;
 }
 
 // ─── Skill Stack (session-level composition) ──────────────────────

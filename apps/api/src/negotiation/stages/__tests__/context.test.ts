@@ -111,6 +111,111 @@ describe('Stage 2: assembleStageContext', () => {
     expect(result.layers.L5_signals).toContain('87000');
   });
 
+  it('includes bounded conversation understanding signals', () => {
+    const memory = makeMemory();
+    const result = assembleStageContext(
+      {
+        understood: {
+          price_offer: 90000,
+          action_intent: 'QUESTION',
+          conditions: { battery_mentioned: true },
+          sentiment: 'neutral',
+          raw_text: 'What is the battery health?',
+          conversation_type: 'INFORMATION_REQUEST',
+          information_links: [
+            {
+              signal_type: 'term_preference',
+              entity_type: 'shipping',
+              key: 'term_preference:shipping',
+              value: 'shipping',
+              confidence: 0.78,
+              connects_to: 'terms',
+            },
+          ],
+          missing_information: [
+            {
+              slot: 'battery_health',
+              priority: 'medium',
+              reason: 'Battery was mentioned without a concrete health percentage.',
+              question: 'What is the battery health percentage?',
+            },
+          ],
+        },
+        memory,
+        facts: [],
+        opponent: defaultOpponent,
+        skill,
+      },
+      adapter,
+      'codec',
+    );
+
+    expect(result.layers.L5_signals).toContain('UTYPE:INFORMATION_REQUEST|intent:QUESTION');
+    expect(result.layers.L5_signals).toContain('ULINK:terms:shipping=shipping|conf:0.78');
+    expect(result.layers.L5_signals).toContain('UNEED:medium:battery_health');
+  });
+
+  it('includes user memory brief as bounded non-authoritative L5 signals', () => {
+    const memory = makeMemory();
+    const result = assembleStageContext(
+      {
+        understood: { price_offer: 90000, action_intent: 'OFFER', conditions: {}, sentiment: 'neutral', raw_text: '' },
+        memory,
+        facts: [],
+        opponent: defaultOpponent,
+        skill,
+        memory_brief: {
+          userId: 'user-1',
+          items: [
+            {
+              cardType: 'pricing',
+              memoryKey: 'price_resistance:ceiling:ceiling_70000',
+              summary: 'buyer pricing boundary: ceiling_70000',
+              strength: 0.65,
+              memory: { normalizedValue: 'ceiling_70000' },
+              evidenceRefs: ['round-1:incoming#3-14'],
+            },
+          ],
+        },
+      },
+      adapter,
+      'codec',
+    );
+
+    expect(result.layers.L5_signals).toContain('USER_MEMORY_HINTS:non_authoritative');
+    expect(result.layers.L5_signals).toContain('MEM:pricing:ceiling_70000|strength:0.65');
+    expect(result.layers.L5_signals).not.toContain('buyer pricing boundary');
+  });
+
+  it('includes EverOS memories as bounded non-authoritative L5 signals', () => {
+    const memory = makeMemory();
+    const result = assembleStageContext(
+      {
+        understood: { price_offer: 90000, action_intent: 'OFFER', conditions: {}, sentiment: 'neutral', raw_text: '' },
+        memory,
+        facts: [],
+        opponent: defaultOpponent,
+        skill,
+        evermemo_brief: {
+          userId: 'user-1',
+          provider: 'everos',
+          items: [
+            {
+              source: 'everos_profile',
+              summary: 'Prefers safe checkout and unlocked iPhones',
+              score: 0.82,
+            },
+          ],
+        },
+      },
+      adapter,
+      'codec',
+    );
+
+    expect(result.layers.L5_signals).toContain('EVEROS_MEMORY_HINTS:non_authoritative');
+    expect(result.layers.L5_signals).toContain('EVEROS:everos_profile:Prefers safe checkout and unlocked iPhones|score:0.82');
+  });
+
   it('uses codec encoding for memo snapshot', () => {
     const memory = makeMemory();
     const result = assembleStageContext(

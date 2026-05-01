@@ -5,8 +5,8 @@
  * based on NEGOTIATION_ENGINE and NEGOTIATION_PIPELINE env vars.
  *
  * NEGOTIATION_ENGINE=rule → rule-based (engine-session)
- * NEGOTIATION_ENGINE=llm + NEGOTIATION_PIPELINE=legacy → legacy LLM executor (default)
- * NEGOTIATION_ENGINE=llm + NEGOTIATION_PIPELINE=staged → new 6-Stage pipeline
+ * NEGOTIATION_ENGINE=llm + NEGOTIATION_PIPELINE=staged → new 6-Stage pipeline (default)
+ * NEGOTIATION_ENGINE=llm + NEGOTIATION_PIPELINE=legacy → legacy LLM executor
  */
 
 import type { Database } from "@haggle/db";
@@ -26,12 +26,12 @@ export type RoundExecutor = (
 export type PipelineMode = 'legacy' | 'staged';
 
 /**
- * Get NEGOTIATION_PIPELINE env (default: legacy).
+ * Get NEGOTIATION_PIPELINE env (default: staged).
  */
 export function getPipelineMode(): PipelineMode {
   const mode = process.env.NEGOTIATION_PIPELINE;
-  if (mode === 'staged') return 'staged';
-  return 'legacy';
+  if (mode === 'legacy') return 'legacy';
+  return 'staged';
 }
 
 /**

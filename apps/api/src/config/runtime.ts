@@ -49,6 +49,9 @@ export function getRuntimeConfig(): RuntimeConfig {
 
   if (isProduction) {
     readRequiredEnv("SUPABASE_JWT_SECRET");
+    if (process.env.HNP_REQUIRE_SIGNATURE?.trim().toLowerCase() !== "false") {
+      readRequiredEnv("HNP_TRUSTED_JWKS");
+    }
   }
 
   return {

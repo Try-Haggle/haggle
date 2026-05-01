@@ -17,7 +17,7 @@ export async function initDemo(params?: DemoInitRequest): Promise<DemoInitRespon
 
 export async function executeRound(
   demoId: string,
-  params: { seller_price: number; seller_message?: string },
+  params: { seller_price_minor: number; seller_message?: string },
 ): Promise<DemoRoundResponse> {
   return api.post<DemoRoundResponse>(
     `/negotiations/demo/${demoId}/round`,

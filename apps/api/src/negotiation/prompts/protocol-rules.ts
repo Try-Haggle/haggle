@@ -1,7 +1,7 @@
-import type { NegotiationPhase, ProtocolDecision } from '../types.js';
+import type { NegotiationPhase, EngineDecision } from '../types.js';
 
 export const NEGOTIATION_PROTOCOL_RULES = `
-You are a negotiation agent within the Haggle protocol.
+You are a negotiation agent within the Haggle negotiation engine.
 
 ## PHASES
 - DISCOVERY: Explore the item, ask questions, identify conditions. No price offers.
@@ -22,13 +22,13 @@ You are a negotiation agent within the Haggle protocol.
 5. Non-price terms must be explicitly tracked
 
 ## OUTPUT FORMAT
-Respond ONLY with valid JSON matching ProtocolDecision schema:
+Respond ONLY with valid JSON matching EngineDecision schema:
 { "action": "...", "price": ..., "reasoning": "...", "non_price_terms": {...}, "tactic_used": "..." }
 Do NOT include a "message" field. Message generation is handled separately.
 `;
 
 /** Phase별 허용 action */
-export const PHASE_ALLOWED_ACTIONS: Record<NegotiationPhase, ProtocolDecision['action'][]> = {
+export const PHASE_ALLOWED_ACTIONS: Record<NegotiationPhase, EngineDecision['action'][]> = {
   DISCOVERY: ['DISCOVER'],
   OPENING: ['COUNTER'],
   BARGAINING: ['COUNTER', 'ACCEPT', 'REJECT', 'HOLD'],

@@ -8,6 +8,7 @@ import {
   type AncientBeingId,
   type Expression,
 } from "./negotiation-avatar-coach";
+import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
 
 type DemoState =
   | "IDLE"
@@ -29,20 +30,42 @@ type ConversationTurn = {
   detail: Record<string, unknown>;
 };
 
+type IntelligenceSignal = {
+  type: string;
+  value: string;
+  confidence: "high" | "medium" | "low";
+  destination: string;
+};
+
+type IntelligenceSnapshot = {
+  signals: IntelligenceSignal[];
+  memoryWrites: string[];
+  tagTermUpdates: string[];
+  marketObservation: string;
+  nextContext: string[];
+};
+
 type AutoTradeShowcaseProps = {
   demoState: DemoState;
   initResponse: DemoInitResponse | null;
   rounds: DemoRoundResponse[];
   buyerAncientId: AncientBeingId;
   sellerAncientId: AncientBeingId;
+  listing: AdvisorListing | null;
+  buyerMemory: AdvisorMemory | null;
   autoTradeRunning: boolean;
+  startBlockedReason?: string | null;
   onRunAutoTrade: () => void;
   onReset: () => void;
 };
 
-function price(v: number | undefined): string {
+function formatMinor(v: number | undefined): string {
   if (v === undefined) return "-";
-  return v > 1000 ? `$${(v / 100).toFixed(0)}` : `$${v}`;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: v % 100 === 0 ? 0 : 2,
+  }).format(v / 100);
 }
 
 function normalizeCurrencyText(message: string): string {
@@ -50,12 +73,12 @@ function normalizeCurrencyText(message: string): string {
     .replace(/(\d[\d,]*)원/g, (match) => {
       const minorUnits = Number(match.replace(/[^0-9]/g, ""));
       if (!Number.isFinite(minorUnits) || minorUnits < 1000) return match;
-      return `$${Math.round(minorUnits / 100).toLocaleString()}`;
+      return formatMinor(minorUnits);
     })
-    .replace(/\b([1-9]\d{4,5})\b/g, (match) => {
+    .replace(/(?<!\$)\b([1-9]\d{4,5})\b/g, (match) => {
       const minorUnits = Number(match);
       if (!Number.isFinite(minorUnits)) return match;
-      return `$${Math.round(minorUnits / 100).toLocaleString()}`;
+      return formatMinor(minorUnits);
     });
 }
 
@@ -125,8 +148,12 @@ function getBeing(id: AncientBeingId): AncientBeing {
   return ANCIENT_BEINGS.find((being) => being.id === id) ?? ANCIENT_BEINGS[0];
 }
 
+function getSelectionImage(being: AncientBeing): string {
+  return being.selectionImage ?? being.expressions?.curious ?? being.image;
+}
+
 function getExpressionImage(being: AncientBeing, expression: Expression): string {
-  return being.expressions?.[expression] ?? being.image;
+  return being.expressions?.[expression] ?? getSelectionImage(being);
 }
 
 function getBuyerExpression(rounds: DemoRoundResponse[]): Expression {
@@ -143,19 +170,6 @@ function getBuyerExpression(rounds: DemoRoundResponse[]): Expression {
   return "thinking";
 }
 
-function getSellerExpression(rounds: DemoRoundResponse[]): Expression {
-  const latest = rounds[rounds.length - 1];
-
-  if (!latest) return "calm";
-  if (latest.state.done || latest.final.decision.action === "ACCEPT") return "success";
-  if (latest.final.decision.action === "REJECT") return "frustrated";
-  if (latest.state.gap <= 4000) return "nearDeal";
-  if (latest.round >= 2 && latest.state.gap <= 10000) return "confident";
-  if (!latest.final.validation.hard_passed) return "alert";
-
-  return "thinking";
-}
-
 function getSellerTurnExpression(round: DemoRoundResponse): Expression {
   if (round.state.done || round.final.decision.action === "ACCEPT") return "success";
   if (round.final.decision.action === "REJECT") return "frustrated";
@@ -166,22 +180,104 @@ function getSellerTurnExpression(round: DemoRoundResponse): Expression {
   return "thinking";
 }
 
-function buildSellerMessage(round: DemoRoundResponse): string {
-  const sellerPrice = price(round.state.seller_price);
+type SellerVoiceMessageInput = {
+  priceMinor: number;
+  roundIndex: number;
+  listingTitle: string;
+  baseMessage?: string;
+  finalAccept?: boolean;
+};
 
-  if (round.final.decision.action === "ACCEPT") {
-    return `${sellerPrice}이면 진행하겠습니다. 이 가격으로 확정해 주세요.`;
+export function buildSellerVoiceMessage(
+  agentId: AncientBeingId,
+  { priceMinor, roundIndex, listingTitle, baseMessage, finalAccept = false }: SellerVoiceMessageInput,
+): string {
+  const price = formatMinor(priceMinor);
+
+  if (finalAccept) {
+    switch (agentId) {
+      case "fab":
+        return `${price}. 맞았습니다. 이 구조로 고정하죠.`;
+      case "vel":
+        return `${price}이면 욕심과 시장가가 만나는 지점이네요. 그 조건으로 넘기겠습니다.`;
+      case "judge":
+        return `${price}은 허용 범위 안입니다. 이 가격으로 확정하겠습니다.`;
+      case "hark":
+        return `${price}. 조건 통과. 진행합니다.`;
+      case "mia":
+        return `${price}이면 서로 편하게 마무리할 수 있겠어요. 진행하겠습니다.`;
+      case "dealer_kai":
+        return `Okay, ${price}이면 신호가 맞네요. 그 가격으로 진행할게요.`;
+      case "dealer_hana":
+        return `좋아요, ${price}이면 바로 진행할게요!`;
+      case "buddy_fizz":
+        return `${price}, 신호 왔어. 진행하자.`;
+      default:
+        return `${price}이면 진행하겠습니다. 이 가격으로 확정해 주세요.`;
+    }
   }
 
-  if (round.round === 1) {
-    return `${sellerPrice}에 올렸습니다. 상태가 좋아서 너무 낮은 가격은 어렵습니다.`;
+  switch (agentId) {
+    case "fab":
+      return roundIndex === 0
+        ? `${price}에 올렸습니다. ${listingTitle}, 구조는 괜찮고 약한 부분은 크지 않습니다.`
+        : `${price}. 더 깎으면 이음새가 벌어집니다. 이 선에서 맞춰보죠.`;
+    case "vel":
+      return roundIndex === 0
+        ? `${listingTitle}는 ${price}에 두고 있습니다. 가격에는 상태와 시간이 같이 얹혀 있어요.`
+        : `${price}까지 내려오겠습니다. 더 낮추면 이 물건의 무게가 조금 사라집니다.`;
+    case "judge":
+      return roundIndex === 0
+        ? `등록가는 ${price}입니다. 상태와 현재 기준을 보면 큰 편차는 없습니다.`
+        : `${price}로 조정합니다. 이 아래는 제 기준 범위를 벗어납니다.`;
+    case "hark":
+      return roundIndex === 0
+        ? `${price}. 이 가격이 기준입니다. 상태 설명 기준으로 협상합니다.`
+        : `${price}. 여기까지입니다. 조건이 맞으면 진행합니다.`;
+    case "mia":
+      return roundIndex === 0
+        ? `${price}에 올려두었습니다. 상태는 설명한 그대로라 천천히 확인해 주세요.`
+        : `${price}까지는 맞춰볼게요. 서로 부담 없는 선이면 좋겠습니다.`;
+    case "dealer_kai":
+      return roundIndex === 0
+        ? `Okay, ${price}에 올렸어요. 상태 신호가 좋아서 너무 낮게 리셋하긴 어렵습니다.`
+        : `Wait, wait- ${price}까지는 조정할 수 있어요. 그 아래는 신호가 좀 안 맞아요.`;
+    case "dealer_hana":
+      return roundIndex === 0
+        ? `헐, ${price}에 올려뒀어요! 상태 괜찮아서 너무 낮게는 어려워요.`
+        : `잠깐 잠깐, ${price}까지는 맞춰볼 수 있어요. 이 정도면 꽤 괜찮지 않나요?`;
+    case "buddy_fizz":
+      return roundIndex === 0
+        ? `${price}! 등록 신호는 여기야.`
+        : `${price}까지 내려왔어. 이 신호면 가능해.`;
+    default:
+      return baseMessage ?? `${price}로 다시 제안드립니다. 배송과 기기 상태는 설명드린 내용 그대로입니다.`;
   }
+}
 
-  if (round.state.gap <= 4000) {
-    return `${sellerPrice}까지는 맞춰볼 수 있습니다. 마지막 조건만 확인하고 싶습니다.`;
+function buildSellerListingIntro(agentId: AncientBeingId, listing: AdvisorListing): string {
+  const price = formatMinor(listing.askPriceMinor);
+
+  switch (agentId) {
+    case "fab":
+      return `${listing.title}. ${price}에 올렸습니다. 먼저 구조와 상태를 보죠.`;
+    case "vel":
+      return `${listing.title}를 ${price}에 두었습니다. 원하는 지점과 맞는지 천천히 보세요.`;
+    case "judge":
+      return `${listing.title}. 등록 기준가는 ${price}입니다. 상태와 가격 조건을 확인해 주세요.`;
+    case "hark":
+      return `${listing.title}. 기준가는 ${price}. 상태와 보호 조건부터 확인합니다.`;
+    case "mia":
+      return `${listing.title}를 ${price}에 올려두었습니다. 편하게 상태부터 확인해 주세요.`;
+    case "dealer_kai":
+      return `Okay, ${listing.title}는 ${price}에 올렸어요. 상태 신호부터 같이 볼까요?`;
+    case "dealer_hana":
+      return `헐, ${listing.title} 찾으셨군요! ${price}에 올려뒀고 상태도 같이 확인해 주세요.`;
+    case "buddy_fizz":
+      return `${listing.title}, ${price}! 먼저 신호 확인하자.`;
+    default:
+      return `${listing.title}를 판매 중입니다. 상태와 가격 조건을 확인해 주세요.`;
   }
-
-  return `${sellerPrice}로 다시 제안드립니다. 배송과 기기 상태는 설명드린 내용 그대로입니다.`;
 }
 
 function buildBuyerMessage(round: DemoRoundResponse): string {
@@ -214,8 +310,11 @@ function buildConversation(
   rounds: DemoRoundResponse[],
   buyerAgent: AncientBeing,
   sellerAgent: AncientBeing,
+  listing: AdvisorListing,
+  buyerMemory: AdvisorMemory | null,
 ): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
+  const hilMemory = initResponse?.hil_memory;
 
   if (initResponse) {
     turns.push({
@@ -223,20 +322,32 @@ function buildConversation(
       side: "seller",
       label: "판매자 에이전트",
       agent: sellerAgent,
-      avatar: sellerAgent.image,
-      price: 920,
-      message: "iPhone 15 Pro 256GB를 판매 중입니다. 상태와 가격 조건을 확인해 주세요.",
+      avatar: getSelectionImage(sellerAgent),
+      price: listing.askPriceMinor,
+      message: buildSellerListingIntro(sellerAgent.id, listing),
       detail: {
         type: "listing",
-        item: "iPhone 15 Pro 256GB Natural Titanium",
-        seller_ask: "$920",
-        buyer_target: price(initResponse.strategy.target_price),
-        buyer_max_budget: price(initResponse.strategy.floor_price),
+        item: listing.title,
+        condition: listing.condition,
+        seller_ask: formatMinor(listing.askPriceMinor),
+        buyer_target: formatMinor(initResponse.strategy.target_price),
+        buyer_max_budget: formatMinor(initResponse.strategy.floor_price),
+        advisor_memory: buyerMemory
+          ? {
+              category_interest: buyerMemory.categoryInterest,
+              must_have: buyerMemory.mustHave,
+              avoid: buyerMemory.avoid,
+              risk_style: buyerMemory.riskStyle,
+              opening_tactic: buyerMemory.openingTactic,
+            }
+          : null,
         seller_agent: sellerAgent.name,
         seller_agent_type: sellerAgent.kind,
         negotiation_style: initResponse.strategy.negotiation_style,
         opening_tactic: initResponse.strategy.opening_tactic,
         key_concerns: initResponse.strategy.key_concerns,
+        hil_memory_applied: hilMemory?.applied ?? false,
+        hil_memory_cards: hilMemory?.cards.map((card) => card.summary) ?? [],
       },
     });
   }
@@ -252,15 +363,22 @@ function buildConversation(
       avatar: getExpressionImage(sellerAgent, getSellerTurnExpression(round)),
       round: round.round,
       price: round.state.seller_price,
-      message: buildSellerMessage(round),
+      message: buildSellerVoiceMessage(sellerAgent.id, {
+        priceMinor: round.state.seller_price,
+        roundIndex: index,
+        listingTitle: listing.title,
+        baseMessage: listing.sellerTurns[index]?.seller_message,
+        finalAccept: round.final.decision.action === "ACCEPT" || round.state.done,
+      }),
       detail: {
         type: "seller_offer",
         round: round.round,
         phase: getSellerTurnPhase(rounds, index),
-        seller_price: price(round.state.seller_price),
+        item: listing.title,
+        seller_price: formatMinor(round.state.seller_price),
         seller_agent: sellerAgent.name,
         seller_agent_type: sellerAgent.kind,
-        gap_to_previous_buyer_offer: price(sellerTurnGap),
+        gap_to_previous_buyer_offer: formatMinor(sellerTurnGap),
         gap_percent: getSellerTurnGapPercent(sellerTurnGap, round.state.seller_price),
       },
     });
@@ -279,18 +397,32 @@ function buildConversation(
         type: "buyer_decision",
         round: round.round,
         phase: round.phase,
+        item: listing.title,
         action: round.final.decision.action,
-        counter_price: price(round.final.decision.price),
+        counter_price: formatMinor(round.final.decision.price),
         tactic_used: round.final.decision.tactic_used,
+        advisor_memory_used: hilMemory?.applied
+          ? {
+              source: "user_memory_cards",
+              user_id: hilMemory.user_id,
+              cards: hilMemory.cards.map((card) => ({
+                type: card.card_type,
+                key: card.memory_key,
+                summary: card.summary,
+                strength: card.strength,
+              })),
+              signals: hilMemory.signals,
+            }
+          : null,
         buyer_agent: buyerAgent.name,
         buyer_agent_type: buyerAgent.kind,
         reasoning: normalizeCurrencyText(round.final.decision.reasoning),
         non_price_terms: humanizeNonPriceTerms(round.final.decision.non_price_terms),
         safety: buildSafetyDetail(round),
         state: {
-          buyer_price: price(round.state.buyer_price),
-          seller_price: price(round.state.seller_price),
-          gap: price(round.state.gap),
+          buyer_price: formatMinor(round.state.buyer_price),
+          seller_price: formatMinor(round.state.seller_price),
+          gap: formatMinor(round.state.gap),
           gap_percent: round.state.gap_pct,
           done: round.state.done,
         },
@@ -308,11 +440,141 @@ function buildConversation(
   return turns;
 }
 
+function getDetailString(detail: Record<string, unknown>, key: string): string | undefined {
+  const value = detail[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function hasNonPriceTerms(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
+}
+
+function buildIntelligenceSnapshot(turn: ConversationTurn): IntelligenceSnapshot {
+  const detail = turn.detail;
+  const type = getDetailString(detail, "type") ?? "conversation_turn";
+  const phase = getDetailString(detail, "phase") ?? "OPENING";
+  const item = getDetailString(detail, "item") ?? "selected listing";
+  const priceText = turn.price !== undefined ? formatMinor(turn.price) : getDetailString(detail, "seller_ask") ?? "-";
+  const signals: IntelligenceSignal[] = [
+    {
+      type: "product_identity",
+      value: item,
+      confidence: "high",
+      destination: "Tag Garden / HFMI",
+    },
+  ];
+
+  if (type === "listing") {
+    signals.push(
+      {
+        type: "condition_claim",
+        value: getDetailString(detail, "condition") ?? "listing condition available",
+        confidence: "high",
+        destination: "Term Intelligence",
+      },
+      {
+        type: "price_anchor",
+        value: `seller ask ${getDetailString(detail, "seller_ask") ?? "$920"}`,
+        confidence: "high",
+        destination: "Market Observation",
+      },
+    );
+  }
+
+  if (type === "seller_offer") {
+    signals.push(
+      {
+        type: "price_anchor",
+        value: `seller counter ${priceText}`,
+        confidence: "high",
+        destination: "HFMI offer curve",
+      },
+      {
+        type: "seller_resistance",
+        value: `gap to prior buyer offer ${getDetailString(detail, "gap_to_previous_buyer_offer") ?? "-"}`,
+        confidence: "medium",
+        destination: "Opponent Model",
+      },
+    );
+  }
+
+  if (type === "buyer_decision") {
+    const action = getDetailString(detail, "action") ?? "COUNTER";
+    const tactic = getDetailString(detail, "tactic_used") ?? "unknown";
+    signals.push(
+      {
+        type: "buyer_intent",
+        value: `${action.toLowerCase()} at ${getDetailString(detail, "counter_price") ?? priceText}`,
+        confidence: "high",
+        destination: "Memory Card",
+      },
+      {
+        type: "negotiation_tactic",
+        value: tactic,
+        confidence: "high",
+        destination: "Strategy Performance",
+      },
+    );
+
+    if (hasNonPriceTerms(detail.non_price_terms)) {
+      signals.push({
+        type: "term_preference",
+        value: "non-price terms present",
+        confidence: "medium",
+        destination: "Term Intelligence",
+      });
+    }
+
+    if (detail.advisor_memory_used || detail.hil_memory_applied) {
+      signals.push({
+        type: "memory_applied",
+        value: "user_memory_cards retrieved for negotiation context",
+        confidence: "high",
+        destination: "Negotiation Context",
+      });
+    }
+  }
+
+  return {
+    signals,
+    memoryWrites:
+      turn.side === "buyer"
+        ? [
+            `buyer prefers this category around ${priceText}`,
+            `agent voice used: ${turn.agent.name} / ${turn.agent.role}`,
+            `phase context saved: ${phase}`,
+          ]
+        : [
+            `seller price posture observed at ${priceText}`,
+            `seller communication style: ${turn.agent.name} / ${turn.agent.role}`,
+            `phase context saved: ${phase}`,
+          ],
+    tagTermUpdates: [
+      item.toLowerCase().includes("iphone")
+        ? "tag match: electronics/phones/iphone"
+        : "tag match: electronics/uncategorized",
+      "term match: battery_health, carrier_unlock, screen_condition",
+      type === "listing" ? "no missing tag candidate" : "append evidence to active negotiation terms",
+    ],
+    marketObservation:
+      type === "buyer_decision"
+        ? `Buyer ${getDetailString(detail, "action") ?? "decision"} recorded at ${getDetailString(detail, "counter_price") ?? priceText}.`
+        : `${turn.side === "seller" ? "Seller" : "Buyer"} observable price point recorded at ${priceText}.`,
+    nextContext: [
+      "Stage 2 receives a smaller memory brief next round.",
+      "HFMI sees offer/counter/resistance, not just final sale price.",
+      "Tag/Term knowledge improves when the same evidence repeats.",
+    ],
+  };
+}
+
 function DetailPanel({ turn }: { turn: ConversationTurn | null }) {
+  const intelligence = turn ? buildIntelligenceSnapshot(turn) : null;
+
   return (
     <div className="min-h-[280px] rounded-xl border border-slate-700 bg-slate-950/70 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-white">구조화된 내용</h3>
+        <h3 className="text-sm font-semibold text-white">Haggle Intelligence Layer</h3>
         {turn?.round && (
           <span className="rounded-md bg-slate-800 px-2 py-1 text-[10px] font-mono text-slate-400">
             round {turn.round}
@@ -320,12 +582,79 @@ function DetailPanel({ turn }: { turn: ConversationTurn | null }) {
         )}
       </div>
       {turn ? (
-        <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900/80 p-3 text-[11px] leading-5 text-slate-300">
-          {JSON.stringify(turn.detail, null, 2)}
-        </pre>
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-1 text-center text-[10px] font-semibold text-slate-400">
+            <span className="rounded bg-cyan-500/10 px-2 py-1 text-cyan-200">Signal</span>
+            <span className="rounded bg-violet-500/10 px-2 py-1 text-violet-200">Memory</span>
+            <span className="rounded bg-amber-500/10 px-2 py-1 text-amber-200">Tag/Term</span>
+            <span className="rounded bg-emerald-500/10 px-2 py-1 text-emerald-200">Market</span>
+          </div>
+
+          <div className="rounded-lg border border-cyan-500/15 bg-cyan-500/5 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-200">
+              Extracted Signals
+            </p>
+            <div className="space-y-2">
+              {intelligence?.signals.map((signal) => (
+                <div key={`${signal.type}-${signal.value}`} className="rounded-md bg-slate-900/70 p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-cyan-200">
+                      {signal.type}
+                    </span>
+                    <span className="text-xs font-medium text-white">{signal.value}</span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    confidence: {signal.confidence} · destination: {signal.destination}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-violet-500/15 bg-violet-500/5 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-200">
+                Memory Writes
+              </p>
+              <ul className="space-y-1 text-xs text-slate-300">
+                {intelligence?.memoryWrites.map((item) => <li key={item}>• {item}</li>)}
+              </ul>
+            </div>
+            <div className="rounded-lg border border-amber-500/15 bg-amber-500/5 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-200">
+                Tag / Term Sync
+              </p>
+              <ul className="space-y-1 text-xs text-slate-300">
+                {intelligence?.tagTermUpdates.map((item) => <li key={item}>• {item}</li>)}
+              </ul>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+              Market Observation
+            </p>
+            <p className="text-xs text-slate-300">{intelligence?.marketObservation}</p>
+            <div className="mt-2 border-t border-emerald-500/10 pt-2">
+              <p className="mb-1 text-[10px] font-semibold text-slate-500">Next context impact</p>
+              <ul className="space-y-1 text-[11px] text-slate-400">
+                {intelligence?.nextContext.map((item) => <li key={item}>→ {item}</li>)}
+              </ul>
+            </div>
+          </div>
+
+          <details className="rounded-lg border border-slate-800 bg-slate-900/50">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-300">
+              원본 구조화 JSON
+            </summary>
+            <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap break-words border-t border-slate-800 p-3 text-[11px] leading-5 text-slate-300">
+              {JSON.stringify(turn.detail, null, 2)}
+            </pre>
+          </details>
+        </div>
       ) : (
         <div className="flex min-h-[210px] items-center justify-center rounded-lg border border-dashed border-slate-800 text-center text-sm text-slate-500">
-          대화 말풍선을 선택하면 가격, 전술, 검증, 파이프라인 출력을 확인할 수 있습니다.
+          대화 말풍선을 선택하면 Signal, Memory, Tag/Term, Market Observation으로 어떻게 쌓이는지 확인할 수 있습니다.
         </div>
       )}
     </div>
@@ -354,7 +683,7 @@ function AgentPanel({
     <div className={`rounded-xl border p-3 ${toneClasses}`}>
       <div className="flex items-center gap-3">
         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-slate-950">
-          <img src={avatar} alt="" className="h-full w-full object-contain" />
+          <img src={avatar} alt="" className="h-full w-full object-cover object-top" />
         </div>
         <div className="min-w-0">
           <p className="text-[11px] font-medium opacity-80">{label}</p>
@@ -376,26 +705,34 @@ export function AutoTradeShowcase({
   rounds,
   buyerAncientId,
   sellerAncientId,
+  listing,
+  buyerMemory,
   autoTradeRunning,
+  startBlockedReason,
   onRunAutoTrade,
   onReset,
 }: AutoTradeShowcaseProps) {
   const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
   const buyerAgent = getBeing(buyerAncientId);
   const sellerAgent = getBeing(sellerAncientId);
-  const buyerExpression = getBuyerExpression(rounds);
-  const sellerExpression = getSellerExpression(rounds);
-  const buyerAvatar = getExpressionImage(buyerAgent, buyerExpression);
-  const sellerAvatar = getExpressionImage(sellerAgent, sellerExpression);
-  const sellerPrice = rounds[rounds.length - 1]?.state.seller_price ?? initResponse?.strategy.floor_price;
+  const activeListing = listing;
+  const buyerAvatar = getSelectionImage(buyerAgent);
+  const sellerAvatar = getSelectionImage(sellerAgent);
+  const sellerPrice = rounds[rounds.length - 1]?.state.seller_price ?? activeListing?.askPriceMinor;
   const buyerPrice = rounds[rounds.length - 1]?.final.decision.price ?? initResponse?.strategy.target_price;
   const turns = useMemo(
-    () => buildConversation(initResponse, rounds, buyerAgent, sellerAgent),
-    [initResponse, rounds, buyerAgent, sellerAgent],
+    () => activeListing
+      ? buildConversation(initResponse, rounds, buyerAgent, sellerAgent, activeListing, buyerMemory)
+      : [],
+    [initResponse, rounds, buyerAgent, sellerAgent, activeListing, buyerMemory],
   );
   const selectedTurn = turns.find((turn) => turn.id === selectedTurnId) ?? turns[turns.length - 1] ?? null;
   const running = autoTradeRunning || demoState === "INITIALIZING" || demoState === "ROUND_RUNNING";
   const done = demoState === "SESSION_DONE" || rounds.some((round) => round.state.done);
+  const visibleBlockedReason = !activeListing
+    ? "등록 상품 카드 하나를 먼저 눌러 협상 대상을 선택하세요."
+    : startBlockedReason;
+  const startDisabled = running || Boolean(visibleBlockedReason);
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-700 bg-slate-900/60 p-4 shadow-xl shadow-slate-950/30 sm:p-5">
@@ -409,12 +746,12 @@ export function AutoTradeShowcase({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={onRunAutoTrade}
-            disabled={running}
+            onClick={() => onRunAutoTrade()}
+            disabled={startDisabled}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span aria-hidden="true">{running ? "…" : "▶"}</span>
-            {running ? "자동 거래 실행 중" : "자동 거래 실행"}
+            {running ? "협상 진행 중" : "협상 시작"}
           </button>
           {(initResponse || rounds.length > 0) && (
             <button
@@ -429,20 +766,25 @@ export function AutoTradeShowcase({
           )}
         </div>
       </div>
+      {visibleBlockedReason && !running && (
+        <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
+          {visibleBlockedReason}
+        </div>
+      )}
 
       <div className="mb-4 grid gap-3 lg:grid-cols-2">
         <AgentPanel
           label="구매자 에이전트"
           agent={buyerAgent}
           avatar={buyerAvatar}
-          priceLabel={price(buyerPrice)}
+          priceLabel={formatMinor(buyerPrice)}
           tone="cyan"
         />
         <AgentPanel
           label="판매자 에이전트"
           agent={sellerAgent}
           avatar={sellerAvatar}
-          priceLabel={price(sellerPrice)}
+          priceLabel={formatMinor(sellerPrice)}
           tone="amber"
         />
       </div>
@@ -452,10 +794,10 @@ export function AutoTradeShowcase({
           <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <p className="text-sm font-semibold text-white">
-                iPhone 15 Pro 256GB Natural Titanium
+                {activeListing?.title ?? "실제 DB 상품을 선택하세요"}
               </p>
               <p className="text-xs text-slate-400">
-                battery 92%, screen mint, T-Mobile unlocked
+                {activeListing?.condition ?? "상담 후 등록된 DB 상품을 누르면 이 영역에 협상 대상이 표시됩니다."}
               </p>
             </div>
             <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${
@@ -468,7 +810,7 @@ export function AutoTradeShowcase({
           <div className="space-y-3">
             {turns.length === 0 && (
               <div className="rounded-lg border border-dashed border-slate-800 p-5 text-center text-sm text-slate-500">
-                자동 거래를 실행하면 판매자와 구매자 에이전트가 번갈아 협상하는 모습을 볼 수 있습니다.
+                상담에서 만든 메모리와 선택한 상품으로 자동 거래를 실행할 수 있습니다.
               </div>
             )}
 
@@ -488,7 +830,7 @@ export function AutoTradeShowcase({
                   } ${isBuyer ? "flex-row" : "flex-row-reverse"}`}
                 >
                   <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-slate-950">
-                    <img src={turn.avatar} alt="" className="h-full w-full object-contain" />
+                    <img src={turn.avatar} alt="" className="h-full w-full object-cover object-top" />
                   </span>
                   <span className={`min-w-0 flex-1 ${isBuyer ? "" : "text-right"}`}>
                     <span className="mb-1 flex flex-wrap items-center gap-2">
@@ -500,7 +842,7 @@ export function AutoTradeShowcase({
                       )}
                       {turn.price !== undefined && (
                         <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-cyan-200">
-                          {price(turn.price)}
+                          {formatMinor(turn.price)}
                         </span>
                       )}
                     </span>

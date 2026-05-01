@@ -24,6 +24,7 @@
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| v2.4.0 | 2026-04-25 | **HIL Memory + 비용/시도 정책 정렬**: 사용자 대화 메모리(`user_memory_cards`)를 Stage 0 전략/Term 분석 및 라운드 컨텍스트에 주입. 브라우저 타임존 기반 deadline 저장, minor-unit 금액 규칙, `urgency` enum 대신 남은 시간+양보 곡선 원칙 명시. 현재 Demo Stage 5는 LLM이 아니라 structured renderer가 담당하므로 라운드당 LLM 호출을 2회로 정정. Live E2E 실측 비용과 `1 HC = $0.001`, 무료 5 attempts/day + 10 rounds/session 정책 반영. |
 | v2.3.0 | 2026-04-13 | **Skill v2 + RefereeBriefing**: RefereeCoaching → RefereeBriefing (facts-only, 추천 제거). Skill을 자율 모듈로 재설계 (knowledge/advisor/validator/service/composite). SkillStack Hook 아키텍처, faratin-coaching을 advisor Skill로 분리. 25번 §4.2, §5 전면 개정. |
 | v2.2.0 | 2026-04-13 | **NSV v2 (Negotiation State Vector)**: DY/LP 필드 제거 (coaching 중복 + 앵커링 취약), PT gap% 제거. "절대값만, 파생 지표는 coaching에 위임" 원칙. 5라인 ~100토큰. 25번 §7.3 전면 개정. |
 | v2.1.0 | 2026-04-13 | NSV v1: O(1) 고정 크기 상태 인코딩, DY(Dynamics) 필드, TG(Tag Garden) 확장. → v2.2.0에서 대체 |

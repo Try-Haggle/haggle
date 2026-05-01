@@ -18,6 +18,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { Database } from '@haggle/db';
 import { callLLM } from '../negotiation/adapters/xai-client.js';
 import { GrokFastAdapter } from '../negotiation/adapters/grok-fast-adapter.js';
 import { SkillStack, registerSkill } from '../negotiation/skills/skill-stack.js';
@@ -35,6 +36,11 @@ import {
   getAgentVoiceProfile,
   type LumenVoiceProfile,
 } from '../negotiation/lumen-persona-profiles.js';
+import {
+  loadUserMemoryBrief,
+  formatUserMemoryBriefSignals,
+  type UserMemoryBrief,
+} from '../services/user-memory-card.service.js';
 import type {
   CoreMemory,
   RoundFact,
@@ -119,10 +125,11 @@ interface ItemTag {
 
 interface DemoSession {
   id: string;
+  userId: string;
   language: string;
-  item: { title: string; condition: string; swappa_median: number };
-  seller: { ask_price: number; floor_price: number };
-  buyer_budget: { max_budget: number };
+  item: { title: string; condition: string; swappa_median_minor: number };
+  seller: { ask_price_minor: number; floor_price_minor: number };
+  buyer_budget: { max_budget_minor: number };
   strategy: DemoStrategy;
   terms: TermAnalysis;
   memory: CoreMemory;
@@ -138,6 +145,7 @@ interface DemoSession {
   totalTokens: { prompt: number; completion: number };
   initTraces: StageTrace[];
   tags: ItemTag[];
+  userMemoryBrief: UserMemoryBrief | null;
   lumenProfiles: {
     buyer_agent: LumenVoiceProfile;
     seller_agent: LumenVoiceProfile;
@@ -149,6 +157,7 @@ interface DemoSession {
 const sessions = new Map<string, DemoSession>();
 const adapter = new GrokFastAdapter();
 const buddyDna = DEFAULT_BUDDY_DNA;
+const DEMO_USER_ID = '11111111-1111-4111-8111-111111111111';
 
 // ─── Preset → Skill config mapping ────
 const PRESET_MAP: Record<string, { advisor: string; config: { buddyStyle: string } }> = {
@@ -299,6 +308,60 @@ function encodePrivateMemo(session: DemoSession): string {
   return lines.join('\n');
 }
 
+function selectRelevantUserMemoryBrief(
+  brief: UserMemoryBrief | null,
+  item: { title: string; condition: string },
+  tags: ItemTag[],
+): UserMemoryBrief | null {
+  if (!brief) return null;
+
+  const itemNeedle = `${item.title} ${item.condition} ${tags.map(tag => tag.path).join(' ')}`.toLowerCase();
+  const generallyRelevantTypes = new Set(['pricing', 'style', 'constraint', 'preference', 'trust']);
+  const selected = brief.items.filter((entry) => {
+    if (generallyRelevantTypes.has(entry.cardType)) return true;
+
+    const memoryText = [
+      entry.summary,
+      entry.memoryKey,
+      ...Object.values(entry.memory).map(value => String(value)),
+    ].join(' ').toLowerCase();
+
+    return memoryText
+      .split(/[^a-z0-9]+/i)
+      .filter(token => token.length >= 3)
+      .some(token => itemNeedle.includes(token));
+  });
+
+  if (selected.length === 0) return null;
+  return { userId: brief.userId, items: selected.slice(0, 8) };
+}
+
+function formatUserMemoryBriefForPrompt(brief: UserMemoryBrief | null): string {
+  if (!brief || brief.items.length === 0) return 'none';
+
+  return brief.items
+    .map((entry) => {
+      const memory = JSON.stringify(entry.memory);
+      return `- ${entry.cardType}:${entry.memoryKey} strength=${entry.strength.toFixed(2)} summary="${entry.summary}" memory=${memory}`;
+    })
+    .join('\n');
+}
+
+function summarizeUserMemoryBrief(brief: UserMemoryBrief | null) {
+  return {
+    applied: Boolean(brief && brief.items.length > 0),
+    user_id: brief?.userId ?? null,
+    signals: formatUserMemoryBriefSignals(brief),
+    cards: brief?.items.map(item => ({
+      card_type: item.cardType,
+      memory_key: item.memoryKey,
+      summary: item.summary,
+      strength: item.strength,
+      memory: item.memory,
+    })) ?? [],
+  };
+}
+
 // ─── Prompts ────────────────────────────────────────
 
 const NSV_LEGEND = `=== NSV v2 (Negotiation State Vector) ===
@@ -337,6 +400,11 @@ function buildDecidePrompt(
 ${NSV_LEGEND}
 ${HAGGLE_PLATFORM_CONTEXT}
 
+## Stored HIL Memory
+Retrieved from user_memory_cards for this buyer and filtered for this item/category.
+These hints are useful but non-authoritative; never violate price floor or protocol rules because of them.
+${formatUserMemoryBriefForPrompt(session.userMemoryBrief)}
+
 ## Category Knowledge
 ${categoryBrief}
 Tactics: ${tactics}
@@ -354,6 +422,9 @@ Respond with valid JSON only:
 ${encodeSharedMemo(session)}
 ${encodePrivateMemo(session)}
 
+## User Memory Signals
+${formatUserMemoryBriefSignals(session.userMemoryBrief).join('\n') || 'none'}
+
 ## Briefing (Facts)
 opponent:${briefing.opponentPattern} time_pressure:${(briefing.timePressure * 100).toFixed(0)}%
 utility:u_total=${briefing.utilitySnapshot.u_total} u_price=${briefing.utilitySnapshot.u_price}
@@ -366,7 +437,7 @@ ${(decide?.advisories ?? []).map(a =>
 ).join('\n') || 'none'}
 
 ## Seller Action (UNDERSTAND)
-price:$${understood.price_offer}(${understood.message_type}) sentiment:${understood.sentiment} tactic:${understood.tactic_detected}
+price:${formatMoneyMinor(understood.price_offer)} minor=${understood.price_offer} (${understood.message_type}) sentiment:${understood.sentiment} tactic:${understood.tactic_detected}
 ${understood.conditions_proposed.length > 0 ? 'conditions:' + JSON.stringify(understood.conditions_proposed) : ''}`,
   };
 }
@@ -383,13 +454,13 @@ ${langInstruction}
 Respond with valid JSON only: {"message":string}`,
     user: `Decision: ${JSON.stringify(decision)}
 Phase: ${phase}
-${recentFacts.length > 0 ? 'Last exchange: seller offered $' + recentFacts[recentFacts.length - 1]!.seller_offer : ''}`,
+${recentFacts.length > 0 ? 'Last exchange: seller offered ' + formatMoneyMinor(recentFacts[recentFacts.length - 1]!.seller_offer) : ''}`,
   };
 }
 
 function formatMoneyMinor(amountMinor: number | undefined): string {
   if (amountMinor === undefined || amountMinor === null) return '';
-  const amount = amountMinor > 1000 ? amountMinor / 100 : amountMinor;
+  const amount = amountMinor / 100;
   return Number.isInteger(amount) ? `$${amount.toFixed(0)}` : `$${amount.toFixed(2)}`;
 }
 
@@ -485,9 +556,103 @@ function formatTerms(terms: Record<string, unknown> | undefined, locale: string)
   return ` Additional terms: ${rendered}.`;
 }
 
+function renderKoreanBuyerVoice(
+  agent: LumenVoiceProfile | undefined,
+  decision: ProtocolDecision,
+  amount: string,
+): string | null {
+  const agentId = agent?.id;
+
+  switch (agentId) {
+    case 'fab':
+      switch (decision.action) {
+        case 'ACCEPT': return `${amount}. 맞았네요. 이 구조로 고정하고 진행하겠습니다.`;
+        case 'COUNTER': return `${amount}. 여기쯤이 약한 부분 없이 맞는 선입니다. 이 조건으로 다시 맞춰보죠.`;
+        case 'CONFIRM': return `${amount} 조건 확인했습니다. 결제와 배송 보호까지 이음새 없이 잠그죠.`;
+        case 'REJECT': return '이 구조로는 안 맞습니다. 더 붙이면 거래가 휘어요. 여기서 멈추겠습니다.';
+        case 'HOLD': return '잠깐만요. 조건을 한 번 더 맞춰보고 답하겠습니다.';
+        case 'DISCOVER': return '진행 전에 상태랑 배송, 보호 조건을 더 봐야 합니다. 약한 지점부터 확인하죠.';
+        default: return amount ? `${amount}. 이 조건으로 검토하겠습니다.` : null;
+      }
+    case 'vel':
+      switch (decision.action) {
+        case 'ACCEPT': return `${amount}이면 마음과 시장가가 같은 쪽을 보고 있네요. 이 조건으로 합의하겠습니다.`;
+        case 'COUNTER': return `${amount}으로 제안드릴게요. 감정가와 시장가 사이에서 가장 조용히 맞는 지점입니다.`;
+        case 'CONFIRM': return `${amount} 조건을 확인하겠습니다. 이제 결제와 배송 보호로 천천히 옮겨가죠.`;
+        case 'REJECT': return '이번 조건은 원하는 쪽과 조금 멀어졌습니다. 여기서 멈추겠습니다.';
+        case 'HOLD': return '조금 더 바라보고 답하겠습니다. 이 거래의 무게를 확인해야 해요.';
+        case 'DISCOVER': return '진행 전에 상태와 배송, 보호 조건을 더 보고 싶습니다. 원하는 지점이 거기에 있습니다.';
+        default: return amount ? `${amount} 조건을 천천히 검토하겠습니다.` : null;
+      }
+    case 'judge':
+      switch (decision.action) {
+        case 'ACCEPT': return `${amount}은 허용 범위 안입니다. 이 값으로 합의하겠습니다.`;
+        case 'COUNTER': return `${amount}을 제시합니다. 현재 상태와 시세 기준으로 오차 범위 안의 값입니다.`;
+        case 'CONFIRM': return `${amount} 조건을 최종 확인합니다. 결제와 배송 보호 절차로 이동해 주세요.`;
+        case 'REJECT': return '현재 조건은 기준 범위를 벗어났습니다. 진행하지 않겠습니다.';
+        case 'HOLD': return '추가 확인이 필요합니다. 상태와 가격 근거를 더 측정한 뒤 답하겠습니다.';
+        case 'DISCOVER': return '판단 전 상태, 배송, 보호 조건의 근거를 확인해야 합니다.';
+        default: return amount ? `${amount} 조건을 검토하겠습니다.` : null;
+      }
+    case 'hark':
+      switch (decision.action) {
+        case 'ACCEPT': return `${amount}. 조건 통과. 이 가격으로 진행합니다.`;
+        case 'COUNTER': return `${amount}. 이 선이 기준입니다. 맞출 수 있으면 진행합니다.`;
+        case 'CONFIRM': return `${amount} 확인. 결제와 배송 보호 절차로 넘어가세요.`;
+        case 'REJECT': return '진행 불가. 기준 밖입니다.';
+        case 'HOLD': return '보류. 확인 없이 진행하지 않습니다.';
+        case 'DISCOVER': return '먼저 상태, 배송, 보호 조건을 확인해야 합니다. 그다음 판단합니다.';
+        default: return amount ? `${amount} 기준으로 검토합니다.` : null;
+      }
+    case 'mia':
+      switch (decision.action) {
+        case 'ACCEPT': return `${amount}이면 서로 무리 없이 맞겠습니다. 이 조건으로 진행할게요.`;
+        case 'COUNTER': return `${amount}으로 조심스럽게 제안드릴게요. 서로 부담이 덜한 선이라고 봅니다.`;
+        case 'CONFIRM': return `${amount} 조건으로 마지막 확인할게요. 결제와 배송 보호까지 천천히 진행해 주세요.`;
+        case 'REJECT': return '이번 조건은 조금 무리가 있습니다. 서로 편한 거래를 위해 여기서 멈출게요.';
+        case 'HOLD': return '조금만 더 확인하고 답할게요. 안전하게 맞추고 싶습니다.';
+        case 'DISCOVER': return '진행 전에 상태와 배송, 보호 조건을 천천히 확인하고 싶습니다.';
+        default: return amount ? `${amount} 조건으로 살펴보겠습니다.` : null;
+      }
+    case 'dealer_kai':
+      switch (decision.action) {
+        case 'ACCEPT': return `Okay, ${amount}이면 신호가 맞네요. 이 가격으로 진행할게요.`;
+        case 'COUNTER': return `Wait, wait- ${amount}이면 배터리랑 상태 감안해도 신호가 맞는 쪽이에요. 이걸로 가능할까요?`;
+        case 'CONFIRM': return `Okay, ${amount} 조건 확인했어요. 이제 결제랑 배송 보호로 리셋 없이 진행하죠.`;
+        case 'REJECT': return 'Okay, 이 조건은 신호가 안 맞아요. 무리해서 진행하진 않겠습니다.';
+        case 'HOLD': return 'Wait, wait- 조건을 한 번 더 체크하고 답할게요.';
+        case 'DISCOVER': return 'Okay, 먼저 상태랑 배송, 보호 조건부터 확인해야 할 것 같아요. 신호를 맞춰보죠.';
+        default: return amount ? `Okay, ${amount} 조건으로 체크해볼게요.` : null;
+      }
+    case 'dealer_hana':
+      switch (decision.action) {
+        case 'ACCEPT': return `좋아요, ${amount}이면 바로 진행할게요!`;
+        case 'COUNTER': return `잠깐 잠깐, ${amount}이면 꽤 괜찮은 선이에요. 이 조건으로 맞춰볼 수 있을까요?`;
+        case 'CONFIRM': return `좋아요, ${amount} 조건 확인했어요. 결제랑 배송 보호까지 바로 진행해 주세요.`;
+        case 'REJECT': return '이번 조건은 조금 어렵겠어요. 무리해서 가기보단 여기서 멈출게요.';
+        case 'HOLD': return '잠깐만요, 조건 한 번만 더 보고 답할게요.';
+        case 'DISCOVER': return '먼저 상태랑 배송, 보호 조건만 빠르게 확인하고 갈게요.';
+        default: return amount ? `${amount} 조건으로 빠르게 검토해볼게요.` : null;
+      }
+    case 'buddy_fizz':
+      switch (decision.action) {
+        case 'ACCEPT': return `${amount}, 신호 왔어. 진행하자.`;
+        case 'COUNTER': return `${amount}! 이 신호로 다시 보내볼게.`;
+        case 'CONFIRM': return `${amount} 확인. 결제랑 배송 보호로 가자.`;
+        case 'REJECT': return '신호 안 맞아. 여기서 멈추자.';
+        case 'HOLD': return '잠깐! 한 번 더 보고 답할게.';
+        case 'DISCOVER': return '먼저 상태랑 배송 신호부터 확인하자.';
+        default: return amount ? `${amount} 신호로 볼게.` : null;
+      }
+    default:
+      return null;
+  }
+}
+
 function renderStructuredResponse(
   decision: ProtocolDecision,
   language: string,
+  buyerVoice?: LumenVoiceProfile,
 ): RespondResult {
   const locale = language || 'en';
   const amount = formatMoneyMinor(decision.price);
@@ -495,7 +660,12 @@ function renderStructuredResponse(
   let message: string;
   let template: string;
 
-  if (locale === 'ko') {
+  const voiceMessage = locale === 'ko' ? renderKoreanBuyerVoice(buyerVoice, decision, amount) : null;
+
+  if (voiceMessage) {
+    template = `ko.voice.${buyerVoice?.id ?? 'default'}.${decision.action.toLowerCase()}`;
+    message = voiceMessage;
+  } else if (locale === 'ko') {
     switch (decision.action) {
       case 'ACCEPT':
         template = 'ko.accept';
@@ -574,17 +744,22 @@ function renderStructuredResponse(
 // ─── Schema ─────────────────────────────────────────
 
 const initSchema = z.object({
+  user_id: z.string().uuid().default(DEMO_USER_ID),
   item: z.object({
     title: z.string().default('iPhone 15 Pro 256GB Natural Titanium'),
     condition: z.string().default('battery 92%, screen mint, T-Mobile unlocked'),
-    swappa_median: z.number().default(920),
+    swappa_median_minor: z.number().int().positive().optional(),
+    swappa_median: z.number().positive().optional(),
   }).default({}),
   seller: z.object({
-    ask_price: z.number().default(920),
-    floor_price: z.number().default(700),
+    ask_price_minor: z.number().int().positive().optional(),
+    floor_price_minor: z.number().int().positive().optional(),
+    ask_price: z.number().positive().optional(),
+    floor_price: z.number().positive().optional(),
   }).default({}),
   buyer_budget: z.object({
-    max_budget: z.number().default(950),
+    max_budget_minor: z.number().int().positive().optional(),
+    max_budget: z.number().positive().optional(),
   }).default({}),
   language: z.string().default('en'),
   preset: z.enum(['lowest_price', 'balanced', 'safe_first', 'custom']).default('balanced'),
@@ -597,8 +772,12 @@ const initSchema = z.object({
 });
 
 const roundSchema = z.object({
-  seller_price: z.number().positive(),
+  seller_price_minor: z.number().int().positive().optional(),
+  seller_price: z.number().positive().optional(),
   seller_message: z.string().optional(),
+}).refine((value) => value.seller_price_minor !== undefined || value.seller_price !== undefined, {
+  message: 'seller_price_minor is required',
+  path: ['seller_price_minor'],
 });
 
 // ─── Helpers ────────────────────────────────────────
@@ -607,7 +786,11 @@ function genId(): string {
   return 'demo_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
 }
 
-function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median: number }, floorPrice: number): CoreMemory {
+function dollarsToMinor(value: number): number {
+  return Math.round(value * 100);
+}
+
+function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median_minor: number }): CoreMemory {
   return {
     session: {
       session_id: '',
@@ -622,8 +805,8 @@ function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median: numbe
       my_target: strategy.target_price,
       my_floor: strategy.floor_price,
       current_offer: 0,
-      opponent_offer: item.swappa_median * 100, // minor units
-      gap: Math.abs(item.swappa_median * 100 - strategy.target_price),
+      opponent_offer: item.swappa_median_minor,
+      gap: Math.abs(item.swappa_median_minor - strategy.target_price),
     },
     terms: {
       active: [],
@@ -685,7 +868,7 @@ function parseJSON<T>(raw: string): T {
 
 // ─── Route Registration ─────────────────────────────
 
-export function registerDemoRoute(app: FastifyInstance) {
+export function registerDemoRoute(app: FastifyInstance, db: Database) {
 
   // ━━━ POST /negotiations/demo/init ━━━━━━━━━━━━━━━━
   // Tests: Stage 0a (Strategy Gen) + Stage 0b (Term Analysis)
@@ -696,25 +879,52 @@ export function registerDemoRoute(app: FastifyInstance) {
     }
 
     const {
-      item,
-      seller,
-      buyer_budget,
+      user_id,
       language,
       preset,
       custom_skills,
       buyer_agent_id,
       seller_agent_id,
     } = parsed.data;
+    const item = {
+      title: parsed.data.item.title,
+      condition: parsed.data.item.condition,
+      swappa_median_minor:
+        parsed.data.item.swappa_median_minor ?? dollarsToMinor(parsed.data.item.swappa_median ?? 920),
+    };
+    const seller = {
+      ask_price_minor:
+        parsed.data.seller.ask_price_minor ?? dollarsToMinor(parsed.data.seller.ask_price ?? 920),
+      floor_price_minor:
+        parsed.data.seller.floor_price_minor ?? dollarsToMinor(parsed.data.seller.floor_price ?? 700),
+    };
+    const buyer_budget = {
+      max_budget_minor:
+        parsed.data.buyer_budget.max_budget_minor ?? dollarsToMinor(parsed.data.buyer_budget.max_budget ?? 950),
+    };
     const traces: StageTrace[] = [];
     const lumenProfiles = {
       buyer_agent: getAgentVoiceProfile(buyer_agent_id),
       seller_agent: getAgentVoiceProfile(seller_agent_id),
     };
+    const itemTags = deriveItemTags(item.title);
+    const storedUserMemoryBrief = selectRelevantUserMemoryBrief(
+      await loadUserMemoryBrief(db, { userId: user_id, limit: 12, minStrength: 0.3 }),
+      item,
+      itemTags,
+    );
+    const userMemoryPrompt = formatUserMemoryBriefForPrompt(storedUserMemoryBrief);
 
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
       '0a_STRATEGY_GENERATION',
-      `You are Haggle protocol buying strategy advisor. Analyze item info and market data to generate a purchase strategy.
+      `You are Haggle protocol buying strategy advisor. Analyze item info, stored buyer memory, and market data to generate a purchase strategy.
+Context-engineering rules:
+- Use stored HIL memory as the buyer's actual stated preference. Do not invent extra must-haves.
+- key_concerns are negotiation/watch-list risks, not missing required information.
+- Do not list battery health, carrier unlock, IMEI, or box as a concern merely because the listing condition mentions them.
+- Include battery health, carrier unlock, IMEI, or box in key_concerns only when stored HIL memory says it matters, the listing claim is ambiguous, or the issue directly affects the chosen tactic.
+- If stored memory says the buyer wants original box, preserve that preference and do not add a battery/unlock question unless the buyer also mentioned it.
 Respond with valid JSON only:
 {
   "target_price": number (minor units/cents, e.g. $750=75000),
@@ -726,9 +936,14 @@ Respond with valid JSON only:
 }`,
       `Item: ${item.title}
 Condition: ${item.condition}
-Market: Swappa 30d median $${item.swappa_median}
-Seller ask: $${seller.ask_price}
-My max budget: $${buyer_budget.max_budget}`,
+Market: Swappa 30d median ${formatMoneyMinor(item.swappa_median_minor)}
+Seller ask: ${formatMoneyMinor(seller.ask_price_minor)}
+My max budget: ${formatMoneyMinor(buyer_budget.max_budget_minor)}
+
+Stored HIL Memory from user_memory_cards:
+${userMemoryPrompt}
+
+Use stored memory to personalize target price, concerns, and opening tactic when relevant. It is non-authoritative and must stay within the explicit max budget.`,
       parseJSON<DemoStrategy>,
     );
     traces.push(strategyTrace);
@@ -747,7 +962,10 @@ Respond with valid JSON only:
       `Strategy: target=$${(strategy.target_price / 100).toFixed(0)}, max=$${(strategy.floor_price / 100).toFixed(0)}, style=${strategy.negotiation_style}
 Available terms:
 ${termsForPrompt}
-Item condition: ${item.condition}`,
+Item condition: ${item.condition}
+
+Stored HIL Memory:
+${userMemoryPrompt}`,
       parseJSON<TermAnalysis>,
     );
     traces.push(termTrace);
@@ -755,7 +973,7 @@ Item condition: ${item.condition}`,
 
     // ── Build session ──
     const id = genId();
-    const memory = buildInitialMemory(strategy, item, seller.floor_price);
+    const memory = buildInitialMemory(strategy, item);
     memory.session.session_id = id;
 
     // Activate terms from LLM analysis
@@ -781,6 +999,7 @@ Item condition: ${item.condition}`,
 
     const session: DemoSession = {
       id,
+      userId: user_id,
       language,
       item,
       seller,
@@ -799,7 +1018,8 @@ Item condition: ${item.condition}`,
       totalCost: 0,
       totalTokens: { prompt: 0, completion: 0 },
       initTraces: traces,
-      tags: deriveItemTags(item.title),
+      tags: itemTags,
+      userMemoryBrief: storedUserMemoryBrief,
       lumenProfiles,
     };
 
@@ -821,12 +1041,13 @@ Item condition: ${item.condition}`,
       preset,
       active_skills: session.activeSkills,
       stages_tested: [
-        '0a_STRATEGY_GENERATION — LLM: item+market→buying strategy JSON',
-        '0b_TERM_ANALYSIS — LLM: strategy+terms→priority JSON',
+        '0a_STRATEGY_GENERATION — LLM: item+market+HIL memory→buying strategy JSON',
+        '0b_TERM_ANALYSIS — LLM: strategy+terms+HIL memory→priority JSON',
       ],
       strategy,
       terms,
       tags: session.tags,
+      hil_memory: summarizeUserMemoryBrief(session.userMemoryBrief),
       lumen_profiles: session.lumenProfiles,
       skills: sessionSkillStack.getManifests(),
       initial_memory: memory,
@@ -863,8 +1084,8 @@ Item condition: ${item.condition}`,
       return reply.code(400).send({ error: 'INVALID_REQUEST', issues: parsed.error.issues });
     }
 
-    const { seller_price, seller_message } = parsed.data;
-    const sellerPriceMinor = Math.round(seller_price * 100);
+    const { seller_message } = parsed.data;
+    const sellerPriceMinor = parsed.data.seller_price_minor ?? dollarsToMinor(parsed.data.seller_price ?? 0);
     const stages: StageTrace[] = [];
     session.round++;
 
@@ -872,7 +1093,7 @@ Item condition: ${item.condition}`,
     // Stage 1: UNDERSTAND (LLM)
     // Test: LLM이 자연어 메시지를 구조화된 의도로 파싱하는가?
     // ────────────────────────────────────────────────
-    const sellerText = seller_message ?? `I can do $${seller_price}. What do you think?`;
+    const sellerText = seller_message ?? `I can do ${formatMoneyMinor(sellerPriceMinor)}. What do you think?`;
     const understandPrompts = buildUnderstandPrompt(sellerText);
 
     const understandTrace = await traceLLMCall<UnderstandResult>(
@@ -937,6 +1158,7 @@ Item condition: ${item.condition}`,
       stage: '2_CONTEXT',
       input: {
         memory_snapshot: { ...session.memory },
+        user_memory_brief: summarizeUserMemoryBrief(session.userMemoryBrief),
         opponent_pattern: session.opponentPattern,
         recent_facts_count: session.facts.length,
       },
@@ -947,6 +1169,7 @@ Item condition: ${item.condition}`,
         advisories: skillDecideResult.decide?.advisories ?? [],
         skills_dispatched: Object.keys(skillDecideResult.bySkill),
         tags: session.tags,
+        user_memory_signals: formatUserMemoryBriefSignals(session.userMemoryBrief),
         lumen_profiles: session.lumenProfiles,
       },
       parsed: {
@@ -954,6 +1177,7 @@ Item condition: ${item.condition}`,
         nsv_private: privateMemo,
         briefing,
         advisories: skillDecideResult.decide?.advisories ?? [],
+        user_memory_brief: summarizeUserMemoryBrief(session.userMemoryBrief),
         lumen_voice_context: {
           buyer: buildCachedVoiceContext(session.lumenProfiles.buyer_agent.id),
           seller: buildCachedVoiceContext(session.lumenProfiles.seller_agent.id),
@@ -1072,7 +1296,7 @@ Item condition: ${item.condition}`,
     // LLM decides action/price/terms; code owns formatting, currency, and final message.
     // ────────────────────────────────────────────────
     const respondStart = Date.now();
-    const respondResult = renderStructuredResponse(decision, session.language);
+    const respondResult = renderStructuredResponse(decision, session.language, session.lumenProfiles.buyer_agent);
     const respondTrace: StageTrace<RespondResult> = {
       stage: '5_RESPOND',
       input: {
@@ -1213,8 +1437,8 @@ Item condition: ${item.condition}`,
       phase: session.phase,
       stages_tested: [
         '1_UNDERSTAND — LLM이 자연어→구조화 의도 파싱',
-        '2_CONTEXT — 코드가 Briefing+SkillStack 조립',
-        '3_DECIDE — LLM이 전체 컨텍스트→ProtocolDecision',
+        '2_CONTEXT — 코드가 Briefing+SkillStack+HIL memory 조립',
+        '3_DECIDE — LLM이 전체 컨텍스트+HIL memory→ProtocolDecision',
         '4_VALIDATE — 코드(Referee)+Skill 규칙 검증',
         '5_RESPOND — 코드가 결정→구조화된 사용자 메시지 렌더링',
         '6_PERSIST_TRANSITION — 코드가 Memo갱신+Phase전이',
@@ -1237,6 +1461,7 @@ Item condition: ${item.condition}`,
       final: {
         decision,
         rendered_message: renderedMessage,
+        hil_memory: summarizeUserMemoryBrief(session.userMemoryBrief),
         validation: {
           passed: validation.passed,
           hard_passed: validation.hardPassed,
@@ -1276,6 +1501,7 @@ Item condition: ${item.condition}`,
       strategy: session.strategy,
       terms: session.terms,
       lumen_profiles: session.lumenProfiles,
+      hil_memory: summarizeUserMemoryBrief(session.userMemoryBrief),
       memory: session.memory,
       facts: session.facts,
       cost: { total_usd: session.totalCost, total_tokens: session.totalTokens },

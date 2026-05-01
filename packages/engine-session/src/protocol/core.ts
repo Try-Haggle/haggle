@@ -15,13 +15,20 @@ export type HnpCompatibilityLevel = (typeof HNP_COMPATIBILITY_LEVELS)[number];
 export const HNP_ERROR_CODES = [
   'UNSUPPORTED_VERSION',
   'UNSUPPORTED_EXTENSION',
+  'UNSUPPORTED_ISSUE',
+  'UNSUPPORTED_CURRENCY',
   'INVALID_SIGNATURE',
   'STALE_MESSAGE',
   'OUT_OF_ORDER',
   'DUPLICATE_OR_STALE',
   'INVALID_PROPOSAL',
+  'EXPIRED_PROPOSAL',
+  'PROPOSAL_CONFLICT',
   'SESSION_NOT_FOUND',
   'ESCALATION_REQUIRED',
+  'SIGNATURE_REQUIRED',
+  'SETTLEMENT_UNAVAILABLE',
+  'POLICY_BLOCKED',
   'RATE_LIMITED',
 ] as const;
 export type HnpErrorCode = (typeof HNP_ERROR_CODES)[number];
@@ -43,6 +50,8 @@ export interface HnpIssueValue {
 export type HnpActorRole = 'BUYER' | 'SELLER' | 'MEDIATOR';
 
 export type HnpCoreMessageType =
+  | 'HELLO'
+  | 'CAPABILITIES'
   | 'OFFER'
   | 'COUNTER'
   | 'ACCEPT'
@@ -57,15 +66,22 @@ export interface HnpProposalPayload {
   proposal_id: string;
   issues: HnpIssueValue[];
   total_price: HnpMoney;
+  /** Stable hash of proposal terms for exact accept/settlement binding. */
+  proposal_hash?: string;
   rationale_code?: string;
   valid_until?: string;
   in_reply_to?: string;
+  settlement_preconditions?: string[];
 }
 
 /** ACCEPT payload — binds to a specific proposal (P0-3). */
 export interface HnpAcceptPayload {
   accepted_message_id: string;
   accepted_proposal_id: string;
+  /** Optional proposal hash binding to prevent accepting a mutated proposal. */
+  accepted_proposal_hash?: string;
+  /** Optional exact issue snapshot accepted by both parties. */
+  accepted_issues?: HnpIssueValue[];
 }
 
 /** REJECT payload. */
@@ -95,7 +111,27 @@ export interface HnpErrorPayload {
   related_message_id?: string;
 }
 
+/** Capability payload used by HELLO / CAPABILITIES messages. */
+export interface HnpCapabilitiesPayload {
+  supported_revisions: HnpCoreRevision[];
+  transports: HnpTransport[];
+  issue_namespaces: string[];
+  signature_algorithms: string[];
+  settlement_modes: string[];
+  required_extensions?: string[];
+  optional_extensions?: string[];
+}
+
+/** Initial capability announcement. */
+export interface HnpHelloPayload {
+  agent_id: string;
+  display_name?: string;
+  capabilities: HnpCapabilitiesPayload;
+}
+
 export type HnpCorePayload =
+  | HnpHelloPayload
+  | HnpCapabilitiesPayload
   | HnpProposalPayload
   | HnpAcceptPayload
   | HnpRejectPayload

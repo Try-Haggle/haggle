@@ -22,11 +22,15 @@ const AVAILABLE_ADVISORS = [
   { id: 'faratin-coaching-v1', label: 'Faratin Coaching v1' },
 ];
 
+function dollarsToMinor(value: number): number {
+  return Math.round(value * 100);
+}
+
 interface SessionInitPanelProps {
   onInitialize: (params: {
-    item: { title: string; condition: string; swappa_median: number };
-    seller: { ask_price: number; floor_price: number };
-    buyer_budget: { max_budget: number };
+    item: { title: string; condition: string; swappa_median_minor: number };
+    seller: { ask_price_minor: number; floor_price_minor: number };
+    buyer_budget: { max_budget_minor: number };
     language: string;
     preset?: PresetName;
     custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
@@ -49,9 +53,12 @@ export function SessionInitPanel({ onInitialize, loading }: SessionInitPanelProp
     e.preventDefault();
     const activePreset = customEnabled ? 'custom' as const : preset;
     onInitialize({
-      item: { title, condition, swappa_median: swappaMedian },
-      seller: { ask_price: askPrice, floor_price: Math.round(askPrice * 0.85) },
-      buyer_budget: { max_budget: maxBudget },
+      item: { title, condition, swappa_median_minor: dollarsToMinor(swappaMedian) },
+      seller: {
+        ask_price_minor: dollarsToMinor(askPrice),
+        floor_price_minor: dollarsToMinor(Math.round(askPrice * 0.85)),
+      },
+      buyer_budget: { max_budget_minor: dollarsToMinor(maxBudget) },
       language,
       preset: activePreset,
       ...(activePreset === 'custom' ? {

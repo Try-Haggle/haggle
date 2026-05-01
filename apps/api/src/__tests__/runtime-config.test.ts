@@ -9,6 +9,8 @@ const originalEnv = {
   HAGGLE_CORS_ORIGINS: process.env.HAGGLE_CORS_ORIGINS,
   NODE_ENV: process.env.NODE_ENV,
   SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET,
+  HNP_REQUIRE_SIGNATURE: process.env.HNP_REQUIRE_SIGNATURE,
+  HNP_TRUSTED_JWKS: process.env.HNP_TRUSTED_JWKS,
   VERCEL_ENV: process.env.VERCEL_ENV,
 };
 
@@ -52,6 +54,28 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow(
       "[CONFIG] SUPABASE_JWT_SECRET is required",
     );
+  });
+
+  it("requires HNP_TRUSTED_JWKS in production when HNP signatures are required", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    delete process.env.HNP_REQUIRE_SIGNATURE;
+    delete process.env.HNP_TRUSTED_JWKS;
+
+    expect(() => getRuntimeConfig()).toThrow(
+      "[CONFIG] HNP_TRUSTED_JWKS is required",
+    );
+  });
+
+  it("allows production startup without HNP_TRUSTED_JWKS only with explicit HNP signature override", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.HNP_REQUIRE_SIGNATURE = "false";
+    delete process.env.HNP_TRUSTED_JWKS;
+
+    expect(getRuntimeConfig().isProduction).toBe(true);
   });
 
   it("does not allow arbitrary Vercel preview origins", () => {

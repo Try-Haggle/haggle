@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { checkIntervention, applyHumanOverride } from '../human-intervention.js';
-import type { ProtocolDecision } from '../../types.js';
+import type { EngineDecision } from '../../types.js';
 
-const COUNTER: ProtocolDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
-const ACCEPT: ProtocolDecision = { action: 'ACCEPT', price: 600, reasoning: 'accepting' };
-const CONFIRM: ProtocolDecision = { action: 'CONFIRM', price: 600, reasoning: 'confirming' };
+const COUNTER: EngineDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
+const ACCEPT: EngineDecision = { action: 'ACCEPT', price: 600, reasoning: 'accepting' };
+const CONFIRM: EngineDecision = { action: 'CONFIRM', price: 600, reasoning: 'confirming' };
 
 describe('checkIntervention', () => {
   it('FULL_AUTO — always approves', () => {

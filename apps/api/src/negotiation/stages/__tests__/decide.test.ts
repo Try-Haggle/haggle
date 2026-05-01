@@ -7,6 +7,10 @@ import type { ContextOutput, DecideInput } from '../../pipeline/types.js';
 import type { RefereeBriefing } from '../../skills/skill-types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
+vi.mock('../../adapters/xai-client.js', () => ({
+  callLLM: vi.fn().mockRejectedValue(new Error('mock llm unavailable')),
+}));
+
 const adapter = new GrokFastAdapter();
 const skill = new DefaultEngineSkill();
 
@@ -169,6 +173,37 @@ describe('Stage 3: decide', () => {
     expect(result.source).toBe('skill');
     expect(result.decision).toBeDefined();
     expect(result.latency_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it('passes Stage 2 L5 signal lines into the LLM prompt', async () => {
+    const memory = makeMemory('BARGAINING');
+    const promptAdapter = new GrokFastAdapter();
+    const promptSpy = vi.spyOn(promptAdapter, 'buildUserPrompt');
+    const context = makeContextOutput();
+    context.layers.L5_signals = [
+      'USER_MEMORY_HINTS:non_authoritative',
+      'MEM:pricing:ceiling_70000|strength:0.65',
+    ].join('\n');
+
+    await decide({
+      context,
+      adapter: promptAdapter,
+      skill,
+      phase: 'BARGAINING',
+      config: {
+        ...makeConfig(),
+        adapters: { UNDERSTAND: promptAdapter, DECIDE: promptAdapter, RESPOND: promptAdapter },
+      },
+      memory,
+      facts: [],
+      opponent: defaultOpponent,
+    });
+
+    expect(promptSpy).toHaveBeenCalled();
+    expect(promptSpy.mock.calls[0]?.[2]).toEqual([
+      'USER_MEMORY_HINTS:non_authoritative',
+      'MEM:pricing:ceiling_70000|strength:0.65',
+    ]);
   });
 
   it('returns latency_ms', async () => {

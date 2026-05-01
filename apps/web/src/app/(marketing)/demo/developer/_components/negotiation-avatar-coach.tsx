@@ -141,7 +141,7 @@ export const ANCIENT_BEINGS: AncientBeing[] = [
     kind: "딜러",
     image: "/lumen/kai.png",
     selectionImage: "/lumen/selection/dealer-kai.png",
-    voice: "솔직하고 직선적입니다. 유리한 말보다 공정한 말을 먼저 고릅니다.",
+    voice: "생각을 입 밖으로 흘리고 질문이 많습니다. 거래를 배터리, 신호, 리셋 같은 전자기기 비유로 이해합니다.",
   },
   {
     id: "dealer_hana",
@@ -173,8 +173,14 @@ export const ANCIENT_BEINGS: AncientBeing[] = [
     name: "피즈",
     role: "Spark 버디",
     kind: "버디",
-    image: "/lumen/fizz.png",
+    image: "/lumen/fizz/default.png",
+    selectionImage: "/lumen/fizz/default.png",
     voice: "짧고 밝은 신호처럼 반응합니다. 사용자의 판단을 대신하지 않고 옆에서 힘을 줍니다.",
+    expressions: {
+      curious: "/lumen/fizz/curious.png",
+      thinking: "/lumen/fizz/thinking.png",
+      confident: "/lumen/fizz/confident.png",
+    },
   },
   {
     id: "buddy_echo",
@@ -185,6 +191,17 @@ export const ANCIENT_BEINGS: AncientBeing[] = [
     voice: "상대와 나의 원함을 조용히 비춥니다. 말투는 부드럽고 암시는 짧습니다.",
   },
 ];
+
+const HIDDEN_DEMO_SELECTOR_AGENT_IDS: AncientBeingId[] = [
+  "vault",
+  "dealer_ethan",
+  "dealer_claire",
+  "buddy_echo",
+];
+
+const SELECTABLE_DEMO_AGENTS = ANCIENT_BEINGS.filter(
+  (being) => !HIDDEN_DEMO_SELECTOR_AGENT_IDS.includes(being.id),
+);
 
 const toneClass: Record<CoachTone, { shell: string; badge: string; ring: string; glow: string; orb: string }> = {
   cyan: {
@@ -431,7 +448,7 @@ export function AncientBeingSelector({
         에이전트 선택
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2">
-        {ANCIENT_BEINGS.map((being) => {
+        {SELECTABLE_DEMO_AGENTS.map((being) => {
           const selected = being.id === selectedId;
           const selectionImage = getSelectionImage(being);
 

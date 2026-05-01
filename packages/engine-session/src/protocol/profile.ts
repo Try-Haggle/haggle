@@ -37,6 +37,9 @@ export interface HnpWellKnownProfile {
     preferred_core_revision: HnpCoreRevision;
     transports: HnpTransportEntry[];
     capabilities: Record<string, HnpCapabilitySupport>;
+    issue_namespaces: string[];
+    signature_algorithms: string[];
+    settlement_modes: string[];
     auth?: HnpAuthProfile;
     agent_profile?: HnpAgentProfile;
   };
@@ -47,6 +50,9 @@ export function createHnpProfile(input: {
   endpoint: string;
   transports: HnpTransportEntry[];
   capabilities?: Record<string, HnpCapabilitySupport>;
+  issue_namespaces?: string[];
+  signature_algorithms?: string[];
+  settlement_modes?: string[];
   auth?: HnpAuthProfile;
   agent_profile?: HnpAgentProfile;
   core_revisions?: HnpCoreRevision[];
@@ -67,6 +73,9 @@ export function createHnpProfile(input: {
         [HNP_CORE_CAPABILITY]: { versions: ['1.0.0'], required: true },
         ...input.capabilities,
       },
+      issue_namespaces: input.issue_namespaces ?? ['hnp.issue'],
+      signature_algorithms: input.signature_algorithms ?? [],
+      settlement_modes: input.settlement_modes ?? ['manual'],
       ...(input.auth ? { auth: input.auth } : {}),
       ...(input.agent_profile ? { agent_profile: input.agent_profile } : {}),
     },

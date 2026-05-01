@@ -6,7 +6,7 @@
  */
 
 import type { DecideInput, DecideOutput } from '../pipeline/types.js';
-import type { ProtocolDecision } from '../types.js';
+import type { EngineDecision } from '../types.js';
 import { shouldUseReasoning } from '../config.js';
 import { callLLM } from '../adapters/xai-client.js';
 
@@ -23,7 +23,7 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
 
   // Step 1: Skill evaluateOffer (rule-based fallback, LLM augments in BARGAINING)
   const incomingOffer = memory.boundaries.opponent_offer;
-  let decision: ProtocolDecision = await skill.evaluateOffer(
+  let decision: EngineDecision = await skill.evaluateOffer(
     memory,
     { price: incomingOffer },
     facts,
@@ -50,7 +50,11 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
 
       // Build prompts
       const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext());
-      const userPrompt = adapter.buildUserPrompt(memory, facts.slice(-5));
+      const userPrompt = adapter.buildUserPrompt(
+        memory,
+        facts.slice(-5),
+        signalLinesFromContext(context),
+      );
 
       // Call LLM
       const llmResponse = await callLLM(systemPrompt, userPrompt, {
@@ -93,4 +97,12 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
     tokens,
     latency_ms: latencyMs,
   };
+}
+
+function signalLinesFromContext(context: DecideInput["context"]): string[] | undefined {
+  const lines = context.layers.L5_signals
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length > 0 ? lines : undefined;
 }

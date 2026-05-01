@@ -6,10 +6,12 @@ interface StateGaugeProps {
   round: DemoRoundResponse;
 }
 
-/** Convert minor units to dollars for display */
 function fmt(v: number): string {
-  if (v > 1000) return `$${(v / 100).toFixed(0)}`;
-  return `$${v}`;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: v % 100 === 0 ? 0 : 2,
+  }).format(v / 100);
 }
 
 function Bar({

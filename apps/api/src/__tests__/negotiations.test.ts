@@ -7,10 +7,12 @@ import { getTestApp, closeTestApp } from "./helpers.js";
 const {
   mockCreateSession, mockGetSessionById, mockGetSessionsByUserId,
   mockGetSessionsByGroupId, mockUpdateSessionState, mockBatchUpdateSessionStatus,
-  mockGetRoundsBySessionId, mockGetRoundByIdempotencyKey,
+  mockCreateRound, mockGetRoundsBySessionId, mockGetRoundByIdempotencyKey,
   mockCreateGroup, mockGetGroupById, mockUpdateGroupStatus,
   mockExecuteNegotiationRound,
   mockExecuteGroupOrchestration, mockExecuteGroupTerminal,
+  mockLoadUserMemoryBrief,
+  mockEventDispatch,
 } = vi.hoisted(() => ({
   mockCreateSession: vi.fn(),
   mockGetSessionById: vi.fn(),
@@ -18,6 +20,7 @@ const {
   mockGetSessionsByGroupId: vi.fn(),
   mockUpdateSessionState: vi.fn(),
   mockBatchUpdateSessionStatus: vi.fn(),
+  mockCreateRound: vi.fn(),
   mockGetRoundsBySessionId: vi.fn(),
   mockGetRoundByIdempotencyKey: vi.fn(),
   mockCreateGroup: vi.fn(),
@@ -26,6 +29,8 @@ const {
   mockExecuteNegotiationRound: vi.fn(),
   mockExecuteGroupOrchestration: vi.fn(),
   mockExecuteGroupTerminal: vi.fn(),
+  mockLoadUserMemoryBrief: vi.fn(),
+  mockEventDispatch: vi.fn(),
 }));
 
 // ─── Mock data ──────────────────────────────────────────────────────
@@ -95,10 +100,19 @@ vi.mock("../services/negotiation-session.service.js", () => ({
 }));
 
 vi.mock("../services/negotiation-round.service.js", () => ({
-  createRound: vi.fn().mockResolvedValue(null),
+  createRound: (...args: unknown[]) => mockCreateRound(...args),
   getRoundsBySessionId: (...args: unknown[]) => mockGetRoundsBySessionId(...args),
   getRoundByIdempotencyKey: (...args: unknown[]) => mockGetRoundByIdempotencyKey(...args),
   getLatestRound: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/user-memory-card.service.js", () => ({
+  loadUserMemoryBrief: (...args: unknown[]) => mockLoadUserMemoryBrief(...args),
+  formatUserMemoryBriefSignals: vi.fn().mockReturnValue([]),
+  listUserMemoryCards: vi.fn().mockResolvedValue([]),
+  recordUserMemoryCards: vi.fn().mockResolvedValue({ observed: 0 }),
+  resetUserMemoryCards: vi.fn().mockResolvedValue({ affected: 0 }),
+  suppressUserMemoryCard: vi.fn().mockResolvedValue({ affected: 0 }),
 }));
 
 vi.mock("../services/negotiation-group.service.js", () => ({
@@ -120,7 +134,7 @@ vi.mock("../lib/group-executor.js", () => ({
 
 vi.mock("../lib/event-dispatcher.js", () => ({
   createEventDispatcher: vi.fn().mockReturnValue({
-    dispatch: vi.fn().mockResolvedValue({ action: "no_action" }),
+    dispatch: (...args: unknown[]) => mockEventDispatch(...args),
     registerHandler: vi.fn(),
   }),
 }));
@@ -253,8 +267,16 @@ const AUTH_HEADERS = {
   authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJidXllci0wMDEiLCJlbWFpbCI6InRlc3RAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
 };
 
+const SESSION_BUYER_AUTH_HEADERS = {
+  authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTQwMDAtYTAwMC0wMDAwMDAwMDAwMTAiLCJlbWFpbCI6InRlc3RAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
+};
+
 const SELLER_AUTH_HEADERS = {
   authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzZWxsZXItMDAxIiwiZW1haWwiOiJzZWxsZXJAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
+};
+
+const INTRUDER_AUTH_HEADERS = {
+  authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJpbnRydWRlci0wMDEiLCJlbWFpbCI6ImludHJ1ZGVyQGhhZ2dsZS5haSIsInJvbGUiOiJhdXRoZW50aWNhdGVkIn0.fake",
 };
 
 // ─── Valid payloads ─────────────────────────────────────────────────
@@ -266,7 +288,12 @@ const VALID_SESSION_PAYLOAD = {
   buyer_id: "00000000-0000-4000-a000-000000000010",
   seller_id: "00000000-0000-4000-a000-000000000020",
   counterparty_id: "00000000-0000-4000-a000-000000000020",
-  strategy_snapshot: { alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 } },
+  strategy_snapshot: {
+    alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
+    item: { title: "iPhone 15 Pro", category: "electronics" },
+    buyer_budget: { max_budget_minor: 95000, target_price_minor: 90000 },
+    must_have: ["battery >= 90%"],
+  },
 };
 
 const VALID_OFFER_PAYLOAD = {
@@ -286,23 +313,32 @@ const VALID_GROUP_PAYLOAD = {
 
 describe("Negotiation API", () => {
   let app: FastifyInstance;
+  const originalHnpTrustedJwks = process.env.HNP_TRUSTED_JWKS;
+  const originalHnpRequireSignature = process.env.HNP_REQUIRE_SIGNATURE;
 
   beforeAll(async () => {
     app = await getTestApp();
   });
 
   afterAll(async () => {
+    if (originalHnpTrustedJwks === undefined) delete process.env.HNP_TRUSTED_JWKS;
+    else process.env.HNP_TRUSTED_JWKS = originalHnpTrustedJwks;
+    if (originalHnpRequireSignature === undefined) delete process.env.HNP_REQUIRE_SIGNATURE;
+    else process.env.HNP_REQUIRE_SIGNATURE = originalHnpRequireSignature;
     await closeTestApp();
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.HNP_TRUSTED_JWKS;
+    delete process.env.HNP_REQUIRE_SIGNATURE;
     // Reset to sensible defaults
     mockCreateSession.mockResolvedValue(mockSession);
     mockGetSessionById.mockResolvedValue(null);
     mockGetSessionsByUserId.mockResolvedValue([]);
     mockGetSessionsByGroupId.mockResolvedValue([]);
     mockUpdateSessionState.mockResolvedValue(null);
+    mockCreateRound.mockResolvedValue(null);
     mockCreateGroup.mockResolvedValue(mockGroup);
     mockGetGroupById.mockResolvedValue(null);
     mockUpdateGroupStatus.mockResolvedValue(null);
@@ -311,6 +347,8 @@ describe("Negotiation API", () => {
     mockExecuteNegotiationRound.mockReset();
     mockExecuteGroupOrchestration.mockResolvedValue([]);
     mockExecuteGroupTerminal.mockResolvedValue([]);
+    mockLoadUserMemoryBrief.mockResolvedValue(null);
+    mockEventDispatch.mockResolvedValue({ action: "no_action" });
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -353,7 +391,7 @@ describe("Negotiation API", () => {
       const res = await app.inject({
         method: "POST",
         url: "/negotiations/sessions",
-        headers: AUTH_HEADERS,
+        headers: SESSION_BUYER_AUTH_HEADERS,
         payload: VALID_SESSION_PAYLOAD,
       });
       expect(res.statusCode).toBe(201);
@@ -362,11 +400,79 @@ describe("Negotiation API", () => {
       expect(mockCreateSession).toHaveBeenCalledOnce();
     });
 
+    it("returns 409 and a follow-up question when buyer readiness is incomplete", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions",
+        headers: SESSION_BUYER_AUTH_HEADERS,
+        payload: {
+          ...VALID_SESSION_PAYLOAD,
+          strategy_snapshot: { alpha: { price: 0.4, time: 0.2 } },
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "NEGOTIATION_READINESS_INCOMPLETE",
+        readiness: {
+          ready: false,
+          missing_slots: ["product_intent", "budget_boundary", "buyer_priority"],
+          question: "What product or category should I negotiate for?",
+        },
+      });
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
+    it("allows buyer session start when HIL memory fills missing readiness slots", async () => {
+      mockLoadUserMemoryBrief.mockResolvedValueOnce({
+        userId: VALID_SESSION_PAYLOAD.buyer_id,
+        items: [
+          {
+            cardType: "interest",
+            memoryKey: "demand_intent:item:iphone",
+            summary: "buyer shopping intent: iphone",
+            strength: 0.7,
+            memory: { normalizedValue: "iphone" },
+            evidenceRefs: [],
+          },
+          {
+            cardType: "pricing",
+            memoryKey: "price_resistance:ceiling:ceiling_95000",
+            summary: "buyer pricing boundary: ceiling_95000",
+            strength: 0.7,
+            memory: { normalizedValue: "ceiling_95000" },
+            evidenceRefs: [],
+          },
+          {
+            cardType: "preference",
+            memoryKey: "term_preference:battery:battery_90_plus",
+            summary: "buyer term preference: battery >= 90%",
+            strength: 0.7,
+            memory: { normalizedValue: "battery >= 90%" },
+            evidenceRefs: [],
+          },
+        ],
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions",
+        headers: SESSION_BUYER_AUTH_HEADERS,
+        payload: {
+          ...VALID_SESSION_PAYLOAD,
+          strategy_snapshot: { alpha: { price: 0.4, time: 0.2 } },
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockCreateSession).toHaveBeenCalledOnce();
+    });
+
     it("passes optional expires_at to service", async () => {
       const res = await app.inject({
         method: "POST",
         url: "/negotiations/sessions",
-        headers: AUTH_HEADERS,
+        headers: SESSION_BUYER_AUTH_HEADERS,
         payload: { ...VALID_SESSION_PAYLOAD, expires_at: "2026-04-10T00:00:00Z" },
       });
       expect(res.statusCode).toBe(201);
@@ -393,6 +499,16 @@ describe("Negotiation API", () => {
       });
       expect(res.statusCode).toBe(400);
       expect(res.json().error).toBe("MISSING_USER_ID");
+    });
+
+    it("returns 403 when querying another user's sessions", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/negotiations/sessions?user_id=someone-else",
+        headers: AUTH_HEADERS,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("SESSION_ACTOR_MISMATCH");
     });
 
     it("returns 200 with empty sessions", async () => {
@@ -456,6 +572,20 @@ describe("Negotiation API", () => {
       expect(body.rounds[0].decision).toBe("COUNTER");
     });
 
+    it("returns 403 when actor is not a participant", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/negotiations/sessions/sess-001",
+        headers: INTRUDER_AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("SESSION_ACTOR_MISMATCH");
+      expect(mockGetRoundsBySessionId).not.toHaveBeenCalled();
+    });
+
     it("does not expose strategy_snapshot (공정함)", async () => {
       mockGetSessionById.mockResolvedValue(mockSession);
       const res = await app.inject({
@@ -510,6 +640,412 @@ describe("Negotiation API", () => {
         payload: { ...VALID_OFFER_PAYLOAD, sender_role: "ADMIN" },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    it("returns 403 when authenticated actor does not match sender_role", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/offers",
+        headers: AUTH_HEADERS,
+        payload: { ...VALID_OFFER_PAYLOAD, sender_role: "SELLER" },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("SESSION_ACTOR_MISMATCH");
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 when HNP sender_agent_id does not match authenticated actor", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-1",
+            idempotency_key: "hnp-idem-1",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "someone-else",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-1",
+              issues: [],
+              total_price: { currency: "USD", units_minor: 10000 },
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("HNP_SENDER_AGENT_MISMATCH");
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("allows an HNP offer from a delegated agent for the authenticated principal", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-agent",
+        roundNo: 2,
+        decision: "COUNTER",
+        outgoingPrice: 9500,
+        utility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
+        sessionStatus: "ACTIVE",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          agent_delegation: {
+            principal_user_id: "buyer-001",
+            agent_id: "agent-123",
+            scopes: ["hnp:negotiate"],
+            expires_at_ms: Date.now() + 60_000,
+          },
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-agent",
+            idempotency_key: "hnp-idem-agent",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "agent-123",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-agent",
+              issues: [],
+              total_price: { currency: "USD", units_minor: 10000 },
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          protocol: expect.objectContaining({ senderAgentId: "agent-123" }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("returns 401 when an HNP offer has an invalid detached signature", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-bad-sig",
+            idempotency_key: "hnp-idem-bad-sig",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-1",
+              issues: [],
+              total_price: { currency: "USD", units_minor: 10000 },
+            },
+            detached_signature: "bad..signature",
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_SIGNATURE",
+        retryable: false,
+        related_message_id: "hnp-msg-bad-sig",
+      });
+      expect(mockGetRoundsBySessionId).not.toHaveBeenCalled();
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("rejects an HNP offer with an unsupported capability before the engine", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "com.other.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-bad-capability",
+            idempotency_key: "hnp-idem-bad-capability",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-bad-capability",
+              issues: [],
+              total_price: { currency: "USD", units_minor: 10000 },
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_HNP_ENVELOPE",
+        retryable: false,
+        related_message_id: "hnp-msg-bad-capability",
+      });
+      expect(res.json().issues).toEqual([
+        expect.objectContaining({ code: "UNSUPPORTED_EXTENSION", field: "capability" }),
+      ]);
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("rejects an HNP offer with an unsupported issue namespace before the engine", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-bad-issue",
+            idempotency_key: "hnp-idem-bad-issue",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-bad-issue",
+              issues: [{ issue_id: "evil.issue.price", value: 10000 }],
+              total_price: { currency: "USD", units_minor: 10000 },
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_HNP_ENVELOPE",
+        related_message_id: "hnp-msg-bad-issue",
+      });
+      expect(res.json().issues).toEqual([
+        expect.objectContaining({ code: "UNSUPPORTED_ISSUE", field: "payload.issues.0.issue_id" }),
+      ]);
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("computes and returns a canonical proposal hash when an HNP offer omits one", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-hnp-hash",
+        roundNo: 2,
+        decision: "COUNTER",
+        outgoingPrice: 48000,
+        utility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
+        sessionStatus: "ACTIVE",
+      });
+
+      const payload = {
+        hnp: {
+          spec_version: "2026-03-09",
+          capability: "hnp.core.negotiation",
+          session_id: "00000000-0000-4000-a000-000000000099",
+          message_id: "hnp-msg-auto-hash",
+          idempotency_key: "hnp-idem-auto-hash",
+          sequence: 1,
+          sent_at_ms: Date.now(),
+          expires_at_ms: Date.now() + 60_000,
+          sender_agent_id: "buyer-001",
+          sender_role: "BUYER",
+          type: "OFFER",
+          payload: {
+            proposal_id: "proposal-auto-hash",
+            issues: [
+              { issue_id: "hnp.issue.price.total", value: 48000, unit: "USD", kind: "NEGOTIABLE" },
+              { issue_id: "vendor.apple.storage_gb", value: 128, unit: "GB", kind: "INFORMATIONAL" },
+            ],
+            total_price: { currency: "USD", units_minor: 48000 },
+            valid_until: "2026-04-29T00:00:00.000Z",
+            settlement_preconditions: ["escrow_authorized", "tracked_shipping_required"],
+          },
+        },
+      };
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload,
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({
+        hnp: {
+          message_id: "hnp-msg-auto-hash",
+          proposal_id: "proposal-auto-hash",
+        },
+      });
+      expect(res.json().hnp.proposal_hash).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          protocol: expect.objectContaining({
+            proposalId: "proposal-auto-hash",
+            proposalHash: res.json().hnp.proposal_hash,
+            currency: "USD",
+            settlementPreconditions: ["escrow_authorized", "tracked_shipping_required"],
+          }),
+        }),
+        expect.anything(),
+      );
+
+      const reorderedPayload = {
+        hnp: {
+          ...payload.hnp,
+          message_id: "hnp-msg-auto-hash-reordered",
+          idempotency_key: "hnp-idem-auto-hash-reordered",
+          payload: {
+            ...payload.hnp.payload,
+            issues: [...payload.hnp.payload.issues].reverse(),
+            settlement_preconditions: ["tracked_shipping_required", "escrow_authorized", "escrow_authorized"],
+          },
+        },
+      };
+
+      const reorderedRes = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: reorderedPayload,
+      });
+
+      expect(reorderedRes.statusCode).toBe(201);
+      expect(reorderedRes.json().hnp.proposal_hash).toBe(res.json().hnp.proposal_hash);
+    });
+
+    it("rejects an HNP offer when the provided proposal hash does not match the terms", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-bad-hash",
+            idempotency_key: "hnp-idem-bad-hash",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-bad-hash",
+              issues: [
+                { issue_id: "hnp.issue.price.total", value: 48000, unit: "USD", kind: "NEGOTIABLE" },
+              ],
+              total_price: { currency: "USD", units_minor: 48000 },
+              proposal_hash: "sha256:not-the-real-hash",
+              settlement_preconditions: ["escrow_authorized"],
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: "HNP_PROPOSAL_HASH_MISMATCH",
+        retryable: false,
+        related_message_id: "hnp-msg-bad-hash",
+      });
+      expect(res.json().expected_proposal_hash).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(mockGetSessionById).not.toHaveBeenCalled();
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("returns 409 before the engine for an out-of-order HNP offer", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "hnp-msg-prior",
+                sequence: 3,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/offers",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "hnp-msg-late",
+            idempotency_key: "hnp-idem-late",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "OFFER",
+            payload: {
+              proposal_id: "proposal-late",
+              issues: [],
+              total_price: { currency: "USD", units_minor: 10000 },
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "OUT_OF_ORDER",
+        retryable: false,
+      });
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
     });
 
     it("returns 201 with valid offer (new round)", async () => {
@@ -576,6 +1112,7 @@ describe("Negotiation API", () => {
     });
 
     it("returns 409 for SESSION_TERMINAL", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
       mockExecuteNegotiationRound.mockRejectedValue(new Error("SESSION_TERMINAL: ACCEPTED"));
 
       const res = await app.inject({
@@ -589,6 +1126,7 @@ describe("Negotiation API", () => {
     });
 
     it("returns 410 for SESSION_EXPIRED", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
       mockExecuteNegotiationRound.mockRejectedValue(new Error("SESSION_EXPIRED"));
 
       const res = await app.inject({
@@ -602,6 +1140,7 @@ describe("Negotiation API", () => {
     });
 
     it("returns 409 for CONCURRENT_MODIFICATION", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
       mockExecuteNegotiationRound.mockRejectedValue(new Error("CONCURRENT_MODIFICATION: version conflict"));
 
       const res = await app.inject({
@@ -772,6 +1311,552 @@ describe("Negotiation API", () => {
       });
       expect(res.statusCode).toBe(409);
       expect(res.json().error).toBe("CONCURRENT_MODIFICATION");
+    });
+
+    it("does not persist HNP accept agreement/handoff when session update loses the version race", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockUpdateSessionState.mockResolvedValue(null);
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          counterPriceMinor: "50000",
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-race",
+                proposalHash: "sha256:race",
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-race",
+            idempotency_key: "accept-idem-race",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-race",
+              accepted_proposal_hash: "sha256:race",
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toBe("CONCURRENT_MODIFICATION");
+      expect(mockCreateRound).not.toHaveBeenCalled();
+    });
+
+    it("checks participant access before HNP accept ordering", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockGetRoundsBySessionId.mockResolvedValue([{ ...mockRound, metadata: { protocol: { hnp: { messageId: "prior" } } } }]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: INTRUDER_AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "prior",
+            idempotency_key: "accept-idem-1",
+            sequence: 1,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "intruder-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-1",
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("SESSION_ACTOR_MISMATCH");
+      expect(mockGetRoundsBySessionId).not.toHaveBeenCalled();
+    });
+
+    it("returns 401 when an HNP accept has an invalid detached signature", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-bad-sig",
+            idempotency_key: "accept-idem-bad-sig",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-1",
+            },
+            detached_signature: "bad..signature",
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_SIGNATURE",
+        retryable: false,
+        related_message_id: "accept-bad-sig",
+      });
+      expect(mockGetRoundsBySessionId).not.toHaveBeenCalled();
+      expect(mockUpdateSessionState).not.toHaveBeenCalled();
+    });
+
+    it("returns an agreement object for a hash-bound HNP accept", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockUpdateSessionState.mockResolvedValue({ ...mockSession, status: "ACCEPTED" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          counterPriceMinor: "50000",
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-1",
+                proposalHash: "sha256:expected",
+                settlementPreconditions: ["escrow_authorized", "tracked_shipping_required"],
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-good-hash",
+            idempotency_key: "accept-idem-good-hash",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-1",
+              accepted_proposal_hash: "sha256:expected",
+              accepted_issues: [
+                { issue_id: "hnp.issue.price.total", value: 50000, unit: "USD", kind: "NEGOTIABLE" },
+              ],
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        updated: true,
+        session_status: "ACCEPTED",
+        agreement: {
+          session_id: "sess-001",
+          accepted_message_id: "prior",
+          accepted_proposal_id: "proposal-1",
+          accepted_proposal_hash: "sha256:expected",
+          agreed_price: { currency: "USD", units_minor: 50000 },
+          settlement_preconditions: ["escrow_authorized", "tracked_shipping_required"],
+        },
+        transaction_handoff: {
+          status: "ready_for_settlement",
+          next_action: "prepare_settlement",
+        },
+        transaction_handoff_summary: {
+          handoff_count: 1,
+          first_status: "ready_for_settlement",
+          current_status: "ready_for_settlement",
+          current_next_action: "prepare_settlement",
+          terminal: false,
+        },
+      });
+      expect(res.json().agreement.agreement_id).toMatch(/^agr_/);
+      expect(res.json().agreement.agreement_hash).toMatch(/^sha256:/);
+      expect(res.json().transaction_handoff.agreement_hash).toBe(res.json().agreement.agreement_hash);
+      expect(res.json().transaction_handoff.handoff_id).toMatch(/^handoff_/);
+      expect(res.json().transaction_handoff.handoff_hash).toMatch(/^sha256:/);
+      expect(res.json().transaction_handoff_summary.chain_hash).toMatch(/^sha256:/);
+      expect(res.json().transaction_handoff_summary.handoff_hashes).toEqual([
+        res.json().transaction_handoff.handoff_hash,
+      ]);
+      expect(mockCreateRound).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          sessionId: "sess-001",
+          roundNo: 2,
+          senderRole: "BUYER",
+          messageType: "ACCEPT",
+          priceminor: "50000",
+          decision: "ACCEPT",
+          idempotencyKey: "accept-idem-good-hash",
+          metadata: expect.objectContaining({
+            agreement: expect.objectContaining({
+              accepted_proposal_hash: "sha256:expected",
+            }),
+            transaction_handoff: expect.objectContaining({
+              status: "ready_for_settlement",
+            }),
+          }),
+        }),
+      );
+      expect(mockEventDispatch).toHaveBeenCalledWith(expect.objectContaining({
+        type: "negotiation.agreed",
+        payload: expect.objectContaining({
+          agreed_price_minor: 50000,
+        }),
+      }));
+    });
+
+    it("returns a human-approval handoff when HNP accept includes payment approval signals", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockUpdateSessionState.mockResolvedValue({ ...mockSession, status: "ACCEPTED" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          counterPriceMinor: "53000",
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-approval",
+                proposalHash: "sha256:approval",
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-needs-approval",
+            idempotency_key: "accept-idem-needs-approval",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-approval",
+              accepted_proposal_hash: "sha256:approval",
+              accepted_issues: [
+                { issue_id: "hnp.issue.price.total", value: 53000, unit: "USD", kind: "NEGOTIABLE" },
+              ],
+            },
+          },
+          transaction_signals: {
+            payment_decision: "HUMAN_APPROVAL_REQUIRED",
+            payment_reasons: ["above_user_approval_threshold"],
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        transaction_handoff: {
+          status: "needs_human_approval",
+          next_action: "request_human_approval",
+          required_human_approvals: ["above_user_approval_threshold"],
+        },
+        transaction_handoff_summary: {
+          current_status: "needs_human_approval",
+          current_next_action: "request_human_approval",
+        },
+      });
+    });
+
+    it("falls back to accepted proposal issues and currency from HNP round metadata", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockUpdateSessionState.mockResolvedValue({ ...mockSession, status: "ACCEPTED" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          counterPriceMinor: "70000",
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-eur",
+                proposalHash: "sha256:eurproposal",
+                currency: "EUR",
+                issues: [
+                  { issue_id: "hnp.issue.price.total", value: 70000, unit: "EUR", kind: "NEGOTIABLE" },
+                  { issue_id: "hnp.issue.delivery.window", value: "3d", kind: "NEGOTIABLE" },
+                ],
+                settlementPreconditions: ["escrow_authorized"],
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-eur",
+            idempotency_key: "accept-idem-eur",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-eur",
+              accepted_proposal_hash: "sha256:eurproposal",
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        agreement: {
+          accepted_proposal_id: "proposal-eur",
+          accepted_proposal_hash: "sha256:eurproposal",
+          agreed_price: { currency: "EUR", units_minor: 70000 },
+          accepted_issues: [
+            { issue_id: "hnp.issue.price.total", value: 70000, unit: "EUR", kind: "NEGOTIABLE" },
+            { issue_id: "hnp.issue.delivery.window", value: "3d", kind: "NEGOTIABLE" },
+          ],
+          settlement_preconditions: ["escrow_authorized"],
+        },
+      });
+      expect(mockEventDispatch).toHaveBeenCalledWith(expect.objectContaining({
+        type: "negotiation.agreed",
+        payload: expect.objectContaining({
+          agreed_price_minor: 70000,
+        }),
+      }));
+    });
+
+    it("rejects an HNP accept when accepted issues conflict with the stored proposal", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          counterPriceMinor: "48000",
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-issue-bound",
+                proposalHash: "sha256:issuebound",
+                currency: "USD",
+                issues: [
+                  { issue_id: "hnp.issue.price.total", value: 48000, unit: "USD", kind: "NEGOTIABLE" },
+                  { issue_id: "vendor.apple.storage_gb", value: 128, unit: "GB", kind: "INFORMATIONAL" },
+                ],
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-conflicting-issues",
+            idempotency_key: "accept-idem-conflicting-issues",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-issue-bound",
+              accepted_proposal_hash: "sha256:issuebound",
+              accepted_issues: [
+                { issue_id: "hnp.issue.price.total", value: 45000, unit: "USD", kind: "NEGOTIABLE" },
+                { issue_id: "vendor.apple.storage_gb", value: 128, unit: "GB", kind: "INFORMATIONAL" },
+              ],
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_PROPOSAL_ISSUES",
+      });
+      expect(mockUpdateSessionState).not.toHaveBeenCalled();
+      expect(mockEventDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+        type: "negotiation.agreed",
+      }));
+    });
+
+    it("rejects invalid transaction handoff signals before accepting the session", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockUpdateSessionState.mockResolvedValue({ ...mockSession, status: "ACCEPTED" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-invalid-handoff",
+                proposalHash: "sha256:invalidhandoff",
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-invalid-handoff",
+            idempotency_key: "accept-idem-invalid-handoff",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-invalid-handoff",
+              accepted_proposal_hash: "sha256:invalidhandoff",
+            },
+          },
+          transaction_signals: {
+            dispute_evidence_packet_hashes: ["not-a-sha256-hash"],
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_TRANSACTION_HANDOFF",
+        issues: [expect.objectContaining({ code: "INVALID_REFERENCE_HASH" })],
+      });
+      expect(mockUpdateSessionState).not.toHaveBeenCalled();
+    });
+
+    it("returns 409 when an HNP accept binds to the wrong proposal hash", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "prior",
+                proposalId: "proposal-1",
+                proposalHash: "sha256:expected",
+                sequence: 1,
+              },
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-wrong-hash",
+            idempotency_key: "accept-idem-wrong-hash",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-1",
+              accepted_proposal_hash: "sha256:actual",
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "INVALID_PROPOSAL",
+      });
+      expect(mockUpdateSessionState).not.toHaveBeenCalled();
     });
   });
 

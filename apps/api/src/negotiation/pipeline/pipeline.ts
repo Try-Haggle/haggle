@@ -82,6 +82,8 @@ export async function executePipeline(
       opponent: deps.opponent,
       skill: deps.skill,
       l5_signals: deps.l5_signals,
+      memory_brief: deps.memory_brief,
+      evermemo_brief: deps.evermemo_brief,
     },
     deps.config.adapters.DECIDE,
     resolvedEncoding,

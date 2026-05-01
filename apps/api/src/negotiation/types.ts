@@ -1,5 +1,5 @@
 // =========================================
-// Layer A: Protocol Contract (불변)
+// Layer A: Engine Contract
 // =========================================
 
 /** 5-Phase 협상 상태 */
@@ -20,8 +20,8 @@ export type PhaseTransitionEvent =
   | 'TIMEOUT'
   | 'ABORT';
 
-/** Protocol Decision — LLM/Skill이 반환하는 순수 결정 (message 없음) */
-export interface ProtocolDecision {
+/** Engine Decision — LLM/Skill이 반환하는 내부 순수 결정 (wire message 아님, message 없음) */
+export interface EngineDecision {
   action: 'COUNTER' | 'ACCEPT' | 'REJECT' | 'HOLD' | 'DISCOVER' | 'CONFIRM';
   price?: number;
   reasoning: string;
@@ -29,8 +29,14 @@ export interface ProtocolDecision {
   tactic_used?: string;
 }
 
-/** 사용자에게 표시되는 최종 응답 (Protocol + Presentation) */
-export interface NegotiationMove extends ProtocolDecision {
+/**
+ * @deprecated Use EngineDecision for internal engine output.
+ * ProtocolDecision is kept as a compatibility alias while legacy demo and tests migrate.
+ */
+export type ProtocolDecision = EngineDecision;
+
+/** 사용자에게 표시되는 최종 응답 (Engine Decision + Presentation) */
+export interface NegotiationMove extends EngineDecision {
   message: string;
 }
 
@@ -80,7 +86,7 @@ export interface ValidationViolation {
   rule: string;
   severity: 'HARD' | 'SOFT';
   guidance: string;
-  suggested_fix?: Partial<ProtocolDecision>;
+  suggested_fix?: Partial<EngineDecision>;
 }
 
 // =========================================
@@ -146,9 +152,11 @@ export interface CoreMemory {
     intervention_mode: HumanInterventionMode;
     /** Session creation timestamp in epoch ms — used for real-time t_elapsed */
     created_at_ms?: number;
-    /** Session max duration in ms — category-dependent (default 24h for electronics) */
+    /** Listing/session deadline in epoch ms — used for continuous time value curves. */
+    deadline_at_ms?: number;
+    /** Session max duration in ms — category-dependent fallback when no deadline is known. */
     max_duration_ms?: number;
-    /** Urgency signal: higher = faster concession + more time pressure */
+    /** @deprecated Use created_at_ms/deadline_at_ms plus concession beta instead of urgency labels. */
     urgency?: 'low' | 'normal' | 'high' | 'urgent';
   };
   boundaries: {
@@ -178,7 +186,7 @@ export interface BuddyDNA {
   tone: BuddyTone;
 }
 
-/** 버디 말투 — 같은 ProtocolDecision을 다르게 표현 */
+/** 버디 말투 — 같은 EngineDecision을 다르게 표현 */
 export interface BuddyTone {
   style: 'professional' | 'friendly' | 'analytical' | 'assertive' | 'casual';
   formality: 'formal' | 'neutral' | 'informal';
@@ -270,14 +278,14 @@ export interface NegotiationSkill {
     recentFacts: RoundFact[],
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision>;
+  ): Promise<EngineDecision>;
 
   evaluateOffer(
     memory: CoreMemory,
     incomingOffer: { price: number; non_price_terms?: Record<string, unknown> },
     recentFacts: RoundFact[],
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision>;
+  ): Promise<EngineDecision>;
 }
 
 export interface SkillConstraint {
@@ -374,7 +382,7 @@ export interface ModelAdapter {
     signals?: string[],
     prevMemory?: CoreMemory,
   ): string;
-  parseResponse(raw: string): ProtocolDecision;
+  parseResponse(raw: string): EngineDecision;
   coachingLevel(): 'DETAILED' | 'STANDARD' | 'LIGHT';
 }
 
@@ -384,7 +392,7 @@ export interface ModelAdapter {
 
 export interface MessageRenderer {
   render(
-    decision: ProtocolDecision,
+    decision: EngineDecision,
     context: {
       phase: NegotiationPhase;
       role: 'buyer' | 'seller';

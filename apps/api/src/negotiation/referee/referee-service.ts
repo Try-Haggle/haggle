@@ -3,7 +3,7 @@ import type {
   RoundFact,
   OpponentPattern,
   BuddyDNA,
-  ProtocolDecision,
+  EngineDecision,
   NegotiationMove,
   NegotiationPhase,
   RefereeCoaching,
@@ -16,7 +16,7 @@ import { TemplateMessageRenderer } from '../rendering/message-renderer.js';
 const MAX_RETRY = 2;
 
 export interface RefereeResult {
-  decision: ProtocolDecision;
+  decision: EngineDecision;
   move: NegotiationMove;
   coaching: RefereeCoaching;
   validation: ValidationResult;
@@ -34,12 +34,12 @@ export class RefereeService {
   private renderer = new TemplateMessageRenderer();
 
   async process(params: {
-    decision: ProtocolDecision;
+    decision: EngineDecision;
     memory: CoreMemory;
     recentFacts: RoundFact[];
     opponentPattern: OpponentPattern | null;
     buddyDna: BuddyDNA;
-    previousMoves: ProtocolDecision[];
+    previousMoves: EngineDecision[];
     phase: NegotiationPhase;
     locale?: string;
   }): Promise<RefereeResult> {

@@ -1,10 +1,13 @@
-/** HNP message types as defined in the architecture spec. */
+/**
+ * @deprecated Use HnpEnvelope and HnpCoreMessageType from `protocol/core`.
+ * This legacy shape is kept for compatibility adapters and older tests.
+ */
 export type HnpMessageType = 'OFFER' | 'COUNTER' | 'ACCEPT' | 'REJECT' | 'ESCALATE';
 
-/** Negotiation role. */
+/** @deprecated Use HnpActorRole from `protocol/core`. */
 export type HnpRole = 'BUYER' | 'SELLER';
 
-/** A single HNP protocol message. */
+/** @deprecated Use HnpEnvelope from `protocol/core`. */
 export interface HnpMessage {
   session_id: string;
   round: number;

@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { TemplateMessageRenderer } from '../message-renderer.js';
-import type { ProtocolDecision, BuddyTone } from '../../types.js';
+import type { EngineDecision, BuddyTone } from '../../types.js';
 
 const renderer = new TemplateMessageRenderer();
 
-function render(action: ProtocolDecision['action'], tone: Partial<BuddyTone> = {}, price?: number) {
-  const decision: ProtocolDecision = { action, reasoning: 'test', price };
+function render(action: EngineDecision['action'], tone: Partial<BuddyTone> = {}, price?: number) {
+  const decision: EngineDecision = { action, reasoning: 'test', price };
   return renderer.render(decision, {
     phase: 'BARGAINING',
     role: 'buyer',
@@ -78,7 +78,7 @@ describe('TemplateMessageRenderer', () => {
   });
 
   it('should render non-price terms', () => {
-    const decision: ProtocolDecision = {
+    const decision: EngineDecision = {
       action: 'COUNTER', price: 540, reasoning: 'test',
       non_price_terms: { shipping_method: 'insured_shipping', warranty_period: '30_days' },
     };

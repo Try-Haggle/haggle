@@ -75,7 +75,7 @@ export function getValidEvents(phase: NegotiationPhase): PhaseTransitionEvent[] 
 }
 
 /**
- * Detect which phase transition event should fire based on a ProtocolDecision.
+ * Detect which phase transition event should fire based on a EngineDecision.
  */
 export function detectPhaseEvent(
   action: string,

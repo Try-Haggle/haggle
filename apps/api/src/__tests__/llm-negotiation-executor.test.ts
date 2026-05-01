@@ -163,6 +163,7 @@ describe('phaseToDbStatus mapping', () => {
 describe('executor factory', () => {
   afterEach(() => {
     delete process.env.NEGOTIATION_ENGINE;
+    delete process.env.NEGOTIATION_PIPELINE;
   });
 
   it('returns rule executor by default', async () => {
@@ -179,5 +180,15 @@ describe('executor factory', () => {
     const { getExecutor } = await import('../lib/executor-factory.js');
     const executor = getExecutor();
     expect(typeof executor).toBe('function');
+  });
+
+  it('defaults LLM pipeline mode to staged unless legacy is explicit', async () => {
+    const { getPipelineMode } = await import('../lib/executor-factory.js');
+
+    delete process.env.NEGOTIATION_PIPELINE;
+    expect(getPipelineMode()).toBe('staged');
+
+    process.env.NEGOTIATION_PIPELINE = 'legacy';
+    expect(getPipelineMode()).toBe('legacy');
   });
 });

@@ -21,8 +21,11 @@ function simHash(input: string): string {
 }
 
 function fmt(v: number): string {
-  if (v > 1000) return `$${(v / 100).toFixed(0)}`;
-  return `$${v}`;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: v % 100 === 0 ? 0 : 2,
+  }).format(v / 100);
 }
 
 /* ── Sub-Components ─────────────────────────── */

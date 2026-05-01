@@ -10,6 +10,7 @@ import type {
 } from '../types.js';
 import { computeCounterOffer } from '@haggle/engine-core';
 import { eq, trustScores, type Database } from '@haggle/db';
+import { computeSessionTimePressure } from '../time-pressure.js';
 
 // ─── Style-based margin for opening anchor ───
 const STYLE_MARGIN: Record<BuddyDNA['style'], number> = {
@@ -77,10 +78,10 @@ function _computeCoaching(
   u_risk: number,
 ): RefereeCoaching {
   const { session, boundaries } = memory;
-  const { phase, role, rounds_remaining, max_rounds, round } = session;
+  const { phase, role, max_rounds, round } = session;
 
   // ─── Time pressure ───
-  const time_pressure = max_rounds > 0 ? 1 - rounds_remaining / max_rounds : 0;
+  const time_pressure = computeSessionTimePressure(session);
 
   // ─── Recommended price (phase-dependent) ───
   let recommended_price: number;
@@ -99,7 +100,7 @@ function _computeCoaching(
     }
   } else if (phase === 'BARGAINING') {
     // Faratin concession curve
-    const t = max_rounds > 0 ? round / max_rounds : 0;
+    const t = time_pressure || (max_rounds > 0 ? round / max_rounds : 0);
     const beta = buddyDna.style === 'aggressive' ? 2.0 : buddyDna.style === 'defensive' ? 0.5 : 1.0;
     recommended_price = computeCounterOffer({
       p_start: boundaries.my_target,

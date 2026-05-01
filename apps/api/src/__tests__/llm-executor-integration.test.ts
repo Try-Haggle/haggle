@@ -41,6 +41,13 @@ vi.mock('../services/negotiation-session.service.js', () => ({
   updateSessionState: (...args: unknown[]) => mockUpdateSessionState(...args),
 }));
 
+vi.mock('../services/conversation-signal-sink.js', () => ({
+  recordRoundConversationSignals: vi.fn().mockResolvedValue({
+    incoming: { extracted: 0, inserted: 0 },
+    outgoing: { extracted: 0, inserted: 0 },
+  }),
+}));
+
 // Mock xAI client — the only external API call
 vi.mock('../negotiation/adapters/xai-client.js', () => ({
   callLLM: (...args: unknown[]) => mockCallLLM(...args),

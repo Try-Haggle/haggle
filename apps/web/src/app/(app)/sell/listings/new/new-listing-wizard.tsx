@@ -305,7 +305,32 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     setter(raw.replace(/[^0-9]/g, ""));
   };
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatLocalDateInput(new Date());
+
+  function getBrowserTimeZone(): string {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  }
+
+  function formatLocalDateInput(value: Date): string {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function localDateToDeadlineIso(localDate: string): string {
+    const [year, month, day] = localDate.split("-").map(Number);
+    return new Date(year, (month ?? 1) - 1, day ?? 1, 23, 59, 59, 999).toISOString();
+  }
+
+  function deadlineStrategyConfig(): Record<string, unknown> {
+    return {
+      sellerTimezone: getBrowserTimeZone(),
+      sellingDeadlineLocalDate: sellingDeadline,
+      sellingDeadlineLocalTime: "23:59:59.999",
+      sellingDeadlineSource: "browser_timezone",
+    };
+  }
 
   /* ─── Resume draft ─────────────────────────────────────── */
 
@@ -326,7 +351,13 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
         if (d.photoUrl) { setPhotoUrl(d.photoUrl); setPhotoPreview(d.photoUrl); }
         if (d.targetPrice) setTargetPrice(String(Math.round(Number(d.targetPrice))));
         if (d.floorPrice) setFloorPrice(String(Math.round(Number(d.floorPrice))));
-        if (d.sellingDeadline) setSellingDeadline(new Date(d.sellingDeadline).toISOString().split("T")[0]);
+        if (d.sellingDeadline) {
+          const savedLocalDate =
+            typeof d.strategyConfig?.sellingDeadlineLocalDate === "string"
+              ? d.strategyConfig.sellingDeadlineLocalDate
+              : null;
+          setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
+        }
         if (d.draftName) setDraftName(d.draftName);
         if (d.strategyConfig?.preset) {
           const preset = AGENT_PRESETS.find((a) => a.id === d.strategyConfig!.preset);
@@ -435,8 +466,13 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     if (url ?? photoUrl) patch.photoUrl = url ?? photoUrl;
     if (targetPrice.trim()) patch.targetPrice = targetPrice.trim();
     if (floorPrice.trim()) patch.floorPrice = floorPrice.trim();
-    if (sellingDeadline) patch.sellingDeadline = new Date(sellingDeadline).toISOString();
-    if (selectedAgent) patch.strategyConfig = { preset: selectedAgent.id, ...selectedAgent.stats };
+    if (sellingDeadline) patch.sellingDeadline = localDateToDeadlineIso(sellingDeadline);
+    if (sellingDeadline || selectedAgent) {
+      patch.strategyConfig = {
+        ...(sellingDeadline ? deadlineStrategyConfig() : {}),
+        ...(selectedAgent ? { preset: selectedAgent.id, ...selectedAgent.stats } : {}),
+      };
+    }
     return patch;
   }
 
@@ -563,7 +599,11 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
     try {
       let ok = await patchDraft(draftId!, {
-        strategyConfig: { preset: selectedAgent!.id, ...selectedAgent!.stats },
+        strategyConfig: {
+          ...(sellingDeadline ? deadlineStrategyConfig() : {}),
+          preset: selectedAgent!.id,
+          ...selectedAgent!.stats,
+        },
       });
       if (!ok) return;
 

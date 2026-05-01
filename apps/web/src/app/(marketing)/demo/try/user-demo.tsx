@@ -136,7 +136,7 @@ export function UserDemo() {
 
       try {
         const res = await executeRound(demoId, {
-          seller_price: priceDollars,
+          seller_price_minor: priceDollars * 100,
         });
 
         const buyerPriceDollars = minorToDollars(res.state.buyer_price);

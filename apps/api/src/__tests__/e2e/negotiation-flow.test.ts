@@ -355,7 +355,12 @@ describe("E2E: Full negotiation flow", () => {
         buyer_id: BUYER_ID,
         seller_id: SELLER_ID,
         counterparty_id: SELLER_ID,
-        strategy_snapshot: { alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 } },
+        strategy_snapshot: {
+          alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
+          item: { title: "iPhone 15 Pro", category: "electronics" },
+          buyer_budget: { max_budget_minor: 95000, target_price_minor: 90000 },
+          must_have: ["battery >= 90%"],
+        },
         intent_id: INTENT_ID,
       },
     });

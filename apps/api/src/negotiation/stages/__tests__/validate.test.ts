@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateStage } from '../validate.js';
 import type { ValidateInput } from '../../pipeline/types.js';
-import type { CoreMemory, ProtocolDecision, RefereeCoaching } from '../../types.js';
+import type { CoreMemory, EngineDecision, RefereeCoaching } from '../../types.js';
 import type { RefereeBriefing } from '../../skills/skill-types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
@@ -144,12 +144,12 @@ describe('Stage 4: validateStage', () => {
     );
 
     expect(result.auto_fix_applied).toBe(true);
-    expect(result.final_decision.action).toBe('ACCEPT');
+    expect(result.final_decision.action).toBe('REJECT');
   });
 
   it('detects SOFT violations without blocking', () => {
     // Create a stagnation scenario: 4+ previous moves with similar prices
-    const previousMoves: ProtocolDecision[] = [
+    const previousMoves: EngineDecision[] = [
       { action: 'COUNTER', price: 85000, reasoning: 'test' },
       { action: 'COUNTER', price: 85100, reasoning: 'test' },
       { action: 'COUNTER', price: 85200, reasoning: 'test' },

@@ -15,7 +15,7 @@ import type {
   RoundFact,
   OpponentPattern,
   NegotiationPhase,
-  ProtocolDecision,
+  EngineDecision,
 } from '../types.js';
 import { DefaultEngineSkill } from './default-engine-skill.js';
 import { ELECTRONICS_TERMS } from '../term/standard-terms.js';
@@ -93,7 +93,7 @@ class TemplateSkill implements NegotiationSkill {
     recentFacts: RoundFact[],
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision> {
+  ): Promise<EngineDecision> {
     return this._base.generateMove(memory, recentFacts, opponentPattern, phase);
   }
 
@@ -102,7 +102,7 @@ class TemplateSkill implements NegotiationSkill {
     incomingOffer: { price: number; non_price_terms?: Record<string, unknown> },
     recentFacts: RoundFact[],
     phase: NegotiationPhase,
-  ): Promise<ProtocolDecision> {
+  ): Promise<EngineDecision> {
     return this._base.evaluateOffer(memory, incomingOffer, recentFacts, phase);
   }
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { initDemo, executeRound } from "@/lib/demo-api";
+import { resetDemoMemory } from "@/lib/intelligence-demo-api";
 import type { DemoInitRequest, DemoInitResponse, DemoRoundResponse, StageTrace } from "@/lib/demo-types";
 import { SessionInitPanel } from "./_components/session-init-panel";
 import { PipelineViewer } from "./_components/pipeline-viewer";
@@ -11,7 +12,10 @@ import { StateGauge } from "./_components/utility-bar";
 import { DbTableView } from "./_components/db-table-view";
 import { CostBadge } from "./_components/cost-badge";
 import { DemoSignupShowcase } from "./_components/demo-signup-showcase";
-import { AutoTradeShowcase } from "./_components/auto-trade-showcase";
+import { AutoTradeShowcase, buildSellerVoiceMessage } from "./_components/auto-trade-showcase";
+import { TagGardenIntelligencePanel } from "./_components/tag-garden-intelligence-panel";
+import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
+import { AgentProductAdvisor } from "./_components/agent-product-advisor";
 import {
   AncientBeingSelector,
   NegotiationAvatarCoach,
@@ -30,42 +34,69 @@ type DemoState =
 
 /* ── Helpers ────────────────────────────────── */
 
-/** API returns prices in minor units (cents). Convert to dollars for display. */
-function minor(v: number): string {
-  if (v > 1000) return `$${(v / 100).toFixed(0)}`;
-  return `$${v}`;
+/** Demo engine prices are minor units (cents). User inputs are converted at boundaries. */
+function formatMinor(v: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: v % 100 === 0 ? 0 : 2,
+  }).format(v / 100);
 }
 
-function minorToDollarNumber(v: number): number {
-  return v > 1000 ? Math.round(v / 100) : v;
+function dollarsToMinor(v: number): number {
+  return Math.round(v * 100);
 }
 
-const AUTO_TRADE_PARAMS = {
-  item: {
-    title: "iPhone 15 Pro 256GB Natural Titanium",
-    condition: "battery 92%, screen mint, T-Mobile unlocked",
-    swappa_median: 920,
-  },
-  seller: { ask_price: 920, floor_price: 782 },
-  buyer_budget: { max_budget: 950 },
-  language: "ko",
-  preset: "balanced",
-} as const;
+const DEFAULT_SELLER_AGENT_ID: AncientBeingId = "dealer_hana";
+const DEMO_USER_ID = "11111111-1111-4111-8111-111111111111";
+const DEMO_USER_STORAGE_KEY = "haggle.developerDemo.userId";
 
-const AUTO_SELLER_TURNS = [
-  {
-    seller_price: 920,
-    seller_message: "상태가 좋아서 첫 가격은 그대로 유지하고 싶습니다.",
-  },
-  {
-    seller_price: 900,
-    seller_message: "빠르게 진행할 수 있다면 $900까지는 맞춰드릴 수 있습니다.",
-  },
-  {
-    seller_price: 880,
-    seller_message: "$880이면 진행하겠습니다.",
-  },
-] as const;
+function createDemoUserId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return "22222222-2222-4222-8222-" + Math.random().toString().slice(2, 14).padEnd(12, "0");
+}
+
+function getOrCreateDemoUserId(): string {
+  if (typeof window === "undefined") return DEMO_USER_ID;
+
+  const existing = window.localStorage.getItem(DEMO_USER_STORAGE_KEY);
+  if (existing) return existing;
+
+  const next = createDemoUserId();
+  window.localStorage.setItem(DEMO_USER_STORAGE_KEY, next);
+  return next;
+}
+
+function buildAutoTradeParams(
+  listing: AdvisorListing,
+  memory: AdvisorMemory | null,
+  userId: string,
+): DemoInitRequest {
+  return {
+    user_id: userId,
+    item: {
+      title: listing.title,
+      condition: listing.condition,
+      swappa_median_minor: listing.marketMedianMinor,
+    },
+    seller: { ask_price_minor: listing.askPriceMinor, floor_price_minor: listing.floorPriceMinor },
+    buyer_budget: {
+      max_budget_minor: memory?.budgetMax
+        ? dollarsToMinor(memory.budgetMax)
+        : Math.max(listing.askPriceMinor, listing.marketMedianMinor),
+    },
+    language: "ko",
+    preset:
+      memory?.riskStyle === "safe_first"
+        ? "safe_first"
+        : memory?.riskStyle === "lowest_price"
+          ? "lowest_price"
+          : "balanced",
+  };
+}
 
 function pause(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,9 +110,18 @@ export function DeveloperDemo() {
   const [initResponse, setInitResponse] = useState<DemoInitResponse | null>(null);
   const [rounds, setRounds] = useState<DemoRoundResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [buyerAncientId, setBuyerAncientId] = useState<AncientBeingId>("vel");
-  const [sellerAncientId, setSellerAncientId] = useState<AncientBeingId>("dealer_hana");
+  const [buyerAncientId, setBuyerAncientId] = useState<AncientBeingId>("fab");
+  const sellerAncientId = DEFAULT_SELLER_AGENT_ID;
+  const [selectedListing, setSelectedListing] = useState<AdvisorListing | null>(null);
+  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
+  const [negotiationBlockedReason, setNegotiationBlockedReason] = useState<string | null>(null);
+  const [demoUserId, setDemoUserId] = useState(DEMO_USER_ID);
   const [autoTradeRunning, setAutoTradeRunning] = useState(false);
+  const [endingDemo, setEndingDemo] = useState(false);
+
+  useEffect(() => {
+    setDemoUserId(getOrCreateDemoUserId());
+  }, []);
 
   /* ── Cost Tracking ── */
   const totalCost = (() => {
@@ -106,6 +146,7 @@ export function DeveloperDemo() {
       setDemoState("INITIALIZING");
       try {
         const resp = await initDemo({
+          user_id: demoUserId,
           ...params,
           buyer_agent_id: buyerAncientId,
           seller_agent_id: sellerAncientId,
@@ -119,12 +160,12 @@ export function DeveloperDemo() {
         setDemoState("IDLE");
       }
     },
-    [buyerAncientId, sellerAncientId],
+    [buyerAncientId, demoUserId, sellerAncientId],
   );
 
   /* ── Execute Round ── */
   const handleRound = useCallback(
-    async (params: { seller_price: number; seller_message?: string }) => {
+    async (params: { seller_price_minor: number; seller_message?: string }) => {
       if (!demoId) return;
       setError(null);
       setDemoState("ROUND_RUNNING");
@@ -154,7 +195,50 @@ export function DeveloperDemo() {
     setError(null);
   };
 
-  const handleRunAutoTrade = useCallback(async () => {
+  const handleEndDemo = useCallback(async () => {
+    setEndingDemo(true);
+    setError(null);
+    try {
+      await resetDemoMemory(demoUserId);
+      const nextUserId = createDemoUserId();
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(DEMO_USER_STORAGE_KEY, nextUserId);
+      }
+      setDemoUserId(nextUserId);
+      setSelectedListing(null);
+      setAdvisorMemory(null);
+      setNegotiationBlockedReason(null);
+      handleReset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "데모 데이터 삭제에 실패했습니다");
+    } finally {
+      setEndingDemo(false);
+    }
+  }, [demoUserId]);
+
+  const handleStartNegotiationFromAdvisor = (
+    listing: AdvisorListing,
+    memory: AdvisorMemory,
+    readiness: { ready: boolean; reason: string | null },
+  ) => {
+    setSelectedListing(listing);
+    setAdvisorMemory(memory);
+    setNegotiationBlockedReason(readiness.ready ? null : readiness.reason);
+  };
+
+  const handleRunAutoTrade = useCallback(async (listingOverride?: AdvisorListing, memoryOverride?: AdvisorMemory) => {
+    const listing = listingOverride ?? selectedListing;
+    const memory = memoryOverride ?? advisorMemory;
+
+    if (!listing) {
+      setError("실제 등록 상품을 먼저 선택해 주세요.");
+      return;
+    }
+    if (negotiationBlockedReason) {
+      setError(negotiationBlockedReason);
+      return;
+    }
+
     setError(null);
     setAutoTradeRunning(true);
     setDemoState("INITIALIZING");
@@ -164,7 +248,7 @@ export function DeveloperDemo() {
 
     try {
       const init = await initDemo({
-        ...AUTO_TRADE_PARAMS,
+        ...buildAutoTradeParams(listing, memory, demoUserId),
         buyer_agent_id: buyerAncientId,
         seller_agent_id: sellerAncientId,
       });
@@ -176,9 +260,17 @@ export function DeveloperDemo() {
       let latestRound: DemoRoundResponse | null = null;
       let sessionDone = false;
 
-      for (const turn of AUTO_SELLER_TURNS) {
+      for (const [index, turn] of listing.sellerTurns.entries()) {
         setDemoState("ROUND_RUNNING");
-        const round = await executeRound(init.demo_id, turn);
+        const round = await executeRound(init.demo_id, {
+          ...turn,
+          seller_message: buildSellerVoiceMessage(sellerAncientId, {
+            priceMinor: turn.seller_price_minor,
+            roundIndex: index,
+            listingTitle: listing.title,
+            baseMessage: turn.seller_message,
+          }),
+        });
         latestRound = round;
         setRounds((prev) => [...prev, round]);
 
@@ -195,8 +287,13 @@ export function DeveloperDemo() {
       if (!sessionDone && latestRound?.final.decision.price) {
         setDemoState("ROUND_RUNNING");
         const acceptRound = await executeRound(init.demo_id, {
-          seller_price: minorToDollarNumber(latestRound.final.decision.price),
-          seller_message: "좋습니다. 그 가격으로 진행하겠습니다.",
+          seller_price_minor: latestRound.final.decision.price,
+          seller_message: buildSellerVoiceMessage(sellerAncientId, {
+            priceMinor: latestRound.final.decision.price,
+            roundIndex: listing.sellerTurns.length,
+            listingTitle: listing.title,
+            finalAccept: true,
+          }),
         });
         setRounds((prev) => [...prev, acceptRound]);
         setDemoState(acceptRound.state.done ? "SESSION_DONE" : "ROUND_DONE");
@@ -209,7 +306,7 @@ export function DeveloperDemo() {
     } finally {
       setAutoTradeRunning(false);
     }
-  }, [buyerAncientId, sellerAncientId]);
+  }, [advisorMemory, buyerAncientId, demoUserId, negotiationBlockedReason, selectedListing, sellerAncientId]);
 
   /* ── Derived ── */
   const latestRound = rounds.length > 0 ? rounds[rounds.length - 1] : null;
@@ -242,24 +339,35 @@ export function DeveloperDemo() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <AncientBeingSelector
             selectedId={buyerAncientId}
             onSelect={setBuyerAncientId}
             title="구매자 에이전트"
             description="보유한 고대 존재, 딜러, 버디 중 구매자 측 에이전트를 선택하세요."
-            defaultLabel="구매자: 벨"
+            defaultLabel="구매자: 팹"
             testId="buyer-agent-selector"
           />
-          <AncientBeingSelector
-            selectedId={sellerAncientId}
-            onSelect={setSellerAncientId}
-            title="판매자 에이전트"
-            description="보유한 고대 존재, 딜러, 버디 중 판매자 측 에이전트를 선택하세요."
-            defaultLabel="판매자: 하나"
-            testId="seller-agent-selector"
-          />
+          <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+            <h3 className="text-sm font-semibold text-white">판매자 에이전트</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              이 상담 데모에서는 판매자 쪽을 기본 에이전트 하나로 고정합니다. 구매자 메모리와 상품 조건이 협상 모델을 바꾸는지 보는 것이 목적입니다.
+            </p>
+            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100">
+              기본 판매자: 하나
+            </div>
+          </div>
         </div>
+
+        <AgentProductAdvisor
+          key={demoUserId}
+          userId={demoUserId}
+          selectedAgentId={buyerAncientId}
+          selectedListingId={selectedListing?.id}
+          onStartNegotiation={handleStartNegotiationFromAdvisor}
+          onEndDemo={handleEndDemo}
+          endingDemo={endingDemo}
+        />
 
         <AutoTradeShowcase
           demoState={demoState}
@@ -267,10 +375,15 @@ export function DeveloperDemo() {
           rounds={rounds}
           buyerAncientId={buyerAncientId}
           sellerAncientId={sellerAncientId}
+          listing={selectedListing}
+          buyerMemory={advisorMemory}
           autoTradeRunning={autoTradeRunning}
+          startBlockedReason={negotiationBlockedReason}
           onRunAutoTrade={handleRunAutoTrade}
           onReset={handleReset}
         />
+
+        <TagGardenIntelligencePanel />
 
         {/* Cost Badge */}
         {demoState !== "IDLE" && (
@@ -315,13 +428,13 @@ export function DeveloperDemo() {
                 <div className="rounded-lg bg-slate-900/60 p-3">
                   <span className="text-slate-500 block mb-1">목표가</span>
                   <span className="text-cyan-400 font-mono font-bold text-base">
-                    {minor(initResponse.strategy.target_price)}
+                    {formatMinor(initResponse.strategy.target_price)}
                   </span>
                 </div>
                 <div className="rounded-lg bg-slate-900/60 p-3">
                   <span className="text-slate-500 block mb-1">최대 지불가</span>
                   <span className="text-amber-400 font-mono font-bold text-base">
-                    {minor(initResponse.strategy.floor_price)}
+                    {formatMinor(initResponse.strategy.floor_price)}
                   </span>
                 </div>
                 <div className="rounded-lg bg-slate-900/60 p-3">
@@ -344,6 +457,9 @@ export function DeveloperDemo() {
               )}
               {initResponse.strategy.key_concerns.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="rounded-md bg-slate-700/30 px-2 py-0.5 text-[10px] text-slate-500">
+                    검증/협상 리스크
+                  </span>
                   {initResponse.strategy.key_concerns.map((c, i) => (
                     <span
                       key={i}
@@ -487,7 +603,7 @@ export function DeveloperDemo() {
                 </p>
                 <p className="text-2xl font-bold text-white mb-2">
                   {latestRound.final.decision.action === "ACCEPT"
-                    ? `${minor(latestRound.final.decision.price)}에 거래 성사`
+                    ? `${formatMinor(latestRound.final.decision.price)}에 거래 성사`
                     : `종료: ${latestRound.final.decision.action}`}
                 </p>
                 <p className="text-sm text-slate-400 mb-4">

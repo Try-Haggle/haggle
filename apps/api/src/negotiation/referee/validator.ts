@@ -1,5 +1,5 @@
 import type {
-  ProtocolDecision,
+  EngineDecision,
   CoreMemory,
   RefereeCoaching,
   NegotiationPhase,
@@ -19,10 +19,10 @@ const LARGE_CONCESSION_MULTIPLIER = 2;
  * V1-V3: HARD violations (must block). V4-V7: SOFT violations (coach + retry).
  */
 export function validateMove(
-  move: ProtocolDecision,
+  move: EngineDecision,
   memory: CoreMemory,
   coaching: RefereeCoaching,
-  previousMoves: ProtocolDecision[],
+  previousMoves: EngineDecision[],
   currentPhase: NegotiationPhase,
   mode: ValidationMode = 'full',
 ): ValidationResult {
@@ -65,8 +65,8 @@ export function validateMove(
     violations.push({
       rule: 'V3',
       severity: 'HARD',
-      guidance: 'Cannot COUNTER with 0 rounds remaining. Must ACCEPT or REJECT.',
-      suggested_fix: { action: 'ACCEPT' },
+      guidance: 'Cannot COUNTER with 0 rounds remaining. Must choose a terminal action.',
+      suggested_fix: { action: 'REJECT' },
     });
   }
 

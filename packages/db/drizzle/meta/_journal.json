@@ -15,6 +15,174 @@
       "when": 1741564800000,
       "tag": "0001_add_listings_published",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1741564801000,
+      "tag": "0002_add_similar_listings_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1741564802000,
+      "tag": "0002_phase3_5_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1741564803000,
+      "tag": "0003_tag_system_dag",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1741564804000,
+      "tag": "0004_add_current_step",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1741564805000,
+      "tag": "0004_data_moat_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1741564806000,
+      "tag": "0005_add_draft_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1741564807000,
+      "tag": "0005_data_moat_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1741564808000,
+      "tag": "0006_analytics_moat_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1741564809000,
+      "tag": "0007_user_wallets",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1741564810000,
+      "tag": "0008_webhook_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1741564811000,
+      "tag": "0009_buddy_gamification",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1741564812000,
+      "tag": "0010_pity_ceiling",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1741564813000,
+      "tag": "0011_hfmi_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1741564814000,
+      "tag": "0012_hfmi_adjusted_price",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1741564815000,
+      "tag": "0013_payment_shipping_commerce",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1741564816000,
+      "tag": "0014_addresses",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1741564817000,
+      "tag": "0015_shipment_parcel_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1741564818000,
+      "tag": "0016_chain_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1741564819000,
+      "tag": "0017_shipment_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1741564820000,
+      "tag": "0018_reviewer_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1741564821000,
+      "tag": "0019_advisor_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1741564822000,
+      "tag": "0020_dispute_evidence_video_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1741564823000,
+      "tag": "0021_haggle_intelligence_layer",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1741564824000,
+      "tag": "0022_repair_hil_signal_key",
+      "breakpoints": true
     }
   ]
 }

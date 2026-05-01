@@ -27,6 +27,31 @@ const CONDITIONS = [
   { value: "poor", label: "Poor" },
 ];
 
+function getBrowserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function formatLocalDateInput(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function localDateToDeadlineIso(localDate: string): string {
+  const [year, month, day] = localDate.split("-").map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1, 23, 59, 59, 999).toISOString();
+}
+
+function deadlineStrategyConfig(localDate: string): Record<string, unknown> {
+  return {
+    sellerTimezone: getBrowserTimeZone(),
+    sellingDeadlineLocalDate: localDate,
+    sellingDeadlineLocalTime: "23:59:59.999",
+    sellingDeadlineSource: "browser_timezone",
+  };
+}
+
 export default function App() {
   // Form state
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -102,7 +127,14 @@ export default function App() {
             }
             if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
             if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
-            if (draft.sellingDeadline) setSellingDeadline((draft.sellingDeadline as string).slice(0, 10));
+            if (draft.sellingDeadline) {
+              const strategyConfig = draft.strategyConfig as Record<string, unknown> | undefined;
+              const savedLocalDate =
+                typeof strategyConfig?.sellingDeadlineLocalDate === "string"
+                  ? strategyConfig.sellingDeadlineLocalDate
+                  : null;
+              setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(draft.sellingDeadline as string)));
+            }
           }
         } catch (err) {
           console.error("[haggle] Error processing tool result:", err);
@@ -267,7 +299,8 @@ export default function App() {
           patch: {
             targetPrice: targetPrice.trim(),
             floorPrice: floorPrice.trim() || undefined,
-            sellingDeadline: new Date(sellingDeadline).toISOString(),
+            sellingDeadline: localDateToDeadlineIso(sellingDeadline),
+            strategyConfig: deadlineStrategyConfig(sellingDeadline),
           },
         },
       });
@@ -579,7 +612,7 @@ export default function App() {
               type="date"
               className="form-input"
               value={sellingDeadline}
-              min={new Date().toISOString().slice(0, 10)}
+              min={formatLocalDateInput(new Date())}
               max="2099-12-31"
               onChange={(e) => {
                 setSellingDeadline(e.target.value);
@@ -968,6 +1001,7 @@ export default function App() {
                             draft_id: draftId,
                             patch: {
                               strategyConfig: {
+                                ...(sellingDeadline ? deadlineStrategyConfig(sellingDeadline) : {}),
                                 preset: selectedAgent,
                                 ...currentStats,
                               },

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Database } from "@haggle/db";
+import { eq, listingDrafts, listingsPublished, type Database } from "@haggle/db";
+import { compileStrategySnapshot, type AgentStats, type CompiledStrategySnapshot } from "@haggle/engine-session";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import {
   createDraft,
@@ -443,7 +444,7 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
       target_price: z.number().positive().describe("Ideal price the buyer wants to achieve (in cents). Should be lower than max_price."),
 
       // ── Optional: Timing ──
-      deadline_hours: z.number().positive().optional().describe("Negotiation deadline in hours. Default 24. Patient buyers: 48-72. Urgent: 6-12."),
+      deadline_hours: z.number().positive().optional().describe("Buyer-side negotiation deadline in hours. Default 24. Listing sellingDeadline caps the actual time-value window when present."),
 
       // ── Optional: Priority weights (must sum to ~1.0) ──
       alpha_price: z.number().min(0).max(1).optional().describe("How much the buyer cares about price. Default 0.4. Range 0.2-0.6."),
@@ -489,8 +490,16 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         // Style presets — individual params override these
         const presets = getStylePreset(style);
 
+        const nowMs = Date.now();
+        const listingContext = await loadListingStrategyContext(db, listing_id);
         const deadlineHours = params.deadline_hours ?? presets.deadline_hours ?? 24;
-        const expiresAt = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
+        const buyerDeadlineAtMs = nowMs + deadlineHours * 60 * 60 * 1000;
+        const effectiveDeadlineAtMs = listingContext?.deadlineAtMs
+          ? Math.max(nowMs + 1, Math.min(buyerDeadlineAtMs, listingContext.deadlineAtMs))
+          : buyerDeadlineAtMs;
+        const listedAtMs = listingContext?.listedAtMs ?? nowMs;
+        const timeTotalMs = Math.max(1, effectiveDeadlineAtMs - listedAtMs);
+        const expiresAt = new Date(effectiveDeadlineAtMs);
 
         const alphaPrice = params.alpha_price ?? presets.alpha_price ?? 0.4;
         const alphaTime = params.alpha_time ?? presets.alpha_time ?? 0.25;
@@ -512,36 +521,84 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
           };
         }
 
+        const concessionBeta = params.concession_beta ?? presets.concession_beta ?? 0.6;
+        const concessionK = params.concession_k ?? presets.concession_k ?? 1.2;
+        const sellerStrategy = listingContext?.sellerStrategy;
+        const sessionStrategy = sellerStrategy
+          ? {
+              ...sellerStrategy,
+              buyer_requested_strategy: {
+                style: style ?? "balanced",
+                p_reservation: max_price,
+                p_target: target_price,
+                alpha: {
+                  price: alphaPrice,
+                  time: alphaTime,
+                  reputation: alphaReputation,
+                  satisfaction: alphaSatisfaction,
+                },
+                thresholds: {
+                  accept: params.accept_threshold ?? presets.accept_threshold ?? 0.78,
+                  counter: params.counter_threshold ?? presets.counter_threshold ?? 0.45,
+                  reject: params.reject_threshold ?? presets.reject_threshold ?? 0.2,
+                  near_deal: params.near_deal_threshold ?? presets.near_deal_threshold ?? 0.72,
+                },
+                concession: {
+                  beta: concessionBeta,
+                  k: concessionK,
+                },
+              },
+            }
+          : {
+              role: "BUYER",
+              p_reservation: max_price,
+              p_target: target_price,
+              p_initial: target_price,
+              t_max: timeTotalMs,
+              created_at_ms: listedAtMs,
+              deadline_at_ms: effectiveDeadlineAtMs,
+              time_value: {
+                curve: "faratin",
+                listed_at_ms: listedAtMs,
+                deadline_at_ms: effectiveDeadlineAtMs,
+                t_total_ms: timeTotalMs,
+                beta: concessionBeta,
+                source: listingContext?.deadlineAtMs ? "listing_selling_deadline" : "buyer_session_deadline",
+              },
+              listing_time_value: listingContext
+                ? {
+                    ask_price_minor: listingContext.askPriceMinor,
+                    floor_price_minor: listingContext.floorPriceMinor,
+                    listed_at_ms: listingContext.listedAtMs,
+                    deadline_at_ms: listingContext.deadlineAtMs,
+                  }
+                : undefined,
+              alpha: {
+                price: alphaPrice,
+                time: alphaTime,
+                reputation: alphaReputation,
+                satisfaction: alphaSatisfaction,
+              },
+              thresholds: {
+                accept: params.accept_threshold ?? presets.accept_threshold ?? 0.78,
+                counter: params.counter_threshold ?? presets.counter_threshold ?? 0.45,
+                reject: params.reject_threshold ?? presets.reject_threshold ?? 0.2,
+                near_deal: params.near_deal_threshold ?? presets.near_deal_threshold ?? 0.72,
+              },
+              concession: {
+                beta: concessionBeta,
+                k: concessionK,
+              },
+            };
+
         const session = await createSession(db, {
           listingId: listing_id,
-          strategyId: style ?? "buyer_default",
-          role: "BUYER",
+          strategyId: sellerStrategy?.compiler.selected_playbook ?? style ?? "buyer_default",
+          role: sellerStrategy ? "SELLER" : "BUYER",
           buyerId: buyer_id,
           sellerId: seller_id,
-          counterpartyId: seller_id,
-          strategySnapshot: {
-            role: "BUYER",
-            p_reservation: max_price,
-            p_target: target_price,
-            p_initial: target_price,
-            t_max: deadlineHours * 60 * 60 * 1000,
-            alpha: {
-              price: alphaPrice,
-              time: alphaTime,
-              reputation: alphaReputation,
-              satisfaction: alphaSatisfaction,
-            },
-            thresholds: {
-              accept: params.accept_threshold ?? presets.accept_threshold ?? 0.78,
-              counter: params.counter_threshold ?? presets.counter_threshold ?? 0.45,
-              reject: params.reject_threshold ?? presets.reject_threshold ?? 0.2,
-              near_deal: params.near_deal_threshold ?? presets.near_deal_threshold ?? 0.72,
-            },
-            concession: {
-              beta: params.concession_beta ?? presets.concession_beta ?? 0.6,
-              k: params.concession_k ?? presets.concession_k ?? 1.2,
-            },
-          },
+          counterpartyId: sellerStrategy ? buyer_id : seller_id,
+          strategySnapshot: sessionStrategy,
           expiresAt,
         });
 
@@ -553,12 +610,18 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
                 session_id: session.id,
                 status: session.status,
                 listing_id,
-                role: "BUYER",
+                role: sellerStrategy ? "SELLER" : "BUYER",
                 style: style ?? "balanced",
+                buyer_style: style ?? "balanced",
                 strategy_summary: {
-                  priority: `price ${Math.round(alphaPrice * 100)}% / time ${Math.round(alphaTime * 100)}% / trust ${Math.round(alphaReputation * 100)}% / satisfaction ${Math.round(alphaSatisfaction * 100)}%`,
-                  accept_above: params.accept_threshold ?? presets.accept_threshold ?? 0.78,
-                  concession_speed: params.concession_beta ?? presets.concession_beta ?? 0.6,
+                  selected_playbook: sellerStrategy?.compiler.selected_playbook ?? style ?? "balanced",
+                  role: sellerStrategy ? "SELLER" : "BUYER",
+                  priority: sellerStrategy
+                    ? `price ${Math.round(sellerStrategy.weights.w_p * 100)}% / time ${Math.round(sellerStrategy.weights.w_t * 100)}% / trust ${Math.round(sellerStrategy.weights.w_r * 100)}% / satisfaction ${Math.round(sellerStrategy.weights.w_s * 100)}%`
+                    : `price ${Math.round(alphaPrice * 100)}% / time ${Math.round(alphaTime * 100)}% / trust ${Math.round(alphaReputation * 100)}% / satisfaction ${Math.round(alphaSatisfaction * 100)}%`,
+                  accept_above: sellerStrategy?.u_aspiration ?? params.accept_threshold ?? presets.accept_threshold ?? 0.78,
+                  concession_speed: sellerStrategy?.beta ?? concessionBeta,
+                  time_value_source: sellerStrategy?.time_value.source ?? (listingContext?.deadlineAtMs ? "listing_selling_deadline" : "buyer_session_deadline"),
                 },
                 expires_at: expiresAt.toISOString(),
                 message: "Negotiation session created. Use haggle_submit_offer to send your first offer.",
@@ -783,4 +846,113 @@ function getStylePreset(style?: string): StylePreset {
       // 기본: 모든 값 기본값 사용
       return {};
   }
+}
+
+async function loadListingStrategyContext(db: Database, listingId: string): Promise<{
+  listedAtMs: number;
+  deadlineAtMs?: number;
+  askPriceMinor?: number;
+  floorPriceMinor?: number;
+  sellerStrategy?: CompiledStrategySnapshot;
+} | null> {
+  let row = (await db
+    .select({
+      id: listingDrafts.id,
+      userId: listingDrafts.userId,
+      category: listingDrafts.category,
+      condition: listingDrafts.condition,
+      createdAt: listingDrafts.createdAt,
+      sellingDeadline: listingDrafts.sellingDeadline,
+      targetPrice: listingDrafts.targetPrice,
+      floorPrice: listingDrafts.floorPrice,
+      strategyConfig: listingDrafts.strategyConfig,
+    })
+    .from(listingDrafts)
+    .where(eq(listingDrafts.id, listingId))
+    .limit(1))[0];
+
+  if (!row) {
+    row = (await db
+      .select({
+        id: listingDrafts.id,
+        userId: listingDrafts.userId,
+        category: listingDrafts.category,
+        condition: listingDrafts.condition,
+        createdAt: listingDrafts.createdAt,
+        sellingDeadline: listingDrafts.sellingDeadline,
+        targetPrice: listingDrafts.targetPrice,
+        floorPrice: listingDrafts.floorPrice,
+        strategyConfig: listingDrafts.strategyConfig,
+      })
+      .from(listingsPublished)
+      .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+      .where(eq(listingsPublished.id, listingId))
+      .limit(1))[0];
+  }
+
+  if (!row) return null;
+
+  const askPriceMinor = majorPriceToMinor(row.targetPrice);
+  const floorPriceMinor = majorPriceToMinor(row.floorPrice) ?? (askPriceMinor ? Math.round(askPriceMinor * 0.86) : undefined);
+  const strategyConfig = (row.strategyConfig ?? {}) as Record<string, unknown>;
+  const sellerStrategy = askPriceMinor && floorPriceMinor
+    ? compileStrategySnapshot({
+        role: "SELLER",
+        userId: row.userId ?? undefined,
+        strategyId: typeof strategyConfig.preset === "string" ? `seller_${strategyConfig.preset}` : "seller_compiled",
+        preset: typeof strategyConfig.preset === "string" ? strategyConfig.preset : undefined,
+        agentStats: extractAgentStats(strategyConfig),
+        userPreferences: extractUserPreferenceRef(strategyConfig),
+        listing: {
+          id: row.id,
+          category: row.category,
+          condition: row.condition,
+          targetPriceMinor: askPriceMinor,
+          floorPriceMinor,
+          listedAtMs: row.createdAt.getTime(),
+          deadlineAtMs: row.sellingDeadline?.getTime(),
+        },
+      })
+    : undefined;
+
+  return {
+    listedAtMs: row.createdAt.getTime(),
+    deadlineAtMs: row.sellingDeadline?.getTime(),
+    askPriceMinor,
+    floorPriceMinor,
+    sellerStrategy,
+  };
+}
+
+function majorPriceToMinor(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : undefined;
+}
+
+function extractAgentStats(strategyConfig: Record<string, unknown>): AgentStats | undefined {
+  const keys = ["priceAggression", "patienceLevel", "riskTolerance", "speedBias", "detailFocus"] as const;
+  const stats: AgentStats = {};
+  let hasStats = false;
+  for (const key of keys) {
+    const value = strategyConfig[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      stats[key] = value;
+      hasStats = true;
+    }
+  }
+  return hasStats ? stats : undefined;
+}
+
+function extractUserPreferenceRef(strategyConfig: Record<string, unknown>): Record<string, unknown> | undefined {
+  const fields = [
+    "sellerTimezone",
+    "sellingDeadlineLocalDate",
+    "sellingDeadlineLocalTime",
+    "sellingDeadlineSource",
+  ];
+  const ref: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (strategyConfig[field] !== undefined) ref[field] = strategyConfig[field];
+  }
+  return Object.keys(ref).length > 0 ? ref : undefined;
 }

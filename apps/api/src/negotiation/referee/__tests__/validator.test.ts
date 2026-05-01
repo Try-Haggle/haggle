@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateMove } from '../validator.js';
-import type { ProtocolDecision, CoreMemory, RefereeCoaching } from '../../types.js';
+import type { EngineDecision, CoreMemory, RefereeCoaching } from '../../types.js';
 
 function makeMemory(overrides: Record<string, unknown> = {}): CoreMemory {
   return {
@@ -34,14 +34,14 @@ const COACHING: RefereeCoaching = {
 
 describe('validateMove', () => {
   it('should pass valid COUNTER in BARGAINING', () => {
-    const move: ProtocolDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, [], 'BARGAINING');
     expect(result.passed).toBe(true);
     expect(result.hardPassed).toBe(true);
   });
 
   it('should HARD fail on floor violation (buyer)', () => {
-    const move: ProtocolDecision = { action: 'COUNTER', price: 700, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 700, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, [], 'BARGAINING');
     expect(result.passed).toBe(false);
     expect(result.hardPassed).toBe(false);
@@ -60,14 +60,14 @@ describe('validateMove', () => {
         my_target: 700, my_floor: 550, current_offer: 680, opponent_offer: 520, gap: 160,
       },
     });
-    const move: ProtocolDecision = { action: 'COUNTER', price: 500, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 500, reasoning: 'test' };
     const result = validateMove(move, memory, COACHING, [], 'BARGAINING');
     expect(result.passed).toBe(false);
     expect(result.violations.some((v) => v.rule === 'V1')).toBe(true);
   });
 
   it('should HARD fail on invalid phase action', () => {
-    const move: ProtocolDecision = { action: 'CONFIRM', price: 540, reasoning: 'test' };
+    const move: EngineDecision = { action: 'CONFIRM', price: 540, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, [], 'BARGAINING');
     // CONFIRM is not allowed in BARGAINING (only COUNTER, ACCEPT, REJECT, HOLD)
     // Actually checking PHASE_ALLOWED_ACTIONS...
@@ -82,52 +82,52 @@ describe('validateMove', () => {
         role: 'buyer', max_rounds: 15, intervention_mode: 'FULL_AUTO',
       },
     });
-    const move: ProtocolDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 540, reasoning: 'test' };
     const result = validateMove(move, memory, COACHING, [], 'BARGAINING');
     expect(result.violations.some((v) => v.rule === 'V3')).toBe(true);
   });
 
   it('should SOFT warn on concession direction reversal', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 500, reasoning: 'r1' },
       { action: 'COUNTER', price: 520, reasoning: 'r2' },
     ];
     // Buyer was raising (conceding), now drops — reversal
-    const move: ProtocolDecision = { action: 'COUNTER', price: 510, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 510, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING');
     expect(result.violations.some((v) => v.rule === 'V4')).toBe(true);
   });
 
   it('should SOFT warn on stagnation', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 520, reasoning: 'r1' },
       { action: 'COUNTER', price: 520, reasoning: 'r2' },
       { action: 'COUNTER', price: 521, reasoning: 'r3' },
       { action: 'COUNTER', price: 521, reasoning: 'r4' },
     ];
-    const move: ProtocolDecision = { action: 'COUNTER', price: 521, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 521, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING');
     expect(result.violations.some((v) => v.rule === 'V5')).toBe(true);
   });
 
   it('should SOFT warn on large concession', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 520, reasoning: 'r1' },
     ];
     // Jump from 520 to 610 — way more than recommended step
-    const move: ProtocolDecision = { action: 'COUNTER', price: 610, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 610, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING');
     expect(result.violations.some((v) => v.rule === 'V7')).toBe(true);
   });
 
   it('should have hardPassed=true with only SOFT violations', () => {
-    const prev: ProtocolDecision[] = [
+    const prev: EngineDecision[] = [
       { action: 'COUNTER', price: 520, reasoning: 'r1' },
       { action: 'COUNTER', price: 520, reasoning: 'r2' },
       { action: 'COUNTER', price: 520, reasoning: 'r3' },
       { action: 'COUNTER', price: 520, reasoning: 'r4' },
     ];
-    const move: ProtocolDecision = { action: 'COUNTER', price: 521, reasoning: 'test' };
+    const move: EngineDecision = { action: 'COUNTER', price: 521, reasoning: 'test' };
     const result = validateMove(move, makeMemory(), COACHING, prev, 'BARGAINING');
     // SOFT violations present → passed=false, but hardPassed=true
     expect(result.violations.length).toBeGreaterThan(0);
