@@ -51,8 +51,13 @@ export function getRuntimeConfig(): RuntimeConfig {
 
   if (isProduction) {
     readRequiredEnv("SUPABASE_JWT_SECRET");
-    if (process.env.HNP_REQUIRE_SIGNATURE?.trim().toLowerCase() !== "false") {
-      const validation = validateTrustedHnpJwks(readRequiredEnv("HNP_TRUSTED_JWKS"));
+    const hnpRequireSignature = process.env.HNP_REQUIRE_SIGNATURE?.trim().toLowerCase();
+    const trustedJwks = process.env.HNP_TRUSTED_JWKS?.trim();
+    if (hnpRequireSignature === "true" && !trustedJwks) {
+      throw new Error("[CONFIG] HNP_TRUSTED_JWKS is required when HNP_REQUIRE_SIGNATURE=true.");
+    }
+    if (hnpRequireSignature !== "false" && trustedJwks) {
+      const validation = validateTrustedHnpJwks(trustedJwks);
       if (!validation.ok) {
         throw new Error(
           `[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS with at least one supported public key: ${validation.reason}`,

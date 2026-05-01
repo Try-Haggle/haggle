@@ -62,11 +62,21 @@ describe("runtime config", () => {
     );
   });
 
-  it("requires HNP_TRUSTED_JWKS in production when HNP signatures are required", () => {
+  it("does not block production startup when default HNP signatures lack JWKS", () => {
     process.env.NODE_ENV = "production";
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
     delete process.env.HNP_REQUIRE_SIGNATURE;
+    delete process.env.HNP_TRUSTED_JWKS;
+
+    expect(getRuntimeConfig().isProduction).toBe(true);
+  });
+
+  it("requires HNP_TRUSTED_JWKS in production when HNP signatures are explicitly required", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    process.env.HNP_REQUIRE_SIGNATURE = "true";
     delete process.env.HNP_TRUSTED_JWKS;
 
     expect(() => getRuntimeConfig()).toThrow(
