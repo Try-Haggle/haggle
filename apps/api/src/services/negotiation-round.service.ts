@@ -1,4 +1,5 @@
 import {
+  and,
   eq,
   sql,
   negotiationRounds,
@@ -72,11 +73,14 @@ export async function getRoundsBySessionId(db: Database, sessionId: string) {
     .orderBy(negotiationRounds.roundNo);
 }
 
-export async function getRoundByIdempotencyKey(db: Database, key: string) {
+export async function getRoundByIdempotencyKey(db: Database, sessionId: string, key: string) {
   const rows = await db
     .select()
     .from(negotiationRounds)
-    .where(eq(negotiationRounds.idempotencyKey, key))
+    .where(and(
+      eq(negotiationRounds.sessionId, sessionId),
+      eq(negotiationRounds.idempotencyKey, key),
+    ))
     .limit(1);
 
   return rows[0] ?? null;

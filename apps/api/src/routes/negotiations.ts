@@ -513,6 +513,20 @@ export function registerNegotiationRoutes(
 
       const acceptableStatuses = new Set(["ACTIVE", "NEAR_DEAL"]);
       if (!acceptableStatuses.has(session.status)) {
+        const idempotentAccept = session.status === "ACCEPTED" && accepted.protocol
+          ? await findIdempotentAcceptedRound(db, session.id, accepted)
+          : null;
+        if (idempotentAccept) {
+          return reply.send({
+            updated: false,
+            idempotent: true,
+            session_status: "ACCEPTED",
+            agreement: idempotentAccept.agreement,
+            transaction_handoff: idempotentAccept.transactionHandoff,
+            transaction_handoff_summary: idempotentAccept.transactionHandoffSummary,
+          });
+        }
+
         return reply.code(409).send({ error: "INVALID_STATUS", message: `Cannot accept from ${session.status}` });
       }
 
@@ -1263,6 +1277,65 @@ async function createAcceptedRoundRecord(
       transaction_handoff_summary: input.handoff.summary,
     },
   });
+}
+
+type NormalizedAcceptRequest = ReturnType<typeof normalizeAcceptRequest> extends infer T
+  ? T extends { ok: true } ? T : never
+  : never;
+
+async function findIdempotentAcceptedRound(
+  db: Database,
+  sessionId: string,
+  accepted: NormalizedAcceptRequest,
+): Promise<{
+    agreement: unknown;
+    transactionHandoff: unknown;
+    transactionHandoffSummary: unknown;
+  } | null> {
+  if (!accepted.protocol) return null;
+
+  const rounds = await getRoundsBySessionId(db, sessionId);
+  const round = rounds.find((candidate) => roundMatchesAcceptedRetry(candidate, {
+    ...accepted,
+    protocol: accepted.protocol!,
+  }));
+  if (!round) return null;
+
+  const metadata = round.metadata as Record<string, unknown> | null;
+  const agreement = metadata?.agreement;
+  if (!agreement || typeof agreement !== "object") return null;
+
+  return {
+    agreement,
+    transactionHandoff: metadata?.transaction_handoff,
+    transactionHandoffSummary: metadata?.transaction_handoff_summary,
+  };
+}
+
+function roundMatchesAcceptedRetry(
+  round: Awaited<ReturnType<typeof getRoundsBySessionId>>[number],
+  accepted: NormalizedAcceptRequest & { protocol: NonNullable<NormalizedAcceptRequest["protocol"]> },
+): boolean {
+  if (round.idempotencyKey !== accepted.protocol.idempotencyKey) return false;
+  if (round.messageType !== "ACCEPT") return false;
+
+  const hnp = ((round.metadata?.protocol as Record<string, unknown> | undefined)?.hnp ?? {}) as Record<string, unknown>;
+  const type = typeof hnp.type === "string"
+    ? hnp.type
+    : typeof hnp.messageType === "string"
+      ? hnp.messageType
+      : undefined;
+
+  if (type !== "ACCEPT") return false;
+  if (hnp.messageId !== accepted.protocol.messageId) return false;
+  if (hnp.idempotencyKey !== accepted.protocol.idempotencyKey) return false;
+  if (hnp.sequence !== accepted.protocol.sequence) return false;
+  if (hnp.senderAgentId !== accepted.protocol.senderAgentId) return false;
+  if (accepted.acceptedMessageId && hnp.acceptedMessageId !== accepted.acceptedMessageId) return false;
+  if (accepted.acceptedProposalId && hnp.acceptedProposalId !== accepted.acceptedProposalId) return false;
+  if (accepted.acceptedProposalHash && hnp.acceptedProposalHash !== accepted.acceptedProposalHash) return false;
+
+  return true;
 }
 
 function getAcceptedEventPriceMinor(input: {

@@ -12,7 +12,8 @@
     "test": "turbo test",
     "clean": "turbo clean",
     "typecheck": "turbo typecheck",
-    "verify:migrations": "node scripts/verify-drizzle-journal.mjs"
+    "verify:migrations": "node scripts/verify-drizzle-journal.mjs",
+    "verify:db-invariants": "node scripts/verify-db-invariants.mjs"
   },
   "devDependencies": {
     "next": "^15.5.0",

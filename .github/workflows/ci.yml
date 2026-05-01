@@ -44,6 +44,9 @@ jobs:
       - name: Verify Drizzle migration journal
         run: pnpm verify:migrations
 
+      - name: Verify DB invariants
+        run: pnpm verify:db-invariants
+
       - name: Typecheck all packages
         run: pnpm typecheck
 

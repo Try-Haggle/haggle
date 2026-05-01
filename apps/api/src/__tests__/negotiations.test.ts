@@ -1274,6 +1274,96 @@ describe("Negotiation API", () => {
       expect(res.json().error).toBe("INVALID_STATUS");
     });
 
+    it("returns stored HNP accept artifacts for an idempotent retry after acceptance", async () => {
+      mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACCEPTED" });
+      mockGetRoundsBySessionId.mockResolvedValue([
+        {
+          ...mockRound,
+          id: "accept-round-001",
+          roundNo: 2,
+          messageType: "ACCEPT",
+          decision: "ACCEPT",
+          idempotencyKey: "accept-idem-retry",
+          metadata: {
+            protocol: {
+              hnp: {
+                messageId: "accept-retry",
+                idempotencyKey: "accept-idem-retry",
+                sequence: 2,
+                senderAgentId: "buyer-001",
+                type: "ACCEPT",
+                acceptedMessageId: "prior",
+                acceptedProposalId: "proposal-retry",
+                acceptedProposalHash: "sha256:retry",
+              },
+            },
+            agreement: {
+              agreement_id: "agr_retry",
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-retry",
+              accepted_proposal_hash: "sha256:retry",
+            },
+            transaction_handoff: {
+              handoff_id: "handoff_retry",
+              status: "ready_for_settlement",
+            },
+            transaction_handoff_summary: {
+              handoff_count: 1,
+              current_status: "ready_for_settlement",
+            },
+          },
+        },
+      ]);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/00000000-0000-4000-a000-000000000099/accept",
+        headers: AUTH_HEADERS,
+        payload: {
+          hnp: {
+            spec_version: "2026-03-09",
+            capability: "hnp.core.negotiation",
+            session_id: "00000000-0000-4000-a000-000000000099",
+            message_id: "accept-retry",
+            idempotency_key: "accept-idem-retry",
+            sequence: 2,
+            sent_at_ms: Date.now(),
+            expires_at_ms: Date.now() + 60_000,
+            sender_agent_id: "buyer-001",
+            sender_role: "BUYER",
+            type: "ACCEPT",
+            payload: {
+              accepted_message_id: "prior",
+              accepted_proposal_id: "proposal-retry",
+              accepted_proposal_hash: "sha256:retry",
+            },
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        updated: false,
+        idempotent: true,
+        session_status: "ACCEPTED",
+        agreement: {
+          agreement_id: "agr_retry",
+          accepted_proposal_hash: "sha256:retry",
+        },
+        transaction_handoff: {
+          handoff_id: "handoff_retry",
+          status: "ready_for_settlement",
+        },
+        transaction_handoff_summary: {
+          handoff_count: 1,
+          current_status: "ready_for_settlement",
+        },
+      });
+      expect(mockUpdateSessionState).not.toHaveBeenCalled();
+      expect(mockCreateRound).not.toHaveBeenCalled();
+      expect(mockEventDispatch).not.toHaveBeenCalled();
+    });
+
     it("returns 200 from ACTIVE status", async () => {
       mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
       mockUpdateSessionState.mockResolvedValue({ ...mockSession, status: "ACCEPTED" });

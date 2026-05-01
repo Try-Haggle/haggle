@@ -103,7 +103,7 @@ export async function executeNegotiationRound(
   eventDispatcher?: EventDispatcher,
 ): Promise<RoundExecutionResult> {
   // --- Idempotency check (outside transaction for speed) ---
-  const existingRound = await getRoundByIdempotencyKey(db, input.idempotencyKey);
+  const existingRound = await getRoundByIdempotencyKey(db, input.sessionId, input.idempotencyKey);
   if (existingRound) {
     return {
       idempotent: true,
@@ -159,7 +159,7 @@ export async function executeNegotiationRound(
     }
 
     // 3. Double-check idempotency inside transaction
-    const existingInTx = await getRoundByIdempotencyKey(tx as unknown as Database, input.idempotencyKey);
+    const existingInTx = await getRoundByIdempotencyKey(tx as unknown as Database, input.sessionId, input.idempotencyKey);
     if (existingInTx) {
       return {
         idempotent: true as const,

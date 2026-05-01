@@ -5,6 +5,7 @@ import {
 import { isProductionRuntime } from "../config/runtime.js";
 import {
   createTrustedHnpPublicKey,
+  isSupportedTrustedHnpJwk,
   parseTrustedHnpJwks,
   SUPPORTED_HNP_JWS_ALGORITHMS,
 } from "./hnp-jwks.service.js";
@@ -130,8 +131,9 @@ function resolveTrustedKey(header: ProtectedHeader) {
   if (!jwks.length) return null;
 
   const jwk = jwks.find((candidate) => {
+    if (!isSupportedTrustedHnpJwk(candidate)) return false;
     if (header.kid && candidate.kid !== header.kid) return false;
-    if (candidate.alg && candidate.alg !== header.alg) return false;
+    if (candidate.alg !== header.alg) return false;
     return true;
   });
   if (!jwk) return null;

@@ -183,6 +183,13 @@
       "when": 1741564824000,
       "tag": "0022_repair_hil_signal_key",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1741564825000,
+      "tag": "0023_scope_round_idempotency",
+      "breakpoints": true
     }
   ]
 }

@@ -529,6 +529,11 @@ describe('LLM Executor — Integration', () => {
       expect(result.idempotent).toBe(true);
       expect(result.roundId).toBe('round-cached');
       expect(result.decision).toBe('COUNTER');
+      expect(mockGetRoundByIdempotencyKey).toHaveBeenCalledWith(
+        db,
+        input.sessionId,
+        'idem-existing',
+      );
 
       // No transaction, no LLM call
       expect(db.transaction).not.toHaveBeenCalled();

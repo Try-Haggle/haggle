@@ -85,7 +85,7 @@ export async function executeLLMNegotiationRound(
   eventDispatcher?: EventDispatcher,
 ): Promise<RoundExecutionResult> {
   // --- Idempotency check (outside transaction for speed) ---
-  const existingRound = await getRoundByIdempotencyKey(db, input.idempotencyKey);
+  const existingRound = await getRoundByIdempotencyKey(db, input.sessionId, input.idempotencyKey);
   if (existingRound) {
     return buildIdempotentResult(existingRound, db, input.sessionId);
   }
@@ -115,7 +115,7 @@ export async function executeLLMNegotiationRound(
     }
 
     // 3. Double-check idempotency inside TX
-    const existingInTx = await getRoundByIdempotencyKey(tx as unknown as Database, input.idempotencyKey);
+    const existingInTx = await getRoundByIdempotencyKey(tx as unknown as Database, input.sessionId, input.idempotencyKey);
     if (existingInTx) {
       return buildIdempotentResultFromRound(existingInTx, dbSession);
     }
