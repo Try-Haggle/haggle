@@ -1187,12 +1187,14 @@ async function finalizeAcceptedSession(
   },
 ) {
   return db.transaction(async (tx) => {
+    const shouldPersistAcceptRound = Boolean(input.agreement && input.handoff && input.accepted.protocol);
     const updated = await updateSessionState(tx as unknown as Database, input.session.id, input.session.version, {
       status: "ACCEPTED",
+      ...(shouldPersistAcceptRound ? { currentRound: input.session.currentRound + 1 } : {}),
     });
     if (!updated) return null;
 
-    if (input.agreement && input.handoff && input.accepted.protocol) {
+    if (shouldPersistAcceptRound && input.agreement && input.handoff && input.accepted.protocol) {
       await createAcceptedRoundRecord(tx as unknown as Database, {
         session: input.session,
         accepted: { ...input.accepted, protocol: input.accepted.protocol },

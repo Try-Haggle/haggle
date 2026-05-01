@@ -1,10 +1,13 @@
 import {
   constants,
-  createPublicKey,
   createVerify,
-  type KeyObject,
 } from "node:crypto";
 import { isProductionRuntime } from "../config/runtime.js";
+import {
+  createTrustedHnpPublicKey,
+  parseTrustedHnpJwks,
+  SUPPORTED_HNP_JWS_ALGORITHMS,
+} from "./hnp-jwks.service.js";
 
 export type HnpSignedEnvelope = Record<string, unknown> & {
   message_id?: unknown;
@@ -14,12 +17,6 @@ export type HnpSignedEnvelope = Record<string, unknown> & {
 export type HnpSignatureValidationResult =
   | { ok: true; verified: boolean }
   | { ok: false; status: 401; error: "INVALID_SIGNATURE"; relatedMessageId?: string };
-
-interface JwkRecord extends Record<string, unknown> {
-  kid?: string;
-  alg?: string;
-  kty?: string;
-}
 
 interface ProtectedHeader {
   alg?: string;
@@ -115,7 +112,7 @@ function parseDetachedJws(signature: string): {
   if (parts.length !== 3 || parts[1] !== "") return null;
 
   const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as ProtectedHeader;
-  if (!header.alg || !SUPPORTED_ALGORITHMS[header.alg]) return null;
+  if (!header.alg || !SUPPORTED_HNP_JWS_ALGORITHMS.has(header.alg)) return null;
   if (header.b64 === false) {
     const crit = Array.isArray(header.crit) ? header.crit : [];
     if (!crit.includes("b64")) return null;
@@ -128,8 +125,8 @@ function parseDetachedJws(signature: string): {
   };
 }
 
-function resolveTrustedKey(header: ProtectedHeader): KeyObject | null {
-  const jwks = parseTrustedJwks();
+function resolveTrustedKey(header: ProtectedHeader) {
+  const jwks = parseTrustedHnpJwks(process.env.HNP_TRUSTED_JWKS);
   if (!jwks.length) return null;
 
   const jwk = jwks.find((candidate) => {
@@ -139,17 +136,7 @@ function resolveTrustedKey(header: ProtectedHeader): KeyObject | null {
   });
   if (!jwk) return null;
 
-  return createPublicKey({ key: jwk, format: "jwk" });
-}
-
-function parseTrustedJwks(): JwkRecord[] {
-  const raw = process.env.HNP_TRUSTED_JWKS?.trim();
-  if (!raw) return [];
-
-  const parsed = JSON.parse(raw) as { keys?: unknown };
-  return Array.isArray(parsed.keys)
-    ? parsed.keys.filter((key): key is JwkRecord => Boolean(key && typeof key === "object"))
-    : [];
+  return createTrustedHnpPublicKey(jwk);
 }
 
 function withoutDetachedSignature(envelope: HnpSignedEnvelope): Record<string, unknown> {

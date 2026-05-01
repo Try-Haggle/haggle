@@ -18,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -29,7 +31,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Git whitespace check
-        run: git diff --check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}...HEAD"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            git diff --check "${{ github.event.before }}..HEAD"
+          else
+            git diff-tree --check --no-commit-id --root -r HEAD
+          fi
 
       - name: Verify Drizzle migration journal
         run: pnpm verify:migrations

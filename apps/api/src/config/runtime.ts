@@ -1,3 +1,5 @@
+import { validateTrustedHnpJwks } from "../services/hnp-jwks.service.js";
+
 const VALID_NODE_ENVS = new Set(["development", "test", "production"]);
 
 function readRequiredEnv(name: string): string {
@@ -50,7 +52,12 @@ export function getRuntimeConfig(): RuntimeConfig {
   if (isProduction) {
     readRequiredEnv("SUPABASE_JWT_SECRET");
     if (process.env.HNP_REQUIRE_SIGNATURE?.trim().toLowerCase() !== "false") {
-      readRequiredEnv("HNP_TRUSTED_JWKS");
+      const validation = validateTrustedHnpJwks(readRequiredEnv("HNP_TRUSTED_JWKS"));
+      if (!validation.ok) {
+        throw new Error(
+          `[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS with at least one supported public key: ${validation.reason}`,
+        );
+      }
     }
   }
 

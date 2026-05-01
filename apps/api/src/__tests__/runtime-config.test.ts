@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   getRuntimeConfig,
@@ -13,6 +14,11 @@ const originalEnv = {
   HNP_TRUSTED_JWKS: process.env.HNP_TRUSTED_JWKS,
   VERCEL_ENV: process.env.VERCEL_ENV,
 };
+
+const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const validTrustedJwks = JSON.stringify({
+  keys: [{ ...publicKey.export({ format: "jwk" }), kid: "runtime-test-key", alg: "RS256" }],
+});
 
 afterEach(() => {
   for (const key of Object.keys(originalEnv) as Array<keyof typeof originalEnv>) {
@@ -66,6 +72,40 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow(
       "[CONFIG] HNP_TRUSTED_JWKS is required",
     );
+  });
+
+  it("rejects malformed production HNP_TRUSTED_JWKS", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    delete process.env.HNP_REQUIRE_SIGNATURE;
+    process.env.HNP_TRUSTED_JWKS = "{not-json";
+
+    expect(() => getRuntimeConfig()).toThrow(
+      "[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS",
+    );
+  });
+
+  it("rejects production HNP_TRUSTED_JWKS without a usable public key", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    delete process.env.HNP_REQUIRE_SIGNATURE;
+    process.env.HNP_TRUSTED_JWKS = JSON.stringify({ keys: [] });
+
+    expect(() => getRuntimeConfig()).toThrow(
+      "[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS",
+    );
+  });
+
+  it("accepts production HNP_TRUSTED_JWKS with a usable public key", () => {
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.SUPABASE_JWT_SECRET = "secret";
+    delete process.env.HNP_REQUIRE_SIGNATURE;
+    process.env.HNP_TRUSTED_JWKS = validTrustedJwks;
+
+    expect(getRuntimeConfig().isProduction).toBe(true);
   });
 
   it("allows production startup without HNP_TRUSTED_JWKS only with explicit HNP signature override", () => {

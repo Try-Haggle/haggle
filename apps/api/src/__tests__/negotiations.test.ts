@@ -1540,6 +1540,15 @@ describe("Negotiation API", () => {
           }),
         }),
       );
+      expect(mockUpdateSessionState).toHaveBeenCalledWith(
+        expect.anything(),
+        "sess-001",
+        1,
+        expect.objectContaining({
+          status: "ACCEPTED",
+          currentRound: 2,
+        }),
+      );
       expect(mockEventDispatch).toHaveBeenCalledWith(expect.objectContaining({
         type: "negotiation.agreed",
         payload: expect.objectContaining({
