@@ -11,7 +11,6 @@ import {
 } from "@/lib/buyer-agents";
 import { Nav } from "@/components/nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
-import { createBuyerIntent, triggerMatch, getBuyerSessions } from "./negotiation-api";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -555,78 +554,65 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                   <button
                     type="button"
                     disabled={!selectedAgent || negotiationState === "loading"}
-                    onClick={async () => {
+                    onClick={() => {
                       if (!selectedAgent) return;
-                      setNegotiationState("loading");
-                      setNegotiationMessage("");
 
-                      try {
-                        if (!user) {
-                          sessionStorage.setItem("pendingIntent", JSON.stringify({
-                            listingId: listing.id,
-                            publicId: listing.publicId,
-                            category: listing.category,
-                            agentPreset: selectedAgent.id,
-                          }));
-                          window.location.href = `/claim?redirect=/l/${listing.publicId}`;
-                          return;
-                        }
-
-                        await createBuyerIntent({
-                          userId: user.id,
-                          category: listing.category || "general",
-                          keywords: listing.tags || [],
+                      if (!user) {
+                        sessionStorage.setItem("pendingIntent", JSON.stringify({
                           listingId: listing.id,
+                          publicId: listing.publicId,
+                          category: listing.category,
                           agentPreset: selectedAgent.id,
-                          targetPrice: listing.targetPrice ? parseFloat(listing.targetPrice) : undefined,
-                        });
-
-                        setNegotiationState("success");
-                        setNegotiationMessage("Your negotiation agent is set up! Matching you with the seller...");
-
-                        try {
-                          await triggerMatch(listing.category || "general", listing.id);
-                          setNegotiationMessage("Match found! Redirecting to negotiation...");
-                          // Try to find the newly created session and redirect
-                          try {
-                            const sessions = await getBuyerSessions(user.id, listing.id);
-                            if (sessions.length > 0) {
-                              window.location.href = `/buy/negotiations/${sessions[0].id}`;
-                              return;
-                            }
-                          } catch {
-                            // Fall through to dashboard redirect
-                          }
-                          setNegotiationMessage("Negotiation started! Check your dashboard.");
-                          setTimeout(() => {
-                            window.location.href = "/buy/dashboard";
-                          }, 1500);
-                        } catch {
-                          setNegotiationMessage("Intent registered! Check your dashboard for updates.");
-                          setTimeout(() => {
-                            window.location.href = "/buy/dashboard";
-                          }, 1500);
-                        }
-                      } catch (err) {
-                        setNegotiationState("error");
-                        setNegotiationMessage("Something went wrong. Please try again.");
-                        console.warn("Failed to create intent:", err);
+                        }));
+                        window.location.href = `/claim?redirect=/l/${listing.publicId}`;
+                        return;
                       }
+
+                      setNegotiationState("loading");
+                      setNegotiationMessage("Briefing your agent…");
+                      // Frontend-only entry: navigate straight into the playback view.
+                      // Session id encodes listing + agent so the mock picks a stable scenario.
+                      const sessionId = `${listing.publicId}-${selectedAgent.id}`;
+                      setTimeout(() => {
+                        window.location.href = `/buy/negotiations/${sessionId}`;
+                      }, 600);
                     }}
-                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-white transition-colors ${
+                      negotiationState === "loading"
+                        ? "cursor-wait bg-emerald-500 opacity-90"
+                        : !selectedAgent
+                        ? "cursor-not-allowed bg-emerald-500 opacity-40"
+                        : "cursor-pointer bg-emerald-500 hover:bg-emerald-600"
+                    }`}
+                    aria-busy={negotiationState === "loading"}
                   >
-                    {negotiationState === "loading" ? "Setting up agent..." : "Start Negotiation"}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14" />
-                      <path d="m12 5 7 7-7 7" />
-                    </svg>
+                    {negotiationState === "loading" ? (
+                      <>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          className="animate-spin"
+                          aria-hidden="true"
+                        >
+                          <path d="M21 12a9 9 0 1 1-6.22-8.56" opacity="0.9" />
+                        </svg>
+                        Briefing your agent…
+                      </>
+                    ) : (
+                      <>
+                        Start Negotiation
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14" />
+                          <path d="m12 5 7 7-7 7" />
+                        </svg>
+                      </>
+                    )}
                   </button>
-                  {negotiationState === "loading" && (
-                    <div className="text-center text-sm text-slate-400 mt-3">Setting up your agent...</div>
-                  )}
-                  {negotiationState === "success" && (
-                    <div className="text-center text-sm text-emerald-400 mt-3">{negotiationMessage}</div>
-                  )}
                   {negotiationState === "error" && (
                     <div className="text-center text-sm text-red-400 mt-3">{negotiationMessage}</div>
                   )}

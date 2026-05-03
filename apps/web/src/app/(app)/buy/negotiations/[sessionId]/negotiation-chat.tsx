@@ -4,7 +4,20 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
-import type { NegotiationSession } from "./page";
+
+export interface NegotiationSession {
+  id: string;
+  listing_id: string;
+  role: "BUYER" | "SELLER";
+  status: string;
+  current_round: number;
+  last_offer_price_minor: number | null;
+  last_utility: number | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  version: number;
+}
 
 interface SkillBadge {
   id: string;
@@ -14,7 +27,7 @@ interface SkillBadge {
   verification_status: string;
 }
 
-interface Round {
+export interface Round {
   id: string;
   round_no: number;
   sender_role: "BUYER" | "SELLER";
@@ -32,6 +45,11 @@ interface Round {
   skills_applied?: SkillBadge[];
   /** Response locale */
   locale?: string;
+}
+
+export interface SessionDetailData {
+  session: NegotiationSession;
+  rounds: Round[];
 }
 
 interface SessionState {
