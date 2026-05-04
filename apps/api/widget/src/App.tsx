@@ -93,6 +93,37 @@ export default function App() {
   // Connect to ChatGPT host via MCP Apps bridge.
   // onAppCreated registers handlers BEFORE the connection handshake completes,
   // preventing race conditions where the host sends events before we listen.
+  // Some hosts (ChatGPT) deliver the initial tool result via `window.openai.toolOutput`
+  // BEFORE the widget mounts, so the `ontoolresult` notification never fires for it.
+  // Read it on mount as a fallback.
+  useEffect(() => {
+    try {
+      const w = window as unknown as { openai?: { toolOutput?: Record<string, unknown> } };
+      const initial = w.openai?.toolOutput;
+      if (!initial) return;
+      console.log("[haggle] Initial toolOutput from window.openai:", JSON.stringify(initial).slice(0, 200));
+      const draftIdValue = initial.draft_id as string | undefined;
+      if (draftIdValue) setDraftId(draftIdValue);
+      const draft = initial.draft as Record<string, unknown> | undefined;
+      if (draft) {
+        if (draft.title) setTitle(draft.title as string);
+        if (draft.description) setDescription(draft.description as string);
+        if (draft.tags) setTags(draft.tags as string[]);
+        if (draft.category) setCategory(draft.category as string);
+        if (draft.condition) setCondition(draft.condition as string);
+        if (draft.photoUrl) {
+          setPhotoPreview(draft.photoUrl as string);
+          setPhotoUploaded(true);
+        }
+        if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
+        if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
+      }
+    } catch (err) {
+      console.error("[haggle] Failed to read window.openai.toolOutput:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { app, isConnected, error: connectionError } = useApp({
     appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
     capabilities: {
