@@ -811,29 +811,10 @@ export default function App() {
                         }
                       }
 
-                      // 2) Blob download (works on desktop browsers).
-                      const blob = await fetchBlob();
-                      if (blob) {
-                        try {
-                          const blobUrl = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = blobUrl;
-                          a.download = fileName;
-                          a.rel = "noopener";
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          // Revoke after a tick so the download has time to start.
-                          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-                          setStoryDownloading(false);
-                          return;
-                        } catch (e) {
-                          console.error("Blob download failed:", e);
-                        }
-                      }
-
-                      // 3) Last resort: open the image URL in a new tab. User can long-press
-                      //    (mobile) or right-click (desktop) to save.
+                      // 2) Open the image URL in a new tab. The server returns
+                      //    Content-Disposition: attachment, so browsers download it
+                      //    instead of displaying. This is the most reliable path inside
+                      //    sandboxed iframes (ChatGPT widget) where <a download> is blocked.
                       window.open(ogUrl, "_blank", "noopener,noreferrer");
                       setStoryDownloading(false);
                     }}

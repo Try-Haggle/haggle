@@ -59,7 +59,7 @@ export async function GET(
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Cache-Control": "public, max-age=300, s-maxage=600",
-    "Content-Disposition": `inline; filename="haggle-${publicId}.png"`,
+    "Content-Disposition": `attachment; filename="haggle-${publicId}.png"`,
   };
 
   const response = new ImageResponse(
