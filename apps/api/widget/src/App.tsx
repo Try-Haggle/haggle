@@ -81,6 +81,7 @@ export default function App() {
     claimToken: string;
   } | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [storyDownloading, setStoryDownloading] = useState(false);
 
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
@@ -725,6 +726,53 @@ export default function App() {
                       </svg>
                     )}
                   </button>
+                </div>
+
+                {/* Instagram Story share */}
+                <div className="story-share">
+                  <div className="story-share__header">
+                    <span className="story-share__title">Share to Instagram Story</span>
+                    <span className="story-share__subtitle">Buyers tap your link → AI handles the rest</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="story-share__download-btn"
+                    disabled={storyDownloading}
+                    onClick={async () => {
+                      setStoryDownloading(true);
+                      try {
+                        const ogUrl = publishResult.shareUrl.replace("/l/", "/og/listing/");
+                        const res = await fetch(ogUrl);
+                        if (!res.ok) throw new Error(`status ${res.status}`);
+                        const blob = await res.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = blobUrl;
+                        a.download = `haggle-${publishResult.publicId}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(blobUrl);
+                      } catch (e) {
+                        console.error("Story card download failed:", e);
+                      } finally {
+                        setStoryDownloading(false);
+                      }
+                    }}
+                  >
+                    {storyDownloading ? "Preparing card…" : "📥 Download story card"}
+                  </button>
+                  <ol className="story-share__steps">
+                    <li>Save the card to your phone.</li>
+                    <li>Open Instagram → Create Story → upload the card.</li>
+                    <li>
+                      Tap the sticker icon → <strong>Link</strong> →
+                      paste your Haggle link (already copied above).
+                    </li>
+                  </ol>
+                  <p className="story-share__note">
+                    The link sticker is what makes buyers tap through. Don&apos;t skip it.
+                  </p>
                 </div>
 
                 {/* Claim CTA */}

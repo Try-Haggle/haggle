@@ -1066,6 +1066,68 @@ body {
   color: var(--accent-cyan);
 }
 
+/* ─── Story Share ────────────────────────────────────── */
+.story-share {
+  margin-top: 28px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: rgba(34, 211, 238, 0.06);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+}
+.story-share__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.story-share__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.story-share__subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.story-share__download-btn {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--accent-cyan);
+  color: #0b1120;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.story-share__download-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.story-share__download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.story-share__steps {
+  margin: 16px 0 8px;
+  padding-left: 22px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.story-share__steps li {
+  margin-bottom: 4px;
+}
+.story-share__steps strong {
+  color: var(--text-primary);
+}
+.story-share__note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
 /* ─── Claim CTA ──────────────────────────────────────── */
 .listing-live__claim-cta {
   margin-top: 28px;
