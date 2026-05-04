@@ -771,24 +771,71 @@ export default function App() {
                     disabled={storyDownloading}
                     onClick={async () => {
                       setStoryDownloading(true);
-                      try {
-                        const ogUrl = publishResult.shareUrl.replace("/l/", "/og/listing/");
-                        const res = await fetch(ogUrl);
-                        if (!res.ok) throw new Error(`status ${res.status}`);
-                        const blob = await res.blob();
-                        const blobUrl = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = blobUrl;
-                        a.download = `haggle-${publishResult.publicId}.png`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(blobUrl);
-                      } catch (e) {
-                        console.error("Story card download failed:", e);
-                      } finally {
-                        setStoryDownloading(false);
+                      const ogUrl = publishResult.shareUrl.replace("/l/", "/og/listing/");
+                      const fileName = `haggle-${publishResult.publicId}.png`;
+
+                      // Helper: fetch as blob (used by share + download paths)
+                      const fetchBlob = async (): Promise<Blob | null> => {
+                        try {
+                          const res = await fetch(ogUrl);
+                          if (!res.ok) return null;
+                          return await res.blob();
+                        } catch {
+                          return null;
+                        }
+                      };
+
+                      // 1) Try Web Share API with file (best on mobile — opens native share sheet,
+                      //    user picks "Save Image" or "Instagram" directly).
+                      const nav = navigator as Navigator & {
+                        canShare?: (data: { files: File[] }) => boolean;
+                        share?: (data: { files: File[]; title?: string }) => Promise<void>;
+                      };
+                      if (nav.canShare && nav.share) {
+                        const blob = await fetchBlob();
+                        if (blob) {
+                          try {
+                            const file = new File([blob], fileName, { type: "image/png" });
+                            if (nav.canShare({ files: [file] })) {
+                              await nav.share({ files: [file], title: "Haggle listing" });
+                              setStoryDownloading(false);
+                              return;
+                            }
+                          } catch (e) {
+                            // User cancelled or share failed — fall through to download path.
+                            if ((e as Error).name === "AbortError") {
+                              setStoryDownloading(false);
+                              return;
+                            }
+                          }
+                        }
                       }
+
+                      // 2) Blob download (works on desktop browsers).
+                      const blob = await fetchBlob();
+                      if (blob) {
+                        try {
+                          const blobUrl = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = blobUrl;
+                          a.download = fileName;
+                          a.rel = "noopener";
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          // Revoke after a tick so the download has time to start.
+                          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                          setStoryDownloading(false);
+                          return;
+                        } catch (e) {
+                          console.error("Blob download failed:", e);
+                        }
+                      }
+
+                      // 3) Last resort: open the image URL in a new tab. User can long-press
+                      //    (mobile) or right-click (desktop) to save.
+                      window.open(ogUrl, "_blank", "noopener,noreferrer");
+                      setStoryDownloading(false);
                     }}
                   >
                     {storyDownloading ? "Preparing card…" : "📥 Download story card"}
