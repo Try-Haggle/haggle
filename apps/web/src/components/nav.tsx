@@ -38,11 +38,18 @@ export function Nav({
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [storedMode, setStoredMode] = useState<Mode | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // On /l/ pages, `?from=` indicates the origin surface so we can keep the
   // originating tab highlighted and preserve buyer/seller mode.
   const from = pathname.startsWith("/l/") ? searchParams.get("from") : null;
+
+  // Read localStorage only after mount to avoid SSR/client hydration mismatch.
+  useEffect(() => {
+    const value = localStorage.getItem("haggle_mode") as Mode | null;
+    if (value === "buying" || value === "selling") setStoredMode(value);
+  }, []);
 
   // Derive mode from URL path, origin param, override prop, or localStorage.
   const deriveMode = (): Mode => {
@@ -54,11 +61,8 @@ export function Nav({
     // /l/ pages: use from param to infer the originating mode
     if (from === "browse" || from === "buy-dashboard") return "buying";
     if (from === "sell-dashboard") return "selling";
-    // /l/ pages w/o origin: preserve previous mode from localStorage
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("haggle_mode") as Mode) ?? "buying";
-    }
-    return "buying";
+    // /l/ pages w/o origin: preserve previous mode from post-mount localStorage read
+    return storedMode ?? "buying";
   };
   const mode: Mode = deriveMode();
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
