@@ -569,15 +569,16 @@ export default function App() {
             <div className="price-input-wrapper">
               <span className="price-prefix">$</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 className="form-input price-input"
                 placeholder="0"
-                value={targetPrice}
+                value={targetPrice ? Number(targetPrice).toLocaleString("en-US") : ""}
                 onChange={(e) => {
-                  setTargetPrice(e.target.value);
+                  const digits = e.target.value.replace(/[^\d]/g, "");
+                  setTargetPrice(digits);
                   if (error) setError(null);
                 }}
-                min="0"
               />
             </div>
             <p className="form-helper">The starting price buyers will see</p>
@@ -592,12 +593,15 @@ export default function App() {
             <div className="price-input-wrapper">
               <span className="price-prefix">$</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 className="form-input price-input"
                 placeholder="0"
-                value={floorPrice}
-                onChange={(e) => setFloorPrice(e.target.value)}
-                min="0"
+                value={floorPrice ? Number(floorPrice).toLocaleString("en-US") : ""}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/[^\d]/g, "");
+                  setFloorPrice(digits);
+                }}
               />
             </div>
             <p className="form-helper">Your AI will never agree below this price</p>
