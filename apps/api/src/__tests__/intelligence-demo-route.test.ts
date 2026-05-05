@@ -822,6 +822,7 @@ describe("Intelligence demo routes", () => {
     const body = JSON.parse(response.body);
     expect(body.memory.questions).toEqual([
       "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      "언락 모델이 필수인가요?",
     ]);
     expect(body.memory.source).toContain("no additional requirements");
     expect(body.reply).toContain("배터리");
@@ -1035,7 +1036,7 @@ describe("Intelligence demo routes", () => {
     const body = JSON.parse(response.body);
     expect(body.memory.structured.questionPlan).toMatchObject({
       policy: {
-        maxQuestionsPerTurn: 1,
+        maxQuestionsPerTurn: 3,
         order: ["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"],
       },
       askedThisTurn: {
@@ -1403,7 +1404,7 @@ describe("Intelligence demo routes", () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     const baseBatteryQuestion = "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?";
-    expect(body.memory.questions).toEqual([baseBatteryQuestion]);
+    expect(body.memory.questions).toEqual([baseBatteryQuestion, "언락 모델이 필수인가요?"]);
     expect(body.reply).toContain(baseBatteryQuestion);
     expect(body.reply).not.toContain(scopedQuestion);
     expect(body.memory.mustHave).toEqual([]);
