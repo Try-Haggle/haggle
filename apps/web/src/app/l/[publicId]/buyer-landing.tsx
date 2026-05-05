@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { StrategyChat } from "./strategy-chat";
 import {
   BUYER_AGENT_PRESETS,
   BUYER_STAT_META,
@@ -427,28 +428,13 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                 })}
               </div>
 
-              {/* Chat Placeholder — matches widget */}
-              <div className="mt-4 rounded-xl border overflow-hidden" style={{ borderColor: "#1e293b", background: "#0f172a" }}>
-                <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid #1e293b" }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#06b6d4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect width="18" height="10" x="3" y="11" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
-                  </svg>
-                  <span className="text-[13px] font-semibold" style={{ color: "#06b6d4" }}>
-                    {selectedAgent ? selectedAgent.name : "Buying Agent"}
-                  </span>
-                </div>
-                <div className="px-4 py-4 text-[13px] leading-relaxed" style={{ color: "#f1f5f9" }}>
-                  <p>
-                    Hi! I&apos;m your buying agent. I&apos;ll negotiate the best price on your behalf — so you don&apos;t have to. Let me know how you&apos;d like me to approach this.
-                  </p>
-                  <p className="mt-3 italic text-[12px]" style={{ color: "#64748b" }}>
-                    You can customize my approach below, or just pick a style and I&apos;ll run with it.
-                  </p>
-                </div>
-                <div className="px-4 py-3 text-center text-[12px]" style={{ borderTop: "1px solid #1e293b", color: "#94a3b8", background: "#0d1321" }}>
-                  Chat with your AI agent to fine-tune its negotiation strategy. Coming soon.
-                </div>
-              </div>
+              {/* Strategy Chat — pre-negotiation strategy tuning */}
+              <StrategyChat
+                agent={selectedAgent}
+                listingTitle={listing.title}
+                listingCategory={listing.category}
+                listingPrice={listing.targetPrice}
+              />
             </div>
 
             {/* Right: Agent Profile (below cards on mobile, sticky side panel on desktop) */}
@@ -551,71 +537,70 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                   </div>
                 ) : (
                   <>
-                  <button
-                    type="button"
-                    disabled={!selectedAgent || negotiationState === "loading"}
-                    onClick={() => {
-                      if (!selectedAgent) return;
+                    <button
+                      type="button"
+                      disabled={!selectedAgent || negotiationState === "loading"}
+                      onClick={() => {
+                        if (!selectedAgent) return;
 
-                      if (!user) {
-                        sessionStorage.setItem("pendingIntent", JSON.stringify({
-                          listingId: listing.id,
-                          publicId: listing.publicId,
-                          category: listing.category,
-                          agentPreset: selectedAgent.id,
-                        }));
-                        window.location.href = `/claim?redirect=/l/${listing.publicId}`;
-                        return;
-                      }
+                        if (!user) {
+                          sessionStorage.setItem("pendingIntent", JSON.stringify({
+                            listingId: listing.id,
+                            publicId: listing.publicId,
+                            category: listing.category,
+                            agentPreset: selectedAgent.id,
+                          }));
+                          window.location.href = `/claim?redirect=/l/${listing.publicId}`;
+                          return;
+                        }
 
-                      setNegotiationState("loading");
-                      setNegotiationMessage("Briefing your agent…");
-                      // Frontend-only entry: navigate straight into the playback view.
-                      // Session id encodes listing + agent so the mock picks a stable scenario.
-                      const sessionId = `${listing.publicId}-${selectedAgent.id}`;
-                      setTimeout(() => {
-                        window.location.href = `/buy/negotiations/${sessionId}`;
-                      }, 600);
-                    }}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-white transition-colors ${
-                      negotiationState === "loading"
-                        ? "cursor-wait bg-emerald-500 opacity-90"
-                        : !selectedAgent
-                        ? "cursor-not-allowed bg-emerald-500 opacity-40"
-                        : "cursor-pointer bg-emerald-500 hover:bg-emerald-600"
-                    }`}
-                    aria-busy={negotiationState === "loading"}
-                  >
-                    {negotiationState === "loading" ? (
-                      <>
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          className="animate-spin"
-                          aria-hidden="true"
-                        >
-                          <path d="M21 12a9 9 0 1 1-6.22-8.56" opacity="0.9" />
-                        </svg>
-                        Briefing your agent…
-                      </>
-                    ) : (
-                      <>
-                        Start Negotiation
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14" />
-                          <path d="m12 5 7 7-7 7" />
-                        </svg>
-                      </>
+                        setNegotiationState("loading");
+                        setNegotiationMessage("Briefing your agent…");
+                        // Frontend-only entry: navigate straight into the playback view.
+                        // Session id encodes listing + agent so the mock picks a stable scenario.
+                        const sessionId = `${listing.publicId}-${selectedAgent.id}`;
+                        setTimeout(() => {
+                          window.location.href = `/buy/negotiations/${sessionId}`;
+                        }, 600);
+                      }}
+                      className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-white transition-colors ${negotiationState === "loading"
+                          ? "cursor-wait bg-emerald-500 opacity-90"
+                          : !selectedAgent
+                            ? "cursor-not-allowed bg-emerald-500 opacity-40"
+                            : "cursor-pointer bg-emerald-500 hover:bg-emerald-600"
+                        }`}
+                      aria-busy={negotiationState === "loading"}
+                    >
+                      {negotiationState === "loading" ? (
+                        <>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            className="animate-spin"
+                            aria-hidden="true"
+                          >
+                            <path d="M21 12a9 9 0 1 1-6.22-8.56" opacity="0.9" />
+                          </svg>
+                          Briefing your agent…
+                        </>
+                      ) : (
+                        <>
+                          Start Negotiation
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M5 12h14" />
+                            <path d="m12 5 7 7-7 7" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+                    {negotiationState === "error" && (
+                      <div className="text-center text-sm text-red-400 mt-3">{negotiationMessage}</div>
                     )}
-                  </button>
-                  {negotiationState === "error" && (
-                    <div className="text-center text-sm text-red-400 mt-3">{negotiationMessage}</div>
-                  )}
                   </>
                 )}
               </div>
