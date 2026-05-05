@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { StrategyChat } from "./strategy-chat";
+import { StrategyChat, loadSelectedAgentId } from "./strategy-chat";
 import {
   BUYER_AGENT_PRESETS,
   BUYER_STAT_META,
@@ -159,15 +159,25 @@ const ORIGIN_HREF: Record<Origin, string> = {
 
 export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
   const { track } = useAmplitude();
-  const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
-    null,
-  );
+  const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(null);
   const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
 
   const currentStats: BuyerAgentStats = selectedAgent?.stats ?? DEFAULT_BUYER_STATS;
   const deadline = timeRemaining(listing.sellingDeadline);
+
+  // Restore selected agent from localStorage after mount (avoids SSR hydration mismatch)
+  const agentRestored = useRef(false);
+  useEffect(() => {
+    if (agentRestored.current) return;
+    agentRestored.current = true;
+    const savedId = loadSelectedAgentId(listing.publicId);
+    if (savedId) {
+      const found = BUYER_AGENT_PRESETS.find((a) => a.id === savedId);
+      if (found) setSelectedAgent(found);
+    }
+  }, [listing.publicId]);
 
   // Public Listing Viewed (1회)
   const viewTracked = useRef(false);
@@ -376,15 +386,25 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
 
           <div className="grid gap-6 md:gap-7 md:grid-cols-[1fr_300px]">
             {/* Left: Agent cards (2x2 on desktop, stacked on mobile) */}
-            <div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+            <div className="flex flex-col h-full">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 shrink-0">
                 {BUYER_AGENT_PRESETS.map((agent) => {
                   const isSelected = selectedAgent?.id === agent.id;
                   return (
                     <button
                       key={agent.id}
                       type="button"
-                      onClick={() => setSelectedAgent(agent)}
+                      onClick={() => {
+                        setSelectedAgent(agent);
+                        setTimeout(() => {
+                          const chatEl = document.getElementById("strategy-chat-container");
+                          if (chatEl) {
+                            const rect = chatEl.getBoundingClientRect();
+                            const targetY = window.scrollY + rect.top - 64; // 64px offset for navbar
+                            window.scrollTo({ top: targetY, behavior: "smooth" });
+                          }
+                        }, 100);
+                      }}
                       className="flex cursor-pointer flex-col rounded-xl border p-4 text-left transition-all"
                       style={{
                         background: "#111827",
@@ -431,6 +451,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
               {/* Strategy Chat — pre-negotiation strategy tuning */}
               <StrategyChat
                 agent={selectedAgent}
+                listingPublicId={listing.publicId}
                 listingTitle={listing.title}
                 listingCategory={listing.category}
                 listingPrice={listing.targetPrice}

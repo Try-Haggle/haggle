@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BuyerAgentPreset } from "@/lib/buyer-agents";
+import { apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -10,6 +11,7 @@ interface ChatMessage {
   role: "user" | "agent";
   text: string;
   timestamp: number;
+  widget?: "budget-slider";
 }
 
 interface AdvisorMemory {
@@ -33,15 +35,90 @@ interface StrategyChip {
 
 interface StrategyChatProps {
   agent: BuyerAgentPreset | null;
+  listingPublicId: string;
   listingTitle: string;
   listingCategory: string | null;
   listingPrice: string | null;
   onMemoryUpdate?: (memory: AdvisorMemory) => void;
 }
 
+/* ─── localStorage persistence ───────────────────────────── */
+
+const STORAGE_PREFIX = "haggle:strategy";
+const EXPIRY_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+
+interface PersistedSession {
+  memory: AdvisorMemory;
+  messages: ChatMessage[];
+  agentId: string;
+  updatedAt: number;
+}
+
+function storageKey(listingId: string, agentId: string): string {
+  return `${STORAGE_PREFIX}:${listingId}:${agentId}`;
+}
+
+function agentKey(listingId: string): string {
+  return `${STORAGE_PREFIX}:agent:${listingId}`;
+}
+
+export function saveSelectedAgent(listingId: string, agentId: string): void {
+  try {
+    localStorage.setItem(agentKey(listingId), JSON.stringify({ agentId, updatedAt: Date.now() }));
+  } catch { /* ignore */ }
+}
+
+export function loadSelectedAgentId(listingId: string): string | null {
+  try {
+    const raw = localStorage.getItem(agentKey(listingId));
+    if (!raw) return null;
+    const data = JSON.parse(raw) as { agentId: string; updatedAt: number };
+    if (Date.now() - data.updatedAt > EXPIRY_MS) {
+      localStorage.removeItem(agentKey(listingId));
+      return null;
+    }
+    return data.agentId;
+  } catch { return null; }
+}
+
+export function clearSelectedAgent(listingId: string): void {
+  try { localStorage.removeItem(agentKey(listingId)); } catch { /* ignore */ }
+}
+
+function saveSession(listingId: string, agentId: string, session: PersistedSession): void {
+  try {
+    localStorage.setItem(storageKey(listingId, agentId), JSON.stringify(session));
+  } catch {
+    // localStorage full or unavailable — silently ignore
+  }
+}
+
+function loadSession(listingId: string, agentId: string): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(storageKey(listingId, agentId));
+    if (!raw) return null;
+    const session: PersistedSession = JSON.parse(raw);
+    // Auto-expire after 2 days
+    if (Date.now() - session.updatedAt > EXPIRY_MS) {
+      localStorage.removeItem(storageKey(listingId, agentId));
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession(listingId: string, agentId: string): void {
+  try {
+    localStorage.removeItem(storageKey(listingId, agentId));
+  } catch {
+    // silently ignore
+  }
+}
+
 /* ─── Constants ───────────────────────────────────────────── */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function buildInitialMemory(
   agent: BuyerAgentPreset | null,
@@ -172,6 +249,80 @@ function TypingDots() {
   );
 }
 
+/* ─── Budget Slider Widget ──────────────────────────────────── */
+
+function BudgetWidget({
+  listingPrice,
+  onSubmit,
+}: {
+  listingPrice: string | null;
+  onSubmit: (target: number, max: number) => void;
+}) {
+  const basePrice = listingPrice ? parseInt(listingPrice) : 1000;
+  const minRange = Math.floor(basePrice * 0.5);
+  const maxRange = Math.floor(basePrice * 1.5);
+
+  const [target, setTarget] = useState(Math.floor(basePrice * 0.8));
+  const [max, setMax] = useState(basePrice);
+
+  return (
+    <div className="mt-4 p-4 rounded-xl bg-[#0f172a] border border-[#1e293b]">
+      <div className="flex justify-between items-center mb-5">
+        <div className="text-center">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">목표 가격</p>
+          <p className="text-[16px] font-bold text-cyan-400">${target.toLocaleString()}</p>
+        </div>
+        <div className="h-[30px] w-[1px] bg-[#1e293b]" />
+        <div className="text-center">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">최대 예산</p>
+          <p className="text-[16px] font-bold text-blue-400">${max.toLocaleString()}</p>
+        </div>
+      </div>
+      
+      <div className="flex flex-col gap-6 mb-6">
+        <div className="relative">
+          <input
+            type="range"
+            min={minRange}
+            max={maxRange}
+            step={10}
+            value={target}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setTarget(val);
+              if (val > max) setMax(val);
+            }}
+            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+          />
+        </div>
+        <div className="relative">
+          <input
+            type="range"
+            min={minRange}
+            max={maxRange}
+            step={10}
+            value={max}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setMax(val);
+              if (val < target) setTarget(val);
+            }}
+            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onSubmit(target, max)}
+        className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+      >
+        예산 설정 완료
+      </button>
+    </div>
+  );
+}
+
 /* ─── Chip Category Colors ────────────────────────────────── */
 
 const CHIP_COLORS: Record<
@@ -204,6 +355,7 @@ const CHIP_COLORS: Record<
 
 export function StrategyChat({
   agent,
+  listingPublicId,
   listingTitle,
   listingCategory,
   listingPrice,
@@ -216,28 +368,71 @@ export function StrategyChat({
     buildInitialMemory(agent, listingCategory),
   );
   const [isExpanded, setIsExpanded] = useState(false);
+  const [hasRestoredSession, setHasRestoredSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatTopRef = useRef<HTMLDivElement>(null);
 
-  // Reset when agent changes
+  const scrollToTop = useCallback(() => {
+    setTimeout(() => {
+      const el = chatTopRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const navbarOffset = 64;
+      const targetY = window.scrollY + rect.top - navbarOffset;
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+    }, 100);
+  }, []);
+
+  // Load from localStorage or reset when agent changes
   useEffect(() => {
-    const newMemory = buildInitialMemory(agent, listingCategory);
-    setMemory(newMemory);
-    setMessages([
-      {
+    if (!agent) {
+      setMessages([]);
+      setMemory(buildInitialMemory(null, listingCategory));
+      setIsExpanded(false);
+      setHasRestoredSession(false);
+      return;
+    }
+
+    const saved = loadSession(listingPublicId, agent.id);
+    // If we have a saved session and it has at least 1 message (the greeting)
+    if (saved && saved.messages.length > 0) {
+      // Restore previous session
+      setMemory(saved.memory);
+      setMessages(saved.messages);
+      setIsExpanded(true);
+      setHasRestoredSession(true);
+      onMemoryUpdate?.(saved.memory);
+    } else {
+      // Fresh start: provide a greeting with budget widget
+      const newMemory = buildInitialMemory(agent, listingCategory);
+      setMemory(newMemory);
+      
+      const greetingMsg: ChatMessage = {
         id: "greeting",
         role: "agent",
-        text: buildGreeting(agent, listingTitle, listingPrice),
+        text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
         timestamp: Date.now(),
-      },
-    ]);
-    setIsExpanded(false);
-  }, [agent?.id, listingTitle, listingPrice, listingCategory]);
+        widget: "budget-slider"
+      };
+      setMessages([greetingMsg]);
+      setIsExpanded(true);
+      setHasRestoredSession(false);
+    }
+    // Always persist agent selection
+    saveSelectedAgent(listingPublicId, agent.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent?.id, listingPublicId]);
 
-  // Scroll to bottom
+  // Scroll chat to bottom locally without affecting page scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
   }, [messages.length, isLoading]);
 
   const handleSend = useCallback(async () => {
@@ -250,29 +445,38 @@ export function StrategyChat({
       text: trimmed,
       timestamp: Date.now(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    
+    setMessages((prev) => {
+      const next = [...prev, userMsg];
+      if (agent) {
+        saveSession(listingPublicId, agent.id, {
+          memory,
+          messages: next,
+          agentId: agent.id,
+          updatedAt: Date.now(),
+        });
+      }
+      return next;
+    });
+    
     setInput("");
     setIsLoading(true);
     setIsExpanded(true);
 
     try {
-      const res = await fetch(
-        `${API_BASE}/intelligence/demo/advisor-turn`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: trimmed,
-            previous_memory: memory,
-            agent_id: agent?.id ?? "smart-trader",
-            listings: [],
-          }),
-        },
-      );
-
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-
-      const data = await res.json();
+      const data = await apiClient<{
+        memory?: AdvisorMemory;
+        reply?: string;
+      }>("/intelligence/demo/advisor-turn", {
+        method: "POST",
+        body: JSON.stringify({
+          message: trimmed,
+          previous_memory: memory,
+          agent_id: agent?.id ?? "smart-trader",
+          listings: [],
+        }),
+        skipAuth: true,
+      });
       const updatedMemory: AdvisorMemory = data.memory ?? memory;
       setMemory(updatedMemory);
       onMemoryUpdate?.(updatedMemory);
@@ -283,8 +487,20 @@ export function StrategyChat({
         text: data.reply ?? "죄송합니다, 다시 한번 말씀해주세요.",
         timestamp: Date.now(),
       };
-      setMessages((prev) => [...prev, agentMsg]);
-    } catch (err) {
+      setMessages((prev) => {
+        const next = [...prev, agentMsg];
+        // Persist to localStorage
+        if (agent) {
+          saveSession(listingPublicId, agent.id, {
+            memory: updatedMemory,
+            messages: next,
+            agentId: agent.id,
+            updatedAt: Date.now(),
+          });
+        }
+        return next;
+      });
+    } catch (err: unknown) {
       console.error("[strategy-chat] API error:", err);
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
@@ -292,11 +508,135 @@ export function StrategyChat({
         text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
         timestamp: Date.now(),
       };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => {
+        // Save user messages even on API error (exclude the error msg itself)
+        if (agent && prev.length > 1) {
+          saveSession(listingPublicId, agent.id, {
+            memory,
+            messages: prev, // save without the error message
+            agentId: agent.id,
+            updatedAt: Date.now(),
+          });
+        }
+        return [...prev, errorMsg];
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, memory, agent, onMemoryUpdate]);
+  }, [input, isLoading, memory, agent, listingPublicId, onMemoryUpdate]);
+
+  const handleReset = useCallback(() => {
+    if (!agent) return;
+    clearSession(listingPublicId, agent.id);
+    const newMemory = buildInitialMemory(agent, listingCategory);
+    setMemory(newMemory);
+    
+    const greetingMsg: ChatMessage = {
+      id: "greeting",
+      role: "agent",
+      text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
+      timestamp: Date.now(),
+      widget: "budget-slider"
+    };
+    
+    setMessages([greetingMsg]);
+    setIsExpanded(true);
+    setHasRestoredSession(false);
+    scrollToTop();
+  }, [agent, listingPublicId, listingCategory, listingTitle, listingPrice, scrollToTop]);
+
+  const handleBudgetSubmit = useCallback(async (target: number, max: number) => {
+    if (isLoading) return;
+    
+    const userText = `목표 가격은 $${target}, 최대 예산은 $${max}로 생각하고 있어.`;
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text: userText,
+      timestamp: Date.now(),
+    };
+    
+    // Optimistic memory update
+    const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
+    setMemory(updatedMemoryOptimistic);
+    onMemoryUpdate?.(updatedMemoryOptimistic);
+    
+    setMessages((prev) => {
+      // Remove widget from the greeting
+      const withoutWidget = prev.map(m => m.id === "greeting" ? { ...m, widget: undefined } : m);
+      const next = [...withoutWidget, userMsg];
+      if (agent) {
+        saveSession(listingPublicId, agent.id, {
+          memory: updatedMemoryOptimistic,
+          messages: next,
+          agentId: agent.id,
+          updatedAt: Date.now(),
+        });
+      }
+      return next;
+    });
+    setIsLoading(true);
+
+    try {
+      const data = await apiClient<{
+        memory?: AdvisorMemory;
+        reply?: string;
+      }>("/intelligence/demo/advisor-turn", {
+        method: "POST",
+        body: JSON.stringify({
+          message: userText,
+          previous_memory: updatedMemoryOptimistic,
+          agent_id: agent?.id ?? "smart-trader",
+          listings: [],
+        }),
+        skipAuth: true,
+      });
+
+      const updatedMemory: AdvisorMemory = data.memory ?? updatedMemoryOptimistic;
+      setMemory(updatedMemory);
+      onMemoryUpdate?.(updatedMemory);
+
+      const agentMsg: ChatMessage = {
+        id: `agent-${Date.now()}`,
+        role: "agent",
+        text: data.reply ?? "예산이 설정되었습니다. 더 피하고 싶거나 원하시는 조건이 있나요?",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => {
+        const next = [...prev, agentMsg];
+        if (agent) {
+          saveSession(listingPublicId, agent.id, {
+            memory: updatedMemory,
+            messages: next,
+            agentId: agent.id,
+            updatedAt: Date.now(),
+          });
+        }
+        return next;
+      });
+    } catch (err: unknown) {
+      console.error("[strategy-chat] API error:", err);
+      const errorMsg: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: "agent",
+        text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => {
+        if (agent && prev.length > 1) {
+          saveSession(listingPublicId, agent.id, {
+            memory: updatedMemoryOptimistic,
+            messages: prev,
+            agentId: agent.id,
+            updatedAt: Date.now(),
+          });
+        }
+        return [...prev, errorMsg];
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -310,15 +650,18 @@ export function StrategyChat({
 
   return (
     <div
-      className="mt-4 rounded-xl border overflow-hidden transition-all duration-300"
+      id="strategy-chat-container"
+      ref={chatTopRef}
+      className="mt-4 flex-1 flex flex-col rounded-xl border overflow-hidden transition-all duration-300"
       style={{
         borderColor: "#1e293b",
         background: "#0f172a",
+        minHeight: isExpanded ? "400px" : "200px"
       }}
     >
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-4 py-3"
+        className="flex items-center gap-2 px-4 py-3 shrink-0"
         style={{ borderBottom: "1px solid #1e293b" }}
       >
         <svg
@@ -351,16 +694,28 @@ export function StrategyChat({
             {chips.length} strategy hints
           </span>
         )}
+        {/* Reset button */}
+        {messages.length > 1 && hasAgentSelected && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-white/5"
+            title="대화 초기화"
+            aria-label="Reset strategy chat"
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Messages area */}
       <div
         ref={chatContainerRef}
-        className="overflow-y-auto transition-all duration-500 ease-out"
-        style={{
-          maxHeight: isExpanded ? "320px" : "160px",
-          scrollBehavior: "smooth",
-        }}
+        className="flex-1 overflow-y-auto transition-all duration-500 ease-out min-h-0"
+        style={{ scrollBehavior: "smooth" }}
       >
         <div className="flex flex-col gap-3 p-4">
           {messages.map((msg) => (
@@ -412,6 +767,13 @@ export function StrategyChat({
                     __html: renderMarkdownLite(msg.text),
                   }}
                 />
+                
+                {msg.widget === "budget-slider" && (
+                  <BudgetWidget 
+                    listingPrice={listingPrice} 
+                    onSubmit={handleBudgetSubmit} 
+                  />
+                )}
               </div>
             </div>
           ))}
@@ -446,7 +808,7 @@ export function StrategyChat({
       {/* Strategy chips — only show when we have them */}
       {chips.length > 0 && (
         <div
-          className="px-4 py-2 flex flex-wrap gap-1.5 overflow-x-auto"
+          className="px-4 py-2 flex flex-wrap gap-1.5 overflow-x-auto shrink-0"
           style={{
             borderTop: "1px solid #1e293b",
             background: "#0d1321",
@@ -480,7 +842,7 @@ export function StrategyChat({
 
       {/* Input area */}
       <div
-        className="px-3 py-2.5 flex items-center gap-2"
+        className="px-3 py-2.5 flex items-center gap-2 shrink-0"
         style={{
           borderTop: "1px solid #1e293b",
           background: "#0d1321",
