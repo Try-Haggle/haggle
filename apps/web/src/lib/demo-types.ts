@@ -35,6 +35,7 @@ export interface DemoInitRequest {
   custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
   buyer_agent_id?: string;
   seller_agent_id?: string;
+  preset_tuning_draft?: Record<string, unknown>;
 }
 
 // ─── Init Response ───
@@ -94,6 +95,7 @@ export interface DemoInitResponse {
   strategy: DemoStrategy;
   terms: TermAnalysis;
   hil_memory?: HilMemorySummary;
+  preset_tuning_draft?: Record<string, unknown> | null;
   lumen_profiles?: {
     buyer_agent: LumenVoiceProfile;
     seller_agent: LumenVoiceProfile;

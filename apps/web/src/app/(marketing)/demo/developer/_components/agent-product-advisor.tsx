@@ -12,7 +12,9 @@ import {
   type StoredMemoryCard,
 } from "@/lib/intelligence-demo-api";
 import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
+import type { PresetTuningDraft } from "@/lib/intelligence-demo-api";
 import { ANCIENT_BEINGS, type AncientBeingId } from "./negotiation-avatar-coach";
+import { PresetTuningPanel } from "./preset-tuning-panel";
 
 type ChatMessage = {
   id: string;
@@ -95,6 +97,20 @@ type PendingBudgetChange = {
   previousTargetPrice?: number;
   proposedMemory: AdvisorMemory;
 };
+
+type MissingInfoSlot = {
+  slotId: string;
+  question: string;
+  enforcement: "hard" | "soft";
+  productScope?: string;
+  status: "pending" | "ambiguous";
+};
+
+type SlotControlValue =
+  | { kind: "budget"; budgetMax: number; targetPrice?: number }
+  | { kind: "battery"; threshold?: number; noPreference?: boolean }
+  | { kind: "carrier"; unlockedRequired: boolean | null }
+  | { kind: "text"; text: string; noPreference?: boolean };
 
 function getAgent(id: AncientBeingId) {
   return ANCIENT_BEINGS.find((being) => being.id === id) ?? ANCIENT_BEINGS[0];
@@ -221,7 +237,7 @@ const STOP_TERMS = new Set([
 ]);
 
 function buildListingSearchQuery(memory: AdvisorMemory, latestMessage: string): string {
-  return [
+  const raw = [
     memory.categoryInterest,
     ...memory.mustHave,
     ...memory.avoid,
@@ -230,6 +246,15 @@ function buildListingSearchQuery(memory: AdvisorMemory, latestMessage: string): 
     .join(" ")
     .replace(/탐색 중|not specified|unknown/gi, " ")
     .trim();
+
+  return Array.from(new Set(
+    raw
+      .toLowerCase()
+      .replace(/\$?\d+(?:\.\d+)?/g, " ")
+      .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
+      .map((term) => term.trim())
+      .filter((term) => term.length >= 2 && !STOP_TERMS.has(term)),
+  )).slice(0, 12).join(" ").slice(0, 240);
 }
 
 function buildNegotiationBrief(memory: AdvisorMemory, listing: AdvisorListing): string[] {
@@ -254,6 +279,13 @@ function formatMemoryStrength(value: string): string {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return value;
   return `${Math.round(parsed * 100)}%`;
+}
+
+function mergeStoredMemoryCards(existing: StoredMemoryCard[], incoming: StoredMemoryCard[]): StoredMemoryCard[] {
+  const merged = new Map<string, StoredMemoryCard>();
+  for (const card of existing) merged.set(card.id, card);
+  for (const card of incoming) merged.set(card.id, card);
+  return Array.from(merged.values()).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
 }
 
 function formatRetrievalMode(meta: AdvisorRetrievalMeta | null): string {
@@ -976,8 +1008,27 @@ function isBudgetQuestion(text: string): boolean {
   return /(?:예산|budget|max|최대|목표|target|가격|얼마)/i.test(text);
 }
 
+function hasPercentNumber(text: string): boolean {
+  return /\b\d{1,3}\s*%|퍼센트|프로\b/i.test(text);
+}
+
+function hasProductModelNumber(text: string): boolean {
+  return /(?:iphone|아이폰|model|모델)\s*\d{1,2}\b/i.test(text)
+    || /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text);
+}
+
+function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: AdvisorMemory): boolean {
+  if (!previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))) return false;
+  return /^\s*(?:1[1-9]|[2-9])\s*(?:은|는|로|요|\?)*\s*$/i.test(text.trim());
+}
+
+function hasExplicitMoneyUnit(text: string): boolean {
+  return /[$]|(?:usd|dollars?|bucks?|달러|불)\b/i.test(text);
+}
+
 function extractExplicitBudgetDollars(text: string, previousMemory?: AdvisorMemory): number | null {
   const raw = text.toLowerCase().replace(/,/g, " ");
+  if (hasPercentNumber(raw) || hasProductModelNumber(raw) || isShortModelAnswerToPendingQuestion(raw, previousMemory)) return null;
   const hasBudgetContext = isBudgetQuestion(raw)
     || previousMemory?.questions.some((question) => isBudgetQuestion(question));
   if (!hasBudgetContext) return null;
@@ -990,6 +1041,7 @@ function extractExplicitBudgetDollars(text: string, previousMemory?: AdvisorMemo
   const parsed = Number(keywordAfter?.[1] ?? keywordBefore?.[1] ?? contextNumber?.[1]);
 
   if (!Number.isFinite(parsed)) return null;
+  if (parsed < 100 && !hasExplicitMoneyUnit(raw) && !/(?:예산|budget|max|최대|목표|target)[^\d$]{0,24}\d{2}/i.test(raw)) return null;
   if (parsed < 20 || parsed > 100000) return null;
   return parsed;
 }
@@ -1272,11 +1324,428 @@ function AttributeGatePanel({ alignment }: { alignment: ListingAlignment }) {
   );
 }
 
+function MissingInfoBoard({
+  memory,
+  disabled,
+  onApply,
+}: {
+  memory: AdvisorMemory;
+  disabled: boolean;
+  onApply: (slot: MissingInfoSlot, value: SlotControlValue) => void;
+}) {
+  const slots = collectMissingInfoSlots(memory);
+  const [budgetInput, setBudgetInput] = useState(memory.budgetMax ? String(memory.budgetMax) : "");
+  const [batteryThreshold, setBatteryThreshold] = useState(extractBatteryMin(activeMemoryIntentText(memory)) ?? 90);
+  const [textValues, setTextValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setBudgetInput(memory.budgetMax ? String(memory.budgetMax) : "");
+    setBatteryThreshold(extractBatteryMin(activeMemoryIntentText(memory)) ?? 90);
+  }, [memory]);
+
+  if (slots.length === 0) {
+    return (
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+            Missing Info Board
+          </p>
+          <span className="font-mono text-[10px] text-emerald-200">CLEAR</span>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-emerald-100">
+          필수 조건은 채워졌습니다. 협상 전에는 상품 게이트와 예산 확인만 남습니다.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">
+          Missing Info Board
+        </p>
+        <span className="font-mono text-[10px] text-amber-100">
+          {slots.filter((slot) => slot.enforcement === "hard").length} hard / {slots.length} total
+        </span>
+      </div>
+      <p className="mb-3 text-[11px] leading-5 text-amber-100/80">
+        부족한 조건을 한 번에 보고 채울 수 있습니다. 숫자 답변은 이 보드의 슬롯 안에서만 저장되므로 배터리 90%가 예산으로 바뀌지 않습니다.
+      </p>
+      <div className="space-y-2">
+        {slots.map((slot) => {
+          const key = slotKey(slot);
+          return (
+            <div key={key} className="rounded-lg border border-slate-700 bg-slate-950/70 p-2">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-white">{slotTitle(slot.slotId)}</p>
+                  <p className="mt-0.5 text-[11px] leading-5 text-slate-400">{slot.question}</p>
+                </div>
+                <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase ${
+                  slot.enforcement === "hard"
+                    ? "border-red-400/30 text-red-200"
+                    : "border-slate-600 text-slate-400"
+                }`}>
+                  {slot.enforcement}
+                </span>
+              </div>
+
+              {slot.slotId === "max_budget" && (
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={budgetInput}
+                    onChange={(event) => setBudgetInput(event.target.value)}
+                    placeholder="최대 예산"
+                    className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="button"
+                    disabled={disabled || !Number.isFinite(Number(budgetInput)) || Number(budgetInput) <= 0}
+                    onClick={() => onApply(slot, { kind: "budget", budgetMax: Number(budgetInput) })}
+                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    저장
+                  </button>
+                </div>
+              )}
+
+              {slot.slotId === "battery_health" && (
+                <div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={75}
+                      max={100}
+                      step={1}
+                      value={batteryThreshold}
+                      onChange={(event) => setBatteryThreshold(Number(event.target.value))}
+                      className="min-w-0 flex-1"
+                    />
+                    <span className="w-12 text-right font-mono text-xs text-cyan-100">{batteryThreshold}%</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-4 gap-1.5">
+                    {[90, 85, 80].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onApply(slot, { kind: "battery", threshold: value })}
+                        className="rounded-md border border-cyan-500/30 px-2 py-1.5 text-[11px] font-semibold text-cyan-100 disabled:opacity-50"
+                      >
+                        {value}%+
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onApply(slot, { kind: "battery", threshold: batteryThreshold })}
+                      className="rounded-md bg-cyan-500 px-2 py-1.5 text-[11px] font-semibold text-slate-950 disabled:opacity-50"
+                    >
+                      적용
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onApply(slot, { kind: "battery", noPreference: true })}
+                    className="mt-1.5 w-full rounded-md border border-slate-600 px-2 py-1.5 text-[11px] font-semibold text-slate-300 disabled:opacity-50"
+                  >
+                    배터리 기준 없음
+                  </button>
+                </div>
+              )}
+
+              {slot.slotId === "carrier_lock" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onApply(slot, { kind: "carrier", unlockedRequired: true })}
+                    className="rounded-md bg-cyan-500 px-2 py-1.5 text-xs font-semibold text-slate-950 disabled:opacity-50"
+                  >
+                    언락 필수
+                  </button>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onApply(slot, { kind: "carrier", unlockedRequired: null })}
+                    className="rounded-md border border-slate-600 px-2 py-1.5 text-xs font-semibold text-slate-300 disabled:opacity-50"
+                  >
+                    상관없음
+                  </button>
+                </div>
+              )}
+
+              {!["max_budget", "battery_health", "carrier_lock"].includes(slot.slotId) && (
+                <div className="flex gap-2">
+                  <input
+                    value={textValues[key] ?? ""}
+                    onChange={(event) => setTextValues((prev) => ({ ...prev, [key]: event.target.value }))}
+                    placeholder={slot.slotId === "shopping_intent" ? "예: iPhone 15 Pro" : "직접 입력"}
+                    className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="button"
+                    disabled={disabled || !(textValues[key] ?? "").trim()}
+                    onClick={() => onApply(slot, { kind: "text", text: textValues[key] ?? "" })}
+                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    저장
+                  </button>
+                </div>
+              )}
+
+              {slot.slotId === "buyer_priority" && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onApply(slot, { kind: "text", text: "no additional requirements", noPreference: true })}
+                  className="mt-1.5 w-full rounded-md border border-slate-600 px-2 py-1.5 text-[11px] font-semibold text-slate-300 disabled:opacity-50"
+                >
+                  추가 조건 없음
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function collectMissingInfoSlots(memory: AdvisorMemory): MissingInfoSlot[] {
+  const slots: MissingInfoSlot[] = [];
+  const add = (slot: MissingInfoSlot) => {
+    const key = slotKey(slot);
+    if (slots.some((item) => slotKey(item) === key)) return;
+    slots.push(slot);
+  };
+
+  if (isKnownEmptyIntent(memory.categoryInterest)) {
+    add({
+      slotId: "shopping_intent",
+      question: "찾는 제품이나 상황을 먼저 정해주세요.",
+      enforcement: "hard",
+      status: "pending",
+    });
+  }
+
+  if (!memory.budgetMax && !memory.targetPrice) {
+    add({
+      slotId: "max_budget",
+      question: "협상에 쓸 최대 예산을 정해주세요.",
+      enforcement: "hard",
+      productScope: memory.structured?.activeIntent?.productScope,
+      status: "pending",
+    });
+  }
+
+  for (const slot of memory.structured?.pendingSlots ?? []) {
+    add(slot);
+  }
+
+  for (const slot of memory.structured?.questionPlan?.deferred ?? []) {
+    add({
+      slotId: slot.slotId,
+      question: slot.question,
+      enforcement: slot.enforcement,
+      productScope: slot.productScope,
+      status: "pending",
+    });
+  }
+
+  for (const question of memory.questions) {
+    add({
+      slotId: inferSlotIdFromQuestion(question),
+      question,
+      enforcement: "hard",
+      productScope: memory.structured?.activeIntent?.productScope,
+      status: "pending",
+    });
+  }
+
+  return slots.sort((a, b) => {
+    if (a.enforcement !== b.enforcement) return a.enforcement === "hard" ? -1 : 1;
+    return slotPriority(a.slotId) - slotPriority(b.slotId);
+  });
+}
+
+function slotKey(slot: Pick<MissingInfoSlot, "slotId" | "productScope">): string {
+  return `${slot.productScope ?? "global"}:${slot.slotId}`;
+}
+
+function slotPriority(slotId: string): number {
+  const priorities: Record<string, number> = {
+    shopping_intent: 1,
+    max_budget: 2,
+    battery_health: 3,
+    carrier_lock: 4,
+    buyer_priority: 5,
+  };
+  return priorities[slotId] ?? 99;
+}
+
+function slotTitle(slotId: string): string {
+  const labels: Record<string, string> = {
+    shopping_intent: "상품 범위",
+    max_budget: "최대 예산",
+    buyer_priority: "구매 우선순위",
+    battery_health: "배터리 기준",
+    carrier_lock: "언락/통신사",
+    imei_verification: "IMEI 확인",
+  };
+  return labels[slotId] ?? slotId.replace(/_/g, " ");
+}
+
+function inferSlotIdFromQuestion(question: string): string {
+  if (/(?:예산|최대|목표|가격|budget|max|target|얼마)/i.test(question)) return "max_budget";
+  if (/(?:배터리|성능|battery)/i.test(question)) return "battery_health";
+  if (/(?:언락|잠금|통신사|carrier|unlocked|locked)/i.test(question)) return "carrier_lock";
+  if (/(?:제품|상품|찾고|상황|모델|iphone|아이폰)/i.test(question)) return "shopping_intent";
+  return "buyer_priority";
+}
+
+function applySlotControlValue(memory: AdvisorMemory, slot: MissingInfoSlot, value: SlotControlValue): AdvisorMemory {
+  let next: AdvisorMemory = {
+    ...memory,
+    mustHave: [...memory.mustHave],
+    avoid: [...memory.avoid],
+    questions: memory.questions.filter((question) => inferSlotIdFromQuestion(question) !== slot.slotId),
+    source: [...memory.source],
+  };
+  const sourcePrefix = slot.productScope ? `${slot.productScope} ` : "";
+
+  if (value.kind === "budget") {
+    const budgetMax = Math.max(1, Math.round(value.budgetMax));
+    next = {
+      ...next,
+      budgetMax,
+      targetPrice: value.targetPrice && value.targetPrice <= budgetMax
+        ? Math.round(value.targetPrice)
+        : Math.max(1, Math.round(budgetMax * 0.96)),
+      source: uniqueStrings([
+        ...next.source.filter((item) => !/^budgetMax:|^Budget changed to|^Budget change requested/i.test(item)),
+        `budgetMax: ${budgetMax}`,
+      ]),
+    };
+  } else if (value.kind === "battery") {
+    const fact = value.noPreference
+      ? `${sourcePrefix}battery no preference`.trim()
+      : `${sourcePrefix}battery >= ${value.threshold ?? 90}%`.trim();
+    next = {
+      ...next,
+      mustHave: value.noPreference
+        ? next.mustHave.filter((item) => !/battery|배터리|성능/i.test(item))
+        : replaceSlotFacts(next.mustHave, "battery_health", fact),
+      source: replaceSourceSlot(next.source, "battery_health", fact),
+    };
+  } else if (value.kind === "carrier") {
+    const fact = value.unlockedRequired === true
+      ? `${sourcePrefix}unlocked`.trim()
+      : `${sourcePrefix}carrier no preference`.trim();
+    next = {
+      ...next,
+      mustHave: value.unlockedRequired === true
+        ? replaceSlotFacts(next.mustHave, "carrier_lock", "unlocked")
+        : next.mustHave.filter((item) => !/unlocked|locked|carrier|언락|잠금|통신사/i.test(item)),
+      source: replaceSourceSlot(next.source, "carrier_lock", fact),
+    };
+  } else if (value.kind === "text") {
+    const text = value.text.trim();
+    if (slot.slotId === "shopping_intent") {
+      next = {
+        ...next,
+        categoryInterest: text,
+        source: uniqueStrings([...next.source, text]),
+      };
+    } else if (slot.slotId === "buyer_priority" && value.noPreference) {
+      next = {
+        ...next,
+        source: uniqueStrings([...next.source, text]),
+      };
+    } else if (text) {
+      next = {
+        ...next,
+        mustHave: uniqueStrings([...next.mustHave, text]),
+        source: uniqueStrings([...next.source, `${sourcePrefix}${text}`.trim()]),
+      };
+    }
+  }
+
+  return markSlotAnswered(next, slot);
+}
+
+function markSlotAnswered(memory: AdvisorMemory, slot: MissingInfoSlot): AdvisorMemory {
+  if (!memory.structured) return memory;
+  const activeScope = slot.productScope ?? memory.structured.activeIntent?.productScope;
+  const productRequirements = { ...memory.structured.productRequirements };
+
+  if (activeScope) {
+    const current = productRequirements[activeScope] ?? {
+      mustHave: [],
+      avoid: [],
+      answeredSlots: [],
+      ambiguousSlots: [],
+    };
+    productRequirements[activeScope] = {
+      ...current,
+      answeredSlots: uniqueStrings([...current.answeredSlots, slot.slotId]),
+      ambiguousSlots: current.ambiguousSlots.filter((item) => item !== slot.slotId),
+    };
+  }
+
+  return {
+    ...memory,
+    structured: {
+      ...memory.structured,
+      productRequirements,
+      pendingSlots: memory.structured.pendingSlots.filter((item) => slotKey(item) !== slotKey(slot)),
+      questionPlan: memory.structured.questionPlan
+        ? {
+          ...memory.structured.questionPlan,
+          askedThisTurn: { kind: "none" },
+          deferred: memory.structured.questionPlan.deferred.filter((item) => slotKey(item) !== slotKey(slot)),
+        }
+        : memory.structured.questionPlan,
+    },
+  };
+}
+
+function replaceSlotFacts(values: string[], slotId: string, fact: string): string[] {
+  return uniqueStrings([
+    ...values.filter((item) => !factMatchesSlot(item, slotId)),
+    fact,
+  ]);
+}
+
+function replaceSourceSlot(values: string[], slotId: string, fact: string): string[] {
+  return uniqueStrings([
+    ...values.filter((item) => !factMatchesSlot(item, slotId)),
+    fact,
+  ]).slice(-8);
+}
+
+function factMatchesSlot(value: string, slotId: string): boolean {
+  if (slotId === "battery_health") return /battery|배터리|성능/i.test(value);
+  if (slotId === "carrier_lock") return /unlocked|locked|carrier|언락|잠금|통신사/i.test(value);
+  if (slotId === "max_budget") return /budget|예산|target|목표/i.test(value);
+  return false;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+}
+
 export function AgentProductAdvisor({
   userId,
   selectedAgentId,
   selectedListingId,
   onStartNegotiation,
+  onPresetDraftChange,
+  presetFeedbackUpdate,
   onEndDemo,
   endingDemo,
 }: {
@@ -1284,6 +1753,12 @@ export function AgentProductAdvisor({
   selectedAgentId: AncientBeingId;
   selectedListingId?: string;
   onStartNegotiation: (listing: AdvisorListing, memory: AdvisorMemory, readiness: NegotiationReadiness) => void;
+  onPresetDraftChange?: (draft: PresetTuningDraft | null) => void;
+  presetFeedbackUpdate?: {
+    id: string;
+    cards: StoredMemoryCard[];
+    message: string;
+  } | null;
   onEndDemo: () => void;
   endingDemo: boolean;
 }) {
@@ -1474,6 +1949,21 @@ export function AgentProductAdvisor({
   }, [userId]);
 
   useEffect(() => {
+    if (!presetFeedbackUpdate) return;
+    setBackendState((prev) => {
+      const cards = mergeStoredMemoryCards(prev.cards, presetFeedbackUpdate.cards);
+      return {
+        ...prev,
+        status: "saved",
+        origin: "saved_this_session",
+        cards,
+        extracted: cards.length,
+        message: presetFeedbackUpdate.message,
+      };
+    });
+  }, [presetFeedbackUpdate]);
+
+  useEffect(() => {
     if (!hasStoredMemory || scoredListings.length === 0) return;
     setActiveListingId((prev) => {
       const ranked = scoredListings
@@ -1638,6 +2128,32 @@ export function AgentProductAdvisor({
     }
   }
 
+  async function applyMissingInfoSlot(slot: MissingInfoSlot, value: SlotControlValue) {
+    const nextMemory = applySlotControlValue(memoryRef.current, slot, value);
+    memoryRef.current = nextMemory;
+    setMemory(nextMemory);
+    setPendingBudgetChange(null);
+    setConfirmedListingId(null);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `agent-slot-${slot.slotId}-${Date.now()}`,
+        role: "agent",
+        text: `${slotTitle(slot.slotId)} 기준을 저장했습니다. 남은 조건은 오른쪽 보드에서 이어서 조정할 수 있어요.`,
+      },
+    ]);
+
+    const saved = await persistMemory(`slot_control:${slot.slotId}`, nextMemory);
+    if (activeListing) {
+      const readiness = getNegotiationReadiness(nextMemory, saved || hasStoredMemory, {
+        listing: activeListing,
+        pendingBudgetChange: null,
+        alignmentConfirmed: false,
+      });
+      onStartNegotiation(activeListing, nextMemory, readiness);
+    }
+  }
+
   function confirmSelectedListing() {
     if (!activeListing) return;
     setConfirmedListingId(activeListing.id);
@@ -1725,17 +2241,14 @@ export function AgentProductAdvisor({
     }));
 
     try {
-      const initialListingQuery = buildListingSearchQuery(memoryRef.current, trimmed);
-      const initialSearch = await getAdvisorDemoListings({
-        query: initialListingQuery,
-        limit: 8,
-      }).catch(() => null);
-      const inputListings = initialSearch?.listings.length
-        ? initialSearch.listings
-        : availableListings;
-
       const previousMemory = memoryRef.current;
       const selectedListingBeforeTurn = activeListing;
+      const inputListings = (availableListings.length > 0
+        ? availableListings
+        : activeListing
+          ? [activeListing]
+          : []
+      ).slice(0, 8);
       const analyzed = await analyzeAdvisorTurn({
         userId,
         agentId: selectedAgentId,
@@ -1748,14 +2261,6 @@ export function AgentProductAdvisor({
       const budgetChange = buildPendingBudgetChange(previousMemory, proposedMemory);
       const nextMemory = budgetChange ? previousMemory : proposedMemory;
       const planningMemory = budgetChange ? proposedMemory : nextMemory;
-      const listingQuery = buildListingSearchQuery(planningMemory, trimmed);
-      const searchedListings = await getAdvisorDemoListings({
-        query: listingQuery,
-        limit: 8,
-      }).catch(() => null);
-      const nextListings = searchedListings?.listings.length
-        ? searchedListings.listings
-        : inputListings;
       const agentMessage: ChatMessage = {
         id: `agent-${messages.length}-${Date.now()}`,
         role: "agent",
@@ -1763,42 +2268,13 @@ export function AgentProductAdvisor({
           ? `${budgetChange.intent} 예산을 $${budgetChange.from}에서 $${budgetChange.to}로 바꿀까요? 확인 전에는 저장하지 않을게요.`
           : analyzed.reply,
       };
-      const nextBestListing = nextListings
-        .map((listing) => ({ listing, score: scoreListing(listing, planningMemory) }))
-        .sort((a, b) => b.score - a.score)[0]?.listing;
-      const retainedListing = budgetChange
-        && selectedListingBeforeTurn
-        && nextListings.some((listing) => listing.id === selectedListingBeforeTurn.id)
-        ? selectedListingBeforeTurn
-        : nextBestListing;
 
       memoryRef.current = nextMemory;
       setMemory(nextMemory);
       setPendingBudgetChange(budgetChange);
       if (!budgetChange) setConfirmedListingId(null);
       setMessages((prev) => [...prev, agentMessage]);
-      if (nextListings.length > 0) {
-        setListings(nextListings);
-        setListingStatus("db");
-        setListingMatchedCount(searchedListings?.count ?? initialSearch?.count ?? nextListings.length);
-        setCandidatePlan(analyzed.advisor_plan ?? searchedListings?.advisor_plan ?? initialSearch?.advisor_plan ?? null);
-        setRetrievalMeta(searchedListings?.retrieval ?? initialSearch?.retrieval ?? null);
-        setActiveListingId(retainedListing?.id ?? nextListings[0].id);
-        if (retainedListing) {
-          onStartNegotiation(retainedListing, nextMemory, getNegotiationReadiness(nextMemory, hasStoredMemory, {
-            listing: retainedListing,
-            pendingBudgetChange: budgetChange,
-            alignmentConfirmed: budgetChange ? alignmentConfirmed : false,
-          }));
-        }
-      } else {
-        setListings([]);
-        setListingStatus("empty");
-        setListingMatchedCount(0);
-        setCandidatePlan(analyzed.advisor_plan ?? null);
-        setRetrievalMeta(searchedListings?.retrieval ?? initialSearch?.retrieval ?? null);
-        setActiveListingId("");
-      }
+      setCandidatePlan(analyzed.advisor_plan ?? candidatePlan);
       const turnCost = analyzed.turn_cost;
       if (turnCost) {
         setCostLedger((prev) => ({
@@ -1822,7 +2298,48 @@ export function AgentProductAdvisor({
         }));
         return;
       }
-      const memorySaved = await persistMemory(trimmed, nextMemory);
+
+      setBackendState((prev) => ({
+        ...prev,
+        status: "saving",
+        message: "상담 답변 완료. 조건에 맞는 상품과 메모리를 업데이트 중입니다.",
+      }));
+
+      const listingQuery = buildListingSearchQuery(planningMemory, trimmed);
+      const [searchedListings, memorySaved] = await Promise.all([
+        getAdvisorDemoListings({
+          query: listingQuery,
+          limit: 8,
+        }).catch(() => null),
+        persistMemory(trimmed, nextMemory),
+      ]);
+      const nextListings = searchedListings?.listings.length
+        ? searchedListings.listings
+        : inputListings;
+      const nextBestListing = nextListings
+        .map((listing) => ({ listing, score: scoreListing(listing, planningMemory) }))
+        .sort((a, b) => b.score - a.score)[0]?.listing;
+      const retainedListing = selectedListingBeforeTurn
+        && nextListings.some((listing) => listing.id === selectedListingBeforeTurn.id)
+        ? selectedListingBeforeTurn
+        : nextBestListing;
+
+      if (nextListings.length > 0) {
+        setListings(nextListings);
+        setListingStatus("db");
+        setListingMatchedCount(searchedListings?.count ?? nextListings.length);
+        setCandidatePlan(analyzed.advisor_plan ?? searchedListings?.advisor_plan ?? null);
+        setRetrievalMeta(searchedListings?.retrieval ?? null);
+        setActiveListingId(retainedListing?.id ?? nextListings[0].id);
+      } else {
+        setListings([]);
+        setListingStatus("empty");
+        setListingMatchedCount(0);
+        setCandidatePlan(analyzed.advisor_plan ?? null);
+        setRetrievalMeta(searchedListings?.retrieval ?? null);
+        setActiveListingId("");
+      }
+
       if (memorySaved && nextBestListing) {
         const savedReadiness = getNegotiationReadiness(nextMemory, true, {
           listing: nextBestListing,
@@ -1973,6 +2490,12 @@ export function AgentProductAdvisor({
         </div>
 
         <div className="space-y-3">
+          <MissingInfoBoard
+            memory={memory}
+            disabled={backendState.status === "saving"}
+            onApply={(slot, value) => void applyMissingInfoSlot(slot, value)}
+          />
+
           <EngineFlowPanel
             hasStoredMemory={hasStoredMemory}
             activeListing={activeListing}
@@ -2435,6 +2958,28 @@ export function AgentProductAdvisor({
             )}
           </div>
           )}
+
+          <PresetTuningPanel
+            userId={userId}
+            agentId={selectedAgentId}
+            listing={activeListing}
+            memory={memory}
+            storedCards={backendState.cards}
+            onDraftChange={onPresetDraftChange}
+            onCandidateSaved={(cards, summary) => {
+              setBackendState((prev) => {
+                const mergedCards = mergeStoredMemoryCards(prev.cards, cards);
+                return {
+                  ...prev,
+                  status: "saved",
+                  origin: "saved_this_session",
+                  cards: mergedCards,
+                  extracted: mergedCards.length,
+                  message: `User-tuned preset 후보 저장: ${summary}`,
+                };
+              });
+            }}
+          />
         </div>
       </div>
     </section>
