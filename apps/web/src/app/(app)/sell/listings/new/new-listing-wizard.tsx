@@ -22,17 +22,21 @@ const CONDITIONS = [
   { value: "poor", label: "Poor" },
 ];
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 5;
 
 const STEP_TITLES = [
-  "Item details",
+  "Add a photo",
+  "Describe your item",
+  "Categorize it",
   "Set your price",
   "Choose your AI agent",
 ];
 
 const STEP_SUBTITLES = [
-  "Photo and title are enough — we'll auto-detect tags as you go.",
-  "Set your asking price, deadline, and any item-specific details.",
+  "A clear photo helps buyers trust your listing.",
+  "Give buyers the details they need to make a decision.",
+  "Help buyers find your item faster.",
+  "Set your asking price and negotiation floor.",
   "Pick a negotiation style for your AI agent.",
 ];
 
@@ -239,7 +243,7 @@ interface DraftData {
 
 /* ─── Main Wizard ─────────────────────────────────────────── */
 
-const STEP_NAMES = ["details", "pricing", "agent"] as const;
+const STEP_NAMES = ["photo", "details", "category", "pricing", "agent"] as const;
 
 export function NewListingWizard({ userId, resumeDraftId }: { userId: string; resumeDraftId?: string }) {
   const router = useRouter();
@@ -281,14 +285,6 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
   // Step 5: Agent
   const [selectedAgent, setSelectedAgent] = useState<AgentPreset | null>(null);
-
-  // Auto-detect (subtype + phone-required answers)
-  const [subtype, setSubtype] = useState<"phone" | null>(null);
-  const [autoDetecting, setAutoDetecting] = useState(false);
-  const [autoDetectDone, setAutoDetectDone] = useState(false);
-  const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
-  const [phoneCarrierLock, setPhoneCarrierLock] = useState<string | null>(null);
-  const [phoneFactoryResetConfirmed, setPhoneFactoryResetConfirmed] = useState(false);
 
   // Published state
   const [publishResult, setPublishResult] = useState<{
@@ -366,18 +362,6 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
         if (d.strategyConfig?.preset) {
           const preset = AGENT_PRESETS.find((a) => a.id === d.strategyConfig!.preset);
           if (preset) setSelectedAgent(preset);
-        }
-        if (d.strategyConfig?.subtype === "phone") {
-          setSubtype("phone");
-          setAutoDetectDone(true);
-        }
-        const pa = d.strategyConfig?.phoneAnswers as
-          | { batteryHealth?: string; carrierLock?: string; factoryResetConfirmed?: boolean }
-          | undefined;
-        if (pa) {
-          if (pa.batteryHealth) setPhoneBatteryHealth(pa.batteryHealth);
-          if (pa.carrierLock) setPhoneCarrierLock(pa.carrierLock);
-          if (pa.factoryResetConfirmed) setPhoneFactoryResetConfirmed(true);
         }
       } catch { /* start fresh */ } finally { setLoading(false); }
     })();
@@ -483,99 +467,14 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     if (targetPrice.trim()) patch.targetPrice = targetPrice.trim();
     if (floorPrice.trim()) patch.floorPrice = floorPrice.trim();
     if (sellingDeadline) patch.sellingDeadline = localDateToDeadlineIso(sellingDeadline);
-    const strategyConfig: Record<string, unknown> = {
-      ...(sellingDeadline ? deadlineStrategyConfig() : {}),
-      ...(selectedAgent ? { preset: selectedAgent.id, ...selectedAgent.stats } : {}),
-      ...(subtype ? { subtype } : {}),
-      ...(subtype === "phone"
-        ? {
-            phoneAnswers: {
-              batteryHealth: phoneBatteryHealth,
-              carrierLock: phoneCarrierLock,
-              factoryResetConfirmed: phoneFactoryResetConfirmed,
-            },
-          }
-        : {}),
-    };
-    if (Object.keys(strategyConfig).length > 0) {
-      patch.strategyConfig = strategyConfig;
+    if (sellingDeadline || selectedAgent) {
+      patch.strategyConfig = {
+        ...(sellingDeadline ? deadlineStrategyConfig() : {}),
+        ...(selectedAgent ? { preset: selectedAgent.id, ...selectedAgent.stats } : {}),
+      };
     }
     return patch;
   }
-
-  /* ─── Step-1 auto upload + auto-detect ──────────────────── */
-
-  // Track whether we've already kicked off the upload, so the effect
-  // doesn't fire repeatedly for the same photoFile.
-  const photoUploadingRef = useRef(false);
-
-  useEffect(() => {
-    if (step !== 1) return;
-    if (autoDetectDone || autoDetecting) return;
-    if (!photoFile && !photoUrl) return;
-    if (!title.trim()) return;
-
-    // Debounce title typing — wait until user pauses before firing.
-    const timer = setTimeout(async () => {
-      const id = await ensureDraft();
-      if (!id) return;
-
-      let url = photoUrl;
-      if (photoFile && !photoUrl && !photoUploadingRef.current) {
-        photoUploadingRef.current = true;
-        try {
-          url = await uploadPhoto(id);
-        } finally {
-          photoUploadingRef.current = false;
-        }
-      }
-      if (!url) return;
-
-      // Persist title + photoUrl before vision call
-      await patchDraft(id, {
-        title: title.trim(),
-        photoUrl: url,
-        ...(description.trim() ? { description: description.trim() } : {}),
-      });
-
-      void runAutoDetect(id);
-    }, 800);
-
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, photoFile, photoUrl, title, autoDetectDone, autoDetecting]);
-
-  /* ─── Auto-detect (vision LLM) ──────────────────────────── */
-
-  const runAutoDetect = useCallback(
-    async (id: string) => {
-      if (autoDetectDone || autoDetecting) return;
-      setAutoDetecting(true);
-      try {
-        console.log("[auto-detect] requesting", { id });
-        const data = await api.post<{
-          ok: boolean;
-          subtype: "phone" | null;
-          tags: string[];
-        }>(`/api/drafts/${id}/auto-detect`, {});
-        console.log("[auto-detect] response", data);
-        if (data.ok) {
-          setSubtype(data.subtype);
-          setTags((prev) => {
-            const merged = [...prev];
-            for (const t of data.tags) if (!merged.includes(t)) merged.push(t);
-            return merged;
-          });
-          setAutoDetectDone(true);
-        }
-      } catch (err) {
-        console.error("[auto-detect] failed", err);
-      } finally {
-        setAutoDetecting(false);
-      }
-    },
-    [autoDetectDone, autoDetecting],
-  );
 
   /* ─── Exit modal ─────────────────────────────────────────── */
 
@@ -631,36 +530,24 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
   function canProceed(): boolean {
     switch (step) {
-      case 1: return !!(photoFile || photoUrl) && !!title.trim();
-      case 2:
-        if (!targetPrice.trim() || !sellingDeadline) return false;
-        if (subtype === "phone") {
-          if (!phoneBatteryHealth || !phoneCarrierLock || !phoneFactoryResetConfirmed) return false;
-        }
-        return true;
-      case 3: return !!selectedAgent;
+      case 1: return !!(photoFile || photoUrl);
+      case 2: return !!title.trim();
+      case 3: return true; // category/condition have defaults
+      case 4: return !!targetPrice.trim() && !!sellingDeadline;
+      case 5: return !!selectedAgent;
       default: return false;
     }
   }
 
   function validateStep(): string | null {
     switch (step) {
-      case 1:
-        if (!photoFile && !photoUrl) return "Please add a photo";
-        if (!title.trim()) return "Title is required";
-        break;
-      case 2:
+      case 1: if (!photoFile && !photoUrl) return "Please add a photo"; break;
+      case 2: if (!title.trim()) return "Title is required"; break;
+      case 4:
         if (!targetPrice.trim()) return "Asking price is required";
         if (!sellingDeadline) return "Selling deadline is required";
-        if (subtype === "phone") {
-          if (!phoneBatteryHealth) return "Battery health is required for phones";
-          if (!phoneCarrierLock) return "Carrier lock status is required for phones";
-          if (!phoneFactoryResetConfirmed) {
-            return "Please confirm you'll factory reset the phone before shipping";
-          }
-        }
         break;
-      case 3: if (!selectedAgent) return "Please select an agent"; break;
+      case 5: if (!selectedAgent) return "Please select an agent"; break;
     }
     return null;
   }
@@ -1017,7 +904,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
           {/* ── STEP 1: Photo ── */}
           {step === 1 && (
-            <div className="space-y-8">
+            <div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1066,7 +953,12 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                   <span className="text-xs" style={{ color: "#475569" }}>PNG, JPG or WebP · Max 5 MB</span>
                 </div>
               )}
+            </div>
+          )}
 
+          {/* ── STEP 2: Title & Description ── */}
+          {step === 2 && (
+            <div className="space-y-6">
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
                   Title <span style={{ color: "#f97316" }}>*</span>
@@ -1075,7 +967,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                   type="text"
                   value={title}
                   onChange={(e) => { setTitle(e.target.value); if (error) setError(null); }}
-                  placeholder="e.g. iPhone 15 Pro 256GB"
+                  placeholder="e.g. MacBook Pro M3, 14 inch"
+                  autoFocus
                   className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-colors"
                   style={{ background: "#0f172a", borderColor: "#1e293b", color: "#f1f5f9" }}
                   onFocus={(e) => (e.currentTarget.style.borderColor = "#06b6d4")}
@@ -1098,56 +991,39 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                   onBlur={(e) => (e.currentTarget.style.borderColor = "#1e293b")}
                 />
               </div>
+            </div>
+          )}
 
-              {(autoDetecting || autoDetectDone || tags.length > 0) && (
-                <div>
-                  <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                    Detected type
-                  </label>
-                  {autoDetecting ? (
-                    <div
-                      className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm"
-                      style={{ background: "#0f172a", borderColor: "#1e293b", color: "#94a3b8" }}
+          {/* ── STEP 3: Category, Condition, Tags ── */}
+          {step === 3 && (
+            <div className="space-y-8">
+              {/* Category */}
+              <div>
+                <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                  Category
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setCategory(c.value)}
+                      className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
+                      style={{
+                        background: category === c.value ? "rgba(6,182,212,0.08)" : "transparent",
+                        borderColor: category === c.value ? "#06b6d4" : "#1e293b",
+                        color: category === c.value ? "#06b6d4" : "#94a3b8",
+                      }}
+                      onMouseEnter={(e) => { if (category !== c.value) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
+                      onMouseLeave={(e) => { if (category !== c.value) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
                     >
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-500" />
-                      Analyzing photo & title...
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSubtype("phone")}
-                        className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                        style={{
-                          background: subtype === "phone" ? "rgba(6,182,212,0.08)" : "transparent",
-                          borderColor: subtype === "phone" ? "#06b6d4" : "#1e293b",
-                          color: subtype === "phone" ? "#06b6d4" : "#94a3b8",
-                        }}
-                      >
-                        📱 Phone
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSubtype(null)}
-                        className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                        style={{
-                          background: subtype === null ? "rgba(6,182,212,0.08)" : "transparent",
-                          borderColor: subtype === null ? "#06b6d4" : "#1e293b",
-                          color: subtype === null ? "#06b6d4" : "#94a3b8",
-                        }}
-                      >
-                        Other
-                      </button>
-                      {autoDetectDone && (
-                        <span className="text-xs" style={{ color: "#475569" }}>
-                          Auto-detected — adjust if wrong
-                        </span>
-                      )}
-                    </div>
-                  )}
+                      {c.label}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
 
+              {/* Condition */}
               <div>
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
                   Condition
@@ -1164,6 +1040,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                         borderColor: condition === c.value ? "#06b6d4" : "#1e293b",
                         color: condition === c.value ? "#06b6d4" : "#94a3b8",
                       }}
+                      onMouseEnter={(e) => { if (condition !== c.value) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
+                      onMouseLeave={(e) => { if (condition !== c.value) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
                     >
                       {c.label}
                     </button>
@@ -1171,9 +1049,10 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                 </div>
               </div>
 
+              {/* Tags */}
               <div>
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                  Tags {autoDetectDone && <span className="font-normal normal-case tracking-normal" style={{ color: "#475569" }}>· auto-suggested</span>}
+                  Tags
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                   {tagEditing ? (
@@ -1217,8 +1096,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
             </div>
           )}
 
-          {/* ── STEP 2: Pricing + item-specific questions ── */}
-          {step === 2 && (
+          {/* ── STEP 4: Pricing ── */}
+          {step === 4 && (
             <div className="space-y-6">
               {/* Asking price */}
               <div>
@@ -1283,126 +1162,11 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                 />
                 <p className="mt-1.5 text-xs" style={{ color: "#475569" }}>Your AI agent becomes more flexible as the deadline approaches</p>
               </div>
-
-              {/* Phone-specific required questions */}
-              {subtype === "phone" && (
-                <div
-                  className="rounded-xl p-5 space-y-6"
-                  style={{ background: "#0f172a", border: "1px solid #1e293b" }}
-                >
-                  <div>
-                    <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>
-                      📱 Phone details
-                    </p>
-                    <p className="mt-1 text-xs" style={{ color: "#64748b" }}>
-                      Buyers expect this info upfront. All required to publish.
-                    </p>
-                  </div>
-
-                  {/* Battery health */}
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                      Battery health <span style={{ color: "#f97316" }}>*</span>
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { value: "ge_90", label: "90%+" },
-                        { value: "ge_85", label: "85–89%" },
-                        { value: "ge_80", label: "80–84%" },
-                        { value: "lt_80", label: "Under 80%" },
-                        { value: "unknown", label: "Not sure" },
-                      ].map((opt) => {
-                        const active = phoneBatteryHealth === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setPhoneBatteryHealth(opt.value)}
-                            className="cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition-all"
-                            style={{
-                              background: active ? "rgba(6,182,212,0.08)" : "transparent",
-                              borderColor: active ? "#06b6d4" : "#1e293b",
-                              color: active ? "#06b6d4" : "#94a3b8",
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Carrier lock */}
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                      Carrier lock <span style={{ color: "#f97316" }}>*</span>
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { value: "unlocked", label: "Unlocked" },
-                        { value: "locked", label: "Carrier-locked" },
-                        { value: "unknown", label: "Not sure" },
-                      ].map((opt) => {
-                        const active = phoneCarrierLock === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setPhoneCarrierLock(opt.value)}
-                            className="cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition-all"
-                            style={{
-                              background: active ? "rgba(6,182,212,0.08)" : "transparent",
-                              borderColor: active ? "#06b6d4" : "#1e293b",
-                              color: active ? "#06b6d4" : "#94a3b8",
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Factory reset confirmation */}
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                      Pre-ship checklist <span style={{ color: "#f97316" }}>*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setPhoneFactoryResetConfirmed((v) => !v)}
-                      className="flex w-full cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 text-left transition-all"
-                      style={{
-                        background: phoneFactoryResetConfirmed ? "rgba(6,182,212,0.06)" : "transparent",
-                        borderColor: phoneFactoryResetConfirmed ? "#06b6d4" : "#1e293b",
-                      }}
-                    >
-                      <span
-                        className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border"
-                        style={{
-                          background: phoneFactoryResetConfirmed ? "#06b6d4" : "transparent",
-                          borderColor: phoneFactoryResetConfirmed ? "#06b6d4" : "#475569",
-                        }}
-                      >
-                        {phoneFactoryResetConfirmed && (
-                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0a0f1a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
-                      </span>
-                      <span className="text-sm leading-relaxed" style={{ color: "#cbd5e1" }}>
-                        Before shipping, I will <strong style={{ color: "#f1f5f9" }}>turn off Find My</strong> and{" "}
-                        <strong style={{ color: "#f1f5f9" }}>factory reset</strong> the phone so the buyer can activate it.
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {/* ── STEP 3: Agent ── */}
-          {step === 3 && (
+          {/* ── STEP 5: Agent ── */}
+          {step === 5 && (
             <div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
                 {AGENT_PRESETS.map((agent) => {
