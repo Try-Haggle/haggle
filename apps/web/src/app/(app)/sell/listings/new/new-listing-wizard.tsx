@@ -22,21 +22,17 @@ const CONDITIONS = [
   { value: "poor", label: "Poor" },
 ];
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 3;
 
 const STEP_TITLES = [
-  "Add a photo",
-  "Describe your item",
-  "Categorize it",
+  "Item details",
   "Set your price",
   "Choose your AI agent",
 ];
 
 const STEP_SUBTITLES = [
-  "A clear photo helps buyers trust your listing.",
-  "Give buyers the details they need to make a decision.",
-  "Help buyers find your item faster.",
-  "Set your asking price and negotiation floor.",
+  "Photo and title are enough — we'll auto-detect tags as you go.",
+  "Set your asking price, deadline, and any item-specific details.",
   "Pick a negotiation style for your AI agent.",
 ];
 
@@ -243,7 +239,7 @@ interface DraftData {
 
 /* ─── Main Wizard ─────────────────────────────────────────── */
 
-const STEP_NAMES = ["photo", "details", "category", "pricing", "agent"] as const;
+const STEP_NAMES = ["details", "pricing", "agent"] as const;
 
 export function NewListingWizard({ userId, resumeDraftId }: { userId: string; resumeDraftId?: string }) {
   const router = useRouter();
@@ -507,6 +503,48 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     return patch;
   }
 
+  /* ─── Step-1 auto upload + auto-detect ──────────────────── */
+
+  // Track whether we've already kicked off the upload, so the effect
+  // doesn't fire repeatedly for the same photoFile.
+  const photoUploadingRef = useRef(false);
+
+  useEffect(() => {
+    if (step !== 1) return;
+    if (autoDetectDone || autoDetecting) return;
+    if (!photoFile && !photoUrl) return;
+    if (!title.trim()) return;
+
+    // Debounce title typing — wait until user pauses before firing.
+    const timer = setTimeout(async () => {
+      const id = await ensureDraft();
+      if (!id) return;
+
+      let url = photoUrl;
+      if (photoFile && !photoUrl && !photoUploadingRef.current) {
+        photoUploadingRef.current = true;
+        try {
+          url = await uploadPhoto(id);
+        } finally {
+          photoUploadingRef.current = false;
+        }
+      }
+      if (!url) return;
+
+      // Persist title + photoUrl before vision call
+      await patchDraft(id, {
+        title: title.trim(),
+        photoUrl: url,
+        ...(description.trim() ? { description: description.trim() } : {}),
+      });
+
+      void runAutoDetect(id);
+    }, 800);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, photoFile, photoUrl, title, autoDetectDone, autoDetecting]);
+
   /* ─── Auto-detect (vision LLM) ──────────────────────────── */
 
   const runAutoDetect = useCallback(
@@ -514,11 +552,13 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
       if (autoDetectDone || autoDetecting) return;
       setAutoDetecting(true);
       try {
+        console.log("[auto-detect] requesting", { id });
         const data = await api.post<{
           ok: boolean;
           subtype: "phone" | null;
           tags: string[];
         }>(`/api/drafts/${id}/auto-detect`, {});
+        console.log("[auto-detect] response", data);
         if (data.ok) {
           setSubtype(data.subtype);
           setTags((prev) => {
@@ -528,8 +568,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
           });
           setAutoDetectDone(true);
         }
-      } catch {
-        // non-blocking — seller can proceed and edit tags manually
+      } catch (err) {
+        console.error("[auto-detect] failed", err);
       } finally {
         setAutoDetecting(false);
       }
@@ -591,25 +631,25 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
   function canProceed(): boolean {
     switch (step) {
-      case 1: return !!(photoFile || photoUrl);
-      case 2: return !!title.trim();
-      case 3: return true; // category/condition have defaults
-      case 4:
+      case 1: return !!(photoFile || photoUrl) && !!title.trim();
+      case 2:
         if (!targetPrice.trim() || !sellingDeadline) return false;
         if (subtype === "phone") {
           if (!phoneBatteryHealth || !phoneCarrierLock || !phoneFactoryResetConfirmed) return false;
         }
         return true;
-      case 5: return !!selectedAgent;
+      case 3: return !!selectedAgent;
       default: return false;
     }
   }
 
   function validateStep(): string | null {
     switch (step) {
-      case 1: if (!photoFile && !photoUrl) return "Please add a photo"; break;
-      case 2: if (!title.trim()) return "Title is required"; break;
-      case 4:
+      case 1:
+        if (!photoFile && !photoUrl) return "Please add a photo";
+        if (!title.trim()) return "Title is required";
+        break;
+      case 2:
         if (!targetPrice.trim()) return "Asking price is required";
         if (!sellingDeadline) return "Selling deadline is required";
         if (subtype === "phone") {
@@ -620,7 +660,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
           }
         }
         break;
-      case 5: if (!selectedAgent) return "Please select an agent"; break;
+      case 3: if (!selectedAgent) return "Please select an agent"; break;
     }
     return null;
   }
@@ -646,13 +686,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
       // Save current state
       const ok = await patchDraft(id, { ...buildFullPatch(), currentStep: step + 1 });
-      if (ok) {
-        setStep(step + 1);
-        // Trigger auto-detect on first transition out of step 2 (photo+title required there)
-        if (step === 2 && photoUrl && title.trim() && !autoDetectDone) {
-          void runAutoDetect(id);
-        }
-      }
+      if (ok) setStep(step + 1);
     } finally {
       setSaving(false);
     }
@@ -983,7 +1017,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
           {/* ── STEP 1: Photo ── */}
           {step === 1 && (
-            <div>
+            <div className="space-y-8">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1032,12 +1066,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                   <span className="text-xs" style={{ color: "#475569" }}>PNG, JPG or WebP · Max 5 MB</span>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── STEP 2: Title & Description ── */}
-          {step === 2 && (
-            <div className="space-y-6">
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
                   Title <span style={{ color: "#f97316" }}>*</span>
@@ -1046,8 +1075,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                   type="text"
                   value={title}
                   onChange={(e) => { setTitle(e.target.value); if (error) setError(null); }}
-                  placeholder="e.g. MacBook Pro M3, 14 inch"
-                  autoFocus
+                  placeholder="e.g. iPhone 15 Pro 256GB"
                   className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-colors"
                   style={{ background: "#0f172a", borderColor: "#1e293b", color: "#f1f5f9" }}
                   onFocus={(e) => (e.currentTarget.style.borderColor = "#06b6d4")}
@@ -1070,87 +1098,56 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                   onBlur={(e) => (e.currentTarget.style.borderColor = "#1e293b")}
                 />
               </div>
-            </div>
-          )}
 
-          {/* ── STEP 3: Category, Condition, Tags ── */}
-          {step === 3 && (
-            <div className="space-y-8">
-              {/* Auto-detected subtype */}
-              <div>
-                <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                  Detected type
-                </label>
-                {autoDetecting ? (
-                  <div
-                    className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm"
-                    style={{ background: "#0f172a", borderColor: "#1e293b", color: "#94a3b8" }}
-                  >
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-500" />
-                    Analyzing photo & title...
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSubtype("phone")}
-                      className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                      style={{
-                        background: subtype === "phone" ? "rgba(6,182,212,0.08)" : "transparent",
-                        borderColor: subtype === "phone" ? "#06b6d4" : "#1e293b",
-                        color: subtype === "phone" ? "#06b6d4" : "#94a3b8",
-                      }}
+              {(autoDetecting || autoDetectDone || tags.length > 0) && (
+                <div>
+                  <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                    Detected type
+                  </label>
+                  {autoDetecting ? (
+                    <div
+                      className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm"
+                      style={{ background: "#0f172a", borderColor: "#1e293b", color: "#94a3b8" }}
                     >
-                      📱 Phone
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSubtype(null)}
-                      className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                      style={{
-                        background: subtype === null ? "rgba(6,182,212,0.08)" : "transparent",
-                        borderColor: subtype === null ? "#06b6d4" : "#1e293b",
-                        color: subtype === null ? "#06b6d4" : "#94a3b8",
-                      }}
-                    >
-                      Other
-                    </button>
-                    {autoDetectDone && (
-                      <span className="text-xs" style={{ color: "#475569" }}>
-                        Auto-detected — adjust if wrong
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                  Category
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((c) => (
-                    <button
-                      key={c.value}
-                      type="button"
-                      onClick={() => setCategory(c.value)}
-                      className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                      style={{
-                        background: category === c.value ? "rgba(6,182,212,0.08)" : "transparent",
-                        borderColor: category === c.value ? "#06b6d4" : "#1e293b",
-                        color: category === c.value ? "#06b6d4" : "#94a3b8",
-                      }}
-                      onMouseEnter={(e) => { if (category !== c.value) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
-                      onMouseLeave={(e) => { if (category !== c.value) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-500" />
+                      Analyzing photo & title...
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSubtype("phone")}
+                        className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
+                        style={{
+                          background: subtype === "phone" ? "rgba(6,182,212,0.08)" : "transparent",
+                          borderColor: subtype === "phone" ? "#06b6d4" : "#1e293b",
+                          color: subtype === "phone" ? "#06b6d4" : "#94a3b8",
+                        }}
+                      >
+                        📱 Phone
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSubtype(null)}
+                        className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
+                        style={{
+                          background: subtype === null ? "rgba(6,182,212,0.08)" : "transparent",
+                          borderColor: subtype === null ? "#06b6d4" : "#1e293b",
+                          color: subtype === null ? "#06b6d4" : "#94a3b8",
+                        }}
+                      >
+                        Other
+                      </button>
+                      {autoDetectDone && (
+                        <span className="text-xs" style={{ color: "#475569" }}>
+                          Auto-detected — adjust if wrong
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
-              {/* Condition */}
               <div>
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
                   Condition
@@ -1167,8 +1164,6 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                         borderColor: condition === c.value ? "#06b6d4" : "#1e293b",
                         color: condition === c.value ? "#06b6d4" : "#94a3b8",
                       }}
-                      onMouseEnter={(e) => { if (condition !== c.value) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
-                      onMouseLeave={(e) => { if (condition !== c.value) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
                     >
                       {c.label}
                     </button>
@@ -1176,10 +1171,9 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                 </div>
               </div>
 
-              {/* Tags */}
               <div>
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                  Tags
+                  Tags {autoDetectDone && <span className="font-normal normal-case tracking-normal" style={{ color: "#475569" }}>· auto-suggested</span>}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                   {tagEditing ? (
@@ -1223,8 +1217,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
             </div>
           )}
 
-          {/* ── STEP 4: Pricing ── */}
-          {step === 4 && (
+          {/* ── STEP 2: Pricing + item-specific questions ── */}
+          {step === 2 && (
             <div className="space-y-6">
               {/* Asking price */}
               <div>
@@ -1407,8 +1401,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
             </div>
           )}
 
-          {/* ── STEP 5: Agent ── */}
-          {step === 5 && (
+          {/* ── STEP 3: Agent ── */}
+          {step === 3 && (
             <div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
                 {AGENT_PRESETS.map((agent) => {
