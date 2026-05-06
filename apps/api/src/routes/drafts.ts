@@ -10,6 +10,7 @@ import {
   publishDraft,
   type DraftPatch,
 } from "../services/draft.service.js";
+import { autoDetectListing } from "../services/listing-auto-detect.service.js";
 
 export function registerDraftRoutes(app: FastifyInstance, db: Database) {
   // GET /api/drafts — list user's in-progress drafts
@@ -68,6 +69,49 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database) {
 
     return reply.send({ ok: true, draft });
   });
+
+  // POST /api/drafts/:id/auto-detect — vision-LLM classify + tag suggestions
+  app.post<{
+    Params: { id: string };
+  }>(
+    "/api/drafts/:id/auto-detect",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const userId = request.user!.id;
+
+      const draft = await getDraftById(db, id);
+      if (!draft) return reply.status(404).send({ ok: false, error: "not_found" });
+      if (draft.userId !== userId) {
+        return reply.status(403).send({ ok: false, error: "forbidden" });
+      }
+      if (!draft.photoUrl || !draft.title) {
+        return reply
+          .status(400)
+          .send({ ok: false, error: "missing_required", message: "photoUrl and title are required" });
+      }
+
+      const result = await autoDetectListing({
+        photoUrl: draft.photoUrl,
+        title: draft.title,
+        description: draft.description,
+      });
+
+      if (!result.ok) {
+        return reply.status(502).send({
+          ok: false,
+          error: result.error.code,
+          message: result.error.message,
+        });
+      }
+
+      return reply.send({
+        ok: true,
+        subtype: result.subtype,
+        tags: result.tags,
+      });
+    },
+  );
 
   // POST /api/drafts/:id/validate — pre-publish validation
   app.post<{
