@@ -435,6 +435,28 @@ export function StrategyChat({
     }
   }, [messages.length, isLoading]);
 
+  // Build the listing context the advisor LLM sees on every turn,
+  // so it can ground answers in the actual product/price the buyer is on
+  // instead of asking "what are you looking for?".
+  const buildAdvisorListings = useCallback(() => {
+    const askPriceMinor = listingPrice
+      ? Math.round(parseFloat(listingPrice) * 100)
+      : 0;
+    if (!askPriceMinor) return [];
+    return [
+      {
+        id: listingPublicId,
+        title: listingTitle,
+        category: listingCategory ?? undefined,
+        condition: "unknown",
+        askPriceMinor,
+        floorPriceMinor: askPriceMinor,
+        marketMedianMinor: askPriceMinor,
+        tags: [],
+      },
+    ];
+  }, [listingPublicId, listingTitle, listingCategory, listingPrice]);
+
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
@@ -473,7 +495,7 @@ export function StrategyChat({
           message: trimmed,
           previous_memory: memory,
           agent_id: agent?.id ?? "smart-trader",
-          listings: [],
+          listings: buildAdvisorListings(),
         }),
         skipAuth: true,
       });
@@ -523,7 +545,7 @@ export function StrategyChat({
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, memory, agent, listingPublicId, onMemoryUpdate]);
+  }, [input, isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings]);
 
   const handleReset = useCallback(() => {
     if (!agent) return;
@@ -587,7 +609,7 @@ export function StrategyChat({
           message: userText,
           previous_memory: updatedMemoryOptimistic,
           agent_id: agent?.id ?? "smart-trader",
-          listings: [],
+          listings: buildAdvisorListings(),
         }),
         skipAuth: true,
       });
@@ -636,7 +658,7 @@ export function StrategyChat({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate]);
+  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
