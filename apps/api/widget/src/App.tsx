@@ -286,82 +286,6 @@ export default function App() {
     img.src = URL.createObjectURL(file);
   };
 
-  /* ─── Step-1 auto upload + auto-detect ──────────────────── */
-  // When photo + title are present and we haven't run auto-detect yet,
-  // upload the photo (if needed) and fire vision-LLM classification.
-  const photoUploadingRef = useRef(false);
-  const autoDetectRunRef = useRef(false);
-  useEffect(() => {
-    if (currentStep !== 1) return;
-    if (autoDetectDone || autoDetecting || autoDetectRunRef.current) return;
-    if (!app || !draftId) return;
-    if (!photoBase64 && !photoUploaded) return;
-    if (!title.trim()) return;
-
-    const timer = setTimeout(async () => {
-      if (autoDetectRunRef.current) return;
-      autoDetectRunRef.current = true;
-      try {
-        // Upload photo first if it hasn't been pushed to Supabase yet
-        if (photoBase64 && photoMimeType && !photoUploaded && !photoUploadingRef.current) {
-          photoUploadingRef.current = true;
-          try {
-            await app.callServerTool({
-              name: "haggle_upload_photo",
-              arguments: {
-                draft_id: draftId,
-                image_base64: photoBase64,
-                mime_type: photoMimeType,
-              },
-            });
-            setPhotoUploaded(true);
-          } finally {
-            photoUploadingRef.current = false;
-          }
-        }
-
-        // Persist title/description so the vision call uses fresh data
-        await app.callServerTool({
-          name: "haggle_apply_patch",
-          arguments: {
-            draft_id: draftId,
-            patch: {
-              title: title.trim(),
-              ...(description.trim() ? { description: description.trim() } : {}),
-            },
-          },
-        });
-
-        setAutoDetecting(true);
-        const result = await app.callServerTool({
-          name: "haggle_auto_detect",
-          arguments: { draft_id: draftId },
-        });
-        const data = (result?.structuredContent ?? {}) as {
-          subtype?: "phone" | null;
-          tags?: string[];
-        };
-        if (data.subtype !== undefined) setSubtype(data.subtype ?? null);
-        if (Array.isArray(data.tags)) {
-          setTags((prev) => {
-            const merged = [...prev];
-            for (const t of data.tags!) if (!merged.includes(t)) merged.push(t);
-            return merged;
-          });
-        }
-        setAutoDetectDone(true);
-      } catch (err) {
-        console.error("[haggle] auto-detect failed:", err);
-        autoDetectRunRef.current = false;
-      } finally {
-        setAutoDetecting(false);
-      }
-    }, 800);
-
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, photoBase64, photoUploaded, title, draftId, app]);
-
   const handleNextStep1 = async () => {
     if (!title.trim()) {
       setError("Title is required");
@@ -393,10 +317,53 @@ export default function App() {
           patch: {
             title: title.trim(),
             description: description.trim() || undefined,
-            tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
-            ...(subtype ? { strategyConfig: { subtype } } : {}),
+          },
+        },
+      });
+
+      // Run vision auto-detect now that photo + title are saved.
+      // Result populates subtype + auto-suggested tags before Step 2.
+      let detectedSubtype: "phone" | null = subtype;
+      let detectedTags: string[] = tags;
+      if (!autoDetectDone) {
+        setAutoDetecting(true);
+        try {
+          const result = await app.callServerTool({
+            name: "haggle_auto_detect",
+            arguments: { draft_id: draftId },
+          });
+          const data = (result?.structuredContent ?? {}) as {
+            subtype?: "phone" | null;
+            tags?: string[];
+          };
+          if (data.subtype !== undefined) {
+            detectedSubtype = data.subtype ?? null;
+            setSubtype(detectedSubtype);
+          }
+          if (Array.isArray(data.tags)) {
+            detectedTags = [...tags];
+            for (const t of data.tags) if (!detectedTags.includes(t)) detectedTags.push(t);
+            setTags(detectedTags);
+          }
+          setAutoDetectDone(true);
+        } catch (err) {
+          console.error("[haggle] auto-detect failed:", err);
+          // Non-fatal — proceed without auto-detected fields
+        } finally {
+          setAutoDetecting(false);
+        }
+      }
+
+      // Persist tags + subtype so they survive page reloads / re-mounts
+      await app.callServerTool({
+        name: "haggle_apply_patch",
+        arguments: {
+          draft_id: draftId,
+          patch: {
+            tags: detectedTags.length > 0 ? detectedTags : undefined,
+            ...(detectedSubtype ? { strategyConfig: { subtype: detectedSubtype } } : {}),
           },
         },
       });
@@ -686,7 +653,11 @@ export default function App() {
             onClick={handleNextStep1}
             disabled={!isFormValid || isSubmitting}
           >
-            {isSubmitting ? "Saving..." : "Next: Set Pricing"}
+            {isSubmitting
+              ? autoDetecting
+                ? "Analyzing photo…"
+                : "Saving..."
+              : "Next: Set Pricing"}
             {!isSubmitting && <span>→</span>}
           </button>
         </div>
