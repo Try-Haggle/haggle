@@ -165,13 +165,13 @@ function buildGreeting(
     ? `$${parseFloat(listingPrice).toLocaleString("en-US")}`
     : "";
   return (
-    `Hi! I'm ${name}, here to help you negotiate **${listingTitle}**${priceStr ? ` (${priceStr})` : ""}.\n\n` +
-    `Tell me what matters and I'll work it into the strategy:\n` +
-    `• 💰 Budget or target price\n` +
-    `• ✅ Real must-haves (e.g., battery 90%+)\n` +
-    `• ❌ Things to avoid (e.g., cracked screen)\n` +
-    `• ⚡ Style — close fast or push hard\n\n` +
-    `Say it however you like — I'll fold it in.`
+    `안녕하세요! ${name}입니다. **${listingTitle}**${priceStr ? ` (${priceStr})` : ""} 협상을 도와드릴게요.\n\n` +
+    `아래와 같은 내용을 알려주시면 전략에 반영됩니다:\n` +
+    `• 💰 예산 또는 목표 가격\n` +
+    `• ✅ 꼭 필요한 조건 (예: 배터리 90% 이상)\n` +
+    `• ❌ 피하고 싶은 것 (예: 화면 스크래치)\n` +
+    `• ⚡ 협상 스타일 (빠르게 끝내기 / 끝까지 밀어붙이기)\n\n` +
+    `편하게 말씀해 주세요 — 바로 전략에 반영할게요.`
   );
 }
 
@@ -180,14 +180,14 @@ function extractChips(memory: AdvisorMemory): StrategyChip[] {
 
   if (memory.budgetMax) {
     chips.push({
-      label: `Budget $${memory.budgetMax.toLocaleString()}`,
+      label: `예산 $${memory.budgetMax.toLocaleString()}`,
       value: String(memory.budgetMax),
       category: "pricing",
     });
   }
   if (memory.targetPrice) {
     chips.push({
-      label: `Target $${memory.targetPrice.toLocaleString()}`,
+      label: `목표가 $${memory.targetPrice.toLocaleString()}`,
       value: String(memory.targetPrice),
       category: "pricing",
     });
@@ -200,9 +200,9 @@ function extractChips(memory: AdvisorMemory): StrategyChip[] {
   }
 
   const styleLabels: Record<string, string> = {
-    aggressive: "Aggressive style",
-    balanced: "Balanced style",
-    defensive: "Defensive style",
+    aggressive: "공격적 협상",
+    balanced: "균형형 협상",
+    defensive: "안정적 협상",
   };
   if (memory.negotiationStyle !== "balanced") {
     chips.push({
@@ -269,12 +269,12 @@ function BudgetWidget({
     <div className="mt-4 p-4 rounded-xl bg-[#0f172a] border border-[#1e293b]">
       <div className="flex justify-between items-center mb-5">
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">목표 가격</p>
           <p className="text-[16px] font-bold text-cyan-400">${target.toLocaleString()}</p>
         </div>
         <div className="h-[30px] w-[1px] bg-[#1e293b]" />
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Max budget</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">최대 예산</p>
           <p className="text-[16px] font-bold text-blue-400">${max.toLocaleString()}</p>
         </div>
       </div>
@@ -317,7 +317,7 @@ function BudgetWidget({
         onClick={() => onSubmit(target, max)}
         className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
       >
-        Set budget
+        예산 설정 완료
       </button>
     </div>
   );
@@ -412,7 +412,7 @@ export function StrategyChat({
       const greetingMsg: ChatMessage = {
         id: "greeting",
         role: "agent",
-        text: `Got it — let's prep your negotiation for **${listingTitle}**. Start by setting your target price and max budget.`,
+        text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
         timestamp: Date.now(),
         widget: "budget-slider"
       };
@@ -506,7 +506,7 @@ export function StrategyChat({
       const agentMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: "agent",
-        text: data.reply ?? "Sorry, could you say that again?",
+        text: data.reply ?? "죄송합니다, 다시 한번 말씀해주세요.",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -527,7 +527,7 @@ export function StrategyChat({
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "agent",
-        text: "Connection hiccup — please try again in a moment.",
+        text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -556,7 +556,7 @@ export function StrategyChat({
     const greetingMsg: ChatMessage = {
       id: "greeting",
       role: "agent",
-      text: `Got it — let's prep your negotiation for **${listingTitle}**. Start by setting your target price and max budget.`,
+      text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
       timestamp: Date.now(),
       widget: "budget-slider"
     };
@@ -570,7 +570,7 @@ export function StrategyChat({
   const handleBudgetSubmit = useCallback(async (target: number, max: number) => {
     if (isLoading) return;
     
-    const userText = `My target is around $${target}, and my hard max is $${max}.`;
+    const userText = `목표 가격은 $${target}, 최대 예산은 $${max}로 생각하고 있어.`;
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -621,9 +621,7 @@ export function StrategyChat({
       const agentMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: "agent",
-        text:
-          data.reply ??
-          "Budget locked in. Anything else you'd like to add to the negotiation strategy? Otherwise we're ready to go.",
+        text: data.reply ?? "예산이 설정되었습니다. 더 피하고 싶거나 원하시는 조건이 있나요?",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -643,7 +641,7 @@ export function StrategyChat({
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "agent",
-        text: "Connection hiccup — please try again in a moment.",
+        text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -660,7 +658,7 @@ export function StrategyChat({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings, listingTitle]);
+  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -724,7 +722,7 @@ export function StrategyChat({
             type="button"
             onClick={handleReset}
             className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-white/5"
-            title="Reset conversation"
+            title="대화 초기화"
             aria-label="Reset strategy chat"
           >
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -793,9 +791,9 @@ export function StrategyChat({
                 />
                 
                 {msg.widget === "budget-slider" && (
-                  <BudgetWidget
-                    listingPrice={listingPrice}
-                    onSubmit={handleBudgetSubmit}
+                  <BudgetWidget 
+                    listingPrice={listingPrice} 
+                    onSubmit={handleBudgetSubmit} 
                   />
                 )}
               </div>
@@ -877,8 +875,8 @@ export function StrategyChat({
           type="text"
           placeholder={
             hasAgentSelected
-              ? "Tell me your budget, must-haves, anything that matters..."
-              : "Pick an agent to get started"
+              ? "예산, 원하는 조건 등을 알려주세요..."
+              : "먼저 에이전트를 선택해 주세요"
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
