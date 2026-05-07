@@ -95,10 +95,15 @@ export default function App() {
 
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
+  const goToStep = (step: number) => {
+    setCurrentStep(step);
+    widgetRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  };
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const widgetRef = useRef<HTMLDivElement>(null);
 
   // Connect to ChatGPT host via MCP Apps bridge.
   // onAppCreated registers handlers BEFORE the connection handshake completes,
@@ -386,6 +391,48 @@ export default function App() {
         setPhotoUploaded(true);
       }
 
+      // Auto-detect subtype if not already done (e.g. user skipped Auto-generate button)
+      let resolvedSubtype = subtype;
+      if (!autoDetectDone) {
+        await app.callServerTool({
+          name: "haggle_apply_patch",
+          arguments: {
+            draft_id: draftId,
+            patch: {
+              title: title.trim(),
+              ...(description.trim() ? { description: description.trim() } : {}),
+            },
+          },
+        });
+        try {
+          const result = await app.callServerTool({
+            name: "haggle_auto_detect",
+            arguments: { draft_id: draftId },
+          });
+          const r = result as Record<string, unknown> | undefined;
+          if (!r?.isError) {
+            const data = (r?.structuredContent ?? {}) as {
+              subtype?: "phone" | null;
+              tags?: string[];
+            };
+            if (data.subtype !== undefined) {
+              resolvedSubtype = data.subtype ?? null;
+              setSubtype(resolvedSubtype);
+            }
+            if (Array.isArray(data.tags)) {
+              setTags((prev) => {
+                const merged = [...prev];
+                for (const t of data.tags!) if (!merged.includes(t)) merged.push(t);
+                return merged;
+              });
+            }
+            setAutoDetectDone(true);
+          }
+        } catch {
+          // auto-detect 실패해도 Step 2로는 진행
+        }
+      }
+
       await app.callServerTool({
         name: "haggle_apply_patch",
         arguments: {
@@ -396,11 +443,11 @@ export default function App() {
             tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
-            ...(subtype ? { strategyConfig: { subtype } } : {}),
+            ...(resolvedSubtype ? { strategyConfig: { subtype: resolvedSubtype } } : {}),
           },
         },
       });
-      setCurrentStep(2);
+      goToStep(2);
     } catch (err) {
       setError("Failed to save. Please try again.");
       console.error(err);
@@ -459,7 +506,7 @@ export default function App() {
           },
         },
       });
-      setCurrentStep(3);
+      goToStep(3);
     } catch (err) {
       setError("Failed to save. Please try again.");
       console.error(err);
@@ -469,7 +516,7 @@ export default function App() {
   };
 
   return (
-    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
+    <div ref={widgetRef} className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
       {/* Debug: show connection error if any */}
       {connectionError && (
         <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
@@ -710,7 +757,7 @@ export default function App() {
           <button
             type="button"
             className="btn-back"
-            onClick={() => { setCurrentStep(1); setError(null); }}
+            onClick={() => { goToStep(1); setError(null); }}
           >
             ← Back
           </button>
@@ -1136,7 +1183,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn-back"
-                onClick={() => { setCurrentStep(currentStep - 1); setError(null); }}
+                onClick={() => { goToStep(currentStep - 1); setError(null); }}
               >
                 ← Back
               </button>
@@ -1366,7 +1413,7 @@ export default function App() {
                         if (validateParsed.ok === false && validateParsed.errors?.length) {
                           const firstError = validateParsed.errors[0];
                           setError(firstError.message);
-                          setCurrentStep(firstError.step);
+                          goToStep(firstError.step);
                           return;
                         }
 
