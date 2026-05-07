@@ -44,12 +44,8 @@ body {
 
 /* ─── Layout ────────────────────────────────────────────── */
 .widget {
-  max-width: 700px;
-  margin: 0 auto;
   padding: 24px 20px;
   background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: 20px;
 }
 
 .widget--fullscreen {
