@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
-import { NegotiationChat } from "@/app/(app)/buy/negotiations/[sessionId]/negotiation-chat";
-import type { SessionDetailData } from "@/app/(app)/buy/negotiations/[sessionId]/negotiation-chat";
+import { NegotiationChat } from "@/app/buy/negotiations/[sessionId]/negotiation-chat";
+import type { SessionDetailData } from "@/app/buy/negotiations/[sessionId]/negotiation-chat";
 
 export default async function SellerNegotiationPage({
   params,

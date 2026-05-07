@@ -564,17 +564,6 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                       onClick={() => {
                         if (!selectedAgent) return;
 
-                        if (!user) {
-                          sessionStorage.setItem("pendingIntent", JSON.stringify({
-                            listingId: listing.id,
-                            publicId: listing.publicId,
-                            category: listing.category,
-                            agentPreset: selectedAgent.id,
-                          }));
-                          window.location.href = `/claim?redirect=/l/${listing.publicId}`;
-                          return;
-                        }
-
                         setNegotiationState("loading");
                         setNegotiationMessage("Briefing your agent…");
                         // Frontend-only entry: navigate straight into the playback view.
