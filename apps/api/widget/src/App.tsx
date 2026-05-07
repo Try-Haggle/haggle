@@ -512,7 +512,7 @@ export default function App() {
       )}
 
       {currentStep === 1 ? (
-        <div onPointerDownCapture={requestFullscreen}>
+        <div>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
@@ -705,7 +705,7 @@ export default function App() {
           </button>
         </div>
       ) : currentStep === 2 ? (
-        <div onPointerDownCapture={requestFullscreen}>
+        <div>
           {/* Back button */}
           <button
             type="button"
@@ -909,7 +909,7 @@ export default function App() {
           // ─── Listing Live Screen ───────────────────────────
           if (publishResult) {
             return (
-              <div className="listing-live" onPointerDownCapture={requestFullscreen}>
+              <div className="listing-live">
                 {/* Success Icon */}
                 <div className="listing-live__icon">
                   <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1131,7 +1131,7 @@ export default function App() {
           }
 
           return (
-            <div className="step3-wrapper" onPointerDownCapture={requestFullscreen}>
+            <div className="step3-wrapper">
               {/* Back + Step Indicator inside wrapper for proper max-width */}
               <button
                 type="button"
