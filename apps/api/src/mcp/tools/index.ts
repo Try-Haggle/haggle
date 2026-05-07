@@ -418,6 +418,80 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     },
   );
 
+  // ─── haggle_auto_detect ──────────────────────────────────
+  // Widget-only tool: vision LLM classifies subtype + suggests tags
+  // from photo + title (+ optional description).
+  registerAppTool(
+    server,
+    "haggle_auto_detect",
+    {
+      title: "Auto-Detect Listing",
+      description:
+        "Analyze a draft's photo + title with vision LLM. Returns subtype ('phone' | null) and 4–8 lowercase-hyphenated tags. Widget calls this once both photo and title are present. Do NOT call from the model.",
+      inputSchema: { draft_id: z.string().uuid() },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: LISTING_RESOURCE_URI, visibility: ["app"] },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ draft_id }) => {
+      const draft = await getDraftById(db, draft_id);
+      if (!draft) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "Draft not found", draft_id }) }],
+        };
+      }
+      if (!draft.photoUrl || !draft.title) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "photoUrl and title are required", draft_id }),
+            },
+          ],
+        };
+      }
+      const { autoDetectListing } = await import("../../services/listing-auto-detect.service.js");
+      const result = await autoDetectListing({
+        photoUrl: draft.photoUrl,
+        title: draft.title,
+        description: draft.description,
+      });
+      if (!result.ok) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: result.error.code, message: result.error.message }),
+            },
+          ],
+        };
+      }
+      return {
+        structuredContent: {
+          draft_id,
+          subtype: result.subtype,
+          tags: result.tags,
+        },
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ draft_id, subtype: result.subtype, tags: result.tags }),
+          },
+        ],
+      };
+    },
+  );
+
   // ─── haggle_create_negotiation_session ───────────────────
   // 구매자 AI 에이전트가 리스팅을 보고 협상 세션을 시작
   server.tool(

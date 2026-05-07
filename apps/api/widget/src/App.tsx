@@ -74,6 +74,16 @@ export default function App() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
 
+  // Auto-detect (vision LLM): subtype + suggested tags
+  const [subtype, setSubtype] = useState<"phone" | null>(null);
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [autoDetectDone, setAutoDetectDone] = useState(false);
+
+  // Phone-specific required answers (shown on Step 2 when subtype === "phone")
+  const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
+  const [phoneCarrierLock, setPhoneCarrierLock] = useState<string | null>(null);
+  const [phoneFactoryResetConfirmed, setPhoneFactoryResetConfirmed] = useState(false);
+
   // Publish state
   const [publishResult, setPublishResult] = useState<{
     publicId: string;
@@ -117,6 +127,19 @@ export default function App() {
         }
         if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
         if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
+        const sc = draft.strategyConfig as Record<string, unknown> | undefined;
+        if (sc?.subtype === "phone") {
+          setSubtype("phone");
+          setAutoDetectDone(true);
+        }
+        const pa = sc?.phoneAnswers as
+          | { batteryHealth?: string; carrierLock?: string; factoryResetConfirmed?: boolean }
+          | undefined;
+        if (pa) {
+          if (pa.batteryHealth) setPhoneBatteryHealth(pa.batteryHealth);
+          if (pa.carrierLock) setPhoneCarrierLock(pa.carrierLock);
+          if (pa.factoryResetConfirmed) setPhoneFactoryResetConfirmed(true);
+        }
       }
     } catch (err) {
       console.error("[haggle] Failed to read window.openai.toolOutput:", err);
@@ -263,6 +286,82 @@ export default function App() {
     img.src = URL.createObjectURL(file);
   };
 
+  /* ─── Step-1 auto upload + auto-detect ──────────────────── */
+  // When photo + title are present and we haven't run auto-detect yet,
+  // upload the photo (if needed) and fire vision-LLM classification.
+  const photoUploadingRef = useRef(false);
+  const autoDetectRunRef = useRef(false);
+  useEffect(() => {
+    if (currentStep !== 1) return;
+    if (autoDetectDone || autoDetecting || autoDetectRunRef.current) return;
+    if (!app || !draftId) return;
+    if (!photoBase64 && !photoUploaded) return;
+    if (!title.trim()) return;
+
+    const timer = setTimeout(async () => {
+      if (autoDetectRunRef.current) return;
+      autoDetectRunRef.current = true;
+      try {
+        // Upload photo first if it hasn't been pushed to Supabase yet
+        if (photoBase64 && photoMimeType && !photoUploaded && !photoUploadingRef.current) {
+          photoUploadingRef.current = true;
+          try {
+            await app.callServerTool({
+              name: "haggle_upload_photo",
+              arguments: {
+                draft_id: draftId,
+                image_base64: photoBase64,
+                mime_type: photoMimeType,
+              },
+            });
+            setPhotoUploaded(true);
+          } finally {
+            photoUploadingRef.current = false;
+          }
+        }
+
+        // Persist title/description so the vision call uses fresh data
+        await app.callServerTool({
+          name: "haggle_apply_patch",
+          arguments: {
+            draft_id: draftId,
+            patch: {
+              title: title.trim(),
+              ...(description.trim() ? { description: description.trim() } : {}),
+            },
+          },
+        });
+
+        setAutoDetecting(true);
+        const result = await app.callServerTool({
+          name: "haggle_auto_detect",
+          arguments: { draft_id: draftId },
+        });
+        const data = (result?.structuredContent ?? {}) as {
+          subtype?: "phone" | null;
+          tags?: string[];
+        };
+        if (data.subtype !== undefined) setSubtype(data.subtype ?? null);
+        if (Array.isArray(data.tags)) {
+          setTags((prev) => {
+            const merged = [...prev];
+            for (const t of data.tags!) if (!merged.includes(t)) merged.push(t);
+            return merged;
+          });
+        }
+        setAutoDetectDone(true);
+      } catch (err) {
+        console.error("[haggle] auto-detect failed:", err);
+        autoDetectRunRef.current = false;
+      } finally {
+        setAutoDetecting(false);
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, photoBase64, photoUploaded, title, draftId, app]);
+
   const handleNextStep1 = async () => {
     if (!title.trim()) {
       setError("Title is required");
@@ -297,6 +396,7 @@ export default function App() {
             tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
+            ...(subtype ? { strategyConfig: { subtype } } : {}),
           },
         },
       });
@@ -318,12 +418,35 @@ export default function App() {
       setError("Selling deadline is required");
       return;
     }
+    if (subtype === "phone") {
+      if (!phoneBatteryHealth) {
+        setError("Battery health is required");
+        return;
+      }
+      if (!phoneCarrierLock) {
+        setError("Carrier lock status is required");
+        return;
+      }
+      if (!phoneFactoryResetConfirmed) {
+        setError("Please confirm the pre-ship checklist");
+        return;
+      }
+    }
     if (!app || !draftId) return;
 
     setIsSubmitting(true);
     setError(null);
 
     try {
+      const baseStrategy = deadlineStrategyConfig(sellingDeadline) as Record<string, unknown>;
+      if (subtype) baseStrategy.subtype = subtype;
+      if (subtype === "phone") {
+        baseStrategy.phoneAnswers = {
+          batteryHealth: phoneBatteryHealth,
+          carrierLock: phoneCarrierLock,
+          factoryResetConfirmed: phoneFactoryResetConfirmed,
+        };
+      }
       await app.callServerTool({
         name: "haggle_apply_patch",
         arguments: {
@@ -332,7 +455,7 @@ export default function App() {
             targetPrice: targetPrice.trim(),
             floorPrice: floorPrice.trim() || undefined,
             sellingDeadline: localDateToDeadlineIso(sellingDeadline),
-            strategyConfig: deadlineStrategyConfig(sellingDeadline),
+            strategyConfig: baseStrategy,
           },
         },
       });
@@ -503,9 +626,30 @@ export default function App() {
             />
           </div>
 
+          {/* Detected type (auto) */}
+          {(autoDetecting || autoDetectDone) && (
+            <div className="form-group">
+              <label className="form-label">Detected type</label>
+              {autoDetecting ? (
+                <p className="form-helper">Analyzing photo & title…</p>
+              ) : (
+                <ChipSelector
+                  options={[
+                    { value: "phone", label: "📱 Phone" },
+                    { value: "other", label: "Other" },
+                  ]}
+                  selected={subtype === "phone" ? "phone" : "other"}
+                  onChange={(v) => setSubtype(v === "phone" ? "phone" : null)}
+                />
+              )}
+            </div>
+          )}
+
           {/* Tags */}
           <div className="form-group">
-            <label className="form-label">Tags</label>
+            <label className="form-label">
+              Tags {autoDetectDone && <span className="form-label__hint">(auto-suggested)</span>}
+            </label>
             <TagInput tags={tags} onChange={setTags} />
           </div>
 
@@ -658,6 +802,67 @@ export default function App() {
             <p className="form-helper">Your AI agent may be more flexible as the deadline approaches</p>
           </div>
 
+          {/* Phone-specific required questions */}
+          {subtype === "phone" && (
+            <div className="phone-details">
+              <div className="phone-details__heading">
+                <p className="phone-details__title">📱 Phone details</p>
+                <p className="phone-details__subtitle">
+                  Buyers expect this info upfront. All required to publish.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Battery health <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "ge_90", label: "90%+" },
+                    { value: "ge_85", label: "85–89%" },
+                    { value: "ge_80", label: "80–84%" },
+                    { value: "lt_80", label: "Under 80%" },
+                    { value: "unknown", label: "Not sure" },
+                  ]}
+                  selected={phoneBatteryHealth}
+                  onChange={setPhoneBatteryHealth}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Carrier lock <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "unlocked", label: "Unlocked" },
+                    { value: "locked", label: "Carrier-locked" },
+                    { value: "unknown", label: "Not sure" },
+                  ]}
+                  selected={phoneCarrierLock}
+                  onChange={setPhoneCarrierLock}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Pre-ship checklist <span className="required-star">*</span>
+                </label>
+                <label className="phone-details__checkbox">
+                  <input
+                    type="checkbox"
+                    checked={phoneFactoryResetConfirmed}
+                    onChange={(e) => setPhoneFactoryResetConfirmed(e.target.checked)}
+                  />
+                  <span>
+                    Before shipping, I will <strong>turn off Find My</strong> and{" "}
+                    <strong>factory reset</strong> the phone so the buyer can activate it.
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
           {error && <p className="form-error">{error}</p>}
 
           {/* Next Button */}
@@ -665,7 +870,13 @@ export default function App() {
             type="button"
             className="btn-primary"
             onClick={handleNextStep2}
-            disabled={!targetPrice.trim() || !sellingDeadline || isSubmitting}
+            disabled={
+              !targetPrice.trim() ||
+              !sellingDeadline ||
+              isSubmitting ||
+              (subtype === "phone" &&
+                (!phoneBatteryHealth || !phoneCarrierLock || !phoneFactoryResetConfirmed))
+            }
           >
             {isSubmitting ? "Saving..." : "Next: Set Up AI Agent"}
             {!isSubmitting && <span>→</span>}
