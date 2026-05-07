@@ -330,7 +330,17 @@ export default function App() {
         name: "haggle_auto_detect",
         arguments: { draft_id: draftId },
       });
-      const data = (result?.structuredContent ?? {}) as {
+      console.log("[haggle] auto-detect raw result:", JSON.stringify(result).slice(0, 500));
+
+      // If the tool returned an error, surface it
+      const r = result as Record<string, unknown> | undefined;
+      if (r?.isError) {
+        const content = r.content as Array<{ type: string; text: string }> | undefined;
+        const text = content?.[0]?.text ?? "Unknown error";
+        throw new Error(text);
+      }
+
+      const data = (r?.structuredContent ?? {}) as {
         subtype?: "phone" | null;
         tags?: string[];
       };
@@ -345,7 +355,8 @@ export default function App() {
       setAutoDetectDone(true);
     } catch (err) {
       console.error("[haggle] auto-detect failed:", err);
-      setError("Failed to generate tags. Please try again.");
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Auto-generate failed: ${msg.slice(0, 200)}`);
     } finally {
       setAutoDetecting(false);
     }
