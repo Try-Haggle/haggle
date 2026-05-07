@@ -45,14 +45,38 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
 
   // ─── haggle_start_draft ────────────────────────────────────
   // Opens the listing wizard widget in the host iframe.
+  // Accepts an optional patch so the model can create + populate in one call.
   registerAppTool(
     server,
     "haggle_start_draft",
     {
       title: "Start Draft",
       description:
-        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. IMPORTANT: If the user provided specific item details (e.g. title, price, condition) in the same message, you may call haggle_apply_patch right after to populate those fields. But if the user only said something vague like 'I want to sell something' without concrete details, do NOT call haggle_apply_patch. Instead, let them use the wizard UI or ask for more details in chat.",
-      inputSchema: {},
+        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. If the user provided specific item details (e.g. title, price, condition) in the same message, include them in the optional 'patch' parameter to pre-fill the form — do NOT call haggle_apply_patch separately. If the user only said something vague like 'I want to sell something' without concrete details, omit the patch and let them use the wizard UI.",
+      inputSchema: {
+        patch: z.object({
+          title: z.string().optional(),
+          description: z.string().optional(),
+          tags: z.array(z.string()).optional(),
+          category: z
+            .enum([
+              "electronics",
+              "clothing",
+              "furniture",
+              "collectibles",
+              "sports",
+              "vehicles",
+              "books",
+              "other",
+            ])
+            .optional(),
+          condition: z
+            .enum(["new", "like_new", "good", "fair", "poor"])
+            .optional(),
+          targetPrice: z.string().optional(),
+          floorPrice: z.string().optional(),
+        }).optional(),
+      },
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -64,8 +88,15 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
         "openai/widgetAccessible": true,
       },
     },
-    async () => {
-      const draft = await createDraft(db);
+    async ({ patch }) => {
+      let draft = await createDraft(db);
+
+      // If the model included initial fields, apply them immediately
+      if (patch && Object.keys(patch).length > 0) {
+        const patched = await patchDraft(db, draft.id, patch);
+        if (patched) draft = patched;
+      }
+
       return {
         structuredContent: {
           draft_id: draft.id,
@@ -74,7 +105,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
         content: [
           {
             type: "text" as const,
-            text: "Draft created! Fill in the item details in the form.",
+            text: patch
+              ? "Draft created with your item details! Review and complete the remaining fields."
+              : "Draft created! Fill in the item details in the form.",
           },
         ],
       };
