@@ -286,6 +286,71 @@ export default function App() {
     img.src = URL.createObjectURL(file);
   };
 
+  /* ─── Auto-generate tags (vision LLM) ───────────────────── */
+  const handleAutoGenerateTags = async () => {
+    if (!app || !draftId) return;
+    if (!title.trim()) {
+      setError("Title is required to auto-generate tags");
+      return;
+    }
+    if (!photoBase64 && !photoUploaded) {
+      setError("Photo is required to auto-generate tags");
+      return;
+    }
+
+    setError(null);
+    setAutoDetecting(true);
+    try {
+      // Upload photo if not yet pushed to Supabase
+      if (photoBase64 && photoMimeType && !photoUploaded) {
+        await app.callServerTool({
+          name: "haggle_upload_photo",
+          arguments: {
+            draft_id: draftId,
+            image_base64: photoBase64,
+            mime_type: photoMimeType,
+          },
+        });
+        setPhotoUploaded(true);
+      }
+
+      // Persist title + description so the vision call uses fresh data
+      await app.callServerTool({
+        name: "haggle_apply_patch",
+        arguments: {
+          draft_id: draftId,
+          patch: {
+            title: title.trim(),
+            ...(description.trim() ? { description: description.trim() } : {}),
+          },
+        },
+      });
+
+      const result = await app.callServerTool({
+        name: "haggle_auto_detect",
+        arguments: { draft_id: draftId },
+      });
+      const data = (result?.structuredContent ?? {}) as {
+        subtype?: "phone" | null;
+        tags?: string[];
+      };
+      if (data.subtype !== undefined) setSubtype(data.subtype ?? null);
+      if (Array.isArray(data.tags)) {
+        setTags((prev) => {
+          const merged = [...prev];
+          for (const t of data.tags!) if (!merged.includes(t)) merged.push(t);
+          return merged;
+        });
+      }
+      setAutoDetectDone(true);
+    } catch (err) {
+      console.error("[haggle] auto-detect failed:", err);
+      setError("Failed to generate tags. Please try again.");
+    } finally {
+      setAutoDetecting(false);
+    }
+  };
+
   const handleNextStep1 = async () => {
     if (!title.trim()) {
       setError("Title is required");
@@ -317,53 +382,10 @@ export default function App() {
           patch: {
             title: title.trim(),
             description: description.trim() || undefined,
+            tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
-          },
-        },
-      });
-
-      // Run vision auto-detect now that photo + title are saved.
-      // Result populates subtype + auto-suggested tags before Step 2.
-      let detectedSubtype: "phone" | null = subtype;
-      let detectedTags: string[] = tags;
-      if (!autoDetectDone) {
-        setAutoDetecting(true);
-        try {
-          const result = await app.callServerTool({
-            name: "haggle_auto_detect",
-            arguments: { draft_id: draftId },
-          });
-          const data = (result?.structuredContent ?? {}) as {
-            subtype?: "phone" | null;
-            tags?: string[];
-          };
-          if (data.subtype !== undefined) {
-            detectedSubtype = data.subtype ?? null;
-            setSubtype(detectedSubtype);
-          }
-          if (Array.isArray(data.tags)) {
-            detectedTags = [...tags];
-            for (const t of data.tags) if (!detectedTags.includes(t)) detectedTags.push(t);
-            setTags(detectedTags);
-          }
-          setAutoDetectDone(true);
-        } catch (err) {
-          console.error("[haggle] auto-detect failed:", err);
-          // Non-fatal — proceed without auto-detected fields
-        } finally {
-          setAutoDetecting(false);
-        }
-      }
-
-      // Persist tags + subtype so they survive page reloads / re-mounts
-      await app.callServerTool({
-        name: "haggle_apply_patch",
-        arguments: {
-          draft_id: draftId,
-          patch: {
-            tags: detectedTags.length > 0 ? detectedTags : undefined,
-            ...(detectedSubtype ? { strategyConfig: { subtype: detectedSubtype } } : {}),
+            ...(subtype ? { strategyConfig: { subtype } } : {}),
           },
         },
       });
@@ -614,9 +636,23 @@ export default function App() {
 
           {/* Tags */}
           <div className="form-group">
-            <label className="form-label">
-              Tags {autoDetectDone && <span className="form-label__hint">(auto-suggested)</span>}
-            </label>
+            <div className="tags-row">
+              <label className="form-label tags-row__label">
+                Tags {autoDetectDone && <span className="form-label__hint">(auto-suggested)</span>}
+              </label>
+              <button
+                type="button"
+                className="tags-row__auto-btn"
+                onClick={handleAutoGenerateTags}
+                disabled={
+                  autoDetecting ||
+                  !title.trim() ||
+                  (!photoBase64 && !photoUploaded)
+                }
+              >
+                {autoDetecting ? "Analyzing…" : "✨ Auto-generate"}
+              </button>
+            </div>
             <TagInput tags={tags} onChange={setTags} />
           </div>
 
@@ -653,11 +689,7 @@ export default function App() {
             onClick={handleNextStep1}
             disabled={!isFormValid || isSubmitting}
           >
-            {isSubmitting
-              ? autoDetecting
-                ? "Analyzing photo…"
-                : "Saving..."
-              : "Next: Set Pricing"}
+            {isSubmitting ? "Saving..." : "Next: Set Pricing"}
             {!isSubmitting && <span>→</span>}
           </button>
         </div>

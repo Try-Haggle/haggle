@@ -1264,3 +1264,35 @@ body {
   cursor: pointer;
 }
 .phone-details__checkbox input { margin-top: 3px; }
+
+/* ─── Tags row with auto-generate button ─── */
+.tags-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.tags-row__label { margin-bottom: 0; }
+.tags-row__auto-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  background: transparent;
+  color: #06b6d4;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tags-row__auto-btn:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: #06b6d4;
+}
+.tags-row__auto-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
