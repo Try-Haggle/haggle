@@ -99,7 +99,10 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const goToStep = (step: number) => setCurrentStep(step);
   useEffect(() => {
+    // fullscreen: widget div 자체가 스크롤 컨테이너
     widgetRef.current?.scrollTo({ top: 0, behavior: "instant" });
+    // non-fullscreen: iframe window가 스크롤 컨테이너
+    window.scrollTo({ top: 0, behavior: "instant" });
   }, [currentStep]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -250,7 +253,16 @@ export default function App() {
     app
       .requestDisplayMode({ mode: "fullscreen" })
       .then((result) => {
-        // Always use the RESULT mode — host has final say
+        setIsFullscreen(result.mode === "fullscreen");
+      })
+      .catch(() => {});
+  }, [app, isConnected, isFullscreen]);
+
+  const exitFullscreen = useCallback(() => {
+    if (!app || !isConnected || !isFullscreen) return;
+    app
+      .requestDisplayMode({ mode: "inline" })
+      .then((result) => {
         setIsFullscreen(result.mode === "fullscreen");
       })
       .catch(() => {});
@@ -538,6 +550,35 @@ export default function App() {
         </div>
       )}
       {/* Header — hidden in fullscreen (host provides its own) */}
+      {isFullscreen && (
+        <div className="header" style={{ marginBottom: 8 }}>
+          <span className="header__logo">Haggle</span>
+          <button
+            type="button"
+            className="header__expand"
+            onClick={exitFullscreen}
+            aria-label="Exit fullscreen"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="4 14 10 14 10 20" />
+              <polyline points="20 10 14 10 14 4" />
+              <line x1="10" x2="3" y1="14" y2="21" />
+              <line x1="21" x2="14" y1="3" y2="10" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {!isFullscreen && (
         <div className="header">
           <span className="header__logo">Haggle</span>
