@@ -278,7 +278,7 @@ function BudgetWidget({
           <p className="text-[16px] font-bold text-blue-400">${max.toLocaleString()}</p>
         </div>
       </div>
-      
+
       <div className="flex flex-col gap-6 mb-6">
         <div className="relative">
           <input
@@ -408,7 +408,7 @@ export function StrategyChat({
       // Fresh start: provide a greeting with budget widget
       const newMemory = buildInitialMemory(agent, listingCategory);
       setMemory(newMemory);
-      
+
       const greetingMsg: ChatMessage = {
         id: "greeting",
         role: "agent",
@@ -467,7 +467,7 @@ export function StrategyChat({
       text: trimmed,
       timestamp: Date.now(),
     };
-    
+
     setMessages((prev) => {
       const next = [...prev, userMsg];
       if (agent) {
@@ -480,7 +480,7 @@ export function StrategyChat({
       }
       return next;
     });
-    
+
     setInput("");
     setIsLoading(true);
     setIsExpanded(true);
@@ -552,7 +552,7 @@ export function StrategyChat({
     clearSession(listingPublicId, agent.id);
     const newMemory = buildInitialMemory(agent, listingCategory);
     setMemory(newMemory);
-    
+
     const greetingMsg: ChatMessage = {
       id: "greeting",
       role: "agent",
@@ -560,7 +560,7 @@ export function StrategyChat({
       timestamp: Date.now(),
       widget: "budget-slider"
     };
-    
+
     setMessages([greetingMsg]);
     setIsExpanded(true);
     setHasRestoredSession(false);
@@ -569,7 +569,7 @@ export function StrategyChat({
 
   const handleBudgetSubmit = useCallback(async (target: number, max: number) => {
     if (isLoading) return;
-    
+
     const userText = `목표 가격은 $${target}, 최대 예산은 $${max}로 생각하고 있어.`;
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -577,12 +577,12 @@ export function StrategyChat({
       text: userText,
       timestamp: Date.now(),
     };
-    
+
     // Optimistic memory update
     const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
     setMemory(updatedMemoryOptimistic);
     onMemoryUpdate?.(updatedMemoryOptimistic);
-    
+
     setMessages((prev) => {
       // Remove widget from the greeting
       const withoutWidget = prev.map(m => m.id === "greeting" ? { ...m, widget: undefined } : m);
@@ -789,11 +789,11 @@ export function StrategyChat({
                     __html: renderMarkdownLite(msg.text),
                   }}
                 />
-                
+
                 {msg.widget === "budget-slider" && (
-                  <BudgetWidget 
-                    listingPrice={listingPrice} 
-                    onSubmit={handleBudgetSubmit} 
+                  <BudgetWidget
+                    listingPrice={listingPrice}
+                    onSubmit={handleBudgetSubmit}
                   />
                 )}
               </div>
