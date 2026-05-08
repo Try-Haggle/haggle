@@ -82,6 +82,8 @@ export default function App() {
   // Phone-specific required answers (shown on Step 2 when subtype === "phone")
   const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
   const [phoneCarrierLock, setPhoneCarrierLock] = useState<string | null>(null);
+  const [phoneStorage, setPhoneStorage] = useState<string | null>(null);
+  const [phoneScreenCondition, setPhoneScreenCondition] = useState<string | null>(null);
   const [phoneFactoryResetConfirmed, setPhoneFactoryResetConfirmed] = useState(false);
 
   // Publish state
@@ -138,11 +140,13 @@ export default function App() {
           setAutoDetectDone(true);
         }
         const pa = sc?.phoneAnswers as
-          | { batteryHealth?: string; carrierLock?: string; factoryResetConfirmed?: boolean }
+          | { batteryHealth?: string; carrierLock?: string; storage?: string; screenCondition?: string; factoryResetConfirmed?: boolean }
           | undefined;
         if (pa) {
           if (pa.batteryHealth) setPhoneBatteryHealth(pa.batteryHealth);
           if (pa.carrierLock) setPhoneCarrierLock(pa.carrierLock);
+          if (pa.storage) setPhoneStorage(pa.storage);
+          if (pa.screenCondition) setPhoneScreenCondition(pa.screenCondition);
           if (pa.factoryResetConfirmed) setPhoneFactoryResetConfirmed(true);
         }
       }
@@ -466,12 +470,20 @@ export default function App() {
       return;
     }
     if (subtype === "phone") {
+      if (!phoneStorage) {
+        setError("Storage capacity is required");
+        return;
+      }
       if (!phoneBatteryHealth) {
         setError("Battery health is required");
         return;
       }
       if (!phoneCarrierLock) {
         setError("Carrier lock status is required");
+        return;
+      }
+      if (!phoneScreenCondition) {
+        setError("Screen condition is required");
         return;
       }
       if (!phoneFactoryResetConfirmed) {
@@ -489,8 +501,10 @@ export default function App() {
       if (subtype) baseStrategy.subtype = subtype;
       if (subtype === "phone") {
         baseStrategy.phoneAnswers = {
+          storage: phoneStorage,
           batteryHealth: phoneBatteryHealth,
           carrierLock: phoneCarrierLock,
+          screenCondition: phoneScreenCondition,
           factoryResetConfirmed: phoneFactoryResetConfirmed,
         };
       }
@@ -875,6 +889,24 @@ export default function App() {
 
               <div className="form-group">
                 <label className="form-label">
+                  Storage <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "64gb", label: "64GB" },
+                    { value: "128gb", label: "128GB" },
+                    { value: "256gb", label: "256GB" },
+                    { value: "512gb", label: "512GB" },
+                    { value: "1tb", label: "1TB" },
+                    { value: "other", label: "Other" },
+                  ]}
+                  selected={phoneStorage}
+                  onChange={setPhoneStorage}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
                   Battery health <span className="required-star">*</span>
                 </label>
                 <ChipSelector
@@ -902,6 +934,22 @@ export default function App() {
                   ]}
                   selected={phoneCarrierLock}
                   onChange={setPhoneCarrierLock}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Screen condition <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "perfect", label: "Perfect" },
+                    { value: "minor_scratches", label: "Minor scratches" },
+                    { value: "visible_scratches", label: "Visible scratches" },
+                    { value: "cracked", label: "Cracked" },
+                  ]}
+                  selected={phoneScreenCondition}
+                  onChange={setPhoneScreenCondition}
                 />
               </div>
 
