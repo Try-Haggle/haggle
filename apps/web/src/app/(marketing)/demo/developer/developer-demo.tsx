@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { initDemo, executeRound } from "@/lib/demo-api";
-import { resetDemoMemory } from "@/lib/intelligence-demo-api";
+import { recordPresetTuningFeedback, resetDemoMemory } from "@/lib/intelligence-demo-api";
+import type { PresetTuningDraft, StoredMemoryCard } from "@/lib/intelligence-demo-api";
 import type { DemoInitRequest, DemoInitResponse, DemoRoundResponse, StageTrace } from "@/lib/demo-types";
 import { SessionInitPanel } from "./_components/session-init-panel";
 import { PipelineViewer } from "./_components/pipeline-viewer";
@@ -31,6 +32,12 @@ type DemoState =
   | "ROUND_RUNNING"
   | "ROUND_DONE"
   | "SESSION_DONE";
+
+type PresetFeedbackUpdate = {
+  id: string;
+  cards: StoredMemoryCard[];
+  message: string;
+};
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -74,28 +81,101 @@ function buildAutoTradeParams(
   listing: AdvisorListing,
   memory: AdvisorMemory | null,
   userId: string,
+  tuningDraft?: PresetTuningDraft | null,
 ): DemoInitRequest {
+  const draftPreset = tuningDraft ? mapDraftPresetToDemoPreset(tuningDraft.presetId) : null;
+  const conditionParts = [
+    listing.condition,
+    listing.tags.length > 0 ? `tags: ${listing.tags.join(", ")}` : null,
+    tuningDraft
+      ? `approved preset: ${tuningDraft.presetLabel}; opening ${formatMinor(tuningDraft.openingOfferMinor)}; cap ${formatMinor(tuningDraft.priceCapMinor)}`
+      : null,
+    tuningDraft?.mustVerify.length
+      ? `must verify: ${tuningDraft.mustVerify.map((term) => `${term.label}(${term.enforcement})`).join(", ")}`
+      : null,
+    tuningDraft?.leverage.filter((item) => item.enabled).length
+      ? `leverage: ${tuningDraft.leverage.filter((item) => item.enabled).map((item) => item.label).join(", ")}`
+      : null,
+    tuningDraft?.walkAway.filter((item) => item.enabled).length
+      ? `walk-away: ${tuningDraft.walkAway.filter((item) => item.enabled).map((item) => item.label).join(", ")}`
+      : null,
+  ].filter(Boolean).join(" | ");
+
   return {
     user_id: userId,
     item: {
       title: listing.title,
-      condition: listing.condition,
+      condition: conditionParts,
       swappa_median_minor: listing.marketMedianMinor,
     },
     seller: { ask_price_minor: listing.askPriceMinor, floor_price_minor: listing.floorPriceMinor },
     buyer_budget: {
-      max_budget_minor: memory?.budgetMax
+      max_budget_minor: tuningDraft?.priceCapMinor ?? (memory?.budgetMax
         ? dollarsToMinor(memory.budgetMax)
-        : Math.max(listing.askPriceMinor, listing.marketMedianMinor),
+        : Math.max(listing.askPriceMinor, listing.marketMedianMinor)),
     },
     language: "ko",
-    preset:
+    preset: draftPreset ?? (
       memory?.riskStyle === "safe_first"
         ? "safe_first"
         : memory?.riskStyle === "lowest_price"
           ? "lowest_price"
-          : "balanced",
+          : "balanced"
+    ),
+    preset_tuning_draft: tuningDraft?.negotiationStartPayload,
   };
+}
+
+function mapDraftPresetToDemoPreset(presetId: PresetTuningDraft["presetId"]): DemoInitRequest["preset"] {
+  switch (presetId) {
+    case "safe_buyer": return "safe_first";
+    case "lowest_price": return "lowest_price";
+    case "fast_close": return "balanced";
+    case "balanced_closer":
+    default:
+      return "balanced";
+  }
+}
+
+function presetFeedbackOutcome(
+  round: DemoRoundResponse,
+  priceCapMinor: number,
+): "accepted" | "rejected" | "abandoned" | "cap_blocked" {
+  const action = round.final.decision.action;
+  const price = round.final.decision.price;
+  if (price > priceCapMinor) return "cap_blocked";
+  if (action === "ACCEPT") return "accepted";
+  if (action === "REJECT") return "rejected";
+  return "abandoned";
+}
+
+function presetFeedbackMessageClass(message: string): string {
+  if (/실패|failed/i.test(message)) {
+    return "border-red-500/25 bg-red-500/10 text-red-100";
+  }
+  if (/skipped|찾지 못했습니다/i.test(message)) {
+    return "border-amber-500/25 bg-amber-500/10 text-amber-100";
+  }
+  return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
+}
+
+function engineReviewBlockedReason(draft: PresetTuningDraft | null): string | null {
+  const review = draft?.engineReview;
+  if (!review || review.status === "ready") return null;
+  const nextAction = review.nextActions[0];
+  const blocker = review.blockers[0];
+
+  if (review.status === "blocked") {
+    return blocker
+      ? `Engine gate blocked: ${blocker.label}. ${blocker.reason}`
+      : "Engine gate blocked: 상품 scope 또는 필수 조건을 먼저 확인해야 합니다.";
+  }
+
+  if (nextAction) {
+    return `Engine gate needs input: ${nextAction.question}`;
+  }
+
+  return "Engine gate needs input: 필수 조건을 먼저 확인해야 합니다.";
 }
 
 function pause(ms: number) {
@@ -114,10 +194,13 @@ export function DeveloperDemo() {
   const sellerAncientId = DEFAULT_SELLER_AGENT_ID;
   const [selectedListing, setSelectedListing] = useState<AdvisorListing | null>(null);
   const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
+  const [presetTuningDraft, setPresetTuningDraft] = useState<PresetTuningDraft | null>(null);
   const [negotiationBlockedReason, setNegotiationBlockedReason] = useState<string | null>(null);
   const [demoUserId, setDemoUserId] = useState(DEMO_USER_ID);
   const [autoTradeRunning, setAutoTradeRunning] = useState(false);
   const [endingDemo, setEndingDemo] = useState(false);
+  const [presetFeedbackUpdate, setPresetFeedbackUpdate] = useState<PresetFeedbackUpdate | null>(null);
+  const [presetFeedbackMessage, setPresetFeedbackMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setDemoUserId(getOrCreateDemoUserId());
@@ -193,6 +276,7 @@ export function DeveloperDemo() {
     setInitResponse(null);
     setRounds([]);
     setError(null);
+    setPresetFeedbackMessage(null);
   };
 
   const handleEndDemo = useCallback(async () => {
@@ -207,6 +291,9 @@ export function DeveloperDemo() {
       setDemoUserId(nextUserId);
       setSelectedListing(null);
       setAdvisorMemory(null);
+      setPresetTuningDraft(null);
+      setPresetFeedbackUpdate(null);
+      setPresetFeedbackMessage(null);
       setNegotiationBlockedReason(null);
       handleReset();
     } catch (err) {
@@ -229,17 +316,20 @@ export function DeveloperDemo() {
   const handleRunAutoTrade = useCallback(async (listingOverride?: AdvisorListing, memoryOverride?: AdvisorMemory) => {
     const listing = listingOverride ?? selectedListing;
     const memory = memoryOverride ?? advisorMemory;
+    const draft = listing?.id === selectedListing?.id ? presetTuningDraft : null;
+    const startBlockedReason = negotiationBlockedReason ?? engineReviewBlockedReason(draft);
 
     if (!listing) {
       setError("실제 등록 상품을 먼저 선택해 주세요.");
       return;
     }
-    if (negotiationBlockedReason) {
-      setError(negotiationBlockedReason);
+    if (startBlockedReason) {
+      setError(startBlockedReason);
       return;
     }
 
     setError(null);
+    setPresetFeedbackMessage(null);
     setAutoTradeRunning(true);
     setDemoState("INITIALIZING");
     setDemoId(null);
@@ -248,7 +338,7 @@ export function DeveloperDemo() {
 
     try {
       const init = await initDemo({
-        ...buildAutoTradeParams(listing, memory, demoUserId),
+        ...buildAutoTradeParams(listing, memory, demoUserId, draft),
         buyer_agent_id: buyerAncientId,
         seller_agent_id: sellerAncientId,
       });
@@ -258,6 +348,7 @@ export function DeveloperDemo() {
       await pause(650);
 
       let latestRound: DemoRoundResponse | null = null;
+      let finalRoundForFeedback: DemoRoundResponse | null = null;
       let sessionDone = false;
 
       for (const [index, turn] of listing.sellerTurns.entries()) {
@@ -276,6 +367,7 @@ export function DeveloperDemo() {
 
         if (round.state.done) {
           sessionDone = true;
+          finalRoundForFeedback = round;
           setDemoState("SESSION_DONE");
           break;
         }
@@ -296,9 +388,39 @@ export function DeveloperDemo() {
           }),
         });
         setRounds((prev) => [...prev, acceptRound]);
+        finalRoundForFeedback = acceptRound;
         setDemoState(acceptRound.state.done ? "SESSION_DONE" : "ROUND_DONE");
       } else if (!sessionDone) {
+        finalRoundForFeedback = latestRound;
         setDemoState("ROUND_DONE");
+      }
+
+      if (draft?.appliedTunedCandidate && finalRoundForFeedback) {
+        const outcome = presetFeedbackOutcome(finalRoundForFeedback, draft.priceCapMinor);
+        try {
+          const feedback = await recordPresetTuningFeedback({
+            userId: demoUserId,
+            memoryKey: draft.appliedTunedCandidate.memoryKey,
+            outcome,
+            finalPriceMinor: finalRoundForFeedback.final.decision.price,
+            priceCapMinor: draft.priceCapMinor,
+            applicationMode: draft.appliedTunedCandidate.applicationMode,
+          });
+          const deltaLabel = `${feedback.delta >= 0 ? "+" : ""}${(feedback.delta * 100).toFixed(1)}pp`;
+          const message = feedback.memory_cards.length > 0
+            ? `Preset feedback recorded: ${outcome}, strength ${deltaLabel}`
+            : `Preset feedback skipped: ${outcome} 결과를 기록할 저장 후보를 찾지 못했습니다.`;
+          setPresetFeedbackUpdate({
+            id: `${feedback.memory_key}:${Date.now()}`,
+            cards: feedback.memory_cards,
+            message,
+          });
+          setPresetFeedbackMessage(message);
+        } catch (feedbackError) {
+          setPresetFeedbackMessage(feedbackError instanceof Error
+            ? `협상은 완료됐지만 preset feedback 저장은 실패했습니다: ${feedbackError.message}`
+            : "협상은 완료됐지만 preset feedback 저장은 실패했습니다.");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "자동 거래 실행에 실패했습니다");
@@ -306,12 +428,18 @@ export function DeveloperDemo() {
     } finally {
       setAutoTradeRunning(false);
     }
-  }, [advisorMemory, buyerAncientId, demoUserId, negotiationBlockedReason, selectedListing, sellerAncientId]);
+  }, [advisorMemory, buyerAncientId, demoUserId, negotiationBlockedReason, presetTuningDraft, selectedListing, sellerAncientId]);
 
   /* ── Derived ── */
   const latestRound = rounds.length > 0 ? rounds[rounds.length - 1] : null;
   const nextRoundNumber = (latestRound?.round ?? 0) + 1;
   const lastBuyerPrice = latestRound?.final.decision.price ?? 0;
+  const effectiveStartBlockedReason = negotiationBlockedReason
+    ?? engineReviewBlockedReason(
+      presetTuningDraft && selectedListing && presetTuningDraft.listing.id === selectedListing.id
+        ? presetTuningDraft
+        : null,
+    );
 
   return (
     <div className="min-h-screen">
@@ -365,6 +493,8 @@ export function DeveloperDemo() {
           selectedAgentId={buyerAncientId}
           selectedListingId={selectedListing?.id}
           onStartNegotiation={handleStartNegotiationFromAdvisor}
+          onPresetDraftChange={setPresetTuningDraft}
+          presetFeedbackUpdate={presetFeedbackUpdate}
           onEndDemo={handleEndDemo}
           endingDemo={endingDemo}
         />
@@ -378,10 +508,16 @@ export function DeveloperDemo() {
           listing={selectedListing}
           buyerMemory={advisorMemory}
           autoTradeRunning={autoTradeRunning}
-          startBlockedReason={negotiationBlockedReason}
+          startBlockedReason={effectiveStartBlockedReason}
           onRunAutoTrade={handleRunAutoTrade}
           onReset={handleReset}
         />
+
+        {presetFeedbackMessage && (
+          <div className={`mt-3 rounded-xl border px-4 py-3 text-xs leading-5 ${presetFeedbackMessageClass(presetFeedbackMessage)}`}>
+            {presetFeedbackMessage}
+          </div>
+        )}
 
         <TagGardenIntelligencePanel />
 
