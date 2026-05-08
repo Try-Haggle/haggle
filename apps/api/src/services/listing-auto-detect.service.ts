@@ -77,9 +77,10 @@ Subtype rules:
 
 Tag rules:
 - 4 to 8 tags total
-- lowercase-hyphenated (e.g. "256gb", "unlocked", "space-black", "minor-scratches")
+- lowercase-hyphenated (e.g. "256gb", "space-black", "minor-scratches", "with-charger")
 - focus on objectively visible / known attributes: model/generation, storage, color, condition cues, included accessories
 - do NOT invent specs you cannot verify from the photo + text
+- do NOT include carrier lock status (unlocked, locked, carrier-locked, etc.) — this is collected separately
 - prefer specific over generic ("iphone-15-pro" over just "smartphone")`;
 
 function buildUserPrompt(input: AutoDetectInput): string {

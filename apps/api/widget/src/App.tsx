@@ -97,10 +97,10 @@ export default function App() {
 
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
-  const goToStep = (step: number) => {
-    setCurrentStep(step);
+  const goToStep = (step: number) => setCurrentStep(step);
+  useEffect(() => {
     widgetRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  };
+  }, [currentStep]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
