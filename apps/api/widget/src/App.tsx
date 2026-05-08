@@ -99,10 +99,19 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const goToStep = (step: number) => setCurrentStep(step);
   useEffect(() => {
-    // fullscreen: widget div 자체가 스크롤 컨테이너
-    widgetRef.current?.scrollTo({ top: 0, behavior: "instant" });
-    // non-fullscreen: iframe window가 스크롤 컨테이너
-    window.scrollTo({ top: 0, behavior: "instant" });
+    // 가능한 모든 스크롤 컨테이너를 커버
+    try { widgetRef.current?.scrollTo(0, 0); } catch {}
+    try { window.scrollTo(0, 0); } catch {}
+    try { document.documentElement.scrollTop = 0; } catch {}
+    try { document.body.scrollTop = 0; } catch {}
+    // 혹시 렌더 직후 레이아웃이 아직 안 잡혔을 경우 대비해 한 프레임 뒤에도 실행
+    const raf = requestAnimationFrame(() => {
+      try { widgetRef.current?.scrollTo(0, 0); } catch {}
+      try { window.scrollTo(0, 0); } catch {}
+      try { document.documentElement.scrollTop = 0; } catch {}
+      try { document.body.scrollTop = 0; } catch {}
+    });
+    return () => cancelAnimationFrame(raf);
   }, [currentStep]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
