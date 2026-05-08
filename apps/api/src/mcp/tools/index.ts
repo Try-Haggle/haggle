@@ -45,14 +45,38 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
 
   // ─── haggle_start_draft ────────────────────────────────────
   // Opens the listing wizard widget in the host iframe.
+  // Accepts an optional patch so the model can create + populate in one call.
   registerAppTool(
     server,
     "haggle_start_draft",
     {
       title: "Start Draft",
       description:
-        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. IMPORTANT: If the user provided specific item details (e.g. title, price, condition) in the same message, you may call haggle_apply_patch right after to populate those fields. But if the user only said something vague like 'I want to sell something' without concrete details, do NOT call haggle_apply_patch. Instead, let them use the wizard UI or ask for more details in chat.",
-      inputSchema: {},
+        "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. If the user provided specific item details (e.g. title, price, condition) in the same message, include them in the optional 'patch' parameter to pre-fill the form — do NOT call haggle_apply_patch separately. If the user only said something vague like 'I want to sell something' without concrete details, omit the patch and let them use the wizard UI.",
+      inputSchema: {
+        patch: z.object({
+          title: z.string().optional(),
+          description: z.string().optional(),
+          tags: z.array(z.string()).optional(),
+          category: z
+            .enum([
+              "electronics",
+              "clothing",
+              "furniture",
+              "collectibles",
+              "sports",
+              "vehicles",
+              "books",
+              "other",
+            ])
+            .optional(),
+          condition: z
+            .enum(["new", "like_new", "good", "fair", "poor"])
+            .optional(),
+          targetPrice: z.string().optional(),
+          floorPrice: z.string().optional(),
+        }).optional(),
+      },
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -64,8 +88,15 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
         "openai/widgetAccessible": true,
       },
     },
-    async () => {
-      const draft = await createDraft(db);
+    async ({ patch }) => {
+      let draft = await createDraft(db);
+
+      // If the model included initial fields, apply them immediately
+      if (patch && Object.keys(patch).length > 0) {
+        const patched = await patchDraft(db, draft.id, patch);
+        if (patched) draft = patched;
+      }
+
       return {
         structuredContent: {
           draft_id: draft.id,
@@ -74,7 +105,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
         content: [
           {
             type: "text" as const,
-            text: "Draft created! Fill in the item details in the form.",
+            text: patch
+              ? "Draft created with your item details! Review and complete the remaining fields."
+              : "Draft created! Fill in the item details in the form.",
           },
         ],
       };
@@ -415,6 +448,130 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
           ],
         };
       }
+    },
+  );
+
+  // ─── haggle_auto_detect ──────────────────────────────────
+  // Widget-only tool: vision LLM classifies subtype + suggests tags
+  // from photo + title (+ optional description).
+  registerAppTool(
+    server,
+    "haggle_auto_detect",
+    {
+      title: "Auto-Detect Listing",
+      description:
+        "Analyze a draft's photo + title with vision LLM. Returns subtype ('phone' | null) and 4–8 lowercase-hyphenated tags. Widget calls this once both photo and title are present. Do NOT call from the model.",
+      inputSchema: { draft_id: z.string().uuid() },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: LISTING_RESOURCE_URI, visibility: ["app"] },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ draft_id }) => {
+      const draft = await getDraftById(db, draft_id);
+      if (!draft) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "Draft not found", draft_id }) }],
+        };
+      }
+      if (!draft.photoUrl || !draft.title) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "photoUrl and title are required", draft_id }),
+            },
+          ],
+        };
+      }
+      const { autoDetectListing } = await import("../../services/listing-auto-detect.service.js");
+      const result = await autoDetectListing({
+        photoUrl: draft.photoUrl,
+        title: draft.title,
+        description: draft.description,
+      });
+      if (!result.ok) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: result.error.code, message: result.error.message }),
+            },
+          ],
+        };
+      }
+      return {
+        structuredContent: {
+          draft_id,
+          subtype: result.subtype,
+          tags: result.tags,
+        },
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ draft_id, subtype: result.subtype, tags: result.tags }),
+          },
+        ],
+      };
+    },
+  );
+
+  // ─── haggle_seller_advisor_turn ─────────────────────────
+  // Widget-only tool: seller strategy advisor chat turn.
+  // Takes the seller's message + current memory, returns updated memory + AI reply.
+  registerAppTool(
+    server,
+    "haggle_seller_advisor_turn",
+    {
+      title: "Seller Strategy Advisor Turn",
+      description:
+        "Process one turn of the seller's strategy chat. Extracts negotiation preferences (deal-breakers, emphasis points, tone, urgency) from the seller's message and returns an updated memory + conversational reply. Widget-only.",
+      inputSchema: {
+        message: z.string().min(1).max(2000),
+        previous_memory: z.object({
+          dealBreakers: z.array(z.string()),
+          mustEmphasize: z.array(z.string()),
+          tone: z.enum(["firm", "friendly", "flexible"]),
+          urgency: z.enum(["high", "medium", "low"]),
+          notes: z.array(z.string()),
+        }),
+        listing_title: z.string(),
+        listing_price: z.string(),
+        agent_preset: z.string(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: LISTING_RESOURCE_URI, visibility: ["app"] },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ message, previous_memory, listing_title, listing_price, agent_preset }) => {
+      const { runSellerAdvisorTurn } = await import("../../services/seller-advisor.service.js");
+      const result = await runSellerAdvisorTurn({
+        message,
+        previousMemory: previous_memory,
+        listingTitle: listing_title,
+        listingPrice: listing_price,
+        agentPreset: agent_preset,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
     },
   );
 

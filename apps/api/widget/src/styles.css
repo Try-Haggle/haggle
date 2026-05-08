@@ -33,7 +33,7 @@
 }
 
 body {
-  background: transparent;
+  background: var(--bg-primary);
   color: var(--text-primary);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
@@ -44,12 +44,8 @@ body {
 
 /* ─── Layout ────────────────────────────────────────────── */
 .widget {
-  max-width: 700px;
-  margin: 0 auto;
   padding: 24px 20px;
   background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: 20px;
 }
 
 .widget--fullscreen {
@@ -1066,6 +1062,68 @@ body {
   color: var(--accent-cyan);
 }
 
+/* ─── Story Share ────────────────────────────────────── */
+.story-share {
+  margin-top: 28px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: rgba(34, 211, 238, 0.06);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+}
+.story-share__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.story-share__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.story-share__subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.story-share__download-btn {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--accent-cyan);
+  color: #0b1120;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.story-share__download-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.story-share__download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.story-share__steps {
+  margin: 16px 0 8px;
+  padding-left: 22px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.story-share__steps li {
+  margin-bottom: 4px;
+}
+.story-share__steps strong {
+  color: var(--text-primary);
+}
+.story-share__note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
 /* ─── Claim CTA ──────────────────────────────────────── */
 .listing-live__claim-cta {
   margin-top: 28px;
@@ -1160,4 +1218,77 @@ body {
 .listing-live__dashboard-btn {
   width: 100%;
   margin-top: 20px;
+}
+
+/* ─── Phone-specific required questions (Step 2) ─── */
+.phone-details {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.phone-details__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.phone-details__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+}
+.phone-details__subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+.phone-details__checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+.phone-details__checkbox input { margin-top: 3px; }
+
+/* ─── Tags row with auto-generate button ─── */
+.tags-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.tags-row__label { margin-bottom: 0; }
+.tags-row__auto-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  background: transparent;
+  color: #06b6d4;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tags-row__auto-btn:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: #06b6d4;
+}
+.tags-row__auto-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

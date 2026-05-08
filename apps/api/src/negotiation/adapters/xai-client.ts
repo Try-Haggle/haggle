@@ -48,8 +48,8 @@ interface XAIChatCompletion {
 
 const XAI_API_BASE = 'https://api.x.ai/v1';
 const RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
-const GENERAL_TIMEOUT_MS = 30_000;
-const REASONING_TIMEOUT_MS = 45_000;
+const GENERAL_TIMEOUT_MS = 60_000;
+const REASONING_TIMEOUT_MS = 90_000;
 
 function getApiKey(): string {
   const key = process.env.XAI_API_KEY;

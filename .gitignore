@@ -33,3 +33,6 @@ packages/contracts/cache/
 .serena/
 apps/api/.local/
 apps/web/.vercel/
+
+# Claude Code worktrees
+.claude/worktrees/

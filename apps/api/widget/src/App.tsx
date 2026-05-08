@@ -3,6 +3,7 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
 import ChipSelector from "./components/ChipSelector";
+import SellerStrategyChat, { buildInitialSellerMemory, type SellerStrategyMemory } from "./components/SellerStrategyChat";
 import RadarChart from "./components/RadarChart";
 import {
   AGENT_PRESETS,
@@ -73,6 +74,19 @@ export default function App() {
   // Step 3 state
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
+  const [sellerStrategy, setSellerStrategy] = useState<SellerStrategyMemory>(buildInitialSellerMemory);
+
+  // Auto-detect (vision LLM): subtype + suggested tags
+  const [subtype, setSubtype] = useState<"phone" | null>(null);
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [autoDetectDone, setAutoDetectDone] = useState(false);
+
+  // Phone-specific required answers (shown on Step 2 when subtype === "phone")
+  const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
+  const [phoneCarrierLock, setPhoneCarrierLock] = useState<string | null>(null);
+  const [phoneStorage, setPhoneStorage] = useState<string | null>(null);
+  const [phoneScreenCondition, setPhoneScreenCondition] = useState<string | null>(null);
+  const [phoneFactoryResetConfirmed, setPhoneFactoryResetConfirmed] = useState(false);
 
   // Publish state
   const [publishResult, setPublishResult] = useState<{
@@ -81,17 +95,90 @@ export default function App() {
     claimToken: string;
   } | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [storyDownloading, setStoryDownloading] = useState(false);
 
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
+  const goToStep = (step: number) => setCurrentStep(step);
+  const scrollToTop = useCallback(() => {
+    try { widgetRef.current?.scrollTo(0, 0); } catch {}
+    try { window.scrollTo(0, 0); } catch {}
+    try { document.documentElement.scrollTop = 0; } catch {}
+    try { document.body.scrollTop = 0; } catch {}
+    const raf = requestAnimationFrame(() => {
+      try { widgetRef.current?.scrollTo(0, 0); } catch {}
+      try { window.scrollTo(0, 0); } catch {}
+      try { document.documentElement.scrollTop = 0; } catch {}
+      try { document.body.scrollTop = 0; } catch {}
+    });
+    return raf;
+  }, []);
+
+  useEffect(() => {
+    const raf = scrollToTop();
+    return () => cancelAnimationFrame(raf);
+  }, [currentStep, scrollToTop]);
+
+  useEffect(() => {
+    if (!publishResult) return;
+    const raf = scrollToTop();
+    return () => cancelAnimationFrame(raf);
+  }, [publishResult, scrollToTop]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const widgetRef = useRef<HTMLDivElement>(null);
 
   // Connect to ChatGPT host via MCP Apps bridge.
   // onAppCreated registers handlers BEFORE the connection handshake completes,
   // preventing race conditions where the host sends events before we listen.
+  // Some hosts (ChatGPT) deliver the initial tool result via `window.openai.toolOutput`
+  // BEFORE the widget mounts, so the `ontoolresult` notification never fires for it.
+  // Read it on mount as a fallback.
+  useEffect(() => {
+    try {
+      const w = window as unknown as { openai?: { toolOutput?: Record<string, unknown> } };
+      const initial = w.openai?.toolOutput;
+      if (!initial) return;
+      console.log("[haggle] Initial toolOutput from window.openai:", JSON.stringify(initial).slice(0, 200));
+      const draftIdValue = initial.draft_id as string | undefined;
+      if (draftIdValue) setDraftId(draftIdValue);
+      const draft = initial.draft as Record<string, unknown> | undefined;
+      if (draft) {
+        if (draft.title) setTitle(draft.title as string);
+        if (draft.description) setDescription(draft.description as string);
+        if (draft.tags) setTags(draft.tags as string[]);
+        if (draft.category) setCategory(draft.category as string);
+        if (draft.condition) setCondition(draft.condition as string);
+        if (draft.photoUrl) {
+          setPhotoPreview(draft.photoUrl as string);
+          setPhotoUploaded(true);
+        }
+        if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
+        if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
+        const sc = draft.strategyConfig as Record<string, unknown> | undefined;
+        if (sc?.subtype === "phone") {
+          setSubtype("phone");
+          setAutoDetectDone(true);
+        }
+        const pa = sc?.phoneAnswers as
+          | { batteryHealth?: string; carrierLock?: string; storage?: string; screenCondition?: string; factoryResetConfirmed?: boolean }
+          | undefined;
+        if (pa) {
+          if (pa.batteryHealth) setPhoneBatteryHealth(pa.batteryHealth);
+          if (pa.carrierLock) setPhoneCarrierLock(pa.carrierLock);
+          if (pa.storage) setPhoneStorage(pa.storage);
+          if (pa.screenCondition) setPhoneScreenCondition(pa.screenCondition);
+          if (pa.factoryResetConfirmed) setPhoneFactoryResetConfirmed(true);
+        }
+      }
+    } catch (err) {
+      console.error("[haggle] Failed to read window.openai.toolOutput:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { app, isConnected, error: connectionError } = useApp({
     appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
     capabilities: {
@@ -186,7 +273,16 @@ export default function App() {
     app
       .requestDisplayMode({ mode: "fullscreen" })
       .then((result) => {
-        // Always use the RESULT mode — host has final say
+        setIsFullscreen(result.mode === "fullscreen");
+      })
+      .catch(() => {});
+  }, [app, isConnected, isFullscreen]);
+
+  const exitFullscreen = useCallback(() => {
+    if (!app || !isConnected || !isFullscreen) return;
+    app
+      .requestDisplayMode({ mode: "inline" })
+      .then((result) => {
         setIsFullscreen(result.mode === "fullscreen");
       })
       .catch(() => {});
@@ -231,6 +327,82 @@ export default function App() {
     img.src = URL.createObjectURL(file);
   };
 
+  /* ─── Auto-generate tags (vision LLM) ───────────────────── */
+  const handleAutoGenerateTags = async () => {
+    if (!app || !draftId) return;
+    if (!title.trim()) {
+      setError("Title is required to auto-generate tags");
+      return;
+    }
+    if (!photoBase64 && !photoUploaded) {
+      setError("Photo is required to auto-generate tags");
+      return;
+    }
+
+    setError(null);
+    setAutoDetecting(true);
+    try {
+      // Upload photo if not yet pushed to Supabase
+      if (photoBase64 && photoMimeType && !photoUploaded) {
+        await app.callServerTool({
+          name: "haggle_upload_photo",
+          arguments: {
+            draft_id: draftId,
+            image_base64: photoBase64,
+            mime_type: photoMimeType,
+          },
+        });
+        setPhotoUploaded(true);
+      }
+
+      // Persist title + description so the vision call uses fresh data
+      await app.callServerTool({
+        name: "haggle_apply_patch",
+        arguments: {
+          draft_id: draftId,
+          patch: {
+            title: title.trim(),
+            ...(description.trim() ? { description: description.trim() } : {}),
+          },
+        },
+      });
+
+      const result = await app.callServerTool({
+        name: "haggle_auto_detect",
+        arguments: { draft_id: draftId },
+      });
+      console.log("[haggle] auto-detect raw result:", JSON.stringify(result).slice(0, 500));
+
+      // If the tool returned an error, surface it
+      const r = result as Record<string, unknown> | undefined;
+      if (r?.isError) {
+        const content = r.content as Array<{ type: string; text: string }> | undefined;
+        const text = content?.[0]?.text ?? "Unknown error";
+        throw new Error(text);
+      }
+
+      const data = (r?.structuredContent ?? {}) as {
+        subtype?: "phone" | null;
+        tags?: string[];
+      };
+      if (data.subtype !== undefined) setSubtype(data.subtype ?? null);
+      if (Array.isArray(data.tags)) {
+        setTags((prev) => {
+          const merged = [...prev];
+          for (const t of data.tags!) if (!merged.includes(t)) merged.push(t);
+          return merged;
+        });
+      }
+      setAutoDetectDone(true);
+    } catch (err) {
+      console.error("[haggle] auto-detect failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Auto-generate failed: ${msg.slice(0, 200)}`);
+    } finally {
+      setAutoDetecting(false);
+    }
+  };
+
   const handleNextStep1 = async () => {
     if (!title.trim()) {
       setError("Title is required");
@@ -255,6 +427,48 @@ export default function App() {
         setPhotoUploaded(true);
       }
 
+      // Auto-detect subtype if not already done (e.g. user skipped Auto-generate button)
+      let resolvedSubtype = subtype;
+      if (!autoDetectDone) {
+        await app.callServerTool({
+          name: "haggle_apply_patch",
+          arguments: {
+            draft_id: draftId,
+            patch: {
+              title: title.trim(),
+              ...(description.trim() ? { description: description.trim() } : {}),
+            },
+          },
+        });
+        try {
+          const result = await app.callServerTool({
+            name: "haggle_auto_detect",
+            arguments: { draft_id: draftId },
+          });
+          const r = result as Record<string, unknown> | undefined;
+          if (!r?.isError) {
+            const data = (r?.structuredContent ?? {}) as {
+              subtype?: "phone" | null;
+              tags?: string[];
+            };
+            if (data.subtype !== undefined) {
+              resolvedSubtype = data.subtype ?? null;
+              setSubtype(resolvedSubtype);
+            }
+            if (Array.isArray(data.tags)) {
+              setTags((prev) => {
+                const merged = [...prev];
+                for (const t of data.tags!) if (!merged.includes(t)) merged.push(t);
+                return merged;
+              });
+            }
+            setAutoDetectDone(true);
+          }
+        } catch {
+          // auto-detect 실패해도 Step 2로는 진행
+        }
+      }
+
       await app.callServerTool({
         name: "haggle_apply_patch",
         arguments: {
@@ -265,10 +479,11 @@ export default function App() {
             tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
+            ...(resolvedSubtype ? { strategyConfig: { subtype: resolvedSubtype } } : {}),
           },
         },
       });
-      setCurrentStep(2);
+      goToStep(2);
     } catch (err) {
       setError("Failed to save. Please try again.");
       console.error(err);
@@ -286,12 +501,45 @@ export default function App() {
       setError("Selling deadline is required");
       return;
     }
+    if (subtype === "phone") {
+      if (!phoneStorage) {
+        setError("Storage capacity is required");
+        return;
+      }
+      if (!phoneBatteryHealth) {
+        setError("Battery health is required");
+        return;
+      }
+      if (!phoneCarrierLock) {
+        setError("Carrier lock status is required");
+        return;
+      }
+      if (!phoneScreenCondition) {
+        setError("Screen condition is required");
+        return;
+      }
+      if (!phoneFactoryResetConfirmed) {
+        setError("Please confirm the pre-ship checklist");
+        return;
+      }
+    }
     if (!app || !draftId) return;
 
     setIsSubmitting(true);
     setError(null);
 
     try {
+      const baseStrategy = deadlineStrategyConfig(sellingDeadline) as Record<string, unknown>;
+      if (subtype) baseStrategy.subtype = subtype;
+      if (subtype === "phone") {
+        baseStrategy.phoneAnswers = {
+          storage: phoneStorage,
+          batteryHealth: phoneBatteryHealth,
+          carrierLock: phoneCarrierLock,
+          screenCondition: phoneScreenCondition,
+          factoryResetConfirmed: phoneFactoryResetConfirmed,
+        };
+      }
       await app.callServerTool({
         name: "haggle_apply_patch",
         arguments: {
@@ -300,11 +548,11 @@ export default function App() {
             targetPrice: targetPrice.trim(),
             floorPrice: floorPrice.trim() || undefined,
             sellingDeadline: localDateToDeadlineIso(sellingDeadline),
-            strategyConfig: deadlineStrategyConfig(sellingDeadline),
+            strategyConfig: baseStrategy,
           },
         },
       });
-      setCurrentStep(3);
+      goToStep(3);
     } catch (err) {
       setError("Failed to save. Please try again.");
       console.error(err);
@@ -314,7 +562,7 @@ export default function App() {
   };
 
   return (
-    <div className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
+    <div ref={widgetRef} className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
       {/* Debug: show connection error if any */}
       {connectionError && (
         <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
@@ -322,6 +570,35 @@ export default function App() {
         </div>
       )}
       {/* Header — hidden in fullscreen (host provides its own) */}
+      {isFullscreen && (
+        <div className="header" style={{ marginBottom: 8 }}>
+          <span className="header__logo">Haggle</span>
+          <button
+            type="button"
+            className="header__expand"
+            onClick={exitFullscreen}
+            aria-label="Exit fullscreen"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="4 14 10 14 10 20" />
+              <polyline points="20 10 14 10 14 4" />
+              <line x1="10" x2="3" y1="14" y2="21" />
+              <line x1="21" x2="14" y1="3" y2="10" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {!isFullscreen && (
         <div className="header">
           <span className="header__logo">Haggle</span>
@@ -357,7 +634,7 @@ export default function App() {
       )}
 
       {currentStep === 1 ? (
-        <div onPointerDownCapture={requestFullscreen}>
+        <div>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
@@ -471,9 +748,44 @@ export default function App() {
             />
           </div>
 
+          {/* Detected type (auto) */}
+          {(autoDetecting || autoDetectDone) && (
+            <div className="form-group">
+              <label className="form-label">Detected type</label>
+              {autoDetecting ? (
+                <p className="form-helper">Analyzing photo & title…</p>
+              ) : (
+                <ChipSelector
+                  options={[
+                    { value: "phone", label: "📱 Phone" },
+                    { value: "other", label: "Other" },
+                  ]}
+                  selected={subtype === "phone" ? "phone" : "other"}
+                  onChange={(v) => setSubtype(v === "phone" ? "phone" : null)}
+                />
+              )}
+            </div>
+          )}
+
           {/* Tags */}
           <div className="form-group">
-            <label className="form-label">Tags</label>
+            <div className="tags-row">
+              <label className="form-label tags-row__label">
+                Tags {autoDetectDone && <span className="form-label__hint">(auto-suggested)</span>}
+              </label>
+              <button
+                type="button"
+                className="tags-row__auto-btn"
+                onClick={handleAutoGenerateTags}
+                disabled={
+                  autoDetecting ||
+                  !title.trim() ||
+                  (!photoBase64 && !photoUploaded)
+                }
+              >
+                {autoDetecting ? "Analyzing…" : "✨ Auto-generate"}
+              </button>
+            </div>
             <TagInput tags={tags} onChange={setTags} />
           </div>
 
@@ -515,12 +827,12 @@ export default function App() {
           </button>
         </div>
       ) : currentStep === 2 ? (
-        <div onPointerDownCapture={requestFullscreen}>
+        <div>
           {/* Back button */}
           <button
             type="button"
             className="btn-back"
-            onClick={() => { setCurrentStep(1); setError(null); }}
+            onClick={() => { goToStep(1); setError(null); }}
           >
             ← Back
           </button>
@@ -569,15 +881,16 @@ export default function App() {
             <div className="price-input-wrapper">
               <span className="price-prefix">$</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 className="form-input price-input"
                 placeholder="0"
-                value={targetPrice}
+                value={targetPrice ? Number(targetPrice).toLocaleString("en-US") : ""}
                 onChange={(e) => {
-                  setTargetPrice(e.target.value);
+                  const digits = e.target.value.replace(/[^\d]/g, "");
+                  setTargetPrice(digits);
                   if (error) setError(null);
                 }}
-                min="0"
               />
             </div>
             <p className="form-helper">The starting price buyers will see</p>
@@ -592,12 +905,15 @@ export default function App() {
             <div className="price-input-wrapper">
               <span className="price-prefix">$</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 className="form-input price-input"
                 placeholder="0"
-                value={floorPrice}
-                onChange={(e) => setFloorPrice(e.target.value)}
-                min="0"
+                value={floorPrice ? Number(floorPrice).toLocaleString("en-US") : ""}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/[^\d]/g, "");
+                  setFloorPrice(digits);
+                }}
               />
             </div>
             <p className="form-helper">Your AI will never agree below this price</p>
@@ -622,6 +938,101 @@ export default function App() {
             <p className="form-helper">Your AI agent may be more flexible as the deadline approaches</p>
           </div>
 
+          {/* Phone-specific required questions */}
+          {subtype === "phone" && (
+            <div className="phone-details">
+              <div className="phone-details__heading">
+                <p className="phone-details__title">📱 Phone details</p>
+                <p className="phone-details__subtitle">
+                  Buyers expect this info upfront. All required to publish.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Storage <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "64gb", label: "64GB" },
+                    { value: "128gb", label: "128GB" },
+                    { value: "256gb", label: "256GB" },
+                    { value: "512gb", label: "512GB" },
+                    { value: "1tb", label: "1TB" },
+                    { value: "other", label: "Other" },
+                  ]}
+                  selected={phoneStorage}
+                  onChange={setPhoneStorage}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Battery health <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "ge_90", label: "90%+" },
+                    { value: "ge_85", label: "85–89%" },
+                    { value: "ge_80", label: "80–84%" },
+                    { value: "lt_80", label: "Under 80%" },
+                    { value: "unknown", label: "Not sure" },
+                  ]}
+                  selected={phoneBatteryHealth}
+                  onChange={setPhoneBatteryHealth}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Carrier lock <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "unlocked", label: "Unlocked" },
+                    { value: "locked", label: "Carrier-locked" },
+                    { value: "unknown", label: "Not sure" },
+                  ]}
+                  selected={phoneCarrierLock}
+                  onChange={setPhoneCarrierLock}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Screen condition <span className="required-star">*</span>
+                </label>
+                <ChipSelector
+                  options={[
+                    { value: "perfect", label: "Perfect" },
+                    { value: "minor_scratches", label: "Minor scratches" },
+                    { value: "visible_scratches", label: "Visible scratches" },
+                    { value: "cracked", label: "Cracked" },
+                  ]}
+                  selected={phoneScreenCondition}
+                  onChange={setPhoneScreenCondition}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Pre-ship checklist <span className="required-star">*</span>
+                </label>
+                <label className="phone-details__checkbox">
+                  <input
+                    type="checkbox"
+                    checked={phoneFactoryResetConfirmed}
+                    onChange={(e) => setPhoneFactoryResetConfirmed(e.target.checked)}
+                  />
+                  <span>
+                    Before shipping, I will <strong>turn off Find My</strong> and{" "}
+                    <strong>factory reset</strong> the phone so the buyer can activate it.
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
           {error && <p className="form-error">{error}</p>}
 
           {/* Next Button */}
@@ -629,7 +1040,13 @@ export default function App() {
             type="button"
             className="btn-primary"
             onClick={handleNextStep2}
-            disabled={!targetPrice.trim() || !sellingDeadline || isSubmitting}
+            disabled={
+              !targetPrice.trim() ||
+              !sellingDeadline ||
+              isSubmitting ||
+              (subtype === "phone" &&
+                (!phoneBatteryHealth || !phoneCarrierLock || !phoneFactoryResetConfirmed))
+            }
           >
             {isSubmitting ? "Saving..." : "Next: Set Up AI Agent"}
             {!isSubmitting && <span>→</span>}
@@ -648,7 +1065,7 @@ export default function App() {
           // ─── Listing Live Screen ───────────────────────────
           if (publishResult) {
             return (
-              <div className="listing-live" onPointerDownCapture={requestFullscreen}>
+              <div className="listing-live">
                 {/* Success Icon */}
                 <div className="listing-live__icon">
                   <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -723,6 +1140,81 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* Instagram Story share */}
+                <div className="story-share">
+                  <div className="story-share__header">
+                    <span className="story-share__title">Share to Instagram Story</span>
+                    <span className="story-share__subtitle">Buyers tap your link → AI handles the rest</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="story-share__download-btn"
+                    disabled={storyDownloading}
+                    onClick={async () => {
+                      setStoryDownloading(true);
+                      const ogUrl = publishResult.shareUrl.replace("/l/", "/og/listing/");
+                      const fileName = `haggle-${publishResult.publicId}.png`;
+
+                      // Helper: fetch as blob (used by share + download paths)
+                      const fetchBlob = async (): Promise<Blob | null> => {
+                        try {
+                          const res = await fetch(ogUrl);
+                          if (!res.ok) return null;
+                          return await res.blob();
+                        } catch {
+                          return null;
+                        }
+                      };
+
+                      // 1) Try Web Share API with file (best on mobile — opens native share sheet,
+                      //    user picks "Save Image" or "Instagram" directly).
+                      const nav = navigator as Navigator & {
+                        canShare?: (data: { files: File[] }) => boolean;
+                        share?: (data: { files: File[]; title?: string }) => Promise<void>;
+                      };
+                      if (nav.canShare && nav.share) {
+                        const blob = await fetchBlob();
+                        if (blob) {
+                          try {
+                            const file = new File([blob], fileName, { type: "image/png" });
+                            if (nav.canShare({ files: [file] })) {
+                              await nav.share({ files: [file], title: "Haggle listing" });
+                              setStoryDownloading(false);
+                              return;
+                            }
+                          } catch (e) {
+                            // User cancelled or share failed — fall through to download path.
+                            if ((e as Error).name === "AbortError") {
+                              setStoryDownloading(false);
+                              return;
+                            }
+                          }
+                        }
+                      }
+
+                      // 2) Open the image URL in a new tab. The server returns
+                      //    Content-Disposition: attachment, so browsers download it
+                      //    instead of displaying. This is the most reliable path inside
+                      //    sandboxed iframes (ChatGPT widget) where <a download> is blocked.
+                      window.open(ogUrl, "_blank", "noopener,noreferrer");
+                      setStoryDownloading(false);
+                    }}
+                  >
+                    {storyDownloading ? "Preparing card…" : "📥 Download story card"}
+                  </button>
+                  <ol className="story-share__steps">
+                    <li>Save the card to your phone.</li>
+                    <li>Open Instagram → Create Story → upload the card.</li>
+                    <li>
+                      Tap the sticker icon → <strong>Link</strong> →
+                      paste your Haggle link (already copied above).
+                    </li>
+                  </ol>
+                  <p className="story-share__note">
+                    The link sticker is what makes buyers tap through. Don&apos;t skip it.
+                  </p>
+                </div>
+
                 {/* Claim CTA */}
                 <div className="listing-live__claim-cta">
                   <div className="claim-cta__header">
@@ -795,12 +1287,12 @@ export default function App() {
           }
 
           return (
-            <div className="step3-wrapper" onPointerDownCapture={requestFullscreen}>
+            <div className="step3-wrapper">
               {/* Back + Step Indicator inside wrapper for proper max-width */}
               <button
                 type="button"
                 className="btn-back"
-                onClick={() => { setCurrentStep(currentStep - 1); setError(null); }}
+                onClick={() => { goToStep(currentStep - 1); setError(null); }}
               >
                 ← Back
               </button>
@@ -881,28 +1373,17 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Chat Placeholder */}
-                <div className="chat-placeholder">
-                  <div className="chat-placeholder__header">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect width="18" height="10" x="3" y="11" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
-                    </svg>
-                    <span className="chat-placeholder__name">
-                      {activePreset ? activePreset.name : "Selling Agent"}
-                    </span>
-                  </div>
-                  <div className="chat-placeholder__body">
-                    <p>
-                      Hi! I'm your selling agent. I'll handle all price negotiations on your behalf — so you don't have to. Let me know how you'd like me to approach this.
-                    </p>
-                    <p className="chat-placeholder__hint">
-                      You can customize my approach below, or just pick a style and I'll run with it.
-                    </p>
-                  </div>
-                  <div className="chat-placeholder__banner">
-                    Chat with your AI agent to fine-tune its negotiation strategy. Coming soon.
-                  </div>
-                </div>
+                {/* Seller Strategy Chat */}
+                <SellerStrategyChat
+                  agent={activePreset ?? null}
+                  listingTitle={title}
+                  listingPrice={targetPrice}
+                  onMemoryUpdate={setSellerStrategy}
+                  callTool={async (name, args) => {
+                    if (!app) throw new Error("App not connected");
+                    return app.callServerTool({ name, arguments: args });
+                  }}
+                />
               </div>
 
               {/* ── RIGHT COLUMN ────────────────────────────── */}
@@ -1004,6 +1485,7 @@ export default function App() {
                                 ...(sellingDeadline ? deadlineStrategyConfig(sellingDeadline) : {}),
                                 preset: selectedAgent,
                                 ...currentStats,
+                                sellerStrategy,
                               },
                             },
                           },
@@ -1030,7 +1512,7 @@ export default function App() {
                         if (validateParsed.ok === false && validateParsed.errors?.length) {
                           const firstError = validateParsed.errors[0];
                           setError(firstError.message);
-                          setCurrentStep(firstError.step);
+                          goToStep(firstError.step);
                           return;
                         }
 
