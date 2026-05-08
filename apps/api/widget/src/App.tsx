@@ -1215,6 +1215,29 @@ export default function App() {
                   </p>
                 </div>
 
+                {/* X (Twitter) share */}
+                <div className="story-share" style={{ marginTop: 12 }}>
+                  <div className="story-share__header">
+                    <span className="story-share__title">Share on X</span>
+                    <span className="story-share__subtitle">Post your listing link directly to X</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="story-share__download-btn"
+                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                    onClick={() => {
+                      const text = `🤝 Negotiating smarter with AI — check out my listing on Haggle`;
+                      const url = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(publishResult.shareUrl)}`;
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    Post to X
+                  </button>
+                </div>
+
                 {/* Claim CTA */}
                 <div className="listing-live__claim-cta">
                   <div className="claim-cta__header">
