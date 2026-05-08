@@ -525,6 +525,56 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     },
   );
 
+  // ─── haggle_seller_advisor_turn ─────────────────────────
+  // Widget-only tool: seller strategy advisor chat turn.
+  // Takes the seller's message + current memory, returns updated memory + AI reply.
+  registerAppTool(
+    server,
+    "haggle_seller_advisor_turn",
+    {
+      title: "Seller Strategy Advisor Turn",
+      description:
+        "Process one turn of the seller's strategy chat. Extracts negotiation preferences (deal-breakers, emphasis points, tone, urgency) from the seller's message and returns an updated memory + conversational reply. Widget-only.",
+      inputSchema: {
+        message: z.string().min(1).max(2000),
+        previous_memory: z.object({
+          dealBreakers: z.array(z.string()),
+          mustEmphasize: z.array(z.string()),
+          tone: z.enum(["firm", "friendly", "flexible"]),
+          urgency: z.enum(["high", "medium", "low"]),
+          notes: z.array(z.string()),
+        }),
+        listing_title: z.string(),
+        listing_price: z.string(),
+        agent_preset: z.string(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      },
+      _meta: {
+        ui: { resourceUri: LISTING_RESOURCE_URI, visibility: ["app"] },
+        "openai/outputTemplate": LISTING_RESOURCE_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async ({ message, previous_memory, listing_title, listing_price, agent_preset }) => {
+      const { runSellerAdvisorTurn } = await import("../../services/seller-advisor.service.js");
+      const result = await runSellerAdvisorTurn({
+        message,
+        previousMemory: previous_memory,
+        listingTitle: listing_title,
+        listingPrice: listing_price,
+        agentPreset: agent_preset,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    },
+  );
+
   // ─── haggle_create_negotiation_session ───────────────────
   // 구매자 AI 에이전트가 리스팅을 보고 협상 세션을 시작
   server.tool(

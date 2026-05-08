@@ -3,6 +3,7 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
 import ChipSelector from "./components/ChipSelector";
+import SellerStrategyChat, { buildInitialSellerMemory, type SellerStrategyMemory } from "./components/SellerStrategyChat";
 import RadarChart from "./components/RadarChart";
 import {
   AGENT_PRESETS,
@@ -73,6 +74,7 @@ export default function App() {
   // Step 3 state
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
+  const [sellerStrategy, setSellerStrategy] = useState<SellerStrategyMemory>(buildInitialSellerMemory);
 
   // Auto-detect (vision LLM): subtype + suggested tags
   const [subtype, setSubtype] = useState<"phone" | null>(null);
@@ -98,21 +100,30 @@ export default function App() {
   // UI state
   const [currentStep, setCurrentStep] = useState(1);
   const goToStep = (step: number) => setCurrentStep(step);
-  useEffect(() => {
-    // 가능한 모든 스크롤 컨테이너를 커버
+  const scrollToTop = useCallback(() => {
     try { widgetRef.current?.scrollTo(0, 0); } catch {}
     try { window.scrollTo(0, 0); } catch {}
     try { document.documentElement.scrollTop = 0; } catch {}
     try { document.body.scrollTop = 0; } catch {}
-    // 혹시 렌더 직후 레이아웃이 아직 안 잡혔을 경우 대비해 한 프레임 뒤에도 실행
     const raf = requestAnimationFrame(() => {
       try { widgetRef.current?.scrollTo(0, 0); } catch {}
       try { window.scrollTo(0, 0); } catch {}
       try { document.documentElement.scrollTop = 0; } catch {}
       try { document.body.scrollTop = 0; } catch {}
     });
+    return raf;
+  }, []);
+
+  useEffect(() => {
+    const raf = scrollToTop();
     return () => cancelAnimationFrame(raf);
-  }, [currentStep]);
+  }, [currentStep, scrollToTop]);
+
+  useEffect(() => {
+    if (!publishResult) return;
+    const raf = scrollToTop();
+    return () => cancelAnimationFrame(raf);
+  }, [publishResult, scrollToTop]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1362,28 +1373,17 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Chat Placeholder */}
-                <div className="chat-placeholder">
-                  <div className="chat-placeholder__header">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--accent-cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect width="18" height="10" x="3" y="11" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
-                    </svg>
-                    <span className="chat-placeholder__name">
-                      {activePreset ? activePreset.name : "Selling Agent"}
-                    </span>
-                  </div>
-                  <div className="chat-placeholder__body">
-                    <p>
-                      Hi! I'm your selling agent. I'll handle all price negotiations on your behalf — so you don't have to. Let me know how you'd like me to approach this.
-                    </p>
-                    <p className="chat-placeholder__hint">
-                      You can customize my approach below, or just pick a style and I'll run with it.
-                    </p>
-                  </div>
-                  <div className="chat-placeholder__banner">
-                    Chat with your AI agent to fine-tune its negotiation strategy. Coming soon.
-                  </div>
-                </div>
+                {/* Seller Strategy Chat */}
+                <SellerStrategyChat
+                  agent={activePreset ?? null}
+                  listingTitle={title}
+                  listingPrice={targetPrice}
+                  onMemoryUpdate={setSellerStrategy}
+                  callTool={async (name, args) => {
+                    if (!app) throw new Error("App not connected");
+                    return app.callServerTool({ name, arguments: args });
+                  }}
+                />
               </div>
 
               {/* ── RIGHT COLUMN ────────────────────────────── */}
@@ -1485,6 +1485,7 @@ export default function App() {
                                 ...(sellingDeadline ? deadlineStrategyConfig(sellingDeadline) : {}),
                                 preset: selectedAgent,
                                 ...currentStats,
+                                sellerStrategy,
                               },
                             },
                           },
