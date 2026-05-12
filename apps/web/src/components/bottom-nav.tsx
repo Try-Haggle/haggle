@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 type Mode = "selling" | "buying";
 
@@ -94,16 +95,22 @@ const BUY_TABS = [
 export function BottomNav() {
   const pathname = usePathname();
 
-  // Derive mode from path, or localStorage for /l/ pages
-  const deriveMode = (): Mode => {
-    if (pathname.startsWith("/buy")) return "buying";
-    if (pathname.startsWith("/sell")) return "selling";
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("haggle_mode") as Mode) ?? "buying";
-    }
-    return "buying";
-  };
-  const mode: Mode = deriveMode();
+  // Deterministic mode for /buy/* and /sell/*; null elsewhere so we can
+  // upgrade to localStorage value after mount (avoids SSR hydration mismatch).
+  const derivedMode: Mode | null = pathname.startsWith("/buy")
+    ? "buying"
+    : pathname.startsWith("/sell")
+      ? "selling"
+      : null;
+
+  const [storedMode, setStoredMode] = useState<Mode>("buying");
+  useEffect(() => {
+    if (derivedMode !== null) return;
+    const v = localStorage.getItem("haggle_mode");
+    if (v === "selling" || v === "buying") setStoredMode(v);
+  }, [derivedMode]);
+
+  const mode: Mode = derivedMode ?? storedMode;
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
   return (

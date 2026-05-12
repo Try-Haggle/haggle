@@ -44,23 +44,30 @@ export function Nav({
   // originating tab highlighted and preserve buyer/seller mode.
   const from = pathname.startsWith("/l/") ? searchParams.get("from") : null;
 
-  // Derive mode from URL path, origin param, override prop, or localStorage.
-  const deriveMode = (): Mode => {
+  // Derive a deterministic mode from URL/origin/override that is identical
+  // on server and client. Returns null when only localStorage can answer
+  // (mode-neutral pages like /settings, /profile, /orders).
+  const derivedMode: Mode | null = (() => {
     if (modeOverride) return modeOverride;
     if (pathname.startsWith("/buy")) return "buying";
     if (pathname.startsWith("/sell")) return "selling";
-    // Browse is a buyer-side discovery surface
     if (pathname.startsWith("/browse")) return "buying";
-    // /l/ pages: use from param to infer the originating mode
     if (from === "browse" || from === "buy-dashboard") return "buying";
     if (from === "sell-dashboard") return "selling";
-    // /l/ pages w/o origin: preserve previous mode from localStorage
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("haggle_mode") as Mode) ?? "buying";
-    }
-    return "buying";
-  };
-  const mode: Mode = deriveMode();
+    return null;
+  })();
+
+  // For mode-neutral pages we hydrate with the SSR default ("buying") and
+  // upgrade to the localStorage value after mount — avoids hydration mismatch
+  // when localStorage holds "selling".
+  const [storedMode, setStoredMode] = useState<Mode>("buying");
+  useEffect(() => {
+    if (derivedMode !== null) return;
+    const v = localStorage.getItem("haggle_mode");
+    if (v === "selling" || v === "buying") setStoredMode(v);
+  }, [derivedMode]);
+
+  const mode: Mode = derivedMode ?? storedMode;
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
   // For /l/ pages, resolve which tab href should be highlighted based on origin.
