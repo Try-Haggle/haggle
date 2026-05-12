@@ -985,6 +985,43 @@ function requireWebhookSignature(
   }
 }
 
+function expectedWebhookEnvironment(provider: "stripe" | "x402"): "live" | "test" {
+  const configured = provider === "stripe"
+    ? process.env.STRIPE_WEBHOOK_ENV
+    : process.env.HAGGLE_X402_WEBHOOK_ENV;
+  if (configured === "live" || configured === "test") {
+    return configured;
+  }
+  return process.env.NODE_ENV === "production" ? "live" : "test";
+}
+
+function eventEnvironmentFromPayload(payload: Record<string, unknown>): "live" | "test" | null {
+  if (typeof payload.livemode === "boolean") {
+    return payload.livemode ? "live" : "test";
+  }
+  const candidate = payload.environment ?? payload.env ?? payload.mode;
+  if (typeof candidate !== "string") {
+    return null;
+  }
+  const normalized = candidate.toLowerCase();
+  if (["live", "prod", "production", "real"].includes(normalized)) {
+    return "live";
+  }
+  if (["test", "sandbox", "mock", "dev", "development"].includes(normalized)) {
+    return "test";
+  }
+  return null;
+}
+
+function webhookEnvironmentMismatch(
+  provider: "stripe" | "x402",
+  payload: Record<string, unknown>,
+): { expected: "live" | "test"; received: "live" | "test" } | null {
+  const received = eventEnvironmentFromPayload(payload);
+  const expected = expectedWebhookEnvironment(provider);
+  return received && received !== expected ? { expected, received } : null;
+}
+
 async function resolveSettlementApproval(
   db: Database,
   body: z.infer<typeof preparePaymentSchema>,
@@ -2268,6 +2305,14 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     }
 
     const body = request.body as { event_type?: string; payment_intent_id?: string; event_id?: string; id?: string; [key: string]: unknown };
+    const envMismatch = webhookEnvironmentMismatch("x402", body);
+    if (envMismatch) {
+      return reply.code(400).send({
+        error: "WEBHOOK_ENVIRONMENT_MISMATCH",
+        expected: envMismatch.expected,
+        received: envMismatch.received,
+      });
+    }
     const eventType = body.event_type;
     const paymentIntentId = body.payment_intent_id;
 
@@ -2295,6 +2340,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     try {
       switch (eventType) {
         case "settlement.confirmed": {
+          if (!["AUTHORIZED", "SETTLEMENT_PENDING", "SETTLED"].includes(intent.status)) {
+            return reply.code(409).send({
+              accepted: false,
+              action: "reconciliation_required",
+              reason: "settlement_confirmed_before_authorization",
+              payment_intent_id: intent.id,
+              local_status: intent.status,
+            });
+          }
           let settledIntent = intent;
           if (settledIntent.status === "SETTLED") {
             await requireSettlementRecordForPayment(db, settledIntent);
@@ -2406,6 +2460,16 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         return reply.code(401).send({
           error: "INVALID_STRIPE_WEBHOOK",
           message: err instanceof Error ? err.message : "Webhook signature verification failed",
+        });
+      }
+      const envMismatch = webhookEnvironmentMismatch("stripe", {
+        livemode: typeof event.livemode === "boolean" ? event.livemode : undefined,
+      });
+      if (envMismatch) {
+        return reply.code(400).send({
+          error: "WEBHOOK_ENVIRONMENT_MISMATCH",
+          expected: envMismatch.expected,
+          received: envMismatch.received,
         });
       }
 

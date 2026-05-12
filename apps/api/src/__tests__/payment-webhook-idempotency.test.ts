@@ -62,6 +62,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
   createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn(),
+  completePaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(undefined),
   createPaymentSettlementRecord: vi.fn(),
   createRefundRecord: vi.fn(),
   createStoredPaymentIntent: vi.fn(),
@@ -134,7 +135,7 @@ function buildDb() {
   };
 }
 
-function paymentIntent(status: "AUTHORIZED" | "SETTLEMENT_PENDING" | "SETTLED" = "SETTLEMENT_PENDING") {
+function paymentIntent(status: "CREATED" | "AUTHORIZED" | "SETTLEMENT_PENDING" | "SETTLED" = "SETTLEMENT_PENDING") {
   return {
     id: "pi_123",
     order_id: "order_123",
@@ -171,7 +172,32 @@ describe("payment webhook idempotency", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await app.close();
+  });
+
+  it("rejects x402 webhooks from the wrong environment before processing", async () => {
+    vi.stubEnv("HAGGLE_X402_WEBHOOK_ENV", "live");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_wrong_env",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+        environment: "test",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "WEBHOOK_ENVIRONMENT_MISMATCH",
+      expected: "live",
+      received: "test",
+    });
+    expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
   });
 
   it("does not mark an x402 webhook processed when settlement persistence fails", async () => {
@@ -250,6 +276,31 @@ describe("payment webhook idempotency", () => {
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalled();
     expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
     expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires reconciliation for out-of-order settlement-confirmed webhooks before authorization", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("CREATED"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_out_of_order_settlement",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "settlement_confirmed_before_authorization",
+      local_status: "CREATED",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentSettlementRecord).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
   });
 
   it("does not mark an already-settled webhook processed when the settlement record is missing", async () => {

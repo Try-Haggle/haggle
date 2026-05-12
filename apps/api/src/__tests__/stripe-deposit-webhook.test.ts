@@ -57,6 +57,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
   createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn(),
+  completePaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(undefined),
   createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn(),
   createRefundRecord: vi.fn(),
