@@ -77,4 +77,38 @@ describe("payment production readiness", () => {
 
     expect(verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, secret)).toBe(true);
   });
+
+  it("accepts Stripe webhook signatures when one rotated v1 signature matches", () => {
+    const payload = JSON.stringify({ id: "evt_rotated", type: "crypto.onramp_session.fulfillment_complete" });
+    const secret = "whsec_test_secret";
+    const timestamp = 1_778_544_000;
+    const validSignature = createHmac("sha256", secret)
+      .update(`${timestamp}.${payload}`)
+      .digest("hex");
+    const invalidSignature = "0".repeat(64);
+
+    expect(verifyStripeWebhook(
+      payload,
+      `t=${timestamp}, v1=${invalidSignature}, v1=${validSignature}`,
+      secret,
+      { nowMs: timestamp * 1000 },
+    )).toBe(true);
+  });
+
+  it("rejects malformed, future, and untrusted Stripe webhook signatures", () => {
+    const payload = JSON.stringify({ id: "evt_bad", type: "crypto.onramp_session.fulfillment_complete" });
+    const secret = "whsec_test_secret";
+    const timestamp = 1_778_544_000;
+    const signature = createHmac("sha256", secret)
+      .update(`${timestamp}.${payload}`)
+      .digest("hex");
+
+    expect(verifyStripeWebhook(payload, `v1=${signature}`, secret, { nowMs: timestamp * 1000 })).toBe(false);
+    expect(verifyStripeWebhook(payload, `t=not-a-time,v1=${signature}`, secret, { nowMs: timestamp * 1000 })).toBe(false);
+    expect(verifyStripeWebhook(payload, `t=${timestamp + 301},v1=${signature}`, secret, {
+      nowMs: timestamp * 1000,
+      timestampToleranceSeconds: 300,
+    })).toBe(false);
+    expect(verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, "", { nowMs: timestamp * 1000 })).toBe(false);
+  });
 });

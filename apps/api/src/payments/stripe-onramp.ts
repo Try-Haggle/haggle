@@ -168,20 +168,32 @@ export function verifyStripeWebhook(
   payload: string | Buffer,
   signature: string,
   secret: string,
-  timestampToleranceSeconds = 300,
+  options: number | {
+    timestampToleranceSeconds?: number;
+    nowMs?: number;
+  } = 300,
 ): boolean {
-  // Parse Stripe-Signature header: t=timestamp,v1=signature
-  const parts = signature.split(",");
-  const timestampPart = parts.find((p: string) => p.startsWith("t="));
-  const sigPart = parts.find((p: string) => p.startsWith("v1="));
+  if (!secret || !signature) return false;
 
-  if (!timestampPart || !sigPart) return false;
+  const timestampToleranceSeconds = typeof options === "number"
+    ? options
+    : options.timestampToleranceSeconds ?? 300;
+  const nowMs = typeof options === "number" ? Date.now() : options.nowMs ?? Date.now();
+
+  // Parse Stripe-Signature header: t=timestamp,v1=signature
+  const parts = signature.split(",").map((part: string) => part.trim());
+  const timestampPart = parts.find((p: string) => p.startsWith("t="));
+  const expectedSigs = parts
+    .filter((p: string) => p.startsWith("v1="))
+    .map((p: string) => p.slice(3))
+    .filter((candidate: string) => /^[0-9a-f]{64}$/i.test(candidate));
+
+  if (!timestampPart || expectedSigs.length === 0) return false;
 
   const timestamp = timestampPart.slice(2);
-  const expectedSig = sigPart.slice(3);
   const timestampSeconds = Number(timestamp);
-  if (!Number.isFinite(timestampSeconds)) return false;
-  const ageSeconds = Math.abs(Date.now() / 1000 - timestampSeconds);
+  if (!Number.isSafeInteger(timestampSeconds) || timestampSeconds <= 0) return false;
+  const ageSeconds = Math.abs(nowMs / 1000 - timestampSeconds);
   if (ageSeconds > timestampToleranceSeconds) return false;
 
   // Compute expected signature
@@ -192,7 +204,8 @@ export function verifyStripeWebhook(
 
   // Timing-safe comparison
   const a = Buffer.from(computedSig);
-  const b = Buffer.from(expectedSig);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  return expectedSigs.some((expectedSig: string) => {
+    const b = Buffer.from(expectedSig);
+    return a.length === b.length && timingSafeEqual(a, b);
+  });
 }
