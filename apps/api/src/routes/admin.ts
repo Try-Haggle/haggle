@@ -42,6 +42,10 @@ import {
   getPaymentIntentRowById,
   setPaymentIntentProviderContext,
 } from "../services/payment-record.service.js";
+import {
+  listDeadLetterDisputeModuleWebhookOutboxRecords,
+  resetDisputeModuleWebhookOutboxRecordForReplay,
+} from "../services/dispute-module-webhook.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { DisputeService } from "@haggle/dispute-core";
 
@@ -57,6 +61,11 @@ const disputeListSchema = paginationSchema.extend({
 });
 
 const inboxTypeSchema = z.enum(["tag", "dispute", "payment"]);
+
+const webhookReplayBodySchema = z.object({
+  eventId: z.string().min(1).max(128),
+  reason: z.string().min(1).max(500),
+});
 
 const promotionRuleBodySchema = z.object({
   candidateMinUse: z.number().int().min(0),
@@ -193,6 +202,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database) {
     async (_request, reply) => {
       const lastRun = await getLastPromotionRun(db);
       return reply.send({ lastRun });
+    },
+  );
+
+  app.get<{ Querystring: { limit?: string; offset?: string } }>(
+    "/admin/dispute-module-webhooks/dead-letter",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const parsed = paginationSchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_QUERY", issues: parsed.error.issues });
+      }
+      const items = await listDeadLetterDisputeModuleWebhookOutboxRecords(db, {
+        limit: parsed.data.limit,
+        offset: parsed.data.offset,
+      });
+      return reply.send({ items });
     },
   );
 
@@ -605,6 +632,46 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database) {
         },
       });
       return reply.send({ paymentIntentId: parsed.data.paymentIntentId });
+    },
+  );
+
+  app.post(
+    "/admin/actions/dispute-module-webhook-replay",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const parsed = webhookReplayBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_BODY", issues: parsed.error.issues });
+      }
+
+      const actorId = getActorId(request);
+      const record = await resetDisputeModuleWebhookOutboxRecordForReplay(
+        db,
+        parsed.data.eventId,
+      );
+      if (!record) {
+        return reply.code(404).send({
+          error: "WEBHOOK_OUTBOX_RECORD_NOT_REPLAYABLE",
+          message: "No FAILED or DEAD_LETTER dispute module webhook outbox record matched this event id",
+        });
+      }
+
+      await writeAuditLog(db, {
+        actorId,
+        actionType: "dispute_module_webhook.replay",
+        targetType: "dispute_module_webhook_outbox",
+        targetId: parsed.data.eventId,
+        payload: {
+          event_id: parsed.data.eventId,
+          platform_id: record.platformId,
+          dispute_id: record.disputeId,
+          reason: parsed.data.reason,
+        },
+      });
+
+      return reply.send({ record });
     },
   );
 }

@@ -15,12 +15,11 @@ import {
 } from "@haggle/db";
 import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import {
-  aggregateVotes,
+  evaluatePanelReview,
   getReviewerCount,
   computeDisputeCost,
-  REVIEWER_SHARE,
 } from "@haggle/dispute-core";
-import type { ReviewerVote, DisputeTier, DisputeResolution } from "@haggle/dispute-core";
+import type { DisputeTier, DisputeResolution } from "@haggle/dispute-core";
 import { getDisputeById } from "../services/dispute-record.service.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
@@ -655,85 +654,39 @@ async function tallyDisputeVotes(
     .from(reviewerAssignments)
     .where(eq(reviewerAssignments.disputeId, disputeId));
 
-  // Filter to voted ones
-  const votedAssignments = assignments.filter((a) => a.voteValue !== null);
-  if (votedAssignments.length === 0) {
-    throw new Error("NO_VOTES_CAST");
-  }
-
-  // Build ReviewerVote array
-  const votes: ReviewerVote[] = votedAssignments.map((a) => ({
-    reviewer_id: a.reviewerId,
-    vote: a.voteValue!,
-    weight: a.voteWeight ? parseFloat(a.voteWeight) : 0.63,
-  }));
-
-  // Aggregate votes using dispute-core
-  const aggregation = aggregateVotes(votes, disputeId);
-
-  // Determine outcome based on weighted median
   const order = await getCommerceOrderByOrderId(db, dispute.order_id);
   const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor)) : 0;
   const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 2;
-  const cost = computeDisputeCost(amountCents, tier as DisputeTier);
 
-  let outcome: "buyer_favor" | "seller_favor" | "partial_refund";
-  let refundAmountMinor: number | undefined;
+  const panel = evaluatePanelReview({
+    dispute_id: disputeId,
+    tier,
+    amount_cents: amountCents,
+    assignments: assignments.map((assignment) => ({
+      reviewer_id: assignment.reviewerId,
+      vote: assignment.voteValue,
+      weight: assignment.voteWeight ? parseFloat(assignment.voteWeight) : 0.63,
+    })),
+  });
 
-  if (aggregation.weighted_median >= 50) {
-    // Buyer favor or partial
-    const buyerPct = aggregation.weighted_median / 100;
-    if (buyerPct >= 0.90) {
-      outcome = "buyer_favor";
-      refundAmountMinor = amountCents;
-    } else {
-      outcome = "partial_refund";
-      refundAmountMinor = Math.round(amountCents * buyerPct);
-    }
-  } else {
-    outcome = "seller_favor";
-    refundAmountMinor = 0;
-  }
-
-  // Compute majority: voters on the same side as the median result
-  const medianSide = aggregation.weighted_median >= 50 ? "buyer" : "seller";
-  const majorityIds = new Set(
-    votes
-      .filter((v) => (medianSide === "buyer" ? v.vote >= 50 : v.vote < 50))
-      .map((v) => v.reviewer_id),
-  );
-
-  // Reward: 70% of dispute cost split among majority voters
-  const totalRewardCents = Math.round(cost.cost_cents * REVIEWER_SHARE);
-  const majorityCount = majorityIds.size;
-  const perReviewerReward = majorityCount > 0 ? Math.floor(totalRewardCents / majorityCount) : 0;
-
-  const rewards: Array<{ reviewer_id: string; reward_cents: number; in_majority: boolean }> = [];
-
-  for (const a of votedAssignments) {
-    const inMajority = majorityIds.has(a.reviewerId);
-    const reward = inMajority ? perReviewerReward : 0;
-    rewards.push({
-      reviewer_id: a.reviewerId,
-      reward_cents: reward,
-      in_majority: inMajority,
-    });
+  if (!panel.ready) {
+    throw new Error(`PANEL_NOT_READY:${panel.issues.join(",")}`);
   }
 
   const unvotedAssignments = assignments.filter((a) => a.voteValue === null);
 
   // Resolve dispute using the same money-movement finalizer as admin resolution.
   const resolveStatus =
-    outcome === "buyer_favor"
+    panel.outcome === "buyer_favor"
       ? "RESOLVED_BUYER_FAVOR"
-      : outcome === "seller_favor"
+      : panel.outcome === "seller_favor"
         ? "RESOLVED_SELLER_FAVOR"
         : "PARTIAL_REFUND";
 
   const resolution: DisputeResolution = {
-    outcome,
-    summary: `DS Panel vote: weighted median ${aggregation.weighted_median}, strength ${aggregation.strength}, method ${aggregation.method}`,
-    refund_amount_minor: refundAmountMinor,
+    outcome: panel.outcome,
+    summary: `DS Panel vote: weighted median ${panel.aggregation.weighted_median}, strength ${panel.aggregation.strength}, method ${panel.aggregation.method}`,
+    refund_amount_minor: panel.refund_amount_minor,
     resolved_at: new Date().toISOString(),
   };
 
@@ -744,20 +697,22 @@ async function tallyDisputeVotes(
     metadata: {
       ...(dispute.metadata as Record<string, unknown> ?? {}),
       tally_result: {
-        weighted_median: aggregation.weighted_median,
-        strength: aggregation.strength,
-        method: aggregation.method,
-        outcome,
-        voter_count: votedAssignments.length,
-        majority_count: majorityCount,
-        total_reward_cents: totalRewardCents,
+        weighted_median: panel.aggregation.weighted_median,
+        strength: panel.aggregation.strength,
+        method: panel.aggregation.method,
+        outcome: panel.outcome,
+        expected_reviewer_count: panel.expected_reviewer_count,
+        assigned_count: panel.assigned_count,
+        voter_count: panel.voted_count,
+        majority_count: panel.majority_count,
+        total_reward_cents: panel.total_reward_cents,
       },
     },
   });
 
   // Reviewer accounting is applied only after resolution side effects succeed.
-  for (const a of votedAssignments) {
-    const reward = rewards.find((r) => r.reviewer_id === a.reviewerId)?.reward_cents ?? 0;
+  for (const a of assignments) {
+    const reward = panel.rewards.find((r) => r.reviewer_id === a.reviewerId)?.reward_cents ?? 0;
     if (reward > 0) {
       await db
         .update(reviewerProfiles)
@@ -792,9 +747,9 @@ async function tallyDisputeVotes(
   }
 
   return {
-    outcome,
-    weighted_median: aggregation.weighted_median,
-    strength: aggregation.strength,
-    rewards,
+    outcome: panel.outcome,
+    weighted_median: panel.aggregation.weighted_median,
+    strength: panel.aggregation.strength,
+    rewards: panel.rewards,
   };
 }
