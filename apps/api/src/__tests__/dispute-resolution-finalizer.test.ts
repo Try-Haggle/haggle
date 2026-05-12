@@ -241,7 +241,11 @@ describe("finalizeDisputeResolution", () => {
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "ord_1", "REFUNDED");
     expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       status: "PARTIAL_REFUND",
-      metadata: expect.objectContaining({ pending_anchor: true }),
+      metadata: expect.objectContaining({
+        pending_anchor: true,
+        finalized_at: expect.any(String),
+        finalization_attempts: 1,
+      }),
     }));
     expect(mockCreateDisputeResolutionRecord).toHaveBeenCalledWith(expect.anything(), "disp_1", expect.objectContaining({
       outcome: "partial_refund",
@@ -347,5 +351,27 @@ describe("finalizeDisputeResolution", () => {
     expect(mockUpdateDisputeRecord).not.toHaveBeenCalled();
     expect(mockCreateDisputeResolutionRecord).not.toHaveBeenCalled();
     expect(mockCreateDisputeModuleWebhookOutboxRecord).not.toHaveBeenCalled();
+  });
+
+  it("rejects already finalized disputes before executing side effects", async () => {
+    const db = createDbMock();
+
+    await expect(finalizeDisputeResolution(
+      db as never,
+      dispute({
+        status: "RESOLVED_BUYER_FAVOR",
+        metadata: {
+          finalized_at: "2026-05-12T00:00:00.000Z",
+          finalization_attempts: 1,
+        },
+      }),
+      resolution({ outcome: "buyer_favor", refund_amount_minor: 10_000 }),
+    )).rejects.toThrow("DISPUTE_ALREADY_FINALIZED:disp_1");
+
+    expect(mockGetPaymentIntentByOrderId).not.toHaveBeenCalled();
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+    expect(mockUpdateDisputeRecord).not.toHaveBeenCalled();
+    expect(mockCreateDisputeResolutionRecord).not.toHaveBeenCalled();
   });
 });

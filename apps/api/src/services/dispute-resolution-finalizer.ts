@@ -60,9 +60,22 @@ function statusForOutcome(outcome: DisputeResolution["outcome"]): DisputeCase["s
   return "PARTIAL_REFUND" as DisputeCase["status"];
 }
 
+function isTerminalDisputeStatus(status: DisputeCase["status"]): boolean {
+  return status === "RESOLVED_BUYER_FAVOR"
+    || status === "RESOLVED_SELLER_FAVOR"
+    || status === "PARTIAL_REFUND"
+    || status === "CLOSED";
+}
+
 function isModuleDispute(dispute: DisputeCase): boolean {
   const metadata = dispute.metadata as Record<string, unknown> | null;
   return metadata?.source === "dispute_module_api";
+}
+
+function finalizationAttempts(dispute: DisputeCase): number {
+  const metadata = dispute.metadata as Record<string, unknown> | null;
+  const attempts = metadata?.finalization_attempts;
+  return typeof attempts === "number" && Number.isFinite(attempts) ? attempts : 0;
 }
 
 function buildModuleSettlementInstruction(dispute: DisputeCase, resolution: DisputeResolution): Record<string, unknown> {
@@ -340,6 +353,10 @@ export async function finalizeDisputeResolution(
   resolution: DisputeResolution,
   resolvedDispute?: DisputeCase,
 ): Promise<FinalizeDisputeResolutionResult> {
+  if (isTerminalDisputeStatus(dispute.status)) {
+    throw new Error(`DISPUTE_ALREADY_FINALIZED:${dispute.id}`);
+  }
+
   let autoRefund: AutoRefundResult = null;
   let depositRefund: { tx_hash?: string; refund_id?: string } | null = null;
   const moduleDispute = isModuleDispute(dispute);
@@ -350,11 +367,19 @@ export async function finalizeDisputeResolution(
     depositRefund = await finalizeSellerFavor(db, dispute);
   }
 
-  const disputeToPersist = withPendingAnchorMetadata({
+  const anchoredDispute = withPendingAnchorMetadata({
     ...(resolvedDispute ?? dispute),
     status: resolvedDispute?.status ?? statusForOutcome(resolution.outcome),
     resolution,
   }, resolution);
+  const disputeToPersist = {
+    ...anchoredDispute,
+    metadata: {
+      ...(anchoredDispute.metadata as Record<string, unknown> ?? {}),
+      finalized_at: resolution.resolved_at ?? new Date().toISOString(),
+      finalization_attempts: finalizationAttempts(dispute) + 1,
+    },
+  };
 
   const moduleWebhookEnvelope = moduleDispute
     ? buildModuleSettlementWebhookEnvelope(disputeToPersist, resolution)
