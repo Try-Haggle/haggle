@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Haggle Branch Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-soft: #f1f5f9;
+      --text: #172033;
+      --muted: #657184;
+      --line: #d8dee8;
+      --green: #147a45;
+      --green-bg: #e6f4ec;
+      --blue: #246bba;
+      --blue-bg: #e8f1fb;
+      --amber: #986600;
+      --amber-bg: #fff5d8;
+      --red: #b43b3b;
+      --red-bg: #fdeaea;
+      --shadow: 0 18px 45px rgba(26, 35, 51, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      line-height: 1.08;
+      font-weight: 760;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .branch-pill {
+      min-width: 260px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .branch-pill span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .branch-pill strong {
+      font-size: 15px;
+      overflow-wrap: anywhere;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .metric {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .metric .label {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .metric .value {
+      font-size: 25px;
+      font-weight: 780;
+      line-height: 1;
+    }
+
+    .metric .note {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .section {
+      margin-bottom: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .section-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    th {
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 10px;
+      border-bottom: 1px solid #edf0f5;
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 730;
+      white-space: nowrap;
+    }
+
+    .done {
+      color: var(--green);
+      background: var(--green-bg);
+    }
+
+    .improved {
+      color: var(--blue);
+      background: var(--blue-bg);
+    }
+
+    .watch {
+      color: var(--amber);
+      background: var(--amber-bg);
+    }
+
+    .risk {
+      color: var(--red);
+      background: var(--red-bg);
+    }
+
+    .timeline {
+      display: grid;
+      gap: 11px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .step strong {
+      font-size: 14px;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .recommendation {
+      padding: 16px;
+      border: 1px solid #b8d2ec;
+      border-radius: 8px;
+      background: #edf6ff;
+      color: #173c63;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .source-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .source-list a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbfcfe;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .provider-card {
+      display: grid;
+      gap: 13px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .provider-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .provider-header h3 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.3;
+    }
+
+    .provider-rank {
+      flex: 0 0 auto;
+    }
+
+    .provider-field {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      gap: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .provider-field strong {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .provider-field span {
+      min-width: 0;
+    }
+
+    .file-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .file-list li {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfe;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 900px) {
+      .topbar,
+      .grid {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .branch-pill {
+        min-width: 0;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        padding: 22px 14px 36px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .section {
+        padding: 16px;
+      }
+
+      .section-header {
+        display: block;
+      }
+
+      .section-header p {
+        margin-top: 6px;
+      }
+
+      table,
+      thead,
+      tbody,
+      th,
+      td,
+      tr {
+        display: block;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tr {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      tr:last-child {
+        border-bottom: 0;
+      }
+
+      td {
+        padding: 5px 0;
+        border-bottom: 0;
+      }
+
+      td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 2px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 760;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .step {
+        grid-template-columns: 1fr;
+      }
+
+      .provider-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .provider-field {
+        grid-template-columns: 1fr;
+        gap: 3px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Haggle Branch Dashboard</h1>
+        <p class="subtitle">결제, 정산, 배송 대안까지 이번 브랜치의 핵심 작업을 한 화면으로 요약합니다.</p>
+      </div>
+      <div class="branch-pill">
+        <span>Current branch</span>
+        <strong>dispute-demo-engine-hardening</strong>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="Branch metrics">
+      <article class="metric">
+        <div class="label">Tracked files</div>
+        <div class="value">77</div>
+        <div class="note">현재 diff 기준 변경 파일 수</div>
+      </article>
+      <article class="metric">
+        <div class="label">Insertions</div>
+        <div class="value">8,077</div>
+        <div class="note">tracked diff 기준</div>
+      </article>
+      <article class="metric">
+        <div class="label">Deletions</div>
+        <div class="value">598</div>
+        <div class="note">tracked diff 기준</div>
+      </article>
+      <article class="metric">
+        <div class="label">Validation</div>
+        <div class="value">Pass</div>
+        <div class="note">백엔드 테스트, 타입 검사, diff check 통과 기록</div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <div>
+        <section class="section">
+          <div class="section-header">
+            <h2>Workstream Overview</h2>
+            <p>이번 브랜치의 큰 축</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>영역</th>
+                <th>상태</th>
+                <th>핵심 내용</th>
+                <th>남은 리스크</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td data-label="영역">Payment Intent</td>
+                <td data-label="상태"><span class="status done">완료</span></td>
+                <td data-label="핵심 내용">중복 intent 방지, active intent 재사용, unique conflict 수렴</td>
+                <td data-label="남은 리스크">낮음</td>
+              </tr>
+              <tr>
+                <td data-label="영역">Quote / Amount</td>
+                <td data-label="상태"><span class="status done">완료</span></td>
+                <td data-label="핵심 내용">구매자 지불액, 판매자 수령액, 1.5% fee, USDC Direct quote 정리</td>
+                <td data-label="남은 리스크">asset/FX 확장 시 정책 확인</td>
+              </tr>
+              <tr>
+                <td data-label="영역">Money Policy</td>
+                <td data-label="상태"><span class="status improved">구조 개선</span></td>
+                <td data-label="핵심 내용">USD cents -> USDC atomic 변환을 shared policy로 단일화</td>
+                <td data-label="남은 리스크">추가 asset 도입 시 policy 확장 필요</td>
+              </tr>
+              <tr>
+                <td data-label="영역">Frontend Payment UX</td>
+                <td data-label="상태"><span class="status improved">개선</span></td>
+                <td data-label="핵심 내용">프론트 자체 settlement 계산 제거, 서버 quote 기반 표시</td>
+                <td data-label="남은 리스크">legacy 응답 방어</td>
+              </tr>
+              <tr>
+                <td data-label="영역">Settle / Webhook</td>
+                <td data-label="상태"><span class="status done">완료</span></td>
+                <td data-label="핵심 내용">결제 완료 후 order가 정산/배송 대기 흐름으로 전환</td>
+                <td data-label="남은 리스크">결제 이벤트 알림 재시도/중복 처리 유지</td>
+              </tr>
+              <tr>
+                <td data-label="영역">Settlement Record</td>
+                <td data-label="상태"><span class="status done">완료</span></td>
+                <td data-label="핵심 내용">record 선생성, idempotent conflict 처리, lookup 추가</td>
+                <td data-label="남은 리스크">DB unique/index 정책 최종 확인</td>
+              </tr>
+              <tr>
+                <td data-label="영역">Dispute Module</td>
+                <td data-label="상태"><span class="status watch">확장됨</span></td>
+                <td data-label="핵심 내용">권한 검증, 외부 이벤트 알림, 발송 대기열, 알림, 증거, 인공지능 서비스/테스트 추가</td>
+                <td data-label="남은 리스크">범위가 커서 PR 분리 권장</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+      </div>
+
+      <aside>
+        <section class="section">
+          <div class="section-header">
+            <h2>결제 흐름</h2>
+            <p>현재 설계 기준</p>
+          </div>
+          <div class="timeline">
+            <div class="step">
+              <strong>prepare</strong>
+              <span>활성 결제 의도 기준으로 중복 없이 생성/재사용</span>
+            </div>
+            <div class="step">
+              <strong>quote</strong>
+              <span>서버가 구매자 총액, 판매자 순수령액, 수수료, 정산 금액 확인값 제공</span>
+            </div>
+            <div class="step">
+              <strong>authorize</strong>
+              <span>구매자 중심 권한 경계로 결제 승인</span>
+            </div>
+            <div class="step">
+              <strong>settle</strong>
+              <span>정산 기록을 먼저 만들고 결제/주문 상태 전환</span>
+            </div>
+            <div class="step">
+              <strong>결제 이벤트 알림</strong>
+              <span>직접 정산과 같은 완료 처리 경로로 중복 처리</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>추천</h2>
+            <p>배송 연동</p>
+          </div>
+          <div class="recommendation">
+            Haggle에는 ShipEngine / ShipStation 개발자 배송 서비스를 기본 배송 추상화 대상으로 잡고, Shippo를 예비 후보로 두는 구성이 가장 깔끔합니다. 결제 완료 후 배송비 조회, 라벨 구매, 추적 이벤트 알림, 주문 상태 업데이트까지 서버에서 자동화하기 쉽기 때문입니다.
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>주요 파일</h2>
+            <p>주요 변경 지점</p>
+          </div>
+          <ul class="file-list">
+            <li>apps/api/src/routes/payments.ts</li>
+            <li>apps/api/src/services/payment-record.service.ts</li>
+            <li>packages/shared/src/money.ts</li>
+            <li>packages/payment-core/src/real-x402-adapter.ts</li>
+            <li>apps/web/src/app/(app)/buy/negotiations/[sessionId]/payment-step.tsx</li>
+            <li>apps/web/src/app/(app)/orders/[id]/page.tsx</li>
+          </ul>
+        </section>
+      </aside>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>EasyPost 대안 상세 비교</h2>
+        <p>배송 연동 후보 상세 비교</p>
+      </div>
+      <div class="provider-grid">
+        <article class="provider-card">
+          <div class="provider-header">
+            <h3><a href="https://www.shipengine.com/pricing/">ShipEngine / ShipStation 개발자 배송 서비스</a></h3>
+            <span class="status done provider-rank">1순위</span>
+          </div>
+          <div class="provider-field"><strong>용도</strong><span>Haggle 백엔드에 직접 붙일 배송 인프라</span></div>
+          <div class="provider-field"><strong>기능</strong><span>배송비 조회, 라벨 구매, 주소 검증, 추적, 추적 이벤트 알림, 반품 라벨, 자체 운송사 계정 연결</span></div>
+          <div class="provider-field"><strong>가격</strong><span>무료 시작 구간이 있고, 고급 플랜은 월 요금과 라벨 수 기준 과금 구조입니다. 자체 운송사 계정을 쓰는 고급 사용은 유료 구간을 확인해야 합니다.</span></div>
+          <div class="provider-field"><strong>주의</strong><span>ShipEngine 브랜드가 ShipStation 개발자 배송 서비스로 정리되는 중이라 문서/콘솔 명칭이 섞일 수 있습니다.</span></div>
+          <div class="provider-field"><strong>판단</strong><span>결제 완료 후 자동 라벨/추적 생성 흐름에 가장 잘 맞습니다.</span></div>
+        </article>
+
+        <article class="provider-card">
+          <div class="provider-header">
+            <h3><a href="https://goshippo.com/pricing">Shippo</a></h3>
+            <span class="status done provider-rank">2순위</span>
+          </div>
+          <div class="provider-field"><strong>용도</strong><span>빠르게 붙이는 중소형 커머스 배송</span></div>
+          <div class="provider-field"><strong>기능</strong><span>배송비 비교, 라벨 구매, 추적, 추적 이벤트 알림, 반품, 주소 검증, 여러 운송사 연결</span></div>
+          <div class="provider-field"><strong>가격</strong><span>무료/유료 플랜 기반입니다. 사용량, 운송사, 고급 기능에 따라 비용이 달라질 수 있습니다.</span></div>
+          <div class="provider-field"><strong>주의</strong><span>개발자 중심의 깊은 커스터마이징은 ShipEngine 쪽이 더 맞을 가능성이 큽니다.</span></div>
+          <div class="provider-field"><strong>판단</strong><span>초기 구현 속도와 운영 편의성이 좋습니다.</span></div>
+        </article>
+
+        <article class="provider-card">
+          <div class="provider-header">
+            <h3><a href="https://www.easyship.com/plans">Easyship</a></h3>
+            <span class="status watch provider-rank">조건부</span>
+          </div>
+          <div class="provider-field"><strong>용도</strong><span>국제배송과 관세/세금 표시가 중요한 판매자</span></div>
+          <div class="provider-field"><strong>기능</strong><span>국제 배송비 조회, 라벨 구매, 관세/세금 계산, 통관 문서, 배송 규칙, 추적, 반품</span></div>
+          <div class="provider-field"><strong>가격</strong><span>구독 플랜에 기능과 사용량이 묶이고, 개발자 호출량은 플랜별 포함량/초과량 확인이 필요합니다.</span></div>
+          <div class="provider-field"><strong>주의</strong><span>미국 내 단순 배송만 먼저 처리한다면 제품 복잡도가 커질 수 있습니다.</span></div>
+          <div class="provider-field"><strong>판단</strong><span>해외 판매/구매를 빠르게 열 때 강합니다.</span></div>
+        </article>
+
+        <article class="provider-card">
+          <div class="provider-header">
+            <h3><a href="https://help.veeqo.com/en/articles/14729298-veeqo-plans-overview">Veeqo</a></h3>
+            <span class="status watch provider-rank">운영 보조</span>
+          </div>
+          <div class="provider-field"><strong>용도</strong><span>마켓플레이스 주문, 재고, 배송을 한 운영 화면에서 관리</span></div>
+          <div class="provider-field"><strong>기능</strong><span>배송 라벨, 주문 관리, 재고 관리, Amazon/eBay/Etsy/Shopify/Walmart 같은 채널 연결</span></div>
+          <div class="provider-field"><strong>가격</strong><span>배송 소프트웨어는 무료로 제공되지만, 실제 라벨 비용과 사용 조건은 연결 채널/운송사 기준을 확인해야 합니다.</span></div>
+          <div class="provider-field"><strong>주의</strong><span>Haggle 제품 내부 결제/주문 상태 머신에 직접 붙이는 개발자 인프라로는 우선순위가 낮습니다.</span></div>
+          <div class="provider-field"><strong>판단</strong><span>판매자 운영 도구로는 유용합니다.</span></div>
+        </article>
+
+        <article class="provider-card">
+          <div class="provider-header">
+            <h3><a href="https://support.pirateship.com/en/articles/1067822-how-much-does-pirate-ship-cost">Pirate Ship</a></h3>
+            <span class="status risk provider-rank">수동 운영용</span>
+          </div>
+          <div class="provider-field"><strong>용도</strong><span>초기 수동 운영 또는 소량 배송 라벨 구매</span></div>
+          <div class="provider-field"><strong>기능</strong><span>United States Postal Service와 UPS 라벨 구매, 할인 요금, 간단한 웹 기반 배송 처리</span></div>
+          <div class="provider-field"><strong>가격</strong><span>월 요금, 숨은 수수료, 최소 사용량이 없다고 안내합니다. 라벨 비용은 별도입니다.</span></div>
+          <div class="provider-field"><strong>주의</strong><span>자동화된 플랫폼 연동, 추적 이벤트 처리, 주문 상태 동기화에는 한계가 큽니다.</span></div>
+          <div class="provider-field"><strong>판단</strong><span>제품 자동화의 기본 축으로는 부적합합니다.</span></div>
+        </article>
+      </div>
+      <div class="source-list" aria-label="Shipping sources">
+        <a href="https://www.shipengine.com/pricing/">ShipEngine 가격</a>
+        <a href="https://www.shipengine.com/docs/rates/">ShipEngine 배송비 조회</a>
+        <a href="https://docs.goshippo.com/docs/tracking/webhooks">Shippo 추적 이벤트</a>
+        <a href="https://www.easyship.com/plans">Easyship 요금제</a>
+        <a href="https://support.easyship.com/hc/en-us/articles/34766246620562-API-Usage-Billing">Easyship 개발자 사용량 과금</a>
+        <a href="https://help.veeqo.com/en/articles/14729298-veeqo-plans-overview">Veeqo 요금제</a>
+        <a href="https://support.pirateship.com/en/articles/1067822-how-much-does-pirate-ship-cost">Pirate Ship 가격</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
