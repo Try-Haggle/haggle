@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
+import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -25,6 +26,9 @@ interface Shipment {
   status: string;
   carrier: string | null;
   tracking_number: string | null;
+  label_url?: string | null;
+  label_qr_code_url?: string | null;
+  label_qr_code_available?: boolean;
   delivered_at: string | null;
   created_at: string;
   events: ShipmentEvent[];
@@ -405,6 +409,38 @@ function ShippingSection({
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-400">Carrier</span>
             <span className="text-sm text-slate-300">{shipment.carrier}</span>
+          </div>
+        )}
+        {(shipment.label_url || shipment.label_qr_code_url) && (
+          <div className="border-t border-slate-800 pt-3 mt-3">
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Print options</p>
+            <div className="flex flex-wrap gap-2">
+              {shipment.label_url && (
+                <a
+                  href={shipment.label_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-slate-700 px-3 py-2 text-xs font-medium text-slate-200 hover:border-cyan-500 hover:text-cyan-200"
+                >
+                  Download label
+                </a>
+              )}
+              {shipment.label_qr_code_url && (
+                <a
+                  href={shipment.label_qr_code_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-cyan-700/70 bg-cyan-950/30 px-3 py-2 text-xs font-medium text-cyan-100 hover:border-cyan-400"
+                >
+                  Show USPS QR
+                </a>
+              )}
+            </div>
+            {shipment.label_qr_code_url && (
+              <p className="mt-2 text-xs text-slate-500">
+                No printer needed: bring the packed item and QR code to a supported USPS location.
+              </p>
+            )}
           </div>
         )}
 
@@ -990,6 +1026,7 @@ export default function OrderDetailPage() {
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             },
+            payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: true }),
           });
           setState((s) => ({ ...s, payment: result.intent }));
           addLog("Payment", `Intent created: ${result.intent.id.slice(0, 16)}...`, "success");

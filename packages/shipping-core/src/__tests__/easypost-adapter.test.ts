@@ -265,6 +265,76 @@ describe("verifyEasyPostWebhook", () => {
     expect(verifyEasyPostWebhook(body, headers, webhookSecret)).toBe(true);
   });
 
+  it("returns true for a valid v2 signature with timestamp and path", async () => {
+    const body = JSON.stringify({ description: "tracker.updated", result: {} });
+    const timestamp = "Tue, 19 Aug 2025 20:37:09 -0000";
+    const path = "/shipments/webhooks/easypost";
+    const method = "POST";
+
+    const crypto = await import("node:crypto");
+    const hmac = crypto.createHmac("sha256", webhookSecret);
+    hmac.update(`${timestamp}${method}${path}${body}`, "utf8");
+    const signature = `hmac-sha256-hex=${hmac.digest("hex")}`;
+
+    const headers = {
+      "x-timestamp": timestamp,
+      "x-path": path,
+      "x-hmac-signature-v2": signature,
+    };
+
+    expect(
+      verifyEasyPostWebhook(body, headers, webhookSecret, {
+        method,
+        now: new Date("2025-08-19T20:37:30Z"),
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for an expired v2 signature", async () => {
+    const body = JSON.stringify({ description: "tracker.updated", result: {} });
+    const timestamp = "Tue, 19 Aug 2025 20:37:09 -0000";
+    const path = "/shipments/webhooks/easypost";
+
+    const crypto = await import("node:crypto");
+    const hmac = crypto.createHmac("sha256", webhookSecret);
+    hmac.update(`${timestamp}POST${path}${body}`, "utf8");
+
+    const headers = {
+      "x-timestamp": timestamp,
+      "x-path": path,
+      "x-hmac-signature-v2": `hmac-sha256-hex=${hmac.digest("hex")}`,
+    };
+
+    expect(
+      verifyEasyPostWebhook(body, headers, webhookSecret, {
+        method: "POST",
+        now: new Date("2025-08-19T20:39:30Z"),
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for a v2 signature with the wrong path", async () => {
+    const body = JSON.stringify({ description: "tracker.updated", result: {} });
+    const timestamp = "Tue, 19 Aug 2025 20:37:09 -0000";
+
+    const crypto = await import("node:crypto");
+    const hmac = crypto.createHmac("sha256", webhookSecret);
+    hmac.update(`${timestamp}POST/other-path${body}`, "utf8");
+
+    const headers = {
+      "x-timestamp": timestamp,
+      "x-path": "/shipments/webhooks/easypost",
+      "x-hmac-signature-v2": `hmac-sha256-hex=${hmac.digest("hex")}`,
+    };
+
+    expect(
+      verifyEasyPostWebhook(body, headers, webhookSecret, {
+        method: "POST",
+        now: new Date("2025-08-19T20:37:30Z"),
+      }),
+    ).toBe(false);
+  });
+
   it("returns false for an invalid signature", () => {
     const body = JSON.stringify({ description: "tracker.updated", result: {} });
     const headers = {

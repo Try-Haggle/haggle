@@ -2,6 +2,10 @@ import fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { registerShipmentRoutes } from "../routes/shipments.js";
 
+vi.mock("../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
 function createDbMock() {
   const updates: Array<Record<string, unknown>> = [];
   const shipmentRow = {

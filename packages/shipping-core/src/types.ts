@@ -91,6 +91,10 @@ export interface Shipment {
   carrier: string;
   tracking_number?: string;
   tracking_url?: string;
+  label_url?: string;
+  label_qr_code_url?: string;
+  label_qr_code_available?: boolean;
+  metadata?: Record<string, unknown>;
   status: ShipmentStatus;
   events: ShipmentEvent[];
   delivered_at?: string;
