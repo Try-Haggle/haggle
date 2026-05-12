@@ -34,6 +34,10 @@ export interface PaymentIntent {
   buyer_authorization_mode?: BuyerAuthorizationMode;
   amount: Money;
   status: PaymentIntentStatus;
+  agent_payment_grant_id?: string;
+  approval_policy_hash?: string;
+  agreement_hash?: string;
+  listing_hash?: string;
   created_at: string;
   updated_at: string;
 }

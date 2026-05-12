@@ -3,15 +3,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerPaymentRoutes } from "../routes/payments.js";
 import {
   createPaymentSettlementRecord,
+  getCommerceOrderByOrderId,
+  getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
-import { createSettlementReleaseRecord } from "../services/settlement-release.service.js";
-import { createShipmentRecord } from "../services/shipment-record.service.js";
+import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
+import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 
 vi.mock("../payments/providers.js", () => ({
   createPaymentServiceFromEnv: vi.fn(() => ({
+    markSettlementPending: vi.fn((intent) => ({
+      intent: {
+        ...intent,
+        status: "SETTLEMENT_PENDING",
+        updated_at: new Date().toISOString(),
+      },
+      trust_triggers: [],
+    })),
     settleIntent: vi.fn().mockResolvedValue({
       intent: {
         id: "pi_123",
@@ -48,18 +58,24 @@ vi.mock("../payments/providers.js", () => ({
 }));
 
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn(),
   createPaymentSettlementRecord: vi.fn(),
   createRefundRecord: vi.fn(),
   createStoredPaymentIntent: vi.fn(),
   ensureCommerceOrderForApproval: vi.fn(),
   getCommerceOrderByOrderId: vi.fn().mockResolvedValue({ id: "order_123", status: "PAYMENT_PENDING" }),
+  getPaymentSettlementByPaymentIntentId: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn(),
+  getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn(),
   getPaymentIntentRowById: vi.fn(),
   getSettlementApprovalById: vi.fn(),
   updateCommerceOrderStatus: vi.fn(),
   updateStoredPaymentIntent: vi.fn(),
+  createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../services/settlement-release.service.js", () => ({
@@ -76,12 +92,20 @@ vi.mock("../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn(),
 }));
 
+vi.mock("../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockCreatePaymentSettlementRecord = vi.mocked(createPaymentSettlementRecord);
+const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
 const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
+const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
+const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
+const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 
 function buildDb() {
   const insert = vi.fn().mockReturnValue({
@@ -110,7 +134,7 @@ function buildDb() {
   };
 }
 
-function paymentIntent() {
+function paymentIntent(status: "AUTHORIZED" | "SETTLEMENT_PENDING" | "SETTLED" = "SETTLEMENT_PENDING") {
   return {
     id: "pi_123",
     order_id: "order_123",
@@ -120,7 +144,7 @@ function paymentIntent() {
     allowed_rails: ["x402"],
     buyer_authorization_mode: "human_wallet",
     amount: { currency: "USD", amount_minor: 1000 },
-    status: "SETTLEMENT_PENDING",
+    status,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as never;
@@ -167,6 +191,7 @@ describe("payment webhook idempotency", () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.json().accepted).toBe(false);
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
   });
 
@@ -191,6 +216,111 @@ describe("payment webhook idempotency", () => {
     expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+    expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks authorized x402 payments settlement pending before processing settlement-confirmed webhooks", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("AUTHORIZED"));
+    mockUpdateStoredPaymentIntent.mockResolvedValue(null);
+    mockCreatePaymentSettlementRecord.mockResolvedValueOnce(null as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_authorized_settlement",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().action).toBe("settled");
+    expect(mockUpdateStoredPaymentIntent).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.objectContaining({ status: "SETTLEMENT_PENDING" }),
+    );
+    expect(mockUpdateStoredPaymentIntent).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({ status: "SETTLED" }),
+      {},
+    );
+    expect(mockCreateSettlementReleaseRecord).toHaveBeenCalled();
+    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
+    expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mark an already-settled webhook processed when the settlement record is missing", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("SETTLED"));
+    mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce(null);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_settled_missing_record",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().accepted).toBe(false);
+    expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
+    expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("advances a paid order to fulfillment pending when a retry finds an existing shipment", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent());
+    mockUpdateStoredPaymentIntent.mockResolvedValueOnce(null);
+    mockCreatePaymentSettlementRecord.mockResolvedValueOnce(null as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({ id: "order_123", status: "PAID" } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce({ id: "shipment_existing", order_id: "order_123" } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_retry_existing_shipment",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().action).toBe("settled");
+    expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+    expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not move an already active fulfillment order back to fulfillment pending", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent());
+    mockUpdateStoredPaymentIntent.mockResolvedValueOnce(null);
+    mockCreatePaymentSettlementRecord.mockResolvedValueOnce(null as never);
+    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "sr_existing", order_id: "order_123" } as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({ id: "order_123", status: "FULFILLMENT_ACTIVE" } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce({ id: "shipment_existing", order_id: "order_123" } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_late_settlement_after_fulfillment",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().action).toBe("settled");
+    expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
+    expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
     expect(db.insert).toHaveBeenCalledTimes(1);
   });
 

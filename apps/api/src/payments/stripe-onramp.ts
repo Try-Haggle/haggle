@@ -13,6 +13,9 @@
  * Ref: https://docs.stripe.com/crypto/onramp/api-reference
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { calculateRetryDelayMs, classifyProviderError } from "@haggle/payment-core";
+
 // ─── Types ────────────────────────────────────────────────────────────
 
 export interface OnrampSessionParams {
@@ -24,8 +27,12 @@ export interface OnrampSessionParams {
   buyerEmail?: string;
   /** Payment intent ID for correlation */
   paymentIntentId: string;
+  /** Policy-binding metadata shared with x402 and settlement contracts. */
+  metadata?: Record<string, string>;
   /** Client IP for compliance */
   clientIp?: string;
+  /** Provider idempotency key for safe retry/session creation. */
+  idempotencyKey?: string;
 }
 
 export interface OnrampSessionResult {
@@ -64,6 +71,26 @@ export function getStripeConfig() {
   };
 }
 
+async function withStripeRetries<T>(operation: () => Promise<T>): Promise<T> {
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (classifyProviderError(error) !== "retryable" || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, calculateRetryDelayMs(attempt, {
+        baseDelayMs: 150,
+        maxDelayMs: 750,
+      })));
+    }
+  }
+  throw lastError;
+}
+
 // ─── Session Creation ─────────────────────────────────────────────────
 
 /**
@@ -93,20 +120,31 @@ export async function createOnrampSession(
   }
   body.append("metadata[payment_intent_id]", params.paymentIntentId);
   body.append("metadata[platform]", "haggle");
+  for (const [key, value] of Object.entries(params.metadata ?? {})) {
+    body.append(`metadata[${key}]`, value);
+  }
 
-  const response = await fetch("https://api.stripe.com/v1/crypto/onramp_sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(config.secretKey + ":").toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: body.toString(),
+  const response = await withStripeRetries(async () => {
+    const candidate = await fetch("https://api.stripe.com/v1/crypto/onramp_sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(config.secretKey + ":").toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...(params.idempotencyKey ? { "Idempotency-Key": params.idempotencyKey } : {}),
+      },
+      body: body.toString(),
+    });
+    if (!candidate.ok && classifyProviderError({ status: candidate.status }) === "retryable") {
+      throw Object.assign(new Error(`STRIPE_ONRAMP_RETRYABLE_STATUS:${candidate.status}`), { status: candidate.status });
+    }
+    return candidate;
   });
 
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({ error: {} })) as { error?: { message?: string } };
-    throw new Error(
-      `STRIPE_ONRAMP_ERROR: ${response.status} ${errBody.error?.message ?? response.statusText}`,
+    throw Object.assign(
+      new Error(`STRIPE_ONRAMP_ERROR: ${response.status} ${errBody.error?.message ?? response.statusText}`),
+      { status: response.status },
     );
   }
 
@@ -130,9 +168,8 @@ export function verifyStripeWebhook(
   payload: string | Buffer,
   signature: string,
   secret: string,
+  timestampToleranceSeconds = 300,
 ): boolean {
-  const crypto = require("node:crypto");
-
   // Parse Stripe-Signature header: t=timestamp,v1=signature
   const parts = signature.split(",");
   const timestampPart = parts.find((p: string) => p.startsWith("t="));
@@ -142,11 +179,14 @@ export function verifyStripeWebhook(
 
   const timestamp = timestampPart.slice(2);
   const expectedSig = sigPart.slice(3);
+  const timestampSeconds = Number(timestamp);
+  if (!Number.isFinite(timestampSeconds)) return false;
+  const ageSeconds = Math.abs(Date.now() / 1000 - timestampSeconds);
+  if (ageSeconds > timestampToleranceSeconds) return false;
 
   // Compute expected signature
   const signedPayload = `${timestamp}.${typeof payload === "string" ? payload : payload.toString("utf8")}`;
-  const computedSig = crypto
-    .createHmac("sha256", secret)
+  const computedSig = createHmac("sha256", secret)
     .update(signedPayload)
     .digest("hex");
 
@@ -154,5 +194,5 @@ export function verifyStripeWebhook(
   const a = Buffer.from(computedSig);
   const b = Buffer.from(expectedSig);
   if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  return timingSafeEqual(a, b);
 }

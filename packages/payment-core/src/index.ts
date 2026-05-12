@@ -12,6 +12,7 @@ export * from "./x402-protocol.js";
 export * from "./scaffold-contracts.js";
 export * from "./facilitator-client.js";
 export * from "./settlement-release.js";
+export * from "./production-readiness.js";
 
 // Heavy modules (depend on viem + @haggle/contracts).
 // NOT re-exported from barrel — import directly when needed:

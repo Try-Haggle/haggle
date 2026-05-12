@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import { initiateDepositCollection } from "../payments/deposit-collector.js";
 import { executeRefund } from "../payments/refund-executor.js";
 import { refundDeposit } from "../payments/deposit-refunder.js";
+import { verifyStripeWebhook } from "../payments/stripe-onramp.js";
 
 const originalEnv = {
   DEPOSIT_COLLECTION_MODE: process.env.DEPOSIT_COLLECTION_MODE,
@@ -52,5 +54,27 @@ describe("payment production readiness", () => {
       amount_cents: 500,
       rail: "mock",
     })).rejects.toThrow("Mock deposit refunds are disabled in production");
+  });
+
+  it("rejects expired Stripe webhook signatures", () => {
+    const payload = JSON.stringify({ id: "evt_expired", type: "crypto.onramp_session.fulfillment_complete" });
+    const secret = "whsec_test_secret";
+    const timestamp = Math.floor(Date.now() / 1000) - 600;
+    const signature = createHmac("sha256", secret)
+      .update(`${timestamp}.${payload}`)
+      .digest("hex");
+
+    expect(verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, secret)).toBe(false);
+  });
+
+  it("accepts fresh Stripe webhook signatures", () => {
+    const payload = JSON.stringify({ id: "evt_fresh", type: "crypto.onramp_session.fulfillment_complete" });
+    const secret = "whsec_test_secret";
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = createHmac("sha256", secret)
+      .update(`${timestamp}.${payload}`)
+      .digest("hex");
+
+    expect(verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, secret)).toBe(true);
   });
 });

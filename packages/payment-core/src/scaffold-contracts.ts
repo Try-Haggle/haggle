@@ -1,5 +1,10 @@
 import { createId } from "./id.js";
 import type {
+  ConditionalSettlementContract,
+  ConditionalSettlementCreateRequest,
+  ConditionalSettlementRefundRequest,
+  ConditionalSettlementReleaseRequest,
+  ConditionalSettlementResult,
   DisputeAnchorRecord,
   DisputeRegistryContract,
   SettlementRouterContract,
@@ -54,6 +59,72 @@ export class ScaffoldDisputeRegistryContract implements DisputeRegistryContract 
       ...record,
       anchored_at: nowIso(),
       onchain_reference: createId("dispute_anchor"),
+    };
+  }
+}
+
+export class ScaffoldConditionalSettlementContract implements ConditionalSettlementContract {
+  readonly capabilities = {
+    supports_policy_hash_binding: true,
+    supports_expiry_refund: true,
+    supports_signed_release: true,
+    supports_signed_refund: true,
+    supports_dispute_lock: true,
+  } as const;
+
+  constructor(
+    readonly network: string,
+    readonly asset: "USDC",
+    readonly address?: string,
+  ) {}
+
+  async createAndFund(request: ConditionalSettlementCreateRequest): Promise<ConditionalSettlementResult> {
+    return {
+      settlement_id: `conditional_${request.order_id}_${request.payment_intent_id}`,
+      contract_reference: createId("conditional_fund"),
+      tx_hash: `0x${createId().replaceAll("-", "")}`,
+      status: "PENDING",
+      updated_at: nowIso(),
+    };
+  }
+
+  async release(request: ConditionalSettlementReleaseRequest): Promise<ConditionalSettlementResult> {
+    return {
+      settlement_id: request.settlement_id,
+      contract_reference: createId("conditional_release"),
+      tx_hash: `0x${createId().replaceAll("-", "")}`,
+      status: "RELEASED",
+      updated_at: nowIso(),
+    };
+  }
+
+  async refund(request: ConditionalSettlementRefundRequest): Promise<ConditionalSettlementResult> {
+    return {
+      settlement_id: request.settlement_id,
+      contract_reference: createId("conditional_refund"),
+      tx_hash: `0x${createId().replaceAll("-", "")}`,
+      status: "REFUNDED",
+      updated_at: nowIso(),
+    };
+  }
+
+  async expire(settlementId: string): Promise<ConditionalSettlementResult> {
+    return {
+      settlement_id: settlementId,
+      contract_reference: createId("conditional_expire"),
+      tx_hash: `0x${createId().replaceAll("-", "")}`,
+      status: "REFUNDED",
+      updated_at: nowIso(),
+    };
+  }
+
+  async raiseDispute(settlementId: string, _evidenceHash: string): Promise<ConditionalSettlementResult> {
+    return {
+      settlement_id: settlementId,
+      contract_reference: createId("conditional_dispute"),
+      tx_hash: `0x${createId().replaceAll("-", "")}`,
+      status: "DISPUTED",
+      updated_at: nowIso(),
     };
   }
 }

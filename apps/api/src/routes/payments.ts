@@ -1,6 +1,24 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import type { SettlementApproval } from "@haggle/commerce-core";
+import {
+  CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+  CONDITIONAL_SETTLEMENT_EIP712_TYPES,
+} from "@haggle/contracts";
+import {
+  canonicalJson,
+  canonicalizeAgentPaymentPolicy,
+  type AgentPaymentGrant,
+  type PaymentLegalAcknowledgement,
+  type PaymentTermTag,
+  type SettlementApproval,
+} from "@haggle/commerce-core";
+import {
+  PAYMENT_DISCLOSURE_TEXT_HASH,
+  PAYMENT_DISCLOSURE_VERSION,
+  type DisplayMoney,
+  toSettlementAssetMoney,
+  withMoneyDecimals,
+} from "@haggle/shared";
 import type { Database } from "@haggle/db";
 import { eq, and, userWallets, webhookIdempotency } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -45,6 +63,7 @@ async function recordWebhookProcessed(
 import {
   assertPaymentReadyForExecution,
   createSettlementRelease,
+  redactPaymentSensitiveData,
   type PaymentIntent,
   type Refund,
   type BuyerAuthorizationMode,
@@ -58,13 +77,20 @@ import {
 import { createPaymentServiceFromEnv, getX402EnvConfig, getRealStripeAdapterOrNull } from "../payments/providers.js";
 import {
   createPaymentAuthorizationRecord,
+  createPaymentOperationIdempotencyRecord,
+  createAgentPaymentGrantRecord,
+  createPaymentDisclosureRecord,
   createPaymentSettlementRecord,
   createRefundRecord,
   createStoredPaymentIntent,
   ensureCommerceOrderForApproval,
+  getAgentPaymentGrantById,
+  getActivePaymentIntentByOrderId,
   getCommerceOrderByOrderId,
+  getPaymentSettlementByPaymentIntentId,
+  getPaymentIntentRowById,
   getPaymentIntentById,
-  getPaymentIntentByOrderId,
+  getPaymentOperationIdempotencyRecord,
   getSettlementApprovalById,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
@@ -73,8 +99,13 @@ import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment
 import { getDepositById, updateDepositStatus } from "../services/dispute-deposit.service.js";
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
+import { createConditionalSettlementSigner, type ConditionalSettlementMessage } from "../payments/settlement-signer.js";
+import { calculateFeeMinor, calculateSellerFeeSplit, readFeeBpsFromEnv, readHaggleFeeBpsFromEnv } from "../payments/fee-policy.js";
+import { writeAuditLog, type AdminActionType } from "../services/admin-action-log.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { INPUT_LIMITS, boundedJson } from "../lib/input-limits.js";
+import { createPublicClient, encodeAbiParameters, http, isAddress, keccak256, type Address, type Hex } from "viem";
+import { base, baseSepolia } from "viem/chains";
 
 const settlementApprovalSchema = z.object({
   id: z.string().max(INPUT_LIMITS.shortTextChars),
@@ -118,13 +149,26 @@ const settlementApprovalSchema = z.object({
 
 const preparePaymentSchema = z
   .object({
-    settlement_approval_id: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
+    settlement_approval_id: z.string().uuid().max(INPUT_LIMITS.shortTextChars).optional(),
     settlement_approval: settlementApprovalSchema.optional(),
     buyer_authorization_mode: z.enum(["human_wallet", "agent_wallet"]).optional(),
+    payment_disclosure_ack: z.object({
+      version: z.string().max(INPUT_LIMITS.shortTextChars),
+      text_hash: z.string().max(INPUT_LIMITS.mediumTextChars),
+      accepted_at: z.string().datetime().max(INPUT_LIMITS.mediumTextChars),
+      no_custody: z.boolean().optional(),
+      buyer_approved_rules: z.boolean().optional(),
+      stripe_fallback: z.boolean().optional(),
+      stablecoin_not_investment: z.boolean().optional(),
+    }).optional(),
   })
   .refine((value) => Boolean(value.settlement_approval_id || value.settlement_approval), {
     message: "settlement_approval_id or settlement_approval is required",
     path: ["settlement_approval_id"],
+  })
+  .refine((value) => !(value.settlement_approval_id && value.settlement_approval), {
+    message: "provide either settlement_approval_id or settlement_approval, not both",
+    path: ["settlement_approval"],
   });
 
 const refundSchema = z.object({
@@ -145,10 +189,212 @@ const x402SubmitSchema = z.object({
   verify_only: z.boolean().optional(),
 });
 
+const conditionalSettlementRequestSchema = z.object({
+  buyer_wallet_address: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
+  expires_at_unix: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).optional(),
+});
+
+const conditionalSettlementFundingSchema = z.object({
+  tx_hash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  settlement_id: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+  contract_address: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
+  chain_id: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).optional(),
+});
+
+const conditionalSettlementConfirmationSchema = z.object({
+  tx_hash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+});
+
 type PaymentRail = "x402" | "stripe";
+
+type PaymentQuoteConfirmation = {
+  rail: PaymentRail;
+  currency: string;
+  display: {
+    rail_label: string;
+    payment_method_label: string;
+    settlement_asset: "USDC";
+    settlement_network: "Base";
+    buyer_total_label: string;
+    seller_receives_label: string;
+    fee_summary_label: string;
+  };
+  amount: PaymentIntent["amount"];
+  buyer_total: PaymentIntent["amount"];
+  seller_receives: PaymentIntent["amount"];
+  amount_confirmation: {
+    order_amount: DisplayMoney;
+    buyer_pays: DisplayMoney;
+    settlement_amount: DisplayMoney;
+    seller_receives: DisplayMoney;
+    buyer_fee: DisplayMoney;
+    seller_fee: DisplayMoney;
+  };
+  fees: {
+    buyer_fee_total: PaymentIntent["amount"];
+    seller_fee_total: PaymentIntent["amount"];
+    items: Array<{
+      code: string;
+      label: string;
+      payer: "buyer" | "seller";
+      amount: PaymentIntent["amount"];
+      rate_bps: number;
+      included_in_buyer_total: boolean;
+    }>;
+  };
+  expires_at?: string;
+  provider_reference?: string;
+};
 
 function requiresRealPaymentProviders(): boolean {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function minorFromMetadata(metadata: Record<string, unknown>, key: string): number | null {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getStoredQuoteConfirmation(metadata: Record<string, unknown>): PaymentQuoteConfirmation | null {
+  const confirmation = metadata.quote_confirmation;
+  if (
+    !isRecord(confirmation)
+    || !isRecord(confirmation.amount)
+    || !isRecord(confirmation.buyer_total)
+    || !isRecord(confirmation.seller_receives)
+  ) {
+    return null;
+  }
+  if (
+    typeof confirmation.rail !== "string"
+    || typeof confirmation.currency !== "string"
+    || !isRecord(confirmation.fees)
+  ) {
+    return null;
+  }
+  if (
+    !isRecord(confirmation.fees.buyer_fee_total)
+    || !isRecord(confirmation.fees.seller_fee_total)
+  ) {
+    return null;
+  }
+  if (confirmation.rail !== "x402" && confirmation.rail !== "stripe") {
+    return null;
+  }
+  return withQuoteDisplay(confirmation as PaymentQuoteConfirmation);
+}
+
+function buildQuoteDisplay(rail: PaymentRail): PaymentQuoteConfirmation["display"] {
+  if (rail === "x402") {
+    return {
+      rail_label: "USDC Direct",
+      payment_method_label: "Pay from wallet with USDC on Base",
+      settlement_asset: "USDC",
+      settlement_network: "Base",
+      buyer_total_label: "Buyer pays",
+      seller_receives_label: "Seller receives",
+      fee_summary_label: "No buyer fee. Haggle fee is deducted from seller proceeds.",
+    };
+  }
+
+  return {
+    rail_label: "Card via Stripe",
+    payment_method_label: "Pay by card; Stripe converts to USDC on Base",
+    settlement_asset: "USDC",
+    settlement_network: "Base",
+    buyer_total_label: "Buyer pays",
+    seller_receives_label: "Seller receives",
+    fee_summary_label: "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds.",
+  };
+}
+
+function withQuoteDisplay(confirmation: PaymentQuoteConfirmation): PaymentQuoteConfirmation {
+  return {
+    ...confirmation,
+    display: isRecord(confirmation.display)
+      ? { ...buildQuoteDisplay(confirmation.rail), ...confirmation.display }
+      : buildQuoteDisplay(confirmation.rail),
+    amount_confirmation: buildAmountConfirmation(confirmation),
+  };
+}
+
+function buildAmountConfirmation(
+  confirmation: Omit<PaymentQuoteConfirmation, "amount_confirmation">,
+): PaymentQuoteConfirmation["amount_confirmation"] {
+  const settlementAmount = toSettlementAssetMoney(confirmation.amount, "USDC");
+  const sellerReceives = toSettlementAssetMoney(confirmation.seller_receives, "USDC");
+  const sellerFee = toSettlementAssetMoney(confirmation.fees.seller_fee_total, "USDC");
+  return {
+    order_amount: withMoneyDecimals(confirmation.amount),
+    buyer_pays: confirmation.rail === "x402" ? settlementAmount : withMoneyDecimals(confirmation.buyer_total),
+    settlement_amount: settlementAmount,
+    seller_receives: sellerReceives,
+    buyer_fee: confirmation.rail === "x402"
+      ? toSettlementAssetMoney(confirmation.fees.buyer_fee_total, "USDC")
+      : withMoneyDecimals(confirmation.fees.buyer_fee_total),
+    seller_fee: sellerFee,
+  };
+}
+
+function buildPaymentQuoteConfirmation(
+  intent: PaymentIntent,
+  metadata: Record<string, unknown>,
+  quote?: { provider_reference?: string; expires_at?: string },
+): PaymentQuoteConfirmation {
+  const currency = intent.amount.currency;
+  const grossMinor = intent.amount.amount_minor;
+  const haggleFeeBps = readHaggleFeeBpsFromEnv();
+  const stripeFeeBps = intent.selected_rail === "stripe" ? readFeeBpsFromEnv("HAGGLE_STRIPE_ONRAMP_FEE_BPS", 150) : 0;
+  const defaultSplit = calculateSellerFeeSplit(grossMinor, haggleFeeBps);
+  const haggleFeeMinor = minorFromMetadata(metadata, "haggle_fee_minor") ?? defaultSplit.feeAmountMinor;
+  const stripeFeeMinor = stripeFeeBps > 0 ? calculateFeeMinor(grossMinor, stripeFeeBps) : 0;
+  const sellerAmountMinor = minorFromMetadata(metadata, "seller_amount_minor") ?? defaultSplit.sellerAmountMinor;
+  const feeItems: PaymentQuoteConfirmation["fees"]["items"] = [];
+
+  if (haggleFeeMinor > 0) {
+    feeItems.push({
+      code: "haggle_platform_fee",
+      label: "Haggle platform fee",
+      payer: "seller",
+      amount: { currency, amount_minor: haggleFeeMinor },
+      rate_bps: haggleFeeBps,
+      included_in_buyer_total: true,
+    });
+  }
+  if (stripeFeeMinor > 0) {
+    feeItems.push({
+      code: "stripe_onramp_fee",
+      label: "Stripe card/onramp fee",
+      payer: "buyer",
+      amount: { currency, amount_minor: stripeFeeMinor },
+      rate_bps: stripeFeeBps,
+      included_in_buyer_total: false,
+    });
+  }
+
+  const confirmation: Omit<PaymentQuoteConfirmation, "amount_confirmation"> = {
+    rail: intent.selected_rail,
+    currency,
+    display: buildQuoteDisplay(intent.selected_rail),
+    amount: intent.amount,
+    buyer_total: { currency, amount_minor: grossMinor + stripeFeeMinor },
+    seller_receives: { currency, amount_minor: sellerAmountMinor },
+    fees: {
+      buyer_fee_total: { currency, amount_minor: stripeFeeMinor },
+      seller_fee_total: { currency, amount_minor: haggleFeeMinor },
+      items: feeItems,
+    },
+    expires_at: quote?.expires_at,
+    provider_reference: quote?.provider_reference,
+  };
+  return {
+    ...confirmation,
+    amount_confirmation: buildAmountConfirmation(confirmation),
+  };
 }
 
 function getProductionPaymentRailError(rail: PaymentRail) {
@@ -171,7 +417,496 @@ function getProductionPaymentRailError(rail: PaymentRail) {
   return null;
 }
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+function getPaymentOperationFailure(error: unknown):
+  | { statusCode: number; body: { error: string; message: string } }
+  | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("invalid payment transition:")) {
+    return {
+      statusCode: 409,
+      body: { error: "PAYMENT_STATE_TRANSITION_INVALID", message },
+    };
+  }
+  if (message.startsWith("refund requires SETTLED intent")) {
+    return {
+      statusCode: 409,
+      body: { error: "PAYMENT_REFUND_STATE_INVALID", message },
+    };
+  }
+  if (message.startsWith("refund amount ")) {
+    return {
+      statusCode: 400,
+      body: { error: "PAYMENT_REFUND_AMOUNT_INVALID", message },
+    };
+  }
+  if (
+    message.startsWith("unsupported source currency")
+    || message.startsWith("unsupported money currency")
+    || message.startsWith("unsupported settlement asset")
+  ) {
+    return {
+      statusCode: 400,
+      body: { error: "PAYMENT_MONEY_UNSUPPORTED", message },
+    };
+  }
+  return null;
+}
+
+function sendPaymentOperationFailure(reply: FastifyReply, error: unknown) {
+  const failure = getPaymentOperationFailure(error);
+  if (!failure) {
+    throw error;
+  }
+  return reply.code(failure.statusCode).send(failure.body);
+}
+
+function getPaymentDisclosureAckError(
+  ack: z.infer<typeof preparePaymentSchema>["payment_disclosure_ack"],
+): string | null {
+  if (!ack) return null;
+  if (ack.version !== PAYMENT_DISCLOSURE_VERSION) return "payment disclosure version is not supported";
+  if (ack.text_hash !== PAYMENT_DISCLOSURE_TEXT_HASH) return "payment disclosure text_hash is not supported";
+  if (ack.no_custody !== true) return "no_custody acknowledgement is required";
+  if (ack.buyer_approved_rules !== true) return "buyer_approved_rules acknowledgement is required";
+  if (ack.stablecoin_not_investment !== true) return "stablecoin_not_investment acknowledgement is required";
+  return null;
+}
+
+function isActivePaymentIntentUniqueViolation(error: unknown): boolean {
+  const candidate = error as { code?: unknown; constraint?: unknown; message?: unknown; detail?: unknown };
+  if (candidate.code !== "23505") return false;
+  return [candidate.constraint, candidate.message, candidate.detail]
+    .filter((value): value is string => typeof value === "string")
+    .some((value) => value.includes("uq_active_payment_intents_order_id"));
+}
+
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+
+function sha256Hex(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function requestHeaderString(request: FastifyRequest, name: string): string | null {
+  const value = request.headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0] ?? null;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getCorrelationId(request: FastifyRequest): string {
+  return requestHeaderString(request, "x-request-id")
+    ?? requestHeaderString(request, "x-correlation-id")
+    ?? request.id;
+}
+
+function getPaymentIdempotencyKey(request: FastifyRequest): string | null {
+  return requestHeaderString(request, "idempotency-key")
+    ?? requestHeaderString(request, "x-idempotency-key");
+}
+
+function paymentOperationRequestHash(
+  operation: string,
+  paymentIntentId: string | null,
+  body: unknown,
+  actorId: string | undefined,
+): string {
+  return sha256Hex(canonicalJson({
+    operation,
+    payment_intent_id: paymentIntentId,
+    actor_id: actorId ?? null,
+    body: body ?? null,
+  }));
+}
+
+function safeRedactPaymentLog(value: unknown): unknown {
+  try {
+    return redactPaymentSensitiveData(value);
+  } catch {
+    return { redaction_error: true };
+  }
+}
+
+function mapLegacyPaymentStatusForAudit(status: PaymentIntent["status"]) {
+  switch (status) {
+    case "CREATED":
+    case "QUOTED":
+      return "pending";
+    case "AUTHORIZED":
+    case "SETTLEMENT_PENDING":
+      return "authorized";
+    case "SETTLED":
+      return "captured";
+    case "FAILED":
+      return "failed";
+    case "CANCELED":
+      return "canceled";
+  }
+}
+
+async function beginPaymentOperationIdempotency(
+  db: Database,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  operation: string,
+  paymentIntentId: string | null,
+): Promise<{ key: string | null; requestHash: string; replayed: boolean }> {
+  const key = getPaymentIdempotencyKey(request);
+  const requestHash = paymentOperationRequestHash(operation, paymentIntentId, request.body, request.user?.id);
+
+  if (!key) {
+    if (requiresRealPaymentProviders()) {
+      reply.code(400).send({
+        error: "IDEMPOTENCY_KEY_REQUIRED",
+        message: "Idempotency-Key header is required for payment mutations in production",
+      });
+      return { key: null, requestHash, replayed: true };
+    }
+    return { key: null, requestHash, replayed: false };
+  }
+
+  const existing = await getPaymentOperationIdempotencyRecord(db, operation, key);
+  if (!existing) {
+    return { key, requestHash, replayed: false };
+  }
+
+  if (existing.requestHash !== requestHash) {
+    reply.code(409).send({
+      error: "IDEMPOTENCY_KEY_CONFLICT",
+      message: "Idempotency key was already used with a different payment request",
+    });
+    return { key, requestHash, replayed: true };
+  }
+
+  reply.code(existing.responseStatus).send({
+    ...(existing.responseBody as Record<string, unknown>),
+    idempotent: true,
+  });
+  return { key, requestHash, replayed: true };
+}
+
+async function recordPaymentOperationIdempotency(
+  db: Database,
+  operation: string,
+  idempotency: { key: string | null; requestHash: string },
+  paymentIntentId: string | null,
+  responseStatus: number,
+  responseBody: Record<string, unknown>,
+): Promise<void> {
+  if (!idempotency.key) return;
+  await createPaymentOperationIdempotencyRecord(db, {
+    operation,
+    idempotencyKey: idempotency.key,
+    paymentIntentId,
+    requestHash: idempotency.requestHash,
+    responseStatus,
+    responseBody: safeRedactPaymentLog(responseBody) as Record<string, unknown>,
+  });
+}
+
+async function auditPaymentAction(
+  db: Database,
+  request: FastifyRequest,
+  actionType: AdminActionType,
+  params: {
+    intent: PaymentIntent;
+    previousStatus?: PaymentIntent["status"];
+    nextStatus?: PaymentIntent["status"];
+    reason: string;
+    providerEventId?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const actor = {
+    id: request.user?.id ?? "system",
+    role: request.user?.role ?? "system",
+  };
+  const event = {
+    type: actionType === "payment.refund"
+      ? "refund"
+      : actionType === "payment.cancel"
+        ? "cancel"
+        : actionType === "payment.capture"
+          ? "capture"
+          : actionType === "payment.authorize"
+            ? "authorization"
+            : actionType === "payment.webhook_rejected"
+              ? "webhook_rejected"
+              : "admin_override",
+    actor,
+    payment_intent_id: params.intent.id,
+    order_id: params.intent.order_id,
+    provider_event_id: params.providerEventId,
+    previous_state: params.previousStatus ? mapLegacyPaymentStatusForAudit(params.previousStatus) : undefined,
+    next_state: params.nextStatus ? mapLegacyPaymentStatusForAudit(params.nextStatus) : undefined,
+    reason: params.reason,
+    request_id: getCorrelationId(request),
+    timestamp: new Date().toISOString(),
+    metadata: params.metadata ? safeRedactPaymentLog(params.metadata) : undefined,
+  };
+  await writeAuditLog(db, {
+    actorId: actor.id,
+    actionType,
+    targetType: "payment_intent",
+    targetId: params.intent.id,
+    payload: event as unknown as Record<string, unknown>,
+  });
+}
+
+function createPolicyNonce(...parts: string[]): string {
+  return sha256Hex(`${parts.join(":")}:${randomUUID()}`);
+}
+
+function addDaysIso(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString();
+}
+
+function inferPaymentTermTags(approval: SettlementApproval): PaymentTermTag[] {
+  const terms: PaymentTermTag[] = [
+    {
+      key: "max_price",
+      label: "Maximum approved price",
+      type: "money",
+      value_minor: approval.terms.final_amount_minor,
+      currency: approval.terms.currency,
+      required: true,
+    },
+    {
+      key: "seller",
+      label: "Approved seller",
+      type: "text",
+      value: approval.terms.seller_id,
+      required: true,
+    },
+    {
+      key: "listing",
+      label: "Approved listing",
+      type: "text",
+      value: approval.terms.listing_id,
+      required: true,
+    },
+    {
+      key: "payment_rail",
+      label: "Selected payment rail",
+      type: "select",
+      value: approval.terms.selected_payment_rail,
+      options: ["x402", "stripe"],
+      required: true,
+    },
+  ];
+
+  if (typeof approval.terms.shipping_cost_minor === "number") {
+    terms.push({
+      key: "shipping_cost",
+      label: "Shipping cost",
+      type: "money",
+      value_minor: approval.terms.shipping_cost_minor,
+      currency: approval.terms.currency,
+      required: false,
+    });
+  }
+
+  if (approval.terms.fulfillment_type) {
+    terms.push({
+      key: "fulfillment_type",
+      label: "Fulfillment type",
+      type: "select",
+      value: approval.terms.fulfillment_type,
+      options: ["shipped", "local_pickup"],
+      required: true,
+    });
+  }
+
+  return terms;
+}
+
+function buildAgentPaymentGrant(
+  approval: SettlementApproval,
+  input: {
+    orderId: string;
+    agentId: string;
+    authorizationMode: BuyerAuthorizationMode | undefined;
+    disclosureAck?: z.infer<typeof preparePaymentSchema>["payment_disclosure_ack"];
+  },
+): AgentPaymentGrant {
+  const acknowledgement: PaymentLegalAcknowledgement = {
+    no_custody: Boolean(input.disclosureAck?.no_custody),
+    buyer_approved_rules: Boolean(input.disclosureAck?.buyer_approved_rules),
+    stripe_fallback: Boolean(input.disclosureAck?.stripe_fallback),
+    stablecoin_not_investment: Boolean(input.disclosureAck?.stablecoin_not_investment),
+  };
+
+  return {
+    grant_id: randomUUID(),
+    buyer_id: approval.terms.buyer_id,
+    agent_id: input.agentId,
+    listing_id: approval.terms.listing_id,
+    seller_id: approval.terms.seller_id,
+    order_id: input.orderId,
+    settlement_approval_id: approval.id,
+    max_amount_minor: approval.terms.final_amount_minor,
+    currency: approval.terms.currency,
+    asset: "USDC",
+    network: "base",
+    allowed_rails: ["x402", "stripe"],
+    preferred_rail: "x402",
+    terms: inferPaymentTermTags(approval),
+    expires_at: approval.terms.shipment_input_due_at ?? addDaysIso(7),
+    nonce: createPolicyNonce(approval.id, input.orderId, approval.terms.buyer_id),
+    human_confirmation_required: input.authorizationMode !== "agent_wallet",
+    legal_acknowledgements: acknowledgement,
+  };
+}
+
+function buildAgreementHash(approval: SettlementApproval): string {
+  return sha256Hex(canonicalJson({
+    version: "haggle.settlement_agreement.v1",
+    approval_id: approval.id,
+    terms: approval.terms,
+    seller_policy: approval.seller_policy,
+  }));
+}
+
+function buildListingHash(listingId: string): string {
+  return sha256Hex(canonicalJson({ version: "haggle.listing_ref.v1", listing_id: listingId }));
+}
+
+function resolvePaymentReceiver(
+  sellerWallet: string,
+  config: ReturnType<typeof getX402EnvConfig>,
+): { paymentReceiver: string; receiverRole: "seller_wallet" | "payment_receiver" | "conditional_settlement_receiver" } {
+  if (config.paymentReceiverAddress) {
+    if (
+      config.conditionalSettlementAddress
+      && config.paymentReceiverAddress.toLowerCase() === config.conditionalSettlementAddress.toLowerCase()
+    ) {
+      return { paymentReceiver: sellerWallet, receiverRole: "seller_wallet" };
+    }
+    return {
+      paymentReceiver: config.paymentReceiverAddress,
+      receiverRole: "payment_receiver",
+    };
+  }
+  return { paymentReceiver: sellerWallet, receiverRole: "seller_wallet" };
+}
+
+function validateX402PolicyBinding(payload: X402PaymentPayloadEnvelope, intent: PaymentIntent): string | null {
+  const extra = payload.paymentRequirements?.extra;
+  if (!extra) {
+    return "paymentRequirements.extra is required";
+  }
+  if (extra.payment_intent_id !== intent.id) {
+    return "payment_intent_id mismatch";
+  }
+  if (extra.order_id !== intent.order_id) {
+    return "order_id mismatch";
+  }
+  if (intent.agent_payment_grant_id && extra.grant_id !== intent.agent_payment_grant_id) {
+    return "grant_id mismatch";
+  }
+  if (intent.approval_policy_hash && extra.approval_policy_hash !== intent.approval_policy_hash) {
+    return "approval_policy_hash mismatch";
+  }
+  if (intent.agreement_hash && extra.agreement_hash !== intent.agreement_hash) {
+    return "agreement_hash mismatch";
+  }
+  if (intent.listing_hash && extra.listing_hash !== intent.listing_hash) {
+    return "listing_hash mismatch";
+  }
+  const expectedSettlementAmount = String(toSettlementAssetMoney(intent.amount, "USDC").amount_minor);
+  if (
+    extra.settlement_amount_minor !== undefined
+    && String(extra.settlement_amount_minor) !== expectedSettlementAmount
+  ) {
+    return "settlement_amount_minor mismatch";
+  }
+  return null;
+}
+
+function serializeConditionalSettlementMessage(
+  message: ConditionalSettlementMessage,
+) {
+  return {
+    orderId: message.orderId,
+    paymentIntentId: message.paymentIntentId,
+    approvalPolicyHash: message.approvalPolicyHash,
+    agreementHash: message.agreementHash,
+    listingHash: message.listingHash,
+    grantNonce: message.grantNonce,
+    buyer: message.buyer,
+    seller: message.seller,
+    asset: message.asset,
+    grossAmount: message.grossAmount.toString(),
+    expiresAt: message.expiresAt.toString(),
+    signerNonce: message.signerNonce.toString(),
+  };
+}
+
+function computeConditionalSettlementId(message: ConditionalSettlementMessage, chainId: number): Hex {
+  return keccak256(encodeAbiParameters(
+    [
+      { name: "orderId", type: "bytes32" },
+      { name: "paymentIntentId", type: "bytes32" },
+      { name: "approvalPolicyHash", type: "bytes32" },
+      { name: "buyer", type: "address" },
+      { name: "seller", type: "address" },
+      { name: "chainId", type: "uint256" },
+    ],
+    [
+      message.orderId,
+      message.paymentIntentId,
+      message.approvalPolicyHash,
+      message.buyer,
+      message.seller,
+      BigInt(chainId),
+    ],
+  ));
+}
+
+function parseUnixSeconds(value: number | string | undefined): bigint | undefined {
+  if (value === undefined) return undefined;
+  return BigInt(value);
+}
+
+function resolveX402ChainId(config: ReturnType<typeof getX402EnvConfig>): number {
+  if (process.env.HAGGLE_X402_NETWORK === "base-sepolia" || config.network === "base-sepolia" || config.network === "eip155:84532") {
+    return 84532;
+  }
+  return 8453;
+}
+
+function createConditionalSettlementReceiptClient(config: ReturnType<typeof getX402EnvConfig>) {
+  if (!config.baseRpcUrl) {
+    return null;
+  }
+  const chainId = resolveX402ChainId(config);
+  return createPublicClient({
+    chain: chainId === 84532 ? baseSepolia : base,
+    transport: http(config.baseRpcUrl),
+  });
+}
+
+function getConditionalSettlementContext(providerContext: Record<string, unknown>) {
+  return providerContext.conditional_settlement
+    && typeof providerContext.conditional_settlement === "object"
+    && !Array.isArray(providerContext.conditional_settlement)
+    ? providerContext.conditional_settlement as Record<string, unknown>
+    : {};
+}
+
+async function applyPaymentTransitionTriggers(
+  db: Database,
+  result: { intent: PaymentIntent; trust_triggers: unknown[] },
+) {
+  if (result.trust_triggers.length > 0) {
+    await applyTrustTriggers(db, {
+      order_id: result.intent.order_id,
+      buyer_id: result.intent.buyer_id,
+      seller_id: result.intent.seller_id,
+      triggers: result.trust_triggers as Parameters<typeof applyTrustTriggers>[1]["triggers"],
+    });
+  }
+}
 
 function requireWebhookSignature(
   headers: Record<string, unknown>,
@@ -208,10 +943,8 @@ async function resolveSettlementApproval(
   db: Database,
   body: z.infer<typeof preparePaymentSchema>,
 ): Promise<SettlementApproval | null> {
-  if (body.settlement_approval_id) {
-    return getSettlementApprovalById(db, body.settlement_approval_id);
-  }
-  return (body.settlement_approval as SettlementApproval | undefined) ?? null;
+  if (!body.settlement_approval_id) return null;
+  return getSettlementApprovalById(db, body.settlement_approval_id);
 }
 
 /**
@@ -261,20 +994,28 @@ async function ensureShipmentForPayment(db: Database, intent: PaymentIntent) {
   return { shipment, created: true };
 }
 
-async function finalizeSettledPayment(db: Database, intent: PaymentIntent) {
+async function requireSettlementRecordForPayment(db: Database, intent: PaymentIntent) {
+  const settlement = await getPaymentSettlementByPaymentIntentId(db, intent.id);
+  if (!settlement) {
+    throw new Error(`PAYMENT_SETTLEMENT_RECORD_MISSING:${intent.id}`);
+  }
+  return settlement;
+}
+
+async function prepareFulfillmentForSecuredPayment(db: Database, intent: PaymentIntent) {
   const settlementRelease = await ensureSettlementReleaseForPayment(db, intent);
 
   const order = await getCommerceOrderByOrderId(db, intent.order_id);
   const orderStatus = order?.status;
+  const canAdvanceToFulfillment =
+    !orderStatus || orderStatus === "APPROVED" || orderStatus === "PAYMENT_PENDING" || orderStatus === "PAID";
+
   if (!orderStatus || orderStatus === "APPROVED" || orderStatus === "PAYMENT_PENDING") {
     await updateCommerceOrderStatus(db, intent.order_id, "PAID");
   }
 
   const shipmentResult = await ensureShipmentForPayment(db, intent);
-  if (
-    shipmentResult.created
-    && (!orderStatus || orderStatus === "APPROVED" || orderStatus === "PAYMENT_PENDING" || orderStatus === "PAID")
-  ) {
+  if (canAdvanceToFulfillment) {
     await updateCommerceOrderStatus(db, intent.order_id, "FULFILLMENT_PENDING");
   }
 
@@ -283,6 +1024,10 @@ async function finalizeSettledPayment(db: Database, intent: PaymentIntent) {
     shipment: shipmentResult.shipment,
     shipmentCreated: shipmentResult.created,
   };
+}
+
+async function finalizeSettledPayment(db: Database, intent: PaymentIntent) {
+  return prepareFulfillmentForSecuredPayment(db, intent);
 }
 
 async function finalizeStripeDepositFulfillment(
@@ -367,14 +1112,25 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "INVALID_PAYMENT_PREPARE_REQUEST", issues: parsed.error.issues });
     }
     if (
-      requiresRealPaymentProviders()
-      && parsed.data.settlement_approval
+      parsed.data.settlement_approval
       && !parsed.data.settlement_approval_id
-      && request.user?.role !== "admin"
     ) {
       return reply.code(403).send({
         error: "INLINE_SETTLEMENT_APPROVAL_DISABLED",
-        message: "Use a stored settlement_approval_id for production payments",
+        message: "Use a stored settlement_approval_id for payment preparation",
+      });
+    }
+    if (requiresRealPaymentProviders() && !parsed.data.payment_disclosure_ack) {
+      return reply.code(400).send({
+        error: "PAYMENT_DISCLOSURE_ACK_REQUIRED",
+        message: "Production payments require an explicit buyer acknowledgement for payment authorization terms",
+      });
+    }
+    const disclosureAckError = getPaymentDisclosureAckError(parsed.data.payment_disclosure_ack);
+    if (disclosureAckError) {
+      return reply.code(400).send({
+        error: "PAYMENT_DISCLOSURE_ACK_INVALID",
+        message: disclosureAckError,
       });
     }
 
@@ -387,14 +1143,18 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!settlementApproval) {
       return reply.code(404).send({ error: "SETTLEMENT_APPROVAL_NOT_FOUND" });
     }
+    if (settlementApproval.terms.buyer_id !== actor.actor_id) {
+      return reply.code(404).send({ error: "SETTLEMENT_APPROVAL_NOT_FOUND" });
+    }
 
     let ready;
     try {
       ready = assertPaymentReadyForExecution(settlementApproval, actor);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       return reply.code(400).send({
         error: "PAYMENT_NOT_READY",
-        message: error instanceof Error ? error.message : String(error),
+        message,
       });
     }
 
@@ -405,8 +1165,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
     const order = await ensureCommerceOrderForApproval(db, settlementApproval);
 
-    const existingIntent = await getPaymentIntentByOrderId(db, order.id);
-    if (existingIntent && existingIntent.status !== "CANCELED" && existingIntent.status !== "FAILED") {
+    const existingIntent = await getActivePaymentIntentByOrderId(db, order.id);
+    if (existingIntent) {
       return reply.send({
         intent: existingIntent,
         order,
@@ -419,6 +1179,18 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    const grant = buildAgentPaymentGrant(settlementApproval, {
+      orderId: order.id,
+      agentId: "haggle.negotiation_agent",
+      authorizationMode: parsed.data.buyer_authorization_mode as BuyerAuthorizationMode | undefined,
+      disclosureAck: parsed.data.payment_disclosure_ack,
+    });
+    const approvalPolicyHash = sha256Hex(canonicalizeAgentPaymentPolicy(grant));
+    const storedGrant = await createAgentPaymentGrantRecord(db, grant, approvalPolicyHash);
+    if (!storedGrant) {
+      return reply.code(500).send({ error: "AGENT_PAYMENT_GRANT_NOT_CREATED" });
+    }
+
     const intent = service.createIntent({
       order_id: order.id,
       seller_id: ready.seller_id,
@@ -429,13 +1201,56 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         currency: ready.currency,
         amount_minor: ready.amount_minor,
       },
+      agent_payment_grant_id: storedGrant.grant_id,
+      approval_policy_hash: storedGrant.approval_policy_hash,
+      agreement_hash: buildAgreementHash(settlementApproval),
+      listing_hash: buildListingHash(ready.listing_id),
     });
 
-    const storedIntent = await createStoredPaymentIntent(db, intent, {
-      settlement_approval_id: ready.settlement_approval_id,
-      listing_id: ready.listing_id,
-      actor,
-    });
+    let storedIntent;
+    try {
+      storedIntent = await createStoredPaymentIntent(db, intent, {
+        settlement_approval_id: ready.settlement_approval_id,
+        listing_id: ready.listing_id,
+        agent_payment_grant_id: storedGrant.grant_id,
+        approval_policy_hash: storedGrant.approval_policy_hash,
+        agreement_hash: intent.agreement_hash,
+        listing_hash: intent.listing_hash,
+        disclosure_required_before_execution: !parsed.data.payment_disclosure_ack,
+        actor,
+      });
+    } catch (error) {
+      if (!isActivePaymentIntentUniqueViolation(error)) throw error;
+      const concurrentIntent = await getActivePaymentIntentByOrderId(db, order.id);
+      if (!concurrentIntent) throw error;
+      return reply.send({
+        intent: concurrentIntent,
+        order,
+        participants: {
+          buyer_id: ready.buyer_id,
+          seller_id: ready.seller_id,
+        },
+        settlement_context: ready,
+        idempotent: true,
+      });
+    }
+
+    if (parsed.data.payment_disclosure_ack) {
+      await createPaymentDisclosureRecord(db, {
+        agent_payment_grant_id: storedGrant.grant_id,
+        payment_intent_id: storedIntent.id,
+        rail: ready.selected_rail,
+        version: parsed.data.payment_disclosure_ack.version,
+        text_hash: parsed.data.payment_disclosure_ack.text_hash,
+        accepted_at: parsed.data.payment_disclosure_ack.accepted_at,
+        metadata: {
+          no_custody: Boolean(parsed.data.payment_disclosure_ack.no_custody),
+          buyer_approved_rules: Boolean(parsed.data.payment_disclosure_ack.buyer_approved_rules),
+          stripe_fallback: Boolean(parsed.data.payment_disclosure_ack.stripe_fallback),
+          stablecoin_not_investment: Boolean(parsed.data.payment_disclosure_ack.stablecoin_not_investment),
+        },
+      });
+    }
 
     return reply.code(201).send({
       intent: storedIntent,
@@ -445,10 +1260,11 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         seller_id: ready.seller_id,
       },
       settlement_context: ready,
+      agent_payment_grant: storedGrant,
     });
   });
 
-  app.post("/payments/:id/quote", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/quote", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -457,43 +1273,82 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
-
-    // Resolve seller wallet: DB first, fall back to ENV
-    const networkName = x402Config.network.startsWith("eip155:") ? "base" : (x402Config.network as string);
-    const dbSellerWallet = await db
-      .select({ walletAddress: userWallets.walletAddress })
-      .from(userWallets)
-      .where(
-        and(
-          eq(userWallets.userId, intent.seller_id),
-          eq(userWallets.network, networkName),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0]?.walletAddress ?? null);
-
-    const sellerWalletAddress =
-      dbSellerWallet ?? process.env.HAGGLE_X402_SELLER_WALLET ?? null;
-
-    const result = await service.quoteIntent(intent);
-    // Merge seller_wallet into metadata so x402 requirements can resolve it
-    const metadata = {
-      ...(result.metadata ?? {}),
-      ...(sellerWalletAddress ? { seller_wallet: sellerWalletAddress } : {}),
-    };
-    await updateStoredPaymentIntent(db, result.intent, metadata);
-    if (result.trust_triggers.length > 0) {
-      await applyTrustTriggers(db, {
-        order_id: result.intent.order_id,
-        buyer_id: result.intent.buyer_id,
-        seller_id: result.intent.seller_id,
-        triggers: result.trust_triggers,
+    if (intent.status === "QUOTED") {
+      const row = await getPaymentIntentRowById(db, intent.id);
+      const existingMetadata =
+        isRecord(row?.providerContext)
+          ? row.providerContext
+          : {};
+      let quoteConfirmation;
+      try {
+        quoteConfirmation = getStoredQuoteConfirmation(existingMetadata)
+          ?? buildPaymentQuoteConfirmation(intent, existingMetadata);
+      } catch (error) {
+        return sendPaymentOperationFailure(reply, error);
+      }
+      return reply.send({
+        intent,
+        metadata: {
+          ...existingMetadata,
+          quote_confirmation: quoteConfirmation,
+        },
+        quote_confirmation: quoteConfirmation,
+        idempotent: true,
       });
     }
-    return reply.send({ ...result, metadata });
+
+    // Resolve seller wallet: DB first, fall back to ENV
+    let sellerWalletAddress: string | null = null;
+    if (intent.selected_rail === "x402") {
+      const networkName = x402Config.network.startsWith("eip155:") ? "base" : (x402Config.network as string);
+      const dbSellerWallet = await db
+        .select({ walletAddress: userWallets.walletAddress })
+        .from(userWallets)
+        .where(
+          and(
+            eq(userWallets.userId, intent.seller_id),
+            eq(userWallets.network, networkName),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0]?.walletAddress ?? null);
+
+      sellerWalletAddress =
+        dbSellerWallet ?? process.env.HAGGLE_X402_SELLER_WALLET ?? null;
+    }
+
+    try {
+      const result = await service.quoteIntent(intent);
+      // Merge seller_wallet into metadata so x402 requirements can resolve it
+      const metadataWithoutConfirmation = {
+        ...(result.metadata ?? {}),
+        ...(sellerWalletAddress ? { seller_wallet: sellerWalletAddress } : {}),
+        ...(intent.agent_payment_grant_id ? { agent_payment_grant_id: intent.agent_payment_grant_id } : {}),
+        ...(intent.approval_policy_hash ? { approval_policy_hash: intent.approval_policy_hash } : {}),
+        ...(intent.agreement_hash ? { agreement_hash: intent.agreement_hash } : {}),
+        ...(intent.listing_hash ? { listing_hash: intent.listing_hash } : {}),
+      };
+      const quoteConfirmation = buildPaymentQuoteConfirmation(result.intent, metadataWithoutConfirmation, result.value);
+      const metadata = {
+        ...metadataWithoutConfirmation,
+        quote_confirmation: quoteConfirmation,
+      };
+      await updateStoredPaymentIntent(db, result.intent, metadata);
+      if (result.trust_triggers.length > 0) {
+        await applyTrustTriggers(db, {
+          order_id: result.intent.order_id,
+          buyer_id: result.intent.buyer_id,
+          seller_id: result.intent.seller_id,
+          triggers: result.trust_triggers,
+        });
+      }
+      return reply.send({ ...result, metadata, quote_confirmation: quoteConfirmation });
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
+    }
   });
 
-  app.get("/payments/:id/x402/requirements", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.get("/payments/:id/x402/requirements", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -515,18 +1370,418 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "SELLER_WALLET_NOT_RESOLVED" });
     }
 
+    const receiver = resolvePaymentReceiver(sellerWallet, x402Config);
     const resource = `${request.protocol}://${request.hostname}/payments/${intent.id}/x402/submit-signature`;
-    const requirement = createX402PaymentRequirement(intent, {
-      resource,
-      sellerWallet,
-      network: x402Config.network,
-      assetAddress: x402Config.assetAddress,
-    });
+    let requirement;
+    try {
+      requirement = createX402PaymentRequirement(intent, {
+        resource,
+        sellerWallet,
+        paymentReceiver: receiver.paymentReceiver,
+        receiverRole: receiver.receiverRole,
+        network: x402Config.network,
+        assetAddress: x402Config.assetAddress,
+      });
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
+    }
 
     return reply.send(requirement);
   });
 
-  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/x402/conditional-settlement-request", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
+    const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
+    if (!intent) {
+      return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    if (intent.selected_rail !== "x402") {
+      return reply.code(400).send({ error: "PAYMENT_RAIL_NOT_X402" });
+    }
+    if (!x402Config.conditionalSettlementAddress) {
+      return reply.code(503).send({
+        error: "CONDITIONAL_SETTLEMENT_NOT_CONFIGURED",
+        message: "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required",
+      });
+    }
+    if (!isAddress(x402Config.conditionalSettlementAddress)) {
+      return reply.code(500).send({ error: "CONDITIONAL_SETTLEMENT_ADDRESS_INVALID" });
+    }
+    if (!isAddress(x402Config.assetAddress)) {
+      return reply.code(503).send({
+        error: "USDC_ASSET_ADDRESS_REQUIRED",
+        message: "HAGGLE_X402_USDC_ASSET_ADDRESS must be an ERC-20 contract address for conditional settlement",
+      });
+    }
+    if (!intent.agent_payment_grant_id || !intent.approval_policy_hash || !intent.agreement_hash || !intent.listing_hash) {
+      return reply.code(400).send({
+        error: "PAYMENT_POLICY_BINDING_REQUIRED",
+        message: "conditional settlement requires grant_id, approval_policy_hash, agreement_hash, and listing_hash",
+      });
+    }
+
+    const parsed = conditionalSettlementRequestSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_CONDITIONAL_SETTLEMENT_REQUEST", issues: parsed.error.issues });
+    }
+
+    const grant = await getAgentPaymentGrantById(db, intent.agent_payment_grant_id);
+    if (!grant) {
+      return reply.code(404).send({ error: "AGENT_PAYMENT_GRANT_NOT_FOUND" });
+    }
+    if (grant.status !== "ACTIVE") {
+      return reply.code(400).send({ error: "AGENT_PAYMENT_GRANT_NOT_ACTIVE", status: grant.status });
+    }
+    if (grant.buyer_id !== intent.buyer_id || grant.seller_id !== intent.seller_id || grant.order_id !== intent.order_id) {
+      return reply.code(400).send({ error: "AGENT_PAYMENT_GRANT_INTENT_MISMATCH" });
+    }
+    if (grant.approval_policy_hash !== intent.approval_policy_hash) {
+      return reply.code(400).send({ error: "AGENT_PAYMENT_GRANT_POLICY_HASH_MISMATCH" });
+    }
+
+    const networkName = x402Config.network.startsWith("eip155:") ? "base" : (x402Config.network as string);
+    const buyerWalletAddress =
+      parsed.data.buyer_wallet_address
+      ?? (await db
+        .select({ walletAddress: userWallets.walletAddress })
+        .from(userWallets)
+        .where(
+          and(
+            eq(userWallets.userId, intent.buyer_id),
+            eq(userWallets.network, networkName),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0]?.walletAddress ?? null));
+
+    if (!buyerWalletAddress || !isAddress(buyerWalletAddress)) {
+      return reply.code(400).send({ error: "BUYER_WALLET_NOT_RESOLVED" });
+    }
+
+    const walletLookupAddress = parsed.data.buyer_wallet_address
+      ? buyerWalletAddress.toLowerCase()
+      : buyerWalletAddress;
+    const registeredWallet = await db
+      .select({ walletAddress: userWallets.walletAddress })
+      .from(userWallets)
+      .where(
+        and(
+          eq(userWallets.userId, intent.buyer_id),
+          eq(userWallets.walletAddress, walletLookupAddress),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]?.walletAddress ?? null);
+    if (!registeredWallet) {
+      return reply.code(403).send({ error: "BUYER_WALLET_NOT_REGISTERED" });
+    }
+
+    const providerContext = await db.query.paymentIntents.findFirst({
+      where: (fields, ops) => ops.eq(fields.id, intent.id),
+    });
+    const sellerWalletAddress =
+      typeof providerContext?.providerContext?.seller_wallet === "string"
+        ? providerContext.providerContext.seller_wallet
+        : process.env.HAGGLE_X402_SELLER_WALLET;
+    if (!sellerWalletAddress || !isAddress(sellerWalletAddress)) {
+      return reply.code(400).send({ error: "SELLER_WALLET_NOT_RESOLVED" });
+    }
+
+    let signature;
+    try {
+      const settlementIntent = {
+        ...intent,
+        amount: toSettlementAssetMoney(intent.amount, "USDC"),
+      };
+      const signer = createConditionalSettlementSigner({
+        buyerAddressResolver: () => buyerWalletAddress as Address,
+        sellerAddressResolver: () => sellerWalletAddress as Address,
+      });
+      signature = await signer(settlementIntent, {
+        grantNonce: grant.nonce,
+        approvalPolicyHash: intent.approval_policy_hash,
+        agreementHash: intent.agreement_hash,
+        listingHash: intent.listing_hash,
+        expiresAt: parseUnixSeconds(parsed.data.expires_at_unix),
+      });
+    } catch (error) {
+      return reply.code(503).send({
+        error: "CONDITIONAL_SETTLEMENT_SIGNATURE_UNAVAILABLE",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const chainId = resolveX402ChainId(x402Config);
+    const settlementId = computeConditionalSettlementId(signature.message, chainId);
+    const message = serializeConditionalSettlementMessage(signature.message);
+    return reply.send({
+      mode: "buyer_contract_call",
+      settlement_id: settlementId,
+      contract: {
+        address: x402Config.conditionalSettlementAddress,
+        network: x402Config.network,
+        asset: "USDC",
+        asset_address: x402Config.assetAddress,
+      },
+      typed_data: {
+        domain: {
+          ...CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+          chainId,
+          verifyingContract: x402Config.conditionalSettlementAddress,
+        },
+        types: CONDITIONAL_SETTLEMENT_EIP712_TYPES,
+        primaryType: "ConditionalSettlement",
+        message,
+      },
+      contract_call: {
+        function_name: "createAndFund",
+        params: message,
+        signature: signature.signature,
+      },
+      signature: signature.signature,
+      signer_nonce: signature.signer_nonce.toString(),
+      expires_at_unix: signature.expires_at.toString(),
+    });
+  });
+
+  app.post("/payments/:id/x402/conditional-settlement-funding", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
+    const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
+    if (!intent) {
+      return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    if (intent.selected_rail !== "x402") {
+      return reply.code(400).send({ error: "PAYMENT_RAIL_NOT_X402" });
+    }
+    if (!x402Config.conditionalSettlementAddress) {
+      return reply.code(503).send({
+        error: "CONDITIONAL_SETTLEMENT_NOT_CONFIGURED",
+        message: "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required",
+      });
+    }
+
+    const parsed = conditionalSettlementFundingSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_CONDITIONAL_SETTLEMENT_FUNDING", issues: parsed.error.issues });
+    }
+    if (
+      parsed.data.contract_address
+      && parsed.data.contract_address.toLowerCase() !== x402Config.conditionalSettlementAddress.toLowerCase()
+    ) {
+      return reply.code(400).send({ error: "CONDITIONAL_SETTLEMENT_CONTRACT_MISMATCH" });
+    }
+    if (intent.status === "CREATED") {
+      return reply.code(409).send({ error: "PAYMENT_QUOTE_REQUIRED" });
+    }
+    if (intent.status === "FAILED" || intent.status === "CANCELED") {
+      return reply.code(400).send({ error: "PAYMENT_NOT_ACTIVE", status: intent.status });
+    }
+    if (intent.status === "SETTLED") {
+      return reply.send({
+        intent,
+        idempotent: true,
+        conditional_settlement: {
+          funding_tx_hash: parsed.data.tx_hash,
+          status: "ALREADY_SETTLED",
+        },
+      });
+    }
+
+    const row = await getPaymentIntentRowById(db, intent.id);
+    const providerContext =
+      row?.providerContext && typeof row.providerContext === "object" && !Array.isArray(row.providerContext)
+        ? row.providerContext
+        : {};
+    const conditionalSettlementContext = {
+      ...getConditionalSettlementContext(providerContext),
+      contract_address: x402Config.conditionalSettlementAddress,
+      chain_id: parsed.data.chain_id ? Number(parsed.data.chain_id) : resolveX402ChainId(x402Config),
+      funding_tx_hash: parsed.data.tx_hash,
+      settlement_id: parsed.data.settlement_id,
+      status: "FUNDING_SUBMITTED",
+      submitted_at: new Date().toISOString(),
+    };
+
+    let currentIntent = intent;
+    let mergedContext: Record<string, unknown> = {
+      ...providerContext,
+      conditional_settlement: conditionalSettlementContext,
+    };
+
+    if (currentIntent.status === "QUOTED") {
+      const authorization = await service.authorizeIntent(currentIntent);
+      currentIntent = authorization.intent;
+      mergedContext = {
+        ...mergedContext,
+        ...(authorization.metadata ?? {}),
+      };
+      if (authorization.value) {
+        await createPaymentAuthorizationRecord(db, authorization.value, authorization.metadata);
+      }
+      await applyPaymentTransitionTriggers(db, authorization);
+    }
+
+    if (currentIntent.status === "AUTHORIZED") {
+      const pending = service.markSettlementPending(currentIntent);
+      await updateStoredPaymentIntent(db, pending.intent, mergedContext);
+      await applyPaymentTransitionTriggers(db, pending);
+      return reply.send({
+        intent: pending.intent,
+        conditional_settlement: conditionalSettlementContext,
+      });
+    }
+
+    if (currentIntent.status === "SETTLEMENT_PENDING") {
+      await updateStoredPaymentIntent(db, currentIntent, mergedContext);
+      return reply.send({
+        intent: currentIntent,
+        conditional_settlement: conditionalSettlementContext,
+        idempotent: true,
+      });
+    }
+
+    return reply.code(409).send({ error: "PAYMENT_STATE_NOT_FUNDABLE", status: currentIntent.status });
+  });
+
+  app.post("/payments/:id/x402/conditional-settlement-confirmation", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
+    const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
+    if (!intent) {
+      return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
+    }
+    if (intent.selected_rail !== "x402") {
+      return reply.code(400).send({ error: "PAYMENT_RAIL_NOT_X402" });
+    }
+
+    const parsed = conditionalSettlementConfirmationSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_CONDITIONAL_SETTLEMENT_CONFIRMATION", issues: parsed.error.issues });
+    }
+
+    const row = await getPaymentIntentRowById(db, intent.id);
+    const providerContext =
+      row?.providerContext && typeof row.providerContext === "object" && !Array.isArray(row.providerContext)
+        ? row.providerContext
+        : {};
+    const conditionalContext = getConditionalSettlementContext(providerContext);
+    const txHash = parsed.data.tx_hash ?? (typeof conditionalContext.funding_tx_hash === "string" ? conditionalContext.funding_tx_hash : undefined);
+    if (!txHash) {
+      return reply.code(400).send({ error: "CONDITIONAL_SETTLEMENT_FUNDING_TX_REQUIRED" });
+    }
+    if (intent.status === "CREATED") {
+      return reply.code(409).send({ error: "PAYMENT_QUOTE_REQUIRED" });
+    }
+    if (intent.status === "FAILED" || intent.status === "CANCELED") {
+      return reply.code(400).send({ error: "PAYMENT_NOT_ACTIVE", status: intent.status });
+    }
+    if (intent.status === "SETTLED") {
+      return reply.send({
+        intent,
+        idempotent: true,
+        conditional_settlement: {
+          funding_tx_hash: txHash,
+          status: "ALREADY_SETTLED",
+        },
+      });
+    }
+
+    const client = createConditionalSettlementReceiptClient(x402Config);
+    if (!client) {
+      return reply.code(503).send({
+        error: "CONDITIONAL_SETTLEMENT_RECEIPT_RPC_NOT_CONFIGURED",
+        message: "HAGGLE_BASE_RPC_URL is required to confirm conditional settlement funding",
+      });
+    }
+
+    const receipt = await client
+      .getTransactionReceipt({ hash: txHash as Hex })
+      .catch(() => null);
+
+    if (!receipt) {
+      const pendingContext = {
+        ...conditionalContext,
+        funding_tx_hash: txHash,
+        status: "FUNDING_PENDING",
+        checked_at: new Date().toISOString(),
+      };
+      await updateStoredPaymentIntent(db, intent, {
+        ...providerContext,
+        conditional_settlement: pendingContext,
+      });
+      return reply.code(202).send({
+        intent,
+        conditional_settlement: pendingContext,
+      });
+    }
+
+    const confirmedContext = {
+      ...conditionalContext,
+      funding_tx_hash: txHash,
+      status: receipt.status === "success" ? "FUNDING_CONFIRMED" : "FUNDING_FAILED",
+      confirmed_at: new Date().toISOString(),
+      block_hash: receipt.blockHash,
+      block_number: receipt.blockNumber?.toString(),
+      transaction_index: receipt.transactionIndex,
+      gas_used: receipt.gasUsed?.toString(),
+      effective_gas_price: receipt.effectiveGasPrice?.toString(),
+    };
+
+    if (receipt.status === "success") {
+      let confirmedIntent = intent;
+      let confirmedProviderContext: Record<string, unknown> = {
+        ...providerContext,
+        conditional_settlement: confirmedContext,
+      };
+
+      if (confirmedIntent.status === "QUOTED") {
+        const authorization = await service.authorizeIntent(confirmedIntent);
+        confirmedIntent = authorization.intent;
+        confirmedProviderContext = {
+          ...confirmedProviderContext,
+          ...(authorization.metadata ?? {}),
+        };
+        if (authorization.value) {
+          await createPaymentAuthorizationRecord(db, authorization.value, authorization.metadata);
+        }
+        await applyPaymentTransitionTriggers(db, authorization);
+      }
+
+      if (confirmedIntent.status === "AUTHORIZED") {
+        const pending = service.markSettlementPending(confirmedIntent);
+        confirmedIntent = pending.intent;
+        await applyPaymentTransitionTriggers(db, pending);
+      }
+
+      await updateStoredPaymentIntent(db, confirmedIntent, confirmedProviderContext);
+      const finalization = await prepareFulfillmentForSecuredPayment(db, confirmedIntent);
+      return reply.send({
+        intent: confirmedIntent,
+        conditional_settlement: confirmedContext,
+        finalization,
+      });
+    }
+
+    if (intent.status === "QUOTED" || intent.status === "AUTHORIZED" || intent.status === "SETTLEMENT_PENDING") {
+      const failed = service.failIntent(intent);
+      await updateStoredPaymentIntent(db, failed.intent, {
+        ...providerContext,
+        conditional_settlement: confirmedContext,
+      });
+      await applyPaymentTransitionTriggers(db, failed);
+      return reply.send({
+        intent: failed.intent,
+        conditional_settlement: confirmedContext,
+      });
+    }
+
+    await updateStoredPaymentIntent(db, intent, {
+      ...providerContext,
+      conditional_settlement: confirmedContext,
+    });
+    return reply.send({
+      intent,
+      conditional_settlement: confirmedContext,
+    });
+  });
+
+  app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
@@ -542,6 +1797,33 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_X402_SUBMIT_REQUEST", issues: parsed.error.issues });
     }
+    if (!parsed.data.verify_only) {
+      if (intent.status === "CREATED") {
+        return reply.code(409).send({ error: "PAYMENT_QUOTE_REQUIRED" });
+      }
+      if (intent.status === "QUOTED") {
+        return reply.code(409).send({ error: "PAYMENT_AUTHORIZATION_REQUIRED" });
+      }
+      if (intent.status === "FAILED" || intent.status === "CANCELED") {
+        return reply.code(400).send({ error: "PAYMENT_NOT_ACTIVE", status: intent.status });
+      }
+      if (intent.status === "SETTLED") {
+        await requireSettlementRecordForPayment(db, intent);
+        const finalization = await finalizeSettledPayment(db, intent);
+        return reply.send({
+          intent,
+          idempotent: true,
+          settlement: { status: "ALREADY_SETTLED" },
+          settlement_release: finalization.settlementRelease,
+          shipment: finalization.shipment,
+        });
+      }
+    }
+
+    const idempotency = parsed.data.verify_only
+      ? { key: null, requestHash: "", replayed: false }
+      : await beginPaymentOperationIdempotency(db, request, reply, "payment.x402_settle", intent.id);
+    if (idempotency.replayed) return;
 
     const providerContext = await db.query.paymentIntents.findFirst({
       where: (fields, ops) => ops.eq(fields.id, intent.id),
@@ -556,15 +1838,24 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "SELLER_WALLET_NOT_RESOLVED" });
     }
 
+    const receiver = resolvePaymentReceiver(sellerWallet, x402Config);
     const requirement = createX402PaymentRequirement(intent, {
       resource: `${request.protocol}://${request.hostname}/payments/${intent.id}/x402/submit-signature`,
       sellerWallet,
+      paymentReceiver: receiver.paymentReceiver,
+      receiverRole: receiver.receiverRole,
       network: x402Config.network,
       assetAddress: x402Config.assetAddress,
     }).accepts[0];
 
+    const x402Payload = parsed.data.payment_payload as X402PaymentPayloadEnvelope;
+    const bindingError = validateX402PolicyBinding(x402Payload, intent);
+    if (bindingError) {
+      return reply.code(400).send({ error: "X402_POLICY_BINDING_MISMATCH", message: bindingError });
+    }
+
     if (parsed.data.verify_only) {
-      const verify = await x402Facilitator.verify(parsed.data.payment_payload as X402PaymentPayloadEnvelope, requirement);
+      const verify = await x402Facilitator.verify(x402Payload, requirement);
       return reply.send({ verification: verify });
     }
 
@@ -575,16 +1866,12 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       intent.updated_at = pending.intent.updated_at;
     }
 
-    const settle = await x402Facilitator.settle(parsed.data.payment_payload as X402PaymentPayloadEnvelope, requirement);
+    const settle = await x402Facilitator.settle(x402Payload, requirement, idempotency.key ?? undefined);
     if (!settle.success) {
       return reply.code(400).send({ error: "X402_SETTLEMENT_FAILED", settlement: settle });
     }
 
     const result = await service.settleIntent(intent);
-    await updateStoredPaymentIntent(db, result.intent, {
-      ...(result.metadata ?? {}),
-      facilitator_settlement: settle,
-    });
     if (result.value) {
       await createPaymentSettlementRecord(db, {
         ...result.value,
@@ -592,6 +1879,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         settled_at: result.value.settled_at,
       });
     }
+    await updateStoredPaymentIntent(db, result.intent, {
+      ...(result.metadata ?? {}),
+      facilitator_settlement: settle,
+    });
     if (result.trust_triggers.length > 0) {
       await applyTrustTriggers(db, {
         order_id: result.intent.order_id,
@@ -602,15 +1893,24 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     }
     const finalization = await finalizeSettledPayment(db, result.intent);
 
-    return reply.send({
+    const responseBody = {
       settlement: settle,
       payment: result,
       settlement_release: finalization.settlementRelease,
       shipment: finalization.shipment,
+    };
+    await auditPaymentAction(db, request, "payment.capture", {
+      intent: result.intent,
+      previousStatus: intent.status,
+      nextStatus: result.intent.status,
+      reason: "x402 facilitator settlement",
+      metadata: result.metadata,
     });
+    await recordPaymentOperationIdempotency(db, "payment.x402_settle", idempotency, intent.id, 200, responseBody as Record<string, unknown>);
+    return reply.send(responseBody);
   });
 
-  app.post("/payments/:id/authorize", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/authorize", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "DIRECT_PAYMENT_MUTATION_DISABLED",
@@ -626,23 +1926,38 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
-    const result = await service.authorizeIntent(intent);
-    await updateStoredPaymentIntent(db, result.intent, result.metadata);
-    if (result.value) {
-      await createPaymentAuthorizationRecord(db, result.value, result.metadata);
-    }
-    if (result.trust_triggers.length > 0) {
-      await applyTrustTriggers(db, {
-        order_id: result.intent.order_id,
-        buyer_id: result.intent.buyer_id,
-        seller_id: result.intent.seller_id,
-        triggers: result.trust_triggers,
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.authorize", intent.id);
+    if (idempotency.replayed) return;
+    try {
+      const previousStatus = intent.status;
+      const result = await service.authorizeIntent(intent);
+      await updateStoredPaymentIntent(db, result.intent, result.metadata);
+      if (result.value) {
+        await createPaymentAuthorizationRecord(db, result.value, result.metadata);
+      }
+      if (result.trust_triggers.length > 0) {
+        await applyTrustTriggers(db, {
+          order_id: result.intent.order_id,
+          buyer_id: result.intent.buyer_id,
+          seller_id: result.intent.seller_id,
+          triggers: result.trust_triggers,
+        });
+      }
+      await auditPaymentAction(db, request, "payment.authorize", {
+        intent: result.intent,
+        previousStatus,
+        nextStatus: result.intent.status,
+        reason: "payment authorization requested",
+        metadata: result.metadata,
       });
+      await recordPaymentOperationIdempotency(db, "payment.authorize", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
+      return reply.send(result);
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
     }
-    return reply.send(result);
   });
 
-  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/settlement-pending", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "DIRECT_PAYMENT_MUTATION_DISABLED",
@@ -658,20 +1973,34 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
-    const result = service.markSettlementPending(intent);
-    await updateStoredPaymentIntent(db, result.intent);
-    if (result.trust_triggers.length > 0) {
-      await applyTrustTriggers(db, {
-        order_id: result.intent.order_id,
-        buyer_id: result.intent.buyer_id,
-        seller_id: result.intent.seller_id,
-        triggers: result.trust_triggers,
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.settlement_pending", intent.id);
+    if (idempotency.replayed) return;
+    try {
+      const previousStatus = intent.status;
+      const result = service.markSettlementPending(intent);
+      await updateStoredPaymentIntent(db, result.intent);
+      if (result.trust_triggers.length > 0) {
+        await applyTrustTriggers(db, {
+          order_id: result.intent.order_id,
+          buyer_id: result.intent.buyer_id,
+          seller_id: result.intent.seller_id,
+          triggers: result.trust_triggers,
+        });
+      }
+      await auditPaymentAction(db, request, "payment.admin_override", {
+        intent: result.intent,
+        previousStatus,
+        nextStatus: result.intent.status,
+        reason: "payment marked settlement pending",
       });
+      await recordPaymentOperationIdempotency(db, "payment.settlement_pending", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
+      return reply.send(result);
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
     }
-    return reply.send(result);
   });
 
-  app.post("/payments/:id/settle", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/settle", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "DIRECT_PAYMENT_MUTATION_DISABLED",
@@ -687,30 +2016,60 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
-    const result = await service.settleIntent(intent);
-    await updateStoredPaymentIntent(db, result.intent, result.metadata);
-    if (result.value) {
-      await createPaymentSettlementRecord(db, result.value);
-    }
-    if (result.trust_triggers.length > 0) {
-      await applyTrustTriggers(db, {
-        order_id: result.intent.order_id,
-        buyer_id: result.intent.buyer_id,
-        seller_id: result.intent.seller_id,
-        triggers: result.trust_triggers,
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.capture", intent.id);
+    if (idempotency.replayed) return;
+    try {
+      if (intent.status === "SETTLED") {
+        await requireSettlementRecordForPayment(db, intent);
+        const finalization = await finalizeSettledPayment(db, intent);
+        const responseBody = {
+          intent,
+          trust_triggers: [],
+          idempotent: true,
+          settlement_release: finalization.settlementRelease,
+          shipment: finalization.shipment,
+        };
+        await recordPaymentOperationIdempotency(db, "payment.capture", idempotency, intent.id, 200, responseBody as Record<string, unknown>);
+        return reply.send(responseBody);
+      }
+
+      const previousStatus = intent.status;
+      const result = await service.settleIntent(intent);
+      if (result.value) {
+        await createPaymentSettlementRecord(db, result.value);
+      }
+      await updateStoredPaymentIntent(db, result.intent, result.metadata);
+      if (result.trust_triggers.length > 0) {
+        await applyTrustTriggers(db, {
+          order_id: result.intent.order_id,
+          buyer_id: result.intent.buyer_id,
+          seller_id: result.intent.seller_id,
+          triggers: result.trust_triggers,
+        });
+      }
+
+      const finalization = await finalizeSettledPayment(db, result.intent);
+
+      const responseBody = {
+        ...result,
+        settlement_release: finalization.settlementRelease,
+        shipment: finalization.shipment,
+      };
+      await auditPaymentAction(db, request, "payment.capture", {
+        intent: result.intent,
+        previousStatus,
+        nextStatus: result.intent.status,
+        reason: "payment capture requested",
+        metadata: result.metadata,
       });
+      await recordPaymentOperationIdempotency(db, "payment.capture", idempotency, intent.id, 200, responseBody as Record<string, unknown>);
+      return reply.send(responseBody);
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
     }
-
-    const finalization = await finalizeSettledPayment(db, result.intent);
-
-    return reply.send({
-      ...result,
-      settlement_release: finalization.settlementRelease,
-      shipment: finalization.shipment,
-    });
   });
 
-  app.post("/payments/:id/fail", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/fail", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "DIRECT_PAYMENT_MUTATION_DISABLED",
@@ -722,20 +2081,34 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
-    const result = service.failIntent(intent);
-    await updateStoredPaymentIntent(db, result.intent);
-    if (result.trust_triggers.length > 0) {
-      await applyTrustTriggers(db, {
-        order_id: result.intent.order_id,
-        buyer_id: result.intent.buyer_id,
-        seller_id: result.intent.seller_id,
-        triggers: result.trust_triggers,
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.fail", intent.id);
+    if (idempotency.replayed) return;
+    try {
+      const previousStatus = intent.status;
+      const result = service.failIntent(intent);
+      await updateStoredPaymentIntent(db, result.intent);
+      if (result.trust_triggers.length > 0) {
+        await applyTrustTriggers(db, {
+          order_id: result.intent.order_id,
+          buyer_id: result.intent.buyer_id,
+          seller_id: result.intent.seller_id,
+          triggers: result.trust_triggers,
+        });
+      }
+      await auditPaymentAction(db, request, "payment.fail", {
+        intent: result.intent,
+        previousStatus,
+        nextStatus: result.intent.status,
+        reason: "payment marked failed",
       });
+      await recordPaymentOperationIdempotency(db, "payment.fail", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
+      return reply.send(result);
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
     }
-    return reply.send(result);
   });
 
-  app.post("/payments/:id/cancel", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/cancel", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "DIRECT_PAYMENT_MUTATION_DISABLED",
@@ -747,20 +2120,34 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
-    const result = service.cancelIntent(intent);
-    await updateStoredPaymentIntent(db, result.intent);
-    if (result.trust_triggers.length > 0) {
-      await applyTrustTriggers(db, {
-        order_id: result.intent.order_id,
-        buyer_id: result.intent.buyer_id,
-        seller_id: result.intent.seller_id,
-        triggers: result.trust_triggers,
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.cancel", intent.id);
+    if (idempotency.replayed) return;
+    try {
+      const previousStatus = intent.status;
+      const result = service.cancelIntent(intent);
+      await updateStoredPaymentIntent(db, result.intent);
+      if (result.trust_triggers.length > 0) {
+        await applyTrustTriggers(db, {
+          order_id: result.intent.order_id,
+          buyer_id: result.intent.buyer_id,
+          seller_id: result.intent.seller_id,
+          triggers: result.trust_triggers,
+        });
+      }
+      await auditPaymentAction(db, request, "payment.cancel", {
+        intent: result.intent,
+        previousStatus,
+        nextStatus: result.intent.status,
+        reason: "payment cancellation requested",
       });
+      await recordPaymentOperationIdempotency(db, "payment.cancel", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
+      return reply.send(result);
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
     }
-    return reply.send(result);
   });
 
-  app.post("/payments/:id/refund", { preHandler: [requireAuth, requirePaymentOwner()] }, async (request, reply) => {
+  app.post("/payments/:id/refund", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
     if (requiresRealPaymentProviders() && request.user?.role !== "admin") {
       return reply.code(403).send({
         error: "DIRECT_REFUND_DISABLED",
@@ -783,6 +2170,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_REFUND_REQUEST", issues: parsed.error.issues });
     }
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.refund", intent.id);
+    if (idempotency.replayed) return;
 
     const refund: Refund = {
       id:
@@ -800,13 +2189,25 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       updated_at: new Date().toISOString(),
     };
 
-    const result = await service.refundIntent(intent, refund);
-    await createRefundRecord(
-      db,
-      result.refund,
-      typeof result.metadata?.provider_reference === "string" ? result.metadata.provider_reference : null,
-    );
-    return reply.send(result);
+    try {
+      const result = await service.refundIntent(intent, refund);
+      await createRefundRecord(
+        db,
+        result.refund,
+        typeof result.metadata?.provider_reference === "string" ? result.metadata.provider_reference : null,
+      );
+      await auditPaymentAction(db, request, "payment.refund", {
+        intent,
+        previousStatus: intent.status,
+        nextStatus: intent.status,
+        reason: parsed.data.reason_code,
+        metadata: result.metadata,
+      });
+      await recordPaymentOperationIdempotency(db, "payment.refund", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
+      return reply.send(result);
+    } catch (error) {
+      return sendPaymentOperationFailure(reply, error);
+    }
   });
 
   app.post("/payments/webhooks/x402", { config: { rawBody: true } }, async (request, reply) => {
@@ -849,12 +2250,29 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       switch (eventType) {
         case "settlement.confirmed": {
           let settledIntent = intent;
-          if (intent.status !== "SETTLED") {
-            const result = await service.settleIntent(intent);
-            await updateStoredPaymentIntent(db, result.intent, result.metadata);
+          if (settledIntent.status === "SETTLED") {
+            await requireSettlementRecordForPayment(db, settledIntent);
+          }
+          if (settledIntent.status === "AUTHORIZED") {
+            const pending = service.markSettlementPending(settledIntent);
+            await updateStoredPaymentIntent(db, pending.intent);
+            if (pending.trust_triggers.length > 0) {
+              await applyTrustTriggers(db, {
+                order_id: pending.intent.order_id,
+                buyer_id: pending.intent.buyer_id,
+                seller_id: pending.intent.seller_id,
+                triggers: pending.trust_triggers,
+              });
+            }
+            settledIntent = pending.intent;
+          }
+
+          if (settledIntent.status !== "SETTLED") {
+            const result = await service.settleIntent(settledIntent);
             if (result.value) {
               await createPaymentSettlementRecord(db, result.value);
             }
+            await updateStoredPaymentIntent(db, result.intent, result.metadata);
             if (result.trust_triggers.length > 0) {
               await applyTrustTriggers(db, {
                 order_id: result.intent.order_id,
@@ -910,7 +2328,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           return reply.send({ accepted: true, action: "ignored", reason: "unknown_event" });
       }
     } catch (error) {
-      console.error("x402 webhook processing error:", error);
+      console.error("x402 webhook processing error:", safeRedactPaymentLog(error));
       return reply.code(500).send({ accepted: false, action: "error", message: "Webhook processing failed" });
     }
   });
@@ -963,48 +2381,64 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               return reply.send(depositResult);
             }
           } catch (error) {
-            console.error("Stripe deposit fulfillment error:", error);
+            console.error("Stripe deposit fulfillment error:", safeRedactPaymentLog(error));
             return reply.code(500).send({ accepted: false, action: "error", message: "Deposit fulfillment processing failed" });
           }
 
           const intent = await getPaymentIntentById(db, paymentIntentId);
-          if (intent && intent.status !== "SETTLED") {
+          if (intent) {
             // Verify event data matches stored intent
             const eventObj = event.data?.object as unknown as { metadata?: Record<string, string> } | undefined;
             const eventOrderId = eventObj?.metadata?.order_id;
             if (eventOrderId && eventOrderId !== intent.order_id) {
-              console.error(`Stripe webhook order_id mismatch: event=${eventOrderId}, intent=${intent.order_id}`);
+              console.error("Stripe webhook order_id mismatch", {
+                event_order_id: eventOrderId,
+                intent_order_id: intent.order_id,
+              });
               return reply.code(400).send({ error: "ORDER_ID_MISMATCH" });
+            }
+            const eventPolicyHash = eventObj?.metadata?.approval_policy_hash;
+            if (eventPolicyHash && intent.approval_policy_hash && eventPolicyHash !== intent.approval_policy_hash) {
+              console.error("Stripe webhook approval_policy_hash mismatch", {
+                payment_intent_id: intent.id,
+              });
+              return reply.code(400).send({ error: "APPROVAL_POLICY_HASH_MISMATCH" });
             }
 
             try {
+              let settledIntent = intent;
+              if (settledIntent.status === "SETTLED") {
+                await requireSettlementRecordForPayment(db, settledIntent);
+              }
               // Transition: AUTHORIZED → SETTLEMENT_PENDING → SETTLED
-              if (intent.status === "AUTHORIZED") {
-                const pending = service.markSettlementPending(intent);
+              if (settledIntent.status === "AUTHORIZED") {
+                const pending = service.markSettlementPending(settledIntent);
                 await updateStoredPaymentIntent(db, pending.intent);
-                intent.status = pending.intent.status;
-                intent.updated_at = pending.intent.updated_at;
+                settledIntent = pending.intent;
               }
 
-              const result = await service.settleIntent(intent);
-              await updateStoredPaymentIntent(db, result.intent, {
-                ...(result.metadata ?? {}),
-                stripe_event_id: event.id,
-                stripe_event_type: event.type,
-              });
-              if (result.value) {
-                await createPaymentSettlementRecord(db, result.value);
-              }
-              if (result.trust_triggers.length > 0) {
-                await applyTrustTriggers(db, {
-                  order_id: result.intent.order_id,
-                  buyer_id: result.intent.buyer_id,
-                  seller_id: result.intent.seller_id,
-                  triggers: result.trust_triggers,
+              if (settledIntent.status !== "SETTLED") {
+                const result = await service.settleIntent(settledIntent);
+                if (result.value) {
+                  await createPaymentSettlementRecord(db, result.value);
+                }
+                await updateStoredPaymentIntent(db, result.intent, {
+                  ...(result.metadata ?? {}),
+                  stripe_event_id: event.id,
+                  stripe_event_type: event.type,
                 });
+                if (result.trust_triggers.length > 0) {
+                  await applyTrustTriggers(db, {
+                    order_id: result.intent.order_id,
+                    buyer_id: result.intent.buyer_id,
+                    seller_id: result.intent.seller_id,
+                    triggers: result.trust_triggers,
+                  });
+                }
+                settledIntent = result.intent;
               }
 
-              const finalization = await finalizeSettledPayment(db, result.intent);
+              const finalization = await finalizeSettledPayment(db, settledIntent);
 
               await recordWebhookProcessed(db, event.id, "stripe", 200);
               return reply.send({
@@ -1015,7 +2449,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
                 shipment: finalization.shipment,
               });
             } catch (error) {
-              console.error("Stripe webhook settlement error:", error);
+              console.error("Stripe webhook settlement error:", safeRedactPaymentLog(error));
               return reply.code(500).send({ accepted: false, action: "error", message: "Settlement processing failed" });
             }
           }
@@ -1063,7 +2497,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
   app.post<{ Params: { id: string } }>(
     "/payments/:id/onramp/session",
-    { preHandler: [requireAuth, requirePaymentOwner()] },
+    { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] },
     async (request, reply) => {
       const stripeConfig = getStripeConfig();
       if (!stripeConfig.enabled) {
@@ -1093,6 +2527,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       if (intent.buyer_id !== request.user!.id) {
         return reply.code(403).send({ error: "FORBIDDEN" });
       }
+      const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.stripe_onramp_session", intent.id);
+      if (idempotency.replayed) return;
 
       // Verify destination wallet belongs to the buyer
       const buyerWallets = await db
@@ -1113,6 +2549,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       }
 
       const amountMinor = intent.amount.amount_minor;
+      const buyerPayment = buildPaymentQuoteConfirmation(
+        { ...intent, selected_rail: "stripe" },
+        {},
+      );
 
       try {
         const session = await createOnrampSession({
@@ -1120,21 +2560,43 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           amountMinor,
           buyerEmail: parsed.data.buyer_email,
           paymentIntentId: id,
+          metadata: {
+            order_id: intent.order_id,
+            grant_id: intent.agent_payment_grant_id ?? "",
+            approval_policy_hash: intent.approval_policy_hash ?? "",
+            agreement_hash: intent.agreement_hash ?? "",
+            listing_hash: intent.listing_hash ?? "",
+            preferred_rail: "x402",
+            actual_rail: "stripe",
+            destination_amount_minor: String(amountMinor),
+            buyer_total_minor: String(buyerPayment.buyer_total.amount_minor),
+            buyer_fee_minor: String(buyerPayment.fees.buyer_fee_total.amount_minor),
+            seller_receives_minor: String(buyerPayment.seller_receives.amount_minor),
+            seller_fee_minor: String(buyerPayment.fees.seller_fee_total.amount_minor),
+          },
           clientIp: request.ip,
+          idempotencyKey: idempotency.key ?? undefined,
         });
 
-        return reply.send({
+        const responseBody = {
           onramp_session_id: session.sessionId,
           client_secret: session.clientSecret,
           hosted_url: session.hostedUrl,
           status: session.status,
           stripe_publishable_key: stripeConfig.publishableKey,
-          amount_usd: (amountMinor / 100).toFixed(2),
+          amount_usd: (buyerPayment.buyer_total.amount_minor / 100).toFixed(2),
+          destination_amount_usd: (amountMinor / 100).toFixed(2),
+          destination_amount: intent.amount,
+          buyer_payable: buyerPayment.buyer_total,
+          seller_receives: buyerPayment.seller_receives,
+          fee_breakdown: buyerPayment.fees,
+          quote_confirmation: buyerPayment,
           destination_network: "base",
           destination_currency: "usdc",
-        });
+        };
+        return reply.send(responseBody);
       } catch (err) {
-        console.error("Stripe onramp session creation failed:", err);
+        console.error("Stripe onramp session creation failed:", safeRedactPaymentLog(err));
         return reply.code(502).send({
           error: "ONRAMP_SESSION_FAILED",
           message: "Failed to create onramp session. Please try again.",

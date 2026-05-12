@@ -14,14 +14,22 @@ vi.unmock("viem/chains");
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { recoverTypedDataAddress, type Address } from "viem";
 import {
+  CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+  CONDITIONAL_SETTLEMENT_EIP712_TYPES,
   SETTLEMENT_EIP712_DOMAIN,
   SETTLEMENT_EIP712_TYPES,
 } from "@haggle/contracts";
 import type { PaymentIntent } from "@haggle/payment-core";
 import {
   buildSettlementMessage,
+  buildConditionalSettlementMessage,
+  buildConditionalReleaseMessage,
   signSettlement,
+  signConditionalSettlement,
+  signConditionalRelease,
   createSettlementSigner,
+  createConditionalSettlementSigner,
+  type ConditionalSettlementSignerConfig,
   type SettlementSignerConfig,
 } from "../settlement-signer.js";
 
@@ -30,6 +38,7 @@ import {
 const TEST_PRIVATE_KEY = generatePrivateKey();
 const TEST_ACCOUNT = privateKeyToAccount(TEST_PRIVATE_KEY);
 const TEST_ROUTER_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678" as Address;
+const TEST_CONDITIONAL_SETTLEMENT_ADDRESS = "0x9876543210abcdef9876543210abcdef98765432" as Address;
 const TEST_ASSET_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address;
 const TEST_FEE_WALLET = "0xfeefeefeefeefeefeefeefeefeefeefeefeefee0" as Address;
 const TEST_CHAIN_ID = 84532;
@@ -54,6 +63,15 @@ function makeTestIntent(overrides?: Partial<PaymentIntent>): PaymentIntent {
   };
 }
 
+function makeConditionalTestIntent(overrides?: Partial<PaymentIntent>): PaymentIntent {
+  return makeTestIntent({
+    approval_policy_hash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    agreement_hash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    listing_hash: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    ...overrides,
+  });
+}
+
 function makeTestConfig(overrides?: Partial<SettlementSignerConfig>): SettlementSignerConfig {
   return {
     relayerPrivateKey: TEST_PRIVATE_KEY,
@@ -61,7 +79,19 @@ function makeTestConfig(overrides?: Partial<SettlementSignerConfig>): Settlement
     chainId: TEST_CHAIN_ID,
     assetAddress: TEST_ASSET_ADDRESS,
     feeWalletAddress: TEST_FEE_WALLET,
-    feeBps: 250,
+    feeBps: 150,
+    ...overrides,
+  };
+}
+
+function makeConditionalTestConfig(
+  overrides?: Partial<ConditionalSettlementSignerConfig>,
+): ConditionalSettlementSignerConfig {
+  return {
+    relayerPrivateKey: TEST_PRIVATE_KEY,
+    conditionalSettlementAddress: TEST_CONDITIONAL_SETTLEMENT_ADDRESS,
+    chainId: TEST_CHAIN_ID,
+    assetAddress: TEST_ASSET_ADDRESS,
     ...overrides,
   };
 }
@@ -80,8 +110,8 @@ describe("settlement-signer", () => {
       expect(message.asset).toBe(TEST_ASSET_ADDRESS);
       expect(message.feeWallet).toBe(TEST_FEE_WALLET);
       expect(message.grossAmount).toBe(100_000_000n);
-      expect(message.feeAmount).toBe(2_500_000n);
-      expect(message.sellerAmount).toBe(97_500_000n);
+      expect(message.feeAmount).toBe(1_500_000n);
+      expect(message.sellerAmount).toBe(98_500_000n);
       expect(message.deadline).toBeGreaterThan(0n);
       expect(message.signerNonce).toBe(TEST_SIGNER_NONCE);
     });
@@ -269,6 +299,106 @@ describe("settlement-signer", () => {
     });
   });
 
+  describe("conditional settlement signing", () => {
+    it("builds a policy-bound conditional settlement message", () => {
+      const message = buildConditionalSettlementMessage(
+        makeConditionalTestIntent(),
+        makeConditionalTestConfig(),
+        TEST_SIGNER_NONCE,
+        { grantNonce: "grant_nonce_001", expiresAt: 1_900_000_000n },
+      );
+
+      expect(message.orderId).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(message.paymentIntentId).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(message.approvalPolicyHash).toBe(
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      );
+      expect(message.agreementHash).toBe(
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      );
+      expect(message.listingHash).toBe(
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      );
+      expect(message.grossAmount).toBe(100_000_000n);
+      expect(message.expiresAt).toBe(1_900_000_000n);
+      expect(message.signerNonce).toBe(TEST_SIGNER_NONCE);
+    });
+
+    it("produces a recoverable ConditionalSettlement EIP-712 signature", async () => {
+      const intent = makeConditionalTestIntent();
+      const config = makeConditionalTestConfig();
+      const message = buildConditionalSettlementMessage(intent, config, TEST_SIGNER_NONCE, {
+        grantNonce: "grant_nonce_001",
+        expiresAt: 1_900_000_000n,
+      });
+
+      const result = await signConditionalSettlement(message, config);
+
+      const recovered = await recoverTypedDataAddress({
+        domain: {
+          ...CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+          chainId: TEST_CHAIN_ID,
+          verifyingContract: TEST_CONDITIONAL_SETTLEMENT_ADDRESS,
+        },
+        types: CONDITIONAL_SETTLEMENT_EIP712_TYPES,
+        primaryType: "ConditionalSettlement",
+        message,
+        signature: result.signature,
+      });
+
+      expect(result.expires_at).toBe(message.expiresAt);
+      expect(result.signer_nonce).toBe(message.signerNonce);
+      expect(recovered.toLowerCase()).toBe(TEST_ACCOUNT.address.toLowerCase());
+    });
+
+    it("throws when policy hash fields are missing", () => {
+      const intent = makeTestIntent();
+      expect(() =>
+        buildConditionalSettlementMessage(
+          intent,
+          makeConditionalTestConfig(),
+          TEST_SIGNER_NONCE,
+          { grantNonce: "grant_nonce_001" },
+        ),
+      ).toThrow("approval_policy_hash is required");
+    });
+
+    it("produces a recoverable Release EIP-712 signature", async () => {
+      const config = makeConditionalTestConfig();
+      const message = buildConditionalReleaseMessage(
+        {
+          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
+          feeWallet: TEST_FEE_WALLET,
+          grossAmountMinor: 100_000_000,
+          feeBps: 150,
+          deadline: 1_900_000_000n,
+        },
+        TEST_SIGNER_NONCE,
+      );
+
+      const result = await signConditionalRelease(message, config);
+      const recovered = await recoverTypedDataAddress({
+        domain: {
+          ...CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+          chainId: TEST_CHAIN_ID,
+          verifyingContract: TEST_CONDITIONAL_SETTLEMENT_ADDRESS,
+        },
+        types: CONDITIONAL_SETTLEMENT_EIP712_TYPES,
+        primaryType: "Release",
+        message,
+        signature: result.signature,
+      });
+
+      expect(result.deadline).toBe(message.deadline);
+      expect(result.signer_nonce).toBe(message.signerNonce);
+      expect(message.feeAmount).toBe(1_500_000n);
+      expect(message.sellerAmount).toBe(98_500_000n);
+      expect(message.sellerAmount + message.feeAmount).toBe(100_000_000n);
+      expect(recovered.toLowerCase()).toBe(TEST_ACCOUNT.address.toLowerCase());
+    });
+  });
+
   describe("createSettlementSigner", () => {
     const savedEnv: Record<string, string | undefined> = {};
 
@@ -333,6 +463,12 @@ describe("settlement-signer", () => {
       expect(() => createSettlementSigner()).toThrow("HAGGLE_X402_FEE_BPS must be 0-1000");
     });
 
+    it("throws when feeBps is not an integer basis-point value", () => {
+      setAllEnv();
+      process.env.HAGGLE_X402_FEE_BPS = "1.5";
+      expect(() => createSettlementSigner()).toThrow("HAGGLE_X402_FEE_BPS must be 0-1000");
+    });
+
     it("returns a working signer with nonceOverride (no RPC needed)", async () => {
       setAllEnv();
       const signer = createSettlementSigner({ nonceOverride: 0n });
@@ -367,6 +503,60 @@ describe("settlement-signer", () => {
       const result = await signer(intent);
 
       expect(result.signature).toMatch(/^0x[0-9a-f]+$/);
+    });
+  });
+
+  describe("createConditionalSettlementSigner", () => {
+    const savedEnv: Record<string, string | undefined> = {};
+
+    function setEnv(vars: Record<string, string>) {
+      for (const [key, value] of Object.entries(vars)) {
+        savedEnv[key] = process.env[key];
+        process.env[key] = value;
+      }
+    }
+
+    function setAllEnv() {
+      setEnv({
+        HAGGLE_ROUTER_RELAYER_PRIVATE_KEY: TEST_PRIVATE_KEY,
+        HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS: TEST_CONDITIONAL_SETTLEMENT_ADDRESS,
+        HAGGLE_X402_USDC_ASSET_ADDRESS: TEST_ASSET_ADDRESS,
+        HAGGLE_X402_NETWORK: "base-sepolia",
+      });
+    }
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+      for (const key of Object.keys(savedEnv)) {
+        delete savedEnv[key];
+      }
+    });
+
+    it("throws when HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is missing", () => {
+      setAllEnv();
+      delete process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
+      expect(() => createConditionalSettlementSigner()).toThrow(
+        "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required",
+      );
+    });
+
+    it("returns a working signer with nonceOverride", async () => {
+      setAllEnv();
+      const signer = createConditionalSettlementSigner({ nonceOverride: 0n });
+      const result = await signer(makeConditionalTestIntent(), {
+        grantNonce: "grant_nonce_001",
+        expiresAt: 1_900_000_000n,
+      });
+
+      expect(result.signature).toMatch(/^0x[0-9a-f]+$/);
+      expect(result.expires_at).toBe(1_900_000_000n);
+      expect(result.signer_nonce).toBe(0n);
     });
   });
 });

@@ -2,6 +2,7 @@ import {
   MockStripeAdapter,
   MockX402Adapter,
   PaymentService,
+  ScaffoldConditionalSettlementContract,
   ScaffoldDisputeRegistryContract,
   ScaffoldSettlementRouterContract,
   type BuyerAuthorizationMode,
@@ -10,12 +11,17 @@ import {
 } from "@haggle/payment-core";
 // Heavy modules not re-exported from the barrel — import via tsconfig paths.
 import { RealX402Adapter } from "@haggle/payment-core/heavy/real-x402-adapter";
-import { ViemDisputeRegistryContract, ViemSettlementRouterContract } from "@haggle/payment-core/heavy/viem-contracts";
+import {
+  ViemConditionalSettlementContract,
+  ViemDisputeRegistryContract,
+  ViemSettlementRouterContract,
+} from "@haggle/payment-core/heavy/viem-contracts";
 import { createPublicClient, createWalletClient, http, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 import { createSettlementSigner } from "./settlement-signer.js";
 import { RealStripeAdapter } from "./real-stripe-adapter.js";
+import { readHaggleFeeBpsFromEnv } from "./fee-policy.js";
 
 interface WalletMapEntry {
   wallet_address: string;
@@ -113,16 +119,19 @@ export function createPaymentServiceFromEnv() {
   const walletNetwork = process.env.HAGGLE_X402_WALLET_NETWORK ?? "eip155:8453";
   const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
   const routerAddress = process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS as Address | undefined;
+  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as Address | undefined;
   const disputeRegistryAddress = process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS as Address | undefined;
   const relayerPrivateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
   const assetAddress = (process.env.HAGGLE_X402_USDC_ASSET_ADDRESS ?? "USDC") as Address | "USDC";
-  const feeBps = Number(process.env.HAGGLE_X402_FEE_BPS ?? "250");
+  const feeBps = readHaggleFeeBpsFromEnv();
   const defaultBuyerAuthMode = (process.env.HAGGLE_X402_DEFAULT_BUYER_AUTH_MODE ?? "human_wallet") as BuyerAuthorizationMode;
   const sellerWalletMap = parseWalletMap(process.env.HAGGLE_X402_SELLER_WALLET_MAP);
   const buyerWalletMap = parseWalletMap(process.env.HAGGLE_X402_BUYER_WALLET_MAP);
 
   const chain = network === "base-sepolia" ? baseSepolia : base;
   const viemReady = Boolean(rpcUrl && routerAddress && relayerPrivateKey && assetAddress !== "USDC");
+  const contractClientReady = Boolean(rpcUrl && relayerPrivateKey && assetAddress !== "USDC");
+  const conditionalServerExecutionEnabled = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_SERVER_EXECUTION === "true";
 
   const settlementRouter = viemReady
     ? (() => {
@@ -152,6 +161,27 @@ export function createPaymentServiceFromEnv() {
         })()
       : new ScaffoldDisputeRegistryContract(network);
 
+  // Exact x402 transfers must not send directly to the conditional settlement
+  // contract. By default this object only publishes address/capability metadata
+  // into quotes; server-side contract calls require an explicit operational flag.
+  const conditionalSettlement = conditionalSettlementAddress
+    ? contractClientReady && conditionalServerExecutionEnabled
+      ? (() => {
+          const account = privateKeyToAccount(relayerPrivateKey!);
+          const transport = http(rpcUrl!);
+          const publicClient = createPublicClient({ chain, transport });
+          const walletClient = createWalletClient({ account, chain, transport });
+          return new ViemConditionalSettlementContract(
+            network,
+            "USDC",
+            conditionalSettlementAddress,
+            publicClient,
+            walletClient,
+          );
+        })()
+      : new ScaffoldConditionalSettlementContract(network, "USDC", conditionalSettlementAddress)
+    : undefined;
+
   const x402 = new RealX402Adapter({
     facilitator_url: facilitatorUrl,
     network,
@@ -166,6 +196,7 @@ export function createPaymentServiceFromEnv() {
       },
     },
     settlement_router: settlementRouter,
+    conditional_settlement: conditionalSettlement,
     dispute_registry: disputeRegistry,
     async resolve_seller_payout_target(sellerId: string) {
       return {
@@ -202,8 +233,10 @@ export function getX402EnvConfig() {
     assetAddress: process.env.HAGGLE_X402_USDC_ASSET_ADDRESS ?? "USDC",
     apiKeyId: process.env.CDP_API_KEY_ID,
     apiKeySecret: process.env.CDP_API_KEY_SECRET,
+    paymentReceiverAddress: process.env.HAGGLE_X402_PAYMENT_RECEIVER_ADDRESS,
     baseRpcUrl: process.env.HAGGLE_BASE_RPC_URL,
     settlementRouterAddress: process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS,
+    conditionalSettlementAddress: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
     disputeRegistryAddress: process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS,
   };
 }

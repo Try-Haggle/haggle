@@ -1,16 +1,43 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
+import { PAYMENT_DISCLOSURE_TEXT_HASH, PAYMENT_DISCLOSURE_VERSION } from "@haggle/shared";
 import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
+import {
+  createAgentPaymentGrantRecord,
+  createPaymentDisclosureRecord,
+  createPaymentOperationIdempotencyRecord,
+  createRefundRecord,
+  createStoredPaymentIntent,
+  ensureCommerceOrderForApproval,
+  getActivePaymentIntentByOrderId,
+  getPaymentSettlementByPaymentIntentId,
+  getPaymentIntentById,
+  getPaymentOperationIdempotencyRecord,
+  getPaymentIntentRowById,
+  getSettlementApprovalById,
+  updateCommerceOrderStatus,
+  updateStoredPaymentIntent,
+} from "../services/payment-record.service.js";
+import { createSettlementReleaseRecord } from "../services/settlement-release.service.js";
+import { createShipmentRecord } from "../services/shipment-record.service.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
+  createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
+  getActivePaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  getPaymentSettlementByPaymentIntentId: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -35,6 +62,10 @@ vi.mock("../services/shipment-record.service.js", () => ({
 
 vi.mock("../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../services/dispute-record.service.js", () => ({
@@ -100,6 +131,23 @@ vi.mock("../services/draft.service.js", () => ({
   deleteDraft: vi.fn().mockResolvedValue(null),
   publishDraft: vi.fn().mockResolvedValue(null),
 }));
+
+const mockCreateAgentPaymentGrantRecord = vi.mocked(createAgentPaymentGrantRecord);
+const mockCreatePaymentDisclosureRecord = vi.mocked(createPaymentDisclosureRecord);
+const mockCreateStoredPaymentIntent = vi.mocked(createStoredPaymentIntent);
+const mockEnsureCommerceOrderForApproval = vi.mocked(ensureCommerceOrderForApproval);
+const mockGetActivePaymentIntentByOrderId = vi.mocked(getActivePaymentIntentByOrderId);
+const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
+const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
+const mockGetPaymentOperationIdempotencyRecord = vi.mocked(getPaymentOperationIdempotencyRecord);
+const mockGetPaymentIntentRowById = vi.mocked(getPaymentIntentRowById);
+const mockGetSettlementApprovalById = vi.mocked(getSettlementApprovalById);
+const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
+const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
+const mockCreateRefundRecord = vi.mocked(createRefundRecord);
+const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(createPaymentOperationIdempotencyRecord);
+const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
+const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 
 describe("Payment routes", () => {
   let app: FastifyInstance;
@@ -169,6 +217,194 @@ describe("Payment routes", () => {
     }
   });
 
+  it("rejects inline settlement approvals for non-admin users before persistence lookup", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval: {
+          id: "sa_inline_untrusted",
+          approval_state: "APPROVED",
+          seller_policy: {
+            mode: "AUTO_WITHIN_POLICY",
+            fulfillment_sla: { shipment_input_due_days: 3 },
+            responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+          },
+          terms: {
+            listing_id: "listing_1",
+            seller_id: "seller_1",
+            buyer_id: "test-user-001",
+            final_amount_minor: 1000,
+            currency: "USD",
+            selected_payment_rail: "x402",
+          },
+          buyer_approved_at: new Date().toISOString(),
+          seller_approved_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("INLINE_SETTLEMENT_APPROVAL_DISABLED");
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("rejects inline settlement approvals for admin users before persistence lookup", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const token = jwt.sign(
+      { sub: "test-user-001", email: "admin@haggle.ai", role: "admin" },
+      process.env.SUPABASE_JWT_SECRET ?? "test-secret",
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        settlement_approval: {
+          id: "sa_inline_admin_untrusted",
+          approval_state: "APPROVED",
+          seller_policy: {
+            mode: "AUTO_WITHIN_POLICY",
+            fulfillment_sla: { shipment_input_due_days: 3 },
+            responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+          },
+          terms: {
+            listing_id: "listing_1",
+            seller_id: "seller_1",
+            buyer_id: "test-user-001",
+            final_amount_minor: 1000,
+            currency: "USD",
+            selected_payment_rail: "x402",
+          },
+          buyer_approved_at: new Date().toISOString(),
+          seller_approved_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("INLINE_SETTLEMENT_APPROVAL_DISABLED");
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("requires payment disclosure acknowledgement for production payment prepare", async () => {
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    process.env.VERCEL_ENV = "production";
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    const token = jwt.sign(
+      { sub: "test-user-001", email: "test@haggle.ai", role: "authenticated" },
+      "test-secret",
+    );
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/prepare",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          settlement_approval_id: "6f3f3657-8f1d-4c32-91a8-faf5bfc3a111",
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe("PAYMENT_DISCLOSURE_ACK_REQUIRED");
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = originalVercelEnv;
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+    }
+  });
+
+  it.each([
+    ["no_custody", { no_custody: false, buyer_approved_rules: true, stablecoin_not_investment: true }],
+    ["buyer_approved_rules", { no_custody: true, buyer_approved_rules: false, stablecoin_not_investment: true }],
+    ["stablecoin_not_investment", { no_custody: true, buyer_approved_rules: true, stablecoin_not_investment: false }],
+  ])("rejects invalid payment disclosure acknowledgement for %s before persistence lookup", async (field, acknowledgement) => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: new Date().toISOString(),
+          stripe_fallback: false,
+          ...acknowledgement,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_DISCLOSURE_ACK_INVALID",
+      message: `${field} acknowledgement is required`,
+    });
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["version", "unsupported payment disclosure", PAYMENT_DISCLOSURE_TEXT_HASH],
+    ["text_hash", PAYMENT_DISCLOSURE_VERSION, "sha256:untrusted-disclosure"],
+  ])("rejects unsupported payment disclosure %s before persistence lookup", async (field, version, textHash) => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        payment_disclosure_ack: {
+          version,
+          text_hash: textHash,
+          accepted_at: new Date().toISOString(),
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: false,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_DISCLOSURE_ACK_INVALID",
+      message: `payment disclosure ${field} is not supported`,
+    });
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
   // GET /payments/:id
   it("GET /payments/:id returns 404 for unknown payment", async () => {
     const res = await app.inject({
@@ -180,6 +416,833 @@ describe("Payment routes", () => {
     expect(res.json().error).toBe("PAYMENT_NOT_FOUND");
   });
 
+  it.each([
+    ["POST", "/payments/pi_buyer_action/quote", undefined],
+    ["GET", "/payments/pi_buyer_action/x402/requirements", undefined],
+    ["POST", "/payments/pi_buyer_action/x402/conditional-settlement-request", {}],
+    ["POST", "/payments/pi_buyer_action/x402/conditional-settlement-funding", {
+      tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+    }],
+    ["POST", "/payments/pi_buyer_action/x402/conditional-settlement-confirmation", {
+      tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+    }],
+    ["POST", "/payments/pi_buyer_action/x402/submit-signature", { payment_payload: {} }],
+    ["POST", "/payments/pi_buyer_action/authorize", undefined],
+    ["POST", "/payments/pi_buyer_action/settlement-pending", undefined],
+    ["POST", "/payments/pi_buyer_action/settle", undefined],
+    ["POST", "/payments/pi_buyer_action/fail", undefined],
+    ["POST", "/payments/pi_buyer_action/cancel", undefined],
+    ["POST", "/payments/pi_buyer_action/refund", {
+      amount_minor: 100,
+      currency: "USD",
+      reason_code: "buyer_requested",
+    }],
+    ["POST", "/payments/pi_buyer_action/onramp/session", {
+      destination_wallet: "0x1111111111111111111111111111111111111111",
+    }],
+  ])("%s %s rejects sellers before buyer payment mutation logic", async (method, url, payload) => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentById.mockResolvedValueOnce({
+      id: "pi_buyer_action",
+      order_id: "order_123",
+      seller_id: "test-user-001",
+      buyer_id: "buyer_123",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never);
+
+    const res = await app.inject({
+      method: method as "GET" | "POST",
+      url,
+      headers: AUTH_HEADERS,
+      ...(payload === undefined ? {} : { payload }),
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("FORBIDDEN");
+    expect(mockGetPaymentIntentById).toHaveBeenCalledOnce();
+  });
+
+  it("POST /payments/:id/cancel maps invalid payment state to 409", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    const intent = {
+      id: "pi_settled_cancel",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_settled_cancel/cancel",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_STATE_TRANSITION_INVALID",
+      message: "invalid payment transition: SETTLED -> cancel",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/cancel records idempotent payment mutations", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockGetPaymentOperationIdempotencyRecord.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    mockGetPaymentOperationIdempotencyRecord.mockResolvedValueOnce(null);
+    const intent = {
+      id: "pi_cancel_idem",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_cancel_idem/cancel",
+      headers: {
+        ...AUTH_HEADERS,
+        "idempotency-key": "idem-cancel-1",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().intent).toMatchObject({ id: "pi_cancel_idem", status: "CANCELED" });
+    expect(mockCreatePaymentOperationIdempotencyRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        operation: "payment.cancel",
+        idempotencyKey: "idem-cancel-1",
+        paymentIntentId: "pi_cancel_idem",
+        responseStatus: 200,
+      }),
+    );
+  });
+
+  it("POST /payments/:id/cancel rejects conflicting idempotency key reuse", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockGetPaymentOperationIdempotencyRecord.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    const intent = {
+      id: "pi_cancel_conflict",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentOperationIdempotencyRecord.mockResolvedValueOnce({
+      operation: "payment.cancel",
+      idempotencyKey: "idem-conflict",
+      requestHash: "sha256:different",
+      responseStatus: 200,
+      responseBody: { intent: { id: "pi_cancel_conflict", status: "CANCELED" } },
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_cancel_conflict/cancel",
+      headers: {
+        ...AUTH_HEADERS,
+        "idempotency-key": "idem-conflict",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "IDEMPOTENCY_KEY_CONFLICT" });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/settle retries fulfillment finalization for an already settled intent", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockCreateSettlementReleaseRecord.mockClear();
+    mockCreateShipmentRecord.mockClear();
+    mockUpdateCommerceOrderStatus.mockClear();
+    mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce({
+      id: "settlement_existing",
+      payment_intent_id: "pi_settled_retry",
+      rail: "stripe",
+      provider_reference: "stripe_settle_existing",
+      settled_amount: { currency: "USD", amount_minor: 50_000 },
+      settled_at: new Date().toISOString(),
+      status: "SETTLED",
+    });
+    const intent = {
+      id: "pi_settled_retry",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_settled_retry/settle",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      intent: expect.objectContaining({ id: "pi_settled_retry", status: "SETTLED" }),
+      idempotent: true,
+      trust_triggers: [],
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
+    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "test-user-001");
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+  });
+
+  it("POST /payments/:id/refund maps non-settled refunds to 409", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockCreateRefundRecord.mockClear();
+    const intent = {
+      id: "pi_refund_authorized",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "AUTHORIZED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_refund_authorized/refund",
+      headers: AUTH_HEADERS,
+      payload: {
+        amount_minor: 10_000,
+        currency: "USD",
+        reason_code: "buyer_requested",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_REFUND_STATE_INVALID",
+      message: "refund requires SETTLED intent, got AUTHORIZED",
+    });
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/refund maps over-payment refunds to 400", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockCreateRefundRecord.mockClear();
+    const intent = {
+      id: "pi_refund_too_large",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_refund_too_large/refund",
+      headers: AUTH_HEADERS,
+      payload: {
+        amount_minor: 50_001,
+        currency: "USD",
+        reason_code: "buyer_requested",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_REFUND_AMOUNT_INVALID",
+      message: "refund amount 50001 exceeds payment amount 50000",
+    });
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/x402/conditional-settlement-confirmation rejects inactive payments before settlement finalization", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    const intent = {
+      id: "pi_canceled_confirmation",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CANCELED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_canceled_confirmation/x402/conditional-settlement-confirmation",
+      headers: AUTH_HEADERS,
+      payload: {
+        tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_NOT_ACTIVE",
+      status: "CANCELED",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/quote returns buyer-visible amount and fee confirmation", async () => {
+    const originalFeeBps = process.env.HAGGLE_X402_FEE_BPS;
+    const originalStripeFeeBps = process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
+    process.env.HAGGLE_X402_FEE_BPS = "150";
+    process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = "150";
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    const intent = {
+      id: "pi_quote_stripe",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe", "x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_quote_stripe/quote",
+        headers: AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        intent: {
+          id: "pi_quote_stripe",
+          status: "QUOTED",
+          amount: { currency: "USD", amount_minor: 50_000 },
+        },
+        value: {
+          rail: "stripe",
+          amount: { currency: "USD", amount_minor: 50_000 },
+        },
+        quote_confirmation: {
+          rail: "stripe",
+          display: {
+            rail_label: "Card via Stripe",
+            payment_method_label: "Pay by card; Stripe converts to USDC on Base",
+            settlement_asset: "USDC",
+            settlement_network: "Base",
+          },
+          amount: { currency: "USD", amount_minor: 50_000 },
+          buyer_total: { currency: "USD", amount_minor: 50_750 },
+          seller_receives: { currency: "USD", amount_minor: 49_250 },
+          amount_confirmation: {
+            order_amount: { currency: "USD", amount_minor: 50_000, decimals: 2 },
+            buyer_pays: { currency: "USD", amount_minor: 50_750, decimals: 2 },
+            settlement_amount: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            seller_receives: { currency: "USDC", amount_minor: 492_500_000, decimals: 6 },
+            buyer_fee: { currency: "USD", amount_minor: 750, decimals: 2 },
+            seller_fee: { currency: "USDC", amount_minor: 7_500_000, decimals: 6 },
+          },
+          fees: {
+            buyer_fee_total: { currency: "USD", amount_minor: 750 },
+            seller_fee_total: { currency: "USD", amount_minor: 750 },
+            items: expect.arrayContaining([
+              expect.objectContaining({
+                code: "haggle_platform_fee",
+                payer: "seller",
+                amount: { currency: "USD", amount_minor: 750 },
+                included_in_buyer_total: true,
+              }),
+              expect.objectContaining({
+                code: "stripe_onramp_fee",
+                payer: "buyer",
+                amount: { currency: "USD", amount_minor: 750 },
+                included_in_buyer_total: false,
+              }),
+            ]),
+          },
+        },
+      });
+      expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ id: "pi_quote_stripe", status: "QUOTED" }),
+        expect.objectContaining({
+          quote_confirmation: expect.objectContaining({
+            buyer_total: { currency: "USD", amount_minor: 50_750 },
+          }),
+        }),
+      );
+    } finally {
+      if (originalFeeBps === undefined) delete process.env.HAGGLE_X402_FEE_BPS;
+      else process.env.HAGGLE_X402_FEE_BPS = originalFeeBps;
+      if (originalStripeFeeBps === undefined) delete process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
+      else process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = originalStripeFeeBps;
+    }
+  });
+
+  it("POST /payments/:id/quote confirms x402 amount, seller payout, and platform fee", async () => {
+    const originalFeeBps = process.env.HAGGLE_X402_FEE_BPS;
+    const originalSellerWallet = process.env.HAGGLE_X402_SELLER_WALLET;
+    process.env.HAGGLE_X402_FEE_BPS = "150";
+    process.env.HAGGLE_X402_SELLER_WALLET = "0x1111111111111111111111111111111111111111";
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    const intent = {
+      id: "pi_quote_x402",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_quote_x402/quote",
+        headers: AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        intent: {
+          id: "pi_quote_x402",
+          status: "QUOTED",
+          amount: { currency: "USD", amount_minor: 50_000 },
+        },
+        value: {
+          rail: "x402",
+          amount: { currency: "USD", amount_minor: 50_000 },
+        },
+        metadata: {
+          seller_wallet: "0x1111111111111111111111111111111111111111",
+          quote_confirmation: expect.objectContaining({
+            buyer_total: { currency: "USD", amount_minor: 50_000 },
+            seller_receives: { currency: "USD", amount_minor: 49_250 },
+          }),
+        },
+        quote_confirmation: {
+          rail: "x402",
+          display: {
+            rail_label: "USDC Direct",
+            payment_method_label: "Pay from wallet with USDC on Base",
+            settlement_asset: "USDC",
+            settlement_network: "Base",
+          },
+          amount: { currency: "USD", amount_minor: 50_000 },
+          buyer_total: { currency: "USD", amount_minor: 50_000 },
+          seller_receives: { currency: "USD", amount_minor: 49_250 },
+          amount_confirmation: {
+            order_amount: { currency: "USD", amount_minor: 50_000, decimals: 2 },
+            buyer_pays: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            settlement_amount: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            seller_receives: { currency: "USDC", amount_minor: 492_500_000, decimals: 6 },
+            buyer_fee: { currency: "USDC", amount_minor: 0, decimals: 6 },
+            seller_fee: { currency: "USDC", amount_minor: 7_500_000, decimals: 6 },
+          },
+          fees: {
+            buyer_fee_total: { currency: "USD", amount_minor: 0 },
+            seller_fee_total: { currency: "USD", amount_minor: 750 },
+            items: [
+              expect.objectContaining({
+                code: "haggle_platform_fee",
+                payer: "seller",
+                amount: { currency: "USD", amount_minor: 750 },
+                rate_bps: 150,
+              }),
+            ],
+          },
+        },
+      });
+      expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ id: "pi_quote_x402", status: "QUOTED" }),
+        expect.objectContaining({
+          seller_wallet: "0x1111111111111111111111111111111111111111",
+          quote_confirmation: expect.objectContaining({
+            seller_receives: { currency: "USD", amount_minor: 49_250 },
+          }),
+        }),
+      );
+    } finally {
+      if (originalFeeBps === undefined) delete process.env.HAGGLE_X402_FEE_BPS;
+      else process.env.HAGGLE_X402_FEE_BPS = originalFeeBps;
+      if (originalSellerWallet === undefined) delete process.env.HAGGLE_X402_SELLER_WALLET;
+      else process.env.HAGGLE_X402_SELLER_WALLET = originalSellerWallet;
+    }
+  });
+
+  it("POST /payments/:id/quote defaults seller payout to a 1.5% platform fee", async () => {
+    const originalFeeBps = process.env.HAGGLE_X402_FEE_BPS;
+    const originalSellerWallet = process.env.HAGGLE_X402_SELLER_WALLET;
+    delete process.env.HAGGLE_X402_FEE_BPS;
+    process.env.HAGGLE_X402_SELLER_WALLET = "0x1111111111111111111111111111111111111111";
+    mockGetPaymentIntentById.mockClear();
+    const intent = {
+      id: "pi_quote_default_fee",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_quote_default_fee/quote",
+        headers: AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        quote_confirmation: {
+          seller_receives: { currency: "USD", amount_minor: 49_250 },
+          fees: {
+            seller_fee_total: { currency: "USD", amount_minor: 750 },
+            items: [
+              expect.objectContaining({
+                code: "haggle_platform_fee",
+                rate_bps: 150,
+              }),
+            ],
+          },
+        },
+      });
+    } finally {
+      if (originalFeeBps === undefined) delete process.env.HAGGLE_X402_FEE_BPS;
+      else process.env.HAGGLE_X402_FEE_BPS = originalFeeBps;
+      if (originalSellerWallet === undefined) delete process.env.HAGGLE_X402_SELLER_WALLET;
+      else process.env.HAGGLE_X402_SELLER_WALLET = originalSellerWallet;
+    }
+  });
+
+  it("POST /payments/:id/quote rounds the 1.5% platform fee down to minor units", async () => {
+    const originalFeeBps = process.env.HAGGLE_X402_FEE_BPS;
+    const originalSellerWallet = process.env.HAGGLE_X402_SELLER_WALLET;
+    delete process.env.HAGGLE_X402_FEE_BPS;
+    process.env.HAGGLE_X402_SELLER_WALLET = "0x1111111111111111111111111111111111111111";
+    mockGetPaymentIntentById.mockClear();
+    const intent = {
+      id: "pi_quote_fee_rounding",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USD", amount_minor: 333 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_quote_fee_rounding/quote",
+        headers: AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        quote_confirmation: {
+          amount: { currency: "USD", amount_minor: 333 },
+          seller_receives: { currency: "USD", amount_minor: 329 },
+          fees: {
+            seller_fee_total: { currency: "USD", amount_minor: 4 },
+            items: [
+              expect.objectContaining({
+                code: "haggle_platform_fee",
+                amount: { currency: "USD", amount_minor: 4 },
+                rate_bps: 150,
+              }),
+            ],
+          },
+        },
+      });
+    } finally {
+      if (originalFeeBps === undefined) delete process.env.HAGGLE_X402_FEE_BPS;
+      else process.env.HAGGLE_X402_FEE_BPS = originalFeeBps;
+      if (originalSellerWallet === undefined) delete process.env.HAGGLE_X402_SELLER_WALLET;
+      else process.env.HAGGLE_X402_SELLER_WALLET = originalSellerWallet;
+    }
+  });
+
+  it("POST /payments/:id/quote is idempotent after an intent is already quoted", async () => {
+    const originalFeeBps = process.env.HAGGLE_X402_FEE_BPS;
+    process.env.HAGGLE_X402_FEE_BPS = "150";
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    const intent = {
+      id: "pi_already_quoted",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        seller_amount_minor: 49_250,
+        haggle_fee_minor: 750,
+        quote_confirmation: {
+          rail: "x402",
+          currency: "USD",
+          amount: { currency: "USD", amount_minor: 50_000 },
+          buyer_total: { currency: "USD", amount_minor: 50_000 },
+          seller_receives: { currency: "USD", amount_minor: 49_250 },
+          amount_confirmation: {
+            buyer_pays: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            settlement_amount: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            seller_receives: { currency: "USDC", amount_minor: 492_500_000, decimals: 6 },
+          },
+          fees: {
+            buyer_fee_total: { currency: "USD", amount_minor: 0 },
+            seller_fee_total: { currency: "USD", amount_minor: 750 },
+            items: [],
+          },
+          expires_at: "2030-01-01T00:00:00.000Z",
+          provider_reference: "x402_quote_existing",
+        },
+      },
+    } as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_already_quoted/quote",
+        headers: AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        idempotent: true,
+        intent: {
+          id: "pi_already_quoted",
+          status: "QUOTED",
+        },
+        quote_confirmation: {
+          rail: "x402",
+          display: {
+            rail_label: "USDC Direct",
+            payment_method_label: "Pay from wallet with USDC on Base",
+            settlement_asset: "USDC",
+            settlement_network: "Base",
+          },
+          amount: { currency: "USD", amount_minor: 50_000 },
+          buyer_total: { currency: "USD", amount_minor: 50_000 },
+          seller_receives: { currency: "USD", amount_minor: 49_250 },
+          amount_confirmation: {
+            order_amount: { currency: "USD", amount_minor: 50_000, decimals: 2 },
+            buyer_pays: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            settlement_amount: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            seller_receives: { currency: "USDC", amount_minor: 492_500_000, decimals: 6 },
+            buyer_fee: { currency: "USDC", amount_minor: 0, decimals: 6 },
+            seller_fee: { currency: "USDC", amount_minor: 7_500_000, decimals: 6 },
+          },
+          fees: {
+            buyer_fee_total: { currency: "USD", amount_minor: 0 },
+            seller_fee_total: { currency: "USD", amount_minor: 750 },
+          },
+          expires_at: "2030-01-01T00:00:00.000Z",
+          provider_reference: "x402_quote_existing",
+        },
+      });
+      expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    } finally {
+      if (originalFeeBps === undefined) delete process.env.HAGGLE_X402_FEE_BPS;
+      else process.env.HAGGLE_X402_FEE_BPS = originalFeeBps;
+    }
+  });
+
+  it("POST /payments/:id/onramp/session returns the buyer payable amount while funding the negotiated amount", async () => {
+    const originalStripeSecret = process.env.STRIPE_SECRET_KEY;
+    const originalStripePublishable = process.env.STRIPE_PUBLISHABLE_KEY;
+    const originalStripeFeeBps = process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
+    const originalHaggleFeeBps = process.env.HAGGLE_X402_FEE_BPS;
+    process.env.STRIPE_SECRET_KEY = "sk_test_123";
+    process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_123";
+    process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = "150";
+    process.env.HAGGLE_X402_FEE_BPS = "150";
+    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[
+        { walletAddress: "0x1111111111111111111111111111111111111111" },
+      ]];
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        id: "cos_123",
+        client_secret: "cos_secret_123",
+        redirect_url: "https://stripe.test/onramp",
+        status: "requires_payment",
+      }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+    mockGetPaymentIntentById.mockClear();
+    const intent = {
+      id: "pi_onramp_buyer_total",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_onramp_buyer_total/onramp/session",
+        headers: AUTH_HEADERS,
+        payload: {
+          destination_wallet: "0x1111111111111111111111111111111111111111",
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        onramp_session_id: "cos_123",
+        client_secret: "cos_secret_123",
+        stripe_publishable_key: "pk_test_123",
+        amount_usd: "507.50",
+        destination_amount_usd: "500.00",
+        destination_amount: { currency: "USD", amount_minor: 50_000 },
+        buyer_payable: { currency: "USD", amount_minor: 50_750 },
+        seller_receives: { currency: "USD", amount_minor: 49_250 },
+        fee_breakdown: {
+          buyer_fee_total: { currency: "USD", amount_minor: 750 },
+          seller_fee_total: { currency: "USD", amount_minor: 750 },
+        },
+        quote_confirmation: {
+          rail: "stripe",
+          buyer_total: { currency: "USD", amount_minor: 50_750 },
+          seller_receives: { currency: "USD", amount_minor: 49_250 },
+          amount_confirmation: {
+            buyer_pays: { currency: "USD", amount_minor: 50_750, decimals: 2 },
+            settlement_amount: { currency: "USDC", amount_minor: 500_000_000, decimals: 6 },
+            seller_receives: { currency: "USDC", amount_minor: 492_500_000, decimals: 6 },
+          },
+        },
+      });
+      const body = new URLSearchParams(String(mockFetch.mock.calls[0]?.[1]?.body));
+      expect(body.get("destination_amount")).toBe("500.00");
+      expect(body.get("metadata[destination_amount_minor]")).toBe("50000");
+      expect(body.get("metadata[buyer_total_minor]")).toBe("50750");
+      expect(body.get("metadata[buyer_fee_minor]")).toBe("750");
+      expect(body.get("metadata[seller_receives_minor]")).toBe("49250");
+      expect(body.get("metadata[seller_fee_minor]")).toBe("750");
+    } finally {
+      vi.unstubAllGlobals();
+      delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+        .__HAGGLE_TEST_DB_SELECT_ROWS__;
+      if (originalStripeSecret === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = originalStripeSecret;
+      if (originalStripePublishable === undefined) delete process.env.STRIPE_PUBLISHABLE_KEY;
+      else process.env.STRIPE_PUBLISHABLE_KEY = originalStripePublishable;
+      if (originalStripeFeeBps === undefined) delete process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
+      else process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = originalStripeFeeBps;
+      if (originalHaggleFeeBps === undefined) delete process.env.HAGGLE_X402_FEE_BPS;
+      else process.env.HAGGLE_X402_FEE_BPS = originalHaggleFeeBps;
+    }
+  });
+
   // POST /payments/prepare - auth required
   it("POST /payments/prepare returns 401 without auth token", async () => {
     const res = await app.inject({
@@ -189,6 +1252,783 @@ describe("Payment routes", () => {
     });
     expect(res.statusCode).toBe(401);
     expect(res.json().error).toBe("AUTH_REQUIRED");
+  });
+
+  it("POST /payments/prepare rejects ambiguous settlement approval sources before persistence lookup", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const now = new Date().toISOString();
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        settlement_approval: {
+          id: "00000000-0000-4000-a000-000000000099",
+          approval_state: "APPROVED",
+          seller_policy: {
+            mode: "AUTO_WITHIN_POLICY",
+            fulfillment_sla: { shipment_input_due_days: 3 },
+            responsiveness: {
+              median_response_minutes: 30,
+              p95_response_minutes: 120,
+              reliable_fast_responder: true,
+            },
+          },
+          terms: {
+            listing_id: "00000000-0000-4000-a000-000000000011",
+            seller_id: "00000000-0000-4000-a000-000000000033",
+            buyer_id: "test-user-001",
+            final_amount_minor: 50_000,
+            currency: "USD",
+            selected_payment_rail: "x402",
+          },
+          buyer_approved_at: now,
+          seller_approved_at: now,
+          created_at: now,
+          updated_at: now,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "INVALID_PAYMENT_PREPARE_REQUEST",
+    });
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare rejects invalid disclosure acknowledgement timestamp before persistence lookup", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: "not-a-date",
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: false,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "INVALID_PAYMENT_PREPARE_REQUEST",
+    });
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare rejects missing disclosure acknowledgement timestamp before persistence lookup", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: false,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "INVALID_PAYMENT_PREPARE_REQUEST",
+    });
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare rejects malformed settlement approval ids before persistence lookup", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: "not-a-uuid",
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: new Date().toISOString(),
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: false,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "INVALID_PAYMENT_PREPARE_REQUEST",
+    });
+    expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare rejects a non-approved settlement approval before creating order or intent", async () => {
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockGetActivePaymentIntentByOrderId.mockClear();
+    mockCreateAgentPaymentGrantRecord.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    mockCreatePaymentDisclosureRecord.mockClear();
+
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+    const now = new Date().toISOString();
+
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: sessionId,
+      approval_state: "RESERVED_PENDING_APPROVAL",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: listingId,
+        seller_id: sellerId,
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: sessionId,
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_NOT_READY",
+      message: "payment execution requires APPROVED settlement, got RESERVED_PENDING_APPROVAL",
+    });
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockGetActivePaymentIntentByOrderId).not.toHaveBeenCalled();
+    expect(mockCreateAgentPaymentGrantRecord).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare hides another buyer's settlement approval before creating order or intent", async () => {
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockGetActivePaymentIntentByOrderId.mockClear();
+    mockCreateAgentPaymentGrantRecord.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    mockCreatePaymentDisclosureRecord.mockClear();
+
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+    const now = new Date().toISOString();
+
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: sessionId,
+      approval_state: "APPROVED",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: listingId,
+        seller_id: sellerId,
+        buyer_id: "another-buyer-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: sessionId,
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({
+      error: "SETTLEMENT_APPROVAL_NOT_FOUND",
+    });
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockGetActivePaymentIntentByOrderId).not.toHaveBeenCalled();
+    expect(mockCreateAgentPaymentGrantRecord).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare creates an intent from an accepted negotiation settlement approval", async () => {
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const orderId = "00000000-0000-4000-a000-000000000088";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+    const now = new Date().toISOString();
+
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: sessionId,
+      approval_state: "APPROVED",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: listingId,
+        seller_id: sellerId,
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+    mockEnsureCommerceOrderForApproval.mockResolvedValueOnce({
+      id: orderId,
+      settlementApprovalId: sessionId,
+      listingId,
+      sellerId,
+      buyerId: "test-user-001",
+      status: "PAYMENT_PENDING",
+      currency: "USD",
+      amountMinor: "50000",
+      orderSnapshot: {},
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    } as never);
+    mockGetActivePaymentIntentByOrderId.mockResolvedValueOnce(null);
+    mockCreateAgentPaymentGrantRecord.mockResolvedValueOnce({
+      grant_id: "00000000-0000-4000-a000-000000000077",
+      buyer_id: "test-user-001",
+      agent_id: "haggle.negotiation_agent",
+      listing_id: listingId,
+      seller_id: sellerId,
+      order_id: orderId,
+      settlement_approval_id: sessionId,
+      max_amount_minor: 50_000,
+      currency: "USD",
+      asset: "USDC",
+      network: "base",
+      allowed_rails: ["x402", "stripe"],
+      preferred_rail: "x402",
+      terms: [],
+      expires_at: now,
+      nonce: "nonce",
+      human_confirmation_required: true,
+      legal_acknowledgements: {
+        no_custody: true,
+        buyer_approved_rules: true,
+        stripe_fallback: true,
+        stablecoin_not_investment: true,
+      },
+      approval_policy_hash: "sha256:policy",
+      status: "ACTIVE",
+      created_at: now,
+      updated_at: now,
+    });
+    mockCreateStoredPaymentIntent.mockImplementationOnce(async (_db, intent) => intent);
+    mockCreatePaymentDisclosureRecord.mockResolvedValueOnce(null as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: sessionId,
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(mockGetSettlementApprovalById).toHaveBeenCalledWith(expect.anything(), sessionId);
+    expect(mockEnsureCommerceOrderForApproval).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      id: sessionId,
+      approval_state: "APPROVED",
+    }));
+    expect(mockCreateAgentPaymentGrantRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      order_id: orderId,
+      settlement_approval_id: sessionId,
+      buyer_id: "test-user-001",
+      seller_id: sellerId,
+      listing_id: listingId,
+      max_amount_minor: 50_000,
+      preferred_rail: "x402",
+      legal_acknowledgements: expect.objectContaining({
+        no_custody: true,
+        buyer_approved_rules: true,
+        stripe_fallback: true,
+        stablecoin_not_investment: true,
+      }),
+    }), expect.stringMatching(/^sha256:/));
+    expect(mockCreateStoredPaymentIntent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      order_id: orderId,
+      buyer_id: "test-user-001",
+      seller_id: sellerId,
+      selected_rail: "x402",
+      amount: { currency: "USD", amount_minor: 50_000 },
+    }), expect.objectContaining({
+      settlement_approval_id: sessionId,
+      agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
+    }));
+    expect(mockCreatePaymentDisclosureRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
+      rail: "x402",
+      version: PAYMENT_DISCLOSURE_VERSION,
+      text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+    }));
+    expect(res.json()).toMatchObject({
+      intent: {
+        order_id: orderId,
+        buyer_id: "test-user-001",
+        seller_id: sellerId,
+        amount: { currency: "USD", amount_minor: 50_000 },
+        status: "CREATED",
+      },
+      participants: {
+        buyer_id: "test-user-001",
+        seller_id: sellerId,
+      },
+      settlement_context: {
+        settlement_approval_id: sessionId,
+        listing_id: listingId,
+        amount_minor: 50_000,
+      },
+    });
+  });
+
+  it("POST /payments/prepare returns the existing active intent idempotently for the same accepted negotiation", async () => {
+    mockGetActivePaymentIntentByOrderId.mockClear();
+    mockCreateAgentPaymentGrantRecord.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    mockCreatePaymentDisclosureRecord.mockClear();
+
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const orderId = "00000000-0000-4000-a000-000000000088";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+    const now = new Date().toISOString();
+    const existingIntent = {
+      id: "00000000-0000-4000-a000-000000000066",
+      order_id: orderId,
+      seller_id: sellerId,
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: now,
+      updated_at: now,
+    };
+
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: sessionId,
+      approval_state: "APPROVED",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: listingId,
+        seller_id: sellerId,
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+    mockEnsureCommerceOrderForApproval.mockResolvedValueOnce({
+      id: orderId,
+      settlementApprovalId: sessionId,
+      listingId,
+      sellerId,
+      buyerId: "test-user-001",
+      status: "PAYMENT_PENDING",
+      currency: "USD",
+      amountMinor: "50000",
+      orderSnapshot: {},
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    } as never);
+    mockGetActivePaymentIntentByOrderId.mockResolvedValueOnce(existingIntent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: sessionId,
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenCalledWith(expect.anything(), orderId);
+    expect(mockCreateAgentPaymentGrantRecord).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
+    expect(res.json()).toMatchObject({
+      idempotent: true,
+      intent: {
+        id: existingIntent.id,
+        order_id: orderId,
+        status: "CREATED",
+      },
+      settlement_context: {
+        settlement_approval_id: sessionId,
+        amount_minor: 50_000,
+      },
+    });
+  });
+
+  it("POST /payments/prepare returns the concurrently created active intent when insert hits the active order unique constraint", async () => {
+    mockGetActivePaymentIntentByOrderId.mockClear();
+    mockCreateAgentPaymentGrantRecord.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    mockCreatePaymentDisclosureRecord.mockClear();
+
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const orderId = "00000000-0000-4000-a000-000000000088";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+    const now = new Date().toISOString();
+    const concurrentIntent = {
+      id: "00000000-0000-4000-a000-000000000066",
+      order_id: orderId,
+      seller_id: sellerId,
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: now,
+      updated_at: now,
+    };
+
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: sessionId,
+      approval_state: "APPROVED",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: listingId,
+        seller_id: sellerId,
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+    mockEnsureCommerceOrderForApproval.mockResolvedValueOnce({
+      id: orderId,
+      settlementApprovalId: sessionId,
+      listingId,
+      sellerId,
+      buyerId: "test-user-001",
+      status: "PAYMENT_PENDING",
+      currency: "USD",
+      amountMinor: "50000",
+      orderSnapshot: {},
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    } as never);
+    mockGetActivePaymentIntentByOrderId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(concurrentIntent as never);
+    mockCreateAgentPaymentGrantRecord.mockResolvedValueOnce({
+      grant_id: "00000000-0000-4000-a000-000000000077",
+      buyer_id: "test-user-001",
+      agent_id: "haggle.negotiation_agent",
+      listing_id: listingId,
+      seller_id: sellerId,
+      order_id: orderId,
+      settlement_approval_id: sessionId,
+      max_amount_minor: 50_000,
+      currency: "USD",
+      asset: "USDC",
+      network: "base",
+      allowed_rails: ["x402", "stripe"],
+      preferred_rail: "x402",
+      terms: [],
+      expires_at: now,
+      nonce: "nonce",
+      human_confirmation_required: true,
+      legal_acknowledgements: {
+        no_custody: true,
+        buyer_approved_rules: true,
+        stripe_fallback: true,
+        stablecoin_not_investment: true,
+      },
+      approval_policy_hash: "sha256:policy",
+      status: "ACTIVE",
+      created_at: now,
+      updated_at: now,
+    });
+    mockCreateStoredPaymentIntent.mockRejectedValueOnce(Object.assign(
+      new Error("duplicate key value violates unique constraint \"uq_active_payment_intents_order_id\""),
+      { code: "23505", constraint: "uq_active_payment_intents_order_id" },
+    ));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: sessionId,
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenCalledTimes(2);
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenNthCalledWith(1, expect.anything(), orderId);
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenNthCalledWith(2, expect.anything(), orderId);
+    expect(mockCreateStoredPaymentIntent).toHaveBeenCalledOnce();
+    expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
+    expect(res.json()).toMatchObject({
+      idempotent: true,
+      intent: {
+        id: concurrentIntent.id,
+        order_id: orderId,
+        status: "CREATED",
+      },
+      settlement_context: {
+        settlement_approval_id: sessionId,
+        amount_minor: 50_000,
+      },
+    });
+  });
+
+  it("POST /payments/prepare does not treat unrelated insert unique errors as idempotent", async () => {
+    mockGetActivePaymentIntentByOrderId.mockClear();
+    mockCreateAgentPaymentGrantRecord.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    mockCreatePaymentDisclosureRecord.mockClear();
+
+    const sessionId = "00000000-0000-4000-a000-000000000099";
+    const orderId = "00000000-0000-4000-a000-000000000088";
+    const listingId = "00000000-0000-4000-a000-000000000011";
+    const sellerId = "00000000-0000-4000-a000-000000000033";
+    const now = new Date().toISOString();
+
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: sessionId,
+      approval_state: "APPROVED",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: listingId,
+        seller_id: sellerId,
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "x402",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+    mockEnsureCommerceOrderForApproval.mockResolvedValueOnce({
+      id: orderId,
+      settlementApprovalId: sessionId,
+      listingId,
+      sellerId,
+      buyerId: "test-user-001",
+      status: "PAYMENT_PENDING",
+      currency: "USD",
+      amountMinor: "50000",
+      orderSnapshot: {},
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    } as never);
+    mockGetActivePaymentIntentByOrderId.mockResolvedValueOnce(null);
+    mockCreateAgentPaymentGrantRecord.mockResolvedValueOnce({
+      grant_id: "00000000-0000-4000-a000-000000000077",
+      buyer_id: "test-user-001",
+      agent_id: "haggle.negotiation_agent",
+      listing_id: listingId,
+      seller_id: sellerId,
+      order_id: orderId,
+      settlement_approval_id: sessionId,
+      max_amount_minor: 50_000,
+      currency: "USD",
+      asset: "USDC",
+      network: "base",
+      allowed_rails: ["x402", "stripe"],
+      preferred_rail: "x402",
+      terms: [],
+      expires_at: now,
+      nonce: "nonce",
+      human_confirmation_required: true,
+      legal_acknowledgements: {
+        no_custody: true,
+        buyer_approved_rules: true,
+        stripe_fallback: true,
+        stablecoin_not_investment: true,
+      },
+      approval_policy_hash: "sha256:policy",
+      status: "ACTIVE",
+      created_at: now,
+      updated_at: now,
+    });
+    mockCreateStoredPaymentIntent.mockRejectedValueOnce(Object.assign(
+      new Error("duplicate key value violates unique constraint \"payment_intents_pkey\""),
+      { code: "23505", constraint: "payment_intents_pkey" },
+    ));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval_id: sessionId,
+        payment_disclosure_ack: {
+          version: PAYMENT_DISCLOSURE_VERSION,
+          text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+          accepted_at: now,
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenCalledOnce();
+    expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
   });
 
   // x402 webhook - in test env HAGGLE_X402_WEBHOOK_SECRET is not set,

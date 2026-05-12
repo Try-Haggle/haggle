@@ -2,6 +2,14 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerPaymentRoutes } from "../routes/payments.js";
 import { getDepositById, updateDepositStatus } from "../services/dispute-deposit.service.js";
+import {
+  getCommerceOrderByOrderId,
+  getPaymentSettlementByPaymentIntentId,
+  getPaymentIntentById,
+  updateCommerceOrderStatus,
+} from "../services/payment-record.service.js";
+import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
+import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 
 const stripeEvent = {
   id: "evt_stripe_deposit_1",
@@ -11,7 +19,7 @@ const stripeEvent = {
       id: "cos_deposit_1",
       metadata: {
         payment_intent_id: "deposit_dep_1",
-      },
+      } as Record<string, string>,
     },
   },
 };
@@ -45,13 +53,19 @@ vi.mock("../services/dispute-deposit.service.js", () => ({
 }));
 
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn(),
+  createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn(),
   createRefundRecord: vi.fn(),
   createStoredPaymentIntent: vi.fn(),
   ensureCommerceOrderForApproval: vi.fn(),
   getCommerceOrderByOrderId: vi.fn(),
+  getPaymentSettlementByPaymentIntentId: vi.fn(),
   getPaymentIntentById: vi.fn(),
+  getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn(),
   getPaymentIntentRowById: vi.fn(),
   getSettlementApprovalById: vi.fn(),
@@ -73,8 +87,20 @@ vi.mock("../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn(),
 }));
 
+vi.mock("../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockGetDepositById = vi.mocked(getDepositById);
 const mockUpdateDepositStatus = vi.mocked(updateDepositStatus);
+const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
+const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
+const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
+const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
+const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
+const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
+const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
+const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 
 function buildDb() {
   return {
@@ -107,6 +133,11 @@ describe("stripe deposit webhook", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    stripeEvent.id = "evt_stripe_deposit_1";
+    stripeEvent.data.object.id = "cos_deposit_1";
+    stripeEvent.data.object.metadata = {
+      payment_intent_id: "deposit_dep_1",
+    };
     db = buildDb();
     app = Fastify();
     app.addContentTypeParser(
@@ -165,6 +196,60 @@ describe("stripe deposit webhook", () => {
         }),
       }),
     );
+    expect(db.insert).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs payment finalization for an already settled Stripe intent before marking the webhook processed", async () => {
+    stripeEvent.id = "evt_stripe_payment_retry";
+    stripeEvent.data.object.id = "cos_payment_retry";
+    stripeEvent.data.object.metadata = {
+      payment_intent_id: "pi_stripe_retry",
+      order_id: "order_123",
+      approval_policy_hash: "sha256:policy",
+    };
+    mockGetPaymentIntentById.mockResolvedValueOnce({
+      id: "pi_stripe_retry",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "buyer_123",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      buyer_authorization_mode: "human_wallet",
+      amount: { currency: "USD", amount_minor: 1000 },
+      approval_policy_hash: "sha256:policy",
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never);
+    mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce({
+      id: "settlement_existing",
+      payment_intent_id: "pi_stripe_retry",
+      rail: "stripe",
+      provider_reference: "stripe_settle_existing",
+      settled_amount: { currency: "USD", amount_minor: 1000 },
+      settled_at: new Date().toISOString(),
+      status: "SETTLED",
+    });
+    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "sr_existing", order_id: "order_123" } as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({ id: "order_123", status: "PAID" } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce({ id: "shipment_existing", order_id: "order_123" } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/stripe",
+      headers: { "stripe-signature": "sig" },
+      payload: { ignored: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(expect.objectContaining({
+      accepted: true,
+      action: "settled",
+      payment_intent_id: "pi_stripe_retry",
+    }));
+    expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
+    expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
     expect(db.insert).toHaveBeenCalledTimes(1);
   });
 });

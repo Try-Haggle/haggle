@@ -39,10 +39,30 @@ function createMockInsert() {
   });
 }
 
+function createMockSelect() {
+  return vi.fn().mockImplementation(() => {
+    const selectQueue = (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+      .__HAGGLE_TEST_DB_SELECT_ROWS__;
+    const rows: unknown[] = selectQueue?.shift() ?? [];
+    const result = Promise.resolve(rows);
+    const query = {
+      from: vi.fn(() => query),
+      where: vi.fn(() => query),
+      orderBy: vi.fn(() => query),
+      limit: vi.fn(() => query),
+      offset: vi.fn(() => query),
+      then: result.then.bind(result),
+      catch: result.catch.bind(result),
+      finally: result.finally.bind(result),
+    };
+    return query;
+  });
+}
+
 vi.mock("@haggle/db", () => ({
   createDb: vi.fn(() => ({
     query: createMockQueryProxy(),
-    select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
+    select: createMockSelect(),
     insert: createMockInsert(),
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
@@ -50,7 +70,7 @@ vi.mock("@haggle/db", () => ({
     transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => fn({
       execute: vi.fn().mockResolvedValue([]),
       query: createMockQueryProxy(),
-      select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
+      select: createMockSelect(),
       insert: createMockInsert(),
       update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     })),
@@ -80,8 +100,33 @@ vi.mock("@haggle/db", () => ({
   webhookIdempotency: { id: "id", idempotencyKey: "idempotencyKey", source: "source", responseStatus: "responseStatus" },
   refunds: { id: "id", paymentIntentId: "paymentIntentId", status: "status" },
   disputeResolutions: { disputeId: "disputeId" },
-  disputeCases: { id: "id" },
+  disputeCases: { id: "id", orderId: "orderId", status: "status" },
+  disputeEvidence: { id: "id", disputeId: "disputeId" },
+  disputeEvidenceUploads: {
+    id: "id",
+    disputeId: "disputeId",
+    status: "status",
+    storagePath: "storagePath",
+  },
+  disputeModuleIdempotencyKeys: {
+    id: "id",
+    platformId: "platformId",
+    idempotencyKey: "idempotencyKey",
+    requestFingerprint: "requestFingerprint",
+    disputeId: "disputeId",
+  },
+  disputeModuleWebhookOutbox: {
+    id: "id",
+    eventId: "eventId",
+    platformId: "platformId",
+    externalOrderId: "externalOrderId",
+    disputeId: "disputeId",
+    eventType: "eventType",
+    status: "status",
+    nextAttemptAt: "nextAttemptAt",
+  },
   commerceOrders: { id: "id" },
+  paymentSettlements: { id: "id", paymentIntentId: "paymentIntentId" },
   shipments: { id: "id", trackingNumber: "trackingNumber" },
   shipmentEvents: { shipmentId: "shipmentId" },
   settlementReleases: { id: "id" },
@@ -112,6 +157,7 @@ vi.mock("@haggle/payment-core/heavy/real-x402-adapter", () => ({
 }));
 
 vi.mock("@haggle/payment-core/heavy/viem-contracts", () => ({
+  ViemConditionalSettlementContract: vi.fn(),
   ViemDisputeRegistryContract: vi.fn(),
   ViemSettlementRouterContract: vi.fn(),
 }));
