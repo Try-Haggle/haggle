@@ -17,6 +17,7 @@
  */
 
 import { llmTelemetry, type Database } from "@haggle/db";
+import { estimateLlmCostUsd } from "./llm-cost.js";
 
 // ─── Module-level DB instance (set via setTelemetryDb) ───
 let _telemetryDb: Database | null = null;
@@ -60,6 +61,8 @@ export interface LLMTelemetryRecord extends LLMTelemetryMeta {
   errorType: string | null;
   errorMessage: string | null;
   usage: LLMTelemetryUsage | null;
+  costUsd: number | null;
+  costMinorUsd: number | null;
   timestamp: string; // ISO8601
 }
 
@@ -104,7 +107,7 @@ async function emitToDb(record: LLMTelemetryRecord, meta: LLMTelemetryMeta & { s
       inputTokens: record.usage?.promptTokens ?? 0,
       outputTokens: record.usage?.completionTokens ?? 0,
       latencyMs: record.latencyMs,
-      costMinor: null,
+      costMinor: record.costMinorUsd,
       reasoningUsed: false,
       error: record.errorMessage ?? null,
     });
@@ -221,6 +224,7 @@ export async function withLLMTelemetry<T>(
       } catch {
         usage = null;
       }
+      const cost = usage ? estimateLlmCostUsd(meta.model, usage) : null;
       const record: LLMTelemetryRecord = {
         service: meta.service,
         model: meta.model,
@@ -231,6 +235,8 @@ export async function withLLMTelemetry<T>(
         errorType: null,
         errorMessage: null,
         usage,
+        costUsd: cost?.totalUsd ?? null,
+        costMinorUsd: cost?.costMinorUsd ?? null,
         timestamp: new Date().toISOString(),
       };
       emit(record);
@@ -264,6 +270,8 @@ export async function withLLMTelemetry<T>(
         errorType,
         errorMessage,
         usage: null,
+        costUsd: null,
+        costMinorUsd: null,
         timestamp: new Date().toISOString(),
       };
       emit(record);

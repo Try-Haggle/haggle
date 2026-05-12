@@ -36,6 +36,13 @@ const addSessionSchema = z.object({
 
 // ── Route Registration ─────────────────────────────────────
 
+function canAccessGroup(
+  user: { id: string; role?: string } | undefined,
+  group: { anchorUserId: string },
+): boolean {
+  return user?.role === "admin" || user?.id === group.anchorUserId;
+}
+
 export function registerGroupRoutes(
   app: FastifyInstance,
   db: Database,
@@ -52,6 +59,10 @@ export function registerGroupRoutes(
       }
 
       const data = parsed.data;
+      if (request.user?.role !== "admin" && request.user?.id !== data.anchor_user_id) {
+        return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
+      }
+
       const group = await createGroup(db, {
         topology: data.topology,
         anchorUserId: data.anchor_user_id,
@@ -71,6 +82,9 @@ export function registerGroupRoutes(
       const group = await getGroupById(db, request.params.id);
       if (!group) {
         return reply.code(404).send({ error: "GROUP_NOT_FOUND" });
+      }
+      if (!canAccessGroup(request.user, group)) {
+        return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
       }
 
       const sessions = await getSessionsByGroupId(db, group.id);
@@ -111,6 +125,9 @@ export function registerGroupRoutes(
       if (!group) {
         return reply.code(404).send({ error: "GROUP_NOT_FOUND" });
       }
+      if (!canAccessGroup(request.user, group)) {
+        return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
+      }
 
       if (group.status !== "ACTIVE") {
         return reply.code(409).send({ error: "GROUP_NOT_ACTIVE", message: `Group status is ${group.status}` });
@@ -149,6 +166,14 @@ export function registerGroupRoutes(
     "/negotiations/groups/:id/orchestrate",
     { preHandler: [requireAuth] },
     async (request, reply) => {
+      const group = await getGroupById(db, request.params.id);
+      if (!group) {
+        return reply.code(404).send({ error: "GROUP_NOT_FOUND" });
+      }
+      if (!canAccessGroup(request.user, group)) {
+        return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
+      }
+
       const actions = await executeGroupOrchestration(db, request.params.id, eventDispatcher);
       return reply.send({ actions });
     },
@@ -162,6 +187,9 @@ export function registerGroupRoutes(
       const group = await getGroupById(db, request.params.id);
       if (!group) {
         return reply.code(404).send({ error: "GROUP_NOT_FOUND" });
+      }
+      if (!canAccessGroup(request.user, group)) {
+        return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
       }
 
       if (group.status !== "ACTIVE") {

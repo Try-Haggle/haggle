@@ -552,6 +552,15 @@ function normalizeAdvisorBudgetMemory(
   const normalized = { ...memory };
   const explicitBudget = extractExplicitDollarBudget(context.latestMessage, context.previousMemory);
   const electronicsLike = isConsumerElectronicsMemory(normalized);
+  const latestIsNonBudgetNumeric = (hasPercentNumber(context.latestMessage)
+    || hasProductModelNumber(context.latestMessage)
+    || isShortModelAnswerToPendingQuestion(context.latestMessage, context.previousMemory))
+    && !hasExplicitMoneyUnit(context.latestMessage);
+
+  if (latestIsNonBudgetNumeric) {
+    normalized.budgetMax = context.previousMemory?.budgetMax;
+    normalized.targetPrice = context.previousMemory?.targetPrice;
+  }
 
   if (explicitBudget !== undefined) {
     const previousBudget = normalized.budgetMax;
@@ -578,6 +587,7 @@ function normalizeAdvisorBudgetMemory(
 
 function extractExplicitDollarBudget(message: string, previousMemory?: AdvisorMemory): number | undefined {
   const text = message.trim().toLowerCase();
+  if (hasPercentNumber(text) || hasProductModelNumber(text) || isShortModelAnswerToPendingQuestion(text, previousMemory)) return undefined;
   const maxMatch = text.match(/(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i);
   const maxParsed = parseDollarNumber(maxMatch?.[1]);
   if (maxParsed !== undefined) return maxParsed;
@@ -601,8 +611,32 @@ function extractExplicitDollarBudget(message: string, previousMemory?: AdvisorMe
     || previousMemory?.questions.some((question) => /(?:예산|최대|목표가|가격|budget|max|target)/i.test(question))
   );
 
-  if (budgetContext && numbers.length === 1) return numbers[0];
+  if (budgetContext && numbers.length === 1) {
+    const value = numbers[0];
+    if (value < 100 && !hasExplicitMoneyUnit(text) && !/(?:예산|최대|목표가|budget|max|target)[^0-9$]{0,20}\d{2}/i.test(text)) {
+      return undefined;
+    }
+    return value;
+  }
   return undefined;
+}
+
+function hasPercentNumber(text: string): boolean {
+  return /\b\d{1,3}\s*%|퍼센트|프로\b/i.test(text);
+}
+
+function hasProductModelNumber(text: string): boolean {
+  return /(?:iphone|아이폰|model|모델)\s*\d{1,2}\b/i.test(text)
+    || /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text);
+}
+
+function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: AdvisorMemory): boolean {
+  if (!previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))) return false;
+  return /^\s*(?:1[1-9]|[2-9])\s*(?:은|는|로|요|\?)*\s*$/i.test(text.trim());
+}
+
+function hasExplicitMoneyUnit(text: string): boolean {
+  return /[$]|(?:usd|dollars?|bucks?|달러|불)\b/i.test(text);
 }
 
 function normalizeTargetAgainstBudget(

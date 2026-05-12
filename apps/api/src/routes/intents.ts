@@ -61,6 +61,10 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
       expires_in_days,
     } = parsed.data;
 
+    if (request.user?.role !== "admin" && request.user?.id !== user_id) {
+      return reply.code(403).send({ error: "INTENT_ACTOR_MISMATCH" });
+    }
+
     // Capacity check
     const activeCount = await getActiveIntentCount(db, user_id);
     const maxSessions = max_active_sessions ?? 5;
@@ -133,6 +137,9 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
       const intent = await getIntentById(db, id);
       if (!intent) {
         return reply.code(404).send({ error: "INTENT_NOT_FOUND" });
+      }
+      if (request.user?.role !== "admin" && intent.userId !== request.user?.id) {
+        return reply.code(403).send({ error: "INTENT_ACTOR_MISMATCH" });
       }
 
       const nextStatus = transitionIntent(intent.status, "CANCEL");
