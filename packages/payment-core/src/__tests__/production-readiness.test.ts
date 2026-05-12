@@ -54,6 +54,11 @@ describe("payment sensitive data redaction", () => {
         },
       },
       events: [{ wallet_token: "tok_wallet", status: "pending" }],
+      shipping: {
+        account_number: "123456789",
+        routing_number: "021000021",
+        iban: "GB82WEST12345698765432",
+      },
     })).toEqual({
       order_id: "ord_1",
       client_secret: "[REDACTED]",
@@ -68,6 +73,27 @@ describe("payment sensitive data redaction", () => {
         },
       },
       events: [{ wallet_token: "[REDACTED]", status: "pending" }],
+      shipping: {
+        account_number: "[REDACTED]",
+        routing_number: "[REDACTED]",
+        iban: "[REDACTED]",
+      },
+    });
+  });
+
+  it("redacts PAN values even when the field name is not sensitive", () => {
+    expect(redactPaymentSensitiveData({
+      note: "customer typed 4242 4242 4242 4242 in the support field",
+      primary_account_number: "5555555555554444",
+      pan: "4000000000000002",
+      span_id: "trace-span-1",
+      unrelated_number: "1234567890123",
+    })).toEqual({
+      note: "customer typed [REDACTED_PAN] in the support field",
+      primary_account_number: "[REDACTED]",
+      pan: "[REDACTED]",
+      span_id: "trace-span-1",
+      unrelated_number: "1234567890123",
     });
   });
 

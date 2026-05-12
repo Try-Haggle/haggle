@@ -112,16 +112,23 @@ export function mapLegacyStatusToProductionState(status: LegacyPaymentIntentStat
 }
 
 const SENSITIVE_PAYMENT_KEY_PATTERNS = [
+  /\baccount[_-]?number\b/i,
   /authorization/i,
   /bank.*account/i,
   /card.*number/i,
+  /card[_-]?exp/i,
   /client.*secret/i,
   /cvv/i,
   /cvc/i,
   /expiry/i,
-  /exp_(month|year)/i,
-  /pan/i,
+  /exp[_-]?(month|year)/i,
+  /\biban\b/i,
+  /(^|[_-])pan($|[_-])/i,
   /payment.*method.*id/i,
+  /payment[_-]?token/i,
+  /primary.*account.*number/i,
+  /provider.*payment.*method/i,
+  /\brouting[_-]?number\b/i,
   /secret/i,
   /signature/i,
   /token/i,
@@ -136,11 +143,44 @@ export function redactPaymentSensitiveData(value: unknown): unknown {
   return redactPaymentSensitiveDataInner(value, new WeakSet<object>());
 }
 
+function isLuhnValid(candidate: string): boolean {
+  let sum = 0;
+  let shouldDouble = false;
+
+  for (let index = candidate.length - 1; index >= 0; index -= 1) {
+    let digit = Number(candidate[index]);
+    if (!Number.isInteger(digit)) return false;
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+
+  return sum > 0 && sum % 10 === 0;
+}
+
+function redactSensitivePaymentString(value: string): string {
+  return value.replace(/\b(?:\d[ -]?){13,19}\b/g, (candidate) => {
+    const digits = candidate.replace(/\D/g, "");
+    if (digits.length < 13 || digits.length > 19 || !isLuhnValid(digits)) {
+      return candidate;
+    }
+    const trailingSeparator = candidate.match(/[ -]+$/)?.[0] ?? "";
+    return `[REDACTED_PAN]${trailingSeparator}`;
+  });
+}
+
 function redactPaymentSensitiveDataInner(value: unknown, seen: WeakSet<object>): unknown {
   if (Array.isArray(value)) {
     if (seen.has(value)) return "[Circular]";
     seen.add(value);
     return value.map((item) => redactPaymentSensitiveDataInner(item, seen));
+  }
+
+  if (typeof value === "string") {
+    return redactSensitivePaymentString(value);
   }
 
   if (!value || typeof value !== "object") {
