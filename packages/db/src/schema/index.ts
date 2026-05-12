@@ -63,6 +63,7 @@ export { buyerInterestVectors } from "./buyer-interest-vectors.js";
 export { categoryRelatedness } from "./category-relatedness.js";
 export { vector } from "./pgvector.js";
 // TODO(slice-6): export { users } from "./users.js";
+export { profiles } from "./profiles.js";
 export { userWallets } from "./user-wallets.js";
 export { webhookIdempotency } from "./webhook-idempotency.js";
 export { buddies } from "./buddies.js";

@@ -18,6 +18,7 @@ export default defineConfig({
     "./src/schema/authentications.ts",
     "./src/schema/settlement-releases.ts",
     "./src/schema/trust-scores.ts",
+    "./src/schema/profiles.ts",
     "./src/schema/ds-ratings.ts",
     "./src/schema/dispute-deposits.ts",
     "./src/schema/arp-segments.ts",
