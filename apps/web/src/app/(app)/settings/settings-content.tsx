@@ -106,6 +106,12 @@ export function SettingsContent({
       if (error) {
         setProfileMsg({ type: "error", text: error.message });
       } else {
+        // Sync app-side profile mirror so trust card surfaces stay current.
+        try {
+          await api.post("/me/profile");
+        } catch {
+          // Non-fatal — profile mirror lazily syncs on next save.
+        }
         setProfileMsg({ type: "success", text: "Profile updated." });
         setAvatarFile(null);
         router.refresh();
