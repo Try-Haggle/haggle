@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
 import { createClient } from "@supabase/supabase-js";
-import { listingDrafts, eq } from "@haggle/db";
+import { listingDrafts, profiles, eq } from "@haggle/db";
 
 function getSupabaseAdmin() {
   const url =
@@ -64,6 +64,68 @@ export function registerAccountRoutes(app: FastifyInstance, db: Database) {
         ok: false,
         error: "delete_failed",
         message: deleteError.message,
+      });
+    }
+
+    return reply.send({ ok: true });
+  });
+
+  // POST /me/profile — sync app-side profile mirror from Supabase auth metadata.
+  // Called by /settings after auth.updateUser. Idempotent upsert.
+  app.post("/me/profile", async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return reply.status(401).send({ ok: false, error: "unauthorized" });
+    }
+
+    const token = authHeader.slice(7);
+    const supabase = getSupabaseAdmin();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return reply.status(401).send({ ok: false, error: "invalid_token" });
+    }
+
+    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const displayName =
+      typeof meta.display_name === "string" ? meta.display_name : null;
+    const avatarUrl =
+      typeof meta.custom_avatar_url === "string"
+        ? meta.custom_avatar_url
+        : typeof meta.avatar_url === "string"
+          ? meta.avatar_url
+          : null;
+    const emailVerified = user.email_confirmed_at
+      ? new Date(user.email_confirmed_at)
+      : null;
+    const joinedAt = user.created_at ? new Date(user.created_at) : new Date();
+
+    const existing = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.userId, user.id))
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(profiles)
+        .set({
+          displayName,
+          avatarUrl,
+          emailVerified,
+          updatedAt: new Date(),
+        })
+        .where(eq(profiles.userId, user.id));
+    } else {
+      await db.insert(profiles).values({
+        userId: user.id,
+        displayName,
+        avatarUrl,
+        emailVerified,
+        joinedAt,
       });
     }
 
