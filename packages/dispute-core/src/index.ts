@@ -8,5 +8,8 @@ export * from "./evidence-validator.js";
 export * from "./dispute-cost.js";
 export * from "./ds-rating.js";
 export * from "./vote-aggregation.js";
+export * from "./panel-review.js";
 export * from "./dispute-deposit.js";
 export * from "./dispute-settlement.js";
+export * from "./module-contract.js";
+export * from "./dispute-ai-harness.js";

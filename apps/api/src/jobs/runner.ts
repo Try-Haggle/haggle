@@ -14,6 +14,7 @@ import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
 import { runShipmentSlaCheck } from "./shipment-sla-check.js";
 import { runDisputeDepositExpiry } from "./dispute-deposit-expiry.js";
 import { runChainEventSync } from "./chain-event-sync.js";
+import { runDisputeModuleWebhookOutbox } from "./dispute-module-webhook-outbox.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,6 +62,12 @@ function buildJobRegistry(): CronJob[] {
       name: "chain-event-sync",
       intervalMs: 60 * 1000, // every 60 seconds
       handler: runChainEventSync,
+      enabled: true,
+    },
+    {
+      name: "dispute-module-webhook-outbox",
+      intervalMs: 30 * 1000, // every 30 seconds
+      handler: runDisputeModuleWebhookOutbox,
       enabled: true,
     },
   ];

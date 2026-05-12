@@ -15,6 +15,13 @@ import {
   updateDisputeRecord,
 } from "./dispute-record.service.js";
 import {
+  buildDisputeModuleWebhookEnvelope,
+  createDisputeModuleWebhookOutboxRecord,
+  deliverDisputeModuleWebhookOutboxRecord,
+  type DisputeModuleWebhookEnvelope,
+  type DisputeModuleWebhookOutboxRecord,
+} from "./dispute-module-webhook.service.js";
+import {
   getDepositByDisputeId,
   updateDepositStatus,
 } from "./dispute-deposit.service.js";
@@ -36,6 +43,7 @@ export interface FinalizeDisputeResolutionResult {
   dispute: DisputeCase;
   auto_refund: AutoRefundResult;
   deposit_refund: { tx_hash?: string; refund_id?: string } | null;
+  module_settlement_webhook: DisputeModuleWebhookOutboxRecord | null;
 }
 
 function createRefundId(): string {
@@ -48,7 +56,64 @@ function createRefundId(): string {
 function statusForOutcome(outcome: DisputeResolution["outcome"]): DisputeCase["status"] {
   if (outcome === "buyer_favor") return "RESOLVED_BUYER_FAVOR" as DisputeCase["status"];
   if (outcome === "seller_favor") return "RESOLVED_SELLER_FAVOR" as DisputeCase["status"];
+  if (outcome === "no_action") return "RESOLVED_SELLER_FAVOR" as DisputeCase["status"];
   return "PARTIAL_REFUND" as DisputeCase["status"];
+}
+
+function isModuleDispute(dispute: DisputeCase): boolean {
+  const metadata = dispute.metadata as Record<string, unknown> | null;
+  return metadata?.source === "dispute_module_api";
+}
+
+function buildModuleSettlementInstruction(dispute: DisputeCase, resolution: DisputeResolution): Record<string, unknown> {
+  const metadata = dispute.metadata as Record<string, unknown> | null;
+  const transaction = metadata?.transaction_snapshot as Record<string, unknown> | undefined;
+  const amountMinor = typeof transaction?.amount_minor === "number" ? transaction.amount_minor : undefined;
+  const currency = typeof transaction?.currency === "string" ? transaction.currency : undefined;
+  const refundAmountMinor = resolution.outcome === "buyer_favor"
+    ? amountMinor
+    : resolution.outcome === "partial_refund"
+      ? resolution.refund_amount_minor
+      : 0;
+  const action = resolution.outcome === "buyer_favor" || resolution.outcome === "partial_refund"
+    ? "refund_buyer"
+    : "release_to_seller";
+
+  return {
+    action,
+    outcome: resolution.outcome,
+    amount_minor: action === "refund_buyer" ? refundAmountMinor : amountMinor,
+    currency,
+  };
+}
+
+function buildModuleSettlementWebhookEnvelope(
+  dispute: DisputeCase,
+  resolution: DisputeResolution,
+): DisputeModuleWebhookEnvelope | null {
+  const metadata = dispute.metadata as Record<string, unknown> | null;
+  const platformId = metadata?.platform_id;
+  const externalOrderId = metadata?.external_order_id;
+  if (typeof platformId !== "string" || typeof externalOrderId !== "string") {
+    return null;
+  }
+
+  return buildDisputeModuleWebhookEnvelope({
+    type: "dispute.settlement.instruction",
+    platformId,
+    externalOrderId,
+    dispute,
+    dedupeKey: "resolution",
+    data: {
+      dispute_id: dispute.id,
+      status: dispute.status,
+      tier: metadata?.tier ?? 1,
+      outcome: resolution.outcome,
+      refund_amount_minor: resolution.refund_amount_minor ?? null,
+      resolved_at: resolution.resolved_at ?? null,
+      settlement_instruction: buildModuleSettlementInstruction(dispute, resolution),
+    },
+  });
 }
 
 async function hasCompletedRefund(db: Database, paymentIntentId: string): Promise<boolean> {
@@ -248,19 +313,25 @@ async function persistResolvedDispute(
   db: Database,
   dispute: DisputeCase,
   resolution: DisputeResolution,
-): Promise<void> {
+  moduleWebhookEnvelope?: DisputeModuleWebhookEnvelope | null,
+): Promise<DisputeModuleWebhookOutboxRecord | null> {
+  let moduleWebhookOutboxRecord: DisputeModuleWebhookOutboxRecord | null = null;
   const persist = async (tx: unknown) => {
     const txDb = tx as Database;
     await updateDisputeRecord(txDb, dispute);
     await createDisputeResolutionRecord(txDb, dispute.id, resolution);
+    if (moduleWebhookEnvelope) {
+      moduleWebhookOutboxRecord = await createDisputeModuleWebhookOutboxRecord(txDb, moduleWebhookEnvelope);
+    }
   };
 
   if (typeof db.transaction === "function") {
     await db.transaction(persist);
-    return;
+    return moduleWebhookOutboxRecord;
   }
 
   await persist(db);
+  return moduleWebhookOutboxRecord;
 }
 
 export async function finalizeDisputeResolution(
@@ -271,10 +342,11 @@ export async function finalizeDisputeResolution(
 ): Promise<FinalizeDisputeResolutionResult> {
   let autoRefund: AutoRefundResult = null;
   let depositRefund: { tx_hash?: string; refund_id?: string } | null = null;
+  const moduleDispute = isModuleDispute(dispute);
 
-  if (resolution.outcome === "buyer_favor" || resolution.outcome === "partial_refund") {
+  if (!moduleDispute && (resolution.outcome === "buyer_favor" || resolution.outcome === "partial_refund")) {
     autoRefund = await finalizeBuyerRefund(db, dispute, resolution);
-  } else if (resolution.outcome === "seller_favor") {
+  } else if (!moduleDispute && resolution.outcome === "seller_favor") {
     depositRefund = await finalizeSellerFavor(db, dispute);
   }
 
@@ -284,12 +356,32 @@ export async function finalizeDisputeResolution(
     resolution,
   }, resolution);
 
-  await persistResolvedDispute(db, disputeToPersist, resolution);
+  const moduleWebhookEnvelope = moduleDispute
+    ? buildModuleSettlementWebhookEnvelope(disputeToPersist, resolution)
+    : null;
+  if (moduleDispute && !moduleWebhookEnvelope) {
+    throw new Error("MODULE_SETTLEMENT_METADATA_MISSING");
+  }
+  const moduleWebhookOutboxRecord = await persistResolvedDispute(
+    db,
+    disputeToPersist,
+    resolution,
+    moduleWebhookEnvelope,
+  );
+  if (moduleWebhookOutboxRecord) {
+    deliverDisputeModuleWebhookOutboxRecord(db, moduleWebhookOutboxRecord).catch((error) => {
+      console.warn(
+        "[disputes] Module settlement instruction webhook dispatch error:",
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  }
   anchorResolution(dispute, resolution);
 
   return {
     dispute: disputeToPersist,
     auto_refund: autoRefund,
     deposit_refund: depositRefund,
+    module_settlement_webhook: moduleWebhookOutboxRecord,
   };
 }

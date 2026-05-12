@@ -117,7 +117,13 @@ const setProviderContextMock = vi.fn(
   },
 );
 
+const listDeadLetterWebhooksMock = vi.fn();
+const resetWebhookForReplayMock = vi.fn();
+
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   getPaymentIntentRowById: vi.fn(async (_db: unknown, id: string) =>
     paymentStore.get(id) ?? null,
   ),
@@ -135,6 +141,13 @@ vi.mock("../services/payment-record.service.js", () => ({
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/dispute-module-webhook.service.js", () => ({
+  listDeadLetterDisputeModuleWebhookOutboxRecords: (...args: unknown[]) =>
+    listDeadLetterWebhooksMock(...args),
+  resetDisputeModuleWebhookOutboxRecordForReplay: (...args: unknown[]) =>
+    resetWebhookForReplayMock(...args),
 }));
 
 vi.mock("../services/trust-ledger.service.js", () => ({
@@ -715,6 +728,96 @@ describe("Admin routes", () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("PAYMENT_INTENT_NOT_FOUND");
+    expect(auditLog.length).toBe(0);
+  });
+
+  // 29
+  it("GET /admin/dispute-module-webhooks/dead-letter returns dead-letter records", async () => {
+    listDeadLetterWebhooksMock.mockResolvedValueOnce([
+      {
+        eventId: "evt_dead",
+        platformId: "platform_1",
+        status: "DEAD_LETTER",
+      },
+    ]);
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/dispute-module-webhooks/dead-letter?limit=10",
+      headers: adminAuth,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      items: [
+        {
+          eventId: "evt_dead",
+          status: "DEAD_LETTER",
+        },
+      ],
+    });
+    expect(listDeadLetterWebhooksMock).toHaveBeenCalledWith(expect.anything(), {
+      limit: 10,
+      offset: undefined,
+    });
+  });
+
+  // 30
+  it("POST /admin/actions/dispute-module-webhook-replay resets a replayable outbox record", async () => {
+    auditLog.length = 0;
+    resetWebhookForReplayMock.mockResolvedValueOnce({
+      eventId: "evt_dead",
+      platformId: "platform_1",
+      disputeId: "11111111-1111-5111-9111-111111111111",
+      status: "PENDING",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/actions/dispute-module-webhook-replay",
+      headers: adminAuth,
+      payload: { eventId: "evt_dead", reason: "Platform endpoint restored" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().record).toMatchObject({
+      eventId: "evt_dead",
+      status: "PENDING",
+    });
+    expect(resetWebhookForReplayMock).toHaveBeenCalledWith(expect.anything(), "evt_dead");
+    expect(auditLog.length).toBe(1);
+    expect(auditLog[0]).toMatchObject({
+      actionType: "dispute_module_webhook.replay",
+      targetType: "dispute_module_webhook_outbox",
+      targetId: "evt_dead",
+    });
+    expect(auditLog[0].payload).toMatchObject({
+      reason: "Platform endpoint restored",
+    });
+  });
+
+  // 31
+  it("POST /admin/actions/dispute-module-webhook-replay returns 404 when not replayable", async () => {
+    auditLog.length = 0;
+    resetWebhookForReplayMock.mockResolvedValueOnce(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/actions/dispute-module-webhook-replay",
+      headers: adminAuth,
+      payload: { eventId: "evt_missing", reason: "Manual replay requested" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("WEBHOOK_OUTBOX_RECORD_NOT_REPLAYABLE");
+    expect(auditLog.length).toBe(0);
+  });
+
+  // 32
+  it("POST /admin/actions/dispute-module-webhook-replay requires a reason", async () => {
+    auditLog.length = 0;
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/actions/dispute-module-webhook-replay",
+      headers: adminAuth,
+      payload: { eventId: "evt_dead" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_BODY");
     expect(auditLog.length).toBe(0);
   });
 });

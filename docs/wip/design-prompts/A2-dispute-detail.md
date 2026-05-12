@@ -12,7 +12,7 @@
 
 이 페이지에서 사용자는:
 - 분쟁 진행 상황을 실시간으로 확인
-- AI Advocate와 대화 (내 편을 들어주는 AI)
+- Case Guide와 대화 (내 편을 들어주는 AI)
 - 증거를 업로드하고 관리
 - 비용과 정산 내역 확인
 - T1 결과를 수락하거나 에스컬레이션
@@ -24,7 +24,7 @@
 
 1. **역할 자동 감지**: URL 하나, 로그인한 사용자가 buyer면 buyer 뷰, seller면 seller 뷰
 2. **상태 중심 UI**: 현재 분쟁 상태에 따라 보이는 섹션과 액션 버튼이 달라짐
-3. **AI Advocate는 내 편**: buyer의 AI는 cyan, seller의 AI는 violet. 절대 중립이 아님.
+3. **Case Guide는 내 편**: buyer의 AI는 cyan, seller의 AI는 violet. 절대 중립이 아님.
 4. **투명성 강조**: 비용, 타임라인, 상대방 상태 — 숨기는 것 없이 모두 보여줌
 5. **모바일 우선**: 분쟁은 스트레스 상황. 스마트폰에서도 모든 액션이 가능해야 함.
 
@@ -44,7 +44,7 @@
 │                                            │  [Next Actions]        │
 │  [Timeline]                                │  [On-chain Badge]      │
 │                                            │                        │
-│  [AI Advocate Chat]                        │                        │
+│  [Case Guide Chat]                        │                        │
 │                                            │                        │
 │  [Evidence Grid]                           │                        │
 │                                            │                        │
@@ -139,13 +139,13 @@ Apr 19         Apr 19          ~8 min          Pending          Pending
 ```
 T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 
-### 4. AI Advocate Chat
+### 4. Case Guide Chat
 
 **이 페이지의 핵심 인터랙션.** 사용자와 AI가 실시간으로 대화.
 
-**Buyer의 AI Advocate (cyan):**
+**Buyer의 Case Guide (cyan):**
 ```
-┌─ 🛡 Your AI Advocate ─────────────────────────────────────────┐
+┌─ 🛡 Your Case Guide ─────────────────────────────────────────┐
 │  Building your case · Analyzing evidence                      │
 │  [Conversation] [Analysis]                                     │
 │───────────────────────────────────────────────────────────────│
@@ -174,7 +174,7 @@ T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 │  ┌─ cyan left border ────────────────────────────────────┐    │
 │  │ ADVOCATE · 14:36 UTC                                   │    │
 │  │                                                        │    │
-│  │ Your case is with the AI Arbiter. Decision in minutes. │    │
+│  │ Your case is with the Resolution Assessor. Decision in minutes. │    │
 │  │                                                        │    │
 │  │ ┌─ amber warn card ──────────────────────────────┐    │    │
 │  │ │ ⚠️ Heads up. Escalation adds $12 dispute cost. │    │    │
@@ -182,16 +182,16 @@ T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 │  │ └────────────────────────────────────────────────┘    │    │
 │  └────────────────────────────────────────────────────────┘    │
 │                                                                │
-│  [Ask your AI Advocate...]                          [↵] [Send] │
+│  [Ask your Case Guide...]                          [↵] [Send] │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-**Seller의 AI Advocate (violet):**
+**Seller의 Case Guide (violet):**
 - 동일 구조, 모든 accent가 violet
 - 내용이 seller 관점: "Defending your position", "EXIF data proves 95% at listing"
 - Strength meter: 방어 강도 (72% → EXIF 증거 추가 후 88%)
 
-**AI Advocate 메시지 컴포넌트 종류:**
+**Case Guide 메시지 컴포넌트 종류:**
 1. **일반 텍스트** — 분석, 조언
 2. **인라인 카드** — Key claim / Market impact 같은 구조화된 정보
 3. **Strength meter** — 가로 바 + 퍼센트 (gradient cyan→emerald 또는 violet→cyan)
@@ -226,7 +226,7 @@ T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 - 남은 업로드 수량 표시
 - 클릭 → 증거 뷰어 (A3) 또는 모달
 
-**Seller 뷰에서는** "Counter-evidence" 라벨로 표시. 업로드 영역이 좀 더 강조됨 (AI Advocate가 "EXIF 증거를 올리세요" 같은 가이드 제공).
+**Seller 뷰에서는** "Counter-evidence" 라벨로 표시. 업로드 영역이 좀 더 강조됨 (Case Guide가 "EXIF 증거를 올리세요" 같은 가이드 제공).
 
 ### 6. Cost Breakdown
 
@@ -256,10 +256,10 @@ T1 → T2로 에스컬레이션되면 노드가 6개로 확장.
 
 ### 7. T1 Decision Section (상태별 조건부 표시)
 
-AI Arbiter가 판결을 내리면 표시됨.
+Resolution Assessor가 판결을 내리면 표시됨.
 
 ```
-┌─ AI Arbiter Decision ────────────────────────────────────────┐
+┌─ Resolution Assessor Decision ────────────────────────────────────────┐
 │                                                               │
 │  ⚖️ Ruling: Partial refund 30% ($150.00)                      │
 │                                                               │
@@ -319,7 +319,7 @@ AI Arbiter가 판결을 내리면 표시됨.
 ```
 ┌─ Case status updates ──────────────────── [Export log] ──────┐
 │                                                               │
-│  Apr 19 · 15:01  ● AI Arbiter reviewing case · ~8 min        │
+│  Apr 19 · 15:01  ● Resolution Assessor reviewing case · ~8 min        │
 │  Apr 19 · 14:58  ✓ Seller submitted response with evidence   │
 │  Apr 19 · 14:40  · Seller @mike_deals acknowledged dispute   │
 │  Apr 19 · 14:36  ✓ Evidence uploaded · 3 items · hash 0x7f.. │
@@ -394,7 +394,7 @@ Seller 사이드바:
 | Case Header | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Deadline Banner (seller) | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Timeline | ✅ | ✅ | ✅ | ✅ | ✅ |
-| AI Advocate Chat | ✅ | ✅ | ✅ | ✅ (read-only) | ✅ (read-only) |
+| Case Guide Chat | ✅ | ✅ | ✅ | ✅ (read-only) | ✅ (read-only) |
 | Evidence Grid | ✅ (editable) | ✅ (editable) | ✅ (editable) | ✅ (read-only) | ✅ (read-only) |
 | Cost Breakdown | ✅ | ✅ | ✅ | ✅ | ✅ |
 | T1 Decision | ❌ | ❌ | ❌ | ✅ | ✅ |
@@ -425,7 +425,7 @@ Seller 사이드바:
 1. **Buyer 뷰** (분쟁 제기자 시점)
 2. **Seller 뷰** (응답자 시점)
 
-같은 페이지지만 역할에 따라 header accent, AI Advocate 색상, 액션 버튼이 달라짐.
+같은 페이지지만 역할에 따라 header accent, Case Guide 색상, 액션 버튼이 달라짐.
 
 ---
 
@@ -433,7 +433,7 @@ Seller 사이드바:
 
 - 경로: `apps/web/src/app/(app)/disputes/[id]/page.tsx`
 - API에서 사용자 역할(buyer/seller) 판단 → UI 자동 전환
-- AI Advocate 채팅: WebSocket 또는 SSE 연결 (초기에는 REST polling)
+- Case Guide 채팅: WebSocket 또는 SSE 연결 (초기에는 REST polling)
 - 증거 업로드: presigned URL → Supabase Storage
 - 실시간 카운트다운: JS setInterval
 - 상태 변경: API polling (30초) 또는 WebSocket push
