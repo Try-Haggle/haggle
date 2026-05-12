@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateCarrierRetryDelayMs,
   classifyCarrierError,
+  detectShipmentReconciliationFindings,
   redactShippingSensitiveData,
 } from "../production-readiness.js";
 
@@ -56,5 +57,77 @@ describe("shipping production readiness helpers", () => {
     expect(calculateCarrierRetryDelayMs(0, { baseDelayMs: 100, maxDelayMs: 500 })).toBe(100);
     expect(calculateCarrierRetryDelayMs(2, { baseDelayMs: 100, maxDelayMs: 500 })).toBe(400);
     expect(calculateCarrierRetryDelayMs(10, { baseDelayMs: 100, maxDelayMs: 500 })).toBe(500);
+  });
+
+  it("detects shipment reconciliation drift without calling a carrier", () => {
+    const findings = detectShipmentReconciliationFindings(
+      [
+        {
+          shipment_id: "ship_unpaid",
+          order_id: "ord_unpaid",
+          state: "label_created",
+          order_status: "PAYMENT_PENDING",
+          provider_shipment_id: "ps_unpaid",
+          label_url: "https://labels.example/1.pdf",
+        },
+        {
+          shipment_id: "ship_label_asset_missing",
+          order_id: "ord_label",
+          state: "label_created",
+          provider_shipment_id: "ps_label",
+          tracking_number: "9400LABEL",
+        },
+        {
+          shipment_id: "ship_provider_delivered",
+          order_id: "ord_provider_delivered",
+          state: "in_transit",
+          provider_tracker_id: "trk_delivered",
+          tracking_number: "9400DELIVERED",
+          label_url: "https://labels.example/2.pdf",
+        },
+        {
+          shipment_id: "ship_return",
+          order_id: "ord_return",
+          state: "return_in_transit",
+          provider_tracker_id: "trk_return",
+          tracking_number: "9400RETURN",
+          label_url: "https://labels.example/3.pdf",
+        },
+      ],
+      [
+        {
+          provider_shipment_id: "ps_label",
+          tracking_number: "9400LABEL",
+          state: "label_created",
+          label_purchased: true,
+        },
+        {
+          provider_tracker_id: "trk_delivered",
+          tracking_number: "9400DELIVERED",
+          state: "delivered",
+        },
+        {
+          provider_tracker_id: "trk_return",
+          tracking_number: "9400RETURN",
+          state: "in_transit",
+        },
+        {
+          provider_shipment_id: "ps_orphan",
+          tracking_number: "9400ORPHAN",
+          state: "delivered",
+          label_purchased: true,
+        },
+      ],
+    );
+
+    expect(findings.map((finding) => finding.type)).toEqual([
+      "label_created_without_fulfillable_order",
+      "label_missing_after_provider_purchase",
+      "orphan_provider_shipment",
+      "provider_delivered_local_not_delivered",
+      "return_state_mismatch",
+      "tracking_missing_after_label",
+    ]);
+    expect(findings.every((finding) => finding.recommended_action.length > 0)).toBe(true);
   });
 });

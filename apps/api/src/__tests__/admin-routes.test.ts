@@ -37,6 +37,13 @@ vi.mock("../services/tag-promotion.service.js", () => ({
   }),
 }));
 
+const buildProductionReconciliationReportMock = vi.fn();
+
+vi.mock("../services/production-reconciliation.service.js", () => ({
+  buildProductionReconciliationReport: (...args: unknown[]) =>
+    buildProductionReconciliationReportMock(...args),
+}));
+
 // The in-memory store powers the promotion-rule service mock and lets the
 // audit-log assertion peek at what was written.
 const ruleStore = new Map<string, Record<string, unknown>>();
@@ -269,7 +276,7 @@ describe("Admin routes", () => {
       url: "/admin/inbox/summary",
       headers: adminAuth,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.payload).toBe(200);
     const body = res.json();
     expect(body.tags).toBeDefined();
     expect(body.disputes).toBeDefined();
@@ -284,7 +291,7 @@ describe("Admin routes", () => {
       url: "/admin/inbox/tags",
       headers: adminAuth,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.payload).toBe(200);
     expect(Array.isArray(res.json().items)).toBe(true);
   });
 
@@ -334,6 +341,121 @@ describe("Admin routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().lastRun).toBeNull();
+  });
+
+  it("POST /admin/reconciliation/report returns report-only findings and audit summary", async () => {
+    auditLog.length = 0;
+    buildProductionReconciliationReportMock.mockReturnValueOnce({
+      generatedAt: "2026-05-12T00:00:00.000Z",
+      reportOnly: true,
+      summary: {
+        critical: 4,
+        warning: 2,
+        total: 6,
+        payments: 1,
+        shipments: 2,
+        disputes: 3,
+      },
+      findings: {
+        payments: [{ type: "provider_captured_local_not_captured", severity: "critical" }],
+        shipments: [
+          { type: "label_created_without_fulfillable_order", severity: "critical" },
+          { type: "tracking_missing_after_label", severity: "warning" },
+        ],
+        disputes: [
+          { type: "resolved_buyer_favor_without_refund", severity: "critical" },
+          { type: "resolved_dispute_order_not_terminal", severity: "critical" },
+          { type: "resolved_dispute_missing_finalization_marker", severity: "warning" },
+        ],
+      },
+      nextActions: ["Hold fulfillment and reconcile provider capture before treating the order as paid."],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/reconciliation/report",
+      headers: adminAuth,
+      payload: {
+        generatedAt: "2026-05-12T00:00:00.000Z",
+        payments: {
+          local: [{
+            payment_intent_id: "pi_1",
+            order_id: "ord_1",
+            state: "authorized",
+            amount_minor: 1000,
+            provider_reference: "prov_1",
+          }],
+          provider: [{
+            provider_reference: "prov_1",
+            state: "captured",
+            amount_minor: 1000,
+          }],
+        },
+        shipments: {
+          local: [{
+            shipment_id: "ship_1",
+            order_id: "ord_1",
+            state: "label_created",
+            order_status: "PAYMENT_PENDING",
+          }],
+          provider: [],
+        },
+        disputes: {
+          local: [{
+            dispute_id: "disp_1",
+            order_id: "ord_1",
+            status: "resolved_buyer_favor",
+            outcome: "buyer_favor",
+            order_status: "IN_DISPUTE",
+            refund_status: "PENDING",
+          }],
+        },
+      },
+    });
+
+    expect(res.statusCode, res.payload).toBe(200);
+    const body = res.json();
+    expect(body.report.reportOnly).toBe(true);
+    expect(body.report.summary).toMatchObject({
+      critical: 4,
+      warning: 2,
+      total: 6,
+      payments: 1,
+      shipments: 2,
+      disputes: 3,
+    });
+    expect(body.report.findings.payments[0].type).toBe("provider_captured_local_not_captured");
+    expect(body.report.findings.shipments.map((finding: { type: string }) => finding.type)).toEqual([
+      "label_created_without_fulfillable_order",
+      "tracking_missing_after_label",
+    ]);
+    expect(body.report.nextActions.length).toBeGreaterThan(0);
+    expect(auditLog[0]).toMatchObject({
+      actionType: "reconciliation.report",
+      targetType: "production_readiness",
+      targetId: "report",
+    });
+    expect((auditLog[0].payload as Record<string, unknown>).summary).toEqual(body.report.summary);
+  });
+
+  it("POST /admin/reconciliation/report validates body", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/reconciliation/report",
+      headers: adminAuth,
+      payload: {
+        payments: {
+          local: [{
+            payment_intent_id: "pi_1",
+            state: "client_forced_success",
+            amount_minor: 1000,
+          }],
+          provider: [],
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_RECONCILIATION_BODY");
   });
 
   // 9

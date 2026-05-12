@@ -25,6 +25,7 @@ export type AdminActionType =
   | "payment.webhook_rejected"
   | "payment.reconciliation_correction"
   | "payment.admin_override"
+  | "reconciliation.report"
   | "shipment.prepare"
   | "shipment.label_purchase"
   | "shipment.return_label_purchase"

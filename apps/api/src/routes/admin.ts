@@ -46,6 +46,7 @@ import {
   listDeadLetterDisputeModuleWebhookOutboxRecords,
   resetDisputeModuleWebhookOutboxRecordForReplay,
 } from "../services/dispute-module-webhook.service.js";
+import { buildProductionReconciliationReport } from "../services/production-reconciliation.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { DisputeService } from "@haggle/dispute-core";
 
@@ -74,6 +75,103 @@ const promotionRuleBodySchema = z.object({
   emergingMinAgeDays: z.number().int().min(0),
   suggestionAutoPromoteCount: z.number().int().min(0),
   enabled: z.boolean(),
+});
+
+const paymentStateSchema = z.enum([
+  "pending",
+  "authorized",
+  "captured",
+  "canceled",
+  "refunded",
+  "partially_refunded",
+  "failed",
+  "disputed",
+  "expired",
+]);
+
+const shipmentStateSchema = z.enum([
+  "label_pending",
+  "label_created",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "delivery_exception",
+  "return_in_transit",
+  "returned",
+]);
+
+const disputeProductionStatusSchema = z.enum([
+  "open",
+  "under_review",
+  "waiting_for_buyer",
+  "waiting_for_seller",
+  "resolved_buyer_favor",
+  "resolved_seller_favor",
+  "partial_refund",
+  "closed",
+]);
+
+const productionReconciliationBodySchema = z.object({
+  generatedAt: z.string().datetime().optional(),
+  payments: z.object({
+    local: z.array(z.object({
+      payment_intent_id: z.string().min(1),
+      order_id: z.string().min(1).optional(),
+      state: paymentStateSchema,
+      amount_minor: z.number().int().min(0),
+      refunded_amount_minor: z.number().int().min(0).optional(),
+      provider_reference: z.string().min(1).optional(),
+    })).max(500).default([]),
+    provider: z.array(z.object({
+      provider_reference: z.string().min(1),
+      state: paymentStateSchema,
+      amount_minor: z.number().int().min(0),
+      refunded_amount_minor: z.number().int().min(0).optional(),
+      local_payment_intent_id: z.string().min(1).optional(),
+    })).max(500).default([]),
+  }).optional(),
+  shipments: z.object({
+    local: z.array(z.object({
+      shipment_id: z.string().min(1),
+      order_id: z.string().min(1),
+      state: shipmentStateSchema,
+      carrier: z.string().min(1).optional(),
+      tracking_number: z.string().min(1).optional(),
+      provider_shipment_id: z.string().min(1).optional(),
+      provider_tracker_id: z.string().min(1).optional(),
+      label_url: z.string().min(1).optional(),
+      qr_code_url: z.string().min(1).optional(),
+      order_status: z.string().min(1).optional(),
+    })).max(500).default([]),
+    provider: z.array(z.object({
+      provider_shipment_id: z.string().min(1).optional(),
+      provider_tracker_id: z.string().min(1).optional(),
+      tracking_number: z.string().min(1).optional(),
+      state: shipmentStateSchema,
+      carrier: z.string().min(1).optional(),
+      label_purchased: z.boolean().optional(),
+      label_url: z.string().min(1).optional(),
+      qr_code_url: z.string().min(1).optional(),
+      local_shipment_id: z.string().min(1).optional(),
+    })).max(500).default([]),
+  }).optional(),
+  disputes: z.object({
+    local: z.array(z.object({
+      dispute_id: z.string().min(1),
+      order_id: z.string().min(1),
+      status: disputeProductionStatusSchema,
+      outcome: z.enum(["buyer_favor", "seller_favor", "partial_refund", "no_action"]).optional(),
+      order_status: z.string().min(1).optional(),
+      payment_state: z.string().min(1).optional(),
+      refund_status: z.string().min(1).optional(),
+      refund_amount_minor: z.number().int().min(0).optional(),
+      expected_refund_amount_minor: z.number().int().min(0).optional(),
+      settlement_release_status: z.string().min(1).optional(),
+      return_shipment_status: z.string().min(1).optional(),
+      finalized_at: z.string().datetime().optional(),
+      finalization_attempts: z.number().int().min(0).optional(),
+    })).max(500).default([]),
+  }).optional(),
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -202,6 +300,33 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database) {
     async (_request, reply) => {
       const lastRun = await getLastPromotionRun(db);
       return reply.send({ lastRun });
+    },
+  );
+
+  app.post(
+    "/admin/reconciliation/report",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const parsed = productionReconciliationBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_RECONCILIATION_BODY", issues: parsed.error.issues });
+      }
+
+      const report = buildProductionReconciliationReport(parsed.data);
+      await writeAuditLog(db, {
+        actorId: getActorId(request),
+        actionType: "reconciliation.report",
+        targetType: "production_readiness",
+        targetId: "report",
+        payload: {
+          generatedAt: report.generatedAt,
+          reportOnly: report.reportOnly,
+          summary: report.summary,
+        },
+      });
+      return reply.send({ report });
     },
   );
 
