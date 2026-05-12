@@ -371,6 +371,7 @@ export async function listPublishedListings(
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       tags: listingDrafts.tags,
+      sellerId: listingDrafts.userId,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))

@@ -4,6 +4,7 @@ import {
   trustPenaltyScore,
   type TrustTriggerEvent,
 } from "@haggle/commerce-core";
+import { invalidateProfileCardCache } from "./profile-card.service.js";
 import {
   eq,
   sql,
@@ -46,6 +47,11 @@ function columnForTriggerType(type: TrustTriggerEvent["type"]): string | null {
 }
 
 export async function applyTrustTriggers(db: Database, context: TrustLedgerContext) {
+  // Invalidate cached profile cards for both parties so the next read
+  // reflects the new ledger state.
+  invalidateProfileCardCache(context.buyer_id);
+  invalidateProfileCardCache(context.seller_id);
+
   for (const trigger of context.triggers) {
     const actorId = actorIdForRole(context, trigger.actor_role);
     const reason = resolveTrustPenaltyReason(trigger);

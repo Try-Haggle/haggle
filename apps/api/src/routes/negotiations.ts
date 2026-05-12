@@ -304,6 +304,8 @@ export function registerNegotiationRoutes(
       const rounds = await getRoundsBySessionId(db, session.id);
 
       // 공정함: utility 점수 공개, 상대방 전략 파라미터 비공개
+      // counterparty_id is exposed so the client can render the counterparty's
+      // public trust card; both parties already know each other's role.
       return reply.send({
         session: {
           id: session.id,
@@ -316,6 +318,9 @@ export function registerNegotiationRoutes(
           last_utility: session.lastUtility,
           version: session.version,
           expires_at: session.expiresAt,
+          buyer_id: session.buyerId,
+          seller_id: session.sellerId,
+          counterparty_id: session.counterpartyId,
           created_at: session.createdAt,
           updated_at: session.updatedAt,
         },

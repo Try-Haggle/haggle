@@ -18,6 +18,7 @@ import { registerShipmentRoutes } from "./routes/shipments.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
 import { registerAuthenticationRoutes } from "./routes/authentications.js";
 import { registerTrustRoutes } from "./routes/trust.js";
+import { registerProfileCardRoutes } from "./routes/profile-card.js";
 import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
 import { registerARPRoutes } from "./routes/arp.js";
 import { registerTagRoutes } from "./routes/tags.js";
@@ -138,6 +139,7 @@ export async function createServer() {
 
   // ─── Trust, DS Rating, ARP, Tag Routes ──────────────────
   registerTrustRoutes(app, db);
+  registerProfileCardRoutes(app, db);
   registerDSRatingRoutes(app, db);
   registerARPRoutes(app, db);
   registerTagRoutes(app, db);
