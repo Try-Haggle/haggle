@@ -15,6 +15,7 @@ import { runShipmentSlaCheck } from "./shipment-sla-check.js";
 import { runDisputeDepositExpiry } from "./dispute-deposit-expiry.js";
 import { runChainEventSync } from "./chain-event-sync.js";
 import { runDisputeModuleWebhookOutbox } from "./dispute-module-webhook-outbox.js";
+import { runProductionReconciliationReport } from "./production-reconciliation-report.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,6 +70,12 @@ function buildJobRegistry(): CronJob[] {
       intervalMs: 30 * 1000, // every 30 seconds
       handler: runDisputeModuleWebhookOutbox,
       enabled: true,
+    },
+    {
+      name: "production-reconciliation-report",
+      intervalMs: 60 * 60 * 1000, // every hour
+      handler: runProductionReconciliationReport,
+      enabled: process.env.ENABLE_PRODUCTION_RECONCILIATION_JOB === "true",
     },
   ];
 }

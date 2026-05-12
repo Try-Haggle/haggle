@@ -1,3 +1,17 @@
+import {
+  commerceOrders,
+  desc,
+  disputeCases,
+  disputeResolutions,
+  paymentAuthorizations,
+  paymentIntents,
+  paymentSettlements,
+  refunds,
+  settlementReleases,
+  shipments,
+  type Database,
+} from "@haggle/db";
+
 type Severity = "warning" | "critical";
 
 type PaymentState =
@@ -155,6 +169,22 @@ export interface ProductionReconciliationInput {
   generatedAt?: string;
 }
 
+export interface ProductionReconciliationProviderSource {
+  listPaymentProviderSnapshots?: (
+    localPayments: readonly LocalPaymentSnapshot[],
+  ) => Promise<readonly ProviderPaymentSnapshot[]>;
+  listShipmentProviderSnapshots?: (
+    localShipments: readonly LocalShipmentSnapshot[],
+  ) => Promise<readonly ProviderShipmentSnapshot[]>;
+}
+
+export interface CollectProductionReconciliationOptions {
+  limit?: number;
+  generatedAt?: string;
+  providerSource?: ProductionReconciliationProviderSource;
+  includePaymentsWithoutProviderSource?: boolean;
+}
+
 export interface ProductionReconciliationReport {
   generatedAt: string;
   reportOnly: true;
@@ -179,6 +209,100 @@ function countSeverity(
   severity: "warning" | "critical",
 ): number {
   return findings.filter((finding) => finding.severity === severity).length;
+}
+
+function parseMinor(value: string | number | null | undefined): number {
+  if (value == null) return 0;
+  return typeof value === "number" ? value : Number(value);
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function metadataString(metadata: unknown, key: string): string | undefined {
+  const value = recordValue(metadata)?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function mapLegacyPaymentState(
+  status: typeof paymentIntents.$inferSelect.status,
+  refundedAmountMinor: number,
+  amountMinor: number,
+): PaymentState {
+  if (status === "SETTLED" && refundedAmountMinor > 0) {
+    return refundedAmountMinor >= amountMinor ? "refunded" : "partially_refunded";
+  }
+  switch (status) {
+    case "CREATED":
+    case "QUOTED":
+      return "pending";
+    case "AUTHORIZED":
+    case "SETTLEMENT_PENDING":
+      return "authorized";
+    case "SETTLED":
+      return "captured";
+    case "FAILED":
+      return "failed";
+    case "CANCELED":
+      return "canceled";
+  }
+}
+
+function mapShipmentState(status: typeof shipments.$inferSelect.status): ShipmentState {
+  switch (status) {
+    case "LABEL_PENDING":
+      return "label_pending";
+    case "LABEL_CREATED":
+      return "label_created";
+    case "IN_TRANSIT":
+      return "in_transit";
+    case "OUT_FOR_DELIVERY":
+      return "out_for_delivery";
+    case "DELIVERED":
+      return "delivered";
+    case "DELIVERY_EXCEPTION":
+      return "delivery_exception";
+    case "RETURN_IN_TRANSIT":
+      return "return_in_transit";
+    case "RETURNED":
+      return "returned";
+  }
+}
+
+function mapDisputeStatus(status: typeof disputeCases.$inferSelect.status): DisputeStatus {
+  switch (status) {
+    case "OPEN":
+      return "open";
+    case "UNDER_REVIEW":
+      return "under_review";
+    case "WAITING_FOR_BUYER":
+      return "waiting_for_buyer";
+    case "WAITING_FOR_SELLER":
+      return "waiting_for_seller";
+    case "RESOLVED_BUYER_FAVOR":
+      return "resolved_buyer_favor";
+    case "RESOLVED_SELLER_FAVOR":
+      return "resolved_seller_favor";
+    case "PARTIAL_REFUND":
+      return "partial_refund";
+    case "CLOSED":
+      return "closed";
+  }
+}
+
+function mapDisputeOutcome(outcome: typeof disputeResolutions.$inferSelect.outcome | null | undefined): DisputeOutcome | undefined {
+  switch (outcome) {
+    case "buyer_favor":
+    case "seller_favor":
+    case "partial_refund":
+    case "no_action":
+      return outcome;
+    default:
+      return undefined;
+  }
 }
 
 function uniqueNextActions(findings: Array<{ recommended_action?: string }>): string[] {
@@ -525,6 +649,241 @@ function detectDisputeFinalizationFindings(
   return findings.sort((a, b) => a.severity === b.severity
     ? a.type.localeCompare(b.type)
     : a.severity === "critical" ? -1 : 1);
+}
+
+async function collectLocalPaymentSnapshots(
+  db: Database,
+  limit: number,
+): Promise<LocalPaymentSnapshot[]> {
+  const [intentRows, authorizationRows, settlementRows, refundRows] = await Promise.all([
+    db
+      .select()
+      .from(paymentIntents)
+      .orderBy(desc(paymentIntents.updatedAt))
+      .limit(limit),
+    db
+      .select()
+      .from(paymentAuthorizations)
+      .orderBy(desc(paymentAuthorizations.createdAt))
+      .limit(limit * 5),
+    db
+      .select()
+      .from(paymentSettlements)
+      .orderBy(desc(paymentSettlements.createdAt))
+      .limit(limit * 5),
+    db
+      .select()
+      .from(refunds)
+      .orderBy(desc(refunds.updatedAt))
+      .limit(limit * 5),
+  ]);
+
+  const providerReferenceByIntent = new Map<string, string>();
+  for (const row of authorizationRows) {
+    if (!providerReferenceByIntent.has(row.paymentIntentId)) {
+      providerReferenceByIntent.set(row.paymentIntentId, row.providerReference);
+    }
+  }
+  for (const row of settlementRows) {
+    if (!providerReferenceByIntent.has(row.paymentIntentId)) {
+      providerReferenceByIntent.set(row.paymentIntentId, row.providerReference);
+    }
+  }
+
+  const refundedByIntent = new Map<string, number>();
+  for (const row of refundRows) {
+    if (row.status !== "COMPLETED") continue;
+    refundedByIntent.set(
+      row.paymentIntentId,
+      (refundedByIntent.get(row.paymentIntentId) ?? 0) + parseMinor(row.amountMinor),
+    );
+  }
+
+  return intentRows.map((row) => {
+    const amountMinor = parseMinor(row.amountMinor);
+    const refundedAmountMinor = refundedByIntent.get(row.id) ?? 0;
+    return {
+      payment_intent_id: row.id,
+      order_id: row.orderId,
+      state: mapLegacyPaymentState(row.status, refundedAmountMinor, amountMinor),
+      amount_minor: amountMinor,
+      refunded_amount_minor: refundedAmountMinor,
+      provider_reference: providerReferenceByIntent.get(row.id),
+    };
+  });
+}
+
+async function collectLocalShipmentSnapshots(
+  db: Database,
+  limit: number,
+): Promise<LocalShipmentSnapshot[]> {
+  const [shipmentRows, orderRows] = await Promise.all([
+    db
+      .select()
+      .from(shipments)
+      .orderBy(desc(shipments.updatedAt))
+      .limit(limit),
+    db
+      .select({
+        id: commerceOrders.id,
+        status: commerceOrders.status,
+      })
+      .from(commerceOrders)
+      .orderBy(desc(commerceOrders.updatedAt))
+      .limit(limit * 2),
+  ]);
+  const orderStatusById = new Map(orderRows.map((row) => [row.id, row.status]));
+
+  return shipmentRows.map((row) => ({
+    shipment_id: row.id,
+    order_id: row.orderId,
+    state: mapShipmentState(row.status),
+    carrier: row.carrier ?? undefined,
+    tracking_number: row.trackingNumber ?? undefined,
+    provider_shipment_id: metadataString(row.metadata, "easypost_shipment_id"),
+    provider_tracker_id: metadataString(row.metadata, "easypost_tracker_id"),
+    label_url: row.labelUrl ?? undefined,
+    qr_code_url: metadataString(row.metadata, "label_qr_code_url"),
+    order_status: orderStatusById.get(row.orderId),
+  }));
+}
+
+async function collectLocalDisputeSnapshots(
+  db: Database,
+  limit: number,
+): Promise<DisputeFinalizationSnapshot[]> {
+  const [disputeRows, resolutionRows, orderRows, paymentRows, refundRows, releaseRows, shipmentRows] = await Promise.all([
+    db
+      .select()
+      .from(disputeCases)
+      .orderBy(desc(disputeCases.updatedAt))
+      .limit(limit),
+    db
+      .select()
+      .from(disputeResolutions)
+      .orderBy(desc(disputeResolutions.createdAt))
+      .limit(limit * 3),
+    db
+      .select({
+        id: commerceOrders.id,
+        status: commerceOrders.status,
+      })
+      .from(commerceOrders)
+      .orderBy(desc(commerceOrders.updatedAt))
+      .limit(limit * 2),
+    db
+      .select({
+        id: paymentIntents.id,
+        orderId: paymentIntents.orderId,
+      })
+      .from(paymentIntents)
+      .orderBy(desc(paymentIntents.updatedAt))
+      .limit(limit * 2),
+    db
+      .select()
+      .from(refunds)
+      .orderBy(desc(refunds.updatedAt))
+      .limit(limit * 5),
+    db
+      .select()
+      .from(settlementReleases)
+      .orderBy(desc(settlementReleases.updatedAt))
+      .limit(limit * 2),
+    db
+      .select({
+        orderId: shipments.orderId,
+        shipmentType: shipments.shipmentType,
+        status: shipments.status,
+      })
+      .from(shipments)
+      .orderBy(desc(shipments.updatedAt))
+      .limit(limit * 3),
+  ]);
+
+  const resolutionByDisputeId = new Map<string, typeof disputeResolutions.$inferSelect>();
+  for (const row of resolutionRows) {
+    if (!resolutionByDisputeId.has(row.disputeId)) {
+      resolutionByDisputeId.set(row.disputeId, row);
+    }
+  }
+  const orderStatusById = new Map(orderRows.map((row) => [row.id, row.status]));
+  const orderIdByPaymentIntentId = new Map(paymentRows.map((row) => [row.id, row.orderId]));
+  const refundByOrderId = new Map<string, typeof refunds.$inferSelect>();
+  for (const row of refundRows) {
+    const orderId = orderIdByPaymentIntentId.get(row.paymentIntentId);
+    if (orderId && !refundByOrderId.has(orderId)) {
+      refundByOrderId.set(orderId, row);
+    }
+  }
+  const releaseByOrderId = new Map(releaseRows.map((row) => [row.orderId, row]));
+  const returnShipmentByOrderId = new Map<string, typeof shipments.$inferSelect.status>();
+  for (const row of shipmentRows) {
+    if (row.shipmentType === "return" && !returnShipmentByOrderId.has(row.orderId)) {
+      returnShipmentByOrderId.set(row.orderId, row.status);
+    }
+  }
+
+  return disputeRows.map((row) => {
+    const resolution = resolutionByDisputeId.get(row.id);
+    const release = releaseByOrderId.get(row.orderId);
+    const refund = refundByOrderId.get(row.orderId);
+    const returnStatus = returnShipmentByOrderId.get(row.orderId);
+    const finalizationAttempts = recordValue(row.metadata)?.finalization_attempts;
+    return {
+      dispute_id: row.id,
+      order_id: row.orderId,
+      status: mapDisputeStatus(row.status),
+      outcome: mapDisputeOutcome(resolution?.outcome),
+      order_status: orderStatusById.get(row.orderId),
+      refund_status: refund?.status,
+      refund_amount_minor: refund?.amountMinor == null ? undefined : parseMinor(refund.amountMinor),
+      expected_refund_amount_minor: resolution?.refundAmountMinor == null
+        ? undefined
+        : parseMinor(resolution.refundAmountMinor),
+      settlement_release_status: release?.productReleaseStatus,
+      return_shipment_status: returnStatus ? mapShipmentState(returnStatus) : undefined,
+      finalized_at: row.resolvedAt?.toISOString() ?? row.closedAt?.toISOString(),
+      finalization_attempts: typeof finalizationAttempts === "number"
+        ? finalizationAttempts
+        : undefined,
+    };
+  });
+}
+
+export async function collectProductionReconciliationInput(
+  db: Database,
+  options: CollectProductionReconciliationOptions = {},
+): Promise<ProductionReconciliationInput> {
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 200), 1), 1_000);
+  const [localPayments, localShipments, localDisputes] = await Promise.all([
+    collectLocalPaymentSnapshots(db, limit),
+    collectLocalShipmentSnapshots(db, limit),
+    collectLocalDisputeSnapshots(db, limit),
+  ]);
+
+  const providerPaymentSnapshots = options.providerSource?.listPaymentProviderSnapshots
+    ? await options.providerSource.listPaymentProviderSnapshots(localPayments)
+    : [];
+  const providerShipmentSnapshots = options.providerSource?.listShipmentProviderSnapshots
+    ? await options.providerSource.listShipmentProviderSnapshots(localShipments)
+    : [];
+
+  return {
+    generatedAt: options.generatedAt,
+    payments: options.providerSource?.listPaymentProviderSnapshots || options.includePaymentsWithoutProviderSource
+      ? {
+          local: localPayments,
+          provider: providerPaymentSnapshots,
+        }
+      : undefined,
+    shipments: {
+      local: localShipments,
+      provider: providerShipmentSnapshots,
+    },
+    disputes: {
+      local: localDisputes,
+    },
+  };
 }
 
 export function buildProductionReconciliationReport(
