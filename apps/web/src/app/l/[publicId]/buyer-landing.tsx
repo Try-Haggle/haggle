@@ -11,6 +11,8 @@ import {
 } from "@/lib/buyer-agents";
 import { Nav } from "@/components/nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
+import { TrustCard, TrustCardSkeleton } from "@/components/trust-card";
+import { useTrustCard } from "@/hooks/use-trust-card";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -156,8 +158,9 @@ const ORIGIN_HREF: Record<Origin, string> = {
   "sell-dashboard": "/sell/dashboard",
 };
 
-export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
+export function BuyerLanding({ listing, user, isOwner = false, from = null, sellerId = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null; sellerId?: string | null }) {
   const { track } = useAmplitude();
+  const { data: trustCard, loading: trustLoading } = useTrustCard(sellerId, { role: "seller" });
   const [selectedAgent, setSelectedAgent] = useState<BuyerAgentPreset | null>(
     null,
   );
@@ -322,8 +325,13 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                   )}
                 </div>
 
-                {/* Seller Agent + Deadline */}
+                {/* Seller Trust + Agent + Deadline */}
                 <div className="mt-6 space-y-3">
+                  {sellerId && (trustLoading ? (
+                    <TrustCardSkeleton variant="inline" />
+                  ) : trustCard ? (
+                    <TrustCard data={trustCard} variant="inline" />
+                  ) : null)}
                   {deadline && (
                     <div className="flex items-center gap-2 text-sm text-amber-400">
                       <svg

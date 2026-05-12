@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api-client";
 import { useNegotiationWs } from "@/hooks/use-negotiation-ws";
+import { TrustCard, TrustCardSkeleton } from "@/components/trust-card";
+import { useTrustCard } from "@/hooks/use-trust-card";
 
 export interface NegotiationSession {
   id: string;
@@ -14,6 +16,9 @@ export interface NegotiationSession {
   last_offer_price_minor: number | null;
   last_utility: number | null;
   expires_at: string | null;
+  buyer_id?: string;
+  seller_id?: string;
+  counterparty_id?: string;
   created_at: string;
   updated_at: string;
   version: number;
@@ -137,6 +142,15 @@ export function NegotiationChat({
   const isTerminal = TERMINAL_STATUSES.has(session.status);
   const backHref = role === "BUYER" ? "/buy/dashboard" : "/sell/dashboard";
 
+  // Counterparty: derive from session role + IDs. Trust card uses the
+  // counterparty's role-specific score (buyer sees seller score, vice versa).
+  const counterpartyId = session.counterparty_id ?? null;
+  const counterpartyRole = role === "BUYER" ? "seller" : "buyer";
+  const { data: counterpartyTrust, loading: trustLoading } = useTrustCard(
+    counterpartyId,
+    { role: counterpartyRole },
+  );
+
   // Scroll to bottom on new rounds
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -245,6 +259,20 @@ export function NegotiationChat({
           {badge.label}
         </span>
       </div>
+
+      {/* Counterparty Trust */}
+      {counterpartyId && (
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            {role === "BUYER" ? "Seller" : "Buyer"} trust
+          </p>
+          {trustLoading ? (
+            <TrustCardSkeleton variant="inline" />
+          ) : counterpartyTrust ? (
+            <TrustCard data={counterpartyTrust} variant="inline" />
+          ) : null}
+        </div>
+      )}
 
       {/* Summary KPIs */}
       <div className="grid grid-cols-3 gap-3 mb-6">

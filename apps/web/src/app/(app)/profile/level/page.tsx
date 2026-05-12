@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
+import { TrustSection } from "./trust-section";
 
 interface LevelInfo {
   userId: string;
@@ -52,6 +53,8 @@ export default async function LevelPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold">Agent Level</h1>
+
+      <TrustSection userId={user.id} />
 
       {/* Level badge */}
       <div className="mb-8 rounded-xl border border-zinc-700 bg-zinc-900 p-6 text-center">

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { TrustCard } from "./trust-card";
+import type { TrustCardData } from "@/lib/profile-card-api";
 
 export interface ListingCardListing {
   publicId: string;
@@ -8,6 +10,7 @@ export interface ListingCardListing {
   photoUrl: string | null;
   targetPrice: string | null;
   publishedAt?: string;
+  sellerId?: string | null;
 }
 
 function formatPrice(price: string | null): string {
@@ -53,6 +56,7 @@ export function ListingCard({
   style,
   imageAspect = "4/3",
   from,
+  trustCard,
 }: {
   listing: ListingCardListing;
   matchReasons?: string[];
@@ -61,6 +65,7 @@ export function ListingCard({
   style?: React.CSSProperties;
   imageAspect?: "square" | "4/3";
   from?: string | null;
+  trustCard?: TrustCardData;
 }) {
   const aspectClass =
     imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
@@ -133,6 +138,11 @@ export function ListingCard({
                 {reason}
               </span>
             ))}
+          </div>
+        )}
+        {trustCard && (
+          <div className="mt-2 border-t border-slate-800/60 pt-2">
+            <TrustCard data={trustCard} variant="compact" />
           </div>
         )}
       </div>

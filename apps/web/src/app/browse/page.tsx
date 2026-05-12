@@ -19,6 +19,7 @@ export interface BrowseListing {
   photoUrl: string | null;
   targetPrice: string | null;
   tags: string[] | null;
+  sellerId: string | null;
 }
 
 type Category = (typeof LISTING_CATEGORIES)[number];

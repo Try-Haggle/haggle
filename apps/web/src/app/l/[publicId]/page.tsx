@@ -85,7 +85,13 @@ export default async function BuyerListingPage({
 
   return (
     <>
-      <BuyerLanding listing={data.listing} user={userInfo} isOwner={isOwner} from={from} />
+      <BuyerLanding
+        listing={data.listing}
+        user={userInfo}
+        isOwner={isOwner}
+        from={from}
+        sellerId={data.sellerId ?? null}
+      />
       <SimilarListings publicId={publicId} userId={user?.id ?? null} from={from} />
     </>
   );
