@@ -38,12 +38,17 @@ export default async function BrowsePage({
   const query = activeCategory ? `?category=${activeCategory}` : "";
 
   let listings: BrowseListing[] = [];
+  let nextCursor: string | null = null;
   try {
     const data = await serverApi.get<{
       ok: boolean;
       listings: BrowseListing[];
+      nextCursor: string | null;
     }>(`/api/public/listings${query}`, { skipAuth: true });
-    if (data.ok) listings = data.listings;
+    if (data.ok) {
+      listings = data.listings;
+      nextCursor = data.nextCursor ?? null;
+    }
   } catch {
     listings = [];
   }
@@ -66,7 +71,11 @@ export default async function BrowsePage({
       <CategoryTabs activeCategory={activeCategory} />
 
       <div className="mt-8">
-        <ListingGrid listings={listings} activeCategory={activeCategory} />
+        <ListingGrid
+          initialListings={listings}
+          initialNextCursor={nextCursor}
+          activeCategory={activeCategory}
+        />
       </div>
     </main>
   );

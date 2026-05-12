@@ -8,6 +8,7 @@ import {
   and,
   or,
   gt,
+  lt,
   isNull,
   desc,
   inArray,
@@ -347,9 +348,13 @@ export async function getPublishedListingByPublicId(
  */
 export async function listPublishedListings(
   db: Database,
-  opts: { category?: string; limit?: number } = {},
+  opts: {
+    category?: string;
+    limit?: number;
+    cursor?: { publishedAt: Date; publicId: string };
+  } = {},
 ) {
-  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const limit = Math.min(Math.max(opts.limit ?? 40, 1), 100);
   const now = new Date();
 
   const conditions = [
@@ -359,6 +364,18 @@ export async function listPublishedListings(
 
   if (opts.category) {
     conditions.push(eq(listingDrafts.category, opts.category));
+  }
+
+  if (opts.cursor) {
+    conditions.push(
+      or(
+        lt(listingsPublished.publishedAt, opts.cursor.publishedAt),
+        and(
+          eq(listingsPublished.publishedAt, opts.cursor.publishedAt),
+          lt(listingsPublished.publicId, opts.cursor.publicId),
+        ),
+      ),
+    );
   }
 
   const rows = await db
@@ -375,7 +392,7 @@ export async function listPublishedListings(
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
     .where(and(...conditions))
-    .orderBy(desc(listingsPublished.publishedAt))
+    .orderBy(desc(listingsPublished.publishedAt), desc(listingsPublished.publicId))
     .limit(limit);
 
   return rows;

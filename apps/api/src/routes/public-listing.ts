@@ -11,11 +11,14 @@ export function registerPublicListingRoutes(
   db: Database,
 ) {
   // GET /api/public/listings — no auth required
-  // Query params: category? (one of LISTING_CATEGORIES), limit? (default 50, max 100)
+  // Query params:
+  //   category? (one of LISTING_CATEGORIES)
+  //   limit?   (default 40, max 100)
+  //   cursor?  (format: `${publishedAtIso}_${publicId}` — from previous response's nextCursor)
   app.get<{
-    Querystring: { category?: string; limit?: string };
+    Querystring: { category?: string; limit?: string; cursor?: string };
   }>("/api/public/listings", async (request, reply) => {
-    const { category, limit } = request.query;
+    const { category, limit, cursor: cursorRaw } = request.query;
 
     if (category && !LISTING_CATEGORIES.includes(category as (typeof LISTING_CATEGORIES)[number])) {
       return reply.status(400).send({
@@ -34,12 +37,43 @@ export function registerPublicListingRoutes(
       });
     }
 
+    let cursor: { publishedAt: Date; publicId: string } | undefined;
+    if (cursorRaw) {
+      const sep = cursorRaw.indexOf("_");
+      if (sep === -1) {
+        return reply.status(400).send({
+          ok: false,
+          error: "invalid_cursor",
+          message: "cursor must be in format `${iso}_${publicId}`",
+        });
+      }
+      const iso = cursorRaw.slice(0, sep);
+      const publicId = cursorRaw.slice(sep + 1);
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime()) || !publicId) {
+        return reply.status(400).send({
+          ok: false,
+          error: "invalid_cursor",
+          message: "cursor publishedAt or publicId is invalid",
+        });
+      }
+      cursor = { publishedAt: dt, publicId };
+    }
+
+    const effectiveLimit = Math.min(Math.max(parsedLimit ?? 40, 1), 100);
+
     const listings = await listPublishedListings(db, {
       category,
-      limit: parsedLimit,
+      limit: effectiveLimit,
+      cursor,
     });
 
-    return reply.send({ ok: true, listings });
+    const nextCursor =
+      listings.length === effectiveLimit
+        ? `${listings[listings.length - 1].publishedAt.toISOString()}_${listings[listings.length - 1].publicId}`
+        : null;
+
+    return reply.send({ ok: true, listings, nextCursor });
   });
 
   // GET /api/public/listings/:publicId — no auth required

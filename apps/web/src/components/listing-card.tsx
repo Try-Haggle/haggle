@@ -139,3 +139,22 @@ export function ListingCard({
     </Link>
   );
 }
+
+export function ListingCardSkeleton({
+  imageAspect = "4/3",
+}: {
+  imageAspect?: "square" | "4/3";
+}) {
+  const aspectClass =
+    imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+      <div className={`${aspectClass} w-full animate-pulse bg-slate-800`} />
+      <div className="space-y-2 p-3 sm:p-4">
+        <div className="h-4 w-3/4 animate-pulse rounded bg-slate-800" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-slate-800" />
+        <div className="h-5 w-1/3 animate-pulse rounded bg-slate-800" />
+      </div>
+    </div>
+  );
+}
