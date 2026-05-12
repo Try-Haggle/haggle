@@ -1,5 +1,6 @@
 import {
   agentPaymentGrants,
+  and,
   commerceOrders,
   eq,
   paymentDisclosures,
@@ -553,4 +554,25 @@ export async function createPaymentOperationIdempotencyRecord(
     .returning();
 
   return row ?? null;
+}
+
+export async function completePaymentOperationIdempotencyRecord(
+  db: Database,
+  operation: string,
+  idempotencyKey: string,
+  input: {
+    responseStatus: number;
+    responseBody: Record<string, unknown>;
+  },
+): Promise<void> {
+  await db
+    .update(paymentOperationIdempotency)
+    .set({
+      responseStatus: input.responseStatus,
+      responseBody: input.responseBody,
+    })
+    .where(and(
+      eq(paymentOperationIdempotency.operation, operation),
+      eq(paymentOperationIdempotency.idempotencyKey, idempotencyKey),
+    ));
 }

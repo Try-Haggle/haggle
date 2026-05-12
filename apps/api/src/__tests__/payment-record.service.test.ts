@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { assertPaymentReadyForExecution } from "@haggle/payment-core";
 import {
+  completePaymentOperationIdempotencyRecord,
   createPaymentSettlementRecord,
   getActivePaymentIntentByOrderId,
   getPaymentSettlementByPaymentIntentId,
@@ -47,6 +48,13 @@ function buildSettlementDb(returningRows: unknown[], existingRow: unknown = null
     },
     _mocks: { values, onConflictDoNothing, returning },
   };
+}
+
+function buildUpdateDb() {
+  const where = vi.fn().mockResolvedValue([]);
+  const set = vi.fn().mockReturnValue({ where });
+  const update = vi.fn().mockReturnValue({ set });
+  return { update, _mocks: { set, where } };
 }
 
 describe("payment-record.service", () => {
@@ -274,5 +282,25 @@ describe("payment-record.service", () => {
       provider_reference: "tx_123",
       settled_amount: { currency: "USD", amount_minor: 1000 },
     });
+  });
+
+  it("completes an in-progress payment idempotency record in place", async () => {
+    const db = buildUpdateDb();
+
+    await completePaymentOperationIdempotencyRecord(db as never, "payment.capture", "idem-capture-1", {
+      responseStatus: 200,
+      responseBody: {
+        intent: { id: "pi_123", status: "SETTLED" },
+      },
+    });
+
+    expect(db.update).toHaveBeenCalled();
+    expect(db._mocks.set).toHaveBeenCalledWith({
+      responseStatus: 200,
+      responseBody: {
+        intent: { id: "pi_123", status: "SETTLED" },
+      },
+    });
+    expect(db._mocks.where).toHaveBeenCalled();
   });
 });

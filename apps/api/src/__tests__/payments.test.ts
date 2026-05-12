@@ -6,6 +6,7 @@ import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
 import {
   createAgentPaymentGrantRecord,
   createPaymentDisclosureRecord,
+  completePaymentOperationIdempotencyRecord,
   createPaymentOperationIdempotencyRecord,
   createRefundRecord,
   createStoredPaymentIntent,
@@ -28,6 +29,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
   createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
+  completePaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(undefined),
   createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
@@ -145,6 +147,7 @@ const mockGetSettlementApprovalById = vi.mocked(getSettlementApprovalById);
 const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockCreateRefundRecord = vi.mocked(createRefundRecord);
+const mockCompletePaymentOperationIdempotencyRecord = vi.mocked(completePaymentOperationIdempotencyRecord);
 const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(createPaymentOperationIdempotencyRecord);
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
@@ -505,7 +508,16 @@ describe("Payment routes", () => {
     mockUpdateStoredPaymentIntent.mockClear();
     mockGetPaymentOperationIdempotencyRecord.mockClear();
     mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    mockCompletePaymentOperationIdempotencyRecord.mockClear();
     mockGetPaymentOperationIdempotencyRecord.mockResolvedValueOnce(null);
+    mockCreatePaymentOperationIdempotencyRecord.mockResolvedValueOnce({
+      operation: "payment.cancel",
+      idempotencyKey: "idem-cancel-1",
+      paymentIntentId: "pi_cancel_idem",
+      requestHash: "sha256:placeholder",
+      responseStatus: 409,
+      responseBody: { error: "PAYMENT_OPERATION_IN_PROGRESS" },
+    } as never);
     const intent = {
       id: "pi_cancel_idem",
       order_id: "order_123",
@@ -539,6 +551,17 @@ describe("Payment routes", () => {
         operation: "payment.cancel",
         idempotencyKey: "idem-cancel-1",
         paymentIntentId: "pi_cancel_idem",
+        responseStatus: 409,
+        responseBody: expect.objectContaining({
+          error: "PAYMENT_OPERATION_IN_PROGRESS",
+        }),
+      }),
+    );
+    expect(mockCompletePaymentOperationIdempotencyRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "payment.cancel",
+      "idem-cancel-1",
+      expect.objectContaining({
         responseStatus: 200,
       }),
     );
@@ -549,6 +572,7 @@ describe("Payment routes", () => {
     mockUpdateStoredPaymentIntent.mockClear();
     mockGetPaymentOperationIdempotencyRecord.mockClear();
     mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    mockCompletePaymentOperationIdempotencyRecord.mockClear();
     const intent = {
       id: "pi_cancel_conflict",
       order_id: "order_123",
@@ -585,6 +609,7 @@ describe("Payment routes", () => {
     expect(res.json()).toMatchObject({ error: "IDEMPOTENCY_KEY_CONFLICT" });
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+    expect(mockCompletePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
   });
 
   it("POST /payments/:id/settle retries fulfillment finalization for an already settled intent", async () => {

@@ -77,6 +77,7 @@ import {
 import { createPaymentServiceFromEnv, getX402EnvConfig, getRealStripeAdapterOrNull } from "../payments/providers.js";
 import {
   createPaymentAuthorizationRecord,
+  completePaymentOperationIdempotencyRecord,
   createPaymentOperationIdempotencyRecord,
   createAgentPaymentGrantRecord,
   createPaymentDisclosureRecord,
@@ -565,10 +566,29 @@ async function beginPaymentOperationIdempotency(
 
   const existing = await getPaymentOperationIdempotencyRecord(db, operation, key);
   if (!existing) {
-    return { key, requestHash, replayed: false };
+    const inserted = await createPaymentOperationIdempotencyRecord(db, {
+      operation,
+      idempotencyKey: key,
+      paymentIntentId,
+      requestHash,
+      responseStatus: 409,
+      responseBody: {
+        error: "PAYMENT_OPERATION_IN_PROGRESS",
+        message: "A payment operation with this idempotency key is already in progress",
+      },
+    });
+    if (inserted) {
+      return { key, requestHash, replayed: false };
+    }
   }
 
-  if (existing.requestHash !== requestHash) {
+  const current = existing ?? await getPaymentOperationIdempotencyRecord(db, operation, key);
+  if (!current) {
+    reply.code(409).send({ error: "IDEMPOTENCY_RECORD_CONFLICT" });
+    return { key, requestHash, replayed: true };
+  }
+
+  if (current.requestHash !== requestHash) {
     reply.code(409).send({
       error: "IDEMPOTENCY_KEY_CONFLICT",
       message: "Idempotency key was already used with a different payment request",
@@ -576,10 +596,17 @@ async function beginPaymentOperationIdempotency(
     return { key, requestHash, replayed: true };
   }
 
-  reply.code(existing.responseStatus).send({
-    ...(existing.responseBody as Record<string, unknown>),
-    idempotent: true,
-  });
+  const responseBody = current.responseBody as Record<string, unknown>;
+  const inProgress = current.responseStatus === 409
+    && responseBody.error === "PAYMENT_OPERATION_IN_PROGRESS";
+  reply.code(current.responseStatus).send(
+    inProgress
+      ? responseBody
+      : {
+          ...responseBody,
+          idempotent: true,
+        },
+  );
   return { key, requestHash, replayed: true };
 }
 
@@ -587,19 +614,38 @@ async function recordPaymentOperationIdempotency(
   db: Database,
   operation: string,
   idempotency: { key: string | null; requestHash: string },
-  paymentIntentId: string | null,
+  _paymentIntentId: string | null,
   responseStatus: number,
   responseBody: Record<string, unknown>,
 ): Promise<void> {
   if (!idempotency.key) return;
-  await createPaymentOperationIdempotencyRecord(db, {
-    operation,
-    idempotencyKey: idempotency.key,
-    paymentIntentId,
-    requestHash: idempotency.requestHash,
+  await completePaymentOperationIdempotencyRecord(db, operation, idempotency.key, {
     responseStatus,
     responseBody: safeRedactPaymentLog(responseBody) as Record<string, unknown>,
   });
+}
+
+async function sendAndRecordPaymentOperationFailure(
+  db: Database,
+  reply: FastifyReply,
+  operation: string,
+  idempotency: { key: string | null; requestHash: string },
+  paymentIntentId: string | null,
+  error: unknown,
+) {
+  const failure = getPaymentOperationFailure(error);
+  if (!failure) {
+    throw error;
+  }
+  await recordPaymentOperationIdempotency(
+    db,
+    operation,
+    idempotency,
+    paymentIntentId,
+    failure.statusCode,
+    failure.body,
+  );
+  return reply.code(failure.statusCode).send(failure.body);
 }
 
 async function auditPaymentAction(
@@ -1820,11 +1866,6 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       }
     }
 
-    const idempotency = parsed.data.verify_only
-      ? { key: null, requestHash: "", replayed: false }
-      : await beginPaymentOperationIdempotency(db, request, reply, "payment.x402_settle", intent.id);
-    if (idempotency.replayed) return;
-
     const providerContext = await db.query.paymentIntents.findFirst({
       where: (fields, ops) => ops.eq(fields.id, intent.id),
     });
@@ -1859,6 +1900,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.send({ verification: verify });
     }
 
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.x402_settle", intent.id);
+    if (idempotency.replayed) return;
+
     if (intent.status === "AUTHORIZED") {
       const pending = service.markSettlementPending(intent);
       await updateStoredPaymentIntent(db, pending.intent);
@@ -1868,7 +1912,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
     const settle = await x402Facilitator.settle(x402Payload, requirement, idempotency.key ?? undefined);
     if (!settle.success) {
-      return reply.code(400).send({ error: "X402_SETTLEMENT_FAILED", settlement: settle });
+      const responseBody = { error: "X402_SETTLEMENT_FAILED", settlement: settle };
+      await recordPaymentOperationIdempotency(db, "payment.x402_settle", idempotency, intent.id, 400, responseBody);
+      return reply.code(400).send(responseBody);
     }
 
     const result = await service.settleIntent(intent);
@@ -1953,7 +1999,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       await recordPaymentOperationIdempotency(db, "payment.authorize", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.authorize", idempotency, intent.id, error);
     }
   });
 
@@ -1996,7 +2042,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       await recordPaymentOperationIdempotency(db, "payment.settlement_pending", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.settlement_pending", idempotency, intent.id, error);
     }
   });
 
@@ -2065,7 +2111,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       await recordPaymentOperationIdempotency(db, "payment.capture", idempotency, intent.id, 200, responseBody as Record<string, unknown>);
       return reply.send(responseBody);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.capture", idempotency, intent.id, error);
     }
   });
 
@@ -2104,7 +2150,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       await recordPaymentOperationIdempotency(db, "payment.fail", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.fail", idempotency, intent.id, error);
     }
   });
 
@@ -2143,7 +2189,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       await recordPaymentOperationIdempotency(db, "payment.cancel", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.cancel", idempotency, intent.id, error);
     }
   });
 
@@ -2206,7 +2252,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       await recordPaymentOperationIdempotency(db, "payment.refund", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.refund", idempotency, intent.id, error);
     }
   });
 
@@ -2527,9 +2573,6 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       if (intent.buyer_id !== request.user!.id) {
         return reply.code(403).send({ error: "FORBIDDEN" });
       }
-      const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.stripe_onramp_session", intent.id);
-      if (idempotency.replayed) return;
-
       // Verify destination wallet belongs to the buyer
       const buyerWallets = await db
         .select({ walletAddress: userWallets.walletAddress })
@@ -2547,6 +2590,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           message: "Destination wallet is not registered to the buyer. Register your wallet first.",
         });
       }
+      const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.stripe_onramp_session", intent.id);
+      if (idempotency.replayed) return;
 
       const amountMinor = intent.amount.amount_minor;
       const buyerPayment = buildPaymentQuoteConfirmation(
@@ -2594,13 +2639,30 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           destination_network: "base",
           destination_currency: "usdc",
         };
+        await recordPaymentOperationIdempotency(
+          db,
+          "payment.stripe_onramp_session",
+          idempotency,
+          intent.id,
+          200,
+          responseBody,
+        );
         return reply.send(responseBody);
       } catch (err) {
         console.error("Stripe onramp session creation failed:", safeRedactPaymentLog(err));
-        return reply.code(502).send({
+        const responseBody = {
           error: "ONRAMP_SESSION_FAILED",
           message: "Failed to create onramp session. Please try again.",
-        });
+        };
+        await recordPaymentOperationIdempotency(
+          db,
+          "payment.stripe_onramp_session",
+          idempotency,
+          intent.id,
+          502,
+          responseBody,
+        );
+        return reply.code(502).send(responseBody);
       }
     },
   );

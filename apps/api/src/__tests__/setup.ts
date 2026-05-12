@@ -163,6 +163,10 @@ vi.mock("@haggle/db", () => ({
     providerReference: "providerReference",
     createdAt: "createdAt",
   },
+  paymentOperationIdempotency: {
+    operation: "operation",
+    idempotencyKey: "idempotencyKey",
+  },
   shipments: {
     id: "id",
     orderId: "orderId",
