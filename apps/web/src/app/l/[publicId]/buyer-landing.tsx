@@ -312,15 +312,15 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
               embedded
               value={agentValue}
               onChange={setAgentValue}
-            />
-
-            {/* Strategy Chat — pre-negotiation strategy tuning */}
-            <StrategyChat
-              agent={selectedAgent}
-              listingPublicId={listing.publicId}
-              listingTitle={listing.title}
-              listingCategory={listing.category}
-              listingPrice={listing.targetPrice}
+              chatSlot={
+                <StrategyChat
+                  agent={selectedAgent}
+                  listingPublicId={listing.publicId}
+                  listingTitle={listing.title}
+                  listingCategory={listing.category}
+                  listingPrice={listing.targetPrice}
+                />
+              }
             />
 
             {/* CTA below the builder */}

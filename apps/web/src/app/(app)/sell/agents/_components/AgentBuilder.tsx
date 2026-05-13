@@ -53,6 +53,11 @@ export interface AgentBuilderProps {
   /** Optional delete handler — shown only in non-embedded mode. */
   onDelete?: () => void;
 
+  /** Optional slot rendered in the left column under the agent picker.
+   *  buyer-landing passes <StrategyChat> here so the LLM tuning sits inside
+   *  the builder layout. Pages without listing context leave it undefined. */
+  chatSlot?: React.ReactNode;
+
   // ── Page-mode props (ignored when embedded) ─────────────────────────────
   name?: string;
   onNameChange?: (n: string) => void;
@@ -132,6 +137,7 @@ export function AgentBuilder({
   pageSubtitle,
   saveLabel,
   onDelete,
+  chatSlot,
   name = "",
   onNameChange,
   onSave,
@@ -187,7 +193,6 @@ export function AgentBuilder({
 
   const resolvedBackHref =
     backHref ?? (role === "buyer" ? "/buy/agents" : "/sell/agents");
-  const verbing = role === "seller" ? "selling" : "buying";
   const effective = value?.effectivePreset;
   const copy = effective?.copy[role];
 
@@ -271,8 +276,8 @@ export function AgentBuilder({
         <LeftColumn
           role={role}
           value={value}
-          verbing={verbing}
           hidePicker={hidePicker}
+          chatSlot={chatSlot}
           onSelectPreset={handlePresetSelect}
           onSelectCustom={handleCustomSelect}
         />
@@ -315,8 +320,8 @@ export function AgentBuilder({
           <LeftColumn
             role={role}
             value={value}
-            verbing={verbing}
             hidePicker={hidePicker}
+            chatSlot={chatSlot}
             onSelectPreset={handlePresetSelect}
             onSelectCustom={handleCustomSelect}
           />
@@ -459,21 +464,18 @@ function SplitLayout({
 function LeftColumn({
   role,
   value,
-  verbing,
   hidePicker = false,
+  chatSlot,
   onSelectPreset,
   onSelectCustom,
 }: {
   role: Role;
   value: AgentBuilderValue | null;
-  verbing: string;
   hidePicker?: boolean;
+  chatSlot?: React.ReactNode;
   onSelectPreset: (p: NegotiationPreset) => void;
   onSelectCustom: (a: AgentProfile) => void;
 }) {
-  const effective = value?.effectivePreset;
-  const copy = effective?.copy[role];
-
   return (
     <>
       {!hidePicker && (
@@ -493,56 +495,7 @@ function LeftColumn({
         />
       )}
 
-      {/* LLM chat placeholder */}
-      {effective && copy && (
-        <section
-          className="bg-bg-card border border-border-default rounded-xl p-5"
-          style={{ borderLeft: `3px solid ${effective.accentColor}` }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-full text-base"
-              style={{
-                backgroundColor: `${effective.accentColor}22`,
-                color: effective.accentColor,
-              }}
-            >
-              {effective.emoji}
-            </span>
-            <span
-              className="text-sm font-bold"
-              style={{ color: effective.accentColor }}
-            >
-              {copy.name}
-            </span>
-            {value?.overrides && (
-              <span
-                className="text-[10px] font-mono px-2 py-0.5 rounded"
-                style={{
-                  background: "rgba(168,85,247,0.15)",
-                  color: "#c4b5fd",
-                  border: "1px solid rgba(168,85,247,0.3)",
-                }}
-              >
-                customized
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-text-primary mb-2 leading-relaxed">
-            Hi! I'm your {verbing} agent. I'll handle all price negotiations on
-            your behalf — so you don't have to. Let me know how you'd like me
-            to approach this.
-          </p>
-          <p className="text-xs italic text-slate-400 mb-4">
-            You can customize my approach below, or just pick a style and I'll
-            run with it.
-          </p>
-          <div className="bg-slate-900/40 border border-dashed border-slate-700 rounded-md px-4 py-3 text-center text-xs text-slate-500">
-            Chat with your AI agent to fine-tune its negotiation strategy.
-            Coming soon.
-          </div>
-        </section>
-      )}
+      {chatSlot}
     </>
   );
 }

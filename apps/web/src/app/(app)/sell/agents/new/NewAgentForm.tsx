@@ -11,6 +11,7 @@ import {
   AgentBuilder,
   type AgentBuilderValue,
 } from "../_components/AgentBuilder";
+import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
 
 type Role = "buyer" | "seller";
 
@@ -83,6 +84,7 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
     router.push(backHref);
   };
 
+  const presetKey = value?.basePresetId ?? "none";
   return (
     <AgentBuilder
       role={role}
@@ -93,6 +95,18 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
       onSave={handleSave}
       saving={saving}
       backHref={backHref}
+      chatSlot={
+        value && (
+          <StrategyChat
+            agent={value.effectivePreset}
+            listingPublicId={`agent-new-${role}-${presetKey}`}
+            listingTitle="General negotiation strategy"
+            listingCategory={null}
+            listingPrice={null}
+            role={role}
+          />
+        )
+      }
     />
   );
 }

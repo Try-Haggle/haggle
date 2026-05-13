@@ -12,6 +12,7 @@ import {
   type AgentBuilderValue,
 } from "../../_components/AgentBuilder";
 import type { AdvancedOverrides } from "@/components/agents/AdvancedSettingsModal";
+import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
 
 function agentToBuilderValue(agent: AgentProfile): AgentBuilderValue | null {
   const basePresetId = agent.negotiationPresetId ?? "balancer";
@@ -173,6 +174,18 @@ export default function EditAgentPage() {
       onDelete={handleDelete}
       saving={saving}
       backHref={backHref}
+      chatSlot={
+        augmentedValue && (
+          <StrategyChat
+            agent={augmentedValue.effectivePreset}
+            listingPublicId={`agent-edit-${agent.id}`}
+            listingTitle="General negotiation strategy"
+            listingCategory={null}
+            listingPrice={null}
+            role={role}
+          />
+        )
+      }
     />
   );
 }

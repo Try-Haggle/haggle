@@ -35,10 +35,17 @@ interface StrategyChip {
 
 interface StrategyChatProps {
   agent: NegotiationPreset | null;
+  /** Stable key used for localStorage isolation. On listing pages this is the
+   *  listing's publicId; on agent design pages it is an agent-scoped key like
+   *  `agent-design:<agentId>`. */
   listingPublicId: string;
   listingTitle: string;
   listingCategory: string | null;
+  /** Decimal-dollar string. Null on agent-design pages — the advisor then
+   *  receives an empty `listings` array. */
   listingPrice: string | null;
+  /** Which copy block to use for the agent's display name. Default "buyer". */
+  role?: "buyer" | "seller";
   onMemoryUpdate?: (memory: AdvisorMemory) => void;
 }
 
@@ -159,8 +166,9 @@ function buildGreeting(
   agent: NegotiationPreset | null,
   listingTitle: string,
   listingPrice: string | null,
+  role: "buyer" | "seller" = "buyer",
 ): string {
-  const name = agent?.copy.buyer.name ?? "AI Agent";
+  const name = agent?.copy[role].name ?? "AI Agent";
   const priceStr = listingPrice
     ? `$${parseFloat(listingPrice).toLocaleString("en-US")}`
     : "";
@@ -359,6 +367,7 @@ export function StrategyChat({
   listingTitle,
   listingCategory,
   listingPrice,
+  role = "buyer",
   onMemoryUpdate,
 }: StrategyChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -702,7 +711,7 @@ export function StrategyChat({
           className="text-[13px] font-semibold flex-1"
           style={{ color: agent?.accentColor ?? "#06b6d4" }}
         >
-          {agent ? agent.copy.buyer.name : "Buying Agent"}
+          {agent ? agent.copy[role].name : role === "seller" ? "Selling Agent" : "Buying Agent"}
         </span>
         {messages.length > 1 && (
           <span
@@ -778,7 +787,7 @@ export function StrategyChat({
                       className="text-[10px] font-semibold"
                       style={{ color: agent?.accentColor ?? "#06b6d4" }}
                     >
-                      {agent?.copy.buyer.name ?? "Agent"}
+                      {agent?.copy[role].name ?? "Agent"}
                     </span>
                   </div>
                 )}
