@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import * as Slider from "@radix-ui/react-slider";
 import {
   ITEM_CONDITIONS,
@@ -10,62 +9,21 @@ import {
 } from "@haggle/shared";
 import type { BrowseFilters, BrowseSort } from "../page";
 import { SearchBar } from "./search-bar";
-import { scrollToStickyToolbar } from "./sticky-toolbar";
-
-const SORT_LABELS: Record<BrowseSort, string> = {
-  newest: "Newest",
-  price_asc: "Price: Low to High",
-  price_desc: "Price: High to Low",
-};
-
-const CONDITION_LABELS: Record<string, string> = {
-  new: "New",
-  like_new: "Like New",
-  good: "Good",
-  fair: "Fair",
-  poor: "Poor",
-};
+import { FilterSheet } from "./filter-sheet";
+import {
+  CONDITION_LABELS,
+  PriceBucket,
+  SLIDER_RES,
+  SORT_LABELS,
+  formatBucketLabel,
+  makeScale,
+  priceLabel,
+  useClickOutside,
+  useUpdateParams,
+} from "./filter-shared";
 
 type Condition = (typeof ITEM_CONDITIONS)[number];
 type Category = (typeof LISTING_CATEGORIES)[number];
-
-function priceLabel(min?: number, max?: number) {
-  if (min !== undefined && max !== undefined) return `$${min}–$${max}`;
-  if (min !== undefined) return `≥ $${min}`;
-  if (max !== undefined) return `≤ $${max}`;
-  return null;
-}
-
-function useClickOutside<T extends HTMLElement>(
-  open: boolean,
-  onClose: () => void,
-) {
-  const ref = useRef<T | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open, onClose]);
-  return ref;
-}
-
-function useUpdateParams() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  return (mut: (params: URLSearchParams) => void) => {
-    const params = new URLSearchParams(searchParams.toString());
-    mut(params);
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    requestAnimationFrame(scrollToStickyToolbar);
-  };
-}
 
 function FilterButton({
   active,
@@ -104,50 +62,6 @@ function FilterButton({
       </svg>
     </button>
   );
-}
-
-// Slider position is an internal 0..SLIDER_RES integer mapped to dollars
-// via a log scale, so the cheap end (where most listings cluster) gets
-// the majority of the visual range and the expensive tail stays usable
-// without dominating it.
-const SLIDER_RES = 1000;
-
-function niceRound(x: number): number {
-  if (x <= 100) return Math.round(x);
-  if (x <= 1000) return Math.round(x / 5) * 5;
-  if (x <= 10000) return Math.round(x / 50) * 50;
-  if (x <= 100000) return Math.round(x / 500) * 500;
-  return Math.round(x / 5000) * 5000;
-}
-
-function makeScale(boundsMin: number, boundsMax: number) {
-  // log() needs > 0; floor min at $1 so log behaves
-  const lnMin = Math.log(Math.max(boundsMin, 1));
-  const lnMax = Math.log(Math.max(boundsMax, boundsMin + 1));
-
-  const sliderToPrice = (s: number): number => {
-    if (s <= 0) return boundsMin;
-    if (s >= SLIDER_RES) return boundsMax;
-    const ln = lnMin + (s / SLIDER_RES) * (lnMax - lnMin);
-    return niceRound(Math.exp(ln));
-  };
-  const priceToSlider = (p: number): number => {
-    if (p <= boundsMin) return 0;
-    if (p >= boundsMax) return SLIDER_RES;
-    const ln = Math.log(Math.max(p, 1));
-    return Math.round(((ln - lnMin) / (lnMax - lnMin)) * SLIDER_RES);
-  };
-  return { sliderToPrice, priceToSlider };
-}
-
-type PriceBucket = { min: number; max: number | null; count: number };
-
-function formatBucketLabel(b: PriceBucket): string {
-  const fmt = (n: number) =>
-    n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `$${n}`;
-  if (b.min === 0 && b.max !== null) return `Under ${fmt(b.max)}`;
-  if (b.max === null) return `Over ${fmt(b.min)}`;
-  return `${fmt(b.min)}–${fmt(b.max)}`;
 }
 
 function PriceFilter({
@@ -599,6 +513,48 @@ function CategoryFilter({ filters }: { filters: BrowseFilters }) {
   );
 }
 
+function MobileFiltersButton({
+  activeCount,
+  onClick,
+}: {
+  activeCount: number;
+  onClick: () => void;
+}) {
+  const active = activeCount > 0;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+        active
+          ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-200"
+          : "border-slate-700 bg-slate-900/60 text-slate-200 hover:border-slate-600 hover:bg-slate-800"
+      }`}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <line x1="4" y1="6" x2="20" y2="6" />
+        <line x1="7" y1="12" x2="17" y2="12" />
+        <line x1="10" y1="18" x2="14" y2="18" />
+      </svg>
+      Filters
+      {active && (
+        <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[11px] font-medium text-cyan-200">
+          {activeCount}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function BrowseToolbar({
   filters,
   priceRange,
@@ -609,12 +565,14 @@ export function BrowseToolbar({
   priceBuckets: PriceBucket[];
 }) {
   const update = useUpdateParams();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const anyActive =
-    filters.categories.length > 0 ||
-    filters.minPrice !== undefined ||
-    filters.maxPrice !== undefined ||
-    filters.conditions.length > 0;
+  const activeCount =
+    (filters.categories.length > 0 ? 1 : 0) +
+    (filters.minPrice !== undefined || filters.maxPrice !== undefined ? 1 : 0) +
+    (filters.conditions.length > 0 ? 1 : 0);
+
+  const anyActive = activeCount > 0;
 
   function resetAll() {
     update((p) => {
@@ -626,28 +584,51 @@ export function BrowseToolbar({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="w-full min-w-0 flex-1 sm:max-w-xs">
-        <SearchBar initialQ={filters.q} />
+    <>
+      {/* Desktop: full inline filter row */}
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
+        <div className="w-72 shrink-0">
+          <SearchBar initialQ={filters.q} />
+        </div>
+        <CategoryFilter filters={filters} />
+        <PriceFilter
+          filters={filters}
+          priceRange={priceRange}
+          priceBuckets={priceBuckets}
+        />
+        <ConditionFilter filters={filters} />
+        {anyActive && (
+          <button
+            type="button"
+            onClick={resetAll}
+            className="ml-3 cursor-pointer text-xs text-slate-400 underline-offset-2 hover:text-white hover:underline"
+          >
+            Reset filters
+          </button>
+        )}
+        <div className="flex-1" />
+        <SortDropdown filters={filters} />
       </div>
-      <CategoryFilter filters={filters} />
-      <PriceFilter
+
+      {/* Mobile: search row + filters/sort row + bottom sheet */}
+      <div className="flex flex-col gap-2 md:hidden">
+        <SearchBar initialQ={filters.q} />
+        <div className="flex items-center justify-between gap-2">
+          <MobileFiltersButton
+            activeCount={activeCount}
+            onClick={() => setSheetOpen(true)}
+          />
+          <SortDropdown filters={filters} />
+        </div>
+      </div>
+
+      <FilterSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
         filters={filters}
         priceRange={priceRange}
         priceBuckets={priceBuckets}
       />
-      <ConditionFilter filters={filters} />
-      {anyActive && (
-        <button
-          type="button"
-          onClick={resetAll}
-          className="ml-3 cursor-pointer text-xs text-slate-400 underline-offset-2 hover:text-white hover:underline"
-        >
-          Reset filters
-        </button>
-      )}
-      <div className="flex-1" />
-      <SortDropdown filters={filters} />
-    </div>
+    </>
   );
 }
