@@ -124,10 +124,14 @@ export function AgentsList({
                 onClick={(e) => handlePresetClick(preset, e)}
                 className="bg-bg-card border border-border-default rounded-xl p-4 flex items-start gap-3 hover:border-cyan-500/40 transition-colors cursor-pointer"
                 style={{
-                  borderLeft: `3px solid ${preset.accentColor}`,
+                  borderLeftWidth: 3,
+                  borderLeftStyle: "solid",
+                  borderLeftColor: isSelected ? "#06b6d4" : preset.accentColor,
                   ...(isSelected
                     ? {
-                        borderColor: "#06b6d4",
+                        borderTopColor: "#06b6d4",
+                        borderRightColor: "#06b6d4",
+                        borderBottomColor: "#06b6d4",
                         boxShadow: "0 0 0 1px #06b6d4",
                       }
                     : {}),
