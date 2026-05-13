@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerPaymentRoutes } from "../routes/payments.js";
 import {
@@ -151,6 +152,25 @@ function paymentIntent(status: "CREATED" | "AUTHORIZED" | "SETTLEMENT_PENDING" |
   } as never;
 }
 
+function signedX402Webhook(
+  payload: Record<string, unknown>,
+  secret = "x402_webhook_secret",
+  timestamp = new Date().toISOString(),
+) {
+  const rawBody = JSON.stringify(payload);
+  const signature = createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+  return {
+    payload: rawBody,
+    headers: {
+      "content-type": "application/json",
+      "x-haggle-x402-signature": `sha256=${signature}`,
+      "x-haggle-x402-timestamp": timestamp,
+    },
+  };
+}
+
 describe("payment webhook idempotency", () => {
   let app: FastifyInstance;
   let db: ReturnType<typeof buildDb>;
@@ -198,6 +218,78 @@ describe("payment webhook idempotency", () => {
     });
     expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("rejects signed x402 webhooks without timestamp before processing", async () => {
+    vi.stubEnv("HAGGLE_X402_WEBHOOK_SECRET", "x402_webhook_secret");
+    const payload = JSON.stringify({
+      event_id: "evt_missing_timestamp",
+      event_type: "settlement.confirmed",
+      payment_intent_id: "pi_123",
+    });
+    const signature = createHmac("sha256", "x402_webhook_secret")
+      .update(payload)
+      .digest("hex");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      headers: {
+        "content-type": "application/json",
+        "x-haggle-x402-signature": `sha256=${signature}`,
+      },
+      payload,
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: "INVALID_X402_WEBHOOK" });
+    expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale signed x402 webhooks before processing", async () => {
+    vi.stubEnv("HAGGLE_X402_WEBHOOK_SECRET", "x402_webhook_secret");
+    const signed = signedX402Webhook(
+      {
+        event_id: "evt_stale",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+      "x402_webhook_secret",
+      new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      headers: signed.headers,
+      payload: signed.payload,
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ error: "INVALID_X402_WEBHOOK" });
+    expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("accepts fresh timestamp-bound x402 webhook signatures", async () => {
+    vi.stubEnv("HAGGLE_X402_WEBHOOK_SECRET", "x402_webhook_secret");
+    const signed = signedX402Webhook({
+      event_id: "evt_fresh_signed",
+      event_type: "settlement.confirmed",
+      payment_intent_id: "pi_unknown",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      headers: signed.headers,
+      payload: signed.payload,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ accepted: true, action: "ignored", reason: "unknown_intent" });
+    expect(mockGetPaymentIntentById).toHaveBeenCalledWith(expect.anything(), "pi_unknown");
   });
 
   it("does not mark an x402 webhook processed when settlement persistence fails", async () => {

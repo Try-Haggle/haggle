@@ -104,7 +104,7 @@ export async function createServer() {
       cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
     methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "x-haggle-module-platform-id", "x-haggle-module-timestamp", "x-haggle-module-signature", "x-haggle-idempotency-key", "stripe-signature"],
+    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "x-haggle-x402-timestamp", "x-haggle-module-platform-id", "x-haggle-module-timestamp", "x-haggle-module-signature", "x-haggle-idempotency-key", "stripe-signature"],
     credentials: true,
   });
 

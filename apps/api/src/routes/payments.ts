@@ -954,6 +954,24 @@ async function applyPaymentTransitionTriggers(
   }
 }
 
+const X402_WEBHOOK_TIMESTAMP_HEADER = "x-haggle-x402-timestamp";
+const X402_WEBHOOK_SIGNATURE_HEADER = "x-haggle-x402-signature";
+const X402_WEBHOOK_MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+function singleHeader(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+function parseWebhookTimestampMs(timestamp: string): number {
+  if (/^\d+$/.test(timestamp)) {
+    const numeric = Number(timestamp);
+    return timestamp.length <= 10 ? numeric * 1000 : numeric;
+  }
+  return Date.parse(timestamp);
+}
+
 function requireWebhookSignature(
   headers: Record<string, unknown>,
   rawBody: string | Buffer,
@@ -968,13 +986,26 @@ function requireWebhookSignature(
     return;
   }
 
-  const receivedSig = headers["x-haggle-x402-signature"];
-  if (!receivedSig || typeof receivedSig !== "string") {
-    throw new Error("missing x-haggle-x402-signature header");
+  const receivedSig = singleHeader(headers[X402_WEBHOOK_SIGNATURE_HEADER]);
+  if (!receivedSig) {
+    throw new Error(`missing ${X402_WEBHOOK_SIGNATURE_HEADER} header`);
   }
 
+  const timestamp = singleHeader(headers[X402_WEBHOOK_TIMESTAMP_HEADER]);
+  if (!timestamp) {
+    throw new Error(`missing ${X402_WEBHOOK_TIMESTAMP_HEADER} header`);
+  }
+  const timestampMs = parseWebhookTimestampMs(timestamp);
+  if (!Number.isFinite(timestampMs)) {
+    throw new Error("invalid x402 webhook timestamp");
+  }
+  if (Math.abs(Date.now() - timestampMs) > X402_WEBHOOK_MAX_CLOCK_SKEW_MS) {
+    throw new Error("stale x402 webhook timestamp");
+  }
+
+  const rawPayload = typeof rawBody === "string" ? rawBody : rawBody.toString("utf8");
   const expectedSig = createHmac("sha256", secret)
-    .update(typeof rawBody === "string" ? rawBody : rawBody.toString("utf8"))
+    .update(`${timestamp}.${rawPayload}`)
     .digest("hex");
 
   const receivedBuf = Buffer.from(receivedSig.replace(/^sha256=/, ""), "hex");
