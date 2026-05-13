@@ -307,6 +307,82 @@ describe("Payment routes", () => {
     expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
   });
 
+  it("requires a reason for admin direct payment mutations in production", async () => {
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    process.env.VERCEL_ENV = "production";
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    const token = jwt.sign(
+      { sub: "test-admin-001", email: "admin@haggle.ai", role: "admin" },
+      "test-secret",
+    );
+    mockGetPaymentIntentById.mockClear();
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_admin_cancel/cancel",
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: "PAYMENT_ADMIN_REASON_REQUIRED",
+        message: "Admin payment mutations in production require a reason",
+      });
+      expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = originalVercelEnv;
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+    }
+  });
+
+  it("accepts an admin reason before production idempotency enforcement", async () => {
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    process.env.VERCEL_ENV = "production";
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    const token = jwt.sign(
+      { sub: "test-admin-001", email: "admin@haggle.ai", role: "admin" },
+      "test-secret",
+    );
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentById.mockResolvedValueOnce({
+      id: "pi_admin_cancel_reason",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "buyer_123",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_admin_cancel_reason/cancel",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "x-haggle-payment-reason": "operator verified provider cancellation",
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ error: "IDEMPOTENCY_KEY_REQUIRED" });
+      expect(mockGetPaymentIntentById).toHaveBeenCalledOnce();
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = originalVercelEnv;
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+    }
+  });
+
   it("requires payment disclosure acknowledgement for production payment prepare", async () => {
     const originalVercelEnv = process.env.VERCEL_ENV;
     const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;

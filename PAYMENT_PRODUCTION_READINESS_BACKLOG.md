@@ -1,6 +1,6 @@
 # Payment Production Readiness Backlog
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 ## Current Architecture Summary
 
@@ -21,6 +21,19 @@ Last updated: 2026-05-11
 - Stripe-hosted/tokenized Onramp is the expected card entry point. The frontend may receive a Stripe `client_secret` because Stripe requires it for hosted/embedded checkout, but it must be treated as a short-lived payment token and never logged or stored in `localStorage`.
 - x402 payloads and wallet addresses are payment-sensitive even when not PCI cardholder data.
 - Human compliance review is still required before launch, including PCI SAQ applicability, Stripe Onramp terms, money transmission/escrow analysis, refund operations, and a QSA/legal review of whether the product flow creates custody or stored-value obligations.
+
+## Current Branch Keyless Hardening Completed
+
+- Added canonical production state machine utilities and transition tests without changing persisted DB enums.
+- Added recursive payment-sensitive redaction for PAN-like values, CVV/CVC, card expiry, bank account fields, `client_secret`, tokens, signatures, authorization headers, provider payment method IDs, errors, arrays, and circular objects.
+- Added centralized provider retry classification and bounded backoff utilities.
+- Added report-only reconciliation mismatch detection and report aggregation for payment, shipment, and dispute drift.
+- Hardened Stripe manual webhook signature validation with timestamp freshness, malformed timestamp rejection, and rotated `v1` signature support.
+- Hardened x402 webhooks with timestamp-bound raw-body signatures and stale/future timestamp rejection.
+- Added provider webhook received/rejected audit events with redacted metadata.
+- Added direct payment mutation idempotency reservation/replay/conflict handling.
+- Added production admin reason enforcement for direct payment mutations.
+- Added payment observability metric and alert contract in `docs/wip/payment-production-observability.md`.
 
 ## Discovered Risks Ordered By Severity
 
@@ -43,9 +56,9 @@ Last updated: 2026-05-11
 
 ### P0: Admin Capture/Cancel/Refund Semantics Need Explicit Protection And Audit
 
-- Risk: Direct mutation endpoints exist for authorize, settlement-pending, settle, fail, cancel, and refund. They are guarded in production for non-admins, but admin-only operational intent, audit records, and reason capture are not consistently modeled.
+- Risk: Direct mutation endpoints exist for authorize, settlement-pending, settle, fail, cancel, and refund. They are guarded in production for non-admins and now require an admin reason in production, but final role policy and dual-approval policy still need human decision.
 - Acceptance criteria:
-  - Admin-only operations require admin auth, reason, and correlation ID.
+  - Admin-only operations require admin auth, reason, and correlation ID. Current branch enforces the reason and existing audit helper includes request correlation.
   - Audit event is emitted with actor, payment/order IDs, previous state, next state, reason, provider event ID when applicable, timestamp, and request ID.
   - Buyer routes cannot act as final provider truth.
 - Files likely affected:
@@ -58,7 +71,7 @@ Last updated: 2026-05-11
 
 ### P0: Webhook Replay/Ordering Guarantees Are Partial
 
-- Risk: x402 and Stripe event IDs are stored after successful processing, but out-of-order events are mostly handled by local state transitions rather than provider reconciliation. x402 signature has no timestamp freshness header in the current helper.
+- Risk: x402 and Stripe event IDs are stored after successful processing, and both Stripe and x402 signatures now have timestamp freshness checks. Remaining risk is out-of-order provider ordering: some handlers still rely on local state and need provider reconciliation before local correction.
 - Acceptance criteria:
   - Webhook signatures use raw body.
   - Unsigned, expired, malformed, wrong-environment, and replayed events are rejected or ignored idempotently.
@@ -89,7 +102,7 @@ Last updated: 2026-05-11
 
 ### P1: Sensitive Payment Data Redaction Needs A Shared Guard
 
-- Risk: Code avoids printing secrets in many paths, but there is no shared redaction helper for provider errors, webhook payloads, payment tokens, or client secrets. Some `console.error` calls could serialize provider errors.
+- Risk: Shared redaction now exists and is used in payment logging/idempotency/audit paths. Remaining risk is enforcing the browser analytics/storage policy and reviewing non-payment logs for accidental serialization.
 - Acceptance criteria:
   - Shared sanitizer redacts PAN-like keys, CVV, card expiry, bank account fields, `client_secret`, tokens, signatures, authorization headers, and provider payment method IDs.
   - Errors returned to clients are generic.
@@ -117,7 +130,7 @@ Last updated: 2026-05-11
 
 ### P1: Retry/Unknown Response Behavior Needs Central Policy
 
-- Risk: Provider timeout/unknown responses must not become success or trigger duplicate charges. Retry classification is not centralized.
+- Risk: Provider retry classification and bounded backoff are centralized. Remaining risk is proving unknown provider responses through sandbox/provider mocks and ensuring every provider integration path uses the policy.
 - Acceptance criteria:
   - Retryable and non-retryable provider errors are classified centrally.
   - Bounded exponential backoff exists.
@@ -130,7 +143,7 @@ Last updated: 2026-05-11
 
 ### P2: Metrics And Alerts Are Not Fully Defined
 
-- Risk: Payment failures, webhook failures, duplicate webhooks, stuck payments, refund failures, and reconciliation drift need metric names and alert thresholds.
+- Risk: Metric names, safe dimensions, and initial alert thresholds are now defined in `docs/wip/payment-production-observability.md`. Remaining risk is wiring the emitters into the chosen observability backend.
 - Acceptance criteria:
   - Metric names and dimensions are documented.
   - Alerts are wired in the chosen observability system.
@@ -206,10 +219,11 @@ Last updated: 2026-05-11
 
 ## Implement Now Without Production Credentials Or Destructive Changes
 
-- Add canonical production state machine utilities without changing persisted DB enums.
-- Add recursive sensitive payment data redaction helper.
-- Add provider error retry classification and bounded backoff helper.
-- Add reconciliation mismatch detector for future job/admin use.
-- Harden Stripe webhook signature verification with timestamp freshness checks.
-- Add focused unit tests for the new safe utilities and webhook signature expiry.
-
+- Completed: canonical production state machine utilities without changing persisted DB enums.
+- Completed: recursive sensitive payment data redaction helper.
+- Completed: provider error retry classification and bounded backoff helper.
+- Completed: reconciliation mismatch detector for future job/admin use.
+- Completed: Stripe and x402 webhook timestamp freshness hardening.
+- Completed: focused unit/integration tests for safe utilities, webhook signature expiry, replay, and audit behavior.
+- Remaining keyless work: broaden DB-backed concurrency tests if a disposable Postgres test database is available locally.
+- Remaining blocked work: provider sandbox E2E, observability backend wiring, production webhook endpoint changes, destructive DB enum migration, compliance/legal/QSA review, and final admin role/dual-approval policy.

@@ -418,6 +418,46 @@ function getProductionPaymentRailError(rail: PaymentRail) {
   return null;
 }
 
+function getPaymentAdminMutationReason(
+  request: FastifyRequest,
+  fallbackReason: string,
+): { reason: string } | { error: { error: string; message: string } } {
+  if (!requiresRealPaymentProviders() || request.user?.role !== "admin") {
+    return { reason: fallbackReason };
+  }
+
+  const body = request.body && typeof request.body === "object"
+    ? request.body as Record<string, unknown>
+    : {};
+  const headerReason = request.headers["x-haggle-payment-reason"];
+  const reason = [
+    body.admin_reason,
+    body.reason,
+    body.reason_code,
+    typeof headerReason === "string" ? headerReason : undefined,
+  ].find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)?.trim();
+
+  if (!reason) {
+    return {
+      error: {
+        error: "PAYMENT_ADMIN_REASON_REQUIRED",
+        message: "Admin payment mutations in production require a reason",
+      },
+    };
+  }
+
+  if (reason.length > INPUT_LIMITS.shortTextChars) {
+    return {
+      error: {
+        error: "PAYMENT_ADMIN_REASON_TOO_LONG",
+        message: "Admin payment mutation reason is too long",
+      },
+    };
+  }
+
+  return { reason };
+}
+
 function getPaymentOperationFailure(error: unknown):
   | { statusCode: number; body: { error: string; message: string } }
   | null {
@@ -2071,6 +2111,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         message: "Use the rail-specific payment flow in production",
       });
     }
+    const adminReason = getPaymentAdminMutationReason(request, "payment authorization requested");
+    if ("error" in adminReason) return reply.code(400).send(adminReason.error);
 
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
@@ -2101,7 +2143,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent: result.intent,
         previousStatus,
         nextStatus: result.intent.status,
-        reason: "payment authorization requested",
+        reason: adminReason.reason,
         metadata: result.metadata,
       });
       await recordPaymentOperationIdempotency(db, "payment.authorize", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
@@ -2118,6 +2160,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         message: "Payment settlement state is controlled by provider flow in production",
       });
     }
+    const adminReason = getPaymentAdminMutationReason(request, "payment marked settlement pending");
+    if ("error" in adminReason) return reply.code(400).send(adminReason.error);
 
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
@@ -2145,7 +2189,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent: result.intent,
         previousStatus,
         nextStatus: result.intent.status,
-        reason: "payment marked settlement pending",
+        reason: adminReason.reason,
       });
       await recordPaymentOperationIdempotency(db, "payment.settlement_pending", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
@@ -2161,6 +2205,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         message: "Payment settlement is controlled by provider webhook or x402 facilitator in production",
       });
     }
+    const adminReason = getPaymentAdminMutationReason(request, "payment capture requested");
+    if ("error" in adminReason) return reply.code(400).send(adminReason.error);
 
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
@@ -2213,7 +2259,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent: result.intent,
         previousStatus,
         nextStatus: result.intent.status,
-        reason: "payment capture requested",
+        reason: adminReason.reason,
         metadata: result.metadata,
       });
       await recordPaymentOperationIdempotency(db, "payment.capture", idempotency, intent.id, 200, responseBody as Record<string, unknown>);
@@ -2230,6 +2276,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         message: "Payment failure state is controlled by provider webhook or admin in production",
       });
     }
+    const adminReason = getPaymentAdminMutationReason(request, "payment marked failed");
+    if ("error" in adminReason) return reply.code(400).send(adminReason.error);
 
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
@@ -2253,7 +2301,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent: result.intent,
         previousStatus,
         nextStatus: result.intent.status,
-        reason: "payment marked failed",
+        reason: adminReason.reason,
       });
       await recordPaymentOperationIdempotency(db, "payment.fail", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
@@ -2269,6 +2317,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         message: "Direct payment cancellation requires a dedicated cancellation workflow in production",
       });
     }
+    const adminReason = getPaymentAdminMutationReason(request, "payment cancellation requested");
+    if ("error" in adminReason) return reply.code(400).send(adminReason.error);
 
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
@@ -2292,7 +2342,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent: result.intent,
         previousStatus,
         nextStatus: result.intent.status,
-        reason: "payment cancellation requested",
+        reason: adminReason.reason,
       });
       await recordPaymentOperationIdempotency(db, "payment.cancel", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
       return reply.send(result);
@@ -2308,6 +2358,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         message: "Direct refunds require admin review in production",
       });
     }
+    const adminReason = getPaymentAdminMutationReason(request, "payment refund requested");
+    if ("error" in adminReason) return reply.code(400).send(adminReason.error);
 
     const intent = await getPaymentIntentById(db, (request.params as { id: string }).id);
     if (!intent) {
@@ -2354,7 +2406,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         intent,
         previousStatus: intent.status,
         nextStatus: intent.status,
-        reason: parsed.data.reason_code,
+        reason: adminReason.reason,
         metadata: result.metadata,
       });
       await recordPaymentOperationIdempotency(db, "payment.refund", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
