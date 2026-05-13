@@ -1162,6 +1162,167 @@ body {
   margin-top: 20px;
 }
 
+/* ─── Tags Row (Step 1) ────────────────────────────────────── */
+.tags-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tags-row__label {
+  margin-bottom: 0;
+}
+
+.tags-row__auto-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: var(--radius-full);
+  color: var(--accent-cyan);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.tags-row__auto-btn:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.tags-row__auto-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ─── Phone Details (Step 2) ───────────────────────────────── */
+.phone-details {
+  margin-top: 28px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: rgba(6, 182, 212, 0.03);
+}
+
+.phone-details__heading {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.12);
+}
+
+.phone-details__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.phone-details__subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.phone-details__checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.phone-details__checkbox input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--accent-cyan);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* ─── Story Share (Publish Screen) ────────────────────────── */
+.story-share {
+  padding: 18px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  margin-top: 16px;
+  text-align: left;
+}
+
+.story-share__header {
+  margin-bottom: 14px;
+}
+
+.story-share__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.story-share__subtitle {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.story-share__download-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-md);
+  color: var(--accent-emerald);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  margin-bottom: 14px;
+}
+
+.story-share__download-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.story-share__download-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.story-share__steps {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  padding-left: 18px;
+  margin-bottom: 10px;
+}
+
+.story-share__steps li {
+  margin-bottom: 2px;
+}
+
+.story-share__note {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.55);
+  line-height: 1.4;
+}
+
 /* ─── 8-Stat agent grid (6 presets, 3 cols) ───────────────── */
 .agent-grid--six {
   grid-template-columns: repeat(3, 1fr);
