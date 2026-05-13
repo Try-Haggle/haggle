@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Engine Parameters & Preset Fields — Option C Reference</title>
+<style>
+  :root {
+    --bg: #0c0d12;
+    --bg-card: #14161e;
+    --bg-deep: #08090d;
+    --fg: #e8e8ec;
+    --fg-soft: #9aa0b0;
+    --fg-dim: #5a6072;
+    --border: #2a2d3a;
+    --accent: #c9a96e;
+    --price: #ef4444;
+    --time: #f59e0b;
+    --risk: #3b82f6;
+    --social: #10b981;
+    --market: #a855f7;
+    --neutral: #5a6072;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    padding: 48px 24px 96px;
+    line-height: 1.6;
+    font-size: 14.5px;
+  }
+  .page { max-width: 1080px; margin: 0 auto; }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 8px;
+    letter-spacing: 1px;
+  }
+  h2 {
+    font-size: 18px;
+    margin: 48px 0 14px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  h3 {
+    font-size: 15px;
+    margin: 24px 0 10px;
+    color: var(--fg);
+  }
+  p { margin: 8px 0; color: var(--fg); }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    background: var(--bg-deep);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+  pre {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    background: var(--bg-deep);
+    padding: 14px 18px;
+    border-radius: 4px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    line-height: 1.5;
+  }
+  .meta {
+    color: var(--fg-soft);
+    font-size: 12.5px;
+    font-style: italic;
+    margin-bottom: 32px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  thead th {
+    background: var(--bg-deep);
+    color: var(--accent);
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+  td:first-child { font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg); }
+  tr:last-child td { border-bottom: none; }
+  .dim {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-family: ui-monospace, monospace;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .dim-price { background: rgba(239,68,68,0.15); color: var(--price); }
+  .dim-time { background: rgba(245,158,11,0.15); color: var(--time); }
+  .dim-risk { background: rgba(59,130,246,0.15); color: var(--risk); }
+  .dim-social { background: rgba(16,185,129,0.15); color: var(--social); }
+  .dim-market { background: rgba(168,85,247,0.15); color: var(--market); }
+  .dim-neutral { background: rgba(90,96,114,0.2); color: var(--fg-soft); }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-family: ui-monospace, monospace;
+    font-weight: 600;
+  }
+  .tag-preset { background: rgba(201,169,110,0.15); color: var(--accent); }
+  .tag-neutral { background: rgba(90,96,114,0.2); color: var(--fg-soft); }
+  .tag-derived { background: rgba(168,85,247,0.15); color: var(--market); }
+
+  .callout {
+    background: var(--bg-card);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    margin: 18px 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 13.5px;
+  }
+  .callout strong { color: var(--accent); }
+
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 22px;
+    margin: 18px 0 36px;
+    font-size: 13.5px;
+  }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .layer-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 10px 0;
+  }
+  .layer-box h4 {
+    margin: 0 0 8px;
+    color: var(--accent);
+    font-size: 13px;
+    font-family: ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .layer-list {
+    columns: 2;
+    column-gap: 32px;
+    font-family: ui-monospace, monospace;
+    font-size: 12.5px;
+    color: var(--fg);
+    margin: 0;
+    padding-left: 18px;
+  }
+  .small { font-size: 12px; color: var(--fg-soft); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Engine Parameters & Preset Fields</h1>
+<div class="meta">Option C reference / 2026-05-12 / 모르는 사람도 한 페이지로 이해할 수 있게</div>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ol>
+    <li><a href="#engine">엔진이 요구하는 17 fields</a></li>
+    <li><a href="#full-table">전체 표 — 17 fields 한눈에</a></li>
+    <li><a href="#option-c">옵션 C 구분 — 프리셋별 / 공통 / 파생</a></li>
+    <li><a href="#radar">레이더에 무엇을 보여줄지</a></li>
+    <li><a href="#advanced">Advanced Settings — 유저가 만질 수 있는 것</a></li>
+    <li><a href="#budget">400 budget vs envelope — 왜 더는 budget 필요 없는가</a></li>
+  </ol>
+</div>
+
+<hr>
+
+<h2 id="engine">1. 협상 엔진이 요구하는 17 fields</h2>
+
+<p>협상 엔진(<code>@haggle/engine-core</code>)이 한 라운드를 실행하려면 <strong>17개 파라미터 전부가 값이 있어야</strong> 굴러간다. 이걸 <code>EngineParameters</code>라고 부른다.</p>
+
+<p>17개를 의미에 따라 묶으면 5가지 그룹:</p>
+
+<div class="layer-box">
+  <h4>Group 1 — Weights (4) <span class="small" style="text-transform:none;letter-spacing:0;font-family:inherit">합 = 1.0</span></h4>
+  <ul class="layer-list">
+    <li>w_p (price)</li>
+    <li>w_t (time)</li>
+    <li>w_r (risk)</li>
+    <li>w_s (social)</li>
+  </ul>
+</div>
+
+<div class="layer-box">
+  <h4>Group 2 — Behavior curves (4)</h4>
+  <ul class="layer-list">
+    <li>alpha (시간 압력 곡선)</li>
+    <li>beta (양보 속도, Faratin)</li>
+    <li>u_threshold (walk-away 경계)</li>
+    <li>u_aspiration (만족 utility)</li>
+  </ul>
+</div>
+
+<div class="layer-box">
+  <h4>Group 3 — Sub-params attached to weight dimensions (9)</h4>
+  <ul class="layer-list">
+    <li>anchor_ratio &nbsp;<span class="dim dim-price">price</span></li>
+    <li>v_t_floor &nbsp;<span class="dim dim-time">time</span></li>
+    <li>w_rep &nbsp;<span class="dim dim-risk">risk</span></li>
+    <li>w_info &nbsp;<span class="dim dim-risk">risk</span></li>
+    <li>r_score_minimum &nbsp;<span class="dim dim-risk">risk</span></li>
+    <li>i_completeness_minimum &nbsp;<span class="dim dim-risk">risk</span></li>
+    <li>v_s_base &nbsp;<span class="dim dim-social">social</span></li>
+    <li>n_threshold &nbsp;<span class="dim dim-social">social</span></li>
+    <li>late_round_aggression_modifier &nbsp;<span class="dim dim-social">social</span></li>
+  </ul>
+</div>
+
+<div class="layer-box">
+  <h4>Group 4 — Market awareness (3)</h4>
+  <ul class="layer-list">
+    <li>gamma</li>
+    <li>market_utilization</li>
+    <li>cross_pressure_sensitivity</li>
+  </ul>
+</div>
+
+<p class="small">
+4 + 4 + 9 + 3 = 20개로 보이지만 — w_info는 사실 <code>1 − w_rep</code>로 자동 계산되는 derived 값이라
+독립 필드 17개. 그래서 "엔진이 요구하는 17 fields".
+</p>
+
+<hr>
+
+<h2 id="full-table">2. 전체 표 — 17 fields 한눈에</h2>
+
+<table>
+<thead>
+<tr><th>#</th><th>필드명</th><th>그룹</th><th>의미 (한 줄)</th><th>현실적 범위</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>w_p</td><td><span class="dim dim-price">price</span></td><td>가격 차원이 결정에 얼마나 중요한가</td><td>0–1 (합=1)</td></tr>
+<tr><td>2</td><td>w_t</td><td><span class="dim dim-time">time</span></td><td>시간 차원의 비중</td><td>0–1 (합=1)</td></tr>
+<tr><td>3</td><td>w_r</td><td><span class="dim dim-risk">risk</span></td><td>리스크/평판/정보 비중</td><td>0–1 (합=1)</td></tr>
+<tr><td>4</td><td>w_s</td><td><span class="dim dim-social">social</span></td><td>관계/만족 비중</td><td>0–1 (합=1)</td></tr>
+<tr><td>5</td><td>alpha</td><td>curve</td><td>시간 압력이 utility를 얼마나 빨리 떨어뜨리는가</td><td>0.3–3.0</td></tr>
+<tr><td>6</td><td>beta</td><td>curve</td><td>양보 곡선 속도 (낮을수록 천천히)</td><td>0.3–3.0</td></tr>
+<tr><td>7</td><td>u_threshold</td><td>curve</td><td>이 utility 이하면 walk-away</td><td>0.3–0.85</td></tr>
+<tr><td>8</td><td>u_aspiration</td><td>curve</td><td>이 utility면 즉시 ACCEPT</td><td>0.3–0.85</td></tr>
+<tr><td>9</td><td>anchor_ratio</td><td><span class="dim dim-price">price</span></td><td>첫 오퍼 앵커링 강도 (낮을수록 강함)</td><td>0–1</td></tr>
+<tr><td>10</td><td>v_t_floor</td><td><span class="dim dim-time">time</span></td><td>시간 압력 극한일 때 utility 최저값</td><td>0–1</td></tr>
+<tr><td>11</td><td>w_rep</td><td><span class="dim dim-risk">risk</span></td><td>v_r 안에서 평판 vs 정보 가중치</td><td>0–1</td></tr>
+<tr><td>12</td><td>w_info</td><td><span class="dim dim-risk">risk</span> · <span class="tag tag-derived">derived</span></td><td><code>1 − w_rep</code>로 자동</td><td>0–1</td></tr>
+<tr><td>13</td><td>r_score_minimum</td><td><span class="dim dim-risk">risk</span></td><td>이 평판 이하면 협상 자체 거절</td><td>0–1</td></tr>
+<tr><td>14</td><td>i_completeness_minimum</td><td><span class="dim dim-risk">risk</span></td><td>이 정보 완성도 이하면 진행 곤란</td><td>0–1</td></tr>
+<tr><td>15</td><td>v_s_base</td><td><span class="dim dim-social">social</span></td><td>관계 utility 기본값</td><td>0–1</td></tr>
+<tr><td>16</td><td>n_threshold</td><td><span class="dim dim-social">social</span></td><td>관계가 굳어지는 거래 누적 수</td><td>5–15 (int)</td></tr>
+<tr><td>17</td><td>late_round_aggression_modifier</td><td><span class="dim dim-social">social</span></td><td>후반 라운드 공격성 조정</td><td>0.5–1.5</td></tr>
+<tr><td>18</td><td>gamma</td><td><span class="dim dim-market">market</span></td><td>시장 데이터를 가격 조정에 얼마나 반영</td><td>0–0.2</td></tr>
+<tr><td>19</td><td>market_utilization</td><td><span class="dim dim-market">market</span></td><td>시장가 활용도</td><td>0–1</td></tr>
+<tr><td>20</td><td>cross_pressure_sensitivity</td><td><span class="dim dim-market">market</span></td><td>다른 협상이 이 협상에 주는 영향</td><td>0–1</td></tr>
+</tbody>
+</table>
+
+<p class="small">번호가 17이 아닌 20인 이유: w_info(12)가 derived라 — 실 명시 필드 17.</p>
+
+<hr>
+
+<h2 id="option-c">3. 옵션 C 구분 — 프리셋별 / 공통 / 파생</h2>
+
+<p>옵션 C는 "의미 있는 sub-param까지 프리셋이 직접 결정, market 3개만 공통 NEUTRAL"이다.</p>
+
+<table>
+<thead>
+<tr><th>처지</th><th>몇 개</th><th>포함 필드</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><span class="tag tag-preset">프리셋별 명시</span></td>
+  <td><strong>13</strong></td>
+  <td>
+    w_p, w_t, w_r, w_s &nbsp;·&nbsp; alpha, beta, u_threshold, u_aspiration &nbsp;·&nbsp;
+    anchor_ratio, v_t_floor &nbsp;·&nbsp; w_rep, r_score_minimum, i_completeness_minimum,
+    v_s_base, n_threshold, late_round_aggression_modifier
+    <br><span class="small">(weights 4 + curves 4 + sub-params 8 = 16, 단 w_info는 derived 제외)</span>
+  </td>
+</tr>
+<tr>
+  <td><span class="tag tag-neutral">모든 프리셋 공통</span></td>
+  <td><strong>3</strong></td>
+  <td>gamma, market_utilization, cross_pressure_sensitivity — market 차원은 별도 axis라 프리셋 차별화 효과 약함. LLM tuning이 나중에 채울 자리.</td>
+</tr>
+<tr>
+  <td><span class="tag tag-derived">파생</span></td>
+  <td><strong>1</strong></td>
+  <td>w_info = <code>1 − w_rep</code></td>
+</tr>
+</tbody>
+</table>
+
+<p>잠시: 위에서 "프리셋별 명시 13"이라고 했는데 셈 다시 — 4 + 4 + 8(sub-params: anchor_ratio, v_t_floor, w_rep, r_score_minimum, i_completeness_minimum, v_s_base, n_threshold, late_round_aggression_modifier) = <strong>16</strong>. 그 위에 w_info(derived 1) + market 공통(3) = <strong>20 - 1 derived - 3 공통 = 16 명시</strong>.</p>
+
+<div class="callout">
+<strong>핵심:</strong> 4 프리셋(Hunter/Closer/Verifier/Balancer) × 16 명시 fields = 새로 결정해야 할 값
+<strong>64개</strong>. 단 weights 합=1 제약 → 사실상 자유도는 그보다 적음.
+</div>
+
+<h3>왜 market 3개만 공통?</h3>
+<ul>
+  <li><strong>gamma / market_utilization / cross_pressure_sensitivity</strong>는 "시장 데이터(다른 listing 가격 등)를 얼마나 참고하는가"를 결정. 협상 스타일(공격적/신중함)과 직교하는 별도 axis.</li>
+  <li>사용자가 "이 에이전트는 시장 잘 본다 / 못 본다"를 페르소나로 인식하기 어려움.</li>
+  <li>LLM tuning 다음 sprint에서 — 사용자가 "쿠팡/네이버 시장가 자주 봐줘" 같은 발언 하면 그때 조정.</li>
+</ul>
+
+<hr>
+
+<h2 id="radar">4. 레이더에 무엇을 보여줄지</h2>
+
+<h3>이전 8-stat 시스템(폐기 중)의 레이더</h3>
+<p>옛 레이더 8axis: anchoring / tenacity / resolve / market_sense / risk_radar / scrutiny / patience / rapport.<br>
+이건 사용자 입력 dimensions(stat)이고, 함수가 17 EngineParameters로 변환했다. 폐기.</p>
+
+<h3>새 시스템에서 레이더 갯수 옵션</h3>
+
+<table>
+<thead><tr><th>옵션</th><th>축 갯수</th><th>축</th><th>장단</th></tr></thead>
+<tbody>
+<tr>
+  <td>4각형</td>
+  <td>4</td>
+  <td>w_p / w_t / w_r / w_s</td>
+  <td>가장 단순. 단 프리셋 차이가 평평하게 보임 (curve, sub-param 안 보임)</td>
+</tr>
+<tr>
+  <td><strong>8각형 (추천)</strong></td>
+  <td>8</td>
+  <td>w_p / w_t / w_r / w_s · alpha / beta / u_threshold / u_aspiration</td>
+  <td>차원 가중치 + 행동 곡선 모두 한눈에. 이전 시스템과 axis 갯수 동일 (시각 일관성)</td>
+</tr>
+<tr>
+  <td>16각형</td>
+  <td>16</td>
+  <td>위 8 + sub-params 8</td>
+  <td>가장 정보 풍부. 단 너무 세밀해 사용자 머리 아픔. 작은 카드(88px)에 안 들어감</td>
+</tr>
+</tbody>
+</table>
+
+<h3>추천: <strong>8각형</strong></h3>
+<ul>
+  <li>사용자 인식 가능한 dimension만 (curve도 "양보 빠름/느림" 같은 직관 있음)</li>
+  <li>sub-params는 weight + curve가 결정된 다음 따라가는 second-order — 레이더에 안 보여도 OK</li>
+  <li>작은 카드 자리에도 들어감 (88px)</li>
+</ul>
+
+<hr>
+
+<h2 id="advanced">5. Advanced Settings — 유저가 만질 수 있는 것</h2>
+
+<p>"고급 사용자가 직접 슬라이더로 만지고 싶다"면 — 옵션 C 기준 <strong>16개 명시 필드</strong> 전부 만질 수 있어야 의미 있다. 그러나 그 중 직관적인 것과 너무 internal한 것 구분 필요:</p>
+
+<table>
+<thead><tr><th>티어</th><th>필드</th><th>UI 요소</th></tr></thead>
+<tbody>
+<tr>
+  <td>Tier 1<br>(directly intuitive)</td>
+  <td>w_p, w_t, w_r, w_s</td>
+  <td>4개 슬라이더, 합=1 normalize (다른 거 움직이면 자동 조정)</td>
+</tr>
+<tr>
+  <td>Tier 2<br>(behavioral)</td>
+  <td>alpha, beta, u_threshold, u_aspiration</td>
+  <td>4개 슬라이더, 각자 envelope 안에서 독립. 라벨 풀어 쓰기 ("시간 압력 강도", "양보 속도" 등)</td>
+</tr>
+<tr>
+  <td>Tier 3<br>(fine-tuning, expert)</td>
+  <td>anchor_ratio, v_t_floor, w_rep, r_score_minimum, i_completeness_minimum, v_s_base, n_threshold, late_round_aggression_modifier</td>
+  <td>접힌 섹션(Expand 토글). 슬라이더 + 짧은 설명 툴팁</td>
+</tr>
+<tr>
+  <td>안 보임</td>
+  <td>gamma, market_utilization, cross_pressure_sensitivity</td>
+  <td>NEUTRAL 고정. UI에서 빼거나 read-only로</td>
+</tr>
+<tr>
+  <td>안 보임 (자동)</td>
+  <td>w_info</td>
+  <td>w_rep 슬라이더 옆에 "= 1 - w_rep = 0.45" 같은 read-only 표시</td>
+</tr>
+</tbody>
+</table>
+
+<h3>추천 UX</h3>
+<ol>
+  <li><strong>기본 화면</strong>: Tier 1 + Tier 2 (8개 슬라이더) — 8각형 레이더와 1:1 대응</li>
+  <li><strong>"Expert mode" 토글</strong>: Tier 3 (8개 슬라이더 추가) — 16개 슬라이더 총합</li>
+  <li>모든 슬라이더는 자기 envelope 안에서 자유 (다른 필드 영향 X). 단 weights 4개만 합=1 normalize</li>
+</ol>
+
+<hr>
+
+<h2 id="budget">6. 400 budget vs envelope — 왜 더는 budget 필요 없는가</h2>
+
+<h3>이전: 400 budget 시스템 (폐기 중)</h3>
+<p>옛 8-stat 시스템에서:</p>
+<ul>
+  <li>각 stat: <code>[10, 90]</code> 범위 정수</li>
+  <li>8개 stat 합: 정확히 <strong>400</strong></li>
+  <li>의미: "한 stat 올리면 다른 stat 내려가야 함" — <strong>제로섬 budget</strong></li>
+  <li>이유: 사용자가 무한히 강한 캐릭터를 만들 수 없게. RPG 스탯 할당과 같은 컨셉</li>
+</ul>
+
+<h3>새 시스템: envelope 시스템</h3>
+<p>각 필드가 자기 고유한 valid range(envelope)를 가짐:</p>
+<pre>weights:        합 = 1.0 (자체 budget — 자연스러운 비율)
+alpha:          0.3 ~ 3.0
+beta:           0.3 ~ 3.0
+u_threshold:    0.3 ~ 0.85
+u_aspiration:   0.3 ~ 0.85  (단 u_aspiration > u_threshold)
+anchor_ratio:   0 ~ 1
+v_t_floor:      0 ~ 1
+w_rep:          0 ~ 1
+r_score_minimum:        0 ~ 1
+i_completeness_minimum: 0 ~ 1
+v_s_base:       0 ~ 1
+n_threshold:    5 ~ 15 (integer)
+late_round_aggression_modifier: 0.5 ~ 1.5</pre>
+
+<h3>핵심 차이</h3>
+<table>
+<thead><tr><th></th><th>옛 400 budget</th><th>새 envelope</th></tr></thead>
+<tbody>
+<tr><td>제약</td><td>합 = 400 (cross-field)</td><td>각자 자기 범위 안 (per-field) + weights만 합=1</td></tr>
+<tr><td>한 필드 올리면</td><td>다른 필드 내려가야 함</td><td>독립적 — 아무 영향 X (weights 제외)</td>
+</tr>
+<tr><td>"강한 캐릭터" 방지</td><td>budget으로 강제</td><td>각 envelope 자체가 sensible 범위 → 자연스럽게 사실적</td></tr>
+<tr><td>RPG 느낌</td><td>강함 — 스탯 할당</td><td>약함 — 그냥 설정값들</td></tr>
+</tbody>
+</table>
+
+<h3>왜 더는 budget 필요 없는가</h3>
+<ul>
+  <li>각 envelope이 이미 "비현실적 값"을 막아줌 (예: beta=10이면 너무 빨리 양보, 엔진이 미친 행동 → envelope 0.3~3.0이 그걸 방지)</li>
+  <li>weights는 자체 budget(합=1) 있음 — 한 차원 강조하면 다른 거 자연스럽게 줄어듦</li>
+  <li>나머지 필드들은 서로 독립이 자연스러움. 예: u_threshold(까다로움)과 anchor_ratio(앵커 강도)는 동시에 둘 다 높을 수 있음 (까다로우면서 강한 앵커 — 진짜 사람도 그럼)</li>
+  <li>cross-field budget을 강제하면 오히려 부자연스러운 trade-off 생김 ("앵커 강하게 하려면 까다로움 포기?" — 협상 행동에 안 맞음)</li>
+</ul>
+
+<div class="callout">
+<strong>결론:</strong> 옛 400 budget은 8-stat 시스템 특유의 RPG 시각화 도구. 새 envelope 시스템에서는 불필요.
+weights 4개의 합=1 제약은 자연스러운 "비율 분배" — 이건 유지.
+</div>
+
+<hr>
+
+<h2 id="summary">한 줄 요약</h2>
+
+<div class="callout">
+<strong>옵션 C 결정 사항:</strong>
+<ul style="margin: 6px 0;">
+  <li>엔진 17 fields 중 <strong>16개 프리셋별 명시</strong> (w_info 1 derived)</li>
+  <li>market 3개(gamma/market_utilization/cross_pressure_sensitivity)만 NEUTRAL 공통</li>
+  <li>레이더는 <strong>8각형</strong> (weights 4 + curves 4) 추천</li>
+  <li>Advanced Settings는 <strong>3-tier</strong>: 기본 8개 슬라이더 + Expert로 8개 더</li>
+  <li>budget 제약 <strong>없음</strong> — envelope만 사용. weights 4개만 합=1</li>
+  <li>4 프리셋 × 16 fields = <strong>64개 값</strong>을 새로 결정해야 함 (디폴트값 채우는 작업 별도 필요)</li>
+</ul>
+</div>
+
+</div>
+</body>
+</html>

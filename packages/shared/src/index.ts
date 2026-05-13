@@ -13,3 +13,10 @@ export {
 
 // ─── Utilities ───────────────────────────────────────────────
 export { createApiResponse, createApiError } from "./utils/api.js";
+
+// ─── Agent Stats (8-stat system, see docs/engine/06_에이전트_스탯.md) ────────
+export * from "./agent-stats/index.js";
+
+// ─── Negotiation Presets (3-preset default flow, advanced 8-stat is the
+//     other path — see docs/wip/협상엔진-에이전트-업데이트-계획-2026-05-09.md) ────
+export * from "./agent-presets/index.js";

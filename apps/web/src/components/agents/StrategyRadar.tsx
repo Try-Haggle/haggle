@@ -1,19 +1,28 @@
-/**
- * Strategy Matrix radar — 8 axes (4 weights + 4 behavior curves).
- * Each axis has its own envelope and is normalized to [0, 1] for the polygon.
- *
- * Order, clockwise from 12 o'clock: P · T · R · S · α · β · uT · uA
- */
+"use client";
+
 import type { NegotiationPreset } from "@haggle/shared";
 
-interface RadarChartProps {
+interface StrategyRadarProps {
   preset: NegotiationPreset;
+  /** Diameter in px (square). */
+  size?: number;
   /** Show short axis labels (P/T/R/S/α/β/uT/uA) around vertices. */
   labels?: boolean;
-  /** Diameter in px. Default 250. */
-  size?: number;
+  className?: string;
 }
 
+const SHAPE_FILL = "rgba(6,182,212,0.18)";
+const SHAPE_STROKE = "rgba(6,182,212,0.85)";
+const VERTEX_FILL = "#06b6d4";
+const GRID_STROKE = "rgba(148,163,184,0.18)";
+const LABEL_FILL = "#94a3b8";
+
+/**
+ * 8 axes of the new preset system. Each axis has its own envelope and is
+ * normalized to [0, 1] for visualization.
+ *
+ *   12 o'clock → clockwise: P · T · R · S · α · β · uT · uA
+ */
 const AXES = [
   { key: "w_p" as const, label: "P", envelope: [0, 1] as const },
   { key: "w_t" as const, label: "T", envelope: [0, 1] as const },
@@ -25,6 +34,8 @@ const AXES = [
   { key: "u_aspiration" as const, label: "uA", envelope: [0.3, 0.85] as const },
 ];
 
+// Weights top out near 0.5 in practice. Scale them so the dominant weight
+// reaches ~100% on the radar (visual differentiation).
 const WEIGHT_DISPLAY_SCALE = 2.0;
 
 function normalize(
@@ -56,17 +67,15 @@ function octagon(r: number, cx: number, cy: number): string {
   }).join(" ");
 }
 
-const GRID_LEVELS = [0.25, 0.5, 0.75, 1.0];
-
-export default function RadarChart({
+export function StrategyRadar({
   preset,
-  labels = false,
-  size = 250,
-}: RadarChartProps) {
+  size = 220,
+  labels = true,
+  className,
+}: StrategyRadarProps) {
   const center = size / 2;
-  const labelMargin = labels ? 24 : 8;
-  const radius = size / 2 - labelMargin;
-  const labelOffset = radius + 14;
+  const radius = size / 2 - (labels ? 20 : 8);
+  const labelOffset = radius + 12;
 
   const values = AXES.map((axis) => {
     const raw =
@@ -92,16 +101,16 @@ export default function RadarChart({
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      style={{ display: "block", width: "100%", maxWidth: size }}
+      className={className ?? "block w-full"}
       role="img"
       aria-label="Strategy matrix radar"
     >
-      {GRID_LEVELS.map((level) => (
+      {[0.25, 0.5, 0.75, 1.0].map((level) => (
         <polygon
           key={level}
           points={octagon(level * radius, center, center)}
           fill="none"
-          stroke="rgba(148,163,184,0.18)"
+          stroke={GRID_STROKE}
         />
       ))}
       {AXES.map((_, i) => {
@@ -113,14 +122,14 @@ export default function RadarChart({
             y1={center}
             x2={x.toFixed(2)}
             y2={y.toFixed(2)}
-            stroke="rgba(148,163,184,0.18)"
+            stroke={GRID_STROKE}
           />
         );
       })}
       <polygon
         points={shapePoints}
-        fill="rgba(6,182,212,0.18)"
-        stroke="rgba(6,182,212,0.85)"
+        fill={SHAPE_FILL}
+        stroke={SHAPE_STROKE}
         strokeWidth={2}
         strokeLinejoin="round"
       />
@@ -132,7 +141,7 @@ export default function RadarChart({
             cx={x.toFixed(2)}
             cy={y.toFixed(2)}
             r={2.5}
-            fill="#06b6d4"
+            fill={VERTEX_FILL}
           />
         );
       })}
@@ -146,7 +155,7 @@ export default function RadarChart({
               y={y.toFixed(2)}
               textAnchor="middle"
               dominantBaseline="middle"
-              fill="#94a3b8"
+              fill={LABEL_FILL}
               fontSize={10}
             >
               {label}

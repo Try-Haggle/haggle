@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:widget": "vite -c widget/vite.config.ts --port 5173",
     "build:widget": "vite build -c widget/vite.config.ts",
     "build": "pnpm build:widget && tsc --project tsconfig.json",
     "start": "node dist/index.js",

@@ -1,4 +1,7 @@
-import { BUYER_AGENT_PRESETS } from "@/lib/buyer-agents";
+import {
+  NEGOTIATION_PRESETS,
+  getNegotiationPreset,
+} from "@haggle/shared";
 import type { AgentCard, PlaybackResponse } from "./types";
 
 /**
@@ -403,24 +406,49 @@ function hashString(input: string): number {
  * shows the agent the user actually picked instead of the scenario's default.
  */
 function extractAgentPresetId(sessionId: string): string | null {
-  for (const preset of BUYER_AGENT_PRESETS) {
+  for (const preset of NEGOTIATION_PRESETS) {
     if (sessionId.endsWith(`-${preset.id}`)) return preset.id;
   }
   return null;
 }
 
 function buyerAgentCardFromPreset(presetId: string): AgentCard | null {
-  const preset = BUYER_AGENT_PRESETS.find((p) => p.id === presetId);
+  const preset = getNegotiationPreset(presetId);
   if (!preset) return null;
-  const iconKey = preset.id as AgentCard["iconKey"];
   return {
     presetId: preset.id,
-    name: preset.name,
-    tagline: preset.tagline,
+    name: preset.copy.buyer.name,
+    tagline: preset.copy.buyer.tagline,
     accentColor: preset.accentColor,
-    iconKey,
-    stats: preset.stats,
+    emoji: preset.emoji,
   };
+}
+
+function sellerAgentCardFromPreset(presetId: string): AgentCard {
+  const preset = getNegotiationPreset(presetId) ?? NEGOTIATION_PRESETS[3];
+  return {
+    presetId: preset.id,
+    name: preset.copy.seller.name,
+    tagline: preset.copy.seller.tagline,
+    accentColor: preset.accentColor,
+    emoji: preset.emoji,
+  };
+}
+
+// Legacy preset ids that early mock scenarios reference — map to the new four.
+const LEGACY_TO_NEW: Record<string, string> = {
+  "price-hunter": "hunter",
+  "smart-trader": "balancer",
+  "fast-closer": "closer",
+  "spec-analyst": "verifier",
+  gatekeeper: "hunter",
+  diplomat: "balancer",
+  storyteller: "verifier",
+  dealmaker: "closer",
+};
+
+function migratePresetId(id: string): string {
+  return LEGACY_TO_NEW[id] ?? id;
 }
 
 export function getMockPlayback(sessionId: string): PlaybackResponse {
@@ -429,14 +457,27 @@ export function getMockPlayback(sessionId: string): PlaybackResponse {
 
   // Override buyer agent with the user's actual selection (if encoded in id).
   const selectedPresetId = extractAgentPresetId(sessionId);
-  const overrideBuyer = selectedPresetId ? buyerAgentCardFromPreset(selectedPresetId) : null;
+  const overrideBuyer = selectedPresetId
+    ? buyerAgentCardFromPreset(selectedPresetId)
+    : null;
+
+  // Migrate legacy scenario agents (price-hunter, gatekeeper, ...) to the
+  // four canonical NEGOTIATION_PRESETS so the playback always has consistent
+  // metadata + emoji rendering.
+  const migratedBuyer =
+    overrideBuyer ??
+    buyerAgentCardFromPreset(migratePresetId(base.session.buyerAgent.presetId)) ??
+    base.session.buyerAgent;
+  const migratedSeller =
+    sellerAgentCardFromPreset(migratePresetId(base.session.sellerAgent.presetId));
 
   return {
     ...base,
     session: {
       ...base.session,
       id: sessionId,
-      buyerAgent: overrideBuyer ?? base.session.buyerAgent,
+      buyerAgent: migratedBuyer,
+      sellerAgent: migratedSeller,
     },
   };
 }

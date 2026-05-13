@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import { api } from "@/lib/api-client";
-import { LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
+import {
+  LISTING_CATEGORIES,
+  LISTING_CATEGORY_LABELS,
+  getNegotiationPreset,
+  type NegotiationPresetId,
+} from "@haggle/shared";
+import {
+  AgentBuilder,
+  type AgentBuilderValue,
+} from "../../agents/_components/AgentBuilder";
+import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -40,81 +50,18 @@ const STEP_SUBTITLES = [
   "Pick a negotiation style for your AI agent.",
 ];
 
-/* ─── Seller Agent Presets ────────────────────────────────── */
+/* ─── Seller Agent Presets (4D weight system) ─────────────────
+ *
+ * Source of truth lives in @haggle/shared/agent-presets.
+ * Step 5 uses NEGOTIATION_PRESETS + PresetGrid + StrategyRadar.
+ */
 
-interface AgentStats {
-  priceAggression: number;
-  patienceLevel: number;
-  riskTolerance: number;
-  speedBias: number;
-  detailFocus: number;
-}
-
-interface AgentPreset {
-  id: string;
-  name: string;
-  tagline: string;
-  description: string;
-  accentColor: string;
-  stats: AgentStats;
-}
-
-const AGENT_PRESETS: AgentPreset[] = [
-  {
-    id: "gatekeeper",
-    name: "The Gatekeeper",
-    tagline: "Holds the line. Rarely budges.",
-    description:
-      "Defends your asking price with logic and confidence. Best for high-demand items or when you're not in a rush.",
-    accentColor: "#ef4444",
-    stats: { priceAggression: 85, patienceLevel: 90, riskTolerance: 20, speedBias: 30, detailFocus: 75 },
-  },
-  {
-    id: "diplomat",
-    name: "The Diplomat",
-    tagline: "Meets buyers halfway. Closes more.",
-    description:
-      "Balances getting a fair price with closing deals. Adapts to the buyer's style.",
-    accentColor: "#f59e0b",
-    stats: { priceAggression: 55, patienceLevel: 70, riskTolerance: 50, speedBias: 50, detailFocus: 60 },
-  },
-  {
-    id: "storyteller",
-    name: "The Storyteller",
-    tagline: "Sells the value, not just the price.",
-    description:
-      "Emphasizes condition, accessories, and item value to justify the price rather than just discounting.",
-    accentColor: "#a855f7",
-    stats: { priceAggression: 60, patienceLevel: 80, riskTolerance: 35, speedBias: 25, detailFocus: 95 },
-  },
-  {
-    id: "dealmaker",
-    name: "The Dealmaker",
-    tagline: "Fast deals. Done. Move on.",
-    description:
-      "Prioritizes closing quickly. Willing to give modest discounts for a quick, committed buyer.",
-    accentColor: "#eab308",
-    stats: { priceAggression: 40, patienceLevel: 25, riskTolerance: 75, speedBias: 95, detailFocus: 35 },
-  },
+const RECOGNIZED_PRESET_IDS: NegotiationPresetId[] = [
+  "hunter",
+  "closer",
+  "verifier",
+  "balancer",
 ];
-
-const STAT_META: { key: keyof AgentStats; label: string; gradient: string }[] = [
-  { key: "priceAggression", label: "Price Aggression", gradient: "linear-gradient(90deg, #06b6d4, #22d3ee)" },
-  { key: "patienceLevel", label: "Patience Level", gradient: "linear-gradient(90deg, #10b981, #34d399)" },
-  { key: "riskTolerance", label: "Risk Tolerance", gradient: "linear-gradient(90deg, #f59e0b, #fbbf24)" },
-  { key: "speedBias", label: "Speed Bias", gradient: "linear-gradient(90deg, #3b82f6, #60a5fa)" },
-  { key: "detailFocus", label: "Detail Focus", gradient: "linear-gradient(90deg, #ef4444, #f87171)" },
-];
-
-const RADAR_LABELS = ["Price", "Patience", "Risk", "Speed", "Detail"];
-
-const DEFAULT_STATS: AgentStats = {
-  priceAggression: 50,
-  patienceLevel: 50,
-  riskTolerance: 50,
-  speedBias: 50,
-  detailFocus: 50,
-};
 
 /* ─── Image Compression ───────────────────────────────────── */
 
@@ -144,84 +91,7 @@ function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> 
   });
 }
 
-/* ─── Radar Chart ─────────────────────────────────────────── */
-
-function RadarChart({ stats }: { stats: AgentStats }) {
-  const SIZE = 220;
-  const CENTER = SIZE / 2;
-  const RADIUS = 75;
-  const LABEL_OFFSET = 22;
-  const GRID_LEVELS = [0.25, 0.5, 0.75, 1.0];
-  const STAT_KEYS: (keyof AgentStats)[] = ["priceAggression", "patienceLevel", "riskTolerance", "speedBias", "detailFocus"];
-
-  const [display, setDisplay] = useState<number[]>(STAT_KEYS.map((k) => stats[k]));
-  const currentRef = useRef<number[]>(STAT_KEYS.map((k) => stats[k]));
-  const animRef = useRef<number>(0);
-
-  useEffect(() => {
-    const target = STAT_KEYS.map((k) => stats[k]);
-    const from = [...currentRef.current];
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / 600, 1);
-      const ease = 1 - Math.pow(1 - t, 3);
-      const next = from.map((f, i) => f + (target[i] - f) * ease);
-      currentRef.current = next;
-      setDisplay(next);
-      if (t < 1) animRef.current = requestAnimationFrame(tick);
-    };
-    if (animRef.current) cancelAnimationFrame(animRef.current);
-    animRef.current = requestAnimationFrame(tick);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [stats]);
-
-  function vertex(i: number, r: number): [number, number] {
-    const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-    return [CENTER + r * Math.cos(angle), CENTER + r * Math.sin(angle)];
-  }
-  function polygonPoints(values: number[]): string {
-    return values.map((v, i) => { const [x, y] = vertex(i, (v / 100) * RADIUS); return `${x},${y}`; }).join(" ");
-  }
-  function gridPolygon(level: number): string {
-    return Array.from({ length: 5 }, (_, i) => { const [x, y] = vertex(i, level * RADIUS); return `${x},${y}`; }).join(" ");
-  }
-
-  return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="mx-auto block w-full max-w-[200px]">
-      {GRID_LEVELS.map((level) => (
-        <polygon key={level} points={gridPolygon(level)} fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth="1" />
-      ))}
-      {Array.from({ length: 5 }, (_, i) => {
-        const [x, y] = vertex(i, RADIUS);
-        return <line key={i} x1={CENTER} y1={CENTER} x2={x} y2={y} stroke="rgba(148,163,184,0.15)" strokeWidth="1" />;
-      })}
-      <polygon points={polygonPoints(display)} fill="rgba(6,182,212,0.12)" stroke="rgba(6,182,212,0.7)" strokeWidth="2" strokeLinejoin="round" />
-      {display.map((v, i) => { const [x, y] = vertex(i, (v / 100) * RADIUS); return <circle key={i} cx={x} cy={y} r="3" fill="#06b6d4" />; })}
-      {RADAR_LABELS.map((label, i) => {
-        const [x, y] = vertex(i, RADIUS + LABEL_OFFSET);
-        return <text key={label} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill="#94a3b8" fontSize="10" style={{ fontFamily: "inherit" }}>{label}</text>;
-      })}
-    </svg>
-  );
-}
-
-/* ─── Agent Icon ──────────────────────────────────────────── */
-
-function AgentIcon({ id, size = 18 }: { id: string; size?: number }) {
-  const props = { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  switch (id) {
-    case "gatekeeper":
-      return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
-    case "diplomat":
-      return <svg {...props}><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M6 8H5a4 4 0 0 0 0 8h1" /><path d="M8 6v12" /><path d="M16 6v12" /></svg>;
-    case "storyteller":
-      return <svg {...props}><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" /></svg>;
-    case "dealmaker":
-      return <svg {...props}><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>;
-    default:
-      return null;
-  }
-}
+/* Radar + Agent icon — replaced by StrategyRadar + emoji from @haggle/shared. */
 
 /* ─── Draft types ─────────────────────────────────────────── */
 
@@ -283,8 +153,9 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
   const [floorPrice, setFloorPrice] = useState("");
   const [sellingDeadline, setSellingDeadline] = useState("");
 
-  // Step 5: Agent
-  const [selectedAgent, setSelectedAgent] = useState<AgentPreset | null>(null);
+  // Step 5: Agent — all state lives in a single AgentBuilderValue.
+  const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
+  const prevAgentRef = useRef<AgentBuilderValue | null>(null);
 
   // Published state
   const [publishResult, setPublishResult] = useState<{
@@ -293,7 +164,32 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const currentStats = selectedAgent?.stats ?? DEFAULT_STATS;
+  // Seller-side display copy for headers/summary.
+  const selectedCopy = agentValue?.effectivePreset.copy.seller ?? null;
+
+  // Track preset/custom changes (don't fire on every override slider drag).
+  useEffect(() => {
+    const prev = prevAgentRef.current;
+    if (!agentValue) {
+      prevAgentRef.current = null;
+      return;
+    }
+    const changed =
+      !prev ||
+      prev.sourceKind !== agentValue.sourceKind ||
+      prev.sourceId !== agentValue.sourceId;
+    if (changed) {
+      track("Seller Agent Selected", {
+        agent_preset: agentValue.basePresetId,
+        draft_id: draftId,
+        source: agentValue.sourceKind,
+        ...(agentValue.sourceKind === "custom"
+          ? { custom_agent_id: agentValue.sourceId }
+          : {}),
+      });
+    }
+    prevAgentRef.current = agentValue;
+  }, [agentValue, draftId, track]);
 
   // Format helpers
   const formatWithCommas = (v: string) => {
@@ -359,9 +255,21 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
           setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
         }
         if (d.draftName) setDraftName(d.draftName);
-        if (d.strategyConfig?.preset) {
-          const preset = AGENT_PRESETS.find((a) => a.id === d.strategyConfig!.preset);
-          if (preset) setSelectedAgent(preset);
+        if (typeof d.strategyConfig?.preset === "string") {
+          const candidate = d.strategyConfig.preset as NegotiationPresetId;
+          if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
+            const preset = getNegotiationPreset(candidate);
+            if (preset) {
+              setAgentValue({
+                sourceKind: "preset",
+                sourceId: candidate,
+                basePresetId: candidate,
+                effectivePreset: preset,
+                overrides: null,
+                dirty: false,
+              });
+            }
+          }
         }
       } catch { /* start fresh */ } finally { setLoading(false); }
     })();
@@ -467,10 +375,18 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     if (targetPrice.trim()) patch.targetPrice = targetPrice.trim();
     if (floorPrice.trim()) patch.floorPrice = floorPrice.trim();
     if (sellingDeadline) patch.sellingDeadline = localDateToDeadlineIso(sellingDeadline);
-    if (sellingDeadline || selectedAgent) {
+    if (sellingDeadline || agentValue) {
       patch.strategyConfig = {
         ...(sellingDeadline ? deadlineStrategyConfig() : {}),
-        ...(selectedAgent ? { preset: selectedAgent.id, ...selectedAgent.stats } : {}),
+        ...(agentValue
+          ? {
+              preset: agentValue.basePresetId,
+              weights: { ...agentValue.effectivePreset.weights },
+              source: agentValue.sourceKind,
+              sourceId: agentValue.sourceId,
+              customized: !!agentValue.overrides,
+            }
+          : {}),
       };
     }
     return patch;
@@ -534,7 +450,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
       case 2: return !!title.trim();
       case 3: return true; // category/condition have defaults
       case 4: return !!targetPrice.trim() && !!sellingDeadline;
-      case 5: return !!selectedAgent;
+      case 5: return !!agentValue;
       default: return false;
     }
   }
@@ -547,7 +463,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
         if (!targetPrice.trim()) return "Asking price is required";
         if (!sellingDeadline) return "Selling deadline is required";
         break;
-      case 5: if (!selectedAgent) return "Please select an agent"; break;
+      case 5: if (!agentValue) return "Please select an agent"; break;
     }
     return null;
   }
@@ -601,8 +517,11 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
       let ok = await patchDraft(draftId!, {
         strategyConfig: {
           ...(sellingDeadline ? deadlineStrategyConfig() : {}),
-          preset: selectedAgent!.id,
-          ...selectedAgent!.stats,
+          preset: agentValue!.basePresetId,
+          weights: { ...agentValue!.effectivePreset.weights },
+          source: agentValue!.sourceKind,
+          sourceId: agentValue!.sourceId,
+          customized: !!agentValue!.overrides,
         },
       });
       if (!ok) return;
@@ -624,7 +543,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
       track("Listing Published", {
         draft_id: draftId, public_id: data.publicId, category, condition,
-        has_photo: !!photoUrl, has_floor_price: !!floorPrice, agent_preset: selectedAgent!.id,
+        has_photo: !!photoUrl, has_floor_price: !!floorPrice, agent_preset: agentValue!.basePresetId,
       });
       setPublishResult({ publicId: data.publicId!, shareUrl: data.shareUrl! });
     } finally { setSaving(false); }
@@ -680,10 +599,10 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>{title || "Untitled"}</p>
               <p className="text-xl font-bold mt-0.5" style={{ color: "#f1f5f9" }}>{formatPrice(targetPrice)}</p>
-              {selectedAgent && (
+              {agentValue && selectedCopy && (
                 <p className="flex items-center gap-1.5 text-xs mt-1" style={{ color: "#10b981" }}>
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: selectedAgent.accentColor }} />
-                  Agent: {selectedAgent.name}
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: agentValue.effectivePreset.accentColor }} />
+                  Agent: {selectedCopy.name}
                 </p>
               )}
             </div>
@@ -880,7 +799,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
         <div className="flex min-h-full flex-col justify-center">
         <div
           key={step}
-          className="mx-auto w-full max-w-lg py-10 sm:py-16"
+          className={`mx-auto w-full ${step === 5 ? "max-w-[1100px]" : "max-w-lg"} py-10 sm:py-16`}
           style={{
             animation: "wizard-step-in 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
@@ -1167,82 +1086,24 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
           {/* ── STEP 5: Agent ── */}
           {step === 5 && (
-            <div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-                {AGENT_PRESETS.map((agent) => {
-                  const isSelected = selectedAgent?.id === agent.id;
-                  return (
-                    <button
-                      key={agent.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedAgent(agent);
-                        track("Seller Agent Selected", { agent_preset: agent.id, draft_id: draftId });
-                      }}
-                      className="flex cursor-pointer flex-col rounded-xl border p-4 text-left transition-all"
-                      style={{
-                        background: isSelected ? "rgba(6,182,212,0.05)" : "#111827",
-                        borderColor: isSelected ? "#06b6d4" : "#1e293b",
-                        boxShadow: isSelected ? "0 0 0 1px #06b6d4" : "none",
-                      }}
-                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = "#334155"; }}
-                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = "#1e293b"; }}
-                    >
-                      <div className="flex items-start gap-3 mb-2.5">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${agent.accentColor}18`, color: agent.accentColor }}>
-                          <AgentIcon id={agent.id} />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>{agent.name}</p>
-                          <p className="text-xs font-medium mt-0.5" style={{ color: "#06b6d4" }}>{agent.tagline}</p>
-                        </div>
-                      </div>
-                      <p className="text-xs leading-relaxed" style={{ color: "#94a3b8" }}>{agent.description}</p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Agent profile panel */}
-              {selectedAgent && (
-                <div className="rounded-xl p-5" style={{ background: "#111827", border: "1px solid #1e293b" }}>
-                  <div className="flex items-center gap-3 mb-5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${selectedAgent.accentColor}18`, color: selectedAgent.accentColor }}>
-                      <AgentIcon id={selectedAgent.id} size={16} />
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>{selectedAgent.name}</p>
-                      <p className="text-xs mt-px" style={{ color: "#94a3b8" }}>{selectedAgent.tagline}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {/* Stat bars */}
-                    <div className="flex flex-col gap-3">
-                      {STAT_META.map((stat) => {
-                        const value = currentStats[stat.key];
-                        return (
-                          <div key={stat.key}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-medium" style={{ color: "#94a3b8" }}>{stat.label}</span>
-                              <span className="text-xs font-semibold" style={{ color: "#f1f5f9" }}>{value}%</span>
-                            </div>
-                            <div className="h-1.5 w-full overflow-hidden rounded-sm" style={{ background: "#0d1321" }}>
-                              <div className="h-full rounded-sm" style={{ width: `${value}%`, background: stat.gradient, transition: "width 0.6s cubic-bezier(0.22, 1, 0.36, 1)" }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Radar chart */}
-                    <div className="flex items-center justify-center">
-                      <RadarChart stats={currentStats} />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <AgentBuilder
+              role="seller"
+              embedded
+              value={agentValue}
+              onChange={setAgentValue}
+              chatSlot={
+                agentValue && (
+                  <StrategyChat
+                    agent={agentValue.effectivePreset}
+                    listingPublicId={`listing-draft-${agentValue.basePresetId}`}
+                    listingTitle={title || "this listing"}
+                    listingCategory={category || null}
+                    listingPrice={targetPrice || null}
+                    role="seller"
+                  />
+                )
+              }
+            />
           )}
         </div>
         </div>
@@ -1288,7 +1149,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
             <button
               type="button"
               onClick={handlePublish}
-              disabled={saving || !selectedAgent}
+              disabled={saving || !agentValue}
               className="flex w-24 sm:w-28 cursor-pointer items-center justify-center gap-2 rounded-xl border-none py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "#10b981" }}
               onMouseEnter={(e) => { if (!saving) e.currentTarget.style.background = "#059669"; }}

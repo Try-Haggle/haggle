@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { AgentPreset } from "../agentPresets";
+import type { NegotiationPreset } from "@haggle/shared";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -18,7 +18,7 @@ interface ChatMessage {
 }
 
 interface SellerStrategyChatProps {
-  agent: AgentPreset | null;
+  agent: NegotiationPreset | null;
   listingTitle: string;
   listingPrice: string;
   onMemoryUpdate: (memory: SellerStrategyMemory) => void;
@@ -37,8 +37,8 @@ export function buildInitialSellerMemory(): SellerStrategyMemory {
   };
 }
 
-function buildGreeting(agent: AgentPreset | null, title: string): string {
-  const name = agent?.name ?? "your agent";
+function buildGreeting(agent: NegotiationPreset | null, title: string): string {
+  const name = agent?.copy.seller.name ?? "your agent";
   return (
     `I'll help configure **${name}** for negotiating **${title}**.\n\n` +
     `Tell me how you'd like the agent to handle negotiations:\n` +
@@ -306,7 +306,7 @@ export default function SellerStrategyChat({
                     <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                       <span style={{ fontSize: 10 }}>🤖</span>
                       <span style={{ fontSize: 10, fontWeight: 600, color: accentColor }}>
-                        {agent?.name ?? "Agent"}
+                        {agent?.copy.seller.name ?? "Agent"}
                       </span>
                     </div>
                   )}
