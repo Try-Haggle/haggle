@@ -5,13 +5,28 @@ import { LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
 type Category = (typeof LISTING_CATEGORIES)[number];
 
 export function BrowseEmptyState({
-  activeCategory,
+  categories,
 }: {
-  activeCategory: Category | null;
+  categories: Category[];
 }) {
-  const source = activeCategory
-    ? `browse-empty-${activeCategory}`
-    : "browse-empty";
+  const single = categories.length === 1 ? categories[0] : null;
+  const source = single
+    ? `browse-empty-${single}`
+    : categories.length > 1
+      ? "browse-empty-multi"
+      : "browse-empty";
+
+  const heading =
+    single
+      ? `No ${LISTING_CATEGORY_LABELS[single]} listings yet`
+      : categories.length > 1
+        ? "No listings match these categories"
+        : "No listings yet";
+
+  const subtitle =
+    categories.length > 0
+      ? "Try adjusting your filters or leave your email to get notified."
+      : "Be the first to know when new listings arrive. Tell us what you're looking for.";
 
   return (
     <div className="py-16 sm:py-20">
@@ -33,16 +48,8 @@ export function BrowseEmptyState({
           </svg>
         </div>
 
-        <h3 className="mb-2 text-xl font-semibold text-slate-100">
-          {activeCategory
-            ? `No ${LISTING_CATEGORY_LABELS[activeCategory]} listings yet`
-            : "No listings yet"}
-        </h3>
-        <p className="mb-8 text-sm text-slate-400">
-          {activeCategory
-            ? "Leave your email and we'll notify you when a seller lists something here."
-            : "Be the first to know when new listings arrive. Tell us what you're looking for."}
-        </p>
+        <h3 className="mb-2 text-xl font-semibold text-slate-100">{heading}</h3>
+        <p className="mb-8 text-sm text-slate-400">{subtitle}</p>
 
         <div>
           <WaitlistForm source={source} />

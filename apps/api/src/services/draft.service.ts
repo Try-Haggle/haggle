@@ -8,10 +8,15 @@ import {
   and,
   or,
   gt,
+  gte,
   lt,
+  lte,
   isNull,
+  isNotNull,
   desc,
+  asc,
   inArray,
+  sql,
 } from "@haggle/db";
 import { placeListingTags } from "./tag-placement.service.js";
 import { triggerEmbeddingGeneration } from "./embedding.service.js";
@@ -341,42 +346,103 @@ export async function getPublishedListingByPublicId(
   return rows[0] ?? null;
 }
 
+export type ListPublishedSort = "newest" | "price_asc" | "price_desc";
+
 /**
  * List published listings for public browsing. No auth required.
  * Filters out expired drafts and listings past their sellingDeadline.
  * Returns only fields safe for public exposure (no floorPrice, strategyConfig, or sellerId).
+ *
+ * Cursor format is sort-aware:
+ *   - newest:       sortKey = publishedAt ISO string
+ *   - price_asc/desc: sortKey = targetPrice numeric string
+ * The route layer is responsible for encoding/decoding cursor strings.
  */
 export async function listPublishedListings(
   db: Database,
   opts: {
-    category?: string;
+    categories?: string[];
+    minPrice?: number;
+    maxPrice?: number;
+    conditions?: string[];
+    sort?: ListPublishedSort;
     limit?: number;
-    cursor?: { publishedAt: Date; publicId: string };
+    cursor?: { sortKey: string; publicId: string };
   } = {},
 ) {
   const limit = Math.min(Math.max(opts.limit ?? 40, 1), 100);
+  const sort: ListPublishedSort = opts.sort ?? "newest";
   const now = new Date();
 
-  const conditions = [
+  const where = [
     eq(listingDrafts.status, "published"),
     or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
   ];
 
-  if (opts.category) {
-    conditions.push(eq(listingDrafts.category, opts.category));
+  if (opts.categories && opts.categories.length > 0) {
+    where.push(inArray(listingDrafts.category, opts.categories));
+  }
+
+  if (opts.minPrice !== undefined) {
+    where.push(gte(listingDrafts.targetPrice, String(opts.minPrice)));
+  }
+  if (opts.maxPrice !== undefined) {
+    where.push(lte(listingDrafts.targetPrice, String(opts.maxPrice)));
+  }
+
+  if (opts.conditions && opts.conditions.length > 0) {
+    where.push(inArray(listingDrafts.condition, opts.conditions));
+  }
+
+  // When sorting by price, exclude rows with NULL targetPrice so cursor
+  // pagination has a stable key.
+  if (sort !== "newest") {
+    where.push(isNotNull(listingDrafts.targetPrice));
   }
 
   if (opts.cursor) {
-    conditions.push(
-      or(
-        lt(listingsPublished.publishedAt, opts.cursor.publishedAt),
-        and(
-          eq(listingsPublished.publishedAt, opts.cursor.publishedAt),
-          lt(listingsPublished.publicId, opts.cursor.publicId),
+    const { sortKey, publicId: cursorPublicId } = opts.cursor;
+    if (sort === "newest") {
+      const cursorDate = new Date(sortKey);
+      where.push(
+        or(
+          lt(listingsPublished.publishedAt, cursorDate),
+          and(
+            eq(listingsPublished.publishedAt, cursorDate),
+            lt(listingsPublished.publicId, cursorPublicId),
+          ),
         ),
-      ),
-    );
+      );
+    } else if (sort === "price_asc") {
+      where.push(
+        or(
+          gt(listingDrafts.targetPrice, sortKey),
+          and(
+            eq(listingDrafts.targetPrice, sortKey),
+            gt(listingsPublished.publicId, cursorPublicId),
+          ),
+        ),
+      );
+    } else {
+      // price_desc
+      where.push(
+        or(
+          lt(listingDrafts.targetPrice, sortKey),
+          and(
+            eq(listingDrafts.targetPrice, sortKey),
+            lt(listingsPublished.publicId, cursorPublicId),
+          ),
+        ),
+      );
+    }
   }
+
+  const orderBy =
+    sort === "price_asc"
+      ? [asc(listingDrafts.targetPrice), asc(listingsPublished.publicId)]
+      : sort === "price_desc"
+        ? [desc(listingDrafts.targetPrice), desc(listingsPublished.publicId)]
+        : [desc(listingsPublished.publishedAt), desc(listingsPublished.publicId)];
 
   const rows = await db
     .select({
@@ -391,11 +457,131 @@ export async function listPublishedListings(
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
-    .where(and(...conditions))
-    .orderBy(desc(listingsPublished.publishedAt), desc(listingsPublished.publicId))
+    .where(and(...where))
+    .orderBy(...orderBy)
     .limit(limit);
 
   return rows;
+}
+
+// Log-spaced "nice" boundaries used both for the price-range query and
+// the dynamic preset bucket histogram. Buckets are [-inf, 25), [25, 50),
+// ..., [100000, +inf). The shape is intentionally coarse at the high end
+// where data is sparse and dense at the low end where most listings live.
+const PRICE_BUCKET_EDGES = [
+  25, 50, 100, 200, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000,
+];
+
+/**
+ * Compute the top-N most populated price buckets matching the given
+ * category/condition filters (price filter excluded, since these drive
+ * the preset chips). Returns buckets sorted by ascending price.
+ *
+ * When fewer than `minTotal` priced listings match, returns []
+ * — sparse data makes the "most concentrated" presets misleading.
+ */
+export async function getPublishedPriceBuckets(
+  db: Database,
+  opts: { categories?: string[]; conditions?: string[] } = {},
+  topN = 5,
+  minTotal = 6,
+): Promise<Array<{ min: number; max: number | null; count: number }>> {
+  const now = new Date();
+  const where = [
+    eq(listingDrafts.status, "published"),
+    or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
+    isNotNull(listingDrafts.targetPrice),
+  ];
+
+  if (opts.categories && opts.categories.length > 0) {
+    where.push(inArray(listingDrafts.category, opts.categories));
+  }
+  if (opts.conditions && opts.conditions.length > 0) {
+    where.push(inArray(listingDrafts.condition, opts.conditions));
+  }
+
+  // Build one COUNT FILTER per bucket so we get the histogram in a single round trip.
+  const fields: Record<string, ReturnType<typeof sql<string>>> = {};
+  fields.b0 = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} < ${PRICE_BUCKET_EDGES[0]})`;
+  for (let i = 0; i < PRICE_BUCKET_EDGES.length - 1; i++) {
+    const lo = PRICE_BUCKET_EDGES[i];
+    const hi = PRICE_BUCKET_EDGES[i + 1];
+    fields[`b${i + 1}`] = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lo} AND ${listingDrafts.targetPrice} < ${hi})`;
+  }
+  const lastEdge = PRICE_BUCKET_EDGES[PRICE_BUCKET_EDGES.length - 1];
+  fields[`b${PRICE_BUCKET_EDGES.length}`] = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lastEdge})`;
+
+  const [row] = await db
+    .select(fields)
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(and(...where));
+
+  if (!row) return [];
+
+  const buckets: Array<{ min: number; max: number | null; count: number }> = [];
+  buckets.push({ min: 0, max: PRICE_BUCKET_EDGES[0], count: Number(row.b0) });
+  for (let i = 0; i < PRICE_BUCKET_EDGES.length - 1; i++) {
+    buckets.push({
+      min: PRICE_BUCKET_EDGES[i],
+      max: PRICE_BUCKET_EDGES[i + 1],
+      count: Number(row[`b${i + 1}`]),
+    });
+  }
+  buckets.push({
+    min: lastEdge,
+    max: null,
+    count: Number(row[`b${PRICE_BUCKET_EDGES.length}`]),
+  });
+
+  const total = buckets.reduce((sum, b) => sum + b.count, 0);
+  if (total < minTotal) return [];
+
+  return buckets
+    .filter((b) => b.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, topN)
+    .sort((a, b) => a.min - b.min);
+}
+
+/**
+ * Compute min/max targetPrice across published, non-expired listings
+ * matching the given category/condition filters. Used to drive a price
+ * range slider on the browse page. Returns null when no priced listings
+ * match.
+ */
+export async function getPublishedPriceRange(
+  db: Database,
+  opts: { categories?: string[]; conditions?: string[] } = {},
+): Promise<{ min: number; max: number } | null> {
+  const now = new Date();
+  const where = [
+    eq(listingDrafts.status, "published"),
+    or(isNull(listingDrafts.sellingDeadline), gt(listingDrafts.sellingDeadline, now)),
+    isNotNull(listingDrafts.targetPrice),
+  ];
+
+  if (opts.categories && opts.categories.length > 0) {
+    where.push(inArray(listingDrafts.category, opts.categories));
+  }
+  if (opts.conditions && opts.conditions.length > 0) {
+    where.push(inArray(listingDrafts.condition, opts.conditions));
+  }
+
+  const [row] = await db
+    .select({
+      min: sql<string | null>`MIN(${listingDrafts.targetPrice})`,
+      max: sql<string | null>`MAX(${listingDrafts.targetPrice})`,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(and(...where));
+
+  if (!row || row.min === null || row.max === null) return null;
+  const min = Number(row.min);
+  const max = Number(row.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max };
 }
 
 // ─── Claim ──────────────────────────────────────────────────

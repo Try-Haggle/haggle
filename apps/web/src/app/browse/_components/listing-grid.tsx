@@ -1,22 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { BrowseListing } from "../page";
-import { LISTING_CATEGORIES } from "@haggle/shared";
+import type { BrowseFilters, BrowseListing } from "../page";
 import { ListingCard, ListingCardSkeleton } from "@/components/listing-card";
 import { BrowseEmptyState } from "./empty-state";
 import { api } from "@/lib/api-client";
 
-type Category = (typeof LISTING_CATEGORIES)[number];
+function buildQuery(filters: BrowseFilters, cursor: string): string {
+  const p = new URLSearchParams();
+  if (filters.categories.length > 0) p.set("category", filters.categories.join(","));
+  if (filters.minPrice !== undefined) p.set("minPrice", String(filters.minPrice));
+  if (filters.maxPrice !== undefined) p.set("maxPrice", String(filters.maxPrice));
+  if (filters.conditions.length > 0) p.set("condition", filters.conditions.join(","));
+  if (filters.sort !== "newest") p.set("sort", filters.sort);
+  p.set("cursor", cursor);
+  return p.toString();
+}
 
 export function ListingGrid({
   initialListings,
   initialNextCursor,
-  activeCategory,
+  filters,
 }: {
   initialListings: BrowseListing[];
   initialNextCursor: string | null;
-  activeCategory: Category | null;
+  filters: BrowseFilters;
 }) {
   const [listings, setListings] = useState<BrowseListing[]>(initialListings);
   const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
@@ -24,7 +32,7 @@ export function ListingGrid({
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Reset when SSR props change (category switched)
+  // Reset when SSR props change (filter/category/sort changed)
   useEffect(() => {
     setListings(initialListings);
     setNextCursor(initialNextCursor);
@@ -45,14 +53,12 @@ export function ListingGrid({
         setLoading(true);
         (async () => {
           try {
-            const qs = new URLSearchParams();
-            if (activeCategory) qs.set("category", activeCategory);
-            qs.set("cursor", nextCursor);
+            const qs = buildQuery(filters, nextCursor);
             const res = await api.get<{
               ok: boolean;
               listings: BrowseListing[];
               nextCursor: string | null;
-            }>(`/api/public/listings?${qs.toString()}`, { skipAuth: true });
+            }>(`/api/public/listings?${qs}`, { skipAuth: true });
             if (res.ok) {
               setListings((prev) => [...prev, ...res.listings]);
               setNextCursor(res.nextCursor ?? null);
@@ -70,10 +76,10 @@ export function ListingGrid({
 
     obs.observe(el);
     return () => obs.disconnect();
-  }, [nextCursor, activeCategory]);
+  }, [nextCursor, filters]);
 
   if (listings.length === 0) {
-    return <BrowseEmptyState activeCategory={activeCategory} />;
+    return <BrowseEmptyState categories={filters.categories} />;
   }
 
   return (

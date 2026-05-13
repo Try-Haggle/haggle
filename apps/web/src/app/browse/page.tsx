@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { serverApi } from "@/lib/api-server";
-import { LISTING_CATEGORIES } from "@haggle/shared";
-import { CategoryTabs } from "./_components/category-tabs";
+import { LISTING_CATEGORIES, ITEM_CONDITIONS } from "@haggle/shared";
 import { ListingGrid } from "./_components/listing-grid";
+import { BrowseToolbar } from "./_components/browse-toolbar";
 
 export const metadata: Metadata = {
   title: "Browse listings · Haggle",
@@ -21,33 +21,85 @@ export interface BrowseListing {
   tags: string[] | null;
 }
 
-type Category = (typeof LISTING_CATEGORIES)[number];
+export type BrowseSort = "newest" | "price_asc" | "price_desc";
 
-function isCategory(value: string | undefined): value is Category {
-  return !!value && (LISTING_CATEGORIES as readonly string[]).includes(value);
+type Category = (typeof LISTING_CATEGORIES)[number];
+type Condition = (typeof ITEM_CONDITIONS)[number];
+
+function isSort(value: string | undefined): value is BrowseSort {
+  return value === "newest" || value === "price_asc" || value === "price_desc";
+}
+
+function parsePositiveNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+function parseCsv<T extends string>(
+  value: string | undefined,
+  whitelist: readonly T[],
+): T[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is T => (whitelist as readonly string[]).includes(s));
+}
+
+export interface BrowseFilters {
+  categories: Category[];
+  minPrice: number | undefined;
+  maxPrice: number | undefined;
+  conditions: Condition[];
+  sort: BrowseSort;
 }
 
 export default async function BrowsePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    condition?: string;
+    sort?: string;
+  }>;
 }) {
-  const { category } = await searchParams;
-  const activeCategory = isCategory(category) ? category : null;
+  const sp = await searchParams;
+  const filters: BrowseFilters = {
+    categories: parseCsv(sp.category, LISTING_CATEGORIES),
+    minPrice: parsePositiveNumber(sp.minPrice),
+    maxPrice: parsePositiveNumber(sp.maxPrice),
+    conditions: parseCsv(sp.condition, ITEM_CONDITIONS),
+    sort: isSort(sp.sort) ? sp.sort : "newest",
+  };
 
-  const query = activeCategory ? `?category=${activeCategory}` : "";
+  const params = new URLSearchParams();
+  if (filters.categories.length > 0) params.set("category", filters.categories.join(","));
+  if (filters.minPrice !== undefined) params.set("minPrice", String(filters.minPrice));
+  if (filters.maxPrice !== undefined) params.set("maxPrice", String(filters.maxPrice));
+  if (filters.conditions.length > 0) params.set("condition", filters.conditions.join(","));
+  if (filters.sort !== "newest") params.set("sort", filters.sort);
+  const query = params.toString();
 
   let listings: BrowseListing[] = [];
   let nextCursor: string | null = null;
+  let priceRange: { min: number; max: number } | null = null;
+  let priceBuckets: Array<{ min: number; max: number | null; count: number }> = [];
   try {
     const data = await serverApi.get<{
       ok: boolean;
       listings: BrowseListing[];
       nextCursor: string | null;
-    }>(`/api/public/listings${query}`, { skipAuth: true });
+      priceRange: { min: number; max: number } | null;
+      priceBuckets: Array<{ min: number; max: number | null; count: number }>;
+    }>(`/api/public/listings${query ? `?${query}` : ""}`, { skipAuth: true });
     if (data.ok) {
       listings = data.listings;
       nextCursor = data.nextCursor ?? null;
+      priceRange = data.priceRange ?? null;
+      priceBuckets = data.priceBuckets ?? [];
     }
   } catch {
     listings = [];
@@ -68,13 +120,17 @@ export default async function BrowsePage({
         </div>
       </div>
 
-      <CategoryTabs activeCategory={activeCategory} />
+      <BrowseToolbar
+        filters={filters}
+        priceRange={priceRange}
+        priceBuckets={priceBuckets}
+      />
 
-      <div className="mt-8">
+      <div className="mt-6">
         <ListingGrid
           initialListings={listings}
           initialNextCursor={nextCursor}
-          activeCategory={activeCategory}
+          filters={filters}
         />
       </div>
     </main>
