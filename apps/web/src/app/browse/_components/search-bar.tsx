@@ -13,8 +13,11 @@ export function SearchBar({ initialQ }: { initialQ: string }) {
   const [value, setValue] = useState(initialQ);
   const lastPushedRef = useRef(initialQ);
 
-  // Sync local state when external URL changes (e.g., navigation, Reset)
+  // Sync local state only when the URL changed externally (browser back,
+  // navigation, etc.) — never when the change came from our own push, so
+  // in-flight user input isn't overwritten by a stale SSR roundtrip.
   useEffect(() => {
+    if (initialQ === lastPushedRef.current) return;
     setValue(initialQ);
     lastPushedRef.current = initialQ;
   }, [initialQ]);
