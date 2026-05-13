@@ -1173,6 +1173,17 @@ body {
   }
 }
 
+/* ─── 4-preset grid (Hunter/Closer/Verifier/Balancer, 2×2) ─ */
+.agent-grid--four {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (max-width: 480px) {
+  .agent-grid--four {
+    grid-template-columns: 1fr;
+  }
+}
+
 .agent-card__icon--emoji {
   font-size: 18px;
   line-height: 1;

@@ -15,6 +15,7 @@ import {
   AgentBuilder,
   type AgentBuilderValue,
 } from "../../agents/_components/AgentBuilder";
+import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -1090,6 +1091,18 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
               embedded
               value={agentValue}
               onChange={setAgentValue}
+              chatSlot={
+                agentValue && (
+                  <StrategyChat
+                    agent={agentValue.effectivePreset}
+                    listingPublicId={`listing-draft-${agentValue.basePresetId}`}
+                    listingTitle={title || "this listing"}
+                    listingCategory={category || null}
+                    listingPrice={targetPrice || null}
+                    role="seller"
+                  />
+                )
+              }
             />
           )}
         </div>
