@@ -456,6 +456,7 @@ export default function App() {
               resolvedSubtype = data.subtype ?? null;
               setSubtype(resolvedSubtype);
             }
+            // Tags silently merged but no UI update for "Detected type" section
             if (Array.isArray(data.tags)) {
               setTags((prev) => {
                 const merged = [...prev];
@@ -463,7 +464,6 @@ export default function App() {
                 return merged;
               });
             }
-            setAutoDetectDone(true);
           }
         } catch {
           // auto-detect 실패해도 Step 2로는 진행
@@ -821,10 +821,10 @@ export default function App() {
             type="button"
             className="btn-primary"
             onClick={handleNextStep1}
-            disabled={!isFormValid || isSubmitting}
+            disabled={!isFormValid || isSubmitting || autoDetecting}
           >
-            {isSubmitting ? "Saving..." : "Next: Set Pricing"}
-            {!isSubmitting && <span>→</span>}
+            {isSubmitting ? "Saving..." : autoDetecting ? "Analyzing…" : "Next: Set Pricing"}
+            {!isSubmitting && !autoDetecting && <span>→</span>}
           </button>
         </div>
       ) : currentStep === 2 ? (

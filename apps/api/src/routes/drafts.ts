@@ -69,6 +69,45 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ ok: true, draft });
   });
 
+  // POST /api/drafts/:id/auto-detect — vision classify + tag suggestion
+  app.post<{
+    Params: { id: string };
+  }>("/api/drafts/:id/auto-detect", { preHandler: [requireAuth] }, async (request, reply) => {
+    const { id } = request.params;
+    const userId = request.user!.id;
+
+    const draft = await getDraftById(db, id);
+    if (!draft) return reply.status(404).send({ ok: false, error: "not_found" });
+    if (draft.userId !== userId) return reply.status(403).send({ ok: false, error: "forbidden" });
+    if (!draft.photoUrl || !draft.title) {
+      return reply.status(400).send({ ok: false, error: "photo and title are required" });
+    }
+
+    const { autoDetectListing } = await import("../services/listing-auto-detect.service.js");
+    const result = await autoDetectListing({
+      photoUrl: draft.photoUrl,
+      title: draft.title,
+      description: draft.description ?? null,
+    });
+
+    if (!result.ok) {
+      return reply.status(500).send({ ok: false, error: result.error.message });
+    }
+
+    // Merge tags into draft and persist subtype
+    const existingTags: string[] = Array.isArray(draft.tags) ? (draft.tags as string[]) : [];
+    const mergedTags = [...existingTags];
+    for (const t of result.tags) if (!mergedTags.includes(t)) mergedTags.push(t);
+
+    const existingConfig = (draft.strategyConfig ?? {}) as Record<string, unknown>;
+    await patchDraft(db, id, {
+      tags: mergedTags,
+      strategyConfig: { ...existingConfig, subtype: result.subtype },
+    });
+
+    return reply.send({ ok: true, subtype: result.subtype, tags: mergedTags });
+  });
+
   // POST /api/drafts/:id/validate — pre-publish validation
   app.post<{
     Params: { id: string };

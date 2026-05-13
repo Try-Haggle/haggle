@@ -140,13 +140,19 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  // Step 3: Category, Condition, Tags
+  // Step 3: Category, Condition, Tags, Phone details
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [tagEditing, setTagEditing] = useState(false);
   const tagFieldRef = useRef<HTMLInputElement>(null);
   const [category, setCategory] = useState("electronics");
   const [condition, setCondition] = useState("good");
+  const [subtype, setSubtype] = useState<"phone" | null>(null);
+  const [phoneBatteryHealth, setPhoneBatteryHealth] = useState<string | null>(null);
+  const [phoneCarrierLock, setPhoneCarrierLock] = useState<string | null>(null);
+  const [phoneStorage, setPhoneStorage] = useState<string | null>(null);
+  const [phoneScreenCondition, setPhoneScreenCondition] = useState<string | null>(null);
+  const [phoneFactoryResetConfirmed, setPhoneFactoryResetConfirmed] = useState(false);
 
   // Step 4: Pricing
   const [targetPrice, setTargetPrice] = useState("");
@@ -163,6 +169,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     shareUrl: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [storyDownloading, setStoryDownloading] = useState(false);
 
   // Seller-side display copy for headers/summary.
   const selectedCopy = agentValue?.effectivePreset.copy.seller ?? null;
@@ -255,6 +262,17 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
           setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
         }
         if (d.draftName) setDraftName(d.draftName);
+        if (d.strategyConfig?.subtype === "phone") {
+          setSubtype("phone");
+          const pa = d.strategyConfig.phoneAnswers as Record<string, unknown> | undefined;
+          if (pa) {
+            if (typeof pa.batteryHealth === "string") setPhoneBatteryHealth(pa.batteryHealth);
+            if (typeof pa.carrierLock === "string") setPhoneCarrierLock(pa.carrierLock);
+            if (typeof pa.storage === "string") setPhoneStorage(pa.storage);
+            if (typeof pa.screenCondition === "string") setPhoneScreenCondition(pa.screenCondition);
+            if (pa.factoryResetConfirmed === true) setPhoneFactoryResetConfirmed(true);
+          }
+        }
         if (typeof d.strategyConfig?.preset === "string") {
           const candidate = d.strategyConfig.preset as NegotiationPresetId;
           if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
@@ -375,20 +393,26 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     if (targetPrice.trim()) patch.targetPrice = targetPrice.trim();
     if (floorPrice.trim()) patch.floorPrice = floorPrice.trim();
     if (sellingDeadline) patch.sellingDeadline = localDateToDeadlineIso(sellingDeadline);
-    if (sellingDeadline || agentValue) {
-      patch.strategyConfig = {
-        ...(sellingDeadline ? deadlineStrategyConfig() : {}),
-        ...(agentValue
-          ? {
-              preset: agentValue.basePresetId,
-              weights: { ...agentValue.effectivePreset.weights },
-              source: agentValue.sourceKind,
-              sourceId: agentValue.sourceId,
-              customized: !!agentValue.overrides,
-            }
-          : {}),
+    const strategyBase: Record<string, unknown> = {};
+    if (subtype) strategyBase.subtype = subtype;
+    if (subtype === "phone") {
+      strategyBase.phoneAnswers = {
+        storage: phoneStorage,
+        batteryHealth: phoneBatteryHealth,
+        carrierLock: phoneCarrierLock,
+        screenCondition: phoneScreenCondition,
+        factoryResetConfirmed: phoneFactoryResetConfirmed,
       };
     }
+    if (sellingDeadline) Object.assign(strategyBase, deadlineStrategyConfig());
+    if (agentValue) {
+      strategyBase.preset = agentValue.basePresetId;
+      strategyBase.weights = { ...agentValue.effectivePreset.weights };
+      strategyBase.source = agentValue.sourceKind;
+      strategyBase.sourceId = agentValue.sourceId;
+      strategyBase.customized = !!agentValue.overrides;
+    }
+    if (Object.keys(strategyBase).length > 0) patch.strategyConfig = strategyBase;
     return patch;
   }
 
@@ -448,7 +472,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     switch (step) {
       case 1: return !!(photoFile || photoUrl);
       case 2: return !!title.trim();
-      case 3: return true; // category/condition have defaults
+      case 3: return subtype !== "phone" || (!!phoneStorage && !!phoneBatteryHealth && !!phoneCarrierLock && !!phoneScreenCondition && phoneFactoryResetConfirmed);
       case 4: return !!targetPrice.trim() && !!sellingDeadline;
       case 5: return !!agentValue;
       default: return false;
@@ -459,6 +483,15 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     switch (step) {
       case 1: if (!photoFile && !photoUrl) return "Please add a photo"; break;
       case 2: if (!title.trim()) return "Title is required"; break;
+      case 3:
+        if (subtype === "phone") {
+          if (!phoneStorage) return "Storage capacity is required";
+          if (!phoneBatteryHealth) return "Battery health is required";
+          if (!phoneCarrierLock) return "Carrier lock status is required";
+          if (!phoneScreenCondition) return "Screen condition is required";
+          if (!phoneFactoryResetConfirmed) return "Please confirm the pre-ship checklist";
+        }
+        break;
       case 4:
         if (!targetPrice.trim()) return "Asking price is required";
         if (!sellingDeadline) return "Selling deadline is required";
@@ -485,6 +518,30 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
       if (step === 1 && photoFile && !photoUrl) {
         const url = await uploadPhoto(id);
         if (!url) return;
+      }
+
+      // On step 2: save title/description + photoUrl (state may not have been flushed on step 1), then auto-detect
+      if (step === 2) {
+        await patchDraft(id, {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          ...(photoUrl ? { photoUrl } : {}),
+        });
+        try {
+          const detected = await api.post<{
+            ok: boolean;
+            subtype: "phone" | null;
+            tags: string[];
+          }>(`/api/drafts/${id}/auto-detect`, {});
+          if (detected.ok) {
+            if (detected.subtype !== undefined) setSubtype(detected.subtype);
+            if (Array.isArray(detected.tags)) setTags(detected.tags);
+          }
+        } catch {
+          // auto-detect 실패해도 step 3으로는 진행
+        }
+        setStep(3);
+        return;
       }
 
       // Save current state
@@ -571,8 +628,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     };
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center px-4" style={{ background: "#0a0f1a" }}>
-        <div className="w-full max-w-lg text-center">
+      <div className="fixed inset-0 z-50 overflow-y-auto px-4 py-12" style={{ background: "#0a0f1a" }}>
+        <div className="mx-auto w-full max-w-lg text-center">
           <div
             className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-xl"
             style={{ background: "rgba(16,185,129,0.12)", border: "1.5px solid rgba(16,185,129,0.35)" }}
@@ -634,6 +691,84 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
               ) : (
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
               )}
+            </button>
+          </div>
+
+          {/* Instagram Story Share */}
+          <div className="mb-3 rounded-xl text-left" style={{ padding: "18px 20px", background: "#111827", border: "1px solid #1e293b" }}>
+            <p className="text-sm font-semibold mb-0.5" style={{ color: "#f1f5f9" }}>Share to Instagram Story</p>
+            <p className="text-xs mb-4" style={{ color: "#64748b" }}>Buyers tap your link → AI handles the rest</p>
+            <button
+              type="button"
+              disabled={storyDownloading}
+              onClick={async () => {
+                setStoryDownloading(true);
+                const ogUrl = publishResult.shareUrl.replace("/l/", "/og/listing/");
+                const fileName = `haggle-${publishResult.publicId}.png`;
+                const fetchBlob = async (): Promise<Blob | null> => {
+                  try {
+                    const res = await fetch(ogUrl);
+                    if (!res.ok) return null;
+                    return await res.blob();
+                  } catch { return null; }
+                };
+                const nav = navigator as Navigator & {
+                  canShare?: (data: { files: File[] }) => boolean;
+                  share?: (data: { files: File[]; title?: string }) => Promise<void>;
+                };
+                if (nav.canShare && nav.share) {
+                  const blob = await fetchBlob();
+                  if (blob) {
+                    try {
+                      const file = new File([blob], fileName, { type: "image/png" });
+                      if (nav.canShare({ files: [file] })) {
+                        await nav.share({ files: [file], title: "Haggle listing" });
+                        setStoryDownloading(false);
+                        return;
+                      }
+                    } catch (e) {
+                      if ((e as Error).name === "AbortError") { setStoryDownloading(false); return; }
+                    }
+                  }
+                }
+                window.open(ogUrl, "_blank", "noopener,noreferrer");
+                setStoryDownloading(false);
+              }}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ padding: "10px 16px", background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.25)", color: "#06b6d4" }}
+              onMouseEnter={(e) => { if (!storyDownloading) e.currentTarget.style.background = "rgba(6,182,212,0.14)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(6,182,212,0.08)"; }}
+            >
+              {storyDownloading ? "Preparing…" : "📥 Download story card"}
+            </button>
+            <ol className="mt-4 space-y-1 pl-4 text-xs" style={{ color: "#64748b" }}>
+              <li>Save the card to your phone.</li>
+              <li>Open Instagram → Create Story → upload the card.</li>
+              <li>Tap the sticker icon → <strong style={{ color: "#94a3b8" }}>Link</strong> → paste your Haggle link (already copied above).</li>
+            </ol>
+            <p className="mt-3 text-xs" style={{ color: "#334155" }}>The link sticker is what makes buyers tap through. Don't skip it.</p>
+          </div>
+
+          {/* Share on X */}
+          <div className="mb-6 rounded-xl text-left" style={{ padding: "18px 20px", background: "#111827", border: "1px solid #1e293b" }}>
+            <p className="text-sm font-semibold mb-0.5" style={{ color: "#f1f5f9" }}>Share on X</p>
+            <p className="text-xs mb-4" style={{ color: "#64748b" }}>Post your listing link directly to X</p>
+            <button
+              type="button"
+              onClick={() => {
+                const text = `🤝 Negotiating smarter with AI — check out my listing on Haggle`;
+                const url = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(publishResult.shareUrl)}`;
+                window.open(url, "_blank", "noopener,noreferrer");
+              }}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors"
+              style={{ padding: "10px 16px", background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.25)", color: "#06b6d4" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(6,182,212,0.14)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(6,182,212,0.08)"; }}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              Post to X
             </button>
           </div>
 
@@ -968,10 +1103,110 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                 </div>
               </div>
 
+              {/* Phone Details — only when subtype === "phone" */}
+              {subtype === "phone" && (
+                <div
+                  className="rounded-xl p-5 space-y-6"
+                  style={{ background: "rgba(6,182,212,0.03)", border: "1px solid rgba(6,182,212,0.2)" }}
+                >
+                  <div className="pb-4" style={{ borderBottom: "1px solid rgba(6,182,212,0.12)" }}>
+                    <p className="text-sm font-bold" style={{ color: "#f1f5f9" }}>📱 Phone details</p>
+                    <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>Buyers expect this info upfront. All required to publish.</p>
+                  </div>
+
+                  {/* Storage */}
+                  <div>
+                    <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                      Storage <span style={{ color: "#f97316" }}>*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[{ v: "64gb", l: "64GB" }, { v: "128gb", l: "128GB" }, { v: "256gb", l: "256GB" }, { v: "512gb", l: "512GB" }, { v: "1tb", l: "1TB" }, { v: "other", l: "Other" }].map(({ v, l }) => (
+                        <button key={v} type="button" onClick={() => setPhoneStorage(v)}
+                          className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
+                          style={{ background: phoneStorage === v ? "rgba(6,182,212,0.08)" : "transparent", borderColor: phoneStorage === v ? "#06b6d4" : "#1e293b", color: phoneStorage === v ? "#06b6d4" : "#94a3b8" }}
+                          onMouseEnter={(e) => { if (phoneStorage !== v) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
+                          onMouseLeave={(e) => { if (phoneStorage !== v) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
+                        >{l}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Battery Health */}
+                  <div>
+                    <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                      Battery Health <span style={{ color: "#f97316" }}>*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[{ v: "ge_90", l: "90%+" }, { v: "ge_85", l: "85–89%" }, { v: "ge_80", l: "80–84%" }, { v: "lt_80", l: "Under 80%" }, { v: "unknown", l: "Not sure" }].map(({ v, l }) => (
+                        <button key={v} type="button" onClick={() => setPhoneBatteryHealth(v)}
+                          className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
+                          style={{ background: phoneBatteryHealth === v ? "rgba(6,182,212,0.08)" : "transparent", borderColor: phoneBatteryHealth === v ? "#06b6d4" : "#1e293b", color: phoneBatteryHealth === v ? "#06b6d4" : "#94a3b8" }}
+                          onMouseEnter={(e) => { if (phoneBatteryHealth !== v) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
+                          onMouseLeave={(e) => { if (phoneBatteryHealth !== v) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
+                        >{l}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Carrier Lock */}
+                  <div>
+                    <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                      Carrier Lock <span style={{ color: "#f97316" }}>*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[{ v: "unlocked", l: "Unlocked" }, { v: "locked", l: "Carrier-locked" }, { v: "unknown", l: "Not sure" }].map(({ v, l }) => (
+                        <button key={v} type="button" onClick={() => setPhoneCarrierLock(v)}
+                          className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
+                          style={{ background: phoneCarrierLock === v ? "rgba(6,182,212,0.08)" : "transparent", borderColor: phoneCarrierLock === v ? "#06b6d4" : "#1e293b", color: phoneCarrierLock === v ? "#06b6d4" : "#94a3b8" }}
+                          onMouseEnter={(e) => { if (phoneCarrierLock !== v) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
+                          onMouseLeave={(e) => { if (phoneCarrierLock !== v) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
+                        >{l}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Screen Condition */}
+                  <div>
+                    <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                      Screen Condition <span style={{ color: "#f97316" }}>*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[{ v: "perfect", l: "Perfect" }, { v: "minor_scratches", l: "Minor scratches" }, { v: "visible_scratches", l: "Visible scratches" }, { v: "cracked", l: "Cracked" }].map(({ v, l }) => (
+                        <button key={v} type="button" onClick={() => setPhoneScreenCondition(v)}
+                          className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
+                          style={{ background: phoneScreenCondition === v ? "rgba(6,182,212,0.08)" : "transparent", borderColor: phoneScreenCondition === v ? "#06b6d4" : "#1e293b", color: phoneScreenCondition === v ? "#06b6d4" : "#94a3b8" }}
+                          onMouseEnter={(e) => { if (phoneScreenCondition !== v) { e.currentTarget.style.borderColor = "#334155"; e.currentTarget.style.color = "#f1f5f9"; } }}
+                          onMouseLeave={(e) => { if (phoneScreenCondition !== v) { e.currentTarget.style.borderColor = "#1e293b"; e.currentTarget.style.color = "#94a3b8"; } }}
+                        >{l}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pre-ship checklist */}
+                  <div>
+                    <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
+                      Pre-ship Checklist <span style={{ color: "#f97316" }}>*</span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-3 text-sm" style={{ color: "#94a3b8" }}>
+                      <input
+                        type="checkbox"
+                        checked={phoneFactoryResetConfirmed}
+                        onChange={(e) => setPhoneFactoryResetConfirmed(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-cyan-500"
+                      />
+                      <span>
+                        Before shipping, I will <strong style={{ color: "#f1f5f9" }}>turn off Find My</strong> and{" "}
+                        <strong style={{ color: "#f1f5f9" }}>factory reset</strong> the phone so the buyer can activate it.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {/* Tags */}
               <div>
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-                  Tags
+                  Tags {subtype === "phone" && tags.length > 0 && <span className="ml-1 font-normal normal-case tracking-normal" style={{ color: "#475569" }}>(auto-suggested)</span>}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                   {tagEditing ? (
