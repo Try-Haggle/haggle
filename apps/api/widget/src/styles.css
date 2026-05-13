@@ -1283,10 +1283,10 @@ body {
   gap: 8px;
   width: 100%;
   padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.3);
   border-radius: var(--radius-md);
-  color: var(--text-primary);
+  color: var(--accent-cyan);
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
@@ -1296,8 +1296,8 @@ body {
 }
 
 .story-share__download-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(6, 182, 212, 0.14);
+  border-color: rgba(6, 182, 212, 0.5);
 }
 
 .story-share__download-btn:disabled {
