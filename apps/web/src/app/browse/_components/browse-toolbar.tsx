@@ -9,6 +9,7 @@ import {
   LISTING_CATEGORY_LABELS,
 } from "@haggle/shared";
 import type { BrowseFilters, BrowseSort } from "../page";
+import { SearchBar } from "./search-bar";
 
 const SORT_LABELS: Record<BrowseSort, string> = {
   newest: "Newest",
@@ -624,6 +625,9 @@ export function BrowseToolbar({
 
   return (
     <div className="mt-6 flex flex-wrap items-center gap-2">
+      <div className="w-full min-w-0 flex-1 sm:max-w-xs">
+        <SearchBar initialQ={filters.q} />
+      </div>
       <CategoryFilter filters={filters} />
       <PriceFilter
         filters={filters}

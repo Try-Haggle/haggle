@@ -31,6 +31,7 @@ export function registerPublicListingRoutes(
       minPrice?: string;
       maxPrice?: string;
       condition?: string;
+      q?: string;
       sort?: string;
       limit?: string;
       cursor?: string;
@@ -41,10 +42,14 @@ export function registerPublicListingRoutes(
       minPrice: minPriceRaw,
       maxPrice: maxPriceRaw,
       condition: conditionRaw,
+      q: qRaw,
       sort: sortRaw,
       limit,
       cursor: cursorRaw,
     } = request.query;
+
+    // Cap search input length to keep ILIKE patterns sane.
+    const q = qRaw?.trim().slice(0, 100) || undefined;
 
     let categories: string[] | undefined;
     if (category) {
@@ -171,6 +176,7 @@ export function registerPublicListingRoutes(
       minPrice,
       maxPrice,
       conditions,
+      q,
       sort,
       limit: effectiveLimit,
       cursor,
@@ -192,8 +198,8 @@ export function registerPublicListingRoutes(
     const [priceRange, priceBuckets] = cursor
       ? [null, []]
       : await Promise.all([
-          getPublishedPriceRange(db, { categories, conditions }),
-          getPublishedPriceBuckets(db, { categories, conditions }),
+          getPublishedPriceRange(db, { categories, conditions, q }),
+          getPublishedPriceBuckets(db, { categories, conditions, q }),
         ]);
 
     return reply.send({

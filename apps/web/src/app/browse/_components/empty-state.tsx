@@ -6,25 +6,31 @@ type Category = (typeof LISTING_CATEGORIES)[number];
 
 export function BrowseEmptyState({
   categories,
+  q,
 }: {
   categories: Category[];
+  q: string;
 }) {
   const single = categories.length === 1 ? categories[0] : null;
-  const source = single
-    ? `browse-empty-${single}`
-    : categories.length > 1
-      ? "browse-empty-multi"
-      : "browse-empty";
+  const source = q
+    ? "browse-empty-search"
+    : single
+      ? `browse-empty-${single}`
+      : categories.length > 1
+        ? "browse-empty-multi"
+        : "browse-empty";
 
-  const heading =
-    single
+  const heading = q
+    ? `No results for "${q}"`
+    : single
       ? `No ${LISTING_CATEGORY_LABELS[single]} listings yet`
       : categories.length > 1
         ? "No listings match these categories"
         : "No listings yet";
 
-  const subtitle =
-    categories.length > 0
+  const subtitle = q
+    ? "Try a different keyword, or adjust your filters."
+    : categories.length > 0
       ? "Try adjusting your filters or leave your email to get notified."
       : "Be the first to know when new listings arrive. Tell us what you're looking for.";
 

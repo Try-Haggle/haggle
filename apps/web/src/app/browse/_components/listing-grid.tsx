@@ -12,6 +12,7 @@ function buildQuery(filters: BrowseFilters, cursor: string): string {
   if (filters.minPrice !== undefined) p.set("minPrice", String(filters.minPrice));
   if (filters.maxPrice !== undefined) p.set("maxPrice", String(filters.maxPrice));
   if (filters.conditions.length > 0) p.set("condition", filters.conditions.join(","));
+  if (filters.q) p.set("q", filters.q);
   if (filters.sort !== "newest") p.set("sort", filters.sort);
   p.set("cursor", cursor);
   return p.toString();
@@ -79,7 +80,7 @@ export function ListingGrid({
   }, [nextCursor, filters]);
 
   if (listings.length === 0) {
-    return <BrowseEmptyState categories={filters.categories} />;
+    return <BrowseEmptyState categories={filters.categories} q={filters.q} />;
   }
 
   return (

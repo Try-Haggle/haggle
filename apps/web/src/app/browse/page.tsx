@@ -52,6 +52,7 @@ export interface BrowseFilters {
   minPrice: number | undefined;
   maxPrice: number | undefined;
   conditions: Condition[];
+  q: string;
   sort: BrowseSort;
 }
 
@@ -63,6 +64,7 @@ export default async function BrowsePage({
     minPrice?: string;
     maxPrice?: string;
     condition?: string;
+    q?: string;
     sort?: string;
   }>;
 }) {
@@ -72,6 +74,7 @@ export default async function BrowsePage({
     minPrice: parsePositiveNumber(sp.minPrice),
     maxPrice: parsePositiveNumber(sp.maxPrice),
     conditions: parseCsv(sp.condition, ITEM_CONDITIONS),
+    q: (sp.q ?? "").trim().slice(0, 100),
     sort: isSort(sp.sort) ? sp.sort : "newest",
   };
 
@@ -80,6 +83,7 @@ export default async function BrowsePage({
   if (filters.minPrice !== undefined) params.set("minPrice", String(filters.minPrice));
   if (filters.maxPrice !== undefined) params.set("maxPrice", String(filters.maxPrice));
   if (filters.conditions.length > 0) params.set("condition", filters.conditions.join(","));
+  if (filters.q) params.set("q", filters.q);
   if (filters.sort !== "newest") params.set("sort", filters.sort);
   const query = params.toString();
 

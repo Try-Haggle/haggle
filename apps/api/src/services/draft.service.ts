@@ -349,6 +349,17 @@ export async function getPublishedListingByPublicId(
 export type ListPublishedSort = "newest" | "price_asc" | "price_desc";
 
 /**
+ * Build a case-insensitive substring match against the listing's title or
+ * any of its tags. LIKE wildcards in user input are escaped so the search
+ * is treated as a literal substring.
+ */
+function buildSearchClause(q: string) {
+  const escaped = q.replace(/[\\%_]/g, "\\$&");
+  const like = `%${escaped}%`;
+  return sql`(${listingDrafts.title} ILIKE ${like} OR EXISTS (SELECT 1 FROM unnest(${listingDrafts.tags}) AS t WHERE t ILIKE ${like}))`;
+}
+
+/**
  * List published listings for public browsing. No auth required.
  * Filters out expired drafts and listings past their sellingDeadline.
  * Returns only fields safe for public exposure (no floorPrice, strategyConfig, or sellerId).
@@ -365,6 +376,7 @@ export async function listPublishedListings(
     minPrice?: number;
     maxPrice?: number;
     conditions?: string[];
+    q?: string;
     sort?: ListPublishedSort;
     limit?: number;
     cursor?: { sortKey: string; publicId: string };
@@ -392,6 +404,11 @@ export async function listPublishedListings(
 
   if (opts.conditions && opts.conditions.length > 0) {
     where.push(inArray(listingDrafts.condition, opts.conditions));
+  }
+
+  const trimmedQ = opts.q?.trim();
+  if (trimmedQ) {
+    where.push(buildSearchClause(trimmedQ));
   }
 
   // When sorting by price, exclude rows with NULL targetPrice so cursor
@@ -482,7 +499,7 @@ const PRICE_BUCKET_EDGES = [
  */
 export async function getPublishedPriceBuckets(
   db: Database,
-  opts: { categories?: string[]; conditions?: string[] } = {},
+  opts: { categories?: string[]; conditions?: string[]; q?: string } = {},
   topN = 5,
   minTotal = 6,
 ): Promise<Array<{ min: number; max: number | null; count: number }>> {
@@ -498,6 +515,10 @@ export async function getPublishedPriceBuckets(
   }
   if (opts.conditions && opts.conditions.length > 0) {
     where.push(inArray(listingDrafts.condition, opts.conditions));
+  }
+  const trimmedQ = opts.q?.trim();
+  if (trimmedQ) {
+    where.push(buildSearchClause(trimmedQ));
   }
 
   // Build one COUNT FILTER per bucket so we get the histogram in a single round trip.
@@ -552,7 +573,7 @@ export async function getPublishedPriceBuckets(
  */
 export async function getPublishedPriceRange(
   db: Database,
-  opts: { categories?: string[]; conditions?: string[] } = {},
+  opts: { categories?: string[]; conditions?: string[]; q?: string } = {},
 ): Promise<{ min: number; max: number } | null> {
   const now = new Date();
   const where = [
@@ -566,6 +587,10 @@ export async function getPublishedPriceRange(
   }
   if (opts.conditions && opts.conditions.length > 0) {
     where.push(inArray(listingDrafts.condition, opts.conditions));
+  }
+  const trimmedQ = opts.q?.trim();
+  if (trimmedQ) {
+    where.push(buildSearchClause(trimmedQ));
   }
 
   const [row] = await db
