@@ -50,6 +50,10 @@ vi.mock("../../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("../../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../services/dispute-record.service.js", () => ({
   createDisputeRecord: vi.fn().mockResolvedValue(null),
   getDisputeById: vi.fn().mockResolvedValue(null),

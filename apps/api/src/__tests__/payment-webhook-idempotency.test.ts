@@ -12,6 +12,7 @@ import {
 } from "../services/payment-record.service.js";
 import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
+import { writeAuditLog } from "../services/admin-action-log.service.js";
 
 vi.mock("../payments/providers.js", () => ({
   createPaymentServiceFromEnv: vi.fn(() => ({
@@ -108,6 +109,7 @@ const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderI
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
 const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
+const mockWriteAuditLog = vi.mocked(writeAuditLog);
 
 function buildDb() {
   const insert = vi.fn().mockReturnValue({
@@ -216,6 +218,21 @@ describe("payment webhook idempotency", () => {
       expected: "live",
       received: "test",
     });
+    expect(mockWriteAuditLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actionType: "payment.webhook_rejected",
+        targetType: "payment_webhook",
+        targetId: "evt_wrong_env",
+        payload: expect.objectContaining({
+          type: "webhook_rejected",
+          provider_event_id: "evt_wrong_env",
+          payment_intent_id: "pi_123",
+          reason: "environment_mismatch",
+          metadata: expect.objectContaining({ provider: "x402" }),
+        }),
+      }),
+    );
     expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
   });
@@ -243,6 +260,18 @@ describe("payment webhook idempotency", () => {
 
     expect(res.statusCode).toBe(401);
     expect(res.json()).toMatchObject({ error: "INVALID_X402_WEBHOOK" });
+    expect(mockWriteAuditLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actionType: "payment.webhook_rejected",
+        targetType: "payment_webhook",
+        payload: expect.objectContaining({
+          type: "webhook_rejected",
+          reason: "signature_verification_failed",
+          metadata: expect.objectContaining({ provider: "x402" }),
+        }),
+      }),
+    );
     expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
   });
@@ -289,6 +318,24 @@ describe("payment webhook idempotency", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ accepted: true, action: "ignored", reason: "unknown_intent" });
+    expect(mockWriteAuditLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actionType: "payment.webhook_received",
+        targetType: "payment_webhook",
+        targetId: "evt_fresh_signed",
+        payload: expect.objectContaining({
+          type: "webhook_received",
+          provider_event_id: "evt_fresh_signed",
+          payment_intent_id: "pi_unknown",
+          reason: "validated_webhook_received",
+          metadata: expect.objectContaining({
+            provider: "x402",
+            event_type: "settlement.confirmed",
+          }),
+        }),
+      }),
+    );
     expect(mockGetPaymentIntentById).toHaveBeenCalledWith(expect.anything(), "pi_unknown");
   });
 

@@ -10,6 +10,7 @@ import {
 } from "../services/payment-record.service.js";
 import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
+import { writeAuditLog } from "../services/admin-action-log.service.js";
 
 const stripeEvent = {
   id: "evt_stripe_deposit_1",
@@ -102,6 +103,7 @@ const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderI
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
 const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
+const mockWriteAuditLog = vi.mocked(writeAuditLog);
 
 function buildDb() {
   return {
@@ -194,6 +196,23 @@ describe("stripe deposit webhook", () => {
           rail: "stripe",
           stripe_event_id: "evt_stripe_deposit_1",
           stripe_session_id: "cos_deposit_1",
+        }),
+      }),
+    );
+    expect(mockWriteAuditLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actionType: "payment.webhook_received",
+        targetType: "payment_webhook",
+        targetId: "evt_stripe_deposit_1",
+        payload: expect.objectContaining({
+          type: "webhook_received",
+          provider_event_id: "evt_stripe_deposit_1",
+          reason: "validated_webhook_received",
+          metadata: expect.objectContaining({
+            provider: "stripe",
+            event_type: "crypto.onramp_session.fulfillment_complete",
+          }),
         }),
       }),
     );

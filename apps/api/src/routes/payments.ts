@@ -676,6 +676,8 @@ async function auditPaymentAction(
             ? "authorization"
             : actionType === "payment.webhook_rejected"
               ? "webhook_rejected"
+              : actionType === "payment.webhook_received"
+                ? "webhook_received"
               : "admin_override",
     actor,
     payment_intent_id: params.intent.id,
@@ -693,6 +695,44 @@ async function auditPaymentAction(
     actionType,
     targetType: "payment_intent",
     targetId: params.intent.id,
+    payload: event as unknown as Record<string, unknown>,
+  });
+}
+
+async function auditPaymentWebhookEvent(
+  db: Database,
+  request: FastifyRequest,
+  actionType: "payment.webhook_received" | "payment.webhook_rejected",
+  params: {
+    provider: "stripe" | "x402";
+    providerEventId?: string;
+    paymentIntentId?: string;
+    reason: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const actor = {
+    id: request.user?.id ?? "system",
+    role: request.user?.role ?? "system",
+  };
+  const event = {
+    type: actionType === "payment.webhook_received" ? "webhook_received" : "webhook_rejected",
+    actor,
+    payment_intent_id: params.paymentIntentId,
+    provider_event_id: params.providerEventId,
+    reason: params.reason,
+    request_id: getCorrelationId(request),
+    timestamp: new Date().toISOString(),
+    metadata: safeRedactPaymentLog({
+      provider: params.provider,
+      ...(params.metadata ?? {}),
+    }),
+  };
+  await writeAuditLog(db, {
+    actorId: actor.id,
+    actionType,
+    targetType: "payment_webhook",
+    targetId: params.providerEventId ?? params.paymentIntentId ?? null,
     payload: event as unknown as Record<string, unknown>,
   });
 }
@@ -2332,12 +2372,26 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       }
       requireWebhookSignature(request.headers as Record<string, unknown>, rawBody, "x402");
     } catch (error) {
+      await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+        provider: "x402",
+        reason: "signature_verification_failed",
+        metadata: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
       return reply.code(401).send({ error: "INVALID_X402_WEBHOOK", message: error instanceof Error ? error.message : String(error) });
     }
 
     const body = request.body as { event_type?: string; payment_intent_id?: string; event_id?: string; id?: string; [key: string]: unknown };
     const envMismatch = webhookEnvironmentMismatch("x402", body);
     if (envMismatch) {
+      await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+        provider: "x402",
+        providerEventId: typeof body.event_id === "string" ? body.event_id : typeof body.id === "string" ? body.id : undefined,
+        paymentIntentId: body.payment_intent_id,
+        reason: "environment_mismatch",
+        metadata: envMismatch,
+      });
       return reply.code(400).send({
         error: "WEBHOOK_ENVIRONMENT_MISMATCH",
         expected: envMismatch.expected,
@@ -2348,11 +2402,30 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     const paymentIntentId = body.payment_intent_id;
 
     if (!eventType || !paymentIntentId) {
+      await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+        provider: "x402",
+        providerEventId: typeof body.event_id === "string" ? body.event_id : typeof body.id === "string" ? body.id : undefined,
+        paymentIntentId,
+        reason: "missing_required_fields",
+        metadata: {
+          has_event_type: Boolean(eventType),
+          has_payment_intent_id: Boolean(paymentIntentId),
+        },
+      });
       return reply.code(400).send({ error: "MISSING_WEBHOOK_FIELDS" });
     }
 
     // Idempotency: derive a stable event ID and skip if already processed
     const webhookEventId = body.event_id ?? body.id ?? `${eventType}:${paymentIntentId}`;
+    await auditPaymentWebhookEvent(db, request, "payment.webhook_received", {
+      provider: "x402",
+      providerEventId: webhookEventId,
+      paymentIntentId,
+      reason: "validated_webhook_received",
+      metadata: {
+        event_type: eventType,
+      },
+    });
     const duplicate = await hasWebhookBeenProcessed(db, webhookEventId, "x402");
     if (duplicate) {
       return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
@@ -2467,6 +2540,10 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
   app.post("/payments/webhooks/stripe", { config: { rawBody: true } }, async (request, reply) => {
     const stripeSig = (request.headers as Record<string, unknown>)["stripe-signature"];
     if (!stripeSig || typeof stripeSig !== "string") {
+      await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+        provider: "stripe",
+        reason: "missing_signature_header",
+      });
       return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "missing stripe-signature header" });
     }
 
@@ -2488,6 +2565,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       try {
         event = stripeAdapter.constructWebhookEvent(rawBody, stripeSig);
       } catch (err) {
+        await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+          provider: "stripe",
+          reason: "signature_verification_failed",
+          metadata: {
+            error: err instanceof Error ? err.message : "Webhook signature verification failed",
+          },
+        });
         return reply.code(401).send({
           error: "INVALID_STRIPE_WEBHOOK",
           message: err instanceof Error ? err.message : "Webhook signature verification failed",
@@ -2497,12 +2581,28 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         livemode: typeof event.livemode === "boolean" ? event.livemode : undefined,
       });
       if (envMismatch) {
+        await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+          provider: "stripe",
+          providerEventId: event.id,
+          reason: "environment_mismatch",
+          metadata: envMismatch,
+        });
         return reply.code(400).send({
           error: "WEBHOOK_ENVIRONMENT_MISMATCH",
           expected: envMismatch.expected,
           received: envMismatch.received,
         });
       }
+
+      await auditPaymentWebhookEvent(db, request, "payment.webhook_received", {
+        provider: "stripe",
+        providerEventId: event.id,
+        reason: "validated_webhook_received",
+        metadata: {
+          event_type: event.type,
+          livemode: typeof event.livemode === "boolean" ? event.livemode : undefined,
+        },
+      });
 
       // Idempotency check
       const duplicate = await hasWebhookBeenProcessed(db, event.id, "stripe");
@@ -2611,11 +2711,33 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (config.webhookSecret) {
       const valid = verifyStripeWebhook(rawBody, stripeSig, config.webhookSecret);
       if (!valid) {
+        await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+          provider: "stripe",
+          reason: "signature_verification_failed",
+          metadata: {
+            mode: "mock",
+          },
+        });
         return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "Webhook signature verification failed" });
       }
     } else if (process.env.NODE_ENV === "production") {
+      await auditPaymentWebhookEvent(db, request, "payment.webhook_rejected", {
+        provider: "stripe",
+        reason: "webhook_secret_not_configured",
+        metadata: {
+          mode: "mock",
+        },
+      });
       return reply.code(401).send({ error: "INVALID_STRIPE_WEBHOOK", message: "STRIPE_WEBHOOK_SECRET not configured" });
     }
+
+    await auditPaymentWebhookEvent(db, request, "payment.webhook_received", {
+      provider: "stripe",
+      reason: "validated_webhook_received",
+      metadata: {
+        mode: "mock",
+      },
+    });
 
     // In mock mode, just acknowledge receipt
     return reply.send({
