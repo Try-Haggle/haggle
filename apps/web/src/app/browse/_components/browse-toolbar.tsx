@@ -10,6 +10,7 @@ import {
 } from "@haggle/shared";
 import type { BrowseFilters, BrowseSort } from "../page";
 import { SearchBar } from "./search-bar";
+import { scrollToStickyToolbar } from "./sticky-toolbar";
 
 const SORT_LABELS: Record<BrowseSort, string> = {
   newest: "Newest",
@@ -61,7 +62,8 @@ function useUpdateParams() {
     const params = new URLSearchParams(searchParams.toString());
     mut(params);
     const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    requestAnimationFrame(scrollToStickyToolbar);
   };
 }
 
@@ -624,7 +626,7 @@ export function BrowseToolbar({
   }
 
   return (
-    <div className="mt-6 flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <div className="w-full min-w-0 flex-1 sm:max-w-xs">
         <SearchBar initialQ={filters.q} />
       </div>

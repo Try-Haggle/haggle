@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { scrollToStickyToolbar } from "./sticky-toolbar";
 
 const DEBOUNCE_MS = 300;
 
@@ -28,7 +29,8 @@ export function SearchBar({ initialQ }: { initialQ: string }) {
       if (next) params.set("q", next);
       else params.delete("q");
       const qs = params.toString();
-      router.push(qs ? `${pathname}?${qs}` : pathname);
+      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      requestAnimationFrame(scrollToStickyToolbar);
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [value, pathname, router, searchParams]);
