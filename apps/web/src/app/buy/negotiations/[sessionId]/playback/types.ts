@@ -24,14 +24,12 @@ export interface AgentCard {
   name: string;
   tagline: string;
   accentColor: string;
-  iconKey: "price-hunter" | "smart-trader" | "fast-closer" | "spec-analyst" | "gatekeeper" | "diplomat" | "storyteller" | "dealmaker";
-  stats?: {
-    priceAggression: number;
-    patienceLevel: number;
-    riskTolerance: number;
-    speedBias: number;
-    detailFocus: number;
-  };
+  /** Required for rendering — derived from NEGOTIATION_PRESETS when missing. */
+  emoji?: string;
+  /** @deprecated Legacy mock data only. Ignored by the renderer. */
+  iconKey?: string;
+  /** @deprecated Legacy mock data only. Ignored by the renderer. */
+  stats?: unknown;
 }
 
 export interface ListingSummary {

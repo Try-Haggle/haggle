@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Negotiation Agent Roster — Character Sheets</title>
+<style>
+  :root {
+    --bg: #0c0d12;
+    --bg-card: #14161e;
+    --bg-deep: #08090d;
+    --fg: #e8e8ec;
+    --fg-soft: #9aa0b0;
+    --fg-dim: #5a6072;
+    --border: #2a2d3a;
+    --gold: #c9a96e;
+    --hunter: #ef4444;
+    --closer: #f59e0b;
+    --verifier: #3b82f6;
+    --balancer: #10b981;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    padding: 48px 24px 96px;
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-size: 32px;
+    margin: 0 0 8px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 600;
+  }
+  header .subtitle {
+    color: var(--fg-soft);
+    font-style: italic;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  .roster {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  @media (min-width: 900px) {
+    .roster { grid-template-columns: 1fr 1fr; }
+  }
+  .character {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .character::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+  }
+  .character[data-id="hunter"]   { --accent: var(--hunter); }
+  .character[data-id="closer"]   { --accent: var(--closer); }
+  .character[data-id="verifier"] { --accent: var(--verifier); }
+  .character[data-id="balancer"] { --accent: var(--balancer); }
+
+  .char-head {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+  }
+  .portrait {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    background: var(--bg-deep);
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.6);
+  }
+  .head-text { flex: 1; min-width: 0; }
+  .name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .char-name {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fg);
+    letter-spacing: 0.5px;
+  }
+  .char-id {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--bg-deep);
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+  .char-class {
+    font-size: 13px;
+    color: var(--fg-soft);
+    font-style: italic;
+    letter-spacing: 0.5px;
+  }
+  .char-tagline {
+    font-size: 13px;
+    color: var(--accent);
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  .char-body {
+    padding: 20px 28px 24px;
+  }
+  .section {
+    margin-bottom: 18px;
+  }
+  .section:last-child { margin-bottom: 0; }
+  .section-title {
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+    padding-bottom: 4px;
+  }
+
+  .stat-block {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .stat-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .stat-label {
+    width: 84px;
+    flex-shrink: 0;
+    color: var(--fg-soft);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+  }
+  .stat-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-deep);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+  .stat-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0, transparent 24%, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.04) 26%, transparent 27%, transparent 49%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.04) 51%, transparent 52%, transparent 74%, rgba(255,255,255,0.04) 75%, rgba(255,255,255,0.04) 76%, transparent 77%);
+    pointer-events: none;
+  }
+  .stat-fill {
+    height: 100%;
+    background: var(--accent);
+  }
+  .stat-num {
+    width: 36px;
+    text-align: right;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--fg);
+  }
+
+  .knobs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 16px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+  }
+  .knob {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+  }
+  .knob-label { color: var(--fg-dim); }
+  .knob-val { color: var(--fg); }
+
+  .perks ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+  }
+  .perks li {
+    margin-bottom: 3px;
+    color: var(--fg);
+  }
+  .perks li::marker {
+    color: var(--accent);
+  }
+
+  .when-to-use {
+    font-size: 13px;
+    color: var(--fg);
+    line-height: 1.55;
+    background: var(--bg-deep);
+    padding: 10px 12px;
+    border-left: 2px solid var(--accent);
+    border-radius: 0 3px 3px 0;
+  }
+
+  .alias-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    font-size: 12px;
+  }
+  .alias {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 3px;
+  }
+  .alias-role {
+    color: var(--fg-dim);
+    font-family: ui-monospace, monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 2px;
+  }
+  .alias-name { color: var(--fg); font-weight: 600; }
+
+  .sample {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--fg-soft);
+    line-height: 1.6;
+  }
+  .sample b { color: var(--accent); }
+
+  .roster-comparison {
+    margin-top: 56px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px 28px;
+  }
+  .roster-comparison h2 {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin: 0 0 14px;
+    border-bottom: 1px dashed var(--border);
+    padding-bottom: 6px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--fg-dim);
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+  td:first-child { font-weight: 600; }
+  td .pip-h { color: var(--hunter); }
+  td .pip-c { color: var(--closer); }
+  td .pip-v { color: var(--verifier); }
+  td .pip-b { color: var(--balancer); }
+
+  footer {
+    margin-top: 48px;
+    text-align: center;
+    color: var(--fg-dim);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Negotiation Agent Roster</h1>
+  <div class="subtitle">— Four Archetypes of the 4D Weight System —</div>
+</header>
+
+<div class="roster">
+
+  <!-- HUNTER -->
+  <article class="character" data-id="hunter">
+    <div class="char-head">
+      <div class="portrait">🎯</div>
+      <div class="head-text">
+        <div class="name-row">
+          <span class="char-name">Bargain Hunter</span>
+          <span class="char-id">Hunter</span>
+        </div>
+        <div class="char-class">Long-Game Strategist</div>
+        <div class="char-tagline">"Holds out for the best price."</div>
+      </div>
+    </div>
+    <div class="char-body">
+      <div class="section">
+        <div class="section-title">Weights</div>
+        <div class="stat-block">
+          <div class="stat-row"><span class="stat-label">Price w_p</span><div class="stat-bar"><div class="stat-fill" style="width:50%"></div></div><span class="stat-num">0.50</span></div>
+          <div class="stat-row"><span class="stat-label">Time w_t</span><div class="stat-bar"><div class="stat-fill" style="width:15%"></div></div><span class="stat-num">0.15</span></div>
+          <div class="stat-row"><span class="stat-label">Risk w_r</span><div class="stat-bar"><div class="stat-fill" style="width:20%"></div></div><span class="stat-num">0.20</span></div>
+          <div class="stat-row"><span class="stat-label">Social w_s</span><div class="stat-bar"><div class="stat-fill" style="width:15%"></div></div><span class="stat-num">0.15</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Engine Knobs</div>
+        <div class="knobs">
+          <div class="knob"><span class="knob-label">α (time pressure)</span><span class="knob-val">0.50</span></div>
+          <div class="knob"><span class="knob-label">β (concession)</span><span class="knob-val">0.40</span></div>
+          <div class="knob"><span class="knob-label">u_threshold</span><span class="knob-val">0.55</span></div>
+          <div class="knob"><span class="knob-label">u_aspiration</span><span class="knob-val">0.70</span></div>
+        </div>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Strengths</div>
+        <ul>
+          <li>Best price outcome of the four</li>
+          <li>Resilient under deadline pressure</li>
+          <li>Strong walk-away credibility</li>
+        </ul>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Weaknesses</div>
+        <ul>
+          <li>Slow to close — 6-10 rounds typical</li>
+          <li>High rejection rate; misses quick wins</li>
+          <li>Risk-blind in noisy markets</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">When to use</div>
+        <div class="when-to-use">
+          High-value or rare items where price beats time.
+          Sellers with patience; buyers willing to dig.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Aliases</div>
+        <div class="alias-grid">
+          <div class="alias"><div class="alias-role">As Buyer</div><div class="alias-name">Bargain Hunter</div></div>
+          <div class="alias"><div class="alias-role">As Seller</div><div class="alias-name">Patient Lister</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Simulation</div>
+        <div class="sample">
+          $1,000 listing, 24h deadline:<br>
+          → settles ~ <b>$830-880</b> in <b>6-10 rounds</b>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- CLOSER -->
+  <article class="character" data-id="closer">
+    <div class="char-head">
+      <div class="portrait">⚡</div>
+      <div class="head-text">
+        <div class="name-row">
+          <span class="char-name">Quick Closer</span>
+          <span class="char-id">Closer</span>
+        </div>
+        <div class="char-class">Speed Specialist</div>
+        <div class="char-tagline">"Closes fast, even at a higher price."</div>
+      </div>
+    </div>
+    <div class="char-body">
+      <div class="section">
+        <div class="section-title">Weights</div>
+        <div class="stat-block">
+          <div class="stat-row"><span class="stat-label">Price w_p</span><div class="stat-bar"><div class="stat-fill" style="width:20%"></div></div><span class="stat-num">0.20</span></div>
+          <div class="stat-row"><span class="stat-label">Time w_t</span><div class="stat-bar"><div class="stat-fill" style="width:50%"></div></div><span class="stat-num">0.50</span></div>
+          <div class="stat-row"><span class="stat-label">Risk w_r</span><div class="stat-bar"><div class="stat-fill" style="width:15%"></div></div><span class="stat-num">0.15</span></div>
+          <div class="stat-row"><span class="stat-label">Social w_s</span><div class="stat-bar"><div class="stat-fill" style="width:15%"></div></div><span class="stat-num">0.15</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Engine Knobs</div>
+        <div class="knobs">
+          <div class="knob"><span class="knob-label">α (time pressure)</span><span class="knob-val">2.00</span></div>
+          <div class="knob"><span class="knob-label">β (concession)</span><span class="knob-val">2.00</span></div>
+          <div class="knob"><span class="knob-label">u_threshold</span><span class="knob-val">0.40</span></div>
+          <div class="knob"><span class="knob-label">u_aspiration</span><span class="knob-val">0.55</span></div>
+        </div>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Strengths</div>
+        <ul>
+          <li>Locks deals in 2-4 rounds</li>
+          <li>Very low rejection rate</li>
+          <li>Ideal for volume / inventory turn</li>
+        </ul>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Weaknesses</div>
+        <ul>
+          <li>Mediocre price outcome — concedes early</li>
+          <li>Predictable; opponents may exploit speed</li>
+          <li>Weak walk-away threat</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">When to use</div>
+        <div class="when-to-use">
+          When time matters more than dollars.
+          Inventory clearance, fast cash-out, urgent buys.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Aliases</div>
+        <div class="alias-grid">
+          <div class="alias"><div class="alias-role">As Buyer</div><div class="alias-name">Quick Buyer</div></div>
+          <div class="alias"><div class="alias-role">As Seller</div><div class="alias-name">Quick Closer</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Simulation</div>
+        <div class="sample">
+          $1,000 listing, 24h deadline:<br>
+          → settles ~ <b>$920-970</b> in <b>2-4 rounds</b>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- VERIFIER -->
+  <article class="character" data-id="verifier">
+    <div class="char-head">
+      <div class="portrait">🔍</div>
+      <div class="head-text">
+        <div class="name-row">
+          <span class="char-name">Cautious Verifier</span>
+          <span class="char-id">Verifier</span>
+        </div>
+        <div class="char-class">Risk Investigator</div>
+        <div class="char-tagline">"Walks away if info isn't solid."</div>
+      </div>
+    </div>
+    <div class="char-body">
+      <div class="section">
+        <div class="section-title">Weights</div>
+        <div class="stat-block">
+          <div class="stat-row"><span class="stat-label">Price w_p</span><div class="stat-bar"><div class="stat-fill" style="width:25%"></div></div><span class="stat-num">0.25</span></div>
+          <div class="stat-row"><span class="stat-label">Time w_t</span><div class="stat-bar"><div class="stat-fill" style="width:20%"></div></div><span class="stat-num">0.20</span></div>
+          <div class="stat-row"><span class="stat-label">Risk w_r</span><div class="stat-bar"><div class="stat-fill" style="width:40%"></div></div><span class="stat-num">0.40</span></div>
+          <div class="stat-row"><span class="stat-label">Social w_s</span><div class="stat-bar"><div class="stat-fill" style="width:15%"></div></div><span class="stat-num">0.15</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Engine Knobs</div>
+        <div class="knobs">
+          <div class="knob"><span class="knob-label">α (time pressure)</span><span class="knob-val">1.00</span></div>
+          <div class="knob"><span class="knob-label">β (concession)</span><span class="knob-val">1.00</span></div>
+          <div class="knob"><span class="knob-label">u_threshold</span><span class="knob-val">0.60</span></div>
+          <div class="knob"><span class="knob-label">u_aspiration</span><span class="knob-val">0.75</span></div>
+        </div>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Strengths</div>
+        <ul>
+          <li>Filters scams and low-trust counterparties</li>
+          <li>Demands clean information before any move</li>
+          <li>Strong outcome when signals are good</li>
+        </ul>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Weaknesses</div>
+        <ul>
+          <li>Walks away when info is sparse — "no deal" rate high</li>
+          <li>Slower than Closer; may miss benign sellers</li>
+          <li>Less effective on commodity goods</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">When to use</div>
+        <div class="when-to-use">
+          High-fraud-risk categories: vehicles, electronics, P2P
+          luxury. When trust matters more than getting any deal.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Aliases</div>
+        <div class="alias-grid">
+          <div class="alias"><div class="alias-role">As Buyer</div><div class="alias-name">Cautious Verifier</div></div>
+          <div class="alias"><div class="alias-role">As Seller</div><div class="alias-name">Vetted Lister</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Simulation</div>
+        <div class="sample">
+          $1,000 listing, 24h deadline:<br>
+          → if signals strong: ~ <b>$880</b> in <b>3-7 rounds</b><br>
+          → if signals weak: <b>walks away</b>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- BALANCER -->
+  <article class="character" data-id="balancer">
+    <div class="char-head">
+      <div class="portrait">⚖️</div>
+      <div class="head-text">
+        <div class="name-row">
+          <span class="char-name">Steady Balancer</span>
+          <span class="char-id">Balancer · default</span>
+        </div>
+        <div class="char-class">Generalist</div>
+        <div class="char-tagline">"Even-handed across price, time, and trust."</div>
+      </div>
+    </div>
+    <div class="char-body">
+      <div class="section">
+        <div class="section-title">Weights</div>
+        <div class="stat-block">
+          <div class="stat-row"><span class="stat-label">Price w_p</span><div class="stat-bar"><div class="stat-fill" style="width:30%"></div></div><span class="stat-num">0.30</span></div>
+          <div class="stat-row"><span class="stat-label">Time w_t</span><div class="stat-bar"><div class="stat-fill" style="width:25%"></div></div><span class="stat-num">0.25</span></div>
+          <div class="stat-row"><span class="stat-label">Risk w_r</span><div class="stat-bar"><div class="stat-fill" style="width:25%"></div></div><span class="stat-num">0.25</span></div>
+          <div class="stat-row"><span class="stat-label">Social w_s</span><div class="stat-bar"><div class="stat-fill" style="width:20%"></div></div><span class="stat-num">0.20</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Engine Knobs</div>
+        <div class="knobs">
+          <div class="knob"><span class="knob-label">α (time pressure)</span><span class="knob-val">1.00</span></div>
+          <div class="knob"><span class="knob-label">β (concession)</span><span class="knob-val">1.00</span></div>
+          <div class="knob"><span class="knob-label">u_threshold</span><span class="knob-val">0.50</span></div>
+          <div class="knob"><span class="knob-label">u_aspiration</span><span class="knob-val">0.65</span></div>
+        </div>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Strengths</div>
+        <ul>
+          <li>Reasonable outcome in any context</li>
+          <li>Safe default for new users</li>
+          <li>Predictable, easy to coach</li>
+        </ul>
+      </div>
+
+      <div class="section perks">
+        <div class="section-title">Weaknesses</div>
+        <ul>
+          <li>Never the best on any single dimension</li>
+          <li>Lacks edge in extreme situations</li>
+          <li>Generic — opponents learn fast</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">When to use</div>
+        <div class="when-to-use">
+          First-time deals, mid-priced everyday goods,
+          "I don't know yet" — the system default.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Aliases</div>
+        <div class="alias-grid">
+          <div class="alias"><div class="alias-role">As Buyer</div><div class="alias-name">Steady Buyer</div></div>
+          <div class="alias"><div class="alias-role">As Seller</div><div class="alias-name">Steady Seller</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Simulation</div>
+        <div class="sample">
+          $1,000 listing, 24h deadline:<br>
+          → settles ~ <b>$880-920</b> in <b>4-6 rounds</b>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</div>
+
+<section class="roster-comparison">
+  <h2>Side-by-Side Comparison</h2>
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th><span class="pip-h">🎯 Hunter</span></th>
+        <th><span class="pip-c">⚡ Closer</span></th>
+        <th><span class="pip-v">🔍 Verifier</span></th>
+        <th><span class="pip-b">⚖️ Balancer</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Dominant axis</td><td>Price</td><td>Time</td><td>Risk</td><td>None — flat</td></tr>
+      <tr><td>w_p / w_t / w_r / w_s</td><td>50/15/20/15</td><td>20/50/15/15</td><td>25/20/40/15</td><td>30/25/25/20</td></tr>
+      <tr><td>Concession (β)</td><td>0.40 (slow)</td><td>2.00 (fast)</td><td>1.00 (mid)</td><td>1.00 (mid)</td></tr>
+      <tr><td>Time pressure (α)</td><td>0.50 (low)</td><td>2.00 (high)</td><td>1.00 (mid)</td><td>1.00 (mid)</td></tr>
+      <tr><td>Walk-away (u_thr)</td><td>0.55</td><td>0.40</td><td>0.60 (strict)</td><td>0.50</td></tr>
+      <tr><td>Settle price (sim)</td><td>$830-880</td><td>$920-970</td><td>$880 or walk</td><td>$880-920</td></tr>
+      <tr><td>Rounds to close</td><td>6-10</td><td>2-4</td><td>3-7</td><td>4-6</td></tr>
+      <tr><td>Best for</td><td>Rare, high-value</td><td>Volume, urgency</td><td>High-fraud risk</td><td>General default</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  Negotiation Engine · 4D Weight Presets · Build 2026-05-09
+</footer>
+
+</div>
+</body>
+</html>

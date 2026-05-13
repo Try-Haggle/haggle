@@ -1,5 +1,8 @@
 import { serverApi } from "@/lib/api-server";
-import { BUYER_AGENT_PRESETS } from "@/lib/buyer-agents";
+import {
+  NEGOTIATION_PRESETS,
+  getNegotiationPreset,
+} from "@haggle/shared";
 import { PlaybackArena } from "./playback/playback-arena";
 import { getMockPlayback } from "./playback/mock-data";
 import type { PlaybackResponse } from "./playback/types";
@@ -22,16 +25,25 @@ interface PublicListing {
   sellerAgentPreset: string | null;
 }
 
-const SELLER_AGENT_META: Record<string, { name: string; tagline: string; accentColor: string; iconKey: PlaybackResponse["session"]["sellerAgent"]["iconKey"] }> = {
-  gatekeeper:  { name: "The Gatekeeper",  tagline: "Holds firm on value.",          accentColor: "#06b6d4", iconKey: "gatekeeper" },
-  diplomat:    { name: "The Diplomat",    tagline: "Builds rapport, lands fair deals.", accentColor: "#06b6d4", iconKey: "diplomat" },
-  storyteller: { name: "The Storyteller", tagline: "Frames value through context.",  accentColor: "#a855f7", iconKey: "storyteller" },
-  dealmaker:   { name: "The Dealmaker",   tagline: "Closes deals quickly.",          accentColor: "#10b981", iconKey: "dealmaker" },
-};
+/** Look up seller-side preset metadata. Listings publish strategyConfig.preset
+ *  which now matches NEGOTIATION_PRESETS ids. */
+function sellerMetaFor(
+  presetId: string,
+): PlaybackResponse["session"]["sellerAgent"] | null {
+  const preset = getNegotiationPreset(presetId);
+  if (!preset) return null;
+  return {
+    presetId: preset.id,
+    name: preset.copy.seller.name,
+    tagline: preset.copy.seller.tagline,
+    accentColor: preset.accentColor,
+    emoji: preset.emoji,
+  };
+}
 
 /** Extracts the listing publicId from the sessionId, stripping the `-{agentId}` suffix. */
 function parsePublicId(sessionId: string): string {
-  for (const preset of BUYER_AGENT_PRESETS) {
+  for (const preset of NEGOTIATION_PRESETS) {
     const suffix = `-${preset.id}`;
     if (sessionId.endsWith(suffix)) return sessionId.slice(0, -suffix.length);
   }
@@ -71,7 +83,9 @@ function applyListingOverride(base: PlaybackResponse, listing: PublicListing): P
   const realAsking = listing.targetPrice ? parseFloat(listing.targetPrice) : base.session.listing.askingPrice;
   const mockAsking = base.session.listing.askingPrice;
   const ratio = mockAsking > 0 ? realAsking / mockAsking : 1;
-  const sellerMeta = listing.sellerAgentPreset ? SELLER_AGENT_META[listing.sellerAgentPreset] : null;
+  const sellerMeta = listing.sellerAgentPreset
+    ? sellerMetaFor(listing.sellerAgentPreset)
+    : null;
 
   // Scale every offer price proportionally so the negotiation numbers anchor
   // to the real asking price (e.g. mock $4,200 opening on a $5,800 listing
@@ -104,9 +118,7 @@ function applyListingOverride(base: PlaybackResponse, listing: PublicListing): P
         category: listing.category,
       },
       finalPrice: scaledFinalPrice,
-      sellerAgent: sellerMeta
-        ? { ...base.session.sellerAgent, presetId: listing.sellerAgentPreset!, ...sellerMeta }
-        : base.session.sellerAgent,
+      sellerAgent: sellerMeta ?? base.session.sellerAgent,
     },
     rounds: scaledRounds,
   };

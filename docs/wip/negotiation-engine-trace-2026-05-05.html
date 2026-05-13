@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>협상 엔진 완벽 트레이스 — 시작부터 종료까지 (v2)</title>
+<style>
+  :root {
+    --fg: #1a1a1a;
+    --fg-soft: #555;
+    --bg: #fafaf8;
+    --bg-card: #fff;
+    --accent: #1f4f8b;
+    --accent-soft: #e7eef7;
+    --border: #d8d6d0;
+    --code-bg: #f3f1ec;
+    --warn-bg: #fff4e0;
+    --warn-border: #e6b34a;
+    --ok-bg: #e6f2ee;
+    --ok-border: #0b6e4f;
+    --stage-bg: #f7f4ed;
+    --stage-border: #c9a96e;
+    --gap-bg: #fdecea;
+    --gap-border: #b94a3d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Apple SD Gothic Neo", BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.65;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+    font-size: 15px;
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 4px;
+    line-height: 1.3;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 56px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+  }
+  h3 {
+    font-size: 17px;
+    margin: 32px 0 12px;
+    color: var(--fg);
+  }
+  h4 {
+    font-size: 15px;
+    margin: 20px 0 8px;
+    color: var(--fg-soft);
+    font-weight: 600;
+  }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 24px; margin: 10px 0; }
+  li { margin: 4px 0; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  pre {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: var(--code-bg);
+    padding: 16px 20px;
+    border-radius: 6px;
+    overflow-x: auto;
+    line-height: 1.45;
+    border: 1px solid var(--border);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent-soft);
+    font-weight: 600;
+    color: var(--accent);
+  }
+  blockquote {
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 14px;
+  }
+  blockquote p { margin: 4px 0; }
+  .meta {
+    color: var(--fg-soft);
+    font-size: 13px;
+    font-style: italic;
+    margin-bottom: 24px;
+  }
+  .tldr {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 24px 0 40px;
+  }
+  .tldr h2 {
+    margin-top: 0;
+    border: none;
+    color: var(--ok-border);
+    font-size: 18px;
+    padding: 0;
+  }
+  .tldr ol, .tldr ul { margin: 8px 0; }
+  .callout {
+    background: var(--warn-bg);
+    border-left: 4px solid var(--warn-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 14px;
+  }
+  .gap {
+    background: var(--gap-bg);
+    border-left: 4px solid var(--gap-border);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 14px;
+  }
+  .gap strong { color: var(--gap-border); }
+  .stage {
+    background: var(--stage-bg);
+    border-left: 4px solid var(--stage-border);
+    padding: 14px 18px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .stage h4 {
+    margin: 0 0 6px;
+    color: #7a5a1f;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .stage .stage-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 8px;
+  }
+  .stage .stage-meta {
+    font-size: 12px;
+    color: var(--fg-soft);
+    margin-top: 8px;
+    font-style: italic;
+  }
+  .label-llm { background: #d8e4f5; color: #1f4f8b; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .label-pure { background: #e0eee0; color: #2d6b2d; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .label-db { background: #f4e4d0; color: #8b4513; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .label-net { background: #f5d8e4; color: #8b1f4f; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .label-rule { background: #efe9e0; color: #7a5a1f; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .label-tmpl { background: #e6e0f5; color: #4a3b8b; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 24px;
+    margin: 24px 0 40px;
+    font-size: 14px;
+  }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .small { font-size: 13px; color: var(--fg-soft); }
+  .filepath { font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg-soft); }
+  .check-yes { color: var(--ok-border); font-weight: 600; }
+  .check-no { color: var(--gap-border); font-weight: 600; }
+  .check-mid { color: #b8861a; font-weight: 600; }
+  .version-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  @media print {
+    body { padding: 24px; max-width: none; }
+    h2 { page-break-after: avoid; }
+    pre, table, .stage { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>협상 엔진 완벽 트레이스<span class="version-badge">v2 — 정정판</span></h1>
+<p class="meta">작성: 2026-05-05 / 미팅용 / 작성자: Sean + Claude</p>
+
+<blockquote>
+<p><strong>v1과 차이:</strong> 첫 트레이스는 "rule-based / LLM 둘 다 있다" 정도로 모호했음. v2는 <strong>실제 운영(production) default가 무엇인지, LLM이 어디서 진짜 호출되는지, 두 에이전트가 어떻게 메시지를 주고받는지, HNP가 정확히 무슨 역할인지</strong>를 명확하게 정리.</p>
+</blockquote>
+
+<div class="toc">
+  <strong>목차</strong>
+  <ol>
+    <li><a href="#tldr">한 페이지 요약 (정정)</a></li>
+    <li><a href="#default">현재 운영 default — Rule-based vs LLM의 실체</a></li>
+    <li><a href="#two-agent">두 에이전트가 메시지 주고받는 메커니즘</a></li>
+    <li><a href="#entry">Entry Points</a></li>
+    <li><a href="#lifecycle">전체 Lifecycle</a></li>
+    <li><a href="#round">한 라운드 상세 트레이스 (10단계)</a></li>
+    <li><a href="#llm-stages">LLM은 정확히 어디서 호출되나 (Stage별 검증)</a></li>
+    <li><a href="#models">핵심 데이터 모델</a></li>
+    <li><a href="#termination">종료 시퀀스 (4가지)</a></li>
+    <li><a href="#hnp">HNP 프로토콜의 실 역할</a></li>
+    <li><a href="#demo">Demo 라우트 — 무엇을 시연하나</a></li>
+    <li><a href="#vision-vs-reality">사용자가 그린 흐름 vs 현실의 차이</a></li>
+    <li><a href="#summary">최종 종합</a></li>
+  </ol>
+</div>
+
+<div class="tldr" id="tldr">
+<h2>0. 한 페이지 요약 (정정)</h2>
+<ol>
+  <li><strong>현재 production default = Rule-based.</strong> <code>NEGOTIATION_ENGINE</code> env가 명시되지 않으면 <code>'rule'</code>이 기본값. 사용자가 협상 버튼 누르면 <code>executeNegotiationRound()</code> (순수 규칙 기반)이 돈다.</li>
+  <li><strong>LLM은 opt-in.</strong> <code>NEGOTIATION_ENGINE=llm</code>로 켜야 staged pipeline이 도는데, 그것조차도 <strong>6 stage 중 1개(Decide)만 진짜 LLM 호출</strong>. Understand는 정규식, Respond는 템플릿.</li>
+  <li><strong>두 에이전트는 같은 <code>negotiation_sessions</code> 행 1개를 공유.</strong> 라운드 자체에 <code>sender_role</code> 컬럼이 있어 누가 보낸 건지 구분. 같은 세션, 라운드별 sender 토글.</li>
+  <li><strong>HNP는 옵션 wire-level 검증 레이어.</strong> 외부 에이전트가 envelope+서명 보내면 검증. 안 보내면 그냥 통과. 협상 결정 로직과 분리.</li>
+  <li><strong>Demo 라우트(<code>intelligence-demo</code>, <code>negotiation-demo</code>)는 in-memory 시뮬레이션.</strong> Production의 DB-backed round persistence와 별개. 주로 LLM stage 품질 검증용.</li>
+  <li><strong>사용자가 그린 흐름("agent → LLM 생성 → 다른 agent가 LLM으로 읽음 → 응답")은 절반만 가능.</strong> Decide의 LLM 보강은 있지만, Understand의 자유 텍스트 LLM 파싱과 Respond의 LLM 응답 생성은 미구현.</li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="default">1. 현재 운영 default — Rule-based vs LLM의 실체</h2>
+
+<h3>1.1 분기점: <code>executor-factory.ts</code></h3>
+
+<p>매 라운드 라우트(<code>negotiations.ts:378</code>)가 <code>getExecutor()</code>를 호출하면 다음 분기:</p>
+
+<pre>export function getExecutor(): RoundExecutor {
+  const mode = getEngineMode();          // ← NEGOTIATION_ENGINE env 읽음
+  if (mode === 'llm') {
+    const pipelineMode = getPipelineMode();  // ← NEGOTIATION_PIPELINE env 읽음
+    if (pipelineMode === 'staged') {
+      return executeStagedNegotiationRound;  // 6-stage pipeline
+    }
+    return executeLLMNegotiationRound;       // legacy LLM (Step 56 RefereeService)
+  }
+  return executeRuleBasedRound;          // ← DEFAULT
+}
+
+// config.ts:16-20
+export function getEngineMode(): NegotiationEngineMode {
+  const mode = process.env.NEGOTIATION_ENGINE;
+  if (mode === 'llm') return 'llm';
+  return 'rule';                         // ← env 명시 없으면 무조건 'rule'
+}</pre>
+
+<h3>1.2 3가지 모드의 활성화 상태</h3>
+
+<table>
+<thead>
+<tr><th>Executor</th><th>활성화 조건</th><th>현재 상태</th><th>코드 위치</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Rule-based</strong></td>
+  <td>env 명시 안 함 (default)</td>
+  <td><span class="check-yes">✅ ACTIVE / DEFAULT</span></td>
+  <td><code>negotiation-executor.ts:100-309</code></td>
+</tr>
+<tr>
+  <td><strong>Staged LLM (6-stage)</strong></td>
+  <td><code>NEGOTIATION_ENGINE=llm</code> + <code>NEGOTIATION_PIPELINE=staged</code> (또는 미명시 — staged가 LLM 모드 default)</td>
+  <td><span class="check-mid">⚠️ OPT-IN</span></td>
+  <td><code>negotiation/pipeline/executor.ts:114-408</code></td>
+</tr>
+<tr>
+  <td><strong>Legacy LLM</strong></td>
+  <td><code>NEGOTIATION_ENGINE=llm</code> + <code>NEGOTIATION_PIPELINE=legacy</code></td>
+  <td><span class="check-mid">⚠️ OPT-IN, deprecated 추정</span></td>
+  <td><code>llm-negotiation-executor.ts:82-361</code></td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout">
+<strong>핵심 사실:</strong> <code>.env.example:54-55</code>에 <code>NEGOTIATION_ENGINE=rule</code>로 적혀있음. 운영 인스턴스가 이 default를 따라간다면, <strong>production은 100% rule-based로 작동 중</strong>일 가능성이 높음. (실제 운영 .env 확인 필요)
+</div>
+
+<hr>
+
+<h2 id="two-agent">2. 두 에이전트가 메시지 주고받는 메커니즘 (사용자가 가장 헷갈려한 부분)</h2>
+
+<h3>2.1 같은 세션 1개를 공유한다</h3>
+
+<p>Buyer agent와 Seller agent는 <strong>각자 다른 세션을 열지 않음</strong>. <strong>하나의 <code>negotiation_sessions</code> row를 공유</strong>하고, 라운드별로 누가 보냈는지 <code>sender_role</code>로 구분:</p>
+
+<pre>negotiation_sessions
+├── id: UUID                      ← 1개
+├── role: 'BUYER' | 'SELLER'      ← 이 세션의 "주인공" 시점
+├── buyer_id, seller_id           ← 양쪽 user 다 기록
+├── counterparty_id               ← 상대 user
+└── strategy_snapshot: jsonb      ← 한쪽의 strategy
+
+negotiation_rounds                ← 같은 session_id 아래 N개
+├── round_no: 1, 2, 3, ...
+├── sender_role: 'BUYER' | 'SELLER'   ← 이 라운드 보낸 쪽
+├── price_minor                       ← 이 라운드의 incoming 가격
+├── counter_price_minor               ← 응답 가격
+└── decision                          ← 응답 결정</pre>
+
+<h3>2.2 라운드 흐름 — 예시 트레이스</h3>
+
+<p>Buyer가 첫 오퍼($85) 내고, Seller가 응답($87 counter)하는 시나리오:</p>
+
+<pre>① Buyer: POST /negotiations/sessions/:id/offers
+   body: { sender_role: 'BUYER', price_minor: 8500 }
+
+   서버 동작 (동일 트랜잭션 안에서):
+   ├─ SELECT session FOR UPDATE
+   ├─ 인바운드로 인식: { sender: BUYER, price: 8500 }
+   ├─ Seller의 strategy_snapshot 로드 (같은 row에서)
+   ├─ Seller 입장에서 의사결정 (session.role='SELLER' 시점)
+   │  → decision='COUNTER', counterPrice=8700
+   ├─ INSERT round { sender_role='BUYER', price=8500, counter=8700, decision='COUNTER' }
+   └─ COMMIT
+   응답: 다음 round 정보 + counter=8700
+
+② Seller: 위 응답 받고 POST /negotiations/sessions/:id/offers
+   body: { sender_role: 'SELLER', price_minor: 8700 }
+
+   서버 동작:
+   ├─ SELECT session FOR UPDATE
+   ├─ 인바운드: { sender: SELLER, price: 8700 }
+   ├─ Buyer의 strategy_snapshot 로드
+   ├─ Buyer 입장에서 의사결정
+   │  → decision='COUNTER' or 'ACCEPT' or ...
+   └─ INSERT round { sender_role='SELLER', price=8700, ... }</pre>
+
+<div class="callout">
+<strong>중요한 포인트:</strong>
+<ul>
+  <li>매 라운드는 <strong>한쪽이 직접 API 호출</strong>해야 다음으로 진행. 자동 펌프(cron, webhook) 없음.</li>
+  <li><strong>동기 실행</strong>: 라운드 제출 → 즉시 상대 입장에서 응답 계산. 비동기 큐 없음.</li>
+  <li>Strategy는 한 row에 한 개만 저장돼있는 듯. <strong>양쪽 strategy를 어떻게 같은 row에 합쳐 보관하는지는 코드 더 봐야 확실</strong> (mystery).</li>
+</ul>
+</div>
+
+<h3>2.3 한 명만 AI인 경우</h3>
+
+<p>한 명이 사람, 한 명이 AI agent인 경우 — 사람의 메시지(가격 + 자유 텍스트)는 같은 <code>POST /offers</code>로 들어감. AI 측 응답은 자동으로 다음 라운드에서 계산. 즉 <strong>AI가 자기 차례에 응답을 직접 만드는 건 다음 incoming 라운드를 받을 때 일어남</strong>, 별도 cron 아님.</p>
+
+<hr>
+
+<h2 id="entry">3. Entry Points</h2>
+
+<table>
+<thead>
+<tr><th>유형</th><th>경로</th><th>호출 함수</th><th>역할</th></tr>
+</thead>
+<tbody>
+<tr><td>HTTP</td><td><code>POST /negotiations/sessions</code></td><td><code>createSession()</code></td><td>세션 생성, readiness 검증</td></tr>
+<tr><td>HTTP</td><td><code>POST /negotiations/sessions/:id/offers</code></td><td><code>getExecutor()</code> → executor</td><td>한 라운드 실행</td></tr>
+<tr><td>HTTP</td><td><code>PATCH /negotiations/sessions/:id/accept</code></td><td><code>finalizeAcceptedSession()</code></td><td>수락 종료</td></tr>
+<tr><td>HTTP</td><td><code>PATCH /negotiations/sessions/:id/reject</code></td><td><code>updateSessionState()</code></td><td>거절 종료</td></tr>
+<tr><td>MCP Tool</td><td><code>haggle_create_negotiation_session</code></td><td><code>createSession()</code></td><td>AI 에이전트가 직접 협상 시작</td></tr>
+<tr><td>WebSocket</td><td>(실시간 push)</td><td><code>broadcastToSession()</code></td><td>출력만 — 새 세션 시작 못 함</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2 id="lifecycle">4. 전체 Lifecycle 다이어그램</h2>
+
+<pre>┌─────────────────────────────────────────────────────────┐
+│ START: POST /negotiations/sessions  또는  MCP create     │
+│ Input: listing_id, buyer_id, seller_id, role,            │
+│        strategy_snapshot                                  │
+└─────────────────┬───────────────────────────────────────┘
+                  ▼
+         evaluateNegotiationStartReadiness()
+                  ▼
+         createSession() → DB INSERT (status=CREATED)
+                  ▼
+    ┌─────── LOOP: 라운드 N회 ───────┐
+    │                                 │
+    │  ① 한쪽 agent (또는 사람)        │
+    │     POST /offers { sender_role, price, ... }
+    │                                 │
+    │  ② DB 트랜잭션:                 │
+    │     - SELECT FOR UPDATE         │
+    │     - idempotency check         │
+    │     - reconstructSession        │
+    │     - executor 분기:            │
+    │       ├─ rule-based (default)   │  ← 90%+ 운영 경로
+    │       ├─ staged LLM (opt-in)    │
+    │       └─ legacy LLM (opt-in)    │
+    │     - createRound (DB INSERT)   │
+    │     - recordSignals             │
+    │     - updateSessionState        │
+    │     - COMMIT                    │
+    │                                 │
+    │  ③ Post-commit:                 │
+    │     - WebSocket broadcast       │
+    │     - eventDispatcher           │
+    │     - groupOrchestration        │
+    │                                 │
+    │  ④ 다른 쪽이 응답 받고 다음 라운드│
+    └─────────────────────────────────┘
+                  │
+                  ▼
+       TERMINATION (4가지: ACCEPT/REJECT/ESCALATE/DEADLINE)</pre>
+
+<hr>
+
+<h2 id="round">5. 한 라운드 상세 트레이스 (10단계)</h2>
+
+<p>아래는 <strong>Rule-based 경로</strong> 기준. LLM 경로는 Section 6 참고.</p>
+
+<div class="stage">
+<h4>Stage 0</h4>
+<div class="stage-name">트랜잭션 + 행 잠금 <span class="label-db">DB</span></div>
+<pre>BEGIN; SELECT * FROM negotiation_sessions WHERE id=? FOR UPDATE;</pre>
+</div>
+
+<div class="stage">
+<h4>Stage 1</h4>
+<div class="stage-name">재구성 (DB → engine 타입) <span class="label-pure">순수</span></div>
+<pre>reconstructSession(dbSession, dbRounds) → NegotiationSession
+reconstructStrategy(strategySnapshot)  → MasterStrategy</pre>
+</div>
+
+<div class="stage">
+<h4>Stage 2</h4>
+<div class="stage-name">Context 조립 <span class="label-pure">순수</span></div>
+<pre>assembleContext(strategy, roundData) → NegotiationContext</pre>
+</div>
+
+<div class="stage">
+<h4>Stage 3</h4>
+<div class="stage-name">Utility 계산 <span class="label-pure">순수</span></div>
+<pre>computeUtility(ctx) → { u_total, v_p, v_t, v_r, v_s }</pre>
+<div class="stage-meta">LLM 호출 0회. 4D 가중합산.</div>
+</div>
+
+<div class="stage">
+<h4>Stage 4</h4>
+<div class="stage-name">의사결정 (6-tier 규칙) <span class="label-pure">순수</span></div>
+<pre>makeDecision(utility, thresholds, session_state)
+  → ACCEPT | COUNTER | REJECT | NEAR_DEAL | ESCALATE</pre>
+<div class="stage-meta">순수 if/else. LLM 절대 안 씀.</div>
+</div>
+
+<div class="stage">
+<h4>Stage 5</h4>
+<div class="stage-name">Counter Offer (Faratin) <span class="label-pure">순수</span></div>
+<pre>P(t) = p_start + (p_limit - p_start) × (t/T)^(1/beta)</pre>
+</div>
+
+<div class="stage">
+<h4>Stage 6</h4>
+<div class="stage-name">세션 상태 전환 <span class="label-pure">순수</span></div>
+<pre>transition(status, event) → newStatus
+rounds_no_concession 카운터 업데이트</pre>
+</div>
+
+<div class="stage">
+<h4>Stage 7</h4>
+<div class="stage-name">메시지 객체 생성 <span class="label-tmpl">템플릿</span></div>
+<p>Rule-based 경로에서는 <strong>구조화된 객체만</strong> 생성 — 자연어 텍스트 X. 자연어가 필요하면 LLM 경로의 Stage 5(RESPOND)가 처리.</p>
+</div>
+
+<div class="stage">
+<h4>Stage 8</h4>
+<div class="stage-name">DB 저장 <span class="label-db">DB</span></div>
+<pre>createRound() + updateSessionState()  -- 낙관적 잠금</pre>
+</div>
+
+<div class="stage">
+<h4>Stage 9</h4>
+<div class="stage-name">신호 추출 + 메모리 기록 <span class="label-rule">정규식</span> <span class="label-db">DB</span></div>
+<pre>extractConversationSignals()           -- 정규식/keyword
+  → recordTermCandidates()             -- term_intelligence_terms
+  → recordUserMemoryCards()            -- user_memory_cards
+  → insertMarketSignals()              -- market_conversation_signals</pre>
+<div class="stage-meta">현재 LLM 안 씀. 정규식 매칭으로 신호 뽑음 → 미묘함 손실 큼.</div>
+</div>
+
+<div class="stage">
+<h4>Stage 10</h4>
+<div class="stage-name">COMMIT + Post-commit <span class="label-net">NET</span></div>
+<pre>COMMIT;
+broadcastToSession()       // WebSocket
+eventDispatcher.dispatch() // negotiation.agreed/terminal/...
+executeGroupOrchestration() // if groupId</pre>
+</div>
+
+<hr>
+
+<h2 id="llm-stages">6. LLM은 정확히 어디서 호출되나 (Stage별 검증)</h2>
+
+<p>여기가 v1에서 가장 모호했던 부분. <strong>실제로 LLM 호출되는 곳은 1군데</strong>.</p>
+
+<h3>6.1 Staged Pipeline 6단계 — LLM 호출 진실</h3>
+
+<table>
+<thead>
+<tr><th>#</th><th>Stage</th><th>현재 구현</th><th>LLM 호출?</th><th>비고</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td><td><strong>UNDERSTAND</strong></td>
+  <td>정규식 + keyword</td>
+  <td><span class="check-no">❌ 안 함</span></td>
+  <td><code>understand.ts:113-146</code> — <code>/\$(\d[\d,]*)/</code>로 가격, keyword count로 의도/감정</td>
+</tr>
+<tr>
+  <td>2</td><td><strong>CONTEXT</strong></td>
+  <td>코드 조립</td>
+  <td><span class="check-no">❌ 안 함</span></td>
+  <td>5-layer (L1 strategy ~ L5 signals) 합치기. Skill hook으로 외부 데이터 주입</td>
+</tr>
+<tr>
+  <td>3</td><td><strong>DECIDE</strong></td>
+  <td>Skill + LLM 하이브리드</td>
+  <td><span class="check-yes">✅ 호출 (조건부)</span></td>
+  <td><strong>유일하게 LLM 호출되는 stage</strong>. 조건: <code>phase==='BARGAINING' &amp;&amp; decision==='COUNTER'</code></td>
+</tr>
+<tr>
+  <td>4</td><td><strong>VALIDATE</strong></td>
+  <td>Referee 룰 검증</td>
+  <td><span class="check-no">❌ 안 함</span></td>
+  <td>HARD/SOFT violation 체크. auto-fix loop 있음</td>
+</tr>
+<tr>
+  <td>5</td><td><strong>RESPOND</strong></td>
+  <td>템플릿 렌더러</td>
+  <td><span class="check-no">❌ 안 함</span></td>
+  <td><code>respond.ts:21-32</code>: <code>if (mode === 'llm') return respondWithTemplate(input);</code> ← LLM 분기 안에서도 템플릿 fallback. 즉 <strong>Future로 적혀있고 미구현</strong></td>
+</tr>
+<tr>
+  <td>6</td><td><strong>PERSIST</strong></td>
+  <td>DB 저장</td>
+  <td><span class="check-no">❌ 안 함</span></td>
+  <td>round + signals 기록</td>
+</tr>
+</tbody>
+</table>
+
+<h3>6.2 Decide stage의 LLM 호출 상세</h3>
+
+<pre>// stages/decide.ts (요약)
+1. skill.evaluateOffer() → EngineDecision    // rule-based 우선
+2. shouldCallLLM(phase, decision) ?
+   ├─ phase === 'BARGAINING' && decision.action === 'COUNTER'
+   ├─ shouldUseReasoning() (gap, coach warnings, opponent pattern)
+   └─ ↓ 둘 다 만족 시:
+3. systemPrompt = adapter.buildSystemPrompt()
+   userPrompt   = adapter.buildUserPrompt(memory, recentFacts.slice(-5), ...)
+4. callLLM(grok-fast, systemPrompt, userPrompt, { reasoning })
+5. parseResponse() → llmDecision (price, action, tactic)
+6. 최종 결정: LLM이 sane하면 LLM, 아니면 skill로 fallback</pre>
+
+<p><strong>LLM 입력에 들어가는 정보:</strong></p>
+<ul>
+  <li>Memory boundary (가격 한도, 협상 가능 범위)</li>
+  <li>Session memory (이전 라운드 요약)</li>
+  <li>Coaching context (opponent_pattern, concession_rate)</li>
+  <li>Recent facts (최근 5 라운드)</li>
+  <li>L5 market signals (선택)</li>
+  <li>Memory card brief (user_memory_cards)</li>
+  <li>Evermemo brief (자동 학습 메모리)</li>
+</ul>
+
+<div class="gap">
+<strong>빈 곳 1 — Understand에 LLM 없음:</strong> 사용자가 "배송이 빠르면 좋겠어요" 같은 자유 텍스트를 보내도 정규식이 "shipping" 같은 keyword만 잡음. 의미/감정/제약을 LLM이 깊게 파싱하지 않음.
+</div>
+
+<div class="gap">
+<strong>빈 곳 2 — Respond에 LLM 없음:</strong> 응답 메시지 생성도 템플릿. agent의 voice/stat이 자연어 응답에 정량적으로 반영되지 않음. <code>respond.ts</code>에 <code>// Future: LLM message generation</code> 주석만 있고 fallback이 template로 즉시 떨어짐.
+</div>
+
+<hr>
+
+<h2 id="models">7. 핵심 데이터 모델</h2>
+
+<h3>7.1 NegotiationSession</h3>
+<pre>{
+  id: UUID,
+  role: "BUYER" | "SELLER",          ← 세션 시점
+  buyer_id, seller_id, counterparty_id,
+  current_round, rounds_no_concession,
+  status: CREATED | ACTIVE | NEAR_DEAL | STALLED
+        | WAITING | ACCEPTED | REJECTED | EXPIRED | SUPERSEDED,
+  last_offer_price_minor, last_utility,
+  strategy_snapshot,                  ← 양쪽 strategy를 어떻게 합치는지 mystery
+  created_at, expires_at, version,
+  phase?, coaching_snapshot?, buddy_tone?  // LLM engine 확장
+}</pre>
+
+<h3>7.2 NegotiationRound</h3>
+<pre>{
+  id, session_id, round_no,
+  sender_role: "BUYER" | "SELLER",   ← 누가 보낸 라운드인가
+  message_type, price_minor, counter_price_minor,
+  utility, decision,
+  metadata { protocol.hnp?, explainability }, idempotency_key
+}</pre>
+
+<h3>7.3 MasterStrategy</h3>
+<pre>{
+  weights { w_p, w_t, w_r, w_s },     // 합=1
+  p_target, p_limit, alpha, beta,
+  u_threshold, u_aspiration,
+  t_deadline, ...
+}</pre>
+
+<hr>
+
+<h2 id="termination">8. 종료 시퀀스 (4가지)</h2>
+
+<table>
+<thead><tr><th>경로</th><th>트리거</th><th>핵심 동작</th></tr></thead>
+<tbody>
+<tr>
+  <td>ACCEPT</td>
+  <td>PATCH /accept</td>
+  <td>HnpAgreementObject 빌드 → status=ACCEPTED → eventDispatcher → 그룹 supersede</td>
+</tr>
+<tr>
+  <td>REJECT</td>
+  <td>PATCH /reject</td>
+  <td>updateSessionState(REJECTED) → eventDispatcher</td>
+</tr>
+<tr>
+  <td>ESCALATE</td>
+  <td>decision === 'ESCALATE'</td>
+  <td>status=WAITING + escalation 페이로드 반환 → 클라이언트가 사람에게 핸드오프</td>
+</tr>
+<tr>
+  <td>DEADLINE</td>
+  <td>expires_at 도달</td>
+  <td>proactive: 라운드 시도 시 SESSION_EXPIRED throw / cron: 벌크 EXPIRED</td>
+</tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2 id="hnp">9. HNP 프로토콜의 실 역할 (정정)</h2>
+
+<p>v1에서 모호했던 HNP 명확하게:</p>
+
+<h3>9.1 HNP는 무엇인가</h3>
+<ul>
+  <li><strong>Wire-level 검증 레이어</strong>. 외부 에이전트 서버(다른 머신/시스템)가 envelope+서명 보낼 때 진위/순서 검증.</li>
+  <li>핵심 시스템과 <strong>완전히 분리</strong>. 협상 결정 로직은 HNP 없이도 그대로 작동.</li>
+  <li><strong>Opt-in</strong>. 라운드 보낼 때 <code>protocol</code> 또는 <code>hnp</code> 필드 없으면 검증 안 함, 그냥 통과.</li>
+</ul>
+
+<h3>9.2 HNP가 검증하는 것 (3단계)</h3>
+
+<pre>// negotiations.ts:367-375 — 라운드 라우트에서 검증
+if (normalized.hnp || normalized.protocol) {
+  const result = await validateHnpIngress(db, sessionId, { envelope, protocol });
+  if (!result.ok) return reply.code(result.status).send(result.body);
+}
+
+// hnp-ingress.service.ts:47-108 — 3단계 검증
+1. validateHnpDetachedSignature()
+   → 외부 agent의 private key 서명을 trusted JWKS로 verify
+2. validateHnpEnvelopeConformance()
+   → version, capability, issues, settlement preconditions 형식 확인
+3. validateHnpProtocolOrder()
+   → 같은 세션 내 sequence ordering, duplicate, staleness 확인</pre>
+
+<h3>9.3 Wire format vs Internal metadata</h3>
+
+<table>
+<thead><tr><th>역할</th><th>설명</th></tr></thead>
+<tbody>
+<tr>
+  <td>Wire format</td>
+  <td>외부 agent가 우리 서버로 보낼 때 envelope. 서명 포함. 다른 서버 agent의 진위 보장.</td>
+</tr>
+<tr>
+  <td>Internal metadata</td>
+  <td>검증 통과한 envelope이 <code>round.metadata.protocol.hnp</code>에 저장됨. 이후 라운드의 sequence 비교/멱등성에 활용.</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout">
+<strong>사용자 질문 답:</strong> "LLM 생성 메시지 + 숫자/정보를 묶어서 다른 쪽으로 보낼 때 HNP 쓰이나?" — <strong>Yes, 정확히 그 시점</strong>. 외부(또는 분리된) agent 서버가 자기 LLM이 만든 메시지를 envelope으로 감싸서 우리 서버에 POST할 때 진위/순서 검증. 단, 같은 서버 안에서 양쪽 agent가 도는 경우엔 HNP 없이도 작동. 즉 HNP는 <strong>"두 시스템이 서로 신뢰할 수 없을 때 켜는 지퍼"</strong>.
+</div>
+
+<hr>
+
+<h2 id="demo">10. Demo 라우트 — 무엇을 시연하나</h2>
+
+<h3>10.1 <code>intelligence-demo.ts</code> (~3000줄)</h3>
+
+<ul>
+  <li><strong>목적:</strong> 6-Stage pipeline 각 stage의 LLM 출력 품질 검증</li>
+  <li><strong>DB 사용:</strong> ❌ in-memory 세션만</li>
+  <li><strong>실제 협상 엔진 호출:</strong> ❌ 단계별 LLM 호출만, round persistence 안 함</li>
+  <li><strong>시연 stage:</strong>
+    <ul>
+      <li>Stage 0a: 전략 생성 (LLM)</li>
+      <li>Stage 0b: 조건 분석 (LLM)</li>
+      <li>Stage 1: UNDERSTAND (rule-based parsing)</li>
+      <li>Stage 2-6: 각각 격리 시연</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>10.2 <code>negotiation-demo.ts</code></h3>
+
+<ul>
+  <li><strong>목적:</strong> 6-Stage pipeline의 실제 flow 시뮬레이션</li>
+  <li><strong>DB 사용:</strong> ❌ in-memory</li>
+  <li>각 라운드마다 <code>executePipeline()</code> 호출 — production이 쓰는 같은 함수지만 DB 우회</li>
+</ul>
+
+<h3>10.3 Demo와 Production의 차이</h3>
+
+<table>
+<thead><tr><th>항목</th><th>Demo</th><th>Production</th></tr></thead>
+<tbody>
+<tr><td>저장</td><td>in-memory Map</td><td>PostgreSQL</td></tr>
+<tr><td>세션 공유</td><td>한 요청 안에서 양쪽 동시 시뮬</td><td>라운드별 분리 호출</td></tr>
+<tr><td>인증</td><td>DEMO_USER_ID</td><td>실제 user auth</td></tr>
+<tr><td>LLM</td><td>실제 호출 또는 mock</td><td>opt-in</td></tr>
+</tbody>
+</table>
+
+<div class="callout">
+<strong>의미:</strong> demo developer 페이지에서 본 "agent advisor + preset tuning" 흐름은 <strong>아직 production negotiation flow에 wired 안 됨</strong>. 별도 시뮬레이션. 정식 채택하려면 라우트 통합 작업 필요.
+</div>
+
+<hr>
+
+<h2 id="vision-vs-reality">11. 사용자가 그린 흐름 vs 현실의 차이</h2>
+
+<h3>11.1 사용자가 그린 새 협상 모델</h3>
+
+<pre>구매자 에이전트 (저장된 정보 → LLM 생성)
+    ↓ 메시지 (자연어 + 숫자)
+판매자 에이전트가 LLM으로 읽음
+    ↓ 판매자 stats 반영 → LLM 응답 생성
+구매자 에이전트가 LLM으로 읽음
+    ↓ 반복</pre>
+
+<h3>11.2 코드 단계별 매핑</h3>
+
+<table>
+<thead><tr><th>흐름의 단계</th><th>현재 코드</th><th>상태</th></tr></thead>
+<tbody>
+<tr>
+  <td>"저장된 정보 로드"</td>
+  <td><code>strategy_snapshot</code> + <code>user_memory_cards</code> + <code>evermemo_brief</code></td>
+  <td><span class="check-yes">✅ 가능</span></td>
+</tr>
+<tr>
+  <td>"LLM이 메시지 생성"</td>
+  <td>Decide stage에서 BARGAINING+COUNTER 한정</td>
+  <td><span class="check-mid">⚠️ 부분만</span></td>
+</tr>
+<tr>
+  <td>"메시지 자연어 텍스트화"</td>
+  <td>Respond stage가 템플릿. <code>// Future: LLM</code> 주석만</td>
+  <td><span class="check-no">❌ 미구현</span></td>
+</tr>
+<tr>
+  <td>"상대 agent가 자유 텍스트 LLM으로 읽음"</td>
+  <td>Understand stage가 정규식</td>
+  <td><span class="check-no">❌ 미구현</span></td>
+</tr>
+<tr>
+  <td>"판매자 stats 반영해 응답"</td>
+  <td>Decide LLM prompt에 voice profile + memory 들어감. Stat은 결정론적 변환만 (engine params)</td>
+  <td><span class="check-mid">⚠️ 일부</span></td>
+</tr>
+<tr>
+  <td>"라운드 반복"</td>
+  <td>같은 세션 row + sender_role 토글로 가능</td>
+  <td><span class="check-yes">✅ 가능</span></td>
+</tr>
+<tr>
+  <td>"이전 라운드 학습 → 다음에 활용"</td>
+  <td>round_facts + memory cards 저장. 활용은 부분</td>
+  <td><span class="check-mid">⚠️ 부분</span></td>
+</tr>
+</tbody>
+</table>
+
+<h3>11.3 진짜 새 모델 만들려면 채워야 할 것</h3>
+
+<div class="gap">
+<strong>1. Understand stage에 LLM 활성화.</strong> 자유 텍스트 → 의도/감정/제약/태그 추출. 현재 정규식이 잡지 못하는 nuance를 잡아 다음 stage로 넘김. 위치: <code>understand.ts</code>.
+</div>
+
+<div class="gap">
+<strong>2. Respond stage에 LLM 활성화.</strong> 결정 + voice + stat + memory → 자연어 응답. 현재 fallback으로 떨어지는 <code>// Future</code> 분기 구현. 위치: <code>respond.ts:21-32</code>.
+</div>
+
+<div class="gap">
+<strong>3. Decide LLM prompt에 stat 정량 주입.</strong> 현재는 voice/memory만 들어감. 8-stat 벡터를 prompt에 "anchoring=85, tenacity=70, ..." 같이 넣어 LLM이 정량적으로 행동 조정. 위치: <code>adapter.buildUserPrompt()</code>.
+</div>
+
+<div class="gap">
+<strong>4. Stage 9 신호 추출에 LLM 활성화.</strong> 현재 정규식이 nuance 죽임. LLM으로 신호 풍부도 ↑ → memory cards quality ↑ → 다음 라운드 fidelity ↑.
+</div>
+
+<div class="gap">
+<strong>5. Production default를 <code>NEGOTIATION_ENGINE=llm</code>로 전환.</strong> 위 1-4가 갖춰지면 default를 LLM 경로로. 비용/지연/리스크 trade-off 결정 필요.
+</div>
+
+<hr>
+
+<h2 id="summary">12. 최종 종합</h2>
+
+<blockquote>
+<p><strong>현 상태 한 줄:</strong> "rule-based 4D utility 엔진이 동작하고, LLM은 Decide의 BARGAINING+COUNTER 한정으로만 곁들여 호출. 양쪽 에이전트는 같은 세션 1개를 공유하며 sender_role로 토글. HNP는 외부 agent 신뢰가 필요한 경우에만 켜지는 옵션 검증 레이어."</p>
+
+<p><strong>사용자가 그린 LLM 중심 새 모델 한 줄:</strong> "절반은 코드에 있고, 절반은 <code>// Future</code> 주석으로 비어있음. Understand의 LLM 파싱과 Respond의 LLM 응답 생성이 가장 큰 빈 곳."</p>
+
+<p><strong>정보 fidelity 관점에서 가장 큰 누수 지점 3개:</strong></p>
+<ol>
+  <li>Stage 1 UNDERSTAND — 자유 텍스트의 nuance가 정규식으로 죽음</li>
+  <li>Stage 5 RESPOND — agent 페르소나/stat이 자연어로 못 살아남음 (템플릿)</li>
+  <li>Stage 9 신호 추출 — 라운드 후 학습이 정규식 기반이라 약함</li>
+</ol>
+</blockquote>
+
+</body>
+</html>

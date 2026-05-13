@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { BuyerAgentPreset } from "@/lib/buyer-agents";
+import type { NegotiationPreset } from "@haggle/shared";
 import { apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -34,7 +34,7 @@ interface StrategyChip {
 }
 
 interface StrategyChatProps {
-  agent: BuyerAgentPreset | null;
+  agent: NegotiationPreset | null;
   listingPublicId: string;
   listingTitle: string;
   listingCategory: string | null;
@@ -121,25 +121,25 @@ function clearSession(listingId: string, agentId: string): void {
 
 
 function buildInitialMemory(
-  agent: BuyerAgentPreset | null,
+  agent: NegotiationPreset | null,
   category: string | null,
 ): AdvisorMemory {
   const negotiationStyle =
-    agent?.id === "price-hunter"
+    agent?.id === "hunter"
       ? "aggressive"
-      : agent?.id === "fast-closer"
+      : agent?.id === "closer"
         ? "defensive"
         : "balanced";
   const riskStyle =
-    agent?.id === "price-hunter"
+    agent?.id === "hunter"
       ? "lowest_price"
-      : agent?.id === "smart-trader"
+      : agent?.id === "verifier"
         ? "safe_first"
         : "balanced";
   const openingTactic =
-    agent?.id === "spec-analyst"
+    agent?.id === "verifier"
       ? "condition_anchor"
-      : agent?.id === "fast-closer"
+      : agent?.id === "closer"
         ? "speed_close"
         : "fair_market_anchor";
 
@@ -156,11 +156,11 @@ function buildInitialMemory(
 }
 
 function buildGreeting(
-  agent: BuyerAgentPreset | null,
+  agent: NegotiationPreset | null,
   listingTitle: string,
   listingPrice: string | null,
 ): string {
-  const name = agent?.name ?? "AI Agent";
+  const name = agent?.copy.buyer.name ?? "AI Agent";
   const priceStr = listingPrice
     ? `$${parseFloat(listingPrice).toLocaleString("en-US")}`
     : "";
@@ -702,7 +702,7 @@ export function StrategyChat({
           className="text-[13px] font-semibold flex-1"
           style={{ color: agent?.accentColor ?? "#06b6d4" }}
         >
-          {agent ? agent.name : "Buying Agent"}
+          {agent ? agent.copy.buyer.name : "Buying Agent"}
         </span>
         {messages.length > 1 && (
           <span
@@ -778,7 +778,7 @@ export function StrategyChat({
                       className="text-[10px] font-semibold"
                       style={{ color: agent?.accentColor ?? "#06b6d4" }}
                     >
-                      {agent?.name ?? "Agent"}
+                      {agent?.copy.buyer.name ?? "Agent"}
                     </span>
                   </div>
                 )}

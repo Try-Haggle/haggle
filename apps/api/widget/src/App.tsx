@@ -6,12 +6,13 @@ import ChipSelector from "./components/ChipSelector";
 import SellerStrategyChat, { buildInitialSellerMemory, type SellerStrategyMemory } from "./components/SellerStrategyChat";
 import RadarChart from "./components/RadarChart";
 import {
-  AGENT_PRESETS,
-  DEFAULT_STATS,
-  STAT_META,
-  type AgentStats,
-} from "./agentPresets";
-import { LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
+  NEGOTIATION_PRESETS,
+  LISTING_CATEGORIES,
+  LISTING_CATEGORY_LABELS,
+  getNegotiationPreset,
+  presetToEngineParameters,
+  type NegotiationPresetId,
+} from "@haggle/shared";
 
 const STEPS = [{ label: "Item Details" }, { label: "Pricing" }, { label: "AI Agent" }];
 
@@ -72,7 +73,7 @@ export default function App() {
   const [sellingDeadline, setSellingDeadline] = useState("");
 
   // Step 3 state
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<NegotiationPresetId | null>(null);
   const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
   const [sellerStrategy, setSellerStrategy] = useState<SellerStrategyMemory>(buildInitialSellerMemory);
 
@@ -1055,8 +1056,9 @@ export default function App() {
       ) : (
         /* ─── Step 3: AI Agent Setup ──────────────────────────── */
         (() => {
-          const activePreset = AGENT_PRESETS.find((a) => a.id === selectedAgent);
-          const currentStats: AgentStats = activePreset?.stats ?? DEFAULT_STATS;
+          const activePreset = getNegotiationPreset(selectedAgent ?? "");
+          const activeCopy = activePreset?.copy.seller;
+          const isStrategyCustomized = false; // Advanced editor wiring pending
           const formatPrice = (v: string) => {
             const n = parseFloat(v);
             return isNaN(n) ? "$0" : `$${n.toLocaleString()}`;
@@ -1090,10 +1092,10 @@ export default function App() {
                   <div className="listing-live__info">
                     <p className="listing-live__item-title">{title || "Untitled"}</p>
                     <p className="listing-live__item-price">{formatPrice(targetPrice)}</p>
-                    {activePreset && (
+                    {activePreset && activeCopy && (
                       <p className="listing-live__item-agent">
                         <span className="listing-live__agent-dot" style={{ background: activePreset.accentColor }} />
-                        Agent: {activePreset.name}
+                        Agent: {activeCopy.name}
                       </p>
                     )}
                   </div>
@@ -1351,49 +1353,35 @@ export default function App() {
               <div className="step3-layout">
               {/* ── LEFT COLUMN ─────────────────────────────── */}
               <div className="step3-left">
-                {/* Agent Preset Cards (2×2 grid) */}
-                <div className="agent-grid">
-                  {AGENT_PRESETS.map((agent) => (
-                    <button
-                      key={agent.id}
-                      type="button"
-                      className={`agent-card${selectedAgent === agent.id ? " agent-card--selected" : ""}`}
-                      onClick={() => setSelectedAgent(agent.id)}
-                    >
-                      <div className="agent-card__header">
-                        <span
-                          className="agent-card__icon"
-                          style={{ background: `${agent.accentColor}22`, color: agent.accentColor }}
-                        >
-                          {agent.id === "gatekeeper" && (
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                            </svg>
-                          )}
-                          {agent.id === "diplomat" && (
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M6 8H5a4 4 0 0 0 0 8h1" /><path d="M8 6v12" /><path d="M16 6v12" />
-                            </svg>
-                          )}
-                          {agent.id === "storyteller" && (
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" />
-                            </svg>
-                          )}
-                          {agent.id === "dealmaker" && (
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-                            </svg>
-                          )}
-                        </span>
-                        <div>
-                          <p className="agent-card__name">{agent.name}</p>
-                          <p className="agent-card__tagline">{agent.tagline}</p>
+                {/* Agent Preset Cards (3×2 grid) */}
+                <div className="agent-grid agent-grid--four">
+                  {NEGOTIATION_PRESETS.map((agent) => {
+                    const copy = agent.copy.seller;
+                    return (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        className={`agent-card${selectedAgent === agent.id && !isStrategyCustomized ? " agent-card--selected" : ""}`}
+                        onClick={() => {
+                          setSelectedAgent(agent.id);
+                        }}
+                      >
+                        <div className="agent-card__header">
+                          <span
+                            className="agent-card__icon agent-card__icon--emoji"
+                            style={{ background: `${agent.accentColor}22` }}
+                          >
+                            {agent.emoji}
+                          </span>
+                          <div>
+                            <p className="agent-card__name">{copy.name}</p>
+                            <p className="agent-card__tagline">{copy.tagline}</p>
+                          </div>
                         </div>
-                      </div>
-                      <p className="agent-card__desc">{agent.description}</p>
-                    </button>
-                  ))}
+                        <p className="agent-card__desc">{copy.description}</p>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Seller Strategy Chat */}
@@ -1428,28 +1416,24 @@ export default function App() {
                   </div>
 
                   {/* Selected Agent Display */}
-                  {activePreset ? (
+                  {activePreset && activeCopy ? (
                     <div className="agent-selected">
                       <span
-                        className="agent-card__icon"
-                        style={{ background: `${activePreset.accentColor}22`, color: activePreset.accentColor }}
+                        className="agent-card__icon agent-card__icon--emoji"
+                        style={{ background: `${activePreset.accentColor}22` }}
                       >
-                        {activePreset.id === "gatekeeper" && (
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                        )}
-                        {activePreset.id === "diplomat" && (
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M6 8H5a4 4 0 0 0 0 8h1" /><path d="M8 6v12" /><path d="M16 6v12" /></svg>
-                        )}
-                        {activePreset.id === "storyteller" && (
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" /></svg>
-                        )}
-                        {activePreset.id === "dealmaker" && (
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>
-                        )}
+                        {activePreset.emoji}
                       </span>
                       <div>
-                        <p className="agent-selected__name">{activePreset.name}</p>
-                        <p className="agent-selected__tagline">{activePreset.tagline}</p>
+                        <p className="agent-selected__name">
+                          {activeCopy.name}
+                          {isStrategyCustomized && (
+                            <span className="agent-selected__custom-badge">
+                              {" "}(Customized)
+                            </span>
+                          )}
+                        </p>
+                        <p className="agent-selected__tagline">{activeCopy.tagline}</p>
                       </div>
                     </div>
                   ) : (
@@ -1461,32 +1445,33 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Stat Bars */}
-                  <div className="stat-bars">
-                    {STAT_META.map((stat) => (
-                      <div key={stat.key} className="stat-bar">
-                        <div className="stat-bar__header">
-                          <span className="stat-bar__label">{stat.label}</span>
-                          <span className="stat-bar__value">{currentStats[stat.key]}%</span>
-                        </div>
-                        <div className="stat-bar__track">
-                          <div
-                            className="stat-bar__fill"
-                            style={{
-                              width: `${currentStats[stat.key]}%`,
-                              background: stat.gradient,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Preset description (replaces individual stat bars) */}
+                  {activePreset && activeCopy && (
+                    <p className="agent-description">{activeCopy.description}</p>
+                  )}
 
-                  {/* Radar Chart */}
+                  {/* Radar Chart (8-vertex, no labels — clean visual) */}
                   <div className="radar-section">
                     <h4 className="radar-section__title">STRATEGY MATRIX</h4>
-                    <RadarChart stats={currentStats} />
+                    {activePreset && <RadarChart preset={activePreset} labels={false} />}
                   </div>
+
+                  {/* Advanced Settings — fine-tune trigger */}
+                  <button
+                    type="button"
+                    className="btn-advanced"
+                    onClick={() => {
+                      // Advanced wiring pending — placeholder for parity with web app.
+                      // eslint-disable-next-line no-alert
+                      alert("Advanced settings coming soon for the widget.");
+                    }}
+                    disabled={!selectedAgent}
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                    Advanced Settings
+                  </button>
 
                   {/* CTA Button */}
                   <button
@@ -1498,7 +1483,7 @@ export default function App() {
                       setIsSubmitting(true);
                       setError(null);
                       try {
-                        // 1. Save strategy config
+                        // 1. Save strategy config (8-stat + derived engine params)
                         await app.callServerTool({
                           name: "haggle_apply_patch",
                           arguments: {
@@ -1507,7 +1492,11 @@ export default function App() {
                               strategyConfig: {
                                 ...(sellingDeadline ? deadlineStrategyConfig(sellingDeadline) : {}),
                                 preset: selectedAgent,
-                                ...currentStats,
+                                customized: isStrategyCustomized,
+                                weights: activePreset ? { ...activePreset.weights } : undefined,
+                                derivedParams: activePreset
+                                  ? presetToEngineParameters(activePreset)
+                                  : undefined,
                                 sellerStrategy,
                               },
                             },
@@ -1567,6 +1556,8 @@ export default function App() {
                 </div>
               </div>
               </div>
+
+              {/* Advanced Agent Editor — wiring pending for the 4D system. */}
             </div>
           );
         })()
