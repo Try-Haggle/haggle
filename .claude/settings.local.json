@@ -12,7 +12,9 @@
       "mcp__chrome-devtools__take_screenshot",
       "Bash(xargs -I {} basename {})",
       "Read(//Users/inohpak/development/haggle/apps/api/widget/**)",
-      "Bash(pnpm build *)"
+      "Bash(pnpm build *)",
+      "Read(//Users/inohpak/development/haggle/**)",
+      "Bash(pnpm --filter @haggle/web build)"
     ]
   }
 }
