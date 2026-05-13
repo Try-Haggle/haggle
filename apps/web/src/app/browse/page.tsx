@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { serverApi } from "@/lib/api-server";
-import { LISTING_CATEGORIES } from "@haggle/shared";
-import { CategoryTabs } from "./_components/category-tabs";
+import { LISTING_CATEGORIES, ITEM_CONDITIONS } from "@haggle/shared";
 import { ListingGrid } from "./_components/listing-grid";
+import { BrowseToolbar } from "./_components/browse-toolbar";
+import { StickyToolbar } from "./_components/sticky-toolbar";
 
 export const metadata: Metadata = {
   title: "Browse listings · Haggle",
@@ -21,52 +22,125 @@ export interface BrowseListing {
   tags: string[] | null;
 }
 
-type Category = (typeof LISTING_CATEGORIES)[number];
+export type BrowseSort = "newest" | "price_asc" | "price_desc";
 
-function isCategory(value: string | undefined): value is Category {
-  return !!value && (LISTING_CATEGORIES as readonly string[]).includes(value);
+type Category = (typeof LISTING_CATEGORIES)[number];
+type Condition = (typeof ITEM_CONDITIONS)[number];
+
+function isSort(value: string | undefined): value is BrowseSort {
+  return value === "newest" || value === "price_asc" || value === "price_desc";
+}
+
+function parsePositiveNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+function parseCsv<T extends string>(
+  value: string | undefined,
+  whitelist: readonly T[],
+): T[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is T => (whitelist as readonly string[]).includes(s));
+}
+
+export interface BrowseFilters {
+  categories: Category[];
+  minPrice: number | undefined;
+  maxPrice: number | undefined;
+  conditions: Condition[];
+  q: string;
+  sort: BrowseSort;
 }
 
 export default async function BrowsePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    condition?: string;
+    q?: string;
+    sort?: string;
+  }>;
 }) {
-  const { category } = await searchParams;
-  const activeCategory = isCategory(category) ? category : null;
+  const sp = await searchParams;
+  const filters: BrowseFilters = {
+    categories: parseCsv(sp.category, LISTING_CATEGORIES),
+    minPrice: parsePositiveNumber(sp.minPrice),
+    maxPrice: parsePositiveNumber(sp.maxPrice),
+    conditions: parseCsv(sp.condition, ITEM_CONDITIONS),
+    q: (sp.q ?? "").trim().slice(0, 100),
+    sort: isSort(sp.sort) ? sp.sort : "newest",
+  };
 
-  const query = activeCategory ? `?category=${activeCategory}` : "";
+  const params = new URLSearchParams();
+  if (filters.categories.length > 0) params.set("category", filters.categories.join(","));
+  if (filters.minPrice !== undefined) params.set("minPrice", String(filters.minPrice));
+  if (filters.maxPrice !== undefined) params.set("maxPrice", String(filters.maxPrice));
+  if (filters.conditions.length > 0) params.set("condition", filters.conditions.join(","));
+  if (filters.q) params.set("q", filters.q);
+  if (filters.sort !== "newest") params.set("sort", filters.sort);
+  const query = params.toString();
 
   let listings: BrowseListing[] = [];
+  let nextCursor: string | null = null;
+  let priceRange: { min: number; max: number } | null = null;
+  let priceBuckets: Array<{ min: number; max: number | null; count: number }> = [];
   try {
     const data = await serverApi.get<{
       ok: boolean;
       listings: BrowseListing[];
-    }>(`/api/public/listings${query}`, { skipAuth: true });
-    if (data.ok) listings = data.listings;
+      nextCursor: string | null;
+      priceRange: { min: number; max: number } | null;
+      priceBuckets: Array<{ min: number; max: number | null; count: number }>;
+    }>(`/api/public/listings${query ? `?${query}` : ""}`, { skipAuth: true });
+    if (data.ok) {
+      listings = data.listings;
+      nextCursor = data.nextCursor ?? null;
+      priceRange = data.priceRange ?? null;
+      priceBuckets = data.priceBuckets ?? [];
+    }
   } catch {
     listings = [];
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400 shrink-0">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <h1 className="text-2xl font-bold text-white">Browse listings</h1>
+    <main className="min-h-[calc(100vh-4rem)]">
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400 shrink-0">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <h1 className="text-2xl font-bold text-white">Browse listings</h1>
+            </div>
+            <p className="text-sm text-slate-400">Find items open to negotiation.</p>
           </div>
-          <p className="text-sm text-slate-400">Find items open to negotiation.</p>
         </div>
       </div>
 
-      <CategoryTabs activeCategory={activeCategory} />
+      <StickyToolbar>
+        <BrowseToolbar
+          filters={filters}
+          priceRange={priceRange}
+          priceBuckets={priceBuckets}
+        />
+      </StickyToolbar>
 
-      <div className="mt-8">
-        <ListingGrid listings={listings} activeCategory={activeCategory} />
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        <ListingGrid
+          initialListings={listings}
+          initialNextCursor={nextCursor}
+          filters={filters}
+        />
       </div>
     </main>
   );
