@@ -1,8 +1,8 @@
 # Payment Production Observability
 
-Status: draft until the production observability backend is chosen.
+Status: backend-neutral emitter implemented; alert backend wiring remains pending until the production observability platform is chosen.
 
-This document defines the payment metrics and alert rules that can be implemented without provider credentials. Do not include PAN, CVV, card expiry, bank account data, Stripe client secrets, webhook signatures, authorization headers, x402 payload bodies, wallet tokens, or provider payment tokens in metric names, labels, logs, traces, or alert payloads.
+This document defines the payment metrics and alert rules that can be implemented without provider credentials. The code-level allowlist lives in `apps/api/src/payments/observability.ts` and defaults to a no-op sink until a backend adapter is installed. Do not include PAN, CVV, card expiry, bank account data, Stripe client secrets, webhook signatures, authorization headers, x402 payload bodies, wallet tokens, or provider payment tokens in metric names, labels, logs, traces, or alert payloads.
 
 ## Safe Dimensions
 
@@ -11,11 +11,12 @@ Allowed dimensions:
 - `provider`: `stripe`, `x402`
 - `rail`: `stripe`, `x402`
 - `environment`: `test`, `live`
-- `operation`: `prepare`, `authorize`, `capture`, `cancel`, `refund`, `webhook`, `reconciliation`
+- `operation`: `prepare`, `authorize`, `capture`, `settlement_pending`, `cancel`, `refund`, `fail`, `webhook`, `reconciliation`
 - `event_type`: coarse provider event type only, never raw payload
 - `failure_type`: allowlisted error class such as `signature_invalid`, `environment_mismatch`, `provider_timeout`, `state_transition_invalid`
-- `idempotency_result`: `new`, `duplicate`, `conflict`, `in_progress`
+- `idempotency_result`: `new`, `duplicate`, `conflict`, `in_progress`, `required_missing`
 - `reconciliation_type`: allowlisted drift type from the reconciliation detector
+- `status`: `pending`, `authorized`, `unknown`
 
 Never use user IDs, emails, order IDs, payment intent IDs, provider references, transaction hashes, wallet addresses, webhook signatures, or raw error messages as metric labels. Those belong in redacted audit logs, not high-cardinality metrics.
 
@@ -63,6 +64,13 @@ Initial thresholds should be conservative and adjusted after sandbox traffic est
 - Rollback procedure for disabling real rails through environment flags.
 - Customer support scripts for pending, failed, captured, refunded, and disputed states.
 
+## Current Keyless Implementation
+
+- `apps/api/src/payments/observability.ts` validates metric names, dimensions, label values, and metric values before emission.
+- The default sink is no-op, so local/test environments do not require Datadog, Prometheus, Sentry, or provider credentials.
+- Payment routes emit backend-neutral metric events for direct mutation idempotency results, provider webhook received/rejected/duplicate/processing-failed outcomes, and production admin overrides.
+- Unsafe labels are dropped without serializing the unsafe label value.
+
 ## Remaining Backend Decision
 
-The metric contract above is backend-neutral. Before production launch, choose the observability backend and wire the emitters to it. The implementation must keep the dimension allowlist in this document and continue using redacted audit logs for high-cardinality identifiers.
+The metric contract above is backend-neutral. Before production launch, choose the observability backend and wire the emitter sink to it. The implementation must keep the dimension allowlist in this document and continue using redacted audit logs for high-cardinality identifiers.

@@ -102,6 +102,13 @@ import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
 import { X402FacilitatorClient } from "../payments/facilitator-client.js";
 import { createConditionalSettlementSigner, type ConditionalSettlementMessage } from "../payments/settlement-signer.js";
 import { calculateFeeMinor, calculateSellerFeeSplit, readFeeBpsFromEnv, readHaggleFeeBpsFromEnv } from "../payments/fee-policy.js";
+import {
+  emitPaymentMetricSafely,
+  normalizePaymentMetricEventType,
+  normalizePaymentMetricFailureType,
+  toPaymentMetricOperation,
+  type PaymentMetricOperation,
+} from "../payments/observability.js";
 import { writeAuditLog, type AdminActionType } from "../services/admin-action-log.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { INPUT_LIMITS, boundedJson } from "../lib/input-limits.js";
@@ -566,6 +573,68 @@ function safeRedactPaymentLog(value: unknown): unknown {
   }
 }
 
+function getPaymentMetricEnvironment() {
+  return requiresRealPaymentProviders() ? "live" : "test";
+}
+
+async function emitPaymentIdempotencyMetric(
+  operation: string,
+  idempotencyResult: "new" | "duplicate" | "conflict" | "in_progress" | "required_missing",
+) {
+  const metricOperation = toPaymentMetricOperation(operation);
+  if (!metricOperation) return;
+  await emitPaymentMetricSafely("payment.idempotency.result", {
+    operation: metricOperation,
+    idempotency_result: idempotencyResult,
+    environment: getPaymentMetricEnvironment(),
+  });
+}
+
+async function emitPaymentAdminOverrideMetric(actionType: AdminActionType) {
+  const operation = paymentActionMetricOperation(actionType);
+  if (!operation) return;
+  await emitPaymentMetricSafely("payment.admin_override", {
+    operation,
+    environment: getPaymentMetricEnvironment(),
+  });
+}
+
+async function emitPaymentWebhookDuplicateMetric(provider: "stripe" | "x402", eventType: unknown) {
+  await emitPaymentMetricSafely("payment.webhook.duplicate", {
+    provider,
+    event_type: normalizePaymentMetricEventType(eventType),
+    environment: getPaymentMetricEnvironment(),
+  });
+}
+
+async function emitPaymentWebhookProcessingFailureMetric(provider: "stripe" | "x402", eventType: unknown) {
+  await emitPaymentMetricSafely("payment.webhook.processing_failed", {
+    provider,
+    event_type: normalizePaymentMetricEventType(eventType),
+    failure_type: "processing_error",
+    environment: getPaymentMetricEnvironment(),
+  });
+}
+
+function paymentActionMetricOperation(actionType: AdminActionType): PaymentMetricOperation | null {
+  switch (actionType) {
+    case "payment.authorize":
+      return "authorize";
+    case "payment.capture":
+      return "capture";
+    case "payment.cancel":
+      return "cancel";
+    case "payment.refund":
+      return "refund";
+    case "payment.fail":
+      return "fail";
+    case "payment.admin_override":
+      return "settlement_pending";
+    default:
+      return null;
+  }
+}
+
 function mapLegacyPaymentStatusForAudit(status: PaymentIntent["status"]) {
   switch (status) {
     case "CREATED":
@@ -595,6 +664,7 @@ async function beginPaymentOperationIdempotency(
 
   if (!key) {
     if (requiresRealPaymentProviders()) {
+      await emitPaymentIdempotencyMetric(operation, "required_missing");
       reply.code(400).send({
         error: "IDEMPOTENCY_KEY_REQUIRED",
         message: "Idempotency-Key header is required for payment mutations in production",
@@ -618,17 +688,20 @@ async function beginPaymentOperationIdempotency(
       },
     });
     if (inserted) {
+      await emitPaymentIdempotencyMetric(operation, "new");
       return { key, requestHash, replayed: false };
     }
   }
 
   const current = existing ?? await getPaymentOperationIdempotencyRecord(db, operation, key);
   if (!current) {
+    await emitPaymentIdempotencyMetric(operation, "conflict");
     reply.code(409).send({ error: "IDEMPOTENCY_RECORD_CONFLICT" });
     return { key, requestHash, replayed: true };
   }
 
   if (current.requestHash !== requestHash) {
+    await emitPaymentIdempotencyMetric(operation, "conflict");
     reply.code(409).send({
       error: "IDEMPOTENCY_KEY_CONFLICT",
       message: "Idempotency key was already used with a different payment request",
@@ -639,6 +712,7 @@ async function beginPaymentOperationIdempotency(
   const responseBody = current.responseBody as Record<string, unknown>;
   const inProgress = current.responseStatus === 409
     && responseBody.error === "PAYMENT_OPERATION_IN_PROGRESS";
+  await emitPaymentIdempotencyMetric(operation, inProgress ? "in_progress" : "duplicate");
   reply.code(current.responseStatus).send(
     inProgress
       ? responseBody
@@ -737,6 +811,9 @@ async function auditPaymentAction(
     targetId: params.intent.id,
     payload: event as unknown as Record<string, unknown>,
   });
+  if (actor.role === "admin" && requiresRealPaymentProviders()) {
+    await emitPaymentAdminOverrideMetric(actionType);
+  }
 }
 
 async function auditPaymentWebhookEvent(
@@ -775,6 +852,19 @@ async function auditPaymentWebhookEvent(
     targetId: params.providerEventId ?? params.paymentIntentId ?? null,
     payload: event as unknown as Record<string, unknown>,
   });
+  if (actionType === "payment.webhook_received") {
+    await emitPaymentMetricSafely("payment.webhook.received", {
+      provider: params.provider,
+      event_type: normalizePaymentMetricEventType(params.metadata?.event_type),
+      environment: getPaymentMetricEnvironment(),
+    });
+  } else {
+    await emitPaymentMetricSafely("payment.webhook.rejected", {
+      provider: params.provider,
+      failure_type: normalizePaymentMetricFailureType(params.reason),
+      environment: getPaymentMetricEnvironment(),
+    });
+  }
 }
 
 function createPolicyNonce(...parts: string[]): string {
@@ -2480,6 +2570,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     });
     const duplicate = await hasWebhookBeenProcessed(db, webhookEventId, "x402");
     if (duplicate) {
+      await emitPaymentWebhookDuplicateMetric("x402", eventType);
       return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
     }
 
@@ -2584,6 +2675,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           return reply.send({ accepted: true, action: "ignored", reason: "unknown_event" });
       }
     } catch (error) {
+      await emitPaymentWebhookProcessingFailureMetric("x402", eventType);
       console.error("x402 webhook processing error:", safeRedactPaymentLog(error));
       return reply.code(500).send({ accepted: false, action: "error", message: "Webhook processing failed" });
     }
@@ -2659,6 +2751,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       // Idempotency check
       const duplicate = await hasWebhookBeenProcessed(db, event.id, "stripe");
       if (duplicate) {
+        await emitPaymentWebhookDuplicateMetric("stripe", event.type);
         return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
       }
 
@@ -2674,6 +2767,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               return reply.send(depositResult);
             }
           } catch (error) {
+            await emitPaymentWebhookProcessingFailureMetric("stripe", event.type);
             console.error("Stripe deposit fulfillment error:", safeRedactPaymentLog(error));
             return reply.code(500).send({ accepted: false, action: "error", message: "Deposit fulfillment processing failed" });
           }
@@ -2742,6 +2836,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
                 shipment: finalization.shipment,
               });
             } catch (error) {
+              await emitPaymentWebhookProcessingFailureMetric("stripe", event.type);
               console.error("Stripe webhook settlement error:", safeRedactPaymentLog(error));
               return reply.code(500).send({ accepted: false, action: "error", message: "Settlement processing failed" });
             }

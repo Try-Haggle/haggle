@@ -34,6 +34,7 @@ Last updated: 2026-05-12
 - Added direct payment mutation idempotency reservation/replay/conflict handling.
 - Added production admin reason enforcement for direct payment mutations.
 - Added payment observability metric and alert contract in `docs/wip/payment-production-observability.md`.
+- Added backend-neutral payment metric emitter with allowlisted labels and route instrumentation for idempotency, webhook, and production admin override events.
 
 ## Discovered Risks Ordered By Severity
 
@@ -141,11 +142,12 @@ Last updated: 2026-05-12
 - Requires decision before proceeding:
   - Maximum retry count and alert thresholds per provider.
 
-### P2: Metrics And Alerts Are Not Fully Defined
+### P2: Metrics And Alerts Need Backend Wiring
 
-- Risk: Metric names, safe dimensions, and initial alert thresholds are now defined in `docs/wip/payment-production-observability.md`. Remaining risk is wiring the emitters into the chosen observability backend.
+- Risk: Metric names, safe dimensions, initial alert thresholds, a backend-neutral emitter, and route instrumentation now exist. Remaining risk is wiring the emitter sink into the chosen observability backend and creating production alerts.
 - Acceptance criteria:
   - Metric names and dimensions are documented.
+  - Metric emission rejects unsafe/high-cardinality labels before reaching the backend.
   - Alerts are wired in the chosen observability system.
   - Sensitive data is excluded from dimensions.
 - Files likely affected:
@@ -225,5 +227,6 @@ Last updated: 2026-05-12
 - Completed: reconciliation mismatch detector for future job/admin use.
 - Completed: Stripe and x402 webhook timestamp freshness hardening.
 - Completed: focused unit/integration tests for safe utilities, webhook signature expiry, replay, and audit behavior.
+- Completed: backend-neutral metric emitter and safe route instrumentation for idempotency, webhook outcomes, processing failures, and production admin overrides.
 - Remaining keyless work: broaden DB-backed concurrency tests if a disposable Postgres test database is available locally.
 - Remaining blocked work: provider sandbox E2E, observability backend wiring, production webhook endpoint changes, destructive DB enum migration, compliance/legal/QSA review, and final admin role/dual-approval policy.
