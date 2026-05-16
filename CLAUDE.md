@@ -56,7 +56,7 @@ Haggle은 AI Agent가 자동으로 가격을 협상하고, 스테이블코인(US
 ```
 haggle/
 ├── apps/
-│   ├── api/                          ← Hono API 서버 (MCP 라우터 포함)
+│   ├── api/                          ← Fastify v5 API 서버 (MCP 라우터 포함)
 │   └── web/                          ← Next.js 프론트엔드
 ├── packages/
 │   ├── shared/                       ← 공통 타입, 상수, 유틸 (DO NOT TOUCH)
