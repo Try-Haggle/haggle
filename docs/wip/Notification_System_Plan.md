@@ -615,51 +615,46 @@ toast(payload.displayTitle, {
 ### Slice 0 — 수동 셋업 ✅ **완료** (2026-05-16)
 **목표:** 코드 작성 전 외부 서비스 + 환경 준비 완료
 
-- [ ] **Resend 계정 + 도메인 verification**
-  1. [resend.com](https://resend.com) 가입 → 무료 플랜
-  2. Domains → `tryhaggle.ai` 추가
-  3. 안내되는 TXT 레코드 3~4개를 DNS provider에 추가 (SPF / DKIM)
-  4. Verified 상태 확인
-  5. API Keys → 새 키 생성
-
-- [ ] **환경변수 추가** (`apps/api/.env`)
+- [x] **Resend 계정 생성** — Google 계정으로 가입 완료
+- [x] **API Key `haggle-dev` 발급** — Full access, 루트 `.env`에 추가
+- [x] **환경변수 추가** (루트 `.env` + `apps/api/.env.example` 키 목록 문서화)
   ```
-  RESEND_API_KEY=re_...
-  RESEND_WEBHOOK_SECRET=whsec_...   # Resend → Webhooks에서 생성
-  NOTIFICATION_UNSUBSCRIBE_SECRET=<랜덤 32자 이상 문자열>
+  RESEND_API_KEY=re_...                        ✅
+  RESEND_FROM_EMAIL=onboarding@resend.dev      ✅ (도메인 미인증 상태 임시)
+  RESEND_WEBHOOK_SECRET=placeholder            ✅ (Slice 3에서 실제 값으로)
+  NOTIFICATION_UNSUBSCRIBE_SECRET=<생성 완료>  ✅
   ```
+- [⏭️] **도메인 verification** — 프로덕션 런칭 시 진행 (`tryhaggle.ai` → `notifications@tryhaggle.ai`)
+- [⏭️] **Webhook 엔드포인트 등록** — Slice 3 구현 후 진행 (배포 URL 또는 ngrok 필요)
 
-- [ ] **Resend Webhook 엔드포인트 등록**
-  1. Resend → Webhooks → Add Endpoint
-  2. URL: `https://api.tryhaggle.ai/api/webhooks/resend` (또는 로컬 dev: ngrok URL)
-  3. 이벤트: `email.sent`, `email.delivered`, `email.bounced`, `email.complained`, `email.delivery_delayed`
-  4. Signing Secret 복사 → `RESEND_WEBHOOK_SECRET`에 저장
+**환경 전략 확정:**
+- **개발/스테이징**: `RESEND_FROM_EMAIL=onboarding@resend.dev`, `NODE_ENV=development`
+- **프로덕션**: `RESEND_FROM_EMAIL=notifications@tryhaggle.ai` (도메인 verified 후), `NODE_ENV=production`
+- **Resend 키 분리**: `haggle-dev` (현재) / `haggle-production` (런칭 시 신규 발급 → 배포 env에만)
 
-- [ ] **`notifications@tryhaggle.ai` 발신 테스트** (domain verified 후)
-  - Resend 대시보드 → Send Test Email → From: `notifications@tryhaggle.ai`
-
-**✅ 완료 기준:** Resend 대시보드에서 domain Status = Verified, 테스트 이메일 수신 확인
+**커밋:** `chore(notification): slice 0 — setup plan, env template, CLAUDE.md fix`
 
 ---
 
-### Slice 1 — DB 스키마 ⏳
+### Slice 1 — DB 스키마 ✅ **완료** (2026-05-16)
 **목표:** 3개 테이블 마이그레이션 완료, Supabase Studio에서 확인
 
-**만들 파일:**
+**생성된 파일:**
 ```
-packages/db/src/schema/notifications.ts          (신규)
-packages/db/src/schema/notification-preferences.ts (신규)
-packages/db/src/schema/email-deliveries.ts       (신규)
-packages/db/src/index.ts                          (기존 — export 3개 추가)
+packages/db/src/schema/notifications.ts           ✅
+packages/db/src/schema/notification-preferences.ts ✅
+packages/db/src/schema/email-deliveries.ts        ✅
+packages/db/src/index.ts                           ✅ (export 3개 추가)
+packages/db/drizzle.config.ts                      ✅ (3개 파일 명시적 목록 추가)
 ```
 
-**작업 내용:**
-- F-1 스키마 그대로 구현 (notifications)
-- F-2 스키마 그대로 구현 (notification_preferences)
-- F-3 + F-4 보강 반영 스키마 구현 (email_deliveries + attempts + idempotencyKey)
-- `pnpm --filter @haggle/db db:generate && db:push`
+**참고 — drizzle-kit 이슈:**
+- `db:push` / `db:generate` 명령이 기존 파일(`listings-published.ts`)의 cross-import ESM/CJS 이슈로 실행 불가
+- 우리 파일 문제 아님 — 기존 코드베이스 선행 이슈
+- **해결책:** Supabase Studio SQL Editor에서 CREATE TABLE SQL 직접 실행
+- `notification-preferences.ts`의 `NOTIFICATION_CATEGORIES`는 drizzle-kit CJS 호환을 위해 cross-import 제거, 인라인 const로 처리 (comment로 이유 명시)
 
-**✅ 완료 기준:** Supabase Studio에서 3개 테이블 + 인덱스 확인
+**커밋:** `feat(db): slice 1 — notification schema (notifications, preferences, email_deliveries)`
 
 ---
 
