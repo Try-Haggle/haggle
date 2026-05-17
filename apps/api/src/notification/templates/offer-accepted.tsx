@@ -10,18 +10,19 @@ interface Props {
 
 export function OfferAcceptedEmail({ payload, unsubscribeUrl }: Props) {
   const price = `$${(payload.agreedPriceMinor / 100).toLocaleString("en-US")} ${payload.currency}`;
-  const preview = `Your offer on ${payload.listingTitle} was accepted!`;
-  const sessionUrl = `${process.env.PUBLIC_APP_URL ?? "https://tryhaggle.ai"}/negotiations/${payload.sessionId}`;
+  const preview = `${payload.buyerName} accepted the deal on ${payload.listingTitle}!`;
+  const listingUrl = `${process.env.PUBLIC_APP_URL ?? "https://tryhaggle.ai"}/sell/listings/${payload.listingId}`;
 
   return (
     <BaseEmail preview={preview} unsubscribeUrl={unsubscribeUrl}>
-      <Heading style={heading}>Your offer was accepted! 🎉</Heading>
+      <Heading style={heading}>You have a buyer! 🎉</Heading>
       <Text style={body}>
-        <strong>{payload.acceptedByUserName}</strong> accepted your offer of{" "}
-        <strong>{price}</strong> on <strong>{payload.listingTitle}</strong>.
+        <strong>{payload.buyerName}</strong> accepted the deal on{" "}
+        <strong>{payload.listingTitle}</strong> for <strong>{price}</strong>.
+        Proceed to shipping to complete the transaction.
       </Text>
-      <Button href={sessionUrl} style={button}>
-        Proceed to Checkout
+      <Button href={listingUrl} style={button}>
+        View Listing
       </Button>
     </BaseEmail>
   );

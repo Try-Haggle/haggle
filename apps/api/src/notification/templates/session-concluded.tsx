@@ -1,28 +1,27 @@
 import { Button, Heading, Text } from "@react-email/components";
 import React from "react";
 import { BaseEmail } from "./base-email.js";
-import type { OfferReceivedPayload } from "../catalog.js";
+import type { SessionConcludedPayload } from "../catalog.js";
 
 interface Props {
-  payload: OfferReceivedPayload;
+  payload: SessionConcludedPayload;
   unsubscribeUrl: string;
 }
 
-export function OfferReceivedEmail({ payload, unsubscribeUrl }: Props) {
-  const price = `$${(payload.offerPriceMinor / 100).toLocaleString("en-US")} ${payload.currency}`;
-  const offerLabel = payload.offerType === "COUNTER" ? "counter offer" : "new offer";
-  const preview = `${payload.fromUserName} sent a ${offerLabel} on ${payload.listingTitle}`;
+export function SessionConcludedEmail({ payload, unsubscribeUrl }: Props) {
+  const price = `$${(payload.agreedPriceMinor / 100).toLocaleString("en-US")} ${payload.currency}`;
+  const preview = `Your agent negotiated ${payload.listingTitle} to ${price}. Ready to accept?`;
   const sessionUrl = `${process.env.PUBLIC_APP_URL ?? "https://tryhaggle.ai"}/negotiations/${payload.sessionId}`;
 
   return (
     <BaseEmail preview={preview} unsubscribeUrl={unsubscribeUrl}>
-      <Heading style={heading}>You have a {offerLabel}</Heading>
+      <Heading style={heading}>Your agent got a deal!</Heading>
       <Text style={body}>
-        <strong>{payload.fromUserName}</strong> sent a {offerLabel} of{" "}
-        <strong>{price}</strong> on <strong>{payload.listingTitle}</strong>.
+        Your AI agent negotiated <strong>{payload.listingTitle}</strong> down to{" "}
+        <strong>{price}</strong>. Review the result and decide whether to accept.
       </Text>
       <Button href={sessionUrl} style={button}>
-        View Offer
+        Review & Accept
       </Button>
     </BaseEmail>
   );

@@ -43,14 +43,14 @@
 **명명 컨벤션:** Stripe 스타일 — `resource.action_past_tense`, 점(`.`) 구분, snake_case 세그먼트, 과거 시제, 도메인 단수형. 한번 발행된 event_type은 contract처럼 다룸 (변경 시 v2 접미사).
 
 **협상 (in-app + email):**
-- `negotiation.offer.received` — 상대방이 새 오퍼/역제안 발송
-- `negotiation.offer.accepted` — 내 오퍼가 수락됨
+- `negotiation.session.concluded` — AI 협상 완료 (NEAR_DEAL) → 바이어에게 수락 요청
+- `negotiation.offer.accepted` — 바이어가 Accept 버튼 → 판매자에게 거래 확정 알림
 
 **계정 라이프사이클 (email only):**
 - `user.signed_up` — 가입 환영 이메일
 - `listing.published` — 판매자가 리스팅을 게시했을 때 확인 이메일
 
-> 위 4개로 in-app + email 양쪽 채널 + transactional 패턴 모두 검증 가능. 협상 도메인은 3레벨(`negotiation.offer.received`)로 확장성 확보, 단순 도메인은 2레벨로 유지.
+> `negotiation.offer.received` (라운드별 per-round) → `negotiation.session.concluded`로 교체. AI-to-AI 자동 협상 중 매 라운드 알림은 스팸이 되므로, AI가 합의점(NEAR_DEAL)에 도달한 시점에 바이어에게 summary 1회 알림.
 
 ### 1차 스코프에서 명시적으로 제외
 - 결제 관련 이벤트 (도메인 미구현)
@@ -728,27 +728,36 @@ apps/api/src/jobs/runner.ts                      (기존 — retry 잡 등록)
 
 ---
 
-### Slice 4 — 이벤트 연결 (4개) ⏳
+### Slice 4 — 이벤트 연결 (4개) ✅ **완료** (2026-05-17)
 **목표:** 실제 도메인 액션 시 알림 자동 발송
 
-**수정할 파일:**
+**수정된 파일:**
 ```
-apps/web/src/app/auth/callback/route.ts          (기존 — user.signed_up 발행)
-apps/api/src/routes/drafts.ts                    (기존 — listing.published 발행)
-apps/api/src/routes/negotiations.ts              (기존 — offer.received + offer.accepted 발행)
+apps/api/src/notification/catalog.ts              ✅ (offer.received → session.concluded 교체)
+apps/api/src/notification/get-user-info.ts        ✅ (auth.users COALESCE display name 헬퍼)
+apps/api/src/notification/channels/email.ts       ✅ (getNotificationUserInfo 사용)
+apps/api/src/notification/templates/session-concluded.tsx ✅ (신규)
+apps/api/src/notification/templates/offer-accepted.tsx    ✅ (업데이트)
+apps/api/src/notification/templates/render.ts     ✅ (업데이트)
+apps/api/src/routes/negotiations.ts               ✅ (NEAR_DEAL → session.concluded, accept → offer.accepted)
+apps/api/src/routes/drafts.ts                     ✅ (publishDraft 후 listing.published)
+apps/api/src/routes/internal.ts                   ✅ (POST /api/internal/notifications/user-signed-up)
+apps/api/src/server.ts                            ✅ (notificationBus 파라미터 추가)
+apps/web/src/app/auth/callback/route.ts           ✅ (첫 로그인 시 internal endpoint 호출)
 ```
 
-**작업 내용:**
-- auth/callback: `supabase.auth.getUser()` → 신규 유저 판별 (`created_at > now() - 30s`) → `POST /api/notifications/internal/signed-up` or 직접 notificationBus.publish()
-- drafts.ts: publishDraft() 성공 후 `notificationBus.publish({ type: "listing.published", ... })`
-- negotiations.ts: 오퍼 수신 시 `notificationBus.publish({ type: "negotiation.offer.received", ... })`, 수락 시 `negotiation.offer.accepted`
-- Dual publish 주의: negotiation.agreed는 기존 commerceDispatcher도 유지
+**추가 결정 사항 (구현 중 발견):**
+- `negotiation.offer.received` 제거 → `negotiation.session.concluded` 교체. AI-to-AI 자동 협상은 라운드별 알림 불필요, NEAR_DEAL 시 summary 1회.
+- 내부 엔드포인트 인증: `Authorization` 헤더 사용 시 글로벌 JWT 미들웨어가 먼저 검증 → `x-haggle-internal-key` 커스텀 헤더로 교체.
+- auth/callback: `await` 대신 `void` 사용 시 Next.js가 redirect 후 background 작업 종료 → `try/catch`로 감싼 `await` 사용.
+- `type as "signup" | "magiclink" | "email"` — Supabase 이메일 가입 시 `type=signup` 전달, 기존 타입 좁힘에 추가.
+- 이메일 발송 dev/prod 전략: `NODE_ENV !== 'production'`에서 스킵 (test env 포함). 테스트 시 임시 `NODE_ENV=production` 사용.
 
-**✅ 완료 기준:**
-- 실제 회원가입 → 이메일 수신 확인
-- 리스팅 게시 → 이메일 수신 확인
-- 오퍼 발송 → 상대방 in-app 알림 DB 행 + 이메일 수신 확인
-- 오퍼 수락 → in-app + 이메일 확인
+**검증 완료:**
+- `listing.published` → email_deliveries 행 생성 ✅
+- `user.signed_up` (Google, Email) → curl 검증 + 실제 가입 플로우 ✅
+- `negotiation.session.concluded` → test script 검증 ✅
+- `negotiation.offer.accepted` → ⏳ 실제 협상 플로우 필요 (Slice 5 후 E2E)
 
 ---
 
@@ -830,7 +839,11 @@ apps/web/src/lib/api-client.ts                   (기존 — 알림 API 호출 �
 | 2026-05-16 | email_deliveries에 `attempts` + `idempotencyKey` 컬럼 추가 | cron retry WHERE attempts<3 조건 필요. idempotency는 F-4 결정 반영. |
 | 2026-05-16 | `user.signed_up` 트리거 = `/auth/callback` (옵션 C). 페이지네이션 = browse cursor 패턴. 뱃지 = 마운트 REST + WS +1. REST 엔드포인트 목록 확정. | 기존 인프라 최대 활용, 신규 인프라 0 추가. |
 | 2026-05-16 | DNS 셋업(SPF/DKIM/DMARC)은 Phase 1 별도 트래킹 항목 | deliverability에 필수, 미셋업 시 스팸함 직행. 1회성이지만 빌드 전 완료 보장 필요. |
+| 2026-05-17 | `negotiation.offer.received` → `negotiation.session.concluded`로 교체 | AI-to-AI 협상 중 라운드별 알림은 스팸. NEAR_DEAL 도달 시 바이어에게 summary 1회가 적절. |
+| 2026-05-17 | 내부 엔드포인트 인증: `Authorization` → `x-haggle-internal-key` 커스텀 헤더 | 글로벌 JWT 미들웨어가 Authorization 헤더를 먼저 가로채 INVALID_TOKEN 반환하는 충돌 해결. |
+| 2026-05-17 | auth/callback `void` → `try/catch await`: 알림 로직이 auth redirect를 절대 막지 않도록 | Next.js Route Handler에서 void로 반환 후 background 작업이 중단됨. try/catch로 감싸서 실패해도 redirect 보장. |
+| 2026-05-17 | getNotificationUserInfo() 헬퍼: COALESCE(full_name, name, email prefix) | Google OAuth full_name, 이메일 가입 fallback email prefix. auth.users 단일 쿼리로 이메일+이름 동시 조회. |
 
 ---
 
-*Last Updated: 2026-05-16*
+*Last Updated: 2026-05-17*

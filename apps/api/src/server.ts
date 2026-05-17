@@ -160,14 +160,14 @@ export async function createServer() {
   registerListingsRoutes(app, db);
   registerAccountRoutes(app, db);
   registerPublicListingRoutes(app, db);
-  registerDraftRoutes(app, db);
+  registerDraftRoutes(app, db, notificationBus);
   registerBuyerListingsRoutes(app, db);
   registerSimilarListingsRoutes(app, db);
   registerRecommendationsRoutes(app, db);
-  registerInternalRoutes(app, db);
+  registerInternalRoutes(app, db, notificationBus);
 
   // ─── Negotiation Session & Group Routes ─────────────────
-  registerNegotiationRoutes(app, db, eventDispatcher);
+  registerNegotiationRoutes(app, db, eventDispatcher, notificationBus);
   registerStageRoutes(app, db);
   registerGroupRoutes(app, db, eventDispatcher);
   registerSimulateRoute(app);

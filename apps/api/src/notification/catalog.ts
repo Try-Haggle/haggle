@@ -3,8 +3,8 @@ import { z } from "zod";
 // ─── Event Types ─────────────────────────────────────────────────────────────
 
 export const EVENT_TYPES = [
-  "negotiation.offer.received",
-  "negotiation.offer.accepted",
+  "negotiation.session.concluded", // AI agents reached agreed price → buyer to review
+  "negotiation.offer.accepted",    // Human buyer accepted → seller notified
   "user.signed_up",
   "listing.published",
 ] as const;
@@ -12,23 +12,20 @@ export type EventType = (typeof EVENT_TYPES)[number];
 
 // ─── Payload Schemas ──────────────────────────────────────────────────────────
 
-export const OfferReceivedPayloadSchema = z.object({
+export const SessionConcludedPayloadSchema = z.object({
   sessionId: z.string().uuid(),
-  roundId: z.string().uuid(),
-  offerPriceMinor: z.number().int().nonnegative(),
+  agreedPriceMinor: z.number().int().nonnegative(),
   currency: z.string().length(3),
-  offerType: z.enum(["INITIAL", "COUNTER"]),
-  fromUserName: z.string().min(1),
   listingTitle: z.string().min(1),
   listingId: z.string().uuid(),
 });
-export type OfferReceivedPayload = z.infer<typeof OfferReceivedPayloadSchema>;
+export type SessionConcludedPayload = z.infer<typeof SessionConcludedPayloadSchema>;
 
 export const OfferAcceptedPayloadSchema = z.object({
   sessionId: z.string().uuid(),
   agreedPriceMinor: z.number().int().nonnegative(),
   currency: z.string().length(3),
-  acceptedByUserName: z.string().min(1),
+  buyerName: z.string().min(1),
   listingTitle: z.string().min(1),
   listingId: z.string().uuid(),
 });
@@ -72,14 +69,14 @@ interface CatalogEntry<TSchema extends z.ZodTypeAny = z.ZodTypeAny> {
 // ─── Event Catalog ────────────────────────────────────────────────────────────
 
 export const EVENT_CATALOG: Record<EventType, CatalogEntry> = {
-  "negotiation.offer.received": {
+  "negotiation.session.concluded": {
     category: "negotiation",
     channels: ["in_app", "email"],
     transactional: true,
-    primaryEntityKey: "roundId",
-    payloadSchema: OfferReceivedPayloadSchema,
-    renderDisplay: (p: OfferReceivedPayload) => ({
-      displayTitle: `${p.fromUserName} sent a ${p.offerType === "COUNTER" ? "counter offer" : "new offer"} on ${p.listingTitle}`,
+    primaryEntityKey: "sessionId",
+    payloadSchema: SessionConcludedPayloadSchema,
+    renderDisplay: (p: SessionConcludedPayload) => ({
+      displayTitle: `Your agent negotiated ${p.listingTitle} down to $${(p.agreedPriceMinor / 100).toLocaleString("en-US")}. Ready to accept?`,
       displayLink: `/negotiations/${p.sessionId}`,
     }),
   },
@@ -91,8 +88,8 @@ export const EVENT_CATALOG: Record<EventType, CatalogEntry> = {
     primaryEntityKey: "sessionId",
     payloadSchema: OfferAcceptedPayloadSchema,
     renderDisplay: (p: OfferAcceptedPayload) => ({
-      displayTitle: `${p.acceptedByUserName} accepted your offer on ${p.listingTitle}!`,
-      displayLink: `/negotiations/${p.sessionId}`,
+      displayTitle: `${p.buyerName} accepted the deal on ${p.listingTitle}!`,
+      displayLink: `/sell/listings/${p.listingId}`,
     }),
   },
 
@@ -102,7 +99,6 @@ export const EVENT_CATALOG: Record<EventType, CatalogEntry> = {
     transactional: true,
     primaryEntityKey: "userId",
     payloadSchema: UserSignedUpPayloadSchema,
-    // email-only: no in-app displayTitle/displayLink needed
   },
 
   "listing.published": {
@@ -111,6 +107,5 @@ export const EVENT_CATALOG: Record<EventType, CatalogEntry> = {
     transactional: true,
     primaryEntityKey: "listingId",
     payloadSchema: ListingPublishedPayloadSchema,
-    // email-only: no in-app displayTitle/displayLink needed
   },
 };
