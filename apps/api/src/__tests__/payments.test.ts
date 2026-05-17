@@ -118,7 +118,11 @@ describe("Payment routes", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.status).toBe("ok");
+    expect(body.service).toBe("haggle-api");
     expect(body.timestamp).toBeDefined();
+    expect(typeof body.uptime_seconds).toBe("number");
+    expect(Number.isInteger(body.uptime_seconds)).toBe(true);
+    expect(body.uptime_seconds).toBeGreaterThanOrEqual(0);
   });
 
   it("rejects inline settlement approvals for non-admin users in production", async () => {

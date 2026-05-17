@@ -116,7 +116,9 @@ export async function createServer() {
   // ─── Health Check ────────────────────────────────────────
   app.get("/health", async () => ({
     status: "ok",
+    service: "haggle-api",
     timestamp: new Date().toISOString(),
+    uptime_seconds: Math.floor(process.uptime()),
   }));
   registerHnpProfileRoutes(app);
 
