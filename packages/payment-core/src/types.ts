@@ -1,14 +1,33 @@
 export type PaymentRail = "x402" | "stripe";
 export type BuyerAuthorizationMode = "human_wallet" | "agent_wallet";
 
-export type PaymentIntentStatus =
-  | "CREATED"
-  | "QUOTED"
-  | "AUTHORIZED"
-  | "SETTLEMENT_PENDING"
-  | "SETTLED"
-  | "FAILED"
-  | "CANCELED";
+export const PAYMENT_INTENT_STATUSES = [
+  "CREATED",
+  "QUOTED",
+  "AUTHORIZED",
+  "SETTLEMENT_PENDING",
+  "SETTLED",
+  "REFUNDED",
+  "PARTIALLY_REFUNDED",
+  "DISPUTED",
+  "FAILED",
+  "CANCELED",
+  "EXPIRED",
+] as const;
+
+export type PaymentIntentStatus = (typeof PAYMENT_INTENT_STATUSES)[number];
+
+export const TERMINAL_PAYMENT_INTENT_STATUSES = [
+  "REFUNDED",
+  "PARTIALLY_REFUNDED",
+  "FAILED",
+  "CANCELED",
+  "EXPIRED",
+] as const satisfies readonly PaymentIntentStatus[];
+
+export function isTerminalPaymentIntentStatus(status: PaymentIntentStatus): boolean {
+  return (TERMINAL_PAYMENT_INTENT_STATUSES as readonly string[]).includes(status);
+}
 
 export type RefundStatus =
   | "REQUESTED"

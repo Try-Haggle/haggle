@@ -24,6 +24,7 @@ import {
   getPaymentIntentByOrderId,
   getPaymentIntentRowById,
   updateCommerceOrderStatus,
+  updateStoredPaymentIntent,
 } from "./payment-record.service.js";
 
 type AutoRefundResult = {
@@ -139,6 +140,8 @@ async function finalizeBuyerRefund(
   await createRefundRecord(db, providerResult.refund, providerReference);
 
   if (providerResult.refund.status === "COMPLETED") {
+    const statusResult = paymentService.markRefundedIntent(intent, refundAmountMinor);
+    await updateStoredPaymentIntent(db, statusResult.intent);
     await updateCommerceOrderStatus(db, dispute.order_id, "REFUNDED");
     return {
       refund_id: providerResult.refund.id,
@@ -163,6 +166,8 @@ async function finalizeBuyerRefund(
     });
     const executedReference = refundExecResult.tx_hash ?? refundExecResult.refund_id ?? providerReference;
     await markRefundStatus(db, refund.id, "COMPLETED", executedReference);
+    const statusResult = paymentService.markRefundedIntent(intent, refundAmountMinor);
+    await updateStoredPaymentIntent(db, statusResult.intent);
     await updateCommerceOrderStatus(db, dispute.order_id, "REFUNDED");
     return {
       refund_id: refund.id,

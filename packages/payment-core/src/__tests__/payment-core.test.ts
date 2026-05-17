@@ -78,6 +78,11 @@ describe("transitionPaymentIntent", () => {
       ["QUOTED", "authorize", "AUTHORIZED"],
       ["AUTHORIZED", "mark_settlement_pending", "SETTLEMENT_PENDING"],
       ["SETTLEMENT_PENDING", "settle", "SETTLED"],
+      ["SETTLED", "mark_refunded", "REFUNDED"],
+      ["SETTLED", "mark_partially_refunded", "PARTIALLY_REFUNDED"],
+      ["SETTLED", "mark_disputed", "DISPUTED"],
+      ["PARTIALLY_REFUNDED", "mark_refunded", "REFUNDED"],
+      ["DISPUTED", "mark_partially_refunded", "PARTIALLY_REFUNDED"],
 
       // Cancel paths
       ["CREATED", "cancel", "CANCELED"],
@@ -89,6 +94,12 @@ describe("transitionPaymentIntent", () => {
       ["QUOTED", "fail", "FAILED"],
       ["AUTHORIZED", "fail", "FAILED"],
       ["SETTLEMENT_PENDING", "fail", "FAILED"],
+
+      // Expiry paths
+      ["CREATED", "expire", "EXPIRED"],
+      ["QUOTED", "expire", "EXPIRED"],
+      ["AUTHORIZED", "expire", "EXPIRED"],
+      ["SETTLEMENT_PENDING", "expire", "EXPIRED"],
     ];
 
     it.each(validCases)(
@@ -113,6 +124,11 @@ describe("transitionPaymentIntent", () => {
       ["CANCELED", "quote"],
       ["CANCELED", "authorize"],
       ["CANCELED", "settle"],
+      ["EXPIRED", "quote"],
+      ["EXPIRED", "authorize"],
+      ["REFUNDED", "quote"],
+      ["PARTIALLY_REFUNDED", "authorize"],
+      ["DISPUTED", "settle"],
 
       // Out-of-order transitions
       ["CREATED", "settle"],
@@ -600,6 +616,42 @@ describe("PaymentService", () => {
       const svc = new PaymentService({});
       const intent = makeIntent({ status: "FAILED" });
       expect(() => svc.failIntent(intent, NOW)).toThrow("invalid payment transition");
+    });
+  });
+
+  describe("production terminal states", () => {
+    it("expires an AUTHORIZED intent with a buyer trust trigger", () => {
+      const svc = new PaymentService({});
+      const intent = makeIntent({ status: "AUTHORIZED" });
+      const result = svc.expireIntent(intent, NOW);
+
+      expect(result.intent.status).toBe("EXPIRED");
+      expect(result.trust_triggers).toHaveLength(1);
+      expect(result.trust_triggers[0].type).toBe("buyer_approved_but_not_paid");
+    });
+
+    it("marks a full refund as REFUNDED", () => {
+      const svc = new PaymentService({});
+      const intent = makeIntent({ status: "SETTLED", amount: { currency: "USDC", amount_minor: 100_00 } });
+      const result = svc.markRefundedIntent(intent, 100_00, NOW);
+
+      expect(result.intent.status).toBe("REFUNDED");
+    });
+
+    it("marks a smaller refund as PARTIALLY_REFUNDED", () => {
+      const svc = new PaymentService({});
+      const intent = makeIntent({ status: "SETTLED", amount: { currency: "USDC", amount_minor: 100_00 } });
+      const result = svc.markRefundedIntent(intent, 40_00, NOW);
+
+      expect(result.intent.status).toBe("PARTIALLY_REFUNDED");
+    });
+
+    it("marks a settled payment as DISPUTED", () => {
+      const svc = new PaymentService({});
+      const intent = makeIntent({ status: "SETTLED" });
+      const result = svc.markDisputedIntent(intent, NOW);
+
+      expect(result.intent.status).toBe("DISPUTED");
     });
   });
 

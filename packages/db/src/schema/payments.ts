@@ -13,7 +13,19 @@ export const paymentIntents = pgTable("payment_intents", {
   currency: text("currency").notNull().default("USD"),
   amountMinor: numeric("amount_minor", { precision: 18, scale: 0 }).notNull(),
   status: text("status", {
-    enum: ["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING", "SETTLED", "FAILED", "CANCELED"],
+    enum: [
+      "CREATED",
+      "QUOTED",
+      "AUTHORIZED",
+      "SETTLEMENT_PENDING",
+      "SETTLED",
+      "REFUNDED",
+      "PARTIALLY_REFUNDED",
+      "DISPUTED",
+      "FAILED",
+      "CANCELED",
+      "EXPIRED",
+    ],
   })
     .notNull()
     .default("CREATED"),

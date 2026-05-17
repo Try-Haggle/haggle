@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
 import { disputeEvidence as disputeEvidenceTable, eq, and, sql } from "@haggle/db";
+import { PaymentService } from "@haggle/payment-core";
 import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY, computeDisputeCost, createDepositRequirement } from "@haggle/dispute-core";
@@ -38,7 +39,9 @@ import {
 } from "../services/dispute-deposit.service.js";
 import {
   getCommerceOrderByOrderId,
+  getPaymentIntentByOrderId,
   updateCommerceOrderStatus,
+  updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
 import {
   initiateDepositCollection,
@@ -307,6 +310,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
     // Transition order to IN_DISPUTE
     await updateCommerceOrderStatus(db, parsed.data.order_id, "IN_DISPUTE");
+    const paymentIntent = await getPaymentIntentByOrderId(db, parsed.data.order_id);
+    if (paymentIntent && ["SETTLED", "PARTIALLY_REFUNDED"].includes(paymentIntent.status)) {
+      const paymentService = new PaymentService({});
+      const disputed = paymentService.markDisputedIntent(paymentIntent);
+      await updateStoredPaymentIntent(db, disputed.intent);
+    }
 
     return reply.code(201).send(result);
   });

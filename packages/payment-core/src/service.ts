@@ -124,6 +124,38 @@ export class PaymentService {
     };
   }
 
+  expireIntent(intent: PaymentIntent, now?: string): PaymentServiceResult<undefined> {
+    const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "expire"), now);
+    return {
+      intent: nextIntent,
+      trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
+    };
+  }
+
+  markDisputedIntent(intent: PaymentIntent, now?: string): PaymentServiceResult<undefined> {
+    const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "mark_disputed"), now);
+    return {
+      intent: nextIntent,
+      trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
+    };
+  }
+
+  markRefundedIntent(
+    intent: PaymentIntent,
+    refundedAmountMinor: number,
+    now?: string,
+  ): PaymentServiceResult<undefined> {
+    const event =
+      refundedAmountMinor >= intent.amount.amount_minor
+        ? "mark_refunded"
+        : "mark_partially_refunded";
+    const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, event), now);
+    return {
+      intent: nextIntent,
+      trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
+    };
+  }
+
   async refundIntent(intent: PaymentIntent, refund: Refund): Promise<RefundPaymentResult> {
     if (intent.status !== "SETTLED") {
       throw new Error(`refund requires SETTLED intent, got ${intent.status}`);

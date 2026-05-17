@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { SettlementApproval } from "@haggle/commerce-core";
 import type { Database } from "@haggle/db";
@@ -46,6 +46,7 @@ import {
   assertPaymentReadyForExecution,
   createSettlementRelease,
   type PaymentIntent,
+  isTerminalPaymentIntentStatus,
   type Refund,
   type BuyerAuthorizationMode,
   type X402PaymentPayloadEnvelope,
@@ -169,6 +170,38 @@ function getProductionPaymentRailError(rail: PaymentRail) {
   }
 
   return null;
+}
+
+function rejectPaymentStatus(
+  reply: FastifyReply,
+  intent: PaymentIntent,
+  action: string,
+  allowed: readonly PaymentIntent["status"][],
+) {
+  if (allowed.includes(intent.status)) {
+    return null;
+  }
+  return reply.code(409).send({
+    error: "PAYMENT_STATUS_NOT_ACTIONABLE",
+    message: `Payment status ${intent.status} cannot ${action}`,
+    status: intent.status,
+    allowed_statuses: allowed,
+  });
+}
+
+function rejectTerminalProductionStatus(
+  reply: FastifyReply,
+  intent: PaymentIntent,
+  action: string,
+) {
+  if (!isTerminalPaymentIntentStatus(intent.status) && intent.status !== "DISPUTED") {
+    return null;
+  }
+  return reply.code(409).send({
+    error: "PAYMENT_TERMINAL_STATE",
+    message: `Payment status ${intent.status} cannot ${action}`,
+    status: intent.status,
+  });
 }
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -453,6 +486,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "be quoted", ["CREATED"]);
+    if (statusGuard) return statusGuard;
     const railError = getProductionPaymentRailError(intent.selected_rail);
     if (railError) {
       return reply.code(503).send(railError);
@@ -501,6 +536,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (intent.selected_rail !== "x402") {
       return reply.code(400).send({ error: "PAYMENT_RAIL_NOT_X402" });
     }
+    const terminalGuard = rejectTerminalProductionStatus(reply, intent, "produce x402 requirements");
+    if (terminalGuard) return terminalGuard;
 
     const providerContext = await db.query.paymentIntents.findFirst({
       where: (fields, ops) => ops.eq(fields.id, intent.id),
@@ -534,6 +571,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (intent.selected_rail !== "x402") {
       return reply.code(400).send({ error: "PAYMENT_RAIL_NOT_X402" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "settle x402 payment", ["AUTHORIZED", "SETTLEMENT_PENDING"]);
+    if (statusGuard) return statusGuard;
     if (!x402Facilitator) {
       return reply.code(400).send({ error: "X402_REAL_MODE_NOT_ENABLED" });
     }
@@ -622,6 +661,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "be authorized", ["CREATED", "QUOTED"]);
+    if (statusGuard) return statusGuard;
     const railError = getProductionPaymentRailError(intent.selected_rail);
     if (railError) {
       return reply.code(503).send(railError);
@@ -654,6 +695,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "enter settlement pending", ["AUTHORIZED"]);
+    if (statusGuard) return statusGuard;
     const railError = getProductionPaymentRailError(intent.selected_rail);
     if (railError) {
       return reply.code(503).send(railError);
@@ -683,6 +726,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "settle", ["SETTLEMENT_PENDING"]);
+    if (statusGuard) return statusGuard;
     const railError = getProductionPaymentRailError(intent.selected_rail);
     if (railError) {
       return reply.code(503).send(railError);
@@ -722,6 +767,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "fail", ["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING"]);
+    if (statusGuard) return statusGuard;
     const result = service.failIntent(intent);
     await updateStoredPaymentIntent(db, result.intent);
     if (result.trust_triggers.length > 0) {
@@ -747,6 +794,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "be canceled", ["CREATED", "QUOTED", "AUTHORIZED"]);
+    if (statusGuard) return statusGuard;
     const result = service.cancelIntent(intent);
     await updateStoredPaymentIntent(db, result.intent);
     if (result.trust_triggers.length > 0) {
@@ -772,6 +821,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    const statusGuard = rejectPaymentStatus(reply, intent, "be refunded", ["SETTLED"]);
+    if (statusGuard) return statusGuard;
     const railError = getProductionPaymentRailError(intent.selected_rail);
     if (railError) {
       return reply.code(503).send(railError);
@@ -806,7 +857,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       result.refund,
       typeof result.metadata?.provider_reference === "string" ? result.metadata.provider_reference : null,
     );
-    return reply.send(result);
+    let updatedIntent = intent;
+    if (result.refund.status === "COMPLETED") {
+      const statusResult = service.markRefundedIntent(intent, result.refund.amount.amount_minor);
+      const stored = await updateStoredPaymentIntent(db, statusResult.intent);
+      updatedIntent = stored ?? statusResult.intent;
+    }
+    return reply.send({ ...result, intent: updatedIntent });
   });
 
   app.post("/payments/webhooks/x402", { config: { rawBody: true } }, async (request, reply) => {
@@ -849,7 +906,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       switch (eventType) {
         case "settlement.confirmed": {
           let settledIntent = intent;
-          if (intent.status !== "SETTLED") {
+          if (intent.status === "AUTHORIZED") {
+            const pending = service.markSettlementPending(intent);
+            await updateStoredPaymentIntent(db, pending.intent);
+            intent.status = pending.intent.status;
+            intent.updated_at = pending.intent.updated_at;
+          }
+          if (intent.status === "SETTLEMENT_PENDING") {
             const result = await service.settleIntent(intent);
             await updateStoredPaymentIntent(db, result.intent, result.metadata);
             if (result.value) {
@@ -864,6 +927,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               });
             }
             settledIntent = result.intent;
+          } else if (intent.status !== "SETTLED") {
+            await recordWebhookProcessed(db, webhookEventId, "x402", 200);
+            return reply.send({ accepted: true, action: "ignored", reason: "payment_status_not_actionable", status: intent.status });
           }
 
           const finalization = await finalizeSettledPayment(db, settledIntent);
@@ -896,9 +962,17 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         }
 
         case "payment.expired": {
-          if (intent.status !== "CANCELED" && intent.status !== "SETTLED") {
-            const result = service.cancelIntent(intent);
+          if (["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING"].includes(intent.status)) {
+            const result = service.expireIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
+            if (result.trust_triggers.length > 0) {
+              await applyTrustTriggers(db, {
+                order_id: result.intent.order_id,
+                buyer_id: result.intent.buyer_id,
+                seller_id: result.intent.seller_id,
+                triggers: result.trust_triggers,
+              });
+            }
           }
 
           await recordWebhookProcessed(db, webhookEventId, "x402", 200);
@@ -968,7 +1042,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           }
 
           const intent = await getPaymentIntentById(db, paymentIntentId);
-          if (intent && intent.status !== "SETTLED") {
+          if (intent && ["AUTHORIZED", "SETTLEMENT_PENDING"].includes(intent.status)) {
             // Verify event data matches stored intent
             const eventObj = event.data?.object as unknown as { metadata?: Record<string, string> } | undefined;
             const eventOrderId = eventObj?.metadata?.order_id;
@@ -1018,6 +1092,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
               console.error("Stripe webhook settlement error:", error);
               return reply.code(500).send({ accepted: false, action: "error", message: "Settlement processing failed" });
             }
+          } else if (intent && intent.status !== "SETTLED") {
+            await recordWebhookProcessed(db, event.id, "stripe", 200);
+            return reply.send({
+              accepted: true,
+              action: "ignored",
+              reason: "payment_status_not_actionable",
+              payment_intent_id: paymentIntentId,
+              status: intent.status,
+            });
           }
         }
       }
@@ -1084,6 +1167,8 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       if (!intent) {
         return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
       }
+      const terminalGuard = rejectTerminalProductionStatus(reply, intent, "create onramp session");
+      if (terminalGuard) return terminalGuard;
       const railError = getProductionPaymentRailError(intent.selected_rail);
       if (railError) {
         return reply.code(503).send(railError);

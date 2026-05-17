@@ -6,6 +6,7 @@ import {
   getCommerceOrderByOrderId,
   getPaymentIntentByOrderId,
   updateCommerceOrderStatus,
+  updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
 import {
   createDisputeResolutionRecord,
@@ -30,6 +31,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   getPaymentIntentByOrderId: vi.fn(),
   getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
+  updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../services/dispute-record.service.js", () => ({
@@ -65,6 +67,7 @@ const mockGetPaymentIntentByOrderId = vi.mocked(getPaymentIntentByOrderId);
 const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
 const mockCreateRefundRecord = vi.mocked(createRefundRecord);
 const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
+const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockUpdateDisputeRecord = vi.mocked(updateDisputeRecord);
 const mockCreateDisputeResolutionRecord = vi.mocked(createDisputeResolutionRecord);
 const mockExecuteRefund = vi.mocked(executeRefund);
@@ -155,6 +158,7 @@ describe("finalizeDisputeResolution", () => {
         },
         metadata: { provider_reference: "provider_ref_1" },
       }),
+      markRefundedIntent: vi.fn(),
     } as unknown as ReturnType<typeof createPaymentServiceFromEnv>);
     mockExecuteRefund.mockRejectedValue(new Error("relayer down"));
 
@@ -196,6 +200,21 @@ describe("finalizeDisputeResolution", () => {
         },
         metadata: { provider_reference: "provider_ref_1" },
       }),
+      markRefundedIntent: vi.fn().mockReturnValue({
+        intent: {
+          id: "pi_1",
+          order_id: "ord_1",
+          seller_id: "seller_1",
+          buyer_id: "buyer_1",
+          selected_rail: "x402",
+          allowed_rails: ["x402"],
+          amount: { currency: "USD", amount_minor: 10000 },
+          status: "PARTIALLY_REFUNDED",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        trust_triggers: [],
+      }),
     } as unknown as ReturnType<typeof createPaymentServiceFromEnv>);
     mockExecuteRefund.mockResolvedValue({ tx_hash: "0xrefunded" });
 
@@ -204,6 +223,9 @@ describe("finalizeDisputeResolution", () => {
     expect(db.__updateSet).toHaveBeenCalledWith(expect.objectContaining({
       status: "COMPLETED",
       providerReference: "0xrefunded",
+    }));
+    expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: "PARTIALLY_REFUNDED",
     }));
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "ord_1", "REFUNDED");
     expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
