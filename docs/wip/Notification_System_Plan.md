@@ -658,45 +658,41 @@ packages/db/drizzle.config.ts                      ✅ (3개 파일 명시적 �
 
 ---
 
-### Slice 2 — 백엔드 코어 ⏳
+### Slice 2 — 백엔드 코어 ✅ **완료** (2026-05-16)
 **목표:** `notificationBus.publish()` 한 줄로 in-app 저장 + WS push + 이메일 발송 가능
 
-**만들 파일:**
+**생성된 파일:**
 ```
-apps/api/src/notification/catalog.ts              (신규 — 이벤트 정의 + Zod + renderDisplay)
-apps/api/src/notification/bus.ts                  (신규 — NotificationBus)
-apps/api/src/notification/channels/in-app.ts      (신규 — DB INSERT + WS push)
-apps/api/src/notification/channels/email.ts       (신규 — Resend SDK 연동)
-apps/api/src/notification/ws-registry.ts          (신규 — user_id별 WS 연결 관리)
-apps/api/src/notification/templates/base-email.tsx     (신규 — 공통 레이아웃)
-apps/api/src/notification/templates/offer-received.tsx (신규)
-apps/api/src/notification/templates/offer-accepted.tsx (신규)
-apps/api/src/notification/templates/user-signed-up.tsx (신규)
-apps/api/src/notification/templates/listing-published.tsx (신규)
-apps/api/src/notification/index.ts                (신규 — barrel export)
-apps/api/src/server.ts                            (기존 — /ws/notifications WS 라우트 추가)
+apps/api/src/notification/catalog.ts                    ✅ (4개 이벤트 + Zod + renderDisplay)
+apps/api/src/notification/bus.ts                        ✅ (publish → 검증 → idempotency → fan-out)
+apps/api/src/notification/ws-registry.ts                ✅ (userId ↔ WebSocket Map)
+apps/api/src/notification/channels/in-app.ts            ✅ (DB INSERT + WS push)
+apps/api/src/notification/channels/email.ts             ✅ (auth.users 조회 + Resend + dev log)
+apps/api/src/notification/templates/base-email.tsx      ✅
+apps/api/src/notification/templates/offer-received.tsx  ✅
+apps/api/src/notification/templates/offer-accepted.tsx  ✅
+apps/api/src/notification/templates/user-signed-up.tsx  ✅
+apps/api/src/notification/templates/listing-published.tsx ✅
+apps/api/src/notification/templates/render.ts           ✅ (eventType → HTML 렌더)
+apps/api/src/notification/index.ts                      ✅ (barrel export)
+apps/api/src/ws/notification-ws.ts                      ✅ (/ws/notifications 라우트)
+apps/api/src/scripts/test-notification.ts               ✅ (검증 스크립트)
+apps/api/src/server.ts                                  ✅ (bus 생성 + WS 라우트 등록)
+apps/api/tsconfig.json                                  ✅ (jsx: react-jsx 추가)
 ```
 
-**작업 내용:**
-- catalog.ts: 4개 이벤트 정의 (Zod schema + 메타 + renderDisplay)
-- bus.ts: `publish({ type, recipientUserId, payload })` → Zod 검증 → prefs 평가 → 채널 fan-out
-- in-app.ts: notifications INSERT (ON CONFLICT DO NOTHING) → ws-registry에서 해당 user WS 조회 → push
-- email.ts: email_deliveries INSERT (status='queued') → `void resend.emails.send(...)` fire-and-forget
-- ws-registry.ts: `Map<userId, WebSocket>` 관리, 연결/해제 시 등록/제거
-- /ws/notifications 라우트: JWT 검증 → ws-registry에 등록
-- 패키지 설치: `resend`, `@react-email/components`
+**추가 결정 사항:**
+- NotificationBus: `createNotificationBus(db, resend)` — 기존 패턴(파라미터 전달) 따름
+- 이메일 수신자 이메일 조회: `auth.users` 직접 SQL 쿼리 (Supabase Admin API 미사용)
+- dev 모드(`NODE_ENV !== 'production'`): Resend 미호출, 콘솔 로그만 + status='sent' 즉시 처리
 
-**✅ 완료 기준:**
-```ts
-// apps/api/src/scripts/test-notification.ts (임시 스크립트로 테스트)
-await notificationBus.publish({
-  type: "negotiation.offer.received",
-  recipientUserId: "...",
-  payload: { sessionId: "...", roundId: "...", ... },
-});
-// → notifications 테이블 행 생성 확인
-// → Resend 대시보드에서 이메일 발송 확인
-```
+**검증 완료:**
+- `notifications` 테이블 행 생성 ✅ (payload에 `displayTitle`/`displayLink` 포함)
+- `email_deliveries` 행 생성 ✅ (`status=sent`, `to_email=tryhaggle@gmail.com`)
+- `[EMAIL DEV]` 로그 출력 ✅
+- Idempotency: 동일 roundId 재실행 시 새 행 미생성 ✅
+
+**커밋:** `feat(api): slice 2 — notification bus, catalog, channels, email templates, WS route`
 
 ---
 

@@ -47,6 +47,9 @@ import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerOrderRoutes } from "./routes/orders.js";
 import websocket from "@fastify/websocket";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
+import { registerNotificationWsRoute } from "./ws/notification-ws.js";
+import { createNotificationBus } from "./notification/index.js";
+import { Resend } from "resend";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
@@ -90,6 +93,10 @@ export async function createServer() {
 
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(runtimeConfig.databaseUrl);
+
+  // ─── Notification Bus ─────────────────────────────────────
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const notificationBus = createNotificationBus(db, resend);
 
   // ─── LLM Telemetry DB sink ─────────────────────────────────
   if (process.env.LLM_TELEMETRY === "db") {
@@ -196,6 +203,7 @@ export async function createServer() {
   // ─── WebSocket ───────────────────────────────────────────
   await app.register(websocket);
   await registerWebSocketRoutes(app);
+  await registerNotificationWsRoute(app);
 
   // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
   initCronJobs(db);
