@@ -696,7 +696,7 @@ apps/api/tsconfig.json                                  ✅ (jsx: react-jsx 추�
 
 ---
 
-### Slice 3 — REST API + Webhook + Cron ⏳
+### Slice 3 — REST API + Webhook + Cron ✅ **완료** (2026-05-17)
 **목표:** 프론트엔드가 알림을 조회/업데이트할 수 있고, Resend webhook 수신 + 재시도 cron 동작
 
 **만들 파일:**

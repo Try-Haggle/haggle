@@ -125,6 +125,9 @@ importers:
       stripe:
         specifier: ^22.0.1
         version: 22.0.1(@types/node@22.19.11)
+      svix:
+        specifier: ^1.93.0
+        version: 1.93.0
       viem:
         specifier: ^2.39.3
         version: 2.47.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
@@ -5146,6 +5149,9 @@ packages:
 
   svix@1.92.2:
     resolution: {integrity: sha512-ZmuA3UVvlnF9EgxlzmPtF7CKjQb64Z6OFlyfdDfU0sdcC7dJa+3aOYX5B9mA+RS6ch1AxBa4UP/l6KmqfGtWBQ==}
+
+  svix@1.93.0:
+    resolution: {integrity: sha512-AeCcSs+CrHNejZytBuvD4hw2B14rB7+Sq7ggwYgF22TgXh0uJJ3T4uVJSbSYKFSbO1AA4o470XoGgOYqu2fbSA==}
 
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
@@ -11213,6 +11219,10 @@ snapshots:
   superstruct@1.0.4: {}
 
   svix@1.92.2:
+    dependencies:
+      standardwebhooks: 1.0.0
+
+  svix@1.93.0:
     dependencies:
       standardwebhooks: 1.0.0
 

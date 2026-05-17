@@ -50,6 +50,8 @@ import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { registerNotificationWsRoute } from "./ws/notification-ws.js";
 import { createNotificationBus } from "./notification/index.js";
 import { Resend } from "resend";
+import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
@@ -95,7 +97,9 @@ export async function createServer() {
   const db = createDb(runtimeConfig.databaseUrl);
 
   // ─── Notification Bus ─────────────────────────────────────
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  // Fallback key prevents Resend constructor throw in test env (actual sends are
+  // guarded by NODE_ENV !== 'production' check in email channel)
+  const resend = new Resend(process.env.RESEND_API_KEY ?? "re_test_placeholder");
   const notificationBus = createNotificationBus(db, resend);
 
   // ─── LLM Telemetry DB sink ─────────────────────────────────
@@ -199,6 +203,10 @@ export async function createServer() {
 
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
+
+  // ─── Notification Routes ──────────────────────────────────
+  registerNotificationRoutes(app, db);
+  registerResendWebhookRoute(app, db);
 
   // ─── WebSocket ───────────────────────────────────────────
   await app.register(websocket);
