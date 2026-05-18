@@ -761,34 +761,47 @@ apps/web/src/app/auth/callback/route.ts           ✅ (첫 로그인 시 interna
 
 ---
 
-### Slice 5 — 프론트엔드 ⏳
+### Slice 5 — 프론트엔드 ✅ **완료** (2026-05-17)
 **목표:** 벨 아이콘 + 드롭다운 + /notifications 페이지 + 실시간 토스트 동작
 
-**만들/수정할 파일:**
+**생성/수정된 파일:**
 ```
-apps/web/package.json                            (기존 — sonner 추가)
-apps/web/src/app/layout.tsx                      (기존 — <Toaster> 마운트)
-apps/web/src/hooks/use-notification-ws.ts        (신규 — WS 연결 + 토스트 트리거)
-apps/web/src/app/(app)/layout.tsx                (기존 — useNotificationWs 마운트)
-apps/web/src/components/nav.tsx                  (기존 — 벨 아이콘 + 드롭다운 추가)
-apps/web/src/components/bottom-nav.tsx           (기존 — Profile 탭 뱃지 추가)
-apps/web/src/app/(app)/notifications/page.tsx    (신규 — /notifications 풀 페이지)
-apps/web/src/app/(app)/profile/page.tsx          (기존 또는 신규 — 알림 진입 버튼)
-apps/web/src/app/(app)/settings/settings-content.tsx (기존 — Notifications 섹션 추가)
-apps/web/src/lib/api-client.ts                   (기존 — 알림 API 호출 함수 추가)
+apps/web/package.json                                    ✅ (sonner, lucide-react 추가)
+apps/web/src/app/layout.tsx                              ✅ (<Toaster> 마운트)
+apps/web/src/app/(app)/layout.tsx                        ✅ (NotificationProvider 래핑)
+apps/web/src/app/(app)/_components/notification-provider.tsx ✅ (신규 — unreadCount Context)
+apps/web/src/hooks/use-notification-ws.ts                ✅ (신규 — WS + sonner toast)
+apps/web/src/lib/api-client.ts                           ✅ (notificationApi 추가)
+apps/web/src/components/nav.tsx                          ✅ (벨 아이콘 + NotificationBell 드롭다운)
+apps/web/src/components/bottom-nav.tsx                   ✅ (Inbox 탭 추가 + 뱃지)
+apps/web/src/app/(app)/notifications/page.tsx            ✅ (신규 — cursor 기반 무한스크롤)
+apps/web/src/app/(app)/profile/page.tsx                  ✅ (신규 — Switch mode / Account Settings / Sign out hub)
+apps/web/src/app/(app)/settings/settings-content.tsx     ✅ ("Account Settings" 리브랜드, Sign out 제거)
+apps/web/src/app/(app)/settings/notifications/page.tsx   ✅ (신규 — 진입점 숨김, TODO)
+apps/api/src/server.ts                                   ✅ (CORS PUT 추가)
 ```
 
-**작업 내용:**
-- use-notification-ws.ts: `use-negotiation-ws.ts` 패턴 복사 → `/ws/notifications` 연결 → 메시지 도착 시 sonner toast + unreadCount +1
-- nav.tsx: 벨 아이콘 → 클릭 시 드롭다운 (최근 5개, Mark all read, View all 링크)
-- /notifications/page.tsx: cursor 기반 무한스크롤 (browse listing-grid 패턴), 각 알림 클릭 시 읽음 처리 + displayLink 이동
-- settings-content.tsx: 카테고리 × 채널 토글 6개 (negotiation/account/listing × in_app/email)
+**추가 결정 사항 (구현 중 발견):**
+- 모바일 bottom-nav: Profile 탭 → **Inbox 탭** (전용 알림 탭) + Profile 탭 유지
+- 데스크탑 유저 메뉴: "Settings" → **"Account Settings" + "Notification Settings"** 분리
+- `/profile` 허브 페이지: Switch mode / Account Settings / Sign out 통합
+- `/settings` → "Account Settings" 리브랜드 (프로필, 비밀번호, 계정 삭제)
+- `/settings/notifications` 페이지 신설 but 진입점 숨김 — prefs bypass 중이라 YAGNI
+- localStorage mode 덮어쓰기 버그 수정: 중립 경로(`/profile`, `/settings`)에서 localStorage 기록 안 함
+- CORS `PUT` 누락 수정 → `PUT /api/notifications/preferences` 정상 동작
 
-**✅ 완료 기준:**
-- 오퍼 발송 시 상대방 화면에 sonner 토스트 실시간 등장
-- 벨 뱃지 숫자 정확
-- /notifications 무한스크롤 동작
-- 설정에서 이메일 토글 OFF → 이후 이메일 미발송 확인
+**검증 완료:**
+- 벨 아이콘 클릭 → 드롭다운 (최근 5개, Mark all read, View all) ✅
+- `/notifications` 무한스크롤 + 읽음 처리 ✅
+- Inbox 탭 뱃지 (unread count) ✅
+- test script → 브라우저에서 실시간 토스트 확인 ✅
+- Profile 탭 → Switch mode 동작 ✅
+- Account Settings (이름/비밀번호/계정삭제) 기존 기능 정상 ✅
+
+**Notification Settings UI 현황:**
+- 페이지(`/settings/notifications`) 파일 존재하지만 진입 링크 숨김 (TODO 주석)
+- 이유: 현재 4개 이벤트 모두 `transactional: true` → prefs 우회 → UI가 실제 동작 안 함
+- 활성화 조건: bus.ts에 non-transactional 이벤트 prefs 체크 로직 추가 시
 
 ---
 
@@ -843,7 +856,13 @@ apps/web/src/lib/api-client.ts                   (기존 — 알림 API 호출 �
 | 2026-05-17 | 내부 엔드포인트 인증: `Authorization` → `x-haggle-internal-key` 커스텀 헤더 | 글로벌 JWT 미들웨어가 Authorization 헤더를 먼저 가로채 INVALID_TOKEN 반환하는 충돌 해결. |
 | 2026-05-17 | auth/callback `void` → `try/catch await`: 알림 로직이 auth redirect를 절대 막지 않도록 | Next.js Route Handler에서 void로 반환 후 background 작업이 중단됨. try/catch로 감싸서 실패해도 redirect 보장. |
 | 2026-05-17 | getNotificationUserInfo() 헬퍼: COALESCE(full_name, name, email prefix) | Google OAuth full_name, 이메일 가입 fallback email prefix. auth.users 단일 쿼리로 이메일+이름 동시 조회. |
+| 2026-05-17 | 모바일 bottom-nav에 전용 Inbox 탭 추가 (벨 아이콘 → inbox tray 아이콘) | AI 협상 완료 알림은 시간 민감 → 마켓플레이스 표준 패턴(eBay/Airbnb)처럼 전용 탭. |
+| 2026-05-17 | Settings 구조 개편: Account Settings / Notification Settings 분리 | 역할 명확화. Notification Settings는 prefs 미작동 구간이라 진입점 숨김. |
+| 2026-05-17 | /profile 허브 페이지 신설 (mobile nav hub) | Switch mode, Account Settings, Sign out을 한 곳에서 접근. Profile 탭이 hub 역할. |
+| 2026-05-17 | localStorage mode 덮어쓰기 버그 수정 | 중립 경로(/profile, /settings)에서 pathMode=null 시 storedMode 초기값(null→buying)이 localStorage에 써지는 문제. definitive path에서만 기록. |
+| 2026-05-17 | CORS allowedMethods에 PUT 추가 | PUT /api/notifications/preferences CORS 차단 수정. |
+| 2026-05-17 | Notification Settings UI 진입점 숨김 (TODO 주석) | transactional 이벤트는 prefs 우회 — 토글해도 동작 안 함. 미작동 UI 노출은 혼란 초래. |
 
 ---
 
-*Last Updated: 2026-05-17*
+*Last Updated: 2026-05-17 (Slice 5 완료)*
