@@ -14,6 +14,7 @@ import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
 import { runShipmentSlaCheck } from "./shipment-sla-check.js";
 import { runDisputeDepositExpiry } from "./dispute-deposit-expiry.js";
 import { runChainEventSync } from "./chain-event-sync.js";
+import { runRetryFailedEmails } from "./retry-failed-emails.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,6 +62,12 @@ function buildJobRegistry(): CronJob[] {
       name: "chain-event-sync",
       intervalMs: 60 * 1000, // every 60 seconds
       handler: runChainEventSync,
+      enabled: true,
+    },
+    {
+      name: "retry-failed-emails",
+      intervalMs: 5 * 60 * 1000, // every 5 minutes
+      handler: runRetryFailedEmails,
       enabled: true,
     },
   ];

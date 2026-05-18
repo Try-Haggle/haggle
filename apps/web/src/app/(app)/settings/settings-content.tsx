@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { notificationApi, type NotificationPreferences } from "@/lib/api-client";
 import { api, ApiError } from "@/lib/api-client";
 
 interface SettingsContentProps {
@@ -179,25 +180,17 @@ export function SettingsContent({
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       {/* Header */}
       <div className="mb-8">
+        {/* Mobile only: back button */}
         <button
-          onClick={() => router.push("/sell/dashboard")}
-          className="mb-4 hidden md:flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+          onClick={() => router.back()}
+          className="mb-4 flex md:hidden items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
         >
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
-          Dashboard
+          Back
         </button>
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
+        <h1 className="text-2xl font-bold text-white">Account Settings</h1>
         <p className="mt-1 text-sm text-slate-500">
           Manage your profile and account
         </p>
@@ -418,62 +411,87 @@ export function SettingsContent({
         )}
       </section>
 
-      {/* Mobile-only: Mode Switch + Sign Out */}
-      <div className="mt-6 space-y-3 md:hidden">
-        <button
-          onClick={() => {
-            const currentMode = window.location.pathname.startsWith("/buy")
-              ? "buying"
-              : "selling";
-            router.push(
-              currentMode === "selling" ? "/buy/dashboard" : "/sell/dashboard",
-            );
-          }}
-          className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-bg-card p-4 text-sm text-slate-300 hover:border-slate-700 transition-colors cursor-pointer"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-cyan-400"
-          >
-            <path d="M8 3 4 7l4 4" />
-            <path d="M4 7h16" />
-            <path d="m16 21 4-4-4-4" />
-            <path d="M20 17H4" />
-          </svg>
-          Switch mode
-        </button>
+    </div>
+  );
+}
 
-        <button
-          onClick={async () => {
-            const supabaseClient = createClient();
-            await supabaseClient.auth.signOut();
-            router.push("/sign-in");
-          }}
-          className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-bg-card p-4 text-sm text-slate-400 hover:border-slate-700 transition-colors cursor-pointer"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Sign out
-        </button>
+// ─── Notification Settings ─────────────────────────────────────────────────────
+
+const CATEGORIES = ["negotiation", "account", "listing"] as const;
+const CHANNELS = ["in_app", "email"] as const;
+const CATEGORY_LABELS: Record<string, string> = {
+  negotiation: "Negotiation",
+  account: "Account",
+  listing: "Listing",
+};
+const CHANNEL_LABELS: Record<string, string> = {
+  in_app: "In-App",
+  email: "Email",
+};
+
+function NotificationSettings() {
+  const [prefs, setPrefs] = useState<NotificationPreferences>({});
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const loadPrefs = useCallback(async () => {
+    const { preferences } = await notificationApi.getPreferences().catch(() => ({ preferences: {} }));
+    setPrefs(preferences);
+  }, []);
+
+  useEffect(() => { loadPrefs(); }, [loadPrefs]);
+
+  async function handleToggle(category: string, channel: string, current: boolean) {
+    const key = `${category}.${channel}`;
+    setSaving(key);
+    const newValue = !current;
+    setPrefs((prev) => ({
+      ...prev,
+      [category]: { ...prev[category], [channel]: newValue },
+    }));
+    await notificationApi.updatePreference(category, channel, newValue).catch(() => {
+      // revert on error
+      setPrefs((prev) => ({
+        ...prev,
+        [category]: { ...prev[category], [channel]: current },
+      }));
+    });
+    setSaving(null);
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6">
+      <h2 className="mb-4 text-sm font-semibold text-slate-200">Notifications</h2>
+      <div className="space-y-4">
+        {CATEGORIES.map((category) => (
+          <div key={category}>
+            <p className="mb-2 text-xs font-medium text-slate-500 uppercase tracking-wider">
+              {CATEGORY_LABELS[category]}
+            </p>
+            <div className="space-y-2">
+              {CHANNELS.map((channel) => {
+                const enabled = prefs[category]?.[channel] ?? true;
+                const key = `${category}.${channel}`;
+                return (
+                  <div key={channel} className="flex items-center justify-between">
+                    <span className="text-sm text-slate-300">{CHANNEL_LABELS[channel]}</span>
+                    <button
+                      onClick={() => handleToggle(category, channel, enabled)}
+                      disabled={saving === key}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+                        ${enabled ? "bg-cyan-500" : "bg-slate-700"}
+                        ${saving === key ? "opacity-50" : ""}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transform transition duration-200 ease-in-out
+                          ${enabled ? "translate-x-4" : "translate-x-0"}`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

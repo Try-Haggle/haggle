@@ -86,3 +86,44 @@ export const api = {
   delete: <T = unknown>(path: string, opts?: ApiOptions) =>
     apiClient<T>(path, { ...opts, method: "DELETE" }),
 };
+
+// ─── Notification API ─────────────────────────────────────────────────────────
+
+export interface Notification {
+  id: string;
+  eventType: string;
+  category: string;
+  payload: {
+    displayTitle?: string;
+    displayLink?: string;
+    [key: string]: unknown;
+  };
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationPreferences {
+  [category: string]: { [channel: string]: boolean };
+}
+
+export const notificationApi = {
+  list: (cursor?: string) =>
+    api.get<{ notifications: Notification[]; nextCursor: string | null }>(
+      `/api/notifications${cursor ? `?cursor=${cursor}` : ""}`,
+    ),
+
+  count: () =>
+    api.get<{ count: number }>("/api/notifications/count"),
+
+  markRead: (id: string) =>
+    api.patch(`/api/notifications/${id}/read`),
+
+  markAllRead: () =>
+    api.patch("/api/notifications/read-all"),
+
+  getPreferences: () =>
+    api.get<{ preferences: NotificationPreferences }>("/api/notifications/preferences"),
+
+  updatePreference: (category: string, channel: string, enabled: boolean) =>
+    api.put("/api/notifications/preferences", { category, channel, enabled }),
+};

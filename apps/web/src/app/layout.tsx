@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AmplitudeProvider } from "@/providers/amplitude-provider";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,6 +29,15 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-bg-primary text-slate-100 antialiased" suppressHydrationWarning>
         <AmplitudeProvider>{children}</AmplitudeProvider>
+        <Toaster
+          position="bottom-center"
+          duration={5000}
+          expand={true}
+          richColors
+          toastOptions={{
+            style: { background: "#1e293b", color: "#f1f5f9", border: "1px solid #334155" },
+          }}
+        />
       </body>
     </html>
   );

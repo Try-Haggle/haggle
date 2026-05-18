@@ -6,8 +6,10 @@ import {
   generateTextEmbedding,
   computeTextHash,
 } from "../services/embedding.service.js";
+import type { NotificationBus } from "../notification/index.js";
+import { getNotificationUserInfo } from "../notification/get-user-info.js";
 
-export function registerInternalRoutes(app: FastifyInstance, db: Database) {
+export function registerInternalRoutes(app: FastifyInstance, db: Database, notificationBus: NotificationBus) {
   // POST /api/internal/retry-embeddings
   // Called by pg_cron via pg_net — protected by API key
   app.post("/api/internal/retry-embeddings", async (request, reply) => {
@@ -81,4 +83,35 @@ export function registerInternalRoutes(app: FastifyInstance, db: Database) {
       stillFailed,
     });
   });
+
+  // POST /api/internal/notifications/user-signed-up
+  // Called from Next.js auth/callback after first login. Protected by INTERNAL_API_KEY.
+  app.post<{ Body: { userId: string; isNewUser: boolean } }>(
+    "/api/internal/notifications/user-signed-up",
+    async (request, reply) => {
+      const internalApiKey = process.env.INTERNAL_API_KEY;
+      const providedKey = request.headers["x-haggle-internal-key"];
+      if (!internalApiKey || providedKey !== internalApiKey) {
+        return reply.status(401).send({ ok: false, error: "unauthorized" });
+      }
+
+      const { userId, isNewUser } = request.body ?? {};
+      if (!userId || !isNewUser) {
+        return reply.send({ ok: true, skipped: true, reason: "not_new_user" });
+      }
+
+      const userInfo = await getNotificationUserInfo(db, userId);
+      if (!userInfo) {
+        return reply.send({ ok: true, skipped: true, reason: "user_not_found" });
+      }
+
+      await notificationBus.publish({
+        type: "user.signed_up",
+        recipientUserId: userId,
+        payload: { userId, userName: userInfo.displayName },
+      });
+
+      return reply.send({ ok: true });
+    },
+  );
 }

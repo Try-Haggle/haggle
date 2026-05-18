@@ -34,6 +34,9 @@ export default defineConfig({
     "./src/schema/recommendation-logs.ts",
     "./src/schema/category-relatedness.ts",
     "./src/schema/intelligence-layer.ts",
+    "./src/schema/notifications.ts",
+    "./src/schema/notification-preferences.ts",
+    "./src/schema/email-deliveries.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

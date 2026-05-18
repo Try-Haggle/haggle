@@ -1,7 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import type { AuthUser } from "../middleware/auth.js";
 import { z } from "zod";
-import { sql, type Database } from "@haggle/db";
+import { sql, type Database, listingsPublished, eq } from "@haggle/db";
+import type { NotificationBus } from "../notification/index.js";
+import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import {
   computeHnpProposalHash,
   createHnpAgreementObject,
@@ -176,6 +178,7 @@ export function registerNegotiationRoutes(
   app: FastifyInstance,
   db: Database,
   eventDispatcher: EventDispatcher,
+  notificationBus: NotificationBus,
 ) {
   // POST /negotiations/sessions — 세션 생성
   app.post(
@@ -443,6 +446,32 @@ export function registerNegotiationRoutes(
           };
         }
 
+        // ── Notification: negotiation.session.concluded (NEAR_DEAL → buyer)
+        if (!result.idempotent && result.sessionStatus === "NEAR_DEAL" && result.outgoingPrice != null) {
+          void (async () => {
+            try {
+              const listing = await db.query.listingsPublished.findFirst({
+                where: (f, ops) => ops.eq(f.id, session.listingId),
+              });
+              if (listing && session.buyerId) {
+                await notificationBus.publish({
+                  type: "negotiation.session.concluded",
+                  recipientUserId: session.buyerId,
+                  payload: {
+                    sessionId: session.id,
+                    agreedPriceMinor: result.outgoingPrice,
+                    currency: "USD",
+                    listingTitle: ((listing.snapshotJson as Record<string, unknown>)?.title as string) ?? "your listing",
+                    listingId: session.listingId,
+                  },
+                });
+              }
+            } catch (err) {
+              console.error("[notifications] session.concluded error:", err);
+            }
+          })();
+        }
+
         return reply.code(result.idempotent ? 200 : 201).send(responseBody);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -582,6 +611,33 @@ export function registerNegotiationRoutes(
       if (!updated) {
         return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
       }
+
+      // ── Notification: negotiation.offer.accepted (→ seller)
+      void (async () => {
+        try {
+          const listing = await db.query.listingsPublished.findFirst({
+            where: (f, ops) => ops.eq(f.id, session.listingId),
+          });
+          const buyerInfo = await getNotificationUserInfo(db, session.buyerId);
+          const agreedPrice = getAcceptedEventPriceMinor({ agreement, session });
+          if (listing && buyerInfo && session.sellerId) {
+            await notificationBus.publish({
+              type: "negotiation.offer.accepted",
+              recipientUserId: session.sellerId,
+              payload: {
+                sessionId: session.id,
+                agreedPriceMinor: agreedPrice,
+                currency: "USD",
+                buyerName: buyerInfo.displayName,
+                listingTitle: ((listing.snapshotJson as Record<string, unknown>)?.title as string) ?? "your listing",
+                listingId: session.listingId,
+              },
+            });
+          }
+        } catch (err) {
+          console.error("[notifications] offer.accepted error:", err);
+        }
+      })();
 
       // Dispatch agreed event
       await eventDispatcher.dispatch({

@@ -47,6 +47,11 @@ import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerOrderRoutes } from "./routes/orders.js";
 import websocket from "@fastify/websocket";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
+import { registerNotificationWsRoute } from "./ws/notification-ws.js";
+import { createNotificationBus } from "./notification/index.js";
+import { Resend } from "resend";
+import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
@@ -91,6 +96,12 @@ export async function createServer() {
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(runtimeConfig.databaseUrl);
 
+  // ─── Notification Bus ─────────────────────────────────────
+  // Fallback key prevents Resend constructor throw in test env (actual sends are
+  // guarded by NODE_ENV !== 'production' check in email channel)
+  const resend = new Resend(process.env.RESEND_API_KEY ?? "re_test_placeholder");
+  const notificationBus = createNotificationBus(db, resend);
+
   // ─── LLM Telemetry DB sink ─────────────────────────────────
   if (process.env.LLM_TELEMETRY === "db") {
     setTelemetryDb(db);
@@ -102,7 +113,7 @@ export async function createServer() {
     origin: (origin, cb) => {
       cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
-    methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
   });
@@ -149,14 +160,14 @@ export async function createServer() {
   registerListingsRoutes(app, db);
   registerAccountRoutes(app, db);
   registerPublicListingRoutes(app, db);
-  registerDraftRoutes(app, db);
+  registerDraftRoutes(app, db, notificationBus);
   registerBuyerListingsRoutes(app, db);
   registerSimilarListingsRoutes(app, db);
   registerRecommendationsRoutes(app, db);
-  registerInternalRoutes(app, db);
+  registerInternalRoutes(app, db, notificationBus);
 
   // ─── Negotiation Session & Group Routes ─────────────────
-  registerNegotiationRoutes(app, db, eventDispatcher);
+  registerNegotiationRoutes(app, db, eventDispatcher, notificationBus);
   registerStageRoutes(app, db);
   registerGroupRoutes(app, db, eventDispatcher);
   registerSimulateRoute(app);
@@ -193,9 +204,14 @@ export async function createServer() {
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
 
+  // ─── Notification Routes ──────────────────────────────────
+  registerNotificationRoutes(app, db);
+  registerResendWebhookRoute(app, db);
+
   // ─── WebSocket ───────────────────────────────────────────
   await app.register(websocket);
   await registerWebSocketRoutes(app);
+  await registerNotificationWsRoute(app);
 
   // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
   initCronJobs(db);

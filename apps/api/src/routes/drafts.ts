@@ -1,6 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { type Database, listingDrafts, eq } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
+import type { NotificationBus } from "../notification/index.js";
+import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import {
   createDraft,
   getDraftById,
@@ -11,7 +13,7 @@ import {
   type DraftPatch,
 } from "../services/draft.service.js";
 
-export function registerDraftRoutes(app: FastifyInstance, db: Database) {
+export function registerDraftRoutes(app: FastifyInstance, db: Database, notificationBus: NotificationBus) {
   // GET /api/drafts — list user's in-progress drafts
   app.get("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
     const userId = request.user!.id;
@@ -154,6 +156,27 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database) {
 
     try {
       const result = await publishDraft(db, id);
+
+      // ── Notification: listing.published (→ seller)
+      void (async () => {
+        try {
+          const sellerInfo = await getNotificationUserInfo(db, userId);
+          await notificationBus.publish({
+            type: "listing.published",
+            recipientUserId: userId,
+            payload: {
+              listingId: result?.published?.id ?? id,
+              listingTitle: draft.title ?? "your listing",
+              listingPriceMinor: Math.round(parseFloat(String(draft.targetPrice ?? "0")) * 100),
+              currency: "USD",
+              sellerName: sellerInfo?.displayName ?? "Seller",
+            },
+          });
+        } catch (err) {
+          console.error("[notifications] listing.published error:", err);
+        }
+      })();
+
       return reply.send({ ok: true, ...result });
     } catch (err: unknown) {
       const message =

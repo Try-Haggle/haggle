@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
 
 type Mode = "selling" | "buying";
 
@@ -33,8 +34,18 @@ const SELL_TABS = [
     ),
   },
   {
+    label: "Inbox",
+    href: "/notifications",
+    icon: (active: boolean) => (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+        <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+      </svg>
+    ),
+  },
+  {
     label: "Profile",
-    href: "/settings",
+    href: "/profile",
     icon: (active: boolean) => (
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
@@ -81,8 +92,18 @@ const BUY_TABS = [
     ),
   },
   {
+    label: "Inbox",
+    href: "/notifications",
+    icon: (active: boolean) => (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+        <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+      </svg>
+    ),
+  },
+  {
     label: "Profile",
-    href: "/settings",
+    href: "/profile",
     icon: (active: boolean) => (
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
@@ -94,6 +115,7 @@ const BUY_TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { unreadCount } = useNotificationContext();
 
   // Derive mode from path
   const pathMode: Mode | null = pathname.startsWith("/buy")
@@ -118,8 +140,8 @@ export function BottomNav() {
     <nav className="fixed bottom-0 inset-x-0 z-50 border-t border-slate-800 bg-bg-primary/95 backdrop-blur-md md:hidden">
       <div className="flex h-14 items-center justify-around">
         {tabs.map((tab) => {
-          const isActive = tab.href === "/settings"
-            ? pathname.startsWith("/settings")
+          const isActive = tab.href === "/profile"
+            ? pathname.startsWith("/profile") || pathname.startsWith("/settings")
             : pathname.startsWith(tab.href);
 
           return (
@@ -128,7 +150,12 @@ export function BottomNav() {
               href={tab.href}
               className="flex flex-col items-center gap-0.5"
             >
-              {tab.icon(isActive)}
+              <div className="relative">
+                {tab.icon(isActive)}
+                {tab.label === "Inbox" && unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </div>
               <span className={`text-[10px] font-medium ${isActive ? "text-cyan-400" : "text-slate-500"}`}>
                 {tab.label}
               </span>
