@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { PaymentIntent } from "@haggle/payment-core";
 import jwt from "jsonwebtoken";
 import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
+import { getPaymentIntentById } from "../services/payment-record.service.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
@@ -274,5 +276,32 @@ describe("Payment routes", () => {
       url: "/payments/some-id/authorize",
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it("POST /payments/:id/quote rejects terminal production payment states", async () => {
+    const refundedIntent: PaymentIntent = {
+      id: "pi_refunded",
+      order_id: "ord_1",
+      seller_id: "seller_1",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USDC", amount_minor: 1000 },
+      status: "REFUNDED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    vi.mocked(getPaymentIntentById)
+      .mockResolvedValueOnce(refundedIntent)
+      .mockResolvedValueOnce(refundedIntent);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_refunded/quote",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("PAYMENT_STATUS_NOT_ACTIONABLE");
   });
 });

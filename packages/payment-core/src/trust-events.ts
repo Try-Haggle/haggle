@@ -37,5 +37,15 @@ export function trustTriggersForPaymentTransition(
     ];
   }
 
+  if (next === "EXPIRED" && postAuthStates.includes(previous)) {
+    return [
+      {
+        module: "payment",
+        actor_role: "buyer",
+        type: "buyer_approved_but_not_paid",
+      },
+    ];
+  }
+
   return [];
 }

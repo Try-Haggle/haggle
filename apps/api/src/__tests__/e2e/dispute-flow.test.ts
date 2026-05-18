@@ -11,13 +11,23 @@ import { getTestApp, closeTestApp } from "../helpers.js";
 
 // ─── Service mocks ────────────────────────────────────────────────────
 
-const { mockCreateDisputeRecord, mockGetDisputeById, mockUpdateDisputeRecord, mockAddEvidence, mockGetCommerceOrderByOrderId } =
+const {
+  mockCreateDisputeRecord,
+  mockGetDisputeById,
+  mockUpdateDisputeRecord,
+  mockAddEvidence,
+  mockGetCommerceOrderByOrderId,
+  mockGetPaymentIntentByOrderId,
+  mockUpdateStoredPaymentIntent,
+} =
   vi.hoisted(() => ({
     mockCreateDisputeRecord: vi.fn(),
     mockGetDisputeById: vi.fn(),
     mockUpdateDisputeRecord: vi.fn(),
     mockAddEvidence: vi.fn(),
     mockGetCommerceOrderByOrderId: vi.fn(),
+    mockGetPaymentIntentByOrderId: vi.fn(),
+    mockUpdateStoredPaymentIntent: vi.fn(),
   }));
 
 vi.mock("../../services/dispute-record.service.js", () => ({
@@ -45,9 +55,9 @@ vi.mock("../../services/payment-record.service.js", () => ({
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
-  updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
+  updateStoredPaymentIntent: (...args: unknown[]) => mockUpdateStoredPaymentIntent(...args),
   getCommerceOrderByOrderId: (...args: unknown[]) => mockGetCommerceOrderByOrderId(...args),
-  getPaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  getPaymentIntentByOrderId: (...args: unknown[]) => mockGetPaymentIntentByOrderId(...args),
   getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
 }));
 
@@ -235,6 +245,8 @@ describe("E2E: Dispute lifecycle", () => {
     app = await getTestApp();
     // Default: return null unless overridden per-test
     mockGetCommerceOrderByOrderId.mockResolvedValue(null);
+    mockGetPaymentIntentByOrderId.mockResolvedValue(null);
+    mockUpdateStoredPaymentIntent.mockResolvedValue(null);
   });
 
   afterAll(async () => {
@@ -246,6 +258,18 @@ describe("E2E: Dispute lifecycle", () => {
   it("Step 1 — POST /disputes opens a new T1 dispute", async () => {
     mockCreateDisputeRecord.mockResolvedValue(makeDispute());
     mockGetCommerceOrderByOrderId.mockResolvedValue(makeOrder());
+    mockGetPaymentIntentByOrderId.mockResolvedValue({
+      id: "pi_e2e_001",
+      order_id: ORDER_ID,
+      seller_id: "seller-e2e-001",
+      buyer_id: "buyer-e2e-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402"],
+      amount: { currency: "USDC", amount_minor: 77000 },
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -273,6 +297,9 @@ describe("E2E: Dispute lifecycle", () => {
     // disputeService.openCase returns { dispute, value } — check dispute object
     expect(body.dispute).toBeDefined();
     expect(body.dispute.status).toBe("OPEN");
+    expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: "DISPUTED",
+    }));
   });
 
   // ── Step 2: GET /disputes/:id verifies open state ─────────────────
