@@ -113,7 +113,7 @@ export async function createServer() {
     origin: (origin, cb) => {
       cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
-    methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
     credentials: true,
   });

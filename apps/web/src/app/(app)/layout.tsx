@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { Nav } from "@/components/nav";
 import { BottomNav } from "@/components/bottom-nav";
+import { NotificationProvider } from "./_components/notification-provider";
 
 export default async function AppLayout({
   children,
@@ -25,10 +26,10 @@ export default async function AppLayout({
   const userAvatarUrl = (user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as string | null;
 
   return (
-    <>
+    <NotificationProvider>
       <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
       <div className="pb-16 md:pt-16 md:pb-0">{children}</div>
       <BottomNav />
-    </>
+    </NotificationProvider>
   );
 }

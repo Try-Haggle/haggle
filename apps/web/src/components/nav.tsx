@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
+import { notificationApi, type Notification } from "@/lib/api-client";
 
 type Mode = "selling" | "buying";
 
@@ -77,10 +79,14 @@ export function Nav({
           ? "/sell/dashboard"
           : null;
 
-  // Keep localStorage in sync with URL-derived mode
+  // Keep localStorage in sync — only write when path gives us a definitive mode
+  // (avoid overwriting stored mode on ambiguous paths like /profile, /settings)
   useEffect(() => {
-    localStorage.setItem("haggle_mode", mode);
-  }, [mode]);
+    const isDefinitive = pathname.startsWith("/buy") || pathname.startsWith("/sell") || pathname.startsWith("/browse");
+    if (isDefinitive) {
+      localStorage.setItem("haggle_mode", mode);
+    }
+  }, [mode, pathname]);
 
   // Reset error state when avatar URL changes
   useEffect(() => {
@@ -160,6 +166,9 @@ export function Nav({
             {switchLabel}
           </button>
 
+          {/* Notification bell */}
+          <NotificationBell />
+
           {/* User menu */}
           <div className="relative" ref={menuRef}>
             <button
@@ -204,21 +213,15 @@ export function Nav({
                   onClick={() => setMenuOpen(false)}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3" />
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                   </svg>
-                  Settings
+                  Account Settings
                 </Link>
+                {/* TODO(notification-prefs): hidden until prefs check implemented in bus.ts
+                <Link href="/settings/notifications">Notification Settings</Link>
+                */}
                 <button
                   onClick={handleLogout}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
@@ -245,5 +248,134 @@ export function Nav({
         </div>
       </div>
     </nav>
+  );
+}
+
+// ─── Notification Bell ────────────────────────────────────────────────────────
+
+function NotificationBell() {
+  const { unreadCount, decrementCount, resetCount } = useNotificationContext();
+  const [open, setOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  const fetchNotifications = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { notifications: items } = await notificationApi.list();
+      setNotifications(items.slice(0, 5));
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) fetchNotifications();
+  }, [open, fetchNotifications]);
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  async function handleMarkAllRead() {
+    await notificationApi.markAllRead().catch(() => {});
+    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+    resetCount();
+  }
+
+  async function handleClickNotification(n: Notification) {
+    if (!n.readAt) {
+      await notificationApi.markRead(n.id).catch(() => {});
+      decrementCount();
+    }
+    setOpen(false);
+    if (n.payload.displayLink) router.push(n.payload.displayLink as string);
+  }
+
+  return (
+    <div className="relative" ref={bellRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="relative p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+        aria-label="Notifications"
+      >
+        {/* Bell icon */}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-bg-card shadow-xl z-50">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+            <span className="text-sm font-semibold text-slate-200">Notifications</span>
+            <button
+              onClick={handleMarkAllRead}
+              className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+            >
+              Mark all read
+            </button>
+          </div>
+
+          {/* List */}
+          <div className="max-h-72 overflow-y-auto">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+              </div>
+            ) : notifications.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">No notifications yet</p>
+            ) : (
+              notifications.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => handleClickNotification(n)}
+                  className={`w-full text-left px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.readAt ? "bg-cyan-400/5" : ""}`}
+                >
+                  <div className="flex items-start gap-2">
+                    {!n.readAt && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />}
+                    <p className={`text-sm leading-snug ${n.readAt ? "text-slate-400 ml-3.5" : "text-slate-200"}`}>
+                      {n.payload.displayTitle ?? n.eventType}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-600 ml-3.5">
+                    {new Date(n.createdAt).toLocaleDateString()}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-4 py-2.5 border-t border-slate-800">
+            <Link
+              href="/notifications"
+              onClick={() => setOpen(false)}
+              className="block text-center text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+            >
+              View all notifications →
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
