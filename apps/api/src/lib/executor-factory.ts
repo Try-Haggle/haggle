@@ -1,21 +1,19 @@
 /**
  * executor-factory.ts
  *
- * Strategy pattern: returns rule-based, LLM (legacy), or staged pipeline executor
- * based on NEGOTIATION_ENGINE and NEGOTIATION_PIPELINE env vars.
+ * Real negotiation entrypoints (POST /negotiations/start,
+ * POST /negotiations/sessions/:id/offers, MCP haggle_submit_offer) MUST go
+ * through this factory. It always returns the staged LLM executor — rule-based
+ * and legacy LLM executors are intentionally NOT reachable from real flows.
  *
- * NEGOTIATION_ENGINE=rule → rule-based (engine-session)
- * NEGOTIATION_ENGINE=llm + NEGOTIATION_PIPELINE=staged → new 6-Stage pipeline (default)
- * NEGOTIATION_ENGINE=llm + NEGOTIATION_PIPELINE=legacy → legacy LLM executor
+ * Rule-based and legacy executors still exist for demo routes, CLI scripts,
+ * and tests; those call them directly and are not part of the real protocol.
  */
 
 import type { Database } from "@haggle/db";
 import type { EventDispatcher } from "./event-dispatcher.js";
 import type { RoundExecutionInput, RoundExecutionResult } from "./negotiation-executor.js";
-import { executeNegotiationRound as executeRuleBasedRound } from "./negotiation-executor.js";
-import { executeLLMNegotiationRound } from "./llm-negotiation-executor.js";
 import { executeStagedNegotiationRound } from "../negotiation/pipeline/executor.js";
-import { getEngineMode } from "../negotiation/config.js";
 
 export type RoundExecutor = (
   db: Database,
@@ -23,28 +21,26 @@ export type RoundExecutor = (
   eventDispatcher?: EventDispatcher,
 ) => Promise<RoundExecutionResult>;
 
-export type PipelineMode = 'legacy' | 'staged';
+// Type kept as a union for backwards compatibility with the
+// /negotiations/stages route guard and its tests. At runtime
+// getPipelineMode() only ever returns 'staged'.
+export type PipelineMode = 'staged' | 'legacy';
 
 /**
- * Get NEGOTIATION_PIPELINE env (default: staged).
+ * Pipeline mode is fixed at 'staged' for real negotiation flows.
+ * Kept as a function for backwards compatibility with /negotiations/stages
+ * route guards.
  */
 export function getPipelineMode(): PipelineMode {
-  const mode = process.env.NEGOTIATION_PIPELINE;
-  if (mode === 'legacy') return 'legacy';
   return 'staged';
 }
 
 /**
- * Get the appropriate round executor based on NEGOTIATION_ENGINE + NEGOTIATION_PIPELINE env.
+ * Returns the staged LLM executor. There is no rule-based fallback for real
+ * negotiation — the only knob is whether the staged pipeline is healthy
+ * (XAI_API_KEY set, etc.), and failures should surface as errors rather than
+ * silently downgrading.
  */
 export function getExecutor(): RoundExecutor {
-  const mode = getEngineMode();
-  if (mode === 'llm') {
-    const pipelineMode = getPipelineMode();
-    if (pipelineMode === 'staged') {
-      return executeStagedNegotiationRound;
-    }
-    return executeLLMNegotiationRound;
-  }
-  return executeRuleBasedRound;
+  return executeStagedNegotiationRound;
 }

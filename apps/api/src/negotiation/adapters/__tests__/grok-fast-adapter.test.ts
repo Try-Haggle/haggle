@@ -45,7 +45,7 @@ describe('GrokFastAdapter', () => {
   it('should build compact user prompt', () => {
     const prompt = adapter.buildUserPrompt(makeMemory(), []);
     expect(prompt).toContain('S:BARGAINING');
-    expect(prompt).toContain('B:t500');
+    expect(prompt).toContain('B:t$5.00');
   });
 
   it('should build user prompt with history', () => {
@@ -67,11 +67,11 @@ describe('GrokFastAdapter', () => {
     expect(prompt).toContain('round:5');
   });
 
-  it('should parse valid JSON response', () => {
+  it('should parse valid JSON response and convert USD to minor units', () => {
     const raw = '{"action":"COUNTER","price":540,"reasoning":"Faratin curve","tactic_used":"anchoring"}';
     const decision = adapter.parseResponse(raw);
     expect(decision.action).toBe('COUNTER');
-    expect(decision.price).toBe(540);
+    expect(decision.price).toBe(54000);
     expect(decision.reasoning).toBe('Faratin curve');
     expect(decision.tactic_used).toBe('anchoring');
   });
@@ -105,5 +105,62 @@ describe('GrokFastAdapter', () => {
     const prompt = adapter.buildUserPrompt(makeMemory(), [], ['competition_active', 'time_critical']);
     expect(prompt).toContain('SIG:');
     expect(prompt).toContain('competition_active');
+  });
+
+  it('should render OPP_SAID and THREAD when conversation is supplied', () => {
+    const prompt = adapter.buildUserPrompt(makeMemory(), [], undefined, undefined, {
+      opponent_message: 'The battery is at 92% and it has minor scratches.',
+      recent_turns: [
+        { round: 1, sender: 'BUYER', text: 'Hi, would $370 work?', price_minor: 37000 },
+        { round: 2, sender: 'SELLER', text: 'The battery is at 92% and it has minor scratches.', price_minor: 48000 },
+      ],
+    });
+    expect(prompt).toContain('OPP_SAID:');
+    expect(prompt).toContain('battery is at 92%');
+    expect(prompt).toContain('THREAD:');
+    // memory.session.role is 'buyer' in makeMemory() — buyer turn is ME, seller turn is OPP
+    expect(prompt).toContain('R1 ME');
+    expect(prompt).toContain('R2 OPP');
+  });
+
+  it('should embed seller persona language in system prompt', () => {
+    const prompt = adapter.buildSystemPrompt('skill context', 'seller');
+    expect(prompt).toContain('SELLER');
+    expect(prompt).toContain('my item');
+  });
+
+  it('should emit NEGOTIATION_HINT when gap ratio is tiny', () => {
+    // Buyer: target $400, floor $500, my offer $462.50, opp offer $465 → gap $2.50
+    const memory = makeMemory({ round: 9 });
+    memory.boundaries = {
+      my_target: 40000,
+      my_floor: 50000,
+      current_offer: 46250,
+      opponent_offer: 46500,
+      gap: 250,
+    };
+    const prompt = adapter.buildUserPrompt(memory, []);
+    expect(prompt).toContain('NEGOTIATION_HINT:');
+    expect(prompt).toMatch(/ACCEPT/);
+  });
+
+  it('should NOT emit NEGOTIATION_HINT when gap is still wide', () => {
+    const memory = makeMemory({ round: 3 });
+    memory.boundaries = {
+      my_target: 40000,
+      my_floor: 50000,
+      current_offer: 42000,
+      opponent_offer: 48000,
+      gap: 6000,
+    };
+    const prompt = adapter.buildUserPrompt(memory, []);
+    expect(prompt).not.toContain('NEGOTIATION_HINT:');
+  });
+
+  it('should warn buyer not to undercut their own prior offer', () => {
+    const prompt = adapter.buildSystemPrompt('skill context', 'buyer');
+    expect(prompt).toContain('BUYER');
+    // The persona must explicitly forbid backsliding to a lower-than-own number.
+    expect(prompt.toLowerCase()).toMatch(/never counter lower|backing down/);
   });
 });

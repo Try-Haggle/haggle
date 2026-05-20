@@ -14,7 +14,10 @@
       "Read(//Users/inohpak/development/haggle/apps/api/widget/**)",
       "Bash(pnpm build *)",
       "Read(//Users/inohpak/development/haggle/**)",
-      "Bash(pnpm --filter @haggle/web build)"
+      "Bash(pnpm --filter @haggle/web build)",
+      "Bash(pnpm --filter @haggle/api typecheck)",
+      "Bash(pnpm --filter @haggle/web typecheck)",
+      "Bash(pnpm --filter @haggle/api exec vitest run src/negotiation)"
     ]
   }
 }

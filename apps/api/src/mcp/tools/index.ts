@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { eq, listingDrafts, listingsPublished, type Database } from "@haggle/db";
-import { compileStrategySnapshot, type AgentStats, type CompiledStrategySnapshot } from "@haggle/engine-session";
+import { type Database } from "@haggle/db";
+import { loadListingStrategyContext } from "../../services/listing-strategy.service.js";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import {
   createDraft,
@@ -14,7 +14,7 @@ import {
 import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import { LISTING_RESOURCE_URI } from "../resources.js";
 import { createSession, getSessionById } from "../../services/negotiation-session.service.js";
-import { executeNegotiationRound } from "../../lib/negotiation-executor.js";
+import { getExecutor } from "../../lib/executor-factory.js";
 import type { EventDispatcher } from "../../lib/event-dispatcher.js";
 
 /**
@@ -681,9 +681,11 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         const concessionBeta = params.concession_beta ?? presets.concession_beta ?? 0.6;
         const concessionK = params.concession_k ?? presets.concession_k ?? 1.2;
         const sellerStrategy = listingContext?.sellerStrategy;
+        const sellerAdvisorMemory = listingContext?.sellerAdvisorMemory;
         const sessionStrategy = sellerStrategy
           ? {
               ...sellerStrategy,
+              ...(sellerAdvisorMemory ? { seller_advisor_memory: sellerAdvisorMemory } : {}),
               buyer_requested_strategy: {
                 style: style ?? "balanced",
                 p_reservation: max_price,
@@ -822,7 +824,7 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
           };
         }
 
-        const result = await executeNegotiationRound(
+        const result = await getExecutor()(
           db,
           {
             sessionId: session_id,
@@ -1005,111 +1007,3 @@ function getStylePreset(style?: string): StylePreset {
   }
 }
 
-async function loadListingStrategyContext(db: Database, listingId: string): Promise<{
-  listedAtMs: number;
-  deadlineAtMs?: number;
-  askPriceMinor?: number;
-  floorPriceMinor?: number;
-  sellerStrategy?: CompiledStrategySnapshot;
-} | null> {
-  let row = (await db
-    .select({
-      id: listingDrafts.id,
-      userId: listingDrafts.userId,
-      category: listingDrafts.category,
-      condition: listingDrafts.condition,
-      createdAt: listingDrafts.createdAt,
-      sellingDeadline: listingDrafts.sellingDeadline,
-      targetPrice: listingDrafts.targetPrice,
-      floorPrice: listingDrafts.floorPrice,
-      strategyConfig: listingDrafts.strategyConfig,
-    })
-    .from(listingDrafts)
-    .where(eq(listingDrafts.id, listingId))
-    .limit(1))[0];
-
-  if (!row) {
-    row = (await db
-      .select({
-        id: listingDrafts.id,
-        userId: listingDrafts.userId,
-        category: listingDrafts.category,
-        condition: listingDrafts.condition,
-        createdAt: listingDrafts.createdAt,
-        sellingDeadline: listingDrafts.sellingDeadline,
-        targetPrice: listingDrafts.targetPrice,
-        floorPrice: listingDrafts.floorPrice,
-        strategyConfig: listingDrafts.strategyConfig,
-      })
-      .from(listingsPublished)
-      .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
-      .where(eq(listingsPublished.id, listingId))
-      .limit(1))[0];
-  }
-
-  if (!row) return null;
-
-  const askPriceMinor = majorPriceToMinor(row.targetPrice);
-  const floorPriceMinor = majorPriceToMinor(row.floorPrice) ?? (askPriceMinor ? Math.round(askPriceMinor * 0.86) : undefined);
-  const strategyConfig = (row.strategyConfig ?? {}) as Record<string, unknown>;
-  const sellerStrategy = askPriceMinor && floorPriceMinor
-    ? compileStrategySnapshot({
-        role: "SELLER",
-        userId: row.userId ?? undefined,
-        strategyId: typeof strategyConfig.preset === "string" ? `seller_${strategyConfig.preset}` : "seller_compiled",
-        preset: typeof strategyConfig.preset === "string" ? strategyConfig.preset : undefined,
-        agentStats: extractAgentStats(strategyConfig),
-        userPreferences: extractUserPreferenceRef(strategyConfig),
-        listing: {
-          id: row.id,
-          category: row.category,
-          condition: row.condition,
-          targetPriceMinor: askPriceMinor,
-          floorPriceMinor,
-          listedAtMs: row.createdAt.getTime(),
-          deadlineAtMs: row.sellingDeadline?.getTime(),
-        },
-      })
-    : undefined;
-
-  return {
-    listedAtMs: row.createdAt.getTime(),
-    deadlineAtMs: row.sellingDeadline?.getTime(),
-    askPriceMinor,
-    floorPriceMinor,
-    sellerStrategy,
-  };
-}
-
-function majorPriceToMinor(value: unknown): number | undefined {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : undefined;
-}
-
-function extractAgentStats(strategyConfig: Record<string, unknown>): AgentStats | undefined {
-  const keys = ["priceAggression", "patienceLevel", "riskTolerance", "speedBias", "detailFocus"] as const;
-  const stats: AgentStats = {};
-  let hasStats = false;
-  for (const key of keys) {
-    const value = strategyConfig[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      stats[key] = value;
-      hasStats = true;
-    }
-  }
-  return hasStats ? stats : undefined;
-}
-
-function extractUserPreferenceRef(strategyConfig: Record<string, unknown>): Record<string, unknown> | undefined {
-  const fields = [
-    "sellerTimezone",
-    "sellingDeadlineLocalDate",
-    "sellingDeadlineLocalTime",
-    "sellingDeadlineSource",
-  ];
-  const ref: Record<string, unknown> = {};
-  for (const field of fields) {
-    if (strategyConfig[field] !== undefined) ref[field] = strategyConfig[field];
-  }
-  return Object.keys(ref).length > 0 ? ref : undefined;
-}

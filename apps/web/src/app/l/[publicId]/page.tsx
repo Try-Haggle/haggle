@@ -17,6 +17,8 @@ interface ListingData {
   tags: string[] | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
+  subtype: string | null;
+  attributes: Record<string, unknown> | null;
 }
 
 const VALID_ORIGINS = ["browse", "buy-dashboard", "sell-dashboard"] as const;
