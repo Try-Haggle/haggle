@@ -202,11 +202,16 @@ haggle/
 6. tinted 배경 (Step 01, 03) vs 투명 (Step 02)
 
 **완료 조건**:
-- [ ] 3 step 섹션이 디자인대로 zigzag 로 보임
-- [ ] 각 viz 가 정적이지만 모양은 최종 결과물과 일치
-- [ ] 반응형: 모바일에서 항상 text 위, viz 아래
+- [x] 3 step 섹션이 디자인대로 zigzag 로 보임
+- [x] 각 viz 가 정적이지만 모양은 최종 결과물과 일치
+- [x] 반응형: 모바일에서 항상 text 위, viz 아래
 
 **전제조건**: Phase 2 완료
+
+**메모**:
+- Step 02 reverse 초기 구현 시 `order-*` 클래스로 swap 시도했으나 의도와 반대로 동작. JSX 작성 순서 = 좌→우 배치 패턴으로 단순화 (mobile 에서는 `max-lg:order-*` 로 text 우선).
+- Step 01 의 settings panel 은 Phase 3 에서 미렌더 (chat 만 표시). Phase 5 에서 panel 전환 로직 추가.
+- Step 03 summary ("$785 · released") 는 `opacity-0` 로 숨김 (마지막 stage 완료 시 등장 — Phase 5 에서 활성화).
 
 ---
 
@@ -409,3 +414,4 @@ Pattern A 로 시작. 나중에 Pattern B 필요 시:
 | 2026-05-26 | Plan | ✅ Drafted | 초안 작성 |
 | 2026-05-26 | Phase 1 | ✅ Done | 스캐폴딩 완료. localhost:3001 동작, typecheck/build 통과, web 과 동시 실행 검증. 커밋 완료 |
 | 2026-05-26 | Phase 2 | ✅ Done | 디자인 토큰 + 폰트 + Topbar + Hero (정적). 시각적 검증 + 모바일 반응형 확인. CTA 화살표는 SVG 로 통일. masonry 자동 스크롤은 Phase 5 |
+| 2026-05-26 | Phase 3 | ✅ Done | HowItWorks 3 step zigzag (정적). RadarPanel / ChatPanel / Timeline viz 마크업 완성. Step 02 reverse 레이아웃 fix. 애니메이션은 Phase 5 |
