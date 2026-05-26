@@ -43,6 +43,21 @@ export const paymentIntents = pgTable("payment_intents", {
   })
     .notNull()
     .default("CREATED"),
+  canonicalStatus: text("canonical_status", {
+    enum: [
+      "pending",
+      "authorized",
+      "captured",
+      "canceled",
+      "refunded",
+      "partially_refunded",
+      "failed",
+      "disputed",
+      "expired",
+    ],
+  })
+    .notNull()
+    .default("pending"),
   agentPaymentGrantId: uuid("agent_payment_grant_id"),
   approvalPolicyHash: text("approval_policy_hash"),
   agreementHash: text("agreement_hash"),
@@ -117,6 +132,9 @@ export const paymentOperationIdempotency = pgTable(
   (table) => ({
     operationKeyUnique: uniqueIndex("payment_operation_idem_operation_key_unique")
       .on(table.operation, table.idempotencyKey),
+    inProgressIntentUnique: uniqueIndex("payment_operation_idem_in_progress_intent_unique")
+      .on(table.paymentIntentId)
+      .where(sql`payment_intent_id is not null and response_status = 409 and response_body->>'error' = 'PAYMENT_OPERATION_IN_PROGRESS'`),
     paymentIntentIdx: index("payment_operation_idem_payment_intent_idx").on(table.paymentIntentId),
     expiresAtIdx: index("payment_operation_idem_expires_at_idx").on(table.expiresAt),
   }),

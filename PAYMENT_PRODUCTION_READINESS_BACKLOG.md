@@ -25,6 +25,7 @@ Last updated: 2026-05-12
 ## Current Branch Keyless Hardening Completed
 
 - Added canonical production state machine utilities and transition tests without changing persisted DB enums.
+- Added non-destructive `payment_intents.canonical_status` migration plan and DB compatibility checks, keeping legacy `status` values intact while production states roll out.
 - Added recursive payment-sensitive redaction for PAN-like values, CVV/CVC, card expiry, bank account fields, `client_secret`, tokens, signatures, authorization headers, provider payment method IDs, errors, arrays, and circular objects.
 - Added centralized provider retry classification and bounded backoff utilities.
 - Added report-only reconciliation mismatch detection and report aggregation for payment, shipment, and dispute drift.
@@ -40,7 +41,7 @@ Last updated: 2026-05-12
 
 ### P0: Operational State Model Does Not Match Required Production States
 
-- Risk: Required states are `pending`, `authorized`, `captured`, `canceled`, `refunded`, `partially_refunded`, `failed`, `disputed`, and `expired`, but persisted states currently use a legacy uppercase model with no explicit `refunded`, `partially_refunded`, `disputed`, or `expired`.
+- Risk: Required states are `pending`, `authorized`, `captured`, `canceled`, `refunded`, `partially_refunded`, `failed`, `disputed`, and `expired`, but persisted states use a legacy uppercase model. Current mitigation is a non-destructive `canonical_status` column with compatibility checks instead of mutating the legacy enum/table status in place.
 - Acceptance criteria:
   - A canonical production state machine exists and rejects impossible transitions.
   - DB migration plan maps legacy states to canonical states.
@@ -52,8 +53,9 @@ Last updated: 2026-05-12
   - `packages/db/src/schema/payments.ts`
   - `apps/api/src/routes/payments.ts`
   - `apps/api/src/jobs/payment-intent-expiry.ts`
-- Requires decision before proceeding:
-  - Whether to migrate DB status enum values directly or add a new canonical status column first.
+- Migration decision:
+  - Add a new canonical status column first and keep legacy `status` as the compatibility field.
+  - Do not destructively rewrite enum/table status values until provider reconciliation, refund, dispute, and expiry flows are proven against production-like traffic.
 
 ### P0: Admin Capture/Cancel/Refund Semantics Need Explicit Protection And Audit
 

@@ -111,6 +111,70 @@ export function mapLegacyStatusToProductionState(status: LegacyPaymentIntentStat
   }
 }
 
+export function isProductionPaymentState(value: unknown): value is ProductionPaymentState {
+  return typeof value === "string" && PRODUCTION_PAYMENT_STATES.includes(value as ProductionPaymentState);
+}
+
+export function isProductionStateCompatibleWithLegacyStatus(
+  legacyStatus: LegacyPaymentIntentStatus,
+  productionState: ProductionPaymentState,
+): boolean {
+  switch (legacyStatus) {
+    case "CREATED":
+    case "QUOTED":
+      return productionState === "pending" || productionState === "expired";
+    case "AUTHORIZED":
+    case "SETTLEMENT_PENDING":
+      return productionState === "authorized" || productionState === "expired";
+    case "SETTLED":
+      return productionState === "captured"
+        || productionState === "partially_refunded"
+        || productionState === "refunded"
+        || productionState === "disputed";
+    case "FAILED":
+      return productionState === "failed";
+    case "CANCELED":
+      return productionState === "canceled" || productionState === "expired";
+  }
+}
+
+export function assertProductionStateCompatibleWithLegacyStatus(
+  legacyStatus: LegacyPaymentIntentStatus,
+  productionState: ProductionPaymentState,
+): void {
+  if (!isProductionStateCompatibleWithLegacyStatus(legacyStatus, productionState)) {
+    throw new Error(`incompatible payment statuses: legacy=${legacyStatus} production=${productionState}`);
+  }
+}
+
+export function normalizeProductionPaymentState(
+  legacyStatus: LegacyPaymentIntentStatus,
+  candidate?: unknown,
+): ProductionPaymentState {
+  const productionState = isProductionPaymentState(candidate)
+    ? candidate
+    : mapLegacyStatusToProductionState(legacyStatus);
+  assertProductionStateCompatibleWithLegacyStatus(legacyStatus, productionState);
+  return productionState;
+}
+
+export function productionStateAfterRefund(input: {
+  legacyStatus: LegacyPaymentIntentStatus;
+  paymentAmountMinor: number;
+  refundAmountMinor: number;
+}): ProductionPaymentState {
+  if (input.legacyStatus !== "SETTLED") {
+    throw new Error(`refund production state requires SETTLED intent, got ${input.legacyStatus}`);
+  }
+  if (input.refundAmountMinor <= 0) {
+    throw new Error("refund amount must be positive");
+  }
+  if (input.refundAmountMinor > input.paymentAmountMinor) {
+    throw new Error(`refund amount ${input.refundAmountMinor} exceeds payment amount ${input.paymentAmountMinor}`);
+  }
+  return input.refundAmountMinor === input.paymentAmountMinor ? "refunded" : "partially_refunded";
+}
+
 const SENSITIVE_PAYMENT_KEY_PATTERNS = [
   /\baccount[_-]?number\b/i,
   /authorization/i,

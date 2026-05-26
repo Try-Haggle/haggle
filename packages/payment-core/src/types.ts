@@ -1,3 +1,5 @@
+import type { ProductionPaymentState } from "./production-readiness.js";
+
 export type PaymentRail = "x402" | "stripe";
 export type BuyerAuthorizationMode = "human_wallet" | "agent_wallet";
 
@@ -34,6 +36,11 @@ export interface PaymentIntent {
   buyer_authorization_mode?: BuyerAuthorizationMode;
   amount: Money;
   status: PaymentIntentStatus;
+  /**
+   * Canonical production lifecycle state. This is intentionally separate from
+   * the legacy persisted status while production migrations roll out.
+   */
+  production_status?: ProductionPaymentState;
   agent_payment_grant_id?: string;
   approval_policy_hash?: string;
   agreement_hash?: string;

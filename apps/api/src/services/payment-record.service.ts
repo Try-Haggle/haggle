@@ -26,6 +26,11 @@ import type {
   PaymentSettlement,
   Refund,
 } from "@haggle/payment-core";
+import {
+  mapLegacyStatusToProductionState,
+  normalizeProductionPaymentState,
+  type LegacyPaymentIntentStatus,
+} from "@haggle/payment-core";
 
 function parseMinor(value: string | number): number {
   if (typeof value === "number") {
@@ -91,6 +96,8 @@ function mapSettlementApproval(row: typeof settlementApprovals.$inferSelect): Se
 }
 
 function mapPaymentIntent(row: typeof paymentIntents.$inferSelect): PaymentIntent {
+  const status = row.status as LegacyPaymentIntentStatus;
+  const productionStatus = normalizeProductionPaymentState(status, row.canonicalStatus);
   return {
     id: row.id,
     order_id: row.orderId,
@@ -103,7 +110,8 @@ function mapPaymentIntent(row: typeof paymentIntents.$inferSelect): PaymentInten
       currency: row.currency,
       amount_minor: parseMinor(row.amountMinor),
     },
-    status: row.status,
+    status,
+    production_status: productionStatus,
     agent_payment_grant_id: row.agentPaymentGrantId ?? undefined,
     approval_policy_hash: row.approvalPolicyHash ?? undefined,
     agreement_hash: row.agreementHash ?? undefined,
@@ -214,6 +222,7 @@ export async function createStoredPaymentIntent(
   intent: PaymentIntent,
   providerContext?: Record<string, unknown>,
 ) {
+  const canonicalStatus = intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
   const [row] = await db
     .insert(paymentIntents)
     .values({
@@ -227,6 +236,7 @@ export async function createStoredPaymentIntent(
       currency: intent.amount.currency,
       amountMinor: String(intent.amount.amount_minor),
       status: intent.status,
+      canonicalStatus,
       agentPaymentGrantId: intent.agent_payment_grant_id ?? null,
       approvalPolicyHash: intent.approval_policy_hash ?? null,
       agreementHash: intent.agreement_hash ?? null,
@@ -352,6 +362,7 @@ export async function updateStoredPaymentIntent(
   intent: PaymentIntent,
   providerContext?: Record<string, unknown>,
 ) {
+  const canonicalStatus = intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
   const [row] = await db
     .update(paymentIntents)
     .set({
@@ -361,6 +372,7 @@ export async function updateStoredPaymentIntent(
       currency: intent.amount.currency,
       amountMinor: String(intent.amount.amount_minor),
       status: intent.status,
+      canonicalStatus,
       agentPaymentGrantId: intent.agent_payment_grant_id ?? null,
       approvalPolicyHash: intent.approval_policy_hash ?? null,
       agreementHash: intent.agreement_hash ?? null,
@@ -513,6 +525,15 @@ export async function createRefundRecord(db: Database, refund: Refund, providerR
   return row;
 }
 
+export async function getRefundRecordsByPaymentIntentId(
+  db: Database,
+  paymentIntentId: string,
+): Promise<(typeof refunds.$inferSelect)[]> {
+  return db.query.refunds.findMany({
+    where: (fields, ops) => ops.eq(fields.paymentIntentId, paymentIntentId),
+  });
+}
+
 export async function getPaymentOperationIdempotencyRecord(
   db: Database,
   operation: string,
@@ -525,6 +546,24 @@ export async function getPaymentOperationIdempotencyRecord(
     ),
   });
   return row ?? null;
+}
+
+export async function getInProgressPaymentOperationForIntent(
+  db: Database,
+  paymentIntentId: string,
+  excludeIdempotencyKey?: string,
+): Promise<typeof paymentOperationIdempotency.$inferSelect | null> {
+  const row = await db.query.paymentOperationIdempotency.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.paymentIntentId, paymentIntentId),
+      ops.eq(fields.responseStatus, 409),
+    ),
+  });
+  if (!row || row.idempotencyKey === excludeIdempotencyKey) {
+    return null;
+  }
+  const responseBody = row.responseBody as Record<string, unknown>;
+  return responseBody.error === "PAYMENT_OPERATION_IN_PROGRESS" ? row : null;
 }
 
 export async function createPaymentOperationIdempotencyRecord(
@@ -548,9 +587,7 @@ export async function createPaymentOperationIdempotencyRecord(
       responseStatus: input.responseStatus,
       responseBody: input.responseBody,
     })
-    .onConflictDoNothing({
-      target: [paymentOperationIdempotency.operation, paymentOperationIdempotency.idempotencyKey],
-    })
+    .onConflictDoNothing()
     .returning();
 
   return row ?? null;

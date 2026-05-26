@@ -12,10 +12,12 @@ import {
   createStoredPaymentIntent,
   ensureCommerceOrderForApproval,
   getActivePaymentIntentByOrderId,
+  getInProgressPaymentOperationForIntent,
   getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
   getPaymentOperationIdempotencyRecord,
   getPaymentIntentRowById,
+  getRefundRecordsByPaymentIntentId,
   getSettlementApprovalById,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
@@ -36,10 +38,12 @@ vi.mock("../services/payment-record.service.js", () => ({
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getActivePaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  getInProgressPaymentOperationForIntent: vi.fn().mockResolvedValue(null),
   getPaymentSettlementByPaymentIntentId: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
   getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
+  getRefundRecordsByPaymentIntentId: vi.fn().mockResolvedValue([]),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -139,10 +143,12 @@ const mockCreatePaymentDisclosureRecord = vi.mocked(createPaymentDisclosureRecor
 const mockCreateStoredPaymentIntent = vi.mocked(createStoredPaymentIntent);
 const mockEnsureCommerceOrderForApproval = vi.mocked(ensureCommerceOrderForApproval);
 const mockGetActivePaymentIntentByOrderId = vi.mocked(getActivePaymentIntentByOrderId);
+const mockGetInProgressPaymentOperationForIntent = vi.mocked(getInProgressPaymentOperationForIntent);
 const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
 const mockGetPaymentOperationIdempotencyRecord = vi.mocked(getPaymentOperationIdempotencyRecord);
 const mockGetPaymentIntentRowById = vi.mocked(getPaymentIntentRowById);
+const mockGetRefundRecordsByPaymentIntentId = vi.mocked(getRefundRecordsByPaymentIntentId);
 const mockGetSettlementApprovalById = vi.mocked(getSettlementApprovalById);
 const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
@@ -413,6 +419,82 @@ describe("Payment routes", () => {
     }
   });
 
+  it("requires idempotency key for production payment prepare before creating order or intent", async () => {
+    mockGetSettlementApprovalById.mockClear();
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateAgentPaymentGrantRecord.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    const originalStripeMode = process.env.STRIPE_MODE;
+    process.env.VERCEL_ENV = "production";
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    process.env.STRIPE_MODE = "real";
+    const token = jwt.sign(
+      { sub: "test-user-001", email: "test@haggle.ai", role: "authenticated" },
+      "test-secret",
+    );
+    const now = new Date().toISOString();
+    mockGetSettlementApprovalById.mockResolvedValueOnce({
+      id: "00000000-0000-4000-a000-000000000099",
+      approval_state: "APPROVED",
+      seller_policy: {
+        mode: "AUTO_WITHIN_POLICY",
+        fulfillment_sla: { shipment_input_due_days: 3 },
+        responsiveness: {
+          median_response_minutes: 30,
+          p95_response_minutes: 120,
+          reliable_fast_responder: true,
+        },
+      },
+      terms: {
+        listing_id: "00000000-0000-4000-a000-000000000011",
+        seller_id: "00000000-0000-4000-a000-000000000033",
+        buyer_id: "test-user-001",
+        final_amount_minor: 50_000,
+        currency: "USD",
+        selected_payment_rail: "stripe",
+      },
+      buyer_approved_at: now,
+      seller_approved_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/prepare",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          settlement_approval_id: "00000000-0000-4000-a000-000000000099",
+          payment_disclosure_ack: {
+            version: PAYMENT_DISCLOSURE_VERSION,
+            text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+            accepted_at: now,
+            no_custody: true,
+            buyer_approved_rules: true,
+            stripe_fallback: true,
+            stablecoin_not_investment: true,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ error: "IDEMPOTENCY_KEY_REQUIRED" });
+      expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+      expect(mockCreateAgentPaymentGrantRecord).not.toHaveBeenCalled();
+      expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = originalVercelEnv;
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+      if (originalStripeMode === undefined) delete process.env.STRIPE_MODE;
+      else process.env.STRIPE_MODE = originalStripeMode;
+    }
+  });
+
   it.each([
     ["no_custody", { no_custody: false, buyer_approved_rules: true, stablecoin_not_investment: true }],
     ["buyer_approved_rules", { no_custody: true, buyer_approved_rules: false, stablecoin_not_investment: true }],
@@ -546,9 +628,10 @@ describe("Payment routes", () => {
     expect(mockGetPaymentIntentById).toHaveBeenCalledOnce();
   });
 
-  it("POST /payments/:id/cancel maps invalid payment state to 409", async () => {
+  it("POST /payments/:id/cancel protects captured payments before state mutation", async () => {
     mockGetPaymentIntentById.mockClear();
     mockUpdateStoredPaymentIntent.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
     const intent = {
       id: "pi_settled_cancel",
       order_id: "order_123",
@@ -573,10 +656,50 @@ describe("Payment routes", () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({
-      error: "PAYMENT_STATE_TRANSITION_INVALID",
-      message: "invalid payment transition: SETTLED -> cancel",
+      error: "PAYMENT_TERMINAL_STATE_PROTECTED",
+      message: "Captured, refunded, or disputed payments cannot be manually canceled.",
+      status: "SETTLED",
+      production_status: "captured",
     });
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/fail protects captured payments before state mutation", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    const intent = {
+      id: "pi_settled_fail",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_settled_fail/fail",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_TERMINAL_STATE_PROTECTED",
+      message: "Captured, refunded, or disputed payments cannot be manually failed.",
+      status: "SETTLED",
+      production_status: "captured",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
   });
 
   it("POST /payments/:id/cancel records idempotent payment mutations", async () => {
@@ -688,6 +811,121 @@ describe("Payment routes", () => {
     expect(mockCompletePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
   });
 
+  it("POST /payments/:id/cancel rejects a different idempotency key while the same intent operation is in progress", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockGetPaymentOperationIdempotencyRecord.mockClear();
+    mockGetInProgressPaymentOperationForIntent.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    mockCompletePaymentOperationIdempotencyRecord.mockClear();
+    const intent = {
+      id: "pi_cancel_lock",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentOperationIdempotencyRecord
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    mockCreatePaymentOperationIdempotencyRecord.mockResolvedValueOnce(null);
+    mockGetInProgressPaymentOperationForIntent.mockResolvedValueOnce({
+      operation: "payment.cancel",
+      idempotencyKey: "idem-cancel-existing",
+      paymentIntentId: "pi_cancel_lock",
+      requestHash: "sha256:existing",
+      responseStatus: 409,
+      responseBody: { error: "PAYMENT_OPERATION_IN_PROGRESS" },
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_cancel_lock/cancel",
+      headers: {
+        ...AUTH_HEADERS,
+        "idempotency-key": "idem-cancel-new",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_OPERATION_IN_PROGRESS",
+      payment_intent_id: "pi_cancel_lock",
+      operation: "payment.cancel",
+      blocking_operation: "payment.cancel",
+    });
+    expect(mockGetInProgressPaymentOperationForIntent).toHaveBeenCalledWith(
+      expect.anything(),
+      "pi_cancel_lock",
+      "idem-cancel-new",
+    );
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCompletePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/cancel rejects while a different operation is in progress for the same intent", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockGetPaymentOperationIdempotencyRecord.mockClear();
+    mockGetInProgressPaymentOperationForIntent.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    mockCompletePaymentOperationIdempotencyRecord.mockClear();
+    const intent = {
+      id: "pi_global_lock",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentOperationIdempotencyRecord
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    mockCreatePaymentOperationIdempotencyRecord.mockResolvedValueOnce(null);
+    mockGetInProgressPaymentOperationForIntent.mockResolvedValueOnce({
+      operation: "payment.capture",
+      idempotencyKey: "idem-capture-existing",
+      paymentIntentId: "pi_global_lock",
+      requestHash: "sha256:existing",
+      responseStatus: 409,
+      responseBody: { error: "PAYMENT_OPERATION_IN_PROGRESS" },
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_global_lock/cancel",
+      headers: {
+        ...AUTH_HEADERS,
+        "idempotency-key": "idem-cancel-new",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_OPERATION_IN_PROGRESS",
+      payment_intent_id: "pi_global_lock",
+      operation: "payment.cancel",
+      blocking_operation: "payment.capture",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCompletePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+  });
+
   it("POST /payments/:id/settle retries fulfillment finalization for an already settled intent", async () => {
     mockGetPaymentIntentById.mockClear();
     mockUpdateStoredPaymentIntent.mockClear();
@@ -779,6 +1017,7 @@ describe("Payment routes", () => {
   it("POST /payments/:id/refund maps over-payment refunds to 400", async () => {
     mockGetPaymentIntentById.mockClear();
     mockCreateRefundRecord.mockClear();
+    mockGetRefundRecordsByPaymentIntentId.mockClear();
     const intent = {
       id: "pi_refund_too_large",
       order_id: "order_123",
@@ -811,7 +1050,169 @@ describe("Payment routes", () => {
       error: "PAYMENT_REFUND_AMOUNT_INVALID",
       message: "refund amount 50001 exceeds payment amount 50000",
     });
+    expect(mockGetRefundRecordsByPaymentIntentId).not.toHaveBeenCalled();
     expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/refund rejects cumulative partial refunds that exceed payment amount", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockCreateRefundRecord.mockClear();
+    mockGetRefundRecordsByPaymentIntentId.mockClear();
+    const intent = {
+      id: "pi_refund_cumulative",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      production_status: "partially_refunded",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetRefundRecordsByPaymentIntentId.mockResolvedValueOnce([
+      {
+        id: "refund_existing_completed",
+        paymentIntentId: "pi_refund_cumulative",
+        amountMinor: "30000",
+        currency: "USD",
+        reasonCode: "buyer_requested",
+        status: "COMPLETED",
+        providerReference: "provider_ref",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "refund_existing_pending",
+        paymentIntentId: "pi_refund_cumulative",
+        amountMinor: "15000",
+        currency: "USD",
+        reasonCode: "buyer_requested",
+        status: "PENDING",
+        providerReference: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: "refund_existing_failed",
+        paymentIntentId: "pi_refund_cumulative",
+        amountMinor: "10000",
+        currency: "USD",
+        reasonCode: "buyer_requested",
+        status: "FAILED",
+        providerReference: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_refund_cumulative/refund",
+      headers: AUTH_HEADERS,
+      payload: {
+        amount_minor: 10_000,
+        currency: "USD",
+        reason_code: "buyer_requested",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_REFUND_AMOUNT_EXCEEDS_REMAINING",
+      payment_intent_id: "pi_refund_cumulative",
+      payment_amount_minor: 50_000,
+      existing_refund_amount_minor: 45_000,
+      requested_refund_amount_minor: 10_000,
+      refundable_remaining_minor: 5_000,
+    });
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/refund rejects already fully refunded payments before provider mutation", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockCreateRefundRecord.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    const intent = {
+      id: "pi_refund_full",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      production_status: "refunded",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_refund_full/refund",
+      headers: AUTH_HEADERS,
+      payload: {
+        amount_minor: 10_000,
+        currency: "USD",
+        reason_code: "buyer_requested",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_REFUND_ALREADY_COMPLETED",
+      production_status: "refunded",
+    });
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+    expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/refund rejects disputed payments before provider mutation", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockCreateRefundRecord.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    const intent = {
+      id: "pi_refund_disputed",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "SETTLED",
+      production_status: "disputed",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_refund_disputed/refund",
+      headers: AUTH_HEADERS,
+      payload: {
+        amount_minor: 10_000,
+        currency: "USD",
+        reason_code: "buyer_requested",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_REFUND_DISPUTED",
+      production_status: "disputed",
+    });
+    expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+    expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
   });
 
   it("POST /payments/:id/x402/conditional-settlement-confirmation rejects inactive payments before settlement finalization", async () => {
@@ -944,6 +1345,57 @@ describe("Payment routes", () => {
       else process.env.HAGGLE_X402_FEE_BPS = originalFeeBps;
       if (originalStripeFeeBps === undefined) delete process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
       else process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = originalStripeFeeBps;
+    }
+  });
+
+  it("POST /payments/:id/quote requires idempotency key in production before provider quote", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    const originalVercelEnv = process.env.VERCEL_ENV;
+    const originalJwtSecret = process.env.SUPABASE_JWT_SECRET;
+    const originalStripeMode = process.env.STRIPE_MODE;
+    process.env.VERCEL_ENV = "production";
+    process.env.SUPABASE_JWT_SECRET = "test-secret";
+    process.env.STRIPE_MODE = "real";
+    const token = jwt.sign(
+      { sub: "test-user-001", email: "test@haggle.ai", role: "authenticated" },
+      "test-secret",
+    );
+    const intent = {
+      id: "pi_quote_prod_no_idem",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "CREATED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_quote_prod_no_idem/quote",
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ error: "IDEMPOTENCY_KEY_REQUIRED" });
+      expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+      expect(mockCreatePaymentOperationIdempotencyRecord).not.toHaveBeenCalled();
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = originalVercelEnv;
+      if (originalJwtSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = originalJwtSecret;
+      if (originalStripeMode === undefined) delete process.env.STRIPE_MODE;
+      else process.env.STRIPE_MODE = originalStripeMode;
     }
   });
 
@@ -1634,6 +2086,9 @@ describe("Payment routes", () => {
   });
 
   it("POST /payments/prepare creates an intent from an accepted negotiation settlement approval", async () => {
+    mockGetPaymentOperationIdempotencyRecord.mockClear();
+    mockCreatePaymentOperationIdempotencyRecord.mockClear();
+    mockCompletePaymentOperationIdempotencyRecord.mockClear();
     const sessionId = "00000000-0000-4000-a000-000000000099";
     const orderId = "00000000-0000-4000-a000-000000000088";
     const listingId = "00000000-0000-4000-a000-000000000011";
@@ -1710,11 +2165,23 @@ describe("Payment routes", () => {
     });
     mockCreateStoredPaymentIntent.mockImplementationOnce(async (_db, intent) => intent);
     mockCreatePaymentDisclosureRecord.mockResolvedValueOnce(null as never);
+    mockGetPaymentOperationIdempotencyRecord.mockResolvedValueOnce(null);
+    mockCreatePaymentOperationIdempotencyRecord.mockResolvedValueOnce({
+      operation: "payment.prepare",
+      idempotencyKey: "idem-prepare-1",
+      paymentIntentId: null,
+      requestHash: "sha256:placeholder",
+      responseStatus: 409,
+      responseBody: { error: "PAYMENT_OPERATION_IN_PROGRESS" },
+    } as never);
 
     const res = await app.inject({
       method: "POST",
       url: "/payments/prepare",
-      headers: AUTH_HEADERS,
+      headers: {
+        ...AUTH_HEADERS,
+        "idempotency-key": "idem-prepare-1",
+      },
       payload: {
         settlement_approval_id: sessionId,
         payment_disclosure_ack: {
@@ -1766,6 +2233,32 @@ describe("Payment routes", () => {
       version: PAYMENT_DISCLOSURE_VERSION,
       text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
     }));
+    expect(mockCreatePaymentOperationIdempotencyRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        operation: "payment.prepare",
+        idempotencyKey: "idem-prepare-1",
+        paymentIntentId: null,
+        responseStatus: 409,
+        responseBody: expect.objectContaining({
+          error: "PAYMENT_OPERATION_IN_PROGRESS",
+        }),
+      }),
+    );
+    expect(mockCompletePaymentOperationIdempotencyRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "payment.prepare",
+      "idem-prepare-1",
+      expect.objectContaining({
+        responseStatus: 201,
+        responseBody: expect.objectContaining({
+          intent: expect.objectContaining({
+            order_id: orderId,
+            status: "CREATED",
+          }),
+        }),
+      }),
+    );
     expect(res.json()).toMatchObject({
       intent: {
         order_id: orderId,

@@ -4,6 +4,7 @@ import {
   completePaymentOperationIdempotencyRecord,
   createPaymentSettlementRecord,
   getActivePaymentIntentByOrderId,
+  getInProgressPaymentOperationForIntent,
   getPaymentSettlementByPaymentIntentId,
   getSettlementApprovalById,
 } from "../services/payment-record.service.js";
@@ -191,9 +192,44 @@ describe("payment-record.service", () => {
       selected_rail: "x402",
       amount: { currency: "USD", amount_minor: 50_000 },
       status: "CREATED",
+      production_status: "pending",
       agent_payment_grant_id: row.agentPaymentGrantId,
       approval_policy_hash: row.approvalPolicyHash,
     });
+  });
+
+  it("fails closed when persisted legacy and canonical payment states conflict", async () => {
+    const now = new Date("2026-05-07T12:00:00.000Z");
+    const db = {
+      query: {
+        paymentIntents: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: "00000000-0000-4000-a000-000000000066",
+            orderId: "00000000-0000-4000-a000-000000000088",
+            sellerId: "00000000-0000-4000-a000-000000000033",
+            buyerId: "00000000-0000-4000-a000-000000000022",
+            selectedRail: "x402",
+            allowedRails: ["x402", "stripe"],
+            buyerAuthorizationMode: "human_wallet",
+            currency: "USD",
+            amountMinor: "50000",
+            status: "CANCELED",
+            canonicalStatus: "captured",
+            agentPaymentGrantId: null,
+            approvalPolicyHash: null,
+            agreementHash: null,
+            listingHash: null,
+            providerContext: null,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        },
+      },
+    };
+
+    await expect(getActivePaymentIntentByOrderId(db as never, "00000000-0000-4000-a000-000000000088"))
+      .rejects
+      .toThrow("incompatible payment statuses: legacy=CANCELED production=captured");
   });
 
   it("creates and maps a payment settlement record", async () => {
@@ -302,5 +338,55 @@ describe("payment-record.service", () => {
       },
     });
     expect(db._mocks.where).toHaveBeenCalled();
+  });
+
+  it("finds an in-progress payment operation for the same intent across operations", async () => {
+    const row = {
+      operation: "payment.capture",
+      idempotencyKey: "idem-existing",
+      paymentIntentId: "pi_123",
+      responseStatus: 409,
+      responseBody: { error: "PAYMENT_OPERATION_IN_PROGRESS" },
+    };
+    const db = {
+      query: {
+        paymentOperationIdempotency: {
+          findFirst: vi.fn().mockResolvedValue(row),
+        },
+      },
+    };
+
+    const result = await getInProgressPaymentOperationForIntent(
+      db as never,
+      "pi_123",
+      "idem-new",
+    );
+
+    expect(db.query.paymentOperationIdempotency.findFirst).toHaveBeenCalled();
+    expect(result).toBe(row);
+  });
+
+  it("ignores completed payment operation records when checking per-intent lock", async () => {
+    const db = {
+      query: {
+        paymentOperationIdempotency: {
+          findFirst: vi.fn().mockResolvedValue({
+            operation: "payment.capture",
+            idempotencyKey: "idem-existing",
+            paymentIntentId: "pi_123",
+            responseStatus: 409,
+            responseBody: { intent: { id: "pi_123", status: "SETTLED" } },
+          }),
+        },
+      },
+    };
+
+    const result = await getInProgressPaymentOperationForIntent(
+      db as never,
+      "pi_123",
+      "idem-new",
+    );
+
+    expect(result).toBeNull();
   });
 });

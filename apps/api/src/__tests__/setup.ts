@@ -148,6 +148,7 @@ vi.mock("@haggle/db", () => ({
   paymentIntents: {
     id: "id",
     orderId: "orderId",
+    providerContext: "providerContext",
     status: "status",
     amountMinor: "amountMinor",
     updatedAt: "updatedAt",

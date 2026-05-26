@@ -159,7 +159,7 @@ export async function anchorDisputeOnChain(params: {
   resolution: DisputeResolution;
 }): Promise<AnchorResult | null> {
   // 1. Check env vars
-  const registryAddress = process.env.DISPUTE_REGISTRY_ADDRESS;
+  const registryAddress = process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS ?? process.env.DISPUTE_REGISTRY_ADDRESS;
   const relayerKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY;
 
   if (!registryAddress) {

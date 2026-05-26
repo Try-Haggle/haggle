@@ -51,6 +51,36 @@ export class ScaffoldSettlementRouterContract implements SettlementRouterContrac
   }
 }
 
+export class DisabledSettlementRouterContract implements SettlementRouterContract {
+  readonly capabilities = {
+    supports_fee_split: true,
+    supports_dispute_anchor: false,
+    supports_reservation_binding: true,
+  } as const;
+
+  constructor(
+    readonly network: string,
+    readonly asset: "USDC",
+    private readonly reason = "server-side settlement router execution is disabled",
+  ) {}
+
+  async quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote> {
+    return {
+      quote_id: createId("router_quote"),
+      network: this.network,
+      asset: this.asset,
+      gross_amount: request.gross_amount,
+      seller_amount: request.seller_amount,
+      haggle_fee_amount: request.haggle_fee_amount,
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    };
+  }
+
+  async execute(_request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult> {
+    throw new Error(`SETTLEMENT_ROUTER_EXECUTION_DISABLED:${this.reason}`);
+  }
+}
+
 export class ScaffoldDisputeRegistryContract implements DisputeRegistryContract {
   constructor(readonly network: string) {}
 

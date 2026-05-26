@@ -5,6 +5,7 @@ import {
   anchorDisputeOnChain,
   computeEvidenceMerkleRoot,
   computeResolutionHash,
+  uuidToBytes32,
 } from "../chain/dispute-anchoring.js";
 import { refundDeposit } from "../payments/deposit-refunder.js";
 import type { DepositPaymentRail } from "../payments/deposit-collector.js";
@@ -51,6 +52,10 @@ function createRefundId(): string {
     return globalThis.crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function statusForOutcome(outcome: DisputeResolution["outcome"]): DisputeCase["status"] {
@@ -297,13 +302,20 @@ async function finalizeSellerFavor(
 function withPendingAnchorMetadata(dispute: DisputeCase, resolution: DisputeResolution): DisputeCase {
   const evidenceRootHash = computeEvidenceMerkleRoot(dispute.evidence);
   const resolutionHash = computeResolutionHash(resolution);
+  const existingMetadata = isRecord(dispute.metadata) ? dispute.metadata : {};
+  const existingLookup = isRecord(existingMetadata.onchain_lookup) ? existingMetadata.onchain_lookup : {};
   return {
     ...dispute,
     metadata: {
-      ...(dispute.metadata as Record<string, unknown> ?? {}),
+      ...existingMetadata,
       pending_anchor: true,
       anchor_evidence_root: evidenceRootHash,
       anchor_resolution_hash: resolutionHash,
+      onchain_lookup: {
+        ...existingLookup,
+        order_id_hash: uuidToBytes32(dispute.order_id),
+        dispute_case_id_hash: uuidToBytes32(dispute.id),
+      },
     },
   };
 }

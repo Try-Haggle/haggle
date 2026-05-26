@@ -89,6 +89,7 @@ vi.mock("../chain/dispute-anchoring.js", () => ({
   anchorDisputeOnChain: vi.fn().mockResolvedValue({ tx_hash: "0xanchor" }),
   computeEvidenceMerkleRoot: vi.fn().mockReturnValue("0xevidence"),
   computeResolutionHash: vi.fn().mockReturnValue("0xresolution"),
+  uuidToBytes32: vi.fn((value: string) => `0x${value.padEnd(64, "0").slice(0, 64)}`),
 }));
 
 const mockCreatePaymentServiceFromEnv = vi.mocked(createPaymentServiceFromEnv);

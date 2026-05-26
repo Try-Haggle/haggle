@@ -2,6 +2,7 @@ import {
   MockStripeAdapter,
   MockX402Adapter,
   PaymentService,
+  DisabledSettlementRouterContract,
   ScaffoldConditionalSettlementContract,
   ScaffoldDisputeRegistryContract,
   ScaffoldSettlementRouterContract,
@@ -127,13 +128,15 @@ export function createPaymentServiceFromEnv() {
   const defaultBuyerAuthMode = (process.env.HAGGLE_X402_DEFAULT_BUYER_AUTH_MODE ?? "human_wallet") as BuyerAuthorizationMode;
   const sellerWalletMap = parseWalletMap(process.env.HAGGLE_X402_SELLER_WALLET_MAP);
   const buyerWalletMap = parseWalletMap(process.env.HAGGLE_X402_BUYER_WALLET_MAP);
+  const serverSettlementRouterExecutionEnabled =
+    process.env.HAGGLE_X402_SERVER_SETTLEMENT_ROUTER_EXECUTION === "true";
 
   const chain = network === "base-sepolia" ? baseSepolia : base;
   const viemReady = Boolean(rpcUrl && routerAddress && relayerPrivateKey && assetAddress !== "USDC");
   const contractClientReady = Boolean(rpcUrl && relayerPrivateKey && assetAddress !== "USDC");
   const conditionalServerExecutionEnabled = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_SERVER_EXECUTION === "true";
 
-  const settlementRouter = viemReady
+  const settlementRouter = serverSettlementRouterExecutionEnabled && viemReady
     ? (() => {
         const account = privateKeyToAccount(relayerPrivateKey!);
         const transport = http(rpcUrl!);
@@ -148,7 +151,13 @@ export function createPaymentServiceFromEnv() {
           assetAddress as Address,
         );
       })()
-    : new ScaffoldSettlementRouterContract(network, "USDC");
+    : x402Mode === "real"
+      ? new DisabledSettlementRouterContract(
+        network,
+        "USDC",
+        "Haggle production uses buyer-funded conditional settlement; enable HAGGLE_X402_SERVER_SETTLEMENT_ROUTER_EXECUTION only after buyer-caller execution is implemented",
+      )
+      : new ScaffoldSettlementRouterContract(network, "USDC");
 
   const disputeRegistry =
     viemReady && disputeRegistryAddress
@@ -234,6 +243,7 @@ export function getX402EnvConfig() {
     apiKeyId: process.env.CDP_API_KEY_ID,
     apiKeySecret: process.env.CDP_API_KEY_SECRET,
     paymentReceiverAddress: process.env.HAGGLE_X402_PAYMENT_RECEIVER_ADDRESS,
+    allowExactSettlementFallback: process.env.HAGGLE_X402_ALLOW_EXACT_SETTLEMENT_FALLBACK === "true",
     baseRpcUrl: process.env.HAGGLE_BASE_RPC_URL,
     settlementRouterAddress: process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS,
     conditionalSettlementAddress: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,

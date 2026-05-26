@@ -140,6 +140,10 @@ vi.mock("../services/payment-record.service.js", () => ({
   // route files registered in the same test app import this module).
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  getInProgressPaymentOperationForIntent: vi.fn().mockResolvedValue(null),
+  getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
+  createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
+  completePaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(undefined),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),

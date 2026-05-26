@@ -23,6 +23,19 @@ interface DecodedEvent {
   args: Record<string, unknown>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function matchesOnchainLookup(
+  meta: Record<string, unknown>,
+  orderId: string,
+  disputeCaseId: string,
+): boolean {
+  const lookup = isRecord(meta.onchain_lookup) ? meta.onchain_lookup : {};
+  return lookup.order_id_hash === orderId || lookup.dispute_case_id_hash === disputeCaseId;
+}
+
 // ── Handler ─────────────────────────────────────────────────────
 
 export async function handleDisputeEvent(
@@ -88,8 +101,8 @@ async function handleDisputeAnchored(
   for (const dc of allCases) {
     const meta = (dc.metadata ?? {}) as Record<string, unknown>;
 
-    // If the case has a pending_anchor_tx that matches, or no anchors yet and is under review
-    if (meta.pending_anchor === true || meta.anchor_tx_hash === txHash) {
+    // Prefer persisted hash mappings, then fall back to the legacy pending-anchor marker.
+    if (matchesOnchainLookup(meta, orderId, disputeCaseId) || meta.pending_anchor === true || meta.anchor_tx_hash === txHash) {
       const anchors = ((meta.onchain_anchors ?? []) as Array<Record<string, unknown>>).concat({
         anchor_id: anchorId,
         order_id: orderId,

@@ -7,6 +7,7 @@ import {
   getCommerceOrderByOrderId,
   getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
+  setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
@@ -50,6 +51,22 @@ vi.mock("../payments/providers.js", () => ({
       metadata: {},
       trust_triggers: [],
     }),
+    failIntent: vi.fn((intent) => ({
+      intent: {
+        ...intent,
+        status: "FAILED",
+        updated_at: new Date().toISOString(),
+      },
+      trust_triggers: [],
+    })),
+    cancelIntent: vi.fn((intent) => ({
+      intent: {
+        ...intent,
+        status: "CANCELED",
+        updated_at: new Date().toISOString(),
+      },
+      trust_triggers: [],
+    })),
   })),
   getRealStripeAdapterOrNull: vi.fn(() => null),
   getX402EnvConfig: vi.fn(() => ({
@@ -72,10 +89,12 @@ vi.mock("../services/payment-record.service.js", () => ({
   getCommerceOrderByOrderId: vi.fn().mockResolvedValue({ id: "order_123", status: "PAYMENT_PENDING" }),
   getPaymentSettlementByPaymentIntentId: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn(),
+  getInProgressPaymentOperationForIntent: vi.fn().mockResolvedValue(null),
   getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn(),
   getPaymentIntentRowById: vi.fn(),
   getSettlementApprovalById: vi.fn(),
+  setPaymentIntentProviderContext: vi.fn().mockResolvedValue(undefined),
   updateCommerceOrderStatus: vi.fn(),
   updateStoredPaymentIntent: vi.fn(),
   createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
@@ -100,6 +119,7 @@ vi.mock("../services/admin-action-log.service.js", () => ({
 }));
 
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
+const mockSetPaymentIntentProviderContext = vi.mocked(setPaymentIntentProviderContext);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockCreatePaymentSettlementRecord = vi.mocked(createPaymentSettlementRecord);
 const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
@@ -138,7 +158,9 @@ function buildDb() {
   };
 }
 
-function paymentIntent(status: "CREATED" | "AUTHORIZED" | "SETTLEMENT_PENDING" | "SETTLED" = "SETTLEMENT_PENDING") {
+function paymentIntent(
+  status: "CREATED" | "QUOTED" | "AUTHORIZED" | "SETTLEMENT_PENDING" | "SETTLED" | "FAILED" | "CANCELED" = "SETTLEMENT_PENDING",
+) {
   return {
     id: "pi_123",
     order_id: "order_123",
@@ -436,9 +458,155 @@ describe("payment webhook idempotency", () => {
       action: "reconciliation_required",
       reason: "settlement_confirmed_before_authorization",
       local_status: "CREATED",
+      local_production_status: "pending",
     });
+    expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
+      expect.anything(),
+      "pi_123",
+      expect.objectContaining({
+        reconciliation_needed: expect.objectContaining({
+          provider: "x402",
+          provider_event_id: "evt_out_of_order_settlement",
+          event_type: "settlement.confirmed",
+          reason: "settlement_confirmed_before_authorization",
+          local_status: "CREATED",
+          local_production_status: "pending",
+        }),
+      }),
+    );
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreatePaymentSettlementRecord).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("requires reconciliation instead of failing a locally settled x402 intent from a late provider failure", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("SETTLED"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_late_failed_after_settled",
+        event_type: "settlement.failed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "terminal_event_after_local_capture",
+      local_status: "SETTLED",
+      local_production_status: "captured",
+    });
+    expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
+      expect.anything(),
+      "pi_123",
+      expect.objectContaining({
+        reconciliation_needed: expect.objectContaining({
+          provider: "x402",
+          provider_event_id: "evt_late_failed_after_settled",
+          event_type: "settlement.failed",
+          reason: "terminal_event_after_local_capture",
+          local_status: "SETTLED",
+          local_production_status: "captured",
+        }),
+      }),
+    );
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("requires reconciliation instead of expiring a locally settled x402 intent", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("SETTLED"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_late_expired_after_settled",
+        event_type: "payment.expired",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "terminal_event_after_local_capture",
+      local_status: "SETTLED",
+      local_production_status: "captured",
+    });
+    expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
+      expect.anything(),
+      "pi_123",
+      expect.objectContaining({
+        reconciliation_needed: expect.objectContaining({
+          provider: "x402",
+          provider_event_id: "evt_late_expired_after_settled",
+          event_type: "payment.expired",
+          reason: "terminal_event_after_local_capture",
+        }),
+      }),
+    );
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("does not run fulfillment from a late x402 settlement confirmation after refund", async () => {
+    const refundedIntent = paymentIntent("SETTLED") as unknown as Record<string, unknown>;
+    mockGetPaymentIntentById.mockResolvedValueOnce({
+      ...refundedIntent,
+      production_status: "refunded",
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_late_confirmed_after_refund",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "settlement_confirmed_after_reversal_or_dispute",
+      local_status: "SETTLED",
+      local_production_status: "refunded",
+    });
+    expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
+    expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("requires reconciliation instead of expiring an x402 intent after settlement started", async () => {
+    mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent("SETTLEMENT_PENDING"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: {
+        event_id: "evt_expired_while_settlement_pending",
+        event_type: "payment.expired",
+        payment_intent_id: "pi_123",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      action: "reconciliation_required",
+      reason: "expiry_event_after_settlement_started",
+      local_status: "SETTLEMENT_PENDING",
+      local_production_status: "authorized",
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
   });
 

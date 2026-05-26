@@ -63,8 +63,10 @@ async function recordWebhookProcessed(
 import {
   assertPaymentReadyForExecution,
   createSettlementRelease,
+  productionStateAfterRefund,
   redactPaymentSensitiveData,
   type PaymentIntent,
+  type ProductionPaymentState,
   type Refund,
   type BuyerAuthorizationMode,
   type X402PaymentPayloadEnvelope,
@@ -92,7 +94,10 @@ import {
   getPaymentIntentRowById,
   getPaymentIntentById,
   getPaymentOperationIdempotencyRecord,
+  getInProgressPaymentOperationForIntent,
+  getRefundRecordsByPaymentIntentId,
   getSettlementApprovalById,
+  setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
@@ -112,7 +117,7 @@ import {
 import { writeAuditLog, type AdminActionType } from "../services/admin-action-log.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { INPUT_LIMITS, boundedJson } from "../lib/input-limits.js";
-import { createPublicClient, encodeAbiParameters, http, isAddress, keccak256, type Address, type Hex } from "viem";
+import { createPublicClient, encodeAbiParameters, http, isAddress, keccak256, stringToHex, type Address, type Hex } from "viem";
 import { base, baseSepolia } from "viem/chains";
 
 const settlementApprovalSchema = z.object({
@@ -652,6 +657,263 @@ function mapLegacyPaymentStatusForAudit(status: PaymentIntent["status"]) {
   }
 }
 
+type PaymentWebhookProvider = "stripe" | "x402";
+
+function paymentProductionState(intent: PaymentIntent): ProductionPaymentState {
+  return intent.production_status ?? mapLegacyPaymentStatusForAudit(intent.status);
+}
+
+function isCapturedLikeProductionState(state: ProductionPaymentState): boolean {
+  return state === "captured"
+    || state === "partially_refunded"
+    || state === "refunded"
+    || state === "disputed";
+}
+
+function settlementWebhookReconciliationReason(intent: PaymentIntent): string | null {
+  const productionState = paymentProductionState(intent);
+  if (
+    intent.status === "SETTLED"
+    && (productionState === "refunded" || productionState === "partially_refunded" || productionState === "disputed")
+  ) {
+    return "settlement_confirmed_after_reversal_or_dispute";
+  }
+  if (intent.status === "AUTHORIZED" || intent.status === "SETTLEMENT_PENDING" || intent.status === "SETTLED") {
+    return null;
+  }
+  if (intent.status === "FAILED" || intent.status === "CANCELED") {
+    return "settlement_confirmed_after_terminal_state";
+  }
+  return "settlement_confirmed_before_authorization";
+}
+
+function terminalWebhookReconciliationReason(
+  intent: PaymentIntent,
+  targetAction: "fail" | "expire",
+): string | null {
+  const productionState = paymentProductionState(intent);
+  if (isCapturedLikeProductionState(productionState) || intent.status === "SETTLED") {
+    return "terminal_event_after_local_capture";
+  }
+  if (targetAction === "fail") {
+    if (intent.status === "FAILED") {
+      return null;
+    }
+    if (intent.status === "CANCELED") {
+      return "failure_event_after_local_cancel";
+    }
+    return null;
+  }
+  if (intent.status === "CANCELED") {
+    return null;
+  }
+  if (intent.status === "FAILED") {
+    return "expiry_event_after_local_failure";
+  }
+  if (intent.status === "SETTLEMENT_PENDING") {
+    return "expiry_event_after_settlement_started";
+  }
+  return null;
+}
+
+type ManualPaymentMutation =
+  | "authorize"
+  | "settlement_pending"
+  | "capture"
+  | "fail"
+  | "cancel"
+  | "refund";
+
+function getManualPaymentMutationPolicyFailure(
+  mutation: ManualPaymentMutation,
+  intent: PaymentIntent,
+): { statusCode: number; body: { error: string; message: string; status: PaymentIntent["status"]; production_status: ProductionPaymentState } } | null {
+  const productionState = paymentProductionState(intent);
+  const failure = (error: string, message: string, statusCode = 409) => ({
+    statusCode,
+    body: {
+      error,
+      message,
+      status: intent.status,
+      production_status: productionState,
+    },
+  });
+
+  switch (mutation) {
+    case "authorize":
+      return intent.status === "CREATED" || intent.status === "QUOTED"
+        ? null
+        : failure("PAYMENT_MANUAL_MUTATION_NOT_ALLOWED", "Payment authorization is only allowed before authorization starts.");
+    case "settlement_pending":
+      return intent.status === "AUTHORIZED"
+        ? null
+        : failure("PAYMENT_MANUAL_MUTATION_NOT_ALLOWED", "Payment can only be marked settlement pending after authorization.");
+    case "capture":
+      if (intent.status === "SETTLED" && productionState === "captured") {
+        return null;
+      }
+      return intent.status === "SETTLEMENT_PENDING"
+        ? null
+        : failure("PAYMENT_MANUAL_MUTATION_NOT_ALLOWED", "Payment capture is only allowed after settlement has started.");
+    case "fail":
+      if (isCapturedLikeProductionState(productionState) || intent.status === "SETTLED") {
+        return failure("PAYMENT_TERMINAL_STATE_PROTECTED", "Captured, refunded, or disputed payments cannot be manually failed.");
+      }
+      return ["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING"].includes(intent.status)
+        ? null
+        : failure("PAYMENT_MANUAL_MUTATION_NOT_ALLOWED", "Payment failure is only allowed before the payment reaches a terminal state.");
+    case "cancel":
+      if (isCapturedLikeProductionState(productionState) || intent.status === "SETTLED") {
+        return failure("PAYMENT_TERMINAL_STATE_PROTECTED", "Captured, refunded, or disputed payments cannot be manually canceled.");
+      }
+      return ["CREATED", "QUOTED", "AUTHORIZED"].includes(intent.status)
+        ? null
+        : failure("PAYMENT_MANUAL_MUTATION_NOT_ALLOWED", "Payment cancellation is only allowed before settlement starts.");
+    case "refund":
+      if (intent.status !== "SETTLED") {
+        return failure("PAYMENT_REFUND_STATE_INVALID", `refund requires SETTLED intent, got ${intent.status}`);
+      }
+      if (productionState === "refunded") {
+        return failure("PAYMENT_REFUND_ALREADY_COMPLETED", "Payment has already been fully refunded.");
+      }
+      if (productionState === "disputed") {
+        return failure("PAYMENT_REFUND_DISPUTED", "Disputed payments require dispute resolution before manual refund.");
+      }
+      return productionState === "captured" || productionState === "partially_refunded"
+        ? null
+        : failure("PAYMENT_REFUND_STATE_INVALID", `refund requires captured payment state, got ${productionState}`);
+  }
+}
+
+function sendManualPaymentMutationPolicyFailure(
+  reply: FastifyReply,
+  mutation: ManualPaymentMutation,
+  intent: PaymentIntent,
+): boolean {
+  const failure = getManualPaymentMutationPolicyFailure(mutation, intent);
+  if (!failure) {
+    return false;
+  }
+  reply.code(failure.statusCode).send(failure.body);
+  return true;
+}
+
+function isRefundAmountCounted(status: unknown): boolean {
+  return status === "REQUESTED" || status === "PENDING" || status === "COMPLETED";
+}
+
+async function getRefundAmountPolicyFailure(
+  db: Database,
+  intent: PaymentIntent,
+  refund: Refund,
+): Promise<{ statusCode: number; body: Record<string, unknown> } | null> {
+  if (refund.amount.currency !== intent.amount.currency) {
+    return {
+      statusCode: 400,
+      body: {
+        error: "PAYMENT_REFUND_CURRENCY_MISMATCH",
+        message: `refund currency ${refund.amount.currency} does not match payment currency ${intent.amount.currency}`,
+      },
+    };
+  }
+
+  if (refund.amount.amount_minor > intent.amount.amount_minor) {
+    return {
+      statusCode: 400,
+      body: {
+        error: "PAYMENT_REFUND_AMOUNT_INVALID",
+        message: `refund amount ${refund.amount.amount_minor} exceeds payment amount ${intent.amount.amount_minor}`,
+      },
+    };
+  }
+
+  const existingRefunds = await getRefundRecordsByPaymentIntentId(db, intent.id);
+  const existingRefundAmountMinor = existingRefunds.reduce((sum, row) => {
+    if (!isRefundAmountCounted(row.status)) {
+      return sum;
+    }
+    if (row.currency !== intent.amount.currency) {
+      return sum;
+    }
+    return sum + Number(row.amountMinor);
+  }, 0);
+  const refundableRemainingMinor = Math.max(intent.amount.amount_minor - existingRefundAmountMinor, 0);
+  const totalAfterRefundMinor = existingRefundAmountMinor + refund.amount.amount_minor;
+
+  if (totalAfterRefundMinor > intent.amount.amount_minor) {
+    return {
+      statusCode: 409,
+      body: {
+        error: "PAYMENT_REFUND_AMOUNT_EXCEEDS_REMAINING",
+        message: "Refund request exceeds the remaining refundable payment amount.",
+        payment_intent_id: intent.id,
+        payment_amount_minor: intent.amount.amount_minor,
+        existing_refund_amount_minor: existingRefundAmountMinor,
+        requested_refund_amount_minor: refund.amount.amount_minor,
+        refundable_remaining_minor: refundableRemainingMinor,
+      },
+    };
+  }
+
+  return null;
+}
+
+async function markPaymentWebhookReconciliationNeeded(
+  db: Database,
+  intent: PaymentIntent,
+  params: {
+    provider: PaymentWebhookProvider;
+    providerEventId: string;
+    eventType: string;
+    reason: string;
+  },
+): Promise<void> {
+  const row = await getPaymentIntentRowById(db, intent.id);
+  const existingContext = row?.providerContext
+    && typeof row.providerContext === "object"
+    && !Array.isArray(row.providerContext)
+    ? row.providerContext
+    : {};
+
+  await setPaymentIntentProviderContext(db, intent.id, {
+    ...existingContext,
+    reconciliation_needed: {
+      provider: params.provider,
+      provider_event_id: params.providerEventId,
+      event_type: params.eventType,
+      reason: params.reason,
+      local_status: intent.status,
+      local_production_status: paymentProductionState(intent),
+      recorded_at: new Date().toISOString(),
+    },
+  });
+}
+
+async function sendPaymentWebhookReconciliationRequired(
+  db: Database,
+  reply: FastifyReply,
+  intent: PaymentIntent,
+  params: {
+    provider: PaymentWebhookProvider;
+    providerEventId: string;
+    eventType: string;
+    reason: string;
+  },
+) {
+  await markPaymentWebhookReconciliationNeeded(db, intent, params);
+  return reply.code(409).send({
+    accepted: false,
+    action: "reconciliation_required",
+    reason: params.reason,
+    payment_intent_id: intent.id,
+    local_status: intent.status,
+    local_production_status: paymentProductionState(intent),
+    provider: params.provider,
+    provider_event_id: params.providerEventId,
+    event_type: params.eventType,
+  });
+}
+
 async function beginPaymentOperationIdempotency(
   db: Database,
   request: FastifyRequest,
@@ -695,6 +957,20 @@ async function beginPaymentOperationIdempotency(
 
   const current = existing ?? await getPaymentOperationIdempotencyRecord(db, operation, key);
   if (!current) {
+    const inProgress = paymentIntentId
+      ? await getInProgressPaymentOperationForIntent(db, paymentIntentId, key)
+      : null;
+    if (inProgress) {
+      await emitPaymentIdempotencyMetric(operation, "in_progress");
+      reply.code(409).send({
+        error: "PAYMENT_OPERATION_IN_PROGRESS",
+        message: "Another payment operation is already in progress for this payment intent",
+        payment_intent_id: paymentIntentId,
+        operation,
+        blocking_operation: inProgress.operation,
+      });
+      return { key, requestHash, replayed: true };
+    }
     await emitPaymentIdempotencyMetric(operation, "conflict");
     reply.code(409).send({ error: "IDEMPOTENCY_RECORD_CONFLICT" });
     return { key, requestHash, replayed: true };
@@ -770,6 +1046,8 @@ async function auditPaymentAction(
     intent: PaymentIntent;
     previousStatus?: PaymentIntent["status"];
     nextStatus?: PaymentIntent["status"];
+    previousProductionState?: ProductionPaymentState;
+    nextProductionState?: ProductionPaymentState;
     reason: string;
     providerEventId?: string;
     metadata?: Record<string, unknown>;
@@ -797,8 +1075,10 @@ async function auditPaymentAction(
     payment_intent_id: params.intent.id,
     order_id: params.intent.order_id,
     provider_event_id: params.providerEventId,
-    previous_state: params.previousStatus ? mapLegacyPaymentStatusForAudit(params.previousStatus) : undefined,
-    next_state: params.nextStatus ? mapLegacyPaymentStatusForAudit(params.nextStatus) : undefined,
+    previous_state: params.previousProductionState
+      ?? (params.previousStatus ? mapLegacyPaymentStatusForAudit(params.previousStatus) : undefined),
+    next_state: params.nextProductionState
+      ?? (params.nextStatus ? mapLegacyPaymentStatusForAudit(params.nextStatus) : undefined),
     reason: params.reason,
     request_id: getCorrelationId(request),
     timestamp: new Date().toISOString(),
@@ -1077,6 +1357,23 @@ function computeConditionalSettlementId(message: ConditionalSettlementMessage, c
       BigInt(chainId),
     ],
   ));
+}
+
+function toOnchainLookupHash(value: string): Hex {
+  return keccak256(stringToHex(value));
+}
+
+function buildConditionalSettlementChainLookup(
+  intent: PaymentIntent,
+  settlementId: string | undefined,
+  chainId: number,
+) {
+  return {
+    order_id_hash: toOnchainLookupHash(intent.order_id),
+    payment_intent_id_hash: toOnchainLookupHash(intent.id),
+    settlement_id: settlementId,
+    chain_id: chainId,
+  };
 }
 
 function parseUnixSeconds(value: number | string | undefined): bigint | undefined {
@@ -1447,11 +1744,14 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(503).send(railError);
     }
 
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.prepare", null);
+    if (idempotency.replayed) return;
+
     const order = await ensureCommerceOrderForApproval(db, settlementApproval);
 
     const existingIntent = await getActivePaymentIntentByOrderId(db, order.id);
     if (existingIntent) {
-      return reply.send({
+      const responseBody = {
         intent: existingIntent,
         order,
         participants: {
@@ -1460,7 +1760,16 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         },
         settlement_context: ready,
         idempotent: true,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.prepare",
+        idempotency,
+        existingIntent.id,
+        200,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.send(responseBody);
     }
 
     const grant = buildAgentPaymentGrant(settlementApproval, {
@@ -1472,7 +1781,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     const approvalPolicyHash = sha256Hex(canonicalizeAgentPaymentPolicy(grant));
     const storedGrant = await createAgentPaymentGrantRecord(db, grant, approvalPolicyHash);
     if (!storedGrant) {
-      return reply.code(500).send({ error: "AGENT_PAYMENT_GRANT_NOT_CREATED" });
+      const responseBody = { error: "AGENT_PAYMENT_GRANT_NOT_CREATED" };
+      await recordPaymentOperationIdempotency(db, "payment.prepare", idempotency, null, 500, responseBody);
+      return reply.code(500).send(responseBody);
     }
 
     const intent = service.createIntent({
@@ -1507,7 +1818,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       if (!isActivePaymentIntentUniqueViolation(error)) throw error;
       const concurrentIntent = await getActivePaymentIntentByOrderId(db, order.id);
       if (!concurrentIntent) throw error;
-      return reply.send({
+      const responseBody = {
         intent: concurrentIntent,
         order,
         participants: {
@@ -1516,7 +1827,16 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         },
         settlement_context: ready,
         idempotent: true,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.prepare",
+        idempotency,
+        concurrentIntent.id,
+        200,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.send(responseBody);
     }
 
     if (parsed.data.payment_disclosure_ack) {
@@ -1536,7 +1856,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
-    return reply.code(201).send({
+    const responseBody = {
       intent: storedIntent,
       order,
       participants: {
@@ -1545,7 +1865,16 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       },
       settlement_context: ready,
       agent_payment_grant: storedGrant,
-    });
+    };
+    await recordPaymentOperationIdempotency(
+      db,
+      "payment.prepare",
+      idempotency,
+      storedIntent.id,
+      201,
+      responseBody as unknown as Record<string, unknown>,
+    );
+    return reply.code(201).send(responseBody);
   });
 
   app.post("/payments/:id/quote", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
@@ -1580,6 +1909,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         idempotent: true,
       });
     }
+
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.quote", intent.id);
+    if (idempotency.replayed) return;
 
     // Resolve seller wallet: DB first, fall back to ENV
     let sellerWalletAddress: string | null = null;
@@ -1626,9 +1958,11 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           triggers: result.trust_triggers,
         });
       }
-      return reply.send({ ...result, metadata, quote_confirmation: quoteConfirmation });
+      const responseBody = { ...result, metadata, quote_confirmation: quoteConfirmation };
+      await recordPaymentOperationIdempotency(db, "payment.quote", idempotency, intent.id, 200, responseBody as unknown as Record<string, unknown>);
+      return reply.send(responseBody);
     } catch (error) {
-      return sendPaymentOperationFailure(reply, error);
+      return sendAndRecordPaymentOperationFailure(db, reply, "payment.quote", idempotency, intent.id, error);
     }
   });
 
@@ -1869,6 +2203,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.conditional_settlement_funding", intent.id);
+    if (idempotency.replayed) return;
+
     const row = await getPaymentIntentRowById(db, intent.id);
     const providerContext =
       row?.providerContext && typeof row.providerContext === "object" && !Array.isArray(row.providerContext)
@@ -1880,6 +2217,11 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       chain_id: parsed.data.chain_id ? Number(parsed.data.chain_id) : resolveX402ChainId(x402Config),
       funding_tx_hash: parsed.data.tx_hash,
       settlement_id: parsed.data.settlement_id,
+      chain_lookup: buildConditionalSettlementChainLookup(
+        intent,
+        parsed.data.settlement_id,
+        parsed.data.chain_id ? Number(parsed.data.chain_id) : resolveX402ChainId(x402Config),
+      ),
       status: "FUNDING_SUBMITTED",
       submitted_at: new Date().toISOString(),
     };
@@ -1907,19 +2249,37 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       const pending = service.markSettlementPending(currentIntent);
       await updateStoredPaymentIntent(db, pending.intent, mergedContext);
       await applyPaymentTransitionTriggers(db, pending);
-      return reply.send({
+      const responseBody = {
         intent: pending.intent,
         conditional_settlement: conditionalSettlementContext,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.conditional_settlement_funding",
+        idempotency,
+        intent.id,
+        200,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.send(responseBody);
     }
 
     if (currentIntent.status === "SETTLEMENT_PENDING") {
       await updateStoredPaymentIntent(db, currentIntent, mergedContext);
-      return reply.send({
+      const responseBody = {
         intent: currentIntent,
         conditional_settlement: conditionalSettlementContext,
         idempotent: true,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.conditional_settlement_funding",
+        idempotency,
+        intent.id,
+        200,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.send(responseBody);
     }
 
     return reply.code(409).send({ error: "PAYMENT_STATE_NOT_FUNDABLE", status: currentIntent.status });
@@ -1974,6 +2334,9 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       });
     }
 
+    const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.conditional_settlement_confirmation", intent.id);
+    if (idempotency.replayed) return;
+
     const receipt = await client
       .getTransactionReceipt({ hash: txHash as Hex })
       .catch(() => null);
@@ -1989,10 +2352,19 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         ...providerContext,
         conditional_settlement: pendingContext,
       });
-      return reply.code(202).send({
+      const responseBody = {
         intent,
         conditional_settlement: pendingContext,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.conditional_settlement_confirmation",
+        idempotency,
+        intent.id,
+        202,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.code(202).send(responseBody);
     }
 
     const confirmedContext = {
@@ -2035,11 +2407,20 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
       await updateStoredPaymentIntent(db, confirmedIntent, confirmedProviderContext);
       const finalization = await prepareFulfillmentForSecuredPayment(db, confirmedIntent);
-      return reply.send({
+      const responseBody = {
         intent: confirmedIntent,
         conditional_settlement: confirmedContext,
         finalization,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.conditional_settlement_confirmation",
+        idempotency,
+        intent.id,
+        200,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.send(responseBody);
     }
 
     if (intent.status === "QUOTED" || intent.status === "AUTHORIZED" || intent.status === "SETTLEMENT_PENDING") {
@@ -2049,20 +2430,38 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         conditional_settlement: confirmedContext,
       });
       await applyPaymentTransitionTriggers(db, failed);
-      return reply.send({
+      const responseBody = {
         intent: failed.intent,
         conditional_settlement: confirmedContext,
-      });
+      };
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.conditional_settlement_confirmation",
+        idempotency,
+        intent.id,
+        200,
+        responseBody as unknown as Record<string, unknown>,
+      );
+      return reply.send(responseBody);
     }
 
     await updateStoredPaymentIntent(db, intent, {
       ...providerContext,
       conditional_settlement: confirmedContext,
     });
-    return reply.send({
+    const responseBody = {
       intent,
       conditional_settlement: confirmedContext,
-    });
+    };
+    await recordPaymentOperationIdempotency(
+      db,
+      "payment.conditional_settlement_confirmation",
+      idempotency,
+      intent.id,
+      200,
+      responseBody as unknown as Record<string, unknown>,
+    );
+    return reply.send(responseBody);
   });
 
   app.post("/payments/:id/x402/submit-signature", { preHandler: [requireAuth, requirePaymentOwner({ role: "buyer" })] }, async (request, reply) => {
@@ -2136,6 +2535,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (parsed.data.verify_only) {
       const verify = await x402Facilitator.verify(x402Payload, requirement);
       return reply.send({ verification: verify });
+    }
+
+    if (!x402Config.allowExactSettlementFallback) {
+      return reply.code(409).send({
+        error: "CONDITIONAL_SETTLEMENT_REQUIRED",
+        message: "direct x402 exact settlement is disabled; use the conditional settlement contract funding flow",
+      });
     }
 
     const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.x402_settle", intent.id);
@@ -2212,6 +2618,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
+    if (sendManualPaymentMutationPolicyFailure(reply, "authorize", intent)) return;
     const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.authorize", intent.id);
     if (idempotency.replayed) return;
     try {
@@ -2261,6 +2668,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
+    if (sendManualPaymentMutationPolicyFailure(reply, "settlement_pending", intent)) return;
     const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.settlement_pending", intent.id);
     if (idempotency.replayed) return;
     try {
@@ -2306,6 +2714,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
+    if (sendManualPaymentMutationPolicyFailure(reply, "capture", intent)) return;
     const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.capture", intent.id);
     if (idempotency.replayed) return;
     try {
@@ -2373,6 +2782,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    if (sendManualPaymentMutationPolicyFailure(reply, "fail", intent)) return;
     const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.fail", intent.id);
     if (idempotency.replayed) return;
     try {
@@ -2414,6 +2824,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (!intent) {
       return reply.code(404).send({ error: "PAYMENT_INTENT_NOT_FOUND" });
     }
+    if (sendManualPaymentMutationPolicyFailure(reply, "cancel", intent)) return;
     const idempotency = await beginPaymentOperationIdempotency(db, request, reply, "payment.cancel", intent.id);
     if (idempotency.replayed) return;
     try {
@@ -2459,6 +2870,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     if (railError) {
       return reply.code(503).send(railError);
     }
+    if (sendManualPaymentMutationPolicyFailure(reply, "refund", intent)) return;
     const parsed = refundSchema.safeParse({
       ...(request.body as Record<string, unknown>),
       payment_intent_id: (request.params as { id: string }).id,
@@ -2485,22 +2897,48 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       updated_at: new Date().toISOString(),
     };
 
+    const refundAmountFailure = await getRefundAmountPolicyFailure(db, intent, refund);
+    if (refundAmountFailure) {
+      await recordPaymentOperationIdempotency(
+        db,
+        "payment.refund",
+        idempotency,
+        intent.id,
+        refundAmountFailure.statusCode,
+        refundAmountFailure.body,
+      );
+      return reply.code(refundAmountFailure.statusCode).send(refundAmountFailure.body);
+    }
+
     try {
       const result = await service.refundIntent(intent, refund);
+      const refundedIntent: PaymentIntent = {
+        ...intent,
+        production_status: productionStateAfterRefund({
+          legacyStatus: intent.status,
+          paymentAmountMinor: intent.amount.amount_minor,
+          refundAmountMinor: result.refund.amount.amount_minor,
+        }),
+        updated_at: new Date().toISOString(),
+      };
       await createRefundRecord(
         db,
         result.refund,
         typeof result.metadata?.provider_reference === "string" ? result.metadata.provider_reference : null,
       );
+      await updateStoredPaymentIntent(db, refundedIntent);
       await auditPaymentAction(db, request, "payment.refund", {
-        intent,
+        intent: refundedIntent,
         previousStatus: intent.status,
         nextStatus: intent.status,
+        previousProductionState: intent.production_status ?? mapLegacyPaymentStatusForAudit(intent.status),
+        nextProductionState: refundedIntent.production_status,
         reason: adminReason.reason,
         metadata: result.metadata,
       });
-      await recordPaymentOperationIdempotency(db, "payment.refund", idempotency, intent.id, 200, result as unknown as Record<string, unknown>);
-      return reply.send(result);
+      const responseBody = { ...result, intent: refundedIntent };
+      await recordPaymentOperationIdempotency(db, "payment.refund", idempotency, intent.id, 200, responseBody as unknown as Record<string, unknown>);
+      return reply.send(responseBody);
     } catch (error) {
       return sendAndRecordPaymentOperationFailure(db, reply, "payment.refund", idempotency, intent.id, error);
     }
@@ -2587,13 +3025,13 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
     try {
       switch (eventType) {
         case "settlement.confirmed": {
-          if (!["AUTHORIZED", "SETTLEMENT_PENDING", "SETTLED"].includes(intent.status)) {
-            return reply.code(409).send({
-              accepted: false,
-              action: "reconciliation_required",
-              reason: "settlement_confirmed_before_authorization",
-              payment_intent_id: intent.id,
-              local_status: intent.status,
+          const reconciliationReason = settlementWebhookReconciliationReason(intent);
+          if (reconciliationReason) {
+            return sendPaymentWebhookReconciliationRequired(db, reply, intent, {
+              provider: "x402",
+              providerEventId: webhookEventId,
+              eventType,
+              reason: reconciliationReason,
             });
           }
           let settledIntent = intent;
@@ -2643,6 +3081,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         }
 
         case "settlement.failed": {
+          const reconciliationReason = terminalWebhookReconciliationReason(intent, "fail");
+          if (reconciliationReason) {
+            return sendPaymentWebhookReconciliationRequired(db, reply, intent, {
+              provider: "x402",
+              providerEventId: webhookEventId,
+              eventType,
+              reason: reconciliationReason,
+            });
+          }
           if (intent.status !== "FAILED" && intent.status !== "SETTLED") {
             const result = service.failIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
@@ -2661,6 +3108,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         }
 
         case "payment.expired": {
+          const reconciliationReason = terminalWebhookReconciliationReason(intent, "expire");
+          if (reconciliationReason) {
+            return sendPaymentWebhookReconciliationRequired(db, reply, intent, {
+              provider: "x402",
+              providerEventId: webhookEventId,
+              eventType,
+              reason: reconciliationReason,
+            });
+          }
           if (intent.status !== "CANCELED" && intent.status !== "SETTLED") {
             const result = service.cancelIntent(intent);
             await updateStoredPaymentIntent(db, result.intent);
@@ -2793,6 +3249,15 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
             }
 
             try {
+              const reconciliationReason = settlementWebhookReconciliationReason(intent);
+              if (reconciliationReason) {
+                return sendPaymentWebhookReconciliationRequired(db, reply, intent, {
+                  provider: "stripe",
+                  providerEventId: event.id,
+                  eventType: event.type,
+                  reason: reconciliationReason,
+                });
+              }
               let settledIntent = intent;
               if (settledIntent.status === "SETTLED") {
                 await requireSettlementRecordForPayment(db, settledIntent);

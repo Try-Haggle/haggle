@@ -5,7 +5,10 @@ import {
   classifyProviderError,
   createPaymentAuditEvent,
   detectPaymentReconciliationFindings,
+  isProductionStateCompatibleWithLegacyStatus,
   mapLegacyStatusToProductionState,
+  normalizeProductionPaymentState,
+  productionStateAfterRefund,
   redactPaymentSensitiveData,
   transitionProductionPaymentState,
 } from "../production-readiness.js";
@@ -35,6 +38,45 @@ describe("production payment state machine", () => {
     expect(mapLegacyStatusToProductionState("SETTLED")).toBe("captured");
     expect(mapLegacyStatusToProductionState("FAILED")).toBe("failed");
     expect(mapLegacyStatusToProductionState("CANCELED")).toBe("canceled");
+  });
+
+  it("accepts only safe canonical states for each legacy status", () => {
+    expect(isProductionStateCompatibleWithLegacyStatus("CREATED", "pending")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("QUOTED", "expired")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("AUTHORIZED", "authorized")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("SETTLEMENT_PENDING", "expired")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("SETTLED", "captured")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("SETTLED", "partially_refunded")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("SETTLED", "refunded")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("SETTLED", "disputed")).toBe(true);
+    expect(isProductionStateCompatibleWithLegacyStatus("CANCELED", "captured")).toBe(false);
+    expect(isProductionStateCompatibleWithLegacyStatus("FAILED", "refunded")).toBe(false);
+    expect(() => normalizeProductionPaymentState("CANCELED", "captured")).toThrow(
+      "incompatible payment statuses: legacy=CANCELED production=captured",
+    );
+  });
+
+  it("derives refund production states without mutating legacy captured status", () => {
+    expect(productionStateAfterRefund({
+      legacyStatus: "SETTLED",
+      paymentAmountMinor: 10_000,
+      refundAmountMinor: 2_500,
+    })).toBe("partially_refunded");
+    expect(productionStateAfterRefund({
+      legacyStatus: "SETTLED",
+      paymentAmountMinor: 10_000,
+      refundAmountMinor: 10_000,
+    })).toBe("refunded");
+    expect(() => productionStateAfterRefund({
+      legacyStatus: "AUTHORIZED",
+      paymentAmountMinor: 10_000,
+      refundAmountMinor: 1_000,
+    })).toThrow("refund production state requires SETTLED intent, got AUTHORIZED");
+    expect(() => productionStateAfterRefund({
+      legacyStatus: "SETTLED",
+      paymentAmountMinor: 10_000,
+      refundAmountMinor: 10_001,
+    })).toThrow("refund amount 10001 exceeds payment amount 10000");
   });
 });
 
