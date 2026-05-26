@@ -7,9 +7,7 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.1",
