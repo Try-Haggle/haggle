@@ -1,15 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
+import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
+import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -25,10 +31,17 @@ vi.mock("../services/settlement-release.service.js", () => ({
 
 vi.mock("../services/shipment-record.service.js", () => ({
   createShipmentRecord: vi.fn().mockResolvedValue(null),
+  createShipmentOperationInProgress: vi.fn().mockResolvedValue(null),
+  completeShipmentOperationIdempotency: vi.fn().mockResolvedValue(null),
   getShipmentById: vi.fn().mockResolvedValue(null),
   getShipmentByOrderId: vi.fn().mockResolvedValue(null),
+  getShipmentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
   updateShipmentRecord: vi.fn().mockResolvedValue(null),
   insertShipmentEvent: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../services/trust-ledger.service.js", () => ({
@@ -98,6 +111,10 @@ vi.mock("../services/draft.service.js", () => ({
   publishDraft: vi.fn().mockResolvedValue(null),
 }));
 
+const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
+const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
+const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
+
 describe("Shipment routes", () => {
   let app: FastifyInstance;
 
@@ -131,6 +148,54 @@ describe("Shipment routes", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("INVALID_SHIPMENT_REQUEST");
     expect(res.json().issues).toBeDefined();
+  });
+
+  it("POST /shipments derives buyer and seller from the order instead of trusting the request body", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "ord_123",
+      buyerId: "order-buyer-001",
+      sellerId: "test-user-001",
+      status: "PAID",
+      amountMinor: "50000",
+      currency: "USD",
+      orderSnapshot: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce(null);
+    mockCreateShipmentRecord.mockResolvedValueOnce({
+      id: "shp_123",
+      order_id: "ord_123",
+      seller_id: "test-user-001",
+      buyer_id: "order-buyer-001",
+      status: "LABEL_PENDING",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/shipments",
+      headers: AUTH_HEADERS,
+      payload: {
+        order_id: "ord_123",
+        seller_id: "spoofed-seller",
+        buyer_id: "spoofed-buyer",
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "ord_123",
+      "test-user-001",
+      "order-buyer-001",
+      undefined,
+    );
+    expect(res.json().shipment).toMatchObject({
+      seller_id: "test-user-001",
+      buyer_id: "order-buyer-001",
+    });
   });
 
   // GET /shipments/:id

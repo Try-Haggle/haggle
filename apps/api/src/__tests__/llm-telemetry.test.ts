@@ -15,7 +15,7 @@ import {
 
 const META = {
   service: "openai.chat" as const,
-  model: "gpt-4o-mini-2024-07-18",
+  model: "grok-4.3",
   operation: "test-op",
   correlationId: "test-corr",
 };
@@ -67,9 +67,11 @@ describe("withLLMTelemetry", () => {
       totalTokens: 120,
     });
     expect(record.service).toBe("openai.chat");
-    expect(record.model).toBe("gpt-4o-mini-2024-07-18");
+    expect(record.model).toBe("grok-4.3");
     expect(record.operation).toBe("test-op");
     expect(record.correlationId).toBe("test-corr");
+    expect(record.costUsd).toBeCloseTo(0.000175);
+    expect(record.costMinorUsd).toBe(0);
     expect(typeof record.timestamp).toBe("string");
   });
 
@@ -90,6 +92,8 @@ describe("withLLMTelemetry", () => {
     expect(record.errorType).toBe("timeout");
     expect(record.errorMessage).toBe("request timed out");
     expect(record.usage).toBeNull();
+    expect(record.costUsd).toBeNull();
+    expect(record.costMinorUsd).toBeNull();
   });
 
   it("does not emit when LLM_TELEMETRY !== '1' but preserves result/throw behavior", async () => {
@@ -176,9 +180,8 @@ describe("withLLMTelemetry - DB mode", () => {
     vi.stubEnv("LLM_TELEMETRY", "db");
     vi.spyOn(console, "info").mockImplementation(() => {});
 
-    const mockInsert = vi.fn().mockReturnValue({
-      values: vi.fn().mockResolvedValue([]),
-    });
+    const values = vi.fn().mockResolvedValue([]);
+    const mockInsert = vi.fn().mockReturnValue({ values });
     const mockDb = { insert: mockInsert } as unknown as import("@haggle/db").Database;
     setTelemetryDb(mockDb);
 
@@ -190,6 +193,9 @@ describe("withLLMTelemetry - DB mode", () => {
     // Give the void promise a chance to settle
     await new Promise((r) => setTimeout(r, 10));
     expect(mockInsert).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      costMinor: 0,
+    }));
   });
 
   it("does not insert into DB when LLM_TELEMETRY=1 (console only)", async () => {

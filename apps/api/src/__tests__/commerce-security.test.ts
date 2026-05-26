@@ -21,8 +21,15 @@ import {
 } from "../services/settlement-release.service.js";
 
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
+  createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   getCommerceOrderByOrderId: vi.fn(),
+  getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../services/shipment-record.service.js", () => ({

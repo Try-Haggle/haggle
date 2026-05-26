@@ -19,6 +19,10 @@ interface ShipmentOwnerOpts {
   role?: "buyer" | "seller";
 }
 
+interface PaymentOwnerOpts {
+  role?: "buyer" | "seller";
+}
+
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 // ---------------------------------------------------------------------------
@@ -128,7 +132,7 @@ export function createOwnershipMiddleware(db: Database) {
    * Reads paymentId from `:id` param.
    * Admin always passes.
    */
-  function requirePaymentOwner(): PreHandler {
+  function requirePaymentOwner(opts?: PaymentOwnerOpts): PreHandler {
     return async (request: FastifyRequest, reply: FastifyReply) => {
       if (isAdmin(request)) return;
 
@@ -144,7 +148,7 @@ export function createOwnershipMiddleware(db: Database) {
         return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });
       }
 
-      if (!isOwner(userId, intent.buyer_id, intent.seller_id)) {
+      if (!isOwner(userId, intent.buyer_id, intent.seller_id, opts?.role)) {
         return reply.code(403).send(FORBIDDEN_RESPONSE);
       }
 

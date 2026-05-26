@@ -80,6 +80,33 @@ describe('callLLM', () => {
     expect(body.temperature).toBe(0.5); // general temp
   });
 
+  it('supports per-call model override', async () => {
+    globalThis.fetch = mockFetchResponse({
+      choices: [{ message: { content: '{}' }, finish_reason: 'stop' }],
+      usage: {},
+    });
+
+    const result = await callLLM('system', 'user', { model: 'grok-4.3' });
+
+    const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(callArgs[1].body as string);
+    expect(body.model).toBe('grok-4.3');
+    expect(result.model).toBe('grok-4.3');
+  });
+
+  it('adds reasoning effort for non-fast per-call model overrides', async () => {
+    globalThis.fetch = mockFetchResponse({
+      choices: [{ message: { content: '{}' }, finish_reason: 'stop' }],
+      usage: {},
+    });
+
+    await callLLM('system', 'user', { model: 'grok-4.3', reasoning: true });
+
+    const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(callArgs[1].body as string);
+    expect(body.reasoning_effort).toBe('high');
+  });
+
   it('sends correct headers', async () => {
     globalThis.fetch = mockFetchResponse({
       choices: [{ message: { content: '{}' }, finish_reason: 'stop' }],

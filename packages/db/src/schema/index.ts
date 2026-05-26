@@ -3,16 +3,26 @@ export { listingsPublished } from "./listings-published.js";
 export { buyerListings } from "./buyer-listings.js";
 export { settlementApprovals, commerceOrders } from "./commerce-orders.js";
 export {
+  agentPaymentGrants,
+  paymentDisclosures,
+  paymentOperationIdempotency,
   paymentAuthorizations,
   paymentIntents,
   paymentProviderCapabilities,
   paymentSettlements,
   refunds,
 } from "./payments.js";
-export { shipmentEvents, shipments } from "./shipments.js";
+export { shipmentEvents, shipmentOperationIdempotency, shipments } from "./shipments.js";
 export { authentications, authenticationEvents } from "./authentications.js";
 export { settlementReleases } from "./settlement-releases.js";
-export { disputeCases, disputeEvidence, disputeResolutions } from "./disputes.js";
+export {
+  disputeCases,
+  disputeEvidence,
+  disputeEvidenceUploads,
+  disputeModuleIdempotencyKeys,
+  disputeModuleWebhookOutbox,
+  disputeResolutions,
+} from "./disputes.js";
 export {
   expertiseBadges,
   onchainTrustProfiles,

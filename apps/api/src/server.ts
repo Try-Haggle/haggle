@@ -16,6 +16,7 @@ import { registerInternalRoutes } from "./routes/internal.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerShipmentRoutes } from "./routes/shipments.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
+import { registerDisputeModuleRoutes } from "./routes/dispute-modules.js";
 import { registerAuthenticationRoutes } from "./routes/authentications.js";
 import { registerTrustRoutes } from "./routes/trust.js";
 import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
@@ -114,7 +115,7 @@ export async function createServer() {
       cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
     methods: ["GET", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "stripe-signature"],
+    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id", "x-haggle-actor-id", "x-haggle-actor-role", "x-haggle-x402-signature", "x-haggle-x402-timestamp", "x-haggle-module-platform-id", "x-haggle-module-timestamp", "x-haggle-module-signature", "x-haggle-idempotency-key", "stripe-signature"],
     credentials: true,
   });
 
@@ -142,6 +143,7 @@ export async function createServer() {
   registerPaymentRoutes(app, db);
   registerShipmentRoutes(app, db);
   registerDisputeRoutes(app, db);
+  registerDisputeModuleRoutes(app, db);
   registerSettlementReleaseRoutes(app, db);
   registerSettlementApprovalRoutes(app, db);
   registerAuthenticationRoutes(app, db);

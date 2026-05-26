@@ -13,12 +13,16 @@ import { getTestApp, closeTestApp } from "../helpers.js";
 // ─── Service mocks ────────────────────────────────────────────────────
 
 vi.mock("../../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -44,6 +48,10 @@ vi.mock("../../services/shipment-record.service.js", () => ({
 
 vi.mock("../../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../services/dispute-record.service.js", () => ({

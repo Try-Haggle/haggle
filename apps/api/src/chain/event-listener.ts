@@ -17,6 +17,7 @@
  */
 
 import {
+  HAGGLE_CONDITIONAL_SETTLEMENT_ABI,
   HAGGLE_SETTLEMENT_ROUTER_ABI,
   HAGGLE_DISPUTE_REGISTRY_ABI,
 } from "@haggle/contracts";
@@ -37,6 +38,7 @@ import { base, baseSepolia } from "viem/chains";
 
 import { handleSettlementEvent } from "./handlers/settlement-handler.js";
 import { handleDisputeEvent } from "./handlers/dispute-handler.js";
+import { handleConditionalSettlementEvent } from "./handlers/conditional-settlement-handler.js";
 
 // ── Config ──────────────────────────────────────────────────────
 
@@ -44,6 +46,7 @@ export interface ChainListenerConfig {
   rpcUrl: string;
   chainId: number;
   settlementRouterAddress?: Address;
+  conditionalSettlementAddress?: Address;
   disputeRegistryAddress?: Address;
   /** Number of block confirmations before processing (reorg protection). Default: 2 */
   confirmations: number;
@@ -67,10 +70,20 @@ export function createChainListenerConfig(): ChainListenerConfig | null {
     return null;
   }
 
-  const settlementRouterAddress = process.env.SETTLEMENT_ROUTER_ADDRESS as Address | undefined;
-  const disputeRegistryAddress = process.env.DISPUTE_REGISTRY_ADDRESS as Address | undefined;
+  const settlementRouterAddress = (
+    process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS
+    ?? process.env.SETTLEMENT_ROUTER_ADDRESS
+  ) as Address | undefined;
+  const conditionalSettlementAddress = (
+    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS
+    ?? process.env.CONDITIONAL_SETTLEMENT_ADDRESS
+  ) as Address | undefined;
+  const disputeRegistryAddress = (
+    process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS
+    ?? process.env.DISPUTE_REGISTRY_ADDRESS
+  ) as Address | undefined;
 
-  if (!settlementRouterAddress && !disputeRegistryAddress) {
+  if (!settlementRouterAddress && !conditionalSettlementAddress && !disputeRegistryAddress) {
     if (!configLoggedOnce) {
       console.log("[chain-listener] No contract addresses configured — chain event sync disabled");
       configLoggedOnce = true;
@@ -85,6 +98,7 @@ export function createChainListenerConfig(): ChainListenerConfig | null {
     rpcUrl,
     chainId,
     settlementRouterAddress,
+    conditionalSettlementAddress,
     disputeRegistryAddress,
     confirmations: 2,
     maxBlockRange: 2000,
@@ -140,6 +154,70 @@ async function upsertCursor(
     });
 }
 
+async function syncContractEvents(params: {
+  db: Database;
+  config: ChainListenerConfig;
+  cursorId: string;
+  address: Address | undefined;
+  abi: readonly unknown[];
+  handleEvent: (db: Database, log: Log, event: { eventName: string; args: Record<string, unknown> }) => Promise<void>;
+  logLabel: string;
+}): Promise<{ processed: number; toBlock: bigint }> {
+  if (!params.address) {
+    return { processed: 0, toBlock: 0n };
+  }
+
+  const client = createClient(params.config);
+  const lastBlock = await readCursor(params.db, params.cursorId);
+  const currentBlock = await client.getBlockNumber();
+  const safeBlock = currentBlock - BigInt(params.config.confirmations);
+
+  if (safeBlock <= lastBlock) {
+    return { processed: 0, toBlock: lastBlock };
+  }
+
+  const fromBlock = lastBlock + 1n;
+  const toBlock = safeBlock < fromBlock + BigInt(params.config.maxBlockRange)
+    ? safeBlock
+    : fromBlock + BigInt(params.config.maxBlockRange) - 1n;
+
+  const logs = await client.getLogs({
+    address: params.address,
+    fromBlock,
+    toBlock,
+  });
+
+  let processed = 0;
+
+  for (const log of logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: params.abi,
+        data: log.data,
+        topics: log.topics,
+      });
+
+      await params.handleEvent(params.db, log as Log, decoded);
+      processed++;
+    } catch (error) {
+      console.error(
+        `[chain-listener] Failed to process ${params.logLabel} log tx=${log.transactionHash} logIndex=${log.logIndex}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  await upsertCursor(params.db, params.cursorId, params.config.chainId, toBlock);
+
+  if (processed > 0) {
+    console.log(
+      `[chain-listener] Processed ${processed} ${params.logLabel} event(s), blocks ${fromBlock}-${toBlock}`,
+    );
+  }
+
+  return { processed, toBlock };
+}
+
 // ── Settlement Event Sync ───────────────────────────────────────
 
 const SETTLEMENT_EVENTS = HAGGLE_SETTLEMENT_ROUTER_ABI.filter(
@@ -150,123 +228,55 @@ export async function syncSettlementEvents(
   db: Database,
   config: ChainListenerConfig,
 ): Promise<{ processed: number; toBlock: bigint }> {
-  if (!config.settlementRouterAddress) {
-    return { processed: 0, toBlock: 0n };
-  }
-
-  const cursorId = "settlement_router";
-  const client = createClient(config);
-
-  const lastBlock = await readCursor(db, cursorId);
-  const currentBlock = await client.getBlockNumber();
-  const safeBlock = currentBlock - BigInt(config.confirmations);
-
-  if (safeBlock <= lastBlock) {
-    return { processed: 0, toBlock: lastBlock };
-  }
-
-  const fromBlock = lastBlock + 1n;
-  const toBlock = safeBlock < fromBlock + BigInt(config.maxBlockRange)
-    ? safeBlock
-    : fromBlock + BigInt(config.maxBlockRange) - 1n;
-
-  const logs = await client.getLogs({
+  return syncContractEvents({
+    db,
+    config,
+    cursorId: "settlement_router",
     address: config.settlementRouterAddress,
-    fromBlock,
-    toBlock,
+    abi: SETTLEMENT_EVENTS,
+    handleEvent: handleSettlementEvent,
+    logLabel: "settlement",
   });
+}
 
-  let processed = 0;
+// ── Conditional Settlement Event Sync ────────────────────────────────
 
-  for (const log of logs) {
-    try {
-      const decoded = decodeEventLog({
-        abi: HAGGLE_SETTLEMENT_ROUTER_ABI,
-        data: log.data,
-        topics: log.topics,
-      });
+const CONDITIONAL_SETTLEMENT_EVENTS = HAGGLE_CONDITIONAL_SETTLEMENT_ABI.filter(
+  (item) => item.type === "event",
+);
 
-      await handleSettlementEvent(db, log as Log, decoded);
-      processed++;
-    } catch (error) {
-      console.error(
-        `[chain-listener] Failed to process settlement log tx=${log.transactionHash} logIndex=${log.logIndex}:`,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  // Update cursor atomically after processing all logs in this batch
-  await upsertCursor(db, cursorId, config.chainId, toBlock);
-
-  if (processed > 0) {
-    console.log(
-      `[chain-listener] Processed ${processed} settlement event(s), blocks ${fromBlock}-${toBlock}`,
-    );
-  }
-
-  return { processed, toBlock };
+export async function syncConditionalSettlementEvents(
+  db: Database,
+  config: ChainListenerConfig,
+): Promise<{ processed: number; toBlock: bigint }> {
+  return syncContractEvents({
+    db,
+    config,
+    cursorId: "conditional_settlement",
+    address: config.conditionalSettlementAddress,
+    abi: CONDITIONAL_SETTLEMENT_EVENTS,
+    handleEvent: handleConditionalSettlementEvent,
+    logLabel: "conditional settlement",
+  });
 }
 
 // ── Dispute Event Sync ──────────────────────────────────────────
+
+const DISPUTE_EVENTS = HAGGLE_DISPUTE_REGISTRY_ABI.filter(
+  (item) => item.type === "event",
+);
 
 export async function syncDisputeEvents(
   db: Database,
   config: ChainListenerConfig,
 ): Promise<{ processed: number; toBlock: bigint }> {
-  if (!config.disputeRegistryAddress) {
-    return { processed: 0, toBlock: 0n };
-  }
-
-  const cursorId = "dispute_registry";
-  const client = createClient(config);
-
-  const lastBlock = await readCursor(db, cursorId);
-  const currentBlock = await client.getBlockNumber();
-  const safeBlock = currentBlock - BigInt(config.confirmations);
-
-  if (safeBlock <= lastBlock) {
-    return { processed: 0, toBlock: lastBlock };
-  }
-
-  const fromBlock = lastBlock + 1n;
-  const toBlock = safeBlock < fromBlock + BigInt(config.maxBlockRange)
-    ? safeBlock
-    : fromBlock + BigInt(config.maxBlockRange) - 1n;
-
-  const logs = await client.getLogs({
+  return syncContractEvents({
+    db,
+    config,
+    cursorId: "dispute_registry",
     address: config.disputeRegistryAddress,
-    fromBlock,
-    toBlock,
+    abi: DISPUTE_EVENTS,
+    handleEvent: handleDisputeEvent,
+    logLabel: "dispute",
   });
-
-  let processed = 0;
-
-  for (const log of logs) {
-    try {
-      const decoded = decodeEventLog({
-        abi: HAGGLE_DISPUTE_REGISTRY_ABI,
-        data: log.data,
-        topics: log.topics,
-      });
-
-      await handleDisputeEvent(db, log as Log, decoded);
-      processed++;
-    } catch (error) {
-      console.error(
-        `[chain-listener] Failed to process dispute log tx=${log.transactionHash} logIndex=${log.logIndex}:`,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  await upsertCursor(db, cursorId, config.chainId, toBlock);
-
-  if (processed > 0) {
-    console.log(
-      `[chain-listener] Processed ${processed} dispute event(s), blocks ${fromBlock}-${toBlock}`,
-    );
-  }
-
-  return { processed, toBlock };
 }

@@ -12,6 +12,7 @@
 import type { Database } from "@haggle/db";
 import {
   createChainListenerConfig,
+  syncConditionalSettlementEvents,
   syncSettlementEvents,
   syncDisputeEvents,
 } from "../chain/event-listener.js";
@@ -23,8 +24,9 @@ export async function runChainEventSync(db: Database): Promise<void> {
     return;
   }
 
-  const [settlementResult, disputeResult] = await Promise.allSettled([
+  const [settlementResult, conditionalSettlementResult, disputeResult] = await Promise.allSettled([
     syncSettlementEvents(db, config),
+    syncConditionalSettlementEvents(db, config),
     syncDisputeEvents(db, config),
   ]);
 
@@ -35,6 +37,15 @@ export async function runChainEventSync(db: Database): Promise<void> {
       settlementResult.reason instanceof Error
         ? settlementResult.reason.message
         : String(settlementResult.reason),
+    );
+  }
+
+  if (conditionalSettlementResult.status === "rejected") {
+    console.error(
+      "[chain-event-sync] Conditional settlement sync failed:",
+      conditionalSettlementResult.reason instanceof Error
+        ? conditionalSettlementResult.reason.message
+        : String(conditionalSettlementResult.reason),
     );
   }
 

@@ -7,6 +7,7 @@
  */
 
 import { api } from "@/lib/api-client";
+import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 
 // ─── Response Types ─────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export interface TrustScoreResponse {
 export async function preparePayment(approvalId: string): Promise<PaymentResponse> {
   return api.post<PaymentResponse>("/payments/prepare", {
     settlement_approval_id: approvalId,
+    payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: true }),
   });
 }
 

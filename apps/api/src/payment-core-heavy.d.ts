@@ -17,6 +17,7 @@ declare module "@haggle/payment-core/heavy/real-x402-adapter" {
     SettlePaymentResult,
     RefundPaymentResult,
     SettlementRouterContract,
+    ConditionalSettlementContract,
     DisputeRegistryContract,
     Refund,
   } from "@haggle/payment-core";
@@ -49,6 +50,7 @@ declare module "@haggle/payment-core/heavy/real-x402-adapter" {
     asset: "USDC";
     fee_policy: X402FeePolicy;
     settlement_router: SettlementRouterContract;
+    conditional_settlement?: ConditionalSettlementContract;
     dispute_registry?: DisputeRegistryContract;
     resolve_seller_payout_target(sellerId: string): Promise<X402SellerPayoutTarget>;
     resolve_buyer_authorization(intent: PaymentIntent): Promise<X402BuyerAuthorizationContext>;
@@ -73,6 +75,12 @@ declare module "@haggle/payment-core/heavy/viem-contracts" {
     SettlementRouterQuote,
     SettlementRouterExecutionRequest,
     SettlementRouterExecutionResult,
+    ConditionalSettlementContract,
+    ConditionalSettlementCapabilities,
+    ConditionalSettlementCreateRequest,
+    ConditionalSettlementReleaseRequest,
+    ConditionalSettlementRefundRequest,
+    ConditionalSettlementResult,
     DisputeRegistryContract,
     DisputeAnchorRecord,
   } from "@haggle/payment-core";
@@ -99,6 +107,31 @@ declare module "@haggle/payment-core/heavy/viem-contracts" {
     execute(
       request: SettlementRouterExecutionRequest,
     ): Promise<SettlementRouterExecutionResult>;
+  }
+
+  export class ViemConditionalSettlementContract implements ConditionalSettlementContract {
+    readonly network: string;
+    readonly asset: "USDC";
+    readonly address: `0x${string}`;
+    readonly capabilities: ConditionalSettlementCapabilities;
+    constructor(
+      network: string,
+      asset: "USDC",
+      address: `0x${string}`,
+      publicClient: any,
+      walletClient: any,
+    );
+    createAndFund(
+      request: ConditionalSettlementCreateRequest,
+    ): Promise<ConditionalSettlementResult>;
+    release(
+      request: ConditionalSettlementReleaseRequest,
+    ): Promise<ConditionalSettlementResult>;
+    refund(
+      request: ConditionalSettlementRefundRequest,
+    ): Promise<ConditionalSettlementResult>;
+    expire(settlementId: string): Promise<ConditionalSettlementResult>;
+    raiseDispute(settlementId: string, evidenceHash: string): Promise<ConditionalSettlementResult>;
   }
 
   export class ViemDisputeRegistryContract implements DisputeRegistryContract {

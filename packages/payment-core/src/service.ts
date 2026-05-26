@@ -22,6 +22,10 @@ export interface CreatePaymentIntentInput {
   allowed_rails?: PaymentRail[];
   buyer_authorization_mode?: BuyerAuthorizationMode;
   amount: Money;
+  agent_payment_grant_id?: string;
+  approval_policy_hash?: string;
+  agreement_hash?: string;
+  listing_hash?: string;
   now?: string;
 }
 
@@ -59,6 +63,10 @@ export class PaymentService {
       buyer_authorization_mode: input.buyer_authorization_mode,
       amount: input.amount,
       status: "CREATED",
+      agent_payment_grant_id: input.agent_payment_grant_id,
+      approval_policy_hash: input.approval_policy_hash,
+      agreement_hash: input.agreement_hash,
+      listing_hash: input.listing_hash,
       created_at: createdAt,
       updated_at: createdAt,
     };
@@ -104,6 +112,23 @@ export class PaymentService {
       intent: nextIntent,
       value: result.settlement,
       metadata: result.metadata,
+      trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
+    };
+  }
+
+  recordExternalSettlement(
+    intent: PaymentIntent,
+    settlement: PaymentSettlement,
+    now?: string,
+  ): PaymentServiceResult<PaymentSettlement> {
+    const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "settle"), now);
+    return {
+      intent: nextIntent,
+      value: settlement,
+      metadata: {
+        provider_reference: settlement.provider_reference,
+        external_settlement_status: settlement.status,
+      },
       trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
     };
   }

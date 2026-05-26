@@ -1,4 +1,5 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   type Database,
@@ -7,6 +8,7 @@ import {
   orderAddresses,
   shipments as shipmentsTable,
   userSavedAddresses,
+  webhookIdempotency,
 } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
@@ -19,12 +21,16 @@ import {
   parseEasyPostInvoicePayload,
   transitionShipmentStatus,
   computeWeightBuffer,
+  redactShippingSensitiveData,
 } from "@haggle/shipping-core";
 import { applyApvAdjustment, confirmDelivery } from "@haggle/payment-core";
 import {
   createShipmentRecord,
   getShipmentById,
   getShipmentByOrderId,
+  createShipmentOperationInProgress,
+  completeShipmentOperationIdempotency,
+  getShipmentOperationIdempotencyRecord,
   updateShipmentRecord,
   insertShipmentEvent,
 } from "../services/shipment-record.service.js";
@@ -41,6 +47,7 @@ import { createId } from "@haggle/dispute-core";
 import type { DisputeCase } from "@haggle/dispute-core";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { updateCommerceOrderStatus, getCommerceOrderByOrderId } from "../services/payment-record.service.js";
+import { writeAuditLog, type AdminActionType } from "../services/admin-action-log.service.js";
 import { INPUT_LIMITS, boundedJson } from "../lib/input-limits.js";
 
 type ShipmentEventType = Parameters<typeof transitionShipmentStatus>[1];
@@ -89,6 +96,270 @@ function realShippingUnavailable(error?: unknown) {
       ? error.message
       : "EasyPost is required for shipping in production",
   };
+}
+
+function sha256Hex(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+}
+
+function requestHeaderString(request: FastifyRequest, name: string): string | null {
+  const value = request.headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0] ?? null;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getCorrelationId(request: FastifyRequest): string {
+  return requestHeaderString(request, "x-request-id")
+    ?? requestHeaderString(request, "x-correlation-id")
+    ?? request.id;
+}
+
+function auditActorId(request: FastifyRequest): string {
+  return request.user?.id ?? "00000000-0000-4000-8000-000000000000";
+}
+
+function getShippingIdempotencyKey(request: FastifyRequest): string | null {
+  return requestHeaderString(request, "idempotency-key")
+    ?? requestHeaderString(request, "x-idempotency-key");
+}
+
+function safeRedactShippingLog(value: unknown): unknown {
+  try {
+    return redactShippingSensitiveData(value);
+  } catch {
+    return { redaction_error: true };
+  }
+}
+
+function shipmentOperationRequestHash(
+  operation: string,
+  shipmentId: string | null,
+  body: unknown,
+  actorId: string | undefined,
+): string {
+  return sha256Hex(stableJson({
+    operation,
+    shipment_id: shipmentId,
+    actor_id: actorId ?? null,
+    body: body ?? null,
+  }));
+}
+
+async function beginShipmentOperationIdempotency(
+  db: Database,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  operation: string,
+  shipmentId: string | null,
+): Promise<{ key: string | null; requestHash: string; replayed: boolean }> {
+  const key = getShippingIdempotencyKey(request);
+  const requestHash = shipmentOperationRequestHash(operation, shipmentId, request.body, request.user?.id);
+
+  if (!key) {
+    if (requiresRealShippingProvider()) {
+      reply.code(400).send({
+        error: "IDEMPOTENCY_KEY_REQUIRED",
+        message: "Idempotency-Key header is required for shipment label mutations in production",
+      });
+      return { key: null, requestHash, replayed: true };
+    }
+    return { key: null, requestHash, replayed: false };
+  }
+
+  const inserted = await createShipmentOperationInProgress(db, {
+    operation,
+    idempotencyKey: key,
+    shipmentId,
+    requestHash,
+  });
+  if (inserted) return { key, requestHash, replayed: false };
+
+  const existing = await getShipmentOperationIdempotencyRecord(db, operation, key);
+  if (!existing) {
+    reply.code(409).send({ error: "IDEMPOTENCY_RECORD_CONFLICT" });
+    return { key, requestHash, replayed: true };
+  }
+  if (existing.requestHash !== requestHash) {
+    reply.code(409).send({
+      error: "IDEMPOTENCY_KEY_CONFLICT",
+      message: "Idempotency key was already used with a different shipment request",
+    });
+    return { key, requestHash, replayed: true };
+  }
+  if (existing.status === "SUCCEEDED" && existing.responseBody && existing.responseStatus) {
+    reply.code(existing.responseStatus).send({
+      ...(existing.responseBody as Record<string, unknown>),
+      idempotent: true,
+    });
+    return { key, requestHash, replayed: true };
+  }
+
+  reply.code(409).send({
+    error: "SHIPMENT_OPERATION_IN_PROGRESS",
+    message: "A shipment operation with this idempotency key is already in progress",
+  });
+  return { key, requestHash, replayed: true };
+}
+
+async function completeShipmentOperation(
+  db: Database,
+  operation: string,
+  idempotency: { key: string | null },
+  responseStatus: number,
+  responseBody: Record<string, unknown>,
+): Promise<void> {
+  if (!idempotency.key) return;
+  await completeShipmentOperationIdempotency(db, operation, idempotency.key, {
+    status: responseStatus >= 200 && responseStatus < 300 ? "SUCCEEDED" : "FAILED",
+    responseStatus,
+    responseBody: safeRedactShippingLog(responseBody) as Record<string, unknown>,
+  });
+}
+
+async function auditShipmentAction(
+  db: Database,
+  request: FastifyRequest,
+  actionType: AdminActionType,
+  params: {
+    shipmentId?: string | null;
+    orderId?: string | null;
+    reason: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await writeAuditLog(db, {
+    actorId: auditActorId(request),
+    actionType,
+    targetType: "shipment",
+    targetId: params.shipmentId ?? null,
+    payload: {
+      actor: {
+        id: request.user?.id ?? "system",
+        role: request.user?.role ?? "system",
+      },
+      shipment_id: params.shipmentId ?? null,
+      order_id: params.orderId ?? null,
+      reason: params.reason,
+      request_id: getCorrelationId(request),
+      timestamp: new Date().toISOString(),
+      metadata: params.metadata ? safeRedactShippingLog(params.metadata) : undefined,
+    },
+  });
+}
+
+function getCarrierWebhookEventId(body: unknown, source: string): string {
+  const record = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const result = record.result && typeof record.result === "object" ? record.result as Record<string, unknown> : {};
+  const explicitId = record.id ?? result.id;
+  if (typeof explicitId === "string" && explicitId.trim()) return explicitId;
+  return sha256Hex(stableJson({
+    source,
+    description: record.description ?? null,
+    tracking_code: result.tracking_code ?? null,
+    status: result.status ?? null,
+    datetime: Array.isArray(result.tracking_details)
+      ? (result.tracking_details.at(-1) as Record<string, unknown> | undefined)?.datetime ?? null
+      : null,
+  }));
+}
+
+async function hasCarrierWebhookBeenProcessed(db: Database, idempotencyKey: string, source: string): Promise<boolean> {
+  if (!("webhookIdempotency" in db.query)) return false;
+  const existing = await db.query.webhookIdempotency.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.idempotencyKey, idempotencyKey),
+      ops.eq(fields.source, source),
+    ),
+  });
+  return Boolean(existing);
+}
+
+async function recordCarrierWebhookProcessed(
+  db: Database,
+  idempotencyKey: string,
+  source: string,
+  responseStatus: number,
+): Promise<void> {
+  const insertResult = db.insert(webhookIdempotency).values({
+    idempotencyKey,
+    source,
+    responseStatus,
+  });
+  if (
+    insertResult
+    && typeof insertResult === "object"
+    && "onConflictDoNothing" in insertResult
+    && typeof insertResult.onConflictDoNothing === "function"
+  ) {
+    await insertResult.onConflictDoNothing();
+    return;
+  }
+  await insertResult;
+}
+
+function isUspsCarrier(carrier: unknown): boolean {
+  return typeof carrier === "string" && carrier.toLowerCase() === "usps";
+}
+
+function extractEasyPostLabelQrCodeForm(response: unknown): { formId?: string; formUrl?: string } {
+  const record = response && typeof response === "object" ? response as Record<string, unknown> : {};
+  const directFormType = record.form_type;
+  const directFormUrl = record.form_url;
+  if (directFormType === "label_qr_code" && typeof directFormUrl === "string") {
+    return {
+      formId: typeof record.id === "string" ? record.id : undefined,
+      formUrl: directFormUrl,
+    };
+  }
+
+  const forms = Array.isArray(record.forms) ? record.forms : [];
+  for (const form of forms) {
+    const formRecord = form && typeof form === "object" ? form as Record<string, unknown> : {};
+    if (formRecord.form_type === "label_qr_code" && typeof formRecord.form_url === "string") {
+      return {
+        formId: typeof formRecord.id === "string" ? formRecord.id : undefined,
+        formUrl: formRecord.form_url,
+      };
+    }
+  }
+
+  return {};
+}
+
+async function createEasyPostLabelQrCode(
+  client: { Shipment: { generateForm?: (id: string, formType: string, params?: Record<string, unknown>) => Promise<unknown> } },
+  easypostShipmentId: string,
+  carrier: unknown,
+): Promise<{ url: string | null; formId: string | null; status: "created" | "unsupported" | "failed"; reason?: string }> {
+  if (!isUspsCarrier(carrier)) {
+    return { url: null, formId: null, status: "unsupported", reason: "label_qr_code is currently supported for USPS shipments" };
+  }
+  if (typeof client.Shipment.generateForm !== "function") {
+    return { url: null, formId: null, status: "failed", reason: "EasyPost SDK does not expose Shipment.generateForm" };
+  }
+
+  try {
+    const response = await client.Shipment.generateForm(easypostShipmentId, "label_qr_code");
+    const form = extractEasyPostLabelQrCodeForm(response);
+    if (!form.formUrl) {
+      return { url: null, formId: form.formId ?? null, status: "failed", reason: "EasyPost did not return a label QR code URL" };
+    }
+    return { url: form.formUrl, formId: form.formId ?? null, status: "created" };
+  } catch (error) {
+    return {
+      url: null,
+      formId: null,
+      status: "failed",
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
@@ -164,7 +435,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
       // Create system-initiated dispute
       const dispute: DisputeCase = {
-        id: createId("dsp"),
+        id: createId(),
         order_id: shipment.order_id,
         reason_code: "SHIPMENT_SLA_MISSED",
         status: "OPEN",
@@ -230,12 +501,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "INVALID_SHIPMENT_REQUEST", issues: parsed.error.issues });
     }
 
+    const order = await getCommerceOrderByOrderId(db, parsed.data.order_id);
+    if (!order) {
+      return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+    }
+
     // Verify requester is the seller of the referenced order
     if (request.user?.role !== "admin") {
-      const order = await getCommerceOrderByOrderId(db, parsed.data.order_id);
-      if (!order) {
-        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
-      }
       if (request.user!.id !== order.sellerId) {
         return reply.code(403).send({ error: "FORBIDDEN", message: "Only the seller can create a shipment" });
       }
@@ -249,8 +521,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     const shipment = await createShipmentRecord(
       db,
       parsed.data.order_id,
-      parsed.data.seller_id,
-      parsed.data.buyer_id,
+      order.sellerId,
+      order.buyerId,
       parsed.data.shipment_input_due_at,
     );
 
@@ -292,14 +564,24 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     if (requiresRealShippingProvider() && !easypostApiKey) {
       return reply.code(503).send(realShippingUnavailable());
     }
+    const idempotency = await beginShipmentOperationIdempotency(db, request, reply, "shipment.label", shipment.id);
+    if (idempotency.replayed) return;
     try {
       const result = await shippingService.createLabel({ ...shipment, carrier });
       await persistAndRespond(result, reply, db, { buyer_id: shipment.buyer_id, seller_id: shipment.seller_id });
+      await auditShipmentAction(db, request, "shipment.label_purchase", {
+        shipmentId: shipment.id,
+        orderId: shipment.order_id,
+        reason: "shipment label created",
+      });
+      await completeShipmentOperation(db, "shipment.label", idempotency, 200, result as unknown as Record<string, unknown>);
     } catch (error) {
-      return reply.code(400).send({
+      const responseBody = {
         error: "LABEL_CREATION_FAILED",
         message: error instanceof Error ? error.message : String(error),
-      });
+      };
+      await completeShipmentOperation(db, "shipment.label", idempotency, 400, responseBody);
+      return reply.code(400).send(responseBody);
     }
   });
 
@@ -479,7 +761,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         if (requiresRealShippingProvider()) {
           return reply.code(502).send(realShippingUnavailable(error));
         }
-        console.error("EasyPost rate fetch failed in /prepare, falling back to mock rates:", error);
+        console.error("EasyPost rate fetch failed in /prepare, falling back to mock rates:", safeRedactShippingLog(error));
       }
     }
 
@@ -535,6 +817,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     }
 
     const { rate_id } = parsed.data;
+    const idempotency = await beginShipmentOperationIdempotency(db, request, reply, "shipment.purchase_label", shipmentId);
+    if (idempotency.replayed) return;
 
     // Store selected_rate_id
     await db.update(shipmentsTable).set({
@@ -602,6 +886,17 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         const rateToBuy = matchingRate ?? epShipment.lowestRate();
 
         const boughtShipment = await client.Shipment.buy(epShipment.id, rateToBuy);
+        const labelQrCode = await createEasyPostLabelQrCode(client, boughtShipment.id, rateToBuy.carrier);
+        const shipmentMetadata = {
+          ...(shipmentRow.metadata ?? {}),
+          easypost_shipment_id: boughtShipment.id,
+          easypost_rate_id: rateToBuy.id ?? null,
+          label_qr_code_status: labelQrCode.status,
+          label_qr_code_url: labelQrCode.url,
+          label_qr_code_form_id: labelQrCode.formId,
+          label_qr_code_reason: labelQrCode.reason,
+          label_print_methods: labelQrCode.url ? ["pdf", "usps_label_broker_qr"] : ["pdf"],
+        };
 
         // Update shipment in DB
         await db.update(shipmentsTable).set({
@@ -610,6 +905,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           trackingNumber: boughtShipment.tracking_code ?? undefined,
           labelUrl: boughtShipment.postage_label?.label_url ?? undefined,
           rateMinor: String(Math.round(parseFloat(rateToBuy.rate ?? "0") * 100)),
+          metadata: shipmentMetadata,
           labelCreatedAt: new Date(),
           updatedAt: new Date(),
         }).where(eqOp(shipmentsTable.id, shipmentId));
@@ -627,26 +923,45 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         await updateCommerceOrderStatus(db, shipment.order_id, "FULFILLMENT_ACTIVE");
 
         const finalShipment = await getShipmentById(db, shipmentId);
-        return reply.send({
+        const responseBody = {
           shipment: finalShipment,
           label_url: boughtShipment.postage_label?.label_url ?? null,
+          label_qr_code_url: labelQrCode.url,
+          label_qr_code_available: Boolean(labelQrCode.url),
+          label_qr_code_status: labelQrCode.status,
           tracking_number: boughtShipment.tracking_code ?? null,
+        };
+        await auditShipmentAction(db, request, "shipment.label_purchase", {
+          shipmentId,
+          orderId: shipment.order_id,
+          reason: "shipment label purchased",
+          metadata: {
+            carrier: rateToBuy.carrier ?? null,
+            service: rateToBuy.service ?? null,
+          },
         });
+        await completeShipmentOperation(db, "shipment.purchase_label", idempotency, 200, responseBody as Record<string, unknown>);
+        return reply.send(responseBody);
       } catch (error) {
-        return reply.code(400).send({
+        const responseBody = {
           error: "LABEL_PURCHASE_FAILED",
           message: error instanceof Error ? error.message : String(error),
-        });
+        };
+        await completeShipmentOperation(db, "shipment.purchase_label", idempotency, 400, responseBody);
+        return reply.code(400).send(responseBody);
       }
     }
 
     if (requiresRealShippingProvider()) {
-      return reply.code(503).send(realShippingUnavailable());
+      const responseBody = realShippingUnavailable();
+      await completeShipmentOperation(db, "shipment.purchase_label", idempotency, 503, responseBody);
+      return reply.code(503).send(responseBody);
     }
 
     // Mock label purchase fallback
     const mockTrackingNumber = `MOCK${Date.now()}`;
     const mockLabelUrl = `https://mock-labels.example.com/${mockTrackingNumber}.pdf`;
+    const mockQrCodeUrl = `https://mock-labels.example.com/${mockTrackingNumber}-qr.png`;
 
     await db.update(shipmentsTable).set({
       status: "LABEL_CREATED",
@@ -659,6 +974,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         : rate_id === "rate_mock_ups" ? "950"
         : rate_id === "rate_mock_fedex" ? "975"
         : "550",
+      metadata: {
+        ...(shipmentRow.metadata ?? {}),
+        label_qr_code_status: "created",
+        label_qr_code_url: mockQrCodeUrl,
+        label_qr_code_form_id: `form_mock_${mockTrackingNumber}`,
+        label_print_methods: ["pdf", "usps_label_broker_qr"],
+      },
       labelCreatedAt: new Date(),
       updatedAt: new Date(),
     }).where(eqOp(shipmentsTable.id, shipmentId));
@@ -677,11 +999,21 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     await updateCommerceOrderStatus(db, shipment.order_id, "FULFILLMENT_ACTIVE");
 
     const finalShipment = await getShipmentById(db, shipmentId);
-    return reply.send({
+    const responseBody = {
       shipment: finalShipment,
       label_url: mockLabelUrl,
+      label_qr_code_url: mockQrCodeUrl,
+      label_qr_code_available: true,
+      label_qr_code_status: "created",
       tracking_number: mockTrackingNumber,
+    };
+    await auditShipmentAction(db, request, "shipment.label_purchase", {
+      shipmentId,
+      orderId: shipment.order_id,
+      reason: "mock shipment label purchased",
     });
+    await completeShipmentOperation(db, "shipment.purchase_label", idempotency, 200, responseBody as Record<string, unknown>);
+    return reply.send(responseBody);
   });
 
   // POST /shipments/:id/return-label — buyer creates return label after dispute buyer_favor
@@ -735,11 +1067,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     if (existingReturnShipment && existingReturnShipment.status !== "LABEL_PENDING") {
       return reply.send({
         shipment: existingReturnShipment,
-        label_url: null,
+        label_url: existingReturnShipment.label_url ?? null,
+        label_qr_code_url: existingReturnShipment.label_qr_code_url ?? null,
+        label_qr_code_available: Boolean(existingReturnShipment.label_qr_code_url),
         tracking_number: existingReturnShipment.tracking_number ?? null,
         idempotent: true,
       });
     }
+    const idempotency = await beginShipmentOperationIdempotency(db, request, reply, "shipment.return_label", shipmentId);
+    if (idempotency.replayed) return;
 
     // Create or reuse the return shipment record. Reusing a pending row lets a
     // failed label attempt retry without creating duplicate return shipments.
@@ -781,6 +1117,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
     let labelUrl: string | null = null;
     let trackingNumber: string | null = null;
+    let labelQrCodeUrl: string | null = null;
+    let labelQrCodeStatus: "created" | "unsupported" | "failed" | null = null;
 
     if (easypostApiKey && originalRow?.parcelWeightOz) {
       try {
@@ -819,6 +1157,9 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
         trackingNumber = boughtShipment.tracking_code ?? null;
         labelUrl = boughtShipment.postage_label?.label_url ?? null;
+        const labelQrCode = await createEasyPostLabelQrCode(client, boughtShipment.id, lowestRate.carrier);
+        labelQrCodeUrl = labelQrCode.url;
+        labelQrCodeStatus = labelQrCode.status;
 
         await db.update(shipmentsTable).set({
           status: "LABEL_CREATED",
@@ -826,21 +1167,34 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           trackingNumber: trackingNumber ?? undefined,
           labelUrl: labelUrl ?? undefined,
           rateMinor: String(Math.round(parseFloat(lowestRate.rate ?? "0") * 100)),
+          metadata: {
+            ...((returnShipmentRow as { metadata?: Record<string, unknown> | null }).metadata ?? {}),
+            easypost_shipment_id: boughtShipment.id,
+            label_qr_code_status: labelQrCode.status,
+            label_qr_code_url: labelQrCode.url,
+            label_qr_code_form_id: labelQrCode.formId,
+            label_qr_code_reason: labelQrCode.reason,
+            label_print_methods: labelQrCode.url ? ["pdf", "usps_label_broker_qr"] : ["pdf"],
+          },
           labelCreatedAt: new Date(),
           updatedAt: new Date(),
         }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
       } catch (error) {
         if (requiresRealShippingProvider()) {
-          return reply.code(502).send(realShippingUnavailable(error));
+          const responseBody = realShippingUnavailable(error);
+          await completeShipmentOperation(db, "shipment.return_label", idempotency, 502, responseBody);
+          return reply.code(502).send(responseBody);
         }
-        console.error("EasyPost return label creation failed, falling back to mock:", error);
+        console.error("EasyPost return label creation failed, falling back to mock:", safeRedactShippingLog(error));
       }
     }
 
     // Mock fallback
     if (!trackingNumber) {
       if (requiresRealShippingProvider()) {
-        return reply.code(503).send(realShippingUnavailable());
+        const responseBody = realShippingUnavailable();
+        await completeShipmentOperation(db, "shipment.return_label", idempotency, 503, responseBody);
+        return reply.code(503).send(responseBody);
       }
 
       const mockTracking = `RET${Date.now()}`;
@@ -848,6 +1202,8 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
       trackingNumber = mockTracking;
       labelUrl = mockLabel;
+      labelQrCodeUrl = `https://mock-labels.example.com/${mockTracking}-qr.png`;
+      labelQrCodeStatus = "created";
 
       await db.update(shipmentsTable).set({
         status: "LABEL_CREATED",
@@ -855,6 +1211,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         trackingNumber: mockTracking,
         labelUrl: mockLabel,
         rateMinor: "550",
+        metadata: {
+          ...((returnShipmentRow as { metadata?: Record<string, unknown> | null }).metadata ?? {}),
+          label_qr_code_status: labelQrCodeStatus,
+          label_qr_code_url: labelQrCodeUrl,
+          label_qr_code_form_id: `form_mock_${mockTracking}`,
+          label_print_methods: ["pdf", "usps_label_broker_qr"],
+        },
         labelCreatedAt: new Date(),
         updatedAt: new Date(),
       }).where(eqOp(shipmentsTable.id, returnShipmentRow.id));
@@ -871,11 +1234,21 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     });
 
     const finalShipment = await getShipmentById(db, returnShipmentRow.id);
-    return reply.code(201).send({
+    const responseBody = {
       shipment: finalShipment,
       label_url: labelUrl,
+      label_qr_code_url: labelQrCodeUrl,
+      label_qr_code_available: Boolean(labelQrCodeUrl),
+      label_qr_code_status: labelQrCodeStatus,
       tracking_number: trackingNumber,
+    };
+    await auditShipmentAction(db, request, "shipment.return_label_purchase", {
+      shipmentId: returnShipmentRow.id,
+      orderId: shipment.order_id,
+      reason: "return label purchased",
     });
+    await completeShipmentOperation(db, "shipment.return_label", idempotency, 201, responseBody as Record<string, unknown>);
+    return reply.code(201).send(responseBody);
   });
 
   // POST /shipments/:id/event — record a shipment event (seller only)
@@ -1018,7 +1391,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         if (requiresRealShippingProvider()) {
           return reply.code(502).send(realShippingUnavailable(error));
         }
-        console.error("EasyPost rate fetch failed, falling back to mock rates:", error);
+        console.error("EasyPost rate fetch failed, falling back to mock rates:", safeRedactShippingLog(error));
       }
     }
 
@@ -1058,11 +1431,28 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         rawBody,
         request.headers as Record<string, string>,
         easypostWebhookSecret,
+        { method: request.method },
       );
       if (!isValid) {
+        await auditShipmentAction(db, request, "shipment.webhook_rejected", {
+          reason: "invalid EasyPost webhook signature",
+        });
         return reply.code(401).send({ error: "INVALID_WEBHOOK_SIGNATURE" });
       }
     }
+
+    const webhookEventId = getCarrierWebhookEventId(request.body, "easypost");
+    const duplicate = await hasCarrierWebhookBeenProcessed(db, webhookEventId, "easypost");
+    if (duplicate) {
+      return reply.send({ accepted: true, action: "duplicate", reason: "already_processed" });
+    }
+    await auditShipmentAction(db, request, "shipment.webhook_received", {
+      reason: "EasyPost webhook received",
+      metadata: {
+        event_id: webhookEventId,
+        description: (request.body as Record<string, unknown> | undefined)?.description,
+      },
+    });
 
     // Check if this is a ShipmentInvoice (APV weight adjustment) event
     const invoice = parseEasyPostInvoicePayload(request.body);
@@ -1074,14 +1464,16 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         });
 
         if (!shipmentRow) {
-          console.warn(`APV invoice: shipment not found for tracking_code=${invoice.tracking_code}`);
+          console.warn("APV invoice: shipment not found");
+          await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
           return reply.send({ accepted: true, skipped: true, reason: "shipment not found for invoice" });
         }
 
         // Look up settlement release by order
         const release = await getSettlementReleaseByOrderId(db, shipmentRow.orderId);
         if (!release) {
-          console.warn(`APV invoice: no settlement release for order_id=${shipmentRow.orderId}`);
+          console.warn("APV invoice: no settlement release for order", { order_id: shipmentRow.orderId });
+          await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
           return reply.send({ accepted: true, skipped: true, reason: "settlement release not found" });
         }
 
@@ -1091,15 +1483,17 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           await updateSettlementReleaseRecord(db, updated);
         }
 
+        await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
         return reply.send({ accepted: true, adjustment: invoice });
       } catch (error) {
-        console.error("APV invoice processing error:", error);
-        return reply.send({ accepted: true, error: "invoice processing failed" });
+        console.error("APV invoice processing error:", safeRedactShippingLog(error));
+        return reply.code(500).send({ accepted: false, error: "invoice processing failed" });
       }
     }
 
     const parsed = parseEasyPostWebhookPayload(request.body);
     if (!parsed) {
+      await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
       return reply.send({ accepted: true, skipped: true, reason: "not a tracker event" });
     }
 
@@ -1110,11 +1504,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     });
 
     if (!row) {
+      await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
       return reply.send({ accepted: true, skipped: true, reason: "shipment not found" });
     }
 
     const shipment = await getShipmentById(db, row.id);
     if (!shipment) {
+      await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
       return reply.send({ accepted: true, skipped: true, reason: "shipment not found" });
     }
 
@@ -1122,6 +1518,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     try {
       const eventType = statusToEventType(parsed.status);
       if (!eventType) {
+        await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
         return reply.send({ accepted: true, no_change: true, reason: "no matching event type" });
       }
       const result = shippingService.recordEvent(
@@ -1130,6 +1527,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       );
       const newEvent = result.shipment.events[result.shipment.events.length - 1];
       await persistShipmentUpdate(result, db, { buyer_id: shipment.buyer_id, seller_id: shipment.seller_id }, newEvent);
+      await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
       return reply.send({
         accepted: true,
         tracking_code: parsed.tracking_code,
@@ -1137,6 +1535,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       });
     } catch {
       // State transition may fail if already in that state — that's OK
+      await recordCarrierWebhookProcessed(db, webhookEventId, "easypost", 200);
       return reply.send({ accepted: true, no_change: true });
     }
   });

@@ -12,6 +12,9 @@ import {
   getDisputeByOrderId,
   updateDisputeRecord,
   addDisputeEvidenceRecord,
+  createDisputeEvidenceUploadRecord,
+  getDisputeEvidenceUploadByPath,
+  markDisputeEvidenceUploadCommitted,
 } from "../services/dispute-record.service.js";
 import {
   createDisputeUploadUrl,
@@ -20,6 +23,7 @@ import {
 } from "../services/dispute-storage.service.js";
 import {
   ALLOWED_EVIDENCE_TYPES,
+  DISPUTE_EVIDENCE_BUCKET,
   EVIDENCE_LIMITS,
   DISPUTE_VIEW_URL_TTL_SECONDS,
   isImageType,
@@ -58,6 +62,21 @@ const openDisputeSchema = z.object({
         submitted_by: z.enum(["buyer", "seller", "system"]),
         type: z.enum(["text", "image", "video", "tracking_snapshot", "payment_proof", "other"]),
         uri: z.string().url().max(INPUT_LIMITS.uriChars).optional(),
+        text: z.string().max(INPUT_LIMITS.longTextChars).optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+});
+
+const publicOpenDisputeSchema = z.object({
+  reason_code: z.string().max(INPUT_LIMITS.shortTextChars),
+  summary: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars),
+  client_request_id: z.string().min(1).max(128).optional(),
+  evidence: z
+    .array(
+      z.object({
+        type: z.enum(["text", "tracking_snapshot", "payment_proof", "other"]),
         text: z.string().max(INPUT_LIMITS.longTextChars).optional(),
       }),
     )
@@ -114,6 +133,173 @@ const listDisputesQuerySchema = z.object({
 export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   const disputeService = new DisputeService();
   const { requireDisputeParty } = createOwnershipMiddleware(db);
+
+  const disputableOrderStatuses = new Set([
+    "PAID",
+    "FULFILLMENT_PENDING",
+    "FULFILLMENT_ACTIVE",
+    "DELIVERED",
+    "IN_DISPUTE",
+  ]);
+
+  function isActiveDispute(status: string): boolean {
+    return !["RESOLVED_BUYER_FAVOR", "RESOLVED_SELLER_FAVOR", "PARTIAL_REFUND", "CLOSED"].includes(status);
+  }
+
+  function sameClientRequest(dispute: DisputeCase, clientRequestId?: string): boolean {
+    if (!clientRequestId) return false;
+    return (dispute.metadata as Record<string, unknown> | null)?.client_request_id === clientRequestId;
+  }
+
+  async function writeDisputeOpen(
+    dispute: DisputeCase,
+    orderId: string,
+  ): Promise<void> {
+    const persist = async (tx: unknown) => {
+      const txDb = tx as Database;
+      await createDisputeRecord(txDb, dispute);
+      await updateCommerceOrderStatus(txDb, orderId, "IN_DISPUTE");
+    };
+
+    if (typeof db.transaction === "function") {
+      await db.transaction(persist);
+      return;
+    }
+    await persist(db);
+  }
+
+  function createUuid(): string {
+    return typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function evidenceTypeFromContentType(contentType: string): "image" | "video" {
+    if (isImageType(contentType)) return "image";
+    if (isVideoType(contentType)) return "video";
+    throw new Error("unsupported evidence content type");
+  }
+
+  function qualifiedDisputeStoragePath(objectPath: string): string {
+    return `${DISPUTE_EVIDENCE_BUCKET}/${objectPath}`;
+  }
+
+  function isExpired(value: Date | string): boolean {
+    return new Date(value).getTime() <= Date.now();
+  }
+
+  function activePartyForOrder(
+    requestUser: { id: string; role?: string } | undefined,
+    order: { buyerId: string; sellerId: string } | null | undefined,
+  ): "buyer" | "seller" | "system" | null {
+    if (!requestUser) return null;
+    if (requestUser.role === "admin") return "system";
+    if (order && requestUser.id === order.buyerId) return "buyer";
+    if (order && requestUser.id === order.sellerId) return "seller";
+    return null;
+  }
+
+  // POST /orders/:orderId/disputes — production-safe public dispute opening path.
+  app.post<{ Params: { orderId: string } }>("/orders/:orderId/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
+    const { orderId } = request.params;
+    const parsed = publicOpenDisputeSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_DISPUTE_REQUEST", issues: parsed.error.issues });
+    }
+
+    const order = await getCommerceOrderByOrderId(db, orderId);
+    if (!order) {
+      return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+    }
+
+    const userId = request.user!.id;
+    let openedBy: "buyer" | "seller";
+    if (userId === order.buyerId) {
+      openedBy = "buyer";
+    } else if (userId === order.sellerId) {
+      openedBy = "seller";
+    } else {
+      return reply.code(403).send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+    }
+
+    const existing = await getDisputeByOrderId(db, orderId);
+    if (existing && isActiveDispute(existing.status)) {
+      if (sameClientRequest(existing, parsed.data.client_request_id)) {
+        return reply.send({
+          dispute: existing,
+          opened_by: existing.opened_by,
+          order_status: "IN_DISPUTE",
+          idempotent: true,
+        });
+      }
+      return reply.code(409).send({
+        error: "ACTIVE_DISPUTE_EXISTS",
+        dispute_id: existing.id,
+        message: "This order already has an active dispute",
+      });
+    }
+
+    if (!disputableOrderStatuses.has(order.status)) {
+      return reply.code(409).send({
+        error: "ORDER_NOT_DISPUTABLE",
+        order_status: order.status,
+        message: "This order is not in a disputable state",
+      });
+    }
+
+    const reasonCode = parsed.data.reason_code as DisputeReasonCode;
+    if (!(reasonCode in REASON_CODE_REGISTRY)) {
+      return reply.code(400).send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
+    }
+
+    const initialEvidence = [
+      { submitted_by: openedBy, type: "text" as const, text: parsed.data.summary },
+      ...(parsed.data.evidence ?? []).map((e) => ({
+        submitted_by: openedBy,
+        type: e.type,
+        text: e.text,
+      })),
+    ];
+
+    const result = disputeService.openCase({
+      order_id: orderId,
+      reason_code: reasonCode,
+      opened_by: openedBy,
+      initial_evidence: initialEvidence,
+    });
+    result.dispute.metadata = {
+      tier: 1,
+      opened_by_user_id: userId,
+      client_request_id: parsed.data.client_request_id ?? null,
+      source: "public_order_dispute_api",
+      order_status_at_open: order.status,
+    };
+
+    try {
+      await writeDisputeOpen(result.dispute, orderId);
+    } catch (error) {
+      if (error instanceof Error && /dispute_cases_active_order_uidx|unique/i.test(error.message)) {
+        const replay = await getDisputeByOrderId(db, orderId);
+        if (replay && sameClientRequest(replay, parsed.data.client_request_id)) {
+          return reply.send({
+            dispute: replay,
+            opened_by: replay.opened_by,
+            order_status: "IN_DISPUTE",
+            idempotent: true,
+          });
+        }
+        return reply.code(409).send({ error: "ACTIVE_DISPUTE_EXISTS", message: "This order already has an active dispute" });
+      }
+      throw error;
+    }
+
+    return reply.code(201).send({
+      dispute: result.dispute,
+      opened_by: openedBy,
+      order_status: "IN_DISPUTE",
+      idempotent: false,
+    });
+  });
 
   // GET /disputes — list authenticated user's disputes
   app.get("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -340,6 +526,18 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     const order = (request as unknown as Record<string, unknown>).orderResource as
       { id: string; buyerId: string; sellerId: string; amountMinor?: unknown } | undefined
       ?? await getCommerceOrderByOrderId(db, dispute.order_id);
+    const escalatedBy = request.user?.role === "admin"
+      ? parsed.data.escalated_by
+      : activePartyForOrder(request.user, order);
+    if (!escalatedBy) {
+      return reply.code(403).send({ error: "FORBIDDEN", message: "Cannot determine party role" });
+    }
+    if (request.user?.role !== "admin" && parsed.data.escalated_by !== escalatedBy) {
+      return reply.code(403).send({
+        error: "ESCALATION_PARTY_MISMATCH",
+        message: "escalated_by must match the authenticated party",
+      });
+    }
 
     // Determine current tier from metadata or default to T1
     const currentTier = (dispute.metadata as Record<string, unknown>)?.tier as number ?? 1;
@@ -366,7 +564,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       metadata: {
         ...(dispute.metadata as Record<string, unknown>),
         tier: nextTier,
-        escalated_by: parsed.data.escalated_by,
+        escalated_by: escalatedBy,
         escalated_reason: parsed.data.reason ?? null,
       },
     });
@@ -823,18 +1021,35 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   async function countEvidenceByType(
     disputeId: string,
   ): Promise<{ imageCount: number; videoCount: number }> {
-    const rows = await db
-      .select({
-        type: disputeEvidenceTable.type,
-      })
-      .from(disputeEvidenceTable)
-      .where(eq(disputeEvidenceTable.disputeId, disputeId));
+    const rows = await db.query.disputeEvidence.findMany({
+      where: (fields, ops) => ops.eq(fields.disputeId, disputeId),
+    });
 
     let imageCount = 0;
     let videoCount = 0;
     for (const row of rows) {
       if (row.type === "image") imageCount++;
       if (row.type === "video") videoCount++;
+    }
+    return { imageCount, videoCount };
+  }
+
+  async function countPendingUploadsByType(
+    disputeId: string,
+  ): Promise<{ imageCount: number; videoCount: number }> {
+    const rows = await db.query.disputeEvidenceUploads.findMany({
+      where: (fields, ops) => ops.and(
+        ops.eq(fields.disputeId, disputeId),
+        ops.eq(fields.status, "PENDING"),
+      ),
+    });
+
+    let imageCount = 0;
+    let videoCount = 0;
+    for (const row of rows) {
+      if (isExpired(row.expiresAt)) continue;
+      if (row.evidenceType === "image") imageCount++;
+      if (row.evidenceType === "video") videoCount++;
     }
     return { imageCount, videoCount };
   }
@@ -904,6 +1119,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       // 3. Determine media category
       const isImage = isImageType(content_type);
       const isVideo = isVideoType(content_type);
+      const evidenceType = evidenceTypeFromContentType(content_type);
 
       // 4. Get order amount for video tier determination
       const order =
@@ -913,6 +1129,13 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           sellerId: string;
           amountMinor?: unknown;
         } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+      const uploadedBy = activePartyForOrder(request.user, order);
+      if (!uploadedBy) {
+        return reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Cannot determine party role",
+        });
+      }
 
       const orderAmountCents = order?.amountMinor
         ? parseInt(String(order.amountMinor))
@@ -920,9 +1143,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       // 5. Count existing evidence and check limits
       const { imageCount, videoCount } = await countEvidenceByType(id);
+      const pendingCounts = await countPendingUploadsByType(id);
       const limits = computeRemainingLimits(
-        imageCount,
-        videoCount,
+        imageCount + pendingCounts.imageCount,
+        videoCount + pendingCounts.videoCount,
         orderAmountCents,
       );
 
@@ -962,27 +1186,36 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
 
       // 6. Generate presigned upload URL
-      const evidenceId =
-        typeof globalThis.crypto?.randomUUID === "function"
-          ? globalThis.crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const uploadId = createUuid();
 
       const objectPath = buildDisputeEvidencePath(
         id,
-        `${evidenceId}_${filename}`,
+        `${uploadId}_${filename}`,
       );
       const result = await createDisputeUploadUrl(objectPath);
+      await createDisputeEvidenceUploadRecord(db, {
+        id: uploadId,
+        disputeId: id,
+        uploadedBy,
+        evidenceType,
+        contentType: content_type,
+        fileSizeBytes: file_size_bytes,
+        storagePath: result.storagePath,
+        expiresAt: new Date(Date.now() + result.expiresIn * 1000),
+      });
 
       // Recompute limits after this upload (optimistic)
       const newLimits = computeRemainingLimits(
-        imageCount + (isImage ? 1 : 0),
-        videoCount + (isVideo ? 1 : 0),
+        imageCount + pendingCounts.imageCount + (isImage ? 1 : 0),
+        videoCount + pendingCounts.videoCount + (isVideo ? 1 : 0),
         orderAmountCents,
       );
 
       return reply.send({
         upload_url: result.uploadUrl,
         storage_path: result.storagePath,
+        upload_id: uploadId,
+        evidence_type: evidenceType,
         token: result.token,
         expires_in: result.expiresIn,
         limits: newLimits,
@@ -1029,8 +1262,37 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           message: err instanceof Error ? err.message : String(err),
         });
       }
+      const qualifiedStoragePath = qualifiedDisputeStoragePath(normalizedPath);
 
-      // 3. Verify file exists in storage
+      // 3. Validate the upload intent created by the upload-url endpoint
+      const upload = await getDisputeEvidenceUploadByPath(db, id, qualifiedStoragePath);
+      if (!upload) {
+        return reply.code(400).send({
+          error: "UPLOAD_INTENT_NOT_FOUND",
+          message: "No pending upload intent exists for this storage path",
+        });
+      }
+      if (upload.status !== "PENDING") {
+        return reply.code(409).send({
+          error: "UPLOAD_ALREADY_PROCESSED",
+          status: upload.status,
+        });
+      }
+      if (isExpired(upload.expiresAt)) {
+        return reply.code(400).send({
+          error: "UPLOAD_INTENT_EXPIRED",
+          message: "Upload intent has expired. Request a new upload URL.",
+        });
+      }
+      if (upload.evidenceType !== type) {
+        return reply.code(400).send({
+          error: "EVIDENCE_TYPE_MISMATCH",
+          expected: upload.evidenceType,
+          received: type,
+        });
+      }
+
+      // 4. Verify file exists in storage
       const exists = await disputeEvidenceExists(normalizedPath);
       if (!exists) {
         return reply.code(400).send({
@@ -1039,7 +1301,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      // 4. Determine submitted_by from user's role on the order
+      // 5. Determine submitted_by from user's role on the order
       const order =
         ((request as unknown as Record<string, unknown>).orderResource as {
           id: string;
@@ -1048,47 +1310,52 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           amountMinor?: unknown;
         } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
 
-      const userId = request.user!.id;
-      let submittedBy: "buyer" | "seller";
-      if (userId === order?.buyerId) {
-        submittedBy = "buyer";
-      } else if (userId === order?.sellerId) {
-        submittedBy = "seller";
-      } else {
-        // Admin submitting — default to system, but schema only allows buyer/seller
-        // for file evidence. Admin case should not reach here due to middleware.
+      const submittedBy = activePartyForOrder(request.user, order);
+      if (!submittedBy) {
         return reply.code(403).send({
           error: "FORBIDDEN",
           message: "Cannot determine party role",
         });
       }
+      if (upload.uploadedBy !== submittedBy) {
+        return reply.code(403).send({
+          error: "UPLOAD_PARTY_MISMATCH",
+          message: "Only the party that requested the upload URL can commit it",
+        });
+      }
 
-      // 5. Create evidence record
-      const evidenceId =
-        typeof globalThis.crypto?.randomUUID === "function"
-          ? globalThis.crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      // 6. Create evidence record and mark upload as committed
+      const evidenceId = createUuid();
 
       const evidence: DisputeEvidence = {
         id: evidenceId,
         dispute_id: id,
         submitted_by: submittedBy,
         type,
-        uri: storage_path,
+        uri: qualifiedStoragePath,
         text: description,
         created_at: new Date().toISOString(),
       };
 
-      await addDisputeEvidenceRecord(db, evidence);
+      const persist = async (tx: unknown) => {
+        const txDb = tx as Database;
+        await addDisputeEvidenceRecord(txDb, evidence);
+        await markDisputeEvidenceUploadCommitted(txDb, upload.id, evidence.id);
+      };
+      if (typeof db.transaction === "function") {
+        await db.transaction(persist);
+      } else {
+        await persist(db);
+      }
 
-      // 6. Run evidence validation
+      // 7. Run evidence validation
       const allEvidence = [...dispute.evidence, evidence];
       const validation = validateEvidenceForReasonCode(
         dispute.reason_code as DisputeReasonCode,
         allEvidence,
       );
 
-      // 7. Compute remaining limits
+      // 8. Compute remaining limits
       const orderAmountCents = order?.amountMinor
         ? parseInt(String(order.amountMinor))
         : 0;

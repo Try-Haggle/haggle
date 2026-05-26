@@ -1,15 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
+import { createIntent, getIntentById, updateIntentStatus } from "../services/intent.service.js";
 
 // ─── Mock service layers ─────────────────────────────────────────────
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -120,6 +125,10 @@ vi.mock("../services/draft.service.js", () => ({
   publishDraft: vi.fn().mockResolvedValue(null),
 }));
 
+const mockCreateIntent = vi.mocked(createIntent);
+const mockGetIntentById = vi.mocked(getIntentById);
+const mockUpdateIntentStatus = vi.mocked(updateIntentStatus);
+
 describe("Intent routes", () => {
   let app: FastifyInstance;
 
@@ -178,6 +187,27 @@ describe("Intent routes", () => {
     expect(res.json().error).toBe("AUTH_REQUIRED");
   });
 
+  it("POST /intents rejects creating an intent for another user", async () => {
+    mockCreateIntent.mockClear();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/intents",
+      headers: AUTH_HEADERS,
+      payload: {
+        user_id: "someone-else",
+        role: "BUYER",
+        category: "electronics",
+        keywords: ["laptop"],
+        strategy: {},
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("INTENT_ACTOR_MISMATCH");
+    expect(mockCreateIntent).not.toHaveBeenCalled();
+  });
+
   // ─── GET /intents/:id ───────────────────────────────────────
   it("GET /intents/:id returns 404 for unknown intent", async () => {
     const res = await app.inject({
@@ -196,6 +226,34 @@ describe("Intent routes", () => {
     });
     expect(res.statusCode).toBe(401);
     expect(res.json().error).toBe("AUTH_REQUIRED");
+  });
+
+  it("PATCH /intents/:id/cancel rejects non-owners", async () => {
+    mockGetIntentById.mockResolvedValueOnce({
+      id: "intent-1",
+      userId: "someone-else",
+      role: "BUYER",
+      category: "electronics",
+      keywords: ["laptop"],
+      strategySnapshot: {},
+      minUtotal: null,
+      maxActiveSessions: 5,
+      status: "ACTIVE",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: new Date(Date.now() + 86_400_000),
+    } as never);
+    mockUpdateIntentStatus.mockClear();
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/intents/intent-1/cancel",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("INTENT_ACTOR_MISMATCH");
+    expect(mockUpdateIntentStatus).not.toHaveBeenCalled();
   });
 
   // ─── POST /intents/expire — cron endpoint ───────────────────

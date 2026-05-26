@@ -9,6 +9,7 @@ declare module "@easypost/api" {
     Shipment: {
       create(params: Record<string, unknown>): Promise<any>;
       buy(id: string, rate: any): Promise<any>;
+      generateForm(id: string, formType: string, params?: Record<string, unknown>): Promise<any>;
     };
     Tracker: {
       create(params: Record<string, unknown>): Promise<any>;

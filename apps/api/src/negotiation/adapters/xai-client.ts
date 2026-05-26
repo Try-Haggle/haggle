@@ -15,6 +15,8 @@ import { withLLMTelemetry } from '../../lib/llm-telemetry.js';
 export interface XAICallOptions {
   /** Enable reasoning mode (longer timeout, higher cost) */
   reasoning?: boolean;
+  /** Override model for this call */
+  model?: string;
   /** Override max_tokens */
   maxTokens?: number;
   /** Correlation ID for telemetry */
@@ -23,6 +25,7 @@ export interface XAICallOptions {
 
 export interface XAIResponse {
   content: string;
+  model: string;
   usage: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -47,9 +50,35 @@ interface XAIChatCompletion {
 // ---------------------------------------------------------------------------
 
 const XAI_API_BASE = 'https://api.x.ai/v1';
-const RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
-const GENERAL_TIMEOUT_MS = 60_000;
-const REASONING_TIMEOUT_MS = 90_000;
+const DEFAULT_RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
+const DEFAULT_GENERAL_TIMEOUT_MS = 60_000;
+const DEFAULT_REASONING_TIMEOUT_MS = 90_000;
+
+function parsePositiveInt(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function getRetryDelays(): number[] {
+  const raw = process.env.XAI_RETRY_DELAYS_MS;
+  if (!raw) return DEFAULT_RETRY_DELAYS;
+  if (raw.trim() === '0' || raw.trim().toLowerCase() === 'none') return [];
+
+  const delays = raw
+    .split(',')
+    .map((part) => parsePositiveInt(part.trim()))
+    .filter((value): value is number => value !== null);
+
+  return delays.length > 0 ? delays : DEFAULT_RETRY_DELAYS;
+}
+
+function getTimeoutMs(reasoning: boolean): number {
+  if (reasoning) {
+    return parsePositiveInt(process.env.XAI_REASONING_TIMEOUT_MS) ?? DEFAULT_REASONING_TIMEOUT_MS;
+  }
+  return parsePositiveInt(process.env.XAI_GENERAL_TIMEOUT_MS) ?? DEFAULT_GENERAL_TIMEOUT_MS;
+}
 
 function getApiKey(): string {
   const key = process.env.XAI_API_KEY;
@@ -99,8 +128,9 @@ export async function callLLM(
   options: XAICallOptions = {},
 ): Promise<XAIResponse> {
   const { reasoning = false, maxTokens, correlationId } = options;
-  const model = getModel();
-  const timeoutMs = reasoning ? REASONING_TIMEOUT_MS : GENERAL_TIMEOUT_MS;
+  const model = options.model ?? getModel();
+  const timeoutMs = getTimeoutMs(reasoning);
+  const retryDelays = getRetryDelays();
 
   const body: Record<string, unknown> = {
     model,
@@ -121,7 +151,7 @@ export async function callLLM(
   const doCall = async (): Promise<XAIResponse> => {
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
       try {
         const response = await fetchWithTimeout(
           `${XAI_API_BASE}/chat/completions`,
@@ -155,6 +185,7 @@ export async function callLLM(
 
         return {
           content,
+          model,
           usage: {
             prompt_tokens: data.usage?.prompt_tokens ?? 0,
             completion_tokens: data.usage?.completion_tokens ?? 0,
@@ -177,8 +208,8 @@ export async function callLLM(
         }
 
         // Wait before retry (if retries remaining)
-        if (attempt < RETRY_DELAYS.length) {
-          await sleep(RETRY_DELAYS[attempt]!);
+        if (attempt < retryDelays.length) {
+          await sleep(retryDelays[attempt]!);
         }
       }
     }

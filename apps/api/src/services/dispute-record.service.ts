@@ -1,8 +1,12 @@
 import {
   disputeCases,
   disputeEvidence,
+  disputeEvidenceUploads,
+  disputeModuleIdempotencyKeys,
   disputeResolutions,
   eq,
+  and,
+  sql,
   type Database,
 } from "@haggle/db";
 import type {
@@ -49,6 +53,7 @@ export async function createDisputeRecord(
       status: dispute.status,
       openedBy: dispute.opened_by,
       openedAt: new Date(dispute.opened_at),
+      metadata: dispute.metadata ?? undefined,
     })
     .returning();
 
@@ -114,6 +119,22 @@ export async function getDisputeByOrderId(db: Database, orderId: string): Promis
   return getDisputeById(db, row.id);
 }
 
+export async function getActiveDisputeByOrderId(db: Database, orderId: string): Promise<DisputeCase | null> {
+  const row = await db.query.disputeCases.findFirst({
+    where: (fields) => sql`
+      ${fields.orderId} = ${orderId}
+      AND ${fields.status} NOT IN (
+        'RESOLVED_BUYER_FAVOR',
+        'RESOLVED_SELLER_FAVOR',
+        'PARTIAL_REFUND',
+        'CLOSED'
+      )
+    `,
+  });
+  if (!row) return null;
+  return getDisputeById(db, row.id);
+}
+
 export async function updateDisputeRecord(
   db: Database,
   dispute: DisputeCase,
@@ -144,6 +165,127 @@ export async function addDisputeEvidenceRecord(
     text: evidence.text,
     createdAt: new Date(evidence.created_at),
   });
+}
+
+export interface DisputeEvidenceUploadRecord {
+  id: string;
+  disputeId: string;
+  uploadedBy: "buyer" | "seller" | "system";
+  evidenceType: "image" | "video";
+  contentType: string;
+  fileSizeBytes: number;
+  storagePath: string;
+  status: "PENDING" | "COMMITTED" | "EXPIRED";
+  expiresAt: Date;
+  committedEvidenceId: string | null;
+  committedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function createDisputeEvidenceUploadRecord(
+  db: Database,
+  data: {
+    id: string;
+    disputeId: string;
+    uploadedBy: "buyer" | "seller" | "system";
+    evidenceType: "image" | "video";
+    contentType: string;
+    fileSizeBytes: number;
+    storagePath: string;
+    expiresAt: Date;
+  },
+): Promise<DisputeEvidenceUploadRecord> {
+  const [row] = await db
+    .insert(disputeEvidenceUploads)
+    .values({
+      id: data.id,
+      disputeId: data.disputeId,
+      uploadedBy: data.uploadedBy,
+      evidenceType: data.evidenceType,
+      contentType: data.contentType,
+      fileSizeBytes: data.fileSizeBytes,
+      storagePath: data.storagePath,
+      expiresAt: data.expiresAt,
+    })
+    .returning();
+
+  return row as DisputeEvidenceUploadRecord;
+}
+
+export async function getDisputeEvidenceUploadByPath(
+  db: Database,
+  disputeId: string,
+  storagePath: string,
+): Promise<DisputeEvidenceUploadRecord | null> {
+  const row = await db.query.disputeEvidenceUploads.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.disputeId, disputeId),
+      ops.eq(fields.storagePath, storagePath),
+    ),
+  });
+  return (row as DisputeEvidenceUploadRecord | undefined) ?? null;
+}
+
+export async function markDisputeEvidenceUploadCommitted(
+  db: Database,
+  uploadId: string,
+  evidenceId: string,
+): Promise<void> {
+  await db
+    .update(disputeEvidenceUploads)
+    .set({
+      status: "COMMITTED",
+      committedEvidenceId: evidenceId,
+      committedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(disputeEvidenceUploads.id, uploadId), eq(disputeEvidenceUploads.status, "PENDING")));
+}
+
+export interface DisputeModuleIdempotencyRecord {
+  id: string;
+  platformId: string;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  disputeId: string;
+  createdAt: Date;
+}
+
+export async function getDisputeModuleIdempotencyRecord(
+  db: Database,
+  platformId: string,
+  idempotencyKey: string,
+): Promise<DisputeModuleIdempotencyRecord | null> {
+  const row = await db.query.disputeModuleIdempotencyKeys.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.platformId, platformId),
+      ops.eq(fields.idempotencyKey, idempotencyKey),
+    ),
+  });
+  return (row as DisputeModuleIdempotencyRecord | undefined) ?? null;
+}
+
+export async function createDisputeModuleIdempotencyRecord(
+  db: Database,
+  data: {
+    platformId: string;
+    idempotencyKey: string;
+    requestFingerprint: string;
+    disputeId: string;
+  },
+): Promise<DisputeModuleIdempotencyRecord> {
+  const [row] = await db
+    .insert(disputeModuleIdempotencyKeys)
+    .values({
+      platformId: data.platformId,
+      idempotencyKey: data.idempotencyKey,
+      requestFingerprint: data.requestFingerprint,
+      disputeId: data.disputeId,
+    })
+    .returning();
+
+  return row as DisputeModuleIdempotencyRecord;
 }
 
 export async function createDisputeResolutionRecord(

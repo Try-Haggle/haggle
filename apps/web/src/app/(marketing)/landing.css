@@ -108,8 +108,8 @@
        As --p (0→1) moves, "bad platform" fee rows peel off; platform label and
        total morph to Haggle. */
     .scroll-hero{position:relative;padding:0;border-top:none}
-    .sh-track{height:120vh;position:relative} /* tall track that drives scroll */
-    .sh-stage{position:sticky;top:56px;height:calc(100vh - 56px);display:grid;grid-template-columns:1.05fr 1fr;gap:40px;align-items:start;padding-top:clamp(40px,6vh,80px);max-width:1200px;margin:0 auto;padding-left:28px;padding-right:28px}
+    .sh-track{height:180vh;position:relative}
+    .sh-stage{position:sticky;top:56px;height:calc(100vh - 56px);display:grid;grid-template-columns:1.05fr 1fr;gap:40px;align-items:center;padding-top:clamp(40px,6vh,80px);padding-bottom:clamp(40px,6vh,80px);max-width:1200px;margin:0 auto;padding-left:28px;padding-right:28px}
     .sh-copy{max-width:560px}
     .sh-copy h1 .stack{display:block}
     .sh-copy h1 .accent{background:linear-gradient(92deg,#0891b2,#7c3aed 60%,#0891b2);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -220,7 +220,7 @@
     }
 
     /* ---------- TRUST BAR ---------- */
-    .trust{padding:40px 0 0;border-top:1px solid var(--line-soft);margin-top:-30vh}
+    .trust{padding:40px 0 0;border-top:1px solid var(--line-soft);margin-top:0}
     .trust-row{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:22px 28px;background:#fbfaf4;border:1px solid var(--line-soft);border-radius:16px}
     .trust-item{display:inline-flex;align-items:center;gap:10px;color:var(--mute);font-size:13px;font-weight:500;letter-spacing:-.005em}
     .trust-item svg{flex:0 0 auto}

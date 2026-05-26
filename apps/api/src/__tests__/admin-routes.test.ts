@@ -37,6 +37,13 @@ vi.mock("../services/tag-promotion.service.js", () => ({
   }),
 }));
 
+const buildProductionReconciliationReportMock = vi.fn();
+
+vi.mock("../services/production-reconciliation.service.js", () => ({
+  buildProductionReconciliationReport: (...args: unknown[]) =>
+    buildProductionReconciliationReportMock(...args),
+}));
+
 // The in-memory store powers the promotion-rule service mock and lets the
 // audit-log assertion peek at what was written.
 const ruleStore = new Map<string, Record<string, unknown>>();
@@ -117,7 +124,13 @@ const setProviderContextMock = vi.fn(
   },
 );
 
+const listDeadLetterWebhooksMock = vi.fn();
+const resetWebhookForReplayMock = vi.fn();
+
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   getPaymentIntentRowById: vi.fn(async (_db: unknown, id: string) =>
     paymentStore.get(id) ?? null,
   ),
@@ -127,6 +140,10 @@ vi.mock("../services/payment-record.service.js", () => ({
   // route files registered in the same test app import this module).
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  getInProgressPaymentOperationForIntent: vi.fn().mockResolvedValue(null),
+  getPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
+  createPaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(null),
+  completePaymentOperationIdempotencyRecord: vi.fn().mockResolvedValue(undefined),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
@@ -135,6 +152,13 @@ vi.mock("../services/payment-record.service.js", () => ({
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../services/dispute-module-webhook.service.js", () => ({
+  listDeadLetterDisputeModuleWebhookOutboxRecords: (...args: unknown[]) =>
+    listDeadLetterWebhooksMock(...args),
+  resetDisputeModuleWebhookOutboxRecordForReplay: (...args: unknown[]) =>
+    resetWebhookForReplayMock(...args),
 }));
 
 vi.mock("../services/trust-ledger.service.js", () => ({
@@ -256,7 +280,7 @@ describe("Admin routes", () => {
       url: "/admin/inbox/summary",
       headers: adminAuth,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.payload).toBe(200);
     const body = res.json();
     expect(body.tags).toBeDefined();
     expect(body.disputes).toBeDefined();
@@ -271,7 +295,7 @@ describe("Admin routes", () => {
       url: "/admin/inbox/tags",
       headers: adminAuth,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.payload).toBe(200);
     expect(Array.isArray(res.json().items)).toBe(true);
   });
 
@@ -321,6 +345,121 @@ describe("Admin routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().lastRun).toBeNull();
+  });
+
+  it("POST /admin/reconciliation/report returns report-only findings and audit summary", async () => {
+    auditLog.length = 0;
+    buildProductionReconciliationReportMock.mockReturnValueOnce({
+      generatedAt: "2026-05-12T00:00:00.000Z",
+      reportOnly: true,
+      summary: {
+        critical: 4,
+        warning: 2,
+        total: 6,
+        payments: 1,
+        shipments: 2,
+        disputes: 3,
+      },
+      findings: {
+        payments: [{ type: "provider_captured_local_not_captured", severity: "critical" }],
+        shipments: [
+          { type: "label_created_without_fulfillable_order", severity: "critical" },
+          { type: "tracking_missing_after_label", severity: "warning" },
+        ],
+        disputes: [
+          { type: "resolved_buyer_favor_without_refund", severity: "critical" },
+          { type: "resolved_dispute_order_not_terminal", severity: "critical" },
+          { type: "resolved_dispute_missing_finalization_marker", severity: "warning" },
+        ],
+      },
+      nextActions: ["Hold fulfillment and reconcile provider capture before treating the order as paid."],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/reconciliation/report",
+      headers: adminAuth,
+      payload: {
+        generatedAt: "2026-05-12T00:00:00.000Z",
+        payments: {
+          local: [{
+            payment_intent_id: "pi_1",
+            order_id: "ord_1",
+            state: "authorized",
+            amount_minor: 1000,
+            provider_reference: "prov_1",
+          }],
+          provider: [{
+            provider_reference: "prov_1",
+            state: "captured",
+            amount_minor: 1000,
+          }],
+        },
+        shipments: {
+          local: [{
+            shipment_id: "ship_1",
+            order_id: "ord_1",
+            state: "label_created",
+            order_status: "PAYMENT_PENDING",
+          }],
+          provider: [],
+        },
+        disputes: {
+          local: [{
+            dispute_id: "disp_1",
+            order_id: "ord_1",
+            status: "resolved_buyer_favor",
+            outcome: "buyer_favor",
+            order_status: "IN_DISPUTE",
+            refund_status: "PENDING",
+          }],
+        },
+      },
+    });
+
+    expect(res.statusCode, res.payload).toBe(200);
+    const body = res.json();
+    expect(body.report.reportOnly).toBe(true);
+    expect(body.report.summary).toMatchObject({
+      critical: 4,
+      warning: 2,
+      total: 6,
+      payments: 1,
+      shipments: 2,
+      disputes: 3,
+    });
+    expect(body.report.findings.payments[0].type).toBe("provider_captured_local_not_captured");
+    expect(body.report.findings.shipments.map((finding: { type: string }) => finding.type)).toEqual([
+      "label_created_without_fulfillable_order",
+      "tracking_missing_after_label",
+    ]);
+    expect(body.report.nextActions.length).toBeGreaterThan(0);
+    expect(auditLog[0]).toMatchObject({
+      actionType: "reconciliation.report",
+      targetType: "production_readiness",
+      targetId: "report",
+    });
+    expect((auditLog[0].payload as Record<string, unknown>).summary).toEqual(body.report.summary);
+  });
+
+  it("POST /admin/reconciliation/report validates body", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/reconciliation/report",
+      headers: adminAuth,
+      payload: {
+        payments: {
+          local: [{
+            payment_intent_id: "pi_1",
+            state: "client_forced_success",
+            amount_minor: 1000,
+          }],
+          provider: [],
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_RECONCILIATION_BODY");
   });
 
   // 9
@@ -715,6 +854,96 @@ describe("Admin routes", () => {
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("PAYMENT_INTENT_NOT_FOUND");
+    expect(auditLog.length).toBe(0);
+  });
+
+  // 29
+  it("GET /admin/dispute-module-webhooks/dead-letter returns dead-letter records", async () => {
+    listDeadLetterWebhooksMock.mockResolvedValueOnce([
+      {
+        eventId: "evt_dead",
+        platformId: "platform_1",
+        status: "DEAD_LETTER",
+      },
+    ]);
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/dispute-module-webhooks/dead-letter?limit=10",
+      headers: adminAuth,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      items: [
+        {
+          eventId: "evt_dead",
+          status: "DEAD_LETTER",
+        },
+      ],
+    });
+    expect(listDeadLetterWebhooksMock).toHaveBeenCalledWith(expect.anything(), {
+      limit: 10,
+      offset: undefined,
+    });
+  });
+
+  // 30
+  it("POST /admin/actions/dispute-module-webhook-replay resets a replayable outbox record", async () => {
+    auditLog.length = 0;
+    resetWebhookForReplayMock.mockResolvedValueOnce({
+      eventId: "evt_dead",
+      platformId: "platform_1",
+      disputeId: "11111111-1111-5111-9111-111111111111",
+      status: "PENDING",
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/actions/dispute-module-webhook-replay",
+      headers: adminAuth,
+      payload: { eventId: "evt_dead", reason: "Platform endpoint restored" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().record).toMatchObject({
+      eventId: "evt_dead",
+      status: "PENDING",
+    });
+    expect(resetWebhookForReplayMock).toHaveBeenCalledWith(expect.anything(), "evt_dead");
+    expect(auditLog.length).toBe(1);
+    expect(auditLog[0]).toMatchObject({
+      actionType: "dispute_module_webhook.replay",
+      targetType: "dispute_module_webhook_outbox",
+      targetId: "evt_dead",
+    });
+    expect(auditLog[0].payload).toMatchObject({
+      reason: "Platform endpoint restored",
+    });
+  });
+
+  // 31
+  it("POST /admin/actions/dispute-module-webhook-replay returns 404 when not replayable", async () => {
+    auditLog.length = 0;
+    resetWebhookForReplayMock.mockResolvedValueOnce(null);
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/actions/dispute-module-webhook-replay",
+      headers: adminAuth,
+      payload: { eventId: "evt_missing", reason: "Manual replay requested" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("WEBHOOK_OUTBOX_RECORD_NOT_REPLAYABLE");
+    expect(auditLog.length).toBe(0);
+  });
+
+  // 32
+  it("POST /admin/actions/dispute-module-webhook-replay requires a reason", async () => {
+    auditLog.length = 0;
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/actions/dispute-module-webhook-replay",
+      headers: adminAuth,
+      payload: { eventId: "evt_dead" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_BODY");
     expect(auditLog.length).toBe(0);
   });
 });

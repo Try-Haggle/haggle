@@ -6,48 +6,101 @@ import type { ShipmentStatus } from "./types.js";
 // Webhook signature verification
 // ---------------------------------------------------------------------------
 
+export interface VerifyEasyPostWebhookOptions {
+  method?: string;
+  timestampToleranceMinutes?: number;
+  now?: Date;
+}
+
+function getHeader(headers: Record<string, string | string[] | undefined>, name: string): string | undefined {
+  const direct = headers[name];
+  const lower = headers[name.toLowerCase()];
+  const upper = headers[name.toUpperCase()];
+  const value = direct ?? lower ?? upper;
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function stripHmacPrefix(signature: string): string {
+  const prefix = "hmac-sha256-hex=";
+  return signature.toLowerCase().startsWith(prefix)
+    ? signature.slice(prefix.length)
+    : signature;
+}
+
+function timingSafeHexEqual(received: string, expected: string): boolean {
+  const receivedHex = stripHmacPrefix(received).toLowerCase();
+  const expectedHex = expected.toLowerCase();
+  const sigBuf = Buffer.from(receivedHex, "hex");
+  const expBuf = Buffer.from(expectedHex, "hex");
+
+  if (sigBuf.length !== expBuf.length) return false;
+
+  return timingSafeEqual(sigBuf, expBuf);
+}
+
+function isTimestampWithinTolerance(timestamp: string, toleranceMinutes: number, now: Date): boolean {
+  const timestampMs = Date.parse(timestamp);
+  if (!Number.isFinite(timestampMs)) return false;
+
+  const ageMs = now.getTime() - timestampMs;
+  const toleranceMs = toleranceMinutes * 60 * 1000;
+  const futureSkewMs = 30 * 1000;
+
+  return ageMs <= toleranceMs && ageMs >= -futureSkewMs;
+}
+
 /**
  * Verify that an incoming EasyPost webhook payload is authentic by checking
  * its HMAC-SHA256 signature against the configured webhook secret.
  *
- * EasyPost sends the signature in the `x-hmac-signature` header as a
- * hex-encoded HMAC-SHA256 digest of the raw request body.
+ * EasyPost's v2 webhook HMAC signs timestamp + method + path + raw body and
+ * includes replay protection via `x-timestamp`. The legacy body-only
+ * `x-hmac-signature` form is still accepted for older webhook configurations.
  *
  * @param rawBody - The raw request body (string or Buffer, before JSON parsing)
- * @param headers - Incoming HTTP headers (keys lowercased)
+ * @param headers - Incoming HTTP headers
  * @param webhookSecret - The webhook secret configured in the EasyPost dashboard
  * @returns `true` if the signature is valid
  */
 export function verifyEasyPostWebhook(
   rawBody: string | Buffer,
-  headers: Record<string, string>,
+  headers: Record<string, string | string[] | undefined>,
   webhookSecret: string,
+  options: VerifyEasyPostWebhookOptions = {},
 ): boolean {
   try {
-    // EasyPost uses the header "x-hmac-signature" (lowercased in most frameworks)
-    const signature =
-      headers["x-hmac-signature"] ??
-      headers["X-Hmac-Signature"] ??
-      headers["X-HMAC-SIGNATURE"];
+    if (!webhookSecret) return false;
 
+    const signatureV2 = getHeader(headers, "x-hmac-signature-v2");
+    if (signatureV2) {
+      const timestamp = getHeader(headers, "x-timestamp");
+      const path = getHeader(headers, "x-path");
+      if (!timestamp || !path) return false;
+
+      const toleranceMinutes = options.timestampToleranceMinutes ?? 1;
+      if (!isTimestampWithinTolerance(timestamp, toleranceMinutes, options.now ?? new Date())) {
+        return false;
+      }
+
+      const body = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody;
+      const method = (options.method ?? "POST").toUpperCase();
+      const stringToSign = `${timestamp}${method}${path}${body}`;
+      const expected = createHmac("sha256", webhookSecret)
+        .update(stringToSign, "utf8")
+        .digest("hex");
+
+      return timingSafeHexEqual(signatureV2, expected);
+    }
+
+    const signature = getHeader(headers, "x-hmac-signature");
     if (!signature) return false;
-
-    // Strip the optional "hmac-sha256-hex=" prefix that EasyPost may include
-    const rawSignature = signature.startsWith("hmac-sha256-hex=")
-      ? signature.slice("hmac-sha256-hex=".length)
-      : signature;
 
     const expected = createHmac("sha256", webhookSecret)
       .update(rawBody)
       .digest("hex");
 
-    // Constant-time comparison to prevent timing attacks
-    const sigBuf = Buffer.from(rawSignature, "hex");
-    const expBuf = Buffer.from(expected, "hex");
-
-    if (sigBuf.length !== expBuf.length) return false;
-
-    return timingSafeEqual(sigBuf, expBuf);
+    return timingSafeHexEqual(signature, expected);
   } catch {
     return false;
   }

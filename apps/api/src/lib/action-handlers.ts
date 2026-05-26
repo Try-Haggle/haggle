@@ -33,27 +33,40 @@ export function registerActionHandlers(
       return;
     }
 
+    const now = new Date();
+    const acceptedAt = now.toISOString();
+
     await db
       .insert(settlementApprovals)
       .values({
+        id: action.sessionId,
         listingId: session.listingId,
         sellerId: action.sellerId,
         buyerId: action.buyerId,
-        approvalState: "RESERVED_PENDING_APPROVAL",
-        sellerApprovalMode: "MANUAL_CONFIRMATION",
+        approvalState: "APPROVED",
+        sellerApprovalMode: "AUTO_WITHIN_POLICY",
         selectedPaymentRail: "x402",
         currency: "USD",
         finalAmountMinor: String(action.agreedPriceMinor),
+        buyerApprovedAt: now,
+        sellerApprovedAt: now,
         termsSnapshot: {
           session_id: action.sessionId,
           listing_id: session.listingId,
           agreed_price_minor: action.agreedPriceMinor,
+          final_amount_minor: action.agreedPriceMinor,
           buyer_id: action.buyerId,
           seller_id: action.sellerId,
-          negotiated_at: new Date().toISOString(),
+          selected_payment_rail: "x402",
+          currency: "USD",
+          seller_policy_shipment_input_due_days: 3,
+          seller_policy_median_response_minutes: 30,
+          seller_policy_p95_response_minutes: 120,
+          seller_policy_reliable_fast_responder: true,
+          negotiated_at: acceptedAt,
         },
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing({ target: settlementApprovals.id });
 
     // ── Record agreed price to HFMI (data moat) ──
     // Non-fatal: price recording failure never blocks settlement creation

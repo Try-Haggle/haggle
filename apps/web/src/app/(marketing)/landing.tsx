@@ -289,6 +289,9 @@ export function Landing() {
 
   /* ── Reveal on scroll ── */
   useEffect(() => {
+    const revealEls = document.querySelectorAll(".haggle-landing .reveal");
+    revealEls.forEach((el) => el.classList.add("in"));
+
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -300,7 +303,7 @@ export function Landing() {
       },
       { threshold: 0.15 },
     );
-    document.querySelectorAll(".haggle-landing .reveal").forEach((el) => io.observe(el));
+    revealEls.forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, []);
 

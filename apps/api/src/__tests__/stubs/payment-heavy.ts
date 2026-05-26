@@ -14,3 +14,7 @@ export class ViemDisputeRegistryContract {
 export class ViemSettlementRouterContract {
   constructor(..._args: unknown[]) {}
 }
+
+export class ViemConditionalSettlementContract {
+  constructor(..._args: unknown[]) {}
+}

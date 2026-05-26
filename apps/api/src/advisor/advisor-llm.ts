@@ -34,8 +34,35 @@ interface XAIChatCompletion {
 }
 
 const XAI_API_BASE = "https://api.x.ai/v1";
-const RETRY_DELAYS = [1000, 3000];
-const TIMEOUT_MS = 60_000;
+const DEFAULT_RETRY_DELAYS = [1000, 3000];
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+function parsePositiveInt(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function getRetryDelays(): number[] {
+  const raw = process.env.XAI_RETRY_DELAYS_MS;
+  if (!raw) return DEFAULT_RETRY_DELAYS;
+  if (raw.trim() === "0" || raw.trim().toLowerCase() === "none") return [];
+
+  const delays = raw
+    .split(",")
+    .map((part) => parsePositiveInt(part.trim()))
+    .filter((value): value is number => value !== null);
+
+  return delays.length > 0 ? delays : DEFAULT_RETRY_DELAYS;
+}
+
+function getTimeoutMs(): number {
+  return (
+    parsePositiveInt(process.env.XAI_ADVISOR_TIMEOUT_MS) ??
+    parsePositiveInt(process.env.XAI_GENERAL_TIMEOUT_MS) ??
+    DEFAULT_TIMEOUT_MS
+  );
+}
 
 function getApiKey(): string {
   const key = process.env.XAI_API_KEY;
@@ -75,6 +102,8 @@ export async function callAdvisorLLM(
 ): Promise<AdvisorLLMResponse> {
   const { maxTokens = 600, correlationId } = options;
   const model = getModel();
+  const timeoutMs = getTimeoutMs();
+  const retryDelays = getRetryDelays();
 
   const body = {
     model,
@@ -86,7 +115,7 @@ export async function callAdvisorLLM(
   const doCall = async (): Promise<AdvisorLLMResponse> => {
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
       try {
         const response = await fetchWithTimeout(
           `${XAI_API_BASE}/chat/completions`,
@@ -98,7 +127,7 @@ export async function callAdvisorLLM(
             },
             body: JSON.stringify(body),
           },
-          TIMEOUT_MS,
+          timeoutMs,
         );
 
         if (!response.ok) {
@@ -134,10 +163,11 @@ export async function callAdvisorLLM(
         const retryable = (err as { retryable?: boolean }).retryable;
         if (retryable === false) throw lastError;
         if (lastError.name === "AbortError") {
-          lastError = new Error(`xAI API timeout after ${TIMEOUT_MS}ms`);
+          lastError = new Error(`xAI API timeout after ${timeoutMs}ms`);
+          (lastError as Error & { name: string }).name = "TimeoutError";
         }
-        if (attempt < RETRY_DELAYS.length) {
-          await sleep(RETRY_DELAYS[attempt]!);
+        if (attempt < retryDelays.length) {
+          await sleep(retryDelays[attempt]!);
         }
       }
     }

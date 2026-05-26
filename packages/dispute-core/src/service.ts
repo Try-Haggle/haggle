@@ -37,12 +37,12 @@ function transitionOrThrow(
 export class DisputeService {
   openCase(input: OpenDisputeInput): DisputeServiceResult {
     const ts = nowIso(input.now);
-    const disputeId = createId("dsp");
+    const disputeId = createId();
 
     const evidence: DisputeEvidence[] = (input.initial_evidence ?? []).map(
       (e) => ({
         ...e,
-        id: createId("evi"),
+        id: createId(),
         dispute_id: disputeId,
         created_at: ts,
       }),
@@ -102,7 +102,7 @@ export class DisputeService {
     const ts = nowIso(now);
     const newEvidence: DisputeEvidence = {
       ...evidence,
-      id: createId("evi"),
+      id: createId(),
       dispute_id: dispute.id,
       created_at: ts,
     };

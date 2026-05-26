@@ -48,6 +48,8 @@ export interface CreateLabelResult {
   tracking_number: string;
   tracking_url?: string;
   label_url?: string;
+  label_qr_code_url?: string;
+  label_qr_code_available?: boolean;
   carrier_raw_status: string;
   /** Rate in minor units (cents). e.g. $5.50 → 550 */
   rate_minor?: number;

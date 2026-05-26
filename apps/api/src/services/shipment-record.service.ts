@@ -1,6 +1,8 @@
 import {
   shipments,
   shipmentEvents,
+  shipmentOperationIdempotency,
+  and,
   eq,
   type Database,
 } from "@haggle/db";
@@ -24,7 +26,15 @@ export interface ShipmentRow extends Shipment {
   shipment_type: string;
 }
 
+function getStringMetadataValue(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function mapShipment(row: typeof shipments.$inferSelect): ShipmentRow {
+  const metadata = row.metadata ?? undefined;
+  const labelQrCodeUrl = getStringMetadataValue(metadata, "label_qr_code_url");
+
   return {
     id: row.id,
     order_id: row.orderId,
@@ -34,6 +44,10 @@ function mapShipment(row: typeof shipments.$inferSelect): ShipmentRow {
     status: row.status as ShipmentStatus,
     carrier: row.carrier ?? "unknown",
     tracking_number: row.trackingNumber ?? undefined,
+    label_url: row.labelUrl ?? undefined,
+    label_qr_code_url: labelQrCodeUrl,
+    label_qr_code_available: Boolean(labelQrCodeUrl),
+    metadata,
     delivered_at: toIso(row.deliveredAt),
     events: [],
     created_at: row.createdAt.toISOString(),
@@ -155,11 +169,85 @@ export async function insertShipmentEvent(
   db: Database,
   event: ShipmentEvent,
 ): Promise<void> {
-  await db.insert(shipmentEvents).values({
+  const insertResult = db.insert(shipmentEvents).values({
     shipmentId: event.shipment_id,
     eventType: event.status,
     rawStatus: event.carrier_raw_status,
     canonicalStatus: event.status,
     occurredAt: new Date(event.occurred_at),
   });
+  if (
+    insertResult
+    && typeof insertResult === "object"
+    && "onConflictDoNothing" in insertResult
+    && typeof insertResult.onConflictDoNothing === "function"
+  ) {
+    await insertResult.onConflictDoNothing();
+    return;
+  }
+  await insertResult;
+}
+
+export async function getShipmentOperationIdempotencyRecord(
+  db: Database,
+  operation: string,
+  idempotencyKey: string,
+): Promise<typeof shipmentOperationIdempotency.$inferSelect | null> {
+  const row = await db.query.shipmentOperationIdempotency.findFirst({
+    where: (fields, ops) => ops.and(
+      ops.eq(fields.operation, operation),
+      ops.eq(fields.idempotencyKey, idempotencyKey),
+    ),
+  });
+  return row ?? null;
+}
+
+export async function createShipmentOperationInProgress(
+  db: Database,
+  input: {
+    operation: string;
+    idempotencyKey: string;
+    shipmentId?: string | null;
+    requestHash: string;
+  },
+): Promise<typeof shipmentOperationIdempotency.$inferSelect | null> {
+  const [row] = await db
+    .insert(shipmentOperationIdempotency)
+    .values({
+      operation: input.operation,
+      idempotencyKey: input.idempotencyKey,
+      shipmentId: input.shipmentId ?? null,
+      requestHash: input.requestHash,
+      status: "IN_PROGRESS",
+      lockedUntil: new Date(Date.now() + 2 * 60 * 1000),
+    })
+    .onConflictDoNothing({
+      target: [shipmentOperationIdempotency.operation, shipmentOperationIdempotency.idempotencyKey],
+    })
+    .returning();
+  return row ?? null;
+}
+
+export async function completeShipmentOperationIdempotency(
+  db: Database,
+  operation: string,
+  idempotencyKey: string,
+  input: {
+    status: "SUCCEEDED" | "FAILED";
+    responseStatus: number;
+    responseBody: Record<string, unknown>;
+  },
+): Promise<void> {
+  await db
+    .update(shipmentOperationIdempotency)
+    .set({
+      status: input.status,
+      responseStatus: input.responseStatus,
+      responseBody: input.responseBody,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(shipmentOperationIdempotency.operation, operation),
+      eq(shipmentOperationIdempotency.idempotencyKey, idempotencyKey),
+    ));
 }
