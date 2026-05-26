@@ -13,7 +13,9 @@
     "clean": "turbo clean",
     "typecheck": "turbo typecheck",
     "verify:migrations": "node scripts/verify-drizzle-journal.mjs",
-    "verify:db-invariants": "node scripts/verify-db-invariants.mjs"
+    "verify:db-invariants": "node scripts/verify-db-invariants.mjs",
+    "db:prod:migrate:check": "node scripts/apply-production-db-migrations.mjs",
+    "db:prod:migrate:apply": "node scripts/apply-production-db-migrations.mjs --apply"
   },
   "devDependencies": {
     "next": "^15.5.0",
