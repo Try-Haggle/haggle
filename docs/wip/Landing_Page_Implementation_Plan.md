@@ -140,13 +140,15 @@ haggle/
 - 브라우저에서 `http://localhost:3001` 열어서 Tailwind 클래스 적용 확인
 
 **완료 조건**:
-- [ ] `localhost:3001` 에서 페이지가 뜬다
-- [ ] `text-3xl` 같은 Tailwind 유틸 클래스가 작동한다
-- [ ] `pnpm --filter @haggle/landing typecheck` 통과
-- [ ] `pnpm --filter @haggle/landing build` 성공
-- [ ] `pnpm --filter @haggle/web dev` 도 여전히 정상 작동 (포트 충돌 없음)
+- [x] `localhost:3001` 에서 페이지가 뜬다
+- [x] `text-3xl` 같은 Tailwind 유틸 클래스가 작동한다
+- [x] `pnpm --filter @haggle/landing typecheck` 통과
+- [x] `pnpm --filter @haggle/landing build` 성공 (First Load JS 102kB)
+- [x] `pnpm --filter @haggle/web dev` 도 여전히 정상 작동 (포트 충돌 없음)
 
 **전제조건**: 없음 (시작점)
+
+**메모**: 로컬 Node 가 v20.18.0 인데 루트 engines 는 ≥22 요구 → Vercel 빌드(Phase 6) 전에 `nvm use 22` 로 맞춰야 함.
 
 ---
 
@@ -171,14 +173,19 @@ haggle/
 - 모바일 viewport 도 확인 (반응형 깨짐 여부)
 
 **완료 조건**:
-- [ ] Topbar (로고, 네비, Sign in 버튼) 가 디자인과 동일
-- [ ] Hero 좌측에 listing 카드들이 3 컬럼으로 보임 (정적 OK)
-- [ ] Hero 우측 카피, "Get Started" CTA 가 디자인과 동일
-- [ ] 폰트가 Lora (heading), Plus Jakarta (body), IBM Plex Mono (mono) 로 적용
-- [ ] 색상 토큰 (gold, navy) 가 정확히 일치
-- [ ] 모바일 (≤640px) 에서 1 컬럼 + 적절히 리플로우
+- [x] Topbar (로고, 네비, Sign in 버튼) 가 디자인과 동일
+- [x] Hero 좌측에 listing 카드들이 3 컬럼으로 보임 (정적 OK)
+- [x] Hero 우측 카피, "Get Started" CTA 가 디자인과 동일
+- [x] 폰트가 Lora (heading), Plus Jakarta (body), IBM Plex Mono (mono) 로 적용
+- [x] 색상 토큰 (gold, navy) 가 정확히 일치
+- [x] 모바일 (≤640px) 에서 1 컬럼 + 적절히 리플로우
 
 **전제조건**: Phase 1 완료
+
+**메모**:
+- CTA 화살표는 폰트 글리프 (`→`) baseline 정렬 문제로 inline SVG 로 통일 (Topbar Sign in, Hero Get Started 모두). 이후 CTA 들도 같은 패턴 사용.
+- Tailwind 진단이 임의값 (`h-[68px]`, `max-w-[1280px]`, `backdrop-saturate-[140%]`) 의 canonical 변환 (`h-17`, `max-w-7xl`, `backdrop-saturate-140`) 제안. Phase 4 종료 후 일괄 sweep 으로 처리 예정.
+- 디자인 fidelity: HTML 마크업에 없는 요소는 추가 안 함 (예: CSS 에만 정의된 logo dot 제거).
 
 ---
 
@@ -388,10 +395,10 @@ Pattern A 로 시작. 나중에 Pattern B 필요 시:
 
 ## 6. 작업 시작 전 확인 (Pre-Flight Checklist)
 
-- [ ] `apps/web` 가 main 브랜치에서 정상 빌드되는지 확인
-- [ ] 브랜치 생성: `feature/landing-page` (또는 사용자 선호 이름)
-- [ ] `docs/wip/Landing_Page_Implementation_Plan.md` (본 문서) 커밋
-- [ ] Phase 1 부터 시작
+- [x] `apps/web` 가 main 브랜치에서 정상 빌드되는지 확인
+- [x] 브랜치 생성: `feat/landing-page`
+- [x] `docs/wip/Landing_Page_Implementation_Plan.md` (본 문서) 커밋
+- [x] Phase 1 부터 시작
 
 ---
 
@@ -400,3 +407,5 @@ Pattern A 로 시작. 나중에 Pattern B 필요 시:
 | 날짜 | Phase | 상태 | 비고 |
 |------|-------|------|------|
 | 2026-05-26 | Plan | ✅ Drafted | 초안 작성 |
+| 2026-05-26 | Phase 1 | ✅ Done | 스캐폴딩 완료. localhost:3001 동작, typecheck/build 통과, web 과 동시 실행 검증. 커밋 완료 |
+| 2026-05-26 | Phase 2 | ✅ Done | 디자인 토큰 + 폰트 + Topbar + Hero (정적). 시각적 검증 + 모바일 반응형 확인. CTA 화살표는 SVG 로 통일. masonry 자동 스크롤은 Phase 5 |
