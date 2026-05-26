@@ -235,13 +235,21 @@ haggle/
 6. `app/page.tsx` 최종 조합
 
 **완료 조건**:
-- [ ] 페이지 끝까지 스크롤 가능, 모든 섹션 보임
-- [ ] Comparison: 가격 버튼 클릭 시 숫자 즉시 업데이트
-- [ ] FAQ: 클릭 시 아코디언 부드럽게 열림/닫힘
-- [ ] Footer 소셜 아이콘 hover 효과
-- [ ] 모바일에서 모든 섹션 정상 reflow
+- [x] 페이지 끝까지 스크롤 가능, 모든 섹션 보임
+- [x] Comparison: 가격 버튼 클릭 시 숫자 즉시 업데이트
+- [x] FAQ: 클릭 시 아코디언 부드럽게 열림/닫힘
+- [x] Footer 소셜 아이콘 hover 효과
+- [x] 모바일에서 모든 섹션 정상 reflow
 
 **전제조건**: Phase 3 완료
+
+**메모**:
+- `apps/landing/package.json` 의 `test`/`test:watch` 스크립트 제거 — vitest 가 devDeps 에 없는데 스크립트만 있어 CI `pnpm test` 가 실패. 랜딩 MVP 에 테스트 surface 없음.
+- `lib/data/faq.ts` 는 JSX 를 포함해 `.tsx` 로 작성 (`faq.tsx`).
+- Comparison 테이블 모바일 반응형: 처음엔 행 분해 시도 → 깨짐. label 컬럼 폭 축소 (180→52px), cents 모바일 숨김, "You keep $X" CTA 가 모바일에선 테이블 바로 밑으로 이동 (sources 위). label 도 "Lost to fees" → "Lost", "You receive" → "Get" 으로 축약.
+- Comparison row 정렬 문제: 초기 "label column + 4 platform column" 구조에서 row 높이 불균형 발생. flat 5×4 grid 로 리팩 — 모든 셀이 grid 의 직접 자식이라 row 정렬 자동 보장. Haggle 컬럼 navy 배경/골드 strip 은 absolute overlay 로 처리.
+- 데스크탑 폰트 강조: 셀 폰트 16→19px, You receive 24→30px, "You keep $X" 15→20px (가격은 26px) 로 키워 비교 메시지 강조.
+- Tailwind canonical 진단 (`max-md:min-h-[52px]` → `min-h-13` 등) 누적 중. Phase 4 종료 후 일괄 sweep 예정 — 다음 작업으로 진행.
 
 ---
 
@@ -415,3 +423,4 @@ Pattern A 로 시작. 나중에 Pattern B 필요 시:
 | 2026-05-26 | Phase 1 | ✅ Done | 스캐폴딩 완료. localhost:3001 동작, typecheck/build 통과, web 과 동시 실행 검증. 커밋 완료 |
 | 2026-05-26 | Phase 2 | ✅ Done | 디자인 토큰 + 폰트 + Topbar + Hero (정적). 시각적 검증 + 모바일 반응형 확인. CTA 화살표는 SVG 로 통일. masonry 자동 스크롤은 Phase 5 |
 | 2026-05-26 | Phase 3 | ✅ Done | HowItWorks 3 step zigzag (정적). RadarPanel / ChatPanel / Timeline viz 마크업 완성. Step 02 reverse 레이아웃 fix. 애니메이션은 Phase 5 |
+| 2026-05-26 | Phase 4 | ✅ Done | Comparison + FAQ + FinalCTA + Footer. CI fix (test 스크립트 제거). Comparison 모바일 반응형 + flat grid 리팩으로 row 정렬 안정화. 데스크탑 폰트 강조. FAQ 아코디언 동작 검증 |
