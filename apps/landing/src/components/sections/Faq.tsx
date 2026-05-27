@@ -14,7 +14,7 @@ export function Faq() {
       {/* Header */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
         <div className="mx-auto max-w-7xl px-10 max-md:px-6">
-          <div className="mx-auto mb-18 max-w-275 text-center max-lg:mb-12">
+          <div className="mx-auto max-w-275 text-center max-lg:mb-12">
             <span className="mb-4 inline-block font-mono text-[11px] font-medium tracking-[0.14em] text-gold-500 uppercase">
               FAQ
             </span>
@@ -48,7 +48,9 @@ export function Faq() {
                     onClick={() => toggle(i)}
                     aria-expanded={isOpen}
                     className={`group flex w-full cursor-pointer items-center justify-between gap-6 border-0 bg-transparent py-5 pr-2 pl-0 text-left font-sans text-[18px] font-semibold tracking-[-0.01em] transition-colors ${
-                      isOpen ? "text-navy-500" : "text-navy-500 hover:text-gold-500"
+                      isOpen
+                        ? "text-navy-500"
+                        : "text-navy-500 hover:text-gold-500"
                     }`}
                   >
                     <span>{item.question}</span>
@@ -65,7 +67,9 @@ export function Faq() {
                         fill="none"
                         xmlns="http://www.w3.org/2000/svg"
                         className={`h-3.5 w-3.5 transition-transform duration-300 ${
-                          isOpen ? "rotate-180 text-surface-raised" : "text-navy-500"
+                          isOpen
+                            ? "rotate-180 text-surface-raised"
+                            : "text-navy-500"
                         }`}
                       >
                         <path

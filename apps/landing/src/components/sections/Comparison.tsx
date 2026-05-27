@@ -47,7 +47,7 @@ export function Comparison() {
       {/* Header (transparent row) */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
         <div className="mx-auto max-w-7xl px-10 max-md:px-6">
-          <div className="mx-auto mb-18 max-w-180 text-center max-lg:mb-12">
+          <div className="mx-auto max-w-180 text-center max-lg:mb-12">
             <span className="mb-5 inline-block font-mono text-[11px] font-medium tracking-[0.2em] text-gold-500 uppercase">
               WHY HAGGLE
             </span>
@@ -169,7 +169,11 @@ function ComparisonGrid({ price }: { price: number }) {
   const labelCell = `${cellBase} bg-surface-sunken border-r border-neutral-200 font-mono text-[12.5px] font-semibold tracking-[0.14em] text-neutral-700 uppercase max-md:text-[9px] max-md:tracking-[0.08em]`;
 
   // Helper for a platform cell wrapper
-  function platformCell(extra: string, isLastCol: boolean, isHaggleCol: boolean) {
+  function platformCell(
+    extra: string,
+    isLastCol: boolean,
+    isHaggleCol: boolean,
+  ) {
     const rightBorder = isLastCol || isHaggleCol ? "" : borderRight;
     return `${cellBase} ${rightBorder} ${extra}`;
   }
@@ -242,7 +246,9 @@ function ComparisonGrid({ price }: { price: number }) {
             >
               <span
                 className={`font-sans text-[19px] tracking-[-0.005em] max-md:text-[12px] ${
-                  isHaggle ? "font-semibold text-white" : "font-medium text-navy-500"
+                  isHaggle
+                    ? "font-semibold text-white"
+                    : "font-medium text-navy-500"
                 }`}
               >
                 {p.name}
@@ -259,11 +265,17 @@ function ComparisonGrid({ price }: { price: number }) {
           return (
             <div
               key={`f-${p.id}`}
-              className={platformCell(isHaggle ? haggleBorderBottom : borderBottom, isLast, isHaggle)}
+              className={platformCell(
+                isHaggle ? haggleBorderBottom : borderBottom,
+                isLast,
+                isHaggle,
+              )}
             >
               <span
                 className={`font-mono text-[19px] tracking-[0.02em] max-md:text-[11px] ${
-                  isHaggle ? "font-medium text-gold-300" : "font-normal text-neutral-500"
+                  isHaggle
+                    ? "font-medium text-gold-300"
+                    : "font-normal text-neutral-500"
                 }`}
               >
                 {fmtPct(p.fee)}
@@ -273,7 +285,9 @@ function ComparisonGrid({ price }: { price: number }) {
         })}
 
         {/* === ROW 3: Lost to fees === */}
-        <div className={`${labelCell} border-b border-neutral-200 max-md:leading-tight`}>
+        <div
+          className={`${labelCell} border-b border-neutral-200 max-md:leading-tight`}
+        >
           <span className="max-md:hidden">Lost to fees</span>
           <span className="hidden max-md:inline">Lost</span>
         </div>
@@ -285,11 +299,17 @@ function ComparisonGrid({ price }: { price: number }) {
           return (
             <div
               key={`l-${p.id}`}
-              className={platformCell(isHaggle ? haggleBorderBottom : borderBottom, isLast, isHaggle)}
+              className={platformCell(
+                isHaggle ? haggleBorderBottom : borderBottom,
+                isLast,
+                isHaggle,
+              )}
             >
               <span
                 className={`font-mono text-[19px] tracking-[0.01em] whitespace-nowrap max-md:text-[12px] max-md:tracking-normal ${
-                  isHaggle ? "font-normal text-gold-300 opacity-85" : "font-medium text-error-500"
+                  isHaggle
+                    ? "font-normal text-gold-300 opacity-85"
+                    : "font-medium text-error-500"
                 }`}
               >
                 −{l.dollars}

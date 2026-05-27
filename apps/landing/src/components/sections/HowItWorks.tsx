@@ -117,7 +117,7 @@ export function HowItWorks() {
       {/* Section header */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
         <div className="mx-auto max-w-7xl px-10 max-md:px-6">
-          <div className="mx-auto mb-18 max-w-180 text-center max-lg:mb-12">
+          <div className="mx-auto max-w-180 text-center max-lg:mb-12">
             <span className="mb-4 inline-block font-mono text-[11px] font-medium tracking-[0.14em] text-gold-500 uppercase">
               How it works
             </span>

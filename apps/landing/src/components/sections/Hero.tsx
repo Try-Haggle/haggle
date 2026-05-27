@@ -3,6 +3,14 @@ import { ListingCard } from "@/components/viz/ListingCard";
 
 const COL_OFFSET_PT = [0, 64, 32]; // px — column start offsets for masonry stagger
 
+// Per-column animation config: each column scrolls at a different speed
+// and starts at a different point in its loop, so the columns never sync.
+const COL_ANIM = [
+  { duration: "38s", delay: "0s" },
+  { duration: "28s", delay: "-9s" },
+  { duration: "46s", delay: "-18s" },
+];
+
 export function Hero() {
   return (
     <section className="relative flex items-stretch overflow-hidden bg-[color-mix(in_oklab,var(--color-gold-50)_20%,var(--color-surface-base))] pt-6 pb-12 max-lg:pt-4 max-lg:pb-8">
@@ -18,19 +26,33 @@ export function Hero() {
                 "linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%)",
             }}
           >
-            {COLUMN_LISTINGS.map((items, colIdx) => (
-              <div
-                key={colIdx}
-                className={`relative overflow-hidden ${colIdx === 2 ? "max-sm:hidden" : ""}`}
-                style={{ paddingTop: `${COL_OFFSET_PT[colIdx]}px` }}
-              >
-                <div className="flex flex-col gap-4">
-                  {items.map((item, i) => (
-                    <ListingCard key={`${item.id}-${i}`} item={item} />
-                  ))}
+            {COLUMN_LISTINGS.map((items, colIdx) => {
+              // Duplicate items so translateY(-50%) seamlessly loops back
+              // to the start of the second copy.
+              const looped = [...items, ...items];
+              const anim = COL_ANIM[colIdx];
+              return (
+                <div
+                  key={colIdx}
+                  className={`group/masonry relative overflow-hidden ${colIdx === 2 ? "max-sm:hidden" : ""}`}
+                  style={{ paddingTop: `${COL_OFFSET_PT[colIdx]}px` }}
+                >
+                  <div
+                    className="flex flex-col gap-4 will-change-transform animate-[scroll-up_var(--mas-dur)_linear_infinite] [animation-delay:var(--mas-delay)] hover:[animation-play-state:paused]"
+                    style={
+                      {
+                        "--mas-dur": anim.duration,
+                        "--mas-delay": anim.delay,
+                      } as React.CSSProperties
+                    }
+                  >
+                    {looped.map((item, i) => (
+                      <ListingCard key={`${item.id}-${i}`} item={item} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

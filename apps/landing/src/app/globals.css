@@ -78,6 +78,97 @@ body {
 }
 
 /* ================================================================
+   KEYFRAMES
+   ================================================================ */
+
+/* Hero masonry — vertical scroll loop. translateY(-50%) brings the
+   second copy of the cards into the start position seamlessly. */
+@keyframes scroll-up {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-50%);
+  }
+}
+
+/* Step 01 radar — b2 (typing) fades out when b3 (answer) is about to appear.
+   Animation runs once 1.75s after the panel becomes active, replacing the
+   typing dots with the answer in the same grid cell. */
+@keyframes chat-b2-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
+/* Step 01 radar — chat reply typing dot bounce */
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Step 02 chat — bubble typing dot bounce (slightly different curve) */
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* Step 03 timeline marker — active state pulse */
+@keyframes timeline-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+/* Kicker pulse (any) */
+@keyframes kicker-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* Respect user motion preference — stop all animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ================================================================
    GRADIENTS — exposed as CSS variables for reuse
    ================================================================ */
 :root {

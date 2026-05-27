@@ -1,4 +1,8 @@
+"use client";
+
+import { useMemo } from "react";
 import { APP_URL } from "@/lib/env";
+import { useScrollSpy } from "@/hooks/useScrollSpy";
 
 const NAV_LINKS = [
   { href: "#how-it-works", label: "How it works" },
@@ -7,6 +11,12 @@ const NAV_LINKS = [
 ];
 
 export function Topbar() {
+  const sectionIds = useMemo(
+    () => NAV_LINKS.map((l) => l.href.slice(1)),
+    [],
+  );
+  const activeId = useScrollSpy(sectionIds);
+
   return (
     <header className="sticky top-0 z-50 border-b border-neutral-100 bg-[color-mix(in_oklab,var(--color-surface-base)_80%,transparent)] backdrop-blur-md backdrop-saturate-140">
       <div className="mx-auto flex h-17 max-w-7xl items-center justify-between px-10 max-md:px-5">
@@ -18,15 +28,23 @@ export function Topbar() {
             Haggle
           </a>
           <nav className="flex items-center gap-7 max-md:hidden">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="relative py-1.5 text-[13px] tracking-[0.01em] text-neutral-600 transition-colors hover:text-navy-500"
-              >
-                {link.label}
-              </a>
-            ))}
+            {NAV_LINKS.map((link) => {
+              const id = link.href.slice(1);
+              const isActive = activeId === id;
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className={`relative py-1.5 text-[13px] tracking-[0.01em] transition-colors ${
+                    isActive
+                      ? "font-semibold text-navy-500"
+                      : "text-neutral-600 hover:text-navy-500"
+                  }`}
+                >
+                  {link.label}
+                </a>
+              );
+            })}
           </nav>
         </div>
         <div className="flex items-center">
