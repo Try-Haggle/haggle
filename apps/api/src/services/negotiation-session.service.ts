@@ -130,6 +130,31 @@ export async function updateSessionState(
 }
 
 // ---------------------------------------------------------------------------
+// Perspective swap (auto-play between rounds)
+//
+// Used by /negotiations/start to drive both sides from a single session row:
+// before each LLM round we flip session.role + session.strategy_snapshot so the
+// executor evaluates the incoming offer from the responder's point of view.
+// Does NOT bump version — the executor's own updateSessionState bumps it next.
+// ---------------------------------------------------------------------------
+
+export async function setSessionPerspective(
+  db: Database,
+  sessionId: string,
+  role: SessionRole,
+  strategySnapshot: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(negotiationSessions)
+    .set({
+      role,
+      strategySnapshot,
+      updatedAt: new Date(),
+    })
+    .where(eq(negotiationSessions.id, sessionId));
+}
+
+// ---------------------------------------------------------------------------
 // Row-level lock (use inside transaction only)
 // ---------------------------------------------------------------------------
 

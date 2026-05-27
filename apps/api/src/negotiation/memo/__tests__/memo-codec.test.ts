@@ -61,12 +61,12 @@ describe('memo-codec', () => {
 
     it('produces PT: line with price trajectory', () => {
       const result = encodeCompressed(makeMemory());
-      expect(result).toContain('PT:85000→90000|gap:5000');
+      expect(result).toContain('PT:$850.00→$900.00|gap:$50.00');
     });
 
     it('produces CL: line with coaching', () => {
       const result = encodeCompressed(makeMemory());
-      expect(result).toContain('CL:rec:87000|tactic:reciprocal_concession|opp:CONCEDER|conv:0.72');
+      expect(result).toContain('CL:rec:$870.00|tactic:reciprocal_concession|opp:CONCEDER|conv:0.72');
     });
 
     it('includes RM: line when facts are provided', () => {
@@ -79,7 +79,7 @@ describe('memo-codec', () => {
     it('includes private layer with SS: and OM:', () => {
       const result = encodeCompressed(makeMemory());
       expect(result).toContain('---');
-      expect(result).toContain('SS:t:83000|f:95000');
+      expect(result).toContain('SS:t:$830.00|f:$950.00');
       expect(result).toContain('OM:CONCEDER');
     });
 

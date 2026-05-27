@@ -1,126 +1,247 @@
 import { serverApi } from "@/lib/api-server";
-import {
-  NEGOTIATION_PRESETS,
-  getNegotiationPreset,
-} from "@haggle/shared";
+import { getNegotiationPreset } from "@haggle/shared";
 import { PlaybackArena } from "./playback/playback-arena";
-import { getMockPlayback } from "./playback/mock-data";
-import type { PlaybackResponse } from "./playback/types";
+import type {
+  AgentCard,
+  DecisionAction,
+  FinalStatus,
+  PlaybackResponse,
+  PlaybackRound,
+} from "./playback/types";
 
 /**
  * Buyer-side negotiation playback page.
  *
- * Frontend-only: the transcript is mocked, but the listing details (title,
- * asking price, category, seller agent) are fetched from the real listing
- * referenced in the sessionId so the playback reflects the item the buyer
- * actually opened.
+ * Renders the live transcript stored under negotiation_rounds for this session.
+ * The arena UI is unchanged from the mock era — only the data source moved
+ * from a hardcoded scenario to the real /negotiations/sessions/:id payload.
+ *
+ * Natural-language fields (message/phase/tactic) are populated by the LLM
+ * engine. Under the rule-based engine they're empty; the page falls back to
+ * synthetic labels so the timeline still reads.
  */
 
-interface PublicListing {
-  publicId: string;
-  title: string;
-  category: string | null;
-  targetPrice: string | null;
-  photoUrl: string | null;
-  sellerAgentPreset: string | null;
-}
+type ServerSession = {
+  id: string;
+  status: string;
+  current_round: number;
+  last_offer_price_minor: string | number | null;
+  buyer_agent_preset_id: string | null;
+  listing: {
+    public_id: string;
+    title: string;
+    photo_url: string | null;
+    target_price: string | null;
+    category: string | null;
+    seller_agent_preset: string | null;
+  } | null;
+};
 
-/** Look up seller-side preset metadata. Listings publish strategyConfig.preset
- *  which now matches NEGOTIATION_PRESETS ids. */
-function sellerMetaFor(
-  presetId: string,
-): PlaybackResponse["session"]["sellerAgent"] | null {
-  const preset = getNegotiationPreset(presetId);
-  if (!preset) return null;
+type ServerRound = {
+  id: string;
+  round_no: number;
+  sender_role: "BUYER" | "SELLER";
+  message_type: "OFFER" | "COUNTER" | "ACCEPT" | "REJECT" | "ESCALATE";
+  price_minor: string | number;
+  counter_price_minor: string | number | null;
+  utility: {
+    u_total: number;
+    v_p: number;
+    v_t: number;
+    v_r: number;
+    v_s: number;
+  } | null;
+  decision: "ACCEPT" | "COUNTER" | "REJECT" | "NEAR_DEAL" | "ESCALATE" | null;
+  message: string | null;
+  phase_at_round: string | null;
+  tactic_used: string | null;
+  concession_rate: string | number | null;
+};
+
+type SessionResponse = { session: ServerSession; rounds: ServerRound[] };
+
+function agentCardFor(
+  presetId: string | null | undefined,
+  role: "buyer" | "seller",
+): AgentCard {
+  const preset = presetId ? getNegotiationPreset(presetId) : null;
+  if (preset) {
+    return {
+      presetId: preset.id,
+      name: preset.copy[role].name,
+      tagline: preset.copy[role].tagline,
+      accentColor: preset.accentColor,
+      emoji: preset.emoji,
+    };
+  }
   return {
-    presetId: preset.id,
-    name: preset.copy.seller.name,
-    tagline: preset.copy.seller.tagline,
-    accentColor: preset.accentColor,
-    emoji: preset.emoji,
+    presetId: presetId ?? "unknown",
+    name: role === "buyer" ? "Buyer Agent" : "Seller Agent",
+    tagline: "",
+    accentColor: role === "buyer" ? "#3b82f6" : "#06b6d4",
+    emoji: role === "buyer" ? "🤝" : "🏷️",
   };
 }
 
-/** Extracts the listing publicId from the sessionId, stripping the `-{agentId}` suffix. */
-function parsePublicId(sessionId: string): string {
-  for (const preset of NEGOTIATION_PRESETS) {
-    const suffix = `-${preset.id}`;
-    if (sessionId.endsWith(suffix)) return sessionId.slice(0, -suffix.length);
-  }
-  return sessionId;
+function minorToMajor(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n / 100 : 0;
 }
 
-async function fetchListing(publicId: string): Promise<PublicListing | null> {
-  try {
-    const data = await serverApi.get<{ ok: boolean; listing: PublicListing }>(
-      `/api/public/listings/${publicId}`,
-      { skipAuth: true },
-    );
-    return data?.ok && data.listing ? data.listing : null;
-  } catch {
-    return null;
-  }
+function targetPriceToMajor(value: string | null | undefined): number {
+  if (!value) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
-/** Round to a "nice" increment so scaled prices read naturally ($1,275 not $1,273.42). */
-function roundToNice(n: number): number {
-  if (n < 100) return Math.round(n / 5) * 5;
-  if (n < 1000) return Math.round(n / 25) * 25;
-  if (n < 10000) return Math.round(n / 50) * 50;
-  return Math.round(n / 100) * 100;
+function mapDecision(
+  decision: ServerRound["decision"],
+  messageType: ServerRound["message_type"],
+  roundNo: number,
+): DecisionAction {
+  if (decision === "ACCEPT") return "ACCEPT";
+  if (decision === "REJECT") return "REJECT";
+  if (decision === "NEAR_DEAL") return "NEAR_DEAL";
+  if (messageType === "OFFER" && roundNo === 1) return "OPENING";
+  return "COUNTER";
 }
 
-/** Scales every $N occurrence in a text by `ratio`, preserving formatting. */
-function scalePricesInText(text: string, ratio: number): string {
-  return text.replace(/\$([\d,]+(?:\.\d+)?)/g, (_, raw: string) => {
-    const n = parseFloat(raw.replace(/,/g, ""));
-    if (!isFinite(n) || n <= 0) return `$${raw}`;
-    return `$${roundToNice(n * ratio).toLocaleString("en-US")}`;
+function mapFinalStatus(status: string): FinalStatus {
+  if (status === "ACCEPTED") return "ACCEPTED";
+  if (status === "REJECTED" || status === "EXPIRED" || status === "SUPERSEDED") return "REJECTED";
+  if (status === "NEAR_DEAL") return "NEAR_DEAL";
+  return "ACCEPTED";
+}
+
+function fallbackMessage(round: ServerRound, priceMajor: number, currency = "USD"): string {
+  const role = round.sender_role === "BUYER" ? "Buyer" : "Seller";
+  const formatted = priceMajor.toLocaleString("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: priceMajor < 100 ? 2 : 0,
   });
+  if (round.decision === "ACCEPT") return `${role} accepted at ${formatted}.`;
+  if (round.decision === "REJECT") return `${role} walked away.`;
+  if (round.decision === "NEAR_DEAL") return `${role} signals near-deal at ${formatted}.`;
+  if (round.round_no === 1) return `${role} opened at ${formatted}.`;
+  return `${role} countered at ${formatted}.`;
 }
 
-function applyListingOverride(base: PlaybackResponse, listing: PublicListing): PlaybackResponse {
-  const realAsking = listing.targetPrice ? parseFloat(listing.targetPrice) : base.session.listing.askingPrice;
-  const mockAsking = base.session.listing.askingPrice;
-  const ratio = mockAsking > 0 ? realAsking / mockAsking : 1;
-  const sellerMeta = listing.sellerAgentPreset
-    ? sellerMetaFor(listing.sellerAgentPreset)
+function transform(payload: SessionResponse): PlaybackResponse {
+  const { session, rounds } = payload;
+  const askingMajor = targetPriceToMajor(session.listing?.target_price ?? null);
+
+  const buyerAgent = agentCardFor(session.buyer_agent_preset_id, "buyer");
+  const sellerAgent = agentCardFor(session.listing?.seller_agent_preset ?? null, "seller");
+
+  const isTerminal = ["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"].includes(
+    session.status,
+  );
+  const finalPrice = isTerminal
+    ? minorToMajor(session.last_offer_price_minor)
     : null;
 
-  // Scale every offer price proportionally so the negotiation numbers anchor
-  // to the real asking price (e.g. mock $4,200 opening on a $5,800 listing
-  // becomes ~$870 opening on a $1,200 listing).
-  const scaledRounds = base.rounds.map((r) => ({
-    ...r,
-    offerPrice: roundToNice(r.offerPrice * ratio),
-    message: scalePricesInText(r.message, ratio),
-    factors: {
-      ...r.factors,
-      reasoning: r.factors.reasoning
-        ? scalePricesInText(r.factors.reasoning, ratio)
-        : r.factors.reasoning,
-    },
-  }));
-  const scaledFinalPrice = base.session.finalPrice
-    ? roundToNice(base.session.finalPrice * ratio)
-    : null;
+  // Detect whether to prepend a synthetic buyer-opening bubble.
+  // Round 1 in the DB is always the SELLER processing the BUYER's first offer —
+  // the buyer's initial price is stored in price_minor but never shown as its
+  // own message. We surface it as a synthetic R1 so the conversation starts
+  // with the buyer's move, and shift all DB rounds by +1.
+  const firstRound = rounds[0];
+  const hasSyntheticBuyerOpen =
+    !!firstRound &&
+    firstRound.sender_role === "BUYER" &&
+    !!firstRound.message?.trim();
+  const roundIndexOffset = hasSyntheticBuyerOpen ? 1 : 0;
+
+  const playbackRounds: PlaybackRound[] = rounds.map((r) => {
+    // ── Sender semantics fix ──────────────────────────────────────
+    // The executor persists each round as: sender_role = side that sent the
+    // incoming offer, price_minor = their offer; BUT counter_price_minor and
+    // message are generated by the RESPONDER (the agent that processed the
+    // offer via the pipeline's respond stage). For chat display we want each
+    // bubble to attribute the message to the agent who actually produced it,
+    // so when a generated message exists we flip the sender to be the
+    // responder. (HNP-direct rows like authoritative ACCEPT have no generated
+    // message; in those cases sender_role IS the speaker, so don't flip.)
+    const hasGeneratedMessage = !!r.message?.trim();
+    const displaySender: "BUYER" | "SELLER" = hasGeneratedMessage
+      ? r.sender_role === "BUYER"
+        ? "SELLER"
+        : "BUYER"
+      : r.sender_role;
+    const offerMajor = minorToMajor(r.counter_price_minor ?? r.price_minor);
+    const concession =
+      r.concession_rate !== null && r.concession_rate !== undefined
+        ? Number(r.concession_rate)
+        : undefined;
+    // Round 1 decision label: if synthetic buyer opening was prepended, the
+    // seller's first response is a counter (not an opening).
+    const rawDecision = mapDecision(r.decision, r.message_type, r.round_no);
+    const decision: PlaybackRound["decision"] =
+      hasSyntheticBuyerOpen && r.round_no === 1 && rawDecision === "OPENING"
+        ? "COUNTER"
+        : rawDecision;
+    return {
+      roundIndex: r.round_no + roundIndexOffset,
+      sender: displaySender,
+      decision,
+      offerPrice: offerMajor,
+      message: r.message?.trim() ? r.message : fallbackMessage(r, offerMajor),
+      factors: {
+        utilityScore: r.utility?.u_total,
+        utilityBreakdown: r.utility
+          ? {
+              price: r.utility.v_p,
+              time: r.utility.v_t,
+              risk: r.utility.v_r,
+              relationship: r.utility.v_s,
+            }
+          : undefined,
+        tactic: r.tactic_used ?? undefined,
+        phase: r.phase_at_round ?? undefined,
+        concessionPct: Number.isFinite(concession) ? concession : undefined,
+        reasoning: r.message?.trim() ? r.message : undefined,
+      },
+    };
+  });
+
+  // Prepend synthetic buyer opening bubble
+  if (hasSyntheticBuyerOpen) {
+    const buyerInitialMajor = minorToMajor(firstRound.price_minor);
+    const formattedPrice = buyerInitialMajor.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    });
+    playbackRounds.unshift({
+      roundIndex: 1,
+      sender: "BUYER",
+      decision: "OPENING",
+      offerPrice: buyerInitialMajor,
+      message: `Hi, I'm interested in this listing. I'd like to offer ${formattedPrice}.`,
+      factors: {},
+    });
+  }
 
   return {
-    ...base,
     session: {
-      ...base.session,
+      id: session.id,
       listing: {
-        ...base.session.listing,
-        id: listing.publicId,
-        title: listing.title,
-        imageUrl: listing.photoUrl,
-        askingPrice: realAsking,
-        category: listing.category,
+        id: session.listing?.public_id ?? "",
+        title: session.listing?.title ?? "Listing",
+        imageUrl: session.listing?.photo_url ?? null,
+        askingPrice: askingMajor,
+        currency: "USD",
+        category: session.listing?.category ?? null,
       },
-      finalPrice: scaledFinalPrice,
-      sellerAgent: sellerMeta ?? base.session.sellerAgent,
+      buyerAgent,
+      sellerAgent,
+      finalStatus: mapFinalStatus(session.status),
+      finalPrice,
+      roundsTotal: playbackRounds.length,
     },
-    rounds: scaledRounds,
+    rounds: playbackRounds,
   };
 }
 
@@ -130,11 +251,9 @@ export default async function BuyerNegotiationPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = await params;
-  const publicId = parsePublicId(sessionId);
-  const [base, listing] = await Promise.all([
-    Promise.resolve(getMockPlayback(sessionId)),
-    fetchListing(publicId),
-  ]);
-  const data = listing ? applyListingOverride(base, listing) : base;
+  const payload = await serverApi.get<SessionResponse>(
+    `/negotiations/sessions/${sessionId}`,
+  );
+  const data = transform(payload);
   return <PlaybackArena data={data} />;
 }

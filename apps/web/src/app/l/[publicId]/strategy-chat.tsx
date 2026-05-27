@@ -14,7 +14,7 @@ interface ChatMessage {
   widget?: "budget-slider";
 }
 
-interface AdvisorMemory {
+export interface AdvisorMemory {
   categoryInterest: string;
   budgetMax?: number;
   targetPrice?: number;

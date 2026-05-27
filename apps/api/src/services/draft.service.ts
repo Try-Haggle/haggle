@@ -346,6 +346,33 @@ export async function getPublishedListingByPublicId(
   return rows[0] ?? null;
 }
 
+/**
+ * Lookup minimal listing summary by the internal listing_id stored on a
+ * negotiation session. Returns the publicId + display fields needed by the
+ * buyer-side playback view; deliberately omits floorPrice/strategyConfig.
+ */
+export async function getListingPlaybackSummaryByInternalId(
+  db: Database,
+  listingId: string,
+) {
+  const rows = await db
+    .select({
+      id: listingsPublished.id,
+      publicId: listingsPublished.publicId,
+      title: listingDrafts.title,
+      category: listingDrafts.category,
+      photoUrl: listingDrafts.photoUrl,
+      targetPrice: listingDrafts.targetPrice,
+      sellerAgentPreset: sql<string | null>`${listingDrafts.strategyConfig}->>'preset'`,
+    })
+    .from(listingsPublished)
+    .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
+    .where(eq(listingsPublished.id, listingId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export type ListPublishedSort = "newest" | "price_asc" | "price_desc";
 
 /**

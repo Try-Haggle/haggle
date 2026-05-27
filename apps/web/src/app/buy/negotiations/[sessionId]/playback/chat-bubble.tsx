@@ -68,10 +68,13 @@ export function ChatBubble({ round, agent, state, typedText, currency, onSelect,
           cursor: onSelect ? "pointer" : "default",
         }}
       >
-        {/* Top row: agent name + decision chip + price */}
+        {/* Top row: agent name + role label + decision chip + price */}
         <div className={`flex w-full items-center gap-2 ${isBuyer ? "flex-row-reverse" : ""}`}>
           <span className="text-[12px] sm:text-[13px] font-semibold truncate" style={{ color: "#f1f5f9" }}>
             {agent.name}
+          </span>
+          <span className="text-[9px] sm:text-[10px] font-medium uppercase tracking-wider shrink-0" style={{ color: "#475569" }}>
+            {isBuyer ? "Buyer" : "Seller"}
           </span>
           <span
             className="rounded-md px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold tracking-[0.08em] uppercase"

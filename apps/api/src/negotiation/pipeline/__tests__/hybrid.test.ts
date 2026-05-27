@@ -144,7 +144,7 @@ describe('Hybrid: External agent cherry-picks stages', () => {
       config: makeConfig(),
     });
 
-    expect(result.message).toContain('$86000');
+    expect(result.message).toContain('$860.00');
     expect(result.tone).toBe('professional');
   });
 
@@ -192,6 +192,6 @@ describe('Hybrid: External agent cherry-picks stages', () => {
       config: makeConfig(),
     });
 
-    expect(response.message).toContain('$87500');
+    expect(response.message).toContain('$875.00');
   });
 });

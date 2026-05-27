@@ -68,15 +68,15 @@ export class DefaultEngineSkill implements NegotiationSkill {
     }
 
     if (phase === 'OPENING') {
-      // Faratin initial anchor
-      const margin = 0.10;
+      // Seller anchors 10% above target; buyer holds at target (already opened there —
+      // going lower would mean countering below the buyer's own initial offer).
       const price = session.role === 'buyer'
-        ? boundaries.my_target * (1 - margin)
-        : boundaries.my_target * (1 + margin);
+        ? boundaries.my_target
+        : boundaries.my_target * 1.10;
       return {
         action: 'COUNTER',
         price: Math.round(price),
-        reasoning: 'Opening anchor based on target with 10% margin.',
+        reasoning: 'Opening anchor.',
         tactic_used: 'anchoring',
       };
     }
@@ -141,16 +141,32 @@ export class DefaultEngineSkill implements NegotiationSkill {
       };
     }
 
-    // Auto-reject if beyond floor
+    // Beyond floor: counter-anchor instead of immediate REJECT.
+    // Real negotiations don't end because the opening price is "too low" — they
+    // counter back toward target. Only REJECT when there are no rounds left to
+    // negotiate, or the price is so extreme that countering is meaningless.
     const isBeyondFloor = session.role === 'buyer'
       ? incomingOffer.price > boundaries.my_floor
       : incomingOffer.price < boundaries.my_floor;
 
     if (isBeyondFloor) {
-      return {
-        action: 'REJECT',
-        reasoning: `Offer $${incomingOffer.price} is beyond floor $${boundaries.my_floor}.`,
-      };
+      const roundsLeft = session.rounds_remaining;
+      // Extreme price: more than 2x the (target..floor) range away from floor.
+      const range = Math.abs(boundaries.my_target - boundaries.my_floor) || 1;
+      const distanceFromFloor = Math.abs(incomingOffer.price - boundaries.my_floor);
+      const isExtreme = distanceFromFloor > range * 2;
+
+      if (roundsLeft <= 1 || isExtreme) {
+        return {
+          action: 'REJECT',
+          reasoning:
+            roundsLeft <= 1
+              ? `Offer $${incomingOffer.price} is beyond floor $${boundaries.my_floor} with no rounds left.`
+              : `Offer $${incomingOffer.price} is implausible (>${(range * 2).toFixed(0)} from floor $${boundaries.my_floor}).`,
+        };
+      }
+      // Otherwise: counter-anchor toward our target.
+      return this.generateMove(memory, recentFacts, null, phase);
     }
 
     // In between — generate counter

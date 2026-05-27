@@ -16,6 +16,8 @@ import type {
   HumanInterventionMode,
   RefereeCoaching,
   ActiveTerm,
+  ListingContextMemory,
+  StrategyContextMemory,
 } from '../types.js';
 import { DEFAULT_BUDDY_DNA, DEFAULT_INTERVENTION_MODE, DEFAULT_MAX_ROUNDS } from '../config.js';
 
@@ -96,6 +98,17 @@ export function phaseToDbStatus(
   action: string,
   roundsNoConcession: number,
 ): string {
+  // A REJECT terminates the session no matter the phase — otherwise the
+  // auto-play loop keeps going and the rejected offer gets propagated as a
+  // fake counter (producing nonsensical "REJECT then ACCEPT at same price"
+  // transcripts).
+  if (action === 'REJECT') return 'REJECTED';
+  // An ACCEPT/CONFIRM also terminates the session regardless of phase. The
+  // CLOSING branch below used to swallow ACCEPTs and persist them as
+  // 'NEAR_DEAL', which made the result UI show "Negotiation paused" + no
+  // confetti even though both sides had agreed. Treat ACCEPT/CONFIRM as
+  // authoritative deal-closes.
+  if (action === 'ACCEPT' || action === 'CONFIRM') return 'ACCEPTED';
   switch (phase) {
     case 'OPENING':
       return 'ACTIVE';
@@ -105,7 +118,9 @@ export function phaseToDbStatus(
     case 'CLOSING':
       return 'NEAR_DEAL';
     case 'SETTLEMENT':
-      return action === 'ACCEPT' || action === 'CONFIRM' ? 'ACCEPTED' : 'REJECTED';
+      // ACCEPT/CONFIRM already handled above; reaching SETTLEMENT without one
+      // means the session ended unresolved (e.g., abort) — treat as rejected.
+      return 'REJECTED';
     default:
       return 'ACTIVE';
   }
@@ -149,6 +164,9 @@ export function reconstructCoreMemory(
     ? { ...DEFAULT_BUDDY_DNA, tone: dbSession.buddyTone as unknown as BuddyDNA['tone'] }
     : DEFAULT_BUDDY_DNA;
 
+  const listingContext = extractListingContextMemory(strategy);
+  const strategyContext = extractStrategyContextMemory(strategy, role);
+
   return {
     session: {
       session_id: dbSession.id,
@@ -176,7 +194,53 @@ export function reconstructCoreMemory(
     coaching,
     buddy_dna: buddyDna,
     skill_summary: 'electronics-iphone-pro-v1',
+    ...(listingContext ? { listing_context: listingContext } : {}),
+    ...(strategyContext ? { strategy_context: strategyContext } : {}),
   };
+}
+
+function extractListingContextMemory(
+  strategy: Record<string, unknown>,
+): ListingContextMemory | undefined {
+  const raw = strategy.listing_context;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const src = raw as Record<string, unknown>;
+  const out: ListingContextMemory = {};
+  if (typeof src.title === 'string') out.title = src.title;
+  if (typeof src.description === 'string') out.description = src.description;
+  if (typeof src.category === 'string') out.category = src.category;
+  if (typeof src.condition === 'string') out.condition = src.condition;
+  if (typeof src.photoUrl === 'string') out.photoUrl = src.photoUrl;
+  if (typeof src.subtype === 'string') out.subtype = src.subtype;
+  if (Array.isArray(src.tags)) {
+    const tags = src.tags.filter((t): t is string => typeof t === 'string');
+    if (tags.length > 0) out.tags = tags;
+  }
+  if (src.attributes && typeof src.attributes === 'object' && !Array.isArray(src.attributes)) {
+    out.attributes = src.attributes as Record<string, unknown>;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function extractStrategyContextMemory(
+  strategy: Record<string, unknown>,
+  role: 'buyer' | 'seller',
+): StrategyContextMemory | undefined {
+  const out: StrategyContextMemory = {};
+  if (typeof strategy.agent_preset_id === 'string') out.agent_preset_id = strategy.agent_preset_id;
+  if (strategy.agent_weights && typeof strategy.agent_weights === 'object') {
+    out.agent_weights = strategy.agent_weights as Record<string, unknown>;
+  }
+  if (strategy.agent_overrides && typeof strategy.agent_overrides === 'object') {
+    out.agent_overrides = strategy.agent_overrides as Record<string, unknown>;
+  }
+  // Side-specific advisor memory keys (set by routes/negotiations.ts).
+  const advisorKey = role === 'buyer' ? 'buyer_advisor_memory' : 'seller_advisor_memory';
+  const advisor = strategy[advisorKey];
+  if (advisor && typeof advisor === 'object' && !Array.isArray(advisor)) {
+    out.advisor_memory = advisor as Record<string, unknown>;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 // ---------------------------------------------------------------------------

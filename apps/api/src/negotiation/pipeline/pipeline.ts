@@ -153,6 +153,7 @@ export async function executePipeline(
     memory: deps.memory,
     facts: deps.facts,
     opponent: deps.opponent,
+    conversation: deps.conversation,
   });
 
   // ─── Stage 4: Validate ───

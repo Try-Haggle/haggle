@@ -71,6 +71,13 @@ export interface RoundExecutionResult {
   outgoingPrice: number;
   utility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number };
   sessionStatus: string;
+  /**
+   * The respond-stage message that was persisted for this round. The auto-play
+   * loop uses this as the *incoming* messageText for the next round so the
+   * understand stage sees a real conversational signal instead of a synthetic
+   * "Hi I'd like to offer $X" stub.
+   */
+  message?: string;
   escalation?: EscalationRequest;
 }
 

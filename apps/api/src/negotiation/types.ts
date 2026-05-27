@@ -27,6 +27,13 @@ export interface EngineDecision {
   reasoning: string;
   non_price_terms?: Record<string, unknown>;
   tactic_used?: string;
+  /**
+   * Natural-language message the LLM wrote for the counterparty. When present
+   * the respond stage should prefer this over the template renderer so the
+   * negotiation actually sounds like a negotiation (references the item,
+   * advisor strategy, etc) instead of "How about $X?".
+   */
+  message?: string;
 }
 
 /**
@@ -174,6 +181,41 @@ export interface CoreMemory {
   buddy_dna: BuddyDNA;
   skill_summary: string;
   competition?: CrossPressureContext;
+  /**
+   * Item-level context captured at listing time (title, description, condition,
+   * tags, photo, and category-specific facts like phone storage/battery). Used
+   * by the LLM to reason about the actual thing being negotiated rather than
+   * just price boundaries.
+   */
+  listing_context?: ListingContextMemory;
+  /**
+   * Strategy/persona context for THIS side of the negotiation: which agent
+   * preset is driving us, the advisor memory captured from the strategy chat,
+   * tone/dealbreakers/mustEmphasize, etc.
+   */
+  strategy_context?: StrategyContextMemory;
+}
+
+/** Mirror of services/listing-strategy.service.ts:ListingContext, kept local
+ *  to avoid the engine taking a dependency on the API service layer. */
+export interface ListingContextMemory {
+  title?: string;
+  description?: string;
+  category?: string;
+  condition?: string;
+  tags?: string[];
+  photoUrl?: string;
+  subtype?: string;
+  attributes?: Record<string, unknown>;
+}
+
+/** Per-side negotiator profile. Captures persona + advisor memory + agent
+ *  weight overrides. Populated symmetrically for buyer and seller. */
+export interface StrategyContextMemory {
+  agent_preset_id?: string;
+  agent_weights?: Record<string, unknown>;
+  agent_overrides?: Record<string, unknown>;
+  advisor_memory?: Record<string, unknown>;
 }
 
 /** 버디 DNA — 경험 패턴 */
@@ -369,18 +411,40 @@ export interface StageConfig {
 // Model Adapter (Layer C)
 // =========================================
 
+/**
+ * Conversation thread context — actual messages exchanged so far, plus the
+ * opponent's most recent message highlighted separately. Lets the LLM react
+ * to arguments and tone, not just price positions.
+ */
+export interface ConversationTurn {
+  round: number;
+  sender: 'BUYER' | 'SELLER';
+  /** Trimmed message body (caller may truncate to keep tokens bounded). */
+  text: string;
+  /** Offer price in minor units, if the turn carried one. */
+  price_minor?: number;
+}
+
+export interface ConversationContext {
+  /** The opponent's most recent message — what they just said this round. */
+  opponent_message?: string;
+  /** Recent conversation turns in order (oldest first). */
+  recent_turns?: ConversationTurn[];
+}
+
 export interface ModelAdapter {
   readonly modelId: string;
   readonly tier: 'basic' | 'standard' | 'advanced' | 'frontier';
   readonly location: 'remote' | 'local';
   readonly capabilities: readonly ('parse' | 'reason' | 'generate')[];
 
-  buildSystemPrompt(skillContext: string): string;
+  buildSystemPrompt(skillContext: string, role?: 'buyer' | 'seller'): string;
   buildUserPrompt(
     memory: CoreMemory,
     recentFacts: RoundFact[],
     signals?: string[],
     prevMemory?: CoreMemory,
+    conversation?: ConversationContext,
   ): string;
   parseResponse(raw: string): EngineDecision;
   coachingLevel(): 'DETAILED' | 'STANDARD' | 'LIGHT';

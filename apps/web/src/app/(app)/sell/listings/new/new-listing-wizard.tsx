@@ -15,7 +15,10 @@ import {
   AgentBuilder,
   type AgentBuilderValue,
 } from "../../agents/_components/AgentBuilder";
-import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
+import {
+  StrategyChat,
+  type AdvisorMemory,
+} from "@/app/l/[publicId]/strategy-chat";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -162,6 +165,8 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
   // Step 5: Agent — all state lives in a single AgentBuilderValue.
   const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
   const prevAgentRef = useRef<AgentBuilderValue | null>(null);
+  // Strategy chat memory captured from the advisor conversation.
+  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
 
   // Published state
   const [publishResult, setPublishResult] = useState<{
@@ -412,6 +417,9 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
       strategyBase.sourceId = agentValue.sourceId;
       strategyBase.customized = !!agentValue.overrides;
     }
+    if (advisorMemory) {
+      strategyBase.advisorMemory = advisorMemory;
+    }
     if (Object.keys(strategyBase).length > 0) patch.strategyConfig = strategyBase;
     return patch;
   }
@@ -579,6 +587,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
           source: agentValue!.sourceKind,
           sourceId: agentValue!.sourceId,
           customized: !!agentValue!.overrides,
+          ...(advisorMemory ? { advisorMemory } : {}),
         },
       });
       if (!ok) return;
@@ -1335,6 +1344,7 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
                     listingCategory={category || null}
                     listingPrice={targetPrice || null}
                     role="seller"
+                    onMemoryUpdate={setAdvisorMemory}
                   />
                 )
               }

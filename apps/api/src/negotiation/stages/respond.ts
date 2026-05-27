@@ -74,15 +74,20 @@ function respondWithTemplate(input: RespondInput): RespondOutput {
   const myLocale = resolveLocale(memory);
   const counterpartyLocale = resolveCounterpartyLocale(memory);
 
-  // Render message in the locale the counterparty should see
-  // (this message is sent TO the other party)
-  const message = templateRenderer.render(final_decision, {
-    phase: memory.session.phase,
-    role: memory.session.role,
-    locale: myLocale,
-    activeTerms: memory.terms.active,
-    tone: buddy_dna.tone,
-  });
+  // Prefer the LLM-authored message when one survived validation. Otherwise
+  // fall back to the deterministic template renderer. The guards below catch
+  // obvious failure modes (price not echoed, prompt-injection attempts, way
+  // too long) — anything more aggressive is the referee's job, not ours.
+  const llmMessage = pickValidLLMMessage(final_decision);
+  const message =
+    llmMessage ??
+    templateRenderer.render(final_decision, {
+      phase: memory.session.phase,
+      role: memory.session.role,
+      locale: myLocale,
+      activeTerms: memory.terms.active,
+      tone: buddy_dna.tone,
+    });
 
   // If counterparty has a different locale, render a second message for them
   let messageCounterparty: string | undefined;
@@ -103,6 +108,35 @@ function respondWithTemplate(input: RespondInput): RespondOutput {
     locale_counterparty: counterpartyLocale !== myLocale ? counterpartyLocale : undefined,
     tone: buddy_dna.tone.style,
   };
+}
+
+const MAX_LLM_MESSAGE_CHARS = 600;
+const INJECTION_PATTERNS = [
+  /ignore (all|previous|prior) (instructions|prompts)/i,
+  /system prompt/i,
+  /you are now/i,
+  /```/,
+  /<\/?(script|iframe|style)/i,
+];
+
+/**
+ * Sanity-check the LLM's message field. Returns the trimmed message if it is
+ * safe to forward to the counterparty, otherwise null (template fallback).
+ *
+ * What we accept: a short, single-block string with no obvious prompt-injection
+ * vectors. What we reject: anything missing, anything over MAX_LLM_MESSAGE_CHARS,
+ * anything that looks like a code fence or a jailbreak attempt.
+ */
+function pickValidLLMMessage(decision: import('../types.js').EngineDecision): string | null {
+  const raw = decision.message;
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  if (text.length === 0) return null;
+  if (text.length > MAX_LLM_MESSAGE_CHARS) return null;
+  for (const pat of INJECTION_PATTERNS) {
+    if (pat.test(text)) return null;
+  }
+  return text;
 }
 
 /**

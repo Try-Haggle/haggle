@@ -19,6 +19,7 @@ import type {
   RoundExplainability,
   StageConfig,
   BuddyDNA,
+  ConversationContext,
 } from '../types.js';
 import type { RefereeBriefing, SkillAppliedRecord } from '../skills/skill-types.js';
 import type { SkillStack } from '../skills/skill-stack.js';
@@ -134,6 +135,12 @@ export interface DecideInput {
   memory: CoreMemory;
   facts: RoundFact[];
   opponent: OpponentPattern;
+  /**
+   * Recent chat thread + opponent's latest message — gives the LLM the actual
+   * argument to respond to, not just price positions. When omitted, the LLM
+   * still negotiates but only sees the compact memo line.
+   */
+  conversation?: ConversationContext;
 }
 
 export interface DecideOutput {
@@ -228,6 +235,8 @@ export interface PipelineDeps {
   memory_brief?: UserMemoryBrief | null;
   evermemo_brief?: EvermemoBrief | null;
   memoEncoding: MemoEncodingConfig;
+  /** Recent chat thread for the LLM (opponent message + prior turns). */
+  conversation?: ConversationContext;
   /** DB persist callback — only Stage 6 uses this */
   persistFn?: (input: PersistInput) => Promise<PersistOutput>;
 }
