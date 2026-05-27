@@ -345,11 +345,19 @@ haggle/
 4. SSL 인증서 자동 발급 대기 (보통 수 분)
 
 **완료 조건**:
-- [ ] `https://tryhaggle.ai` 가 HTTPS 로 정상 로드
-- [ ] Lighthouse Performance ≥ 90 (모바일)
-- [ ] SEO 메타데이터 확인 (Open Graph, Twitter card)
+- [x] `https://tryhaggle.ai` 가 HTTPS 로 정상 로드
+- [ ] Lighthouse Performance ≥ 90 (모바일) — 사후 검증
+- [ ] SEO 메타데이터 확인 (Open Graph, Twitter card) — 사후 검증
 
 **전제조건**: Phase 5 완료
+
+**메모**:
+- Vercel `web` 프로젝트와 `haggle-web` 프로젝트가 둘 다 `apps/web` 가리키는 중복 — `web` 삭제하고 `haggle-web` 유지 (Phase 7 용).
+- Vercel 의 monorepo 자동 감지가 `apps/api` (Vite) 로 잘못 잡혀서 수동으로 `apps/landing` 선택 필요했음.
+- Vercel IP range expansion: 옛날 안내 `76.76.21.21` 가 아니라 신 IP `216.198.79.1` 사용. CNAME 도 도메인별 unique host (`c8ba715fd4ff4d93.vercel-dns-017.com.`) 로 제공됨.
+- Namecheap 의 기존 `URL Redirect Record @ → http://www.tryhaggle.ai/` 삭제 후 A record 추가. `CNAME www → parkingpage.namecheap.com.` 도 Vercel 호스트로 수정.
+- Apex (`tryhaggle.ai`) 가 primary, `www.tryhaggle.ai` 는 apex 로 307 redirect.
+- `@modelcontextprotocol/ext-apps` postinstall 실패 메시지가 빌드 로그에 나오지만 빌드 자체는 통과 — landing 동작 무관.
 
 ---
 
@@ -436,3 +444,4 @@ Pattern A 로 시작. 나중에 Pattern B 필요 시:
 | 2026-05-26 | Phase 4 | ✅ Done | Comparison + FAQ + FinalCTA + Footer. CI fix (test 스크립트 제거). Comparison 모바일 반응형 + flat grid 리팩으로 row 정렬 안정화. 데스크탑 폰트 강조. FAQ 아코디언 동작 검증 |
 | 2026-05-26 | Sweep | ✅ Done | Tailwind 임의값 → canonical 변환 (h-17, max-w-7xl, shadow-(--var) 등). Phase 5 와 한 커밋으로 묶음 (같은 파일들 건드려서 분리 어려움) |
 | 2026-05-26 | Phase 5 | ✅ Done | 모든 viz 애니메이션 포팅 — Hero masonry, Scroll-spy, Step 01 RadarPanel (radar morph + chat→settings 전환), Step 02 ChatPanel (typing + banner + 3-burst confetti), Step 03 Timeline (sequential active→done + bar). 모두 IntersectionObserver 로 viewport 진입 시만 cycle 실행. prefers-reduced-motion 글로벌 override |
+| 2026-05-26 | Phase 6 | ✅ Done | Vercel `haggle-landing` 프로젝트 배포 + `tryhaggle.ai` 도메인 연결. Namecheap A record + www CNAME 설정. Apex primary, www → apex 307 redirect. 라이브 |

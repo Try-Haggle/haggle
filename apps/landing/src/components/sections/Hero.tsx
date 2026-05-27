@@ -1,5 +1,6 @@
 import { COLUMN_LISTINGS } from "@/lib/data/listings";
 import { ListingCard } from "@/components/viz/ListingCard";
+import { APP_URL } from "@/lib/env";
 
 const COL_OFFSET_PT = [0, 64, 32]; // px — column start offsets for masonry stagger
 
@@ -78,7 +79,7 @@ export function Hero() {
 
           <div className="flex flex-wrap items-center gap-3.5">
             <a
-              href="#cta"
+              href={`${APP_URL}/sign-up`}
               className="group inline-flex h-14 items-center justify-center gap-2.5 rounded-full border border-transparent bg-navy-500 px-8 text-[17px] leading-none font-semibold tracking-[-0.005em] text-white shadow-[0_1px_0_rgba(0,0,0,.06),0_10px_30px_-12px_rgba(27,42,74,.45),inset_0_1px_0_rgba(255,255,255,0.10)] transition-all duration-150 hover:-translate-y-px hover:bg-navy-600 hover:shadow-[0_1px_0_rgba(0,0,0,.08),0_16px_40px_-10px_rgba(27,42,74,.55),inset_0_1px_0_rgba(255,255,255,0.12)] active:translate-y-px"
             >
               <span className="leading-none">Get Started</span>

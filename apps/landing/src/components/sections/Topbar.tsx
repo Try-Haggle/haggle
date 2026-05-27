@@ -49,7 +49,7 @@ export function Topbar() {
         </div>
         <div className="flex items-center">
           <a
-            href={`${APP_URL}/login`}
+            href={`${APP_URL}/sign-in`}
             className="group inline-flex h-9 items-center gap-1.5 rounded-full bg-navy-500 px-4 text-[13px] leading-none font-semibold text-white transition-colors hover:bg-navy-600"
           >
             <span className="leading-none">Sign in</span>

@@ -1,3 +1,5 @@
+import { APP_URL } from "@/lib/env";
+
 export function FinalCta() {
   return (
     <section
@@ -50,7 +52,7 @@ export function FinalCta() {
           </p>
           <div className="relative inline-flex flex-wrap items-center justify-center gap-3.5">
             <a
-              href="#"
+              href={`${APP_URL}/sign-up`}
               className="group inline-flex h-13.5 cursor-pointer items-center gap-2 rounded-full border-none px-7 text-[15px] leading-none font-semibold tracking-[-0.005em] text-white no-underline shadow-[0_8px_24px_rgba(214,154,76,0.35)] transition-all duration-150 hover:-translate-y-px hover:shadow-[0_12px_32px_rgba(214,154,76,0.45)]"
               style={{
                 background:
