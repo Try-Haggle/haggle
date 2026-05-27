@@ -443,13 +443,16 @@ describe('LLM Executor — Integration', () => {
       expect(mockCallLLM).not.toHaveBeenCalled();
     });
 
-    it('auto-rejects when offer exceeds buyer floor', async () => {
+    it('auto-rejects when offer is extreme (> 2× range above floor)', async () => {
+      // Branch change: above-floor offers no longer auto-REJECT — they
+      // counter-anchor unless rounds are out or the price is extreme. Use an
+      // extreme price here to exercise the REJECT path.
       const session = makeDbSession({
         currentRound: 3,
         lastOfferPriceMinor: '80000',
         strategySnapshot: {
           p_target: 75000,
-          p_limit: 95000, // buyer floor $950
+          p_limit: 95000, // buyer floor $950; range=$200 → extreme > floor+$400
           max_rounds: 15,
         },
       });
@@ -461,12 +464,11 @@ describe('LLM Executor — Integration', () => {
         makeDbRound({ roundNo: 3, id: 'r-003' }),
       ]);
 
-      // Seller offers $960 — above buyer floor of $950
-      const input = makeInput({ offerPriceMinor: 96000 });
+      // Seller offers $2000 — way above floor + 2×range → extreme → REJECT
+      const input = makeInput({ offerPriceMinor: 200000 });
 
       const result = await executeLLMNegotiationRound(db as any, input);
 
-      // Skill auto-rejects: offer $960 > floor $950
       expect(result.decision).toBe('REJECT');
 
       // LLM should NOT be called

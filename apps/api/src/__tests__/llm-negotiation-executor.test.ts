@@ -182,13 +182,17 @@ describe('executor factory', () => {
     expect(typeof executor).toBe('function');
   });
 
-  it('defaults LLM pipeline mode to staged unless legacy is explicit', async () => {
+  it('pipeline mode is fixed at staged regardless of env (real flows only)', async () => {
+    // Branch change: the env-based legacy/staged switch was removed. Real
+    // negotiation flows always go through the staged executor; legacy mode is
+    // no longer reachable. The PipelineMode union is kept only for the
+    // /negotiations/stages route guard.
     const { getPipelineMode } = await import('../lib/executor-factory.js');
 
     delete process.env.NEGOTIATION_PIPELINE;
     expect(getPipelineMode()).toBe('staged');
 
     process.env.NEGOTIATION_PIPELINE = 'legacy';
-    expect(getPipelineMode()).toBe('legacy');
+    expect(getPipelineMode()).toBe('staged');
   });
 });

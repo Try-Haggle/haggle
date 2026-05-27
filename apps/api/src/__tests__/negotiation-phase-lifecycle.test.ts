@@ -152,12 +152,15 @@ function makeInput(overrides: Partial<RoundExecutionInput> = {}): RoundExecution
   };
 }
 
-function makeLLMResponse(action = 'COUNTER', price = 78000) {
+function makeLLMResponse(action = 'COUNTER', priceMinor = 78000) {
+  // Adapter contract: LLM returns USD dollars; adapter multiplies by 100 → cents.
+  // Tests express prices in minor units (cents) for consistency with the rest of
+  // the codebase, so convert to dollars here before serializing.
   return {
     content: JSON.stringify({
       action,
-      price,
-      reasoning: `Strategic ${action.toLowerCase()} at $${price / 100}.`,
+      price: priceMinor / 100,
+      reasoning: `Strategic ${action.toLowerCase()} at $${priceMinor / 100}.`,
       tactic_used: 'reciprocal_concession',
     }),
     usage: { prompt_tokens: 400, completion_tokens: 90 },
@@ -279,16 +282,21 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       expect(mockCallLLM).not.toHaveBeenCalled();
     });
 
-    it('seller가 floor 초과 제안 → 즉시 REJECT (LLM 불필요)', async () => {
+    it('seller가 극단적 가격 제안 → 즉시 REJECT (LLM 불필요)', async () => {
+      // Branch change: a price merely above floor now counter-anchors instead of
+      // rejecting (real negotiations don't end because an opening is "too high").
+      // REJECT only fires for extreme prices (> 2× the target..floor range from
+      // floor) or when no rounds remain. Use an extreme offer here.
       const session = makeSession({ currentRound: 0, status: 'CREATED' });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([]);
 
-      // Seller offers $960 — above buyer floor $950
+      // Buyer target=$750, floor=$950, range=$200. Extreme threshold:
+      // floor + 2×range = $1350. Offer $2000 → clearly extreme → REJECT.
       const result = await executeLLMNegotiationRound(
         db as any,
-        makeInput({ offerPriceMinor: 96000 }),
+        makeInput({ offerPriceMinor: 200000 }),
       );
 
       expect(result.decision).toBe('REJECT');

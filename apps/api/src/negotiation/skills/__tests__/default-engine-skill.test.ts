@@ -77,8 +77,9 @@ describe('DefaultEngineSkill', () => {
     const decision = await skill.generateMove(makeMemory('OPENING'), [], null, 'OPENING');
     expect(decision.action).toBe('COUNTER');
     expect(decision.price).toBeDefined();
-    // Buyer: target * 0.9 = 450
-    expect(decision.price).toBeLessThan(500);
+    // Buyer holds at their target during OPENING (anchoring below target would
+    // mean countering below the buyer's own initial offer).
+    expect(decision.price).toBe(500);
     expect(decision.tactic_used).toBe('anchoring');
   });
 
