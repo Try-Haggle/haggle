@@ -131,7 +131,7 @@ function Radar({ state }: { state: RadarState }) {
   }).join(" ");
 
   return (
-    <div className="aspect-square max-h-85 w-full">
+    <div className="aspect-square max-h-85 w-full max-lg:mx-auto max-lg:-mb-6 max-lg:max-w-72">
       <svg
         viewBox="-155 -135 310 270"
         xmlns="http://www.w3.org/2000/svg"
@@ -581,12 +581,14 @@ export function RadarPanel() {
       ref={rootRef}
       className="relative flex h-full w-full items-center justify-center bg-transparent"
     >
-      <div className="relative grid w-full grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] items-center gap-5">
-        {/* LEFT — Radar */}
+      {/* Desktop: radar | panel (2 col).
+          Mobile: radar on top, panel below (1 col), tight gap. */}
+      <div className="relative grid w-full grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] items-center gap-5 max-lg:grid-cols-1 max-lg:gap-2">
+        {/* Radar */}
         <div className="flex w-full flex-col items-center justify-center">
           <Radar state={current.radar} />
         </div>
-        {/* RIGHT — Panel stack */}
+        {/* Panel stack */}
         <div className="relative flex min-h-75 w-full items-center justify-center">
           <ChatBubblesPanel visible={activePanel === "chat"} />
           <SettingsPanel

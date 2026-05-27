@@ -47,7 +47,7 @@ export function Comparison() {
       {/* Header (transparent row) */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
         <div className="mx-auto max-w-7xl px-10 max-md:px-6">
-          <div className="mx-auto max-w-180 text-center max-lg:mb-12">
+          <div className="mx-auto max-w-180 text-center">
             <span className="mb-5 inline-block font-mono text-[11px] font-medium tracking-[0.2em] text-gold-500 uppercase">
               WHY HAGGLE
             </span>

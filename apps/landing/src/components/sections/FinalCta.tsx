@@ -44,7 +44,7 @@ export function FinalCta() {
             </em>{" "}
             today.
           </h2>
-          <p className="relative mx-auto m-0 mb-10 max-w-135 font-sans text-[19px] leading-[1.55] text-white/70">
+          <p className="relative mx-auto m-0 mb-10 max-w-135 font-sans text-[19px] leading-[1.55] text-white/70 max-md:mb-8 max-md:text-[15px] max-md:leading-normal">
             Set your style. Save it. Let your agent do the rest. Every deal is
             escrow-protected. You only pay when it&apos;s right.
           </p>

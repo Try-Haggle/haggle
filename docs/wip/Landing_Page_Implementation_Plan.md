@@ -297,15 +297,25 @@ haggle/
 - `prefers-reduced-motion` 미디어쿼리 존중
 
 **완료 조건**:
-- [ ] Hero masonry 가 무한 스크롤
-- [ ] Radar polygon 이 morph 하며 panel 이 chat ↔ settings 전환
-- [ ] Step 02 채팅 4 턴 → DEAL banner + confetti
-- [ ] Step 03 timeline 4 단계 순차 진행 + summary
-- [ ] Topbar 네비가 스크롤 위치에 따라 active highlight
-- [ ] `prefers-reduced-motion: reduce` 시 애니메이션 정지
-- [ ] 페이지 idle CPU 가 합리적 (브라우저 탭 백그라운드 시 부하 X — 가능하면 IntersectionObserver 로 viewport 진입 시만 실행)
+- [x] Hero masonry 가 무한 스크롤
+- [x] Radar polygon 이 morph 하며 panel 이 chat ↔ settings 전환
+- [x] Step 02 채팅 4 턴 → DEAL banner + confetti
+- [x] Step 03 timeline 4 단계 순차 진행 + summary
+- [x] Topbar 네비가 스크롤 위치에 따라 active highlight
+- [x] `prefers-reduced-motion: reduce` 시 애니메이션 정지
+- [x] 페이지 idle CPU 가 합리적 (모든 viz 가 IntersectionObserver threshold 0.3 으로 viewport 진입 시만 cycle 실행)
 
 **전제조건**: Phase 4 완료
+
+**메모**:
+- Tailwind canonical sweep 을 Phase 5 와 같은 working copy 에 진행 — git 으로 분리 어려워 한 커밋으로 묶음. globals.css 에 keyframes (scroll-up, typing-dot, typing-bounce, timeline-pulse, chat-b2-out) + `prefers-reduced-motion` 글로벌 override 추가.
+- RadarPanel slider 가 "딱딱" 끊겨 보이는 문제: 클로저로 stale state 캡처 + CSS transition 과 RAF 보간이 충돌. ref 기반 보간 + slider 의 `transition: width/left` 제거로 해결.
+- RadarPanel chat 첫 등장 fade-in 안 됨: SSR + 첫 client render 가 이미 visible=true 라 CSS transition trigger 안 됨. ChatBubblesPanel 내부에 `entered` state + 2x RAF 패턴으로 한 프레임 늦춰 fade-in 발동.
+- RadarPanel typing bubble 폭: 원본은 같은 자리에 typing → answer 교체 (b2/b3 reply slot grid cell 공유). 답변 폭과 같게 stretch 되지 않도록 grid `justify-items-start` + typing 셀은 inline-flex 작은 pill.
+- RadarPanel cycle 간 텀: 9s 시점에 settings → chat 동시 페이드면 겹침. `activePanel: "none"` state 추가하여 8.4s 시점에 미리 settings fade out → 9.0s chat fade in.
+- Timeline bar reset: cycle 끝 100% → 새 cycle 0% 로 가는 1.5s transition 이 시각적으로 "반쯤 차있는" 잔여. `barAnimating` state 토글로 reset 시 transition 끄고 즉시 snap, 60ms 후 transition 재개.
+- ChatPanel confetti: `confetti.create()` 인스턴스를 scoped canvas 에 바인딩 (전역 confetti 오염 방지), useWorker:true, 3 burst (center + left + right), brand 색상만 사용.
+- 모든 viz 의 cycle 은 IntersectionObserver 가 viewport 떠나면 timer 클리어 + RAF cancel → 백그라운드 탭 CPU 안 씀.
 
 ---
 
@@ -424,3 +434,5 @@ Pattern A 로 시작. 나중에 Pattern B 필요 시:
 | 2026-05-26 | Phase 2 | ✅ Done | 디자인 토큰 + 폰트 + Topbar + Hero (정적). 시각적 검증 + 모바일 반응형 확인. CTA 화살표는 SVG 로 통일. masonry 자동 스크롤은 Phase 5 |
 | 2026-05-26 | Phase 3 | ✅ Done | HowItWorks 3 step zigzag (정적). RadarPanel / ChatPanel / Timeline viz 마크업 완성. Step 02 reverse 레이아웃 fix. 애니메이션은 Phase 5 |
 | 2026-05-26 | Phase 4 | ✅ Done | Comparison + FAQ + FinalCTA + Footer. CI fix (test 스크립트 제거). Comparison 모바일 반응형 + flat grid 리팩으로 row 정렬 안정화. 데스크탑 폰트 강조. FAQ 아코디언 동작 검증 |
+| 2026-05-26 | Sweep | ✅ Done | Tailwind 임의값 → canonical 변환 (h-17, max-w-7xl, shadow-(--var) 등). Phase 5 와 한 커밋으로 묶음 (같은 파일들 건드려서 분리 어려움) |
+| 2026-05-26 | Phase 5 | ✅ Done | 모든 viz 애니메이션 포팅 — Hero masonry, Scroll-spy, Step 01 RadarPanel (radar morph + chat→settings 전환), Step 02 ChatPanel (typing + banner + 3-burst confetti), Step 03 Timeline (sequential active→done + bar). 모두 IntersectionObserver 로 viewport 진입 시만 cycle 실행. prefers-reduced-motion 글로벌 override |
