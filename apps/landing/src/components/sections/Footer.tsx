@@ -70,11 +70,11 @@ export function Footer() {
           "color-mix(in oklab, var(--color-gold-50) 35%, var(--color-surface-base))",
       }}
     >
-      <div className="relative z-[2] mx-auto max-w-[1280px] px-10 pt-20 pb-8 max-lg:px-6 max-lg:pt-16 max-lg:pb-6">
+      <div className="relative z-2 mx-auto max-w-7xl px-10 pt-20 pb-8 max-lg:px-6 max-lg:pt-16 max-lg:pb-6">
         {/* Top */}
         <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-24 pb-16 max-lg:grid-cols-1 max-lg:gap-12 max-lg:pb-12">
           {/* Brand */}
-          <div className="max-w-[340px]">
+          <div className="max-w-85">
             <a
               href="#"
               className="mb-4 inline-block font-serif text-[32px] font-medium tracking-[-0.02em] text-navy-500 no-underline"
@@ -125,7 +125,7 @@ export function Footer() {
                       "color-mix(in oklab, var(--color-gold-300) 35%, transparent)",
                   }}
                 >
-                  <span className="block h-[18px] w-[18px]">{s.svg}</span>
+                  <span className="block h-4.5 w-4.5">{s.svg}</span>
                 </a>
               ))}
             </div>
@@ -175,7 +175,7 @@ export function Footer() {
       {/* Giant wordmark decoration */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -bottom-10 left-1/2 z-[1] -translate-x-1/2 font-serif text-[clamp(140px,22vw,280px)] leading-[0.85] font-medium tracking-[-0.04em] whitespace-nowrap text-navy-500 opacity-[0.05] select-none"
+        className="pointer-events-none absolute -bottom-10 left-1/2 z-1 -translate-x-1/2 font-serif text-[clamp(140px,22vw,280px)] leading-[0.85] font-medium tracking-[-0.04em] whitespace-nowrap text-navy-500 opacity-[0.05] select-none"
       >
         Haggle
       </div>

@@ -37,7 +37,7 @@ export function ListingCard({ item }: { item: Listing }) {
   const icon = ICONS[item.icon];
 
   return (
-    <article className="group relative overflow-hidden rounded-[14px] border border-neutral-100 bg-surface-raised shadow-[var(--shadow-card)] transition-all duration-[250ms] hover:-translate-y-0.5 hover:border-neutral-200 hover:shadow-[var(--shadow-elev)]">
+    <article className="group relative overflow-hidden rounded-[14px] border border-neutral-100 bg-surface-raised shadow-(--shadow-card) transition-all duration-250 hover:-translate-y-0.5 hover:border-neutral-200 hover:shadow-(--shadow-elev)">
       {/* Thumb */}
       <div
         className="relative w-full"

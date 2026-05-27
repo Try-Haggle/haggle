@@ -32,7 +32,7 @@ function Radar() {
   const polyPoints = INITIAL_POINTS.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
-    <div className="aspect-square max-h-[340px] w-full">
+    <div className="aspect-square max-h-85 w-full">
       <svg viewBox="-155 -135 310 270" xmlns="http://www.w3.org/2000/svg" className="block h-full w-full">
         <defs>
           <linearGradient id="viz-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -104,11 +104,11 @@ function ChatBubblesPanel() {
       {/* Inner */}
       <div className="flex flex-col gap-2.5 px-1">
         {/* User bubble */}
-        <div className="max-w-[92%] self-end rounded-[14px] rounded-br-[5px] bg-navy-500 px-4 py-3 text-[13.5px] leading-[1.5] tracking-[-0.005em] text-surface-raised">
+        <div className="max-w-[92%] self-end rounded-[14px] rounded-br-[5px] bg-navy-500 px-4 py-3 text-[13.5px] leading-normal tracking-[-0.005em] text-surface-raised">
           Make Hugo hold his ground more.
         </div>
         {/* Agent reply */}
-        <div className="max-w-[92%] self-start rounded-[14px] rounded-bl-[5px] border border-neutral-100 bg-surface-raised px-4 py-3 font-mono text-[12px] leading-[1.5] tracking-[0.02em] text-navy-500">
+        <div className="max-w-[92%] self-start rounded-[14px] rounded-bl-[5px] border border-neutral-100 bg-surface-raised px-4 py-3 font-mono text-[12px] leading-normal tracking-[0.02em] text-navy-500">
           Done.{" "}
           <strong className="font-medium text-gold-700">
             Resolve 5 → 9, Tenacity 5 → 9.
@@ -129,7 +129,7 @@ export function RadarPanel() {
           <Radar />
         </div>
         {/* RIGHT — Chat panel (settings hidden in Phase 3) */}
-        <div className="relative flex min-h-[300px] w-full items-center justify-center">
+        <div className="relative flex min-h-75 w-full items-center justify-center">
           <ChatBubblesPanel />
         </div>
       </div>

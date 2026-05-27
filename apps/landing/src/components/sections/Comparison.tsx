@@ -46,8 +46,8 @@ export function Comparison() {
     <section id="why-haggle" className="relative scroll-mt-20">
       {/* Header (transparent row) */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
-        <div className="mx-auto max-w-[1280px] px-10 max-md:px-6">
-          <div className="mx-auto mb-18 max-w-[720px] text-center max-lg:mb-12">
+        <div className="mx-auto max-w-7xl px-10 max-md:px-6">
+          <div className="mx-auto mb-18 max-w-180 text-center max-lg:mb-12">
             <span className="mb-5 inline-block font-mono text-[11px] font-medium tracking-[0.2em] text-gold-500 uppercase">
               WHY HAGGLE
             </span>
@@ -67,19 +67,19 @@ export function Comparison() {
 
       {/* Content (gold-tinted row) */}
       <div className="bg-[color-mix(in_oklab,var(--color-gold-50)_20%,var(--color-surface-base))] py-8 pt-8 pb-12 max-lg:py-6 max-lg:pb-10">
-        <div className="mx-auto max-w-[1280px] px-10 max-md:px-6">
-          <div className="mx-auto max-w-[1080px]">
+        <div className="mx-auto max-w-7xl px-10 max-md:px-6">
+          <div className="mx-auto max-w-270">
             {/* Price selector */}
             <div className="mb-10 flex flex-wrap items-center justify-center gap-4 max-md:mb-9 max-md:gap-3.5">
               <span className="font-mono text-[14px] tracking-[0.14em] text-neutral-500 uppercase max-md:text-[11px]">
                 If you sell for
               </span>
-              <div className="inline-flex gap-px rounded-full border border-neutral-200 bg-surface-raised p-1 max-md:p-[3px]">
+              <div className="inline-flex gap-px rounded-full border border-neutral-200 bg-surface-raised p-1 max-md:p-0.75">
                 {PRICE_PRESETS.map((p) => (
                   <button
                     key={p}
                     onClick={() => setPrice(p)}
-                    className={`cursor-pointer rounded-full border-none px-5 py-2.5 font-mono text-[15px] font-medium tracking-[0.04em] transition-colors max-md:px-4 max-md:py-[7px] max-md:text-[12px] ${
+                    className={`cursor-pointer rounded-full border-none px-5 py-2.5 font-mono text-[15px] font-medium tracking-[0.04em] transition-colors max-md:px-4 max-md:py-1.75 max-md:text-[12px] ${
                       price === p
                         ? "bg-navy-500 text-surface-base"
                         : "bg-transparent text-neutral-600 hover:text-navy-500"
@@ -108,7 +108,7 @@ export function Comparison() {
                 more per sale on Haggle.
               </span>
               <div className="order-1 flex flex-col gap-3.5 max-md:order-2">
-                <p className="m-0 max-w-[560px] text-[13px] leading-[1.5] tracking-[-0.005em] text-neutral-600">
+                <p className="m-0 max-w-140 text-[13px] leading-normal tracking-[-0.005em] text-neutral-600">
                   Published seller rates as of 2026.
                 </p>
                 <p className="m-0 font-mono text-[10.5px] tracking-[0.16em] text-neutral-500 uppercase">
@@ -157,7 +157,7 @@ function ComparisonGrid({ price }: { price: number }) {
 
   // Base cell padding/height
   const cellBase =
-    "relative z-[1] flex min-h-[80px] items-center justify-center px-4 py-[18px] max-md:min-h-[60px] max-md:px-1.5 max-md:py-2";
+    "relative z-1 flex min-h-20 items-center justify-center px-4 py-4.5 max-md:min-h-15 max-md:px-1.5 max-md:py-2";
 
   // Border helpers
   const borderRight = "border-r border-neutral-100";
@@ -175,7 +175,7 @@ function ComparisonGrid({ price }: { price: number }) {
   }
 
   return (
-    <div className="relative overflow-hidden rounded-[14px] border border-neutral-200 bg-surface-raised shadow-[var(--shadow-card)]">
+    <div className="relative overflow-hidden rounded-[14px] border border-neutral-200 bg-surface-raised shadow-(--shadow-card)">
       {/* Haggle column background overlay — sits behind all cells in that column */}
       <div
         className="absolute top-0 bottom-0 z-0"
@@ -202,7 +202,7 @@ function ComparisonGrid({ price }: { price: number }) {
       />
       {/* Haggle top gold strip */}
       <div
-        className="absolute top-0 z-[2] h-[3px]"
+        className="absolute top-0 z-2 h-0.75"
         aria-hidden="true"
         style={{
           left: `calc((100% - 180px) / 4 * ${haggleColIdx} + 180px)`,
@@ -212,7 +212,7 @@ function ComparisonGrid({ price }: { price: number }) {
         }}
       />
       <div
-        className="absolute top-0 z-[2] hidden h-[3px] max-md:block"
+        className="absolute top-0 z-2 hidden h-0.75 max-md:block"
         aria-hidden="true"
         style={{
           left: `calc((100% - 52px) / 4 * ${haggleColIdx} + 52px)`,
@@ -223,7 +223,7 @@ function ComparisonGrid({ price }: { price: number }) {
       />
 
       {/* Flat 5-col × 4-row grid — each cell is a direct grid child so rows align perfectly */}
-      <div className="relative z-[1] grid grid-cols-[180px_repeat(4,1fr)] max-md:grid-cols-[52px_repeat(4,1fr)]">
+      <div className="relative z-1 grid grid-cols-[180px_repeat(4,1fr)] max-md:grid-cols-[52px_repeat(4,1fr)]">
         {/* === ROW 1: Platform headers === */}
         {/* Label spacer (invisible "Platform" reserves correct height) */}
         <div

@@ -8,8 +8,8 @@ const NAV_LINKS = [
 
 export function Topbar() {
   return (
-    <header className="sticky top-0 z-50 border-b border-neutral-100 bg-[color-mix(in_oklab,var(--color-surface-base)_80%,transparent)] backdrop-blur-md backdrop-saturate-[140%]">
-      <div className="mx-auto flex h-[68px] max-w-[1280px] items-center justify-between px-10 max-md:px-5">
+    <header className="sticky top-0 z-50 border-b border-neutral-100 bg-[color-mix(in_oklab,var(--color-surface-base)_80%,transparent)] backdrop-blur-md backdrop-saturate-140">
+      <div className="mx-auto flex h-17 max-w-7xl items-center justify-between px-10 max-md:px-5">
         <div className="flex items-center gap-9 max-md:gap-0">
           <a
             href="#"

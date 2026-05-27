@@ -84,10 +84,10 @@ export function Timeline() {
       {/* Track row */}
       <div className="relative grid grid-cols-4 items-start">
         {/* Bar */}
-        <div className="absolute top-[18px] right-[12.5%] left-[12.5%] h-[3px] overflow-hidden rounded-[2px] bg-neutral-200">
+        <div className="absolute top-4.5 right-[12.5%] left-[12.5%] h-0.75 overflow-hidden rounded-xs bg-neutral-200">
           {/* Static fill — 0% for Phase 3 */}
           <div
-            className="absolute top-0 left-0 h-full rounded-[2px]"
+            className="absolute top-0 left-0 h-full rounded-xs"
             style={{
               width: "0%",
               background:
@@ -101,7 +101,7 @@ export function Timeline() {
             key={stage.label}
             className="relative flex flex-col items-center gap-3"
           >
-            <div className="relative z-[2] flex h-9 w-9 items-center justify-center rounded-full border-2 border-neutral-200 bg-surface-raised">
+            <div className="relative z-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-neutral-200 bg-surface-raised">
               <span className="h-3.5 w-3.5 text-neutral-400">{stage.icon}</span>
             </div>
             <div className="text-center font-mono text-[11px] font-medium tracking-[0.06em] text-neutral-500">

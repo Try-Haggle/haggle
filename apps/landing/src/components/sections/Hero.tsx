@@ -6,11 +6,11 @@ const COL_OFFSET_PT = [0, 64, 32]; // px — column start offsets for masonry st
 export function Hero() {
   return (
     <section className="relative flex items-stretch overflow-hidden bg-[color-mix(in_oklab,var(--color-gold-50)_20%,var(--color-surface-base))] pt-6 pb-12 max-lg:pt-4 max-lg:pb-8">
-      <div className="mx-auto grid w-full max-w-[1280px] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 px-10 max-lg:grid-cols-1 max-md:px-5">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 px-10 max-lg:grid-cols-1 max-md:px-5">
         {/* LEFT — masonry feed (static for Phase 2) */}
         <div className="relative overflow-hidden pt-12 pr-8 pb-8 max-lg:order-2 max-lg:px-0 max-lg:pt-12 max-lg:pb-6">
           <div
-            className="relative grid h-[640px] grid-cols-3 gap-3.5 max-lg:h-[560px] max-sm:h-[520px] max-sm:grid-cols-2 max-sm:gap-2.5"
+            className="relative grid h-160 grid-cols-3 gap-3.5 max-lg:h-140 max-sm:h-130 max-sm:grid-cols-2 max-sm:gap-2.5"
             style={{
               maskImage:
                 "linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%)",

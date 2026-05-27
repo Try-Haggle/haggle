@@ -44,7 +44,7 @@ const STEPS: Step[] = [
 
 function StepRow({ step }: { step: Step }) {
   const textBlock = (
-    <div className="flex max-w-[520px] flex-col gap-4">
+    <div className="flex max-w-130 flex-col gap-4">
       <p className="m-0 mb-3.5 inline-flex self-start rounded-full border border-[color-mix(in_oklab,var(--color-navy-100)_70%,transparent)] bg-navy-50 px-[11px] py-1 font-mono text-[11.5px] font-medium tracking-[0.18em] text-navy-500 uppercase">
         {step.eyebrow}
       </p>
@@ -88,7 +88,7 @@ function StepRow({ step }: { step: Step }) {
           : "bg-transparent py-14 max-lg:py-10"
       }
     >
-      <div className="mx-auto max-w-[1280px] px-10 max-md:px-6">
+      <div className="mx-auto max-w-7xl px-10 max-md:px-6">
         <div
           className={`grid items-center gap-20 max-lg:grid-cols-1 max-lg:gap-8 ${gridCols}`}
         >
@@ -116,8 +116,8 @@ export function HowItWorks() {
     <section id="how-it-works" className="relative scroll-mt-20">
       {/* Section header */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
-        <div className="mx-auto max-w-[1280px] px-10 max-md:px-6">
-          <div className="mx-auto mb-18 max-w-[720px] text-center max-lg:mb-12">
+        <div className="mx-auto max-w-7xl px-10 max-md:px-6">
+          <div className="mx-auto mb-18 max-w-180 text-center max-lg:mb-12">
             <span className="mb-4 inline-block font-mono text-[11px] font-medium tracking-[0.14em] text-gold-500 uppercase">
               How it works
             </span>

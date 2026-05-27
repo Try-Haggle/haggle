@@ -13,8 +13,8 @@ export function Faq() {
     <section id="faq" className="relative scroll-mt-20">
       {/* Header */}
       <div className="bg-transparent py-12 pb-6 max-lg:py-10 max-lg:pb-4">
-        <div className="mx-auto max-w-[1280px] px-10 max-md:px-6">
-          <div className="mx-auto mb-18 max-w-[1100px] text-center max-lg:mb-12">
+        <div className="mx-auto max-w-7xl px-10 max-md:px-6">
+          <div className="mx-auto mb-18 max-w-275 text-center max-lg:mb-12">
             <span className="mb-4 inline-block font-mono text-[11px] font-medium tracking-[0.14em] text-gold-500 uppercase">
               FAQ
             </span>
@@ -34,8 +34,8 @@ export function Faq() {
 
       {/* Accordion (gold-tinted) */}
       <div className="bg-[color-mix(in_oklab,var(--color-gold-50)_20%,var(--color-surface-base))] py-8 pt-8 pb-12 max-lg:py-6 max-lg:pb-10">
-        <div className="mx-auto max-w-[1280px] px-10 max-md:px-6">
-          <div className="mx-auto max-w-[1100px]">
+        <div className="mx-auto max-w-7xl px-10 max-md:px-6">
+          <div className="mx-auto max-w-275">
             {FAQ_ITEMS.map((item, i) => {
               const isOpen = openIdx === i;
               return (
@@ -83,7 +83,7 @@ export function Faq() {
                     style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
                   >
                     <div className="overflow-hidden">
-                      <div className="ml-0 max-w-[800px] border-l-2 border-gold-300 px-4 pt-1 pr-2 pb-6 text-[15.5px] leading-[1.6] tracking-[-0.003em] text-neutral-700 [&>p+p]:mt-3.5 [&>p]:m-0">
+                      <div className="ml-0 max-w-200 border-l-2 border-gold-300 px-4 pt-1 pr-2 pb-6 text-[15.5px] leading-[1.6] tracking-[-0.003em] text-neutral-700 [&>p+p]:mt-3.5 [&>p]:m-0">
                         {item.answer}
                       </div>
                     </div>
