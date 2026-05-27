@@ -1006,4 +1006,3 @@ function getStylePreset(style?: string): StylePreset {
       return {};
   }
 }
-
