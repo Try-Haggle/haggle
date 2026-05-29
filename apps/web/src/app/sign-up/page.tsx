@@ -46,7 +46,8 @@ function SignUpForm() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        router.replace(defaultNext);
+        const redirectTo = token ? `/sell/dashboard?claim=${token}` : defaultNext;
+        router.replace(redirectTo);
       } else {
         setCheckingAuth(false);
       }

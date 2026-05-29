@@ -10,6 +10,10 @@ import type { CoreMemory, RoundFact } from '../types.js';
 
 export type MemoEncoding = 'codec' | 'raw';
 
+function toDollars(minor: number | undefined | null): string {
+  return ((minor ?? 0) / 100).toFixed(2);
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -77,25 +81,25 @@ function encodeSharedLayer(memory: CoreMemory, recentFacts?: RoundFact[]): strin
     `NS:${session.phase}|R${session.round}/${session.max_rounds}|${session.role}|${session.intervention_mode}`,
   );
 
-  // PT: Price Trajectory
+  // PT: Price Trajectory (USD)
   const gapPct = boundaries.my_target !== 0
     ? ((boundaries.gap / Math.abs(boundaries.my_target)) * 100).toFixed(1)
     : '0.0';
   lines.push(
-    `PT:${boundaries.current_offer}→${boundaries.opponent_offer}|gap:${boundaries.gap}(${gapPct}%)`,
+    `PT:$${toDollars(boundaries.current_offer)}→$${toDollars(boundaries.opponent_offer)}|gap:$${toDollars(boundaries.gap)}(${gapPct}%)`,
   );
 
-  // CL: Coaching Layer
+  // CL: Coaching Layer (USD)
   lines.push(
-    `CL:rec:${coaching.recommended_price}|tactic:${coaching.suggested_tactic}|opp:${coaching.opponent_pattern}|conv:${coaching.convergence_rate.toFixed(2)}`,
+    `CL:rec:$${toDollars(coaching.recommended_price)}|tactic:${coaching.suggested_tactic}|opp:${coaching.opponent_pattern}|conv:${coaching.convergence_rate.toFixed(2)}`,
   );
 
-  // RM: Round Memory (recent facts, last 5)
+  // RM: Round Memory (recent facts, last 5, USD)
   if (recentFacts && recentFacts.length > 0) {
     const recent = recentFacts.slice(-5);
     const rmEntries = recent.map((f) => {
       const tactic = f.buyer_tactic || f.seller_tactic || '';
-      return `R${f.round}:${f.buyer_offer}→${f.seller_offer}${tactic ? '|t:' + tactic : ''}`;
+      return `R${f.round}:$${toDollars(f.buyer_offer)}→$${toDollars(f.seller_offer)}${tactic ? '|t:' + tactic : ''}`;
     });
     lines.push('RM:' + rmEntries.join('|'));
   }
@@ -113,7 +117,7 @@ function encodePrivateLayer(memory: CoreMemory): string {
 
   // SS: Strategy Snapshot
   const beta = buddy_dna.style === 'aggressive' ? 2.0 : buddy_dna.style === 'defensive' ? 0.5 : 1.5;
-  lines.push(`SS:t:${boundaries.my_target}|f:${boundaries.my_floor}|β:${beta.toFixed(1)}`);
+  lines.push(`SS:t:$${toDollars(boundaries.my_target)}|f:$${toDollars(boundaries.my_floor)}|β:${beta.toFixed(1)}`);
 
   // OM: Opponent Model
   const oppAgg = coaching.opponent_pattern === 'BOULWARE' ? 0.8

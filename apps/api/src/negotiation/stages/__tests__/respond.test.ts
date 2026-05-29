@@ -81,7 +81,7 @@ describe('Stage 5: respond', () => {
     });
 
     expect(result.message).toBeTruthy();
-    expect(result.message).toContain('$86000');
+    expect(result.message).toContain('$860.00');
     expect(result.tone).toBe('professional');
   });
 

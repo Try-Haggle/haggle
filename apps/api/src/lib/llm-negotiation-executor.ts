@@ -267,7 +267,7 @@ export async function executeLLMNegotiationRound(
         reasoningUsed = useReasoning;
 
         // Build prompts
-        const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext());
+        const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext(), updatedMemory.session.role);
         const userPrompt = adapter.buildUserPrompt(updatedMemory, facts.slice(-5));
 
         // Call LLM

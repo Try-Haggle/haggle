@@ -1301,8 +1301,8 @@ export default function App() {
                   type="button"
                   className="btn-primary listing-live__dashboard-btn"
                   onClick={() => {
-                    // TODO: change to https://tryhaggle.ai for production
-                    window.open(`http://localhost:3000/sign-up?token=${publishResult.claimToken}`, "_blank");
+                    const appUrl = import.meta.env.VITE_APP_URL ?? "http://localhost:3000";
+                    window.open(`${appUrl}/sign-up?token=${publishResult.claimToken}`, "_blank");
                   }}
                 >
                   Go to Dashboard

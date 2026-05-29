@@ -8,6 +8,10 @@ import type {
 } from '../types.js';
 import { NEGOTIATION_PROTOCOL_RULES } from '../prompts/protocol-rules.js';
 
+function toDollars(minor: number): string {
+  return ((minor ?? 0) / 100).toFixed(2);
+}
+
 /**
  * Assemble context layers for LLM prompt construction.
  * Each layer is independent — adapter decides how to combine/compress them.
@@ -26,7 +30,7 @@ export function assembleContextLayers(params: {
   const L0_protocol = NEGOTIATION_PROTOCOL_RULES;
 
   // L1: Model-specific system prompt
-  const L1_model = adapter.buildSystemPrompt(skill.getLLMContext());
+  const L1_model = adapter.buildSystemPrompt(skill.getLLMContext(), memory.session.role);
 
   // L2: Skill context (category expertise, tactics, constraints)
   const L2_skill = buildSkillLayer(skill);
@@ -66,12 +70,12 @@ function buildSkillLayer(skill: NegotiationSkill): string {
 
 function buildCoachingLayer(coaching: RefereeCoaching, level: 'DETAILED' | 'STANDARD' | 'LIGHT'): string {
   if (level === 'LIGHT') {
-    return `rec:${coaching.recommended_price}|tactic:${coaching.suggested_tactic}|opp:${coaching.opponent_pattern}`;
+    return `rec:$${toDollars(coaching.recommended_price)}|tactic:${coaching.suggested_tactic}|opp:${coaching.opponent_pattern}`;
   }
 
   const parts: string[] = [];
-  parts.push(`Recommended price: $${coaching.recommended_price}`);
-  parts.push(`Acceptable range: $${coaching.acceptable_range.min}-$${coaching.acceptable_range.max}`);
+  parts.push(`Recommended price: $${toDollars(coaching.recommended_price)}`);
+  parts.push(`Acceptable range: $${toDollars(coaching.acceptable_range.min)}-$${toDollars(coaching.acceptable_range.max)}`);
   parts.push(`Suggested tactic: ${coaching.suggested_tactic}`);
   parts.push(`Opponent pattern: ${coaching.opponent_pattern}`);
 
@@ -95,7 +99,7 @@ function buildHistoryLayer(facts: RoundFact[]): string {
   if (facts.length === 0) return '';
 
   return facts.map((f) => {
-    let line = `R${f.round}[${f.phase}]: buyer=$${f.buyer_offer} seller=$${f.seller_offer} gap=$${f.gap}`;
+    let line = `R${f.round}[${f.phase}]: buyer=$${toDollars(f.buyer_offer)} seller=$${toDollars(f.seller_offer)} gap=$${toDollars(f.gap)}`;
     if (f.buyer_tactic) line += ` bt:${f.buyer_tactic}`;
     if (f.seller_tactic) line += ` st:${f.seller_tactic}`;
     if (Object.keys(f.conditions_changed).length > 0) {

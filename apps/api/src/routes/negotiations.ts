@@ -5,6 +5,7 @@ import { sql, type Database, listingsPublished, eq } from "@haggle/db";
 import type { NotificationBus } from "../notification/index.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import {
+  compileStrategySnapshot,
   computeHnpProposalHash,
   createHnpAgreementObject,
   createHnpTransactionHandoff,
@@ -20,6 +21,7 @@ import {
   createSession,
   getSessionById,
   getSessionsByUserId,
+  setSessionPerspective,
   updateSessionState,
 } from "../services/negotiation-session.service.js";
 import { createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
@@ -35,6 +37,11 @@ import {
 import { evaluateNegotiationStartReadiness } from "../services/negotiation-readiness.service.js";
 import { loadUserMemoryBrief } from "../services/user-memory-card.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
+import {
+  getPublishedListingByPublicId,
+  getListingPlaybackSummaryByInternalId,
+} from "../services/draft.service.js";
+import { loadListingStrategyContext } from "../services/listing-strategy.service.js";
 
 // ── Zod Schemas ────────────────────────────────────────────
 
@@ -49,6 +56,30 @@ const createSessionSchema = z.object({
   group_id: z.string().uuid().optional(),
   intent_id: z.string().uuid().optional(),
   expires_at: z.string().datetime().optional(),
+});
+
+// Body for POST /negotiations/start — buyer-side entry from the web listing page.
+const startSessionSchema = z.object({
+  listing_public_id: z.string().min(1),
+  agent_preset_id: z.string().min(1),
+  agent_weights: z.record(z.number()).optional(),
+  agent_overrides: z.record(z.unknown()).optional(),
+  advisor_memory: z
+    .object({
+      budgetMax: z.number().positive().optional(),
+      targetPrice: z.number().positive().optional(),
+      mustHave: z.array(z.string()).optional(),
+      avoid: z.array(z.string()).optional(),
+      riskStyle: z.string().optional(),
+      negotiationStyle: z.string().optional(),
+      openingTactic: z.string().optional(),
+      categoryInterest: z.string().optional(),
+      questions: z.array(z.string()).optional(),
+      source: z.array(z.string()).optional(),
+    })
+    .passthrough()
+    .optional(),
+  deadline_hours: z.number().positive().max(24 * 14).optional(),
 });
 
 const hnpEnvelopeSchema = z.object({
@@ -293,18 +324,26 @@ export function registerNegotiationRoutes(
   // GET /negotiations/sessions/:id — 세션 상태 + 라운드 이력
   app.get<{ Params: { id: string } }>(
     "/negotiations/sessions/:id",
-    { preHandler: [requireAuth] },
     async (request, reply) => {
       const session = await getSessionById(db, request.params.id);
       if (!session) {
         return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
       }
-      const access = validateSessionParticipant(request.user!, session);
-      if (!access.ok) {
-        return reply.code(access.status).send({ error: access.error });
+      if (request.user) {
+        const access = validateSessionParticipant(request.user, session);
+        if (!access.ok) {
+          return reply.code(access.status).send({ error: access.error });
+        }
       }
 
-      const rounds = await getRoundsBySessionId(db, session.id);
+      const [rounds, listing] = await Promise.all([
+        getRoundsBySessionId(db, session.id),
+        getListingPlaybackSummaryByInternalId(db, session.listingId),
+      ]);
+
+      // Surface only the buyer-agent preset id from strategy_snapshot; the
+      // rest of the strategy stays private.
+      const buyerAgentPresetId = extractBuyerAgentPresetId(session.strategySnapshot);
 
       // 공정함: utility 점수 공개, 상대방 전략 파라미터 비공개
       return reply.send({
@@ -321,6 +360,17 @@ export function registerNegotiationRoutes(
           expires_at: session.expiresAt,
           created_at: session.createdAt,
           updated_at: session.updatedAt,
+          buyer_agent_preset_id: buyerAgentPresetId,
+          listing: listing
+            ? {
+                public_id: listing.publicId,
+                title: listing.title,
+                photo_url: listing.photoUrl,
+                target_price: listing.targetPrice,
+                category: listing.category,
+                seller_agent_preset: listing.sellerAgentPreset,
+              }
+            : null,
         },
         rounds: rounds.map((r) => ({
           id: r.id,
@@ -331,6 +381,10 @@ export function registerNegotiationRoutes(
           counter_price_minor: r.counterPriceMinor,
           utility: r.utility,
           decision: r.decision,
+          message: r.message,
+          phase_at_round: r.phaseAtRound,
+          tactic_used: r.tacticUsed,
+          concession_rate: r.concessionRate,
           created_at: r.createdAt,
         })),
       });
@@ -783,6 +837,243 @@ export function registerNegotiationRoutes(
     },
   );
 
+  // POST /negotiations/start — 구매자가 리스팅 페이지에서 협상 시작
+  //
+  // 웹 입구. 인증된 구매자가 (publicId, 선택한 에이전트, 채팅 메모리)만 보내면
+  // 서버가 판매자 전략 + 구매자 전략을 합성해 실제 세션을 생성하고 sessionId를
+  // 반환한다. 클라이언트는 이 sessionId로 협상 페이지에 진입한다.
+  app.post(
+    "/negotiations/start",
+    async (request, reply) => {
+      const parsed = startSessionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_START_REQUEST", issues: parsed.error.issues });
+      }
+      const body = parsed.data;
+      const isGuest = !request.user;
+      const buyer = request.user ?? { id: crypto.randomUUID() };
+
+      const listing = await getPublishedListingByPublicId(db, body.listing_public_id);
+      if (!listing) {
+        return reply.code(404).send({ error: "LISTING_NOT_FOUND" });
+      }
+      if (!listing.sellerId) {
+        return reply.code(409).send({ error: "LISTING_UNCLAIMED" });
+      }
+      if (!isGuest && listing.sellerId === buyer.id) {
+        return reply.code(403).send({ error: "BUYER_IS_SELLER" });
+      }
+
+      const listingContext = await loadListingStrategyContext(db, listing.id);
+      if (!listingContext || !listingContext.askPriceMinor || !listingContext.floorPriceMinor) {
+        return reply.code(409).send({ error: "LISTING_STRATEGY_INCOMPLETE" });
+      }
+
+      const askMinor = listingContext.askPriceMinor;
+      const floorMinor = listingContext.floorPriceMinor;
+      const listedAtMs = listingContext.listedAtMs;
+      const nowMs = Date.now();
+      const buyerDeadlineMs = nowMs + (body.deadline_hours ?? 24) * 60 * 60 * 1000;
+      const effectiveDeadlineMs = listingContext.deadlineAtMs
+        ? Math.max(nowMs + 1, Math.min(buyerDeadlineMs, listingContext.deadlineAtMs))
+        : buyerDeadlineMs;
+      const timeTotalMs = Math.max(1, effectiveDeadlineMs - listedAtMs);
+
+      // Buyer target/reservation: prefer advisor memory budgetMax/targetPrice
+      // (decimal dollars), else infer from listing price (10% discount target,
+      // ask price as walk-away).
+      const advisor = body.advisor_memory;
+      const budgetMaxMinor = toMinorOrUndefined(advisor?.budgetMax);
+      const targetPriceMinor = toMinorOrUndefined(advisor?.targetPrice);
+      const buyerReservation = budgetMaxMinor ?? askMinor;
+      const buyerTarget = targetPriceMinor ?? Math.max(floorMinor, Math.round(askMinor * 0.9));
+      if (buyerTarget >= buyerReservation) {
+        return reply.code(400).send({ error: "INVALID_PRICE_RANGE" });
+      }
+
+      const styleDefaults = mapStyleToDefaults(advisor?.negotiationStyle);
+      const sellerStrategy = listingContext.sellerStrategy;
+      const sellerAdvisorMemory = listingContext.sellerAdvisorMemory;
+      if (!sellerStrategy) {
+        return reply.code(409).send({ error: "LISTING_STRATEGY_INCOMPLETE" });
+      }
+
+      const buyerRequestedStrategy = {
+        style: styleDefaults.style,
+        p_reservation: buyerReservation,
+        p_target: buyerTarget,
+        p_initial: buyerTarget,
+        t_max: timeTotalMs,
+        created_at_ms: listedAtMs,
+        deadline_at_ms: effectiveDeadlineMs,
+        alpha: styleDefaults.alpha,
+        thresholds: styleDefaults.thresholds,
+        concession: styleDefaults.concession,
+        agent: {
+          preset_id: body.agent_preset_id,
+          weights: body.agent_weights ?? null,
+          overrides: body.agent_overrides ?? null,
+        },
+        ...(advisor ? { advisor_memory: advisor } : {}),
+      };
+
+      // Auto-play loop: cap rounds and add max_rounds to both perspectives so
+      // the executor's round-limit check fires symmetrically.
+      const AUTO_PLAY_MAX_ROUNDS = 8;
+
+      // Buyer-side compiled snapshot (mirror of the seller one).
+      const buyerCompiled = compileStrategySnapshot({
+        role: "BUYER",
+        userId: buyer.id,
+        strategyId: `buyer_${body.agent_preset_id}`,
+        preset: undefined,
+        agentStats: undefined,
+        listing: {
+          id: listing.id,
+          category: null,
+          condition: null,
+          targetPriceMinor: buyerTarget,
+          floorPriceMinor: buyerReservation,
+          listedAtMs,
+          deadlineAtMs: effectiveDeadlineMs,
+        },
+        nowMs,
+      });
+
+      const listingContextSnapshot = listingContext.listingContext;
+      const sellerAgentPresetId = listingContext.sellerAgentPresetId;
+      const sellerSnapshot: Record<string, unknown> = {
+        ...sellerStrategy,
+        max_rounds: AUTO_PLAY_MAX_ROUNDS,
+        ...(sellerAdvisorMemory ? { seller_advisor_memory: sellerAdvisorMemory } : {}),
+        ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
+        ...(sellerAgentPresetId ? { agent_preset_id: sellerAgentPresetId } : {}),
+        buyer_requested_strategy: buyerRequestedStrategy,
+      };
+      const buyerSnapshot: Record<string, unknown> = {
+        ...buyerCompiled,
+        max_rounds: AUTO_PLAY_MAX_ROUNDS,
+        ...(advisor ? { buyer_advisor_memory: advisor } : {}),
+        ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
+        agent_preset_id: body.agent_preset_id,
+        ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
+        ...(body.agent_overrides ? { agent_overrides: body.agent_overrides } : {}),
+        buyer_requested_strategy: buyerRequestedStrategy,
+      };
+
+      const strategyId = sellerStrategy.compiler.selected_playbook;
+      const expiresAt = new Date(effectiveDeadlineMs);
+
+      // Session starts in SELLER POV — round 1 is the buyer's opening offer.
+      const session = await createSession(db, {
+        listingId: listing.id,
+        strategyId,
+        role: "SELLER",
+        buyerId: buyer.id,
+        sellerId: listing.sellerId,
+        counterpartyId: buyer.id,
+        strategySnapshot: sellerSnapshot,
+        expiresAt,
+      });
+
+      // Drive both sides through the staged executor by swapping the session's
+      // role + strategy_snapshot before each call. This is the simplest way to
+      // get a back-and-forth LLM transcript persisted under one session id.
+      const TERMINAL = new Set([
+        "ACCEPTED",
+        "REJECTED",
+        "EXPIRED",
+        "SUPERSEDED",
+        "NEAR_DEAL",
+      ]);
+      const executor = getExecutor();
+      let nextSenderRole: "BUYER" | "SELLER" = "BUYER";
+      let nextOfferMinor = buyerTarget;
+      let prevOfferMinor: number | null = null;
+      let prevMessageText: string | null = null;
+      for (let i = 0; i < AUTO_PLAY_MAX_ROUNDS; i++) {
+        const responderRole: "BUYER" | "SELLER" =
+          nextSenderRole === "BUYER" ? "SELLER" : "BUYER";
+        const responderSnapshot =
+          responderRole === "SELLER" ? sellerSnapshot : buyerSnapshot;
+
+        try {
+          await setSessionPerspective(db, session.id, responderRole, responderSnapshot);
+        } catch (err) {
+          console.error("[negotiations/start] perspective swap failed:", err);
+          break;
+        }
+
+        // Preferred path: forward the prior round's persisted message so the
+        // engine's understand() stage sees the same conversational signal the
+        // counterparty actually saw. Fall back to a synthesized stub only for
+        // round 1 (no prior message) or if persistence somehow returned empty.
+        const offerDollars = (nextOfferMinor / 100).toFixed(2);
+        const fallbackText =
+          i === 0
+            ? `Hi, I'm interested in this listing. I'd like to offer $${offerDollars}.`
+            : prevOfferMinor != null && nextOfferMinor !== prevOfferMinor
+              ? `Thanks for the response. I can do $${offerDollars}.`
+              : `I'll stay at $${offerDollars} for now.`;
+        const messageText =
+          prevMessageText && prevMessageText.trim().length > 0
+            ? prevMessageText
+            : fallbackText;
+
+        let result;
+        try {
+          result = await executor(db, {
+            sessionId: session.id,
+            offerPriceMinor: nextOfferMinor,
+            senderRole: nextSenderRole,
+            messageText,
+            idempotencyKey: `auto-${session.id}-r${i + 1}`,
+            roundData: {},
+            nowMs: Date.now(),
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (
+            msg.startsWith("ROUND_LIMIT_EXCEEDED") ||
+            msg.startsWith("SESSION_TERMINAL") ||
+            msg.startsWith("SESSION_EXPIRED") ||
+            msg.startsWith("SESSION_MAX_ROUNDS_EXCEEDED")
+          ) {
+            break;
+          }
+          console.error("[negotiations/start] auto-play executor error:", err);
+          break;
+        }
+
+        if (TERMINAL.has(result.sessionStatus)) break;
+        // Belt-and-suspenders: REJECT decisions should never roll forward as a
+        // synthetic counter even if status mapping somehow leaves the session
+        // ACTIVE. Stop the loop and let the UI render the final rejection.
+        if (result.decision === "REJECT") break;
+        // Guard against the (rare) case where outgoingPrice came back as 0
+        // (e.g. REJECT without termination). Avoid offering $0 as a counter.
+        if (!result.outgoingPrice || result.outgoingPrice <= 0) break;
+
+        nextSenderRole = responderRole;
+        prevOfferMinor = nextOfferMinor;
+        // Buyer's counter must never go below their initial offer — clamp to [buyerTarget, ∞).
+        nextOfferMinor = responderRole === "BUYER"
+          ? Math.max(buyerTarget, result.outgoingPrice)
+          : result.outgoingPrice;
+        prevMessageText = result.message ?? null;
+      }
+
+      const finalSession = (await getSessionById(db, session.id)) ?? session;
+      return reply
+        .code(201)
+        .send({
+          session_id: session.id,
+          status: finalSession.status,
+          ...(isGuest ? { guest_buyer_id: buyer.id } : {}),
+        });
+    },
+  );
+
   // POST /negotiations/sessions/expire-stale — cron 벌크 만료
   // Vercel Cron 또는 외부 scheduler에서 호출
   app.post(
@@ -809,6 +1100,62 @@ export function registerNegotiationRoutes(
 
 function isAuthorizedSessionCreator(actorId: string, data: CreateSessionBody): boolean {
   return data.role === "BUYER" ? data.buyer_id === actorId : data.seller_id === actorId;
+}
+
+// Pull the buyer-side preset id out of strategy_snapshot. Sessions created by
+// POST /negotiations/start nest it under buyer_requested_strategy.agent.preset_id;
+// older code paths may store it at strategy_snapshot.agent.preset_id directly.
+function extractBuyerAgentPresetId(snapshot: Record<string, unknown> | null | undefined): string | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const buyerStrategy = (snapshot as Record<string, unknown>).buyer_requested_strategy as
+    | Record<string, unknown>
+    | undefined;
+  const buyerAgent = buyerStrategy?.agent as Record<string, unknown> | undefined;
+  if (typeof buyerAgent?.preset_id === "string") return buyerAgent.preset_id;
+  const rootAgent = (snapshot as Record<string, unknown>).agent as Record<string, unknown> | undefined;
+  if (typeof rootAgent?.preset_id === "string") return rootAgent.preset_id;
+  return null;
+}
+
+function toMinorOrUndefined(value: number | undefined | null): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  return Math.round(value * 100);
+}
+
+// Map a buyer-side negotiationStyle keyword to default alpha/threshold/concession
+// numbers. The buyer's AdvisorMemory only carries a coarse label ("defensive" |
+// "balanced" | "aggressive"); the engine still needs concrete parameters.
+function mapStyleToDefaults(style: string | undefined): {
+  style: string;
+  alpha: { price: number; time: number; reputation: number; satisfaction: number };
+  thresholds: { accept: number; counter: number; reject: number; near_deal: number };
+  concession: { beta: number; k: number };
+} {
+  switch (style) {
+    case "aggressive":
+      return {
+        style: "aggressive",
+        alpha: { price: 0.55, time: 0.15, reputation: 0.15, satisfaction: 0.15 },
+        thresholds: { accept: 0.82, counter: 0.5, reject: 0.25, near_deal: 0.75 },
+        concession: { beta: 0.35, k: 0.8 },
+      };
+    case "defensive":
+      return {
+        style: "patient",
+        alpha: { price: 0.4, time: 0.15, reputation: 0.3, satisfaction: 0.15 },
+        thresholds: { accept: 0.7, counter: 0.4, reject: 0.18, near_deal: 0.65 },
+        concession: { beta: 0.5, k: 1.0 },
+      };
+    case "balanced":
+    default:
+      return {
+        style: "balanced",
+        alpha: { price: 0.4, time: 0.25, reputation: 0.2, satisfaction: 0.15 },
+        thresholds: { accept: 0.78, counter: 0.45, reject: 0.2, near_deal: 0.72 },
+        concession: { beta: 0.6, k: 1.2 },
+      };
+  }
 }
 
 function validateSessionParticipant(

@@ -8,6 +8,7 @@ import {
   listPublishedListings,
   type ListPublishedSort,
 } from "../services/draft.service.js";
+import { extractListingContext } from "../services/listing-strategy.service.js";
 
 const SORT_VALUES = ["newest", "price_asc", "price_desc"] as const;
 
@@ -229,16 +230,24 @@ export function registerPublicListingRoutes(
 
     // Don't expose floorPrice, sellerId, or internal strategy details to buyers
     const { strategyConfig, sellerId, ...publicFields } = listing;
+    const cfg = (strategyConfig as Record<string, unknown> | null) ?? {};
 
     // Only expose the seller's agent preset name (not thresholds)
-    const sellerAgentPreset =
-      (strategyConfig as Record<string, unknown> | null)?.preset ?? null;
+    const sellerAgentPreset = cfg.preset ?? null;
+    // Subtype + category-specific spec answers the seller filled in. These are
+    // product facts the seller chose to publish (battery health, storage,
+    // scratches, carrier lock, etc.) — buyers must see them to negotiate
+    // informedly. Floor price, agent weights, and advisor memory stay hidden.
+    const subtype = typeof cfg.subtype === "string" ? cfg.subtype : null;
+    const attributes = extractListingContext(listing, cfg).attributes ?? null;
 
     return reply.send({
       ok: true,
       listing: {
         ...publicFields,
         sellerAgentPreset,
+        subtype,
+        attributes,
       },
       // Included for ownership check — not sensitive (just a UUID)
       sellerId,

@@ -75,6 +75,19 @@ vi.mock("../../lib/negotiation-executor.js", () => ({
   executeNegotiationRound: (...args: unknown[]) => mockExecuteNegotiationRound(...args),
 }));
 
+vi.mock("../../lib/executor-factory.js", () => ({
+  getExecutor: () => (...args: unknown[]) => mockExecuteNegotiationRound(...args),
+  getPipelineMode: () => "staged",
+}));
+
+vi.mock("../../services/listing-strategy.service.js", () => ({
+  loadListingStrategyContext: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../../notification/get-user-info.js", () => ({
+  getNotificationUserInfo: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("../../lib/group-executor.js", () => ({
   executeGroupOrchestration: (...args: unknown[]) => mockExecuteGroupOrchestration(...args),
   executeGroupTerminal: (...args: unknown[]) => mockExecuteGroupTerminal(...args),
@@ -222,6 +235,7 @@ vi.mock("../../services/draft.service.js", () => ({
   publishDraft: vi.fn().mockResolvedValue(null),
   getListingsByUserId: vi.fn().mockResolvedValue([]),
   getListingByIdForUser: vi.fn().mockResolvedValue(null),
+  getListingPlaybackSummaryByInternalId: vi.fn().mockResolvedValue(null),
 }));
 
 // ─── Test fixtures ────────────────────────────────────────────────────

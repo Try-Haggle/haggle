@@ -18,7 +18,7 @@ import { callLLM } from '../adapters/xai-client.js';
  * - All other cases → Skill rule-based (fallback when LLM unavailable)
  */
 export async function decide(input: DecideInput): Promise<DecideOutput> {
-  const { context, adapter, skill, phase, config, memory, facts, opponent } = input;
+  const { context, adapter, skill, phase, config, memory, facts, opponent, conversation } = input;
   const startMs = Date.now();
 
   // Step 1: Skill evaluateOffer (rule-based fallback, LLM augments in BARGAINING)
@@ -34,8 +34,15 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
   let llmRaw: string | undefined;
   let tokens: DecideOutput['tokens'];
 
-  // Step 2: BARGAINING + COUNTER → LLM augmentation
-  if (phase === 'BARGAINING' && decision.action === 'COUNTER') {
+  // Step 2: LLM augmentation.
+  // We let the LLM craft the actual move in OPENING and BARGAINING when the
+  // skill produced a COUNTER. OPENING is included because that's where the
+  // first anchor is made — leaving it to the deterministic skill alone made
+  // every negotiation feel mechanical and stuck on a single price.
+  const llmEligible =
+    (phase === 'OPENING' || phase === 'BARGAINING') &&
+    decision.action === 'COUNTER';
+  if (llmEligible) {
     try {
       const useReasoning = config.reasoningEnabled && shouldUseReasoning({
         gap: memory.boundaries.gap,
@@ -49,11 +56,13 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
       reasoningMode = useReasoning;
 
       // Build prompts
-      const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext());
+      const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext(), memory.session.role);
       const userPrompt = adapter.buildUserPrompt(
         memory,
         facts.slice(-5),
         signalLinesFromContext(context),
+        undefined,
+        conversation,
       );
 
       // Call LLM

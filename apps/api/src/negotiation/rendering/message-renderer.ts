@@ -6,6 +6,11 @@ import type {
   BuddyTone,
 } from '../types.js';
 
+function formatPriceMinor(minor: number | undefined): string {
+  if (minor == null) return '';
+  return `$${(minor / 100).toFixed(2)}`;
+}
+
 interface RenderContext {
   phase: NegotiationPhase;
   role: 'buyer' | 'seller';
@@ -64,7 +69,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const priceStr = price ? `$${price}` : '';
+    const priceStr = price ? formatPriceMinor(price) : '';
     const { style, formality } = tone;
 
     switch (action) {
@@ -172,7 +177,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const priceStr = price ? `$${price}` : '';
+    const priceStr = price ? formatPriceMinor(price) : '';
     const { style } = tone;
 
     switch (action) {
@@ -246,7 +251,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const p = price ? `$${price}` : '';
+    const p = price ? formatPriceMinor(price) : '';
     switch (action) {
       case 'COUNTER': return tone.style === 'professional' ? `${p}をご提案いたします。` : `${p}はいかがでしょうか？`;
       case 'ACCEPT': return tone.style === 'professional' ? `${p ? `${p}で` : ''}合意いたします。` : `${p ? `${p}で` : ''}取引成立！`;
@@ -267,7 +272,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const p = price ? `$${price}` : '';
+    const p = price ? formatPriceMinor(price) : '';
     switch (action) {
       case 'COUNTER': return tone.style === 'professional' ? `我提议${p}。` : `${p}怎么样？`;
       case 'ACCEPT': return tone.style === 'professional' ? `${p ? `以${p}` : ''}达成协议。` : `${p ? `${p}` : ''}成交！`;
@@ -288,7 +293,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const p = price ? `$${price}` : '';
+    const p = price ? formatPriceMinor(price) : '';
     switch (action) {
       case 'COUNTER': return tone.style === 'professional' ? `Me gustaría proponer ${p}.` : `¿Qué te parece ${p}?`;
       case 'ACCEPT': return tone.style === 'professional' ? `De acuerdo${p ? ` en ${p}` : ''}. Procedamos.` : `¡Trato hecho${p ? ` en ${p}` : ''}!`;
@@ -309,7 +314,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const p = price ? `$${price}` : '';
+    const p = price ? formatPriceMinor(price) : '';
     switch (action) {
       case 'COUNTER': return tone.style === 'professional' ? `Tôi đề xuất mức giá ${p}.` : `${p} được không bạn?`;
       case 'ACCEPT': return tone.style === 'professional' ? `Đồng ý${p ? ` với giá ${p}` : ''}. Tiến hành giao dịch.` : `Deal${p ? ` ${p}` : ''}! Tuyệt vời!`;
@@ -330,7 +335,7 @@ export class TemplateMessageRenderer implements MessageRenderer {
     role: 'buyer' | 'seller',
     phase: NegotiationPhase,
   ): string {
-    const p = price ? `$${price}` : '';
+    const p = price ? formatPriceMinor(price) : '';
     switch (action) {
       case 'COUNTER': return tone.style === 'professional' ? `Gusto kong mag-alok ng ${p}.` : `Paano kung ${p}?`;
       case 'ACCEPT': return tone.style === 'professional' ? `Payag ako${p ? ` sa ${p}` : ''}. Ituloy natin.` : `Deal${p ? ` sa ${p}` : ''}! Ayos!`;

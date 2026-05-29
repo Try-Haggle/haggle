@@ -127,6 +127,22 @@ vi.mock("../lib/negotiation-executor.js", () => ({
   executeNegotiationRound: (...args: unknown[]) => mockExecuteNegotiationRound(...args),
 }));
 
+// POST /offers now goes through executor-factory.getExecutor() instead of
+// calling executeNegotiationRound directly. Route the factory through the
+// same mockExecuteNegotiationRound so existing test setups keep working.
+vi.mock("../lib/executor-factory.js", () => ({
+  getExecutor: () => (...args: unknown[]) => mockExecuteNegotiationRound(...args),
+  getPipelineMode: () => "staged",
+}));
+
+vi.mock("../services/listing-strategy.service.js", () => ({
+  loadListingStrategyContext: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../notification/get-user-info.js", () => ({
+  getNotificationUserInfo: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("../lib/group-executor.js", () => ({
   executeGroupOrchestration: (...args: unknown[]) => mockExecuteGroupOrchestration(...args),
   executeGroupTerminal: (...args: unknown[]) => mockExecuteGroupTerminal(...args),
@@ -259,6 +275,7 @@ vi.mock("../services/draft.service.js", () => ({
   updateDraft: vi.fn().mockResolvedValue(null),
   deleteDraft: vi.fn().mockResolvedValue(null),
   publishDraft: vi.fn().mockResolvedValue(null),
+  getListingPlaybackSummaryByInternalId: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../lib/action-handlers.js", () => ({
@@ -543,9 +560,21 @@ describe("Negotiation API", () => {
   // ═══════════════════════════════════════════════════════════════════
 
   describe("GET /negotiations/sessions/:id", () => {
-    it("returns 401 without auth", async () => {
+    it("is publicly readable (no auth required) — returns 404 for unknown without auth", async () => {
+      // GET /sessions/:id is intentionally auth-optional so unauthenticated
+      // viewers can read session pages (e.g., shared playback links).
+      // Without an existing session it still returns 404.
       const res = await app.inject({ method: "GET", url: "/negotiations/sessions/sess-001" });
-      expect(res.statusCode).toBe(401);
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error).toBe("SESSION_NOT_FOUND");
+    });
+
+    it("returns the session payload to unauthenticated viewers when it exists", async () => {
+      mockGetSessionById.mockResolvedValue(mockSession);
+      mockGetRoundsBySessionId.mockResolvedValue([mockRound]);
+      const res = await app.inject({ method: "GET", url: "/negotiations/sessions/sess-001" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().session.id).toBe("sess-001");
     });
 
     it("returns 404 for unknown session", async () => {

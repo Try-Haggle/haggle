@@ -1,13 +1,18 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { StrategyChat, loadSelectedAgentId } from "./strategy-chat";
+import {
+  StrategyChat,
+  loadSelectedAgentId,
+  type AdvisorMemory,
+} from "./strategy-chat";
 import {
   AgentBuilder,
   type AgentBuilderValue,
 } from "@/app/(app)/sell/agents/_components/AgentBuilder";
 import { Nav } from "@/components/nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
+import { api, ApiError } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -24,9 +29,25 @@ interface Listing {
   tags: string[] | null;
   sellerAgentPreset: string | null;
   sellingDeadline: string | null;
+  subtype: string | null;
+  attributes: Record<string, unknown> | null;
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
+
+const PHONE_ATTR_LABELS: Record<string, string> = {
+  storage: "Storage",
+  batteryHealth: "Battery",
+  carrierLock: "Carrier",
+  screenCondition: "Screen",
+};
+
+function formatAttrValue(key: string, value: unknown): string {
+  const v = String(value);
+  if (key === "batteryHealth" && /^\d+$/.test(v)) return `${v}%`;
+  if (key === "carrierLock") return v === "unlocked" ? "Unlocked" : v === "locked" ? "Locked" : v;
+  return v;
+}
 
 function formatPrice(price: string | null): string {
   if (!price) return "$0";
@@ -93,6 +114,7 @@ const ORIGIN_HREF: Record<Origin, string> = {
 export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
   const { track } = useAmplitude();
   const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
+  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
   const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
@@ -247,6 +269,24 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                     ))}
                   </div>
 
+                  {/* Phone specs */}
+                  {listing.attributes && Object.keys(listing.attributes).length > 0 && (
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {Object.entries(listing.attributes)
+                        .filter(([k]) => k in PHONE_ATTR_LABELS)
+                        .map(([k, v]) => (
+                          <div key={k} className="rounded-lg border border-slate-700 bg-slate-800/40 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                              {PHONE_ATTR_LABELS[k]}
+                            </p>
+                            <p className="mt-0.5 text-sm font-medium text-slate-200">
+                              {formatAttrValue(k, v)}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
                   {/* Description */}
                   {listing.description && (
                     <p className="mt-5 text-sm leading-relaxed text-slate-400">
@@ -319,6 +359,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                   listingTitle={listing.title}
                   listingCategory={listing.category}
                   listingPrice={listing.targetPrice}
+                  onMemoryUpdate={setAdvisorMemory}
                 />
               }
             />
@@ -347,17 +388,38 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                   <button
                     type="button"
                     disabled={!selectedAgent || negotiationState === "loading"}
-                    onClick={() => {
+                    onClick={async () => {
                       if (!selectedAgent) return;
 
                       setNegotiationState("loading");
                       setNegotiationMessage("Briefing your agent…");
-                      // Frontend-only entry: navigate straight into the playback view.
-                      // Session id encodes listing + agent so the mock picks a stable scenario.
-                      const sessionId = `${listing.publicId}-${selectedAgent.id}`;
-                      setTimeout(() => {
-                        window.location.href = `/buy/negotiations/${sessionId}`;
-                      }, 600);
+
+                      try {
+                        const res = await api.post<{ session_id: string }>(
+                          "/negotiations/start",
+                          {
+                            listing_public_id: listing.publicId,
+                            agent_preset_id: selectedAgent.id,
+                            agent_weights: agentValue?.effectivePreset.weights,
+                            agent_overrides: agentValue?.overrides ?? undefined,
+                            advisor_memory: advisorMemory ?? undefined,
+                          },
+                        );
+                        track("Negotiation Started", {
+                          public_id: listing.publicId,
+                          agent_preset: selectedAgent.id,
+                          has_advisor_memory: !!advisorMemory,
+                        });
+                        window.location.href = `/buy/negotiations/${res.session_id}`;
+                      } catch (err) {
+                        const apiErr = err instanceof ApiError ? err : null;
+                        setNegotiationState("error");
+                        setNegotiationMessage(
+                          apiErr?.message
+                            ?? apiErr?.code
+                            ?? "Couldn't start the negotiation. Please try again.",
+                        );
+                      }
                     }}
                     className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-white transition-colors ${negotiationState === "loading"
                         ? "cursor-wait bg-emerald-500 opacity-90"

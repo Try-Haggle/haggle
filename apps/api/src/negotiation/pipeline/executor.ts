@@ -29,6 +29,8 @@ import type {
   EngineDecision,
   CoreMemory,
   StageConfig,
+  ConversationContext,
+  ConversationTurn,
 } from '../types.js';
 import { DefaultEngineSkill } from '../skills/default-engine-skill.js';
 import { GrokFastAdapter } from '../adapters/grok-fast-adapter.js';
@@ -233,9 +235,17 @@ export async function executeStagedNegotiationRound(
     }
 
     // 6. Phase detection
+    // NEAR_DEAL is only checked from round 3 onward and uses a tight 5% threshold
+    // so the auto-play loop has time to actually negotiate (counter, concede, re-counter)
+    // before being declared "near a deal". A loose threshold on round 1 killed
+    // multi-round transcripts entirely.
     let currentPhase = updatedMemory.session.phase;
-    const isNearDeal = updatedMemory.boundaries.gap > 0 &&
-      (updatedMemory.boundaries.gap / Math.abs(updatedMemory.boundaries.my_target - updatedMemory.boundaries.my_floor || 1)) < 0.10;
+    const NEAR_DEAL_MIN_ROUND = 3;
+    const NEAR_DEAL_GAP_RATIO = 0.05;
+    const isNearDeal =
+      nextRound >= NEAR_DEAL_MIN_ROUND &&
+      updatedMemory.boundaries.gap > 0 &&
+      (updatedMemory.boundaries.gap / Math.abs(updatedMemory.boundaries.my_target - updatedMemory.boundaries.my_floor || 1)) < NEAR_DEAL_GAP_RATIO;
 
     const phaseEvent = detectPhaseEvent('COUNTER', currentPhase, isNearDeal, false);
     if (phaseEvent) {
@@ -290,6 +300,8 @@ export async function executeStagedNegotiationRound(
     const itemTags = sessionCategory ? [sessionCategory] : ['electronics'];
     const skillStack = SkillStack.fromTags(itemTags);
 
+    const conversation = buildConversationContext(dbRounds, input.messageText, input.senderRole, input.offerPriceMinor);
+
     const pipelineResult = await executePipeline(
       understood,
       input.offerPriceMinor,
@@ -309,6 +321,7 @@ export async function executeStagedNegotiationRound(
         l5_signals: l5Signals,
         memory_brief: memoryBrief,
         evermemo_brief: evermemoBrief,
+        conversation,
       },
     );
 
@@ -431,7 +444,13 @@ async function persistPipelineRound(tx: Database, params: PersistRoundParams): P
 
   const dbDecision = mapActionToDbDecision(decision.action);
   const dbStatus = phaseToDbStatus(phase, decision.action, dbSession.roundsNoConcession);
-  const outgoingPrice = decision.price ?? input.offerPriceMinor;
+  // For REJECT, we do NOT fall back to the incoming offer price — otherwise the
+  // auto-play loop reuses the rejected price as the next "counter", producing
+  // self-contradictory transcripts. ACCEPT/CONFIRM use the incoming price.
+  const outgoingPrice =
+    decision.action === 'REJECT'
+      ? 0
+      : (decision.price ?? input.offerPriceMinor);
   const messageType = mapActionToMessageType(decision.action, nextRound);
 
   const createdRound = await createRound(tx, {
@@ -682,6 +701,62 @@ function extractNum(obj: Record<string, unknown>, key: string): number | null {
     return Number.isNaN(n) ? null : n;
   }
   return null;
+}
+
+/**
+ * Build the conversation thread the LLM sees this round.
+ *
+ * - `opponent_message` is the message we are responding to right now (from
+ *   `input.messageText` if the API caller supplied one, else a short price
+ *   placeholder so the LLM still has *something* to react to).
+ * - `recent_turns` is the last few persisted rounds rendered as buyer/seller
+ *   chat turns. We use the column whose author actually generated the text
+ *   (see the sender-semantics note in page.tsx: when a row has a generated
+ *   `message`, the responder is the side OPPOSITE `sender_role`).
+ */
+function buildConversationContext(
+  dbRounds: DbRound[],
+  incomingMessage: string | undefined,
+  incomingSenderRole: 'BUYER' | 'SELLER',
+  incomingPriceMinor: number,
+): ConversationContext {
+  const turns: ConversationTurn[] = [];
+  for (const r of dbRounds) {
+    const raw = r as unknown as Record<string, unknown>;
+    const text = typeof raw.message === 'string' ? raw.message.trim() : '';
+    if (!text) continue;
+    // Generated message → speaker is the responder, i.e. opposite of sender_role.
+    const speaker: 'BUYER' | 'SELLER' = r.senderRole === 'BUYER' ? 'SELLER' : 'BUYER';
+    const priceStr = r.counterPriceMinor ?? r.priceminor;
+    const price = priceStr != null ? Number(priceStr) : undefined;
+    turns.push({
+      round: r.roundNo,
+      sender: speaker,
+      text,
+      price_minor: Number.isFinite(price) ? price : undefined,
+    });
+  }
+
+  // Cap to the last 6 turns so the prompt stays compact.
+  const recent_turns = turns.slice(-6);
+
+  const opponent_message =
+    typeof incomingMessage === 'string' && incomingMessage.trim().length > 0
+      ? incomingMessage.trim()
+      : undefined;
+
+  // Always append the incoming offer as the most recent turn so the LLM sees
+  // exactly what it's responding to. If no text, leave it implicit via memory.
+  if (opponent_message) {
+    recent_turns.push({
+      round: (dbRounds[dbRounds.length - 1]?.roundNo ?? 0) + 1,
+      sender: incomingSenderRole,
+      text: opponent_message,
+      price_minor: incomingPriceMinor,
+    });
+  }
+
+  return { opponent_message, recent_turns };
 }
 
 function extractPreviousMoves(dbRounds: DbRound[]): EngineDecision[] {

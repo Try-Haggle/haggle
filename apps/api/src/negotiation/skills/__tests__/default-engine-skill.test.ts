@@ -77,8 +77,9 @@ describe('DefaultEngineSkill', () => {
     const decision = await skill.generateMove(makeMemory('OPENING'), [], null, 'OPENING');
     expect(decision.action).toBe('COUNTER');
     expect(decision.price).toBeDefined();
-    // Buyer: target * 0.9 = 450
-    expect(decision.price).toBeLessThan(500);
+    // Buyer holds at their target during OPENING (anchoring below target would
+    // mean countering below the buyer's own initial offer).
+    expect(decision.price).toBe(500);
     expect(decision.tactic_used).toBe('anchoring');
   });
 
@@ -113,10 +114,36 @@ describe('DefaultEngineSkill', () => {
     expect(decision.action).toBe('ACCEPT');
   });
 
-  it('should evaluate offer beyond floor as REJECT', async () => {
+  it('should counter-anchor when offer is beyond floor with rounds remaining', async () => {
+    // New contract: do not immediately REJECT — real negotiations counter back
+    // toward target. REJECT is reserved for the last round or extreme prices.
     const decision = await skill.evaluateOffer(
       makeMemory('BARGAINING'),
       { price: 700 }, // above buyer floor (650) = too expensive
+      [], 'BARGAINING',
+    );
+    expect(decision.action).toBe('COUNTER');
+  });
+
+  it('should REJECT beyond-floor offer when no rounds remaining', async () => {
+    const decision = await skill.evaluateOffer(
+      makeMemory('BARGAINING', {
+        session: {
+          session_id: 'test', phase: 'BARGAINING', round: 14, rounds_remaining: 1,
+          role: 'buyer', max_rounds: 15, intervention_mode: 'FULL_AUTO',
+        },
+      }),
+      { price: 700 },
+      [], 'BARGAINING',
+    );
+    expect(decision.action).toBe('REJECT');
+  });
+
+  it('should REJECT extreme beyond-floor offer (>2× range)', async () => {
+    // target=500, floor=650 → range=150. 2× range=300. 1000 is 350 above floor → extreme.
+    const decision = await skill.evaluateOffer(
+      makeMemory('BARGAINING'),
+      { price: 1000 },
       [], 'BARGAINING',
     );
     expect(decision.action).toBe('REJECT');
