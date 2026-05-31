@@ -1,0 +1,51 @@
+name: DB Migrate
+
+# Runs db:migrate automatically after push to staging or main.
+# Safety: migrations only run AFTER CI passes (verify:migrations gate).
+# Staging runs first — prod only gets migrations that already passed staging.
+#
+# Required GitHub Secrets:
+#   STAGING_DATABASE_URL  — staging Supabase pooler URL
+#   PROD_DATABASE_URL     — prod Supabase pooler URL
+
+on:
+  push:
+    branches: [staging, main]
+
+concurrency:
+  group: migrate-${{ github.ref_name }}
+  cancel-in-progress: false  # never cancel a running migration
+
+jobs:
+  migrate:
+    name: Migrate (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Safety gate: verify journal integrity before touching DB
+      - name: Verify migration journal
+        run: pnpm verify:migrations
+
+      - name: Run migrations (staging)
+        if: github.ref_name == 'staging'
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm --filter @haggle/db db:migrate
+
+      - name: Run migrations (production)
+        if: github.ref_name == 'main'
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: pnpm --filter @haggle/db db:migrate

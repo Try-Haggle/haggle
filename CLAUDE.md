@@ -168,10 +168,21 @@ pnpm --filter @haggle/engine-session test
 
 ## 브랜치 전략
 
-| 브랜치 | 용도 |
-|--------|------|
-| `main` | MVP 전용 (협상 + 결제 + 배송 + 분쟁 + 스마트 컨트랙트) |
-| `feature/hnp-proto` | HNP Protobuf wire format (추후) |
+3환경(Local·Staging·Production) 워크플로우 — `feature → staging → main`:
+
+| 브랜치 | 용도 | 배포 환경 |
+|--------|------|----------|
+| `feature/*` | 기능 개발 (`staging`에서 분기) | 로컬만 |
+| `staging` | 통합 검증·리허설 (장수 브랜치) | `app.staging.tryhaggle.ai` |
+| `main` | 프로덕션 (검증된 것만 진입) | `app.tryhaggle.ai` |
+
+**규칙:**
+1. 모든 작업은 `staging`에서 feature 브랜치를 따서 시작
+2. feature → `staging` PR 머지 → staging 환경에서 통합 테스트
+3. 테스트 통과 후 `staging` → `main` **"Deploy PR"** 머지 → 프로덕션 배포
+4. `main`에는 staging을 거치지 않은 코드가 직접 들어가지 않음
+
+상세: [docs/wip/Environment_Separation_Playbook.md](./docs/wip/Environment_Separation_Playbook.md)
 
 ---
 
