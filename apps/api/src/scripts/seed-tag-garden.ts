@@ -692,7 +692,7 @@ async function main() {
   console.log(`${"═".repeat(55)}\n`);
 }
 
-main().catch((e) => {
+main().then(() => process.exit(0)).catch((e) => {
   console.error("Fatal:", e);
   process.exit(1);
 });

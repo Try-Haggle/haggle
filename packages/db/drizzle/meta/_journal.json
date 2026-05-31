@@ -190,6 +190,13 @@
       "when": 1741564825000,
       "tag": "0023_scope_round_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1748650000000,
+      "tag": "0024_missing_tables",
+      "breakpoints": true
     }
   ]
 }

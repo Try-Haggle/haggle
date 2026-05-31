@@ -86,5 +86,21 @@ INSERT INTO "category_relatedness" ("category_from", "category_to", "score") VAL
   ('vehicles', 'vehicles', 1.00),
   ('other', 'other', 1.00);
 
--- 6. buyer_listings에 view_count 컬럼 추가
-ALTER TABLE "buyer_listings" ADD COLUMN "view_count" integer DEFAULT 1 NOT NULL;
+-- 6. buyer_listings 테이블 생성 (CREATE TABLE이 마이그레이션 히스토리에 누락됐던 것 보완)
+CREATE TABLE IF NOT EXISTS "buyer_listings" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "user_id" uuid NOT NULL,
+  "published_listing_id" uuid NOT NULL REFERENCES "listings_published"("id"),
+  "status" text NOT NULL DEFAULT 'viewed',
+  "first_viewed_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "last_viewed_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "view_count" integer NOT NULL DEFAULT 1,
+  "negotiation_started_at" timestamp with time zone,
+  "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT "buyer_listings_status_check" CHECK (status IN ('viewed','negotiating','completed','cancelled'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "buyer_listings_user_listing_idx" ON "buyer_listings"("user_id","published_listing_id");
+
+-- view_count는 CREATE TABLE에서 이미 포함됨 — ALTER는 IF NOT EXISTS로 안전하게
+ALTER TABLE "buyer_listings" ADD COLUMN IF NOT EXISTS "view_count" integer DEFAULT 1 NOT NULL;
