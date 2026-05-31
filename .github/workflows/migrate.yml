@@ -38,11 +38,23 @@ jobs:
       - name: Verify migration journal
         run: pnpm verify:migrations
 
+      - name: Enable pgvector extension (staging)
+        if: github.ref_name == 'staging'
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
       - name: Run migrations (staging)
         if: github.ref_name == 'staging'
         env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: pnpm --filter @haggle/db db:migrate
+
+      - name: Enable pgvector extension (production)
+        if: github.ref_name == 'main'
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Run migrations (production)
         if: github.ref_name == 'main'
