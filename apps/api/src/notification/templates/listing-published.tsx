@@ -11,7 +11,7 @@ interface Props {
 export function ListingPublishedEmail({ payload, unsubscribeUrl }: Props) {
   const price = `$${(payload.listingPriceMinor / 100).toLocaleString("en-US")} ${payload.currency}`;
   const preview = `Your listing "${payload.listingTitle}" is now live!`;
-  const listingUrl = `${process.env.PUBLIC_APP_URL ?? "https://tryhaggle.ai"}/listings/${payload.listingId}`;
+  const listingUrl = `${process.env.PUBLIC_APP_URL ?? "https://tryhaggle.ai"}/sell/listings/${payload.listingId}`;
 
   return (
     <BaseEmail preview={preview} unsubscribeUrl={unsubscribeUrl}>
