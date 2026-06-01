@@ -79,6 +79,23 @@ Supabase CLI는 로컬 인프라를 띄우는 용도로만 쓰며, CLI 자체 �
 - 스키마를 바꾸려면: 스키마 파일 수정 → `make migrate-new` → `make migrate`
 - pgvector 확장은 `supabase/init-extensions.sql`이 마이그레이션 직전에 보장한다.
 
+#### ⚠️ 마이그레이션 황금률 (반드시 지킬 것)
+
+> 어기면 staging/prod DB가 꼬여서 수동 복구가 필요하다. 실제로 한 번 사고가 있었다 (2026-05).
+
+1. **이미 커밋된 마이그레이션 파일은 절대 수정하지 않는다.**
+   Drizzle은 `meta/_journal.json`의 `when`(타임스탬프) **오름차순**으로 적용 여부를 판단하고,
+   각 파일의 해시를 `drizzle.__drizzle_migrations`에 저장한다. 적용된 `00xx.sql`을 나중에 고치면
+   해시가 어긋나 이후 마이그레이션이 막히거나 `relation already exists` 에러가 난다.
+   → 추가/수정할 게 생기면 **무조건 새 파일**(`0026_...`).
+
+2. **cloud DB(staging/prod)에 `db:push`를 직접 쓰지 않는다.**
+   `db:push`는 마이그레이션 파일을 안 남겨서, 테이블이 DB엔 있는데 히스토리엔 없게 된다.
+   그러면 새 환경에서 `db:migrate` 시 그 테이블이 누락된다.
+   → 항상 `db:generate`(파일 생성) → 커밋 → `db:migrate` 순서로만 바꾼다.
+
+상세 + 사고 진단 쿼리: [Environment Separation Playbook §6.4](docs/wip/Environment_Separation_Playbook.md)
+
 ### Google OAuth (선택)
 
 로컬에서 Google 로그인을 테스트하려면 `.env`에 아래를 채우고

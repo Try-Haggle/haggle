@@ -29,6 +29,8 @@ function parseCorsOrigins(rawOrigins: string | undefined): Set<string> {
     "https://chatgpt.com",
     "https://chat.openai.com",
     "https://tryhaggle.ai",
+    "https://app.tryhaggle.ai",
+    "https://app.staging.tryhaggle.ai",
   ]);
 
   for (const rawOrigin of rawOrigins?.split(",") ?? []) {
@@ -39,14 +41,34 @@ function parseCorsOrigins(rawOrigins: string | undefined): Set<string> {
   return origins;
 }
 
+export type HaggleEnv = "local" | "staging" | "production";
+
 export interface RuntimeConfig {
   databaseUrl: string;
   isProduction: boolean;
+  haggleEnv: HaggleEnv;
+  publicAppUrl: string;
   corsAllowedOrigins: Set<string>;
+}
+
+function getHaggleEnv(): HaggleEnv {
+  const raw = process.env.HAGGLE_ENV?.trim().toLowerCase();
+  if (raw === "staging") return "staging";
+  if (raw === "production") return "production";
+  return "local";
+}
+
+function getPublicAppUrl(haggleEnv: HaggleEnv): string {
+  if (process.env.PUBLIC_APP_URL?.trim()) return process.env.PUBLIC_APP_URL.trim();
+  if (haggleEnv === "production") return "https://app.tryhaggle.ai";
+  if (haggleEnv === "staging") return "https://app.staging.tryhaggle.ai";
+  return "http://localhost:3000";
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
   const isProduction = isProductionRuntime();
+  const haggleEnv = getHaggleEnv();
+  const publicAppUrl = getPublicAppUrl(haggleEnv);
   const databaseUrl = readRequiredEnv("DATABASE_URL");
 
   if (isProduction) {
@@ -69,6 +91,8 @@ export function getRuntimeConfig(): RuntimeConfig {
   return {
     databaseUrl,
     isProduction,
+    haggleEnv,
+    publicAppUrl,
     corsAllowedOrigins: parseCorsOrigins(process.env.HAGGLE_CORS_ORIGINS),
   };
 }
