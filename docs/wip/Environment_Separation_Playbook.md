@@ -239,11 +239,20 @@ SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DE
 - [ ] 🔴 B5. staging 외부서비스 test 자산 연결 (Stripe test·EasyPost test·x402 sepolia) ← **Slice 4**
 
 ### Phase C — Production 구축 (Slice 5에서 진행)
-- [ ] 🔴 C1. Supabase `haggle-prod` 프로젝트 생성 → **C1-체크리스트 수행 (아래)**
-- [ ] 🟢 C2. prod DB 마이그레이션 적용 (실데이터만, 시드 스크립트 금지)
-- [ ] 🔴 C3. Railway prod 서비스 + 환경변수 + `api.tryhaggle.ai` → **C3-환경변수 체크리스트 (아래)**
-- [ ] 🔴 C4. Vercel prod(`main` 브랜치) + 환경변수 + `app.tryhaggle.ai`
+- [x] 🔴 C1. Supabase `haggle-prod` 프로젝트 생성 (us-west-2 Free, ref `klitblyvshholkcnexcl`) ✅ (2026-05-31) — 나머지 C1 체크리스트(bucket·auth URL)는 Deploy PR 전 일괄
+- [x] 🔴 F5(prod). GitHub Secret `PROD_DATABASE_URL` 등록 (session pooler :5432) ✅ — 마이그레이션은 Deploy PR(main)에서 자동 검증
+- [ ] 🟢 C2. prod DB 마이그레이션 적용 ← **Deploy PR(staging→main) 시 migrate.yml 자동** (옵션 B: prod 3종 준비 후 한 번에)
+- [x] 🔴 C3. Railway prod 환경(staging 복제→`main` 브랜치) + 환경변수 prod 교체 + `api.tryhaggle.ai`(CNAME+TXT) ✅ (2026-05-31, DNS 전파 대기)
+- [x] 🔴 C4. Vercel prod(Production=`main`) + Production 환경변수 5개 + `app.tryhaggle.ai`(CNAME, Production 할당) ✅ (2026-05-31, DNS 전파 대기)
+- [ ] 🔴 C1-잔여. prod Supabase **Storage buckets 3개+정책 8개 / Auth Site URL / Redirect URLs** ← **Deploy PR 전 필수** (아래 C1 체크리스트)
 - [ ] 🔴 C5. prod 외부서비스 live 자산 (결제·온체인은 staging 리허설 후 최종)
+
+> **C3 진행 메모 (2026-05-31):** Railway는 `haggle` 프로젝트 안에 **`production` 환경을 staging에서 Duplicate** 생성 → 브랜치 `staging`→`main` 변경 → Supabase 4종(URL·service_role·JWT·DATABASE_URL)·`PUBLIC_APP_URL`·`HAGGLE_ENV`·`RESEND_API_KEY`(prod 새 키) 교체. ⚠️ **복제 시 `DATABASE_URL`이 staging을 가리키므로 반드시 prod로 교체**(안 하면 prod 앱이 staging DB를 봄). 포트는 **3001**(Railway magic 감지).
+> **C4 진행 메모:** Vercel은 **Production 환경이 이미 `main` 추적** → 새 환경 생성 불필요. Production에 `NEXT_PUBLIC_*` 5개 추가(⚠️ 기존 건 Preview/staging 전용이라 Production 따로). `app.tryhaggle.ai`를 **Production 환경에** 도메인 연결(staging은 Preview였음). ⚠️ `NEXT_PUBLIC_SUPABASE_*`는 prod Supabase 값.
+
+> **진행 방식 (옵션 B, 2026-05-31 결정):** prod 3종(Supabase ✅ / Railway / Vercel)을 모두 준비한 뒤,
+> **마지막에 `staging→main` Deploy PR 한 번**으로 DB 마이그레이션(C2)·Railway·Vercel 배포를 동시에 터뜨린다.
+> 마이그레이션만 먼저 돌리면 앱이 갈 곳이 없어 반쪽 → 인프라 다 깔고 한 방에.
 
 > #### 📋 C1 — 새 Supabase 프로젝트 수동 설정 체크리스트 (staging에서 발견한 누락 기반)
 > 마이그레이션(C2)만으로는 안 되고, **DB 밖의 설정**은 새 프로젝트마다 수동으로 해줘야 한다.
@@ -253,7 +262,7 @@ SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DE
 > 2. **Storage buckets** — `listing-photos`(public), `avatars`(public), `attestation-evidence`(private) 3개 생성 + RLS 정책 8개. dev/staging에서 `SELECT ... pg_policies WHERE schemaname='storage'`로 `CREATE POLICY` 문 추출 후 복제. ☜ *2026-05 staging에서 `Bucket not found`로 발견*
 > 3. **Auth Site URL** — `https://app.tryhaggle.ai` (기본 localhost면 인증 리다이렉트가 깨짐)
 > 4. **Auth Redirect URLs** — `https://app.tryhaggle.ai/**` 추가
-> 5. **Google OAuth** (쓸 경우) — Client ID/Secret 등록 + provider enabled
+> 5. **Google OAuth** — ✅ 설정 완료 (2026-05-31). GCP 프로젝트 `haggle-490221`의 기존 **"Haggle Web"** OAuth Client 재활용. Authorized redirect URIs에 staging(`https://ifflddfjjdgkamtmrpbj.supabase.co/auth/v1/callback`)+prod(`https://klitblyvshholkcnexcl.supabase.co/auth/v1/callback`) 2개 추가. staging·prod Supabase 양쪽 Google provider enable + 같은 Client ID/Secret(`Z622`, 신규 발급) 입력. staging에서 로그인 검증 통과. ⚠️ GCP 콘솔 접근에 2SV(MFA) 필수(2026-03-29부터). 로컬은 `127.0.0.1:54321/auth/v1/callback` 추가 시 사용 가능(기본 미설정).
 > 6. **JWT** — Supabase는 ECC P-256(ES256) 기본. API는 JWKS 엔드포인트로 검증(`auth.ts` 이미 대응). 별도 시크릿 설정 불필요
 > 7. **DATABASE_URL (pooler)** — GitHub Secret `PROD_DATABASE_URL` 등록 (migrate.yml용)
 >
@@ -288,15 +297,15 @@ SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DE
 - [x] 🟢 E2. 루트 `Dockerfile.api` 삭제 (Railway Dockerfile Path는 `/apps/api/Dockerfile`로 대시보드 수정) ✅
 - [x] 🟢 E3. landing dev 포트 3001→3002 ✅
 - [x] 🟢 E4. `.nvmrc` Node 22 — 이미 존재 확인 ✅
-- [ ] 🔴 E5. 기존 클라우드 Supabase(`gdmhbrcqhwinafntrjhb`) **폐기** — Free auto-pause 대기 중 (7일 미사용 시 자동)
+- [x] 🔴 E5. 기존 클라우드 Supabase(`gdmhbrcqhwinafntrjhb`) **폐기 완료** ✅ (2026-05-31) — Free 슬롯 2개 한도라 prod 생성 위해 삭제. 삭제 전 dev↔staging 테이블/bucket/정책 diff 검증 → dev에만 있던 10개는 전부 마이그레이션·schema에 없는 유령 테이블(코드 미사용), staging이 더 최신·정확 확인. 실유저·실거래 0.
 
 ### Phase F — CI/CD 자동 배포 ✅ Slice 1 완료 (staging, prod 부분 제외)
 - [x] 🔴 F1. Vercel ↔ GitHub 연동 — `staging` 브랜치 자동 감지·배포 ✅ (기존 연동 활용)
 - [x] 🔴 F2. Railway ↔ GitHub 연동 — `staging` 브랜치 자동배포 ✅
 - [x] 🟢 F3. `.github/workflows/migrate.yml` — staging push 시 pgvector + `db:migrate` 자동 실행 ✅
 - [x] 🟢 F4. CI `verify:migrations` 게이트 — 마이그레이션 무결성 선검사 후 배포 ✅
-- [x] 🔴 F5. GitHub Secret `STAGING_DATABASE_URL` 등록 ✅ / `PROD_DATABASE_URL` ← Slice 5에서
-- [ ] 🟢 F6. branch protection: `main`은 staging 경유 + CI 통과 PR만 머지 허용 ← Slice 5에서
+- [x] 🔴 F5. GitHub Secret `STAGING_DATABASE_URL` ✅ / `PROD_DATABASE_URL` ✅ (2026-05-31, session pooler :5432)
+- [ ] 🟢 F6. branch protection: `main`은 staging 경유 + CI 통과 PR만 머지 허용 ← Deploy PR 후
 
 ### Phase G — 브랜치 전략 정합화 ✅ Slice 1 완료
 - [x] 🟢 G1. `staging` 장수 브랜치 생성 + push ✅
@@ -313,6 +322,7 @@ SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DE
 - [x] 셀러 리스팅 생성·사진 업로드·발행·노출 ✅ (2026-05-31, Slice 3)
 - [x] WebSocket(`wss://api.staging.tryhaggle.ai`) 연결 — 협상 AI 라운드 자동 진행·타결 ✅ (2026-05-31, Slice 3)
 - [x] 이메일 알림 발송→Gmail 도달(Delivered) ✅ (2026-05-31, Slice 3)
+- [x] Google OAuth 로그인 동작 ✅ (2026-05-31, Slice 5 — GCP Haggle Web Client 재활용, staging 검증)
 - [ ] **결제 리허설**: Stripe test 카드로 전체 플로우 통과 ← **Slice 4**
 - [ ] **배송 리허설**: EasyPost test 라벨 생성 ← **Slice 4**
 - [ ] **온체인 리허설**: x402 base-sepolia로 정산까지 통과 ← **Slice 4**
@@ -572,13 +582,25 @@ Railway·Vercel·Supabase **모두 "구독료 + 사용량"** 구조라, 안 쓰�
 **미완료:** 추천 시스템(④)·Google OAuth는 선택 — Slice 3 핵심 기준(인증·리스팅·협상·이메일)은 전부 통과
 **완료 기준:** staging이 "실제로 쓸 수 있는 앱" ✅
 
-### Slice 4 — 결제·배송·온체인 리허설 (test 자산)
-**구현:** B5 (Stripe test·EasyPost test·x402 sepolia 연결)
+### Slice 4 — 결제·배송·온체인 리허설 (test 자산) ⏸️ **Slice 5 뒤로 순서 조정 (2026-05-31)**
+**선행 차단:** ⚠️ **협상 타결 → 결제 UI entry point가 아직 없음.** 백엔드(결제/배송/x402 라우트)·`PaymentStep` 컴포넌트·Order Detail 페이지는 100% 구현됐으나, [playback-arena.tsx:227-229](../../apps/web/src/app/buy/negotiations/[sessionId]/playback/playback-arena.tsx#L227-L229)의 `onAccept` 핸들러가 빈 `// TODO`라 "Continue to checkout" 버튼이 막다른 길. 결제 리허설을 하려면 먼저 이 UI wiring(4a)이 필요하다.
+**구현:** (4a) UI wiring — `onAccept` 구현 → `PaymentStep` 조건부 렌더링 → 결제 완료 후 `/orders/:id` 리다이렉트 · settlement_approval_id ↔ session 매핑 / (4b) B5 (Stripe test·EasyPost test·x402 sepolia 연결)
 **테스트:** §8 결제/배송/온체인 리허설 3종 통과
 **완료 기준:** "틀리면 돈 나가는" 플로우가 test 자산으로 끝까지 통과 ✅
+**순서 조정 근거:** Slice 5(prod 런치)의 완료 기준이 "L1 = 결제 test 모드"라 결제 미완성이어도 prod 런치 가능. 결제 entry point가 없어 실유저가 결제까지 도달 불가 → "협상까지 동작, 결제 준비 중" 상태로 soft launch 무방. prod 환경을 먼저 띄워두면 4a/4b를 staging→prod로 검증하기 자연스러움.
 
-### Slice 5 — Production 승격 (Deploy PR)
+### Slice 5 — Production 승격 (Deploy PR) — 진행 중 (2026-05-31)
 **구현:** C1·C2·C3·C4 (prod 3종) + F6(branch protection) + G2(CLAUDE.md) + E1·E2·E5
+**완료한 것:**
+- ✅ Supabase `haggle-prod`(`klitblyvshholkcnexcl`) 생성 + C1 체크리스트(bucket 3개·정책 8개·Auth Site URL·Redirect URLs)
+- ✅ Railway prod 환경(staging 복제→`main`) + 환경변수 prod 교체 + `api.tryhaggle.ai`(DNS·SSL 활성)
+- ✅ Vercel prod(Production=`main`) + Production 환경변수 5개 + `app.tryhaggle.ai`(DNS·SSL 활성)
+- ✅ `PROD_DATABASE_URL`(F5) · dev 폐기(E5) · Google OAuth(staging·prod 양쪽, staging 검증)
+**남은 것:**
+- ⬜ **Deploy PR(staging→main)** — migrate.yml이 prod DB에 마이그레이션 + Railway·Vercel prod 배포 (한 방)
+- ⬜ §8 Production 검증 체크리스트 (health·로그인·CORS·시드 미혼입)
+- ⬜ F6(branch protection) — Deploy PR 후
+**정리 항목 (나중, 비긴급):** GCP 옛 Client Secret(`9eEL`)·구 dev redirect URI 삭제 / 채팅 노출된 `haggle-staging` Resend 키 재발급 / Resend `haggle-dev` 키 삭제
 **테스트:** `staging`→`main` Deploy PR → §8 Production 검증 체크리스트
 **완료 기준:** **app.tryhaggle.ai 라이브** (결제 test 모드, L1 런치) ✅
 
@@ -588,10 +610,11 @@ Railway·Vercel·Supabase **모두 "구독료 + 사용량"** 구조라, 안 쓰�
 **완료 기준:** 실사용자 받을 준비 완료 ✅
 
 ```
-Slice 0 ──► Slice 1 ──► Slice 2 ──► Slice 3 ──► Slice 4 ──► Slice 5 ──► Slice 6
-로컬부팅    파이프라인   마이그레이션  핵심플로우   결제리허설   prod런치    실결제
-            관통⭐                              (test자산)   (L1)       (L2)
-   각 화살표 = 구현→테스트 게이트. 통과해야 다음 슬라이스로.
+Slice 0 ──► Slice 1 ──► Slice 2 ──► Slice 3 ──► Slice 5 ──► Slice 4 ──► Slice 6
+로컬부팅    파이프라인   마이그레이션  핵심플로우   prod런치   결제wiring+ 실결제
+            관통⭐                              (L1)       리허설      (L2)
+   ※ Slice 4 ↔ 5 순서 조정: 결제 entry point가 아직 없어(협상까지만 동작)
+     prod를 먼저 띄워도 무방. 결제 wiring(4a)+리허설(4b)은 prod 위에서.
 ```
 
 > **vertical slice 적합성:** ✅ 가능. 각 슬라이스가 독립적으로 테스트 가능하고,
@@ -599,4 +622,4 @@ Slice 0 ──► Slice 1 ──► Slice 2 ──► Slice 3 ──► Slice 4 
 
 ---
 
-*Last Updated: 2026-05-31 · Status: **Slice 0·1·2(핵심)·3 완료**. 다음: Slice 4 (결제·배송·온체인 리허설 — Stripe test·EasyPost test·x402 sepolia 연결)*
+*Last Updated: 2026-05-31 · Status: **Slice 0·1·2(핵심)·3 완료. Slice 5 진행 중** — prod 3종(Supabase·Railway C3·Vercel C4) 인프라 구축 완료(DNS 전파 대기), dev 폐기(E5)·`PROD_DATABASE_URL`(F5) 완료. 다음: C1 잔여(prod bucket·auth URL) → staging→main Deploy PR로 마이그레이션·배포 동시 트리거. Slice 4(결제)는 Slice 5 뒤.*
