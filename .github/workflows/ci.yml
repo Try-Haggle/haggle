@@ -41,6 +41,20 @@ jobs:
             git diff-tree --check --no-commit-id --root -r HEAD
           fi
 
+      - name: Lint changed files (Biome)
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base ref to diff against; skipping changed-files lint."
+            exit 0
+          fi
+          pnpm exec biome check --changed --since="$base" --error-on-warnings --no-errors-on-unmatched .
+
       - name: Verify Drizzle migration journal
         run: pnpm verify:migrations
 

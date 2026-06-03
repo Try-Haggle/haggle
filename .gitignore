@@ -23,8 +23,10 @@ supabase/.branches/
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/settings.json
+# IDE — share team settings/extensions, ignore everything else under .vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 
 # Logs
