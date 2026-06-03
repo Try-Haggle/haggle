@@ -70,6 +70,26 @@ make reset        # DB 초기화 + 재마이그레이션 + 재시드 (PR 머지 
 make stop         # Supabase 스택 종료
 ```
 
+### 코드 품질 (Lint / Format)
+
+린트·포맷은 **Biome**(`biome.json`) 단일 도구로 통일한다. 별도 셋업은 없다 —
+`make setup`(또는 `pnpm install`)이 `prepare: husky`를 실행해 커밋 훅을 자동 활성화한다.
+
+| 레이어 | 무엇이 강제되나 |
+|--------|----------------|
+| **에디터** | `.vscode/settings.json` — 저장 시 Biome 자동 포맷 + import 정리. VSCode가 Biome 확장 설치를 권장한다(`.vscode/extensions.json`). |
+| **커밋** | husky `pre-commit` → `lint-staged` → **변경 파일만** `biome check --write`. 자동수정 불가한 위반(미사용 변수/import, `==` 등)이 남으면 커밋이 차단된다. |
+| **CI** | PR/staging push 시 base 대비 **변경 파일만** 검사([.github/workflows/ci.yml](.github/workflows/ci.yml)). 훅을 우회한 커밋도 여기서 잡힌다. |
+
+> 점진 도입: 기존 코드는 일괄 정리하지 않는다. **앞으로 만지는 파일만** 규칙이 적용된다.
+
+```bash
+pnpm lint         # 전체 린트 검사 (수정 안 함)
+pnpm lint:fix     # 전체 자동수정 (포맷 + 린트)
+pnpm format       # 포맷만
+pnpm check        # 검사만 (CI와 동일)
+```
+
 ### 마이그레이션 소스 = Drizzle (단일 소스)
 
 스키마 마이그레이션은 **Drizzle**(`packages/db/drizzle/`)가 단일 소스다.
