@@ -8,12 +8,7 @@
  * Requires: DATABASE_URL and OPENAI_API_KEY in root .env
  */
 
-import { resolve } from "node:path";
-import dotenv from "dotenv";
-
-// Load .env from monorepo root
-dotenv.config({ path: resolve(import.meta.dirname, "../../../../.env") });
-
+import "../config/load-env.js";
 import { createDb, listingEmbeddings, sql } from "@haggle/db";
 import { generateAndStoreEmbedding } from "../services/embedding.service.js";
 

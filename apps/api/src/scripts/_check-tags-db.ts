@@ -1,9 +1,6 @@
-import { config } from "dotenv";
-import { resolve } from "node:path";
-config({ path: resolve(import.meta.dirname, "../../../../.env") });
-config({ path: resolve(import.meta.dirname, "../../.env"), override: false });
-
+import "../config/load-env.js";
 import { createDb, sql } from "@haggle/db";
+
 const db = createDb(process.env.DATABASE_URL!);
 
 // 어떤 테이블이 있는지
@@ -11,7 +8,7 @@ const tables = await db.execute(sql`
   SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename
 `);
 console.log("📋 전체 테이블:");
-for (const r of tables as unknown as Array<{tablename: string}>) {
+for (const r of tables as unknown as Array<{ tablename: string }>) {
   console.log("  " + r.tablename);
 }
 
@@ -24,7 +21,7 @@ const tagStats = await db.execute(sql`
   ORDER BY cnt DESC
   LIMIT 40
 `);
-for (const r of tagStats as unknown as Array<{tag: string, cnt: string}>) {
+for (const r of tagStats as unknown as Array<{ tag: string; cnt: string }>) {
   console.log("  " + String(r.cnt).padStart(3) + "x  " + r.tag);
 }
 
@@ -36,7 +33,7 @@ const catStats = await db.execute(sql`
   GROUP BY cat
   ORDER BY cnt DESC
 `);
-for (const r of catStats as unknown as Array<{cat: string, cnt: string}>) {
+for (const r of catStats as unknown as Array<{ cat: string; cnt: string }>) {
   console.log("  " + String(r.cnt).padStart(3) + "x  " + (r.cat || "(none)"));
 }
 
