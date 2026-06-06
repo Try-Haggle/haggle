@@ -1,21 +1,341 @@
 @import "tailwindcss";
 
+/* ================================================================
+   Haggle Design System · Tailwind v4 implementation
+   Source of Truth: docs design-system (50 raw · 28 semantic · 8 grad)
+   ----------------------------------------------------------------
+   Architecture (3 layers):
+   1. RAW SCALE   → static @theme tokens  → utilities like bg-navy-500
+   2. SEMANTIC    → runtime CSS vars in :root / [data-theme=dark]
+                    (these flip between Light & Dark)
+   3. ALIASES     → @theme inline maps clean utilities to the runtime
+                    vars  → bg-surface, text-ink, border-line, ...
+   Default theme is LIGHT. Dark is opt-in via [data-theme="dark"].
+   ================================================================ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ----------------------------------------------------------------
+   1 · RAW SCALE TOKENS  (theme-independent)
+   → bg-navy-500, text-gold-700, border-neutral-200, etc.
+   ---------------------------------------------------------------- */
 @theme {
-  /* Match widget design tokens exactly */
-  --color-bg-primary: #0a0e17;
-  --color-bg-card: #111827;
-  --color-bg-input: #0d1321;
-  --color-border-default: #1e293b;
+  /* Brand · Navy (base 500) */
+  --color-navy-50: #eef1f7;
+  --color-navy-100: #d6dcea;
+  --color-navy-200: #adb7cf;
+  --color-navy-300: #8492b4;
+  --color-navy-400: #4f6088;
+  --color-navy-500: #1b2a4a;
+  --color-navy-600: #16223c;
+  --color-navy-700: #121b30;
+  --color-navy-800: #0f1830;
+  --color-navy-900: #080d1a;
+
+  /* Brand · Gold (base 500) */
+  --color-gold-50: #fbf3e5;
+  --color-gold-100: #f6e6cc;
+  --color-gold-200: #efd3a1;
+  --color-gold-300: #e6bc74;
+  --color-gold-400: #dcaa5e;
+  --color-gold-500: #d69a4c;
+  --color-gold-600: #b8823e;
+  --color-gold-700: #9a6a24;
+  --color-gold-800: #75501b;
+  --color-gold-900: #503714;
+
+  /* Warm Neutral (base 500) */
+  --color-neutral-50: #faf8f3;
+  --color-neutral-100: #f0ede5;
+  --color-neutral-200: #ddd3c2;
+  --color-neutral-300: #c8bda8;
+  --color-neutral-400: #a9a08d;
+  --color-neutral-500: #9a9079;
+  --color-neutral-600: #6b6759;
+  --color-neutral-700: #4f4b40;
+  --color-neutral-800: #38352d;
+  --color-neutral-900: #25231d;
+
+  /* Semantic scales */
+  --color-success-50: #eaf4ed;
+  --color-success-100: #c9e3d0;
+  --color-success-500: #3e8e5a;
+  --color-success-700: #285f3d;
+
+  --color-error-50: #fbe9e7;
+  --color-error-100: #f5c9c3;
+  --color-error-500: #c8412e;
+  --color-error-700: #8e2b1f;
+
+  --color-warning-50: #fef3e0;
+  --color-warning-100: #fcdfaa;
+  --color-warning-500: #e07a1f;
+  --color-warning-700: #9b4e10;
+
+  --color-info-50: #e8f0fb;
+  --color-info-100: #c2d5f2;
+  --color-info-500: #2e6fd6;
+  --color-info-700: #1e4a99;
+
+  /* Type families (values wired to next/font vars from layout.tsx) */
+  --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-lora), Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+/* ----------------------------------------------------------------
+   2 · SEMANTIC RUNTIME VARS  ·  LIGHT (default)
+   ---------------------------------------------------------------- */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surface */
+  --bg-primary: #fbf9f5;
+  --bg-raised: #fffdf9;
+  --bg-sunken: #f3efe6;
+  --bg-overlay: #ffffff;
+
+  /* Text / Ink */
+  --text-primary: #1b2a4a;
+  --text-secondary: #6b6759;
+  --text-muted: #9a9079;
+  --text-on-accent: #ffffff;
+  --text-on-ink: #fbf9f5;
+  --ink-strong: #0f1830;
+
+  /* Action */
+  --action-primary: #d69a4c;
+  --action-primary-hover: #b8823e;
+  --action-primary-pressed: #9a6a24;
+  --action-secondary: #1b2a4a;
+  --action-secondary-hover: #16223c;
+
+  /* Border */
+  --border-subtle: #f0ede5;
+  --border-default: #ddd3c2;
+  --border-strong: #1b2a4a;
+  --border-focus: #d69a4c;
+
+  /* Badge */
+  --badge-bg: #f6e6cc;
+  --badge-text: #9a6a24;
+
+  /* Feedback (bg / fg pairs) */
+  --fb-success-bg: #eaf4ed;
+  --fb-success-fg: #285f3d;
+  --fb-error-bg: #fbe9e7;
+  --fb-error-fg: #8e2b1f;
+  --fb-warning-bg: #fef3e0;
+  --fb-warning-fg: #9b4e10;
+  --fb-info-bg: #e8f0fb;
+  --fb-info-fg: #1e4a99;
+
+  /* Elevation */
+  --shadow-card: 0 1px 0 rgba(27, 42, 74, 0.04), 0 8px 24px -16px rgba(27, 42, 74, 0.16);
+
+  /* Gradients · raw */
+  --gradient-surface-warm: linear-gradient(180deg, #fbf9f5 0%, #f3efe6 100%);
+  --gradient-surface-cool: linear-gradient(180deg, #fbf9f5 0%, #eef1f7 100%);
+  --gradient-cta-gold: linear-gradient(135deg, #dcaa5e 0%, #b8823e 100%);
+  --gradient-cta-navy: linear-gradient(135deg, #4f6088 0%, #16223c 100%);
+  --gradient-premium: linear-gradient(135deg, #1b2a4a 0%, #4f6088 45%, #d69a4c 100%);
+  --gradient-text-accent: linear-gradient(135deg, #d69a4c 0%, #9a6a24 100%);
+  --gradient-blob-warm:
+    radial-gradient(at 18% 22%, #f6e6cc 0%, transparent 55%),
+    radial-gradient(at 82% 30%, #efd3a1 0%, transparent 50%),
+    radial-gradient(at 50% 90%, #fbf3e5 0%, transparent 60%), #fbf9f5;
+  --gradient-blob-deep:
+    radial-gradient(at 20% 20%, #16223c 0%, transparent 55%),
+    radial-gradient(at 85% 35%, #9a6a24 0%, transparent 45%),
+    radial-gradient(at 60% 90%, #1b2a4a 0%, transparent 60%), #0f1830;
+  --gradient-overlay-hover: linear-gradient(0deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.08));
+  --gradient-overlay-active: linear-gradient(0deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
+
+  /* Gradients · semantic (role-named aliases) */
+  --gradient-hero-bg: var(--gradient-surface-warm);
+  --gradient-section-bg: var(--gradient-surface-cool);
+  --gradient-cta-primary: var(--gradient-cta-gold);
+  --gradient-cta-secondary: var(--gradient-cta-navy);
+  --gradient-premium-bg: var(--gradient-premium);
+  --gradient-text-hero: var(--gradient-text-accent);
+  --gradient-decor-warm: var(--gradient-blob-warm);
+  --gradient-decor-deep: var(--gradient-blob-deep);
+}
+
+/* ----------------------------------------------------------------
+   2 · SEMANTIC RUNTIME VARS  ·  DARK
+   ---------------------------------------------------------------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-primary: #10182b;
+  --bg-raised: #18223a;
+  --bg-sunken: #0b1120;
+  --bg-overlay: #1e2a45;
+
+  --text-primary: #f1eee6;
+  --text-secondary: #9aa3b4;
+  --text-muted: #6b7488;
+  --text-on-accent: #ffffff;
+  --text-on-ink: #f1eee6;
+  --ink-strong: #ffffff;
+
+  --action-primary: #d9a45e;
+  --action-primary-hover: #e6b477;
+  --action-primary-pressed: #9a6a24;
+  --action-secondary: #f1eee6;
+  --action-secondary-hover: #ffffff;
+
+  --border-subtle: rgba(241, 238, 230, 0.06);
+  --border-default: rgba(241, 238, 230, 0.14);
+  --border-strong: rgba(241, 238, 230, 0.32);
+  --border-focus: #d9a45e;
+
+  --badge-bg: rgba(217, 164, 94, 0.16);
+  --badge-text: #e6bc74;
+
+  --fb-success-bg: rgba(62, 142, 90, 0.16);
+  --fb-success-fg: #8fcfa1;
+  --fb-error-bg: rgba(200, 65, 46, 0.16);
+  --fb-error-fg: #f0a99e;
+  --fb-warning-bg: rgba(224, 122, 31, 0.16);
+  --fb-warning-fg: #f1b27a;
+  --fb-info-bg: rgba(46, 111, 214, 0.16);
+  --fb-info-fg: #94b7ea;
+
+  --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+
+  --gradient-surface-warm: linear-gradient(180deg, #10182b 0%, #18223a 100%);
+  --gradient-surface-cool: linear-gradient(180deg, #10182b 0%, #0b1120 100%);
+  --gradient-cta-gold: linear-gradient(135deg, #e6b477 0%, #b8823e 100%);
+  --gradient-cta-navy: linear-gradient(135deg, #2c3a5b 0%, #0f1830 100%);
+  --gradient-premium: linear-gradient(135deg, #18223a 0%, #4f6088 45%, #d9a45e 100%);
+  --gradient-text-accent: linear-gradient(135deg, #e6bc74 0%, #d69a4c 100%);
+  --gradient-blob-warm:
+    radial-gradient(at 18% 22%, rgba(217, 164, 94, 0.32) 0%, transparent 55%),
+    radial-gradient(at 82% 30%, rgba(217, 164, 94, 0.18) 0%, transparent 50%),
+    radial-gradient(at 50% 90%, rgba(241, 238, 230, 0.05) 0%, transparent 60%), #10182b;
+  --gradient-blob-deep:
+    radial-gradient(at 20% 20%, #1b2a4a 0%, transparent 55%),
+    radial-gradient(at 85% 35%, rgba(217, 164, 94, 0.42) 0%, transparent 45%),
+    radial-gradient(at 60% 90%, #16223c 0%, transparent 60%), #080d1a;
+  --gradient-overlay-hover: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.06)
+  );
+  --gradient-overlay-active: linear-gradient(0deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.16));
+}
+
+/* ----------------------------------------------------------------
+   3 · SEMANTIC ALIASES  (clean Tailwind utilities → runtime vars)
+   `inline` so the utility resolves the runtime var at use time,
+   which is what lets a single class flip with [data-theme].
+   ---------------------------------------------------------------- */
+@theme inline {
+  /* Surface → bg-surface / bg-surface-raised / -sunken / -overlay */
+  --color-surface: var(--bg-primary);
+  --color-surface-raised: var(--bg-raised);
+  --color-surface-sunken: var(--bg-sunken);
+  --color-surface-overlay: var(--bg-overlay);
+
+  /* Ink → text-ink / text-ink-secondary / -muted / -strong */
+  --color-ink: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-ink-strong: var(--ink-strong);
+  --color-on-accent: var(--text-on-accent);
+  --color-on-ink: var(--text-on-ink);
+
+  /* Action → bg-action-primary / text-action-primary / ... */
+  --color-action-primary: var(--action-primary);
+  --color-action-primary-hover: var(--action-primary-hover);
+  --color-action-primary-pressed: var(--action-primary-pressed);
+  --color-action-secondary: var(--action-secondary);
+  --color-action-secondary-hover: var(--action-secondary-hover);
+
+  /* Border → border-line / border-line-subtle / -strong / border-focus */
+  --color-line: var(--border-default);
+  --color-line-subtle: var(--border-subtle);
+  --color-line-strong: var(--border-strong);
+  --color-focus: var(--border-focus);
+
+  /* Badge → bg-badge / text-badge */
+  --color-badge: var(--badge-bg);
+  --color-badge-text: var(--badge-text);
+
+  /* Feedback → text-success / bg-success-soft (and error/warning/info) */
+  --color-success: var(--fb-success-fg);
+  --color-success-soft: var(--fb-success-bg);
+  --color-error: var(--fb-error-fg);
+  --color-error-soft: var(--fb-error-bg);
+  --color-warning: var(--fb-warning-fg);
+  --color-warning-soft: var(--fb-warning-bg);
+  --color-info: var(--fb-info-fg);
+  --color-info-soft: var(--fb-info-bg);
+
+  /* ---- DEPRECATED legacy aliases (pre-design-system "widget" names) ----
+     Kept themeable so the ~40 files still using them don't break and
+     instead adopt the new surfaces. Migrate to the names above, then
+     delete these.  bg-bg-card → bg-surface-raised, etc. */
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-card: var(--bg-raised);
+  --color-bg-input: var(--bg-overlay);
+  --color-border-default: var(--border-default);
+}
+
+/* ----------------------------------------------------------------
+   Gradient utility helpers (v4 has no auto bg-* for --gradient-*)
+   ---------------------------------------------------------------- */
+@utility bg-hero {
+  background: var(--gradient-hero-bg);
+}
+@utility bg-section {
+  background: var(--gradient-section-bg);
+}
+@utility bg-premium {
+  background: var(--gradient-premium-bg);
+}
+@utility bg-cta-primary {
+  background-image: var(--gradient-cta-primary);
+}
+@utility bg-cta-secondary {
+  background-image: var(--gradient-cta-secondary);
+}
+@utility bg-decor-warm {
+  background: var(--gradient-decor-warm);
+}
+@utility bg-decor-deep {
+  background: var(--gradient-decor-deep);
+}
+@utility text-gradient {
+  background: var(--gradient-text-hero);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+/* ================================================================
+   BASE RESETS  (carried over)
+   ================================================================ */
+html {
+  scroll-behavior: smooth;
 }
 
 /* Hide number input spinners */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
+  appearance: none;
   margin: 0;
 }
 input[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Hide scrollbar for carousel */
@@ -27,8 +347,11 @@ input[type="number"] {
   display: none;
 }
 
-/* Date input calendar icon */
+/* Date input calendar icon — invert only in dark theme.
+   Lower-specificity rule first to satisfy noDescendingSpecificity. */
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
+}
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
 }
