@@ -2,6 +2,14 @@
   "editor.defaultFormatter": "biomejs.biome",
   "editor.formatOnSave": true,
   "prettier.enable": false,
+  // Tailwind IntelliSense (bradlc.vscode-tailwindcss) is the CSS validator for
+  // this project: it understands Tailwind v4 directives (@theme, @utility,
+  // @custom-variant), still flags real errors, and gives token autocomplete.
+  // VS Code's built-in CSS validator can't parse v4 syntax, so turn it off to
+  // stop false positives. Biome still formats CSS (on save + pre-commit).
+  "css.validate": false,
+  "scss.validate": false,
+  "less.validate": false,
   "editor.codeActionsOnSave": {
     "source.fixAll.biome": "explicit"
   },
