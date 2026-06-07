@@ -17,7 +17,8 @@
       "!**/*.gen.ts",
       "!packages/contracts/out",
       "!packages/contracts/cache",
-      "!packages/db/drizzle"
+      "!packages/db/drizzle",
+      "!docs"
     ]
   },
   "formatter": {
