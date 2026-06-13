@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
 
 const SPECIES_EMOJI: Record<string, string> = {
   FOX: "🦊",
@@ -14,13 +14,15 @@ const SPECIES_EMOJI: Record<string, string> = {
   WOLF: "🐺",
 };
 
+// Rarity tiers are a deliberate distinct-hue palette (not feedback states),
+// kept readable in both themes via dark: variants.
 const RARITY_COLORS: Record<string, string> = {
-  COMMON: "text-zinc-400",
-  UNCOMMON: "text-green-400",
-  RARE: "text-blue-400",
-  EPIC: "text-purple-400",
-  LEGENDARY: "text-orange-400",
-  MYTHIC: "text-red-400",
+  COMMON: "text-ink-secondary",
+  UNCOMMON: "text-green-600 dark:text-green-400",
+  RARE: "text-blue-600 dark:text-blue-400",
+  EPIC: "text-purple-600 dark:text-purple-400",
+  LEGENDARY: "text-orange-600 dark:text-orange-400",
+  MYTHIC: "text-red-600 dark:text-red-400",
 };
 
 interface Buddy {
@@ -51,11 +53,7 @@ interface Trade {
   createdAt: string;
 }
 
-export default async function BuddyDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function BuddyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -71,9 +69,7 @@ export default async function BuddyDetailPage({
 
   try {
     const [detailData, tradesData] = await Promise.all([
-      serverApi.get<{ buddy: Buddy; trade_summary: TradeSummary }>(
-        `/buddies/${id}`,
-      ),
+      serverApi.get<{ buddy: Buddy; trade_summary: TradeSummary }>(`/buddies/${id}`),
       serverApi.get<{ trades: Trade[] }>(`/buddies/${id}/trades`),
     ]);
     buddy = detailData.buddy;
@@ -84,39 +80,35 @@ export default async function BuddyDetailPage({
   }
 
   const winRate =
-    tradeSummary.total > 0
-      ? Math.round((tradeSummary.deals / tradeSummary.total) * 100)
-      : 0;
+    tradeSummary.total > 0 ? Math.round((tradeSummary.deals / tradeSummary.total) * 100) : 0;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <Link
         href="/profile/buddies"
-        className="mb-6 inline-block text-sm text-zinc-400 hover:text-zinc-200"
+        className="mb-6 inline-block text-sm text-ink-secondary hover:text-ink"
       >
         &larr; Back to Buddies
       </Link>
 
       {/* Buddy header */}
-      <div className="mb-8 rounded-xl border border-zinc-700 bg-zinc-900 p-6 text-center">
-        <div className="mb-2 text-7xl">
-          {SPECIES_EMOJI[buddy.species] ?? "🐾"}
-        </div>
-        <h1 className="mb-1 text-2xl font-bold text-zinc-100">{buddy.name}</h1>
+      <div className="mb-8 rounded-xl border border-line bg-surface-raised p-6 text-center">
+        <div className="mb-2 text-7xl">{SPECIES_EMOJI[buddy.species] ?? "🐾"}</div>
+        <h1 className="mb-1 text-2xl font-bold text-ink">{buddy.name}</h1>
         <div className="flex items-center justify-center gap-3">
           <span
             className={`text-sm font-semibold ${
-              RARITY_COLORS[buddy.rarity] ?? "text-zinc-400"
+              RARITY_COLORS[buddy.rarity] ?? "text-ink-secondary"
             }`}
           >
             {buddy.rarity}
           </span>
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-ink-muted">
             {buddy.species} &middot; Lv. {buddy.level}
           </span>
         </div>
         {buddy.ability && (
-          <div className="mt-3 rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-300">
+          <div className="mt-3 rounded-lg bg-surface-sunken px-4 py-2 text-sm text-ink-secondary">
             Ability: {buddy.ability}
           </div>
         )}
@@ -125,59 +117,51 @@ export default async function BuddyDetailPage({
       {/* Trade summary */}
       <h2 className="mb-4 text-lg font-semibold">Trade Stats</h2>
       <div className="mb-8 grid grid-cols-3 gap-3">
-        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-center">
-          <div className="text-2xl font-bold text-emerald-400">
-            {tradeSummary.deals}
-          </div>
-          <div className="text-xs text-zinc-500">Deals</div>
+        <div className="rounded-lg border border-line bg-surface-raised p-4 text-center">
+          <div className="text-2xl font-bold text-success">{tradeSummary.deals}</div>
+          <div className="text-xs text-ink-muted">Deals</div>
         </div>
-        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-center">
-          <div className="text-2xl font-bold text-zinc-200">
-            {tradeSummary.total}
-          </div>
-          <div className="text-xs text-zinc-500">Total</div>
+        <div className="rounded-lg border border-line bg-surface-raised p-4 text-center">
+          <div className="text-2xl font-bold text-ink">{tradeSummary.total}</div>
+          <div className="text-xs text-ink-muted">Total</div>
         </div>
-        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-center">
-          <div className="text-2xl font-bold text-amber-400">{winRate}%</div>
-          <div className="text-xs text-zinc-500">Win Rate</div>
+        <div className="rounded-lg border border-line bg-surface-raised p-4 text-center">
+          <div className="text-2xl font-bold text-action-primary">{winRate}%</div>
+          <div className="text-xs text-ink-muted">Win Rate</div>
         </div>
       </div>
 
       {/* Trade history */}
       <h2 className="mb-4 text-lg font-semibold">Recent Trades</h2>
       {trades.length === 0 ? (
-        <p className="text-sm text-zinc-500">No trades yet with this buddy.</p>
+        <p className="text-sm text-ink-muted">No trades yet with this buddy.</p>
       ) : (
         <div className="space-y-2">
           {trades.map((trade) => (
             <div
               key={trade.id}
-              className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3"
+              className="flex items-center justify-between rounded-lg border border-line bg-surface-raised px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 <span
                   className={`text-sm font-medium ${
                     trade.outcome === "DEAL"
-                      ? "text-emerald-400"
+                      ? "text-success"
                       : trade.outcome === "REJECT"
-                        ? "text-red-400"
-                        : "text-zinc-400"
+                        ? "text-error"
+                        : "text-ink-secondary"
                   }`}
                 >
                   {trade.outcome}
                 </span>
-                {trade.category && (
-                  <span className="text-xs text-zinc-500">{trade.category}</span>
-                )}
+                {trade.category && <span className="text-xs text-ink-muted">{trade.category}</span>}
               </div>
               <div className="flex items-center gap-4 text-sm">
                 {trade.savingPct && (
-                  <span className="text-emerald-400">
-                    {Number(trade.savingPct).toFixed(1)}% saved
-                  </span>
+                  <span className="text-success">{Number(trade.savingPct).toFixed(1)}% saved</span>
                 )}
-                <span className="text-zinc-500">{trade.rounds}R</span>
-                <span className="text-xs text-zinc-600">
+                <span className="text-ink-muted">{trade.rounds}R</span>
+                <span className="text-xs text-ink-muted">
                   {new Date(trade.createdAt).toLocaleDateString()}
                 </span>
               </div>
