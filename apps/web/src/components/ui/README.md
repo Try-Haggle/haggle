@@ -62,6 +62,8 @@ export function Foo({ className, tone, ...props }: FooProps) {
 
 - 색은 **시맨틱 토큰 유틸**만 사용: `bg-surface`, `text-ink`, `border-line`, `bg-action-primary`,
   `text-success` 등 (토큰 정의: [`globals.css`](../../app/globals.css)). 원시 색(`slate-*`, `text-white`)·hex 직접 사용 ❌
+- 타이포는 **role 유틸**로: `text-display` · `text-h1` · `text-h2` · `text-h3` · `text-body` ·
+  `text-body-sm` · `text-label` · `text-data` (패밀리+크기+행간+자간 묶음). 임의 `text-4xl`·`text-[15px]` ❌
 - variants 함수도 export → `<Link className={buttonVariants({ variant })}>` 처럼 재사용
 
 ---

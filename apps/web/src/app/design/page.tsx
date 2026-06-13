@@ -79,12 +79,19 @@ export default function DesignOverviewPage() {
       </Section>
 
       <Section eyebrow="§ Type" title="Typography">
-        <div className="space-y-3">
-          <p className="font-display text-5xl text-ink">Negotiate with confidence</p>
-          <p className="font-sans text-base text-ink-secondary">
-            Walk in prepared. Haggle analyzes your offer and builds a case that works.
+        <div className="space-y-4 text-ink">
+          <p className="text-display">Display</p>
+          <p className="text-h1">H1 · Your best offer starts here</p>
+          <p className="text-h2">H2 · How Haggle works</p>
+          <p className="text-h3">H3 · Salary negotiation</p>
+          <p className="text-body text-ink-secondary">
+            Body · Walk in prepared. Haggle analyzes your offer and builds a case that works.
           </p>
-          <p className="font-mono text-sm text-ink">$88,000 · +22.2% · 72% win rate</p>
+          <p className="text-body-sm text-ink-secondary">
+            Body Small · We use your past offers and similar cases to build a strategy.
+          </p>
+          <p className="text-label text-ink-muted">Label · Current offer · Win rate</p>
+          <p className="text-data">Data · $88,000 · +22.2% · 72% win rate</p>
         </div>
       </Section>
     </div>
