@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ViewedListing, ActiveNegotiation } from "./page";
+import type { ActiveNegotiation, ViewedListing } from "./page";
 import { RecommendedForYou } from "./recommended";
 
 const RECENTLY_VIEWED_INITIAL_SHOW = 4;
@@ -20,15 +20,15 @@ function formatTimeAgo(dateStr: string): string {
 
 function statusBadgeClass(status: string): string {
   const map: Record<string, string> = {
-    ACTIVE: "text-cyan-400 bg-cyan-500/10",
-    NEAR_DEAL: "text-emerald-400 bg-emerald-500/10",
-    ACCEPTED: "text-emerald-400 bg-emerald-500/15",
-    REJECTED: "text-red-400 bg-red-500/10",
-    STALLED: "text-amber-400 bg-amber-500/10",
-    EXPIRED: "text-slate-500 bg-slate-800",
-    WAITING: "text-amber-400 bg-amber-500/10",
+    ACTIVE: "text-action-primary bg-badge",
+    NEAR_DEAL: "text-success bg-success-soft",
+    ACCEPTED: "text-success bg-success-soft",
+    REJECTED: "text-error bg-error-soft",
+    STALLED: "text-warning bg-warning-soft",
+    EXPIRED: "text-ink-muted bg-surface-sunken",
+    WAITING: "text-warning bg-warning-soft",
   };
-  return map[status] ?? "text-slate-400 bg-slate-800";
+  return map[status] ?? "text-ink-secondary bg-surface-sunken";
 }
 
 function formatMinorPrice(priceMinor: number | null): string {
@@ -56,14 +56,25 @@ export function BuyerDashboardContent({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400 shrink-0">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-action-primary shrink-0"
+            >
               <circle cx="8" cy="21" r="1" />
               <circle cx="19" cy="21" r="1" />
               <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
             </svg>
-            <h1 className="text-2xl font-bold text-white">Buyer Dashboard</h1>
+            <h1 className="text-2xl font-bold text-ink">Buyer Dashboard</h1>
           </div>
-          <p className="text-sm text-slate-400">Browse listings and track your negotiations</p>
+          <p className="text-sm text-ink-secondary">Browse listings and track your negotiations</p>
         </div>
       </div>
 
@@ -72,11 +83,11 @@ export function BuyerDashboardContent({
 
       {/* Recently Viewed Listings */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">Recently Viewed</h2>
+        <h2 className="text-lg font-bold text-ink">Recently Viewed</h2>
         {viewedListings.length > RECENTLY_VIEWED_INITIAL_SHOW && (
           <Link
             href="/buy/dashboard/recently-viewed"
-            className="text-sm text-slate-400 transition-colors hover:text-white"
+            className="text-sm text-ink-secondary transition-colors hover:text-ink"
           >
             View all →
           </Link>
@@ -84,15 +95,28 @@ export function BuyerDashboardContent({
       </div>
 
       {viewedListings.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center mb-8">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-12 text-center mb-8">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ink-muted"
+            >
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.3-4.3" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">No recently viewed listings</h3>
-          <p className="text-sm text-slate-500">
+          <h3 className="text-lg font-semibold text-ink-secondary mb-1">
+            No recently viewed listings
+          </h3>
+          <p className="text-sm text-ink-muted">
             When you visit a seller&apos;s listing link, it will appear here.
           </p>
         </div>
@@ -105,16 +129,27 @@ export function BuyerDashboardContent({
       )}
 
       {/* Active Negotiations */}
-      <h2 className="text-lg font-bold text-white mb-4">Active Negotiations</h2>
+      <h2 className="text-lg font-bold text-ink mb-4">Active Negotiations</h2>
       {activeNegotiations.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ink-muted"
+            >
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">No active negotiations</h3>
-          <p className="text-sm text-slate-500">
+          <h3 className="text-lg font-semibold text-ink-secondary mb-1">No active negotiations</h3>
+          <p className="text-sm text-ink-muted">
             Start a negotiation on a listing to track it here.
           </p>
         </div>
@@ -124,30 +159,55 @@ export function BuyerDashboardContent({
             <Link
               key={neg.id}
               href={`/buy/negotiations/${neg.id}`}
-              className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
+              className="flex items-center gap-3 sm:gap-4 rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4 hover:border-line transition-colors"
             >
-              <div className="shrink-0 h-12 w-12 rounded-lg bg-slate-800 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400">
+              <div className="shrink-0 h-12 w-12 rounded-lg bg-surface-sunken flex items-center justify-center">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-action-primary"
+                >
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-sm font-semibold text-white truncate font-mono">
+                  <span className="text-sm font-semibold text-ink truncate font-mono">
                     {neg.id.slice(0, 8)}...
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(neg.status)}`}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(neg.status)}`}
+                  >
                     {neg.status}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">
-                  Round {neg.current_round} · Last offer: {formatMinorPrice(neg.last_offer_price_minor)}
+                <p className="text-xs text-ink-secondary">
+                  Round {neg.current_round} · Last offer:{" "}
+                  {formatMinorPrice(neg.last_offer_price_minor)}
                 </p>
               </div>
               <div className="shrink-0 text-right mr-1">
-                <p className="text-xs text-slate-500">{formatTimeAgo(neg.updated_at)}</p>
+                <p className="text-xs text-ink-muted">{formatTimeAgo(neg.updated_at)}</p>
               </div>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-ink-muted shrink-0"
+              >
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </Link>
@@ -159,33 +219,41 @@ export function BuyerDashboardContent({
 }
 
 function ViewedListingCard({ listing }: { listing: ViewedListing }) {
-  const price = listing.targetPrice
-    ? `$${Number(listing.targetPrice).toLocaleString()}`
-    : "\u2014";
+  const price = listing.targetPrice ? `$${Number(listing.targetPrice).toLocaleString()}` : "\u2014";
 
   const conditionLabel = listing.condition
     ? listing.condition.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : null;
 
-  const meta = [conditionLabel, listing.category]
-    .filter(Boolean)
-    .join(" \u00b7 ");
+  const meta = [conditionLabel, listing.category].filter(Boolean).join(" \u00b7 ");
 
   return (
     <Link
       href={`/l/${listing.publicId}?from=buy-dashboard`}
-      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
+      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4 hover:border-line transition-colors"
     >
       {/* Photo or placeholder */}
-      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-slate-800 overflow-hidden flex items-center justify-center">
+      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
         {listing.photoUrl ? (
+          // biome-ignore lint/performance/noImgElement: remote listing photo
           <img
             src={listing.photoUrl}
             alt={listing.title ?? "Listing"}
             className="h-full w-full object-cover"
           />
         ) : (
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-ink-muted"
+          >
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
             <line x1="7" y1="7" x2="7.01" y2="7" />
           </svg>
@@ -195,23 +263,34 @@ function ViewedListingCard({ listing }: { listing: ViewedListing }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-white truncate text-sm sm:text-base">
+          <span className="font-semibold text-ink truncate text-sm sm:text-base">
             {listing.title ?? "Untitled"}
           </span>
         </div>
-        {meta && <p className="text-xs sm:text-sm text-slate-400">{meta}</p>}
+        {meta && <p className="text-xs sm:text-sm text-ink-secondary">{meta}</p>}
       </div>
 
       {/* Price + last viewed */}
       <div className="shrink-0 text-right mr-1 sm:mr-2">
-        <p className="font-semibold text-white text-sm sm:text-base">{price}</p>
-        <p className="text-xs sm:text-sm text-slate-400">
+        <p className="font-semibold text-ink text-sm sm:text-base">{price}</p>
+        <p className="text-xs sm:text-sm text-ink-secondary">
           {formatTimeAgo(listing.lastViewedAt)}
         </p>
       </div>
 
       {/* Chevron */}
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-ink-muted shrink-0"
+      >
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </Link>
