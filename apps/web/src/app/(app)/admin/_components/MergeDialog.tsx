@@ -53,29 +53,30 @@ export function MergeDialog({ open, onClose, onSubmit }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Merge tag"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
     >
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl"
+        className="w-full max-w-sm rounded-lg bg-surface-raised p-5 shadow-xl"
       >
-        <h2 className="mb-3 text-lg font-semibold text-neutral-900">
-          Merge into existing tag
-        </h2>
-        <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-3 text-lg font-semibold text-ink">Merge into existing tag</h2>
+        <label
+          htmlFor="merge-target-input"
+          className="mb-1 block text-xs uppercase tracking-wide text-ink-muted"
+        >
           Target tag id
         </label>
         <input
+          id="merge-target-input"
           type="text"
           data-testid="merge-target-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="tag_…"
-          className="mb-2 w-full rounded border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
-          autoFocus
+          className="mb-2 w-full rounded border border-line px-3 py-2 text-sm focus:border-focus focus:outline-none"
         />
         {error && (
-          <div className="mb-2 text-xs text-red-600" role="alert">
+          <div className="mb-2 text-xs text-error" role="alert">
             {error}
           </div>
         )}
@@ -84,7 +85,7 @@ export function MergeDialog({ open, onClose, onSubmit }: Props) {
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:opacity-50"
+            className="rounded border border-line bg-surface-raised px-3 py-1.5 text-sm hover:bg-surface-sunken disabled:opacity-50"
           >
             Cancel
           </button>
@@ -92,7 +93,7 @@ export function MergeDialog({ open, onClose, onSubmit }: Props) {
             type="submit"
             data-testid="merge-submit"
             disabled={submitting}
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded bg-action-primary px-3 py-1.5 text-sm text-on-accent hover:bg-action-primary-hover disabled:opacity-50"
           >
             {submitting ? "Merging…" : "Merge"}
           </button>

@@ -8,8 +8,7 @@ interface Props {
   fetchSummary?: () => Promise<InboxSummary>;
 }
 
-const CARD_BASE =
-  "rounded-lg border border-neutral-200 bg-white p-4 shadow-sm";
+const CARD_BASE = "rounded-lg border border-line bg-surface-raised p-4 shadow-sm";
 
 export function SummaryCards({ fetchSummary }: Props = {}) {
   const [summary, setSummary] = useState<InboxSummary | null>(null);
@@ -54,39 +53,23 @@ export function SummaryCards({ fetchSummary }: Props = {}) {
       className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
     >
       <div className={CARD_BASE} data-testid="card-total">
-        <div className="text-xs uppercase tracking-wide text-neutral-500">
-          Total Open
-        </div>
-        <div className="mt-1 text-2xl font-semibold text-neutral-900">
-          {loading ? "…" : total}
-        </div>
+        <div className="text-xs uppercase tracking-wide text-ink-muted">Total Open</div>
+        <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "…" : total}</div>
       </div>
       <div className={CARD_BASE} data-testid="card-tags">
-        <div className="text-xs uppercase tracking-wide text-neutral-500">
-          Tags Pending
-        </div>
-        <div className="mt-1 text-2xl font-semibold text-neutral-900">
-          {loading ? "…" : tags}
-        </div>
+        <div className="text-xs uppercase tracking-wide text-ink-muted">Tags Pending</div>
+        <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "…" : tags}</div>
       </div>
       <div className={CARD_BASE} data-testid="card-disputes">
-        <div className="text-xs uppercase tracking-wide text-neutral-500">
-          Disputes Open
-        </div>
-        <div className="mt-1 text-2xl font-semibold text-neutral-900">
-          {loading ? "…" : disputes}
-        </div>
+        <div className="text-xs uppercase tracking-wide text-ink-muted">Disputes Open</div>
+        <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "…" : disputes}</div>
       </div>
       <div className={CARD_BASE} data-testid="card-payments">
-        <div className="text-xs uppercase tracking-wide text-neutral-500">
-          Payments Flagged
-        </div>
-        <div className="mt-1 text-2xl font-semibold text-neutral-900">
-          {loading ? "…" : payments}
-        </div>
+        <div className="text-xs uppercase tracking-wide text-ink-muted">Payments Flagged</div>
+        <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "…" : payments}</div>
       </div>
       {error && (
-        <div className="col-span-full text-sm text-red-600" role="alert">
+        <div className="col-span-full text-sm text-error" role="alert">
           {error}
         </div>
       )}
