@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -31,14 +31,14 @@ interface DisputeListResponse {
 
 // ─── Status config ───────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
-  OPEN: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  UNDER_REVIEW: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  WAITING_FOR_BUYER: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  WAITING_FOR_SELLER: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  RESOLVED_BUYER_FAVOR: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  RESOLVED_SELLER_FAVOR: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  PARTIAL_REFUND: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  CLOSED: "bg-slate-500/20 text-slate-400 border-slate-500/30",
+  OPEN: "bg-warning-soft text-warning border-warning/30",
+  UNDER_REVIEW: "bg-info-soft text-info border-info/30",
+  WAITING_FOR_BUYER: "bg-info-soft text-info border-info/30",
+  WAITING_FOR_SELLER: "bg-info-soft text-info border-info/30",
+  RESOLVED_BUYER_FAVOR: "bg-success-soft text-success border-success/30",
+  RESOLVED_SELLER_FAVOR: "bg-success-soft text-success border-success/30",
+  PARTIAL_REFUND: "bg-info-soft text-info border-info/30",
+  CLOSED: "bg-surface-sunken text-ink-secondary border-line",
 };
 
 const ALL_STATUSES = [
@@ -52,16 +52,16 @@ const ALL_STATUSES = [
   "CLOSED",
 ];
 
+// Role tags kept visually distinct: buyer → info (blue), seller → badge (gold).
 const ROLE_COLORS: Record<string, string> = {
-  buyer: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  seller: "bg-violet-500/20 text-violet-400 border-violet-500/30",
+  buyer: "bg-info-soft text-info border-info/30",
+  seller: "bg-badge text-badge-text border-badge-text/30",
 };
 
 type RoleTab = "all" | "buyer" | "seller";
 
 function StatusBadge({ status }: { status: string }) {
-  const color =
-    STATUS_COLORS[status] ?? "bg-slate-500/20 text-slate-400 border-slate-500/30";
+  const color = STATUS_COLORS[status] ?? "bg-surface-sunken text-ink-secondary border-line";
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${color}`}
@@ -72,8 +72,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function RoleBadge({ role }: { role: string }) {
-  const color =
-    ROLE_COLORS[role] ?? "bg-slate-500/20 text-slate-400 border-slate-500/30";
+  const color = ROLE_COLORS[role] ?? "bg-surface-sunken text-ink-secondary border-line";
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${color}`}
@@ -119,9 +118,7 @@ export default function DisputesListPage() {
         params.set("status", statusFilter);
       }
 
-      const data = await api.get<DisputeListResponse>(
-        `/disputes?${params.toString()}`,
-      );
+      const data = await api.get<DisputeListResponse>(`/disputes?${params.toString()}`);
       setDisputes(data.disputes);
       setTotal(data.total);
     } catch {
@@ -137,17 +134,16 @@ export default function DisputesListPage() {
   }, [fetchDisputes]);
 
   // Reset offset when tab or filter changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset pagination when tab/filter changes
   useEffect(() => {
     setOffset(0);
   }, [activeTab, statusFilter]);
 
   // Compute tab counts (approximate from current data when on "all" tab)
-  const buyerCount = activeTab === "all"
-    ? disputes.filter((d) => d.user_role === "buyer").length
-    : undefined;
-  const sellerCount = activeTab === "all"
-    ? disputes.filter((d) => d.user_role === "seller").length
-    : undefined;
+  const buyerCount =
+    activeTab === "all" ? disputes.filter((d) => d.user_role === "buyer").length : undefined;
+  const sellerCount =
+    activeTab === "all" ? disputes.filter((d) => d.user_role === "seller").length : undefined;
 
   const tabs: { key: RoleTab; label: string; count?: number }[] = [
     { key: "all", label: "All" },
@@ -163,8 +159,8 @@ export default function DisputesListPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-white">Disputes</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <h1 className="text-xl font-bold text-ink">Disputes</h1>
+          <p className="text-sm text-ink-secondary mt-0.5">
             {total} dispute{total !== 1 ? "s" : ""}
           </p>
         </div>
@@ -173,22 +169,21 @@ export default function DisputesListPage() {
       {/* Tabs + Filter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
         {/* Role tabs */}
-        <div className="flex rounded-lg border border-slate-800 overflow-hidden">
+        <div className="flex rounded-lg border border-line overflow-hidden">
           {tabs.map((tab) => (
             <button
               key={tab.key}
+              type="button"
               onClick={() => setActiveTab(tab.key)}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === tab.key
-                  ? "bg-slate-700 text-white"
-                  : "bg-transparent text-slate-400 hover:text-white"
+                  ? "bg-surface-overlay text-ink"
+                  : "bg-transparent text-ink-secondary hover:text-ink"
               }`}
             >
               {tab.label}
               {tab.count !== undefined && (
-                <span className="ml-1.5 text-xs text-slate-500">
-                  ({tab.count})
-                </span>
+                <span className="ml-1.5 text-xs text-ink-muted">({tab.count})</span>
               )}
             </button>
           ))}
@@ -198,7 +193,7 @@ export default function DisputesListPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300 outline-none focus:border-cyan-500"
+          className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary outline-none focus:border-focus"
         >
           <option value="">All Statuses</option>
           {ALL_STATUSES.map((s) => (
@@ -212,14 +207,12 @@ export default function DisputesListPage() {
       {/* Disputes list */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="text-slate-400 text-sm animate-pulse">
-            Loading disputes...
-          </div>
+          <div className="text-ink-secondary text-sm animate-pulse">Loading disputes...</div>
         </div>
       ) : disputes.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <p className="text-slate-400 text-sm">No disputes found.</p>
-          <p className="text-slate-500 text-xs mt-1">
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-12 text-center">
+          <p className="text-ink-secondary text-sm">No disputes found.</p>
+          <p className="text-ink-muted text-xs mt-1">
             Disputes will appear here when opened on your orders.
           </p>
         </div>
@@ -229,40 +222,38 @@ export default function DisputesListPage() {
             <Link
               key={dispute.id}
               href={`/disputes/${dispute.id}`}
-              className="block rounded-xl border border-slate-800 bg-bg-card/50 p-4 hover:border-slate-700 transition-colors"
+              className="block rounded-xl border border-line bg-surface-raised/50 p-4 hover:border-line-strong transition-colors"
             >
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <p className="text-sm font-medium text-white truncate">
+                    <p className="text-sm font-medium text-ink truncate">
                       {dispute.item_title ?? "Dispute"}
                     </p>
                     <StatusBadge status={dispute.status} />
                     <RoleBadge role={dispute.user_role} />
                     {dispute.needs_action && (
-                      <span className="inline-flex items-center rounded-full bg-red-500/20 border border-red-500/30 px-2 py-0.5 text-xs font-medium text-red-400">
+                      <span className="inline-flex items-center rounded-full bg-error-soft border border-error/30 px-2 py-0.5 text-xs font-medium text-error">
                         Action needed
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <div className="flex items-center gap-3 text-xs text-ink-muted">
                     <span>{dispute.reason_code.replace(/_/g, " ")}</span>
                     <span>{formatDate(dispute.opened_at)}</span>
                     {dispute.tier && (
-                      <span className="font-medium text-slate-400">
-                        T{dispute.tier}
-                      </span>
+                      <span className="font-medium text-ink-secondary">T{dispute.tier}</span>
                     )}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   {dispute.amount_minor != null && (
-                    <p className="text-sm font-semibold text-white">
+                    <p className="text-sm font-semibold text-ink">
                       {formatCurrency(dispute.amount_minor)}
                     </p>
                   )}
                   {dispute.resolution_outcome && (
-                    <p className="text-xs text-slate-500 mt-0.5 capitalize">
+                    <p className="text-xs text-ink-muted mt-0.5 capitalize">
                       {dispute.resolution_outcome.replace(/_/g, " ")}
                     </p>
                   )}
@@ -277,19 +268,21 @@ export default function DisputesListPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-6">
           <button
+            type="button"
             onClick={() => setOffset(Math.max(0, offset - limit))}
             disabled={offset === 0}
-            className="rounded-lg border border-slate-800 px-3 py-1.5 text-sm text-slate-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-secondary hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Previous
           </button>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-ink-muted">
             Page {currentPage} of {totalPages}
           </span>
           <button
+            type="button"
             onClick={() => setOffset(offset + limit)}
             disabled={currentPage >= totalPages}
-            className="rounded-lg border border-slate-800 px-3 py-1.5 text-sm text-slate-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-secondary hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Next
           </button>

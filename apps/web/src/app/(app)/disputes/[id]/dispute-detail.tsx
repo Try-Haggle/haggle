@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
-import type { Dispute, DisputeEvidence } from "./page";
 import { AdvisorChat } from "./_components/advisor-chat";
+import type { Dispute, DisputeEvidence } from "./page";
 
 const EVIDENCE_TYPES = [
   { value: "text", label: "Text Description" },
@@ -16,17 +16,23 @@ const EVIDENCE_TYPES = [
 
 function statusBadge(status: string): { label: string; color: string } {
   const map: Record<string, { label: string; color: string }> = {
-    OPEN: { label: "Open", color: "text-amber-400 bg-amber-500/10" },
-    UNDER_REVIEW: { label: "Under Review", color: "text-cyan-400 bg-cyan-500/10" },
-    WAITING_FOR_BUYER: { label: "Awaiting Your Evidence", color: "text-purple-400 bg-purple-500/10" },
-    WAITING_FOR_SELLER: { label: "Awaiting Seller Evidence", color: "text-purple-400 bg-purple-500/10" },
-    ESCALATED: { label: "Escalated", color: "text-orange-400 bg-orange-500/10" },
-    RESOLVED_BUYER_FAVOR: { label: "Resolved - Buyer Favor", color: "text-emerald-400 bg-emerald-500/10" },
-    RESOLVED_SELLER_FAVOR: { label: "Resolved - Seller Favor", color: "text-emerald-400 bg-emerald-500/10" },
-    PARTIAL_REFUND: { label: "Partial Refund", color: "text-blue-400 bg-blue-500/10" },
-    CLOSED: { label: "Closed", color: "text-slate-400 bg-slate-800" },
+    OPEN: { label: "Open", color: "text-warning bg-warning-soft" },
+    UNDER_REVIEW: { label: "Under Review", color: "text-info bg-info-soft" },
+    WAITING_FOR_BUYER: { label: "Awaiting Your Evidence", color: "text-info bg-info-soft" },
+    WAITING_FOR_SELLER: { label: "Awaiting Seller Evidence", color: "text-info bg-info-soft" },
+    ESCALATED: { label: "Escalated", color: "text-warning bg-warning-soft" },
+    RESOLVED_BUYER_FAVOR: {
+      label: "Resolved - Buyer Favor",
+      color: "text-success bg-success-soft",
+    },
+    RESOLVED_SELLER_FAVOR: {
+      label: "Resolved - Seller Favor",
+      color: "text-success bg-success-soft",
+    },
+    PARTIAL_REFUND: { label: "Partial Refund", color: "text-info bg-info-soft" },
+    CLOSED: { label: "Closed", color: "text-ink-secondary bg-surface-sunken" },
   };
-  return map[status] ?? { label: status, color: "text-slate-400 bg-slate-800" };
+  return map[status] ?? { label: status, color: "text-ink-secondary bg-surface-sunken" };
 }
 
 function formatDate(dateStr: string): string {
@@ -70,7 +76,7 @@ function getTimelineStep(status: string): number {
 function DisputeTimeline({ status }: { status: string }) {
   const currentStep = getTimelineStep(status);
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4 mb-6">
+    <div className="rounded-xl border border-line bg-surface-raised/50 p-4 mb-6">
       <div className="flex items-center justify-between">
         {TIMELINE_STEPS.map((step, i) => {
           const isDone = i < currentStep;
@@ -81,14 +87,24 @@ function DisputeTimeline({ status }: { status: string }) {
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
                     isDone
-                      ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
+                      ? "bg-success-soft border-success-500 text-success"
                       : isCurrent
-                        ? "bg-cyan-500/20 border-cyan-400 text-cyan-400 animate-pulse"
-                        : "bg-slate-800 border-slate-700 text-slate-500"
+                        ? "bg-action-primary/20 border-action-primary text-action-primary animate-pulse"
+                        : "bg-surface-sunken border-line text-ink-muted"
                   }`}
                 >
                   {isDone ? (
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   ) : (
@@ -97,11 +113,7 @@ function DisputeTimeline({ status }: { status: string }) {
                 </div>
                 <span
                   className={`mt-1.5 text-xs font-medium ${
-                    isDone
-                      ? "text-emerald-400"
-                      : isCurrent
-                        ? "text-cyan-400"
-                        : "text-slate-500"
+                    isDone ? "text-success" : isCurrent ? "text-action-primary" : "text-ink-muted"
                   }`}
                 >
                   {step.label}
@@ -110,7 +122,7 @@ function DisputeTimeline({ status }: { status: string }) {
               {i < TIMELINE_STEPS.length - 1 && (
                 <div
                   className={`flex-1 h-0.5 mx-2 mt-[-1rem] ${
-                    i < currentStep ? "bg-emerald-500/50" : "bg-slate-700"
+                    i < currentStep ? "bg-success-500/50" : "bg-line"
                   }`}
                 />
               )}
@@ -142,14 +154,25 @@ function CostBreakdown({
 }) {
   const tiers = [1, 2, 3] as const;
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4 mb-6">
+    <div className="rounded-xl border border-line bg-surface-raised/50 p-4 mb-6">
       <div className="flex items-center gap-2 mb-3">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-warning"
+        >
           <line x1="12" y1="1" x2="12" y2="23" />
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
         </svg>
-        <span className="text-sm font-semibold text-white">Dispute Cost Tiers</span>
-        <span className="ml-auto rounded-full bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 text-xs text-amber-400 font-medium">
+        <span className="text-sm font-semibold text-ink">Dispute Cost Tiers</span>
+        <span className="ml-auto rounded-full bg-warning-soft border border-warning/30 px-2 py-0.5 text-xs text-warning font-medium">
           Loser pays
         </span>
       </div>
@@ -162,17 +185,19 @@ function CostBreakdown({
               key={tier}
               className={`rounded-lg border p-3 text-center ${
                 isActive
-                  ? "border-cyan-500/50 bg-cyan-500/10"
-                  : "border-slate-700 bg-slate-800/50"
+                  ? "border-action-primary/50 bg-action-primary/10"
+                  : "border-line bg-surface-sunken/50"
               }`}
             >
-              <p className={`text-xs font-medium mb-1 ${isActive ? "text-cyan-400" : "text-slate-400"}`}>
+              <p
+                className={`text-xs font-medium mb-1 ${isActive ? "text-action-primary" : "text-ink-secondary"}`}
+              >
                 Tier {tier}
               </p>
-              <p className={`text-sm font-bold ${isActive ? "text-white" : "text-slate-300"}`}>
+              <p className={`text-sm font-bold ${isActive ? "text-ink" : "text-ink-secondary"}`}>
                 ${(cost / 100).toFixed(2)}
               </p>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-ink-muted mt-0.5">
                 {tier === 1 ? "max(0.5%, $3)" : tier === 2 ? "max(2%, $12)" : "max(5%, $30)"}
               </p>
             </div>
@@ -180,11 +205,9 @@ function CostBreakdown({
         })}
       </div>
       {amountMinor > 0 && (
-        <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800/50 p-2 flex items-center justify-between">
-          <span className="text-xs text-slate-400">Escrow amount</span>
-          <span className="text-sm font-semibold text-white">
-            ${(amountMinor / 100).toFixed(2)}
-          </span>
+        <div className="mt-3 rounded-lg border border-line bg-surface-sunken/50 p-2 flex items-center justify-between">
+          <span className="text-xs text-ink-secondary">Escrow amount</span>
+          <span className="text-sm font-semibold text-ink">${(amountMinor / 100).toFixed(2)}</span>
         </div>
       )}
     </div>
@@ -267,17 +290,15 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
     });
   }
 
-  return events.sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-  );
+  return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }
 
 const ACTIVITY_ICON_COLORS: Record<string, string> = {
-  open: "bg-amber-500/20 text-amber-400",
-  evidence: "bg-cyan-500/20 text-cyan-400",
-  review: "bg-purple-500/20 text-purple-400",
-  resolve: "bg-emerald-500/20 text-emerald-400",
-  close: "bg-slate-500/20 text-slate-400",
+  open: "bg-warning-soft text-warning",
+  evidence: "bg-info-soft text-info",
+  review: "bg-info-soft text-info",
+  resolve: "bg-success-soft text-success",
+  close: "bg-surface-sunken text-ink-secondary",
 };
 
 function ActivityLog({ dispute }: { dispute: Dispute }) {
@@ -285,25 +306,36 @@ function ActivityLog({ dispute }: { dispute: Dispute }) {
   if (events.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 mb-6 overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+    <div className="rounded-xl border border-line bg-surface-raised/50 mb-6 overflow-hidden">
+      <div className="px-4 py-3 border-b border-line flex items-center gap-2">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-ink-secondary"
+        >
           <circle cx="12" cy="12" r="10" />
           <polyline points="12 6 12 12 16 14" />
         </svg>
-        <span className="text-sm font-semibold text-white">Activity</span>
+        <span className="text-sm font-semibold text-ink">Activity</span>
       </div>
       <div className="p-4 space-y-3">
-        {events.map((event, i) => (
-          <div key={i} className="flex items-start gap-3">
+        {events.map((event) => (
+          <div key={`${event.icon}-${event.timestamp}`} className="flex items-start gap-3">
             <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${ACTIVITY_ICON_COLORS[event.icon] ?? "bg-slate-800 text-slate-400"}`}
+              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${ACTIVITY_ICON_COLORS[event.icon] ?? "bg-surface-sunken text-ink-secondary"}`}
             >
               <div className="w-2 h-2 rounded-full bg-current" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-slate-300">{event.label}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{formatDate(event.timestamp)}</p>
+              <p className="text-sm text-ink-secondary">{event.label}</p>
+              <p className="text-xs text-ink-muted mt-0.5">{formatDate(event.timestamp)}</p>
             </div>
           </div>
         ))}
@@ -316,21 +348,21 @@ function ActivityLog({ dispute }: { dispute: Dispute }) {
 function EvidenceItem({ evidence }: { evidence: DisputeEvidence }) {
   const typeLabel = EVIDENCE_TYPES.find((t) => t.value === evidence.type)?.label ?? evidence.type;
   return (
-    <div className="rounded-lg border border-slate-800 bg-bg-card/30 p-3">
+    <div className="rounded-lg border border-line bg-surface-raised/30 p-3">
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs font-medium text-slate-300">{typeLabel}</span>
-        <span className="text-xs text-slate-500">by {evidence.submitted_by}</span>
-        <span className="ml-auto text-xs text-slate-600">{formatDate(evidenceTimestamp(evidence))}</span>
+        <span className="text-xs font-medium text-ink-secondary">{typeLabel}</span>
+        <span className="text-xs text-ink-muted">by {evidence.submitted_by}</span>
+        <span className="ml-auto text-xs text-ink-muted">
+          {formatDate(evidenceTimestamp(evidence))}
+        </span>
       </div>
-      {evidence.text && (
-        <p className="text-sm text-slate-300 mt-1">{evidence.text}</p>
-      )}
+      {evidence.text && <p className="text-sm text-ink-secondary mt-1">{evidence.text}</p>}
       {evidence.uri && (
         <a
           href={evidence.uri}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-cyan-400 hover:text-cyan-300 mt-1 inline-block break-all"
+          className="text-xs text-action-primary hover:text-action-primary-hover mt-1 inline-block break-all"
         >
           View attachment
         </a>
@@ -352,7 +384,9 @@ export function DisputeDetail({
   amountMinor?: number | null;
 }) {
   const [dispute, setDispute] = useState<Dispute>(initialDispute);
-  const [evidenceType, setEvidenceType] = useState<"text" | "image" | "tracking_snapshot" | "payment_proof" | "other">("text");
+  const [evidenceType, setEvidenceType] = useState<
+    "text" | "image" | "tracking_snapshot" | "payment_proof" | "other"
+  >("text");
   const [evidenceText, setEvidenceText] = useState("");
   const [evidenceUri, setEvidenceUri] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -375,26 +409,26 @@ export function DisputeDetail({
   const effectiveAmount = amountMinor ?? 0;
 
   // Role-based accent colors
-  const accentColor = userRole === "buyer" ? "cyan" : "violet";
-  const accentBorder = userRole === "buyer" ? "border-cyan-500/30" : "border-violet-500/30";
-  const accentBg = userRole === "buyer" ? "bg-cyan-500/10" : "bg-violet-500/10";
-  const accentText = userRole === "buyer" ? "text-cyan-400" : "text-violet-400";
+  const accentBorder = userRole === "buyer" ? "border-info/30" : "border-badge-text/30";
+  const accentBg = userRole === "buyer" ? "bg-info-soft" : "bg-badge";
+  const accentText = userRole === "buyer" ? "text-info" : "text-badge-text";
 
   // Determine if seller has a waiting deadline
   const isSellerWaiting =
-    userRole === "seller" &&
-    (dispute.status === "WAITING_FOR_SELLER" || dispute.status === "OPEN");
+    userRole === "seller" && (dispute.status === "WAITING_FOR_SELLER" || dispute.status === "OPEN");
 
   const canEscalate = !isResolved && dispute.status !== "UNDER_REVIEW";
 
   async function loadDeposit() {
-    const result = await api.get<{ deposit: DisputeDeposit }>(`/disputes/${dispute.id}/deposit`).catch(() => null);
+    const result = await api
+      .get<{ deposit: DisputeDeposit }>(`/disputes/${dispute.id}/deposit`)
+      .catch(() => null);
     setDeposit(result?.deposit ?? null);
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload deposit only when the dispute changes
   useEffect(() => {
     loadDeposit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispute.id]);
 
   async function reloadDispute() {
@@ -437,9 +471,12 @@ export function DisputeDetail({
     setError(null);
     setSuccess(null);
     try {
-      const result = await api.post<{ dispute: Dispute; deposit?: DisputeDeposit }>(`/disputes/${dispute.id}/escalate`, {
-        escalated_by: userRole,
-      });
+      const result = await api.post<{ dispute: Dispute; deposit?: DisputeDeposit }>(
+        `/disputes/${dispute.id}/escalate`,
+        {
+          escalated_by: userRole,
+        },
+      );
       setDispute(result.dispute);
       setDeposit(result.deposit ?? null);
       setSuccess("Dispute escalated");
@@ -455,13 +492,20 @@ export function DisputeDetail({
     setError(null);
     setSuccess(null);
     try {
-      const result = await api.post<{ deposit: DisputeDeposit; collection: DepositCollection }>(`/disputes/${dispute.id}/deposit`, {
-        rail: depositRail,
-        wallet_address: depositWallet || undefined,
-      });
+      const result = await api.post<{ deposit: DisputeDeposit; collection: DepositCollection }>(
+        `/disputes/${dispute.id}/deposit`,
+        {
+          rail: depositRail,
+          wallet_address: depositWallet || undefined,
+        },
+      );
       setDeposit(result.deposit);
       setDepositCollection(result.collection);
-      setSuccess(result.collection.rail === "usdc" ? "USDC approval instructions created" : "Deposit session created");
+      setSuccess(
+        result.collection.rail === "usdc"
+          ? "USDC approval instructions created"
+          : "Deposit session created",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start deposit");
     } finally {
@@ -474,9 +518,12 @@ export function DisputeDetail({
     setError(null);
     setSuccess(null);
     try {
-      const result = await api.post<{ deposit: DisputeDeposit; tx_hash?: string }>(`/disputes/${dispute.id}/deposit/confirm-usdc`, {
-        wallet_address: depositWallet,
-      });
+      const result = await api.post<{ deposit: DisputeDeposit; tx_hash?: string }>(
+        `/disputes/${dispute.id}/deposit/confirm-usdc`,
+        {
+          wallet_address: depositWallet,
+        },
+      );
       setDeposit(result.deposit);
       setSuccess(result.tx_hash ? `Deposit confirmed: ${result.tx_hash}` : "Deposit confirmed");
       await reloadDispute();
@@ -491,9 +538,19 @@ export function DisputeDetail({
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
       <Link
         href="/disputes"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-6"
       >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polyline points="15 18 9 12 15 6" />
         </svg>
         All Disputes
@@ -503,14 +560,14 @@ export function DisputeDetail({
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl font-bold text-white">Dispute</h1>
+            <h1 className="text-xl font-bold text-ink">Dispute</h1>
             <span
               className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${accentBorder} ${accentBg} ${accentText}`}
             >
               {userRole}
             </span>
           </div>
-          <p className="text-xs text-slate-500 font-mono">{dispute.id}</p>
+          <p className="text-xs text-ink-muted font-mono">{dispute.id}</p>
           {userRole === "buyer" && (
             <p className={`text-xs ${accentText} mt-1 font-medium`}>Your AI Advocate</p>
           )}
@@ -522,13 +579,24 @@ export function DisputeDetail({
 
       {/* Seller deadline warning */}
       {isSellerWaiting && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 mb-4 flex items-center gap-2">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400 flex-shrink-0">
+        <div className="rounded-xl border border-warning/30 bg-warning-soft p-3 mb-4 flex items-center gap-2">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-warning flex-shrink-0"
+          >
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             <line x1="12" y1="9" x2="12" y2="13" />
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
-          <p className="text-sm text-amber-400">
+          <p className="text-sm text-warning">
             Action required: Please respond to this dispute promptly to avoid default resolution.
           </p>
         </div>
@@ -539,21 +607,21 @@ export function DisputeDetail({
 
       {/* Info cards */}
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-3">
-          <p className="text-xs text-slate-500 mb-1">Order ID</p>
-          <p className="text-sm text-white font-mono truncate">{dispute.order_id}</p>
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-3">
+          <p className="text-xs text-ink-muted mb-1">Order ID</p>
+          <p className="text-sm text-ink font-mono truncate">{dispute.order_id}</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-3">
-          <p className="text-xs text-slate-500 mb-1">Reason</p>
-          <p className="text-sm text-white">{dispute.reason_code.replace(/_/g, " ")}</p>
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-3">
+          <p className="text-xs text-ink-muted mb-1">Reason</p>
+          <p className="text-sm text-ink">{dispute.reason_code.replace(/_/g, " ")}</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-3">
-          <p className="text-xs text-slate-500 mb-1">Opened By</p>
-          <p className="text-sm text-white capitalize">{dispute.opened_by}</p>
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-3">
+          <p className="text-xs text-ink-muted mb-1">Opened By</p>
+          <p className="text-sm text-ink capitalize">{dispute.opened_by}</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-3">
-          <p className="text-xs text-slate-500 mb-1">Created</p>
-          <p className="text-sm text-white">{formatDate(dispute.created_at)}</p>
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-3">
+          <p className="text-xs text-ink-muted mb-1">Created</p>
+          <p className="text-sm text-ink">{formatDate(dispute.created_at)}</p>
         </div>
       </div>
 
@@ -563,11 +631,11 @@ export function DisputeDetail({
       )}
 
       {!isResolved && (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 overflow-hidden mb-6">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold text-white">Review Escalation</span>
+        <div className="rounded-xl border border-line bg-surface-raised/50 overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-ink">Review Escalation</span>
             {deposit && (
-              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-300">
+              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium text-ink-secondary">
                 {deposit.status}
               </span>
             )}
@@ -578,31 +646,33 @@ export function DisputeDetail({
                 type="button"
                 onClick={handleEscalate}
                 disabled={submitting}
-                className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-40"
+                className="w-full rounded-xl border border-warning/30 bg-warning-soft px-4 py-2.5 text-sm font-semibold text-warning transition-colors hover:bg-warning-soft disabled:opacity-40"
               >
                 Escalate Review
               </button>
             )}
 
             {deposit && (
-              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-3">
+              <div className="rounded-lg border border-line bg-surface-sunken/40 p-3 space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Seller deposit</span>
-                  <span className="font-semibold text-white">${(deposit.amountCents / 100).toFixed(2)}</span>
+                  <span className="text-ink-secondary">Seller deposit</span>
+                  <span className="font-semibold text-ink">
+                    ${(deposit.amountCents / 100).toFixed(2)}
+                  </span>
                 </div>
                 {deposit.deadlineAt && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">Deadline</span>
-                    <span className="text-slate-300">{formatDate(deposit.deadlineAt)}</span>
+                    <span className="text-ink-secondary">Deadline</span>
+                    <span className="text-ink-secondary">{formatDate(deposit.deadlineAt)}</span>
                   </div>
                 )}
 
                 {userRole === "seller" && deposit.status === "PENDING" && (
-                  <div className="space-y-2 border-t border-slate-800 pt-3">
+                  <div className="space-y-2 border-t border-line pt-3">
                     <select
                       value={depositRail}
                       onChange={(event) => setDepositRail(event.target.value as "usdc" | "stripe")}
-                      className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                      className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink focus:border-focus focus:outline-none"
                     >
                       <option value="usdc">USDC</option>
                       <option value="stripe">Stripe Onramp</option>
@@ -611,14 +681,14 @@ export function DisputeDetail({
                       value={depositWallet}
                       onChange={(event) => setDepositWallet(event.target.value)}
                       placeholder="0x wallet address"
-                      className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                      className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none"
                     />
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={handleStartDeposit}
                         disabled={submitting}
-                        className="rounded-lg bg-violet-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-600 disabled:opacity-40"
+                        className="rounded-lg bg-action-primary px-3 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-action-primary-hover disabled:opacity-40"
                       >
                         Start Deposit
                       </button>
@@ -626,7 +696,7 @@ export function DisputeDetail({
                         type="button"
                         onClick={handleConfirmUsdcDeposit}
                         disabled={submitting || !depositWallet}
-                        className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-300 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
+                        className="rounded-lg border border-action-primary/30 bg-action-primary/10 px-3 py-2 text-sm font-semibold text-action-primary transition-colors hover:bg-action-primary/20 disabled:opacity-40"
                       >
                         Confirm USDC
                       </button>
@@ -635,14 +705,29 @@ export function DisputeDetail({
                 )}
 
                 {depositCollection?.usdc_approval && (
-                  <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-200 space-y-1">
-                    <p>Spender: <span className="font-mono">{depositCollection.usdc_approval.spender_address}</span></p>
-                    <p>Token: <span className="font-mono">{depositCollection.usdc_approval.token_address}</span></p>
-                    <p>Amount wei: <span className="font-mono">{depositCollection.usdc_approval.amount_wei}</span></p>
+                  <div className="rounded-lg border border-info/20 bg-info-soft p-3 text-xs text-info space-y-1">
+                    <p>
+                      Spender:{" "}
+                      <span className="font-mono">
+                        {depositCollection.usdc_approval.spender_address}
+                      </span>
+                    </p>
+                    <p>
+                      Token:{" "}
+                      <span className="font-mono">
+                        {depositCollection.usdc_approval.token_address}
+                      </span>
+                    </p>
+                    <p>
+                      Amount wei:{" "}
+                      <span className="font-mono">
+                        {depositCollection.usdc_approval.amount_wei}
+                      </span>
+                    </p>
                   </div>
                 )}
                 {depositCollection?.stripe_client_secret && (
-                  <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-200">
+                  <div className="rounded-lg border border-info/20 bg-info-soft p-3 text-xs text-info">
                     Stripe deposit session created.
                   </div>
                 )}
@@ -653,20 +738,31 @@ export function DisputeDetail({
       )}
 
       {/* Evidence list */}
-      <div className="rounded-xl border border-slate-800 bg-bg-card/50 mb-6 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={accentText}>
+      <div className="rounded-xl border border-line bg-surface-raised/50 mb-6 overflow-hidden">
+        <div className="px-4 py-3 border-b border-line flex items-center gap-2">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={accentText}
+          >
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
           </svg>
-          <span className="text-sm font-semibold text-white">Evidence</span>
-          <span className="ml-auto text-xs text-slate-500">{dispute.evidence.length} item{dispute.evidence.length !== 1 ? "s" : ""}</span>
+          <span className="text-sm font-semibold text-ink">Evidence</span>
+          <span className="ml-auto text-xs text-ink-muted">
+            {dispute.evidence.length} item{dispute.evidence.length !== 1 ? "s" : ""}
+          </span>
         </div>
 
         {dispute.evidence.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-sm">
-            No evidence submitted yet.
-          </div>
+          <div className="p-8 text-center text-ink-muted text-sm">No evidence submitted yet.</div>
         ) : (
           <div className="p-3 space-y-2">
             {dispute.evidence.map((ev, i) => (
@@ -678,53 +774,73 @@ export function DisputeDetail({
 
       {/* Submit evidence form */}
       {!isResolved && (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 overflow-hidden mb-6">
-          <div className="px-4 py-3 border-b border-slate-800">
-            <span className="text-sm font-semibold text-white">Submit Evidence</span>
+        <div className="rounded-xl border border-line bg-surface-raised/50 overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-line">
+            <span className="text-sm font-semibold text-ink">Submit Evidence</span>
           </div>
           <form onSubmit={handleSubmitEvidence} className="p-4 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Evidence Type</label>
+              <label
+                htmlFor="evidence-type"
+                className="block text-xs font-medium text-ink-secondary mb-1"
+              >
+                Evidence Type
+              </label>
               <select
+                id="evidence-type"
                 value={evidenceType}
                 onChange={(e) => setEvidenceType(e.target.value as typeof evidenceType)}
-                className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink focus:border-focus focus:outline-none"
               >
                 {EVIDENCE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Description</label>
+              <label
+                htmlFor="evidence-description"
+                className="block text-xs font-medium text-ink-secondary mb-1"
+              >
+                Description
+              </label>
               <textarea
+                id="evidence-description"
                 rows={3}
                 placeholder="Describe the issue in detail..."
                 value={evidenceText}
                 onChange={(e) => setEvidenceText(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none resize-none"
+                className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none resize-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Attachment URL (optional)</label>
+              <label
+                htmlFor="evidence-uri"
+                className="block text-xs font-medium text-ink-secondary mb-1"
+              >
+                Attachment URL (optional)
+              </label>
               <input
+                id="evidence-uri"
                 type="url"
                 placeholder="https://..."
                 value={evidenceUri}
                 onChange={(e) => setEvidenceUri(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-bg-card px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none"
               />
             </div>
 
             {error && (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2 text-sm text-error">
                 {error}
               </div>
             )}
             {success && (
-              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+              <div className="rounded-lg border border-success/20 bg-success-soft px-3 py-2 text-sm text-success">
                 {success}
               </div>
             )}
@@ -732,10 +848,10 @@ export function DisputeDetail({
             <button
               type="submit"
               disabled={submitting}
-              className={`w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              className={`w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
                 userRole === "buyer"
-                  ? "bg-cyan-500 hover:bg-cyan-600"
-                  : "bg-violet-500 hover:bg-violet-600"
+                  ? "bg-action-primary hover:bg-action-primary-hover"
+                  : "bg-action-primary hover:bg-action-primary-hover"
               }`}
             >
               {submitting ? "Submitting..." : "Submit Evidence"}
@@ -745,12 +861,12 @@ export function DisputeDetail({
       )}
 
       {isResolved && (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-center mb-6">
-          <p className="text-sm font-medium text-emerald-400">
+        <div className="rounded-xl border border-success/20 bg-success-soft p-4 text-center mb-6">
+          <p className="text-sm font-medium text-success">
             This dispute has been {dispute.status.replace(/_/g, " ").toLowerCase()}.
           </p>
           {dispute.refundAmountMinor != null && dispute.refundAmountMinor > 0 && (
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-ink-secondary mt-1">
               Refund: ${(dispute.refundAmountMinor / 100).toFixed(2)}
             </p>
           )}
