@@ -1,48 +1,38 @@
-import { createClient } from "@/lib/supabase/server";
-import { Nav } from "@/components/nav";
 import { BottomNav } from "@/components/bottom-nav";
+import { Nav } from "@/components/nav";
+import { createClient } from "@/lib/supabase/server";
 
-export default async function BrowseLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function BrowseLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const userName = user
-    ? ((user.user_metadata?.display_name || user.user_metadata?.name || null) as
-        | string
-        | null)
+    ? ((user.user_metadata?.display_name || user.user_metadata?.name || null) as string | null)
     : null;
   const userAvatarUrl = user
-    ? ((user.user_metadata?.custom_avatar_url ||
-        user.user_metadata?.avatar_url ||
-        null) as string | null)
+    ? ((user.user_metadata?.custom_avatar_url || user.user_metadata?.avatar_url || null) as
+        | string
+        | null)
     : null;
 
   return (
     <>
       {user ? (
-        <Nav
-          userEmail={user.email ?? ""}
-          userName={userName}
-          userAvatarUrl={userAvatarUrl}
-        />
+        <Nav userEmail={user.email ?? ""} userName={userName} userAvatarUrl={userAvatarUrl} />
       ) : (
-        <nav className="fixed top-0 inset-x-0 z-50 h-14 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
+        <nav className="fixed inset-x-0 top-0 z-50 h-14 border-line border-b bg-surface/80 backdrop-blur-md">
           <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
             <a
               href="/"
-              className="text-lg font-bold text-white hover:text-cyan-400 transition-colors"
+              className="font-bold text-ink text-lg transition-colors hover:text-action-primary"
             >
               Haggle
             </a>
             <a
               href="/sign-in"
-              className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
+              className="font-medium text-ink-secondary text-sm transition-colors hover:text-ink"
             >
               Sign in
             </a>
