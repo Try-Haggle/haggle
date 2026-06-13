@@ -325,7 +325,7 @@ export default function ReviewerQualifyPage() {
                   key={c.case_id}
                   className={`h-2 w-6 rounded-full transition-colors ${
                     i < votes.length
-                      ? "bg-success-500"
+                      ? "bg-success"
                       : i === currentIdx
                         ? "bg-action-primary"
                         : "bg-line"

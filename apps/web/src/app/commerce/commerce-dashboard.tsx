@@ -1,30 +1,30 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import s from "./commerce.module.css";
-import {
-  createInitialState,
-  buyerApprove,
-  sellerApprove,
-  processPayment,
-  submitShippingInfo,
-  advanceShipment,
-  triggerDeliveryException,
-  fileDispute,
-  startAiReview,
-  resolveDispute,
-  updateNegotiation,
-  formatCurrency,
-  getPhaseLabel,
-  getPhaseIndex,
-  DISPUTE_REASON_OPTIONS,
-  type CommerceState,
-  type ShipmentInfo,
-  type OrderPhase,
-  type DisputeReasonCode,
-  type NegotiationResult,
-} from "./commerce-engine";
 import * as commerceApi from "./commerce-api";
+import {
+  advanceShipment,
+  buyerApprove,
+  type CommerceState,
+  createInitialState,
+  DISPUTE_REASON_OPTIONS,
+  type DisputeReasonCode,
+  fileDispute,
+  formatCurrency,
+  getPhaseIndex,
+  getPhaseLabel,
+  type NegotiationResult,
+  type OrderPhase,
+  processPayment,
+  resolveDispute,
+  type ShipmentInfo,
+  sellerApprove,
+  startAiReview,
+  submitShippingInfo,
+  triggerDeliveryException,
+  updateNegotiation,
+} from "./commerce-engine";
 
 // ─── Phase Stepper ───────────────────────────────────────────
 
@@ -54,7 +54,9 @@ function Stepper({ state }: { state: CommerceState }) {
               {i < current ? "✓" : isDispute && p.key === "COMPLETED" ? "!" : p.num}
             </div>
             {isDispute && p.key === "COMPLETED"
-              ? state.phase === "REFUNDED" ? "환불됨" : "분쟁"
+              ? state.phase === "REFUNDED"
+                ? "환불됨"
+                : "분쟁"
               : p.label}
           </div>
         );
@@ -74,9 +76,10 @@ function DealSummary({
 }) {
   const n = state.negotiation;
   const editable = state.phase === "APPROVAL";
-  const savings = n.original_price > 0
-    ? Math.round(((n.original_price - n.agreed_price) / n.original_price) * 100)
-    : 0;
+  const savings =
+    n.original_price > 0
+      ? Math.round(((n.original_price - n.agreed_price) / n.original_price) * 100)
+      : 0;
   const fee = Math.round(n.agreed_price * 0.015);
 
   return (
@@ -138,7 +141,9 @@ function DealSummary({
                 min={0}
                 step={0.01}
                 value={(n.original_price / 100).toFixed(2)}
-                onChange={(e) => onUpdate({ original_price: Math.round((Number(e.target.value) || 0) * 100) })}
+                onChange={(e) =>
+                  onUpdate({ original_price: Math.round((Number(e.target.value) || 0) * 100) })
+                }
               />
             </div>
           ) : (
@@ -157,7 +162,9 @@ function DealSummary({
                 min={0}
                 step={0.01}
                 value={(n.agreed_price / 100).toFixed(2)}
-                onChange={(e) => onUpdate({ agreed_price: Math.round((Number(e.target.value) || 0) * 100) })}
+                onChange={(e) =>
+                  onUpdate({ agreed_price: Math.round((Number(e.target.value) || 0) * 100) })
+                }
               />
             </div>
           ) : (
@@ -206,7 +213,11 @@ function DealSummary({
             <select
               className={s.dealInput}
               value={n.seller_approval_mode}
-              onChange={(e) => onUpdate({ seller_approval_mode: e.target.value as NegotiationResult["seller_approval_mode"] })}
+              onChange={(e) =>
+                onUpdate({
+                  seller_approval_mode: e.target.value as NegotiationResult["seller_approval_mode"],
+                })
+              }
             >
               <option value="AUTO_WITHIN_POLICY">자동 승인</option>
               <option value="MANUAL_CONFIRMATION">수동 확인</option>
@@ -217,9 +228,15 @@ function DealSummary({
 
       {editable && n.agreed_price > 0 && (
         <div className={s.dealBreakdown}>
-          <span>구매자 지불: <strong>{formatCurrency(n.agreed_price)}</strong></span>
-          <span>→ 에스크로: <strong>{formatCurrency(n.agreed_price - fee)}</strong></span>
-          <span>→ 수수료: <strong>{formatCurrency(fee)}</strong></span>
+          <span>
+            구매자 지불: <strong>{formatCurrency(n.agreed_price)}</strong>
+          </span>
+          <span>
+            → 에스크로: <strong>{formatCurrency(n.agreed_price - fee)}</strong>
+          </span>
+          <span>
+            → 수수료: <strong>{formatCurrency(fee)}</strong>
+          </span>
         </div>
       )}
     </div>
@@ -268,16 +285,26 @@ function TrustScores({ state }: { state: CommerceState }) {
       <div className={s.trustGrid}>
         <div className={s.trustItem}>
           <div className={s.trustLabel}>구매자 신뢰도</div>
-          <div className={s.trustScore}>{(state.trust_scores.buyer_reliability * 100).toFixed(0)}%</div>
+          <div className={s.trustScore}>
+            {(state.trust_scores.buyer_reliability * 100).toFixed(0)}%
+          </div>
           <div className={s.trustBar}>
-            <div className={s.trustFill} style={{ width: `${state.trust_scores.buyer_reliability * 100}%` }} />
+            <div
+              className={s.trustFill}
+              style={{ width: `${state.trust_scores.buyer_reliability * 100}%` }}
+            />
           </div>
         </div>
         <div className={s.trustItem}>
           <div className={s.trustLabel}>판매자 신뢰도</div>
-          <div className={s.trustScore}>{(state.trust_scores.seller_reliability * 100).toFixed(0)}%</div>
+          <div className={s.trustScore}>
+            {(state.trust_scores.seller_reliability * 100).toFixed(0)}%
+          </div>
           <div className={s.trustBar}>
-            <div className={s.trustFill} style={{ width: `${state.trust_scores.seller_reliability * 100}%` }} />
+            <div
+              className={s.trustFill}
+              style={{ width: `${state.trust_scores.seller_reliability * 100}%` }}
+            />
           </div>
         </div>
       </div>
@@ -344,14 +371,21 @@ function ActionPanel({
     <div className={s.card}>
       <h3 className={s.cardTitle}>
         🎮 액션
-        <span className={`${s.badge} ${
-          state.phase === "IN_DISPUTE" || state.phase === "REFUNDED" ? s.badgeDispute :
-          state.phase === "COMPLETED" ? s.badgeCompleted :
-          state.phase === "PAYMENT" ? s.badgePayment :
-          state.phase === "FULFILLMENT" ? s.badgeFulfillment :
-          state.phase === "DELIVERY" ? s.badgeDelivery :
-          s.badgeApproval
-        }`}>
+        <span
+          className={`${s.badge} ${
+            state.phase === "IN_DISPUTE" || state.phase === "REFUNDED"
+              ? s.badgeDispute
+              : state.phase === "COMPLETED"
+                ? s.badgeCompleted
+                : state.phase === "PAYMENT"
+                  ? s.badgePayment
+                  : state.phase === "FULFILLMENT"
+                    ? s.badgeFulfillment
+                    : state.phase === "DELIVERY"
+                      ? s.badgeDelivery
+                      : s.badgeApproval
+          }`}
+        >
           {getPhaseLabel(state.phase)}
         </span>
       </h3>
@@ -359,20 +393,32 @@ function ActionPanel({
       <div className={s.actions}>
         {/* ── Approval Phase ── */}
         {state.approval_state === "MUTUALLY_ACCEPTABLE" && (
-          <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => onAction("buyer_approve")}>
+          <button
+            type="button"
+            className={`${s.btn} ${s.btnPrimary}`}
+            onClick={() => onAction("buyer_approve")}
+          >
             ✅ 구매자: 거래 승인
           </button>
         )}
 
         {state.approval_state === "AWAITING_SELLER_APPROVAL" && (
-          <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => onAction("seller_approve")}>
+          <button
+            type="button"
+            className={`${s.btn} ${s.btnSecondary}`}
+            onClick={() => onAction("seller_approve")}
+          >
             ✅ 판매자: 거래 승인
           </button>
         )}
 
         {/* ── Payment Phase ── */}
         {state.phase === "PAYMENT" && state.payment_status !== "SETTLED" && (
-          <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => onAction("process_payment")}>
+          <button
+            type="button"
+            className={`${s.btn} ${s.btnPrimary}`}
+            onClick={() => onAction("process_payment")}
+          >
             💰 결제 진행 (x402 모의)
           </button>
         )}
@@ -382,8 +428,15 @@ function ActionPanel({
           <>
             <div className={s.formGrid}>
               <div className={s.formGroup}>
-                <label className={s.formLabel}>운송사</label>
-                <select className={s.formSelect} value={carrier} onChange={(e) => setCarrier(e.target.value)}>
+                <label className={s.formLabel} htmlFor="commerce-carrier">
+                  운송사
+                </label>
+                <select
+                  id="commerce-carrier"
+                  className={s.formSelect}
+                  value={carrier}
+                  onChange={(e) => setCarrier(e.target.value)}
+                >
                   <option value="FedEx">FedEx</option>
                   <option value="UPS">UPS</option>
                   <option value="USPS">USPS</option>
@@ -391,18 +444,28 @@ function ActionPanel({
                 </select>
               </div>
               <div className={s.formGroup}>
-                <label className={s.formLabel}>운송장 번호</label>
-                <input className={s.formInput} value={trackingNum} onChange={(e) => setTrackingNum(e.target.value)} />
+                <label className={s.formLabel} htmlFor="commerce-tracking">
+                  운송장 번호
+                </label>
+                <input
+                  id="commerce-tracking"
+                  className={s.formInput}
+                  value={trackingNum}
+                  onChange={(e) => setTrackingNum(e.target.value)}
+                />
               </div>
             </div>
             <button
+              type="button"
               className={`${s.btn} ${s.btnSecondary}`}
-              onClick={() => onAction("submit_shipping", {
-                carrier,
-                tracking_number: trackingNum,
-                tracking_url: `https://track.${carrier.toLowerCase()}.com/${trackingNum}`,
-                eta: new Date(Date.now() + 5 * 86400_000).toISOString(),
-              } satisfies ShipmentInfo)}
+              onClick={() =>
+                onAction("submit_shipping", {
+                  carrier,
+                  tracking_number: trackingNum,
+                  tracking_url: `https://track.${carrier.toLowerCase()}.com/${trackingNum}`,
+                  eta: new Date(Date.now() + 5 * 86400_000).toISOString(),
+                } satisfies ShipmentInfo)
+              }
             >
               📦 판매자: 배송 정보 입력
             </button>
@@ -410,69 +473,110 @@ function ActionPanel({
         )}
 
         {/* ── Delivery Phase — Advance Shipment ── */}
-        {state.shipment && ["LABEL_CREATED", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(state.shipment_status) && (
-          <>
-            <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => onAction("advance_shipment")}>
-              🚚 배송 진행 →{" "}
-              {state.shipment_status === "LABEL_CREATED" ? "배송 중" :
-               state.shipment_status === "IN_TRANSIT" ? "배달 출발" :
-               "배달 완료"}
-            </button>
-            <button className={`${s.btn} ${s.btnDanger}`} onClick={() => onAction("delivery_exception")}>
-              ⚠️ 배송 예외 시뮬레이션
-            </button>
-          </>
-        )}
+        {state.shipment &&
+          ["LABEL_CREATED", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(state.shipment_status) && (
+            <>
+              <button
+                type="button"
+                className={`${s.btn} ${s.btnPrimary}`}
+                onClick={() => onAction("advance_shipment")}
+              >
+                🚚 배송 진행 →{" "}
+                {state.shipment_status === "LABEL_CREATED"
+                  ? "배송 중"
+                  : state.shipment_status === "IN_TRANSIT"
+                    ? "배달 출발"
+                    : "배달 완료"}
+              </button>
+              <button
+                type="button"
+                className={`${s.btn} ${s.btnDanger}`}
+                onClick={() => onAction("delivery_exception")}
+              >
+                ⚠️ 배송 예외 시뮬레이션
+              </button>
+            </>
+          )}
 
         {/* ── File Dispute ── */}
-        {state.dispute_status === "NONE" && state.payment_status === "SETTLED" && state.phase !== "COMPLETED" && (
-          <>
-            <hr style={{ border: "none", borderTop: "1px solid rgba(40,29,18,0.1)", margin: "4px 0" }} />
-            <div className={s.formGrid}>
-              <div className={s.formGroup}>
-                <label className={s.formLabel}>사유</label>
-                <select className={s.formSelect} value={disputeReason} onChange={(e) => setDisputeReason(e.target.value as DisputeReasonCode)}>
-                  {DISPUTE_REASON_OPTIONS.map((opt) => (
-                    <option key={opt.code} value={opt.code}>{opt.label}</option>
-                  ))}
-                </select>
+        {state.dispute_status === "NONE" &&
+          state.payment_status === "SETTLED" &&
+          state.phase !== "COMPLETED" && (
+            <>
+              <hr
+                style={{
+                  border: "none",
+                  borderTop: "1px solid rgba(40,29,18,0.1)",
+                  margin: "4px 0",
+                }}
+              />
+              <div className={s.formGrid}>
+                <div className={s.formGroup}>
+                  <label className={s.formLabel} htmlFor="commerce-dispute-reason">
+                    사유
+                  </label>
+                  <select
+                    id="commerce-dispute-reason"
+                    className={s.formSelect}
+                    value={disputeReason}
+                    onChange={(e) => setDisputeReason(e.target.value as DisputeReasonCode)}
+                  >
+                    {DISPUTE_REASON_OPTIONS.map((opt) => (
+                      <option key={opt.code} value={opt.code}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={s.formGroup}>
+                  <label className={s.formLabel} htmlFor="commerce-dispute-desc">
+                    설명
+                  </label>
+                  <input
+                    id="commerce-dispute-desc"
+                    className={s.formInput}
+                    placeholder="간단한 설명..."
+                    value={disputeDesc}
+                    onChange={(e) => setDisputeDesc(e.target.value)}
+                  />
+                </div>
+                <div className={`${s.formGroup} full`}>
+                  <label className={s.formLabel} htmlFor="commerce-dispute-evidence">
+                    증거
+                  </label>
+                  <textarea
+                    id="commerce-dispute-evidence"
+                    className={s.formTextarea}
+                    placeholder="문제를 상세히 기술해 주세요..."
+                    value={disputeEvidence}
+                    onChange={(e) => setDisputeEvidence(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className={s.formGroup}>
-                <label className={s.formLabel}>설명</label>
-                <input
-                  className={s.formInput}
-                  placeholder="간단한 설명..."
-                  value={disputeDesc}
-                  onChange={(e) => setDisputeDesc(e.target.value)}
-                />
-              </div>
-              <div className={`${s.formGroup} full`}>
-                <label className={s.formLabel}>증거</label>
-                <textarea
-                  className={s.formTextarea}
-                  placeholder="문제를 상세히 기술해 주세요..."
-                  value={disputeEvidence}
-                  onChange={(e) => setDisputeEvidence(e.target.value)}
-                />
-              </div>
-            </div>
-            <button
-              className={`${s.btn} ${s.btnDanger}`}
-              disabled={!disputeDesc}
-              onClick={() => onAction("file_dispute", {
-                reason_code: disputeReason,
-                description: disputeDesc || "Dispute filed by buyer",
-                evidence_text: disputeEvidence || "No additional evidence",
-              })}
-            >
-              ⚖️ 구매자: 분쟁 신청
-            </button>
-          </>
-        )}
+              <button
+                type="button"
+                className={`${s.btn} ${s.btnDanger}`}
+                disabled={!disputeDesc}
+                onClick={() =>
+                  onAction("file_dispute", {
+                    reason_code: disputeReason,
+                    description: disputeDesc || "Dispute filed by buyer",
+                    evidence_text: disputeEvidence || "No additional evidence",
+                  })
+                }
+              >
+                ⚖️ 구매자: 분쟁 신청
+              </button>
+            </>
+          )}
 
         {/* ── Dispute AI Review ── */}
         {state.dispute_status === "OPEN" && (
-          <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => onAction("start_ai_review")}>
+          <button
+            type="button"
+            className={`${s.btn} ${s.btnPrimary}`}
+            onClick={() => onAction("start_ai_review")}
+          >
             🤖 AI 분쟁 심사 시작
           </button>
         )}
@@ -482,13 +586,25 @@ function ActionPanel({
             <p style={{ fontSize: "0.85rem", color: "#54473a", margin: "0 0 6px" }}>
               AI가 심사 중입니다... 모의 결과를 선택하세요:
             </p>
-            <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => onAction("resolve_dispute", "buyer_favor")}>
+            <button
+              type="button"
+              className={`${s.btn} ${s.btnPrimary}`}
+              onClick={() => onAction("resolve_dispute", "buyer_favor")}
+            >
               🏆 판결: 구매자 승소 (전액 환불)
             </button>
-            <button className={`${s.btn} ${s.btnOutline}`} onClick={() => onAction("resolve_dispute", "partial_refund")}>
+            <button
+              type="button"
+              className={`${s.btn} ${s.btnOutline}`}
+              onClick={() => onAction("resolve_dispute", "partial_refund")}
+            >
               ⚖️ 판결: 부분 환불 (50%)
             </button>
-            <button className={`${s.btn} ${s.btnSecondary}`} onClick={() => onAction("resolve_dispute", "seller_favor")}>
+            <button
+              type="button"
+              className={`${s.btn} ${s.btnSecondary}`}
+              onClick={() => onAction("resolve_dispute", "seller_favor")}
+            >
               🛡️ 판결: 판매자 승소 (환불 없음)
             </button>
           </>
@@ -496,11 +612,15 @@ function ActionPanel({
 
         {/* ── Dispute Result ── */}
         {state.dispute?.resolution && (
-          <div className={`${s.disputeResult} ${
-            state.dispute_status === "RESOLVED_BUYER_FAVOR" ? s.disputeBuyerWin :
-            state.dispute_status === "RESOLVED_SELLER_FAVOR" ? s.disputeSellerWin :
-            s.disputePartial
-          }`}>
+          <div
+            className={`${s.disputeResult} ${
+              state.dispute_status === "RESOLVED_BUYER_FAVOR"
+                ? s.disputeBuyerWin
+                : state.dispute_status === "RESOLVED_SELLER_FAVOR"
+                  ? s.disputeSellerWin
+                  : s.disputePartial
+            }`}
+          >
             <p className={s.disputeOutcome}>{state.dispute.resolution.outcome}</p>
             <p className={s.disputeSummary}>{state.dispute.resolution.summary}</p>
             {state.dispute.resolution.refund_amount != null && (
@@ -524,7 +644,11 @@ function ActionPanel({
 
         {/* ── Reset ── */}
         {(state.phase === "COMPLETED" || state.phase === "REFUNDED") && (
-          <button className={`${s.btn} ${s.btnOutline}`} onClick={() => onAction("reset")}>
+          <button
+            type="button"
+            className={`${s.btn} ${s.btnOutline}`}
+            onClick={() => onAction("reset")}
+          >
             🔄 데모 초기화
           </button>
         )}
@@ -555,11 +679,15 @@ function ShippingCard({ state }: { state: CommerceState }) {
           </div>
           <div className={s.dealItem}>
             <span className={s.dealLabel}>상태</span>
-            <span className={`${s.badge} ${
-              state.shipment_status === "DELIVERED" ? s.badgeCompleted :
-              state.shipment_status === "DELIVERY_EXCEPTION" ? s.badgeDispute :
-              s.badgeDelivery
-            }`}>
+            <span
+              className={`${s.badge} ${
+                state.shipment_status === "DELIVERED"
+                  ? s.badgeCompleted
+                  : state.shipment_status === "DELIVERY_EXCEPTION"
+                    ? s.badgeDispute
+                    : s.badgeDelivery
+              }`}
+            >
               {state.shipment_status.replace(/_/g, " ")}
             </span>
           </div>
@@ -588,8 +716,7 @@ function isDemoMode(state: CommerceState): boolean {
   // Demo mode: no real order/payment IDs exist on the state.
   // Real IDs would be injected from URL params or API responses.
   // The local engine uses mock wallet addresses and no server-assigned IDs.
-  return !state.buyer_wallet.address.startsWith("0x") ||
-    state.buyer_wallet.address.includes("...");
+  return !state.buyer_wallet.address.startsWith("0x") || state.buyer_wallet.address.includes("...");
 }
 
 function showApiError(action: string, err: unknown): void {
@@ -617,7 +744,10 @@ export function CommerceDashboard() {
     }
   }, []);
 
-  // Fetch trust scores from API on mount (non-blocking)
+  // Fetch trust scores from API on mount (non-blocking).
+  // Intentionally keyed on buyer_id only — runs when the negotiating parties
+  // change, not on every state mutation.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see note above
   useEffect(() => {
     if (!state) return;
     if (isDemoMode(state)) return;
@@ -640,8 +770,6 @@ export function CommerceDashboard() {
         return { ...prev, trust_scores: trust };
       });
     });
-  // Run once on initial state creation only
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.negotiation.buyer_id]);
 
   const handleAction = useCallback((action: string, payload?: unknown) => {
@@ -696,15 +824,21 @@ export function CommerceDashboard() {
       case "seller_approve": {
         // Approval is local-only for now — no dedicated API endpoint.
         // Payment preparation happens when approval completes and payment phase starts.
-        if (snap.approval_state === "MUTUALLY_ACCEPTABLE" || snap.approval_state === "AWAITING_SELLER_APPROVAL") {
+        if (
+          snap.approval_state === "MUTUALLY_ACCEPTABLE" ||
+          snap.approval_state === "AWAITING_SELLER_APPROVAL"
+        ) {
           const approvalId = serverIds.current.orderId;
           if (approvalId) {
-            commerceApi.preparePayment(approvalId).then((res) => {
-              serverIds.current.paymentId = res.payment.id;
-            }).catch((err) => {
-              showApiError("preparePayment", err);
-              // Don't revert approval — payment can be retried
-            });
+            commerceApi
+              .preparePayment(approvalId)
+              .then((res) => {
+                serverIds.current.paymentId = res.payment.id;
+              })
+              .catch((err) => {
+                showApiError("preparePayment", err);
+                // Don't revert approval — payment can be retried
+              });
           }
         }
         break;
@@ -732,17 +866,15 @@ export function CommerceDashboard() {
         const orderId = serverIds.current.orderId;
         if (!orderId) break;
         const p = payload as { reason_code: string; description: string };
-        commerceApi.openDispute(
-          orderId,
-          p.reason_code,
-          p.description,
-          snap.negotiation.buyer_id,
-        ).then((res) => {
-          serverIds.current.disputeId = res.dispute.id;
-        }).catch((err) => {
-          showApiError("openDispute", err);
-          revert();
-        });
+        commerceApi
+          .openDispute(orderId, p.reason_code, p.description, snap.negotiation.buyer_id)
+          .then((res) => {
+            serverIds.current.disputeId = res.dispute.id;
+          })
+          .catch((err) => {
+            showApiError("openDispute", err);
+            revert();
+          });
         break;
       }
 
@@ -759,13 +891,17 @@ export function CommerceDashboard() {
       <div className={s.shell}>
         <div className={s.header}>
           <h1>커머스 대시보드</h1>
-          <a href="/" className={s.backLink}>← 협상 플레이그라운드</a>
+          <a href="/" className={s.backLink}>
+            ← 협상 플레이그라운드
+          </a>
         </div>
         <div className={s.card} style={{ textAlign: "center", padding: "48px" }}>
           {initError ? (
             <div style={{ color: "#c0392b" }}>
               <p style={{ fontWeight: 700 }}>초기화 실패</p>
-              <pre style={{ fontSize: "0.8rem", whiteSpace: "pre-wrap", textAlign: "left" }}>{initError}</pre>
+              <pre style={{ fontSize: "0.8rem", whiteSpace: "pre-wrap", textAlign: "left" }}>
+                {initError}
+              </pre>
             </div>
           ) : (
             <p>로딩 중...</p>
@@ -779,14 +915,19 @@ export function CommerceDashboard() {
     <div className={s.shell}>
       <div className={s.header}>
         <h1>커머스 대시보드</h1>
-        <a href="/" className={s.backLink}>← 협상 플레이그라운드</a>
+        <a href="/" className={s.backLink}>
+          ← 협상 플레이그라운드
+        </a>
       </div>
 
       <Stepper state={state} />
 
       <div className={s.main}>
         <div>
-          <DealSummary state={state} onUpdate={(patch) => handleAction("update_negotiation", patch)} />
+          <DealSummary
+            state={state}
+            onUpdate={(patch) => handleAction("update_negotiation", patch)}
+          />
           <Wallets state={state} />
           <ShippingCard state={state} />
           <Timeline state={state} />

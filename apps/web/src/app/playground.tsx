@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import styles from "./playground.module.css";
 import {
   computeCounterOffer,
   computeUtility,
-  makeDecision,
   type DecisionAction,
+  makeDecision,
   type NegotiationContext,
   type UtilityResult,
   type UtilityWeights,
 } from "./playground-engine";
-import styles from "./playground.module.css";
 
 type Actor = "seller" | "buyer";
 type StageStatus = "ready" | "running" | "agreed" | "rejected" | "escalated";
@@ -301,7 +301,7 @@ function buildLinePath(points: TimeSamplePoint[], width: number, height: number)
     .join(" ");
 }
 
-function buildIndexedPath(values: number[], width: number, height: number): string {
+function _buildIndexedPath(values: number[], width: number, height: number): string {
   if (values.length === 0) {
     return "";
   }
@@ -324,7 +324,12 @@ function pointPosition(config: EngineConfig, elapsedHours: number, width: number
   };
 }
 
-function computeActorUtility(actor: Actor, config: EngineConfig, price: number, elapsedHours: number): UtilityResult {
+function computeActorUtility(
+  actor: Actor,
+  config: EngineConfig,
+  price: number,
+  elapsedHours: number,
+): UtilityResult {
   return computeUtility(buildContext(actor, config, price, elapsedHours));
 }
 
@@ -342,13 +347,25 @@ function projectNegotiation(
     points.push({
       round: current.round,
       status: current.status,
-      price: current.status === "agreed" ? current.agreedPrice ?? current.currentPrice : current.currentPrice,
+      price:
+        current.status === "agreed"
+          ? (current.agreedPrice ?? current.currentPrice)
+          : current.currentPrice,
       elapsedHours: current.elapsedHours,
-      sellerUtility: computeActorUtility("seller", seller, current.currentPrice, current.elapsedHours),
+      sellerUtility: computeActorUtility(
+        "seller",
+        seller,
+        current.currentPrice,
+        current.elapsedHours,
+      ),
       buyerUtility: computeActorUtility("buyer", buyer, current.currentPrice, current.elapsedHours),
     });
 
-    if (current.status === "agreed" || current.status === "rejected" || current.status === "escalated") {
+    if (
+      current.status === "agreed" ||
+      current.status === "rejected" ||
+      current.status === "escalated"
+    ) {
       break;
     }
 
@@ -384,7 +401,12 @@ function makeInitialSimulation(seller: EngineConfig, buyer: EngineConfig): Simul
   };
 }
 
-function buildContext(actor: Actor, config: EngineConfig, effectivePrice: number, elapsedHours: number): NegotiationContext {
+function buildContext(
+  _actor: Actor,
+  config: EngineConfig,
+  effectivePrice: number,
+  elapsedHours: number,
+): NegotiationContext {
   return {
     weights: normalizeWeights(config.weights),
     price: {
@@ -413,7 +435,7 @@ function buildContext(actor: Actor, config: EngineConfig, effectivePrice: number
   };
 }
 
-function computeDesiredOffer(actor: Actor, config: EngineConfig, elapsedHours: number): number {
+function computeDesiredOffer(_actor: Actor, config: EngineConfig, elapsedHours: number): number {
   const raw = computeCounterOffer({
     p_start: config.startPrice,
     p_limit: config.limitPrice,
@@ -431,18 +453,25 @@ function advanceSimulation(
   buyer: EngineConfig,
   elapsedStepHours: number,
 ): SimulationState {
-  if (simulation.status === "agreed" || simulation.status === "rejected" || simulation.status === "escalated") {
+  if (
+    simulation.status === "agreed" ||
+    simulation.status === "rejected" ||
+    simulation.status === "escalated"
+  ) {
     return simulation;
   }
 
   const actor = simulation.activeActor;
   const config = actor === "seller" ? seller : buyer;
-  const utility = computeUtility(buildContext(actor, config, simulation.currentPrice, simulation.elapsedHours));
+  const utility = computeUtility(
+    buildContext(actor, config, simulation.currentPrice, simulation.elapsedHours),
+  );
   const decision = makeDecision(
     utility,
     { u_threshold: config.threshold, u_aspiration: config.aspiration },
     {
-      rounds_no_concession: actor === "seller" ? simulation.sellerNoConcession : simulation.buyerNoConcession,
+      rounds_no_concession:
+        actor === "seller" ? simulation.sellerNoConcession : simulation.buyerNoConcession,
     },
   );
 
@@ -530,9 +559,13 @@ function advanceSimulation(
   });
 
   const sellerConcession =
-    actor === "seller" && outgoingPrice < simulation.lastSellerOffer ? 0 : simulation.sellerNoConcession + (actor === "seller" ? 1 : 0);
+    actor === "seller" && outgoingPrice < simulation.lastSellerOffer
+      ? 0
+      : simulation.sellerNoConcession + (actor === "seller" ? 1 : 0);
   const buyerConcession =
-    actor === "buyer" && outgoingPrice > simulation.lastBuyerOffer ? 0 : simulation.buyerNoConcession + (actor === "buyer" ? 1 : 0);
+    actor === "buyer" && outgoingPrice > simulation.lastBuyerOffer
+      ? 0
+      : simulation.buyerNoConcession + (actor === "buyer" ? 1 : 0);
 
   return {
     status: "running",
@@ -559,7 +592,11 @@ function applyPreset(base: EngineConfig, actor: Actor, preset: PresetId): Engine
 }
 
 function StatusBadge({ status }: { status: StageStatus }) {
-  return <span className={`${styles.statusBadge} ${styles[`status_${status}`]}`}>{formatStatus(status)}</span>;
+  return (
+    <span className={`${styles.statusBadge} ${styles[`status_${status}`]}`}>
+      {formatStatus(status)}
+    </span>
+  );
 }
 
 function WeightInput({
@@ -770,10 +807,26 @@ function EnginePanel({
       <div className={styles.subSection}>
         <h3>유틸리티 가중치</h3>
         <div className={styles.weightGrid}>
-          <WeightInput label="가격" value={config.weights.w_p} onChange={(next) => updateWeight("w_p", next)} />
-          <WeightInput label="시간" value={config.weights.w_t} onChange={(next) => updateWeight("w_t", next)} />
-          <WeightInput label="리스크" value={config.weights.w_r} onChange={(next) => updateWeight("w_r", next)} />
-          <WeightInput label="관계" value={config.weights.w_s} onChange={(next) => updateWeight("w_s", next)} />
+          <WeightInput
+            label="가격"
+            value={config.weights.w_p}
+            onChange={(next) => updateWeight("w_p", next)}
+          />
+          <WeightInput
+            label="시간"
+            value={config.weights.w_t}
+            onChange={(next) => updateWeight("w_t", next)}
+          />
+          <WeightInput
+            label="리스크"
+            value={config.weights.w_r}
+            onChange={(next) => updateWeight("w_r", next)}
+          />
+          <WeightInput
+            label="관계"
+            value={config.weights.w_s}
+            onChange={(next) => updateWeight("w_s", next)}
+          />
         </div>
       </div>
     </section>
@@ -889,7 +942,8 @@ function buildForecast(
     outcome: projection[projection.length - 1],
     intersectionIndex,
     closestGap: Math.abs(
-      projection[intersectionIndex].sellerUtility.u_total - projection[intersectionIndex].buyerUtility.u_total,
+      projection[intersectionIndex].sellerUtility.u_total -
+        projection[intersectionIndex].buyerUtility.u_total,
     ),
     firstAgreementIndex: firstAgreementIndex >= 0 ? firstAgreementIndex : null,
   };
@@ -1015,17 +1069,24 @@ function ForecastChart({
   const width = 620;
   const height = 210;
   const bandSeries = buildPriceBandSeries(seller, buyer, maxHours);
-  const minPrice = Math.min(...bandSeries.map((point) => Math.min(point.sellerPrice, point.buyerPrice)));
-  const maxPrice = Math.max(...bandSeries.map((point) => Math.max(point.sellerPrice, point.buyerPrice)));
+  const minPrice = Math.min(
+    ...bandSeries.map((point) => Math.min(point.sellerPrice, point.buyerPrice)),
+  );
+  const maxPrice = Math.max(
+    ...bandSeries.map((point) => Math.max(point.sellerPrice, point.buyerPrice)),
+  );
   const sellerPath = buildPricePath(bandSeries, "sellerPrice", width, height, minPrice, maxPrice);
   const buyerPath = buildPricePath(bandSeries, "buyerPrice", width, height, minPrice, maxPrice);
   const currentX = (Math.min(currentElapsedHours, maxHours) / Math.max(maxHours, 1)) * width;
   const forecast = buildForecast(projection, sellerThreshold, buyerThreshold);
   const overlapIndex = bandSeries.findIndex((point) => point.overlap);
-  const keyBandIndex = overlapIndex >= 0 ? overlapIndex : bandSeries.reduce((bestIndex, point, index) => {
-    const bestGap = Math.abs(bandSeries[bestIndex].gap);
-    return Math.abs(point.gap) < bestGap ? index : bestIndex;
-  }, 0);
+  const keyBandIndex =
+    overlapIndex >= 0
+      ? overlapIndex
+      : bandSeries.reduce((bestIndex, point, index) => {
+          const bestGap = Math.abs(bandSeries[bestIndex].gap);
+          return Math.abs(point.gap) < bestGap ? index : bestIndex;
+        }, 0);
   const crossingBand = bandSeries[keyBandIndex];
   const intersectionX = (crossingBand.hour / Math.max(maxHours, 1)) * width;
   const sellerPoint = pricePointPosition(
@@ -1060,13 +1121,24 @@ function ForecastChart({
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${width} ${height}`} className={styles.forecastChart}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className={styles.forecastChart}
+        role="img"
+        aria-label="셀러 요구 가격과 바이어 가능 가격의 시간 경과에 따른 변화"
+      >
         <line x1="0" y1={height} x2={width} y2={height} className={styles.axisLine} />
         <line x1="0" y1="0" x2="0" y2={height} className={styles.axisLine} />
         <path d={sellerPath} className={styles.sellerLine} />
         <path d={buyerPath} className={styles.buyerLine} />
         <line x1={currentX} y1="0" x2={currentX} y2={height} className={styles.currentTimeLine} />
-        <line x1={intersectionX} y1="0" x2={intersectionX} y2={height} className={styles.intersectionLine} />
+        <line
+          x1={intersectionX}
+          y1="0"
+          x2={intersectionX}
+          y2={height}
+          className={styles.intersectionLine}
+        />
         <circle cx={sellerPoint.x} cy={sellerPoint.y} r="6" className={styles.sellerPoint} />
         <circle cx={buyerPoint.x} cy={buyerPoint.y} r="6" className={styles.buyerPoint} />
       </svg>
@@ -1079,11 +1151,10 @@ function ForecastChart({
         </div>
         <div className={styles.markerCard}>
           <span>{crossingBand.overlap ? "첫 합의 가능 구간" : "가장 가까운 가격 접근"}</span>
-          <strong>
-            {crossingBand.hour.toFixed(1)}시간
-          </strong>
+          <strong>{crossingBand.hour.toFixed(1)}시간</strong>
           <p>
-            셀러 {formatCurrency(crossingBand.sellerPrice)} / 바이어 {formatCurrency(crossingBand.buyerPrice)}
+            셀러 {formatCurrency(crossingBand.sellerPrice)} / 바이어{" "}
+            {formatCurrency(crossingBand.buyerPrice)}
           </p>
         </div>
         <div className={styles.markerCard}>
@@ -1110,25 +1181,23 @@ function UtilityMiniCards({
   maxHours: number;
 }) {
   const bandSeries = buildPriceBandSeries(seller, buyer, maxHours);
-  const overlap = bandSeries.find((entry) => entry.overlap) ?? bandSeries.reduce((best, current) => {
-    return Math.abs(current.gap) < Math.abs(best.gap) ? current : best;
-  }, bandSeries[0]);
+  const overlap =
+    bandSeries.find((entry) => entry.overlap) ??
+    bandSeries.reduce((best, current) => {
+      return Math.abs(current.gap) < Math.abs(best.gap) ? current : best;
+    }, bandSeries[0]);
 
   return (
     <div className={styles.utilityMiniGrid}>
       <article className={styles.utilityMiniCard}>
         <span>현재 셀러 가격 효용</span>
         <strong>{point.sellerUtility.v_p.toFixed(2)}</strong>
-        <p>
-          현재 가격 {formatCurrency(point.price)} 에서 셀러가 느끼는 가격 만족도입니다.
-        </p>
+        <p>현재 가격 {formatCurrency(point.price)} 에서 셀러가 느끼는 가격 만족도입니다.</p>
       </article>
       <article className={styles.utilityMiniCard}>
         <span>현재 바이어 가격 효용</span>
         <strong>{point.buyerUtility.v_p.toFixed(2)}</strong>
-        <p>
-          현재 가격 {formatCurrency(point.price)} 에서 바이어가 느끼는 가격 만족도입니다.
-        </p>
+        <p>현재 가격 {formatCurrency(point.price)} 에서 바이어가 느끼는 가격 만족도입니다.</p>
       </article>
       <article className={styles.utilityMiniCard}>
         <span>합의 가능 가격차</span>
@@ -1158,17 +1227,23 @@ export function NegotiationPlayground() {
       return;
     }
 
-    if (simulation.status === "agreed" || simulation.status === "rejected" || simulation.status === "escalated") {
+    if (
+      simulation.status === "agreed" ||
+      simulation.status === "rejected" ||
+      simulation.status === "escalated"
+    ) {
       setAutoRun(false);
       return;
     }
 
     const timer = window.setTimeout(() => {
-      setSimulation((current) => advanceSimulation(current, sellerConfig, buyerConfig, hoursPerTurn));
+      setSimulation((current) =>
+        advanceSimulation(current, sellerConfig, buyerConfig, hoursPerTurn),
+      );
     }, 900);
 
     return () => window.clearTimeout(timer);
-  }, [autoRun, simulation, sellerConfig, buyerConfig]);
+  }, [autoRun, simulation, sellerConfig, buyerConfig, hoursPerTurn]);
 
   const latestEvent = simulation.timeline[simulation.timeline.length - 1];
   const maxTimelineHours = useMemo(
@@ -1185,10 +1260,14 @@ export function NegotiationPlayground() {
   );
   const centerSummary = useMemo(
     () => ({
-      currentPrice: simulation.status === "agreed" ? simulation.agreedPrice : simulation.currentPrice,
-      nextActor: simulation.status === "agreed" || simulation.status === "rejected" || simulation.status === "escalated"
-        ? null
-        : simulation.activeActor,
+      currentPrice:
+        simulation.status === "agreed" ? simulation.agreedPrice : simulation.currentPrice,
+      nextActor:
+        simulation.status === "agreed" ||
+        simulation.status === "rejected" ||
+        simulation.status === "escalated"
+          ? null
+          : simulation.activeActor,
     }),
     [simulation],
   );
@@ -1212,13 +1291,25 @@ export function NegotiationPlayground() {
           <p className={styles.kicker}>협상 플레이그라운드</p>
           <h1>한 화면에서 보는 셀러와 바이어 엔진의 협상 흐름</h1>
           <p className={styles.heroCopy}>
-            양쪽 엔진 설정을 조정한 뒤, 가운데 타임라인에서 오퍼가 어떻게 움직이고 유틸리티가 어디서 바뀌는지,
-            그리고 왜 합의·거절·사람 개입으로 끝나는지 바로 볼 수 있습니다.
+            양쪽 엔진 설정을 조정한 뒤, 가운데 타임라인에서 오퍼가 어떻게 움직이고 유틸리티가 어디서
+            바뀌는지, 그리고 왜 합의·거절·사람 개입으로 끝나는지 바로 볼 수 있습니다.
           </p>
         </div>
         <div className={styles.heroMeta}>
           <div style={{ gridColumn: "1 / -1" }}>
-            <a href="/commerce" style={{ display: "inline-block", padding: "8px 16px", background: "#d87421", color: "#fff", borderRadius: "10px", textDecoration: "none", fontWeight: 700, fontSize: "0.88rem" }}>
+            <a
+              href="/commerce"
+              style={{
+                display: "inline-block",
+                padding: "8px 16px",
+                background: "#d87421",
+                color: "#fff",
+                borderRadius: "10px",
+                textDecoration: "none",
+                fontWeight: 700,
+                fontSize: "0.88rem",
+              }}
+            >
               → Commerce Dashboard
             </a>
           </div>
@@ -1232,7 +1323,11 @@ export function NegotiationPlayground() {
           </div>
           <div>
             <span>다음 차례</span>
-            <strong>{centerSummary.nextActor ? `${formatActor(centerSummary.nextActor)} 엔진 평가` : "세션 종료"}</strong>
+            <strong>
+              {centerSummary.nextActor
+                ? `${formatActor(centerSummary.nextActor)} 엔진 평가`
+                : "세션 종료"}
+            </strong>
           </div>
           <div>
             <span>세션 경과 시간</span>
@@ -1254,10 +1349,18 @@ export function NegotiationPlayground() {
               <button type="button" className={styles.secondaryButton} onClick={resetSimulation}>
                 초기화
               </button>
-              <button type="button" className={styles.secondaryButton} onClick={advanceWithCurrentPace}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={advanceWithCurrentPace}
+              >
                 다음 라운드
               </button>
-              <button type="button" className={styles.primaryButton} onClick={() => setAutoRun((value) => !value)}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => setAutoRun((value) => !value)}
+              >
                 {autoRun ? "자동 진행 일시정지" : "자동 진행"}
               </button>
             </div>
@@ -1288,13 +1391,17 @@ export function NegotiationPlayground() {
               <span>문서 기준</span>
               <strong>시간 효용은 라운드 수가 아니라 실제 경과 시간 기반</strong>
               <p>
-                라운드는 제안 왕복일 뿐입니다. 기본값에서는 라운드를 넘겨도 시간이 자동으로 흐르지 않고, 위 값이나 현재
-                경과 시간을 직접 바꿀 때만 시간 효용이 변합니다.
+                라운드는 제안 왕복일 뿐입니다. 기본값에서는 라운드를 넘겨도 시간이 자동으로 흐르지
+                않고, 위 값이나 현재 경과 시간을 직접 바꿀 때만 시간 효용이 변합니다.
               </p>
             </div>
           </div>
 
-          <TimeUtilityDemo seller={sellerConfig} buyer={buyerConfig} elapsedHours={simulation.elapsedHours} />
+          <TimeUtilityDemo
+            seller={sellerConfig}
+            buyer={buyerConfig}
+            elapsedHours={simulation.elapsedHours}
+          />
 
           <section className={styles.projectionSection}>
             <div className={styles.timeDemoHeader}>
@@ -1322,7 +1429,14 @@ export function NegotiationPlayground() {
               buyerThreshold={buyerConfig.threshold}
             />
             <UtilityMiniCards
-              point={projection[Math.min(forecast.firstAgreementIndex ?? forecast.intersectionIndex, projection.length - 1)]}
+              point={
+                projection[
+                  Math.min(
+                    forecast.firstAgreementIndex ?? forecast.intersectionIndex,
+                    projection.length - 1,
+                  )
+                ]
+              }
               seller={sellerConfig}
               buyer={buyerConfig}
               maxHours={maxTimelineHours}
@@ -1355,7 +1469,10 @@ export function NegotiationPlayground() {
           <div className={styles.progressRail}>
             <div className={styles.progressLine} />
             {simulation.timeline.map((entry) => (
-              <article key={entry.id} className={`${styles.eventCard} ${styles[`actor_${entry.actor}`]}`}>
+              <article
+                key={entry.id}
+                className={`${styles.eventCard} ${styles[`actor_${entry.actor}`]}`}
+              >
                 <div className={styles.eventHeader}>
                   <span>{entry.actor === "seller" ? "셀러" : "바이어"}</span>
                   <strong>{formatAction(entry.action)}</strong>

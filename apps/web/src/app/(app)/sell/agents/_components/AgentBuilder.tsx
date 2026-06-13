@@ -387,7 +387,7 @@ export function AgentBuilder({
                 <button
                   type="button"
                   onClick={onDelete}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-rose-500/10 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-error-soft border border-error/40 text-error hover:bg-error-soft transition-colors"
                 >
                   <svg
                     aria-hidden="true"
@@ -514,7 +514,7 @@ function RightSidebar({
         type="button"
         onClick={onOpenAdvanced}
         disabled={!effective}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-purple-500/10 border border-purple-500/40 text-purple-300 hover:bg-purple-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-info-soft border border-info/40 text-info hover:bg-info-soft transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <svg
           aria-hidden="true"
@@ -586,8 +586,8 @@ function SaveAsAgentControl({
     <div
       className="rounded-md p-3"
       style={{
-        background: "rgba(16,185,129,0.06)",
-        border: "1px solid rgba(16,185,129,0.4)",
+        background: "color-mix(in srgb, var(--fb-success-fg) 6%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--fb-success-fg) 40%, transparent)",
       }}
     >
       <p className="text-[11px] text-ink-secondary mb-2">Save as new agent</p>

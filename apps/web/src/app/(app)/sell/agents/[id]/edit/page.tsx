@@ -134,7 +134,7 @@ export default function EditAgentPage() {
   if (agent === null) {
     return (
       <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8">
-        <p className="text-rose-400 text-[13px] mb-3">Agent not found. It may have been deleted.</p>
+        <p className="text-error text-[13px] mb-3">Agent not found. It may have been deleted.</p>
         <button
           type="button"
           onClick={() => router.push("/sell/agents")}

@@ -317,8 +317,8 @@ export function DetailContent({
                   <polyline points="16 7 22 7 22 13" />
                 </svg>
               }
-              iconColor="text-purple-400"
-              iconBg="bg-purple-500/10"
+              iconColor="text-info"
+              iconBg="bg-info-soft"
               value={bestOffer !== null ? formatMinorPrice(bestOffer) : "\u2014"}
               label="Best Offer"
             />

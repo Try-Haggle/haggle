@@ -211,7 +211,7 @@ export function AgentsList({ role, embedded = false, selectMode }: AgentsListPro
                           <button
                             type="button"
                             onClick={() => handleDelete(agent.id)}
-                            className="text-rose-400 hover:text-rose-300"
+                            className="text-error hover:text-error"
                           >
                             Delete
                           </button>

@@ -28,33 +28,33 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
   const chartH = HEIGHT - PADDING.top - PADDING.bottom;
   const viewBoxW = chartW + PADDING.left + PADDING.right;
 
-  const scaleX = (round: number) =>
-    PADDING.left + (round / maxRound) * chartW;
+  const scaleX = (round: number) => PADDING.left + (round / maxRound) * chartW;
   const scaleY = (price: number) =>
-    PADDING.top +
-    chartH -
-    ((price - minPrice) / (maxPrice - minPrice)) * chartH;
+    PADDING.top + chartH - ((price - minPrice) / (maxPrice - minPrice)) * chartH;
 
-  const buyerPoints = priceHistory
-    .map((p) => `${scaleX(p.round)},${scaleY(p.buyer)}`)
-    .join(" ");
-  const sellerPoints = priceHistory
-    .map((p) => `${scaleX(p.round)},${scaleY(p.seller)}`)
-    .join(" ");
+  const buyerPoints = priceHistory.map((p) => `${scaleX(p.round)},${scaleY(p.buyer)}`).join(" ");
+  const sellerPoints = priceHistory.map((p) => `${scaleX(p.round)},${scaleY(p.seller)}`).join(" ");
 
   const marketY = scaleY(MARKET_PRICE);
 
   const lastBuyer = priceHistory[priceHistory.length - 1];
   const lastSeller = priceHistory[priceHistory.length - 1];
 
+  // Categorical negotiation series: buyer line → info, seller line → seller badge
+  const BUYER_COLOR = "var(--fb-info-fg)";
+  const SELLER_COLOR = "var(--badge-text)";
+  const AXIS_COLOR = "var(--text-muted)";
+  const LEGEND_COLOR = "var(--text-secondary)";
+
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-3 mb-4">
-      <p className="text-xs text-slate-500 mb-2">Price Convergence</p>
+    <div className="rounded-xl border border-line bg-surface-sunken p-3 mb-4">
+      <p className="text-xs text-ink-secondary mb-2">Price Convergence</p>
       <svg
         viewBox={`0 0 ${viewBoxW} ${HEIGHT}`}
         className="w-full"
         style={{ height: `${HEIGHT}px` }}
         preserveAspectRatio="xMidYMid meet"
+        aria-hidden="true"
       >
         {/* Market price dashed line */}
         <line
@@ -62,25 +62,25 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
           y1={marketY}
           x2={PADDING.left + chartW}
           y2={marketY}
-          stroke="#64748b"
+          stroke={AXIS_COLOR}
           strokeWidth="0.5"
           strokeDasharray="4 3"
         />
         <text
           x={PADDING.left + chartW + 4}
           y={marketY + 3}
-          fill="#64748b"
+          fill={AXIS_COLOR}
           fontSize="8"
           fontFamily="monospace"
         >
           $920
         </text>
 
-        {/* Buyer line (blue) */}
+        {/* Buyer line (info) */}
         <polyline
           points={buyerPoints}
           fill="none"
-          stroke="#60a5fa"
+          stroke={BUYER_COLOR}
           strokeWidth="1.5"
           strokeLinejoin="round"
         />
@@ -90,15 +90,15 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
             cx={scaleX(p.round)}
             cy={scaleY(p.buyer)}
             r="3"
-            fill="#60a5fa"
+            fill={BUYER_COLOR}
           />
         ))}
 
-        {/* Seller line (orange) */}
+        {/* Seller line (seller badge) */}
         <polyline
           points={sellerPoints}
           fill="none"
-          stroke="#fb923c"
+          stroke={SELLER_COLOR}
           strokeWidth="1.5"
           strokeLinejoin="round"
         />
@@ -108,7 +108,7 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
             cx={scaleX(p.round)}
             cy={scaleY(p.seller)}
             r="3"
-            fill="#fb923c"
+            fill={SELLER_COLOR}
           />
         ))}
 
@@ -117,7 +117,7 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
           <text
             x={scaleX(lastBuyer.round) + 5}
             y={scaleY(lastBuyer.buyer) + 3}
-            fill="#60a5fa"
+            fill={BUYER_COLOR}
             fontSize="8"
             fontFamily="monospace"
           >
@@ -128,7 +128,7 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
           <text
             x={scaleX(lastSeller.round) + 5}
             y={scaleY(lastSeller.seller) + 3}
-            fill="#fb923c"
+            fill={SELLER_COLOR}
             fontSize="8"
             fontFamily="monospace"
           >
@@ -142,7 +142,7 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
             key={`x-${p.round}`}
             x={scaleX(p.round)}
             y={HEIGHT - 5}
-            fill="#64748b"
+            fill={AXIS_COLOR}
             fontSize="7"
             textAnchor="middle"
             fontFamily="monospace"
@@ -152,22 +152,12 @@ export function PriceChart({ priceHistory }: PriceChartProps) {
         ))}
 
         {/* Legend */}
-        <circle cx={PADDING.left} cy={HEIGHT - 6} r="3" fill="#60a5fa" />
-        <text
-          x={PADDING.left + 6}
-          y={HEIGHT - 3}
-          fill="#94a3b8"
-          fontSize="7"
-        >
+        <circle cx={PADDING.left} cy={HEIGHT - 6} r="3" fill={BUYER_COLOR} />
+        <text x={PADDING.left + 6} y={HEIGHT - 3} fill={LEGEND_COLOR} fontSize="7">
           AI Buyer
         </text>
-        <circle cx={PADDING.left + 50} cy={HEIGHT - 6} r="3" fill="#fb923c" />
-        <text
-          x={PADDING.left + 56}
-          y={HEIGHT - 3}
-          fill="#94a3b8"
-          fontSize="7"
-        >
+        <circle cx={PADDING.left + 50} cy={HEIGHT - 6} r="3" fill={SELLER_COLOR} />
+        <text x={PADDING.left + 56} y={HEIGHT - 3} fill={LEGEND_COLOR} fontSize="7">
           You (Seller)
         </text>
       </svg>

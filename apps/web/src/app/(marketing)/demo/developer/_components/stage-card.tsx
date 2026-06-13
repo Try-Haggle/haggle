@@ -31,10 +31,11 @@ function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="border-t border-slate-700/50 mt-2 pt-2">
+    <div className="border-t border-line-subtle mt-2 pt-2">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-slate-300 transition-colors cursor-pointer w-full text-left"
+        className="flex items-center gap-1.5 text-[11px] font-medium text-ink-muted hover:text-ink-secondary transition-colors cursor-pointer w-full text-left"
       >
         <span className={`transition-transform duration-150 text-[9px] ${open ? "rotate-90" : ""}`}>
           &#9654;
@@ -51,13 +52,10 @@ function CollapsibleSection({
 }
 
 function CodeBlock({ content }: { content: unknown }) {
-  const text =
-    typeof content === "string"
-      ? content
-      : JSON.stringify(content, null, 2);
+  const text = typeof content === "string" ? content : JSON.stringify(content, null, 2);
 
   return (
-    <pre className="text-[11px] font-mono text-slate-400 bg-slate-900/80 rounded-lg p-3 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap break-words">
+    <pre className="text-[11px] font-mono text-ink-secondary bg-surface-sunken rounded-lg p-3 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap break-words">
       {text}
     </pre>
   );
@@ -69,36 +67,30 @@ interface StageCardProps {
 }
 
 export function StageCard({ stage, index }: StageCardProps) {
-  const totalTokens = stage.tokens
-    ? stage.tokens.prompt + stage.tokens.completion
-    : 0;
+  const totalTokens = stage.tokens ? stage.tokens.prompt + stage.tokens.completion : 0;
 
   return (
     <div
-      className="rounded-xl border border-slate-700/80 bg-slate-800/50 p-4"
+      className="rounded-xl border border-line bg-surface-raised p-4"
       style={{ animation: `fadeInUp 0.3s ease-out ${index * 0.08}s both` }}
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-1">
         <div className="flex items-center gap-2">
           {stage.is_llm ? (
-            <span className="inline-flex items-center rounded-md bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300 uppercase tracking-wider">
+            <span className="inline-flex items-center rounded-md bg-info-soft px-2 py-0.5 text-[10px] font-semibold text-info uppercase tracking-wider">
               LLM
             </span>
           ) : (
-            <span className="inline-flex items-center rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">
+            <span className="inline-flex items-center rounded-md bg-success-soft px-2 py-0.5 text-[10px] font-semibold text-success uppercase tracking-wider">
               코드
             </span>
           )}
-          <h4 className="text-sm font-semibold text-white">
-            {formatStageName(stage.stage)}
-          </h4>
+          <h4 className="text-sm font-semibold text-ink">{formatStageName(stage.stage)}</h4>
         </div>
-        <div className="flex items-center gap-3 text-[11px] font-mono text-slate-500">
+        <div className="flex items-center gap-3 text-[11px] font-mono text-ink-muted">
           <span>{stage.latency_ms}ms</span>
-          {stage.tokens && (
-            <span>{totalTokens.toLocaleString()} 토큰</span>
-          )}
+          {stage.tokens && <span>{totalTokens.toLocaleString()} 토큰</span>}
         </div>
       </div>
 
@@ -151,7 +143,8 @@ export function StageCard({ stage, index }: StageCardProps) {
               )}
             </>
           ) : (
-            stage.output !== undefined && stage.output !== null && (
+            stage.output !== undefined &&
+            stage.output !== null && (
               <CollapsibleSection title="출력 데이터">
                 <CodeBlock content={stage.output} />
               </CollapsibleSection>
