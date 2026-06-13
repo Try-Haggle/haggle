@@ -1,8 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SignUpPage() {
@@ -10,7 +12,7 @@ export default function SignUpPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center p-4">
-          <div className="text-slate-500">Loading...</div>
+          <div className="text-ink-muted">Loading...</div>
         </main>
       }
     >
@@ -28,10 +30,7 @@ function SignUpForm() {
   const nextParam = searchParams.get("next");
 
   // Safety: only honour same-origin relative paths to prevent open redirect.
-  const safeNext =
-    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-      ? nextParam
-      : null;
+  const safeNext = nextParam?.startsWith("/") && !nextParam.startsWith("//") ? nextParam : null;
   const defaultNext = safeNext ?? "/buy/dashboard";
 
   const [email, setEmail] = useState("");
@@ -43,6 +42,7 @@ function SignUpForm() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run the auth check once on mount
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
@@ -63,8 +63,12 @@ function SignUpForm() {
   const passedChecks = Object.values(passwordChecks).filter(Boolean).length;
   const allChecksPassed = passedChecks === 4;
 
-  const strengthLabel = passedChecks === 0 ? "" : passedChecks <= 2 ? "Weak" : passedChecks === 3 ? "Fair" : "Strong";
-  const strengthColor = passedChecks <= 2 ? "bg-red-500" : passedChecks === 3 ? "bg-yellow-500" : "bg-emerald-500";
+  const strengthLabel =
+    passedChecks === 0 ? "" : passedChecks <= 2 ? "Weak" : passedChecks === 3 ? "Fair" : "Strong";
+  const strengthColor =
+    passedChecks <= 2 ? "bg-error-500" : passedChecks === 3 ? "bg-warning-500" : "bg-success-500";
+  const strengthTextColor =
+    passedChecks <= 2 ? "text-error" : passedChecks === 3 ? "text-warning" : "text-success";
 
   async function handleEmailSignUp(e: React.FormEvent) {
     e.preventDefault();
@@ -83,9 +87,7 @@ function SignUpForm() {
     setIsLoading(true);
     setAuthError(null);
 
-    const nextPath = token
-      ? `/sell/dashboard?claim=${token}`
-      : defaultNext;
+    const nextPath = token ? `/sell/dashboard?claim=${token}` : defaultNext;
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signUp({
@@ -106,9 +108,7 @@ function SignUpForm() {
   async function handleGoogleLogin() {
     setAuthError(null);
 
-    const nextPath = token
-      ? `/sell/dashboard?claim=${token}`
-      : defaultNext;
+    const nextPath = token ? `/sell/dashboard?claim=${token}` : defaultNext;
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -127,7 +127,7 @@ function SignUpForm() {
   if (checkingAuth) {
     return (
       <main className="flex min-h-screen items-center justify-center p-4">
-        <div className="text-slate-500">Loading...</div>
+        <div className="text-ink-muted">Loading...</div>
       </main>
     );
   }
@@ -137,25 +137,32 @@ function SignUpForm() {
       <main className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-md space-y-6 text-center">
           <div className="space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/12 border border-emerald-500/30">
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-success/20 bg-success-soft">
+              <svg
+                viewBox="0 0 24 24"
+                width="28"
+                height="28"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-success"
+                aria-hidden="true"
+              >
                 <rect width="20" height="16" x="2" y="4" rx="2" />
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold">Check your email</h1>
-            <p className="text-slate-400">
-              We sent a confirmation link to <span className="text-slate-200 font-medium">{email}</span>.
+            <h1 className="text-h2 text-ink">Check your email</h1>
+            <p className="text-ink-secondary">
+              We sent a confirmation link to <span className="font-medium text-ink">{email}</span>.
               Click the link to verify your account and sign in.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setEmailSent(false)}
-            className="w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-600 transition-colors cursor-pointer"
-          >
+          <Button variant="primary" onClick={() => setEmailSent(false)} className="w-full">
             Use a different email
-          </button>
+          </Button>
         </div>
       </main>
     );
@@ -165,9 +172,9 @@ function SignUpForm() {
     <main className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6 sm:space-y-8">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-bold">Haggle</h1>
-          <p className="text-slate-400">
+        <div className="space-y-2 text-center">
+          <h1 className="text-h2 text-ink">Haggle</h1>
+          <p className="text-ink-secondary">
             {token
               ? "Sign up to claim your listing and start receiving offers."
               : "Create your account"}
@@ -175,52 +182,59 @@ function SignUpForm() {
         </div>
 
         {/* Google OAuth */}
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={handleGoogleLogin}
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-700 bg-bg-card px-4 py-3 text-sm font-medium hover:bg-slate-800 transition-colors cursor-pointer"
+          className="w-full gap-3 font-medium"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
           </svg>
           Continue with Google
-        </button>
+        </Button>
 
         {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-800" />
+            <div className="w-full border-line border-t" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="bg-bg-primary px-3 text-slate-500">or</span>
+            <span className="bg-surface px-3 text-ink-muted">or</span>
           </div>
         </div>
 
         {/* Email / Password */}
         <form onSubmit={handleEmailSignUp} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-400 mb-1.5">
-              Email
-            </label>
-            <input
+            <Label htmlFor="email">Email</Label>
+            <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
-              className="w-full rounded-lg border border-slate-700 bg-bg-card px-4 py-3 text-sm placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
             />
           </div>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-400 mb-1.5">
-              Password
-            </label>
+            <Label htmlFor="password">Password</Label>
             <div className="relative">
-              <input
+              <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
@@ -228,22 +242,42 @@ function SignUpForm() {
                 placeholder="Create a password"
                 required
                 minLength={8}
-                className="w-full rounded-lg border border-slate-700 bg-bg-card px-4 py-3 pr-11 text-sm placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
+                className="pr-11"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                className="-translate-y-1/2 absolute top-1/2 right-3 cursor-pointer text-ink-muted transition-colors hover:text-ink"
               >
                 {showPassword ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
                     <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
                     <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
                     <line x1="1" y1="1" x2="23" y2="23" />
                   </svg>
                 ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
@@ -254,27 +288,33 @@ function SignUpForm() {
             {password && (
               <div className="mt-2 space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-sunken">
                     <div
                       className={`h-full rounded-full transition-all ${strengthColor}`}
                       style={{ width: `${(passedChecks / 4) * 100}%` }}
                     />
                   </div>
-                  <span className={`text-xs ${passedChecks <= 2 ? "text-red-400" : passedChecks === 3 ? "text-yellow-400" : "text-emerald-400"}`}>
-                    {strengthLabel}
-                  </span>
+                  <span className={`text-xs ${strengthTextColor}`}>{strengthLabel}</span>
                 </div>
                 <ul className="space-y-1">
-                  <li className={`text-xs flex items-center gap-1.5 ${passwordChecks.minLength ? "text-emerald-400" : "text-slate-500"}`}>
+                  <li
+                    className={`flex items-center gap-1.5 text-xs ${passwordChecks.minLength ? "text-success" : "text-ink-muted"}`}
+                  >
                     <span>{passwordChecks.minLength ? "✓" : "○"}</span> At least 8 characters
                   </li>
-                  <li className={`text-xs flex items-center gap-1.5 ${passwordChecks.uppercase ? "text-emerald-400" : "text-slate-500"}`}>
+                  <li
+                    className={`flex items-center gap-1.5 text-xs ${passwordChecks.uppercase ? "text-success" : "text-ink-muted"}`}
+                  >
                     <span>{passwordChecks.uppercase ? "✓" : "○"}</span> One uppercase letter
                   </li>
-                  <li className={`text-xs flex items-center gap-1.5 ${passwordChecks.number ? "text-emerald-400" : "text-slate-500"}`}>
+                  <li
+                    className={`flex items-center gap-1.5 text-xs ${passwordChecks.number ? "text-success" : "text-ink-muted"}`}
+                  >
                     <span>{passwordChecks.number ? "✓" : "○"}</span> One number
                   </li>
-                  <li className={`text-xs flex items-center gap-1.5 ${passwordChecks.special ? "text-emerald-400" : "text-slate-500"}`}>
+                  <li
+                    className={`flex items-center gap-1.5 text-xs ${passwordChecks.special ? "text-success" : "text-ink-muted"}`}
+                  >
                     <span>{passwordChecks.special ? "✓" : "○"}</span> One special character
                   </li>
                 </ul>
@@ -282,11 +322,9 @@ function SignUpForm() {
             )}
           </div>
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-400 mb-1.5">
-              Confirm Password
-            </label>
+            <Label htmlFor="confirmPassword">Confirm Password</Label>
             <div className="relative">
-              <input
+              <Input
                 id="confirmPassword"
                 type={showPassword ? "text" : "password"}
                 value={confirmPassword}
@@ -294,22 +332,42 @@ function SignUpForm() {
                 placeholder="Confirm your password"
                 required
                 minLength={8}
-                className="w-full rounded-lg border border-slate-700 bg-bg-card px-4 py-3 pr-11 text-sm placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
+                className="pr-11"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                className="-translate-y-1/2 absolute top-1/2 right-3 cursor-pointer text-ink-muted transition-colors hover:text-ink"
               >
                 {showPassword ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
                     <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
                     <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
                     <line x1="1" y1="1" x2="23" y2="23" />
                   </svg>
                 ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
@@ -318,28 +376,29 @@ function SignUpForm() {
             </div>
           </div>
           {/* Error */}
-          {authError && (
-            <p className="-mb-1 text-center text-sm text-red-400">{authError}</p>
-          )}
+          {authError && <p className="-mb-1 text-center text-error text-sm">{authError}</p>}
 
-          <button
+          <Button
             type="submit"
             disabled={isLoading || !email.trim() || !allChecksPassed || !confirmPassword}
-            className="mt-4 w-full rounded-lg bg-emerald-500 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            className="mt-4 w-full"
           >
             {isLoading ? "Creating account..." : "Sign Up"}
-          </button>
+          </Button>
 
           {/* Sign in link */}
-          <p className="text-center text-sm text-slate-400">
+          <p className="text-center text-ink-secondary text-sm">
             Already have an account?{" "}
-            <Link href={(() => {
-              const params = new URLSearchParams();
-              if (token) params.set("token", token);
-              if (safeNext) params.set("next", safeNext);
-              const qs = params.toString();
-              return qs ? `/sign-in?${qs}` : "/sign-in";
-            })()} className="text-cyan-400 hover:text-cyan-300 transition-colors">
+            <Link
+              href={(() => {
+                const params = new URLSearchParams();
+                if (token) params.set("token", token);
+                if (safeNext) params.set("next", safeNext);
+                const qs = params.toString();
+                return qs ? `/sign-in?${qs}` : "/sign-in";
+              })()}
+              className="font-medium text-action-primary transition-colors hover:text-action-primary-hover"
+            >
               Sign in
             </Link>
           </p>
