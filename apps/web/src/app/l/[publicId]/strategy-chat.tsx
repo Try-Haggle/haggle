@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
 import type { NegotiationPreset } from "@haggle/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -72,7 +72,9 @@ function agentKey(listingId: string): string {
 export function saveSelectedAgent(listingId: string, agentId: string): void {
   try {
     localStorage.setItem(agentKey(listingId), JSON.stringify({ agentId, updatedAt: Date.now() }));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function loadSelectedAgentId(listingId: string): string | null {
@@ -85,11 +87,17 @@ export function loadSelectedAgentId(listingId: string): string | null {
       return null;
     }
     return data.agentId;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export function clearSelectedAgent(listingId: string): void {
-  try { localStorage.removeItem(agentKey(listingId)); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(agentKey(listingId));
+  } catch {
+    /* ignore */
+  }
 }
 
 function saveSession(listingId: string, agentId: string, session: PersistedSession): void {
@@ -126,23 +134,14 @@ function clearSession(listingId: string, agentId: string): void {
 
 /* ─── Constants ───────────────────────────────────────────── */
 
-
 function buildInitialMemory(
   agent: NegotiationPreset | null,
   category: string | null,
 ): AdvisorMemory {
   const negotiationStyle =
-    agent?.id === "hunter"
-      ? "aggressive"
-      : agent?.id === "closer"
-        ? "defensive"
-        : "balanced";
+    agent?.id === "hunter" ? "aggressive" : agent?.id === "closer" ? "defensive" : "balanced";
   const riskStyle =
-    agent?.id === "hunter"
-      ? "lowest_price"
-      : agent?.id === "verifier"
-        ? "safe_first"
-        : "balanced";
+    agent?.id === "hunter" ? "lowest_price" : agent?.id === "verifier" ? "safe_first" : "balanced";
   const openingTactic =
     agent?.id === "verifier"
       ? "condition_anchor"
@@ -160,27 +159,6 @@ function buildInitialMemory(
     questions: [],
     source: [],
   };
-}
-
-function buildGreeting(
-  agent: NegotiationPreset | null,
-  listingTitle: string,
-  listingPrice: string | null,
-  role: "buyer" | "seller" = "buyer",
-): string {
-  const name = agent?.copy[role].name ?? "AI Agent";
-  const priceStr = listingPrice
-    ? `$${parseFloat(listingPrice).toLocaleString("en-US")}`
-    : "";
-  return (
-    `안녕하세요! ${name}입니다. **${listingTitle}**${priceStr ? ` (${priceStr})` : ""} 협상을 도와드릴게요.\n\n` +
-    `아래와 같은 내용을 알려주시면 전략에 반영됩니다:\n` +
-    `• 💰 예산 또는 목표 가격\n` +
-    `• ✅ 꼭 필요한 조건 (예: 배터리 90% 이상)\n` +
-    `• ❌ 피하고 싶은 것 (예: 화면 스크래치)\n` +
-    `• ⚡ 협상 스타일 (빠르게 끝내기 / 끝까지 밀어붙이기)\n\n` +
-    `편하게 말씀해 주세요 — 바로 전략에 반영할게요.`
-  );
 }
 
 function extractChips(memory: AdvisorMemory): StrategyChip[] {
@@ -227,7 +205,7 @@ function extractChips(memory: AdvisorMemory): StrategyChip[] {
 
 function renderMarkdownLite(text: string): string {
   return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-ink">$1</strong>')
     .replace(/\n/g, "<br />");
 }
 
@@ -241,7 +219,7 @@ function TypingDots() {
           key={i}
           className="inline-block h-[5px] w-[5px] rounded-full"
           style={{
-            backgroundColor: "#06b6d4",
+            backgroundColor: "var(--action-primary)",
             opacity: 0.5,
             animation: `dotPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
           }}
@@ -266,7 +244,7 @@ function BudgetWidget({
   listingPrice: string | null;
   onSubmit: (target: number, max: number) => void;
 }) {
-  const basePrice = listingPrice ? parseInt(listingPrice) : 1000;
+  const basePrice = listingPrice ? parseInt(listingPrice, 10) : 1000;
   const minRange = Math.floor(basePrice * 0.5);
   const maxRange = Math.floor(basePrice * 1.5);
 
@@ -274,16 +252,20 @@ function BudgetWidget({
   const [max, setMax] = useState(basePrice);
 
   return (
-    <div className="mt-4 p-4 rounded-xl bg-[#0f172a] border border-[#1e293b]">
+    <div className="mt-4 p-4 rounded-xl bg-surface-raised border border-line">
       <div className="flex justify-between items-center mb-5">
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">목표 가격</p>
-          <p className="text-[16px] font-bold text-cyan-400">${target.toLocaleString()}</p>
+          <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
+            목표 가격
+          </p>
+          <p className="text-[16px] font-bold text-action-primary">${target.toLocaleString()}</p>
         </div>
-        <div className="h-[30px] w-[1px] bg-[#1e293b]" />
+        <div className="h-[30px] w-[1px] bg-line" />
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">최대 예산</p>
-          <p className="text-[16px] font-bold text-blue-400">${max.toLocaleString()}</p>
+          <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
+            최대 예산
+          </p>
+          <p className="text-[16px] font-bold text-info">${max.toLocaleString()}</p>
         </div>
       </div>
 
@@ -300,7 +282,7 @@ function BudgetWidget({
               setTarget(val);
               if (val > max) setMax(val);
             }}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            className="w-full h-1.5 bg-line rounded-lg appearance-none cursor-pointer accent-action-primary"
           />
         </div>
         <div className="relative">
@@ -315,7 +297,7 @@ function BudgetWidget({
               setMax(val);
               if (val < target) setTarget(val);
             }}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            className="w-full h-1.5 bg-line rounded-lg appearance-none cursor-pointer accent-info"
           />
         </div>
       </div>
@@ -323,7 +305,7 @@ function BudgetWidget({
       <button
         type="button"
         onClick={() => onSubmit(target, max)}
-        className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+        className="w-full py-2.5 bg-action-primary hover:bg-action-primary-hover text-on-accent text-[13px] font-bold rounded-lg transition-colors"
       >
         예산 설정 완료
       </button>
@@ -333,31 +315,29 @@ function BudgetWidget({
 
 /* ─── Chip Category Colors ────────────────────────────────── */
 
-const CHIP_COLORS: Record<
-  StrategyChip["category"],
-  { bg: string; border: string; text: string }
-> = {
-  pricing: {
-    bg: "rgba(16,185,129,0.08)",
-    border: "rgba(16,185,129,0.25)",
-    text: "#34d399",
-  },
-  style: {
-    bg: "rgba(6,182,212,0.08)",
-    border: "rgba(6,182,212,0.25)",
-    text: "#22d3ee",
-  },
-  preference: {
-    bg: "rgba(59,130,246,0.08)",
-    border: "rgba(59,130,246,0.25)",
-    text: "#60a5fa",
-  },
-  constraint: {
-    bg: "rgba(239,68,68,0.08)",
-    border: "rgba(239,68,68,0.25)",
-    text: "#f87171",
-  },
-};
+const CHIP_COLORS: Record<StrategyChip["category"], { bg: string; border: string; text: string }> =
+  {
+    pricing: {
+      bg: "var(--fb-success-bg)",
+      border: "var(--fb-success-fg)",
+      text: "var(--fb-success-fg)",
+    },
+    style: {
+      bg: "var(--badge-bg)",
+      border: "var(--badge-text)",
+      text: "var(--badge-text)",
+    },
+    preference: {
+      bg: "var(--fb-info-bg)",
+      border: "var(--fb-info-fg)",
+      text: "var(--fb-info-fg)",
+    },
+    constraint: {
+      bg: "var(--fb-error-bg)",
+      border: "var(--fb-error-fg)",
+      text: "var(--fb-error-fg)",
+    },
+  };
 
 /* ─── Main Component ──────────────────────────────────────── */
 
@@ -377,7 +357,6 @@ export function StrategyChat({
     buildInitialMemory(agent, listingCategory),
   );
   const [isExpanded, setIsExpanded] = useState(false);
-  const [hasRestoredSession, setHasRestoredSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -395,12 +374,12 @@ export function StrategyChat({
   }, []);
 
   // Load from localStorage or reset when agent changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the agent or listing changes
   useEffect(() => {
     if (!agent) {
       setMessages([]);
       setMemory(buildInitialMemory(null, listingCategory));
       setIsExpanded(false);
-      setHasRestoredSession(false);
       return;
     }
 
@@ -411,7 +390,6 @@ export function StrategyChat({
       setMemory(saved.memory);
       setMessages(saved.messages);
       setIsExpanded(true);
-      setHasRestoredSession(true);
       onMemoryUpdate?.(saved.memory);
     } else {
       // Fresh start: provide a greeting with budget widget
@@ -423,23 +401,22 @@ export function StrategyChat({
         role: "agent",
         text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
         timestamp: Date.now(),
-        widget: "budget-slider"
+        widget: "budget-slider",
       };
       setMessages([greetingMsg]);
       setIsExpanded(true);
-      setHasRestoredSession(false);
     }
     // Always persist agent selection
     saveSelectedAgent(listingPublicId, agent.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent?.id, listingPublicId]);
 
   // Scroll chat to bottom locally without affecting page scroll
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll when a message arrives or loading toggles
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({
         top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth"
+        behavior: "smooth",
       });
     }
   }, [messages.length, isLoading]);
@@ -448,9 +425,7 @@ export function StrategyChat({
   // so it can ground answers in the actual product/price the buyer is on
   // instead of asking "what are you looking for?".
   const buildAdvisorListings = useCallback(() => {
-    const askPriceMinor = listingPrice
-      ? Math.round(parseFloat(listingPrice) * 100)
-      : 0;
+    const askPriceMinor = listingPrice ? Math.round(parseFloat(listingPrice) * 100) : 0;
     if (!askPriceMinor) return [];
     return [
       {
@@ -567,77 +542,40 @@ export function StrategyChat({
       role: "agent",
       text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
       timestamp: Date.now(),
-      widget: "budget-slider"
+      widget: "budget-slider",
     };
 
     setMessages([greetingMsg]);
     setIsExpanded(true);
-    setHasRestoredSession(false);
     scrollToTop();
-  }, [agent, listingPublicId, listingCategory, listingTitle, listingPrice, scrollToTop]);
+  }, [agent, listingPublicId, listingCategory, listingTitle, scrollToTop]);
 
-  const handleBudgetSubmit = useCallback(async (target: number, max: number) => {
-    if (isLoading) return;
+  const handleBudgetSubmit = useCallback(
+    async (target: number, max: number) => {
+      if (isLoading) return;
 
-    const userText = `목표 가격은 $${target}, 최대 예산은 $${max}로 생각하고 있어.`;
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      text: userText,
-      timestamp: Date.now(),
-    };
-
-    // Optimistic memory update
-    const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
-    setMemory(updatedMemoryOptimistic);
-    onMemoryUpdate?.(updatedMemoryOptimistic);
-
-    setMessages((prev) => {
-      // Remove widget from the greeting
-      const withoutWidget = prev.map(m => m.id === "greeting" ? { ...m, widget: undefined } : m);
-      const next = [...withoutWidget, userMsg];
-      if (agent) {
-        saveSession(listingPublicId, agent.id, {
-          memory: updatedMemoryOptimistic,
-          messages: next,
-          agentId: agent.id,
-          updatedAt: Date.now(),
-        });
-      }
-      return next;
-    });
-    setIsLoading(true);
-
-    try {
-      const data = await apiClient<{
-        memory?: AdvisorMemory;
-        reply?: string;
-      }>("/intelligence/demo/advisor-turn", {
-        method: "POST",
-        body: JSON.stringify({
-          message: userText,
-          previous_memory: updatedMemoryOptimistic,
-          agent_id: agent?.id ?? "smart-trader",
-          listings: buildAdvisorListings(),
-        }),
-        skipAuth: true,
-      });
-
-      const updatedMemory: AdvisorMemory = data.memory ?? updatedMemoryOptimistic;
-      setMemory(updatedMemory);
-      onMemoryUpdate?.(updatedMemory);
-
-      const agentMsg: ChatMessage = {
-        id: `agent-${Date.now()}`,
-        role: "agent",
-        text: data.reply ?? "예산이 설정되었습니다. 더 피하고 싶거나 원하시는 조건이 있나요?",
+      const userText = `목표 가격은 $${target}, 최대 예산은 $${max}로 생각하고 있어.`;
+      const userMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        text: userText,
         timestamp: Date.now(),
       };
+
+      // Optimistic memory update
+      const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
+      setMemory(updatedMemoryOptimistic);
+      onMemoryUpdate?.(updatedMemoryOptimistic);
+
       setMessages((prev) => {
-        const next = [...prev, agentMsg];
+        // Remove widget from the greeting
+        const withoutWidget = prev.map((m) =>
+          m.id === "greeting" ? { ...m, widget: undefined } : m,
+        );
+        const next = [...withoutWidget, userMsg];
         if (agent) {
           saveSession(listingPublicId, agent.id, {
-            memory: updatedMemory,
+            memory: updatedMemoryOptimistic,
             messages: next,
             agentId: agent.id,
             updatedAt: Date.now(),
@@ -645,29 +583,70 @@ export function StrategyChat({
         }
         return next;
       });
-    } catch (err: unknown) {
-      console.error("[strategy-chat] API error:", err);
-      const errorMsg: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: "agent",
-        text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => {
-        if (agent && prev.length > 1) {
-          saveSession(listingPublicId, agent.id, {
-            memory: updatedMemoryOptimistic,
-            messages: prev,
-            agentId: agent.id,
-            updatedAt: Date.now(),
-          });
-        }
-        return [...prev, errorMsg];
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings]);
+      setIsLoading(true);
+
+      try {
+        const data = await apiClient<{
+          memory?: AdvisorMemory;
+          reply?: string;
+        }>("/intelligence/demo/advisor-turn", {
+          method: "POST",
+          body: JSON.stringify({
+            message: userText,
+            previous_memory: updatedMemoryOptimistic,
+            agent_id: agent?.id ?? "smart-trader",
+            listings: buildAdvisorListings(),
+          }),
+          skipAuth: true,
+        });
+
+        const updatedMemory: AdvisorMemory = data.memory ?? updatedMemoryOptimistic;
+        setMemory(updatedMemory);
+        onMemoryUpdate?.(updatedMemory);
+
+        const agentMsg: ChatMessage = {
+          id: `agent-${Date.now()}`,
+          role: "agent",
+          text: data.reply ?? "예산이 설정되었습니다. 더 피하고 싶거나 원하시는 조건이 있나요?",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, agentMsg];
+          if (agent) {
+            saveSession(listingPublicId, agent.id, {
+              memory: updatedMemory,
+              messages: next,
+              agentId: agent.id,
+              updatedAt: Date.now(),
+            });
+          }
+          return next;
+        });
+      } catch (err: unknown) {
+        console.error("[strategy-chat] API error:", err);
+        const errorMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "agent",
+          text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => {
+          if (agent && prev.length > 1) {
+            saveSession(listingPublicId, agent.id, {
+              memory: updatedMemoryOptimistic,
+              messages: prev,
+              agentId: agent.id,
+              updatedAt: Date.now(),
+            });
+          }
+          return [...prev, errorMsg];
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -685,31 +664,32 @@ export function StrategyChat({
       ref={chatTopRef}
       className="mt-4 flex-1 flex flex-col rounded-xl border overflow-hidden transition-all duration-300"
       style={{
-        borderColor: "#1e293b",
-        background: "#0f172a",
-        minHeight: isExpanded ? "400px" : "200px"
+        borderColor: "var(--border-default)",
+        background: "var(--bg-raised)",
+        minHeight: isExpanded ? "400px" : "200px",
       }}
     >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-3 shrink-0"
-        style={{ borderBottom: "1px solid #1e293b" }}
+        style={{ borderBottom: "1px solid var(--border-default)" }}
       >
         <svg
           viewBox="0 0 24 24"
           width="16"
           height="16"
           fill="none"
-          stroke={agent?.accentColor ?? "#06b6d4"}
+          stroke={agent?.accentColor ?? "var(--action-primary)"}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
         >
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         <span
           className="text-[13px] font-semibold flex-1"
-          style={{ color: agent?.accentColor ?? "#06b6d4" }}
+          style={{ color: agent?.accentColor ?? "var(--action-primary)" }}
         >
           {agent ? agent.copy[role].name : role === "seller" ? "Selling Agent" : "Buying Agent"}
         </span>
@@ -717,9 +697,9 @@ export function StrategyChat({
           <span
             className="text-[10px] font-medium px-2 py-0.5 rounded-full"
             style={{
-              background: "rgba(6,182,212,0.1)",
-              color: "#06b6d4",
-              border: "1px solid rgba(6,182,212,0.2)",
+              background: "var(--badge-bg)",
+              color: "var(--badge-text)",
+              border: "1px solid var(--border-default)",
             }}
           >
             {chips.length} strategy hints
@@ -730,11 +710,21 @@ export function StrategyChat({
           <button
             type="button"
             onClick={handleReset}
-            className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-white/5"
+            className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-surface-sunken"
             title="대화 초기화"
             aria-label="Reset strategy chat"
           >
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="var(--text-muted)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <polyline points="1 4 1 10 7 10" />
               <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
             </svg>
@@ -762,13 +752,12 @@ export function StrategyChat({
                 style={
                   msg.role === "user"
                     ? {
-                        background:
-                          "linear-gradient(135deg, rgba(6,182,212,0.12), rgba(6,182,212,0.06))",
-                        border: "1px solid rgba(6,182,212,0.2)",
+                        background: "var(--badge-bg)",
+                        border: "1px solid var(--border-default)",
                       }
                     : {
-                        background: "#111827",
-                        border: "1px solid #1e293b",
+                        background: "var(--bg-sunken)",
+                        border: "1px solid var(--border-default)",
                       }
                 }
               >
@@ -778,14 +767,14 @@ export function StrategyChat({
                       className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
                       style={{
                         backgroundColor: `${agent?.accentColor ?? "#06b6d4"}22`,
-                        color: agent?.accentColor ?? "#06b6d4",
+                        color: agent?.accentColor ?? "var(--action-primary)",
                       }}
                     >
                       🤖
                     </span>
                     <span
                       className="text-[10px] font-semibold"
-                      style={{ color: agent?.accentColor ?? "#06b6d4" }}
+                      style={{ color: agent?.accentColor ?? "var(--action-primary)" }}
                     >
                       {agent?.copy[role].name ?? "Agent"}
                     </span>
@@ -793,17 +782,17 @@ export function StrategyChat({
                 )}
                 <p
                   className="text-[13px] leading-[1.6]"
-                  style={{ color: msg.role === "user" ? "#e2e8f0" : "#cbd5e1" }}
+                  style={{
+                    color: msg.role === "user" ? "var(--text-primary)" : "var(--text-secondary)",
+                  }}
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdownLite only emits bold/line-break tags from trusted agent copy
                   dangerouslySetInnerHTML={{
                     __html: renderMarkdownLite(msg.text),
                   }}
                 />
 
                 {msg.widget === "budget-slider" && (
-                  <BudgetWidget
-                    listingPrice={listingPrice}
-                    onSubmit={handleBudgetSubmit}
-                  />
+                  <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
                 )}
               </div>
             </div>
@@ -814,14 +803,17 @@ export function StrategyChat({
             <div className="flex justify-start" style={{ animation: "fadeSlideIn 0.2s ease-out" }}>
               <div
                 className="rounded-xl px-3.5 py-2.5"
-                style={{ background: "#111827", border: "1px solid #1e293b" }}
+                style={{
+                  background: "var(--bg-sunken)",
+                  border: "1px solid var(--border-default)",
+                }}
               >
                 <div className="flex items-center gap-1.5">
                   <span
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
                     style={{
                       backgroundColor: `${agent?.accentColor ?? "#06b6d4"}22`,
-                      color: agent?.accentColor ?? "#06b6d4",
+                      color: agent?.accentColor ?? "var(--action-primary)",
                     }}
                   >
                     🤖
@@ -841,21 +833,21 @@ export function StrategyChat({
         <div
           className="px-4 py-2 flex flex-wrap gap-1.5 overflow-x-auto shrink-0"
           style={{
-            borderTop: "1px solid #1e293b",
-            background: "#0d1321",
+            borderTop: "1px solid var(--border-default)",
+            background: "var(--bg-sunken)",
           }}
         >
           <span
             className="text-[10px] font-semibold tracking-wider mr-1 self-center"
-            style={{ color: "#475569" }}
+            style={{ color: "var(--text-muted)" }}
           >
             STRATEGY
           </span>
-          {chips.map((chip, i) => {
+          {chips.map((chip) => {
             const colors = CHIP_COLORS[chip.category];
             return (
               <span
-                key={`${chip.category}-${i}`}
+                key={`${chip.category}-${chip.value}`}
                 className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap transition-all duration-300"
                 style={{
                   background: colors.bg,
@@ -875,8 +867,8 @@ export function StrategyChat({
       <div
         className="px-3 py-2.5 flex items-center gap-2 shrink-0"
         style={{
-          borderTop: "1px solid #1e293b",
-          background: "#0d1321",
+          borderTop: "1px solid var(--border-default)",
+          background: "var(--bg-sunken)",
         }}
       >
         <input
@@ -891,7 +883,7 @@ export function StrategyChat({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={!hasAgentSelected || isLoading}
-          className="flex-1 bg-transparent text-[13px] text-slate-200 placeholder-slate-600 outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:opacity-40 disabled:cursor-not-allowed"
         />
         <button
           type="button"
@@ -901,9 +893,9 @@ export function StrategyChat({
           style={{
             background:
               input.trim() && hasAgentSelected
-                ? agent?.accentColor ?? "#06b6d4"
+                ? (agent?.accentColor ?? "var(--action-primary)")
                 : "transparent",
-            border: `1px solid ${input.trim() && hasAgentSelected ? "transparent" : "#334155"}`,
+            border: `1px solid ${input.trim() && hasAgentSelected ? "transparent" : "var(--border-strong)"}`,
           }}
           aria-label="Send message"
         >
@@ -913,11 +905,12 @@ export function StrategyChat({
             height="14"
             fill="none"
             stroke={
-              input.trim() && hasAgentSelected ? "#ffffff" : "#475569"
+              input.trim() && hasAgentSelected ? "var(--text-on-accent)" : "var(--text-muted)"
             }
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            aria-hidden="true"
           >
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />

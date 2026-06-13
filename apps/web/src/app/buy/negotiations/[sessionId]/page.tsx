@@ -1,5 +1,5 @@
-import { serverApi } from "@/lib/api-server";
 import { getNegotiationPreset } from "@haggle/shared";
+import { serverApi } from "@/lib/api-server";
 import { PlaybackArena } from "./playback/playback-arena";
 import type {
   AgentCard,
@@ -60,10 +60,7 @@ type ServerRound = {
 
 type SessionResponse = { session: ServerSession; rounds: ServerRound[] };
 
-function agentCardFor(
-  presetId: string | null | undefined,
-  role: "buyer" | "seller",
-): AgentCard {
+function agentCardFor(presetId: string | null | undefined, role: "buyer" | "seller"): AgentCard {
   const preset = presetId ? getNegotiationPreset(presetId) : null;
   if (preset) {
     return {
@@ -138,9 +135,7 @@ function transform(payload: SessionResponse): PlaybackResponse {
   const isTerminal = ["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"].includes(
     session.status,
   );
-  const finalPrice = isTerminal
-    ? minorToMajor(session.last_offer_price_minor)
-    : null;
+  const finalPrice = isTerminal ? minorToMajor(session.last_offer_price_minor) : null;
 
   // Detect whether to prepend a synthetic buyer-opening bubble.
   // Round 1 in the DB is always the SELLER processing the BUYER's first offer —
@@ -149,9 +144,7 @@ function transform(payload: SessionResponse): PlaybackResponse {
   // with the buyer's move, and shift all DB rounds by +1.
   const firstRound = rounds[0];
   const hasSyntheticBuyerOpen =
-    !!firstRound &&
-    firstRound.sender_role === "BUYER" &&
-    !!firstRound.message?.trim();
+    !!firstRound && firstRound.sender_role === "BUYER" && !!firstRound.message?.trim();
   const roundIndexOffset = hasSyntheticBuyerOpen ? 1 : 0;
 
   const playbackRounds: PlaybackRound[] = rounds.map((r) => {
@@ -251,9 +244,7 @@ export default async function BuyerNegotiationPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = await params;
-  const payload = await serverApi.get<SessionResponse>(
-    `/negotiations/sessions/${sessionId}`,
-  );
+  const payload = await serverApi.get<SessionResponse>(`/negotiations/sessions/${sessionId}`);
   const data = transform(payload);
   return <PlaybackArena data={data} />;
 }

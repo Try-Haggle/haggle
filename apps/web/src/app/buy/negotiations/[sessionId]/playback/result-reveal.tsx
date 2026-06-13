@@ -4,8 +4,8 @@ import confetti from "canvas-confetti";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect } from "react";
-import type { PlaybackResponse } from "./types";
 import { formatPrice, formatSignedPct } from "./format";
+import type { PlaybackResponse } from "./types";
 
 interface ResultRevealProps {
   data: PlaybackResponse;
@@ -28,7 +28,11 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
   const settlementPrice = finalPrice ?? rounds[rounds.length - 1]?.offerPrice ?? baseline;
   const savedAbs = baseline - settlementPrice;
   const savedPct = (settlementPrice - baseline) / baseline;
-  const accent = isAccepted ? "#10b981" : isRejected ? "#ef4444" : "#f59e0b";
+  const accent = isAccepted
+    ? "var(--fb-success-fg)"
+    : isRejected
+      ? "var(--fb-error-fg)"
+      : "var(--fb-warning-fg)";
   const headline = isAccepted ? "Deal closed" : isRejected ? "No deal" : "Negotiation paused";
   const Icon = isAccepted ? CheckIcon : isRejected ? CrossIcon : PauseIcon;
   const priceLabel = isAccepted ? "Final price" : "Last offer";
@@ -36,7 +40,16 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
   // Screen-wide confetti when ACCEPTED reveal mounts — single dual-cannon burst.
   useEffect(() => {
     if (!isAccepted) return;
-    const palette = ["#10b981", "#34d399", "#6ee7b7", "#facc15", "#fbbf24", "#06b6d4", "#a855f7", "#f472b6"];
+    const palette = [
+      "#10b981",
+      "#34d399",
+      "#6ee7b7",
+      "#facc15",
+      "#fbbf24",
+      "#06b6d4",
+      "#a855f7",
+      "#f472b6",
+    ];
     const t = setTimeout(() => {
       const shared = {
         particleCount: 350,
@@ -60,16 +73,16 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className="relative overflow-hidden rounded-2xl p-5 sm:p-7"
       style={{
-        background: `linear-gradient(135deg, ${accent}1a, transparent 60%), #0f172a`,
-        border: `1px solid ${accent}55`,
-        boxShadow: `0 0 0 1px ${accent}22, 0 24px 48px -16px ${accent}33`,
+        background: `linear-gradient(135deg, color-mix(in srgb, ${accent} 10%, transparent), transparent 60%), var(--bg-raised)`,
+        border: `1px solid color-mix(in srgb, ${accent} 33%, transparent)`,
+        boxShadow: "var(--shadow-card)",
       }}
     >
       {isAccepted && (
         <motion.div
           aria-hidden
           className="absolute -inset-4 -z-10 rounded-3xl blur-3xl"
-          style={{ background: `${accent}33` }}
+          style={{ background: `color-mix(in srgb, ${accent} 20%, transparent)` }}
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 0.6, 0.3] }}
           transition={{ duration: 1.6, ease: "easeOut" }}
@@ -83,7 +96,11 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
             className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full"
-            style={{ background: `${accent}1f`, border: `1px solid ${accent}55`, color: accent }}
+            style={{
+              background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${accent} 33%, transparent)`,
+              color: accent,
+            }}
           >
             <Icon />
           </motion.div>
@@ -95,7 +112,7 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <span
                   className="text-[26px] sm:text-[32px] font-bold tabular-nums leading-[1.1]"
-                  style={{ color: "#f8fafc", letterSpacing: "-0.02em" }}
+                  style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}
                 >
                   {formatPrice(settlementPrice, listing.currency)}
                 </span>
@@ -103,15 +120,26 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
                   <div className="flex items-center gap-1.5">
                     <span
                       className="inline-flex items-center rounded-full px-2 py-0.75 text-[11px] font-semibold tabular-nums leading-none"
-                      style={{ background: `${accent}1f`, border: `1px solid ${accent}55`, color: accent }}
+                      style={{
+                        background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+                        border: `1px solid color-mix(in srgb, ${accent} 33%, transparent)`,
+                        color: accent,
+                      }}
                     >
                       {formatSignedPct(savedPct, 1)}
                     </span>
                     <span
                       className="inline-flex items-center rounded-full px-2 py-0.75 text-[11px] font-semibold leading-none"
-                      style={{ background: `${accent}1f`, border: `1px solid ${accent}55`, color: accent }}
+                      style={{
+                        background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+                        border: `1px solid color-mix(in srgb, ${accent} 33%, transparent)`,
+                        color: accent,
+                      }}
                     >
-                      saved&nbsp;<span className="tabular-nums">{formatPrice(savedAbs, listing.currency)}</span>
+                      saved&nbsp;
+                      <span className="tabular-nums">
+                        {formatPrice(savedAbs, listing.currency)}
+                      </span>
                     </span>
                   </div>
                 )}
@@ -119,29 +147,38 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
             ) : (
               <div
                 className="text-[22px] sm:text-[26px] font-semibold leading-tight truncate"
-                style={{ color: "#f8fafc" }}
+                style={{ color: "var(--text-primary)" }}
               >
                 {headline}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]" style={{ color: "#64748b" }}>
+            <div
+              className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]"
+              style={{ color: "var(--text-muted)" }}
+            >
               {!isAccepted && (
                 <>
                   <span>{priceLabel}</span>
-                  <span className="tabular-nums font-semibold" style={{ color: "#cbd5e1" }}>
+                  <span
+                    className="tabular-nums font-semibold"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
                     {formatPrice(settlementPrice, listing.currency)}
                   </span>
-                  <span style={{ color: "#334155" }}>·</span>
+                  <span style={{ color: "var(--text-muted)" }}>·</span>
                 </>
               )}
               <span>asking</span>
-              <span className="tabular-nums" style={{ color: "#94a3b8" }}>
+              <span className="tabular-nums" style={{ color: "var(--text-secondary)" }}>
                 {formatPrice(baseline, listing.currency)}
               </span>
               {!isAccepted && Math.abs(savedPct) >= 0.001 && (
                 <>
-                  <span style={{ color: "#334155" }}>·</span>
-                  <span className="tabular-nums" style={{ color: savedPct < 0 ? "#10b981" : "#ef4444" }}>
+                  <span style={{ color: "var(--text-muted)" }}>·</span>
+                  <span
+                    className="tabular-nums"
+                    style={{ color: savedPct < 0 ? "var(--fb-success-fg)" : "var(--fb-error-fg)" }}
+                  >
                     {formatSignedPct(savedPct, 1)}
                   </span>
                 </>
@@ -159,19 +196,49 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
             <button
               type="button"
               onClick={onAccept}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-[13px] sm:text-[14px] font-semibold text-white transition-colors hover:bg-emerald-600 sm:w-auto"
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-action-primary px-5 py-3 text-[13px] sm:text-[14px] font-semibold text-on-accent transition-colors hover:bg-action-primary-hover sm:w-auto"
             >
               Continue to checkout
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
             </button>
           ) : !isAccepted ? (
             <Link
               href="/browse"
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-[13px] sm:text-[14px] font-semibold transition-colors hover:bg-slate-700 sm:w-auto"
-              style={{ background: "#1e293b", border: "1px solid #334155", color: "#f8fafc" }}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-[13px] sm:text-[14px] font-semibold transition-colors hover:bg-surface-overlay sm:w-auto"
+              style={{
+                background: "var(--bg-sunken)",
+                border: "1px solid var(--border-default)",
+                color: "var(--text-primary)",
+              }}
             >
               Browse other listings
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
             </Link>
           ) : null}
         </motion.div>
@@ -182,14 +249,34 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
 
 function CheckIcon() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }
 function CrossIcon() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
     </svg>
@@ -197,7 +284,7 @@ function CrossIcon() {
 }
 function PauseIcon() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <rect x="6" y="5" width="4" height="14" rx="1" />
       <rect x="14" y="5" width="4" height="14" rx="1" />
     </svg>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useAmplitude } from "@/providers/amplitude-provider";
+import { useEffect, useRef, useState } from "react";
 import { ListingCard } from "@/components/listing-card";
 import { api } from "@/lib/api-client";
+import { useAmplitude } from "@/providers/amplitude-provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
 
@@ -35,6 +35,7 @@ export function SimilarListings({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch only when listing/user changes
   useEffect(() => {
     const params = new URLSearchParams();
     if (userId) params.set("userId", userId);
@@ -64,6 +65,7 @@ export function SimilarListings({
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check scroll affordances when listings change
   useEffect(() => {
     checkScroll();
     const el = scrollRef.current;
@@ -84,30 +86,52 @@ export function SimilarListings({
   return (
     <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-[18px] font-semibold text-white">
-          Similar Listings
-        </h2>
+        <h2 className="text-[18px] font-semibold text-ink">Similar Listings</h2>
         {!loading && listings.length > 0 && (canScrollLeft || canScrollRight) && (
           <div className="flex gap-2 xl:hidden">
             <button
+              type="button"
+              aria-label="Scroll left"
               onClick={() => scroll("left")}
               disabled={!canScrollLeft}
-              className={`flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 transition-colors ${
-                canScrollLeft ? "text-white hover:bg-slate-800 cursor-pointer" : "text-slate-700 cursor-default"
+              className={`flex h-8 w-8 items-center justify-center rounded-full border border-line transition-colors ${
+                canScrollLeft
+                  ? "text-ink hover:bg-surface-sunken cursor-pointer"
+                  : "text-ink-muted cursor-default"
               }`}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
                 <path d="m15 18-6-6 6-6" />
               </svg>
             </button>
             <button
+              type="button"
+              aria-label="Scroll right"
               onClick={() => scroll("right")}
               disabled={!canScrollRight}
-              className={`flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 transition-colors ${
-                canScrollRight ? "text-white hover:bg-slate-800 cursor-pointer" : "text-slate-700 cursor-default"
+              className={`flex h-8 w-8 items-center justify-center rounded-full border border-line transition-colors ${
+                canScrollRight
+                  ? "text-ink hover:bg-surface-sunken cursor-pointer"
+                  : "text-ink-muted cursor-default"
               }`}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
                 <path d="m9 18 6-6-6-6" />
               </svg>
             </button>
@@ -117,20 +141,20 @@ export function SimilarListings({
 
       {loading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {["s1", "s2", "s3", "s4"].map((key) => (
             <div
-              key={i}
-              className="animate-pulse rounded-xl border border-slate-800 bg-slate-900/50 p-3"
+              key={key}
+              className="animate-pulse rounded-xl border border-line bg-surface-sunken/50 p-3"
             >
-              <div className="mb-3 aspect-square rounded-lg bg-slate-800" />
-              <div className="mb-2 h-4 w-3/4 rounded bg-slate-800" />
-              <div className="h-3 w-1/2 rounded bg-slate-800" />
+              <div className="mb-3 aspect-square rounded-lg bg-surface-sunken" />
+              <div className="mb-2 h-4 w-3/4 rounded bg-surface-sunken" />
+              <div className="h-3 w-1/2 rounded bg-surface-sunken" />
             </div>
           ))}
         </div>
       ) : listings.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-8 sm:p-12 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-surface-sunken">
             <svg
               viewBox="0 0 24 24"
               width="24"
@@ -140,16 +164,17 @@ export function SimilarListings({
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-slate-500"
+              className="text-ink-muted"
+              aria-hidden="true"
             >
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.3-4.3" />
             </svg>
           </div>
-          <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">
+          <h3 className="text-base sm:text-lg font-semibold text-ink-secondary mb-1">
             No similar listings found yet
           </h3>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             Similar listings will appear here as more items are posted.
           </p>
         </div>
@@ -195,8 +220,10 @@ function CarouselGrid({
       {/* Left arrow — absolute, outside cards to the left */}
       {canScrollLeft && (
         <button
+          type="button"
+          aria-label="Scroll left"
           onClick={() => scroll("left")}
-          className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+          className="absolute -left-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-line bg-surface-raised text-ink transition-colors hover:bg-surface-sunken"
         >
           <svg
             width="18"
@@ -205,6 +232,7 @@ function CarouselGrid({
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
+            aria-hidden="true"
           >
             <path d="m15 18-6-6 6-6" />
           </svg>
@@ -214,8 +242,10 @@ function CarouselGrid({
       {/* Right arrow — absolute, outside cards to the right */}
       {canScrollRight && (
         <button
+          type="button"
+          aria-label="Scroll right"
           onClick={() => scroll("right")}
-          className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:bg-slate-800"
+          className="absolute -right-12 top-1/3 z-10 hidden xl:flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-line bg-surface-raised text-ink transition-colors hover:bg-surface-sunken"
         >
           <svg
             width="18"
@@ -224,6 +254,7 @@ function CarouselGrid({
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
+            aria-hidden="true"
           >
             <path d="m9 18 6-6-6-6" />
           </svg>
@@ -246,9 +277,7 @@ function CarouselGrid({
             className="w-[calc(50%-6px)] shrink-0 sm:w-[calc(33.333%-8px)] lg:w-[calc(25%-9px)]"
             style={{ scrollSnapAlign: "start" }}
             onClick={() => {
-              api
-                .patch(`/api/recommendations/log/${item.logId}/click`)
-                .catch(() => {});
+              api.patch(`/api/recommendations/log/${item.logId}/click`).catch(() => {});
               track("recommendation_clicked", {
                 context: "detail_page",
                 source_listing_id: publicId,

@@ -2,9 +2,9 @@
 
 import { animate, motion, useMotionValue } from "framer-motion";
 import { useEffect, useState } from "react";
-import type { AgentCard, AgentRole } from "./types";
 import { AgentIcon } from "./agent-icon";
 import { formatPrice, formatSignedPct } from "./format";
+import type { AgentCard, AgentRole } from "./types";
 
 interface ArenaHeaderProps {
   buyerAgent: AgentCard;
@@ -41,15 +41,14 @@ export function ArenaHeader({
   // Direction arrow follows the round-over-round price movement.
   const direction: "up" | "down" | "flat" =
     Math.abs(display - baseline) < 1 ? "flat" : display > baseline ? "up" : "down";
-  const askingDiffPct =
-    askingPrice > 0 ? (display - askingPrice) / askingPrice : 0;
+  const askingDiffPct = askingPrice > 0 ? (display - askingPrice) / askingPrice : 0;
   // Color is from the BUYER's perspective: lower-than-asking is favorable (green).
   const dirColor =
     Math.abs(askingDiffPct) < 0.0005
-      ? "#94a3b8"
+      ? "var(--text-secondary)"
       : askingDiffPct < 0
-        ? "#10b981"
-        : "#ef4444";
+        ? "var(--fb-success-fg)"
+        : "var(--fb-error-fg)";
 
   // Animated count-up for the displayed price.
   const motionValue = useMotionValue(display);
@@ -68,6 +67,7 @@ export function ArenaHeader({
     // sm+: 3-col grid with seller / center / buyer all on a single row.
     <div className="grid grid-cols-2 grid-rows-[auto_auto] items-center gap-x-3 gap-y-4 sm:grid-cols-[1fr_auto_1fr] sm:grid-rows-[auto] sm:gap-5">
       <div className="row-start-2 sm:row-start-1 sm:col-start-1">
+        {/* biome-ignore lint/a11y/useValidAriaRole: "role" is a CompactAgent prop (BUYER/SELLER), not an ARIA role */}
         <CompactAgent
           agent={sellerAgent}
           role="SELLER"
@@ -81,9 +81,9 @@ export function ArenaHeader({
         <div
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold tracking-[0.18em]"
           style={{
-            background: "rgba(15,23,42,0.6)",
-            border: "1px solid #1e293b",
-            color: "#64748b",
+            background: "var(--bg-sunken)",
+            border: "1px solid var(--border-default)",
+            color: "var(--text-muted)",
           }}
         >
           <span>ROUND</span>
@@ -93,7 +93,7 @@ export function ArenaHeader({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
             className="tabular-nums"
-            style={{ color: "#cbd5e1" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {Math.max(currentRound, 0)}
           </motion.span>
@@ -104,32 +104,28 @@ export function ArenaHeader({
           animate={{ scale: [1, 1.04, 1] }}
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="text-[22px] sm:text-[28px] font-bold tabular-nums leading-none"
-          style={{ color: "#f8fafc", letterSpacing: "-0.02em" }}
+          style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}
         >
           {formatPrice(shown, currency)}
         </motion.div>
         <div
           className="flex items-center gap-1.5 text-[10px] sm:text-[11px]"
-          style={{ color: "#64748b" }}
+          style={{ color: "var(--text-muted)" }}
         >
           <span>asking</span>
-          <span className="tabular-nums" style={{ color: "#94a3b8" }}>
+          <span className="tabular-nums" style={{ color: "var(--text-secondary)" }}>
             {formatPrice(askingPrice, currency)}
           </span>
-          <span className="h-3 w-px" style={{ background: "#1e293b" }} />
-          <span
-            className="flex items-center gap-0.5 tabular-nums"
-            style={{ color: dirColor }}
-          >
-            {direction !== "flat" && (
-              <DirectionArrow direction={direction} />
-            )}
+          <span className="h-3 w-px" style={{ background: "var(--border-default)" }} />
+          <span className="flex items-center gap-0.5 tabular-nums" style={{ color: dirColor }}>
+            {direction !== "flat" && <DirectionArrow direction={direction} />}
             {direction === "flat" ? "—" : formatSignedPct(askingDiffPct, 1)}
           </span>
         </div>
       </div>
 
       <div className="row-start-2 col-start-2 flex justify-end sm:row-start-1 sm:col-start-3">
+        {/* biome-ignore lint/a11y/useValidAriaRole: "role" is a CompactAgent prop (BUYER/SELLER), not an ARIA role */}
         <CompactAgent
           agent={buyerAgent}
           role="BUYER"
@@ -155,9 +151,7 @@ function CompactAgent({
   const isLeft = side === "left";
   return (
     <div
-      className={`flex min-w-0 items-center gap-2 sm:gap-2.5 ${
-        isLeft ? "" : "flex-row-reverse"
-      }`}
+      className={`flex min-w-0 items-center gap-2 sm:gap-2.5 ${isLeft ? "" : "flex-row-reverse"}`}
     >
       <motion.div
         className="relative flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg"
@@ -181,20 +175,16 @@ function CompactAgent({
           />
         )}
       </motion.div>
-      <div
-        className={`min-w-0 flex flex-col ${
-          isLeft ? "items-start" : "items-end"
-        }`}
-      >
+      <div className={`min-w-0 flex flex-col ${isLeft ? "items-start" : "items-end"}`}>
         <div
           className="text-[9px] font-bold tracking-[0.16em]"
-          style={{ color: "#64748b" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {role}
         </div>
         <div
           className="text-[12px] sm:text-[14px] font-semibold leading-tight truncate max-w-[100px] sm:max-w-[160px]"
-          style={{ color: "#f1f5f9" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {agent.name}
         </div>
@@ -214,12 +204,9 @@ function DirectionArrow({ direction }: { direction: "up" | "down" }) {
       strokeWidth="3"
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden="true"
     >
-      {direction === "up" ? (
-        <path d="m18 15-6-6-6 6" />
-      ) : (
-        <path d="m6 9 6 6 6-6" />
-      )}
+      {direction === "up" ? <path d="m18 15-6-6-6 6" /> : <path d="m6 9 6 6 6-6" />}
     </svg>
   );
 }

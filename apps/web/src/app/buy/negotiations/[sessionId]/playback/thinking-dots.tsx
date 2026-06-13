@@ -7,14 +7,14 @@ interface ThinkingDotsProps {
   label?: string;
 }
 
-export function ThinkingDots({ color = "#94a3b8", label }: ThinkingDotsProps) {
+export function ThinkingDots({ color = "var(--text-secondary)", label }: ThinkingDotsProps) {
   return (
     <div
       className="inline-flex items-center gap-2 rounded-full px-3 py-1.5"
-      style={{ background: "#0f172a", border: "1px solid #1e293b" }}
+      style={{ background: "var(--bg-sunken)", border: "1px solid var(--border-default)" }}
     >
       {label && (
-        <span className="text-[11px] font-medium" style={{ color: "#94a3b8" }}>
+        <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
           {label}
         </span>
       )}

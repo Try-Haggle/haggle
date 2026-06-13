@@ -36,10 +36,7 @@ const FIELDS: {
 
 interface Props {
   fetchRules?: () => Promise<PromotionRulesResponse>;
-  updateRule?: (
-    category: string,
-    body: EditableFields,
-  ) => Promise<{ rule: PromotionRule }>;
+  updateRule?: (category: string, body: EditableFields) => Promise<{ rule: PromotionRule }>;
   deleteRule?: (category: string) => Promise<unknown>;
   runJob?: () => Promise<{ report: Record<string, unknown> }>;
   fetchLastRun?: () => Promise<LastRunResponse>;
@@ -65,12 +62,12 @@ export function PromotionRulesTable({
   const fetchR = fetchRules ?? (() => adminApi.promotionRules.list());
   const putR =
     updateRule ??
-    ((category: string, body: EditableFields) =>
-      adminApi.promotionRules.put(category, body));
+    ((category: string, body: EditableFields) => adminApi.promotionRules.put(category, body));
   const delR = deleteRule ?? ((c: string) => adminApi.promotionRules.delete(c));
   const doRun = runJob ?? (() => adminApi.jobs.runTagPromote());
   const lastR = fetchLastRun ?? (() => adminApi.jobs.lastTagPromote());
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch on the listed deps only
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -82,8 +79,7 @@ export function PromotionRulesTable({
         }
       })
       .catch((e: unknown) => {
-        if (!cancelled)
-          setError(e instanceof Error ? e.message : "Failed to load rules");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load rules");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -94,6 +90,7 @@ export function PromotionRulesTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTick]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch on the listed deps only
   useEffect(() => {
     let cancelled = false;
     lastR()
@@ -174,7 +171,7 @@ export function PromotionRulesTable({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-xs text-neutral-600">
+        <div className="text-xs text-ink-secondary">
           {lastRun ? (
             <span>
               Last run:{" "}
@@ -183,7 +180,7 @@ export function PromotionRulesTable({
               </span>
             </span>
           ) : (
-            <span className="text-neutral-400">No runs yet</span>
+            <span className="text-ink-muted">No runs yet</span>
           )}
         </div>
         <button
@@ -191,7 +188,7 @@ export function PromotionRulesTable({
           data-testid="run-tag-promote"
           disabled={running}
           onClick={handleRunJob}
-          className="rounded border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+          className="rounded border border-action-primary bg-action-primary px-3 py-1.5 text-sm text-on-accent hover:bg-action-primary-hover disabled:opacity-50"
         >
           {running ? "Running…" : "Run Promotion Job Now"}
         </button>
@@ -200,15 +197,15 @@ export function PromotionRulesTable({
       {error && (
         <div
           role="alert"
-          className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+          className="rounded border border-error/30 bg-error-soft px-3 py-2 text-xs text-error"
         >
           {error}
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-        <table className="min-w-full divide-y divide-neutral-200 text-sm">
-          <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface-raised">
+        <table className="min-w-full divide-y divide-line text-sm">
+          <thead className="bg-surface-sunken text-left text-xs uppercase tracking-wide text-ink-muted">
             <tr>
               <th className="px-4 py-2">Category</th>
               {FIELDS.map((f) => (
@@ -219,13 +216,10 @@ export function PromotionRulesTable({
               <th className="px-4 py-2">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100">
+          <tbody className="divide-y divide-line">
             {loading && (
               <tr>
-                <td
-                  colSpan={FIELDS.length + 2}
-                  className="px-4 py-6 text-center text-neutral-500"
-                >
+                <td colSpan={FIELDS.length + 2} className="px-4 py-6 text-center text-ink-muted">
                   Loading…
                 </td>
               </tr>
@@ -234,11 +228,8 @@ export function PromotionRulesTable({
               rules.map((rule) => {
                 const isEditing = editing === rule.category;
                 return (
-                  <tr
-                    key={rule.category}
-                    data-testid={`rule-row-${rule.category}`}
-                  >
-                    <td className="px-4 py-2 font-mono text-xs text-neutral-700">
+                  <tr key={rule.category} data-testid={`rule-row-${rule.category}`}>
+                    <td className="px-4 py-2 font-mono text-xs text-ink-secondary">
                       {rule.category}
                     </td>
                     {FIELDS.map((f) => {
@@ -256,7 +247,7 @@ export function PromotionRulesTable({
                                     [f.key]: Number(e.target.value),
                                   })
                                 }
-                                className="w-20 rounded border border-neutral-300 px-2 py-1 text-xs"
+                                className="w-20 rounded border border-line px-2 py-1 text-xs"
                               />
                             </td>
                           );
@@ -267,22 +258,20 @@ export function PromotionRulesTable({
                               type="checkbox"
                               checked={draft.enabled}
                               data-testid={`rule-input-${rule.category}-enabled`}
-                              onChange={(e) =>
-                                setDraft({ ...draft, enabled: e.target.checked })
-                              }
+                              onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
                             />
                           </td>
                         );
                       }
                       if (f.type === "boolean") {
                         return (
-                          <td key={f.key} className="px-4 py-2 text-neutral-700">
+                          <td key={f.key} className="px-4 py-2 text-ink-secondary">
                             {rule.enabled ? "yes" : "no"}
                           </td>
                         );
                       }
                       return (
-                        <td key={f.key} className="px-4 py-2 text-neutral-800">
+                        <td key={f.key} className="px-4 py-2 text-ink">
                           {String(rule[f.key] ?? "")}
                         </td>
                       );
@@ -296,7 +285,7 @@ export function PromotionRulesTable({
                               data-testid={`rule-save-${rule.category}`}
                               disabled={saving}
                               onClick={() => saveEdit(rule.category)}
-                              className="rounded bg-neutral-900 px-2 py-1 text-xs text-white hover:bg-neutral-800 disabled:opacity-50"
+                              className="rounded bg-action-primary px-2 py-1 text-xs text-on-accent hover:bg-action-primary-hover disabled:opacity-50"
                             >
                               Save
                             </button>
@@ -304,7 +293,7 @@ export function PromotionRulesTable({
                               type="button"
                               onClick={cancelEdit}
                               disabled={saving}
-                              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs hover:bg-neutral-50"
+                              className="rounded border border-line bg-surface-raised px-2 py-1 text-xs hover:bg-surface-sunken"
                             >
                               Cancel
                             </button>
@@ -315,7 +304,7 @@ export function PromotionRulesTable({
                               type="button"
                               data-testid={`rule-edit-${rule.category}`}
                               onClick={() => startEdit(rule)}
-                              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs hover:bg-neutral-50"
+                              className="rounded border border-line bg-surface-raised px-2 py-1 text-xs hover:bg-surface-sunken"
                             >
                               Edit
                             </button>
@@ -324,7 +313,7 @@ export function PromotionRulesTable({
                               data-testid={`rule-delete-${rule.category}`}
                               disabled={rule.category === "default"}
                               onClick={() => handleDelete(rule.category)}
-                              className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="rounded border border-error/30 bg-surface-raised px-2 py-1 text-xs text-error hover:bg-error-soft disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Delete
                             </button>
@@ -337,10 +326,7 @@ export function PromotionRulesTable({
               })}
             {!loading && rules.length === 0 && (
               <tr>
-                <td
-                  colSpan={FIELDS.length + 2}
-                  className="px-4 py-6 text-center text-neutral-500"
-                >
+                <td colSpan={FIELDS.length + 2} className="px-4 py-6 text-center text-ink-muted">
                   No rules configured.
                 </td>
               </tr>

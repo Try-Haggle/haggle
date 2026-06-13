@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 
@@ -148,35 +148,39 @@ const EMPTY_ADDRESS_FORM: AddressFormState = {
 };
 
 // ─── Status config ───────────────────────────────────────────
+// In-progress states (quoted/authorized/transit/settlement/delivery/refund)
+// consolidate to the `info` token; terminal states map to success/error/warning.
 const STATUS_COLORS: Record<string, string> = {
-  PAYMENT_PENDING: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  CREATED: "bg-slate-500/20 text-slate-400 border-slate-500/30",
-  QUOTED: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  AUTHORIZED: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  SETTLEMENT_PENDING: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  SETTLED: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  PAID: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  FULFILLMENT_PENDING: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  FULFILLMENT_ACTIVE: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  IN_TRANSIT: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  LABEL_PENDING: "bg-slate-500/20 text-slate-400 border-slate-500/30",
-  LABEL_CREATED: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  OUT_FOR_DELIVERY: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  DELIVERED: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  DELIVERY_EXCEPTION: "bg-red-500/20 text-red-400 border-red-500/30",
-  IN_DISPUTE: "bg-red-500/20 text-red-400 border-red-500/30",
-  OPEN: "bg-red-500/20 text-red-400 border-red-500/30",
-  UNDER_REVIEW: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  CLOSED: "bg-slate-500/20 text-slate-400 border-slate-500/30",
-  REFUNDED: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  FAILED: "bg-red-500/20 text-red-400 border-red-500/30",
-  CANCELED: "bg-slate-500/20 text-slate-400 border-slate-500/30",
+  PAYMENT_PENDING: "bg-warning-soft text-warning border-warning/30",
+  CREATED: "bg-surface-sunken text-ink-secondary border-line",
+  QUOTED: "bg-info-soft text-info border-info/30",
+  AUTHORIZED: "bg-info-soft text-info border-info/30",
+  SETTLEMENT_PENDING: "bg-info-soft text-info border-info/30",
+  SETTLED: "bg-success-soft text-success border-success/30",
+  PAID: "bg-success-soft text-success border-success/30",
+  FULFILLMENT_PENDING: "bg-warning-soft text-warning border-warning/30",
+  FULFILLMENT_ACTIVE: "bg-info-soft text-info border-info/30",
+  IN_TRANSIT: "bg-info-soft text-info border-info/30",
+  LABEL_PENDING: "bg-surface-sunken text-ink-secondary border-line",
+  LABEL_CREATED: "bg-info-soft text-info border-info/30",
+  OUT_FOR_DELIVERY: "bg-info-soft text-info border-info/30",
+  DELIVERED: "bg-success-soft text-success border-success/30",
+  DELIVERY_EXCEPTION: "bg-error-soft text-error border-error/30",
+  IN_DISPUTE: "bg-error-soft text-error border-error/30",
+  OPEN: "bg-error-soft text-error border-error/30",
+  UNDER_REVIEW: "bg-warning-soft text-warning border-warning/30",
+  CLOSED: "bg-surface-sunken text-ink-secondary border-line",
+  REFUNDED: "bg-info-soft text-info border-info/30",
+  FAILED: "bg-error-soft text-error border-error/30",
+  CANCELED: "bg-surface-sunken text-ink-secondary border-line",
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status] ?? "bg-slate-500/20 text-slate-400 border-slate-500/30";
+  const color = STATUS_COLORS[status] ?? "bg-surface-sunken text-ink-secondary border-line";
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${color}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${color}`}
+    >
       {status.replace(/_/g, " ")}
     </span>
   );
@@ -219,16 +223,16 @@ function TimelineStep({
         <div
           className={`w-3 h-3 rounded-full border-2 ${
             status === "done"
-              ? "bg-emerald-500 border-emerald-500"
+              ? "bg-success-500 border-success-500"
               : status === "active"
-                ? "bg-cyan-500 border-cyan-500 animate-pulse"
-                : "bg-transparent border-slate-600"
+                ? "bg-action-primary border-action-primary animate-pulse"
+                : "bg-transparent border-line-strong"
           }`}
         />
         {!isLast && (
           <div
             className={`w-0.5 flex-1 min-h-[24px] ${
-              status === "done" ? "bg-emerald-500/40" : "bg-slate-700"
+              status === "done" ? "bg-success-500/40" : "bg-line"
             }`}
           />
         )}
@@ -237,15 +241,15 @@ function TimelineStep({
         <p
           className={`text-sm font-medium ${
             status === "active"
-              ? "text-cyan-400"
+              ? "text-action-primary"
               : status === "done"
-                ? "text-slate-300"
-                : "text-slate-500"
+                ? "text-ink-secondary"
+                : "text-ink-muted"
           }`}
         >
           {label}
         </p>
-        {detail && <p className="text-xs text-slate-500 mt-0.5">{detail}</p>}
+        {detail && <p className="text-xs text-ink-muted mt-0.5">{detail}</p>}
       </div>
     </div>
   );
@@ -266,9 +270,14 @@ function PaymentSection({
   if (!payment) {
     return (
       <SectionCard title="Payment" icon="creditcard">
-        <p className="text-sm text-slate-400">No payment intent yet.</p>
+        <p className="text-sm text-ink-secondary">No payment intent yet.</p>
         {!isProduction ? (
-          <ActionButton label="Prepare Payment" action="prepare" onClick={onAction} loading={loading} />
+          <ActionButton
+            label="Prepare Payment"
+            action="prepare"
+            onClick={onAction}
+            loading={loading}
+          />
         ) : (
           <InlineNotice tone="info">
             Payment must be created from an approved checkout session.
@@ -284,22 +293,22 @@ function PaymentSection({
     <SectionCard title="Payment" icon="creditcard">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">Status</span>
+          <span className="text-sm text-ink-secondary">Status</span>
           <StatusBadge status={payment.status} />
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">Amount</span>
-          <span className="text-sm font-medium text-white">
+          <span className="text-sm text-ink-secondary">Amount</span>
+          <span className="text-sm font-medium text-ink">
             {formatCurrency(payment.amount.amount_minor, payment.amount.currency)}
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">Rail</span>
-          <span className="text-sm text-slate-300">{payment.selected_rail.toUpperCase()}</span>
+          <span className="text-sm text-ink-secondary">Rail</span>
+          <span className="text-sm text-ink-secondary">{payment.selected_rail.toUpperCase()}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">ID</span>
-          <span className="text-xs text-slate-500 font-mono">{payment.id.slice(0, 16)}...</span>
+          <span className="text-sm text-ink-secondary">ID</span>
+          <span className="text-xs text-ink-muted font-mono">{payment.id.slice(0, 16)}...</span>
         </div>
         {nextAction && (
           <ActionButton
@@ -311,10 +320,12 @@ function PaymentSection({
           />
         )}
         {!nextAction && getPaymentStatusMessage(payment.status, isProduction) && (
-          <InlineNotice tone="info">{getPaymentStatusMessage(payment.status, isProduction)}</InlineNotice>
+          <InlineNotice tone="info">
+            {getPaymentStatusMessage(payment.status, isProduction)}
+          </InlineNotice>
         )}
         {payment.status === "SETTLED" && (
-          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-400">
+          <div className="rounded-lg bg-success-soft border border-success/20 px-3 py-2 text-sm text-success">
             Payment settled successfully
           </div>
         )}
@@ -323,7 +334,10 @@ function PaymentSection({
   );
 }
 
-function getNextPaymentAction(status: string, isProduction: boolean): { label: string; action: string; variant?: "primary" | "danger" } | null {
+function getNextPaymentAction(
+  status: string,
+  isProduction: boolean,
+): { label: string; action: string; variant?: "primary" | "danger" } | null {
   switch (status) {
     case "CREATED":
       return { label: "Get Quote", action: "quote" };
@@ -379,7 +393,7 @@ function ShippingSection({
   if (!shipment) {
     return (
       <SectionCard title="Shipping" icon="truck">
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-ink-secondary">
           Shipment will be created automatically after payment settles.
         </p>
       </SectionCard>
@@ -392,19 +406,19 @@ function ShippingSection({
     <SectionCard title="Shipping" icon="truck">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">Status</span>
+          <span className="text-sm text-ink-secondary">Status</span>
           <StatusBadge status={shipment.status} />
         </div>
         {shipment.tracking_number && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-400">Tracking</span>
-            <span className="text-sm font-mono text-slate-300">{shipment.tracking_number}</span>
+            <span className="text-sm text-ink-secondary">Tracking</span>
+            <span className="text-sm font-mono text-ink-secondary">{shipment.tracking_number}</span>
           </div>
         )}
         {shipment.carrier && (
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-400">Carrier</span>
-            <span className="text-sm text-slate-300">{shipment.carrier}</span>
+            <span className="text-sm text-ink-secondary">Carrier</span>
+            <span className="text-sm text-ink-secondary">{shipment.carrier}</span>
           </div>
         )}
 
@@ -421,15 +435,15 @@ function ShippingSection({
 
         {/* Event timeline */}
         {shipment.events.length > 0 && (
-          <div className="border-t border-slate-800 pt-3 mt-3">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Events</p>
+          <div className="border-t border-line pt-3 mt-3">
+            <p className="text-xs text-ink-muted uppercase tracking-wider mb-2">Events</p>
             <div className="space-y-2">
               {shipment.events.map((evt) => (
                 <div key={evt.id} className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-1.5 shrink-0" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-action-primary mt-1.5 shrink-0" />
                   <div>
-                    <p className="text-xs text-slate-300">{formatShipmentEventStatus(evt)}</p>
-                    <p className="text-xs text-slate-500">{formatTime(evt.occurred_at)}</p>
+                    <p className="text-xs text-ink-secondary">{formatShipmentEventStatus(evt)}</p>
+                    <p className="text-xs text-ink-muted">{formatTime(evt.occurred_at)}</p>
                   </div>
                 </div>
               ))}
@@ -447,11 +461,13 @@ function ShippingSection({
         )}
 
         {!nextAction && getShippingStatusMessage(shipment.status, isProduction) && (
-          <InlineNotice tone="info">{getShippingStatusMessage(shipment.status, isProduction)}</InlineNotice>
+          <InlineNotice tone="info">
+            {getShippingStatusMessage(shipment.status, isProduction)}
+          </InlineNotice>
         )}
 
         {shipment.status === "DELIVERED" && (
-          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-400">
+          <div className="rounded-lg bg-success-soft border border-success/20 px-3 py-2 text-sm text-success">
             Delivered {shipment.delivered_at ? formatTime(shipment.delivered_at) : ""}
           </div>
         )}
@@ -460,7 +476,10 @@ function ShippingSection({
   );
 }
 
-function getNextShippingAction(status: string, isProduction: boolean): { label: string; action: string } | null {
+function getNextShippingAction(
+  status: string,
+  isProduction: boolean,
+): { label: string; action: string } | null {
   if (isProduction) return null;
   switch (status) {
     case "LABEL_CREATED":
@@ -488,7 +507,10 @@ function getShippingStatusMessage(status: string, isProduction: boolean): string
 }
 
 function formatShipmentEventStatus(event: ShipmentEvent): string {
-  return (event.canonical_status ?? event.status ?? event.event_type ?? "TRACKING_EVENT").replace(/_/g, " ");
+  return (event.canonical_status ?? event.status ?? event.event_type ?? "TRACKING_EVENT").replace(
+    /_/g,
+    " ",
+  );
 }
 
 function ShippingFulfillmentForm({
@@ -507,28 +529,89 @@ function ShippingFulfillmentForm({
   onPurchaseRate: (rateId: string) => void;
 }) {
   return (
-    <div className="space-y-3 border-t border-slate-800 pt-3">
-      <p className="text-xs text-slate-500 uppercase tracking-wider">Seller ship-from</p>
+    <div className="space-y-3 border-t border-line pt-3">
+      <p className="text-xs text-ink-muted uppercase tracking-wider">Seller ship-from</p>
       <div className="grid grid-cols-2 gap-2">
-        <TextInput value={form.fromAddress.name} placeholder="Name" onChange={(value) => onChange("fromAddress", "name", value)} />
-        <TextInput value={form.fromAddress.phone} placeholder="Phone" onChange={(value) => onChange("fromAddress", "phone", value)} />
-        <TextInput className="col-span-2" value={form.fromAddress.street1} placeholder="Street address" onChange={(value) => onChange("fromAddress", "street1", value)} />
-        <TextInput className="col-span-2" value={form.fromAddress.street2} placeholder="Apt, suite" onChange={(value) => onChange("fromAddress", "street2", value)} />
-        <TextInput value={form.fromAddress.city} placeholder="City" onChange={(value) => onChange("fromAddress", "city", value)} />
-        <TextInput value={form.fromAddress.state} placeholder="State" maxLength={2} onChange={(value) => onChange("fromAddress", "state", value.toUpperCase())} />
-        <TextInput value={form.fromAddress.zip} placeholder="ZIP" maxLength={5} onChange={(value) => onChange("fromAddress", "zip", value)} />
-        <TextInput value={form.fromAddress.country} placeholder="Country" onChange={(value) => onChange("fromAddress", "country", value.toUpperCase())} />
+        <TextInput
+          value={form.fromAddress.name}
+          placeholder="Name"
+          onChange={(value) => onChange("fromAddress", "name", value)}
+        />
+        <TextInput
+          value={form.fromAddress.phone}
+          placeholder="Phone"
+          onChange={(value) => onChange("fromAddress", "phone", value)}
+        />
+        <TextInput
+          className="col-span-2"
+          value={form.fromAddress.street1}
+          placeholder="Street address"
+          onChange={(value) => onChange("fromAddress", "street1", value)}
+        />
+        <TextInput
+          className="col-span-2"
+          value={form.fromAddress.street2}
+          placeholder="Apt, suite"
+          onChange={(value) => onChange("fromAddress", "street2", value)}
+        />
+        <TextInput
+          value={form.fromAddress.city}
+          placeholder="City"
+          onChange={(value) => onChange("fromAddress", "city", value)}
+        />
+        <TextInput
+          value={form.fromAddress.state}
+          placeholder="State"
+          maxLength={2}
+          onChange={(value) => onChange("fromAddress", "state", value.toUpperCase())}
+        />
+        <TextInput
+          value={form.fromAddress.zip}
+          placeholder="ZIP"
+          maxLength={5}
+          onChange={(value) => onChange("fromAddress", "zip", value)}
+        />
+        <TextInput
+          value={form.fromAddress.country}
+          placeholder="Country"
+          onChange={(value) => onChange("fromAddress", "country", value.toUpperCase())}
+        />
       </div>
 
-      <p className="text-xs text-slate-500 uppercase tracking-wider">Parcel</p>
+      <p className="text-xs text-ink-muted uppercase tracking-wider">Parcel</p>
       <div className="grid grid-cols-4 gap-2">
-        <TextInput value={form.parcel.length_in} placeholder="L in" inputMode="decimal" onChange={(value) => onChange("parcel", "length_in", value)} />
-        <TextInput value={form.parcel.width_in} placeholder="W in" inputMode="decimal" onChange={(value) => onChange("parcel", "width_in", value)} />
-        <TextInput value={form.parcel.height_in} placeholder="H in" inputMode="decimal" onChange={(value) => onChange("parcel", "height_in", value)} />
-        <TextInput value={form.parcel.weight_oz} placeholder="Oz" inputMode="decimal" onChange={(value) => onChange("parcel", "weight_oz", value)} />
+        <TextInput
+          value={form.parcel.length_in}
+          placeholder="L in"
+          inputMode="decimal"
+          onChange={(value) => onChange("parcel", "length_in", value)}
+        />
+        <TextInput
+          value={form.parcel.width_in}
+          placeholder="W in"
+          inputMode="decimal"
+          onChange={(value) => onChange("parcel", "width_in", value)}
+        />
+        <TextInput
+          value={form.parcel.height_in}
+          placeholder="H in"
+          inputMode="decimal"
+          onChange={(value) => onChange("parcel", "height_in", value)}
+        />
+        <TextInput
+          value={form.parcel.weight_oz}
+          placeholder="Oz"
+          inputMode="decimal"
+          onChange={(value) => onChange("parcel", "weight_oz", value)}
+        />
       </div>
 
-      <ActionButton label="Get Carrier Rates" action="prepare-shipping" onClick={onPrepareRates} loading={loading} />
+      <ActionButton
+        label="Get Carrier Rates"
+        action="prepare-shipping"
+        onClick={onPrepareRates}
+        loading={loading}
+      />
 
       {rates.length > 0 && (
         <div className="space-y-2">
@@ -537,16 +620,21 @@ function ShippingFulfillmentForm({
             return (
               <button
                 key={rateId}
+                type="button"
                 onClick={() => onPurchaseRate(rateId)}
                 disabled={!!loading || !rate.id}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-left text-sm transition-colors hover:border-cyan-500/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full rounded-lg border border-line bg-surface-sunken/60 px-3 py-2 text-left text-sm transition-colors hover:border-action-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span className="flex items-center justify-between gap-3">
-                  <span className="text-slate-200">{rate.carrier} {rate.service}</span>
-                  <span className="font-semibold text-white">{formatCurrency(rate.rate_minor)}</span>
+                  <span className="text-ink">
+                    {rate.carrier} {rate.service}
+                  </span>
+                  <span className="font-semibold text-ink">{formatCurrency(rate.rate_minor)}</span>
                 </span>
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  {rate.est_delivery_days ? `${rate.est_delivery_days} business days` : "Delivery estimate unavailable"}
+                <span className="mt-0.5 block text-xs text-ink-muted">
+                  {rate.est_delivery_days
+                    ? `${rate.est_delivery_days} business days`
+                    : "Delivery estimate unavailable"}
                 </span>
               </button>
             );
@@ -583,22 +671,29 @@ function DisputeSection({
       <SectionCard title="Dispute" icon="shield">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-400">Status</span>
+            <span className="text-sm text-ink-secondary">Status</span>
             <StatusBadge status={dispute.status} />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-400">Reason</span>
-            <span className="text-sm text-slate-300">{dispute.reason_code.replace(/_/g, " ")}</span>
+            <span className="text-sm text-ink-secondary">Reason</span>
+            <span className="text-sm text-ink-secondary">
+              {dispute.reason_code.replace(/_/g, " ")}
+            </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-sm text-slate-400">Opened by</span>
-            <span className="text-sm text-slate-300 capitalize">{dispute.opened_by}</span>
+            <span className="text-sm text-ink-secondary">Opened by</span>
+            <span className="text-sm text-ink-secondary capitalize">{dispute.opened_by}</span>
           </div>
           {dispute.evidence.length > 0 && (
-            <div className="border-t border-slate-800 pt-3">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Evidence ({dispute.evidence.length})</p>
-              {dispute.evidence.map((e, i) => (
-                <div key={i} className="text-xs text-slate-400 mb-1">
+            <div className="border-t border-line pt-3">
+              <p className="text-xs text-ink-muted uppercase tracking-wider mb-2">
+                Evidence ({dispute.evidence.length})
+              </p>
+              {dispute.evidence.map((e) => (
+                <div
+                  key={`${e.submitted_by}-${e.type}-${e.text ?? ""}`}
+                  className="text-xs text-ink-secondary mb-1"
+                >
                   [{e.submitted_by}] {e.text ?? e.type}
                 </div>
               ))}
@@ -606,7 +701,7 @@ function DisputeSection({
           )}
           <Link
             href={`/disputes/${dispute.id}`}
-            className="block text-center text-sm text-cyan-400 hover:text-cyan-300 transition-colors pt-1"
+            className="block text-center text-sm text-action-primary hover:text-action-primary-hover transition-colors pt-1"
           >
             View Full Dispute
           </Link>
@@ -625,10 +720,10 @@ function DisputeSection({
 
   return (
     <SectionCard title="Dispute" icon="shield">
-      <p className="text-sm text-slate-400 mb-3">No dispute for this order.</p>
+      <p className="text-sm text-ink-secondary mb-3">No dispute for this order.</p>
       <Link
         href={`/disputes/new?orderId=${orderId}`}
-        className="block w-full text-center rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+        className="block w-full text-center rounded-lg border border-error/30 bg-error-soft px-3 py-2 text-sm font-medium text-error hover:bg-error-soft transition-colors"
       >
         Report an Issue
       </Link>
@@ -663,13 +758,13 @@ function AddressSection({
     return (
       <SectionCard title="Delivery Address" icon="location">
         <div className="space-y-1 text-sm">
-          <p className="font-medium text-white">{buyerAddress.name}</p>
-          <p className="text-slate-400">{buyerAddress.street1}</p>
-          {buyerAddress.street2 && <p className="text-slate-400">{buyerAddress.street2}</p>}
-          <p className="text-slate-400">
+          <p className="font-medium text-ink">{buyerAddress.name}</p>
+          <p className="text-ink-secondary">{buyerAddress.street1}</p>
+          {buyerAddress.street2 && <p className="text-ink-secondary">{buyerAddress.street2}</p>}
+          <p className="text-ink-secondary">
             {buyerAddress.city}, {buyerAddress.state} {buyerAddress.zip}
           </p>
-          {buyerAddress.phone && <p className="text-slate-500">{buyerAddress.phone}</p>}
+          {buyerAddress.phone && <p className="text-ink-muted">{buyerAddress.phone}</p>}
         </div>
       </SectionCard>
     );
@@ -689,17 +784,63 @@ function AddressSection({
     <SectionCard title="Delivery Address" icon="location">
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
-          <TextInput value={form.name} placeholder="Name" onChange={(value) => onChange("name", value)} />
-          <TextInput value={form.phone} placeholder="Phone" onChange={(value) => onChange("phone", value)} />
-          <TextInput className="col-span-2" value={form.street1} placeholder="Street address" onChange={(value) => onChange("street1", value)} />
-          <TextInput className="col-span-2" value={form.street2} placeholder="Apt, suite" onChange={(value) => onChange("street2", value)} />
-          <TextInput value={form.city} placeholder="City" onChange={(value) => onChange("city", value)} />
-          <TextInput value={form.state} placeholder="State" maxLength={2} onChange={(value) => onChange("state", value.toUpperCase())} />
-          <TextInput value={form.zip} placeholder="ZIP" maxLength={5} onChange={(value) => onChange("zip", value)} />
-          <TextInput value={form.country} placeholder="Country" onChange={(value) => onChange("country", value.toUpperCase())} />
-          <TextInput className="col-span-2" value={form.email} placeholder="Email" onChange={(value) => onChange("email", value)} />
+          <TextInput
+            value={form.name}
+            placeholder="Name"
+            onChange={(value) => onChange("name", value)}
+          />
+          <TextInput
+            value={form.phone}
+            placeholder="Phone"
+            onChange={(value) => onChange("phone", value)}
+          />
+          <TextInput
+            className="col-span-2"
+            value={form.street1}
+            placeholder="Street address"
+            onChange={(value) => onChange("street1", value)}
+          />
+          <TextInput
+            className="col-span-2"
+            value={form.street2}
+            placeholder="Apt, suite"
+            onChange={(value) => onChange("street2", value)}
+          />
+          <TextInput
+            value={form.city}
+            placeholder="City"
+            onChange={(value) => onChange("city", value)}
+          />
+          <TextInput
+            value={form.state}
+            placeholder="State"
+            maxLength={2}
+            onChange={(value) => onChange("state", value.toUpperCase())}
+          />
+          <TextInput
+            value={form.zip}
+            placeholder="ZIP"
+            maxLength={5}
+            onChange={(value) => onChange("zip", value)}
+          />
+          <TextInput
+            value={form.country}
+            placeholder="Country"
+            onChange={(value) => onChange("country", value.toUpperCase())}
+          />
+          <TextInput
+            className="col-span-2"
+            value={form.email}
+            placeholder="Email"
+            onChange={(value) => onChange("email", value)}
+          />
         </div>
-        <ActionButton label="Save Delivery Address" action="save-buyer-address" onClick={onSave} loading={loading} />
+        <ActionButton
+          label="Save Delivery Address"
+          action="save-buyer-address"
+          onClick={onSave}
+          loading={loading}
+        />
       </div>
     </SectionCard>
   );
@@ -717,13 +858,33 @@ function SectionCard({
 }) {
   const icons: Record<string, React.ReactNode> = {
     creditcard: (
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
         <line x1="1" y1="10" x2="23" y2="10" />
       </svg>
     ),
     truck: (
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect x="1" y="3" width="15" height="13" />
         <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
         <circle cx="5.5" cy="18.5" r="2.5" />
@@ -731,12 +892,32 @@ function SectionCard({
       </svg>
     ),
     shield: (
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>
     ),
     location: (
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 0 1 18 0z" />
         <circle cx="12" cy="10" r="3" />
       </svg>
@@ -744,10 +925,10 @@ function SectionCard({
   };
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-800">
-        <span className="text-slate-400">{icons[icon]}</span>
-        <h2 className="text-sm font-semibold text-white">{title}</h2>
+    <div className="rounded-xl border border-line bg-surface-raised/50 overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-line">
+        <span className="text-ink-secondary">{icons[icon]}</span>
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -768,14 +949,16 @@ function ActionButton({
   variant?: "primary" | "danger";
 }) {
   const isLoading = loading === action;
-  const base = "w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const base =
+    "w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
   const styles =
     variant === "danger"
-      ? "border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
-      : "bg-cyan-500 text-white hover:bg-cyan-600";
+      ? "border border-error/30 bg-error-soft text-error hover:bg-error-soft"
+      : "bg-action-primary text-on-accent hover:bg-action-primary-hover";
 
   return (
     <button
+      type="button"
       onClick={() => onClick(action)}
       disabled={!!loading}
       className={`${base} ${styles}`}
@@ -785,22 +968,12 @@ function ActionButton({
   );
 }
 
-function InlineNotice({
-  children,
-  tone,
-}: {
-  children: React.ReactNode;
-  tone: "info" | "warning";
-}) {
+function InlineNotice({ children, tone }: { children: React.ReactNode; tone: "info" | "warning" }) {
   const styles =
     tone === "warning"
-      ? "border-amber-500/20 bg-amber-500/10 text-amber-300"
-      : "border-cyan-500/20 bg-cyan-500/10 text-cyan-300";
-  return (
-    <div className={`rounded-lg border px-3 py-2 text-sm ${styles}`}>
-      {children}
-    </div>
-  );
+      ? "border-warning/20 bg-warning-soft text-warning"
+      : "border-action-primary/20 bg-action-primary/10 text-action-primary";
+  return <div className={`rounded-lg border px-3 py-2 text-sm ${styles}`}>{children}</div>;
 }
 
 function TextInput({
@@ -825,7 +998,7 @@ function TextInput({
       maxLength={maxLength}
       inputMode={inputMode}
       onChange={(event) => onChange(event.target.value)}
-      className={`min-w-0 rounded-md border border-slate-700 bg-slate-950 px-2.5 py-2 text-sm text-white placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none ${className}`}
+      className={`min-w-0 rounded-md border border-line bg-surface-sunken px-2.5 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none ${className}`}
     />
   );
 }
@@ -841,31 +1014,41 @@ interface LogEntry {
 function ActivityLog({ entries }: { entries: LogEntry[] }) {
   if (entries.length === 0) return null;
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-800">
-        <span className="text-slate-400">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="rounded-xl border border-line bg-surface-raised/50 overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-line">
+        <span className="text-ink-secondary">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
           </svg>
         </span>
-        <h2 className="text-sm font-semibold text-white">Activity Log</h2>
+        <h2 className="text-sm font-semibold text-ink">Activity Log</h2>
       </div>
       <div className="p-5 max-h-64 overflow-y-auto space-y-2">
-        {entries.map((entry, i) => (
-          <div key={i} className="flex items-start gap-2 text-xs">
+        {entries.map((entry) => (
+          <div key={`${entry.time}-${entry.action}`} className="flex items-start gap-2 text-xs">
             <span
               className={`mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full ${
                 entry.status === "success"
-                  ? "bg-emerald-500"
+                  ? "bg-success-500"
                   : entry.status === "error"
-                    ? "bg-red-500"
-                    : "bg-slate-500"
+                    ? "bg-error-500"
+                    : "bg-line-strong"
               }`}
             />
             <div className="flex-1 min-w-0">
-              <span className="text-slate-500">{entry.time}</span>{" "}
-              <span className="text-slate-300 font-medium">{entry.action}</span>
-              <span className="text-slate-500"> {entry.detail}</span>
+              <span className="text-ink-muted">{entry.time}</span>{" "}
+              <span className="text-ink-secondary font-medium">{entry.action}</span>
+              <span className="text-ink-muted"> {entry.detail}</span>
             </div>
           </div>
         ))}
@@ -877,7 +1060,6 @@ function ActivityLog({ entries }: { entries: LogEntry[] }) {
 // ─── Main Page ───────────────────────────────────────────────
 export default function OrderDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const orderId = params.id as string;
 
   const [state, setState] = useState<OrderState>({
@@ -909,7 +1091,9 @@ export default function OrderDetailPage() {
 
   // Load order data — use aggregated endpoint for efficiency
   const loadOrderAddresses = useCallback(async () => {
-    const data = await api.get<Record<string, OrderAddress>>(`/orders/${orderId}/addresses`).catch(() => null);
+    const data = await api
+      .get<Record<string, OrderAddress>>(`/orders/${orderId}/addresses`)
+      .catch(() => null);
     setOrderAddresses(data ?? {});
   }, [orderId]);
 
@@ -931,10 +1115,18 @@ export default function OrderDetailPage() {
     } catch {
       // Fallback: try individual endpoints
       try {
-        const orderData = await api.get<{ order: OrderState["order"] }>(`/commerce/orders/${orderId}`).catch(() => null);
-        const paymentData = await api.get<{ payment: PaymentIntent }>(`/payments/by-order/${orderId}`).catch(() => null);
-        const shipmentData = await api.get<{ shipment: Shipment }>(`/shipments/by-order/${orderId}`).catch(() => null);
-        const disputeData = await api.get<{ dispute: Dispute }>(`/disputes/by-order/${orderId}`).catch(() => null);
+        const orderData = await api
+          .get<{ order: OrderState["order"] }>(`/commerce/orders/${orderId}`)
+          .catch(() => null);
+        const paymentData = await api
+          .get<{ payment: PaymentIntent }>(`/payments/by-order/${orderId}`)
+          .catch(() => null);
+        const shipmentData = await api
+          .get<{ shipment: Shipment }>(`/shipments/by-order/${orderId}`)
+          .catch(() => null);
+        const disputeData = await api
+          .get<{ dispute: Dispute }>(`/disputes/by-order/${orderId}`)
+          .catch(() => null);
         setState({
           order: orderData?.order ?? null,
           payment: paymentData?.payment ?? null,
@@ -956,9 +1148,12 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setCurrentUserId(data.user?.id ?? null);
-    }).catch(() => setCurrentUserId(null));
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        setCurrentUserId(data.user?.id ?? null);
+      })
+      .catch(() => setCurrentUserId(null));
   }, []);
 
   // ─── Payment Actions ────────────────────────────────────────
@@ -977,7 +1172,11 @@ export default function OrderDetailPage() {
               seller_policy: {
                 mode: "AUTO_WITHIN_POLICY",
                 fulfillment_sla: { shipment_input_due_days: 3 },
-                responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+                responsiveness: {
+                  median_response_minutes: 30,
+                  p95_response_minutes: 120,
+                  reliable_fast_responder: true,
+                },
               },
               terms: {
                 listing_id: `lst_demo`,
@@ -997,14 +1196,18 @@ export default function OrderDetailPage() {
         }
         case "quote": {
           addLog("Payment", "Getting quote...", "info");
-          const result = await api.post<{ intent: PaymentIntent }>(`/payments/${state.payment!.id}/quote`);
+          const result = await api.post<{ intent: PaymentIntent }>(
+            `/payments/${state.payment!.id}/quote`,
+          );
           setState((s) => ({ ...s, payment: result.intent }));
           addLog("Payment", "Quote received", "success");
           break;
         }
         case "authorize": {
           addLog("Payment", "Authorizing...", "info");
-          const result = await api.post<{ intent: PaymentIntent }>(`/payments/${state.payment!.id}/authorize`);
+          const result = await api.post<{ intent: PaymentIntent }>(
+            `/payments/${state.payment!.id}/authorize`,
+          );
           setState((s) => ({ ...s, payment: result.intent }));
           addLog("Payment", "Payment authorized", "success");
           break;
@@ -1023,7 +1226,11 @@ export default function OrderDetailPage() {
           }));
           addLog("Payment", "Payment settled!", "success");
           if (result.shipment) {
-            addLog("Shipping", `Shipment auto-created: ${result.shipment.id.slice(0, 16)}...`, "success");
+            addLog(
+              "Shipping",
+              `Shipment auto-created: ${result.shipment.id.slice(0, 16)}...`,
+              "success",
+            );
           }
           await loadOrder();
           break;
@@ -1045,7 +1252,9 @@ export default function OrderDetailPage() {
       switch (action) {
         case "label": {
           addLog("Shipping", "Creating label...", "info");
-          const result = await api.post<{ shipment: Shipment }>(`/shipments/${state.shipment.id}/label`);
+          const result = await api.post<{ shipment: Shipment }>(
+            `/shipments/${state.shipment.id}/label`,
+          );
           setState((s) => ({ ...s, shipment: result.shipment }));
           addLog("Shipping", "Label created", "success");
           await loadOrder();
@@ -1053,10 +1262,13 @@ export default function OrderDetailPage() {
         }
         case "ship": {
           addLog("Shipping", "Recording ship event...", "info");
-          const result = await api.post<{ shipment: Shipment }>(`/shipments/${state.shipment.id}/event`, {
-            event_type: "ship",
-            payload: { message: "Package picked up by carrier" },
-          });
+          const result = await api.post<{ shipment: Shipment }>(
+            `/shipments/${state.shipment.id}/event`,
+            {
+              event_type: "ship",
+              payload: { message: "Package picked up by carrier" },
+            },
+          );
           setState((s) => ({ ...s, shipment: result.shipment }));
           addLog("Shipping", "Marked as shipped (IN_TRANSIT)", "success");
           await loadOrder();
@@ -1064,10 +1276,13 @@ export default function OrderDetailPage() {
         }
         case "deliver": {
           addLog("Shipping", "Recording delivery...", "info");
-          const result = await api.post<{ shipment: Shipment }>(`/shipments/${state.shipment.id}/event`, {
-            event_type: "deliver",
-            payload: { message: "Package delivered to recipient" },
-          });
+          const result = await api.post<{ shipment: Shipment }>(
+            `/shipments/${state.shipment.id}/event`,
+            {
+              event_type: "deliver",
+              payload: { message: "Package delivered to recipient" },
+            },
+          );
           setState((s) => ({ ...s, shipment: result.shipment }));
           addLog("Shipping", "Delivered!", "success");
           await loadOrder();
@@ -1081,7 +1296,11 @@ export default function OrderDetailPage() {
     }
   }
 
-  function handleShippingFormChange(section: "fromAddress" | "parcel", field: string, value: string) {
+  function handleShippingFormChange(
+    section: "fromAddress" | "parcel",
+    field: string,
+    value: string,
+  ) {
     setShippingForm((current) => ({
       ...current,
       [section]: {
@@ -1140,13 +1359,18 @@ export default function OrderDetailPage() {
     setLoading(`purchase-${rateId}`);
     try {
       addLog("Shipping", "Purchasing selected label...", "info");
-      const result = await api.post<{ shipment: Shipment; label_url?: string; tracking_number?: string }>(
-        `/shipments/${state.shipment.id}/purchase-label`,
-        { rate_id: rateId },
-      );
+      const result = await api.post<{
+        shipment: Shipment;
+        label_url?: string;
+        tracking_number?: string;
+      }>(`/shipments/${state.shipment.id}/purchase-label`, { rate_id: rateId });
       setState((s) => ({ ...s, shipment: result.shipment }));
       setShippingRates([]);
-      addLog("Shipping", `Label purchased${result.tracking_number ? `: ${result.tracking_number}` : ""}`, "success");
+      addLog(
+        "Shipping",
+        `Label purchased${result.tracking_number ? `: ${result.tracking_number}` : ""}`,
+        "success",
+      );
       await loadOrder();
     } catch (err) {
       addLog("Shipping", err instanceof Error ? err.message : "Label purchase failed", "error");
@@ -1193,7 +1417,11 @@ export default function OrderDetailPage() {
       const result = await api.post<{ shipment: Shipment; tracking_number?: string | null }>(
         `/shipments/${state.shipment.id}/return-label`,
       );
-      addLog("Shipping", `Return label created${result.tracking_number ? `: ${result.tracking_number}` : ""}`, "success");
+      addLog(
+        "Shipping",
+        `Return label created${result.tracking_number ? `: ${result.tracking_number}` : ""}`,
+        "success",
+      );
     } catch (err) {
       addLog("Shipping", err instanceof Error ? err.message : "Return label failed", "error");
     } finally {
@@ -1220,11 +1448,12 @@ export default function OrderDetailPage() {
       },
       {
         label: "Shipping Label",
-        status: shipped || shipmentStatus === "LABEL_CREATED"
-          ? "done"
-          : paymentDone && shipmentStatus === "LABEL_PENDING"
-            ? "active"
-            : "pending",
+        status:
+          shipped || shipmentStatus === "LABEL_CREATED"
+            ? "done"
+            : paymentDone && shipmentStatus === "LABEL_PENDING"
+              ? "active"
+              : "pending",
         detail: shipmentStatus === "LABEL_CREATED" || shipped ? "Created" : undefined,
       },
       {
@@ -1242,7 +1471,12 @@ export default function OrderDetailPage() {
     if (hasDispute) {
       steps.push({
         label: "Dispute",
-        status: disputeStatus === "CLOSED" || disputeStatus === "PARTIAL_REFUND" || disputeStatus?.startsWith("RESOLVED") ? "done" : "active",
+        status:
+          disputeStatus === "CLOSED" ||
+          disputeStatus === "PARTIAL_REFUND" ||
+          disputeStatus?.startsWith("RESOLVED")
+            ? "done"
+            : "active",
         detail: disputeStatus?.replace(/_/g, " "),
       });
     }
@@ -1254,7 +1488,7 @@ export default function OrderDetailPage() {
   if (initialLoading) {
     return (
       <main className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
-        <div className="text-slate-400 text-sm animate-pulse">Loading order...</div>
+        <div className="text-ink-secondary text-sm animate-pulse">Loading order...</div>
       </main>
     );
   }
@@ -1268,19 +1502,29 @@ export default function OrderDetailPage() {
         <div>
           <Link
             href="/buy/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-3"
+            className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-3"
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="15 18 9 12 15 6" />
             </svg>
             Back
           </Link>
-          <h1 className="text-xl font-bold text-white">Order Details</h1>
-          <p className="text-sm text-slate-400 font-mono mt-0.5">{orderId}</p>
+          <h1 className="text-xl font-bold text-ink">Order Details</h1>
+          <p className="text-sm text-ink-secondary font-mono mt-0.5">{orderId}</p>
         </div>
         {state.order && (
           <div className="text-right">
-            <p className="text-lg font-bold text-white">
+            <p className="text-lg font-bold text-ink">
               {formatCurrency(state.order.amountMinor, state.order.currency)}
             </p>
             <StatusBadge status={state.order.status} />
@@ -1289,8 +1533,8 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Timeline */}
-      <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-5 mb-6">
-        <h2 className="text-sm font-semibold text-white mb-4">Progress</h2>
+      <div className="rounded-xl border border-line bg-surface-raised/50 p-5 mb-6">
+        <h2 className="text-sm font-semibold text-ink mb-4">Progress</h2>
         <div>
           {timelineSteps.map((step, i) => (
             <TimelineStep
@@ -1315,7 +1559,12 @@ export default function OrderDetailPage() {
           onChange={handleAddressFormChange}
           onSave={handleSaveBuyerAddress}
         />
-        <PaymentSection payment={state.payment} onAction={handlePaymentAction} loading={loading} isProduction={IS_PRODUCTION} />
+        <PaymentSection
+          payment={state.payment}
+          onAction={handlePaymentAction}
+          loading={loading}
+          isProduction={IS_PRODUCTION}
+        />
         <ShippingSection
           shipment={state.shipment}
           onAction={handleShippingAction}
@@ -1343,8 +1592,9 @@ export default function OrderDetailPage() {
       {/* Refresh button */}
       <div className="mt-4 text-center">
         <button
+          type="button"
           onClick={() => loadOrder()}
-          className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
+          className="text-sm text-ink-muted hover:text-ink-secondary transition-colors"
         >
           Refresh data
         </button>

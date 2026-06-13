@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useBalance, useWriteContract } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useState } from "react";
 import { parseUnits } from "viem";
+import { useAccount, useBalance, useWriteContract } from "wagmi";
 import { api } from "@/lib/api-client";
 
 // USDC contract ABI (minimal: approve)
@@ -50,7 +50,6 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const [error, setError] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [onrampClientSecret, setOnrampClientSecret] = useState<string | null>(null);
 
   // Amount in USDC (6 decimals)
   const amountUsdc = (amountMinor / 100).toFixed(2);
@@ -145,13 +144,19 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       }>(`/payments/${intentId}/onramp/session`, {
         destination_wallet: address,
       });
-      setOnrampClientSecret(data.client_secret ?? null);
       setStep("onramp_active");
 
       // Load Stripe onramp widget
       if (typeof window !== "undefined" && data.client_secret) {
         // @ts-expect-error — @stripe/crypto loaded dynamically, types installed separately
-        const { loadStripeOnramp } = await import("@stripe/crypto") as { loadStripeOnramp: (key: string) => Promise<{ createSession: (opts: { clientSecret: string }) => { mount: (el: string) => void; addEventListener: (event: string, cb: (e: unknown) => void) => void } } | null> };
+        const { loadStripeOnramp } = (await import("@stripe/crypto")) as {
+          loadStripeOnramp: (key: string) => Promise<{
+            createSession: (opts: { clientSecret: string }) => {
+              mount: (el: string) => void;
+              addEventListener: (event: string, cb: (e: unknown) => void) => void;
+            };
+          } | null>;
+        };
         const stripeOnramp = await loadStripeOnramp(data.stripe_publishable_key);
         if (stripeOnramp) {
           const session = stripeOnramp.createSession({ clientSecret: data.client_secret });
@@ -194,7 +199,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
         paymentRequirements: requirements,
       };
 
-      await api.post(`/payments/${paymentIntentId}/x402/submit-signature`, { payment_payload: paymentPayload });
+      await api.post(`/payments/${paymentIntentId}/x402/submit-signature`, {
+        payment_payload: paymentPayload,
+      });
 
       setStep("complete");
     } catch (err) {
@@ -217,10 +224,10 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const currentStepIndex = steps.findIndex((s) => s.key === step);
 
   return (
-    <div className="rounded-lg border border-gray-200 p-6 space-y-6">
+    <div className="rounded-lg border border-line p-6 space-y-6">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Complete Payment</h2>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-muted">
           ${amountUsdc} {currency}
         </p>
       </div>
@@ -228,28 +235,39 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       {/* Payment method selection */}
       {step === "select_method" && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">Choose how to pay:</p>
+          <p className="text-sm text-ink-secondary">Choose how to pay:</p>
           <button
-            onClick={() => { setMethod("card"); setStep("connect_wallet"); }}
-            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
+            type="button"
+            onClick={() => {
+              setMethod("card");
+              setStep("connect_wallet");
+            }}
+            className="w-full flex items-center gap-3 rounded-lg border border-line p-4 hover:border-focus hover:bg-surface-sunken transition-colors text-left"
           >
             <span className="text-2xl">💳</span>
             <div>
               <div className="font-medium">Pay with Card (${amountUsdc} + Stripe fee)</div>
-              <div className="text-xs text-gray-500">
-                Credit/debit card via Stripe. 3% total fee. No wallet needed &mdash; Stripe handles everything.
+              <div className="text-xs text-ink-muted">
+                Credit/debit card via Stripe. 3% total fee. No wallet needed &mdash; Stripe handles
+                everything.
               </div>
             </div>
           </button>
           <button
-            onClick={() => { setMethod("crypto"); setStep("connect_wallet"); }}
-            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
+            type="button"
+            onClick={() => {
+              setMethod("crypto");
+              setStep("connect_wallet");
+            }}
+            className="w-full flex items-center gap-3 rounded-lg border border-line p-4 hover:border-focus hover:bg-surface-sunken transition-colors text-left"
           >
             <span className="text-2xl">🔗</span>
             <div>
               <div className="font-medium">Pay with USDC (${amountUsdc})</div>
-              <div className="text-xs text-gray-500">Direct USDC from your wallet on Base. 1.5% fee. Gas paid by Haggle.</div>
-              <div className="text-xs text-blue-600 mt-1">
+              <div className="text-xs text-ink-muted">
+                Direct USDC from your wallet on Base. 1.5% fee. Gas paid by Haggle.
+              </div>
+              <div className="text-xs text-action-primary mt-1">
                 Don&apos;t have a wallet? Create one instantly with Coinbase &mdash; just your email
               </div>
             </div>
@@ -260,14 +278,14 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       {/* Stripe onramp widget container */}
       {step === "onramp_active" && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">Complete payment with your card:</p>
-          <div id="stripe-onramp-element" className="min-h-[400px] rounded-lg border" />
+          <p className="text-sm text-ink-secondary">Complete payment with your card:</p>
+          <div id="stripe-onramp-element" className="min-h-[400px] rounded-lg border border-line" />
         </div>
       )}
 
       {step === "onramp_loading" && (
-        <div className="py-8 text-center text-gray-500">
-          <div className="animate-spin inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full mb-2" />
+        <div className="py-8 text-center text-ink-muted">
+          <div className="animate-spin inline-block w-6 h-6 border-2 border-line border-t-action-primary rounded-full mb-2" />
           <p className="text-sm">Setting up card payment...</p>
         </div>
       )}
@@ -279,22 +297,22 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
             <div
               className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium shrink-0 ${
                 i < currentStepIndex
-                  ? "bg-green-500 text-white"
+                  ? "bg-success-500 text-on-accent"
                   : i === currentStepIndex
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-400"
+                    ? "bg-action-primary text-on-accent"
+                    : "bg-surface-sunken text-ink-muted"
               }`}
             >
               {i < currentStepIndex ? "✓" : i + 1}
             </div>
             <span
               className={`ml-1 text-xs hidden sm:block ${
-                i === currentStepIndex ? "text-blue-600 font-medium" : "text-gray-400"
+                i === currentStepIndex ? "text-action-primary font-medium" : "text-ink-muted"
               }`}
             >
               {s.label}
             </span>
-            {i < steps.length - 1 && <div className="mx-2 h-px w-4 bg-gray-200 shrink-0" />}
+            {i < steps.length - 1 && <div className="mx-2 h-px w-4 bg-line shrink-0" />}
           </div>
         ))}
       </div>
@@ -305,17 +323,17 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
           <div className="space-y-3">
             {method === "card" && !isConnected ? (
               <>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-ink-secondary">
                   Connect the wallet that should receive USDC after your card payment.
                 </p>
                 <ConnectButton />
-                <p className="text-xs text-gray-400 text-center">
+                <p className="text-xs text-ink-muted text-center">
                   The connected wallet must be registered to your Haggle account.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-ink-secondary">
                   {method === "crypto"
                     ? "Connect your wallet to pay with USDC."
                     : "Connect your wallet to proceed with payment."}
@@ -323,9 +341,10 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 <ConnectButton />
                 {isConnected && (
                   <button
+                    type="button"
                     onClick={handlePrepare}
                     disabled={isLoading}
-                    className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+                    className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
                   >
                     {isLoading ? "Preparing..." : "Continue"}
                   </button>
@@ -337,24 +356,29 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
         {step === "check_balance" && (
           <div className="space-y-3">
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+            <div className="bg-surface-sunken rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Your address</span>
-                <span className="font-mono text-xs">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+                <span className="text-ink-muted">Your address</span>
+                <span className="font-mono text-xs">
+                  {address?.slice(0, 6)}...{address?.slice(-4)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">ETH balance</span>
+                <span className="text-ink-muted">ETH balance</span>
                 <span>{balance ? `${Number(balance.formatted).toFixed(4)} ETH` : "—"}</span>
               </div>
               <div className="flex justify-between text-sm font-medium">
-                <span className="text-gray-500">Payment amount</span>
-                <span>{amountUsdc} {currency}</span>
+                <span className="text-ink-muted">Payment amount</span>
+                <span>
+                  {amountUsdc} {currency}
+                </span>
               </div>
             </div>
             <button
+              type="button"
               onClick={handleQuote}
               disabled={isLoading}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
             >
               {isLoading ? "Loading..." : "Get Quote"}
             </button>
@@ -363,19 +387,21 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
         {step === "approve_usdc" && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Approve the payment contract to spend{" "}
-              <strong>{amountUsdc} USDC</strong> on your behalf.
+            <p className="text-sm text-ink-secondary">
+              Approve the payment contract to spend <strong>{amountUsdc} USDC</strong> on your
+              behalf.
             </p>
             <button
+              type="button"
               onClick={() =>
                 handleApproveUsdc(
                   (process.env.NEXT_PUBLIC_SETTLEMENT_ROUTER_ADDRESS ?? "0x0") as `0x${string}`,
-                  (process.env.NEXT_PUBLIC_USDC_ADDRESS ?? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
+                  (process.env.NEXT_PUBLIC_USDC_ADDRESS ??
+                    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
                 )
               }
               disabled={isLoading || isWriting}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
             >
               {isLoading || isWriting ? "Approving..." : "Approve USDC"}
             </button>
@@ -384,13 +410,14 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
         {step === "sign_x402" && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-ink-secondary">
               Sign the x402 payment authorization to complete the transaction.
             </p>
             <button
+              type="button"
               onClick={handleSubmitX402}
               disabled={isLoading}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
             >
               {isLoading ? "Submitting..." : "Sign & Submit Payment"}
             </button>
@@ -400,8 +427,8 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
         {step === "complete" && (
           <div className="text-center space-y-3 py-4">
             <div className="text-4xl">✓</div>
-            <p className="text-green-600 font-semibold">Payment Complete!</p>
-            <p className="text-sm text-gray-500">
+            <p className="text-success font-semibold">Payment Complete!</p>
+            <p className="text-sm text-ink-muted">
               Your payment of {amountUsdc} {currency} has been submitted.
             </p>
           </div>
@@ -409,15 +436,16 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
         {step === "error" && (
           <div className="space-y-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="bg-error-soft border border-error/30 rounded-lg p-4">
+              <p className="text-sm text-error">{error}</p>
             </div>
             <button
+              type="button"
               onClick={() => {
                 setError(null);
                 setStep(isConnected ? "check_balance" : "connect_wallet");
               }}
-              className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              className="w-full py-2 px-4 bg-surface-sunken text-ink-secondary rounded-lg text-sm font-medium hover:bg-surface-overlay transition-colors"
             >
               Try Again
             </button>

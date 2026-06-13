@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
 import {
   compilePresetTuningDraft,
   getNegotiationPresets,
-  savePresetTuningCandidate,
   type NegotiationPresetId,
   type NegotiationPresetSummary,
   type PresetLeverageDraft,
@@ -12,8 +12,8 @@ import {
   type PresetTuningDraft,
   type PresetWalkAwayDraft,
   type StoredMemoryCard,
+  savePresetTuningCandidate,
 } from "@/lib/intelligence-demo-api";
-import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
 
 type Props = {
   userId: string;
@@ -63,27 +63,40 @@ function minorToDollars(value: number): number {
 }
 
 function sourceClass(source: string): string {
+  // Categorical source palette kept distinct per PRESERVE rule:
+  // memory -> success, tag -> info, preset -> kept violet literal to stay
+  // visually distinct from tag (info). default -> neutral surface tokens.
   switch (source) {
-    case "memory": return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
-    case "tag": return "border-sky-500/20 bg-sky-500/10 text-sky-100";
-    case "preset": return "border-violet-500/20 bg-violet-500/10 text-violet-100";
-    default: return "border-slate-700 bg-slate-950/70 text-slate-300";
+    case "memory":
+      return "border-success/20 bg-success/10 text-success";
+    case "tag":
+      return "border-info/20 bg-info/10 text-info";
+    case "preset":
+      return "border-violet-500/20 bg-violet-500/10 text-violet-100";
+    default:
+      return "border-line bg-surface-sunken text-ink-secondary";
   }
 }
 
 function enforcementClass(enforcement: string): string {
   switch (enforcement) {
-    case "deal_breaker": return "border-red-500/25 bg-red-500/10 text-red-100";
-    case "hard": return "border-amber-500/25 bg-amber-500/10 text-amber-100";
-    default: return "border-slate-700 bg-slate-950/70 text-slate-300";
+    case "deal_breaker":
+      return "border-error/25 bg-error/10 text-error";
+    case "hard":
+      return "border-warning/25 bg-warning/10 text-warning";
+    default:
+      return "border-line bg-surface-sunken text-ink-secondary";
   }
 }
 
 function engineReviewClass(status: string): string {
   switch (status) {
-    case "ready": return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
-    case "blocked": return "border-red-500/20 bg-red-500/10 text-red-100";
-    default: return "border-amber-500/20 bg-amber-500/10 text-amber-100";
+    case "ready":
+      return "border-success/20 bg-success/10 text-success";
+    case "blocked":
+      return "border-error/20 bg-error/10 text-error";
+    default:
+      return "border-warning/20 bg-warning/10 text-warning";
   }
 }
 
@@ -129,21 +142,24 @@ function applyConfirmedValueFromCandidate(
 ): PresetTermDraft["confirmedValue"] {
   if (!candidateValue) return term.confirmedValue;
   if (
-    term.confirmedValue?.source === "listing"
-    && String(term.confirmedValue.value) !== String(candidateValue.value)
+    term.confirmedValue?.source === "listing" &&
+    String(term.confirmedValue.value) !== String(candidateValue.value)
   ) {
     return term.confirmedValue;
   }
   return candidateValue;
 }
 
-function confirmedValueConflictNotes(draft: PresetTuningDraft, candidate: TunedPresetCandidate): string[] {
+function confirmedValueConflictNotes(
+  draft: PresetTuningDraft,
+  candidate: TunedPresetCandidate,
+): string[] {
   return draft.mustVerify.flatMap((term) => {
     const candidateValue = candidate.confirmedTermValues.get(term.termId);
     if (
-      !candidateValue
-      || term.confirmedValue?.source !== "listing"
-      || String(term.confirmedValue.value) === String(candidateValue.value)
+      !candidateValue ||
+      term.confirmedValue?.source !== "listing" ||
+      String(term.confirmedValue.value) === String(candidateValue.value)
     ) {
       return [];
     }
@@ -195,36 +211,47 @@ function reconcileEngineReview(
     if (!blocker.id.startsWith("missing_")) return true;
     return !checkedHardTermIds.has(blocker.id.replace(/^missing_/, ""));
   });
-  const nextActions = draft.engineReview.nextActions.filter((action) => (
-    !action.termId || !checkedHardTermIds.has(action.termId)
-  ));
+  const nextActions = draft.engineReview.nextActions.filter(
+    (action) => !action.termId || !checkedHardTermIds.has(action.termId),
+  );
   const status = blockers.some((blocker) => blocker.id === "product_scope_conflict")
     ? "blocked"
-    : blockers.length > 0 ? "needs_user_input" : "ready";
+    : blockers.length > 0
+      ? "needs_user_input"
+      : "ready";
   return {
     ...draft.engineReview,
     status,
     blockers,
     nextActions,
-    branches: draft.engineReview.branches.map((branch) => (
+    branches: draft.engineReview.branches.map((branch) =>
       branch.id === "required_terms"
         ? {
             ...branch,
-            outcome: blockers.some((blocker) => blocker.id.startsWith("missing_")) ? "ask_user" : "continue",
+            outcome: blockers.some((blocker) => blocker.id.startsWith("missing_"))
+              ? "ask_user"
+              : "continue",
             reason: blockers.some((blocker) => blocker.id.startsWith("missing_"))
               ? branch.reason
               : "Hard terms have usable listing evidence or user confirmation.",
           }
-        : branch
-    )),
+        : branch,
+    ),
   };
 }
 
-function resolveScopeConflict(draft: PresetTuningDraft, applyCurrentListing = true): PresetTuningDraft {
+function resolveScopeConflict(
+  draft: PresetTuningDraft,
+  applyCurrentListing = true,
+): PresetTuningDraft {
   if (!draft.engineReview) return draft;
   const engineReview = draft.engineReview;
-  const blockers = engineReview.blockers.filter((blocker) => blocker.id !== "product_scope_conflict");
-  const nextActions = engineReview.nextActions.filter((action) => action.label !== "Confirm product scope");
+  const blockers = engineReview.blockers.filter(
+    (blocker) => blocker.id !== "product_scope_conflict",
+  );
+  const nextActions = engineReview.nextActions.filter(
+    (action) => action.label !== "Confirm product scope",
+  );
   const hasMissingHardTerms = blockers.some((blocker) => blocker.id.startsWith("missing_"));
   const status = blockers.length > 0 ? "needs_user_input" : "ready";
 
@@ -299,7 +326,7 @@ export function PresetTuningPanel({
   }, []);
 
   const tunedCandidates = useMemo(
-    () => listing ? extractTunedPresetCandidates(storedCards, listing).slice(0, 3) : [],
+    () => (listing ? extractTunedPresetCandidates(storedCards, listing).slice(0, 3) : []),
     [listing, storedCards],
   );
   const bestTunedCandidate = tunedCandidates[0] ?? null;
@@ -324,12 +351,11 @@ export function PresetTuningPanel({
     setError(null);
     setSavedSummary(null);
 
-    const priceCapMinor = priceCapInput.trim()
-      ? dollarsToMinor(Number(priceCapInput))
-      : undefined;
-    const validPriceCapMinor = priceCapMinor && Number.isFinite(priceCapMinor) && priceCapMinor > 0
-      ? priceCapMinor
-      : undefined;
+    const priceCapMinor = priceCapInput.trim() ? dollarsToMinor(Number(priceCapInput)) : undefined;
+    const validPriceCapMinor =
+      priceCapMinor && Number.isFinite(priceCapMinor) && priceCapMinor > 0
+        ? priceCapMinor
+        : undefined;
 
     compilePresetTuningDraft({
       listing,
@@ -339,23 +365,25 @@ export function PresetTuningPanel({
     })
       .then((response) => {
         if (cancelled) return;
-        const autoCandidate = bestTunedCandidate
-          && shouldAutoApplyCandidate(bestTunedCandidate, {
+        const autoCandidate =
+          bestTunedCandidate &&
+          shouldAutoApplyCandidate(bestTunedCandidate, {
             manualPreset,
             manualPriceCap,
             userEditedDraft,
             appliedCandidateKey,
             autoAppliedCandidateKey,
           })
-          ? bestTunedCandidate
-          : null;
-        const retainedAutoCandidate = bestTunedCandidate
-          && autoAppliedCandidateKey === bestTunedCandidate.key
-          && !manualPreset
-          && !manualPriceCap
-          && !userEditedDraft
-          ? bestTunedCandidate
-          : null;
+            ? bestTunedCandidate
+            : null;
+        const retainedAutoCandidate =
+          bestTunedCandidate &&
+          autoAppliedCandidateKey === bestTunedCandidate.key &&
+          !manualPreset &&
+          !manualPriceCap &&
+          !userEditedDraft
+            ? bestTunedCandidate
+            : null;
         const candidateForDraft = autoCandidate ?? retainedAutoCandidate;
 
         if (autoCandidate && autoCandidate.presetId !== response.draft.presetId) {
@@ -415,7 +443,8 @@ export function PresetTuningPanel({
   useEffect(() => {
     if (!draft || !pendingCandidate) return;
     if (draft.presetId !== pendingCandidate.presetId) return;
-    if (pendingCandidate.priceCapMinor && draft.priceCapMinor !== pendingCandidate.priceCapMinor) return;
+    if (pendingCandidate.priceCapMinor && draft.priceCapMinor !== pendingCandidate.priceCapMinor)
+      return;
     const next = applyCandidateToDraft(draft, pendingCandidate);
     setDraft(next);
     setAppliedCandidateKey(pendingCandidate.key);
@@ -469,34 +498,42 @@ export function PresetTuningPanel({
 
   function toggleTerm(term: PresetTermDraft) {
     if (!draft) return;
-    applyLocal(patchDraft(draft, {
-      mustVerify: draft.mustVerify.map((item) => (
-        item.termId === term.termId ? { ...item, checked: !item.checked } : item
-      )),
-    }));
+    applyLocal(
+      patchDraft(draft, {
+        mustVerify: draft.mustVerify.map((item) =>
+          item.termId === term.termId ? { ...item, checked: !item.checked } : item,
+        ),
+      }),
+    );
   }
 
   function toggleLeverage(leverage: PresetLeverageDraft) {
     if (!draft) return;
-    applyLocal(patchDraft(draft, {
-      leverage: draft.leverage.map((item) => (
-        item.termId === leverage.termId && item.label === leverage.label
-          ? { ...item, enabled: !item.enabled }
-          : item
-      )),
-    }));
+    applyLocal(
+      patchDraft(draft, {
+        leverage: draft.leverage.map((item) =>
+          item.termId === leverage.termId && item.label === leverage.label
+            ? { ...item, enabled: !item.enabled }
+            : item,
+        ),
+      }),
+    );
   }
 
   function toggleWalkAway(rule: PresetWalkAwayDraft) {
     if (!draft) return;
-    applyLocal(patchDraft(draft, {
-      walkAway: draft.walkAway.map((item) => (
-        item.id === rule.id ? { ...item, enabled: !item.enabled } : item
-      )),
-    }));
+    applyLocal(
+      patchDraft(draft, {
+        walkAway: draft.walkAway.map((item) =>
+          item.id === rule.id ? { ...item, enabled: !item.enabled } : item,
+        ),
+      }),
+    );
   }
 
-  function handleResolveNextAction(action: NonNullable<PresetTuningDraft["engineReview"]>["nextActions"][number]) {
+  function handleResolveNextAction(
+    action: NonNullable<PresetTuningDraft["engineReview"]>["nextActions"][number],
+  ) {
     if (!draft) return;
     const value = actionValues[engineActionKey(action)] ?? defaultEngineActionValue(action);
     if (action.label === "Confirm product scope") {
@@ -507,18 +544,20 @@ export function PresetTuningPanel({
     const hasMatchingTerm = draft.mustVerify.some((term) => term.termId === action.termId);
     if (!hasMatchingTerm) return;
     const answer = engineActionValueText(action, value);
-    applyLocal(patchDraft(draft, {
-      mustVerify: draft.mustVerify.map((term) => (
-        term.termId === action.termId
-          ? {
-              ...term,
-              checked: true,
-              rationale: `${term.rationale} User confirmed: ${answer}.`,
-              confirmedValue: confirmedValueFromAction(action, value),
-            }
-          : term
-      )),
-    }));
+    applyLocal(
+      patchDraft(draft, {
+        mustVerify: draft.mustVerify.map((term) =>
+          term.termId === action.termId
+            ? {
+                ...term,
+                checked: true,
+                rationale: `${term.rationale} User confirmed: ${answer}.`,
+                confirmedValue: confirmedValueFromAction(action, value),
+              }
+            : term,
+        ),
+      }),
+    );
   }
 
   function setEngineActionValue(action: EngineNextAction, value: EngineActionValue) {
@@ -530,28 +569,28 @@ export function PresetTuningPanel({
 
   if (!listing) {
     return (
-      <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs leading-5 text-slate-500">
+      <div className="rounded-xl border border-line bg-surface-sunken p-3 text-xs leading-5 text-ink-muted">
         상품을 선택하면 프리셋 모델과 tag term 기반 협상 초안이 여기에 표시됩니다.
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-3">
+    <div className="rounded-xl border border-info/20 bg-info-soft p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-200">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-info">
             Preset Tuning Draft
           </p>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-ink-secondary">
             상품, 메모리, 가격 cap, tag term을 합쳐 협상 시작 payload를 만듭니다.
           </p>
         </div>
-        <span className="font-mono text-[10px] text-slate-500">{status}</span>
+        <span className="font-mono text-[10px] text-ink-muted">{status}</span>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid gap-1 text-xs text-ink-secondary">
           Preset
           <select
             value={presetId ?? draft?.presetId ?? ""}
@@ -560,15 +599,17 @@ export function PresetTuningPanel({
               setAutoAppliedCandidateKey(null);
               setPresetId(event.target.value as NegotiationPresetId);
             }}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-white outline-none focus:border-fuchsia-400"
+            className="rounded-lg border border-line bg-surface-overlay px-2 py-2 text-xs text-ink outline-none focus:border-focus"
           >
             {draft && !presetId && <option value={draft.presetId}>{draft.presetLabel}</option>}
             {presets.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.label}</option>
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
             ))}
           </select>
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid gap-1 text-xs text-ink-secondary">
           Price cap
           <input
             value={priceCapInput}
@@ -578,47 +619,53 @@ export function PresetTuningPanel({
               setAutoAppliedCandidateKey(null);
               setPriceCapInput(event.target.value.replace(/[^\d.]/g, ""));
             }}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-white outline-none focus:border-fuchsia-400"
+            className="rounded-lg border border-line bg-surface-overlay px-2 py-2 text-xs text-ink outline-none focus:border-focus"
             placeholder="450"
           />
         </label>
       </div>
 
       {bestTunedCandidate && (
-        <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
+        <div className="mt-3 rounded-lg border border-success/20 bg-success/10 p-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-emerald-100">추천 user-tuned preset</p>
-              <p className="mt-1 text-[11px] leading-5 text-emerald-50/80">{bestTunedCandidate.summary}</p>
-              <p className="mt-1 text-[10px] text-emerald-200/70">
+              <p className="text-xs font-semibold text-success">추천 user-tuned preset</p>
+              <p className="mt-1 text-[11px] leading-5 text-success/80">
+                {bestTunedCandidate.summary}
+              </p>
+              <p className="mt-1 text-[10px] text-success/70">
                 score {bestTunedCandidate.score} · {bestTunedCandidate.reason}
               </p>
               {autoAppliedCandidateKey === bestTunedCandidate.key && (
-                <p className="mt-1 text-[10px] font-semibold text-emerald-100">
-                  높은 신뢰도로 기본 draft에 자동 적용되었습니다. 직접 수정하면 이후 자동 덮어쓰기는 멈춥니다.
+                <p className="mt-1 text-[10px] font-semibold text-success">
+                  높은 신뢰도로 기본 draft에 자동 적용되었습니다. 직접 수정하면 이후 자동 덮어쓰기는
+                  멈춥니다.
                 </p>
               )}
             </div>
             <button
               type="button"
               onClick={() => applyTunedCandidate(bestTunedCandidate)}
-              className="shrink-0 rounded-md bg-emerald-300 px-2 py-1.5 text-[11px] font-semibold text-slate-950 transition-colors hover:bg-emerald-200"
+              className="shrink-0 rounded-md bg-success px-2 py-1.5 text-[11px] font-semibold text-on-accent transition-colors hover:bg-success/90"
             >
               {autoAppliedCandidateKey === bestTunedCandidate.key
                 ? "자동 적용됨"
-                : appliedCandidateKey === bestTunedCandidate.key ? "적용됨" : "적용"}
+                : appliedCandidateKey === bestTunedCandidate.key
+                  ? "적용됨"
+                  : "적용"}
             </button>
           </div>
           {tunedCandidates.length > 1 && (
-            <p className="mt-2 text-[10px] text-emerald-200/60">
-              다른 후보 {tunedCandidates.length - 1}개도 저장되어 있습니다. 현재 상품과 가장 가까운 후보를 먼저 보여줍니다.
+            <p className="mt-2 text-[10px] text-success/60">
+              다른 후보 {tunedCandidates.length - 1}개도 저장되어 있습니다. 현재 상품과 가장 가까운
+              후보를 먼저 보여줍니다.
             </p>
           )}
         </div>
       )}
 
       {error && (
-        <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-xs text-red-100">
+        <p className="mt-2 rounded-lg border border-error/20 bg-error/10 p-2 text-xs text-error">
           {error}
         </p>
       )}
@@ -626,55 +673,69 @@ export function PresetTuningPanel({
       {draft && (
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="rounded-lg bg-slate-950/70 p-2">
-              <span className="text-slate-500">opening</span>
+            <div className="rounded-lg bg-surface-sunken p-2">
+              <span className="text-ink-muted">opening</span>
               <input
                 value={minorToDollars(draft.openingOfferMinor)}
                 inputMode="numeric"
                 onChange={(event) => {
                   const next = dollarsToMinor(Number(event.target.value));
-                  if (Number.isFinite(next)) applyLocal(patchDraft(draft, { openingOfferMinor: next }));
+                  if (Number.isFinite(next))
+                    applyLocal(patchDraft(draft, { openingOfferMinor: next }));
                 }}
-                className="mt-1 w-full rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono font-semibold text-cyan-100 outline-none focus:border-cyan-400"
+                className="mt-1 w-full rounded border border-line bg-surface-overlay px-2 py-1 font-mono font-semibold text-action-primary outline-none focus:border-focus"
               />
             </div>
-            <div className="rounded-lg bg-slate-950/70 p-2">
-              <span className="text-slate-500">cap</span>
-              <p className="font-mono font-semibold text-amber-100">{formatMinor(draft.priceCapMinor)}</p>
+            <div className="rounded-lg bg-surface-sunken p-2">
+              <span className="text-ink-muted">cap</span>
+              <p className="font-mono font-semibold text-warning">
+                {formatMinor(draft.priceCapMinor)}
+              </p>
             </div>
-            <div className="rounded-lg bg-slate-950/70 p-2">
-              <span className="text-slate-500">style</span>
-              <p className="font-semibold text-white">{draft.concessionSpeed} · {draft.riskTolerance}</p>
+            <div className="rounded-lg bg-surface-sunken p-2">
+              <span className="text-ink-muted">style</span>
+              <p className="font-semibold text-ink">
+                {draft.concessionSpeed} · {draft.riskTolerance}
+              </p>
             </div>
           </div>
 
           {selectedPreset && (
-            <div className="rounded-lg border border-fuchsia-500/15 bg-slate-950/60 p-2">
-              <p className="text-xs font-semibold text-fuchsia-100">{selectedPreset.label}</p>
-              <ul className="mt-1 space-y-1 text-[11px] leading-5 text-slate-400">
-                {selectedPreset.notes.map((note) => <li key={note}>• {note}</li>)}
+            <div className="rounded-lg border border-info/20 bg-surface-sunken p-2">
+              <p className="text-xs font-semibold text-info">{selectedPreset.label}</p>
+              <ul className="mt-1 space-y-1 text-[11px] leading-5 text-ink-secondary">
+                {selectedPreset.notes.map((note) => (
+                  <li key={note}>• {note}</li>
+                ))}
               </ul>
             </div>
           )}
 
           {draft.appliedTunedCandidate && (
-            <div className="rounded-lg border border-cyan-500/15 bg-cyan-500/10 p-2">
-              <p className="text-xs font-semibold text-cyan-100">
+            <div className="rounded-lg border border-action-primary/20 bg-action-primary/10 p-2">
+              <p className="text-xs font-semibold text-action-primary">
                 Applied tuned preset · {draft.appliedTunedCandidate.applicationMode}
               </p>
-              <p className="mt-1 text-[11px] leading-5 text-cyan-50/75">{draft.appliedTunedCandidate.reason}</p>
-              {draft.strategyNotes.filter((note) => note.startsWith("Saved preset value skipped:")).length > 0 && (
-                <ul className="mt-1 space-y-1 text-[10px] leading-4 text-cyan-100/80">
+              <p className="mt-1 text-[11px] leading-5 text-action-primary/75">
+                {draft.appliedTunedCandidate.reason}
+              </p>
+              {draft.strategyNotes.filter((note) => note.startsWith("Saved preset value skipped:"))
+                .length > 0 && (
+                <ul className="mt-1 space-y-1 text-[10px] leading-4 text-action-primary/80">
                   {draft.strategyNotes
                     .filter((note) => note.startsWith("Saved preset value skipped:"))
-                    .map((note) => <li key={note}>• {note.replace("Saved preset value skipped: ", "")}</li>)}
+                    .map((note) => (
+                      <li key={note}>• {note.replace("Saved preset value skipped: ", "")}</li>
+                    ))}
                 </ul>
               )}
             </div>
           )}
 
           {draft.engineReview && (
-            <div className={`rounded-lg border p-2 ${engineReviewClass(draft.engineReview.status)}`}>
+            <div
+              className={`rounded-lg border p-2 ${engineReviewClass(draft.engineReview.status)}`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold">Engine cycle review</p>
@@ -689,8 +750,13 @@ export function PresetTuningPanel({
               {draft.engineReview.branches.length > 0 && (
                 <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
                   {draft.engineReview.branches.map((branch) => (
-                    <div key={branch.id} className="rounded-md border border-current/15 bg-slate-950/40 p-2">
-                      <p className="text-[11px] font-semibold">{branch.label} · {branch.outcome}</p>
+                    <div
+                      key={branch.id}
+                      className="rounded-md border border-current/15 bg-surface-sunken p-2"
+                    >
+                      <p className="text-[11px] font-semibold">
+                        {branch.label} · {branch.outcome}
+                      </p>
                       <p className="mt-1 text-[10px] leading-4 opacity-75">{branch.reason}</p>
                     </div>
                   ))}
@@ -698,19 +764,30 @@ export function PresetTuningPanel({
               )}
               {draft.engineReview.nextActions.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] opacity-70">Next controls</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] opacity-70">
+                    Next controls
+                  </p>
                   {draft.engineReview.nextActions.slice(0, 4).map((action) => {
                     const actionKey = engineActionKey(action);
                     const value = actionValues[actionKey] ?? defaultEngineActionValue(action);
                     return (
-                      <div key={actionKey} className="rounded-md bg-slate-950/50 px-2 py-1.5 text-[11px] leading-4">
+                      <div
+                        key={actionKey}
+                        className="rounded-md bg-surface-sunken px-2 py-1.5 text-[11px] leading-4"
+                      >
                         <span className="font-semibold">{action.control}</span> · {action.question}
                         {action.control === "slider" && (
                           <label className="mt-2 grid gap-1">
                             <div className="flex items-center justify-between font-mono text-[10px] opacity-80">
-                              <span>{action.controlConfig?.min ?? 0}{action.controlConfig?.unit ?? ""}</span>
+                              <span>
+                                {action.controlConfig?.min ?? 0}
+                                {action.controlConfig?.unit ?? ""}
+                              </span>
                               <span>{engineActionValueText(action, value)}</span>
-                              <span>{action.controlConfig?.max ?? 100}{action.controlConfig?.unit ?? ""}</span>
+                              <span>
+                                {action.controlConfig?.max ?? 100}
+                                {action.controlConfig?.unit ?? ""}
+                              </span>
                             </div>
                             <input
                               type="range"
@@ -718,8 +795,10 @@ export function PresetTuningPanel({
                               max={action.controlConfig?.max ?? 100}
                               step={action.controlConfig?.step ?? 1}
                               value={Number(value)}
-                              onChange={(event) => setEngineActionValue(action, Number(event.target.value))}
-                              className="w-full accent-cyan-300"
+                              onChange={(event) =>
+                                setEngineActionValue(action, Number(event.target.value))
+                              }
+                              className="w-full accent-action-primary"
                             />
                           </label>
                         )}
@@ -728,20 +807,24 @@ export function PresetTuningPanel({
                             <input
                               type="checkbox"
                               checked={Boolean(value)}
-                              onChange={(event) => setEngineActionValue(action, event.target.checked)}
-                              className="size-3 accent-cyan-300"
+                              onChange={(event) =>
+                                setEngineActionValue(action, event.target.checked)
+                              }
+                              className="size-3 accent-action-primary"
                             />
-                            {Boolean(value) ? "확인됨" : "아직 확인 안 됨"}
+                            {value ? "확인됨" : "아직 확인 안 됨"}
                           </label>
                         )}
                         {action.control === "select" && action.controlConfig?.options?.length && (
                           <select
                             value={String(value)}
                             onChange={(event) => setEngineActionValue(action, event.target.value)}
-                            className="mt-2 w-full rounded-md border border-current/20 bg-slate-950 px-2 py-1 text-[10px] outline-none"
+                            className="mt-2 w-full rounded-md border border-current/20 bg-surface-overlay px-2 py-1 text-[10px] outline-none"
                           >
                             {action.controlConfig.options.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
                             ))}
                           </select>
                         )}
@@ -749,7 +832,7 @@ export function PresetTuningPanel({
                           <input
                             value={String(value)}
                             onChange={(event) => setEngineActionValue(action, event.target.value)}
-                            className="mt-2 w-full rounded-md border border-current/20 bg-slate-950 px-2 py-1 text-[10px] outline-none"
+                            className="mt-2 w-full rounded-md border border-current/20 bg-surface-overlay px-2 py-1 text-[10px] outline-none"
                             placeholder={action.controlConfig?.placeholder ?? "값 입력"}
                           />
                         )}
@@ -759,7 +842,9 @@ export function PresetTuningPanel({
                             onClick={() => handleResolveNextAction(action)}
                             className="mt-1.5 block rounded-md border border-current/25 px-2 py-1 text-[10px] font-semibold transition-colors hover:bg-white/10"
                           >
-                            {action.label === "Confirm product scope" ? "현재 상품에 적용" : "값 적용하고 재리뷰"}
+                            {action.label === "Confirm product scope"
+                              ? "현재 상품에 적용"
+                              : "값 적용하고 재리뷰"}
                           </button>
                         )}
                       </div>
@@ -771,7 +856,7 @@ export function PresetTuningPanel({
           )}
 
           <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
               Required checks
             </p>
             {draft.mustVerify.map((term) => (
@@ -779,27 +864,33 @@ export function PresetTuningPanel({
                 key={term.termId}
                 type="button"
                 onClick={() => toggleTerm(term)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-left"
+                className="w-full rounded-lg border border-line bg-surface-sunken p-2 text-left"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-xs font-semibold text-white">
-                      <span className={term.checked ? "text-emerald-300" : "text-slate-500"}>
+                    <p className="text-xs font-semibold text-ink">
+                      <span className={term.checked ? "text-success" : "text-ink-muted"}>
                         {term.checked ? "✓" : "□"}
                       </span>{" "}
                       {term.label}
                     </p>
-                    <p className="mt-1 text-[11px] leading-5 text-slate-500">{term.rationale}</p>
+                    <p className="mt-1 text-[11px] leading-5 text-ink-muted">{term.rationale}</p>
                     {term.confirmedValue && (
-                      <p className="mt-1 inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-100">
+                      <p className="mt-1 inline-flex rounded border border-success/20 bg-success/10 px-1.5 py-0.5 font-mono text-[10px] text-success">
                         {term.confirmedValue.label ?? String(term.confirmedValue.value)}
-                        {term.confirmedValue.unit && !String(term.confirmedValue.label ?? term.confirmedValue.value).includes(term.confirmedValue.unit)
+                        {term.confirmedValue.unit &&
+                        !String(term.confirmedValue.label ?? term.confirmedValue.value).includes(
+                          term.confirmedValue.unit,
+                        )
                           ? term.confirmedValue.unit
-                          : ""} · {term.confirmedValue.source}
+                          : ""}{" "}
+                        · {term.confirmedValue.source}
                       </p>
                     )}
                   </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${enforcementClass(term.enforcement)}`}>
+                  <span
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${enforcementClass(term.enforcement)}`}
+                  >
                     {term.enforcement}
                   </span>
                 </div>
@@ -809,7 +900,7 @@ export function PresetTuningPanel({
 
           {draft.leverage.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
                 Leverage chips
               </p>
               {draft.leverage.map((item) => (
@@ -819,12 +910,14 @@ export function PresetTuningPanel({
                   onClick={() => toggleLeverage(item)}
                   className={`w-full rounded-lg border p-2 text-left text-xs ${
                     item.enabled
-                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
-                      : "border-slate-800 bg-slate-950/60 text-slate-400"
+                      ? "border-success/20 bg-success/10 text-success"
+                      : "border-line bg-surface-sunken text-ink-secondary"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold">{item.enabled ? "✓" : "□"} {item.label}</span>
+                    <span className="font-semibold">
+                      {item.enabled ? "✓" : "□"} {item.label}
+                    </span>
                     <span className="font-mono">-{formatMinor(item.priceImpactMinor)}</span>
                   </div>
                   <p className="mt-1 text-[11px] leading-5 opacity-80">{item.reason}</p>
@@ -834,7 +927,7 @@ export function PresetTuningPanel({
           )}
 
           <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-secondary">
               Walk-away rules
             </p>
             {draft.walkAway.map((rule) => (
@@ -844,11 +937,13 @@ export function PresetTuningPanel({
                 onClick={() => toggleWalkAway(rule)}
                 className={`w-full rounded-lg border p-2 text-left text-xs ${
                   rule.enabled
-                    ? "border-red-500/20 bg-red-500/10 text-red-100"
-                    : "border-slate-800 bg-slate-950/60 text-slate-400"
+                    ? "border-error/20 bg-error/10 text-error"
+                    : "border-line bg-surface-sunken text-ink-secondary"
                 }`}
               >
-                <p className="font-semibold">{rule.enabled ? "✓" : "□"} {rule.label}</p>
+                <p className="font-semibold">
+                  {rule.enabled ? "✓" : "□"} {rule.label}
+                </p>
                 <p className="mt-1 text-[11px] leading-5 opacity-80">{rule.reason}</p>
               </button>
             ))}
@@ -856,7 +951,10 @@ export function PresetTuningPanel({
 
           <div className="flex flex-wrap gap-1.5">
             {draft.sourceBadges.map((source) => (
-              <span key={source} className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceClass(source)}`}>
+              <span
+                key={source}
+                className={`rounded-full border px-2 py-0.5 text-[10px] ${sourceClass(source)}`}
+              >
                 {source}
               </span>
             ))}
@@ -866,12 +964,12 @@ export function PresetTuningPanel({
             type="button"
             onClick={() => void saveCandidate()}
             disabled={saving}
-            className="w-full rounded-lg border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-2 text-xs font-semibold text-fuchsia-100 transition-colors hover:border-fuchsia-300 hover:bg-fuchsia-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs font-semibold text-info transition-colors hover:border-info hover:bg-info/15 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? "user-tuned preset 저장 중" : "이 조정을 user-tuned preset 후보로 저장"}
           </button>
           {savedSummary && (
-            <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-xs leading-5 text-emerald-100">
+            <p className="rounded-lg border border-success/20 bg-success/10 p-2 text-xs leading-5 text-success">
               저장됨: {savedSummary}
             </p>
           )}
@@ -881,14 +979,20 @@ export function PresetTuningPanel({
   );
 }
 
-function extractTunedPresetCandidates(cards: StoredMemoryCard[], listing: AdvisorListing): TunedPresetCandidate[] {
+function extractTunedPresetCandidates(
+  cards: StoredMemoryCard[],
+  listing: AdvisorListing,
+): TunedPresetCandidate[] {
   return cards
     .map((card) => candidateFromCard(card, listing))
     .filter((candidate): candidate is TunedPresetCandidate => candidate !== null)
     .sort((a, b) => b.score - a.score || a.summary.localeCompare(b.summary));
 }
 
-function candidateFromCard(card: StoredMemoryCard, listing: AdvisorListing): TunedPresetCandidate | null {
+function candidateFromCard(
+  card: StoredMemoryCard,
+  listing: AdvisorListing,
+): TunedPresetCandidate | null {
   if (!card.memory_key.startsWith("advisor:preset_tuning:")) return null;
   const memory = card.memory ?? {};
   const presetId = presetIdFromUnknown(memory.presetId);
@@ -908,10 +1012,22 @@ function candidateFromCard(card: StoredMemoryCard, listing: AdvisorListing): Tun
     presetId,
     priceCapMinor: numberFromUnknown(memory.priceCapMinor),
     openingOfferMinor: numberFromUnknown(memory.openingOfferMinor),
-    checkedTermIds: new Set(arrayFromUnknown(memory.checkedTerms).map((item) => stringProp(item, "termId")).filter(Boolean)),
+    checkedTermIds: new Set(
+      arrayFromUnknown(memory.checkedTerms)
+        .map((item) => stringProp(item, "termId"))
+        .filter(Boolean),
+    ),
     confirmedTermValues: confirmedTermValuesFromUnknown(memory.checkedTerms),
-    enabledLeverageTermIds: new Set(arrayFromUnknown(memory.leverage).map((item) => stringProp(item, "termId")).filter(Boolean)),
-    enabledWalkAwayIds: new Set(arrayFromUnknown(memory.walkAway).map((item) => stringProp(item, "id")).filter(Boolean)),
+    enabledLeverageTermIds: new Set(
+      arrayFromUnknown(memory.leverage)
+        .map((item) => stringProp(item, "termId"))
+        .filter(Boolean),
+    ),
+    enabledWalkAwayIds: new Set(
+      arrayFromUnknown(memory.walkAway)
+        .map((item) => stringProp(item, "id"))
+        .filter(Boolean),
+    ),
   };
 }
 
@@ -927,7 +1043,11 @@ function shouldAutoApplyCandidate(
 ): boolean {
   if (candidate.score < AUTO_APPLY_CANDIDATE_SCORE) return false;
   if (state.manualPreset || state.manualPriceCap || state.userEditedDraft) return false;
-  if (state.appliedCandidateKey === candidate.key || state.autoAppliedCandidateKey === candidate.key) return false;
+  if (
+    state.appliedCandidateKey === candidate.key ||
+    state.autoAppliedCandidateKey === candidate.key
+  )
+    return false;
   return true;
 }
 
@@ -937,10 +1057,14 @@ function scorePresetCandidate(
   strength: number,
 ): { score: number; reason: string } {
   const candidateListing = objectFromUnknown(memory.listing);
-  const productScope = typeof memory.productScope === "string" ? memory.productScope.toLowerCase() : "";
-  const candidateTitle = typeof candidateListing.title === "string" ? candidateListing.title.toLowerCase() : "";
+  const productScope =
+    typeof memory.productScope === "string" ? memory.productScope.toLowerCase() : "";
+  const candidateTitle =
+    typeof candidateListing.title === "string" ? candidateListing.title.toLowerCase() : "";
   const listingTitle = listing.title.toLowerCase();
-  const candidateTags = arrayFromUnknown(candidateListing.tags).map((item) => String(item).toLowerCase());
+  const candidateTags = arrayFromUnknown(candidateListing.tags).map((item) =>
+    String(item).toLowerCase(),
+  );
   const listingTags = listing.tags.map((item) => item.toLowerCase());
 
   let score = 0;
@@ -953,11 +1077,15 @@ function scorePresetCandidate(
   if (candidateTitle && listingTitle.includes(candidateTitle)) {
     score += 40;
     reasons.push("same title");
-  } else if (candidateTitle && candidateTitle.split(/\s+/).some((part) => part.length >= 4 && listingTitle.includes(part))) {
+  } else if (
+    candidateTitle?.split(/\s+/).some((part) => part.length >= 4 && listingTitle.includes(part))
+  ) {
     score += 20;
     reasons.push("similar title");
   }
-  const sharedTags = candidateTags.filter((tag) => listingTags.includes(tag) || listingTitle.includes(tag));
+  const sharedTags = candidateTags.filter(
+    (tag) => listingTags.includes(tag) || listingTitle.includes(tag),
+  );
   if (sharedTags.length > 0) {
     score += Math.min(30, sharedTags.length * 10);
     reasons.push(`tag ${sharedTags[0]}`);
@@ -1010,9 +1138,10 @@ function applyCandidateToDraft(
       key: candidate.key,
       memoryKey: candidate.memoryKey,
       score: candidate.score,
-      reason: conflictNotes.length > 0
-        ? `${candidate.reason}; ${conflictNotes.length} saved value skipped`
-        : candidate.reason,
+      reason:
+        conflictNotes.length > 0
+          ? `${candidate.reason}; ${conflictNotes.length} saved value skipped`
+          : candidate.reason,
       applicationMode,
     },
     strategyNotes,
@@ -1020,28 +1149,37 @@ function applyCandidateToDraft(
     priceCapMinor: candidate.priceCapMinor ?? draft.priceCapMinor,
     mustVerify: draft.mustVerify.map((term) => ({
       ...term,
-      checked: candidate.checkedTermIds.size > 0
-        ? candidate.checkedTermIds.has(term.termId)
-        : term.checked,
-      confirmedValue: applyConfirmedValueFromCandidate(term, candidate.confirmedTermValues.get(term.termId)),
+      checked:
+        candidate.checkedTermIds.size > 0
+          ? candidate.checkedTermIds.has(term.termId)
+          : term.checked,
+      confirmedValue: applyConfirmedValueFromCandidate(
+        term,
+        candidate.confirmedTermValues.get(term.termId),
+      ),
     })),
     leverage: draft.leverage.map((item) => ({
       ...item,
-      enabled: candidate.enabledLeverageTermIds.size > 0
-        ? candidate.enabledLeverageTermIds.has(item.termId)
-        : item.enabled,
+      enabled:
+        candidate.enabledLeverageTermIds.size > 0
+          ? candidate.enabledLeverageTermIds.has(item.termId)
+          : item.enabled,
     })),
     walkAway: draft.walkAway.map((item) => ({
       ...item,
-      enabled: candidate.enabledWalkAwayIds.size > 0
-        ? candidate.enabledWalkAwayIds.has(item.id)
-        : item.enabled,
-      })),
+      enabled:
+        candidate.enabledWalkAwayIds.size > 0
+          ? candidate.enabledWalkAwayIds.has(item.id)
+          : item.enabled,
+    })),
   });
 }
 
 function presetIdFromUnknown(value: unknown): NegotiationPresetId | null {
-  return value === "safe_buyer" || value === "balanced_closer" || value === "lowest_price" || value === "fast_close"
+  return value === "safe_buyer" ||
+    value === "balanced_closer" ||
+    value === "lowest_price" ||
+    value === "fast_close"
     ? value
     : null;
 }
@@ -1056,7 +1194,9 @@ function strengthFromCard(card: StoredMemoryCard): number {
 }
 
 function objectFromUnknown(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function arrayFromUnknown(value: unknown): unknown[] {
@@ -1068,7 +1208,9 @@ function stringProp(value: unknown, key: string): string {
   return typeof record[key] === "string" ? record[key] : "";
 }
 
-function confirmedTermValuesFromUnknown(value: unknown): Map<string, PresetTermDraft["confirmedValue"]> {
+function confirmedTermValuesFromUnknown(
+  value: unknown,
+): Map<string, PresetTermDraft["confirmedValue"]> {
   const values = new Map<string, PresetTermDraft["confirmedValue"]>();
   for (const item of arrayFromUnknown(value)) {
     const record = objectFromUnknown(item);
@@ -1084,9 +1226,11 @@ function confirmedValueFromUnknown(value: unknown): PresetTermDraft["confirmedVa
   const rawValue = record.value;
   const source = stringProp(record, "source");
   if (
-    rawValue === undefined
-    || (typeof rawValue !== "string" && typeof rawValue !== "number" && typeof rawValue !== "boolean")
-    || (source !== "listing" && source !== "memory" && source !== "user" && source !== "seller_reply")
+    rawValue === undefined ||
+    (typeof rawValue !== "string" &&
+      typeof rawValue !== "number" &&
+      typeof rawValue !== "boolean") ||
+    (source !== "listing" && source !== "memory" && source !== "user" && source !== "seller_reply")
   ) {
     return undefined;
   }

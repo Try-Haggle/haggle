@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { adminApi, type AdminInboxDetail, type InboxType } from "@/lib/admin-api";
+import { type AdminInboxDetail, adminApi, type InboxType } from "@/lib/admin-api";
 import { ActionButtons } from "./ActionButtons";
 
 interface Props {
@@ -14,13 +14,7 @@ interface Props {
   fetchDetail?: (type: InboxType, id: string) => Promise<AdminInboxDetail>;
 }
 
-export function DetailDrawer({
-  type,
-  id,
-  onClose,
-  onDone,
-  fetchDetail,
-}: Props) {
+export function DetailDrawer({ type, id, onClose, onDone, fetchDetail }: Props) {
   const [detail, setDetail] = useState<AdminInboxDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,8 +27,7 @@ export function DetailDrawer({
       return;
     }
     let cancelled = false;
-    const load =
-      fetchDetail ?? ((t: InboxType, i: string) => adminApi.inbox.detail(t, i));
+    const load = fetchDetail ?? ((t: InboxType, i: string) => adminApi.inbox.detail(t, i));
 
     setLoading(true);
     setError(null);
@@ -75,32 +68,28 @@ export function DetailDrawer({
       aria-modal="true"
       aria-label={`${type} detail`}
     >
-      <div
-        data-testid="drawer-backdrop"
-        className="flex-1 bg-neutral-900/40"
-        onClick={onClose}
-      />
-      <aside className="w-full max-w-lg overflow-y-auto border-l border-neutral-200 bg-white p-6 shadow-xl">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss; dialog has aria-label + close button for keyboard */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss; dialog has aria-label + close button for keyboard */}
+      <div data-testid="drawer-backdrop" className="flex-1 bg-black/40" onClick={onClose} />
+      <aside className="w-full max-w-lg overflow-y-auto border-l border-line bg-surface-raised p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <div className="text-xs uppercase tracking-wide text-neutral-500">
-              {type}
-            </div>
-            <div className="font-mono text-sm text-neutral-900">{id}</div>
+            <div className="text-xs uppercase tracking-wide text-ink-muted">{type}</div>
+            <div className="font-mono text-sm text-ink">{id}</div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded border border-neutral-300 bg-white px-3 py-1 text-sm hover:bg-neutral-50"
+            className="rounded border border-line bg-surface-raised px-3 py-1 text-sm hover:bg-surface-sunken"
           >
             Close
           </button>
         </div>
 
-        {loading && <div className="text-sm text-neutral-500">Loading…</div>}
+        {loading && <div className="text-sm text-ink-muted">Loading…</div>}
         {error && (
-          <div className="text-sm text-red-600" role="alert">
+          <div className="text-sm text-error" role="alert">
             {error}
           </div>
         )}
@@ -108,15 +97,12 @@ export function DetailDrawer({
           <>
             <pre
               data-testid="drawer-detail"
-              className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-neutral-50 p-3 text-xs text-neutral-800"
+              className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-surface-sunken p-3 text-xs text-ink"
             >
               {JSON.stringify(detail, null, 2)}
             </pre>
 
-            <ActionButtons
-              detail={detail}
-              onDone={(removedId) => onDone?.(removedId)}
-            />
+            <ActionButtons detail={detail} onDone={(removedId) => onDone?.(removedId)} />
           </>
         )}
       </aside>

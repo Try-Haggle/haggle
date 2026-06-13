@@ -11,11 +11,13 @@ interface WeightRadarProps {
   className?: string;
 }
 
+// Chart data-series hues (cyan) are intentional and preserved literally.
 const SHAPE_FILL = "rgba(6,182,212,0.18)";
 const SHAPE_STROKE = "rgba(6,182,212,0.85)";
 const VERTEX_FILL = "#06b6d4";
-const GRID_STROKE = "rgba(148,163,184,0.18)";
-const LABEL_FILL = "#94a3b8";
+// Incidental chart chrome (grid lines + axis labels) follows the token system.
+const GRID_STROKE = "var(--border-subtle)";
+const LABEL_FILL = "var(--text-muted)";
 
 const AXES = [
   { key: "w_p", label: "P" },
@@ -28,12 +30,7 @@ const AXES = [
 // dominant weight fills the radar visually.
 const SCALE = 2.0;
 
-function vertex(
-  i: number,
-  r: number,
-  cx: number,
-  cy: number,
-): [number, number] {
+function vertex(i: number, r: number, cx: number, cy: number): [number, number] {
   const angle = (Math.PI * 2 * i) / 4 - Math.PI / 2;
   return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
 }
@@ -45,19 +42,12 @@ function diamond(r: number, cx: number, cy: number): string {
   }).join(" ");
 }
 
-export function WeightRadar({
-  weights,
-  size = 88,
-  labels = false,
-  className,
-}: WeightRadarProps) {
+export function WeightRadar({ weights, size = 88, labels = false, className }: WeightRadarProps) {
   const center = size / 2;
   const radius = size / 2 - (labels ? 16 : 6);
   const labelOffset = radius + 10;
 
-  const values = AXES.map(({ key }) =>
-    Math.min(weights[key] * SCALE, 1),
-  );
+  const values = AXES.map(({ key }) => Math.min(weights[key] * SCALE, 1));
 
   const shapePoints = values
     .map((v, i) => {
@@ -81,11 +71,11 @@ export function WeightRadar({
           stroke={GRID_STROKE}
         />
       ))}
-      {AXES.map((_, i) => {
+      {AXES.map((axis, i) => {
         const [x, y] = vertex(i, radius, center, center);
         return (
           <line
-            key={i}
+            key={axis.key}
             x1={center}
             y1={center}
             x2={x.toFixed(2)}
@@ -105,7 +95,7 @@ export function WeightRadar({
         const [x, y] = vertex(i, v * radius, center, center);
         return (
           <circle
-            key={i}
+            key={AXES[i].key}
             cx={x.toFixed(2)}
             cy={y.toFixed(2)}
             r={2.5}

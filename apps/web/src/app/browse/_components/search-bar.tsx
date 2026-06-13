@@ -1,7 +1,7 @@
 "use client";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { scrollToStickyToolbar } from "./sticky-toolbar";
 
 const DEBOUNCE_MS = 300;
@@ -44,7 +44,7 @@ export function SearchBar({ initialQ }: { initialQ: string }) {
 
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">
         <svg
           width="18"
           height="18"
@@ -54,6 +54,7 @@ export function SearchBar({ initialQ }: { initialQ: string }) {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
         >
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.3-4.3" />
@@ -66,14 +67,14 @@ export function SearchBar({ initialQ }: { initialQ: string }) {
         maxLength={100}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-900/60 py-2 pl-10 pr-10 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
+        className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-10 pr-10 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-focus focus:ring-2 focus:ring-action-primary/20 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
       />
       {value && (
         <button
           type="button"
           onClick={clear}
           aria-label="Clear search"
-          className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-white"
+          className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded p-1 text-ink-muted hover:bg-surface-sunken hover:text-ink"
         >
           <svg
             width="16"
@@ -84,6 +85,7 @@ export function SearchBar({ initialQ }: { initialQ: string }) {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            aria-hidden="true"
           >
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />

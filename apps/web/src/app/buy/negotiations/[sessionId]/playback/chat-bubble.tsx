@@ -1,15 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { AgentCard, PlaybackRound } from "./types";
 import { AgentIcon } from "./agent-icon";
-import { formatPrice, formatPct, formatSignedPct } from "./format";
+import { formatPct, formatPrice, formatSignedPct } from "./format";
+import type { AgentCard, PlaybackRound } from "./types";
 
 interface ChatBubbleProps {
   round: PlaybackRound;
   agent: AgentCard;
   state: "typing" | "settled";
-  typedText: string;       // partial text during typing
+  typedText: string; // partial text during typing
   currency: string;
   onSelect?: () => void;
   isFocused?: boolean;
@@ -19,14 +19,47 @@ const DECISION_STYLES: Record<
   PlaybackRound["decision"],
   { ring: string; tint: string; label: string; chipBg: string }
 > = {
-  OPENING:   { ring: "#94a3b8", tint: "rgba(148,163,184,0.06)", label: "Opening",   chipBg: "rgba(148,163,184,0.18)" },
-  COUNTER:   { ring: "#94a3b8", tint: "rgba(148,163,184,0.05)", label: "Counter",   chipBg: "rgba(148,163,184,0.18)" },
-  NEAR_DEAL: { ring: "#f59e0b", tint: "rgba(245,158,11,0.07)",  label: "Near Deal", chipBg: "rgba(245,158,11,0.18)" },
-  ACCEPT:    { ring: "#10b981", tint: "rgba(16,185,129,0.08)",  label: "Accept",    chipBg: "rgba(16,185,129,0.18)" },
-  REJECT:    { ring: "#ef4444", tint: "rgba(239,68,68,0.07)",   label: "Reject",    chipBg: "rgba(239,68,68,0.18)" },
+  OPENING: {
+    ring: "var(--text-secondary)",
+    tint: "var(--bg-sunken)",
+    label: "Opening",
+    chipBg: "var(--border-default)",
+  },
+  COUNTER: {
+    ring: "var(--text-secondary)",
+    tint: "var(--bg-sunken)",
+    label: "Counter",
+    chipBg: "var(--border-default)",
+  },
+  NEAR_DEAL: {
+    ring: "var(--fb-warning-fg)",
+    tint: "var(--fb-warning-bg)",
+    label: "Near Deal",
+    chipBg: "var(--fb-warning-bg)",
+  },
+  ACCEPT: {
+    ring: "var(--fb-success-fg)",
+    tint: "var(--fb-success-bg)",
+    label: "Accept",
+    chipBg: "var(--fb-success-bg)",
+  },
+  REJECT: {
+    ring: "var(--fb-error-fg)",
+    tint: "var(--fb-error-bg)",
+    label: "Reject",
+    chipBg: "var(--fb-error-bg)",
+  },
 };
 
-export function ChatBubble({ round, agent, state, typedText, currency, onSelect, isFocused }: ChatBubbleProps) {
+export function ChatBubble({
+  round,
+  agent,
+  state,
+  typedText,
+  currency,
+  onSelect,
+  isFocused,
+}: ChatBubbleProps) {
   const isBuyer = round.sender === "BUYER";
   const decisionStyle = DECISION_STYLES[round.decision];
   const showCaret = state === "typing" && typedText.length < round.message.length;
@@ -51,7 +84,10 @@ export function ChatBubble({ round, agent, state, typedText, currency, onSelect,
         >
           <AgentIcon agent={agent} size={16} />
         </div>
-        <div className="text-[9px] font-bold tracking-[0.12em] hidden sm:block" style={{ color: "#475569" }}>
+        <div
+          className="text-[9px] font-bold tracking-[0.12em] hidden sm:block"
+          style={{ color: "var(--text-muted)" }}
+        >
           R{round.roundIndex}
         </div>
       </div>
@@ -63,17 +99,25 @@ export function ChatBubble({ round, agent, state, typedText, currency, onSelect,
         className={`group flex min-w-0 max-w-[88%] sm:max-w-[78%] flex-col gap-2 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5 text-left transition-colors ${isBuyer ? "items-end" : "items-start"}`}
         style={{
           background: decisionStyle.tint,
-          border: `1px solid ${isFocused ? decisionStyle.ring : "#1e293b"}`,
-          boxShadow: isFocused ? `0 0 0 1px ${decisionStyle.ring}66, 0 8px 32px -12px ${decisionStyle.ring}44` : "none",
+          border: `1px solid ${isFocused ? decisionStyle.ring : "var(--border-default)"}`,
+          boxShadow: isFocused
+            ? `0 0 0 1px ${decisionStyle.ring}66, 0 8px 32px -12px ${decisionStyle.ring}44`
+            : "none",
           cursor: onSelect ? "pointer" : "default",
         }}
       >
         {/* Top row: agent name + role label + decision chip + price */}
         <div className={`flex w-full items-center gap-2 ${isBuyer ? "flex-row-reverse" : ""}`}>
-          <span className="text-[12px] sm:text-[13px] font-semibold truncate" style={{ color: "#f1f5f9" }}>
+          <span
+            className="text-[12px] sm:text-[13px] font-semibold truncate"
+            style={{ color: "var(--text-primary)" }}
+          >
             {agent.name}
           </span>
-          <span className="text-[9px] sm:text-[10px] font-medium uppercase tracking-wider shrink-0" style={{ color: "#475569" }}>
+          <span
+            className="text-[9px] sm:text-[10px] font-medium uppercase tracking-wider shrink-0"
+            style={{ color: "var(--text-muted)" }}
+          >
             {isBuyer ? "Buyer" : "Seller"}
           </span>
           <span
@@ -82,13 +126,19 @@ export function ChatBubble({ round, agent, state, typedText, currency, onSelect,
           >
             {decisionStyle.label}
           </span>
-          <span className="ml-auto text-[12px] sm:text-[13px] font-bold tabular-nums" style={{ color: "#f8fafc" }}>
+          <span
+            className="ml-auto text-[12px] sm:text-[13px] font-bold tabular-nums"
+            style={{ color: "var(--text-primary)" }}
+          >
             {formatPrice(round.offerPrice, currency)}
           </span>
         </div>
 
         {/* Message text */}
-        <div className="text-[13px] sm:text-[14px] leading-[1.55]" style={{ color: "#e2e8f0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        <div
+          className="text-[13px] sm:text-[14px] leading-[1.55]"
+          style={{ color: "var(--text-primary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+        >
           {state === "typing" ? typedText : round.message}
           {showCaret && (
             <motion.span
@@ -101,9 +151,7 @@ export function ChatBubble({ round, agent, state, typedText, currency, onSelect,
         </div>
 
         {/* Factors row */}
-        {state === "settled" && (
-          <FactorsRow round={round} accent={agent.accentColor} />
-        )}
+        {state === "settled" && <FactorsRow round={round} accent={agent.accentColor} />}
       </button>
     </motion.div>
   );
@@ -117,10 +165,18 @@ function FactorsRow({ round, accent }: { round: PlaybackRound; accent: string })
     chips.push({ label: "Utility", value: formatPct(f.utilityScore), tone: accent });
   }
   if (typeof f.concessionPct === "number" && f.concessionPct > 0) {
-    chips.push({ label: "Concede", value: formatSignedPct(-f.concessionPct, 1), tone: "#94a3b8" });
+    chips.push({
+      label: "Concede",
+      value: formatSignedPct(-f.concessionPct, 1),
+      tone: "var(--text-secondary)",
+    });
   }
   if (typeof f.batnaDelta === "number") {
-    chips.push({ label: "BATNA", value: formatSignedPct(f.batnaDelta, 1), tone: f.batnaDelta >= 0 ? "#10b981" : "#ef4444" });
+    chips.push({
+      label: "BATNA",
+      value: formatSignedPct(f.batnaDelta, 1),
+      tone: f.batnaDelta >= 0 ? "var(--fb-success-fg)" : "var(--fb-error-fg)",
+    });
   }
 
   if (chips.length === 0 && !f.tactic) return null;
@@ -139,9 +195,13 @@ function FactorsRow({ round, accent }: { round: PlaybackRound; accent: string })
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.25, delay: 0.05 + i * 0.05, ease: "easeOut" }}
           className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] sm:text-[11px] font-medium"
-          style={{ background: "rgba(15,23,42,0.6)", border: "1px solid #1e293b", color: c.tone ?? "#94a3b8" }}
+          style={{
+            background: "var(--bg-sunken)",
+            border: "1px solid var(--border-default)",
+            color: c.tone ?? "var(--text-secondary)",
+          }}
         >
-          <span style={{ color: "#64748b" }}>{c.label}</span>
+          <span style={{ color: "var(--text-muted)" }}>{c.label}</span>
           <span className="tabular-nums">{c.value}</span>
         </motion.span>
       ))}

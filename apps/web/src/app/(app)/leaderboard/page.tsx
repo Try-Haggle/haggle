@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 
 type SortField = "level" | "volume" | "savings" | "deals";
@@ -48,24 +48,22 @@ export default function LeaderboardPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Leaderboard</h1>
-        <Link
-          href="/profile/level"
-          className="text-sm text-emerald-400 hover:underline"
-        >
+        <Link href="/profile/level" className="text-sm text-success hover:underline">
           My Level &rarr;
         </Link>
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-lg bg-zinc-800 p-1">
+      <div className="mb-6 flex gap-1 rounded-lg bg-surface-sunken p-1">
         {TABS.map((tab) => (
           <button
             key={tab.key}
+            type="button"
             onClick={() => setSortBy(tab.key)}
             className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               sortBy === tab.key
-                ? "bg-zinc-700 text-white"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "bg-surface-overlay text-ink"
+                : "text-ink-secondary hover:text-ink"
             }`}
           >
             {tab.label}
@@ -75,17 +73,15 @@ export default function LeaderboardPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="py-12 text-center text-zinc-500">Loading...</div>
+        <div className="py-12 text-center text-ink-muted">Loading...</div>
       ) : entries.length === 0 ? (
-        <div className="py-12 text-center text-zinc-500">
-          No agents on the leaderboard yet.
-        </div>
+        <div className="py-12 text-center text-ink-muted">No agents on the leaderboard yet.</div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-zinc-700">
+          <div className="overflow-hidden rounded-xl border border-line">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-zinc-700 bg-zinc-900 text-left text-xs text-zinc-400">
+                <tr className="border-b border-line bg-surface-sunken text-left text-xs text-ink-secondary">
                   <th className="px-4 py-3">#</th>
                   <th className="px-4 py-3">Agent</th>
                   <th className="px-4 py-3 text-right">Level</th>
@@ -96,32 +92,25 @@ export default function LeaderboardPage() {
               </thead>
               <tbody>
                 {entries.map((entry, i) => (
-                  <tr
-                    key={entry.userId}
-                    className="border-b border-zinc-800 last:border-0"
-                  >
+                  <tr key={entry.userId} className="border-b border-line last:border-0">
                     <td className="px-4 py-3 text-sm">
                       {i < 3 ? (
-                        <span className="text-lg">
-                          {["🥇", "🥈", "🥉"][i]}
-                        </span>
+                        <span className="text-lg">{["🥇", "🥈", "🥉"][i]}</span>
                       ) : (
-                        <span className="text-zinc-500">{i + 1}</span>
+                        <span className="text-ink-muted">{i + 1}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm font-medium text-zinc-200">
+                    <td className="px-4 py-3 text-sm font-medium text-ink">
                       {entry.userId.slice(0, 8)}...
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-emerald-400">
-                      {entry.level}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-zinc-300">
+                    <td className="px-4 py-3 text-right text-sm text-success">{entry.level}</td>
+                    <td className="px-4 py-3 text-right text-sm text-ink-secondary">
                       {entry.totalDeals}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-zinc-300">
+                    <td className="px-4 py-3 text-right text-sm text-ink-secondary">
                       ${(Number(entry.totalVolume) / 100).toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm text-amber-400">
+                    <td className="px-4 py-3 text-right text-sm text-action-primary">
                       ${(Number(entry.totalSaved) / 100).toLocaleString()}
                     </td>
                   </tr>
@@ -129,9 +118,7 @@ export default function LeaderboardPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-3 text-right text-xs text-zinc-600">
-            {total} total agents
-          </div>
+          <div className="mt-3 text-right text-xs text-ink-muted">{total} total agents</div>
         </>
       )}
     </div>

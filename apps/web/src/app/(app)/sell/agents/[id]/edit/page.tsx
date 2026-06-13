@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type AgentProfile, getNegotiationPreset } from "@haggle/shared";
 import { useParams, useRouter } from "next/navigation";
-import {
-  getNegotiationPreset,
-  type AgentProfile,
-} from "@haggle/shared";
-import { localAgents } from "@/lib/local-agents";
-import {
-  AgentBuilder,
-  type AgentBuilderValue,
-} from "../../_components/AgentBuilder";
-import type { AdvancedOverrides } from "@/components/agents/AdvancedSettingsModal";
+import { useEffect, useMemo, useState } from "react";
 import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
+import type { AdvancedOverrides } from "@/components/agents/AdvancedSettingsModal";
+import { localAgents } from "@/lib/local-agents";
+import { AgentBuilder, type AgentBuilderValue } from "../../_components/AgentBuilder";
 
 function agentToBuilderValue(agent: AgentProfile): AgentBuilderValue | null {
   const basePresetId = agent.negotiationPresetId ?? "balancer";
@@ -28,16 +22,13 @@ function agentToBuilderValue(agent: AgentProfile): AgentBuilderValue | null {
     anchor_ratio: agent.engineParams?.anchor_ratio ?? base.anchor_ratio,
     v_t_floor: agent.engineParams?.v_t_floor ?? base.v_t_floor,
     w_rep: agent.engineParams?.w_rep ?? base.w_rep,
-    r_score_minimum:
-      agent.engineParams?.r_score_minimum ?? base.r_score_minimum,
+    r_score_minimum: agent.engineParams?.r_score_minimum ?? base.r_score_minimum,
     i_completeness_minimum:
-      agent.engineParams?.i_completeness_minimum ??
-      base.i_completeness_minimum,
+      agent.engineParams?.i_completeness_minimum ?? base.i_completeness_minimum,
     v_s_base: agent.engineParams?.v_s_base ?? base.v_s_base,
     n_threshold: agent.engineParams?.n_threshold ?? base.n_threshold,
     late_round_aggression_modifier:
-      agent.engineParams?.late_round_aggression_modifier ??
-      base.late_round_aggression_modifier,
+      agent.engineParams?.late_round_aggression_modifier ?? base.late_round_aggression_modifier,
   };
   const effectivePreset = {
     ...base,
@@ -86,9 +77,7 @@ export default function EditAgentPage() {
     }
   }, [params?.id]);
 
-  const role = (agent?.role === "buyer" ? "buyer" : "seller") as
-    | "buyer"
-    | "seller";
+  const role = (agent?.role === "buyer" ? "buyer" : "seller") as "buyer" | "seller";
   const backHref = role === "buyer" ? "/buy/agents" : "/sell/agents";
 
   // Augment dirty: name change should also count
@@ -137,7 +126,7 @@ export default function EditAgentPage() {
   if (agent === undefined) {
     return (
       <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8">
-        <p className="text-slate-400 text-[13px]">Loading agent…</p>
+        <p className="text-ink-secondary text-[13px]">Loading agent…</p>
       </div>
     );
   }
@@ -145,13 +134,11 @@ export default function EditAgentPage() {
   if (agent === null) {
     return (
       <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8">
-        <p className="text-rose-400 text-[13px] mb-3">
-          Agent not found. It may have been deleted.
-        </p>
+        <p className="text-error text-[13px] mb-3">Agent not found. It may have been deleted.</p>
         <button
           type="button"
           onClick={() => router.push("/sell/agents")}
-          className="text-[13px] text-cyan-400 hover:text-cyan-300"
+          className="text-[13px] text-action-primary hover:text-action-primary-hover"
         >
           ← Back to Agents
         </button>

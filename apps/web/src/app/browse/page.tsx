@@ -1,8 +1,8 @@
+import { ITEM_CONDITIONS, LISTING_CATEGORIES } from "@haggle/shared";
 import type { Metadata } from "next";
 import { serverApi } from "@/lib/api-server";
-import { LISTING_CATEGORIES, ITEM_CONDITIONS } from "@haggle/shared";
-import { ListingGrid } from "./_components/listing-grid";
 import { BrowseToolbar } from "./_components/browse-toolbar";
+import { ListingGrid } from "./_components/listing-grid";
 import { StickyToolbar } from "./_components/sticky-toolbar";
 
 export const metadata: Metadata = {
@@ -37,10 +37,7 @@ function parsePositiveNumber(value: string | undefined): number | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
-function parseCsv<T extends string>(
-  value: string | undefined,
-  whitelist: readonly T[],
-): T[] {
+function parseCsv<T extends string>(value: string | undefined, whitelist: readonly T[]): T[] {
   if (!value) return [];
   return value
     .split(",")
@@ -115,32 +112,35 @@ export default async function BrowsePage({
       <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400 shrink-0">
+            <div className="mb-1 flex items-center gap-2">
+              <svg
+                viewBox="0 0 24 24"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0 text-action-primary"
+                aria-hidden="true"
+              >
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.3-4.3" />
               </svg>
-              <h1 className="text-2xl font-bold text-white">Browse listings</h1>
+              <h1 className="font-bold text-2xl text-ink">Browse listings</h1>
             </div>
-            <p className="text-sm text-slate-400">Find items open to negotiation.</p>
+            <p className="text-ink-secondary text-sm">Find items open to negotiation.</p>
           </div>
         </div>
       </div>
 
       <StickyToolbar>
-        <BrowseToolbar
-          filters={filters}
-          priceRange={priceRange}
-          priceBuckets={priceBuckets}
-        />
+        <BrowseToolbar filters={filters} priceRange={priceRange} priceBuckets={priceBuckets} />
       </StickyToolbar>
 
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <ListingGrid
-          initialListings={listings}
-          initialNextCursor={nextCursor}
-          filters={filters}
-        />
+        <ListingGrid initialListings={listings} initialNextCursor={nextCursor} filters={filters} />
       </div>
     </main>
   );

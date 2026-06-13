@@ -13,6 +13,7 @@
 | [`contracts/`](./contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 | [00_INDEX](./contracts/00_INDEX.md) |
 | [`strategy/`](./strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 | [00_INDEX](./strategy/00_INDEX.md) |
 | [`features/`](./features/00_INDEX.md) | 기능별 설계 문서 (태그, 분쟁, 게이미피케이션) | [00_INDEX](./features/00_INDEX.md) |
+| [`design/`](./design/design-system.html) | 디자인 시스템 Source of Truth (색·타이포·토큰·컴포넌트) | [design-system.html](./design/design-system.html) |
 | [`meetings/`](./meetings/) | 미팅 노트, overview, 의사결정 기록 | — |
 | [`wip/`](./wip/) | 구현 중 임시 문서 (완료 시 삭제) | — |
 | [`archive/`](./archive/) | 구현 완료 또는 대체된 문서 (보존용) | — |
