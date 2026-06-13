@@ -1,8 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { PlaybackRound } from "./types";
 import { formatPrice } from "./format";
+import type { PlaybackRound } from "./types";
 
 interface ProgressBarProps {
   rounds: PlaybackRound[];
@@ -27,12 +27,8 @@ export function ProgressBar({
   // ── Gap stats ─────────────────────────────────────────────────
   const buyerOffers = rounds.filter((r) => r.sender === "BUYER");
   const sellerOffers = rounds.filter((r) => r.sender === "SELLER");
-  const visibleBuyerOffers = buyerOffers.filter(
-    (r) => r.roundIndex <= visibleCount,
-  );
-  const visibleSellerOffers = sellerOffers.filter(
-    (r) => r.roundIndex <= visibleCount,
-  );
+  const visibleBuyerOffers = buyerOffers.filter((r) => r.roundIndex <= visibleCount);
+  const visibleSellerOffers = sellerOffers.filter((r) => r.roundIndex <= visibleCount);
 
   const firstBuyer = buyerOffers[0];
   const firstSeller = sellerOffers[0];
@@ -40,9 +36,7 @@ export function ProgressBar({
   const lastVisibleSeller = visibleSellerOffers[visibleSellerOffers.length - 1];
 
   const initialGap =
-    firstBuyer && firstSeller
-      ? Math.abs(firstSeller.offerPrice - firstBuyer.offerPrice)
-      : null;
+    firstBuyer && firstSeller ? Math.abs(firstSeller.offerPrice - firstBuyer.offerPrice) : null;
   const currentGap =
     lastVisibleBuyer && lastVisibleSeller
       ? Math.abs(lastVisibleSeller.offerPrice - lastVisibleBuyer.offerPrice)
@@ -99,13 +93,13 @@ export function ProgressBar({
   return (
     <div
       className="flex flex-col gap-2.5 rounded-xl px-3 py-3"
-      style={{ background: "rgba(15,23,42,0.5)", border: "1px solid #1e293b" }}
+      style={{ background: "var(--bg-sunken)", border: "1px solid var(--border-default)" }}
     >
       {/* Headline: gap metric */}
       <div className="flex items-baseline justify-between gap-2">
         <span
           className="text-[10px] font-bold tracking-[0.14em]"
-          style={{ color: "#64748b" }}
+          style={{ color: "var(--text-muted)" }}
         >
           GAP CLOSING
         </span>
@@ -113,21 +107,21 @@ export function ProgressBar({
           <div className="flex items-baseline gap-1.5">
             <span
               className="text-[14px] font-bold tabular-nums"
-              style={{ color: "#f1f5f9" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {formatPrice(currentGap, currency)}
             </span>
             {initialGap !== null && initialGap > currentGap && closedPct !== null && (
               <span
                 className="text-[10px] font-semibold tabular-nums"
-                style={{ color: "#10b981" }}
+                style={{ color: "var(--fb-success-fg)" }}
               >
                 ↓ {closedPct.toFixed(0)}%
               </span>
             )}
           </div>
         ) : (
-          <span className="text-[10px]" style={{ color: "#475569" }}>
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             awaiting first offers…
           </span>
         )}
@@ -146,25 +140,25 @@ export function ProgressBar({
           x2={W - PAD_X}
           y1={askY}
           y2={askY}
-          stroke="#94a3b8"
           strokeWidth="1"
           strokeDasharray="4 4"
           opacity="0.55"
+          style={{ stroke: "var(--text-secondary)" }}
         />
         <text
           x={W - PAD_X + 3}
           y={askY + 3}
           fontSize="8"
           fontWeight="700"
-          fill="#94a3b8"
           textAnchor="start"
+          style={{ fill: "var(--text-secondary)" }}
         >
           ASK
         </text>
 
         {/* Lines */}
-        <CurveLine points={visibleBuyer} color="#ef4444" />
-        <CurveLine points={visibleSeller} color="#06b6d4" />
+        <CurveLine points={visibleBuyer} color="var(--fb-error-fg)" />
+        <CurveLine points={visibleSeller} color="var(--action-primary)" />
 
         {/* Buyer dots */}
         {visibleBuyer.map((p) => (
@@ -173,7 +167,7 @@ export function ProgressBar({
             cx={p.x}
             cy={p.y}
             r="2.8"
-            fill="#ef4444"
+            style={{ fill: "var(--fb-error-fg)" }}
             initial={{ opacity: 0, scale: 0 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
@@ -186,7 +180,7 @@ export function ProgressBar({
             cx={p.x}
             cy={p.y}
             r="2.8"
-            fill="#06b6d4"
+            style={{ fill: "var(--action-primary)" }}
             initial={{ opacity: 0, scale: 0 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
@@ -200,7 +194,7 @@ export function ProgressBar({
             y={lastBuyerPt.y}
             asking={askingPrice}
             price={lastBuyerPt.price}
-            color="#fca5a5"
+            color="var(--fb-error-fg)"
             currency={currency}
           />
         )}
@@ -210,7 +204,7 @@ export function ProgressBar({
             y={lastSellerPt.y}
             asking={askingPrice}
             price={lastSellerPt.price}
-            color="#67e8f9"
+            color="var(--action-primary)"
             currency={currency}
           />
         )}
@@ -226,7 +220,7 @@ export function ProgressBar({
               y={H - 6}
               fontSize="7.5"
               fontWeight="600"
-              fill={isVisible ? "#94a3b8" : "#475569"}
+              style={{ fill: isVisible ? "var(--text-secondary)" : "var(--text-muted)" }}
               textAnchor="middle"
             >
               R{r.roundIndex}
@@ -238,10 +232,10 @@ export function ProgressBar({
       {/* Legend */}
       <div
         className="flex items-center justify-between text-[10px]"
-        style={{ color: "#94a3b8" }}
+        style={{ color: "var(--text-secondary)" }}
       >
-        <Legend color="#06b6d4" label="Seller" />
-        <Legend color="#ef4444" label="Buyer" />
+        <Legend color="var(--action-primary)" label="Seller" />
+        <Legend color="var(--fb-error-fg)" label="Buyer" />
       </div>
     </div>
   );
@@ -276,31 +270,25 @@ function PointLabel({
       y={labelY}
       fontSize="8"
       fontWeight="700"
-      fill={color}
       textAnchor="middle"
+      style={{ fill: color }}
     >
       {formatPrice(price, currency)}
     </text>
   );
 }
 
-function CurveLine({
-  points,
-  color,
-}: {
-  points: { x: number; y: number }[];
-  color: string;
-}) {
+function CurveLine({ points, color }: { points: { x: number; y: number }[]; color: string }) {
   if (points.length < 2) return null;
   const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
   return (
     <motion.path
       d={d}
       fill="none"
-      stroke={color}
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
+      style={{ stroke: color }}
       initial={{ pathLength: 0 }}
       animate={{ pathLength: 1 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
@@ -311,10 +299,7 @@ function CurveLine({
 function Legend({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span
-        className="block h-1.5 w-1.5 rounded-full"
-        style={{ background: color }}
-      />
+      <span className="block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
       <span>{label}</span>
     </div>
   );

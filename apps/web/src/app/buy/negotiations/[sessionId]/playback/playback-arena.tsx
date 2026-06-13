@@ -3,14 +3,14 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PlaybackResponse } from "./types";
 import { ArenaHeader } from "./arena-header";
 import { ChatTimeline } from "./chat-timeline";
 import { FactorsPanel } from "./factors-panel";
-import { ProgressBar } from "./progress-bar";
 import { PlaybackControls } from "./playback-controls";
 import { PreFight } from "./pre-fight";
+import { ProgressBar } from "./progress-bar";
 import { ResultReveal } from "./result-reveal";
+import type { PlaybackResponse } from "./types";
 import { usePlaybackEngine, usePrefersReducedMotion } from "./use-playback-engine";
 
 interface PlaybackArenaProps {
@@ -62,7 +62,7 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
   // Active speaker for the header glow.
   const activeRole =
     engine.status === "PLAYING" && engine.currentRoundIndex < rounds.length
-      ? rounds[engine.currentRoundIndex]?.sender ?? null
+      ? (rounds[engine.currentRoundIndex]?.sender ?? null)
       : null;
 
   // Focused round (FactorsPanel target). Defaults to last visible settled round.
@@ -103,7 +103,7 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
   }, [engine.status]);
 
   return (
-    <div className="min-h-[calc(100vh-4rem)]" style={{ background: "#0a0f1c" }}>
+    <div className="min-h-[calc(100vh-4rem)]" style={{ background: "var(--bg-primary)" }}>
       {/* Subtle ambient backdrop */}
       <BackgroundOrbs />
 
@@ -112,10 +112,20 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
         <div className="flex items-center justify-between mb-4 sm:mb-6">
           <Link
             href={session.listing.id ? `/l/${session.listing.id}` : "/buy/dashboard"}
-            className="flex items-center gap-1.5 text-[12px] sm:text-[13px] transition-colors hover:text-slate-300"
-            style={{ color: "#94a3b8" }}
+            className="flex items-center gap-1.5 text-[12px] sm:text-[13px] transition-colors hover:text-ink"
+            style={{ color: "var(--text-secondary)" }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="m12 19-7-7 7-7" />
               <path d="M19 12H5" />
             </svg>
@@ -125,7 +135,11 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
 
         <AnimatePresence mode="wait">
           {showPreFight ? (
-            <motion.div key="prefight" exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.25 }}>
+            <motion.div
+              key="prefight"
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.25 }}
+            >
               <PreFight data={data} onBegin={handleBegin} />
             </motion.div>
           ) : (
@@ -140,9 +154,9 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
               <div
                 className="rounded-2xl px-4 py-3 sm:px-5 sm:py-4"
                 style={{
-                  background: "linear-gradient(180deg, #111827, #0f172a)",
-                  border: "1px solid #1e293b",
-                  boxShadow: "0 0 0 1px rgba(255,255,255,0.02), 0 16px 36px -20px rgba(0,0,0,0.6)",
+                  background: "var(--bg-raised)",
+                  border: "1px solid var(--border-default)",
+                  boxShadow: "var(--shadow-card)",
                 }}
               >
                 <ArenaHeader
@@ -167,15 +181,15 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
                 <div
                   className="flex flex-col rounded-2xl overflow-hidden"
                   style={{
-                    background: "#0f172a",
-                    border: "1px solid #1e293b",
+                    background: "var(--bg-raised)",
+                    border: "1px solid var(--border-default)",
                     height: sideHeight > 0 ? `${sideHeight}px` : undefined,
                     minHeight: sideHeight > 0 ? undefined : "520px",
                   }}
                 >
                   <div
                     className="flex items-center justify-end px-4 py-3"
-                    style={{ borderBottom: "1px solid #1e293b" }}
+                    style={{ borderBottom: "1px solid var(--border-default)" }}
                   >
                     <PlaybackControls engine={engine} />
                   </div>
@@ -200,7 +214,11 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
                       currency={session.listing.currency}
                     />
                     <AnimatePresence mode="wait">
-                      <FactorsPanel key={focusedRound?.roundIndex ?? "empty"} round={focusedRound} agent={focusedAgent} />
+                      <FactorsPanel
+                        key={focusedRound?.roundIndex ?? "empty"}
+                        round={focusedRound}
+                        agent={focusedAgent}
+                      />
                     </AnimatePresence>
                   </div>
                 </div>
@@ -244,15 +262,13 @@ function BackgroundOrbs() {
     <>
       <motion.div
         aria-hidden
-        className="pointer-events-none fixed -top-32 -left-32 h-[480px] w-[480px] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(6,182,212,0.18), transparent 70%)" }}
+        className="pointer-events-none fixed -top-32 -left-32 h-[480px] w-[480px] rounded-full bg-action-primary/15 blur-3xl"
         animate={{ scale: [1, 1.05, 1], opacity: [0.7, 1, 0.7] }}
         transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         aria-hidden
-        className="pointer-events-none fixed -bottom-40 -right-32 h-[520px] w-[520px] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(168,85,247,0.14), transparent 70%)" }}
+        className="pointer-events-none fixed -bottom-40 -right-32 h-[520px] w-[520px] rounded-full bg-info/12 blur-3xl"
         animate={{ scale: [1.05, 1, 1.05], opacity: [0.6, 0.9, 0.6] }}
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
       />
