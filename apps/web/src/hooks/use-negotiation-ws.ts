@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.tryhaggle.ai";
 const WS_URL = API_URL.replace(/^http/, "ws");
 
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -39,7 +39,9 @@ export function useNegotiationWs({
   onUpdate,
   isTerminal,
 }: UseNegotiationWsOptions): UseNegotiationWsResult {
-  const [connectionMode, setConnectionMode] = useState<"ws" | "polling" | "disconnected">("disconnected");
+  const [connectionMode, setConnectionMode] = useState<"ws" | "polling" | "disconnected">(
+    "disconnected",
+  );
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const onUpdateRef = useRef(onUpdate);
@@ -53,7 +55,9 @@ export function useNegotiationWs({
     try {
       // Get JWT token from Supabase
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const token = session?.access_token;
 
       if (!token) {

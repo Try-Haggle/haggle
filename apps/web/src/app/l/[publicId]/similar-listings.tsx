@@ -5,7 +5,7 @@ import { ListingCard } from "@/components/listing-card";
 import { api } from "@/lib/api-client";
 import { useAmplitude } from "@/providers/amplitude-provider";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.tryhaggle.ai";
 
 interface SimilarListing {
   publicId: string;
