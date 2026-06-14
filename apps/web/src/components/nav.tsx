@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
+import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 
@@ -114,6 +115,9 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
     await supabase.auth.signOut();
     router.push("/sign-in");
   };
+
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
 
   const logoHref = mode === "buying" ? "/buy/dashboard" : "/sell/dashboard";
   const switchLabel = mode === "selling" ? "Switch to buying" : "Switch to selling";
@@ -234,8 +238,43 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
                 */}
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={isDark}
+                  onClick={toggleTheme}
+                  className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-ink-secondary text-sm transition-colors hover:bg-surface-sunken hover:text-ink"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                    Dark mode
+                  </span>
+                  <span
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                      isDark ? "bg-action-primary" : "bg-surface-sunken"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-on-accent shadow-sm transition-transform ${
+                        isDark ? "translate-x-4.5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleLogout}
-                  className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-ink-secondary text-sm transition-colors hover:bg-surface-sunken hover:text-ink"
+                  className="flex w-full cursor-pointer items-center gap-2 border-line border-t px-4 py-2.5 text-ink-secondary text-sm transition-colors hover:bg-surface-sunken hover:text-ink"
                 >
                   <svg
                     viewBox="0 0 24 24"

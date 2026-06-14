@@ -31,6 +31,7 @@
   --color-navy-700: #121b30;
   --color-navy-800: #0f1830;
   --color-navy-900: #080d1a;
+  --color-navy-950: #05070f;
 
   /* Brand · Gold (base 500) */
   --color-gold-50: #fbf3e5;
@@ -169,10 +170,10 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg-primary: #10182b;
-  --bg-raised: #18223a;
-  --bg-sunken: #0b1120;
-  --bg-overlay: #1e2a45;
+  --bg-primary: var(--color-navy-900);
+  --bg-raised: var(--color-navy-800);
+  --bg-sunken: var(--color-navy-950);
+  --bg-overlay: var(--color-navy-700);
 
   --text-primary: #f1eee6;
   --text-secondary: #9aa3b4;
