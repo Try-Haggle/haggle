@@ -464,7 +464,7 @@ export function NegotiationChat({
             <button
               type="submit"
               disabled={submitting || !offerInput}
-              className="rounded-xl bg-action-primary px-5 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+              className="rounded-xl bg-cta px-5 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
             >
               {submitting ? "Sending..." : "Send Offer"}
             </button>

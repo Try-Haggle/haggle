@@ -270,7 +270,7 @@ export function UserDemo() {
             <button
               type="button"
               onClick={handleStart}
-              className="rounded-xl bg-action-primary px-8 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors cursor-pointer"
+              className="rounded-xl bg-cta px-8 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors cursor-pointer"
             >
               Start Negotiation
             </button>

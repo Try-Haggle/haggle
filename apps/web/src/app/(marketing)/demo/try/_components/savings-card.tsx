@@ -73,7 +73,7 @@ export function SavingsCard({ finalPrice, accepted, onRestart }: SavingsCardProp
       <div className="flex flex-col sm:flex-row gap-3">
         <Link
           href="/claim"
-          className="flex-1 rounded-xl bg-action-primary px-5 py-2.5 text-sm font-medium text-on-accent text-center hover:bg-action-primary-hover transition-colors"
+          className="flex-1 rounded-xl bg-cta px-5 py-2.5 text-sm font-medium text-on-cta text-center hover:bg-cta-hover transition-colors"
         >
           Sign Up for Early Access
         </Link>

@@ -188,7 +188,7 @@ export function PromotionRulesTable({
           data-testid="run-tag-promote"
           disabled={running}
           onClick={handleRunJob}
-          className="rounded border border-action-primary bg-action-primary px-3 py-1.5 text-sm text-on-accent hover:bg-action-primary-hover disabled:opacity-50"
+          className="rounded border border-action-primary bg-cta px-3 py-1.5 text-sm text-on-cta hover:bg-cta-hover disabled:opacity-50"
         >
           {running ? "Running…" : "Run Promotion Job Now"}
         </button>
@@ -285,7 +285,7 @@ export function PromotionRulesTable({
                               data-testid={`rule-save-${rule.category}`}
                               disabled={saving}
                               onClick={() => saveEdit(rule.category)}
-                              className="rounded bg-action-primary px-2 py-1 text-xs text-on-accent hover:bg-action-primary-hover disabled:opacity-50"
+                              className="rounded bg-cta px-2 py-1 text-xs text-on-cta hover:bg-cta-hover disabled:opacity-50"
                             >
                               Save
                             </button>

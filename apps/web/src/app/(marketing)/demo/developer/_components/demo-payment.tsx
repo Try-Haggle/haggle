@@ -315,7 +315,7 @@ export function DemoPayment({ agreedPrice, itemTitle, rounds, onBack }: DemoPaym
               type="button"
               onClick={() => simulateDelay("approve", 1000)}
               disabled={isAnimating}
-              className="w-full rounded-lg bg-action-primary px-4 py-2.5 text-sm font-medium text-on-accent hover:bg-action-primary-hover transition-colors disabled:opacity-50 cursor-pointer"
+              className="w-full rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isAnimating ? (
                 <span className="flex items-center justify-center gap-2">
@@ -368,7 +368,7 @@ export function DemoPayment({ agreedPrice, itemTitle, rounds, onBack }: DemoPaym
               type="button"
               onClick={() => simulateDelay("sign", 1500)}
               disabled={isAnimating}
-              className="w-full rounded-lg bg-action-primary px-4 py-2.5 text-sm font-medium text-on-accent hover:bg-action-primary-hover transition-colors disabled:opacity-50 cursor-pointer"
+              className="w-full rounded-lg bg-cta px-4 py-2.5 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isAnimating ? (
                 <span className="flex items-center justify-center gap-2">

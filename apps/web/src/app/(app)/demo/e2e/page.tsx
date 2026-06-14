@@ -183,7 +183,7 @@ export default function DemoE2EPage() {
         type="button"
         onClick={handleCreate}
         disabled={creating || IS_PRODUCTION}
-        className="w-full rounded-xl bg-action-primary px-4 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="w-full rounded-xl bg-cta px-4 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         {creating ? "Creating order..." : "Start E2E Demo"}
       </button>

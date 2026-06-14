@@ -1527,7 +1527,7 @@ function MissingInfoBoard({
                     onClick={() =>
                       onApply(slot, { kind: "budget", budgetMax: Number(budgetInput) })
                     }
-                    className="rounded-md bg-action-primary px-3 py-1.5 text-xs font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-cta px-3 py-1.5 text-xs font-semibold text-on-cta disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     저장
                   </button>
@@ -1568,7 +1568,7 @@ function MissingInfoBoard({
                       onClick={() =>
                         onApply(slot, { kind: "battery", threshold: batteryThreshold })
                       }
-                      className="rounded-md bg-action-primary px-2 py-1.5 text-[11px] font-semibold text-on-accent disabled:opacity-50"
+                      className="rounded-md bg-cta px-2 py-1.5 text-[11px] font-semibold text-on-cta disabled:opacity-50"
                     >
                       적용
                     </button>
@@ -1590,7 +1590,7 @@ function MissingInfoBoard({
                     type="button"
                     disabled={disabled}
                     onClick={() => onApply(slot, { kind: "carrier", unlockedRequired: true })}
-                    className="rounded-md bg-action-primary px-2 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-50"
+                    className="rounded-md bg-cta px-2 py-1.5 text-xs font-semibold text-on-cta disabled:opacity-50"
                   >
                     언락 필수
                   </button>
@@ -1621,7 +1621,7 @@ function MissingInfoBoard({
                     type="button"
                     disabled={disabled || !(textValues[key] ?? "").trim()}
                     onClick={() => onApply(slot, { kind: "text", text: textValues[key] ?? "" })}
-                    className="rounded-md bg-action-primary px-3 py-1.5 text-xs font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-cta px-3 py-1.5 text-xs font-semibold text-on-cta disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     저장
                   </button>
@@ -2663,7 +2663,7 @@ export function AgentProductAdvisor({
             <button
               type="button"
               onClick={() => void send(inputRef.current?.value ?? "")}
-              className="rounded-lg bg-action-primary px-4 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-action-primary-hover"
+              className="rounded-lg bg-cta px-4 py-2 text-sm font-semibold text-on-cta transition-colors hover:bg-cta-hover"
             >
               전송
             </button>

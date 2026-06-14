@@ -148,7 +148,7 @@ export function PreFight({ data, onBegin }: PreFightProps) {
             onClick={handleStart}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
-            className="group cursor-pointer relative flex w-full items-center justify-center gap-2.5 rounded-xl px-6 py-4 text-[15px] sm:text-[16px] font-semibold text-on-accent transition-colors bg-action-primary hover:bg-action-primary-hover"
+            className="group cursor-pointer relative flex w-full items-center justify-center gap-2.5 rounded-xl px-6 py-4 text-[15px] sm:text-[16px] font-semibold text-on-cta transition-colors bg-cta hover:bg-cta-hover"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             Begin Negotiation

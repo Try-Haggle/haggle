@@ -344,7 +344,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                     type="button"
                     onClick={handlePrepare}
                     disabled={isLoading}
-                    className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
+                    className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
                   >
                     {isLoading ? "Preparing..." : "Continue"}
                   </button>
@@ -378,7 +378,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               type="button"
               onClick={handleQuote}
               disabled={isLoading}
-              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
+              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
             >
               {isLoading ? "Loading..." : "Get Quote"}
             </button>
@@ -401,7 +401,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 )
               }
               disabled={isLoading || isWriting}
-              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
+              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
             >
               {isLoading || isWriting ? "Approving..." : "Approve USDC"}
             </button>
@@ -417,7 +417,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               type="button"
               onClick={handleSubmitX402}
               disabled={isLoading}
-              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
+              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
             >
               {isLoading ? "Submitting..." : "Sign & Submit Payment"}
             </button>

@@ -303,7 +303,7 @@ export default function ReviewerQualifyPage() {
             <button
               type="button"
               onClick={startTest}
-              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-action-primary px-6 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors"
+              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-cta px-6 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
             >
               Start Qualification Test
             </button>
@@ -445,7 +445,7 @@ export default function ReviewerQualifyPage() {
                 <button
                   type="button"
                   onClick={submitVote}
-                  className="mt-4 w-full rounded-xl bg-action-primary px-4 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors"
+                  className="mt-4 w-full rounded-xl bg-cta px-4 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
                 >
                   {currentIdx < totalCases - 1
                     ? `Submit & Next (${currentIdx + 2}/${totalCases})`
@@ -603,7 +603,7 @@ export default function ReviewerQualifyPage() {
                 {result.passed && (
                   <Link
                     href="/reviewer"
-                    className="inline-flex items-center gap-2 rounded-xl bg-action-primary px-6 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors"
+                    className="inline-flex items-center gap-2 rounded-xl bg-cta px-6 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
                   >
                     Go to Dashboard
                   </Link>

@@ -196,7 +196,7 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
             <button
               type="button"
               onClick={onAccept}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-action-primary px-5 py-3 text-[13px] sm:text-[14px] font-semibold text-on-accent transition-colors hover:bg-action-primary-hover sm:w-auto"
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-cta px-5 py-3 text-[13px] sm:text-[14px] font-semibold text-on-cta transition-colors hover:bg-cta-hover sm:w-auto"
             >
               Continue to checkout
               <svg

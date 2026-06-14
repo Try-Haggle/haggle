@@ -408,7 +408,7 @@ export function DetailContent({
               <button
                 type="button"
                 onClick={() => setShowWizard(true)}
-                className="shrink-0 rounded-lg bg-action-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:bg-action-primary-hover transition-colors"
+                className="shrink-0 rounded-lg bg-cta px-3 py-1.5 text-xs font-semibold text-on-cta hover:bg-cta-hover transition-colors"
               >
                 Complete Attestation
               </button>

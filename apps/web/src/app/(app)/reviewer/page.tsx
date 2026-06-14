@@ -192,7 +192,7 @@ export default function ReviewerDashboardPage() {
 
           <Link
             href="/reviewer/qualify"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-action-primary px-6 py-3 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors"
+            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-cta px-6 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
           >
             Take Qualification Test
           </Link>

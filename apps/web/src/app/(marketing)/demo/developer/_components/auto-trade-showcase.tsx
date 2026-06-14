@@ -781,7 +781,7 @@ export function AutoTradeShowcase({
             type="button"
             onClick={() => onRunAutoTrade()}
             disabled={startDisabled}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-action-primary px-4 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-action-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-cta px-4 py-2 text-sm font-semibold text-on-cta transition-colors hover:bg-cta-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span aria-hidden="true">{running ? "…" : "▶"}</span>
             {running ? "협상 진행 중" : "협상 시작"}

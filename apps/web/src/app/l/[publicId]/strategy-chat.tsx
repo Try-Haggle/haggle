@@ -305,7 +305,7 @@ function BudgetWidget({
       <button
         type="button"
         onClick={() => onSubmit(target, max)}
-        className="w-full py-2.5 bg-action-primary hover:bg-action-primary-hover text-on-accent text-[13px] font-bold rounded-lg transition-colors"
+        className="w-full py-2.5 bg-cta hover:bg-cta-hover text-on-cta text-[13px] font-bold rounded-lg transition-colors"
       >
         예산 설정 완료
       </button>

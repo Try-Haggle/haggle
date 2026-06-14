@@ -688,7 +688,7 @@ export function DisputeDetail({
                         type="button"
                         onClick={handleStartDeposit}
                         disabled={submitting}
-                        className="rounded-lg bg-action-primary px-3 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-action-primary-hover disabled:opacity-40"
+                        className="rounded-lg bg-cta px-3 py-2 text-sm font-semibold text-on-cta transition-colors hover:bg-cta-hover disabled:opacity-40"
                       >
                         Start Deposit
                       </button>
@@ -849,9 +849,7 @@ export function DisputeDetail({
               type="submit"
               disabled={submitting}
               className={`w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
-                userRole === "buyer"
-                  ? "bg-action-primary hover:bg-action-primary-hover"
-                  : "bg-action-primary hover:bg-action-primary-hover"
+                userRole === "buyer" ? "bg-cta hover:bg-cta-hover" : "bg-cta hover:bg-cta-hover"
               }`}
             >
               {submitting ? "Submitting..." : "Submit Evidence"}

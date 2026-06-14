@@ -290,7 +290,7 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
           type="button"
           onClick={handleProfileSave}
           disabled={profileSaving}
-          className="rounded-lg bg-action-primary px-4 py-2 text-sm font-medium text-on-accent hover:bg-action-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="rounded-lg bg-cta px-4 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           {profileSaving ? "Saving…" : "Save Profile"}
         </button>
@@ -347,7 +347,7 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
           type="button"
           onClick={handlePasswordSave}
           disabled={passwordSaving || !newPassword || !confirmPassword}
-          className="rounded-lg bg-action-primary px-4 py-2 text-sm font-medium text-on-accent hover:bg-action-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="rounded-lg bg-cta px-4 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           {passwordSaving ? "Saving…" : isOAuth ? "Set Password" : "Update Password"}
         </button>
