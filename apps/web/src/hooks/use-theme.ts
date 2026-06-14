@@ -7,8 +7,8 @@ export type Theme = "light" | "dark";
 const STORAGE_KEY = "haggle-theme";
 
 function currentTheme(): Theme {
-  if (typeof document === "undefined") return "dark";
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
 /**
@@ -17,7 +17,7 @@ function currentTheme(): Theme {
  * hook just keeps React state in sync and exposes setters.
  */
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>("dark");
+  const [theme, setThemeState] = useState<Theme>("light");
 
   // Sync with whatever the bootstrap script applied (avoids hydration drift).
   useEffect(() => {

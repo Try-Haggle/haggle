@@ -43,15 +43,15 @@ export const metadata: Metadata = {
   },
 };
 
-// Runs before paint to restore a saved theme (avoids dark→light flash).
-// Default is Dark; Light only if explicitly chosen and persisted.
+// Runs before paint to restore a saved theme (avoids light→dark flash).
+// Default is Light; Dark only if explicitly chosen and persisted.
 const themeScript = `(function(){try{var t=localStorage.getItem('haggle-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      data-theme="dark"
+      data-theme="light"
       className={`${sans.variable} ${display.variable} ${mono.variable}`}
       suppressHydrationWarning
     >
