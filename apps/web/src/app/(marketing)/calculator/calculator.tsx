@@ -384,7 +384,7 @@ export function Calculator() {
                 <button
                   type="button"
                   onClick={handleShare}
-                  className="rounded-xl bg-action-primary px-6 py-2.5 text-sm font-medium text-on-accent hover:bg-action-primary-hover transition-colors"
+                  className="rounded-xl bg-cta px-6 py-2.5 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors"
                 >
                   Share on Twitter
                 </button>

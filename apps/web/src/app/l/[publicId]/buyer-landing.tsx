@@ -454,12 +454,12 @@ export function BuyerLanding({
                         );
                       }
                     }}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-on-accent transition-colors ${
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-on-cta transition-colors ${
                       negotiationState === "loading"
-                        ? "cursor-wait bg-action-primary opacity-90"
+                        ? "cursor-wait bg-cta opacity-90"
                         : !selectedAgent
-                          ? "cursor-not-allowed bg-action-primary opacity-40"
-                          : "cursor-pointer bg-action-primary hover:bg-action-primary-hover"
+                          ? "cursor-not-allowed bg-cta opacity-40"
+                          : "cursor-pointer bg-cta hover:bg-cta-hover"
                     }`}
                     aria-busy={negotiationState === "loading"}
                   >

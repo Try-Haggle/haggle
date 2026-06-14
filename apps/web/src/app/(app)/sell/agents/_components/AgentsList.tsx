@@ -83,7 +83,7 @@ export function AgentsList({ role, embedded = false, selectMode }: AgentsListPro
           {customs.length > 0 && (
             <Link
               href={newHref}
-              className="px-4 py-2.5 text-sm font-bold rounded-md bg-action-primary text-on-accent hover:bg-action-primary-hover transition-colors whitespace-nowrap"
+              className="px-4 py-2.5 text-sm font-bold rounded-md bg-cta text-on-cta hover:bg-cta-hover transition-colors whitespace-nowrap"
             >
               + Create Agent
             </Link>

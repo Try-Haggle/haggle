@@ -15,9 +15,7 @@ interface Props {
 
 const BTN_BASE =
   "rounded border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-const BTN_PRIMARY =
-  BTN_BASE +
-  " border-action-primary bg-action-primary text-on-accent hover:bg-action-primary-hover";
+const BTN_PRIMARY = BTN_BASE + " border-action-primary bg-cta text-on-cta hover:bg-cta-hover";
 const BTN_DANGER = BTN_BASE + " border-error/30 bg-surface-raised text-error hover:bg-error-soft";
 const BTN_NEUTRAL = BTN_BASE + " border-line bg-surface-raised text-ink hover:bg-surface-sunken";
 

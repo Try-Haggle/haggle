@@ -87,7 +87,7 @@ export function OfferInput({
           type="button"
           onClick={handleSubmit}
           disabled={disabled}
-          className="rounded-lg bg-action-primary px-5 py-2 text-sm font-medium text-on-accent hover:bg-action-primary-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-lg bg-cta px-5 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {sending ? "Sending..." : "Send Offer"}
         </button>

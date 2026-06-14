@@ -389,7 +389,7 @@ export function AdvisorChat({
           type="button"
           onClick={handleSend}
           disabled={sending || !input.trim()}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-on-accent transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-action-primary hover:bg-action-primary-hover"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-on-cta transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-cta hover:bg-cta-hover"
         >
           <svg
             aria-hidden="true"

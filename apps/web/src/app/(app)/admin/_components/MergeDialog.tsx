@@ -93,7 +93,7 @@ export function MergeDialog({ open, onClose, onSubmit }: Props) {
             type="submit"
             data-testid="merge-submit"
             disabled={submitting}
-            className="rounded bg-action-primary px-3 py-1.5 text-sm text-on-accent hover:bg-action-primary-hover disabled:opacity-50"
+            className="rounded bg-cta px-3 py-1.5 text-sm text-on-cta hover:bg-cta-hover disabled:opacity-50"
           >
             {submitting ? "Merging…" : "Merge"}
           </button>

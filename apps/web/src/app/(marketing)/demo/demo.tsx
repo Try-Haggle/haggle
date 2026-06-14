@@ -1003,7 +1003,7 @@ export function Demo() {
             </div>
             <Link
               href="/demo/developer"
-              className="shrink-0 rounded-xl bg-action-primary px-5 py-2.5 text-center text-sm font-medium text-on-accent transition-colors hover:bg-action-primary-hover"
+              className="shrink-0 rounded-xl bg-cta px-5 py-2.5 text-center text-sm font-medium text-on-cta transition-colors hover:bg-cta-hover"
             >
               Open Trade Tutorial
             </Link>
@@ -1130,7 +1130,7 @@ export function Demo() {
             <button
               type="button"
               onClick={runSimulation}
-              className="rounded-xl bg-action-primary px-10 py-4 text-lg font-medium text-on-accent hover:bg-action-primary-hover transition-colors"
+              className="rounded-xl bg-cta px-10 py-4 text-lg font-medium text-on-cta hover:bg-cta-hover transition-colors"
             >
               Start AI Negotiation
             </button>
@@ -1271,7 +1271,7 @@ export function Demo() {
               <button
                 type="button"
                 onClick={handleShare}
-                className="flex-1 rounded-xl bg-action-primary px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-action-primary-hover transition-colors"
+                className="flex-1 rounded-xl bg-cta px-5 py-2.5 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors"
               >
                 Share on Twitter
               </button>

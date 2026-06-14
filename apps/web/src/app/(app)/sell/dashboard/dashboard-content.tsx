@@ -113,7 +113,7 @@ export function DashboardContent({
         </div>
         <Link
           href="/sell/listings/new"
-          className="flex items-center gap-2 rounded-full bg-action-primary px-5 py-2.5 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors shrink-0 self-start sm:self-auto"
+          className="flex items-center gap-2 rounded-full bg-cta px-5 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors shrink-0 self-start sm:self-auto"
         >
           <svg
             aria-hidden="true"

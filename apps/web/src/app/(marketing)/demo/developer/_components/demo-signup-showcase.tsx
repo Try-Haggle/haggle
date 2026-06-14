@@ -314,7 +314,7 @@ export function DemoSignupShowcase() {
             <button
               type="button"
               onClick={startDemo}
-              className="rounded-lg bg-action-primary px-6 py-2.5 text-sm font-medium text-on-accent hover:bg-action-primary-hover transition-colors cursor-pointer"
+              className="rounded-lg bg-cta px-6 py-2.5 text-sm font-medium text-on-cta hover:bg-cta-hover transition-colors cursor-pointer"
             >
               데모 시작
             </button>

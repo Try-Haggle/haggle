@@ -450,7 +450,7 @@ export default function ReviewerCasePage() {
                 type="button"
                 onClick={handleSubmitVote}
                 disabled={submitting}
-                className="rounded-xl bg-action-primary px-5 py-2.5 text-sm font-semibold text-on-accent hover:bg-action-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="rounded-xl bg-cta px-5 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {submitting ? "Submitting..." : "Submit vote"}
               </button>

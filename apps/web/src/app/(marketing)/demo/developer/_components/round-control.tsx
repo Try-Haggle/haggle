@@ -138,7 +138,7 @@ export function RoundControl({
       <button
         type="submit"
         disabled={loading || disabled}
-        className="w-full rounded-xl bg-action-primary px-6 py-2.5 text-sm font-semibold text-on-accent hover:bg-action-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full rounded-xl bg-cta px-6 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
       >
         {loading ? (
           <>

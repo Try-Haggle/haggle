@@ -362,7 +362,7 @@ export function AgentBuilder({
                       type="button"
                       onClick={onSave}
                       disabled={disabled}
-                      className="w-full px-4 py-2.5 text-sm font-bold rounded-md bg-action-primary text-on-accent hover:bg-action-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2.5 text-sm font-bold rounded-md bg-cta text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {saving ? "Saving..." : (saveLabel ?? "Save Agent")}
                     </button>
@@ -606,7 +606,7 @@ function SaveAsAgentControl({
         <button
           type="button"
           onClick={onConfirm}
-          className="flex-1 px-3 py-1.5 text-[12px] font-bold rounded-md bg-action-primary text-on-accent hover:bg-action-primary-hover"
+          className="flex-1 px-3 py-1.5 text-[12px] font-bold rounded-md bg-cta text-on-cta hover:bg-cta-hover"
         >
           Save
         </button>

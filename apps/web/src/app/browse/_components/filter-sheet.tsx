@@ -346,7 +346,7 @@ export function FilterSheet({
             <button
               type="button"
               onClick={applyAll}
-              className="ml-auto cursor-pointer rounded-lg bg-action-primary px-5 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-action-primary-hover"
+              className="ml-auto cursor-pointer rounded-lg bg-cta px-5 py-2 text-sm font-medium text-on-cta transition-colors hover:bg-cta-hover"
             >
               Apply{localActiveCount > 0 ? ` (${localActiveCount})` : ""}
             </button>

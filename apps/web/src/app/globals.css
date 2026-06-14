@@ -96,6 +96,7 @@
   --bg-raised: #fffdf9;
   --bg-sunken: #f3efe6;
   --bg-overlay: #ffffff;
+  --surface-disabled: #e6ddcb;
 
   /* Text / Ink */
   --text-primary: #1b2a4a;
@@ -111,6 +112,12 @@
   --action-primary-pressed: #9a6a24;
   --action-secondary: #1b2a4a;
   --action-secondary-hover: #16223c;
+
+  /* Primary CTA — adaptive: contrasts the surface in each theme.
+     Light = navy fill on cream; Dark = gold fill (see [data-theme=dark]). */
+  --cta-fill: var(--color-navy-500);
+  --cta-fill-hover: var(--color-navy-600);
+  --cta-on: var(--text-on-ink);
 
   /* Border */
   --border-subtle: #f0ede5;
@@ -174,6 +181,7 @@
   --bg-raised: var(--color-navy-800);
   --bg-sunken: var(--color-navy-950);
   --bg-overlay: var(--color-navy-700);
+  --surface-disabled: #1c2741;
 
   --text-primary: #f1eee6;
   --text-secondary: #9aa3b4;
@@ -187,6 +195,11 @@
   --action-primary-pressed: #9a6a24;
   --action-secondary: #f1eee6;
   --action-secondary-hover: #ffffff;
+
+  /* Primary CTA — Dark = gold fill on navy, with navy text. */
+  --cta-fill: var(--action-primary);
+  --cta-fill-hover: var(--action-primary-hover);
+  --cta-on: var(--color-navy-900);
 
   --border-subtle: rgba(241, 238, 230, 0.06);
   --border-default: rgba(241, 238, 230, 0.14);
@@ -240,6 +253,7 @@
   --color-surface-raised: var(--bg-raised);
   --color-surface-sunken: var(--bg-sunken);
   --color-surface-overlay: var(--bg-overlay);
+  --color-surface-disabled: var(--surface-disabled);
 
   /* Ink → text-ink / text-ink-secondary / -muted / -strong */
   --color-ink: var(--text-primary);
@@ -255,6 +269,9 @@
   --color-action-primary-pressed: var(--action-primary-pressed);
   --color-action-secondary: var(--action-secondary);
   --color-action-secondary-hover: var(--action-secondary-hover);
+  --color-cta: var(--cta-fill);
+  --color-cta-hover: var(--cta-fill-hover);
+  --color-on-cta: var(--cta-on);
 
   /* Border → border-line / border-line-subtle / -strong / border-focus */
   --color-line: var(--border-default);

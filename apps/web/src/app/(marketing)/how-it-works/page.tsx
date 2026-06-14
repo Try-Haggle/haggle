@@ -419,7 +419,7 @@ export default function HowItWorksPage() {
         <div className="text-center py-12">
           <Link
             href="/demo/try"
-            className="inline-flex items-center gap-2 rounded-full bg-action-primary px-8 py-3 font-semibold text-on-accent hover:bg-action-primary-hover transition-colors"
+            className="inline-flex items-center gap-2 rounded-full bg-cta px-8 py-3 font-semibold text-on-cta hover:bg-cta-hover transition-colors"
           >
             Try Demo Negotiation →
           </Link>

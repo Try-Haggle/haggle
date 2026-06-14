@@ -170,7 +170,7 @@ export function WalletSettings() {
               type="button"
               onClick={handleSaveWallet}
               disabled={isLoading}
-              className="w-full py-2 px-4 bg-action-primary text-on-accent rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-action-primary-hover transition-colors"
+              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
             >
               {isLoading ? "Saving..." : "Save Wallet"}
             </button>

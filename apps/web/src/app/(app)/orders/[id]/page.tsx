@@ -954,7 +954,7 @@ function ActionButton({
   const styles =
     variant === "danger"
       ? "border border-error/30 bg-error-soft text-error hover:bg-error-soft"
-      : "bg-action-primary text-on-accent hover:bg-action-primary-hover";
+      : "bg-cta text-on-cta hover:bg-cta-hover";
 
   return (
     <button

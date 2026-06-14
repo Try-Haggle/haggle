@@ -381,7 +381,7 @@ export function AttestationWizard({
               type="button"
               onClick={handleNext}
               disabled={uploading}
-              className="flex-1 rounded-xl bg-action-primary py-2.5 text-sm font-semibold text-on-accent hover:bg-action-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 rounded-xl bg-cta py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {uploading ? "Uploading..." : "Continue"}
             </button>
@@ -390,7 +390,7 @@ export function AttestationWizard({
               type="button"
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex-1 rounded-xl bg-action-primary py-2.5 text-sm font-semibold text-on-accent hover:bg-action-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 rounded-xl bg-cta py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {submitting ? "Submitting..." : "Submit Attestation"}
             </button>
