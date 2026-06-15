@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { sql, type Database } from "@haggle/db";
-import { callLLM } from "../negotiation/adapters/xai-client.js";
+import { callLLM } from "../negotiation/adapters/deepseek-client.js";
 import { getAgentVoiceProfile } from "../negotiation/lumen-persona-profiles.js";
 import { recordConversationSignalsForRound } from "../services/conversation-signal-sink.js";
 import {
@@ -1172,7 +1172,7 @@ function buildAdvisorTurnCost(usage: { prompt_tokens: number; completion_tokens:
   const estimatedUsd = (prompt * INPUT_TOKEN_USD) + (completion * OUTPUT_TOKEN_USD);
 
   return {
-    model: process.env.XAI_MODEL ?? "grok-4-fast",
+    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
     tokens: {
       prompt,
       completion,

@@ -41,7 +41,7 @@ import type {
 } from "../negotiation/types.js";
 import { RefereeService } from "../negotiation/referee/referee-service.js";
 import { DefaultEngineSkill } from "../negotiation/skills/default-engine-skill.js";
-import { GrokFastAdapter } from "../negotiation/adapters/grok-fast-adapter.js";
+import { DeepSeekAdapter } from "../negotiation/adapters/deepseek-adapter.js";
 import { screenMessage } from "../negotiation/screening/auto-screening.js";
 import { tryTransition, detectPhaseEvent } from "../negotiation/phase/phase-machine.js";
 import { checkIntervention } from "../negotiation/phase/human-intervention.js";
@@ -59,7 +59,7 @@ import {
 import { DEFAULT_BUDDY_DNA, shouldUseReasoning } from "../negotiation/config.js";
 
 // LLM client
-import { callLLM } from "../negotiation/adapters/xai-client.js";
+import { callLLM } from "../negotiation/adapters/deepseek-client.js";
 
 // ---------------------------------------------------------------------------
 // Singletons (stateless, safe to reuse)
@@ -67,7 +67,7 @@ import { callLLM } from "../negotiation/adapters/xai-client.js";
 
 const refereeService = new RefereeService();
 const skill = new DefaultEngineSkill();
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 
 // ---------------------------------------------------------------------------
 // Terminal statuses

@@ -20,7 +20,7 @@ import { validateStage } from '../negotiation/stages/validate.js';
 import { respond } from '../negotiation/stages/respond.js';
 
 import { DefaultEngineSkill } from '../negotiation/skills/default-engine-skill.js';
-import { GrokFastAdapter } from '../negotiation/adapters/grok-fast-adapter.js';
+import { DeepSeekAdapter } from '../negotiation/adapters/deepseek-adapter.js';
 
 import type {
   CoreMemory,
@@ -38,7 +38,7 @@ import type { UnderstandOutput, DecideOutput, ValidateOutput } from '../negotiat
 // ---------------------------------------------------------------------------
 
 const defaultSkill = new DefaultEngineSkill();
-const defaultAdapter = new GrokFastAdapter();
+const defaultAdapter = new DeepSeekAdapter();
 
 // ---------------------------------------------------------------------------
 // Request Schemas

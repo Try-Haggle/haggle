@@ -52,7 +52,7 @@ vi.mock('../services/conversation-signal-sink.js', () => ({
   }),
 }));
 
-vi.mock('../negotiation/adapters/xai-client.js', () => ({
+vi.mock('../negotiation/adapters/deepseek-client.js', () => ({
   callLLM: (...args: unknown[]) => mockCallLLM(...args),
 }));
 
@@ -385,7 +385,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         makeRound({ roundNo: 2, priceminor: '88000', counterPriceMinor: '72000' }),
         makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '78000' }),
       ]);
-      mockCallLLM.mockRejectedValue(new Error('XAI_TIMEOUT'));
+      mockCallLLM.mockRejectedValue(new Error('DEEPSEEK_TIMEOUT'));
 
       const result = await executeLLMNegotiationRound(
         db as any,

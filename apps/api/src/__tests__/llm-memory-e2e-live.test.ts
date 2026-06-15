@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 const API_BASE = process.env.LIVE_API_BASE ?? "http://127.0.0.1:3001";
-const shouldRunLive = process.env.RUN_LIVE_LLM_E2E_TESTS === "1" && !!process.env.XAI_API_KEY;
+const shouldRunLive = process.env.RUN_LIVE_LLM_E2E_TESTS === "1" && !!process.env.DEEPSEEK_API_KEY;
 const describeLive = shouldRunLive ? describe : describe.skip;
 const MAX_E2E_USD = Number(process.env.LIVE_LLM_E2E_MAX_USD ?? "0.08");
 

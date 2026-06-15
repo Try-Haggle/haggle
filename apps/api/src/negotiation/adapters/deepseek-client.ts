@@ -1,7 +1,7 @@
 /**
- * xai-client.ts
+ * deepseek-client.ts
  *
- * xAI API HTTP client for Grok 4 Fast (dual mode: general + reasoning).
+ * DeepSeek API HTTP client (OpenAI-compatible).
  * Structured Output (JSON mode) for reliable parsing.
  * Retry with backoff, timeout, telemetry integration.
  */
@@ -12,8 +12,8 @@ import { withLLMTelemetry } from '../../lib/llm-telemetry.js';
 // Types
 // ---------------------------------------------------------------------------
 
-export interface XAICallOptions {
-  /** Enable reasoning mode (longer timeout, higher cost) */
+export interface DeepSeekCallOptions {
+  /** Enable reasoning mode (longer timeout, lower temperature) */
   reasoning?: boolean;
   /** Override max_tokens */
   maxTokens?: number;
@@ -21,7 +21,7 @@ export interface XAICallOptions {
   correlationId?: string;
 }
 
-export interface XAIResponse {
+export interface DeepSeekResponse {
   content: string;
   usage: {
     prompt_tokens: number;
@@ -30,7 +30,7 @@ export interface XAIResponse {
   reasoning_used: boolean;
 }
 
-interface XAIChatCompletion {
+interface DeepSeekChatCompletion {
   choices: Array<{
     message: { content: string };
     finish_reason: string;
@@ -46,19 +46,19 @@ interface XAIChatCompletion {
 // Config
 // ---------------------------------------------------------------------------
 
-const XAI_API_BASE = 'https://api.x.ai/v1';
+const DEEPSEEK_API_BASE = 'https://api.deepseek.com/v1';
 const RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
 const GENERAL_TIMEOUT_MS = 60_000;
 const REASONING_TIMEOUT_MS = 90_000;
 
 function getApiKey(): string {
-  const key = process.env.XAI_API_KEY;
-  if (!key) throw new Error('XAI_API_KEY not configured');
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error('DEEPSEEK_API_KEY not configured');
   return key;
 }
 
 function getModel(): string {
-  return process.env.XAI_MODEL ?? 'grok-4-fast';
+  return process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro';
 }
 
 // ---------------------------------------------------------------------------
@@ -89,15 +89,15 @@ async function fetchWithTimeout(
 // ---------------------------------------------------------------------------
 
 /**
- * Call xAI API (Grok 4 Fast) with structured JSON output.
- * Supports dual mode: general (fast) and reasoning (deeper).
- * Retries up to 2 times on transient failures.
+ * Call DeepSeek API with structured JSON output.
+ * Supports dual mode: general (fast, temp=0.5) and reasoning (deeper, temp=0.3,
+ * longer timeout). Retries up to 2 times on transient failures.
  */
 export async function callLLM(
   systemPrompt: string,
   userPrompt: string,
-  options: XAICallOptions = {},
-): Promise<XAIResponse> {
+  options: DeepSeekCallOptions = {},
+): Promise<DeepSeekResponse> {
   const { reasoning = false, maxTokens, correlationId } = options;
   const model = getModel();
   const timeoutMs = reasoning ? REASONING_TIMEOUT_MS : GENERAL_TIMEOUT_MS;
@@ -113,18 +113,13 @@ export async function callLLM(
     ...(maxTokens && { max_tokens: maxTokens }),
   };
 
-  // xAI reasoning mode — only supported on reasoning-capable models (not grok-4-fast)
-  if (reasoning && !model.includes('fast')) {
-    body.reasoning_effort = 'high';
-  }
-
-  const doCall = async (): Promise<XAIResponse> => {
+  const doCall = async (): Promise<DeepSeekResponse> => {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
       try {
         const response = await fetchWithTimeout(
-          `${XAI_API_BASE}/chat/completions`,
+          `${DEEPSEEK_API_BASE}/chat/completions`,
           {
             method: 'POST',
             headers: {
@@ -138,7 +133,7 @@ export async function callLLM(
 
         if (!response.ok) {
           const text = await response.text().catch(() => '');
-          const err = new Error(`xAI API error ${response.status}: ${text}`) as Error & { status: number; retryable: boolean };
+          const err = new Error(`DeepSeek API error ${response.status}: ${text}`) as Error & { status: number; retryable: boolean };
           err.status = response.status;
 
           // Don't retry on 4xx (except 429)
@@ -150,7 +145,7 @@ export async function callLLM(
           throw err;
         }
 
-        const data = (await response.json()) as XAIChatCompletion;
+        const data = (await response.json()) as DeepSeekChatCompletion;
         const content = data.choices?.[0]?.message?.content ?? '';
 
         return {
@@ -172,7 +167,7 @@ export async function callLLM(
 
         // Check if abort (timeout)
         if (lastError.name === 'AbortError') {
-          lastError = new Error(`xAI API timeout after ${timeoutMs}ms`);
+          lastError = new Error(`DeepSeek API timeout after ${timeoutMs}ms`);
           (lastError as Error & { name: string }).name = 'TimeoutError';
         }
 
@@ -183,13 +178,13 @@ export async function callLLM(
       }
     }
 
-    throw lastError ?? new Error('xAI API call failed');
+    throw lastError ?? new Error('DeepSeek API call failed');
   };
 
   // Wrap with telemetry
   return withLLMTelemetry(
     {
-      service: 'xai.chat',
+      service: 'deepseek.chat',
       model,
       operation: 'negotiation-round',
       correlationId,

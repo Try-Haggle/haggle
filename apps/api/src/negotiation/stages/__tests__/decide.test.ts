@@ -1,17 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { decide } from '../decide.js';
-import { GrokFastAdapter } from '../../adapters/grok-fast-adapter.js';
+import { DeepSeekAdapter } from '../../adapters/deepseek-adapter.js';
 import { DefaultEngineSkill } from '../../skills/default-engine-skill.js';
 import type { CoreMemory, OpponentPattern, StageConfig, RefereeCoaching, ContextLayers } from '../../types.js';
 import type { ContextOutput, DecideInput } from '../../pipeline/types.js';
 import type { RefereeBriefing } from '../../skills/skill-types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
-vi.mock('../../adapters/xai-client.js', () => ({
+vi.mock('../../adapters/deepseek-client.js', () => ({
   callLLM: vi.fn().mockRejectedValue(new Error('mock llm unavailable')),
 }));
 
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 const skill = new DefaultEngineSkill();
 
 function makeCoaching(): RefereeCoaching {
@@ -177,7 +177,7 @@ describe('Stage 3: decide', () => {
 
   it('passes Stage 2 L5 signal lines into the LLM prompt', async () => {
     const memory = makeMemory('BARGAINING');
-    const promptAdapter = new GrokFastAdapter();
+    const promptAdapter = new DeepSeekAdapter();
     const promptSpy = vi.spyOn(promptAdapter, 'buildUserPrompt');
     const context = makeContextOutput();
     context.layers.L5_signals = [

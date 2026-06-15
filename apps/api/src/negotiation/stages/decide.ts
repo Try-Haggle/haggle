@@ -8,7 +8,7 @@
 import type { DecideInput, DecideOutput } from '../pipeline/types.js';
 import type { EngineDecision } from '../types.js';
 import { shouldUseReasoning } from '../config.js';
-import { callLLM } from '../adapters/xai-client.js';
+import { callLLM } from '../adapters/deepseek-client.js';
 
 /**
  * Make a negotiation decision.

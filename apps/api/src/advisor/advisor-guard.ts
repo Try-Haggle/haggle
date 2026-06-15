@@ -88,7 +88,7 @@ const LEGAL_TERM_PATTERN_KO =
 
 // System info leak patterns
 const SYSTEM_INFO_PATTERN =
-  /(?:api[_-]?key|private[_-]?key|system\s+prompt|HAGGLE_|SUPABASE_|XAI_API|DATABASE_URL|SECRET_KEY)/i;
+  /(?:api[_-]?key|private[_-]?key|system\s+prompt|HAGGLE_|SUPABASE_|DEEPSEEK_API|DATABASE_URL|SECRET_KEY)/i;
 
 // Wallet address pattern (Ethereum 0x addresses)
 const WALLET_PATTERN = /0x[a-fA-F0-9]{40}/g;

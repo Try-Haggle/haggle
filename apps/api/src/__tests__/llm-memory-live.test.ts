@@ -2,7 +2,7 @@
  * Live LLM memory-behavior test.
  *
  * This test intentionally calls the real xAI API, so it is opt-in:
- *   RUN_LIVE_LLM_TESTS=1 XAI_API_KEY=... pnpm --filter @haggle/api test -- src/__tests__/llm-memory-live.test.ts
+ *   RUN_LIVE_LLM_TESTS=1 DEEPSEEK_API_KEY=... pnpm --filter @haggle/api test -- src/__tests__/llm-memory-live.test.ts
  *
  * It verifies that different seller memories produce different negotiation
  * recommendations for the same listing/offer, while tracking estimated cost.
@@ -10,9 +10,9 @@
 
 import "../config/load-env.js";
 import { describe, expect, it } from "vitest";
-import { callLLM } from "../negotiation/adapters/xai-client.js";
+import { callLLM } from "../negotiation/adapters/deepseek-client.js";
 
-const shouldRunLive = process.env.RUN_LIVE_LLM_TESTS === "1" && !!process.env.XAI_API_KEY;
+const shouldRunLive = process.env.RUN_LIVE_LLM_TESTS === "1" && !!process.env.DEEPSEEK_API_KEY;
 const describeLive = shouldRunLive ? describe : describe.skip;
 
 const USD_PER_1K_TOKENS = Number(process.env.LIVE_LLM_TEST_USD_PER_1K ?? "0.0015");
@@ -81,7 +81,7 @@ describeLive("Live LLM memory behavior", () => {
     console.info(
       "[live-llm-memory-test]",
       JSON.stringify({
-        model: process.env.XAI_MODEL ?? "grok-4-fast",
+        model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
         prompt_tokens: response.usage.prompt_tokens,
         completion_tokens: response.usage.completion_tokens,
         total_tokens: totalTokens,

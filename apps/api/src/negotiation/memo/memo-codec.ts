@@ -3,7 +3,7 @@
  *
  * Living Memo Compressed Codec (Doc 26 §3).
  * Independent module used by Stage 2 (Context) in the 6-Stage pipeline.
- * Does NOT touch the existing GrokFastAdapter S:|B:|C: encoding.
+ * Does NOT touch the existing DeepSeekAdapter S:|B:|C: encoding.
  */
 
 import type { CoreMemory, RoundFact } from '../types.js';

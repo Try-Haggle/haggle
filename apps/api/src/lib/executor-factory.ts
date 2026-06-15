@@ -38,7 +38,7 @@ export function getPipelineMode(): PipelineMode {
 /**
  * Returns the staged LLM executor. There is no rule-based fallback for real
  * negotiation — the only knob is whether the staged pipeline is healthy
- * (XAI_API_KEY set, etc.), and failures should surface as errors rather than
+ * (DEEPSEEK_API_KEY set, etc.), and failures should surface as errors rather than
  * silently downgrading.
  */
 export function getExecutor(): RoundExecutor {

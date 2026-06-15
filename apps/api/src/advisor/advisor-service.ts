@@ -32,8 +32,8 @@ import type {
 import {
   MAX_HISTORY_TURNS,
   FALLBACK_RESPONSE,
-  GROK4_FAST_COST_PER_1M_INPUT,
-  GROK4_FAST_COST_PER_1M_OUTPUT,
+  DEEPSEEK_COST_PER_1M_INPUT,
+  DEEPSEEK_COST_PER_1M_OUTPUT,
 } from "./advisor-types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -54,8 +54,8 @@ function visibleRoles(userRole: AdvisorRole): AdvisorMessageRole[] {
 }
 
 function computeCostUsd(promptTokens: number, completionTokens: number): number {
-  const inputCost = (promptTokens / 1_000_000) * GROK4_FAST_COST_PER_1M_INPUT;
-  const outputCost = (completionTokens / 1_000_000) * GROK4_FAST_COST_PER_1M_OUTPUT;
+  const inputCost = (promptTokens / 1_000_000) * DEEPSEEK_COST_PER_1M_INPUT;
+  const outputCost = (completionTokens / 1_000_000) * DEEPSEEK_COST_PER_1M_OUTPUT;
   return Math.round((inputCost + outputCost) * 1_000_000) / 1_000_000;
 }
 
@@ -292,7 +292,7 @@ export async function chat(
       tokens_used:
         llmResponse.usage.prompt_tokens +
         llmResponse.usage.completion_tokens,
-      model: process.env.XAI_MODEL ?? "grok-4-fast",
+      model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
       cost_usd: costUsd,
       strength,
       blocked: !outputGuard.safe,

@@ -14,12 +14,12 @@ function toDollars(minor: number | undefined | null): string {
 }
 
 /**
- * GrokFast Model Adapter — Tier: basic.
+ * DeepSeek Model Adapter — Tier: basic.
  * Uses Structured Output (JSON mode) for reliable parsing.
  * Implements Differential Context to minimize token usage.
  */
-export class GrokFastAdapter implements ModelAdapter {
-  readonly modelId = 'grok-fast';
+export class DeepSeekAdapter implements ModelAdapter {
+  readonly modelId = 'deepseek';
   readonly tier = 'basic' as const;
   readonly location = 'remote' as const;
   readonly capabilities = ['parse', 'reason', 'generate'] as const;

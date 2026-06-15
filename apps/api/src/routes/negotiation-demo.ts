@@ -2,7 +2,7 @@
  * negotiation-demo.ts
  *
  * Doc 26 "LLM-Native 6-Stage Pipeline" 검증 데모.
- * 실제 xAI API를 호출하여 각 Stage의 structured output 품질을 검증한다.
+ * 실제 DeepSeek API를 호출하여 각 Stage의 structured output 품질을 검증한다.
  *
  * 테스트 대상 (6-Stage):
  *   Stage 0a: Strategy Generation  — LLM이 아이템+시장 데이터 → 구매 전략 JSON 생성
@@ -19,8 +19,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Database } from '@haggle/db';
-import { callLLM } from '../negotiation/adapters/xai-client.js';
-import { GrokFastAdapter } from '../negotiation/adapters/grok-fast-adapter.js';
+import { callLLM } from '../negotiation/adapters/deepseek-client.js';
+import { DeepSeekAdapter } from '../negotiation/adapters/deepseek-adapter.js';
 import { SkillStack, registerSkill } from '../negotiation/skills/skill-stack.js';
 import { ElectronicsKnowledgeSkill } from '../negotiation/skills/electronics-knowledge.js';
 import { FaratinCoachingSkill } from '../negotiation/skills/faratin-coaching.js';
@@ -155,7 +155,7 @@ interface DemoSession {
 // ─── In-memory store ────────────────────────────────
 
 const sessions = new Map<string, DemoSession>();
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 const buddyDna = DEFAULT_BUDDY_DNA;
 const DEMO_USER_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -1028,8 +1028,8 @@ ${userMemoryPrompt}`,
       if (t.tokens) {
         session.totalTokens.prompt += t.tokens.prompt;
         session.totalTokens.completion += t.tokens.completion;
-        // Grok 4 Fast pricing: $0.20/1M input, $0.50/1M output
-        session.totalCost += (t.tokens.prompt * 0.0000002) + (t.tokens.completion * 0.0000005);
+        // DeepSeek V4 Pro pricing (cache-miss): $0.435/1M input, $0.87/1M output
+        session.totalCost += (t.tokens.prompt * 0.000000435) + (t.tokens.completion * 0.00000087);
       }
     }
 

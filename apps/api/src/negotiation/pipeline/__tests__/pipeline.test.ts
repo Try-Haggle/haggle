@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { executePipeline } from '../pipeline.js';
-import { GrokFastAdapter } from '../../adapters/grok-fast-adapter.js';
+import { DeepSeekAdapter } from '../../adapters/deepseek-adapter.js';
 import { DefaultEngineSkill } from '../../skills/default-engine-skill.js';
 import type { CoreMemory, OpponentPattern, EngineDecision, StageConfig } from '../../types.js';
 import type { PipelineDeps, UnderstandOutput } from '../types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 const skill = new DefaultEngineSkill();
 
 function makeConfig(): StageConfig {

@@ -12,7 +12,7 @@ vi.mock("@haggle/db", () => ({
   }),
 }));
 
-vi.mock("../negotiation/adapters/xai-client.js", () => ({
+vi.mock("../negotiation/adapters/deepseek-client.js", () => ({
   callLLM: callLLMMock,
 }));
 

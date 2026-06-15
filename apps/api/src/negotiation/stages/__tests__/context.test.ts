@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { assembleStageContext } from '../context.js';
-import { GrokFastAdapter } from '../../adapters/grok-fast-adapter.js';
+import { DeepSeekAdapter } from '../../adapters/deepseek-adapter.js';
 import { DefaultEngineSkill } from '../../skills/default-engine-skill.js';
 import type { CoreMemory, OpponentPattern, L5Signals } from '../../types.js';
 import { DEFAULT_BUDDY_DNA } from '../../config.js';
 
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 const skill = new DefaultEngineSkill();
 
 function makeMemory(overrides?: Partial<CoreMemory>): CoreMemory {

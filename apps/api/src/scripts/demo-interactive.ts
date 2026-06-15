@@ -5,7 +5,7 @@
  * 메시지가 프로토콜로 어떻게 변환되는지 볼 수 있습니다.
  *
  * Usage:
- *   XAI_API_KEY=xai-xxx npx tsx apps/api/src/scripts/demo-interactive.ts
+ *   DEEPSEEK_API_KEY=sk-xxx npx tsx apps/api/src/scripts/demo-interactive.ts
  *   → http://localhost:3099
  */
 
@@ -14,8 +14,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 // ─── Config ──────────────────────────────────────────────────
 
 const PORT = 3099;
-const XAI_API_BASE = 'https://api.x.ai/v1';
-const MODEL = process.env.XAI_MODEL ?? 'grok-4-fast';
+const DEEPSEEK_API_BASE = 'https://api.deepseek.com/v1';
+const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro';
 const PRICE_INPUT_PER_M = 0.20;
 const PRICE_OUTPUT_PER_M = 0.50;
 
@@ -350,7 +350,7 @@ async function callLLMIfNeeded(
   buyerPrice: number,
   buyerMessage: string,
 ): Promise<{ decision: ProtocolDecision; llmUsed: boolean; systemPrompt?: string; userPrompt?: string; rawResponse?: string; tokens?: { input: number; output: number }; latency_ms?: number }> {
-  const apiKey = process.env.XAI_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     // No API key → use rule-based only
     return { decision: skillDecision, llmUsed: false };
@@ -391,7 +391,7 @@ async function callLLMIfNeeded(
 
   try {
     const start = Date.now();
-    const resp = await fetch(`${XAI_API_BASE}/chat/completions`, {
+    const resp = await fetch(`${DEEPSEEK_API_BASE}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -511,7 +511,7 @@ async function handleRound(buyerPrice: number, buyerMessage: string): Promise<Ro
   if (llmResult.llmUsed) {
     pipeline.push({
       id: 'llm',
-      label: '🤖 LLM 보강 (Grok 4 Fast)',
+      label: '🤖 LLM 보강 (DeepSeek V4 Pro)',
       icon: '🤖',
       data: {
         system_prompt: llmResult.systemPrompt,

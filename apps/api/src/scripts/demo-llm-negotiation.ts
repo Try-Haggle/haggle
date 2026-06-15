@@ -1,12 +1,12 @@
 /**
- * Haggle LLM Demo — Grok 4 Fast 기반 AI 자동 협상
+ * Haggle LLM Demo — DeepSeek V4 Pro 기반 AI 자동 협상
  *
- * 구매자 AI와 판매자 AI가 각각 Grok 4 Fast를 호출하여 협상합니다.
+ * 구매자 AI와 판매자 AI가 각각 DeepSeek V4 Pro를 호출하여 협상합니다.
  * 모든 프롬프트, 응답, 토큰 사용량, 비용을 추적하고
  * HTML 대시보드로 출력합니다.
  *
  * Usage:
- *   XAI_API_KEY=xai-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts
+ *   DEEPSEEK_API_KEY=sk-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts
  */
 
 import { writeFileSync } from 'node:fs';
@@ -14,10 +14,10 @@ import { resolve } from 'node:path';
 
 // ─── Config ──────────────────────────────────────────────────
 
-const XAI_API_BASE = 'https://api.x.ai/v1';
-const MODEL = process.env.XAI_MODEL ?? 'grok-4-fast';
-const PRICE_INPUT_PER_M = 0.20;   // $/M input tokens
-const PRICE_OUTPUT_PER_M = 0.50;  // $/M output tokens
+const DEEPSEEK_API_BASE = 'https://api.deepseek.com/v1';
+const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro';
+const PRICE_INPUT_PER_M = 0.435;  // $/M input tokens (cache-miss)
+const PRICE_OUTPUT_PER_M = 0.87;  // $/M output tokens
 
 const ITEM = 'iPhone 15 Pro 256GB Space Black (미개봉)';
 const MARKET_PRICE = 1_050;
@@ -59,25 +59,25 @@ interface NegotiationResult {
   total_duration_ms: number;
 }
 
-// ─── xAI API Call ────────────────────────────────────────────
+// ─── DeepSeek API Call ───────────────────────────────────────
 
 function getApiKey(): string {
-  const key = process.env.XAI_API_KEY;
+  const key = process.env.DEEPSEEK_API_KEY;
   if (!key) {
-    console.error('❌ XAI_API_KEY 환경변수를 설정해주세요.');
-    console.error('   XAI_API_KEY=xai-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts');
+    console.error('❌ DEEPSEEK_API_KEY 환경변수를 설정해주세요.');
+    console.error('   DEEPSEEK_API_KEY=sk-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts');
     process.exit(1);
   }
   return key;
 }
 
-async function callGrok(
+async function callDeepSeek(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<{ content: string; usage: { prompt_tokens: number; completion_tokens: number }; latency_ms: number }> {
   const start = Date.now();
 
-  const response = await fetch(`${XAI_API_BASE}/chat/completions`, {
+  const response = await fetch(`${DEEPSEEK_API_BASE}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -97,7 +97,7 @@ async function callGrok(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(`xAI API error ${response.status}: ${text}`);
+    throw new Error(`DeepSeek API error ${response.status}: ${text}`);
   }
 
   const data = await response.json() as {
@@ -207,7 +207,7 @@ function buildUserPrompt(
 async function main() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║  🤖 Haggle LLM Demo — Grok 4 Fast 기반 AI 협상             ║
+║  🤖 Haggle LLM Demo — DeepSeek V4 Pro 기반 AI 협상         ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  📱 ${ITEM.padEnd(50)}║
 ║  📊 시장가: $${MARKET_PRICE} | 모델: ${MODEL.padEnd(30)}║
@@ -238,7 +238,7 @@ async function main() {
     let buyerLatency: number;
 
     try {
-      const resp = await callGrok(buyerSys, buyerUsr);
+      const resp = await callDeepSeek(buyerSys, buyerUsr);
       buyerRaw = resp.content;
       buyerTokens = { input: resp.usage.prompt_tokens, output: resp.usage.completion_tokens };
       buyerLatency = resp.latency_ms;
@@ -290,7 +290,7 @@ async function main() {
     let sellerLatency: number;
 
     try {
-      const resp = await callGrok(sellerSys, sellerUsr);
+      const resp = await callDeepSeek(sellerSys, sellerUsr);
       sellerRaw = resp.content;
       sellerTokens = { input: resp.usage.prompt_tokens, output: resp.usage.completion_tokens };
       sellerLatency = resp.latency_ms;
@@ -800,7 +800,7 @@ function generateDashboard(result: NegotiationResult): string {
 
 <!-- Pricing Info -->
 <div class="pricing-section">
-  <h2>💰 Grok 4 Fast 가격 정보</h2>
+  <h2>💰 DeepSeek V4 Pro 가격 정보</h2>
   <table class="pricing-table">
     <thead>
       <tr><th>항목</th><th>수량</th><th>단가</th><th>비용</th></tr>
@@ -816,13 +816,13 @@ function generateDashboard(result: NegotiationResult): string {
     </tbody>
   </table>
   <div style="margin-top:16px; font-size:13px; color:#888;">
-    <p>📋 <strong>Grok 4 Fast 가격표</strong></p>
-    <p>• Input: $0.20 / 1M tokens ($0.0002 / 1K tokens)</p>
-    <p>• Output: $0.50 / 1M tokens ($0.0005 / 1K tokens)</p>
-    <p>• Context window: 2M tokens</p>
-    <p>• Reasoning mode 사용 시: 동일 토큰 단가지만 reasoning tokens이 output으로 청구되어 실질 비용 증가</p>
-    <p style="margin-top:8px;">📊 <strong>비교</strong>: Claude Sonnet $3/$15 | GPT-4o $2.5/$10 | Grok 4 $2/$10</p>
-    <p style="color:#f39c12; margin-top:4px;">→ Grok 4 Fast는 가장 저렴한 Tier. 협상 한 건당 ~$0.001 수준.</p>
+    <p>📋 <strong>DeepSeek V4 Pro 가격표</strong></p>
+    <p>• Input (cache miss): $0.435 / 1M tokens</p>
+    <p>• Input (cache hit): $0.0028 / 1M tokens (~155x cheaper)</p>
+    <p>• Output: $0.87 / 1M tokens</p>
+    <p>• OpenAI-compatible API · JSON output · context caching 지원</p>
+    <p style="margin-top:8px;">📊 <strong>비교</strong>: Claude Sonnet $3/$15 | GPT-4o $2.5/$10 | DeepSeek V4 Pro $0.435/$0.87</p>
+    <p style="color:#f39c12; margin-top:4px;">→ 캐시 적중 시 협상 한 건당 ~$0.003 수준.</p>
   </div>
 </div>
 

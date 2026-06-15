@@ -2,7 +2,7 @@
  * Haggle 대화형 전략 빌더 + 자동 협상 데모
  *
  * 기존 인프라를 재사용:
- *  - callLLM (negotiation/adapters/xai-client) — Grok 4 Fast 호출
+ *  - callLLM (negotiation/adapters/deepseek-client) — DeepSeek V4 Pro 호출
  *  - executeRound (@haggle/engine-session) — 엔진 라운드 실행
  *  - TemplateMessageRenderer — 메시지 렌더링
  *  - negotiation-simulate 패턴 — 인메모리 시뮬레이션
@@ -14,7 +14,7 @@
  *  4) 라운드별 결과 + 메시지 표시
  *
  * Usage:
- *   source apps/api/.env && XAI_API_KEY=$XAI_API_KEY npx tsx apps/api/src/scripts/demo-strategy-builder.ts
+ *   source apps/api/.env && DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY npx tsx apps/api/src/scripts/demo-strategy-builder.ts
  *   -> http://localhost:3099
  */
 
@@ -27,8 +27,8 @@ import {
   type HnpMessage,
 } from '@haggle/engine-session';
 
-// Reuse existing xAI client
-import { callLLM, type XAICallOptions } from '../negotiation/adapters/xai-client.js';
+// Reuse existing DeepSeek client
+import { callLLM } from '../negotiation/adapters/deepseek-client.js';
 // Reuse existing message renderer
 import { TemplateMessageRenderer } from '../negotiation/rendering/message-renderer.js';
 
@@ -174,7 +174,7 @@ async function chatForStrategy(sessionId: string, userMessage: string): Promise<
     m.role === 'user' ? `사용자: ${m.content}` : `컨설턴트: ${m.content}`
   ).join('\n');
 
-  // Use existing callLLM from xai-client
+  // Use existing callLLM from deepseek-client
   const result = await callLLM(STRATEGY_SYSTEM, historyStr, { correlationId: sessionId });
 
   let parsed: { message: string; ready: boolean; strategy: StrategyParams | null };
@@ -515,9 +515,9 @@ server.listen(PORT, () => {
   Haggle 대화형 전략 빌더 + 자동 협상
   ========================================
   ${ITEM}
-  Model: ${process.env.XAI_MODEL ?? 'grok-4-fast'}
-  API Key: ${process.env.XAI_API_KEY ? 'loaded' : 'MISSING'}
-  Using: callLLM (xai-client), executeRound (engine-session)
+  Model: ${process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro'}
+  API Key: ${process.env.DEEPSEEK_API_KEY ? 'loaded' : 'MISSING'}
+  Using: callLLM (deepseek-client), executeRound (engine-session)
   http://localhost:${PORT}
   `);
 });

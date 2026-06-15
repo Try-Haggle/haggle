@@ -4,11 +4,11 @@
  * 1) 판매자(Bob) 리스팅 + 전략 미리 생성
  * 2) 구매자(Alice) 전략 생성
  * 3) 엔진(executeRound)이 양쪽 자동 협상 — 라운드별 결정
- * 4) Grok 4 Fast가 양쪽 자연어 메시지 생성
+ * 4) DeepSeek V4 Pro가 양쪽 자연어 메시지 생성
  * 5) HTML 대시보드 출력 (전략 시각화 + 라운드별 프로토콜)
  *
  * Usage:
- *   source apps/api/.env && XAI_API_KEY=$XAI_API_KEY npx tsx apps/api/src/scripts/demo-strategy-auto.ts
+ *   source apps/api/.env && DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY npx tsx apps/api/src/scripts/demo-strategy-auto.ts
  *   → docs/demo-strategy-auto.html
  */
 
@@ -24,8 +24,8 @@ import {
 
 // ─── Config ──────────────────────────────────────────────────
 
-const XAI_API_BASE = 'https://api.x.ai/v1';
-const MODEL = process.env.XAI_MODEL ?? 'grok-4-fast';
+const DEEPSEEK_API_BASE = 'https://api.deepseek.com/v1';
+const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro';
 const PRICE_INPUT_PER_M = 0.20;
 const PRICE_OUTPUT_PER_M = 0.50;
 
@@ -125,9 +125,9 @@ function createSession(role: 'BUYER' | 'SELLER', strategyId: string): Negotiatio
 // ─── LLM Message Generation ─────────────────────────────────
 
 function getApiKey(): string {
-  const key = process.env.XAI_API_KEY;
+  const key = process.env.DEEPSEEK_API_KEY;
   if (!key) {
-    console.error('❌ XAI_API_KEY 환경변수를 설정해주세요.');
+    console.error('❌ DEEPSEEK_API_KEY 환경변수를 설정해주세요.');
     process.exit(1);
   }
   return key;
@@ -164,7 +164,7 @@ Respond ONLY with JSON: {"message":"your Korean message"}`;
   const userPrompt = `${historyStr}\n\nWrite your message for: ${decision} at $${price}`;
 
   const start = Date.now();
-  const response = await fetch(`${XAI_API_BASE}/chat/completions`, {
+  const response = await fetch(`${DEEPSEEK_API_BASE}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

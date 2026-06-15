@@ -1,7 +1,7 @@
 /**
  * Text-mode LLM caller for the AI Advisor.
  *
- * The main callLLM in xai-client.ts forces JSON response_format,
+ * The main callLLM in deepseek-client.ts forces JSON response_format,
  * which is unsuitable for natural language advisor responses.
  * This module provides a text-mode variant with the same retry
  * and telemetry patterns.
@@ -22,7 +22,7 @@ interface ChatMessage {
   content: string;
 }
 
-interface XAIChatCompletion {
+interface DeepSeekChatCompletion {
   choices: Array<{
     message: { content: string };
     finish_reason: string;
@@ -33,18 +33,18 @@ interface XAIChatCompletion {
   };
 }
 
-const XAI_API_BASE = "https://api.x.ai/v1";
+const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
 const RETRY_DELAYS = [1000, 3000];
 const TIMEOUT_MS = 60_000;
 
 function getApiKey(): string {
-  const key = process.env.XAI_API_KEY;
-  if (!key) throw new Error("XAI_API_KEY not configured");
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error("DEEPSEEK_API_KEY not configured");
   return key;
 }
 
 function getModel(): string {
-  return process.env.XAI_MODEL ?? "grok-4-fast";
+  return process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
 }
 
 async function fetchWithTimeout(
@@ -66,7 +66,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Call xAI API in text mode (no response_format constraint).
+ * Call DeepSeek API in text mode (no response_format constraint).
  * Supports multi-turn conversation history.
  */
 export async function callAdvisorLLM(
@@ -89,7 +89,7 @@ export async function callAdvisorLLM(
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
       try {
         const response = await fetchWithTimeout(
-          `${XAI_API_BASE}/chat/completions`,
+          `${DEEPSEEK_API_BASE}/chat/completions`,
           {
             method: "POST",
             headers: {
@@ -104,7 +104,7 @@ export async function callAdvisorLLM(
         if (!response.ok) {
           const text = await response.text().catch(() => "");
           const err = new Error(
-            `xAI API error ${response.status}: ${text}`,
+            `DeepSeek API error ${response.status}: ${text}`,
           ) as Error & { status: number; retryable: boolean };
           err.status = response.status;
           if (
@@ -119,7 +119,7 @@ export async function callAdvisorLLM(
           throw err;
         }
 
-        const data = (await response.json()) as XAIChatCompletion;
+        const data = (await response.json()) as DeepSeekChatCompletion;
         const content = data.choices?.[0]?.message?.content ?? "";
 
         return {
@@ -134,7 +134,7 @@ export async function callAdvisorLLM(
         const retryable = (err as { retryable?: boolean }).retryable;
         if (retryable === false) throw lastError;
         if (lastError.name === "AbortError") {
-          lastError = new Error(`xAI API timeout after ${TIMEOUT_MS}ms`);
+          lastError = new Error(`DeepSeek API timeout after ${TIMEOUT_MS}ms`);
         }
         if (attempt < RETRY_DELAYS.length) {
           await sleep(RETRY_DELAYS[attempt]!);
@@ -142,12 +142,12 @@ export async function callAdvisorLLM(
       }
     }
 
-    throw lastError ?? new Error("xAI API call failed");
+    throw lastError ?? new Error("DeepSeek API call failed");
   };
 
   return withLLMTelemetry(
     {
-      service: "xai.chat",
+      service: "deepseek.chat",
       model,
       operation: "advisor-chat",
       correlationId,

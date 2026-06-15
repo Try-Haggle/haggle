@@ -2,7 +2,7 @@
  * LLM Negotiation Executor — Integration Tests
  *
  * Tests the full pipeline: executeLLMNegotiationRound() with real Step 56 modules
- * (RefereeService, DefaultEngineSkill, GrokFastAdapter, phase-machine, screening, etc.)
+ * (RefereeService, DefaultEngineSkill, DeepSeekAdapter, phase-machine, screening, etc.)
  * Only DB layer and xAI HTTP client are mocked.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -49,7 +49,7 @@ vi.mock('../services/conversation-signal-sink.js', () => ({
 }));
 
 // Mock xAI client — the only external API call
-vi.mock('../negotiation/adapters/xai-client.js', () => ({
+vi.mock('../negotiation/adapters/deepseek-client.js', () => ({
   callLLM: (...args: unknown[]) => mockCallLLM(...args),
 }));
 
@@ -353,7 +353,7 @@ describe('LLM Executor — Integration', () => {
       ]);
 
       // LLM fails with timeout
-      mockCallLLM.mockRejectedValue(new Error('XAI_TIMEOUT: request timed out'));
+      mockCallLLM.mockRejectedValue(new Error('DEEPSEEK_TIMEOUT: request timed out'));
 
       const result = await executeLLMNegotiationRound(
         db as any,

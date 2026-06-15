@@ -33,7 +33,7 @@ import type {
   ConversationTurn,
 } from '../types.js';
 import { DefaultEngineSkill } from '../skills/default-engine-skill.js';
-import { GrokFastAdapter } from '../adapters/grok-fast-adapter.js';
+import { DeepSeekAdapter } from '../adapters/deepseek-adapter.js';
 import { screenMessage } from '../screening/auto-screening.js';
 import { tryTransition, detectPhaseEvent } from '../phase/phase-machine.js';
 import { checkIntervention } from '../phase/human-intervention.js';
@@ -68,7 +68,7 @@ import type { PersistInput, PersistOutput } from './types.js';
 // ---------------------------------------------------------------------------
 
 const skill = new DefaultEngineSkill();
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 
 // Register built-in skills (once at startup)
 // HaggleEngineSkill: free default — 4D utility, Faratin curves, rule-based decisions

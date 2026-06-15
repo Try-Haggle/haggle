@@ -20,8 +20,8 @@ import { persist } from '../stages/persist.js';
 import { createSnapshot } from '../memo/memo-manager.js';
 import { resolveMemoEncoding } from '../config.js';
 
-// Token cost estimate: $0.0015 per 1K tokens (grok-fast tier)
-const USD_PER_1K_TOKENS = 0.0015;
+// Token cost estimate: ~$0.0007 per 1K tokens (deepseek-v4-pro avg of cache-miss input + output)
+const USD_PER_1K_TOKENS = 0.0007;
 
 /**
  * Execute the full 6-stage negotiation pipeline.

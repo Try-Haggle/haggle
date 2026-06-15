@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { callLLM } from '../negotiation/adapters/xai-client.js';
+import { callLLM } from '../negotiation/adapters/deepseek-client.js';
 
 // ---------------------------------------------------------------------------
 // Mock fetch
@@ -17,8 +17,8 @@ function mockFetchResponse(body: unknown, status = 200) {
 }
 
 beforeEach(() => {
-  vi.stubEnv('XAI_API_KEY', 'test-key-123');
-  vi.stubEnv('XAI_MODEL', 'grok-4-fast');
+  vi.stubEnv('DEEPSEEK_API_KEY', 'test-key-123');
+  vi.stubEnv('DEEPSEEK_MODEL', 'deepseek-v4-pro');
   vi.stubEnv('LLM_TELEMETRY', '0');
 });
 
@@ -46,10 +46,7 @@ describe('callLLM', () => {
     expect(result.reasoning_used).toBe(false);
   });
 
-  it('uses reasoning mode when flag is set', async () => {
-    // Use a non-fast model so reasoning_effort is included
-    vi.stubEnv('XAI_MODEL', 'grok-4');
-
+  it('uses reasoning mode (lower temperature) when flag is set', async () => {
     globalThis.fetch = mockFetchResponse({
       choices: [{ message: { content: '{"action":"ACCEPT","reasoning":"reasoning mode"}' }, finish_reason: 'stop' }],
       usage: { prompt_tokens: 200, completion_tokens: 100 },
@@ -59,14 +56,12 @@ describe('callLLM', () => {
 
     expect(result.reasoning_used).toBe(true);
 
-    // Verify the request body includes reasoning_effort
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse(callArgs[1].body as string);
-    expect(body.reasoning_effort).toBe('high');
-    expect(body.temperature).toBe(0.3); // reasoning temp
+    expect(body.temperature).toBe(0.3);
   });
 
-  it('uses general mode by default', async () => {
+  it('uses general mode (default temperature) by default', async () => {
     globalThis.fetch = mockFetchResponse({
       choices: [{ message: { content: '{"action":"COUNTER","reasoning":"general"}' }, finish_reason: 'stop' }],
       usage: { prompt_tokens: 100, completion_tokens: 50 },
@@ -76,8 +71,7 @@ describe('callLLM', () => {
 
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const body = JSON.parse(callArgs[1].body as string);
-    expect(body.reasoning_effort).toBeUndefined();
-    expect(body.temperature).toBe(0.5); // general temp
+    expect(body.temperature).toBe(0.5);
   });
 
   it('sends correct headers', async () => {
@@ -138,19 +132,17 @@ describe('callLLM', () => {
       text: () => Promise.resolve('Bad Request'),
     } as unknown as Response);
 
-    await expect(callLLM('system', 'user')).rejects.toThrow('xAI API error 400');
+    await expect(callLLM('system', 'user')).rejects.toThrow('DeepSeek API error 400');
     expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
   });
 
-  it('throws when XAI_API_KEY is missing', async () => {
-    vi.stubEnv('XAI_API_KEY', '');
-    // The error happens when getApiKey() is called inside callLLM
-    // We need to delete the env var entirely
-    delete process.env.XAI_API_KEY;
+  it('throws when DEEPSEEK_API_KEY is missing', async () => {
+    vi.stubEnv('DEEPSEEK_API_KEY', '');
+    delete process.env.DEEPSEEK_API_KEY;
 
     globalThis.fetch = mockFetchResponse({});
 
-    await expect(callLLM('system', 'user')).rejects.toThrow('XAI_API_KEY not configured');
+    await expect(callLLM('system', 'user')).rejects.toThrow('DEEPSEEK_API_KEY not configured');
   });
 
   it('returns empty content when choices array is empty', async () => {

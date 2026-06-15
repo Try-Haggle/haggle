@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GrokFastAdapter } from '../grok-fast-adapter.js';
+import { DeepSeekAdapter } from '../deepseek-adapter.js';
 import type { CoreMemory, RoundFact } from '../../types.js';
 
 function makeMemory(overrides: Partial<CoreMemory['session']> = {}): CoreMemory {
@@ -27,11 +27,11 @@ function makeMemory(overrides: Partial<CoreMemory['session']> = {}): CoreMemory 
   };
 }
 
-describe('GrokFastAdapter', () => {
-  const adapter = new GrokFastAdapter();
+describe('DeepSeekAdapter', () => {
+  const adapter = new DeepSeekAdapter();
 
   it('should have correct model config', () => {
-    expect(adapter.modelId).toBe('grok-fast');
+    expect(adapter.modelId).toBe('deepseek');
     expect(adapter.tier).toBe('basic');
     expect(adapter.coachingLevel()).toBe('STANDARD');
   });
