@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assembleContext,
-  compileStrategySnapshot,
+  compileNegotiationAgentSnapshot,
   executeRound,
   type MasterStrategy,
   type NegotiationSession,
@@ -10,9 +10,9 @@ import type { HnpMessage } from '../src/protocol/types.js';
 
 const listedAtMs = Date.UTC(2026, 3, 25, 12);
 
-describe('compileStrategySnapshot', () => {
+describe('compileNegotiationAgentSnapshot', () => {
   it('compiles seller playbooks into engine-native strategy parameters', () => {
-    const gatekeeper = compileStrategySnapshot({
+    const gatekeeper = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       preset: 'gatekeeper',
       listing: {
@@ -23,7 +23,7 @@ describe('compileStrategySnapshot', () => {
       },
     });
 
-    const dealmaker = compileStrategySnapshot({
+    const dealmaker = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       preset: 'dealmaker',
       listing: {
@@ -46,7 +46,7 @@ describe('compileStrategySnapshot', () => {
 
   it('produces engine-valid weights for every seller playbook', () => {
     for (const preset of ['gatekeeper', 'diplomat', 'storyteller', 'dealmaker']) {
-      const snapshot = compileStrategySnapshot({
+      const snapshot = compileNegotiationAgentSnapshot({
         role: 'SELLER',
         preset,
         listing: {
@@ -73,7 +73,7 @@ describe('compileStrategySnapshot', () => {
   });
 
   it('makes the same listing behave differently under different seller strategies', () => {
-    const gatekeeper = compileStrategySnapshot({
+    const gatekeeper = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       preset: 'gatekeeper',
       listing: {
@@ -83,7 +83,7 @@ describe('compileStrategySnapshot', () => {
         deadlineAtMs: listedAtMs + 7 * 24 * 60 * 60 * 1000,
       },
     });
-    const dealmaker = compileStrategySnapshot({
+    const dealmaker = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       preset: 'dealmaker',
       listing: {
@@ -122,7 +122,7 @@ describe('compileStrategySnapshot', () => {
       speedBias: 40,
       detailFocus: 80,
     };
-    const phone = compileStrategySnapshot({
+    const phone = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       agentStats: sharedStats,
       listing: {
@@ -132,7 +132,7 @@ describe('compileStrategySnapshot', () => {
         deadlineAtMs: listedAtMs + 4 * 24 * 60 * 60 * 1000,
       },
     });
-    const laptop = compileStrategySnapshot({
+    const laptop = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       agentStats: sharedStats,
       listing: {
@@ -162,11 +162,11 @@ describe('compileStrategySnapshot', () => {
         listedAtMs,
       },
     };
-    const shortDeadline = compileStrategySnapshot({
+    const shortDeadline = compileNegotiationAgentSnapshot({
       ...base,
       listing: { ...base.listing, deadlineAtMs: listedAtMs + 12 * 60 * 60 * 1000 },
     });
-    const longDeadline = compileStrategySnapshot({
+    const longDeadline = compileNegotiationAgentSnapshot({
       ...base,
       listing: { ...base.listing, deadlineAtMs: listedAtMs + 14 * 24 * 60 * 60 * 1000 },
     });
@@ -177,7 +177,7 @@ describe('compileStrategySnapshot', () => {
 
   it('keeps deadline math as absolute epoch milliseconds', () => {
     const deadlineAtMs = listedAtMs + 36 * 60 * 60 * 1000;
-    const snapshot = compileStrategySnapshot({
+    const snapshot = compileNegotiationAgentSnapshot({
       role: 'SELLER',
       preset: 'diplomat',
       listing: {

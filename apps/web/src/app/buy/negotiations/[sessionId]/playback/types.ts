@@ -24,7 +24,7 @@ export interface AgentCard {
   name: string;
   tagline: string;
   accentColor: string;
-  /** Required for rendering — derived from NEGOTIATION_PRESETS when missing. */
+  /** Required for rendering — derived from NEGOTIATION_AGENT_PRESETS when missing. */
   emoji?: string;
   /** @deprecated Legacy mock data only. Ignored by the renderer. */
   iconKey?: string;

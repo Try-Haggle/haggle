@@ -29,7 +29,7 @@ export type StrategyCompilerInput = {
   nowMs?: number;
 };
 
-export type CompiledStrategySnapshot = MasterStrategy & {
+export type CompiledNegotiationAgentSnapshot = MasterStrategy & {
   compiler: {
     version: 'strategy-compiler-v1';
     source: 'listing_context';
@@ -85,7 +85,7 @@ const DEFAULT_STATS: NormalizedStats = {
   detailFocus: 50,
 };
 
-export function compileStrategySnapshot(input: StrategyCompilerInput): CompiledStrategySnapshot {
+export function compileNegotiationAgentSnapshot(input: StrategyCompilerInput): CompiledNegotiationAgentSnapshot {
   const stats = normalizeAgentStats(input.agentStats, input.preset);
   const nowMs = input.nowMs ?? Date.now();
   const listedAtMs = saneMillis(input.listing.listedAtMs, nowMs);

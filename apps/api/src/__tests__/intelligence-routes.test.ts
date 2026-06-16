@@ -36,7 +36,7 @@ describe("Intelligence routes", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/intelligence/advisor-memory",
+      url: "/intelligence/negotiation-agent-builder-memory",
       payload: {
         message: "save this preference",
         memory: {
@@ -83,7 +83,7 @@ describe("Intelligence routes", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/intelligence/advisor-memory",
+      url: "/intelligence/negotiation-agent-builder-memory",
       payload: {
         user_id: "99999999-9999-4999-8999-999999999999",
         message: "대학원에서 쓸 가벼운 랩탑을 찾고 있어.",

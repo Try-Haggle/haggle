@@ -4,10 +4,10 @@
  *
  * Order, clockwise from 12 o'clock: P · T · R · S · α · β · uT · uA
  */
-import type { NegotiationPreset } from "@haggle/shared";
+import type { NegotiationAgentPreset } from "@haggle/shared";
 
 interface RadarChartProps {
-  preset: NegotiationPreset;
+  preset: NegotiationAgentPreset;
   /** Show short axis labels (P/T/R/S/α/β/uT/uA) around vertices. */
   labels?: boolean;
   /** Diameter in px. Default 250. */

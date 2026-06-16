@@ -3,7 +3,7 @@
  */
 
 import type {
-  NegotiationPresetId,
+  NegotiationAgentPresetId,
   NegotiationWeights,
 } from "../agent-presets/types.js";
 
@@ -77,14 +77,14 @@ export interface AgentPreset {
  * User-saved or preset-derived agent. Two strategy shapes coexist:
  *
  *  • Legacy 8-stat path (Q5b advanced editor) — `stats` + optional `basePresetId`.
- *  • New 4D-weight path (default flow)        — `negotiationPresetId` and/or
+ *  • New 4D-weight path (default flow)        — `negotiationAgentPresetId` and/or
  *                                                `weights` + optional `engineParams`.
  *
  * `resolveAgentToEngineParameters` (in agent-presets) takes either shape and
  * returns a complete EngineParameters object. At least one shape must be
  * populated for the agent to drive a session.
  */
-export interface AgentProfile {
+export interface NegotiationAgent {
   id: string;
   name: string;
   description?: string;
@@ -99,7 +99,7 @@ export interface AgentProfile {
 
   // ── New 4D-weight path ──────────────────────────────────────────────────
   /** Negotiation preset id ("hunter" / "closer" / "balancer") used as starting point. */
-  negotiationPresetId?: NegotiationPresetId;
+  negotiationAgentPresetId?: NegotiationAgentPresetId;
   /** 4D weight override. Takes precedence over the preset's weights when present. */
   weights?: NegotiationWeights;
   /** Per-knob overrides for the rest of EngineParameters. Weights live in `weights`. */

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { skillPresets } from "@haggle/db";
+import { negotiationAgents } from "@haggle/db";
 import { eq, or } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 
@@ -10,7 +10,7 @@ const createPresetSchema = z.object({
   displayName: z.string().min(1).max(200),
   description: z.string().max(1000).optional(),
   advisorSkillId: z.string().min(1),
-  advisorConfig: z.record(z.unknown()).optional(),
+  negotiationAgentConfig: z.record(z.unknown()).optional(),
   validatorSkills: z.array(z.string()).optional(),
 });
 
@@ -24,11 +24,11 @@ export function registerPresetRoutes(app: FastifyInstance, db: Database) {
 
       const rows = await db
         .select()
-        .from(skillPresets)
+        .from(negotiationAgents)
         .where(
           or(
-            eq(skillPresets.isSystem, true),
-            eq(skillPresets.userId, userId),
+            eq(negotiationAgents.isSystem, true),
+            eq(negotiationAgents.userId, userId),
           ),
         );
 
@@ -47,17 +47,17 @@ export function registerPresetRoutes(app: FastifyInstance, db: Database) {
         return reply.code(400).send({ error: "INVALID_PRESET", issues: parsed.error.issues });
       }
 
-      const { name, displayName, description, advisorSkillId, advisorConfig, validatorSkills } =
+      const { name, displayName, description, advisorSkillId, negotiationAgentConfig, validatorSkills } =
         parsed.data;
 
       const [inserted] = await db
-        .insert(skillPresets)
+        .insert(negotiationAgents)
         .values({
           name,
           displayName,
           description: description ?? null,
           advisorSkillId,
-          advisorConfig: advisorConfig ?? null,
+          negotiationAgentConfig: negotiationAgentConfig ?? null,
           validatorSkills: validatorSkills ?? null,
           isSystem: false,
           userId,
@@ -78,8 +78,8 @@ export function registerPresetRoutes(app: FastifyInstance, db: Database) {
 
       const [preset] = await db
         .select()
-        .from(skillPresets)
-        .where(eq(skillPresets.id, id))
+        .from(negotiationAgents)
+        .where(eq(negotiationAgents.id, id))
         .limit(1);
 
       if (!preset) {

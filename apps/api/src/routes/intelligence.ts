@@ -9,9 +9,9 @@ import {
 } from "../services/user-memory-card.service.js";
 import { replayConversationSignalSources } from "../services/conversation-signal-replay.service.js";
 import {
-  advisorMemorySaveBodySchema,
-  saveAdvisorMemorySnapshot,
-} from "../services/advisor-memory.service.js";
+  negotiationAgentBuilderMemorySaveBodySchema,
+  saveNegotiationAgentBuilderMemorySnapshot,
+} from "../services/negotiation-agent-builder-memory.service.js";
 
 const listMemoryQuerySchema = z.object({
   include_suppressed: z.coerce.boolean().optional(),
@@ -33,20 +33,20 @@ const replayBodySchema = z.object({
 });
 
 export function registerIntelligenceRoutes(app: FastifyInstance, db: Database) {
-  app.post("/intelligence/advisor-memory", { preHandler: [requireAuth] }, async (request, reply) => {
-    const parsed = advisorMemorySaveBodySchema.safeParse(request.body);
+  app.post("/intelligence/negotiation-agent-builder-memory", { preHandler: [requireAuth] }, async (request, reply) => {
+    const parsed = negotiationAgentBuilderMemorySaveBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
     }
 
     const body = parsed.data;
-    const result = await saveAdvisorMemorySnapshot(db, {
+    const result = await saveNegotiationAgentBuilderMemorySnapshot(db, {
       userId: request.user!.id,
       sessionId: body.session_id,
       agentId: body.agent_id,
       message: body.message,
       memory: body.memory,
-      surface: "advisor_memory_api",
+      surface: "negotiation_agent_builder_memory_api",
     });
 
     return reply.send(result);

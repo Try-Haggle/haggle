@@ -148,7 +148,7 @@ export async function executeStagedNegotiationRound(
       throw new Error('SESSION_EXPIRED');
     }
 
-    const maxRounds = extractNum(dbSession.strategySnapshot, 'max_rounds') ?? 15;
+    const maxRounds = extractNum(dbSession.negotiationAgentSnapshot, 'max_rounds') ?? 15;
     if (dbSession.currentRound >= maxRounds) {
       await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
         status: 'REJECTED',
@@ -203,7 +203,7 @@ export async function executeStagedNegotiationRound(
     );
 
     // Full CoreMemory with actual coaching (RefereeCoaching, needed for validator + context-assembly)
-    const memory = reconstructCoreMemory(dbSession, dbSession.strategySnapshot, coaching);
+    const memory = reconstructCoreMemory(dbSession, dbSession.negotiationAgentSnapshot, coaching);
 
     // Compute briefing (facts-only, replaces coaching in pipeline ContextOutput)
     const briefing = computeBriefing(memory, facts, opponentPattern);
@@ -269,7 +269,7 @@ export async function executeStagedNegotiationRound(
     const l5Provider = getL5SignalsProvider();
     const l5Signals = await l5Provider.getMarketSignals({
       category: 'electronics',
-      item_model: extractItemModel(dbSession.strategySnapshot),
+      item_model: extractItemModel(dbSession.negotiationAgentSnapshot),
     }).catch((err) => {
       console.warn('[executor] L5 signals fetch failed, continuing without:', (err as Error).message);
       return undefined;
@@ -650,7 +650,7 @@ async function persistHoldRound(
 // ---------------------------------------------------------------------------
 
 function buildInitialMemory(dbSession: DbSession, facts: import('../types.js').RoundFact[]): CoreMemory {
-  const strategy = dbSession.strategySnapshot;
+  const strategy = dbSession.negotiationAgentSnapshot;
   const myTarget = extractNum(strategy, 'p_target') ?? extractNum(strategy, 'target_price') ?? 0;
   const myFloor = extractNum(strategy, 'p_limit') ?? extractNum(strategy, 'floor_price') ?? 0;
   const maxRounds = extractNum(strategy, 'max_rounds') ?? 15;

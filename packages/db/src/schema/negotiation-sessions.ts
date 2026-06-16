@@ -60,7 +60,7 @@ export const negotiationSessions = pgTable(
       v_r: number;
       v_s: number;
     }>(),
-    strategySnapshot: jsonb("strategy_snapshot").$type<Record<string, unknown>>().notNull(),
+    negotiationAgentSnapshot: jsonb("negotiation_agent_snapshot").$type<Record<string, unknown>>().notNull(),
     version: integer("version").notNull().default(1),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     // LLM negotiation engine columns (Step 57)

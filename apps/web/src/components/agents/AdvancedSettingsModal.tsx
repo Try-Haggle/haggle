@@ -5,7 +5,7 @@ import {
   FIELD_DESCRIPTORS,
   fieldsByTier,
   type FieldDescriptor,
-  type NegotiationPreset,
+  type NegotiationAgentPreset,
 } from "@haggle/shared";
 
 /**
@@ -30,13 +30,13 @@ export interface AdvancedOverrides {
 
 interface AdvancedSettingsModalProps {
   open: boolean;
-  preset: NegotiationPreset;
+  preset: NegotiationAgentPreset;
   initial?: Partial<AdvancedOverrides>;
   onClose: () => void;
   onApply: (overrides: AdvancedOverrides) => void;
 }
 
-function presetToOverrides(preset: NegotiationPreset): AdvancedOverrides {
+function presetToOverrides(preset: NegotiationAgentPreset): AdvancedOverrides {
   return {
     weights: { ...preset.weights },
     alpha: preset.alpha,

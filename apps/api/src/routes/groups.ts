@@ -30,7 +30,7 @@ const addSessionSchema = z.object({
   buyer_id: z.string().uuid(),
   seller_id: z.string().uuid(),
   counterparty_id: z.string().uuid(),
-  strategy_snapshot: z.record(z.unknown()),
+  negotiation_agent_snapshot: z.record(z.unknown()),
   expires_at: z.string().datetime().optional(),
 });
 
@@ -135,7 +135,7 @@ export function registerGroupRoutes(
         buyerId: data.buyer_id,
         sellerId: data.seller_id,
         counterpartyId: data.counterparty_id,
-        strategySnapshot: data.strategy_snapshot,
+        negotiationAgentSnapshot: data.negotiation_agent_snapshot,
         groupId: group.id,
         expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
       });

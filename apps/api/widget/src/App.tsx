@@ -3,15 +3,15 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import StepIndicator from "./components/StepIndicator";
 import TagInput from "./components/TagInput";
 import ChipSelector from "./components/ChipSelector";
-import SellerStrategyChat, { buildInitialSellerMemory, type SellerStrategyMemory } from "./components/SellerStrategyChat";
+import NegotiationAgentBuilderChat, { buildInitialSellerNegotiationAgentBuilderMemory, type SellerNegotiationAgentBuilderMemory } from "./components/NegotiationAgentBuilderChat";
 import RadarChart from "./components/RadarChart";
 import {
-  NEGOTIATION_PRESETS,
+  NEGOTIATION_AGENT_PRESETS,
   LISTING_CATEGORIES,
   LISTING_CATEGORY_LABELS,
-  getNegotiationPreset,
+  getNegotiationAgentPreset,
   presetToEngineParameters,
-  type NegotiationPresetId,
+  type NegotiationAgentPresetId,
 } from "@haggle/shared";
 
 const STEPS = [{ label: "Item Details" }, { label: "Pricing" }, { label: "AI Agent" }];
@@ -73,9 +73,9 @@ export default function App() {
   const [sellingDeadline, setSellingDeadline] = useState("");
 
   // Step 3 state
-  const [selectedAgent, setSelectedAgent] = useState<NegotiationPresetId | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<NegotiationAgentPresetId | null>(null);
   const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
-  const [sellerStrategy, setSellerStrategy] = useState<SellerStrategyMemory>(buildInitialSellerMemory);
+  const [sellerNegotiationAgentBuilderMemory, setSellerNegotiationAgentBuilderMemory] = useState<SellerNegotiationAgentBuilderMemory>(buildInitialSellerNegotiationAgentBuilderMemory);
 
   // Auto-detect (vision LLM): subtype + suggested tags
   const [subtype, setSubtype] = useState<"phone" | null>(null);
@@ -158,7 +158,7 @@ export default function App() {
         }
         if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
         if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
-        const sc = draft.strategyConfig as Record<string, unknown> | undefined;
+        const sc = draft.negotiationAgentSnapshot as Record<string, unknown> | undefined;
         if (sc?.subtype === "phone") {
           setSubtype("phone");
           setAutoDetectDone(true);
@@ -216,10 +216,10 @@ export default function App() {
             if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
             if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
             if (draft.sellingDeadline) {
-              const strategyConfig = draft.strategyConfig as Record<string, unknown> | undefined;
+              const negotiationAgentSnapshot = draft.negotiationAgentSnapshot as Record<string, unknown> | undefined;
               const savedLocalDate =
-                typeof strategyConfig?.sellingDeadlineLocalDate === "string"
-                  ? strategyConfig.sellingDeadlineLocalDate
+                typeof negotiationAgentSnapshot?.sellingDeadlineLocalDate === "string"
+                  ? negotiationAgentSnapshot.sellingDeadlineLocalDate
                   : null;
               setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(draft.sellingDeadline as string)));
             }
@@ -480,7 +480,7 @@ export default function App() {
             tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
-            ...(resolvedSubtype ? { strategyConfig: { subtype: resolvedSubtype } } : {}),
+            ...(resolvedSubtype ? { negotiationAgentSnapshot: { subtype: resolvedSubtype } } : {}),
           },
         },
       });
@@ -549,7 +549,7 @@ export default function App() {
             targetPrice: targetPrice.trim(),
             floorPrice: floorPrice.trim() || undefined,
             sellingDeadline: localDateToDeadlineIso(sellingDeadline),
-            strategyConfig: baseStrategy,
+            negotiationAgentSnapshot: baseStrategy,
           },
         },
       });
@@ -1056,7 +1056,7 @@ export default function App() {
       ) : (
         /* ─── Step 3: AI Agent Setup ──────────────────────────── */
         (() => {
-          const activePreset = getNegotiationPreset(selectedAgent ?? "");
+          const activePreset = getNegotiationAgentPreset(selectedAgent ?? "");
           const activeCopy = activePreset?.copy.seller;
           const isStrategyCustomized = false; // Advanced editor wiring pending
           const formatPrice = (v: string) => {
@@ -1355,7 +1355,7 @@ export default function App() {
               <div className="step3-left">
                 {/* Agent Preset Cards (3×2 grid) */}
                 <div className="agent-grid agent-grid--four">
-                  {NEGOTIATION_PRESETS.map((agent) => {
+                  {NEGOTIATION_AGENT_PRESETS.map((agent) => {
                     const copy = agent.copy.seller;
                     return (
                       <button
@@ -1385,11 +1385,11 @@ export default function App() {
                 </div>
 
                 {/* Seller Strategy Chat */}
-                <SellerStrategyChat
+                <NegotiationAgentBuilderChat
                   agent={activePreset ?? null}
                   listingTitle={title}
                   listingPrice={targetPrice}
-                  onMemoryUpdate={setSellerStrategy}
+                  onMemoryUpdate={setSellerNegotiationAgentBuilderMemory}
                   callTool={async (name, args) => {
                     if (!app) throw new Error("App not connected");
                     return app.callServerTool({ name, arguments: args });
@@ -1489,7 +1489,7 @@ export default function App() {
                           arguments: {
                             draft_id: draftId,
                             patch: {
-                              strategyConfig: {
+                              negotiationAgentSnapshot: {
                                 ...(sellingDeadline ? deadlineStrategyConfig(sellingDeadline) : {}),
                                 preset: selectedAgent,
                                 customized: isStrategyCustomized,
@@ -1497,7 +1497,7 @@ export default function App() {
                                 derivedParams: activePreset
                                   ? presetToEngineParameters(activePreset)
                                   : undefined,
-                                sellerStrategy,
+                                sellerNegotiationAgentBuilderMemory,
                               },
                             },
                           },

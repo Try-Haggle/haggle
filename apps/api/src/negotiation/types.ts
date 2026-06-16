@@ -212,10 +212,10 @@ export interface ListingContextMemory {
 /** Per-side negotiator profile. Captures persona + advisor memory + agent
  *  weight overrides. Populated symmetrically for buyer and seller. */
 export interface StrategyContextMemory {
-  agent_preset_id?: string;
+  negotiation_agent_preset_id?: string;
   agent_weights?: Record<string, unknown>;
   agent_overrides?: Record<string, unknown>;
-  advisor_memory?: Record<string, unknown>;
+  negotiation_agent_builder_memory?: Record<string, unknown>;
 }
 
 /** 버디 DNA — 경험 패턴 */

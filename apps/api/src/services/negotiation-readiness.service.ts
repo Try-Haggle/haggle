@@ -8,7 +8,7 @@ export type NegotiationReadinessRole = "BUYER" | "SELLER";
 
 export interface NegotiationReadinessInput {
   role: NegotiationReadinessRole;
-  strategySnapshot: Record<string, unknown>;
+  negotiationAgentSnapshot: Record<string, unknown>;
   memoryBrief?: UserMemoryBrief | null;
   /** Explicit selected/listing product text when available. Falls back to strategy snapshot item/title fields. */
   selectedProductText?: string;
@@ -22,7 +22,7 @@ export interface NegotiationReadinessResult {
   reason: string | null;
   question: string | null;
   source_summary: {
-    strategy_snapshot: boolean;
+    negotiation_agent_snapshot: boolean;
     memory_cards: number;
   };
   product_identity_gate?: ProductIdentityGateResult | null;
@@ -44,7 +44,7 @@ export function evaluateNegotiationStartReadiness(
     return readyResult(input, []);
   }
 
-  const strategyFacts = flattenStrategyFacts(input.strategySnapshot);
+  const strategyFacts = flattenStrategyFacts(input.negotiationAgentSnapshot);
   const memoryFacts = flattenMemoryFacts(input.memoryBrief);
   const allFacts = [...strategyFacts, ...memoryFacts];
   const productIdentityGate = evaluateProductIdentityGate(input, strategyFacts, memoryFacts);
@@ -98,7 +98,7 @@ function readyResult(
 
 function buildSourceSummary(input: NegotiationReadinessInput): NegotiationReadinessResult["source_summary"] {
   return {
-    strategy_snapshot: Object.keys(input.strategySnapshot).length > 0,
+    negotiation_agent_snapshot: Object.keys(input.negotiationAgentSnapshot).length > 0,
     memory_cards: input.memoryBrief?.items.length ?? 0,
   };
 }

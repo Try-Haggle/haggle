@@ -150,7 +150,7 @@ export async function executeLLMNegotiationRound(
     const coaching = computeCoaching(dummyMemory, facts, opponentPattern, DEFAULT_BUDDY_DNA);
 
     // Full CoreMemory with actual coaching
-    const memory = reconstructCoreMemory(dbSession, dbSession.strategySnapshot, coaching);
+    const memory = reconstructCoreMemory(dbSession, dbSession.negotiationAgentSnapshot, coaching);
 
     // Update memory with incoming offer
     const updatedMemory: CoreMemory = {
@@ -612,7 +612,7 @@ function buildInitialMemory(
   facts: RoundFact[],
   opponentPattern: OpponentPattern | null,
 ): CoreMemory {
-  const strategy = dbSession.strategySnapshot;
+  const strategy = dbSession.negotiationAgentSnapshot;
   const myTarget = extractNum(strategy, 'p_target') ?? extractNum(strategy, 'target_price') ?? 0;
   const myFloor = extractNum(strategy, 'p_limit') ?? extractNum(strategy, 'floor_price') ?? 0;
   const maxRounds = extractNum(strategy, 'max_rounds') ?? 15;

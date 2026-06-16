@@ -97,7 +97,7 @@ function makeDbSession(overrides: Partial<DbSession> = {}): DbSession {
     roundsNoConcession: 0,
     lastOfferPriceMinor: '80000', // $800 — our last counter
     lastUtility: { u_total: 0.55, v_p: 0.45, v_t: 0.04, v_r: 0.03, v_s: 0.03 },
-    strategySnapshot: {
+    negotiationAgentSnapshot: {
       p_target: 75000, // buyer target $750
       p_limit: 95000,  // buyer floor $950
       max_rounds: 15,
@@ -417,7 +417,7 @@ describe('LLM Executor — Integration', () => {
       const session = makeDbSession({
         currentRound: 3,
         lastOfferPriceMinor: '80000',
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 75000, // buyer wants $750
           p_limit: 95000,
           max_rounds: 15,
@@ -450,7 +450,7 @@ describe('LLM Executor — Integration', () => {
       const session = makeDbSession({
         currentRound: 3,
         lastOfferPriceMinor: '80000',
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 75000,
           p_limit: 95000, // buyer floor $950; range=$200 → extreme > floor+$400
           max_rounds: 15,
@@ -480,7 +480,7 @@ describe('LLM Executor — Integration', () => {
       const session = makeDbSession({
         currentRound: 5,
         lastOfferPriceMinor: '85000', // our last counter was $850
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 75000,
           p_limit: 95000,
           max_rounds: 15,
@@ -649,7 +649,7 @@ describe('LLM Executor — Integration', () => {
         currentRound: 8,
         status: 'ACTIVE',
         lastOfferPriceMinor: '84500', // our counter at $845
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 75000,
           p_limit: 95000, // range = 20000
           max_rounds: 15,
@@ -683,7 +683,7 @@ describe('LLM Executor — Integration', () => {
         currentRound: 5,
         status: 'ACTIVE',
         lastOfferPriceMinor: '85000',
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 95000, // seller target $950
           p_limit: 75000,  // seller floor $750
           max_rounds: 15,
@@ -753,7 +753,7 @@ describe('LLM Executor — Integration', () => {
       const session = makeDbSession({
         currentRound: 3,
         lastOfferPriceMinor: '80000',
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 75000,
           p_limit: 95000,
           max_rounds: 15,
@@ -980,7 +980,7 @@ describe('LLM Executor — Integration', () => {
         currentRound: 4,
         status: 'ACTIVE',
         lastOfferPriceMinor: '85000', // seller's last counter
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 90000, // seller target $900
           p_limit: 70000,  // seller floor $700
           max_rounds: 15,
@@ -1020,7 +1020,7 @@ describe('LLM Executor — Integration', () => {
         currentRound: 5,
         status: 'ACTIVE',
         lastOfferPriceMinor: '82000',
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 75000,
           p_limit: 95000,
           max_rounds: 15,

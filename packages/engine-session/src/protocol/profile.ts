@@ -20,7 +20,7 @@ export interface HnpAuthProfile {
   jwks_uri?: string;
 }
 
-export interface HnpAgentProfile {
+export interface HnpNegotiationAgent {
   agent_id: string;
   display_name: string;
   roles: ('BUYER' | 'SELLER' | 'MEDIATOR')[];
@@ -41,7 +41,7 @@ export interface HnpWellKnownProfile {
     signature_algorithms: string[];
     settlement_modes: string[];
     auth?: HnpAuthProfile;
-    agent_profile?: HnpAgentProfile;
+    agent_profile?: HnpNegotiationAgent;
   };
 }
 
@@ -54,7 +54,7 @@ export function createHnpProfile(input: {
   signature_algorithms?: string[];
   settlement_modes?: string[];
   auth?: HnpAuthProfile;
-  agent_profile?: HnpAgentProfile;
+  agent_profile?: HnpNegotiationAgent;
   core_revisions?: HnpCoreRevision[];
   preferred_core_revision?: HnpCoreRevision;
 }): HnpWellKnownProfile {

@@ -11,10 +11,10 @@ export {
   type TimeValueWindow,
 } from './strategy/time-value.js';
 export {
-  compileStrategySnapshot,
+  compileNegotiationAgentSnapshot,
   normalizeAgentStats,
   type AgentStats,
-  type CompiledStrategySnapshot,
+  type CompiledNegotiationAgentSnapshot,
   type StrategyCompilerInput,
   type StrategyRole,
 } from './strategy/compiler.js';
@@ -225,7 +225,7 @@ export {
 // Protocol — HNP Profile & Discovery
 export type {
   HnpCapabilitySupport, HnpTransportEntry, HnpAuthProfile,
-  HnpAgentProfile, HnpWellKnownProfile,
+  HnpNegotiationAgent, HnpWellKnownProfile,
 } from './protocol/profile.js';
 export { createHnpProfile } from './protocol/profile.js';
 

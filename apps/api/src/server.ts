@@ -37,12 +37,13 @@ import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerHfmiRoutes } from "./routes/hfmi.js";
 import { registerIntelligenceRoutes } from "./routes/intelligence.js";
 import { registerIntelligenceDemoRoutes } from "./routes/intelligence-demo.js";
+import { registerNegotiationAgentRoutes } from "./routes/negotiation-agents.js";
 import { registerPresetRoutes } from "./routes/presets.js";
 import { registerBuddyRoutes } from "./routes/buddies.js";
 import { registerGamificationRoutes } from "./routes/gamification.js";
 import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
 import { registerReviewerRoutes } from "./routes/reviewer.js";
-import { registerAdvisorRoutes } from "./routes/advisor.js";
+import { registerDisputeAdvisorRoutes } from "./routes/dispute-advisor.js";
 import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerOrderRoutes } from "./routes/orders.js";
 import websocket from "@fastify/websocket";
@@ -187,6 +188,9 @@ export async function createServer() {
   registerIntelligenceRoutes(app, db);
   registerIntelligenceDemoRoutes(app, db);
 
+  // ─── Negotiation Agent Builder (production) ───────────
+  registerNegotiationAgentRoutes(app, db);
+
   // ─── Gamification Routes ───────────────────────────────
   registerPresetRoutes(app, db);
   registerBuddyRoutes(app, db);
@@ -199,7 +203,7 @@ export async function createServer() {
   registerReviewerRoutes(app, db);
 
   // ─── AI Advisor Routes ──────────────────────────────────
-  registerAdvisorRoutes(app, db);
+  registerDisputeAdvisorRoutes(app, db);
 
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);

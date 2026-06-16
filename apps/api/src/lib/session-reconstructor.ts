@@ -38,7 +38,7 @@ export interface DbSession {
   roundsNoConcession: number;
   lastOfferPriceMinor: string | null;
   lastUtility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number } | null;
-  strategySnapshot: Record<string, unknown>;
+  negotiationAgentSnapshot: Record<string, unknown>;
   version: number;
   expiresAt: Date | null;
   createdAt: Date;

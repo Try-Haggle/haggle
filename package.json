@@ -13,11 +13,14 @@
     "clean": "turbo clean",
     "typecheck": "turbo typecheck",
     "verify:migrations": "node scripts/verify-drizzle-journal.mjs",
-    "verify:db-invariants": "node scripts/verify-db-invariants.mjs"
+    "verify:db-invariants": "node scripts/verify-db-invariants.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test smoke.spec.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "next": "^15.5.0",
-    "playwright": "^1.59.1",
+    "playwright": "^1.60.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0"
   }

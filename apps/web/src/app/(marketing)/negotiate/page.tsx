@@ -178,7 +178,7 @@ export default function NegotiatePage() {
           buyer_id: BUYER_ID,
           seller_id: SELLER_ID,
           counterparty_id: SELLER_ID,
-          strategy_snapshot: buildStrategy("BUYER", strategy),
+          negotiation_agent_snapshot: buildStrategy("BUYER", strategy),
         }),
       });
       const bSession = bData.session as SessionView;
@@ -194,7 +194,7 @@ export default function NegotiatePage() {
           buyer_id: BUYER_ID,
           seller_id: SELLER_ID,
           counterparty_id: BUYER_ID,
-          strategy_snapshot: buildStrategy("SELLER", strategy),
+          negotiation_agent_snapshot: buildStrategy("SELLER", strategy),
         }),
       });
       const sSession = sData.session as SessionView;

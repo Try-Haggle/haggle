@@ -8,17 +8,19 @@ import { api } from "@/lib/api-client";
 import {
   LISTING_CATEGORIES,
   LISTING_CATEGORY_LABELS,
-  getNegotiationPreset,
-  type NegotiationPresetId,
+  getNegotiationAgentPreset,
+  type NegotiationAgentPresetId,
 } from "@haggle/shared";
 import {
   AgentBuilder,
-  type AgentBuilderValue,
+  applyChatStrategyToDraft,
+  type NegotiationAgentDraft,
 } from "../../agents/_components/AgentBuilder";
 import {
-  StrategyChat,
-  type AdvisorMemory,
-} from "@/app/l/[publicId]/strategy-chat";
+  NegotiationAgentBuilderChat,
+  type NegotiationAgentBuilderMemory,
+} from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import { createNegotiationAgent } from "@/lib/negotiation-agents-api";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -56,10 +58,10 @@ const STEP_SUBTITLES = [
 /* ─── Seller Agent Presets (4D weight system) ─────────────────
  *
  * Source of truth lives in @haggle/shared/agent-presets.
- * Step 5 uses NEGOTIATION_PRESETS + PresetGrid + StrategyRadar.
+ * Step 5 uses NEGOTIATION_AGENT_PRESETS + PresetGrid + StrategyRadar.
  */
 
-const RECOGNIZED_PRESET_IDS: NegotiationPresetId[] = [
+const RECOGNIZED_PRESET_IDS: NegotiationAgentPresetId[] = [
   "hunter",
   "closer",
   "verifier",
@@ -111,7 +113,7 @@ interface DraftData {
   targetPrice: string | null;
   floorPrice: string | null;
   sellingDeadline: string | null;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
 }
 
 /* ─── Main Wizard ─────────────────────────────────────────── */
@@ -162,11 +164,11 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
   const [floorPrice, setFloorPrice] = useState("");
   const [sellingDeadline, setSellingDeadline] = useState("");
 
-  // Step 5: Agent — all state lives in a single AgentBuilderValue.
-  const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
-  const prevAgentRef = useRef<AgentBuilderValue | null>(null);
+  // Step 5: Agent — all state lives in a single NegotiationAgentDraft.
+  const [agentValue, setAgentValue] = useState<NegotiationAgentDraft | null>(null);
+  const prevAgentRef = useRef<NegotiationAgentDraft | null>(null);
   // Strategy chat memory captured from the advisor conversation.
-  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
+  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] = useState<NegotiationAgentBuilderMemory | null>(null);
 
   // Published state
   const [publishResult, setPublishResult] = useState<{
@@ -261,15 +263,15 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
         if (d.floorPrice) setFloorPrice(String(Math.round(Number(d.floorPrice))));
         if (d.sellingDeadline) {
           const savedLocalDate =
-            typeof d.strategyConfig?.sellingDeadlineLocalDate === "string"
-              ? d.strategyConfig.sellingDeadlineLocalDate
+            typeof d.negotiationAgentSnapshot?.sellingDeadlineLocalDate === "string"
+              ? d.negotiationAgentSnapshot.sellingDeadlineLocalDate
               : null;
           setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
         }
         if (d.draftName) setDraftName(d.draftName);
-        if (d.strategyConfig?.subtype === "phone") {
+        if (d.negotiationAgentSnapshot?.subtype === "phone") {
           setSubtype("phone");
-          const pa = d.strategyConfig.phoneAnswers as Record<string, unknown> | undefined;
+          const pa = d.negotiationAgentSnapshot.phoneAnswers as Record<string, unknown> | undefined;
           if (pa) {
             if (typeof pa.batteryHealth === "string") setPhoneBatteryHealth(pa.batteryHealth);
             if (typeof pa.carrierLock === "string") setPhoneCarrierLock(pa.carrierLock);
@@ -278,10 +280,10 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
             if (pa.factoryResetConfirmed === true) setPhoneFactoryResetConfirmed(true);
           }
         }
-        if (typeof d.strategyConfig?.preset === "string") {
-          const candidate = d.strategyConfig.preset as NegotiationPresetId;
+        if (typeof d.negotiationAgentSnapshot?.preset === "string") {
+          const candidate = d.negotiationAgentSnapshot.preset as NegotiationAgentPresetId;
           if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
-            const preset = getNegotiationPreset(candidate);
+            const preset = getNegotiationAgentPreset(candidate);
             if (preset) {
               setAgentValue({
                 sourceKind: "preset",
@@ -411,16 +413,33 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
     }
     if (sellingDeadline) Object.assign(strategyBase, deadlineStrategyConfig());
     if (agentValue) {
+      const ep = agentValue.effectivePreset;
       strategyBase.preset = agentValue.basePresetId;
-      strategyBase.weights = { ...agentValue.effectivePreset.weights };
+      strategyBase.weights = { ...ep.weights };
       strategyBase.source = agentValue.sourceKind;
       strategyBase.sourceId = agentValue.sourceId;
       strategyBase.customized = !!agentValue.overrides;
+      // Full engine numbers so the negotiation + any promoted agent run off the
+      // exact tuned strategy (chat/slider edits included), not just the preset.
+      strategyBase.engineParams = {
+        alpha: ep.alpha,
+        beta: ep.beta,
+        u_threshold: ep.u_threshold,
+        u_aspiration: ep.u_aspiration,
+        anchor_ratio: ep.anchor_ratio,
+        v_t_floor: ep.v_t_floor,
+        w_rep: ep.w_rep,
+        r_score_minimum: ep.r_score_minimum,
+        i_completeness_minimum: ep.i_completeness_minimum,
+        v_s_base: ep.v_s_base,
+        n_threshold: ep.n_threshold,
+        late_round_aggression_modifier: ep.late_round_aggression_modifier,
+      };
     }
-    if (advisorMemory) {
-      strategyBase.advisorMemory = advisorMemory;
+    if (negotiationAgentBuilderMemory) {
+      strategyBase.negotiationAgentBuilderMemory = negotiationAgentBuilderMemory;
     }
-    if (Object.keys(strategyBase).length > 0) patch.strategyConfig = strategyBase;
+    if (Object.keys(strategyBase).length > 0) patch.negotiationAgentSnapshot = strategyBase;
     return patch;
   }
 
@@ -580,14 +599,14 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
 
     try {
       let ok = await patchDraft(draftId!, {
-        strategyConfig: {
+        negotiationAgentSnapshot: {
           ...(sellingDeadline ? deadlineStrategyConfig() : {}),
           preset: agentValue!.basePresetId,
           weights: { ...agentValue!.effectivePreset.weights },
           source: agentValue!.sourceKind,
           sourceId: agentValue!.sourceId,
           customized: !!agentValue!.overrides,
-          ...(advisorMemory ? { advisorMemory } : {}),
+          ...(negotiationAgentBuilderMemory ? { negotiationAgentBuilderMemory } : {}),
         },
       });
       if (!ok) return;
@@ -611,6 +630,52 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
         draft_id: draftId, public_id: data.publicId, category, condition,
         has_photo: !!photoUrl, has_floor_price: !!floorPrice, agent_preset: agentValue!.basePresetId,
       });
+
+      // Side effect: persist the configured agent into the seller's library.
+      // Failure here is non-fatal — the listing is already live. We only mint a
+      // fresh agent when the wizard customized a preset; an existing custom
+      // agent picked from the list is already in DB.
+      if (agentValue!.sourceKind === "preset" || agentValue!.overrides) {
+        const o = agentValue!.overrides;
+        try {
+          await createNegotiationAgent({
+            name: `${agentValue!.effectivePreset.copy.seller.name} · ${title || data.publicId}`,
+            role: "seller",
+            config: {
+              emoji: agentValue!.effectivePreset.emoji,
+              basePresetId: agentValue!.basePresetId,
+              negotiationAgentPresetId: agentValue!.basePresetId,
+              weights: { ...agentValue!.effectivePreset.weights },
+              builderChatMemory: negotiationAgentBuilderMemory ?? undefined,
+              ...(o
+                ? {
+                    engineParams: {
+                      alpha: o.alpha,
+                      beta: o.beta,
+                      u_threshold: o.u_threshold,
+                      u_aspiration: o.u_aspiration,
+                      anchor_ratio: o.anchor_ratio,
+                      v_t_floor: o.v_t_floor,
+                      w_rep: o.w_rep,
+                      r_score_minimum: o.r_score_minimum,
+                      i_completeness_minimum: o.i_completeness_minimum,
+                      v_s_base: o.v_s_base,
+                      n_threshold: o.n_threshold,
+                      late_round_aggression_modifier:
+                        o.late_round_aggression_modifier,
+                    },
+                  }
+                : {}),
+            },
+          });
+        } catch (saveErr) {
+          console.warn(
+            "[new-listing-wizard] post-publish agent save failed:",
+            saveErr,
+          );
+        }
+      }
+
       setPublishResult({ publicId: data.publicId!, shareUrl: data.shareUrl! });
     } finally { setSaving(false); }
   }
@@ -1337,14 +1402,23 @@ export function NewListingWizard({ userId, resumeDraftId }: { userId: string; re
               onChange={setAgentValue}
               chatSlot={
                 agentValue && (
-                  <StrategyChat
+                  <NegotiationAgentBuilderChat
                     agent={agentValue.effectivePreset}
                     listingPublicId={`listing-draft-${agentValue.basePresetId}`}
                     listingTitle={title || "this listing"}
                     listingCategory={category || null}
                     listingPrice={targetPrice || null}
+                    listingFloorPrice={floorPrice || null}
+                    listingCondition={condition || null}
+                    listingTags={tags}
+                    listingDescription={description || null}
                     role="seller"
-                    onMemoryUpdate={setAdvisorMemory}
+                    onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
+                    onStrategyUpdate={(s) =>
+                      setAgentValue((prev) =>
+                        prev ? applyChatStrategyToDraft(prev, s) : prev,
+                      )
+                    }
                   />
                 )
               }

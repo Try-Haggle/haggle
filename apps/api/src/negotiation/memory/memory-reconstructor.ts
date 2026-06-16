@@ -33,7 +33,7 @@ export interface DbSessionForMemory {
   roundsNoConcession: number;
   lastOfferPriceMinor: string | null;
   lastUtility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number } | null;
-  strategySnapshot: Record<string, unknown>;
+  negotiationAgentSnapshot: Record<string, unknown>;
   createdAt: Date;
   // LLM extension columns (nullable for backward compat)
   phase?: string | null;
@@ -136,10 +136,10 @@ export function phaseToDbStatus(
  */
 export function reconstructCoreMemory(
   dbSession: DbSessionForMemory,
-  strategySnapshot: Record<string, unknown>,
+  negotiationAgentSnapshot: Record<string, unknown>,
   coaching: RefereeCoaching,
 ): CoreMemory {
-  const strategy = strategySnapshot as Record<string, unknown>;
+  const strategy = negotiationAgentSnapshot as Record<string, unknown>;
   const role = dbSession.role.toLowerCase() as 'buyer' | 'seller';
 
   // Extract price boundaries from strategy snapshot
@@ -227,7 +227,7 @@ function extractStrategyContextMemory(
   role: 'buyer' | 'seller',
 ): StrategyContextMemory | undefined {
   const out: StrategyContextMemory = {};
-  if (typeof strategy.agent_preset_id === 'string') out.agent_preset_id = strategy.agent_preset_id;
+  if (typeof strategy.negotiation_agent_preset_id === 'string') out.negotiation_agent_preset_id = strategy.negotiation_agent_preset_id;
   if (strategy.agent_weights && typeof strategy.agent_weights === 'object') {
     out.agent_weights = strategy.agent_weights as Record<string, unknown>;
   }
@@ -235,10 +235,10 @@ function extractStrategyContextMemory(
     out.agent_overrides = strategy.agent_overrides as Record<string, unknown>;
   }
   // Side-specific advisor memory keys (set by routes/negotiations.ts).
-  const advisorKey = role === 'buyer' ? 'buyer_advisor_memory' : 'seller_advisor_memory';
+  const advisorKey = role === 'buyer' ? 'buyer_negotiation_agent_builder_memory' : 'seller_negotiation_agent_builder_memory';
   const advisor = strategy[advisorKey];
   if (advisor && typeof advisor === 'object' && !Array.isArray(advisor)) {
-    out.advisor_memory = advisor as Record<string, unknown>;
+    out.negotiation_agent_builder_memory = advisor as Record<string, unknown>;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

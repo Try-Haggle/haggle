@@ -11,7 +11,7 @@
 
 import OpenAI from "openai";
 
-export interface SellerStrategyMemory {
+export interface SellerNegotiationAgentBuilderMemory {
   dealBreakers: string[];      // 절대 안 되는 조건
   mustEmphasize: string[];     // 강조하고 싶은 부분 (e.g. "like new condition", "original box included")
   tone: "firm" | "friendly" | "flexible";
@@ -19,16 +19,16 @@ export interface SellerStrategyMemory {
   notes: string[];             // 기타 자유 메모
 }
 
-export interface SellerAdvisorInput {
+export interface SellerNegotiationAgentBuilderInput {
   message: string;
-  previousMemory: SellerStrategyMemory;
+  previousMemory: SellerNegotiationAgentBuilderMemory;
   listingTitle: string;
   listingPrice: string;
   agentPreset: string;         // e.g. "gatekeeper", "diplomat"
 }
 
-export interface SellerAdvisorResult {
-  memory: SellerStrategyMemory;
+export interface SellerNegotiationAgentBuilderResult {
+  memory: SellerNegotiationAgentBuilderMemory;
   reply: string;
 }
 
@@ -59,9 +59,9 @@ Respond with JSON:
   "reply": "..."
 }`;
 
-export async function runSellerAdvisorTurn(
-  input: SellerAdvisorInput,
-): Promise<SellerAdvisorResult> {
+export async function runSellerNegotiationAgentBuilderTurn(
+  input: SellerNegotiationAgentBuilderInput,
+): Promise<SellerNegotiationAgentBuilderResult> {
   const client = getOpenAI();
 
   const userPrompt = `Listing: "${input.listingTitle}" — asking $${input.listingPrice}
@@ -82,7 +82,7 @@ Seller says: "${input.message}"`;
     });
 
     const content = resp.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(content) as { memory?: SellerStrategyMemory; reply?: string };
+    const parsed = JSON.parse(content) as { memory?: SellerNegotiationAgentBuilderMemory; reply?: string };
 
     return {
       memory: {
@@ -102,7 +102,7 @@ Seller says: "${input.message}"`;
   }
 }
 
-export function buildInitialSellerMemory(): SellerStrategyMemory {
+export function buildInitialSellerNegotiationAgentBuilderMemory(): SellerNegotiationAgentBuilderMemory {
   return {
     dealBreakers: [],
     mustEmphasize: [],

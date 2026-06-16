@@ -48,7 +48,7 @@ export class GrokFastAdapter implements ModelAdapter {
       '2. JUSTIFY your move with one concrete signal from the LISTING (battery, scratches, storage, mileage, etc.) or your STRATEGY (urgency, dealbreakers, must-haves). One line of reasoning beats three lines of pleasantries.',
       '3. CONCEDE proportionally. If the opponent moved toward you, move toward them — by less than they did unless you have a reason. If they did NOT move, hold or move only a token amount.',
       '4. ACCEPT when the offer is at or better than your target, or when the remaining gap is small and you are running out of rounds. Do not chase the last dollar.',
-      '5. Keep messages to 1–2 short sentences. Match the tone in STRATEGY.advisor_memory.tone. Avoid filler like "How about $X?" with no reason.',
+      '5. Keep messages to 1–2 short sentences. Match the tone in STRATEGY.negotiation_agent_builder_memory.tone. Avoid filler like "How about $X?" with no reason.',
       '',
       '## Reading the compact memo',
       'In "B:t$X/f$Y/c$Z/o$W": t = YOUR target (best realistic outcome), f = YOUR floor (hard limit you must not cross), c = YOUR last offer, o = the OPPONENT\'s last offer. "HIST" lists prior rounds; "OPP_SAID" is the opponent\'s latest message; "THREAD" is the recent chat. If anything in the prose conflicts with this prompt, trust this prompt.',
@@ -357,8 +357,8 @@ function encodeStrategyContext(memory: CoreMemory): string | null {
   const sc = memory.strategy_context;
   if (!sc) return null;
   const lines: string[] = ['STRATEGY:'];
-  if (sc.agent_preset_id) lines.push(`  persona: ${sc.agent_preset_id}`);
-  const advisor = sc.advisor_memory;
+  if (sc.negotiation_agent_preset_id) lines.push(`  persona: ${sc.negotiation_agent_preset_id}`);
+  const advisor = sc.negotiation_agent_builder_memory;
   if (advisor && typeof advisor === 'object') {
     const a = advisor as Record<string, unknown>;
     const pushIfString = (label: string, v: unknown) => {

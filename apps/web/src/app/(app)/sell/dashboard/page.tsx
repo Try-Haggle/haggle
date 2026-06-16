@@ -11,7 +11,7 @@ export interface ListingSummary {
   photoUrl: string | null;
   targetPrice: string | null;
   status: string;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
   createdAt: string;
   publicId: string;
 }

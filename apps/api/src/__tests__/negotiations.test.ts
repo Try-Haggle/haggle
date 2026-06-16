@@ -50,7 +50,7 @@ const mockSession = {
   roundsNoConcession: 0,
   lastOfferPriceMinor: "10000",
   lastUtility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
-  strategySnapshot: { alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 } },
+  negotiationAgentSnapshot: { alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 } },
   version: 1,
   expiresAt: null,
   createdAt: new Date("2026-04-01"),
@@ -305,7 +305,7 @@ const VALID_SESSION_PAYLOAD = {
   buyer_id: "00000000-0000-4000-a000-000000000010",
   seller_id: "00000000-0000-4000-a000-000000000020",
   counterparty_id: "00000000-0000-4000-a000-000000000020",
-  strategy_snapshot: {
+  negotiation_agent_snapshot: {
     alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
     item: { title: "iPhone 15 Pro", category: "electronics" },
     buyer_budget: { max_budget_minor: 95000, target_price_minor: 90000 },
@@ -424,7 +424,7 @@ describe("Negotiation API", () => {
         headers: SESSION_BUYER_AUTH_HEADERS,
         payload: {
           ...VALID_SESSION_PAYLOAD,
-          strategy_snapshot: { alpha: { price: 0.4, time: 0.2 } },
+          negotiation_agent_snapshot: { alpha: { price: 0.4, time: 0.2 } },
         },
       });
 
@@ -477,7 +477,7 @@ describe("Negotiation API", () => {
         headers: SESSION_BUYER_AUTH_HEADERS,
         payload: {
           ...VALID_SESSION_PAYLOAD,
-          strategy_snapshot: { alpha: { price: 0.4, time: 0.2 } },
+          negotiation_agent_snapshot: { alpha: { price: 0.4, time: 0.2 } },
         },
       });
 
@@ -615,14 +615,14 @@ describe("Negotiation API", () => {
       expect(mockGetRoundsBySessionId).not.toHaveBeenCalled();
     });
 
-    it("does not expose strategy_snapshot (공정함)", async () => {
+    it("does not expose negotiation_agent_snapshot (공정함)", async () => {
       mockGetSessionById.mockResolvedValue(mockSession);
       const res = await app.inject({
         method: "GET",
         url: "/negotiations/sessions/sess-001",
         headers: AUTH_HEADERS,
       });
-      expect(res.json().session.strategy_snapshot).toBeUndefined();
+      expect(res.json().session.negotiation_agent_snapshot).toBeUndefined();
     });
   });
 
@@ -2080,7 +2080,7 @@ describe("Negotiation API", () => {
       expect(body.last_utility).toBeDefined();
       // Must NOT include full session data
       expect(body.id).toBeUndefined();
-      expect(body.strategy_snapshot).toBeUndefined();
+      expect(body.negotiation_agent_snapshot).toBeUndefined();
     });
   });
 

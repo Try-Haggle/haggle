@@ -229,8 +229,8 @@ export function registerPublicListingRoutes(
     }
 
     // Don't expose floorPrice, sellerId, or internal strategy details to buyers
-    const { strategyConfig, sellerId, ...publicFields } = listing;
-    const cfg = (strategyConfig as Record<string, unknown> | null) ?? {};
+    const { negotiationAgentSnapshot, sellerId, ...publicFields } = listing;
+    const cfg = (negotiationAgentSnapshot as Record<string, unknown> | null) ?? {};
 
     // Only expose the seller's agent preset name (not thresholds)
     const sellerAgentPreset = cfg.preset ?? null;

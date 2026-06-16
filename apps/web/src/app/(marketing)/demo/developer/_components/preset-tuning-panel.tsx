@@ -3,23 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   compilePresetTuningDraft,
-  getNegotiationPresets,
+  getNegotiationAgentPresets,
   savePresetTuningCandidate,
-  type NegotiationPresetId,
-  type NegotiationPresetSummary,
+  type NegotiationAgentPresetId,
+  type NegotiationAgentPresetSummary,
   type PresetLeverageDraft,
   type PresetTermDraft,
   type PresetTuningDraft,
   type PresetWalkAwayDraft,
   type StoredMemoryCard,
 } from "@/lib/intelligence-demo-api";
-import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
+import type { AdvisorListing, NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 
 type Props = {
   userId: string;
   agentId?: string;
   listing: AdvisorListing | null;
-  memory: AdvisorMemory;
+  memory: NegotiationAgentBuilderMemory;
   storedCards?: StoredMemoryCard[];
   onDraftChange?: (draft: PresetTuningDraft | null) => void;
   onCandidateSaved?: (cards: StoredMemoryCard[], summary: string) => void;
@@ -32,7 +32,7 @@ type TunedPresetCandidate = {
   score: number;
   strength: number;
   reason: string;
-  presetId: NegotiationPresetId;
+  presetId: NegotiationAgentPresetId;
   priceCapMinor?: number;
   openingOfferMinor?: number;
   checkedTermIds: Set<string>;
@@ -268,8 +268,8 @@ export function PresetTuningPanel({
   onDraftChange,
   onCandidateSaved,
 }: Props) {
-  const [presets, setPresets] = useState<NegotiationPresetSummary[]>([]);
-  const [presetId, setPresetId] = useState<NegotiationPresetId | undefined>(undefined);
+  const [presets, setPresets] = useState<NegotiationAgentPresetSummary[]>([]);
+  const [presetId, setPresetId] = useState<NegotiationAgentPresetId | undefined>(undefined);
   const [priceCapInput, setPriceCapInput] = useState("");
   const [manualPreset, setManualPreset] = useState(false);
   const [manualPriceCap, setManualPriceCap] = useState(false);
@@ -286,7 +286,7 @@ export function PresetTuningPanel({
 
   useEffect(() => {
     let cancelled = false;
-    getNegotiationPresets()
+    getNegotiationAgentPresets()
       .then((response) => {
         if (!cancelled) setPresets(response.presets);
       })
@@ -558,7 +558,7 @@ export function PresetTuningPanel({
             onChange={(event) => {
               setManualPreset(true);
               setAutoAppliedCandidateKey(null);
-              setPresetId(event.target.value as NegotiationPresetId);
+              setPresetId(event.target.value as NegotiationAgentPresetId);
             }}
             className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-white outline-none focus:border-fuchsia-400"
           >
@@ -1040,7 +1040,7 @@ function applyCandidateToDraft(
   });
 }
 
-function presetIdFromUnknown(value: unknown): NegotiationPresetId | null {
+function presetIdFromUnknown(value: unknown): NegotiationAgentPresetId | null {
   return value === "safe_buyer" || value === "balanced_closer" || value === "lowest_price" || value === "fast_close"
     ? value
     : null;

@@ -151,7 +151,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     {
       title: "Apply Patch",
       description:
-        "Update fields on an existing listing draft. IMPORTANT: Bundle ALL mentioned fields into a single call — do NOT split into multiple calls. Only call this when the user explicitly mentions specific details (title, price, condition, etc.) in the conversation, or when the widget UI sends a patch. Do NOT guess or auto-fill fields that the user has not mentioned. Allowed fields: title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, strategyConfig.",
+        "Update fields on an existing listing draft. IMPORTANT: Bundle ALL mentioned fields into a single call — do NOT split into multiple calls. Only call this when the user explicitly mentions specific details (title, price, condition, etc.) in the conversation, or when the widget UI sends a patch. Do NOT guess or auto-fill fields that the user has not mentioned. Allowed fields: title, description, tags, category, condition, photoUrl, targetPrice, floorPrice, sellingDeadline, negotiationAgentSnapshot.",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -182,7 +182,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
           targetPrice: z.string().optional(),
           floorPrice: z.string().optional(),
           sellingDeadline: z.string().datetime().optional(),
-          strategyConfig: z.record(z.unknown()).optional(),
+          negotiationAgentSnapshot: z.record(z.unknown()).optional(),
         }),
       },
       _meta: {
@@ -560,8 +560,8 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ message, previous_memory, listing_title, listing_price, agent_preset }) => {
-      const { runSellerAdvisorTurn } = await import("../../services/seller-advisor.service.js");
-      const result = await runSellerAdvisorTurn({
+      const { runSellerNegotiationAgentBuilderTurn } = await import("../../services/mcp-negotiation-agent-builder.service.js");
+      const result = await runSellerNegotiationAgentBuilderTurn({
         message,
         previousMemory: previous_memory,
         listingTitle: listing_title,
@@ -681,11 +681,11 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         const concessionBeta = params.concession_beta ?? presets.concession_beta ?? 0.6;
         const concessionK = params.concession_k ?? presets.concession_k ?? 1.2;
         const sellerStrategy = listingContext?.sellerStrategy;
-        const sellerAdvisorMemory = listingContext?.sellerAdvisorMemory;
+        const sellerNegotiationAgentBuilderMemory = listingContext?.sellerNegotiationAgentBuilderMemory;
         const sessionStrategy = sellerStrategy
           ? {
               ...sellerStrategy,
-              ...(sellerAdvisorMemory ? { seller_advisor_memory: sellerAdvisorMemory } : {}),
+              ...(sellerNegotiationAgentBuilderMemory ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory } : {}),
               buyer_requested_strategy: {
                 style: style ?? "balanced",
                 p_reservation: max_price,
@@ -757,7 +757,7 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
           buyerId: buyer_id,
           sellerId: seller_id,
           counterpartyId: sellerStrategy ? buyer_id : seller_id,
-          strategySnapshot: sessionStrategy,
+          negotiationAgentSnapshot: sessionStrategy,
           expiresAt,
         });
 

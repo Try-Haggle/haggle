@@ -36,7 +36,7 @@ export interface ListingDraft {
   targetPrice: string | null; // numeric(12,2) → string (Drizzle returns string for precision)
   floorPrice: string | null;
   sellingDeadline: Date | null;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
 }

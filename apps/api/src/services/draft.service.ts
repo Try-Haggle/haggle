@@ -3,6 +3,7 @@ import {
   type Database,
   listingDrafts,
   listingsPublished,
+  negotiationAgents,
   tags,
   eq,
   and,
@@ -32,7 +33,7 @@ const PATCHABLE_FIELDS = [
   "targetPrice",
   "floorPrice",
   "sellingDeadline",
-  "strategyConfig",
+  "negotiationAgentSnapshot",
   "currentStep",
   "draftName",
 ] as const;
@@ -150,6 +151,64 @@ function generateClaimToken(): string {
  * 2. Update draft status to "published" + set claim token
  * Returns the published record, or null if draft not found.
  */
+/** Skill id stamped on agents created by the listing builder (matches the
+ *  standalone /negotiations/agents create path). */
+const LISTING_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
+
+/**
+ * On publish, promote the listing's agent snapshot to provenance:
+ *   - returns a negotiation_agents row id when the snapshot was customized AND
+ *     the listing has an owner (so it becomes a reusable "My Agent")
+ *   - otherwise returns the preset id (string) — no duplicate row
+ *   - returns null when there is no usable snapshot
+ * The returned value is stored in listing_drafts.agent_id.
+ */
+async function persistListingAgent(
+  db: Database,
+  draft: { id: string; userId: string | null; title: string | null; negotiationAgentSnapshot: Record<string, unknown> | null },
+): Promise<string | null> {
+  const snap = draft.negotiationAgentSnapshot;
+  if (!snap) return null;
+  const presetId = typeof snap.preset === "string" ? snap.preset : null;
+  const customized = snap.customized === true;
+
+  // Unchanged preset, or guest (no owner) → just reference the preset id.
+  if (!customized || !draft.userId) {
+    return presetId;
+  }
+
+  // Customized + owned → create a reusable agent row from the snapshot.
+  const name = `${draft.title?.trim() || "Listing"} agent`;
+  const config: Record<string, unknown> = {
+    basePresetId: presetId,
+    negotiationAgentPresetId: presetId,
+    weights: snap.weights,
+    engineParams: snap.engineParams,
+    builderChatMemory: snap.negotiationAgentBuilderMemory,
+    forkedFromListing: draft.id,
+  };
+  try {
+    const [created] = await db
+      .insert(negotiationAgents)
+      .values({
+        name,
+        displayName: name,
+        description: null,
+        advisorSkillId: LISTING_BUILDER_SKILL_ID,
+        negotiationAgentConfig: config,
+        role: "seller",
+        isSystem: false,
+        userId: draft.userId,
+      })
+      .returning();
+    return created?.id ?? presetId;
+  } catch (err) {
+    // Agent promotion must NOT fail publish — fall back to preset reference.
+    console.warn(`[publish] agent promotion failed for draft ${draft.id}:`, err);
+    return presetId;
+  }
+}
+
 export async function publishDraft(db: Database, draftId: string) {
   const draft = await getDraftById(db, draftId);
   if (!draft) return null;
@@ -217,11 +276,18 @@ export async function publishDraft(db: Database, draftId: string) {
     );
   }
 
+  // Promote the listing's agent to a reusable record (slice 5).
+  //  • customized + owned → create a negotiation_agents row, reference its id
+  //  • otherwise         → reference the preset id (no duplicate row)
+  // The snapshot stays on the listing; the negotiation always runs off it.
+  const agentId = await persistListingAgent(db, draft);
+
   // Update draft status (+ claim info only if needed)
   const updateSet: Record<string, unknown> = {
     status: "published",
     updatedAt: new Date(),
   };
+  if (agentId) updateSet.agentId = agentId;
   if (claimToken) {
     updateSet.claimToken = claimToken;
     updateSet.claimExpiresAt = claimExpiresAt;
@@ -278,7 +344,7 @@ export async function getListingsByUserId(db: Database, userId: string) {
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       status: listingDrafts.status,
-      strategyConfig: listingDrafts.strategyConfig,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       createdAt: listingDrafts.createdAt,
       publicId: listingsPublished.publicId,
     })
@@ -304,7 +370,7 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
       floorPrice: listingDrafts.floorPrice,
       tags: listingDrafts.tags,
       status: listingDrafts.status,
-      strategyConfig: listingDrafts.strategyConfig,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       sellingDeadline: listingDrafts.sellingDeadline,
       createdAt: listingDrafts.createdAt,
       publicId: listingsPublished.publicId,
@@ -336,7 +402,7 @@ export async function getPublishedListingByPublicId(
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       tags: listingDrafts.tags,
-      strategyConfig: listingDrafts.strategyConfig,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       sellingDeadline: listingDrafts.sellingDeadline,
     })
     .from(listingsPublished)
@@ -349,7 +415,7 @@ export async function getPublishedListingByPublicId(
 /**
  * Lookup minimal listing summary by the internal listing_id stored on a
  * negotiation session. Returns the publicId + display fields needed by the
- * buyer-side playback view; deliberately omits floorPrice/strategyConfig.
+ * buyer-side playback view; deliberately omits floorPrice/negotiationAgentSnapshot.
  */
 export async function getListingPlaybackSummaryByInternalId(
   db: Database,
@@ -363,7 +429,7 @@ export async function getListingPlaybackSummaryByInternalId(
       category: listingDrafts.category,
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
-      sellerAgentPreset: sql<string | null>`${listingDrafts.strategyConfig}->>'preset'`,
+      sellerAgentPreset: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'preset'`,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
@@ -389,7 +455,7 @@ function buildSearchClause(q: string) {
 /**
  * List published listings for public browsing. No auth required.
  * Filters out expired drafts and listings past their sellingDeadline.
- * Returns only fields safe for public exposure (no floorPrice, strategyConfig, or sellerId).
+ * Returns only fields safe for public exposure (no floorPrice, negotiationAgentSnapshot, or sellerId).
  *
  * Cursor format is sort-aware:
  *   - newest:       sortKey = publishedAt ISO string

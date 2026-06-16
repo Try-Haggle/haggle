@@ -3,14 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  NEGOTIATION_PRESETS,
-  getNegotiationPreset,
-  type AgentProfile,
-  type NegotiationPreset,
-  type NegotiationPresetId,
+  NEGOTIATION_AGENT_PRESETS,
+  getNegotiationAgentPreset,
+  type NegotiationAgent,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
   type NegotiationWeights,
+  type ChatStrategy,
 } from "@haggle/shared";
-import { localAgents } from "@/lib/local-agents";
+import { draftNegotiationAgentStore } from "@/lib/draft-negotiation-agent-store";
 import { AgentsList } from "./AgentsList";
 import { StrategyRadar } from "@/components/agents/StrategyRadar";
 import {
@@ -22,11 +23,11 @@ type Role = "buyer" | "seller";
 
 /** Controlled value used by both the standalone page builder and embedded
  *  pickers (wizard step 5, buyer-landing). */
-export interface AgentBuilderValue {
+export interface NegotiationAgentDraft {
   sourceKind: "preset" | "custom";
   sourceId: string;
-  basePresetId: NegotiationPresetId;
-  effectivePreset: NegotiationPreset;
+  basePresetId: NegotiationAgentPresetId;
+  effectivePreset: NegotiationAgentPreset;
   overrides: AdvancedOverrides | null;
   /** True when the user has changed something since selecting this source
    *  (Advanced sliders moved, future LLM tuning, etc.). False right after
@@ -36,8 +37,8 @@ export interface AgentBuilderValue {
 
 export interface AgentBuilderProps {
   role: Role;
-  value: AgentBuilderValue | null;
-  onChange: (value: AgentBuilderValue | null) => void;
+  value: NegotiationAgentDraft | null;
+  onChange: (value: NegotiationAgentDraft | null) => void;
   /** When embedded (wizard, listing detail), hide page-level UI:
    *  Name input + Save/Cancel + page header. The picker UI stays. */
   embedded?: boolean;
@@ -54,7 +55,7 @@ export interface AgentBuilderProps {
   onDelete?: () => void;
 
   /** Optional slot rendered in the left column under the agent picker.
-   *  buyer-landing passes <StrategyChat> here so the LLM tuning sits inside
+   *  buyer-landing passes <NegotiationAgentBuilderChat> here so the LLM tuning sits inside
    *  the builder layout. Pages without listing context leave it undefined. */
   chatSlot?: React.ReactNode;
 
@@ -70,9 +71,9 @@ export interface AgentBuilderProps {
 /* ─── Helpers ─────────────────────────────────────────────── */
 
 function applyOverridesToPreset(
-  base: NegotiationPreset,
+  base: NegotiationAgentPreset,
   o: AdvancedOverrides | null,
-): NegotiationPreset {
+): NegotiationAgentPreset {
   if (!o) return base;
   return {
     ...base,
@@ -92,9 +93,43 @@ function applyOverridesToPreset(
   };
 }
 
+/**
+ * Apply a chat-produced strategy (4 weights + 4 curves) to a draft.
+ * Last-write-wins with the advanced sliders: this overwrites those 8 radar
+ * numbers and keeps the remaining tier-3 knobs from the current effective
+ * preset. Marks the draft dirty.
+ */
+export function applyChatStrategyToDraft(
+  draft: NegotiationAgentDraft,
+  strategy: ChatStrategy,
+): NegotiationAgentDraft {
+  const base = draft.effectivePreset;
+  const overrides: AdvancedOverrides = {
+    weights: { ...strategy.weights },
+    alpha: strategy.alpha,
+    beta: strategy.beta,
+    u_threshold: strategy.u_threshold,
+    u_aspiration: strategy.u_aspiration,
+    anchor_ratio: base.anchor_ratio,
+    v_t_floor: base.v_t_floor,
+    w_rep: base.w_rep,
+    r_score_minimum: base.r_score_minimum,
+    i_completeness_minimum: base.i_completeness_minimum,
+    v_s_base: base.v_s_base,
+    n_threshold: base.n_threshold,
+    late_round_aggression_modifier: base.late_round_aggression_modifier,
+  };
+  return {
+    ...draft,
+    overrides,
+    effectivePreset: applyOverridesToPreset(base, overrides),
+    dirty: true,
+  };
+}
+
 function overridesFromAgent(
-  agent: AgentProfile,
-  base: NegotiationPreset,
+  agent: NegotiationAgent,
+  base: NegotiationAgentPreset,
 ): { weights: NegotiationWeights; overrides: AdvancedOverrides | null } {
   const weights = agent.weights ? { ...agent.weights } : { ...base.weights };
   if (!agent.engineParams && !agent.weights) {
@@ -123,7 +158,7 @@ function overridesFromAgent(
   return { weights, overrides };
 }
 
-const DEFAULT_FALLBACK_PRESET = NEGOTIATION_PRESETS[3]; // balancer
+const DEFAULT_FALLBACK_PRESET = NEGOTIATION_AGENT_PRESETS[3]; // balancer
 
 /* ─── Component ───────────────────────────────────────────── */
 
@@ -154,11 +189,11 @@ export function AgentBuilder({
     if (!value || !value.overrides) return;
     const baseCopy = value.effectivePreset.copy[role];
     const finalName = saveAsName.trim() || `${baseCopy.name} (custom)`;
-    const agent = localAgents.create({
+    const agent = draftNegotiationAgentStore.create({
       name: finalName,
       role,
       emoji: value.effectivePreset.emoji,
-      negotiationPresetId: value.basePresetId,
+      negotiationAgentPresetId: value.basePresetId,
       weights: { ...value.effectivePreset.weights },
       engineParams: {
         alpha: value.overrides.alpha,
@@ -196,7 +231,7 @@ export function AgentBuilder({
   const effective = value?.effectivePreset;
   const copy = effective?.copy[role];
 
-  const handlePresetSelect = (preset: NegotiationPreset) => {
+  const handlePresetSelect = (preset: NegotiationAgentPreset) => {
     onChange({
       sourceKind: "preset",
       sourceId: preset.id,
@@ -207,10 +242,10 @@ export function AgentBuilder({
     });
   };
 
-  const handleCustomSelect = (agent: AgentProfile) => {
+  const handleCustomSelect = (agent: NegotiationAgent) => {
     const basePresetId =
-      agent.negotiationPresetId ?? DEFAULT_FALLBACK_PRESET.id;
-    const base = getNegotiationPreset(basePresetId);
+      agent.negotiationAgentPresetId ?? DEFAULT_FALLBACK_PRESET.id;
+    const base = getNegotiationAgentPreset(basePresetId);
     if (!base) return;
     const { overrides } = overridesFromAgent(agent, base);
     onChange({
@@ -225,7 +260,7 @@ export function AgentBuilder({
 
   const handleOverridesApply = (o: AdvancedOverrides) => {
     if (!value) return;
-    const base = getNegotiationPreset(value.basePresetId);
+    const base = getNegotiationAgentPreset(value.basePresetId);
     if (!base) return;
     onChange({
       ...value,
@@ -236,8 +271,8 @@ export function AgentBuilder({
     setAdvancedOpen(false);
   };
 
-  const basePresetForModal: NegotiationPreset = value
-    ? getNegotiationPreset(value.basePresetId) ?? DEFAULT_FALLBACK_PRESET
+  const basePresetForModal: NegotiationAgentPreset = value
+    ? getNegotiationAgentPreset(value.basePresetId) ?? DEFAULT_FALLBACK_PRESET
     : DEFAULT_FALLBACK_PRESET;
 
   const saveAsControl =
@@ -470,11 +505,11 @@ function LeftColumn({
   onSelectCustom,
 }: {
   role: Role;
-  value: AgentBuilderValue | null;
+  value: NegotiationAgentDraft | null;
   hidePicker?: boolean;
   chatSlot?: React.ReactNode;
-  onSelectPreset: (p: NegotiationPreset) => void;
-  onSelectCustom: (a: AgentProfile) => void;
+  onSelectPreset: (p: NegotiationAgentPreset) => void;
+  onSelectCustom: (a: NegotiationAgent) => void;
 }) {
   return (
     <>
@@ -485,7 +520,7 @@ function LeftColumn({
           selectMode={{
             selectedPresetId:
               value?.sourceKind === "preset"
-                ? (value.sourceId as NegotiationPresetId)
+                ? (value.sourceId as NegotiationAgentPresetId)
                 : null,
             selectedCustomId:
               value?.sourceKind === "custom" ? value.sourceId : null,
@@ -507,7 +542,7 @@ function RightSidebar({
   onOpenAdvanced,
 }: {
   embedded?: boolean;
-  effective?: NegotiationPreset;
+  effective?: NegotiationAgentPreset;
   hasOverrides: boolean;
   onOpenAdvanced: () => void;
 }) {

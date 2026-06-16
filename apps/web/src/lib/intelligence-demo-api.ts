@@ -1,5 +1,5 @@
 import { api } from "./api-client";
-import type { AdvisorListing, AdvisorMemory } from "./advisor-demo-types";
+import type { AdvisorListing, NegotiationAgentBuilderMemory } from "./negotiation-agent-builder-types";
 
 const DEMO_OPTS = { skipAuth: true } as const;
 
@@ -15,7 +15,7 @@ export type StoredMemoryCard = {
   updated_at: string;
 };
 
-export type SaveAdvisorMemoryResponse = {
+export type SaveNegotiationAgentBuilderMemoryResponse = {
   user_id: string;
   session_id: string;
   source_message_id: string;
@@ -59,14 +59,14 @@ export type TagGardenIntelligenceSnapshot = {
   signals: TagGardenSignal[];
 };
 
-export type AnalyzeAdvisorTurnResponse = {
+export type ProcessNegotiationAgentBuilderTurnResponse = {
   user_id: string;
   agent_id?: string;
-  memory: AdvisorMemory;
+  memory: NegotiationAgentBuilderMemory;
   reply: string;
   reasoning_summary?: string;
   advisor_plan?: AdvisorCandidatePlan;
-  turn_cost?: AdvisorTurnCost;
+  turn_cost?: NegotiationAgentBuilderTurnCost;
 };
 
 export type AdvisorDemoListingsResponse = {
@@ -103,7 +103,7 @@ export type AdvisorCandidatePlan = {
   };
 };
 
-export type AdvisorTurnCost = {
+export type NegotiationAgentBuilderTurnCost = {
   model: string;
   tokens: {
     prompt: number;
@@ -117,7 +117,7 @@ export type AdvisorTurnCost = {
   };
 };
 
-export type NegotiationPresetId = "safe_buyer" | "balanced_closer" | "lowest_price" | "fast_close";
+export type NegotiationAgentPresetId = "safe_buyer" | "balanced_closer" | "lowest_price" | "fast_close";
 
 export type PresetTermDraft = {
   termId: string;
@@ -187,7 +187,7 @@ export type PresetEngineReview = {
 
 export type PresetTuningDraft = {
   draftId: string;
-  presetId: NegotiationPresetId;
+  presetId: NegotiationAgentPresetId;
   presetLabel: string;
   listing: {
     id: string;
@@ -231,22 +231,22 @@ export type SavePresetTuningCandidateResponse = {
   memory_cards: StoredMemoryCard[];
 };
 
-export type NegotiationPresetSummary = {
-  id: NegotiationPresetId;
+export type NegotiationAgentPresetSummary = {
+  id: NegotiationAgentPresetId;
   label: string;
   concessionSpeed: "slow" | "medium" | "fast";
   riskTolerance: "low" | "medium" | "high";
   notes: string[];
 };
 
-export async function analyzeAdvisorTurn(params: {
+export async function processNegotiationAgentBuilderTurn(params: {
   userId?: string;
   agentId: string;
   message: string;
-  previousMemory: AdvisorMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
   listings: AdvisorListing[];
-}): Promise<AnalyzeAdvisorTurnResponse> {
-  return api.post<AnalyzeAdvisorTurnResponse>(
+}): Promise<ProcessNegotiationAgentBuilderTurnResponse> {
+  return api.post<ProcessNegotiationAgentBuilderTurnResponse>(
     "/intelligence/demo/advisor-turn",
     {
       user_id: params.userId,
@@ -284,14 +284,14 @@ export async function getAdvisorDemoListings(params: {
   );
 }
 
-export async function saveAdvisorMemory(params: {
+export async function saveNegotiationAgentBuilderMemory(params: {
   userId?: string;
   sessionId?: string;
   agentId: string;
   message: string;
-  memory: AdvisorMemory;
-}): Promise<SaveAdvisorMemoryResponse> {
-  return api.post<SaveAdvisorMemoryResponse>(
+  memory: NegotiationAgentBuilderMemory;
+}): Promise<SaveNegotiationAgentBuilderMemoryResponse> {
+  return api.post<SaveNegotiationAgentBuilderMemoryResponse>(
     "/intelligence/demo/advisor-memory",
     {
       user_id: params.userId,
@@ -307,7 +307,7 @@ export async function saveAdvisorMemory(params: {
 export async function getDemoMemoryCards(userId?: string): Promise<{
   user_id: string;
   cards: StoredMemoryCard[];
-  advisor_memory: AdvisorMemory | null;
+  advisor_memory: NegotiationAgentBuilderMemory | null;
 }> {
   const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
   return api.get(`/intelligence/demo/memory${query}`, DEMO_OPTS);
@@ -320,14 +320,14 @@ export async function getTagGardenIntelligence(limit = 8): Promise<TagGardenInte
   );
 }
 
-export async function getNegotiationPresets(): Promise<{ presets: NegotiationPresetSummary[] }> {
-  return api.get("/intelligence/demo/negotiation-presets", DEMO_OPTS);
+export async function getNegotiationAgentPresets(): Promise<{ presets: NegotiationAgentPresetSummary[] }> {
+  return api.get("/intelligence/demo/negotiation-agent-presets", DEMO_OPTS);
 }
 
 export async function compilePresetTuningDraft(params: {
   listing: AdvisorListing;
-  memory?: AdvisorMemory | null;
-  presetId?: NegotiationPresetId;
+  memory?: NegotiationAgentBuilderMemory | null;
+  presetId?: NegotiationAgentPresetId;
   priceCapMinor?: number;
 }): Promise<{ draft: PresetTuningDraft }> {
   return api.post(

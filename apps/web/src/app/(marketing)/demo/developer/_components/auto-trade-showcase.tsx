@@ -8,7 +8,7 @@ import {
   type AncientBeingId,
   type Expression,
 } from "./negotiation-avatar-coach";
-import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
+import type { AdvisorListing, NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 
 type DemoState =
   | "IDLE"
@@ -52,7 +52,7 @@ type AutoTradeShowcaseProps = {
   buyerAncientId: AncientBeingId;
   sellerAncientId: AncientBeingId;
   listing: AdvisorListing | null;
-  buyerMemory: AdvisorMemory | null;
+  buyerMemory: NegotiationAgentBuilderMemory | null;
   autoTradeRunning: boolean;
   startBlockedReason?: string | null;
   onRunAutoTrade: () => void;
@@ -311,7 +311,7 @@ function buildConversation(
   buyerAgent: AncientBeing,
   sellerAgent: AncientBeing,
   listing: AdvisorListing,
-  buyerMemory: AdvisorMemory | null,
+  buyerMemory: NegotiationAgentBuilderMemory | null,
 ): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
   const hilMemory = initResponse?.hil_memory;

@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  StrategyChat,
+  NegotiationAgentBuilderChat,
   loadSelectedAgentId,
-  type AdvisorMemory,
-} from "./strategy-chat";
+  type NegotiationAgentBuilderMemory,
+} from "./negotiation-agent-builder-chat";
 import {
   AgentBuilder,
-  type AgentBuilderValue,
+  applyChatStrategyToDraft,
+  type NegotiationAgentDraft,
 } from "@/app/(app)/sell/agents/_components/AgentBuilder";
 import { Nav } from "@/components/nav";
 import { useAmplitude } from "@/providers/amplitude-provider";
@@ -113,8 +114,8 @@ const ORIGIN_HREF: Record<Origin, string> = {
 
 export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
   const { track } = useAmplitude();
-  const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
-  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
+  const [agentValue, setAgentValue] = useState<NegotiationAgentDraft | null>(null);
+  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] = useState<NegotiationAgentBuilderMemory | null>(null);
   const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
@@ -353,13 +354,22 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
               value={agentValue}
               onChange={setAgentValue}
               chatSlot={
-                <StrategyChat
+                <NegotiationAgentBuilderChat
                   agent={selectedAgent}
                   listingPublicId={listing.publicId}
                   listingTitle={listing.title}
                   listingCategory={listing.category}
                   listingPrice={listing.targetPrice}
-                  onMemoryUpdate={setAdvisorMemory}
+                  listingCondition={listing.condition}
+                  listingTags={listing.tags ?? undefined}
+                  listingDescription={listing.description}
+                  role="buyer"
+                  onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
+                  onStrategyUpdate={(s) =>
+                    setAgentValue((prev) =>
+                      prev ? applyChatStrategyToDraft(prev, s) : prev,
+                    )
+                  }
                 />
               }
             />
@@ -395,20 +405,39 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                       setNegotiationMessage("Briefing your agent…");
 
                       try {
-                        const res = await api.post<{ session_id: string }>(
+                        const res = await api.post<{
+                          session_id: string;
+                          guest_buyer_id?: string;
+                        }>(
                           "/negotiations/start",
                           {
                             listing_public_id: listing.publicId,
-                            agent_preset_id: selectedAgent.id,
+                            negotiation_agent_preset_id: selectedAgent.id,
                             agent_weights: agentValue?.effectivePreset.weights,
                             agent_overrides: agentValue?.overrides ?? undefined,
-                            advisor_memory: advisorMemory ?? undefined,
+                            negotiation_agent_builder_memory: negotiationAgentBuilderMemory ?? undefined,
                           },
                         );
+                        // Stash guest buyer id for the post-signup claim step.
+                        // Logged-in callers never receive guest_buyer_id back,
+                        // so the localStorage write is a no-op for them.
+                        if (res.guest_buyer_id) {
+                          try {
+                            const KEY = "haggle:guest-buyer-ids";
+                            const raw = window.localStorage.getItem(KEY);
+                            const list: string[] = raw ? JSON.parse(raw) : [];
+                            if (!list.includes(res.guest_buyer_id)) {
+                              list.push(res.guest_buyer_id);
+                              window.localStorage.setItem(KEY, JSON.stringify(list));
+                            }
+                          } catch {
+                            // localStorage full or disabled — fall through.
+                          }
+                        }
                         track("Negotiation Started", {
                           public_id: listing.publicId,
                           agent_preset: selectedAgent.id,
-                          has_advisor_memory: !!advisorMemory,
+                          has_negotiation_agent_builder_memory: !!negotiationAgentBuilderMemory,
                         });
                         window.location.href = `/buy/negotiations/${res.session_id}`;
                       } catch (err) {

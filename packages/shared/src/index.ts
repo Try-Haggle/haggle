@@ -20,3 +20,6 @@ export * from "./agent-stats/index.js";
 // ─── Negotiation Presets (3-preset default flow, advanced 8-stat is the
 //     other path — see docs/wip/협상엔진-에이전트-업데이트-계획-2026-05-09.md) ────
 export * from "./agent-presets/index.js";
+
+// ─── Agent Builder (unified builder state — see agent-builder-unified-design) ──
+export * from "./agent-builder/index.js";

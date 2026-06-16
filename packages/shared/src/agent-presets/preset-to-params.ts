@@ -1,5 +1,5 @@
 /**
- * NegotiationPreset → EngineParameters.
+ * NegotiationAgentPreset → EngineParameters.
  *
  * Option C (2026-05-12): presets declare 16 of 17 EngineParameters fields.
  * w_info is derived as 1 - w_rep. Only the 3 market-awareness fields stay
@@ -7,7 +7,7 @@
  */
 
 import type { EngineParameters } from "../agent-stats/types.js";
-import type { NegotiationPreset } from "./types.js";
+import type { NegotiationAgentPreset } from "./types.js";
 
 /** Market-awareness defaults shared by every preset. LLM tuning may override per agent. */
 const MARKET_NEUTRAL_DEFAULTS = {
@@ -16,9 +16,9 @@ const MARKET_NEUTRAL_DEFAULTS = {
   cross_pressure_sensitivity: 0.5,
 } as const;
 
-/** Convert a NegotiationPreset to a complete EngineParameters object. */
+/** Convert a NegotiationAgentPreset to a complete EngineParameters object. */
 export function presetToEngineParameters(
-  preset: NegotiationPreset,
+  preset: NegotiationAgentPreset,
 ): EngineParameters {
   return {
     weights: { ...preset.weights },

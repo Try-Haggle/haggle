@@ -14,7 +14,7 @@ export interface ListingDetail {
   floorPrice: string | null;
   tags: string[] | null;
   status: string;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
   sellingDeadline: string | null;
   createdAt: string;
   publicId: string;

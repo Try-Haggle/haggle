@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { NegotiationPreset } from "@haggle/shared";
+import type { NegotiationAgentPreset } from "@haggle/shared";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
-export interface SellerStrategyMemory {
+export interface SellerNegotiationAgentBuilderMemory {
   dealBreakers: string[];
   mustEmphasize: string[];
   tone: "firm" | "friendly" | "flexible";
@@ -17,17 +17,17 @@ interface ChatMessage {
   text: string;
 }
 
-interface SellerStrategyChatProps {
-  agent: NegotiationPreset | null;
+interface NegotiationAgentBuilderChatProps {
+  agent: NegotiationAgentPreset | null;
   listingTitle: string;
   listingPrice: string;
-  onMemoryUpdate: (memory: SellerStrategyMemory) => void;
+  onMemoryUpdate: (memory: SellerNegotiationAgentBuilderMemory) => void;
   callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 
-export function buildInitialSellerMemory(): SellerStrategyMemory {
+export function buildInitialSellerNegotiationAgentBuilderMemory(): SellerNegotiationAgentBuilderMemory {
   return {
     dealBreakers: [],
     mustEmphasize: [],
@@ -37,7 +37,7 @@ export function buildInitialSellerMemory(): SellerStrategyMemory {
   };
 }
 
-function buildGreeting(agent: NegotiationPreset | null, title: string): string {
+function buildGreeting(agent: NegotiationAgentPreset | null, title: string): string {
   const name = agent?.copy.seller.name ?? "your agent";
   return (
     `I'll help configure **${name}** for negotiating **${title}**.\n\n` +
@@ -100,7 +100,7 @@ const CHIP_COLORS: Record<ChipCategory, { bg: string; border: string; color: str
   urgency:     { bg: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.25)", color: "#fbbf24" },
 };
 
-function extractChips(memory: SellerStrategyMemory): Chip[] {
+function extractChips(memory: SellerNegotiationAgentBuilderMemory): Chip[] {
   const chips: Chip[] = [];
   for (const d of memory.dealBreakers) chips.push({ label: `🚫 ${d}`, category: "dealBreaker" });
   for (const e of memory.mustEmphasize) chips.push({ label: `✨ ${e}`, category: "emphasize" });
@@ -117,15 +117,15 @@ function extractChips(memory: SellerStrategyMemory): Chip[] {
 
 /* ─── Component ───────────────────────────────────────────── */
 
-export default function SellerStrategyChat({
+export default function NegotiationAgentBuilderChat({
   agent,
   listingTitle,
   listingPrice,
   onMemoryUpdate,
   callTool,
-}: SellerStrategyChatProps) {
+}: NegotiationAgentBuilderChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [memory, setMemory] = useState<SellerStrategyMemory>(buildInitialSellerMemory);
+  const [memory, setMemory] = useState<SellerNegotiationAgentBuilderMemory>(buildInitialSellerNegotiationAgentBuilderMemory);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -144,7 +144,7 @@ export default function SellerStrategyChat({
         text: buildGreeting(agent, listingTitle),
       },
     ]);
-    setMemory(buildInitialSellerMemory());
+    setMemory(buildInitialSellerNegotiationAgentBuilderMemory());
   }, [agent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll chat to bottom
@@ -174,7 +174,7 @@ export default function SellerStrategyChat({
 
       const r = raw as Record<string, unknown> | undefined;
       // structuredContent or parse from content text
-      let result: { memory?: SellerStrategyMemory; reply?: string } = {};
+      let result: { memory?: SellerNegotiationAgentBuilderMemory; reply?: string } = {};
       if (r?.structuredContent) {
         result = r.structuredContent as typeof result;
       } else {
@@ -182,7 +182,7 @@ export default function SellerStrategyChat({
         if (textContent) result = JSON.parse(textContent);
       }
 
-      const updatedMemory: SellerStrategyMemory = {
+      const updatedMemory: SellerNegotiationAgentBuilderMemory = {
         dealBreakers: result.memory?.dealBreakers ?? memory.dealBreakers,
         mustEmphasize: result.memory?.mustEmphasize ?? memory.mustEmphasize,
         tone: result.memory?.tone ?? memory.tone,

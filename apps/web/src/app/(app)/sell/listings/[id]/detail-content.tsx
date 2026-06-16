@@ -101,7 +101,7 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
     ? `$${Number(listing.targetPrice).toLocaleString()}`
     : "\u2014";
 
-  const agentPreset = listing.strategyConfig?.preset as string | undefined;
+  const agentPreset = listing.negotiationAgentSnapshot?.preset as string | undefined;
   const agentLabel = agentPreset
     ? agentPreset.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : null;

@@ -1,5 +1,5 @@
 /**
- * §4-5 검증 — 4 NEGOTIATION_PRESETS produce *differentiated* outcomes when
+ * §4-5 검증 — 4 NEGOTIATION_AGENT_PRESETS produce *differentiated* outcomes when
  * driven through the engine-core utility/decision/Faratin functions.
  *
  * Same scenario in → 4 visibly different decisions/counter-offers out. If
@@ -16,16 +16,16 @@ import {
   type DecisionAction,
 } from "@haggle/engine-core";
 import {
-  NEGOTIATION_PRESETS,
-  getNegotiationPreset,
+  NEGOTIATION_AGENT_PRESETS,
+  getNegotiationAgentPreset,
   presetToEngineParameters,
-  type NegotiationPreset,
+  type NegotiationAgentPreset,
 } from "../../index.js";
 
 /** Scenario: seller listing $1000 target, $1500 walk-away ceiling, buyer
  *  offered $1200 at the 12-hour mark of a 24-hour deadline. Trust + info
  *  signals moderate. */
-function makeContext(preset: NegotiationPreset): NegotiationContext {
+function makeContext(preset: NegotiationAgentPreset): NegotiationContext {
   const params = presetToEngineParameters(preset);
   return {
     weights: params.weights,
@@ -55,7 +55,7 @@ function makeContext(preset: NegotiationPreset): NegotiationContext {
   };
 }
 
-function decisionFor(preset: NegotiationPreset): {
+function decisionFor(preset: NegotiationAgentPreset): {
   utility: ReturnType<typeof computeUtility>;
   decision: ReturnType<typeof makeDecision>;
 } {
@@ -75,16 +75,16 @@ function decisionFor(preset: NegotiationPreset): {
 
 describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
   it("u_total differs across all four presets (no two identical)", () => {
-    const utilities = NEGOTIATION_PRESETS.map((p) =>
+    const utilities = NEGOTIATION_AGENT_PRESETS.map((p) =>
       decisionFor(p).utility.u_total.toFixed(4),
     );
     const unique = new Set(utilities);
-    expect(unique.size).toBe(NEGOTIATION_PRESETS.length);
+    expect(unique.size).toBe(NEGOTIATION_AGENT_PRESETS.length);
   });
 
   it("Hunter resists time pressure (high v_t) more than Closer", () => {
-    const hunter = decisionFor(getNegotiationPreset("hunter")!);
-    const closer = decisionFor(getNegotiationPreset("closer")!);
+    const hunter = decisionFor(getNegotiationAgentPreset("hunter")!);
+    const closer = decisionFor(getNegotiationAgentPreset("closer")!);
     // Hunter has alpha=0.5 (calm under deadline) and v_t_floor=0.7 (holds firm).
     // Closer has alpha=2.0 (anxious) and v_t_floor=0.3 (crumbles).
     // At t=12h of 24h, Hunter's v_t should stay high while Closer's drops.
@@ -92,8 +92,8 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
   });
 
   it("Hunter is strictly pickier than Closer (higher u_threshold)", () => {
-    const hunter = presetToEngineParameters(getNegotiationPreset("hunter")!);
-    const closer = presetToEngineParameters(getNegotiationPreset("closer")!);
+    const hunter = presetToEngineParameters(getNegotiationAgentPreset("hunter")!);
+    const closer = presetToEngineParameters(getNegotiationAgentPreset("closer")!);
     expect(hunter.u_threshold).toBeGreaterThan(closer.u_threshold);
     expect(hunter.u_aspiration).toBeGreaterThan(closer.u_aspiration);
   });
@@ -104,14 +104,14 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
       p_limit: 1500,
       t: 12 * 3600 * 1000,
       T: 24 * 3600 * 1000,
-      beta: getNegotiationPreset("hunter")!.beta,
+      beta: getNegotiationAgentPreset("hunter")!.beta,
     });
     const closerCounter = computeCounterOffer({
       p_start: 1000,
       p_limit: 1500,
       t: 12 * 3600 * 1000,
       T: 24 * 3600 * 1000,
-      beta: getNegotiationPreset("closer")!.beta,
+      beta: getNegotiationAgentPreset("closer")!.beta,
     });
     // At the midpoint, Hunter (beta=0.4, slow) should still be near p_start;
     // Closer (beta=2.0, conceder) should be closer to p_limit.
@@ -120,9 +120,9 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
 
   it("Verifier requires more trust than Closer (r_score_minimum)", () => {
     const verifier = presetToEngineParameters(
-      getNegotiationPreset("verifier")!,
+      getNegotiationAgentPreset("verifier")!,
     );
-    const closer = presetToEngineParameters(getNegotiationPreset("closer")!);
+    const closer = presetToEngineParameters(getNegotiationAgentPreset("closer")!);
     expect(verifier.r_score_minimum).toBeGreaterThan(closer.r_score_minimum);
     expect(verifier.i_completeness_minimum).toBeGreaterThan(
       closer.i_completeness_minimum,
@@ -131,7 +131,7 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
 
   it("u_aspiration ordering matches preset intent", () => {
     const u_asp = (id: string) =>
-      presetToEngineParameters(getNegotiationPreset(id)!).u_aspiration;
+      presetToEngineParameters(getNegotiationAgentPreset(id)!).u_aspiration;
     // Verifier most demanding to ACCEPT, Closer most lenient.
     expect(u_asp("verifier")).toBeGreaterThan(u_asp("hunter"));
     expect(u_asp("hunter")).toBeGreaterThan(u_asp("balancer"));
@@ -146,7 +146,7 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
       "NEAR_DEAL",
       "ESCALATE",
     ];
-    for (const preset of NEGOTIATION_PRESETS) {
+    for (const preset of NEGOTIATION_AGENT_PRESETS) {
       const { decision } = decisionFor(preset);
       expect(validActions).toContain(decision.action);
     }
@@ -154,7 +154,7 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
 
   it("scenario summary — humans can eyeball the differences", () => {
     // Logged for manual review when running with --reporter=verbose.
-    const summary = NEGOTIATION_PRESETS.map((p) => {
+    const summary = NEGOTIATION_AGENT_PRESETS.map((p) => {
       const { utility, decision } = decisionFor(p);
       return {
         preset: p.id,

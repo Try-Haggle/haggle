@@ -1,4 +1,4 @@
-export type AdvisorMemory = {
+export type NegotiationAgentBuilderMemory = {
   categoryInterest: string;
   /** User-facing dollars captured from advisor chat, converted at API boundaries. */
   budgetMax?: number;

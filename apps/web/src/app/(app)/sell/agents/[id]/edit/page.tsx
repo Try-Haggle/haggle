@@ -3,20 +3,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  getNegotiationPreset,
-  type AgentProfile,
+  getNegotiationAgentPreset,
+  type NegotiationAgent,
 } from "@haggle/shared";
-import { localAgents } from "@/lib/local-agents";
+import {
+  deleteNegotiationAgent,
+  getNegotiationAgent,
+  rowToNegotiationAgent,
+  updateNegotiationAgent,
+  type NegotiationAgentConfig,
+} from "@/lib/negotiation-agents-api";
+import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import {
   AgentBuilder,
-  type AgentBuilderValue,
+  applyChatStrategyToDraft,
+  type NegotiationAgentDraft,
 } from "../../_components/AgentBuilder";
 import type { AdvancedOverrides } from "@/components/agents/AdvancedSettingsModal";
-import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
+import { NegotiationAgentBuilderChat } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 
-function agentToBuilderValue(agent: AgentProfile): AgentBuilderValue | null {
-  const basePresetId = agent.negotiationPresetId ?? "balancer";
-  const base = getNegotiationPreset(basePresetId);
+function agentToBuilderValue(agent: NegotiationAgent): NegotiationAgentDraft | null {
+  const basePresetId = agent.negotiationAgentPresetId ?? "balancer";
+  const base = getNegotiationAgentPreset(basePresetId);
   if (!base) return null;
   const weights = agent.weights ? { ...agent.weights } : { ...base.weights };
   const overrides: AdvancedOverrides = {
@@ -68,22 +76,37 @@ function agentToBuilderValue(agent: AgentProfile): AgentBuilderValue | null {
 export default function EditAgentPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const [agent, setAgent] = useState<AgentProfile | null | undefined>(undefined);
-  const [value, setValue] = useState<AgentBuilderValue | null>(null);
+  const [agent, setAgent] = useState<NegotiationAgent | null | undefined>(undefined);
+  const [value, setValue] = useState<NegotiationAgentDraft | null>(null);
   const [name, setName] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [initialName, setInitialName] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [builderChatMemory, setBuilderChatMemory] =
+    useState<NegotiationAgentBuilderMemory | null>(null);
 
-  // Load the agent on mount
+  // Load the agent on mount.
   useEffect(() => {
     if (!params?.id) return;
-    const found = localAgents.get(params.id);
-    setAgent(found ?? null);
-    if (found) {
-      setValue(agentToBuilderValue(found));
-      setName(found.name);
-      setInitialName(found.name);
-    }
+    let cancelled = false;
+    (async () => {
+      const row = await getNegotiationAgent(params.id);
+      if (cancelled) return;
+      const found = row ? rowToNegotiationAgent(row) : null;
+      setAgent(found ?? null);
+      if (found) {
+        setValue(agentToBuilderValue(found));
+        setName(found.name);
+        setInitialName(found.name);
+        const stored = row?.negotiationAgentConfig?.builderChatMemory;
+        if (stored && typeof stored === "object") {
+          setBuilderChatMemory(stored as unknown as NegotiationAgentBuilderMemory);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [params?.id]);
 
   const role = (agent?.role === "buyer" ? "buyer" : "seller") as
@@ -91,22 +114,24 @@ export default function EditAgentPage() {
     | "seller";
   const backHref = role === "buyer" ? "/buy/agents" : "/sell/agents";
 
-  // Augment dirty: name change should also count
-  const augmentedValue = useMemo<AgentBuilderValue | null>(() => {
+  // Augment dirty: name change should also count.
+  const augmentedValue = useMemo<NegotiationAgentDraft | null>(() => {
     if (!value) return value;
     const nameChanged = name.trim() !== initialName.trim();
     return { ...value, dirty: value.dirty || nameChanged };
   }, [value, name, initialName]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!agent || !augmentedValue) return;
     setSaving(true);
+    setError(null);
     const o = augmentedValue.overrides;
-    localAgents.update(agent.id, {
-      name: name.trim() || agent.name,
+    const config: NegotiationAgentConfig = {
       emoji: augmentedValue.effectivePreset.emoji,
-      negotiationPresetId: augmentedValue.basePresetId,
+      basePresetId: augmentedValue.basePresetId,
+      negotiationAgentPresetId: augmentedValue.basePresetId,
       weights: { ...augmentedValue.effectivePreset.weights },
+      builderChatMemory: builderChatMemory ?? undefined,
       engineParams: o
         ? {
             alpha: o.alpha,
@@ -123,15 +148,29 @@ export default function EditAgentPage() {
             late_round_aggression_modifier: o.late_round_aggression_modifier,
           }
         : undefined,
-    });
-    router.push(backHref);
+    };
+    try {
+      await updateNegotiationAgent(agent.id, {
+        name: name.trim() || agent.name,
+        config,
+      });
+      router.push(backHref);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save agent");
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!agent) return;
     if (!confirm(`Delete "${agent.name}"? This cannot be undone.`)) return;
-    localAgents.delete(agent.id);
-    router.push(backHref);
+    setError(null);
+    try {
+      await deleteNegotiationAgent(agent.id);
+      router.push(backHref);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete agent");
+    }
   };
 
   if (agent === undefined) {
@@ -160,32 +199,45 @@ export default function EditAgentPage() {
   }
 
   return (
-    <AgentBuilder
-      role={role}
-      value={augmentedValue}
-      onChange={setValue}
-      hidePicker
-      pageTitle="Edit Agent"
-      pageSubtitle="Customize this agent's negotiation behavior. Changes apply to future listings using this agent."
-      saveLabel="Save Changes"
-      name={name}
-      onNameChange={setName}
-      onSave={handleSave}
-      onDelete={handleDelete}
-      saving={saving}
-      backHref={backHref}
-      chatSlot={
-        augmentedValue && (
-          <StrategyChat
-            agent={augmentedValue.effectivePreset}
-            listingPublicId={`agent-edit-${agent.id}`}
-            listingTitle="General negotiation strategy"
-            listingCategory={null}
-            listingPrice={null}
-            role={role}
-          />
-        )
-      }
-    />
+    <>
+      {error && (
+        <div className="mx-auto mb-4 max-w-[1100px] px-4 sm:px-6">
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        </div>
+      )}
+      <AgentBuilder
+        role={role}
+        value={augmentedValue}
+        onChange={setValue}
+        hidePicker
+        pageTitle="Edit Agent"
+        pageSubtitle="Customize this agent's negotiation behavior. Changes apply to future listings using this agent."
+        saveLabel="Save Changes"
+        name={name}
+        onNameChange={setName}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        saving={saving}
+        backHref={backHref}
+        chatSlot={
+          augmentedValue && (
+            <NegotiationAgentBuilderChat
+              agent={augmentedValue.effectivePreset}
+              listingPublicId={`agent-edit-${agent.id}`}
+              listingTitle="General negotiation strategy"
+              listingCategory={null}
+              listingPrice={null}
+              role={role}
+              onNegotiationAgentBuilderMemoryUpdate={setBuilderChatMemory}
+              onStrategyUpdate={(s) =>
+                setValue((prev) => (prev ? applyChatStrategyToDraft(prev, s) : prev))
+              }
+            />
+          )
+        }
+      />
+    </>
   );
 }

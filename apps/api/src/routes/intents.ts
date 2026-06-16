@@ -81,7 +81,7 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
       role,
       category,
       keywords,
-      strategySnapshot: strategy,
+      negotiationAgentSnapshot: strategy,
       minUtotal: min_u_total != null ? String(min_u_total) : undefined,
       maxActiveSessions: max_active_sessions,
       expiresAt,
@@ -205,7 +205,7 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
       role: row.role as "BUYER" | "SELLER",
       category: row.category,
       keywords: row.keywords as string[],
-      strategy: row.strategySnapshot as unknown as WaitingIntent["strategy"],
+      strategy: row.negotiationAgentSnapshot as unknown as WaitingIntent["strategy"],
       minUtotal: Number(row.minUtotal),
       maxActiveSessions: row.maxActiveSessions,
       currentActiveSessions: 0, // Caller would provide real count; MVP simplification

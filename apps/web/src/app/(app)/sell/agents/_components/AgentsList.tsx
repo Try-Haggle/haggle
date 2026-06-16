@@ -3,12 +3,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  NEGOTIATION_PRESETS,
-  type AgentProfile,
-  type NegotiationPreset,
-  type NegotiationPresetId,
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgent,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
 } from "@haggle/shared";
-import { localAgents, LOCAL_AGENTS_UPDATED_EVENT } from "@/lib/local-agents";
+import {
+  deleteNegotiationAgent,
+  listNegotiationAgents,
+  rowToNegotiationAgent,
+} from "@/lib/negotiation-agents-api";
 import { WeightRadar } from "@/components/agents/WeightRadar";
 
 type Role = "buyer" | "seller";
@@ -16,10 +20,10 @@ type Role = "buyer" | "seller";
 /** Optional selection mode — used when this list is embedded in a wizard or
  *  modal where a card click should pick the agent instead of navigating. */
 export interface AgentsListSelectMode {
-  selectedPresetId?: NegotiationPresetId | null;
+  selectedPresetId?: NegotiationAgentPresetId | null;
   selectedCustomId?: string | null;
-  onSelectPreset: (preset: NegotiationPreset) => void;
-  onSelectCustom: (agent: AgentProfile) => void;
+  onSelectPreset: (preset: NegotiationAgentPreset) => void;
+  onSelectCustom: (agent: NegotiationAgent) => void;
 }
 
 interface AgentsListProps {
@@ -35,32 +39,37 @@ export function AgentsList({
   embedded = false,
   selectMode,
 }: AgentsListProps) {
-  const [customs, setCustoms] = useState<AgentProfile[]>([]);
+  const [customs, setCustoms] = useState<NegotiationAgent[]>([]);
   const newHref = role === "buyer" ? "/buy/agents/new" : "/sell/agents/new";
   const inSelectMode = !!selectMode;
 
   useEffect(() => {
-    const reload = () => {
-      const all = localAgents.list();
-      setCustoms(
-        all.filter((a) => !a.role || a.role === role || a.role === "both"),
-      );
-    };
-    reload();
-    if (typeof window === "undefined") return;
-    window.addEventListener(LOCAL_AGENTS_UPDATED_EVENT, reload);
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await listNegotiationAgents(role);
+        if (cancelled) return;
+        setCustoms(rows.filter((r) => !r.isSystem).map(rowToNegotiationAgent));
+      } catch {
+        if (!cancelled) setCustoms([]);
+      }
+    })();
     return () => {
-      window.removeEventListener(LOCAL_AGENTS_UPDATED_EVENT, reload);
+      cancelled = true;
     };
   }, [role]);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Delete this agent? This cannot be undone.")) return;
-    localAgents.delete(id);
-    setCustoms((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await deleteNegotiationAgent(id);
+      setCustoms((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete agent");
+    }
   };
 
-  const handlePresetClick = (preset: NegotiationPreset, e: React.MouseEvent) => {
+  const handlePresetClick = (preset: NegotiationAgentPreset, e: React.MouseEvent) => {
     if (selectMode) {
       e.preventDefault();
       selectMode.onSelectPreset(preset);
@@ -112,7 +121,7 @@ export function AgentsList({
         <div
           className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${embedded ? "" : "lg:grid-cols-4"}`}
         >
-          {NEGOTIATION_PRESETS.map((preset) => {
+          {NEGOTIATION_AGENT_PRESETS.map((preset) => {
             const copy = preset.copy[role];
             const isSelected =
               selectMode?.selectedPresetId === preset.id &&

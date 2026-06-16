@@ -13,7 +13,7 @@ export type TagRequirementSlot = {
   answerOptions?: string[];
 };
 
-export type AdvisorMemoryForRequirements = {
+export type NegotiationAgentBuilderMemoryForRequirements = {
   categoryInterest: string;
   budgetMax?: number;
   mustHave: string[];
@@ -205,7 +205,7 @@ export function resolveTagGardenQuestionForSlot(
 }
 
 export function buildAdvisorRequirementPlan(input: {
-  memory: AdvisorMemoryForRequirements;
+  memory: NegotiationAgentBuilderMemoryForRequirements;
   listings: ListingForRequirements[];
 }): TagRequirementPlan {
   const matchedTags = resolveMatchedTags(input.memory, input.listings);
@@ -250,7 +250,7 @@ export function formatTagRequirementPlanForPrompt(plan: TagRequirementPlan): str
 }
 
 function resolveMatchedTags(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   listings: ListingForRequirements[],
 ): string[] {
   const memoryText = [
@@ -289,7 +289,7 @@ function listingMatchesMemoryIntent(listing: ListingForRequirements, memoryText:
     .some((term) => listingText.includes(term));
 }
 
-function memorySatisfiesSlot(memory: AdvisorMemoryForRequirements, slot: TagRequirementSlot): boolean {
+function memorySatisfiesSlot(memory: NegotiationAgentBuilderMemoryForRequirements, slot: TagRequirementSlot): boolean {
   if (slot.slotId === "shopping_intent") return hasShoppingIntent(memory.categoryInterest);
   if (slot.slotId === "max_budget") return Boolean(memory.budgetMax);
 
@@ -319,7 +319,7 @@ type ProductScope = {
 };
 
 function getHardSlotScopeMismatch(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope | null,
 ): { memoryScope: ProductScope; activeScope: ProductScope } | null {
@@ -341,7 +341,7 @@ function getHardSlotScopeMismatch(
 }
 
 function activeScopeSatisfiesSlot(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope,
 ): boolean {
@@ -358,7 +358,7 @@ function activeScopeSatisfiesSlot(
 }
 
 function hasScopedConditionRejection(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope,
 ): boolean {
@@ -368,10 +368,10 @@ function hasScopedConditionRejection(
 }
 
 function latestScopedConditionDecision(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope,
-): NonNullable<NonNullable<AdvisorMemoryForRequirements["structured"]>["scopedConditionDecisions"]>[number] | null {
+): NonNullable<NonNullable<NegotiationAgentBuilderMemoryForRequirements["structured"]>["scopedConditionDecisions"]>[number] | null {
   return memory.structured?.scopedConditionDecisions
     ?.slice()
     .reverse()
@@ -409,7 +409,7 @@ function slotSatisfiedByText(text: string, slot: TagRequirementSlot): boolean {
 }
 
 function resolveActiveProductScope(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   listings: ListingForRequirements[],
 ): ProductScope | null {
   for (const line of [...memory.source].reverse()) {

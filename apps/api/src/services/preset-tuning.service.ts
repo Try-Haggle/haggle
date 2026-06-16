@@ -1,8 +1,8 @@
-export type NegotiationPresetId = "safe_buyer" | "balanced_closer" | "lowest_price" | "fast_close";
+export type NegotiationAgentPresetId = "safe_buyer" | "balanced_closer" | "lowest_price" | "fast_close";
 
 export type TermEnforcement = "hard" | "soft" | "deal_breaker";
 
-export type AdvisorMemoryLike = {
+export type NegotiationAgentBuilderMemoryLike = {
   categoryInterest?: string;
   budgetMax?: number;
   targetPrice?: number;
@@ -56,7 +56,7 @@ export type TagTermRequirement = {
   label: string;
   enforcement: TermEnforcement;
   question: string;
-  appliesToPresets: NegotiationPresetId[];
+  appliesToPresets: NegotiationAgentPresetId[];
   defaultImportance: "low" | "medium" | "high";
   evidenceSource: "listing" | "memory" | "user" | "seller_reply";
 };
@@ -138,7 +138,7 @@ export type PresetListingSnapshot = {
 
 export type PresetTuningDraft = {
   draftId: string;
-  presetId: NegotiationPresetId;
+  presetId: NegotiationAgentPresetId;
   presetLabel: string;
   listing: PresetListingSnapshot;
   priceCapMinor: number;
@@ -154,7 +154,7 @@ export type PresetTuningDraft = {
   sourceBadges: Array<"listing" | "memory" | "preset" | "tag">;
   negotiationStartPayload: {
     listing: PresetListingSnapshot;
-    preset_id: NegotiationPresetId;
+    preset_id: NegotiationAgentPresetId;
     price_cap_minor: number;
     opening_offer_minor: number;
     tuning_draft: {
@@ -177,7 +177,7 @@ export type PresetTuningDraft = {
 };
 
 type PresetConfig = {
-  id: NegotiationPresetId;
+  id: NegotiationAgentPresetId;
   label: string;
   openingMultiplier: number;
   concessionSpeed: PresetTuningDraft["concessionSpeed"];
@@ -185,7 +185,7 @@ type PresetConfig = {
   notes: string[];
 };
 
-const PRESETS: Record<NegotiationPresetId, PresetConfig> = {
+const PRESETS: Record<NegotiationAgentPresetId, PresetConfig> = {
   safe_buyer: {
     id: "safe_buyer",
     label: "Safe Buyer",
@@ -373,8 +373,8 @@ const MACBOOK_TERMS: TagTermRequirement[] = [
 
 export function compilePresetTuningDraft(params: {
   listing: PresetListingInput;
-  memory?: AdvisorMemoryLike | null;
-  presetId?: NegotiationPresetId;
+  memory?: NegotiationAgentBuilderMemoryLike | null;
+  presetId?: NegotiationAgentPresetId;
   priceCapMinor?: number;
 }): PresetTuningDraft {
   const listing = params.listing;
@@ -453,7 +453,7 @@ export function compilePresetTuningDraft(params: {
   };
 }
 
-export function listNegotiationPresets() {
+export function listNegotiationAgentPresets() {
   return Object.values(PRESETS).map((preset) => ({
     id: preset.id,
     label: preset.label,
@@ -463,14 +463,14 @@ export function listNegotiationPresets() {
   }));
 }
 
-function presetFromMemory(memory: AdvisorMemoryLike): NegotiationPresetId {
+function presetFromMemory(memory: NegotiationAgentBuilderMemoryLike): NegotiationAgentPresetId {
   if (memory.riskStyle === "safe_first" || memory.negotiationStyle === "defensive") return "safe_buyer";
   if (memory.riskStyle === "lowest_price" || memory.negotiationStyle === "aggressive") return "lowest_price";
   if (memory.openingTactic === "speed_close") return "fast_close";
   return "balanced_closer";
 }
 
-function normalizeCap(priceCapMinor: number | undefined, memory: AdvisorMemoryLike, listing: PresetListingInput): number {
+function normalizeCap(priceCapMinor: number | undefined, memory: NegotiationAgentBuilderMemoryLike, listing: PresetListingInput): number {
   if (priceCapMinor && Number.isFinite(priceCapMinor) && priceCapMinor > 0) return priceCapMinor;
   if (memory.budgetMax && Number.isFinite(memory.budgetMax) && memory.budgetMax > 0) return Math.round(memory.budgetMax * 100);
   return Math.max(1, Math.min(listing.askPriceMinor, listing.marketMedianMinor ?? listing.askPriceMinor));
@@ -478,7 +478,7 @@ function normalizeCap(priceCapMinor: number | undefined, memory: AdvisorMemoryLi
 
 function resolveTerms(
   listing: PresetListingInput,
-  presetId: NegotiationPresetId,
+  presetId: NegotiationAgentPresetId,
   facts: ReturnType<typeof listingFacts>,
   memoryFacts: string,
 ): PresetTermDraft[] {
@@ -544,7 +544,7 @@ function observedConfirmedValue(
   }
 }
 
-function elevateEnforcement(term: TagTermRequirement, presetId: NegotiationPresetId): TermEnforcement {
+function elevateEnforcement(term: TagTermRequirement, presetId: NegotiationAgentPresetId): TermEnforcement {
   if (presetId === "safe_buyer" && term.enforcement === "soft" && term.defaultImportance === "high") return "hard";
   if (presetId === "fast_close" && term.enforcement === "soft") return "soft";
   return term.enforcement;
@@ -552,10 +552,10 @@ function elevateEnforcement(term: TagTermRequirement, presetId: NegotiationPrese
 
 function resolveLeverage(
   listing: PresetListingInput,
-  memory: AdvisorMemoryLike,
+  memory: NegotiationAgentBuilderMemoryLike,
   facts: ReturnType<typeof listingFacts>,
   memoryFacts: string,
-  presetId: NegotiationPresetId,
+  presetId: NegotiationAgentPresetId,
 ): PresetLeverageDraft[] {
   const leverage: PresetLeverageDraft[] = [];
   const preferredBattery = preferredBatteryMin(memoryFacts);
@@ -642,7 +642,7 @@ function resolveWalkAway(
   listing: PresetListingInput,
   facts: ReturnType<typeof listingFacts>,
   memoryFacts: string,
-  presetId: NegotiationPresetId,
+  presetId: NegotiationAgentPresetId,
 ): PresetWalkAwayDraft[] {
   const strict = presetId === "safe_buyer";
   const walkAway: PresetWalkAwayDraft[] = [
@@ -697,7 +697,7 @@ function resolveWalkAway(
 
 function buildEngineReview(
   listing: PresetListingInput,
-  memory: AdvisorMemoryLike,
+  memory: NegotiationAgentBuilderMemoryLike,
   terms: PresetTermDraft[],
   facts: ReturnType<typeof listingFacts>,
 ): PresetEngineReview {
@@ -803,7 +803,7 @@ function buildEngineReview(
 
 function productScopeConflict(
   listing: PresetListingInput,
-  memory: AdvisorMemoryLike,
+  memory: NegotiationAgentBuilderMemoryLike,
 ): { reason: string; question: string } | null {
   const listingKind = listingProductKind(listing);
   if (!listingKind) return null;
@@ -841,7 +841,7 @@ function textProductKind(text: string): "iphone" | "macbook" | null {
   return null;
 }
 
-function collectAmbiguousSlots(memory: AdvisorMemoryLike): string[] {
+function collectAmbiguousSlots(memory: NegotiationAgentBuilderMemoryLike): string[] {
   const structured = memory.structured;
   const slots = [
     ...(structured?.pendingSlots ?? [])
@@ -946,7 +946,7 @@ function dedupeActions(actions: PresetEngineReview["nextActions"]): PresetEngine
 
 function resolveStrategyNotes(
   preset: PresetConfig,
-  memory: AdvisorMemoryLike,
+  memory: NegotiationAgentBuilderMemoryLike,
   facts: ReturnType<typeof listingFacts>,
   memoryFacts: string,
 ): string[] {
@@ -958,7 +958,7 @@ function resolveStrategyNotes(
   return notes.slice(0, 6);
 }
 
-function clampOffer(rawOpening: number, listing: PresetListingInput, cap: number, presetId: NegotiationPresetId): number {
+function clampOffer(rawOpening: number, listing: PresetListingInput, cap: number, presetId: NegotiationAgentPresetId): number {
   const floor = Math.max(1, Math.min(listing.floorPriceMinor ?? Math.round(listing.askPriceMinor * 0.55), listing.askPriceMinor));
   const minimum = presetId === "lowest_price" ? Math.round(floor * 0.92) : Math.round(floor * 0.98);
   return Math.max(1, Math.min(cap, listing.askPriceMinor, Math.max(minimum, rawOpening)));
@@ -1005,7 +1005,7 @@ function clampCycleCount(value: number): number | null {
   return value;
 }
 
-function memoryText(memory: AdvisorMemoryLike): string {
+function memoryText(memory: NegotiationAgentBuilderMemoryLike): string {
   const structured = memory.structured;
   const scoped = structured?.productRequirements
     ? Object.entries(structured.productRequirements)
@@ -1026,7 +1026,7 @@ function memoryText(memory: AdvisorMemoryLike): string {
     .toLowerCase();
 }
 
-function memoryHasUsefulSignals(memory: AdvisorMemoryLike): boolean {
+function memoryHasUsefulSignals(memory: NegotiationAgentBuilderMemoryLike): boolean {
   return Boolean(
     memory.categoryInterest
       || memory.budgetMax
@@ -1093,11 +1093,11 @@ function preferredBatteryMin(memoryFacts: string): number | null {
   return value && value >= 1 && value <= 100 ? value : null;
 }
 
-function batteryImpact(delta: number, presetId: NegotiationPresetId): number {
+function batteryImpact(delta: number, presetId: NegotiationAgentPresetId): number {
   const perPoint = presetId === "lowest_price" ? 450 : 300;
   return Math.min(8000, Math.max(1500, Math.round(delta * perPoint)));
 }
 
-function makeDraftId(listing: PresetListingInput, presetId: NegotiationPresetId, cap: number): string {
+function makeDraftId(listing: PresetListingInput, presetId: NegotiationAgentPresetId, cap: number): string {
   return `draft_${listing.id}_${presetId}_${cap}`.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 96);
 }

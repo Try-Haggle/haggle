@@ -8,7 +8,7 @@ const optionalPositiveIntSchema = z.preprocess(
   z.number().int().positive().optional(),
 );
 
-const structuredAdvisorMemorySchema = z.object({
+const structuredNegotiationAgentBuilderMemorySchema = z.object({
   activeIntent: z.object({
     productScope: z.string().optional(),
     source: z.string().optional(),
@@ -114,7 +114,7 @@ const structuredAdvisorMemorySchema = z.object({
   }).optional(),
 }).default({});
 
-export const advisorMemorySchema = z.object({
+export const negotiationAgentBuilderMemorySchema = z.object({
   categoryInterest: z.string().min(1),
   budgetMax: optionalPositiveIntSchema,
   targetPrice: optionalPositiveIntSchema,
@@ -125,19 +125,19 @@ export const advisorMemorySchema = z.object({
   openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]),
   questions: z.array(z.string()).default([]),
   source: z.array(z.string()).default([]),
-  structured: structuredAdvisorMemorySchema.optional(),
+  structured: structuredNegotiationAgentBuilderMemorySchema.optional(),
 });
 
-export type AdvisorMemory = z.infer<typeof advisorMemorySchema>;
+export type NegotiationAgentBuilderMemory = z.infer<typeof negotiationAgentBuilderMemorySchema>;
 
-export const advisorMemorySaveBodySchema = z.object({
+export const negotiationAgentBuilderMemorySaveBodySchema = z.object({
   session_id: z.string().uuid().optional(),
   agent_id: z.string().min(1).optional(),
   message: z.string().min(1).max(2000),
-  memory: advisorMemorySchema,
+  memory: negotiationAgentBuilderMemorySchema,
 });
 
-type AdvisorMemoryCard = {
+type NegotiationAgentBuilderMemoryCard = {
   cardType: "preference" | "constraint" | "pricing" | "style" | "trust" | "interest";
   memoryKey: string;
   summary: string;
@@ -145,14 +145,14 @@ type AdvisorMemoryCard = {
   strength: number;
 };
 
-export async function saveAdvisorMemorySnapshot(
+export async function saveNegotiationAgentBuilderMemorySnapshot(
   db: Database,
   input: {
     userId: string;
     sessionId?: string;
     agentId?: string;
     message: string;
-    memory: AdvisorMemory;
+    memory: NegotiationAgentBuilderMemory;
     surface: string;
   },
 ) {
@@ -172,12 +172,12 @@ export async function saveAdvisorMemorySnapshot(
     },
   });
 
-  if (hasAdvisorActiveIntentSwitch(input.memory)) {
-    await staleActiveAdvisorMemoryCards(db, input.userId);
+  if (hasNegotiationAgentBuilderActiveIntentSwitch(input.memory)) {
+    await staleActiveNegotiationAgentBuilderMemoryCards(db, input.userId);
   }
 
-  const cards = buildAdvisorMemoryCards(input.memory);
-  const storedCards = await upsertAdvisorMemoryCards(db, {
+  const cards = buildNegotiationAgentBuilderMemoryCards(input.memory);
+  const storedCards = await upsertNegotiationAgentBuilderMemoryCards(db, {
     userId: input.userId,
     sourceMessageId,
     cards,
@@ -197,27 +197,27 @@ export async function saveAdvisorMemorySnapshot(
   };
 }
 
-function hasAdvisorActiveIntentSwitch(memory: AdvisorMemory): boolean {
+function hasNegotiationAgentBuilderActiveIntentSwitch(memory: NegotiationAgentBuilderMemory): boolean {
   return memory.source.some((item) => /active intent switched/i.test(item));
 }
 
-function buildAdvisorMemoryCards(memory: AdvisorMemory): AdvisorMemoryCard[] {
-  const normalizedMemory = normalizeAdvisorBudgetMemory(memory, {
+function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilderMemory): NegotiationAgentBuilderMemoryCard[] {
+  const normalizedMemory = normalizeNegotiationAgentBuilderBudgetMemory(memory, {
     latestMessage: memory.source.join(" "),
   });
-  const promotionGate = buildPromotedAdvisorMemory(normalizedMemory);
-  const promotedLongTerm = sanitizeLongTermAdvisorMemory(normalizedMemory.structured?.longTermMemory);
+  const promotionGate = buildPromotedNegotiationAgentBuilderMemory(normalizedMemory);
+  const promotedLongTerm = sanitizeLongTermNegotiationAgentBuilderMemory(normalizedMemory.structured?.longTermMemory);
   const promotedGlobalFacts = promotedLongTerm?.globalFacts ?? [];
   const hasStructuredPromotionGate = Boolean(normalizedMemory.structured?.longTermMemory);
-  const cards: AdvisorMemoryCard[] = [
+  const cards: NegotiationAgentBuilderMemoryCard[] = [
     {
       cardType: "interest",
       memoryKey: "advisor:category_interest",
       summary: `Interested in ${normalizedMemory.categoryInterest}`,
       memory: {
         categoryInterest: normalizedMemory.categoryInterest,
-        source: promotionGate.source.length > 0 ? promotionGate.source : ["advisor_memory"],
-        ...(normalizedMemory.structured ? { structured: buildPersistableStructuredAdvisorMemory(normalizedMemory.structured) } : {}),
+        source: promotionGate.source.length > 0 ? promotionGate.source : ["negotiation_agent_builder_memory"],
+        ...(normalizedMemory.structured ? { structured: buildPersistableStructuredNegotiationAgentBuilderMemory(normalizedMemory.structured) } : {}),
       },
       strength: 0.65,
     },
@@ -285,12 +285,12 @@ function buildAdvisorMemoryCards(memory: AdvisorMemory): AdvisorMemoryCard[] {
   return cards;
 }
 
-function buildPromotedAdvisorMemory(memory: AdvisorMemory): {
+function buildPromotedNegotiationAgentBuilderMemory(memory: NegotiationAgentBuilderMemory): {
   source: string[];
   mustHave: string[];
   avoid: string[];
 } {
-  const longTerm = sanitizeLongTermAdvisorMemory(memory.structured?.longTermMemory);
+  const longTerm = sanitizeLongTermNegotiationAgentBuilderMemory(memory.structured?.longTermMemory);
   if (!longTerm) {
     return {
       source: memory.source,
@@ -325,10 +325,10 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
 }
 
-function buildPersistableStructuredAdvisorMemory(
-  structured: NonNullable<AdvisorMemory["structured"]>,
-): NonNullable<AdvisorMemory["structured"]> {
-  const longTermMemory = sanitizeLongTermAdvisorMemory(structured.longTermMemory);
+function buildPersistableStructuredNegotiationAgentBuilderMemory(
+  structured: NonNullable<NegotiationAgentBuilderMemory["structured"]>,
+): NonNullable<NegotiationAgentBuilderMemory["structured"]> {
+  const longTermMemory = sanitizeLongTermNegotiationAgentBuilderMemory(structured.longTermMemory);
   const productRequirements = buildPersistableProductRequirements(structured.productRequirements, longTermMemory);
   const globalPreferences = buildPersistableGlobalPreferences(structured.globalPreferences, longTermMemory);
   const productScopes = new Set([
@@ -365,9 +365,9 @@ function buildPersistableStructuredAdvisorMemory(
 }
 
 function sanitizePersistableActiveIntent(
-  activeIntent: NonNullable<AdvisorMemory["structured"]>["activeIntent"],
+  activeIntent: NonNullable<NegotiationAgentBuilderMemory["structured"]>["activeIntent"],
   productScopes: Set<string>,
-): NonNullable<AdvisorMemory["structured"]>["activeIntent"] | undefined {
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["activeIntent"] | undefined {
   if (!activeIntent?.productScope) return undefined;
   if (!productScopes.has(activeIntent.productScope)) return undefined;
   if (isUnsafeMemoryText(activeIntent.productScope)) return undefined;
@@ -378,9 +378,9 @@ function sanitizePersistableActiveIntent(
   };
 }
 
-function sanitizeLongTermAdvisorMemory(
-  longTerm: NonNullable<AdvisorMemory["structured"]>["longTermMemory"] | undefined,
-): NonNullable<NonNullable<AdvisorMemory["structured"]>["longTermMemory"]> | undefined {
+function sanitizeLongTermNegotiationAgentBuilderMemory(
+  longTerm: NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"] | undefined,
+): NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]> | undefined {
   if (!longTerm) return undefined;
 
   const facts = uniqueStrings(longTerm.facts.filter(isPersistableLongTermFact));
@@ -401,7 +401,7 @@ function sanitizeLongTermAdvisorMemory(
 }
 
 function isPersistableMemoryConflict(
-  conflict: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"][number],
+  conflict: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
   productScopes: Set<string>,
 ): boolean {
   if (conflict.status === "needs_confirmation" || conflict.status === "conflicting") return false;
@@ -420,12 +420,12 @@ function isPersistableConflictSlot(slotId: string, facts: Array<string | undefin
 }
 
 function buildPersistableProductRequirements(
-  productRequirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"],
-  longTerm: NonNullable<NonNullable<AdvisorMemory["structured"]>["longTermMemory"]> | undefined,
-): NonNullable<AdvisorMemory["structured"]>["productRequirements"] {
+  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"],
+  longTerm: NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]> | undefined,
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] {
   if (!longTerm) return {};
 
-  const result: NonNullable<AdvisorMemory["structured"]>["productRequirements"] = {};
+  const result: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] = {};
   for (const fact of longTerm.facts) {
     const parsed = parseScopedLongTermFact(fact);
     if (!parsed) continue;
@@ -463,12 +463,12 @@ function buildPersistableProductRequirements(
 }
 
 function buildPersistableGlobalPreferences(
-  globalPreferences: NonNullable<AdvisorMemory["structured"]>["globalPreferences"],
-  longTerm: NonNullable<NonNullable<AdvisorMemory["structured"]>["longTermMemory"]> | undefined,
-): NonNullable<AdvisorMemory["structured"]>["globalPreferences"] {
+  globalPreferences: NonNullable<NegotiationAgentBuilderMemory["structured"]>["globalPreferences"],
+  longTerm: NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]> | undefined,
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["globalPreferences"] {
   if (!longTerm) return { mustHave: [], avoid: [] };
 
-  const result: NonNullable<AdvisorMemory["structured"]>["globalPreferences"] = {
+  const result: NonNullable<NegotiationAgentBuilderMemory["structured"]>["globalPreferences"] = {
     mustHave: [],
     avoid: [],
   };
@@ -542,13 +542,13 @@ function slotsForPersistableFact(fact: string): string[] {
   return slots;
 }
 
-function normalizeAdvisorBudgetMemory(
-  memory: AdvisorMemory,
+function normalizeNegotiationAgentBuilderBudgetMemory(
+  memory: NegotiationAgentBuilderMemory,
   context: {
     latestMessage: string;
-    previousMemory?: AdvisorMemory;
+    previousMemory?: NegotiationAgentBuilderMemory;
   },
-): AdvisorMemory {
+): NegotiationAgentBuilderMemory {
   const normalized = { ...memory };
   const explicitBudget = extractExplicitDollarBudget(context.latestMessage, context.previousMemory);
   const electronicsLike = isConsumerElectronicsMemory(normalized);
@@ -576,7 +576,7 @@ function normalizeAdvisorBudgetMemory(
   return normalized;
 }
 
-function extractExplicitDollarBudget(message: string, previousMemory?: AdvisorMemory): number | undefined {
+function extractExplicitDollarBudget(message: string, previousMemory?: NegotiationAgentBuilderMemory): number | undefined {
   const text = message.trim().toLowerCase();
   const maxMatch = text.match(/(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i);
   const maxParsed = parseDollarNumber(maxMatch?.[1]);
@@ -633,7 +633,7 @@ function normalizeConsumerElectronicsDollarValue(value: number | undefined): num
   return value;
 }
 
-function isConsumerElectronicsMemory(memory: AdvisorMemory): boolean {
+function isConsumerElectronicsMemory(memory: NegotiationAgentBuilderMemory): boolean {
   const text = [
     memory.categoryInterest,
     ...memory.mustHave,
@@ -651,12 +651,12 @@ function parseDollarNumber(value: string | undefined): number | undefined {
   return Math.round(parsed);
 }
 
-async function upsertAdvisorMemoryCards(
+async function upsertNegotiationAgentBuilderMemoryCards(
   db: Database,
   input: {
     userId: string;
     sourceMessageId: string;
-    cards: AdvisorMemoryCard[];
+    cards: NegotiationAgentBuilderMemoryCard[];
     metadata: Record<string, unknown>;
   },
 ) {
@@ -664,7 +664,7 @@ async function upsertAdvisorMemoryCards(
 
   for (const card of input.cards) {
     const eventDelta = {
-      source: "advisor_memory",
+      source: "negotiation_agent_builder_memory",
       sourceMessageId: input.sourceMessageId,
       metadata: input.metadata,
       cardType: card.cardType,
@@ -795,7 +795,7 @@ async function upsertAdvisorMemoryCards(
   return stored;
 }
 
-async function staleActiveAdvisorMemoryCards(db: Database, userId: string) {
+async function staleActiveNegotiationAgentBuilderMemoryCards(db: Database, userId: string) {
   await db.execute(sql`
     UPDATE user_memory_cards
     SET status = 'STALE',
@@ -810,7 +810,7 @@ function buildAdvisorSourceMessageId(input: {
   userId: string;
   agentId?: string;
   message: string;
-  memory: AdvisorMemory;
+  memory: NegotiationAgentBuilderMemory;
 }): string {
   const hash = createHash("sha256")
     .update(stableStringify({

@@ -108,7 +108,7 @@ function makeSession(overrides: Partial<DbSession> = {}): DbSession {
     roundsNoConcession: 0,
     lastOfferPriceMinor: null,
     lastUtility: null,
-    strategySnapshot: {
+    negotiationAgentSnapshot: {
       p_target: SCENARIO.buyerTarget,
       p_limit: SCENARIO.buyerFloor,
       max_rounds: SCENARIO.maxRounds,
@@ -472,7 +472,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         status: 'ACTIVE',
         lastOfferPriceMinor: '82000',
         version: 7,
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: SCENARIO.buyerTarget,
           p_limit: SCENARIO.buyerFloor,
           max_rounds: SCENARIO.maxRounds,
@@ -622,7 +622,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         status: 'ACTIVE',
         lastOfferPriceMinor: '85000',
         version: 4,
-        strategySnapshot: {
+        negotiationAgentSnapshot: {
           p_target: 90000,
           p_limit: 70000,  // seller floor $700
           max_rounds: 15,

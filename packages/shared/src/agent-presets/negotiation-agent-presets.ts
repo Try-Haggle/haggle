@@ -11,9 +11,9 @@
  * [5, 15] for n_threshold, [0.5, 1.5] for late-round modifier).
  */
 
-import type { NegotiationPreset } from "./types.js";
+import type { NegotiationAgentPreset } from "./types.js";
 
-export const NEGOTIATION_PRESETS: readonly NegotiationPreset[] = [
+export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
   {
     id: "hunter",
     emoji: "🎯",
@@ -153,8 +153,8 @@ export const NEGOTIATION_PRESETS: readonly NegotiationPreset[] = [
 ] as const;
 
 /** Look up a preset by id. */
-export function getNegotiationPreset(
+export function getNegotiationAgentPreset(
   id: string,
-): NegotiationPreset | undefined {
-  return NEGOTIATION_PRESETS.find((p) => p.id === id);
+): NegotiationAgentPreset | undefined {
+  return NEGOTIATION_AGENT_PRESETS.find((p) => p.id === id);
 }

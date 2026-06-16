@@ -30,7 +30,7 @@ export function buildSessionSnapshots(sessions: DbSession[]): SessionSnapshot[] 
         v_s: s.lastUtility!.v_s,
       },
       // Default thresholds — actual strategy thresholds come from snapshot
-      thresholds: extractThresholds(s.strategySnapshot),
+      thresholds: extractThresholds(s.negotiationAgentSnapshot),
     }));
 }
 

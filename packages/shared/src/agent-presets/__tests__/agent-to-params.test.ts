@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_PRESETS,
   resolveAgentToEngineParameters,
-  getNegotiationPreset,
+  getNegotiationAgentPreset,
   presetToEngineParameters,
-  type AgentProfile,
+  type NegotiationAgent,
   type EngineStats,
 } from "../../index.js";
 
 const NOW = 1_700_000_000_000;
 
-function makeBaseAgent(extra: Partial<AgentProfile> = {}): AgentProfile {
+function makeBaseAgent(extra: Partial<NegotiationAgent> = {}): NegotiationAgent {
   return {
     id: "test-1",
     name: "Test",
@@ -34,15 +34,15 @@ const FLAT_STATS: EngineStats = {
 describe("resolveAgentToEngineParameters", () => {
   describe("new 4D-weight path", () => {
     it("resolves a preset-only agent to the preset's parameters", () => {
-      const agent = makeBaseAgent({ negotiationPresetId: "hunter" });
+      const agent = makeBaseAgent({ negotiationAgentPresetId: "hunter" });
       const params = resolveAgentToEngineParameters(agent);
-      const expected = presetToEngineParameters(getNegotiationPreset("hunter")!);
+      const expected = presetToEngineParameters(getNegotiationAgentPreset("hunter")!);
       expect(params).toEqual(expected);
     });
 
     it("top-level weights override the preset's weights", () => {
       const agent = makeBaseAgent({
-        negotiationPresetId: "hunter",
+        negotiationAgentPresetId: "hunter",
         weights: { w_p: 0.25, w_t: 0.25, w_r: 0.25, w_s: 0.25 },
       });
       const params = resolveAgentToEngineParameters(agent)!;
@@ -53,18 +53,18 @@ describe("resolveAgentToEngineParameters", () => {
         w_s: 0.25,
       });
       // alpha/beta still come from the preset
-      const hunter = getNegotiationPreset("hunter")!;
+      const hunter = getNegotiationAgentPreset("hunter")!;
       expect(params.alpha).toBe(hunter.alpha);
       expect(params.beta).toBe(hunter.beta);
     });
 
     it("engineParams partial overrides individual knobs", () => {
       const agent = makeBaseAgent({
-        negotiationPresetId: "balancer",
+        negotiationAgentPresetId: "balancer",
         engineParams: { alpha: 2.5, u_threshold: 0.6 },
       });
       const params = resolveAgentToEngineParameters(agent)!;
-      const balancer = getNegotiationPreset("balancer")!;
+      const balancer = getNegotiationAgentPreset("balancer")!;
       expect(params.alpha).toBe(2.5);
       expect(params.u_threshold).toBe(0.6);
       // beta is not overridden
@@ -78,7 +78,7 @@ describe("resolveAgentToEngineParameters", () => {
         weights: { w_p: 0.4, w_t: 0.3, w_r: 0.2, w_s: 0.1 },
       });
       const params = resolveAgentToEngineParameters(agent)!;
-      const fallback = getNegotiationPreset("balancer")!;
+      const fallback = getNegotiationAgentPreset("balancer")!;
       expect(params.weights).toEqual({
         w_p: 0.4,
         w_t: 0.3,
@@ -96,15 +96,15 @@ describe("resolveAgentToEngineParameters", () => {
       const params = resolveAgentToEngineParameters(agent, {
         fallbackPresetId: "closer",
       })!;
-      const closer = getNegotiationPreset("closer")!;
+      const closer = getNegotiationAgentPreset("closer")!;
       expect(params.alpha).toBe(closer.alpha);
       expect(params.beta).toBe(closer.beta);
     });
 
     it("returns a fresh weights object (no shared reference with preset)", () => {
-      const agent = makeBaseAgent({ negotiationPresetId: "hunter" });
+      const agent = makeBaseAgent({ negotiationAgentPresetId: "hunter" });
       const params = resolveAgentToEngineParameters(agent)!;
-      const hunter = getNegotiationPreset("hunter")!;
+      const hunter = getNegotiationAgentPreset("hunter")!;
       expect(params.weights).not.toBe(hunter.weights);
     });
   });
@@ -134,10 +134,10 @@ describe("resolveAgentToEngineParameters", () => {
     it("new flow wins when both are present", () => {
       const agent = makeBaseAgent({
         stats: FLAT_STATS,
-        negotiationPresetId: "hunter",
+        negotiationAgentPresetId: "hunter",
       });
       const params = resolveAgentToEngineParameters(agent)!;
-      const hunter = getNegotiationPreset("hunter")!;
+      const hunter = getNegotiationAgentPreset("hunter")!;
       expect(params.weights).toEqual(hunter.weights);
     });
   });

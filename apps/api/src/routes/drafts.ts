@@ -101,10 +101,10 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database, notifica
     const mergedTags = [...existingTags];
     for (const t of result.tags) if (!mergedTags.includes(t)) mergedTags.push(t);
 
-    const existingConfig = (draft.strategyConfig ?? {}) as Record<string, unknown>;
+    const existingConfig = (draft.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
     await patchDraft(db, id, {
       tags: mergedTags,
-      strategyConfig: { ...existingConfig, subtype: result.subtype },
+      negotiationAgentSnapshot: { ...existingConfig, subtype: result.subtype },
     });
 
     return reply.send({ ok: true, subtype: result.subtype, tags: mergedTags });

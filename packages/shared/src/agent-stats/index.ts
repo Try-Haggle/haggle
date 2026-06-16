@@ -6,7 +6,7 @@ export type {
   StatCopy,
   RoleCopy,
   AgentPreset,
-  AgentProfile,
+  NegotiationAgent,
   EngineParameters,
 } from "./types.js";
 

@@ -223,3 +223,104 @@ CREATE TABLE IF NOT EXISTS "settlement_releases" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
+
+-- negotiation_groups, negotiation_sessions, negotiation_rounds
+-- CREATE TABLE이 마이그레이션 히스토리에 누락됐던 것 보완 (db:push로만 생성됐었음)
+CREATE TABLE IF NOT EXISTS "negotiation_groups" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "topology" text NOT NULL,
+  "anchor_user_id" uuid NOT NULL,
+  "intent_id" uuid,
+  "max_sessions" integer NOT NULL DEFAULT 10,
+  "status" text NOT NULL DEFAULT 'ACTIVE',
+  "batna" numeric(18, 0),
+  "best_session_id" uuid,
+  "version" integer NOT NULL DEFAULT 1,
+  "metadata" jsonb,
+  "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "updated_at" timestamp with time zone NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "negotiation_groups_anchor_status_idx" ON "negotiation_groups"("anchor_user_id","status");
+
+CREATE TABLE IF NOT EXISTS "negotiation_sessions" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "group_id" uuid,
+  "intent_id" uuid,
+  "listing_id" uuid NOT NULL,
+  "strategy_id" text NOT NULL,
+  "role" text NOT NULL,
+  "status" text NOT NULL DEFAULT 'CREATED',
+  "buyer_id" uuid NOT NULL,
+  "seller_id" uuid NOT NULL,
+  "counterparty_id" uuid NOT NULL,
+  "current_round" integer NOT NULL DEFAULT 0,
+  "rounds_no_concession" integer NOT NULL DEFAULT 0,
+  "last_offer_price_minor" numeric(18, 0),
+  "last_utility" jsonb,
+  "strategy_snapshot" jsonb NOT NULL,
+  "version" integer NOT NULL DEFAULT 1,
+  "expires_at" timestamp with time zone,
+  "phase" text,
+  "intervention_mode" text DEFAULT 'FULL_AUTO',
+  "buddy_tone" jsonb,
+  "coaching_snapshot" jsonb,
+  "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "outcome" text,
+  "discount_rate" numeric(5, 4),
+  "total_duration_minutes" numeric(10, 1),
+  "buyer_pattern" text,
+  "seller_pattern" text,
+  "price_trajectory" jsonb,
+  "concession_rates" jsonb,
+  "tactics_used" jsonb,
+  "tactics_success" jsonb,
+  "conditions_exchanged" jsonb,
+  "referee_hard_violations" integer DEFAULT 0,
+  "referee_soft_violations" integer DEFAULT 0,
+  "coach_vs_actual_avg_deviation" integer,
+  "item_value_range" text,
+  "opponent_model" jsonb,
+  "core_memory_snapshot" jsonb,
+  "memo_hash" text,
+  "session_fact_chain_hash" text,
+  "preset_id" uuid,
+  "buddy_id" uuid,
+  "skills_used" jsonb
+);
+CREATE INDEX IF NOT EXISTS "negotiation_sessions_group_status_idx" ON "negotiation_sessions"("group_id","status");
+CREATE INDEX IF NOT EXISTS "negotiation_sessions_buyer_status_idx" ON "negotiation_sessions"("buyer_id","status");
+CREATE INDEX IF NOT EXISTS "negotiation_sessions_seller_status_idx" ON "negotiation_sessions"("seller_id","status");
+CREATE INDEX IF NOT EXISTS "negotiation_sessions_listing_idx" ON "negotiation_sessions"("listing_id");
+CREATE INDEX IF NOT EXISTS "negotiation_sessions_outcome_idx" ON "negotiation_sessions"("outcome");
+
+CREATE TABLE IF NOT EXISTS "negotiation_rounds" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "session_id" uuid NOT NULL,
+  "round_no" integer NOT NULL,
+  "sender_role" text NOT NULL,
+  "message_type" text NOT NULL,
+  "price_minor" numeric(18, 0) NOT NULL,
+  "counter_price_minor" numeric(18, 0),
+  "utility" jsonb,
+  "decision" text,
+  "metadata" jsonb,
+  "idempotency_key" text NOT NULL,
+  "coaching" jsonb,
+  "validation" jsonb,
+  "llm_tokens_used" integer,
+  "reasoning_used" boolean DEFAULT false,
+  "message" text,
+  "phase_at_round" text,
+  "created_at" timestamp with time zone NOT NULL DEFAULT now(),
+  "tactic_used" text,
+  "opponent_tactic_detected" text,
+  "concession_rate" numeric(8, 6),
+  "coach_recommended_minor" numeric(18, 0),
+  "deviation_from_coach" integer,
+  "referee_violations" jsonb,
+  "llm_latency_ms" integer
+);
+CREATE INDEX IF NOT EXISTS "negotiation_rounds_session_round_idx" ON "negotiation_rounds"("session_id","round_no");
+CREATE UNIQUE INDEX IF NOT EXISTS "negotiation_rounds_session_idempotency_key_idx" ON "negotiation_rounds"("session_id","idempotency_key");
+CREATE INDEX IF NOT EXISTS "negotiation_rounds_tactic_idx" ON "negotiation_rounds"("tactic_used");

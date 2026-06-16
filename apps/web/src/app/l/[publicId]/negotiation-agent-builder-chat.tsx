@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { NegotiationPreset } from "@haggle/shared";
+import type { NegotiationAgentPreset, ChatStrategy } from "@haggle/shared";
 import { apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -14,7 +14,7 @@ interface ChatMessage {
   widget?: "budget-slider";
 }
 
-export interface AdvisorMemory {
+export interface NegotiationAgentBuilderMemory {
   categoryInterest: string;
   budgetMax?: number;
   targetPrice?: number;
@@ -33,8 +33,8 @@ interface StrategyChip {
   category: "pricing" | "style" | "preference" | "constraint";
 }
 
-interface StrategyChatProps {
-  agent: NegotiationPreset | null;
+interface NegotiationAgentBuilderChatProps {
+  agent: NegotiationAgentPreset | null;
   /** Stable key used for localStorage isolation. On listing pages this is the
    *  listing's publicId; on agent design pages it is an agent-scoped key like
    *  `agent-design:<agentId>`. */
@@ -44,9 +44,22 @@ interface StrategyChatProps {
   /** Decimal-dollar string. Null on agent-design pages — the advisor then
    *  receives an empty `listings` array. */
   listingPrice: string | null;
-  /** Which copy block to use for the agent's display name. Default "buyer". */
+  /** Seller-side floor (decimal string). Omitted on buyer pages — a buyer's
+   *  budget is gathered through the chat instead. */
+  listingFloorPrice?: string | null;
+  /** Listing condition (e.g. "like_new"). */
+  listingCondition?: string | null;
+  /** Listing tags. */
+  listingTags?: string[];
+  /** Listing description — passed to the advisor as a seller note for grounding. */
+  listingDescription?: string | null;
+  /** Market median reference (decimal string), when known. */
+  listingMarketMedian?: string | null;
+  /** Which side the user is on. Drives copy + LLM prompt direction. Default "buyer". */
   role?: "buyer" | "seller";
-  onMemoryUpdate?: (memory: AdvisorMemory) => void;
+  onNegotiationAgentBuilderMemoryUpdate?: (memory: NegotiationAgentBuilderMemory) => void;
+  /** Called when the chat adjusts the radar numbers (4 weights + 4 curves). */
+  onStrategyUpdate?: (strategy: ChatStrategy) => void;
 }
 
 /* ─── localStorage persistence ───────────────────────────── */
@@ -55,7 +68,7 @@ const STORAGE_PREFIX = "haggle:strategy";
 const EXPIRY_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 
 interface PersistedSession {
-  memory: AdvisorMemory;
+  memory: NegotiationAgentBuilderMemory;
   messages: ChatMessage[];
   agentId: string;
   updatedAt: number;
@@ -128,9 +141,9 @@ function clearSession(listingId: string, agentId: string): void {
 
 
 function buildInitialMemory(
-  agent: NegotiationPreset | null,
+  agent: NegotiationAgentPreset | null,
   category: string | null,
-): AdvisorMemory {
+): NegotiationAgentBuilderMemory {
   const negotiationStyle =
     agent?.id === "hunter"
       ? "aggressive"
@@ -162,40 +175,19 @@ function buildInitialMemory(
   };
 }
 
-function buildGreeting(
-  agent: NegotiationPreset | null,
-  listingTitle: string,
-  listingPrice: string | null,
-  role: "buyer" | "seller" = "buyer",
-): string {
-  const name = agent?.copy[role].name ?? "AI Agent";
-  const priceStr = listingPrice
-    ? `$${parseFloat(listingPrice).toLocaleString("en-US")}`
-    : "";
-  return (
-    `안녕하세요! ${name}입니다. **${listingTitle}**${priceStr ? ` (${priceStr})` : ""} 협상을 도와드릴게요.\n\n` +
-    `아래와 같은 내용을 알려주시면 전략에 반영됩니다:\n` +
-    `• 💰 예산 또는 목표 가격\n` +
-    `• ✅ 꼭 필요한 조건 (예: 배터리 90% 이상)\n` +
-    `• ❌ 피하고 싶은 것 (예: 화면 스크래치)\n` +
-    `• ⚡ 협상 스타일 (빠르게 끝내기 / 끝까지 밀어붙이기)\n\n` +
-    `편하게 말씀해 주세요 — 바로 전략에 반영할게요.`
-  );
-}
-
-function extractChips(memory: AdvisorMemory): StrategyChip[] {
+function extractChips(memory: NegotiationAgentBuilderMemory): StrategyChip[] {
   const chips: StrategyChip[] = [];
 
   if (memory.budgetMax) {
     chips.push({
-      label: `예산 $${memory.budgetMax.toLocaleString()}`,
+      label: `Budget $${memory.budgetMax.toLocaleString()}`,
       value: String(memory.budgetMax),
       category: "pricing",
     });
   }
   if (memory.targetPrice) {
     chips.push({
-      label: `목표가 $${memory.targetPrice.toLocaleString()}`,
+      label: `Target $${memory.targetPrice.toLocaleString()}`,
       value: String(memory.targetPrice),
       category: "pricing",
     });
@@ -208,9 +200,9 @@ function extractChips(memory: AdvisorMemory): StrategyChip[] {
   }
 
   const styleLabels: Record<string, string> = {
-    aggressive: "공격적 협상",
-    balanced: "균형형 협상",
-    defensive: "안정적 협상",
+    aggressive: "Aggressive",
+    balanced: "Balanced",
+    defensive: "Defensive",
   };
   if (memory.negotiationStyle !== "balanced") {
     chips.push({
@@ -277,12 +269,12 @@ function BudgetWidget({
     <div className="mt-4 p-4 rounded-xl bg-[#0f172a] border border-[#1e293b]">
       <div className="flex justify-between items-center mb-5">
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">목표 가격</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target price</p>
           <p className="text-[16px] font-bold text-cyan-400">${target.toLocaleString()}</p>
         </div>
         <div className="h-[30px] w-[1px] bg-[#1e293b]" />
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">최대 예산</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Max budget</p>
           <p className="text-[16px] font-bold text-blue-400">${max.toLocaleString()}</p>
         </div>
       </div>
@@ -325,7 +317,7 @@ function BudgetWidget({
         onClick={() => onSubmit(target, max)}
         className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
       >
-        예산 설정 완료
+        Set budget
       </button>
     </div>
   );
@@ -361,19 +353,38 @@ const CHIP_COLORS: Record<
 
 /* ─── Main Component ──────────────────────────────────────── */
 
-export function StrategyChat({
+export function NegotiationAgentBuilderChat({
   agent,
   listingPublicId,
   listingTitle,
   listingCategory,
   listingPrice,
+  listingFloorPrice,
+  listingCondition,
+  listingTags,
+  listingDescription,
+  listingMarketMedian,
   role = "buyer",
-  onMemoryUpdate,
-}: StrategyChatProps) {
+  onNegotiationAgentBuilderMemoryUpdate,
+  onStrategyUpdate,
+}: NegotiationAgentBuilderChatProps) {
+  const side = role;
+
+  // Current radar numbers, sent so the LLM adjusts from them (not invents).
+  const buildCurrentStrategy = useCallback((): ChatStrategy | undefined => {
+    if (!agent) return undefined;
+    return {
+      weights: { ...agent.weights },
+      alpha: agent.alpha,
+      beta: agent.beta,
+      u_threshold: agent.u_threshold,
+      u_aspiration: agent.u_aspiration,
+    };
+  }, [agent]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [memory, setMemory] = useState<AdvisorMemory>(() =>
+  const [memory, setMemory] = useState<NegotiationAgentBuilderMemory>(() =>
     buildInitialMemory(agent, listingCategory),
   );
   const [isExpanded, setIsExpanded] = useState(false);
@@ -382,6 +393,39 @@ export function StrategyChat({
   const inputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatTopRef = useRef<HTMLDivElement>(null);
+
+  // Side-aware opening message. Acknowledges prices already provided (e.g. from
+  // the listing wizard) so the agent never re-asks what it already knows.
+  // Sellers never get the budget-slider (its labels are buyer-oriented).
+  function makeGreeting(): { text: string; widget?: "budget-slider" } {
+    const agentName = agent?.copy?.[side]?.name ?? "your agent";
+    const title = listingTitle || "this listing";
+    const askNum = listingPrice ? parseFloat(listingPrice) : null;
+    const floorNum = listingFloorPrice ? parseFloat(listingFloorPrice) : null;
+    const money = (n: number) => `$${n.toLocaleString()}`;
+
+    if (side === "seller") {
+      if (askNum && floorNum) {
+        return {
+          text: `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)} and won't go below ${money(floorNum)}. Tell me anything to emphasize (condition, accessories) or any deal-breakers.`,
+        };
+      }
+      return {
+        text: `I'll set up **${agentName}** to sell **${title}**. What's your asking price and the lowest you'd accept?`,
+      };
+    }
+    // buyer
+    if (askNum) {
+      return {
+        text: `I'll help **${agentName}** negotiate **${title}** (listed at ${money(askNum)}). What's your ideal price and the most you'd pay?`,
+        widget: "budget-slider",
+      };
+    }
+    return {
+      text: `I'll help **${agentName}** with this negotiation. What's your ideal price and the most you'd pay?`,
+      widget: "budget-slider",
+    };
+  }
 
   const scrollToTop = useCallback(() => {
     setTimeout(() => {
@@ -412,18 +456,19 @@ export function StrategyChat({
       setMessages(saved.messages);
       setIsExpanded(true);
       setHasRestoredSession(true);
-      onMemoryUpdate?.(saved.memory);
+      onNegotiationAgentBuilderMemoryUpdate?.(saved.memory);
     } else {
-      // Fresh start: provide a greeting with budget widget
+      // Fresh start: side-aware greeting that respects already-known prices
       const newMemory = buildInitialMemory(agent, listingCategory);
       setMemory(newMemory);
 
+      const greeting = makeGreeting();
       const greetingMsg: ChatMessage = {
         id: "greeting",
         role: "agent",
-        text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
+        text: greeting.text,
         timestamp: Date.now(),
-        widget: "budget-slider"
+        ...(greeting.widget ? { widget: greeting.widget } : {}),
       };
       setMessages([greetingMsg]);
       setIsExpanded(true);
@@ -452,19 +497,36 @@ export function StrategyChat({
       ? Math.round(parseFloat(listingPrice) * 100)
       : 0;
     if (!askPriceMinor) return [];
+    const floorMinor = listingFloorPrice
+      ? Math.round(parseFloat(listingFloorPrice) * 100)
+      : askPriceMinor;
+    const marketMinor = listingMarketMedian
+      ? Math.round(parseFloat(listingMarketMedian) * 100)
+      : askPriceMinor;
     return [
       {
         id: listingPublicId,
         title: listingTitle,
         category: listingCategory ?? undefined,
-        condition: "unknown",
+        condition: listingCondition ?? "unknown",
         askPriceMinor,
-        floorPriceMinor: askPriceMinor,
-        marketMedianMinor: askPriceMinor,
-        tags: [],
+        floorPriceMinor: floorMinor,
+        marketMedianMinor: marketMinor,
+        tags: listingTags ?? [],
+        ...(listingDescription ? { sellerNote: listingDescription } : {}),
       },
     ];
-  }, [listingPublicId, listingTitle, listingCategory, listingPrice]);
+  }, [
+    listingPublicId,
+    listingTitle,
+    listingCategory,
+    listingPrice,
+    listingFloorPrice,
+    listingMarketMedian,
+    listingCondition,
+    listingTags,
+    listingDescription,
+  ]);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
@@ -496,26 +558,30 @@ export function StrategyChat({
 
     try {
       const data = await apiClient<{
-        memory?: AdvisorMemory;
+        memory?: NegotiationAgentBuilderMemory;
         reply?: string;
-      }>("/intelligence/demo/advisor-turn", {
+        strategy?: ChatStrategy;
+      }>("/negotiations/agents/builder/chat-turn", {
         method: "POST",
         body: JSON.stringify({
           message: trimmed,
           previous_memory: memory,
-          agent_id: agent?.id ?? "smart-trader",
+          side,
+          agent_id: agent?.id ?? "balancer",
           listings: buildAdvisorListings(),
+          current_strategy: buildCurrentStrategy(),
         }),
         skipAuth: true,
       });
-      const updatedMemory: AdvisorMemory = data.memory ?? memory;
+      const updatedMemory: NegotiationAgentBuilderMemory = data.memory ?? memory;
       setMemory(updatedMemory);
-      onMemoryUpdate?.(updatedMemory);
+      onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
+      if (data.strategy) onStrategyUpdate?.(data.strategy);
 
       const agentMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: "agent",
-        text: data.reply ?? "죄송합니다, 다시 한번 말씀해주세요.",
+        text: data.reply ?? "Sorry, could you say that again?",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -532,11 +598,11 @@ export function StrategyChat({
         return next;
       });
     } catch (err: unknown) {
-      console.error("[strategy-chat] API error:", err);
+      console.error("[negotiation-agent-builder-chat] API error:", err);
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "agent",
-        text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
+        text: "Connection problem. Please try again in a moment.",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -554,7 +620,7 @@ export function StrategyChat({
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings]);
+  }, [input, isLoading, memory, agent, side, listingPublicId, onNegotiationAgentBuilderMemoryUpdate, onStrategyUpdate, buildAdvisorListings, buildCurrentStrategy]);
 
   const handleReset = useCallback(() => {
     if (!agent) return;
@@ -562,12 +628,13 @@ export function StrategyChat({
     const newMemory = buildInitialMemory(agent, listingCategory);
     setMemory(newMemory);
 
+    const greeting = makeGreeting();
     const greetingMsg: ChatMessage = {
       id: "greeting",
       role: "agent",
-      text: `안녕하세요! **${listingTitle}** 협상을 준비 중이군요. 먼저 목표가와 최대 예산을 설정해주세요.`,
+      text: greeting.text,
       timestamp: Date.now(),
-      widget: "budget-slider"
+      ...(greeting.widget ? { widget: greeting.widget } : {}),
     };
 
     setMessages([greetingMsg]);
@@ -579,7 +646,7 @@ export function StrategyChat({
   const handleBudgetSubmit = useCallback(async (target: number, max: number) => {
     if (isLoading) return;
 
-    const userText = `목표 가격은 $${target}, 최대 예산은 $${max}로 생각하고 있어.`;
+    const userText = `My target price is $${target}, and my max budget is $${max}.`;
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -590,7 +657,7 @@ export function StrategyChat({
     // Optimistic memory update
     const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
     setMemory(updatedMemoryOptimistic);
-    onMemoryUpdate?.(updatedMemoryOptimistic);
+    onNegotiationAgentBuilderMemoryUpdate?.(updatedMemoryOptimistic);
 
     setMessages((prev) => {
       // Remove widget from the greeting
@@ -610,27 +677,31 @@ export function StrategyChat({
 
     try {
       const data = await apiClient<{
-        memory?: AdvisorMemory;
+        memory?: NegotiationAgentBuilderMemory;
         reply?: string;
-      }>("/intelligence/demo/advisor-turn", {
+        strategy?: ChatStrategy;
+      }>("/negotiations/agents/builder/chat-turn", {
         method: "POST",
         body: JSON.stringify({
           message: userText,
           previous_memory: updatedMemoryOptimistic,
-          agent_id: agent?.id ?? "smart-trader",
+          side,
+          agent_id: agent?.id ?? "balancer",
           listings: buildAdvisorListings(),
+          current_strategy: buildCurrentStrategy(),
         }),
         skipAuth: true,
       });
 
-      const updatedMemory: AdvisorMemory = data.memory ?? updatedMemoryOptimistic;
+      const updatedMemory: NegotiationAgentBuilderMemory = data.memory ?? updatedMemoryOptimistic;
       setMemory(updatedMemory);
-      onMemoryUpdate?.(updatedMemory);
+      onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
+      if (data.strategy) onStrategyUpdate?.(data.strategy);
 
       const agentMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: "agent",
-        text: data.reply ?? "예산이 설정되었습니다. 더 피하고 싶거나 원하시는 조건이 있나요?",
+        text: data.reply ?? "Got it. Any conditions you want to require or avoid?",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -646,11 +717,11 @@ export function StrategyChat({
         return next;
       });
     } catch (err: unknown) {
-      console.error("[strategy-chat] API error:", err);
+      console.error("[negotiation-agent-builder-chat] API error:", err);
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "agent",
-        text: "연결에 문제가 있어요. 잠시 후 다시 시도해주세요.",
+        text: "Connection problem. Please try again in a moment.",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -667,7 +738,7 @@ export function StrategyChat({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, memory, agent, listingPublicId, onMemoryUpdate, buildAdvisorListings]);
+  }, [isLoading, memory, agent, side, listingPublicId, onNegotiationAgentBuilderMemoryUpdate, onStrategyUpdate, buildAdvisorListings, buildCurrentStrategy]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -681,7 +752,7 @@ export function StrategyChat({
 
   return (
     <div
-      id="strategy-chat-container"
+      id="negotiation-agent-builder-chat-container"
       ref={chatTopRef}
       className="mt-4 flex-1 flex flex-col rounded-xl border overflow-hidden transition-all duration-300"
       style={{
@@ -731,7 +802,7 @@ export function StrategyChat({
             type="button"
             onClick={handleReset}
             className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-white/5"
-            title="대화 초기화"
+            title="Reset conversation"
             aria-label="Reset strategy chat"
           >
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -883,9 +954,11 @@ export function StrategyChat({
           ref={inputRef}
           type="text"
           placeholder={
-            hasAgentSelected
-              ? "예산, 원하는 조건 등을 알려주세요..."
-              : "먼저 에이전트를 선택해 주세요"
+            !hasAgentSelected
+              ? "Select an agent first"
+              : side === "seller"
+                ? "Tell me what to emphasize, deal-breakers, etc..."
+                : "Tell me your budget, must-haves, etc..."
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}

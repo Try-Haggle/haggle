@@ -19,7 +19,14 @@ export const listingDrafts = pgTable("listing_drafts", {
   targetPrice: numeric("target_price", { precision: 12, scale: 2 }),
   floorPrice: numeric("floor_price", { precision: 12, scale: 2 }),
   sellingDeadline: timestamp("selling_deadline", { withTimezone: true }),
-  strategyConfig: jsonb("strategy_config").$type<Record<string, unknown>>(),
+  /** Per-listing agent snapshot (preset, weights, engineParams, builder chat
+   *  data). The negotiation runs off this frozen snapshot; editing the source
+   *  agent later does not change in-flight negotiations until re-saved.
+   *  Was strategy_config (0024) → negotiation_agent_draft → snapshot (0027). */
+  negotiationAgentSnapshot: jsonb("negotiation_agent_snapshot").$type<Record<string, unknown>>(),
+  /** Provenance/analytics: the negotiation_agents row id (custom) or preset id
+   *  (e.g. "balancer") this listing's agent came from. Not a DB FK — holds both. */
+  agentId: text("agent_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

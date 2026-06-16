@@ -47,7 +47,7 @@ function resolveUserRole(
   return null;
 }
 
-export function registerAdvisorRoutes(app: FastifyInstance, db: Database) {
+export function registerDisputeAdvisorRoutes(app: FastifyInstance, db: Database) {
   const { requireDisputeParty } = createOwnershipMiddleware(db);
 
   // POST /disputes/:id/advisor/chat

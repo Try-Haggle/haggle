@@ -147,7 +147,7 @@ export async function executeNegotiationRound(
     }
 
     // 2b. Check max rounds — auto-reject if exceeded
-    const maxRounds = (dbSession.strategySnapshot as Record<string, unknown>)?.max_rounds as number | undefined
+    const maxRounds = (dbSession.negotiationAgentSnapshot as Record<string, unknown>)?.max_rounds as number | undefined
       ?? DEFAULT_MAX_ROUNDS;
     if (dbSession.currentRound >= maxRounds) {
       await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
@@ -184,7 +184,7 @@ export async function executeNegotiationRound(
     // 4. Load rounds and reconstruct engine types
     const dbRounds = await getRoundsBySessionId(tx as unknown as Database, input.sessionId) as DbRound[];
     const engineSession = reconstructSession(dbSession, dbRounds);
-    const strategy = reconstructStrategy(dbSession.strategySnapshot);
+    const strategy = reconstructStrategy(dbSession.negotiationAgentSnapshot);
 
     // 5. Build incoming offer
     const nextRound = engineSession.current_round + 1;
@@ -197,7 +197,7 @@ export async function executeNegotiationRound(
     );
 
     const timeWindow = getStrategyTimeWindow(
-      dbSession.strategySnapshot,
+      dbSession.negotiationAgentSnapshot,
       engineSession.created_at,
       dbSession.expiresAt?.getTime(),
     );
@@ -435,7 +435,7 @@ export function mapRawToDbSession(raw: Record<string, unknown>): DbSession {
     roundsNoConcession: raw.rounds_no_concession as number,
     lastOfferPriceMinor: (raw.last_offer_price_minor as string) ?? null,
     lastUtility: raw.last_utility as DbSession["lastUtility"],
-    strategySnapshot: raw.strategy_snapshot as Record<string, unknown>,
+    negotiationAgentSnapshot: raw.negotiation_agent_snapshot as Record<string, unknown>,
     version: raw.version as number,
     expiresAt: raw.expires_at ? new Date(raw.expires_at as string) : null,
     createdAt: new Date(raw.created_at as string),

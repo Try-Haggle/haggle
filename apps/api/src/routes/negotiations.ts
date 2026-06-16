@@ -5,7 +5,7 @@ import { sql, type Database, listingsPublished, eq } from "@haggle/db";
 import type { NotificationBus } from "../notification/index.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
 import {
-  compileStrategySnapshot,
+  compileNegotiationAgentSnapshot,
   computeHnpProposalHash,
   createHnpAgreementObject,
   createHnpTransactionHandoff,
@@ -52,7 +52,7 @@ const createSessionSchema = z.object({
   buyer_id: z.string().uuid(),
   seller_id: z.string().uuid(),
   counterparty_id: z.string().uuid(),
-  strategy_snapshot: z.record(z.unknown()),
+  negotiation_agent_snapshot: z.record(z.unknown()),
   group_id: z.string().uuid().optional(),
   intent_id: z.string().uuid().optional(),
   expires_at: z.string().datetime().optional(),
@@ -61,10 +61,10 @@ const createSessionSchema = z.object({
 // Body for POST /negotiations/start — buyer-side entry from the web listing page.
 const startSessionSchema = z.object({
   listing_public_id: z.string().min(1),
-  agent_preset_id: z.string().min(1),
+  negotiation_agent_preset_id: z.string().min(1),
   agent_weights: z.record(z.number()).optional(),
   agent_overrides: z.record(z.unknown()).optional(),
-  advisor_memory: z
+  negotiation_agent_builder_memory: z
     .object({
       budgetMax: z.number().positive().optional(),
       targetPrice: z.number().positive().optional(),
@@ -236,7 +236,7 @@ export function registerNegotiationRoutes(
         });
         const readiness = evaluateNegotiationStartReadiness({
           role: data.role,
-          strategySnapshot: data.strategy_snapshot,
+          negotiationAgentSnapshot: data.negotiation_agent_snapshot,
           memoryBrief,
         });
         if (!readiness.ready) {
@@ -264,7 +264,7 @@ export function registerNegotiationRoutes(
 
       const roundLimit = attemptControl?.max_rounds_per_session
         ?? defaultAttemptControlPolicy().maxRoundsPerSession;
-      const strategySnapshot = applyRoundLimitToStrategy(data.strategy_snapshot, roundLimit);
+      const negotiationAgentSnapshot = applyRoundLimitToStrategy(data.negotiation_agent_snapshot, roundLimit);
       const session = await createSession(db, {
         listingId: data.listing_id,
         strategyId: data.strategy_id,
@@ -272,7 +272,7 @@ export function registerNegotiationRoutes(
         buyerId: data.buyer_id,
         sellerId: data.seller_id,
         counterpartyId: data.counterparty_id,
-        strategySnapshot,
+        negotiationAgentSnapshot,
         groupId: data.group_id,
         intentId: data.intent_id,
         expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
@@ -341,9 +341,9 @@ export function registerNegotiationRoutes(
         getListingPlaybackSummaryByInternalId(db, session.listingId),
       ]);
 
-      // Surface only the buyer-agent preset id from strategy_snapshot; the
+      // Surface only the buyer-agent preset id from negotiation_agent_snapshot; the
       // rest of the strategy stays private.
-      const buyerAgentPresetId = extractBuyerAgentPresetId(session.strategySnapshot);
+      const buyerNegotiationAgentPresetId = extractBuyerNegotiationAgentPresetId(session.negotiationAgentSnapshot);
 
       // 공정함: utility 점수 공개, 상대방 전략 파라미터 비공개
       return reply.send({
@@ -360,7 +360,7 @@ export function registerNegotiationRoutes(
           expires_at: session.expiresAt,
           created_at: session.createdAt,
           updated_at: session.updatedAt,
-          buyer_agent_preset_id: buyerAgentPresetId,
+          buyer_negotiation_agent_preset_id: buyerNegotiationAgentPresetId,
           listing: listing
             ? {
                 public_id: listing.publicId,
@@ -882,7 +882,7 @@ export function registerNegotiationRoutes(
       // Buyer target/reservation: prefer advisor memory budgetMax/targetPrice
       // (decimal dollars), else infer from listing price (10% discount target,
       // ask price as walk-away).
-      const advisor = body.advisor_memory;
+      const advisor = body.negotiation_agent_builder_memory;
       const budgetMaxMinor = toMinorOrUndefined(advisor?.budgetMax);
       const targetPriceMinor = toMinorOrUndefined(advisor?.targetPrice);
       const buyerReservation = budgetMaxMinor ?? askMinor;
@@ -893,7 +893,7 @@ export function registerNegotiationRoutes(
 
       const styleDefaults = mapStyleToDefaults(advisor?.negotiationStyle);
       const sellerStrategy = listingContext.sellerStrategy;
-      const sellerAdvisorMemory = listingContext.sellerAdvisorMemory;
+      const sellerNegotiationAgentBuilderMemory = listingContext.sellerNegotiationAgentBuilderMemory;
       if (!sellerStrategy) {
         return reply.code(409).send({ error: "LISTING_STRATEGY_INCOMPLETE" });
       }
@@ -910,11 +910,11 @@ export function registerNegotiationRoutes(
         thresholds: styleDefaults.thresholds,
         concession: styleDefaults.concession,
         agent: {
-          preset_id: body.agent_preset_id,
+          preset_id: body.negotiation_agent_preset_id,
           weights: body.agent_weights ?? null,
           overrides: body.agent_overrides ?? null,
         },
-        ...(advisor ? { advisor_memory: advisor } : {}),
+        ...(advisor ? { negotiation_agent_builder_memory: advisor } : {}),
       };
 
       // Auto-play loop: cap rounds and add max_rounds to both perspectives so
@@ -922,10 +922,10 @@ export function registerNegotiationRoutes(
       const AUTO_PLAY_MAX_ROUNDS = 8;
 
       // Buyer-side compiled snapshot (mirror of the seller one).
-      const buyerCompiled = compileStrategySnapshot({
+      const buyerCompiled = compileNegotiationAgentSnapshot({
         role: "BUYER",
         userId: buyer.id,
-        strategyId: `buyer_${body.agent_preset_id}`,
+        strategyId: `buyer_${body.negotiation_agent_preset_id}`,
         preset: undefined,
         agentStats: undefined,
         listing: {
@@ -941,21 +941,21 @@ export function registerNegotiationRoutes(
       });
 
       const listingContextSnapshot = listingContext.listingContext;
-      const sellerAgentPresetId = listingContext.sellerAgentPresetId;
+      const sellerNegotiationAgentPresetId = listingContext.sellerNegotiationAgentPresetId;
       const sellerSnapshot: Record<string, unknown> = {
         ...sellerStrategy,
         max_rounds: AUTO_PLAY_MAX_ROUNDS,
-        ...(sellerAdvisorMemory ? { seller_advisor_memory: sellerAdvisorMemory } : {}),
+        ...(sellerNegotiationAgentBuilderMemory ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory } : {}),
         ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
-        ...(sellerAgentPresetId ? { agent_preset_id: sellerAgentPresetId } : {}),
+        ...(sellerNegotiationAgentPresetId ? { negotiation_agent_preset_id: sellerNegotiationAgentPresetId } : {}),
         buyer_requested_strategy: buyerRequestedStrategy,
       };
       const buyerSnapshot: Record<string, unknown> = {
         ...buyerCompiled,
         max_rounds: AUTO_PLAY_MAX_ROUNDS,
-        ...(advisor ? { buyer_advisor_memory: advisor } : {}),
+        ...(advisor ? { buyer_negotiation_agent_builder_memory: advisor } : {}),
         ...(listingContextSnapshot ? { listing_context: listingContextSnapshot } : {}),
-        agent_preset_id: body.agent_preset_id,
+        negotiation_agent_preset_id: body.negotiation_agent_preset_id,
         ...(body.agent_weights ? { agent_weights: body.agent_weights } : {}),
         ...(body.agent_overrides ? { agent_overrides: body.agent_overrides } : {}),
         buyer_requested_strategy: buyerRequestedStrategy,
@@ -972,12 +972,12 @@ export function registerNegotiationRoutes(
         buyerId: buyer.id,
         sellerId: listing.sellerId,
         counterpartyId: buyer.id,
-        strategySnapshot: sellerSnapshot,
+        negotiationAgentSnapshot: sellerSnapshot,
         expiresAt,
       });
 
       // Drive both sides through the staged executor by swapping the session's
-      // role + strategy_snapshot before each call. This is the simplest way to
+      // role + negotiation_agent_snapshot before each call. This is the simplest way to
       // get a back-and-forth LLM transcript persisted under one session id.
       const TERMINAL = new Set([
         "ACCEPTED",
@@ -1102,10 +1102,10 @@ function isAuthorizedSessionCreator(actorId: string, data: CreateSessionBody): b
   return data.role === "BUYER" ? data.buyer_id === actorId : data.seller_id === actorId;
 }
 
-// Pull the buyer-side preset id out of strategy_snapshot. Sessions created by
+// Pull the buyer-side preset id out of negotiation_agent_snapshot. Sessions created by
 // POST /negotiations/start nest it under buyer_requested_strategy.agent.preset_id;
-// older code paths may store it at strategy_snapshot.agent.preset_id directly.
-function extractBuyerAgentPresetId(snapshot: Record<string, unknown> | null | undefined): string | null {
+// older code paths may store it at negotiation_agent_snapshot.agent.preset_id directly.
+function extractBuyerNegotiationAgentPresetId(snapshot: Record<string, unknown> | null | undefined): string | null {
   if (!snapshot || typeof snapshot !== "object") return null;
   const buyerStrategy = (snapshot as Record<string, unknown>).buyer_requested_strategy as
     | Record<string, unknown>
@@ -1124,7 +1124,7 @@ function toMinorOrUndefined(value: number | undefined | null): number | undefine
 }
 
 // Map a buyer-side negotiationStyle keyword to default alpha/threshold/concession
-// numbers. The buyer's AdvisorMemory only carries a coarse label ("defensive" |
+// numbers. The buyer's NegotiationAgentBuilderMemory only carries a coarse label ("defensive" |
 // "balanced" | "aggressive"); the engine still needs concrete parameters.
 function mapStyleToDefaults(style: string | undefined): {
   style: string;
@@ -1219,16 +1219,16 @@ function isValidAgentDelegation(
 }
 
 function applyRoundLimitToStrategy(
-  strategySnapshot: Record<string, unknown>,
+  negotiationAgentSnapshot: Record<string, unknown>,
   maxRoundsPerSession: number,
 ): Record<string, unknown> {
-  const current = typeof strategySnapshot.max_rounds === "number"
-    ? strategySnapshot.max_rounds
-    : Number(strategySnapshot.max_rounds);
+  const current = typeof negotiationAgentSnapshot.max_rounds === "number"
+    ? negotiationAgentSnapshot.max_rounds
+    : Number(negotiationAgentSnapshot.max_rounds);
   const capped = Number.isFinite(current) && current > 0
     ? Math.min(current, maxRoundsPerSession)
     : maxRoundsPerSession;
-  return { ...strategySnapshot, max_rounds: capped };
+  return { ...negotiationAgentSnapshot, max_rounds: capped };
 }
 
 function normalizeSubmitOffer(

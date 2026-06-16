@@ -3,28 +3,33 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  getNegotiationPreset,
-  type NegotiationPresetId,
+  getNegotiationAgentPreset,
+  type NegotiationAgentPresetId,
 } from "@haggle/shared";
-import { localAgents } from "@/lib/local-agents";
+import {
+  createNegotiationAgent,
+  type NegotiationAgentConfig,
+} from "@/lib/negotiation-agents-api";
+import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import {
   AgentBuilder,
-  type AgentBuilderValue,
+  applyChatStrategyToDraft,
+  type NegotiationAgentDraft,
 } from "../_components/AgentBuilder";
-import { StrategyChat } from "@/app/l/[publicId]/strategy-chat";
+import { NegotiationAgentBuilderChat } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 
 type Role = "buyer" | "seller";
 
-const RECOGNIZED_IDS: NegotiationPresetId[] = [
+const RECOGNIZED_IDS: NegotiationAgentPresetId[] = [
   "hunter",
   "closer",
   "verifier",
   "balancer",
 ];
 
-function initialValueFromPresetId(raw?: string): AgentBuilderValue | null {
-  if (!raw || !RECOGNIZED_IDS.includes(raw as NegotiationPresetId)) return null;
-  const preset = getNegotiationPreset(raw as NegotiationPresetId);
+function initialValueFromPresetId(raw?: string): NegotiationAgentDraft | null {
+  if (!raw || !RECOGNIZED_IDS.includes(raw as NegotiationAgentPresetId)) return null;
+  const preset = getNegotiationAgentPreset(raw as NegotiationAgentPresetId);
   if (!preset) return null;
   return {
     sourceKind: "preset",
@@ -43,24 +48,30 @@ interface NewAgentFormProps {
 
 export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
   const router = useRouter();
-  const [value, setValue] = useState<AgentBuilderValue | null>(() =>
+  const [value, setValue] = useState<NegotiationAgentDraft | null>(() =>
     initialValueFromPresetId(initialPresetId),
   );
   const [name, setName] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** Latest memory captured from the builder chat. Persisted with the agent so
+   *  budget/style stated during configuration carries into the snapshot. */
+  const [builderChatMemory, setBuilderChatMemory] =
+    useState<NegotiationAgentBuilderMemory | null>(null);
 
   const backHref = role === "buyer" ? "/buy/agents" : "/sell/agents";
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!value) return;
     setSaving(true);
+    setError(null);
     const copy = value.effectivePreset.copy[role];
-    localAgents.create({
-      name: name.trim() || copy.name,
-      role,
+    const config: NegotiationAgentConfig = {
       emoji: value.effectivePreset.emoji,
-      negotiationPresetId: value.basePresetId,
+      basePresetId: value.basePresetId,
+      negotiationAgentPresetId: value.basePresetId,
       weights: { ...value.effectivePreset.weights },
+      builderChatMemory: builderChatMemory ?? undefined,
       ...(value.overrides
         ? {
             engineParams: {
@@ -80,33 +91,56 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
             },
           }
         : {}),
-    });
-    router.push(backHref);
+    };
+    try {
+      await createNegotiationAgent({
+        name: name.trim() || copy.name,
+        role,
+        config,
+      });
+      router.push(backHref);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save agent");
+      setSaving(false);
+    }
   };
 
   const presetKey = value?.basePresetId ?? "none";
   return (
-    <AgentBuilder
-      role={role}
-      value={value}
-      onChange={setValue}
-      name={name}
-      onNameChange={setName}
-      onSave={handleSave}
-      saving={saving}
-      backHref={backHref}
-      chatSlot={
-        value && (
-          <StrategyChat
-            agent={value.effectivePreset}
-            listingPublicId={`agent-new-${role}-${presetKey}`}
-            listingTitle="General negotiation strategy"
-            listingCategory={null}
-            listingPrice={null}
-            role={role}
-          />
-        )
-      }
-    />
+    <>
+      {error && (
+        <div className="mx-auto mb-4 max-w-[1100px] px-4 sm:px-6">
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        </div>
+      )}
+      <AgentBuilder
+        role={role}
+        value={value}
+        onChange={setValue}
+        name={name}
+        onNameChange={setName}
+        onSave={handleSave}
+        saving={saving}
+        backHref={backHref}
+        chatSlot={
+          value && (
+            <NegotiationAgentBuilderChat
+              agent={value.effectivePreset}
+              listingPublicId={`agent-new-${role}-${presetKey}`}
+              listingTitle="General negotiation strategy"
+              listingCategory={null}
+              listingPrice={null}
+              role={role}
+              onNegotiationAgentBuilderMemoryUpdate={setBuilderChatMemory}
+              onStrategyUpdate={(s) =>
+                setValue((prev) => (prev ? applyChatStrategyToDraft(prev, s) : prev))
+              }
+            />
+          )
+        }
+      />
+    </>
   );
 }

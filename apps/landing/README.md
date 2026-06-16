@@ -12,7 +12,7 @@ From repo root:
 
 ```bash
 pnpm install                              # install workspace deps
-pnpm --filter @haggle/landing dev         # http://localhost:3001
+pnpm --filter @haggle/landing dev         # http://localhost:3002
 ```
 
 Or run both apps in parallel via turbo:

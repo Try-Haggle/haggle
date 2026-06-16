@@ -5,7 +5,7 @@
  * for custom agents; presets live in @haggle/shared/agent-stats.
  */
 
-import type { AgentProfile } from "@haggle/shared";
+import type { NegotiationAgent } from "@haggle/shared";
 
 const STORAGE_KEY = "haggle:agents:v1";
 
@@ -13,7 +13,7 @@ function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-function read(): AgentProfile[] {
+function read(): NegotiationAgent[] {
   if (!isBrowser()) return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -26,16 +26,16 @@ function read(): AgentProfile[] {
   }
 }
 
-function write(agents: AgentProfile[]): void {
+function write(agents: NegotiationAgent[]): void {
   if (!isBrowser()) return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(agents));
   // Same-tab listeners (storage event only fires cross-tab in browsers).
-  window.dispatchEvent(new CustomEvent(LOCAL_AGENTS_UPDATED_EVENT));
+  window.dispatchEvent(new CustomEvent(DRAFT_NEGOTIATION_AGENT_STORE_UPDATED_EVENT));
 }
 
-export const LOCAL_AGENTS_UPDATED_EVENT = "haggle:local-agents-updated";
+export const DRAFT_NEGOTIATION_AGENT_STORE_UPDATED_EVENT = "haggle:draft-negotiation-agent-store-updated";
 
-function isValidProfile(x: unknown): x is AgentProfile {
+function isValidProfile(x: unknown): x is NegotiationAgent {
   if (!x || typeof x !== "object") return false;
   const p = x as Record<string, unknown>;
   if (typeof p.id !== "string" || typeof p.name !== "string") return false;
@@ -45,7 +45,7 @@ function isValidProfile(x: unknown): x is AgentProfile {
   // At least one strategy shape must be present.
   const hasStats = typeof p.stats === "object" && p.stats !== null;
   const hasNewFlow =
-    typeof p.negotiationPresetId === "string" ||
+    typeof p.negotiationAgentPresetId === "string" ||
     typeof p.weights === "object" ||
     typeof p.engineParams === "object" ||
     typeof p.categoryAnswers === "object";
@@ -56,20 +56,20 @@ function uid(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export const localAgents = {
-  list(): AgentProfile[] {
+export const draftNegotiationAgentStore = {
+  list(): NegotiationAgent[] {
     return read().sort((a, b) => b.updatedAt - a.updatedAt);
   },
 
-  get(id: string): AgentProfile | undefined {
+  get(id: string): NegotiationAgent | undefined {
     return read().find((a) => a.id === id);
   },
 
   create(
-    input: Omit<AgentProfile, "id" | "createdAt" | "updatedAt">,
-  ): AgentProfile {
+    input: Omit<NegotiationAgent, "id" | "createdAt" | "updatedAt">,
+  ): NegotiationAgent {
     const now = Date.now();
-    const agent: AgentProfile = {
+    const agent: NegotiationAgent = {
       ...input,
       id: uid(),
       createdAt: now,
@@ -81,12 +81,12 @@ export const localAgents = {
 
   update(
     id: string,
-    patch: Partial<Omit<AgentProfile, "id" | "createdAt">>,
-  ): AgentProfile | undefined {
+    patch: Partial<Omit<NegotiationAgent, "id" | "createdAt">>,
+  ): NegotiationAgent | undefined {
     const agents = read();
     const idx = agents.findIndex((a) => a.id === id);
     if (idx === -1) return undefined;
-    const updated: AgentProfile = {
+    const updated: NegotiationAgent = {
       ...agents[idx],
       ...patch,
       updatedAt: Date.now(),

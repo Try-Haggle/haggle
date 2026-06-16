@@ -32,7 +32,7 @@ export interface DemoInitRequest {
   buyer_budget?: { max_budget_minor?: number };
   language?: string;
   preset?: PresetName;
-  custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
+  custom_skills?: { advisor: string; negotiation_agent_config?: Record<string, unknown> };
   buyer_agent_id?: string;
   seller_agent_id?: string;
   preset_tuning_draft?: Record<string, unknown>;

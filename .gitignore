@@ -13,6 +13,11 @@ out/
 .env
 .env.local
 .env.*.local
+.env.*.bak
+
+# Supabase local stack runtime (config.toml + init-extensions.sql ARE tracked)
+supabase/.temp/
+supabase/.branches/
 
 # OS
 .DS_Store
@@ -37,3 +42,4 @@ apps/web/.vercel/
 # Claude Code worktrees
 .claude/worktrees/
 .claude/settings.local.json
+test-results/

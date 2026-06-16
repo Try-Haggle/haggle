@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { sql, type Database } from "@haggle/db";
 import { callLLM } from "../negotiation/adapters/xai-client.js";
-import { getAgentVoiceProfile } from "../negotiation/lumen-persona-profiles.js";
+import { getAgentVoiceProfile } from "../negotiation/negotiation-agent-voice-profiles.js";
 import { recordConversationSignalsForRound } from "../services/conversation-signal-sink.js";
 import {
   buildAdvisorRequirementPlan,
@@ -17,10 +17,10 @@ import {
   type AdvisorCandidatePlan,
 } from "../services/advisor-candidate-planner.service.js";
 import { generateTextEmbedding } from "../services/embedding.service.js";
-import { saveAdvisorMemorySnapshot } from "../services/advisor-memory.service.js";
+import { saveNegotiationAgentBuilderMemorySnapshot } from "../services/negotiation-agent-builder-memory.service.js";
 import {
   compilePresetTuningDraft,
-  listNegotiationPresets,
+  listNegotiationAgentPresets,
 } from "../services/preset-tuning.service.js";
 
 const DEMO_USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -32,7 +32,7 @@ const optionalPositiveIntSchema = z.preprocess(
   z.number().int().positive().optional(),
 );
 
-const structuredAdvisorMemorySchema = z.object({
+const structuredNegotiationAgentBuilderMemorySchema = z.object({
   activeIntent: z.object({
     productScope: z.string().optional(),
     source: z.string().optional(),
@@ -138,7 +138,7 @@ const structuredAdvisorMemorySchema = z.object({
   }).optional(),
 }).default({});
 
-const advisorMemorySchema = z.object({
+const negotiationAgentBuilderMemorySchema = z.object({
   categoryInterest: z.string().min(1),
   budgetMax: optionalPositiveIntSchema,
   targetPrice: optionalPositiveIntSchema,
@@ -149,15 +149,15 @@ const advisorMemorySchema = z.object({
   openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]),
   questions: z.array(z.string()).default([]),
   source: z.array(z.string()).default([]),
-  structured: structuredAdvisorMemorySchema.optional(),
+  structured: structuredNegotiationAgentBuilderMemorySchema.optional(),
 });
 
-const saveAdvisorMemoryBodySchema = z.object({
+const saveNegotiationAgentBuilderMemoryBodySchema = z.object({
   user_id: z.string().uuid().default(DEMO_USER_ID),
   session_id: z.string().uuid().optional(),
   agent_id: z.string().min(1).optional(),
   message: z.string().min(1).max(2000),
-  memory: advisorMemorySchema,
+  memory: negotiationAgentBuilderMemorySchema,
 });
 
 const advisorListingSchema = z.object({
@@ -172,11 +172,11 @@ const advisorListingSchema = z.object({
   sellerNote: z.string().optional(),
 });
 
-const advisorTurnBodySchema = z.object({
+const negotiationAgentBuilderTurnBodySchema = z.object({
   user_id: z.string().uuid().default(DEMO_USER_ID),
   agent_id: z.string().min(1).optional(),
   message: z.string().min(1).max(2000),
-  previous_memory: advisorMemorySchema,
+  previous_memory: negotiationAgentBuilderMemorySchema,
   listings: z.array(advisorListingSchema).default([]),
 });
 
@@ -186,7 +186,7 @@ const presetTuningBodySchema = z.object({
     marketMedianMinor: z.number().int().positive().optional(),
     sellerNote: z.string().optional(),
   }),
-  memory: advisorMemorySchema.optional().nullable(),
+  memory: negotiationAgentBuilderMemorySchema.optional().nullable(),
   preset_id: z.enum(["safe_buyer", "balanced_closer", "lowest_price", "fast_close"]).optional(),
   price_cap_minor: z.number().int().positive().optional(),
   price_cap: z.number().positive().optional(),
@@ -302,8 +302,8 @@ const presetTuningFeedbackBodySchema = z.object({
   application_mode: z.enum(["auto", "manual"]).optional(),
 });
 
-const advisorTurnResultSchema = z.object({
-  memory: advisorMemorySchema,
+const negotiationAgentBuilderTurnResultSchema = z.object({
+  memory: negotiationAgentBuilderMemorySchema,
   reply: z.string().min(1),
   reasoning_summary: z.string().optional(),
 });
@@ -325,7 +325,7 @@ const advisorListingsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(8),
 });
 
-type AdvisorMemory = z.infer<typeof advisorMemorySchema>;
+type NegotiationAgentBuilderMemory = z.infer<typeof negotiationAgentBuilderMemorySchema>;
 
 type AdvisorDemoListing = {
   id: string;
@@ -353,13 +353,13 @@ type DemoMemoryCard = {
 
 export function registerIntelligenceDemoRoutes(app: FastifyInstance, db: Database) {
   app.post("/intelligence/demo/advisor-turn", async (request, reply) => {
-    const parsed = advisorTurnBodySchema.safeParse(request.body);
+    const parsed = negotiationAgentBuilderTurnBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
     }
 
     try {
-      const result = await analyzeAdvisorTurn(parsed.data);
+      const result = await processNegotiationAgentBuilderTurn(parsed.data);
       return reply.send({
         user_id: parsed.data.user_id,
         agent_id: parsed.data.agent_id,
@@ -375,13 +375,13 @@ export function registerIntelligenceDemoRoutes(app: FastifyInstance, db: Databas
   });
 
   app.post("/intelligence/demo/advisor-memory", async (request, reply) => {
-    const parsed = saveAdvisorMemoryBodySchema.safeParse(request.body);
+    const parsed = saveNegotiationAgentBuilderMemoryBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
     }
 
     const body = parsed.data;
-    const result = await saveAdvisorMemorySnapshot(db, {
+    const result = await saveNegotiationAgentBuilderMemorySnapshot(db, {
       userId: body.user_id,
       sessionId: body.session_id,
       agentId: body.agent_id,
@@ -392,8 +392,8 @@ export function registerIntelligenceDemoRoutes(app: FastifyInstance, db: Databas
     return reply.send(result);
   });
 
-  app.get("/intelligence/demo/negotiation-presets", async () => {
-    return { presets: listNegotiationPresets() };
+  app.get("/intelligence/demo/negotiation-agent-presets", async () => {
+    return { presets: listNegotiationAgentPresets() };
   });
 
   app.post("/intelligence/demo/preset-tuning-draft", async (request, reply) => {
@@ -428,7 +428,7 @@ export function registerIntelligenceDemoRoutes(app: FastifyInstance, db: Databas
     const body = parsed.data;
     const sourceMessageId = buildPresetTuningSourceMessageId(body);
     const card = buildPresetTuningMemoryCard(body.draft);
-    const memoryCards = await upsertAdvisorMemoryCards(db, {
+    const memoryCards = await upsertNegotiationAgentBuilderMemoryCards(db, {
       userId: body.user_id,
       sourceMessageId,
       cards: [card],
@@ -485,7 +485,7 @@ export function registerIntelligenceDemoRoutes(app: FastifyInstance, db: Databas
     return reply.send({
       user_id: parsed.data.user_id,
       cards,
-      advisor_memory: buildAdvisorMemoryFromStoredCards(cards),
+      advisor_memory: buildNegotiationAgentBuilderMemoryFromStoredCards(cards),
     });
   });
 
@@ -851,7 +851,7 @@ const SEARCH_BRAND_TERMS = new Set([
   "harley",
 ]);
 
-async function analyzeAdvisorTurn(input: z.infer<typeof advisorTurnBodySchema>) {
+async function processNegotiationAgentBuilderTurn(input: z.infer<typeof negotiationAgentBuilderTurnBodySchema>) {
   const initialRequirementPlan = buildAdvisorRequirementPlan({
     memory: input.previous_memory,
     listings: input.listings,
@@ -947,7 +947,7 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
 	    },
 	  );
 
-  const parsed = advisorTurnResultSchema.parse(parseJSON(response.content));
+  const parsed = negotiationAgentBuilderTurnResultSchema.parse(parseJSON(response.content));
   const sourceCandidates = parsed.memory.source.length > 0
     ? parsed.memory.source.slice(-7)
     : input.previous_memory.source.slice(-7);
@@ -955,7 +955,7 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     ...sourceCandidates.filter((source) => shouldKeepAdvisorSource(source, input.previous_memory)),
     ...(shouldKeepAdvisorSource(input.message, input.previous_memory) ? [input.message] : []),
   ]).slice(-8);
-  const memory = sanitizeAdvisorMemoryFacts(applyConflictConfirmationAnswer(applyAmbiguousPendingAnswerGuard(applyPendingSlotAnswerScope(applyScopedConditionConfirmation(applyNoPreferenceAnswer(normalizeAdvisorBudgetMemory({
+  const memory = sanitizeNegotiationAgentBuilderMemoryFacts(applyConflictConfirmationAnswer(applyAmbiguousPendingAnswerGuard(applyPendingSlotAnswerScope(applyScopedConditionConfirmation(applyNoPreferenceAnswer(normalizeNegotiationAgentBuilderBudgetMemory({
     ...parsed.memory,
     structured: parsed.memory.structured ?? input.previous_memory.structured,
     source: parsedSource,
@@ -979,7 +979,7 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     ...memory,
     questions: nextQuestions,
   };
-  finalMemory.structured = buildStructuredAdvisorMemory({
+  finalMemory.structured = buildStructuredNegotiationAgentBuilderMemory({
     memory: finalMemory,
     previousMemory: input.previous_memory,
     latestMessage: input.message,
@@ -1013,7 +1013,7 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     reply,
     tag_requirements: finalRequirementPlan,
     advisor_plan: finalCandidatePlan,
-    turn_cost: buildAdvisorTurnCost(response.usage),
+    turn_cost: buildNegotiationAgentBuilderTurnCost(response.usage),
   };
 }
 
@@ -1040,9 +1040,9 @@ function formatAdvisorListingsForPrompt(listings: Array<z.infer<typeof advisorLi
     .join("\n");
 }
 
-function hasAdvisorBuyerPreference(memory: AdvisorMemory): boolean {
+function hasAdvisorBuyerPreference(memory: NegotiationAgentBuilderMemory): boolean {
   if (memory.mustHave.length > 0 || memory.avoid.length > 0) return true;
-  if (hasGeneralNoPreference(memoryTextFromAdvisorMemory(memory))) return true;
+  if (hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))) return true;
   if (memory.riskStyle !== "balanced") return true;
   if (memory.negotiationStyle !== "balanced") return true;
   if (memory.openingTactic !== "fair_market_anchor") return true;
@@ -1058,7 +1058,7 @@ function hasAdvisorBuyerPreference(memory: AdvisorMemory): boolean {
 function chooseNextAdvisorQuestions(
   candidatePlan: AdvisorCandidatePlan,
   requirementPlan: TagRequirementPlan,
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
 ): string[] {
   if (requirementPlan.blockingSlots.length > 0) {
     const firstBlockingQuestion = requirementPlan.blockingSlots[0]?.questionKo;
@@ -1078,7 +1078,7 @@ function chooseNextAdvisorQuestions(
 
   if (
     candidatePlan.nextAction.slot === "buyer_priority"
-    && hasGeneralNoPreference(memoryTextFromAdvisorMemory(memory))
+    && hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))
   ) {
     return [];
   }
@@ -1139,8 +1139,8 @@ function buildAdvisorReplyAfterPlanning(input: {
   candidatePlan: AdvisorCandidatePlan;
   requirementPlan: TagRequirementPlan;
   latestMessage: string;
-  previousMemory: AdvisorMemory;
-  memory: AdvisorMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
+  memory: NegotiationAgentBuilderMemory;
   agentProfileName: string;
 }): string {
   if (input.nextQuestions.length > 0) {
@@ -1165,7 +1165,7 @@ function buildAdvisorReplyAfterPlanning(input: {
   return sanitizeAdvisorReply(input.parsedReply);
 }
 
-function buildAdvisorTurnCost(usage: { prompt_tokens: number; completion_tokens: number }) {
+function buildNegotiationAgentBuilderTurnCost(usage: { prompt_tokens: number; completion_tokens: number }) {
   const prompt = usage.prompt_tokens;
   const completion = usage.completion_tokens;
   const total = prompt + completion;
@@ -1373,10 +1373,10 @@ function sanitizeAdvisorReply(reply: string): string {
 }
 
 function applyNoPreferenceAnswer(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   latestMessage: string,
-  previousMemory: AdvisorMemory,
-): AdvisorMemory {
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   if (!isNoPreferenceAnswer(latestMessage) || previousMemory.questions.length === 0) return memory;
 
   const previousQuestionText = previousMemory.questions.join(" ");
@@ -1390,10 +1390,10 @@ function applyNoPreferenceAnswer(
 }
 
 function applyPendingSlotAnswerScope(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   latestMessage: string,
-  previousMemory: AdvisorMemory,
-): AdvisorMemory {
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   const pendingSlot = previousMemory.structured?.pendingSlots
     .slice()
     .reverse()
@@ -1439,7 +1439,7 @@ function applyPendingSlotAnswerScope(
   return memory;
 }
 
-function shouldKeepAdvisorSource(source: string, previousMemory: AdvisorMemory): boolean {
+function shouldKeepAdvisorSource(source: string, previousMemory: NegotiationAgentBuilderMemory): boolean {
   const text = source.trim();
   if (!text) return false;
   if (isSecurityAttackInput(text)) return false;
@@ -1449,7 +1449,7 @@ function shouldKeepAdvisorSource(source: string, previousMemory: AdvisorMemory):
   return /(?:iphone|아이폰|ipad|아이패드|macbook|맥북|laptop|노트북|tesla|테슬라|model\s*\d|모델\s*\d|pro\b|budget|예산|target|price|가격|\$\s*\d|\d+\s*(?:usd|dollars?|달러|불)|battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|condition|상태|screen|화면|box|박스|damage|wear|active intent|interest|expanded|narrowed|required|preference|confirmed|applied|budget change|search)/i.test(text);
 }
 
-function sanitizeAdvisorMemoryFacts(memory: AdvisorMemory, previousMemory: AdvisorMemory): AdvisorMemory {
+function sanitizeNegotiationAgentBuilderMemoryFacts(memory: NegotiationAgentBuilderMemory, previousMemory: NegotiationAgentBuilderMemory): NegotiationAgentBuilderMemory {
   return {
     ...memory,
     mustHave: unique(memory.mustHave.filter((fact) => shouldKeepAdvisorFact(fact, previousMemory))),
@@ -1459,7 +1459,7 @@ function sanitizeAdvisorMemoryFacts(memory: AdvisorMemory, previousMemory: Advis
 
 function pruneSupersededAdvisorSources(
   sources: string[],
-  memoryConflicts: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"],
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
 ): string[] {
   const superseded = memoryConflicts.filter((conflict) => (
     conflict.status === "superseded"
@@ -1482,9 +1482,9 @@ function sourceContainsStructuredFact(source: string, productScope: string, fact
 }
 
 function pruneSupersededPromotionDecisions(
-  decisions: NonNullable<AdvisorMemory["structured"]>["promotionDecisions"],
-  memoryConflicts: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"],
-): NonNullable<AdvisorMemory["structured"]>["promotionDecisions"] {
+  decisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"],
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"] {
   const superseded = memoryConflicts.filter((conflict) => (
     conflict.status === "superseded"
     && Boolean(conflict.productScope)
@@ -1501,8 +1501,8 @@ function pruneSupersededPromotionDecisions(
 }
 
 function shouldPruneSupersededConflict(
-  conflict: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"][number],
-  memoryConflicts: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"],
+  conflict: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
 ): boolean {
   if (!conflict.productScope || !conflict.previousValue) return false;
   const latestCurrent = memoryConflicts
@@ -1518,7 +1518,7 @@ function shouldPruneSupersededConflict(
   return latestCurrent?.currentValue !== conflict.previousValue;
 }
 
-function shouldKeepAdvisorFact(fact: string, previousMemory: AdvisorMemory): boolean {
+function shouldKeepAdvisorFact(fact: string, previousMemory: NegotiationAgentBuilderMemory): boolean {
   const text = fact.trim();
   if (!text || isSecurityAttackInput(text)) return false;
   if (text.length < 2) return false;
@@ -1527,14 +1527,14 @@ function shouldKeepAdvisorFact(fact: string, previousMemory: AdvisorMemory): boo
   return /(?:battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|screen|화면|box|박스|damage|wear|crack|scratch|pro model|clean|original)/i.test(text);
 }
 
-function buildStructuredAdvisorMemory(input: {
-  memory: AdvisorMemory;
-  previousMemory: AdvisorMemory;
+function buildStructuredNegotiationAgentBuilderMemory(input: {
+  memory: NegotiationAgentBuilderMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
   latestMessage: string;
   requirementPlan: TagRequirementPlan;
-}): NonNullable<AdvisorMemory["structured"]> {
+}): NonNullable<NegotiationAgentBuilderMemory["structured"]> {
   const previousStructured = input.previousMemory.structured;
-  let productRequirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"] = {
+  let productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] = {
     ...(previousStructured?.productRequirements ?? {}),
   };
 
@@ -1649,22 +1649,22 @@ function buildStructuredAdvisorMemory(input: {
 }
 
 function buildStructuredMemoryLifecycle(input: {
-  memory: AdvisorMemory;
-  previousMemory: AdvisorMemory;
+  memory: NegotiationAgentBuilderMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
   latestMessage: string;
   requirementPlan: TagRequirementPlan;
   activeScope?: string;
-  productRequirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"];
-  discardedSignals: NonNullable<AdvisorMemory["structured"]>["discardedSignals"];
-  memoryConflicts: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"];
+  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"];
+  discardedSignals: NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"];
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"];
 }): Pick<
-  NonNullable<AdvisorMemory["structured"]>,
+  NonNullable<NegotiationAgentBuilderMemory["structured"]>,
   "sessionMemory" | "longTermMemory" | "promotionDecisions" | "compression"
 > {
   const previousStructured = input.previousMemory.structured;
   const previousLongTerm = previousStructured?.longTermMemory;
   const previousSession = previousStructured?.sessionMemory;
-  let promotionDecisions: NonNullable<AdvisorMemory["structured"]>["promotionDecisions"] = [
+  let promotionDecisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"] = [
     ...(previousStructured?.promotionDecisions ?? []),
   ];
   const longTermFacts = new Set(previousLongTerm?.facts ?? []);
@@ -1688,7 +1688,7 @@ function buildStructuredMemoryLifecycle(input: {
   const addDecision = (
     text: string,
     decision: "promote" | "session_only" | "discard",
-    reason: NonNullable<AdvisorMemory["structured"]>["promotionDecisions"][number]["reason"],
+    reason: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"][number]["reason"],
     target: "long_term" | "session" | "none",
     productScope?: string,
   ) => {
@@ -1805,7 +1805,7 @@ function buildStructuredMemoryLifecycle(input: {
 }
 
 function chooseConflictResolutionQuestion(
-  structured: AdvisorMemory["structured"] | undefined,
+  structured: NegotiationAgentBuilderMemory["structured"] | undefined,
 ): string | null {
   const conflict = structured?.memoryConflicts
     .slice()
@@ -1817,8 +1817,8 @@ function chooseConflictResolutionQuestion(
 function buildStructuredQuestionPlan(input: {
   nextQuestions: string[];
   requirementPlan: TagRequirementPlan;
-  structured: NonNullable<AdvisorMemory["structured"]>;
-}): NonNullable<AdvisorMemory["structured"]>["questionPlan"] {
+  structured: NonNullable<NegotiationAgentBuilderMemory["structured"]>;
+}): NonNullable<NegotiationAgentBuilderMemory["structured"]>["questionPlan"] {
   const combinedQuestion = formatBundledAdvisorQuestions(input.nextQuestions);
   const nextQuestionSet = new Set(input.nextQuestions);
   const conflict = input.structured.memoryConflicts
@@ -1893,7 +1893,7 @@ function questionDeferReason(input: {
   askedSlot: TagRequirementSlot | undefined;
   nextQuestion: string | null;
   blockingSlots: TagRequirementSlot[];
-}): NonNullable<NonNullable<AdvisorMemory["structured"]>["questionPlan"]>["deferred"][number]["reason"] {
+}): NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["questionPlan"]>["deferred"][number]["reason"] {
   if (input.conflictActive) return "conflict_resolution_first";
   if (
     input.slot.enforcement === "soft"
@@ -1909,13 +1909,13 @@ function questionDeferReason(input: {
 }
 
 function applyStructuredConflictHandling(input: {
-  productRequirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"];
-  previousMemory: AdvisorMemory;
+  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"];
+  previousMemory: NegotiationAgentBuilderMemory;
   latestMessage: string;
   activeScope?: string;
 }): {
-  productRequirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"];
-  memoryConflicts: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"];
+  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"];
+  memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"];
 } {
   const memoryConflicts = [...(input.previousMemory.structured?.memoryConflicts ?? [])];
   if (!input.activeScope) {
@@ -2033,9 +2033,9 @@ function applyStructuredConflictHandling(input: {
 }
 
 function findPendingMemoryConflict(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   activeScope?: string,
-): NonNullable<AdvisorMemory["structured"]>["memoryConflicts"][number] | null {
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number] | null {
   return memory.structured?.memoryConflicts
     .slice()
     .reverse()
@@ -2048,8 +2048,8 @@ function findPendingMemoryConflict(
 }
 
 function sameMemoryConflict(
-  left: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"][number],
-  right: NonNullable<AdvisorMemory["structured"]>["memoryConflicts"][number],
+  left: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
+  right: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
 ): boolean {
   return (
     left.status === right.status
@@ -2062,7 +2062,7 @@ function sameMemoryConflict(
 
 function detectLatestSlotFacts(
   latestMessage: string,
-  previousMemory: AdvisorMemory,
+  previousMemory: NegotiationAgentBuilderMemory,
 ): Array<{ slotId: string; fact: string; list: "mustHave" | "avoid"; needsConfirmation: boolean }> {
   const facts: Array<{ slotId: string; fact: string; list: "mustHave" | "avoid"; needsConfirmation: boolean }> = [];
   const pushFact = (slotId: string, fact: string) => {
@@ -2098,7 +2098,7 @@ function detectLatestSlotFacts(
 
 function extractPlainBatteryThresholdFromAnswer(
   latestMessage: string,
-  previousMemory: AdvisorMemory,
+  previousMemory: NegotiationAgentBuilderMemory,
 ): string | null {
   if (!pendingQuestionKinds(previousMemory.questions.join(" ")).includes("battery")) return null;
   const match = latestMessage.match(/\b([7-9][0-9]|100)\s*%?\b/);
@@ -2111,7 +2111,7 @@ function isTentativeRequirementChange(message: string): boolean {
 }
 
 function findSlotFact(
-  requirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
   slotId: string,
 ): string | null {
   const allFacts = [...requirements.mustHave, ...requirements.avoid];
@@ -2119,9 +2119,9 @@ function findSlotFact(
 }
 
 function removeSlotFacts(
-  requirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
   slotId: string,
-): NonNullable<AdvisorMemory["structured"]>["productRequirements"][string] {
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
   return {
     ...requirements,
     mustHave: requirements.mustHave.filter((fact) => !structuredSlotsForFacts([fact]).includes(slotId)),
@@ -2130,10 +2130,10 @@ function removeSlotFacts(
 }
 
 function removeSlotFact(
-  requirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
   slotId: string,
   factToRemove: string,
-): NonNullable<AdvisorMemory["structured"]>["productRequirements"][string] {
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
   return {
     ...requirements,
     mustHave: requirements.mustHave.filter((fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId)),
@@ -2142,9 +2142,9 @@ function removeSlotFact(
 }
 
 function addCurrentSlotFact(
-  requirements: NonNullable<AdvisorMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
   update: { slotId: string; fact: string; list: "mustHave" | "avoid" },
-): NonNullable<AdvisorMemory["structured"]>["productRequirements"][string] {
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
   return {
     ...requirements,
     mustHave: update.list === "mustHave" ? unique([...requirements.mustHave, update.fact]) : requirements.mustHave,
@@ -2168,7 +2168,7 @@ function buildConflictResolutionQuestion(
 }
 
 function resolveStructuredActiveIntent(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   latestMessage: string,
 ): { productScope?: string; source?: string } {
   const latestScopes = extractStructuredProductScopes(latestMessage);
@@ -2271,9 +2271,9 @@ function structuredSlotsForFacts(facts: string[]): string[] {
 }
 
 function buildStructuredDiscardedSignals(input: {
-  previousMemory: AdvisorMemory;
+  previousMemory: NegotiationAgentBuilderMemory;
   latestMessage: string;
-}): NonNullable<AdvisorMemory["structured"]>["discardedSignals"] {
+}): NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"] {
   const previous = input.previousMemory.structured?.discardedSignals ?? [];
   const discarded = [...previous];
   if (isSecurityAttackInput(input.latestMessage)) {
@@ -2308,10 +2308,10 @@ function isSecurityAttackInput(message: string): boolean {
 }
 
 function applyScopedConditionConfirmation(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   latestMessage: string,
-  previousMemory: AdvisorMemory,
-): AdvisorMemory {
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   if (previousMemory.questions.length === 0) return memory;
 
   const previousQuestion = previousMemory.questions.join(" ");
@@ -2323,7 +2323,7 @@ function applyScopedConditionConfirmation(
   if (isRejectScopedConditionAnswer(latestMessage)) {
     const slotId = scopedConditionSlotId(conditionName);
     return {
-      ...removeSlotFromAdvisorMemory(memory, slotId),
+      ...removeSlotFromNegotiationAgentBuilderMemory(memory, slotId),
       source: unique([
         ...memory.source,
         ...targetScopeIntentSources(previousMemory, targetScope),
@@ -2340,7 +2340,7 @@ function applyScopedConditionConfirmation(
 
   if (!isApplyScopedConditionAnswer(latestMessage)) return memory;
 
-  const memoryText = memoryTextFromAdvisorMemory(previousMemory);
+  const memoryText = memoryTextFromNegotiationAgentBuilderMemory(previousMemory);
   const appliedFacts: string[] = [];
 
   if (conditionName === "배터리 조건") {
@@ -2373,7 +2373,7 @@ function applyScopedConditionConfirmation(
   };
 }
 
-function targetScopeIntentSources(previousMemory: AdvisorMemory, targetScope: string): string[] {
+function targetScopeIntentSources(previousMemory: NegotiationAgentBuilderMemory, targetScope: string): string[] {
   const targetSources = previousMemory.source.filter((source) => (
     extractStructuredProductScopes(source).includes(targetScope)
     && normalizeStructuredFacts(source).length === 0
@@ -2382,9 +2382,9 @@ function targetScopeIntentSources(previousMemory: AdvisorMemory, targetScope: st
 }
 
 function appendScopedConditionDecision(
-  structured: AdvisorMemory["structured"] | undefined,
-  decision: NonNullable<AdvisorMemory["structured"]>["scopedConditionDecisions"][number],
-): AdvisorMemory["structured"] {
+  structured: NegotiationAgentBuilderMemory["structured"] | undefined,
+  decision: NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"][number],
+): NegotiationAgentBuilderMemory["structured"] {
   return {
     activeIntent: structured?.activeIntent,
     productRequirements: structured?.productRequirements ?? {},
@@ -2405,9 +2405,9 @@ function appendScopedConditionDecision(
 }
 
 function uniqueScopedConditionDecisions(
-  decisions: NonNullable<AdvisorMemory["structured"]>["scopedConditionDecisions"],
-): NonNullable<AdvisorMemory["structured"]>["scopedConditionDecisions"] {
-  const latestByScope = new Map<string, NonNullable<AdvisorMemory["structured"]>["scopedConditionDecisions"][number]>();
+  decisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"],
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"] {
+  const latestByScope = new Map<string, NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"][number]>();
   for (const decision of decisions) {
     const key = `${decision.slotId}:${decision.sourceScope ?? ""}:${decision.targetScope}`;
     latestByScope.delete(key);
@@ -2435,7 +2435,7 @@ function scopedConditionSlotId(conditionName: string): string {
   return "buyer_priority";
 }
 
-function removeSlotFromAdvisorMemory(memory: AdvisorMemory, slotId: string): AdvisorMemory {
+function removeSlotFromNegotiationAgentBuilderMemory(memory: NegotiationAgentBuilderMemory, slotId: string): NegotiationAgentBuilderMemory {
   return {
     ...memory,
     mustHave: memory.mustHave.filter((fact) => !structuredSlotsForFacts([fact]).includes(slotId)),
@@ -2444,10 +2444,10 @@ function removeSlotFromAdvisorMemory(memory: AdvisorMemory, slotId: string): Adv
 }
 
 function applyConflictConfirmationAnswer(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   latestMessage: string,
-  previousMemory: AdvisorMemory,
-): AdvisorMemory {
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   const pendingConflict = findPendingMemoryConflict(previousMemory);
   if (!pendingConflict?.currentValue || !pendingConflict.previousValue) return memory;
 
@@ -2481,10 +2481,10 @@ function replaceMemoryFact(values: string[], from: string, to: string): string[]
 }
 
 function applyAmbiguousPendingAnswerGuard(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   latestMessage: string,
-  previousMemory: AdvisorMemory,
-): AdvisorMemory {
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   if (!isAmbiguousAnswer(latestMessage) || previousMemory.questions.length === 0) return memory;
 
   const previousQuestion = previousMemory.questions.join(" ");
@@ -2597,7 +2597,7 @@ function hasGeneralNoPreference(memoryText: string): boolean {
   return /(?:no additional requirements|no preference|none|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/i.test(memoryText);
 }
 
-function memoryTextFromAdvisorMemory(memory: AdvisorMemory): string {
+function memoryTextFromNegotiationAgentBuilderMemory(memory: NegotiationAgentBuilderMemory): string {
   return [
     memory.categoryInterest,
     ...memory.mustHave,
@@ -2610,7 +2610,7 @@ function replyAsksQuestion(reply: string): boolean {
   return getQuestionWindows(reply).length > 0;
 }
 
-function buildNoPreferenceAcknowledgement(memory: AdvisorMemory, agentProfileName: string): string {
+function buildNoPreferenceAcknowledgement(memory: NegotiationAgentBuilderMemory, agentProfileName: string): string {
   const product = memory.categoryInterest && memory.categoryInterest !== "탐색 중"
     ? memory.categoryInterest
     : "이 제품";
@@ -2627,8 +2627,8 @@ function parseJSON(raw: string): unknown {
   return JSON.parse(cleaned);
 }
 
-function buildAdvisorMemoryCards(memory: AdvisorMemory): DemoMemoryCard[] {
-  const normalizedMemory = normalizeAdvisorBudgetMemory(memory, {
+function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilderMemory): DemoMemoryCard[] {
+  const normalizedMemory = normalizeNegotiationAgentBuilderBudgetMemory(memory, {
     latestMessage: memory.source.join(" "),
     listings: [],
   });
@@ -2696,14 +2696,14 @@ function buildAdvisorMemoryCards(memory: AdvisorMemory): DemoMemoryCard[] {
   return cards;
 }
 
-function hasAdvisorActiveIntentSwitch(memory: AdvisorMemory): boolean {
+function hasNegotiationAgentBuilderActiveIntentSwitch(memory: NegotiationAgentBuilderMemory): boolean {
   return memory.source.some((item) => /active intent switched/i.test(item));
 }
 
-function buildAdvisorMemoryFromStoredCards(cards: Array<{ summary?: unknown; memory?: unknown; memory_key?: unknown }>): AdvisorMemory | null {
+function buildNegotiationAgentBuilderMemoryFromStoredCards(cards: Array<{ summary?: unknown; memory?: unknown; memory_key?: unknown }>): NegotiationAgentBuilderMemory | null {
   if (cards.length === 0) return null;
 
-  const memory: AdvisorMemory = {
+  const memory: NegotiationAgentBuilderMemory = {
     categoryInterest: "탐색 중",
     mustHave: [],
     avoid: [],
@@ -2753,7 +2753,7 @@ function buildAdvisorMemoryFromStoredCards(cards: Array<{ summary?: unknown; mem
       foundUsefulMemory = true;
     }
     if (structured) {
-      memory.structured = mergeStructuredAdvisorMemory(memory.structured, structured);
+      memory.structured = mergeStructuredNegotiationAgentBuilderMemory(memory.structured, structured);
       foundUsefulMemory = true;
     }
     if (riskStyle) {
@@ -2777,21 +2777,21 @@ function buildAdvisorMemoryFromStoredCards(cards: Array<{ summary?: unknown; mem
   }
 
   return foundUsefulMemory
-    ? normalizeAdvisorBudgetMemory(memory, {
+    ? normalizeNegotiationAgentBuilderBudgetMemory(memory, {
       latestMessage: memory.source.join(" "),
       listings: [],
     })
     : null;
 }
 
-function normalizeAdvisorBudgetMemory(
-  memory: AdvisorMemory,
+function normalizeNegotiationAgentBuilderBudgetMemory(
+  memory: NegotiationAgentBuilderMemory,
   context: {
     latestMessage: string;
-    previousMemory?: AdvisorMemory;
+    previousMemory?: NegotiationAgentBuilderMemory;
     listings: Array<{ title: string; category?: string; askPriceMinor: number }>;
   },
-): AdvisorMemory {
+): NegotiationAgentBuilderMemory {
   const normalized = { ...memory };
   const explicitBudget = extractExplicitDollarBudget(context.latestMessage, context.previousMemory);
   const electronicsLike = isConsumerElectronicsMemory(normalized, context.listings);
@@ -2828,7 +2828,7 @@ function normalizeAdvisorBudgetMemory(
   return normalized;
 }
 
-function extractExplicitDollarBudget(message: string, previousMemory?: AdvisorMemory): number | undefined {
+function extractExplicitDollarBudget(message: string, previousMemory?: NegotiationAgentBuilderMemory): number | undefined {
   const text = message.trim().toLowerCase();
   if (hasPercentNumber(text) || hasProductModelNumber(text) || isShortModelAnswerToPendingQuestion(text, previousMemory)) return undefined;
   const maxMatch = text.match(/(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i);
@@ -2873,7 +2873,7 @@ function hasProductModelNumber(text: string): boolean {
     || /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text);
 }
 
-function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: AdvisorMemory): boolean {
+function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: NegotiationAgentBuilderMemory): boolean {
   if (!previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))) return false;
   return /^\s*(?:1[1-9]|[2-9])\s*(?:은|는|로|요|\?)*\s*$/i.test(text.trim());
 }
@@ -2911,7 +2911,7 @@ function normalizeConsumerElectronicsDollarValue(value: number | undefined): num
 }
 
 function isConsumerElectronicsMemory(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   listings: Array<{ title: string; category?: string; askPriceMinor: number }>,
 ): boolean {
   const text = [
@@ -2951,15 +2951,15 @@ function stringArrayFrom(value: unknown): string[] {
     : [];
 }
 
-function structuredFrom(value: unknown): AdvisorMemory["structured"] | undefined {
-  const parsed = structuredAdvisorMemorySchema.safeParse(value);
+function structuredFrom(value: unknown): NegotiationAgentBuilderMemory["structured"] | undefined {
+  const parsed = structuredNegotiationAgentBuilderMemorySchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
-function mergeStructuredAdvisorMemory(
-  base: AdvisorMemory["structured"] | undefined,
-  next: NonNullable<AdvisorMemory["structured"]>,
-): AdvisorMemory["structured"] {
+function mergeStructuredNegotiationAgentBuilderMemory(
+  base: NegotiationAgentBuilderMemory["structured"] | undefined,
+  next: NonNullable<NegotiationAgentBuilderMemory["structured"]>,
+): NegotiationAgentBuilderMemory["structured"] {
   return {
     activeIntent: next.activeIntent ?? base?.activeIntent,
     productRequirements: {
@@ -2994,10 +2994,10 @@ function mergeStructuredAdvisorMemory(
 }
 
 function uniqueDiscardedSignals(
-  signals: NonNullable<AdvisorMemory["structured"]>["discardedSignals"],
-): NonNullable<AdvisorMemory["structured"]>["discardedSignals"] {
+  signals: NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"],
+): NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"] {
   const seen = new Set<string>();
-  const result: NonNullable<AdvisorMemory["structured"]>["discardedSignals"] = [];
+  const result: NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"] = [];
   for (const signal of signals) {
     const key = `${signal.reason}:${signal.text}:${signal.relatedQuestion ?? ""}`;
     if (seen.has(key)) continue;
@@ -3007,15 +3007,15 @@ function uniqueDiscardedSignals(
   return result.slice(-12);
 }
 
-function riskStyleFrom(value: unknown): AdvisorMemory["riskStyle"] | undefined {
+function riskStyleFrom(value: unknown): NegotiationAgentBuilderMemory["riskStyle"] | undefined {
   return value === "safe_first" || value === "balanced" || value === "lowest_price" ? value : undefined;
 }
 
-function negotiationStyleFrom(value: unknown): AdvisorMemory["negotiationStyle"] | undefined {
+function negotiationStyleFrom(value: unknown): NegotiationAgentBuilderMemory["negotiationStyle"] | undefined {
   return value === "defensive" || value === "balanced" || value === "aggressive" ? value : undefined;
 }
 
-function openingTacticFrom(value: unknown): AdvisorMemory["openingTactic"] | undefined {
+function openingTacticFrom(value: unknown): NegotiationAgentBuilderMemory["openingTactic"] | undefined {
   return value === "condition_anchor" || value === "fair_market_anchor" || value === "speed_close" ? value : undefined;
 }
 
@@ -3023,7 +3023,7 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values)).slice(0, 12);
 }
 
-async function upsertAdvisorMemoryCards(
+async function upsertNegotiationAgentBuilderMemoryCards(
   db: Database,
   input: {
     userId: string;
@@ -3276,7 +3276,7 @@ async function recordPresetTuningFeedback(
   return rowsFromResult(result).map(normalizeMemoryCardRow);
 }
 
-async function staleActiveAdvisorMemoryCards(db: Database, userId: string) {
+async function staleActiveNegotiationAgentBuilderMemoryCards(db: Database, userId: string) {
   await db.execute(sql`
     UPDATE user_memory_cards
     SET status = 'STALE',
@@ -3287,7 +3287,7 @@ async function staleActiveAdvisorMemoryCards(db: Database, userId: string) {
   `);
 }
 
-function buildAdvisorSourceMessageId(body: z.infer<typeof saveAdvisorMemoryBodySchema>): string {
+function buildAdvisorSourceMessageId(body: z.infer<typeof saveNegotiationAgentBuilderMemoryBodySchema>): string {
   const hash = createHash("sha256")
     .update(stableStringify({
       userId: body.user_id,

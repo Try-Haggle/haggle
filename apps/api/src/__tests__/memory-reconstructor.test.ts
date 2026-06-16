@@ -23,7 +23,7 @@ function makeDbSession(overrides: Partial<DbSessionForMemory> = {}): DbSessionFo
     roundsNoConcession: 0,
     lastOfferPriceMinor: '50000',
     lastUtility: { u_total: 0.7, v_p: 0.6, v_t: 0.8, v_r: 0.5, v_s: 0.5 },
-    strategySnapshot: {
+    negotiationAgentSnapshot: {
       p_target: 45000,
       p_limit: 60000,
       max_rounds: 15,
@@ -142,7 +142,7 @@ describe('reconstructCoreMemory', () => {
   it('builds CoreMemory from DB session + strategy', () => {
     const session = makeDbSession();
     const coaching = makeCoaching();
-    const memory = reconstructCoreMemory(session, session.strategySnapshot, coaching);
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, coaching);
 
     expect(memory.session.session_id).toBe('session-1');
     expect(memory.session.role).toBe('buyer');
@@ -156,19 +156,19 @@ describe('reconstructCoreMemory', () => {
 
   it('infers phase from status when phase column is null', () => {
     const session = makeDbSession({ phase: null, status: 'NEAR_DEAL' });
-    const memory = reconstructCoreMemory(session, session.strategySnapshot, makeCoaching());
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());
     expect(memory.session.phase).toBe('CLOSING');
   });
 
   it('uses stored phase when available', () => {
     const session = makeDbSession({ phase: 'BARGAINING' });
-    const memory = reconstructCoreMemory(session, session.strategySnapshot, makeCoaching());
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());
     expect(memory.session.phase).toBe('BARGAINING');
   });
 
   it('defaults intervention mode to FULL_AUTO', () => {
     const session = makeDbSession();
-    const memory = reconstructCoreMemory(session, session.strategySnapshot, makeCoaching());
+    const memory = reconstructCoreMemory(session, session.negotiationAgentSnapshot, makeCoaching());
     expect(memory.session.intervention_mode).toBe('FULL_AUTO');
   });
 });

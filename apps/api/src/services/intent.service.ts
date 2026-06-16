@@ -73,7 +73,7 @@ export async function createIntent(
     role: IntentRole;
     category: string;
     keywords: string[];
-    strategySnapshot: Record<string, unknown>;
+    negotiationAgentSnapshot: Record<string, unknown>;
     minUtotal?: string;
     maxActiveSessions?: number;
     expiresAt: Date;
@@ -86,7 +86,7 @@ export async function createIntent(
       role: data.role,
       category: data.category,
       keywords: data.keywords,
-      strategySnapshot: data.strategySnapshot,
+      negotiationAgentSnapshot: data.negotiationAgentSnapshot,
       minUtotal: data.minUtotal,
       maxActiveSessions: data.maxActiveSessions,
       expiresAt: data.expiresAt,

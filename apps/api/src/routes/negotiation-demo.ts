@@ -35,7 +35,7 @@ import {
   buildCachedVoiceContext,
   getAgentVoiceProfile,
   type LumenVoiceProfile,
-} from '../negotiation/lumen-persona-profiles.js';
+} from '../negotiation/negotiation-agent-voice-profiles.js';
 import {
   loadUserMemoryBrief,
   formatUserMemoryBriefSignals,
@@ -765,7 +765,7 @@ const initSchema = z.object({
   preset: z.enum(['lowest_price', 'balanced', 'safe_first', 'custom']).default('balanced'),
   custom_skills: z.object({
     advisor: z.string(),
-    advisor_config: z.record(z.unknown()).optional(),
+    negotiation_agent_config: z.record(z.unknown()).optional(),
   }).optional(),
   buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default('vel'),
   seller_agent_id: z.enum(AGENT_PROFILE_IDS).default('dealer_hana'),
@@ -987,11 +987,11 @@ ${userMemoryPrompt}`,
     }));
 
     // Session-level skill stack based on preset
-    const advisorConfig = preset === 'custom' && custom_skills
-      ? { advisor: custom_skills.advisor, config: custom_skills.advisor_config ?? {} }
+    const negotiationAgentConfig = preset === 'custom' && custom_skills
+      ? { advisor: custom_skills.advisor, config: custom_skills.negotiation_agent_config ?? {} }
       : PRESET_MAP[preset] ?? PRESET_MAP.balanced;
 
-    const sessionBuddyStyle = ((advisorConfig.config as Record<string, unknown>).buddyStyle ?? 'balanced') as 'aggressive' | 'balanced' | 'defensive';
+    const sessionBuddyStyle = ((negotiationAgentConfig.config as Record<string, unknown>).buddyStyle ?? 'balanced') as 'aggressive' | 'balanced' | 'defensive';
     const sessionSkillStack = SkillStack.of(
       new ElectronicsKnowledgeSkill(),
       new FaratinCoachingSkill({ buddyStyle: sessionBuddyStyle }),

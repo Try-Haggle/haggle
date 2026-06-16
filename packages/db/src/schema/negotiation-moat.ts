@@ -98,7 +98,7 @@ export const negotiationEscalations = pgTable(
       enum: ["UNKNOWN_PROPOSAL", "STRATEGY_REVIEW", "HUMAN_APPROVAL_REQUIRED"],
     }).notNull(),
     context: text("context"),
-    strategySnapshot: jsonb("strategy_snapshot").$type<Record<string, unknown>>(),
+    negotiationAgentSnapshot: jsonb("negotiation_agent_snapshot").$type<Record<string, unknown>>(),
     recentRounds: jsonb("recent_rounds").$type<Record<string, unknown>[]>(),
 
     // Resolution
