@@ -9,7 +9,7 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api-client";
 
 const STORAGE_KEY = "haggle:guest-buyer-ids";
@@ -21,6 +21,26 @@ type State =
   | { kind: "error"; message: string };
 
 export default function ClaimBuyerPage() {
+  // useSearchParams() needs a Suspense boundary for static generation (Next 15).
+  return (
+    <Suspense fallback={<ClaimBuyerFallback />}>
+      <ClaimBuyerInner />
+    </Suspense>
+  );
+}
+
+function ClaimBuyerFallback() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-bg-primary px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border-default bg-bg-card p-6 text-center">
+        <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-500" />
+        <p className="text-sm text-slate-300">Loading…</p>
+      </div>
+    </main>
+  );
+}
+
+function ClaimBuyerInner() {
   const router = useRouter();
   const search = useSearchParams();
   const [state, setState] = useState<State>({ kind: "idle" });
