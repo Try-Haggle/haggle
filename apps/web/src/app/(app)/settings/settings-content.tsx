@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { ApiError, api } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
-import { notificationApi, type NotificationPreferences } from "@/lib/api-client";
-import { api, ApiError } from "@/lib/api-client";
 
 interface SettingsContentProps {
   email: string;
@@ -13,12 +12,7 @@ interface SettingsContentProps {
   provider: string;
 }
 
-export function SettingsContent({
-  email,
-  displayName,
-  avatarUrl,
-  provider,
-}: SettingsContentProps) {
+export function SettingsContent({ email, displayName, avatarUrl, provider }: SettingsContentProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -182,100 +176,110 @@ export function SettingsContent({
       <div className="mb-8">
         {/* Mobile only: back button */}
         <button
+          type="button"
           onClick={() => router.back()}
-          className="mb-4 flex md:hidden items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+          className="mb-4 flex md:hidden items-center gap-1 text-sm text-ink-muted hover:text-ink-secondary transition-colors cursor-pointer"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <polyline points="15 18 9 12 15 6" />
           </svg>
           Back
         </button>
-        <h1 className="text-2xl font-bold text-white">Account Settings</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Manage your profile and account
-        </p>
+        <h1 className="text-2xl font-bold text-ink">Account Settings</h1>
+        <p className="mt-1 text-sm text-ink-muted">Manage your profile and account</p>
       </div>
 
       {/* ── Profile Section ────────────────────────────── */}
-      <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-4">
-          Profile
-        </h2>
+      <section className="rounded-xl border border-line bg-surface-raised p-4 sm:p-6 mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-ink mb-4">Profile</h2>
 
         {/* Avatar */}
         <div className="mb-5">
-          <label className="block text-sm text-slate-400 mb-2">Avatar</label>
+          <label htmlFor="avatar-upload" className="block text-sm text-ink-secondary mb-2">
+            Avatar
+          </label>
           <div className="flex items-center gap-4">
             <div className="relative">
               {avatarPreview && !avatarError ? (
+                // biome-ignore lint/performance/noImgElement: user-uploaded avatar preview
                 <img
                   src={avatarPreview}
                   alt=""
-                  className="h-16 w-16 rounded-full object-cover border border-slate-700"
+                  className="h-16 w-16 rounded-full object-cover border border-line"
                   referrerPolicy="no-referrer"
                   onError={() => setAvatarError(true)}
                 />
               ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/20 text-xl font-medium text-emerald-400 border border-slate-700">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-badge text-xl font-medium text-badge-text border border-line">
                   {(name || email).charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
             <div>
               <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer"
+                className="rounded-lg border border-line bg-surface-sunken px-3 py-1.5 text-sm text-ink-secondary hover:bg-surface-overlay transition-colors cursor-pointer"
               >
                 Change
               </button>
               <input
+                id="avatar-upload"
                 ref={fileRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={handleAvatarSelect}
               />
-              <p className="mt-1 text-xs text-slate-600">
-                JPG, PNG or WebP. Max 2 MB.
-              </p>
+              <p className="mt-1 text-xs text-ink-muted">JPG, PNG or WebP. Max 2 MB.</p>
             </div>
           </div>
         </div>
 
         {/* Name */}
         <div className="mb-5">
-          <label className="block text-sm text-slate-400 mb-1.5">
+          <label htmlFor="display-name" className="block text-sm text-ink-secondary mb-1.5">
             Display name
           </label>
           <input
+            id="display-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500 transition-colors"
+            className="w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-focus transition-colors"
           />
         </div>
 
         {/* Email (read-only) */}
         <div className="mb-5">
-          <label className="block text-sm text-slate-400 mb-1.5">Email</label>
+          <label htmlFor="email" className="block text-sm text-ink-secondary mb-1.5">
+            Email
+          </label>
           <input
+            id="email"
             type="email"
             value={email}
             disabled
-            className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-500 cursor-not-allowed"
+            className="w-full rounded-lg border border-line bg-surface-sunken/50 px-3 py-2 text-sm text-ink-muted cursor-not-allowed"
           />
-          <p className="mt-1 text-xs text-slate-600">
-            Email cannot be changed.
-          </p>
+          <p className="mt-1 text-xs text-ink-muted">Email cannot be changed.</p>
         </div>
 
         {profileMsg && (
           <p
             className={`mb-3 text-sm ${
-              profileMsg.type === "success"
-                ? "text-emerald-400"
-                : "text-red-400"
+              profileMsg.type === "success" ? "text-success" : "text-error"
             }`}
           >
             {profileMsg.text}
@@ -283,57 +287,56 @@ export function SettingsContent({
         )}
 
         <button
+          type="button"
           onClick={handleProfileSave}
           disabled={profileSaving}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="rounded-lg bg-cta px-4 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           {profileSaving ? "Saving…" : "Save Profile"}
         </button>
       </section>
 
       {/* ── Password Section ───────────────────────────── */}
-      <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-1">
-          Password
-        </h2>
-        <p className="text-sm text-slate-500 mb-4">
+      <section className="rounded-xl border border-line bg-surface-raised p-4 sm:p-6 mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-ink mb-1">Password</h2>
+        <p className="text-sm text-ink-muted mb-4">
           {isOAuth
             ? "You signed in with Google. Set a password to also sign in with email."
             : "Update your password."}
         </p>
 
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-1.5">
+          <label htmlFor="new-password" className="block text-sm text-ink-secondary mb-1.5">
             New password
           </label>
           <input
+            id="new-password"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500 transition-colors"
+            className="w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-focus transition-colors"
           />
         </div>
 
         <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-1.5">
+          <label htmlFor="confirm-password" className="block text-sm text-ink-secondary mb-1.5">
             Confirm password
           </label>
           <input
+            id="confirm-password"
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Repeat password"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500 transition-colors"
+            className="w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-focus transition-colors"
           />
         </div>
 
         {passwordMsg && (
           <p
             className={`mb-3 text-sm ${
-              passwordMsg.type === "success"
-                ? "text-emerald-400"
-                : "text-red-400"
+              passwordMsg.type === "success" ? "text-success" : "text-error"
             }`}
           >
             {passwordMsg.text}
@@ -341,58 +344,51 @@ export function SettingsContent({
         )}
 
         <button
+          type="button"
           onClick={handlePasswordSave}
           disabled={passwordSaving || !newPassword || !confirmPassword}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          className="rounded-lg bg-cta px-4 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
-          {passwordSaving
-            ? "Saving…"
-            : isOAuth
-              ? "Set Password"
-              : "Update Password"}
+          {passwordSaving ? "Saving…" : isOAuth ? "Set Password" : "Update Password"}
         </button>
       </section>
 
       {/* ── Delete Account Section ─────────────────────── */}
-      <section className="rounded-xl border border-red-900/50 bg-bg-card p-4 sm:p-6">
-        <h2 className="text-base sm:text-lg font-semibold text-red-400 mb-1">
-          Delete Account
-        </h2>
-        <p className="text-sm text-slate-500 mb-4">
-          Permanently delete your account and all associated data. This action
-          cannot be undone.
+      <section className="rounded-xl border border-error/30 bg-surface-raised p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-semibold text-error mb-1">Delete Account</h2>
+        <p className="text-sm text-ink-muted mb-4">
+          Permanently delete your account and all associated data. This action cannot be undone.
         </p>
 
         {!deleteOpen ? (
           <button
+            type="button"
             onClick={() => setDeleteOpen(true)}
-            className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-900/30 transition-colors cursor-pointer"
+            className="rounded-lg border border-error px-4 py-2 text-sm font-medium text-error hover:bg-error-soft transition-colors cursor-pointer"
           >
             Delete my account
           </button>
         ) : (
-          <div className="rounded-lg border border-red-800/50 bg-red-950/20 p-4">
-            <p className="text-sm text-slate-300 mb-3">
-              Type <span className="font-mono text-red-400">{email}</span> to
-              confirm:
+          <div className="rounded-lg border border-error/30 bg-error-soft p-4">
+            <p className="text-sm text-ink-secondary mb-3">
+              Type <span className="font-mono text-error">{email}</span> to confirm:
             </p>
             <input
               type="text"
               value={deleteConfirm}
               onChange={(e) => setDeleteConfirm(e.target.value)}
               placeholder={email}
-              className="w-full rounded-lg border border-red-800/50 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-red-500 transition-colors mb-3"
+              className="w-full rounded-lg border border-error/30 bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-error transition-colors mb-3"
             />
 
-            {deleteMsg && (
-              <p className="mb-3 text-sm text-red-400">{deleteMsg.text}</p>
-            )}
+            {deleteMsg && <p className="mb-3 text-sm text-error">{deleteMsg.text}</p>}
 
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={handleDelete}
                 disabled={deleteConfirm !== email || deleting}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="rounded-lg bg-error-500 px-4 py-2 text-sm font-medium text-on-accent hover:bg-error-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 {deleting ? "Deleting…" : "Permanently Delete"}
               </button>
@@ -402,7 +398,8 @@ export function SettingsContent({
                   setDeleteConfirm("");
                   setDeleteMsg(null);
                 }}
-                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                type="button"
+                className="rounded-lg border border-line px-4 py-2 text-sm text-ink-secondary hover:bg-surface-sunken transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -410,89 +407,6 @@ export function SettingsContent({
           </div>
         )}
       </section>
-
-    </div>
-  );
-}
-
-// ─── Notification Settings ─────────────────────────────────────────────────────
-
-const CATEGORIES = ["negotiation", "account", "listing"] as const;
-const CHANNELS = ["in_app", "email"] as const;
-const CATEGORY_LABELS: Record<string, string> = {
-  negotiation: "Negotiation",
-  account: "Account",
-  listing: "Listing",
-};
-const CHANNEL_LABELS: Record<string, string> = {
-  in_app: "In-App",
-  email: "Email",
-};
-
-function NotificationSettings() {
-  const [prefs, setPrefs] = useState<NotificationPreferences>({});
-  const [saving, setSaving] = useState<string | null>(null);
-
-  const loadPrefs = useCallback(async () => {
-    const { preferences } = await notificationApi.getPreferences().catch(() => ({ preferences: {} }));
-    setPrefs(preferences);
-  }, []);
-
-  useEffect(() => { loadPrefs(); }, [loadPrefs]);
-
-  async function handleToggle(category: string, channel: string, current: boolean) {
-    const key = `${category}.${channel}`;
-    setSaving(key);
-    const newValue = !current;
-    setPrefs((prev) => ({
-      ...prev,
-      [category]: { ...prev[category], [channel]: newValue },
-    }));
-    await notificationApi.updatePreference(category, channel, newValue).catch(() => {
-      // revert on error
-      setPrefs((prev) => ({
-        ...prev,
-        [category]: { ...prev[category], [channel]: current },
-      }));
-    });
-    setSaving(null);
-  }
-
-  return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6">
-      <h2 className="mb-4 text-sm font-semibold text-slate-200">Notifications</h2>
-      <div className="space-y-4">
-        {CATEGORIES.map((category) => (
-          <div key={category}>
-            <p className="mb-2 text-xs font-medium text-slate-500 uppercase tracking-wider">
-              {CATEGORY_LABELS[category]}
-            </p>
-            <div className="space-y-2">
-              {CHANNELS.map((channel) => {
-                const enabled = prefs[category]?.[channel] ?? true;
-                const key = `${category}.${channel}`;
-                return (
-                  <div key={channel} className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">{CHANNEL_LABELS[channel]}</span>
-                    <button
-                      onClick={() => handleToggle(category, channel, enabled)}
-                      disabled={saving === key}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
-                        ${enabled ? "bg-cyan-500" : "bg-slate-700"}
-                        ${saving === key ? "opacity-50" : ""}`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transform transition duration-200 ease-in-out
-                          ${enabled ? "translate-x-4" : "translate-x-0"}`}
-                      />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

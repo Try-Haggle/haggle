@@ -40,45 +40,35 @@ export function PresetGrid({
             onClick={() => onSelect?.(preset)}
             className="flex cursor-pointer flex-col rounded-xl border p-4 text-left transition-all"
             style={{
-              background: isSelected ? "rgba(6,182,212,0.05)" : "#111827",
-              borderColor: isSelected ? "#06b6d4" : "#1e293b",
-              boxShadow: isSelected ? "0 0 0 1px #06b6d4" : "none",
+              background: isSelected
+                ? "color-mix(in srgb, var(--action-primary) 5%, transparent)"
+                : "var(--bg-raised)",
+              borderColor: isSelected ? "var(--action-primary)" : "var(--border-default)",
+              boxShadow: isSelected ? "0 0 0 1px var(--action-primary)" : "none",
             }}
             onMouseEnter={(e) => {
-              if (!isSelected) e.currentTarget.style.borderColor = "#334155";
+              if (!isSelected) e.currentTarget.style.borderColor = "var(--border-strong)";
             }}
             onMouseLeave={(e) => {
-              if (!isSelected) e.currentTarget.style.borderColor = "#1e293b";
+              if (!isSelected) e.currentTarget.style.borderColor = "var(--border-default)";
             }}
           >
             <div className="flex items-start gap-3 mb-2.5">
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base"
                 style={{
-                  backgroundColor: `${preset.accentColor}22`,
+                  backgroundColor: `color-mix(in srgb, ${preset.accentColor} 13%, transparent)`,
                   color: preset.accentColor,
                 }}
               >
                 {preset.emoji}
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>
-                  {copy.name}
-                </p>
-                <p
-                  className="text-xs font-medium mt-0.5"
-                  style={{ color: "#06b6d4" }}
-                >
-                  {copy.tagline}
-                </p>
+                <p className="text-sm font-semibold text-ink">{copy.name}</p>
+                <p className="text-xs font-medium mt-0.5 text-action-primary">{copy.tagline}</p>
               </div>
             </div>
-            <p
-              className="text-xs leading-relaxed"
-              style={{ color: "#94a3b8" }}
-            >
-              {copy.description}
-            </p>
+            <p className="text-xs leading-relaxed text-ink-secondary">{copy.description}</p>
           </button>
         );
       })}

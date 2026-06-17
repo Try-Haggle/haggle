@@ -56,14 +56,12 @@ export function RoundControl({
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-slate-700 bg-slate-800/50 p-5"
+      className="rounded-xl border border-line bg-surface-raised p-5"
       style={{ animation: "fadeInUp 0.3s ease-out" }}
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-white">
-          판매자 입력
-        </h3>
-        <span className="text-xs font-mono text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded">
+        <h3 className="text-sm font-semibold text-ink">판매자 입력</h3>
+        <span className="text-xs font-mono text-ink-muted bg-surface-sunken px-2 py-0.5 rounded">
           라운드 {roundNumber}
         </span>
       </div>
@@ -78,8 +76,8 @@ export function RoundControl({
             disabled={loading || disabled}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               sellerPrice === p.price
-                ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
-                : "border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-300"
+                ? "border-action-primary/40 bg-action-primary/10 text-action-primary"
+                : "border-line bg-surface-sunken text-ink-secondary hover:border-line-strong hover:text-ink"
             }`}
           >
             {p.label}
@@ -90,7 +88,7 @@ export function RoundControl({
             type="button"
             onClick={handleAcceptBuyer}
             disabled={loading || disabled}
-            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-lg border border-success/30 bg-success-soft px-3 py-1.5 text-xs font-medium text-success hover:bg-success-soft transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {formatMinor(lastBuyerPrice)} 수락
           </button>
@@ -100,31 +98,39 @@ export function RoundControl({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         {/* Seller Price */}
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">
+          <label
+            htmlFor="round-seller-price"
+            className="block text-xs font-medium text-ink-secondary mb-1"
+          >
             판매 가격 ($)
           </label>
           <input
+            id="round-seller-price"
             type="number"
             value={sellerPrice}
             onChange={(e) => setSellerPrice(Number(e.target.value))}
             disabled={loading || disabled}
             min={1}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white font-mono focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/30 disabled:opacity-50"
+            className="w-full rounded-lg border border-line bg-surface-overlay px-3 py-2 text-sm text-ink font-mono focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus/30 disabled:opacity-50"
           />
         </div>
 
         {/* Seller Message */}
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1">
+          <label
+            htmlFor="round-seller-message"
+            className="block text-xs font-medium text-ink-secondary mb-1"
+          >
             메시지 (선택)
           </label>
           <input
+            id="round-seller-message"
             type="text"
             value={sellerMessage}
             onChange={(e) => setSellerMessage(e.target.value)}
             placeholder="비워두면 자동 생성됩니다"
             disabled={loading || disabled}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/30 disabled:opacity-50"
+            className="w-full rounded-lg border border-line bg-surface-overlay px-3 py-2 text-sm text-ink placeholder-ink-muted focus:border-focus focus:outline-none focus:ring-1 focus:ring-focus/30 disabled:opacity-50"
           />
         </div>
       </div>
@@ -132,13 +138,29 @@ export function RoundControl({
       <button
         type="submit"
         disabled={loading || disabled}
-        className="w-full rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-cyan-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full rounded-xl bg-cta px-6 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
       >
         {loading ? (
           <>
-            <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <svg
+              className="animate-spin h-4 w-4 text-on-accent"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
             </svg>
             파이프라인 실행 중... (Stage 1~6)
           </>

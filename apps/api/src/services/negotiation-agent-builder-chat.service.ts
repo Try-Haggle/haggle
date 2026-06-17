@@ -1,28 +1,29 @@
 import { createHash, randomUUID } from "node:crypto";
+import { type Database, sql } from "@haggle/db";
+import { priceSemantics } from "@haggle/shared";
 // (FastifyInstance import removed — this is now a pure service file)
 import { z } from "zod";
-import { priceSemantics } from "@haggle/shared";
-import { sql, type Database } from "@haggle/db";
 import { callLLM } from "../negotiation/adapters/xai-client.js";
 import { getAgentVoiceProfile } from "../negotiation/negotiation-agent-voice-profiles.js";
-import { recordConversationSignalsForRound } from "../services/conversation-signal-sink.js";
 import {
-  buildAdvisorRequirementPlan,
-  formatTagRequirementPlanForPrompt,
-  type TagRequirementPlan,
-  type TagRequirementSlot,
-} from "../services/tag-garden-requirements.js";
-import { getTagGardenIntelligenceSnapshot } from "../services/tag-garden-intelligence.service.js";
-import {
-  buildAdvisorCandidatePlan,
   type AdvisorCandidatePlan,
+  buildAdvisorCandidatePlan,
 } from "../services/advisor-candidate-planner.service.js";
+import { recordConversationSignalsForRound } from "../services/conversation-signal-sink.js";
 import { generateTextEmbedding } from "../services/embedding.service.js";
 import { saveNegotiationAgentBuilderMemorySnapshot } from "../services/negotiation-agent-builder-memory.service.js";
 import {
   compilePresetTuningDraft,
   listNegotiationAgentPresets,
 } from "../services/preset-tuning.service.js";
+import { getTagGardenIntelligenceSnapshot } from "../services/tag-garden-intelligence.service.js";
+import {
+  buildAdvisorRequirementPlan,
+  EMPTY_TAG_REQUIREMENT_PLAN,
+  formatTagRequirementPlanForPrompt,
+  type TagRequirementPlan,
+  type TagRequirementSlot,
+} from "../services/tag-garden-requirements.js";
 
 const DEMO_USER_ID = "11111111-1111-4111-8111-111111111111";
 const INPUT_TOKEN_USD = 0.0000002;
@@ -33,111 +34,160 @@ const optionalPositiveIntSchema = z.preprocess(
   z.number().int().positive().optional(),
 );
 
-const structuredNegotiationAgentBuilderMemorySchema = z.object({
-  activeIntent: z.object({
-    productScope: z.string().optional(),
-    source: z.string().optional(),
-  }).optional(),
-  productRequirements: z.record(z.object({
-    mustHave: z.array(z.string()).default([]),
-    avoid: z.array(z.string()).default([]),
-    answeredSlots: z.array(z.string()).default([]),
-    ambiguousSlots: z.array(z.string()).default([]),
-  })).default({}),
-  globalPreferences: z.object({
-    mustHave: z.array(z.string()).default([]),
-    avoid: z.array(z.string()).default([]),
-    budgetMax: optionalPositiveIntSchema,
-    targetPrice: optionalPositiveIntSchema,
-    riskStyle: z.enum(["safe_first", "balanced", "lowest_price"]).optional(),
-    negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]).optional(),
-    openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]).optional(),
-  }).default({}),
-  pendingSlots: z.array(z.object({
-    slotId: z.string(),
-    question: z.string(),
-    enforcement: z.enum(["hard", "soft"]),
-    productScope: z.string().optional(),
-    status: z.enum(["pending", "ambiguous"]),
-  })).default([]),
-  discardedSignals: z.array(z.object({
-    text: z.string(),
-    reason: z.enum(["off_topic", "ambiguous", "noise", "security"]),
-    relatedQuestion: z.string().optional(),
-  })).default([]),
-  memoryConflicts: z.array(z.object({
-    slotId: z.string(),
-    productScope: z.string().optional(),
-    previousValue: z.string().optional(),
-    currentValue: z.string().optional(),
-    status: z.enum(["current", "superseded", "conflicting", "needs_confirmation"]),
-    resolutionQuestion: z.string().optional(),
-    reason: z.string().optional(),
-  })).default([]),
-  scopedConditionDecisions: z.array(z.object({
-    slotId: z.string(),
-    sourceScope: z.string().optional(),
-    targetScope: z.string(),
-    decision: z.enum(["applied", "rejected"]),
-    reason: z.string().optional(),
-  })).default([]),
-  sessionMemory: z.object({
-    facts: z.array(z.string()).default([]),
-    pendingQuestions: z.array(z.string()).default([]),
-    reason: z.string().optional(),
-  }).optional(),
-  longTermMemory: z.object({
-    facts: z.array(z.string()).default([]),
-    productScopes: z.array(z.string()).default([]),
-    globalFacts: z.array(z.string()).default([]),
-  }).optional(),
-  promotionDecisions: z.array(z.object({
-    text: z.string(),
-    decision: z.enum(["promote", "session_only", "discard"]),
-    reason: z.enum([
-      "confirmed_product_requirement",
-      "explicit_budget",
-      "stable_global_preference",
-      "pending_hard_slot",
-      "ambiguous",
-      "off_topic",
-      "security",
-      "low_information",
-    ]),
-    target: z.enum(["long_term", "session", "none"]),
-    productScope: z.string().optional(),
-  })).default([]),
-  compression: z.object({
-    recentWindowFacts: z.array(z.string()).default([]),
-    carriedForwardFacts: z.array(z.string()).default([]),
-    droppedSignals: z.array(z.string()).default([]),
-    summary: z.string(),
-  }).optional(),
-  questionPlan: z.object({
-    policy: z.object({
-      maxQuestionsPerTurn: z.number().int().positive(),
-      order: z.array(z.enum(["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"])),
-      rationale: z.string(),
-    }),
-    budget: z.object({
-      maxQuestionsPerTurn: z.number().int().positive(),
-      used: z.number().int().min(0),
-    }),
-    askedThisTurn: z.object({
-      kind: z.enum(["conflict", "hard_slot", "soft_slot", "candidate", "none"]),
-      question: z.string().optional(),
-      slotId: z.string().optional(),
-      productScope: z.string().optional(),
-    }),
-    deferred: z.array(z.object({
-      slotId: z.string(),
-      question: z.string(),
-      enforcement: z.enum(["hard", "soft"]),
-      reason: z.enum(["question_budget", "conflict_resolution_first", "lower_priority", "already_answered"]),
-      productScope: z.string().optional(),
-    })).default([]),
-  }).optional(),
-}).default({});
+const structuredNegotiationAgentBuilderMemorySchema = z
+  .object({
+    activeIntent: z
+      .object({
+        productScope: z.string().optional(),
+        source: z.string().optional(),
+      })
+      .optional(),
+    productRequirements: z
+      .record(
+        z.object({
+          mustHave: z.array(z.string()).default([]),
+          avoid: z.array(z.string()).default([]),
+          answeredSlots: z.array(z.string()).default([]),
+          ambiguousSlots: z.array(z.string()).default([]),
+        }),
+      )
+      .default({}),
+    globalPreferences: z
+      .object({
+        mustHave: z.array(z.string()).default([]),
+        avoid: z.array(z.string()).default([]),
+        budgetMax: optionalPositiveIntSchema,
+        targetPrice: optionalPositiveIntSchema,
+        riskStyle: z.enum(["safe_first", "balanced", "lowest_price"]).optional(),
+        negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]).optional(),
+        openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]).optional(),
+      })
+      .default({}),
+    pendingSlots: z
+      .array(
+        z.object({
+          slotId: z.string(),
+          question: z.string(),
+          enforcement: z.enum(["hard", "soft"]),
+          productScope: z.string().optional(),
+          status: z.enum(["pending", "ambiguous"]),
+        }),
+      )
+      .default([]),
+    discardedSignals: z
+      .array(
+        z.object({
+          text: z.string(),
+          reason: z.enum(["off_topic", "ambiguous", "noise", "security"]),
+          relatedQuestion: z.string().optional(),
+        }),
+      )
+      .default([]),
+    memoryConflicts: z
+      .array(
+        z.object({
+          slotId: z.string(),
+          productScope: z.string().optional(),
+          previousValue: z.string().optional(),
+          currentValue: z.string().optional(),
+          status: z.enum(["current", "superseded", "conflicting", "needs_confirmation"]),
+          resolutionQuestion: z.string().optional(),
+          reason: z.string().optional(),
+        }),
+      )
+      .default([]),
+    scopedConditionDecisions: z
+      .array(
+        z.object({
+          slotId: z.string(),
+          sourceScope: z.string().optional(),
+          targetScope: z.string(),
+          decision: z.enum(["applied", "rejected"]),
+          reason: z.string().optional(),
+        }),
+      )
+      .default([]),
+    sessionMemory: z
+      .object({
+        facts: z.array(z.string()).default([]),
+        pendingQuestions: z.array(z.string()).default([]),
+        reason: z.string().optional(),
+      })
+      .optional(),
+    longTermMemory: z
+      .object({
+        facts: z.array(z.string()).default([]),
+        productScopes: z.array(z.string()).default([]),
+        globalFacts: z.array(z.string()).default([]),
+      })
+      .optional(),
+    promotionDecisions: z
+      .array(
+        z.object({
+          text: z.string(),
+          decision: z.enum(["promote", "session_only", "discard"]),
+          reason: z.enum([
+            "confirmed_product_requirement",
+            "explicit_budget",
+            "stable_global_preference",
+            "pending_hard_slot",
+            "ambiguous",
+            "off_topic",
+            "security",
+            "low_information",
+          ]),
+          target: z.enum(["long_term", "session", "none"]),
+          productScope: z.string().optional(),
+        }),
+      )
+      .default([]),
+    compression: z
+      .object({
+        recentWindowFacts: z.array(z.string()).default([]),
+        carriedForwardFacts: z.array(z.string()).default([]),
+        droppedSignals: z.array(z.string()).default([]),
+        summary: z.string(),
+      })
+      .optional(),
+    questionPlan: z
+      .object({
+        policy: z.object({
+          maxQuestionsPerTurn: z.number().int().positive(),
+          order: z.array(
+            z.enum(["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"]),
+          ),
+          rationale: z.string(),
+        }),
+        budget: z.object({
+          maxQuestionsPerTurn: z.number().int().positive(),
+          used: z.number().int().min(0),
+        }),
+        askedThisTurn: z.object({
+          kind: z.enum(["conflict", "hard_slot", "soft_slot", "candidate", "none"]),
+          question: z.string().optional(),
+          slotId: z.string().optional(),
+          productScope: z.string().optional(),
+        }),
+        deferred: z
+          .array(
+            z.object({
+              slotId: z.string(),
+              question: z.string(),
+              enforcement: z.enum(["hard", "soft"]),
+              reason: z.enum([
+                "question_budget",
+                "conflict_resolution_first",
+                "lower_priority",
+                "already_answered",
+              ]),
+              productScope: z.string().optional(),
+            }),
+          )
+          .default([]),
+      })
+      .optional(),
+  })
+  .default({});
 
 const negotiationAgentBuilderMemorySchema = z.object({
   categoryInterest: z.string().min(1),
@@ -224,12 +274,14 @@ const presetDraftTermSchema = z.object({
   question: z.string(),
   rationale: z.string(),
   checked: z.boolean(),
-  confirmedValue: z.object({
-    value: z.union([z.string(), z.number(), z.boolean()]),
-    label: z.string().optional(),
-    unit: z.string().optional(),
-    source: z.enum(["listing", "memory", "user", "seller_reply"]),
-  }).optional(),
+  confirmedValue: z
+    .object({
+      value: z.union([z.string(), z.number(), z.boolean()]),
+      label: z.string().optional(),
+      unit: z.string().optional(),
+      source: z.enum(["listing", "memory", "user", "seller_reply"]),
+    })
+    .optional(),
 });
 
 const presetDraftLeverageSchema = z.object({
@@ -252,37 +304,49 @@ const presetDraftWalkAwaySchema = z.object({
 const presetEngineReviewSchema = z.object({
   cycle: z.literal("design_architecture_implementation_review"),
   status: z.enum(["ready", "needs_user_input", "blocked"]),
-  branches: z.array(z.object({
-    id: z.string(),
-    label: z.string(),
-    outcome: z.enum(["continue", "ask_user", "block"]),
-    reason: z.string(),
-  })),
-  blockers: z.array(z.object({
-    id: z.string(),
-    label: z.string(),
-    severity: z.enum(["hard", "soft"]),
-    source: z.enum(["listing", "memory", "tag", "security"]),
-    reason: z.string(),
-  })),
-  nextActions: z.array(z.object({
-    termId: z.string().optional(),
-    label: z.string(),
-    control: z.enum(["toggle", "slider", "select", "text"]),
-    question: z.string(),
-    controlConfig: z.object({
-      unit: z.string().optional(),
-      min: z.number().optional(),
-      max: z.number().optional(),
-      step: z.number().optional(),
-      defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
-      placeholder: z.string().optional(),
-      options: z.array(z.object({
-        value: z.string(),
-        label: z.string(),
-      })).optional(),
-    }).optional(),
-  })),
+  branches: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      outcome: z.enum(["continue", "ask_user", "block"]),
+      reason: z.string(),
+    }),
+  ),
+  blockers: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      severity: z.enum(["hard", "soft"]),
+      source: z.enum(["listing", "memory", "tag", "security"]),
+      reason: z.string(),
+    }),
+  ),
+  nextActions: z.array(
+    z.object({
+      termId: z.string().optional(),
+      label: z.string(),
+      control: z.enum(["toggle", "slider", "select", "text"]),
+      question: z.string(),
+      controlConfig: z
+        .object({
+          unit: z.string().optional(),
+          min: z.number().optional(),
+          max: z.number().optional(),
+          step: z.number().optional(),
+          defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
+          placeholder: z.string().optional(),
+          options: z
+            .array(
+              z.object({
+                value: z.string(),
+                label: z.string(),
+              }),
+            )
+            .optional(),
+        })
+        .optional(),
+    }),
+  ),
 });
 
 const presetTuningDraftSchema = z.object({
@@ -355,22 +419,26 @@ function clampChatStrategy(
   const clamp = (n: number, lo: number, hi: number) =>
     Math.max(lo, Math.min(hi, Number.isFinite(n) ? n : lo));
   const w = s.weights;
-  const sum = w.w_p + w.w_t + w.w_r + w.w_s;
+  // Floor weights at 0 so a stray negative from the LLM can't produce a
+  // negative normalized weight (escaping the [0,1] contract).
+  const wp = Math.max(0, w.w_p);
+  const wt = Math.max(0, w.w_t);
+  const wr = Math.max(0, w.w_r);
+  const ws = Math.max(0, w.w_s);
+  const sum = wp + wt + wr + ws;
   const norm = sum > 0 ? sum : 1;
-  const u_threshold = clamp(s.u_threshold, 0.3, 0.85);
+  // Cap u_threshold below the envelope max so u_aspiration (= threshold + 0.01)
+  // still fits under 0.85 — preserves the strict u_aspiration > u_threshold band.
+  const u_threshold = clamp(s.u_threshold, 0.3, 0.84);
   // u_aspiration must exceed u_threshold and stay within envelope.
-  const u_aspiration = clamp(
-    Math.max(s.u_aspiration, u_threshold + 0.01),
-    0.3,
-    0.85,
-  );
+  const u_aspiration = clamp(Math.max(s.u_aspiration, u_threshold + 0.01), 0.3, 0.85);
   const r4 = (n: number) => Math.round(n * 10000) / 10000;
   return {
     weights: {
-      w_p: r4(w.w_p / norm),
-      w_t: r4(w.w_t / norm),
-      w_r: r4(w.w_r / norm),
-      w_s: r4(w.w_s / norm),
+      w_p: r4(wp / norm),
+      w_t: r4(wt / norm),
+      w_r: r4(wr / norm),
+      w_s: r4(ws / norm),
     },
     alpha: clamp(s.alpha, 0.3, 3.0),
     beta: clamp(s.beta, 0.3, 3.0),
@@ -422,7 +490,6 @@ type DemoMemoryCard = {
   strength: number;
 };
 
-
 async function listAdvisorDemoListings(
   db: Database,
   options: { q?: string; limit?: number } = {},
@@ -438,7 +505,7 @@ async function listAdvisorDemoListings(
   };
 }> {
   const limit = Math.min(Math.max(options.limit ?? 8, 1), 20);
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT
       lp.public_id,
       COALESCE(ld.title, 'Untitled listing') AS title,
@@ -454,7 +521,7 @@ async function listAdvisorDemoListings(
       AND (ld.selling_deadline IS NULL OR ld.selling_deadline > now())
     ORDER BY lp.published_at DESC
     LIMIT 120
-  `) as unknown as Array<{
+  `)) as unknown as Array<{
     public_id: string;
     title: string;
     category: string;
@@ -467,9 +534,10 @@ async function listAdvisorDemoListings(
   const listings = rows.map(rowToAdvisorListing);
   const ranked = rankAdvisorListings(listings, options.q);
   const semanticRanked = await rankAdvisorListingsByEmbedding(db, options.q, limit).catch(() => []);
-  const finalRanked = semanticRanked.length > 0
-    ? mergeSemanticAndKeywordRankings(semanticRanked, ranked, options.q)
-    : ranked;
+  const finalRanked =
+    semanticRanked.length > 0
+      ? mergeSemanticAndKeywordRankings(semanticRanked, ranked, options.q)
+      : ranked;
 
   return {
     listings: finalRanked.slice(0, limit),
@@ -494,7 +562,10 @@ function rowToAdvisorListing(row: {
   tags: string[] | null;
 }): AdvisorDemoListing {
   const askPrice = normalizeMajorPrice(row.ask_price, 100);
-  const floorPrice = Math.max(1, Math.min(normalizeMajorPrice(row.floor_price, Math.round(askPrice * 0.86)), askPrice));
+  const floorPrice = Math.max(
+    1,
+    Math.min(normalizeMajorPrice(row.floor_price, Math.round(askPrice * 0.86)), askPrice),
+  );
   const askPriceMinor = dollarsToMinor(askPrice);
   const floorPriceMinor = dollarsToMinor(floorPrice);
   const marketMedianMinor = askPriceMinor;
@@ -522,7 +593,7 @@ async function rankAdvisorListingsByEmbedding(
 
   const queryEmbedding = await generateTextEmbedding(query);
   const embeddingStr = `[${queryEmbedding.join(",")}]`;
-  const semanticRows = await db.execute(sql`
+  const semanticRows = (await db.execute(sql`
     SELECT
       lp.public_id,
       COALESCE(ld.title, 'Untitled listing') AS title,
@@ -541,7 +612,7 @@ async function rankAdvisorListingsByEmbedding(
       AND le.text_embedding IS NOT NULL
     ORDER BY le.text_embedding <=> ${embeddingStr}::vector
     LIMIT ${Math.max(limit * 4, 24)}
-  `) as unknown as Array<{
+  `)) as unknown as Array<{
     public_id: string;
     title: string;
     category: string;
@@ -556,10 +627,11 @@ async function rankAdvisorListingsByEmbedding(
   const brandTerms = terms.filter((term) => SEARCH_BRAND_TERMS.has(term));
   const rows = semanticRows
     .map((row, index) => ({ row, index, semanticScore: Number(row.semantic_score) || 0 }))
-    .filter(({ row, semanticScore }) => semanticScore >= 0.3 && (
-      brandTerms.length === 0
-        || listingMatchesBrandTerms(rowToAdvisorListing(row), brandTerms)
-    ))
+    .filter(
+      ({ row, semanticScore }) =>
+        semanticScore >= 0.3 &&
+        (brandTerms.length === 0 || listingMatchesBrandTerms(rowToAdvisorListing(row), brandTerms)),
+    )
     .sort((a, b) => b.semanticScore - a.semanticScore || a.index - b.index);
 
   return rows.map(({ row }) => rowToAdvisorListing(row));
@@ -591,10 +663,12 @@ function mergeSemanticAndKeywordRankings(
   });
 
   return Array.from(combined.values())
-    .sort((a, b) => (
-      b.score - a.score
-      || (keywordIndex.get(a.listing.id) ?? Number.MAX_SAFE_INTEGER) - (keywordIndex.get(b.listing.id) ?? Number.MAX_SAFE_INTEGER)
-    ))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (keywordIndex.get(a.listing.id) ?? Number.MAX_SAFE_INTEGER) -
+          (keywordIndex.get(b.listing.id) ?? Number.MAX_SAFE_INTEGER),
+    )
     .map((item) => item.listing);
 }
 
@@ -611,7 +685,10 @@ function buildSellerNote(category: string, condition: string): string {
   return `${category} listing from the live demo DB. Condition: ${condition}.`;
 }
 
-function buildSellerTurns(askPriceMinor: number, floorPriceMinor: number): AdvisorDemoListing["sellerTurns"] {
+function buildSellerTurns(
+  askPriceMinor: number,
+  floorPriceMinor: number,
+): AdvisorDemoListing["sellerTurns"] {
   const firstCounter = Math.max(floorPriceMinor, Math.round(askPriceMinor * 0.96));
   const secondCounter = Math.max(floorPriceMinor, Math.round(askPriceMinor * 0.92));
 
@@ -645,12 +722,9 @@ function rankAdvisorListings(listings: AdvisorDemoListing[], query?: string): Ad
 }
 
 function listingMatchesBrandTerms(listing: AdvisorDemoListing, brandTerms: string[]): boolean {
-  const text = normalizeSearchText([
-    listing.title,
-    listing.category,
-    listing.condition,
-    ...listing.tags,
-  ].join(" "));
+  const text = normalizeSearchText(
+    [listing.title, listing.category, listing.condition, ...listing.tags].join(" "),
+  );
 
   return brandTerms.some((brand) => text.includes(brand));
 }
@@ -671,7 +745,10 @@ function scoreAdvisorListingForQuery(listing: AdvisorDemoListing, terms: string[
     if (condition.includes(term)) score += 6;
   }
 
-  if (terms.length > 1 && terms.every((term) => title.includes(term) || tags.some((tag) => tag.includes(term)))) {
+  if (
+    terms.length > 1 &&
+    terms.every((term) => title.includes(term) || tags.some((tag) => tag.includes(term)))
+  ) {
     score += 30;
   }
 
@@ -680,10 +757,10 @@ function scoreAdvisorListingForQuery(listing: AdvisorDemoListing, terms: string[
 
 function tokenizeSearchQuery(query: string): string[] {
   const baseTerms = normalizeSearchText(query)
-      .replace(/\$?\d+(?:\.\d+)?/g, " ")
-      .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
-      .map((term) => term.trim())
-      .filter((term) => term.length >= 2 && !SEARCH_STOP_TERMS.has(term));
+    .replace(/\$?\d+(?:\.\d+)?/g, " ")
+    .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2 && !SEARCH_STOP_TERMS.has(term));
   const expandedTerms = baseTerms.flatMap((term) => [term, ...(SEARCH_SYNONYMS[term] ?? [])]);
 
   return Array.from(new Set(expandedTerms)).slice(0, 12);
@@ -714,18 +791,18 @@ const SEARCH_STOP_TERMS = new Set([
 ]);
 
 const SEARCH_SYNONYMS: Record<string, string[]> = {
-  "테슬라": ["tesla"],
-  "모델3": ["model", "model 3", "model-3"],
-  "아이폰": ["iphone"],
-  "휴대폰": ["phone", "smartphone", "iphone"],
-  "핸드폰": ["phone", "smartphone", "iphone"],
-  "폰": ["phone", "smartphone", "iphone"],
-  "맥북": ["macbook"],
-  "노트북": ["laptop"],
-  "차": ["car", "vehicle"],
-  "차량": ["car", "vehicle"],
-  "자동차": ["car", "vehicle"],
-  "전기차": ["ev", "electric"],
+  테슬라: ["tesla"],
+  모델3: ["model", "model 3", "model-3"],
+  아이폰: ["iphone"],
+  휴대폰: ["phone", "smartphone", "iphone"],
+  핸드폰: ["phone", "smartphone", "iphone"],
+  폰: ["phone", "smartphone", "iphone"],
+  맥북: ["macbook"],
+  노트북: ["laptop"],
+  차: ["car", "vehicle"],
+  차량: ["car", "vehicle"],
+  자동차: ["car", "vehicle"],
+  전기차: ["ev", "electric"],
 };
 
 const SEARCH_BRAND_TERMS = new Set([
@@ -740,7 +817,9 @@ const SEARCH_BRAND_TERMS = new Set([
   "harley",
 ]);
 
-export async function processNegotiationAgentBuilderTurn(input: z.infer<typeof negotiationAgentBuilderTurnBodySchema>) {
+export async function processNegotiationAgentBuilderTurn(
+  input: z.infer<typeof negotiationAgentBuilderTurnBodySchema>,
+) {
   const initialRequirementPlan = buildAdvisorRequirementPlan({
     memory: input.previous_memory,
     listings: input.listings,
@@ -760,15 +839,19 @@ Your task is context engineering: update the user's memory from the latest messa
 
 Side & price direction:
 - ${sem.promptHint}
-- ${input.side === "seller"
+- ${
+      input.side === "seller"
         ? "Ask about asking price and the lowest the user will accept. Never call it a 'budget'."
-        : "Ask about the user's ideal price and the most they will pay (budget)."}
-${input.side === "seller"
-        ? `HARD SELLER RULES (these OVERRIDE any buyer-oriented rule below):
+        : "Ask about the user's ideal price and the most they will pay (budget)."
+    }
+${
+  input.side === "seller"
+    ? `HARD SELLER RULES (these OVERRIDE any buyer-oriented rule below):
 - The seller has ALREADY set their asking price and floor (see the listing). NEVER ask the seller for a budget, asking price, or floor.
 - Do NOT ask buyer-style requirement questions (battery %, IMEI, etc.). Instead ask what to EMPHASIZE (condition, accessories, rarity) or any deal-breakers.
 - Ignore the Tag Garden requirement slots entirely — they are buyer-side.`
-        : ""}
+    : ""
+}
 
 Lumen agent voice:
 - Agent: ${agentProfile.name} (${agentProfile.role})
@@ -789,7 +872,9 @@ Rules:
 - Normalize concise constraints into memory.mustHave, e.g. "original box included", "clean IMEI", "unlocked", "battery >= 90%", "screen mint", "Pro model".
 - Normalize avoid constraints only for product, seller claim, or condition preferences, e.g. "visible cracks", "low battery", "heavily worn frame".
 - Do not store off-platform payment as a buyer avoid item in this demo. Haggle handles protected payment and checkout by default.
-${input.side === "buyer" ? `- Infer budgetMax and targetPrice only from explicit budget/price.
+${
+  input.side === "buyer"
+    ? `- Infer budgetMax and targetPrice only from explicit budget/price.
 - budgetMax and targetPrice are user-facing USD dollars, not cents. If the buyer says "450", "$450", or "450 dollars", store 450.
 - targetPrice should be slightly below budgetMax when reasonable.
 - Do not decide required follow-up slots from intuition. Tag Garden requirement slots below are authoritative.
@@ -806,9 +891,11 @@ ${input.side === "buyer" ? `- Infer budgetMax and targetPrice only from explicit
 - Do NOT make battery health, carrier unlock, IMEI, or box mandatory by default. They are mandatory only when Tag Garden says the matched item tag requires them.
 - If the user says they want box/original box/full package, record "original box included"; box itself is not a required iPhone slot unless Tag Garden marks it required.
 - If no advisor_recommendation slot is missing after updating memory, questions must be [].
-- If the budget is below all listing ask prices, keep the budget as stated and explain the negotiation will need a lower anchor or an older/safer-fit model; do not invent missing constraints.` : `- The seller has already set asking and floor prices; do not ask for them. Help shape negotiation posture: what to emphasize, deal-breakers, and how firmly to hold.
+- If the budget is below all listing ask prices, keep the budget as stated and explain the negotiation will need a lower anchor or an older/safer-fit model; do not invent missing constraints.`
+    : `- The seller has already set asking and floor prices; do not ask for them. Help shape negotiation posture: what to emphasize, deal-breakers, and how firmly to hold.
 - Put any "what to emphasize" items in memory.mustHave and deal-breakers in memory.avoid.
-- If nothing essential is missing, questions must be [].`}
+- If nothing essential is missing, questions must be [].`
+}
 - Never mention Tag Garden, tags, requirement slots, internal criteria, or context engineering in the user-facing reply.
 - Avoid overly dramatic, poetic, or cheesy phrases. Be natural, professional, and direct.
 - When asking a follow-up question, ask directly without unnecessary filler.
@@ -855,50 +942,90 @@ Latest user message:
 ${input.message}
 
 Tag Garden requirement slots:
-${input.side === "seller"
-      ? "None — seller side; skip buyer requirement questions."
-      : formatTagRequirementPlanForPrompt(initialRequirementPlan)}
+${
+  input.side === "seller"
+    ? "None — seller side; skip buyer requirement questions."
+    : formatTagRequirementPlanForPrompt(initialRequirementPlan)
+}
 
 Candidate planner:
 ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
-	    {
-	      correlationId: "intelligence-demo-advisor-turn",
-	      maxTokens: 700,
-	    },
-	  );
+    {
+      correlationId: "intelligence-demo-advisor-turn",
+      maxTokens: 700,
+    },
+  );
 
   const parsed = negotiationAgentBuilderTurnResultSchema.parse(parseJSON(response.content));
-  const sourceCandidates = parsed.memory.source.length > 0
-    ? parsed.memory.source.slice(-7)
-    : input.previous_memory.source.slice(-7);
+  const sourceCandidates =
+    parsed.memory.source.length > 0
+      ? parsed.memory.source.slice(-7)
+      : input.previous_memory.source.slice(-7);
   const parsedSource = unique([
     ...sourceCandidates.filter((source) => shouldKeepAdvisorSource(source, input.previous_memory)),
     ...(shouldKeepAdvisorSource(input.message, input.previous_memory) ? [input.message] : []),
   ]).slice(-8);
-  const memory = sanitizeNegotiationAgentBuilderMemoryFacts(applyConflictConfirmationAnswer(applyAmbiguousPendingAnswerGuard(applyPendingSlotAnswerScope(applyScopedConditionConfirmation(applyNoPreferenceAnswer(normalizeNegotiationAgentBuilderBudgetMemory({
-    ...parsed.memory,
-    structured: parsed.memory.structured ?? input.previous_memory.structured,
-    source: parsedSource,
-  }, {
-    latestMessage: input.message,
-    previousMemory: input.previous_memory,
-    listings: input.listings,
-  }), input.message, input.previous_memory), input.message, input.previous_memory), input.message, input.previous_memory), input.message, input.previous_memory), input.message, input.previous_memory), input.previous_memory);
-  const finalRequirementPlan = buildAdvisorRequirementPlan({
-    memory,
-    listings: input.listings,
-  });
-  const finalCandidatePlan = applyRequirementGateToCandidatePlan(buildAdvisorCandidatePlan({
-    listings: input.listings,
-    budgetKnown: Boolean(memory.budgetMax),
-    hasBuyerPreference: hasAdvisorBuyerPreference(memory),
-    memory,
-  }), finalRequirementPlan);
+  const memory = sanitizeNegotiationAgentBuilderMemoryFacts(
+    applyConflictConfirmationAnswer(
+      applyAmbiguousPendingAnswerGuard(
+        applyPendingSlotAnswerScope(
+          applyScopedConditionConfirmation(
+            applyNoPreferenceAnswer(
+              normalizeNegotiationAgentBuilderBudgetMemory(
+                {
+                  ...parsed.memory,
+                  structured: parsed.memory.structured ?? input.previous_memory.structured,
+                  source: parsedSource,
+                },
+                {
+                  latestMessage: input.message,
+                  previousMemory: input.previous_memory,
+                  listings: input.listings,
+                },
+              ),
+              input.message,
+              input.previous_memory,
+            ),
+            input.message,
+            input.previous_memory,
+          ),
+          input.message,
+          input.previous_memory,
+        ),
+        input.message,
+        input.previous_memory,
+      ),
+      input.message,
+      input.previous_memory,
+    ),
+    input.previous_memory,
+  );
+  // Seller side has no buyer requirement slots (budget, buyer priority, …), so
+  // feed an empty plan into the structured-memory + question-plan builders.
+  // Otherwise buyer-only slots (and their Korean prompts) leak into the
+  // persisted seller agent memory.
+  const finalRequirementPlan =
+    input.side === "seller"
+      ? EMPTY_TAG_REQUIREMENT_PLAN
+      : buildAdvisorRequirementPlan({
+          memory,
+          listings: input.listings,
+        });
+  const finalCandidatePlan = applyRequirementGateToCandidatePlan(
+    buildAdvisorCandidatePlan({
+      listings: input.listings,
+      budgetKnown: Boolean(memory.budgetMax),
+      hasBuyerPreference: hasAdvisorBuyerPreference(memory),
+      memory,
+    }),
+    finalRequirementPlan,
+  );
   // Seller side skips the buyer-oriented requirement/candidate planner — its
   // questions are buyer-specific (and Korean). Use the LLM's own questions.
-  let nextQuestions = input.side === "seller"
-    ? (parsed.memory.questions ?? [])
-    : chooseNextAdvisorQuestions(finalCandidatePlan, finalRequirementPlan, memory);
+  let nextQuestions =
+    input.side === "seller"
+      ? (parsed.memory.questions ?? [])
+      : chooseNextAdvisorQuestions(finalCandidatePlan, finalRequirementPlan, memory);
   const finalMemory = {
     ...memory,
     questions: nextQuestions,
@@ -909,10 +1036,12 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     latestMessage: input.message,
     requirementPlan: finalRequirementPlan,
   });
-  finalMemory.source = pruneSupersededAdvisorSources(finalMemory.source, finalMemory.structured.memoryConflicts);
-  const conflictQuestion = input.side === "seller"
-    ? null
-    : chooseConflictResolutionQuestion(finalMemory.structured);
+  finalMemory.source = pruneSupersededAdvisorSources(
+    finalMemory.source,
+    finalMemory.structured.memoryConflicts,
+  );
+  const conflictQuestion =
+    input.side === "seller" ? null : chooseConflictResolutionQuestion(finalMemory.structured);
   if (conflictQuestion) {
     nextQuestions = [conflictQuestion];
     finalMemory.questions = nextQuestions;
@@ -922,18 +1051,19 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     requirementPlan: finalRequirementPlan,
     structured: finalMemory.structured,
   });
-  const reply = input.side === "seller"
-    ? parsed.reply
-    : buildAdvisorReplyAfterPlanning({
-        parsedReply: parsed.reply,
-        nextQuestions,
-        candidatePlan: finalCandidatePlan,
-        requirementPlan: finalRequirementPlan,
-        latestMessage: input.message,
-        previousMemory: input.previous_memory,
-        memory: finalMemory,
-        agentProfileName: agentProfile.name,
-      });
+  const reply =
+    input.side === "seller"
+      ? parsed.reply
+      : buildAdvisorReplyAfterPlanning({
+          parsedReply: parsed.reply,
+          nextQuestions,
+          candidatePlan: finalCandidatePlan,
+          requirementPlan: finalRequirementPlan,
+          latestMessage: input.message,
+          previousMemory: input.previous_memory,
+          memory: finalMemory,
+          agentProfileName: agentProfile.name,
+        });
 
   return {
     ...parsed,
@@ -946,16 +1076,16 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
   };
 }
 
-function formatAdvisorListingsForPrompt(listings: Array<z.infer<typeof advisorListingSchema>>): string {
+function formatAdvisorListingsForPrompt(
+  listings: Array<z.infer<typeof advisorListingSchema>>,
+): string {
   if (listings.length === 0) return "none";
 
   return listings
     .slice(0, ADVISOR_TURN_LISTING_CONTEXT_LIMIT)
     .map((listing, index) => {
       const tags = listing.tags.slice(0, 8).join(", ") || "none";
-      const sellerNote = listing.sellerNote
-        ? ` | note=${listing.sellerNote.slice(0, 120)}`
-        : "";
+      const sellerNote = listing.sellerNote ? ` | note=${listing.sellerNote.slice(0, 120)}` : "";
       return [
         `${index + 1}. ${listing.title}`,
         `category=${listing.category ?? "unknown"}`,
@@ -976,10 +1106,7 @@ function hasAdvisorBuyerPreference(memory: NegotiationAgentBuilderMemory): boole
   if (memory.negotiationStyle !== "balanced") return true;
   if (memory.openingTactic !== "fair_market_anchor") return true;
 
-  const memoryText = [
-    memory.categoryInterest,
-    ...memory.source,
-  ].join(" ").toLowerCase();
+  const memoryText = [memory.categoryInterest, ...memory.source].join(" ").toLowerCase();
 
   return /가격|저렴|싼|최저|lowest|cheap|상태|안전|검증|빠른|speed/.test(memoryText);
 }
@@ -997,25 +1124,27 @@ function chooseNextAdvisorQuestions(
 
     const questions = requirementPlan.blockingSlots
       .slice(0, ADVISOR_MAX_QUESTIONS_PER_TURN)
-      .map((slot, index) => (
-        index === 0 && candidatePlan.nextAction.question && candidateQuestionSatisfiesBlockingSlot(candidatePlan, slot)
+      .map((slot, index) =>
+        index === 0 &&
+        candidatePlan.nextAction.question &&
+        candidateQuestionSatisfiesBlockingSlot(candidatePlan, slot)
           ? candidatePlan.nextAction.question
-          : slot.questionKo
-      ));
+          : slot.questionKo,
+      );
     return unique(questions);
   }
 
   if (
-    candidatePlan.nextAction.slot === "buyer_priority"
-    && hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))
+    candidatePlan.nextAction.slot === "buyer_priority" &&
+    hasGeneralNoPreference(memoryTextFromNegotiationAgentBuilderMemory(memory))
   ) {
     return [];
   }
   if (candidatePlan.nextAction.question) return [candidatePlan.nextAction.question];
   if (
-    candidatePlan.nextAction.action === "recommend"
-    && requirementPlan.nextSlot
-    && ["shopping_intent", "max_budget", "buyer_priority"].includes(requirementPlan.nextSlot.slotId)
+    candidatePlan.nextAction.action === "recommend" &&
+    requirementPlan.nextSlot &&
+    ["shopping_intent", "max_budget", "buyer_priority"].includes(requirementPlan.nextSlot.slotId)
   ) {
     return [];
   }
@@ -1056,7 +1185,9 @@ function applyRequirementGateToCandidatePlan(
   };
 }
 
-function mapRequirementSlotToAdvisorSlot(slot: TagRequirementSlot): AdvisorCandidatePlan["nextAction"]["slot"] {
+function mapRequirementSlotToAdvisorSlot(
+  slot: TagRequirementSlot,
+): AdvisorCandidatePlan["nextAction"]["slot"] {
   if (slot.slotId === "shopping_intent") return "search_intent";
   if (slot.slotId === "max_budget") return "budget";
   return "buyer_priority";
@@ -1084,9 +1215,9 @@ function buildAdvisorReplyAfterPlanning(input: {
   }
 
   if (
-    isNoPreferenceAnswer(input.latestMessage)
-    && input.previousMemory.questions.length > 0
-    && replyAsksQuestion(input.parsedReply)
+    isNoPreferenceAnswer(input.latestMessage) &&
+    input.previousMemory.questions.length > 0 &&
+    replyAsksQuestion(input.parsedReply)
   ) {
     return buildNoPreferenceAcknowledgement(input.memory, input.agentProfileName);
   }
@@ -1094,11 +1225,14 @@ function buildAdvisorReplyAfterPlanning(input: {
   return sanitizeAdvisorReply(input.parsedReply);
 }
 
-function buildNegotiationAgentBuilderTurnCost(usage: { prompt_tokens: number; completion_tokens: number }) {
+function buildNegotiationAgentBuilderTurnCost(usage: {
+  prompt_tokens: number;
+  completion_tokens: number;
+}) {
   const prompt = usage.prompt_tokens;
   const completion = usage.completion_tokens;
   const total = prompt + completion;
-  const estimatedUsd = (prompt * INPUT_TOKEN_USD) + (completion * OUTPUT_TOKEN_USD);
+  const estimatedUsd = prompt * INPUT_TOKEN_USD + completion * OUTPUT_TOKEN_USD;
 
   return {
     model: process.env.XAI_MODEL ?? "grok-4-fast",
@@ -1126,9 +1260,9 @@ function mergeAdvisorQuestion(
   if (trimmedReply.includes(question)) return trimmedReply;
   if (requirementPlan.hasBlockingMissingSlots) {
     if (
-      requirementPlan.nextSlot
-      && replyAlreadyAsksForSlot(trimmedReply, requirementPlan.nextSlot)
-      && getQuestionSentences(trimmedReply).length <= 1
+      requirementPlan.nextSlot &&
+      replyAlreadyAsksForSlot(trimmedReply, requirementPlan.nextSlot) &&
+      getQuestionSentences(trimmedReply).length <= 1
     ) {
       return trimmedReply;
     }
@@ -1141,7 +1275,8 @@ function mergeAdvisorQuestion(
     return `${base}${needsSentenceBreakForBase ? "." : ""} ${question}`;
   }
   if (replyAlreadyAsksForAdvisorAction(trimmedReply, candidatePlan)) return trimmedReply;
-  if (requirementPlan.nextSlot && replyAlreadyAsksForSlot(trimmedReply, requirementPlan.nextSlot)) return trimmedReply;
+  if (requirementPlan.nextSlot && replyAlreadyAsksForSlot(trimmedReply, requirementPlan.nextSlot))
+    return trimmedReply;
 
   const needsSentenceBreak = !/[.!?。！？]$/.test(trimmedReply);
   return `${trimmedReply}${needsSentenceBreak ? "." : ""} ${question}`;
@@ -1167,9 +1302,7 @@ function stripAdvisorQuestions(reply: string): string {
 }
 
 function getQuestionSentences(reply: string): string[] {
-  return reply
-    .split(/(?<=[.!?。！？])\s+/)
-    .filter((sentence) => replyAsksQuestion(sentence));
+  return reply.split(/(?<=[.!?。！？])\s+/).filter((sentence) => replyAsksQuestion(sentence));
 }
 
 function replyAlreadyAsksForAdvisorAction(reply: string, plan: AdvisorCandidatePlan): boolean {
@@ -1199,9 +1332,10 @@ function formatCandidatePlanForPrompt(plan: AdvisorCandidatePlan): string {
     `dominant_cluster: ${plan.dominantCluster ? `${plan.dominantCluster.label} (${plan.dominantCluster.count}, share ${plan.dominantCluster.share})` : "none"}`,
     `next_action: ${plan.nextAction.action} | slot=${plan.nextAction.slot} | reason=${plan.nextAction.reasonCode} | question="${plan.nextAction.question ?? "none"}"`,
     "facets:",
-    ...plan.facets.map((facet) => (
-      `- ${facet.slot} | entropy=${facet.entropy} | values=${facet.values.map((value) => `${value.label}:${value.count}`).join(", ")}`
-    )),
+    ...plan.facets.map(
+      (facet) =>
+        `- ${facet.slot} | entropy=${facet.entropy} | values=${facet.values.map((value) => `${value.label}:${value.count}`).join(", ")}`,
+    ),
   ].join("\n");
 }
 
@@ -1235,12 +1369,17 @@ function getQuestionMatchTokens(value: string): string[] {
     .toLowerCase()
     .replace(/[%?？.!。！,，]/g, " ")
     .replace(/[_\-/]+/g, " ");
-  return Array.from(new Set(
-    (normalized.match(/[a-z0-9]+|[가-힣]+/g) ?? [])
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2)
-      .filter((token) => !["인가요", "까요", "나요", "어요", "해요", "있나요", "어느", "정도"].includes(token)),
-  ));
+  return Array.from(
+    new Set(
+      (normalized.match(/[a-z0-9]+|[가-힣]+/g) ?? [])
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2)
+        .filter(
+          (token) =>
+            !["인가요", "까요", "나요", "어요", "해요", "있나요", "어느", "정도"].includes(token),
+        ),
+    ),
+  );
 }
 
 function getQuestionWindows(reply: string): string[] {
@@ -1266,9 +1405,29 @@ function getRequirementSlotTerms(slot: TagRequirementSlot): string[] {
   const slotSpecificTerms: Record<string, string[]> = {
     shopping_intent: ["제품", "상품", "찾", "원하", "필요", "상황", "product", "intent"],
     max_budget: ["예산", "최대", "가격대", "얼마", "budget", "maxbudget"],
-    buyer_priority: ["용도", "조건", "선호", "필수", "꼭필요", "우선", "피하고", "중요", "priority", "musthave"],
+    buyer_priority: [
+      "용도",
+      "조건",
+      "선호",
+      "필수",
+      "꼭필요",
+      "우선",
+      "피하고",
+      "중요",
+      "priority",
+      "musthave",
+    ],
     battery_health: ["배터리", "성능", "퍼센트", "%", "battery", "batteryhealth"],
-    carrier_lock: ["언락", "잠금", "통신사", "unlocked", "locked", "carrier", "carrierlock", "factoryunlocked"],
+    carrier_lock: [
+      "언락",
+      "잠금",
+      "통신사",
+      "unlocked",
+      "locked",
+      "carrier",
+      "carrierlock",
+      "factoryunlocked",
+    ],
     imei_verification: ["imei", "serial", "시리얼", "블랙리스트", "깨끗", "cleanimei"],
     find_my_status: ["findmy", "나의찾기", "아이클라우드", "icloud", "activationlock"],
   };
@@ -1284,14 +1443,15 @@ function getRequirementSlotTerms(slot: TagRequirementSlot): string[] {
 }
 
 function normalizeForQuestionMatch(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[\s"'`.,:;()[\]{}_\-/]+/g, "");
+  return value.toLowerCase().replace(/[\s"'`.,:;()[\]{}_\-/]+/g, "");
 }
 
 function sanitizeAdvisorReply(reply: string): string {
   return reply
-    .replace(/(?:Tag Garden|태그 가든|requirement slots?|context engineering)[^.!?。！？]*(?:[.!?。！？]|$)/gi, "")
+    .replace(
+      /(?:Tag Garden|태그 가든|requirement slots?|context engineering)[^.!?。！？]*(?:[.!?。！？]|$)/gi,
+      "",
+    )
     .replace(/(^|[\s.!?。！？])됐고[,\s—-]*/g, "$1")
     .replace(/^음,\s*/, "Okay, ")
     .replace(/(^|[\s.,!?。！？])잠깐(?=[\s,.!?。！？]|$)/g, "$1Wait")
@@ -1330,8 +1490,9 @@ function applyPendingSlotAnswerScope(
   if (!pendingSlot?.productScope) return memory;
 
   if (pendingSlot.slotId === "battery_health") {
-    const threshold = extractBatteryThresholdLabel(latestMessage.toLowerCase())
-      ?? extractPlainBatteryThresholdFromAnswer(latestMessage, previousMemory);
+    const threshold =
+      extractBatteryThresholdLabel(latestMessage.toLowerCase()) ??
+      extractPlainBatteryThresholdFromAnswer(latestMessage, previousMemory);
     if (threshold) {
       const fact = `battery >= ${threshold}`;
       return {
@@ -1349,12 +1510,16 @@ function applyPendingSlotAnswerScope(
   }
 
   if (pendingSlot.slotId === "carrier_lock") {
-    const facts = normalizeStructuredFacts(latestMessage)
-      .filter((fact) => structuredSlotsForFacts([fact]).includes("carrier_lock"));
+    const facts = normalizeStructuredFacts(latestMessage).filter((fact) =>
+      structuredSlotsForFacts([fact]).includes("carrier_lock"),
+    );
     if (facts.length > 0) {
       return {
         ...memory,
-        source: unique([...memory.source, ...facts.map((fact) => `${pendingSlot.productScope} ${fact}`)]),
+        source: unique([
+          ...memory.source,
+          ...facts.map((fact) => `${pendingSlot.productScope} ${fact}`),
+        ]),
       };
     }
     if (isNoPreferenceAnswer(latestMessage)) {
@@ -1368,17 +1533,25 @@ function applyPendingSlotAnswerScope(
   return memory;
 }
 
-function shouldKeepAdvisorSource(source: string, previousMemory: NegotiationAgentBuilderMemory): boolean {
+function shouldKeepAdvisorSource(
+  source: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): boolean {
   const text = source.trim();
   if (!text) return false;
   if (isSecurityAttackInput(text)) return false;
   if (isNoPreferenceAnswer(text) && previousMemory.questions.length > 0) return true;
   if (isApplyScopedConditionAnswer(text) && previousMemory.questions.length > 0) return false;
 
-  return /(?:iphone|아이폰|ipad|아이패드|macbook|맥북|laptop|노트북|tesla|테슬라|model\s*\d|모델\s*\d|pro\b|budget|예산|target|price|가격|\$\s*\d|\d+\s*(?:usd|dollars?|달러|불)|battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|condition|상태|screen|화면|box|박스|damage|wear|active intent|interest|expanded|narrowed|required|preference|confirmed|applied|budget change|search)/i.test(text);
+  return /(?:iphone|아이폰|ipad|아이패드|macbook|맥북|laptop|노트북|tesla|테슬라|model\s*\d|모델\s*\d|pro\b|budget|예산|target|price|가격|\$\s*\d|\d+\s*(?:usd|dollars?|달러|불)|battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|condition|상태|screen|화면|box|박스|damage|wear|active intent|interest|expanded|narrowed|required|preference|confirmed|applied|budget change|search)/i.test(
+    text,
+  );
 }
 
-function sanitizeNegotiationAgentBuilderMemoryFacts(memory: NegotiationAgentBuilderMemory, previousMemory: NegotiationAgentBuilderMemory): NegotiationAgentBuilderMemory {
+function sanitizeNegotiationAgentBuilderMemoryFacts(
+  memory: NegotiationAgentBuilderMemory,
+  previousMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   return {
     ...memory,
     mustHave: unique(memory.mustHave.filter((fact) => shouldKeepAdvisorFact(fact, previousMemory))),
@@ -1390,23 +1563,27 @@ function pruneSupersededAdvisorSources(
   sources: string[],
   memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
 ): string[] {
-  const superseded = memoryConflicts.filter((conflict) => (
-    conflict.status === "superseded"
-    && Boolean(conflict.productScope)
-    && Boolean(conflict.previousValue)
-    && shouldPruneSupersededConflict(conflict, memoryConflicts)
-  ));
+  const superseded = memoryConflicts.filter(
+    (conflict) =>
+      conflict.status === "superseded" &&
+      Boolean(conflict.productScope) &&
+      Boolean(conflict.previousValue) &&
+      shouldPruneSupersededConflict(conflict, memoryConflicts),
+  );
   if (superseded.length === 0) return sources;
 
-  return sources.filter((source) => !superseded.some((conflict) => (
-    sourceContainsStructuredFact(source, conflict.productScope!, conflict.previousValue!)
-  )));
+  return sources.filter(
+    (source) =>
+      !superseded.some((conflict) =>
+        sourceContainsStructuredFact(source, conflict.productScope!, conflict.previousValue!),
+      ),
+  );
 }
 
 function sourceContainsStructuredFact(source: string, productScope: string, fact: string): boolean {
   return (
-    extractStructuredProductScopes(source).includes(productScope)
-    && normalizeStructuredFacts(source).includes(fact)
+    extractStructuredProductScopes(source).includes(productScope) &&
+    normalizeStructuredFacts(source).includes(fact)
   );
 }
 
@@ -1414,19 +1591,24 @@ function pruneSupersededPromotionDecisions(
   decisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"],
   memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"],
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"] {
-  const superseded = memoryConflicts.filter((conflict) => (
-    conflict.status === "superseded"
-    && Boolean(conflict.productScope)
-    && Boolean(conflict.previousValue)
-    && shouldPruneSupersededConflict(conflict, memoryConflicts)
-  ));
+  const superseded = memoryConflicts.filter(
+    (conflict) =>
+      conflict.status === "superseded" &&
+      Boolean(conflict.productScope) &&
+      Boolean(conflict.previousValue) &&
+      shouldPruneSupersededConflict(conflict, memoryConflicts),
+  );
   if (superseded.length === 0) return decisions;
 
-  return decisions.filter((decision) => !superseded.some((conflict) => (
-    decision.decision === "promote"
-    && decision.productScope === conflict.productScope
-    && decision.text === conflict.previousValue
-  )));
+  return decisions.filter(
+    (decision) =>
+      !superseded.some(
+        (conflict) =>
+          decision.decision === "promote" &&
+          decision.productScope === conflict.productScope &&
+          decision.text === conflict.previousValue,
+      ),
+  );
 }
 
 function shouldPruneSupersededConflict(
@@ -1437,23 +1619,29 @@ function shouldPruneSupersededConflict(
   const latestCurrent = memoryConflicts
     .slice()
     .reverse()
-    .find((candidate) => (
-      candidate.status === "current"
-      && candidate.slotId === conflict.slotId
-      && candidate.productScope === conflict.productScope
-      && Boolean(candidate.currentValue)
-    ));
+    .find(
+      (candidate) =>
+        candidate.status === "current" &&
+        candidate.slotId === conflict.slotId &&
+        candidate.productScope === conflict.productScope &&
+        Boolean(candidate.currentValue),
+    );
 
   return latestCurrent?.currentValue !== conflict.previousValue;
 }
 
-function shouldKeepAdvisorFact(fact: string, previousMemory: NegotiationAgentBuilderMemory): boolean {
+function shouldKeepAdvisorFact(
+  fact: string,
+  previousMemory: NegotiationAgentBuilderMemory,
+): boolean {
   const text = fact.trim();
   if (!text || isSecurityAttackInput(text)) return false;
   if (text.length < 2) return false;
   if (shouldKeepAdvisorSource(text, previousMemory)) return true;
 
-  return /(?:battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|screen|화면|box|박스|damage|wear|crack|scratch|pro model|clean|original)/i.test(text);
+  return /(?:battery|배터리|성능|unlocked|locked|carrier|언락|잠금|통신사|imei|find\s*my|icloud|아이클라우드|screen|화면|box|박스|damage|wear|crack|scratch|pro model|clean|original)/i.test(
+    text,
+  );
 }
 
 function buildStructuredNegotiationAgentBuilderMemory(input: {
@@ -1463,7 +1651,9 @@ function buildStructuredNegotiationAgentBuilderMemory(input: {
   requirementPlan: TagRequirementPlan;
 }): NonNullable<NegotiationAgentBuilderMemory["structured"]> {
   const previousStructured = input.previousMemory.structured;
-  let productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] = {
+  let productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"] = {
     ...(previousStructured?.productRequirements ?? {}),
   };
 
@@ -1511,7 +1701,11 @@ function buildStructuredNegotiationAgentBuilderMemory(input: {
     };
   }
 
-  if (activeScope && isAmbiguousAnswer(input.latestMessage) && input.previousMemory.questions.length > 0) {
+  if (
+    activeScope &&
+    isAmbiguousAnswer(input.latestMessage) &&
+    input.previousMemory.questions.length > 0
+  ) {
     const current = productRequirements[activeScope] ?? {
       mustHave: [],
       avoid: [],
@@ -1520,7 +1714,10 @@ function buildStructuredNegotiationAgentBuilderMemory(input: {
     };
     productRequirements[activeScope] = {
       ...current,
-      ambiguousSlots: unique([...current.ambiguousSlots, ...pendingQuestionKinds(input.previousMemory.questions.join(" "))]),
+      ambiguousSlots: unique([
+        ...current.ambiguousSlots,
+        ...pendingQuestionKinds(input.previousMemory.questions.join(" ")),
+      ]),
     };
   }
 
@@ -1560,9 +1757,11 @@ function buildStructuredNegotiationAgentBuilderMemory(input: {
       question: slot.questionKo,
       enforcement: slot.enforcement,
       productScope: activeScope,
-      status: isAmbiguousAnswer(input.latestMessage) && input.previousMemory.questions.includes(slot.questionKo)
-        ? "ambiguous"
-        : "pending",
+      status:
+        isAmbiguousAnswer(input.latestMessage) &&
+        input.previousMemory.questions.includes(slot.questionKo)
+          ? "ambiguous"
+          : "pending",
     })),
     discardedSignals,
     memoryConflicts: conflictResult.memoryConflicts,
@@ -1583,7 +1782,9 @@ function buildStructuredMemoryLifecycle(input: {
   latestMessage: string;
   requirementPlan: TagRequirementPlan;
   activeScope?: string;
-  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"];
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"];
   discardedSignals: NonNullable<NegotiationAgentBuilderMemory["structured"]>["discardedSignals"];
   memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"];
 }): Pick<
@@ -1593,9 +1794,9 @@ function buildStructuredMemoryLifecycle(input: {
   const previousStructured = input.previousMemory.structured;
   const previousLongTerm = previousStructured?.longTermMemory;
   const previousSession = previousStructured?.sessionMemory;
-  let promotionDecisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"] = [
-    ...(previousStructured?.promotionDecisions ?? []),
-  ];
+  let promotionDecisions: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["promotionDecisions"] = [...(previousStructured?.promotionDecisions ?? [])];
   const longTermFacts = new Set(previousLongTerm?.facts ?? []);
   const globalFacts = new Set(previousLongTerm?.globalFacts ?? []);
   const productScopes = new Set(previousLongTerm?.productScopes ?? []);
@@ -1603,10 +1804,10 @@ function buildStructuredMemoryLifecycle(input: {
 
   for (const conflict of input.memoryConflicts) {
     if (
-      conflict.status !== "superseded"
-      || !conflict.productScope
-      || !conflict.previousValue
-      || !shouldPruneSupersededConflict(conflict, input.memoryConflicts)
+      conflict.status !== "superseded" ||
+      !conflict.productScope ||
+      !conflict.previousValue ||
+      !shouldPruneSupersededConflict(conflict, input.memoryConflicts)
     ) {
       continue;
     }
@@ -1617,7 +1818,9 @@ function buildStructuredMemoryLifecycle(input: {
   const addDecision = (
     text: string,
     decision: "promote" | "session_only" | "discard",
-    reason: NonNullable<NegotiationAgentBuilderMemory["structured"]>["promotionDecisions"][number]["reason"],
+    reason: NonNullable<
+      NegotiationAgentBuilderMemory["structured"]
+    >["promotionDecisions"][number]["reason"],
     target: "long_term" | "session" | "none",
     productScope?: string,
   ) => {
@@ -1682,28 +1885,35 @@ function buildStructuredMemoryLifecycle(input: {
 
   const latestDiscard = input.discardedSignals.at(-1);
   if (latestDiscard?.text === input.latestMessage) {
-    const reason = latestDiscard.reason === "security"
-      ? "security"
-      : latestDiscard.reason === "ambiguous"
-        ? "ambiguous"
-        : latestDiscard.reason === "off_topic"
-          ? "off_topic"
-          : "low_information";
+    const reason =
+      latestDiscard.reason === "security"
+        ? "security"
+        : latestDiscard.reason === "ambiguous"
+          ? "ambiguous"
+          : latestDiscard.reason === "off_topic"
+            ? "off_topic"
+            : "low_information";
     addDecision(input.latestMessage, "discard", reason, "none", input.activeScope);
   } else if (!shouldKeepAdvisorSource(input.latestMessage, input.previousMemory)) {
     addDecision(input.latestMessage, "discard", "low_information", "none", input.activeScope);
   }
 
-  const prunedSessionFacts = pruneSupersededAdvisorSources(Array.from(sessionFacts), input.memoryConflicts);
-  const recentWindowFacts = unique(pruneSupersededAdvisorSources(input.memory.source.slice(-6), input.memoryConflicts));
-  const carriedForwardFacts = unique([
-    ...Array.from(longTermFacts),
-    ...prunedSessionFacts,
-  ]).slice(-12);
+  const prunedSessionFacts = pruneSupersededAdvisorSources(
+    Array.from(sessionFacts),
+    input.memoryConflicts,
+  );
+  const recentWindowFacts = unique(
+    pruneSupersededAdvisorSources(input.memory.source.slice(-6), input.memoryConflicts),
+  );
+  const carriedForwardFacts = unique([...Array.from(longTermFacts), ...prunedSessionFacts]).slice(
+    -12,
+  );
   const droppedSignals = input.discardedSignals
     .slice(-6)
     .map((signal) => `${signal.reason}: ${signal.text}`);
-  const pendingQuestions = unique(input.requirementPlan.missingSlots.map((slot) => slot.questionKo));
+  const pendingQuestions = unique(
+    input.requirementPlan.missingSlots.map((slot) => slot.questionKo),
+  );
   const summaryParts = [
     input.activeScope ? `active=${input.activeScope}` : "active=unscoped",
     `longTerm=${longTermFacts.size}`,
@@ -1753,22 +1963,31 @@ function buildStructuredQuestionPlan(input: {
   const conflict = input.structured.memoryConflicts
     .slice()
     .reverse()
-    .find((item) => item.status === "needs_confirmation" && item.resolutionQuestion && nextQuestionSet.has(item.resolutionQuestion));
-  const askedSlots = input.requirementPlan.missingSlots.filter((slot) => (
-    nextQuestionSet.has(slot.questionKo)
-    || input.nextQuestions.some((question) => questionTextMatchesRequirementSlot(question, slot))
-  ));
+    .find(
+      (item) =>
+        item.status === "needs_confirmation" &&
+        item.resolutionQuestion &&
+        nextQuestionSet.has(item.resolutionQuestion),
+    );
+  const askedSlots = input.requirementPlan.missingSlots.filter(
+    (slot) =>
+      nextQuestionSet.has(slot.questionKo) ||
+      input.nextQuestions.some((question) => questionTextMatchesRequirementSlot(question, slot)),
+  );
   const askedSlot = askedSlots[0];
   const askedSlotIds = new Set(askedSlots.map((slot) => slot.slotId));
-  const fallbackAskedSlot = input.requirementPlan.missingSlots.find((slot) => slot.questionKo === combinedQuestion)
-    ?? input.requirementPlan.missingSlots.find((slot) => (
-      combinedQuestion ? questionTextMatchesRequirementSlot(combinedQuestion, slot) : false
-    ));
+  const fallbackAskedSlot =
+    input.requirementPlan.missingSlots.find((slot) => slot.questionKo === combinedQuestion) ??
+    input.requirementPlan.missingSlots.find((slot) =>
+      combinedQuestion ? questionTextMatchesRequirementSlot(combinedQuestion, slot) : false,
+    );
   const primaryAskedSlot = askedSlot ?? fallbackAskedSlot;
   const askedKind = conflict
     ? "conflict"
     : primaryAskedSlot
-      ? primaryAskedSlot.enforcement === "hard" ? "hard_slot" : "soft_slot"
+      ? primaryAskedSlot.enforcement === "hard"
+        ? "hard_slot"
+        : "soft_slot"
       : input.nextQuestions.length > 0
         ? "candidate"
         : "none";
@@ -1793,7 +2012,8 @@ function buildStructuredQuestionPlan(input: {
     policy: {
       maxQuestionsPerTurn,
       order: ["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"],
-      rationale: "Resolve contradictions first, then bundle blocking hard slots when they can be answered together, then candidate narrowing, and defer lower-priority soft preferences.",
+      rationale:
+        "Resolve contradictions first, then bundle blocking hard slots when they can be answered together, then candidate narrowing, and defer lower-priority soft preferences.",
     },
     budget: {
       maxQuestionsPerTurn,
@@ -1802,7 +2022,9 @@ function buildStructuredQuestionPlan(input: {
     askedThisTurn: {
       kind: askedKind,
       ...(combinedQuestion ? { question: combinedQuestion } : {}),
-      ...(conflict?.slotId || primaryAskedSlot?.slotId ? { slotId: conflict?.slotId ?? primaryAskedSlot?.slotId } : {}),
+      ...(conflict?.slotId || primaryAskedSlot?.slotId
+        ? { slotId: conflict?.slotId ?? primaryAskedSlot?.slotId }
+        : {}),
       ...(conflict?.productScope || input.structured.activeIntent?.productScope
         ? { productScope: conflict?.productScope ?? input.structured.activeIntent?.productScope }
         : {}),
@@ -1822,14 +2044,14 @@ function questionDeferReason(input: {
   askedSlot: TagRequirementSlot | undefined;
   nextQuestion: string | null;
   blockingSlots: TagRequirementSlot[];
-}): NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["questionPlan"]>["deferred"][number]["reason"] {
+}): NonNullable<
+  NonNullable<NegotiationAgentBuilderMemory["structured"]>["questionPlan"]
+>["deferred"][number]["reason"] {
   if (input.conflictActive) return "conflict_resolution_first";
   if (
-    input.slot.enforcement === "soft"
-    && (
-      input.askedSlot?.enforcement === "hard"
-      || input.blockingSlots.some((slot) => slot.slotId !== input.askedSlot?.slotId)
-    )
+    input.slot.enforcement === "soft" &&
+    (input.askedSlot?.enforcement === "hard" ||
+      input.blockingSlots.some((slot) => slot.slotId !== input.askedSlot?.slotId))
   ) {
     return "lower_priority";
   }
@@ -1838,28 +2060,40 @@ function questionDeferReason(input: {
 }
 
 function applyStructuredConflictHandling(input: {
-  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"];
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"];
   previousMemory: NegotiationAgentBuilderMemory;
   latestMessage: string;
   activeScope?: string;
 }): {
-  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"];
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"];
   memoryConflicts: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"];
 } {
   const memoryConflicts = [...(input.previousMemory.structured?.memoryConflicts ?? [])];
   if (!input.activeScope) {
-    return { productRequirements: input.productRequirements, memoryConflicts: memoryConflicts.slice(-16) };
+    return {
+      productRequirements: input.productRequirements,
+      memoryConflicts: memoryConflicts.slice(-16),
+    };
   }
 
   const current = input.productRequirements[input.activeScope];
   if (!current) {
-    return { productRequirements: input.productRequirements, memoryConflicts: memoryConflicts.slice(-16) };
+    return {
+      productRequirements: input.productRequirements,
+      memoryConflicts: memoryConflicts.slice(-16),
+    };
   }
 
   let nextCurrent = { ...current };
   const pendingConflict = findPendingMemoryConflict(input.previousMemory, input.activeScope);
   if (pendingConflict?.currentValue && pendingConflict.previousValue) {
-    const withoutPending = memoryConflicts.filter((conflict) => !sameMemoryConflict(conflict, pendingConflict));
+    const withoutPending = memoryConflicts.filter(
+      (conflict) => !sameMemoryConflict(conflict, pendingConflict),
+    );
     if (isConfirmConflictAnswer(input.latestMessage)) {
       nextCurrent = addCurrentSlotFact(removeSlotFacts(nextCurrent, pendingConflict.slotId), {
         slotId: pendingConflict.slotId,
@@ -1926,7 +2160,12 @@ function applyStructuredConflictHandling(input: {
         previousValue,
         currentValue: update.fact,
         status: "needs_confirmation",
-        resolutionQuestion: buildConflictResolutionQuestion(input.activeScope, update.slotId, previousValue, update.fact),
+        resolutionQuestion: buildConflictResolutionQuestion(
+          input.activeScope,
+          update.slotId,
+          previousValue,
+          update.fact,
+        ),
         reason: "latest answer was tentative",
       });
       continue;
@@ -1965,15 +2204,18 @@ function findPendingMemoryConflict(
   memory: NegotiationAgentBuilderMemory,
   activeScope?: string,
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number] | null {
-  return memory.structured?.memoryConflicts
-    .slice()
-    .reverse()
-    .find((conflict) => (
-      conflict.status === "needs_confirmation"
-      && (!activeScope || conflict.productScope === activeScope)
-      && Boolean(conflict.previousValue)
-      && Boolean(conflict.currentValue)
-    )) ?? null;
+  return (
+    memory.structured?.memoryConflicts
+      .slice()
+      .reverse()
+      .find(
+        (conflict) =>
+          conflict.status === "needs_confirmation" &&
+          (!activeScope || conflict.productScope === activeScope) &&
+          Boolean(conflict.previousValue) &&
+          Boolean(conflict.currentValue),
+      ) ?? null
+  );
 }
 
 function sameMemoryConflict(
@@ -1981,11 +2223,11 @@ function sameMemoryConflict(
   right: NonNullable<NegotiationAgentBuilderMemory["structured"]>["memoryConflicts"][number],
 ): boolean {
   return (
-    left.status === right.status
-    && left.slotId === right.slotId
-    && left.productScope === right.productScope
-    && left.previousValue === right.previousValue
-    && left.currentValue === right.currentValue
+    left.status === right.status &&
+    left.slotId === right.slotId &&
+    left.productScope === right.productScope &&
+    left.previousValue === right.previousValue &&
+    left.currentValue === right.currentValue
   );
 }
 
@@ -1993,7 +2235,12 @@ function detectLatestSlotFacts(
   latestMessage: string,
   previousMemory: NegotiationAgentBuilderMemory,
 ): Array<{ slotId: string; fact: string; list: "mustHave" | "avoid"; needsConfirmation: boolean }> {
-  const facts: Array<{ slotId: string; fact: string; list: "mustHave" | "avoid"; needsConfirmation: boolean }> = [];
+  const facts: Array<{
+    slotId: string;
+    fact: string;
+    list: "mustHave" | "avoid";
+    needsConfirmation: boolean;
+  }> = [];
   const pushFact = (slotId: string, fact: string) => {
     facts.push({
       slotId,
@@ -2002,8 +2249,9 @@ function detectLatestSlotFacts(
       needsConfirmation: isTentativeRequirementChange(latestMessage),
     });
   };
-  const battery = extractBatteryThresholdLabel(latestMessage.toLowerCase())
-    ?? extractPlainBatteryThresholdFromAnswer(latestMessage, previousMemory);
+  const battery =
+    extractBatteryThresholdLabel(latestMessage.toLowerCase()) ??
+    extractPlainBatteryThresholdFromAnswer(latestMessage, previousMemory);
   if (battery) {
     pushFact("battery_health", `battery >= ${battery}`);
   }
@@ -2036,11 +2284,15 @@ function extractPlainBatteryThresholdFromAnswer(
 }
 
 function isTentativeRequirementChange(message: string): boolean {
-  return /(?:괜찮을까|될까|어때|어떨까|가능할까|봐도\s*돼|maybe|not\s*sure|unsure|could|would|should|상황(?:에)?\s*따라|그때\s*봐서)/i.test(message);
+  return /(?:괜찮을까|될까|어때|어떨까|가능할까|봐도\s*돼|maybe|not\s*sure|unsure|could|would|should|상황(?:에)?\s*따라|그때\s*봐서)/i.test(
+    message,
+  );
 }
 
 function findSlotFact(
-  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
   slotId: string,
 ): string | null {
   const allFacts = [...requirements.mustHave, ...requirements.avoid];
@@ -2048,36 +2300,52 @@ function findSlotFact(
 }
 
 function removeSlotFacts(
-  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
   slotId: string,
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
   return {
     ...requirements,
-    mustHave: requirements.mustHave.filter((fact) => !structuredSlotsForFacts([fact]).includes(slotId)),
+    mustHave: requirements.mustHave.filter(
+      (fact) => !structuredSlotsForFacts([fact]).includes(slotId),
+    ),
     avoid: requirements.avoid.filter((fact) => !structuredSlotsForFacts([fact]).includes(slotId)),
   };
 }
 
 function removeSlotFact(
-  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
   slotId: string,
   factToRemove: string,
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
   return {
     ...requirements,
-    mustHave: requirements.mustHave.filter((fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId)),
-    avoid: requirements.avoid.filter((fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId)),
+    mustHave: requirements.mustHave.filter(
+      (fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId),
+    ),
+    avoid: requirements.avoid.filter(
+      (fact) => fact !== factToRemove || !structuredSlotsForFacts([fact]).includes(slotId),
+    ),
   };
 }
 
 function addCurrentSlotFact(
-  requirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string],
+  requirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"][string],
   update: { slotId: string; fact: string; list: "mustHave" | "avoid" },
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"][string] {
   return {
     ...requirements,
-    mustHave: update.list === "mustHave" ? unique([...requirements.mustHave, update.fact]) : requirements.mustHave,
-    avoid: update.list === "avoid" ? unique([...requirements.avoid, update.fact]) : requirements.avoid,
+    mustHave:
+      update.list === "mustHave"
+        ? unique([...requirements.mustHave, update.fact])
+        : requirements.mustHave,
+    avoid:
+      update.list === "avoid" ? unique([...requirements.avoid, update.fact]) : requirements.avoid,
     answeredSlots: unique([...requirements.answeredSlots, update.slotId]),
   };
 }
@@ -2088,11 +2356,12 @@ function buildConflictResolutionQuestion(
   previousValue: string,
   currentValue: string,
 ): string {
-  const label = slotId === "battery_health"
-    ? "배터리 기준"
-    : slotId === "carrier_lock"
-      ? "언락/통신사 기준"
-      : "조건";
+  const label =
+    slotId === "battery_health"
+      ? "배터리 기준"
+      : slotId === "carrier_lock"
+        ? "언락/통신사 기준"
+        : "조건";
   return `${productScope}의 ${label}을 "${previousValue}"에서 "${currentValue}"로 바꿀까요?`;
 }
 
@@ -2101,7 +2370,8 @@ function resolveStructuredActiveIntent(
   latestMessage: string,
 ): { productScope?: string; source?: string } {
   const latestScopes = extractStructuredProductScopes(latestMessage);
-  if (latestScopes.length > 0) return { productScope: latestScopes[latestScopes.length - 1], source: latestMessage };
+  if (latestScopes.length > 0)
+    return { productScope: latestScopes[latestScopes.length - 1], source: latestMessage };
 
   for (const source of [...memory.source].reverse()) {
     const scopes = extractStructuredProductScopes(source);
@@ -2117,7 +2387,11 @@ function resolveStructuredActiveIntent(
   }
 
   const categoryScopes = extractStructuredProductScopes(memory.categoryInterest);
-  if (categoryScopes.length > 0) return { productScope: categoryScopes[categoryScopes.length - 1], source: memory.categoryInterest };
+  if (categoryScopes.length > 0)
+    return {
+      productScope: categoryScopes[categoryScopes.length - 1],
+      source: memory.categoryInterest,
+    };
   return {};
 }
 
@@ -2130,7 +2404,9 @@ function extractStructuredProductScopes(text: string): string[] {
     scopes.push(value);
   };
 
-  for (const match of text.matchAll(/(?:iphone|아이폰)\s*(1[1-9]|[2-9])\s*(pro\s*max|pro|max|plus|mini)?/gi)) {
+  for (const match of text.matchAll(
+    /(?:iphone|아이폰)\s*(1[1-9]|[2-9])\s*(pro\s*max|pro|max|plus|mini)?/gi,
+  )) {
     add(["iPhone", match[1], normalizeStructuredVariant(match[2])].filter(Boolean).join(" "));
   }
   for (const match of text.matchAll(/(?:tesla|테슬라)?\s*model\s*([3y])|모델\s*([3y])/gi)) {
@@ -2143,7 +2419,10 @@ function extractStructuredProductScopes(text: string): string[] {
 
 function normalizeStructuredVariant(value?: string): string | undefined {
   if (!value) return undefined;
-  return value.trim().replace(/\s+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function normalizeStructuredFacts(text: string): string[] {
@@ -2165,7 +2444,10 @@ function hasSlotNoPreference(text: string, slot: "battery" | "carrier"): boolean
   if (slot === "battery" && /battery\s+no\s+preference/i.test(normalized)) return true;
   if (slot === "carrier" && /carrier\s+no\s+preference/i.test(normalized)) return true;
 
-  const hasNoPreference = /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|no preference|doesn'?t matter|not important|no need)/i.test(normalized);
+  const hasNoPreference =
+    /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|no preference|doesn'?t matter|not important|no need)/i.test(
+      normalized,
+    );
   if (!hasNoPreference) return false;
 
   const hasBatteryTerm = /(?:battery|배터리|성능)/i.test(normalized);
@@ -2183,10 +2465,22 @@ function hasSharedNoPreferenceForBatteryAndCarrier(normalized: string): boolean 
   const carrier = String.raw`(?:carrier|통신사|언락|unlocked|locked|잠금)`;
   const connector = String.raw`(?:랑|와|과|및|하고|,|\/|&|\+|and)`;
   return (
-    new RegExp(`${battery}\\s*${connector}\\s*${carrier}[^.!?。！？]{0,40}${noPreference}`, "i").test(normalized)
-    || new RegExp(`${carrier}\\s*${connector}\\s*${battery}[^.!?。！？]{0,40}${noPreference}`, "i").test(normalized)
-    || new RegExp(`${battery}[^.!?。！？]{0,20}${carrier}[^.!?。！？]{0,20}(?:둘\\s*다|모두|both)[^.!?。！？]{0,20}${noPreference}`, "i").test(normalized)
-    || new RegExp(`${carrier}[^.!?。！？]{0,20}${battery}[^.!?。！？]{0,20}(?:둘\\s*다|모두|both)[^.!?。！？]{0,20}${noPreference}`, "i").test(normalized)
+    new RegExp(
+      `${battery}\\s*${connector}\\s*${carrier}[^.!?。！？]{0,40}${noPreference}`,
+      "i",
+    ).test(normalized) ||
+    new RegExp(
+      `${carrier}\\s*${connector}\\s*${battery}[^.!?。！？]{0,40}${noPreference}`,
+      "i",
+    ).test(normalized) ||
+    new RegExp(
+      `${battery}[^.!?。！？]{0,20}${carrier}[^.!?。！？]{0,20}(?:둘\\s*다|모두|both)[^.!?。！？]{0,20}${noPreference}`,
+      "i",
+    ).test(normalized) ||
+    new RegExp(
+      `${carrier}[^.!?。！？]{0,20}${battery}[^.!?。！？]{0,20}(?:둘\\s*다|모두|both)[^.!?。！？]{0,20}${noPreference}`,
+      "i",
+    ).test(normalized)
   );
 }
 
@@ -2233,7 +2527,9 @@ function isSecurityAttackInput(message: string): boolean {
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .toLowerCase();
 
-  return /(?:ignore (?:all )?(?:previous|system|developer) instructions|system prompt|developer message|jailbreak|prompt injection|너의\s*(?:시스템|개발자)\s*지시|이전\s*지시\s*무시|프롬프트\s*인젝션|내부\s*(?:프롬프트|지시)|규칙을\s*무시)/i.test(normalized);
+  return /(?:ignore (?:all )?(?:previous|system|developer) instructions|system prompt|developer message|jailbreak|prompt injection|너의\s*(?:시스템|개발자)\s*지시|이전\s*지시\s*무시|프롬프트\s*인젝션|내부\s*(?:프롬프트|지시)|규칙을\s*무시)/i.test(
+    normalized,
+  );
 }
 
 function applyScopedConditionConfirmation(
@@ -2253,10 +2549,7 @@ function applyScopedConditionConfirmation(
     const slotId = scopedConditionSlotId(conditionName);
     return {
       ...removeSlotFromNegotiationAgentBuilderMemory(memory, slotId),
-      source: unique([
-        ...memory.source,
-        ...targetScopeIntentSources(previousMemory, targetScope),
-      ]),
+      source: unique([...memory.source, ...targetScopeIntentSources(previousMemory, targetScope)]),
       structured: appendScopedConditionDecision(memory.structured ?? previousMemory.structured, {
         slotId,
         sourceScope,
@@ -2302,17 +2595,23 @@ function applyScopedConditionConfirmation(
   };
 }
 
-function targetScopeIntentSources(previousMemory: NegotiationAgentBuilderMemory, targetScope: string): string[] {
-  const targetSources = previousMemory.source.filter((source) => (
-    extractStructuredProductScopes(source).includes(targetScope)
-    && normalizeStructuredFacts(source).length === 0
-  ));
+function targetScopeIntentSources(
+  previousMemory: NegotiationAgentBuilderMemory,
+  targetScope: string,
+): string[] {
+  const targetSources = previousMemory.source.filter(
+    (source) =>
+      extractStructuredProductScopes(source).includes(targetScope) &&
+      normalizeStructuredFacts(source).length === 0,
+  );
   return targetSources.length > 0 ? targetSources : [targetScope];
 }
 
 function appendScopedConditionDecision(
   structured: NegotiationAgentBuilderMemory["structured"] | undefined,
-  decision: NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"][number],
+  decision: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["scopedConditionDecisions"][number],
 ): NegotiationAgentBuilderMemory["structured"] {
   return {
     activeIntent: structured?.activeIntent,
@@ -2336,7 +2635,10 @@ function appendScopedConditionDecision(
 function uniqueScopedConditionDecisions(
   decisions: NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"],
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"] {
-  const latestByScope = new Map<string, NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"][number]>();
+  const latestByScope = new Map<
+    string,
+    NonNullable<NegotiationAgentBuilderMemory["structured"]>["scopedConditionDecisions"][number]
+  >();
   for (const decision of decisions) {
     const key = `${decision.slotId}:${decision.sourceScope ?? ""}:${decision.targetScope}`;
     latestByScope.delete(key);
@@ -2348,7 +2650,9 @@ function uniqueScopedConditionDecisions(
 function parseScopedConditionQuestion(
   question: string,
 ): { sourceScope: string; conditionName: string; targetScope: string } | null {
-  const match = question.match(/전에\s+(.+?)에서 말한\s+(배터리 조건|언락\/통신사 조건|이 조건)을\s+(.+?)에도 그대로 적용할까요/);
+  const match = question.match(
+    /전에\s+(.+?)에서 말한\s+(배터리 조건|언락\/통신사 조건|이 조건)을\s+(.+?)에도 그대로 적용할까요/,
+  );
   if (!match) return null;
 
   const sourceScope = match[1]?.trim();
@@ -2364,7 +2668,10 @@ function scopedConditionSlotId(conditionName: string): string {
   return "buyer_priority";
 }
 
-function removeSlotFromNegotiationAgentBuilderMemory(memory: NegotiationAgentBuilderMemory, slotId: string): NegotiationAgentBuilderMemory {
+function removeSlotFromNegotiationAgentBuilderMemory(
+  memory: NegotiationAgentBuilderMemory,
+  slotId: string,
+): NegotiationAgentBuilderMemory {
   return {
     ...memory,
     mustHave: memory.mustHave.filter((fact) => !structuredSlotsForFacts([fact]).includes(slotId)),
@@ -2383,8 +2690,16 @@ function applyConflictConfirmationAnswer(
   if (isConfirmConflictAnswer(latestMessage)) {
     return {
       ...memory,
-      mustHave: replaceMemoryFact(memory.mustHave, pendingConflict.previousValue, pendingConflict.currentValue),
-      avoid: replaceMemoryFact(memory.avoid, pendingConflict.previousValue, pendingConflict.currentValue),
+      mustHave: replaceMemoryFact(
+        memory.mustHave,
+        pendingConflict.previousValue,
+        pendingConflict.currentValue,
+      ),
+      avoid: replaceMemoryFact(
+        memory.avoid,
+        pendingConflict.previousValue,
+        pendingConflict.currentValue,
+      ),
       source: unique([
         ...memory.source.filter((item) => !item.includes(pendingConflict.previousValue ?? "")),
         `${pendingConflict.productScope ?? previousMemory.categoryInterest} ${pendingConflict.currentValue}`,
@@ -2395,8 +2710,16 @@ function applyConflictConfirmationAnswer(
   if (isRejectConflictAnswer(latestMessage)) {
     return {
       ...memory,
-      mustHave: replaceMemoryFact(memory.mustHave, pendingConflict.currentValue, pendingConflict.previousValue),
-      avoid: replaceMemoryFact(memory.avoid, pendingConflict.currentValue, pendingConflict.previousValue),
+      mustHave: replaceMemoryFact(
+        memory.mustHave,
+        pendingConflict.currentValue,
+        pendingConflict.previousValue,
+      ),
+      avoid: replaceMemoryFact(
+        memory.avoid,
+        pendingConflict.currentValue,
+        pendingConflict.previousValue,
+      ),
       source: previousMemory.source,
     };
   }
@@ -2419,7 +2742,11 @@ function applyAmbiguousPendingAnswerGuard(
   const previousQuestion = previousMemory.questions.join(" ");
   return {
     ...memory,
-    mustHave: removeFactsForPendingQuestion(memory.mustHave, previousQuestion, previousMemory.mustHave),
+    mustHave: removeFactsForPendingQuestion(
+      memory.mustHave,
+      previousQuestion,
+      previousMemory.mustHave,
+    ),
     avoid: removeFactsForPendingQuestion(memory.avoid, previousQuestion, previousMemory.avoid),
     source: previousMemory.source,
     questions: previousMemory.questions,
@@ -2439,8 +2766,16 @@ function removeFactsForPendingQuestion(
     if (previous.has(value)) return true;
     const normalized = value.toLowerCase();
     if (questionKinds.includes("battery") && /battery|배터리|성능/.test(normalized)) return false;
-    if (questionKinds.includes("carrier") && /unlocked|locked|carrier|언락|잠금|통신사/.test(normalized)) return false;
-    if (questionKinds.includes("priority") && /priority|preference|must|avoid|조건|선호|우선|필수|피하/.test(normalized)) return false;
+    if (
+      questionKinds.includes("carrier") &&
+      /unlocked|locked|carrier|언락|잠금|통신사/.test(normalized)
+    )
+      return false;
+    if (
+      questionKinds.includes("priority") &&
+      /priority|preference|must|avoid|조건|선호|우선|필수|피하/.test(normalized)
+    )
+      return false;
     return true;
   });
 }
@@ -2450,28 +2785,36 @@ function pendingQuestionKinds(question: string): Array<"battery" | "carrier" | "
   if (/(?:배터리|성능|battery)/i.test(question)) kinds.push("battery");
   if (/(?:언락|잠금|통신사|unlocked|locked|carrier)/i.test(question)) kinds.push("carrier");
   if (kinds.length > 0) return kinds;
-  if (/(?:조건|선호|필수|꼭|우선|중요|priority|preference|requirement|must)/i.test(question)) kinds.push("priority");
+  if (/(?:조건|선호|필수|꼭|우선|중요|priority|preference|requirement|must)/i.test(question))
+    kinds.push("priority");
   return kinds;
 }
 
 function isApplyScopedConditionAnswer(message: string): boolean {
-  return /^(?:그대로|그대로\s*적용|같이|똑같이|동일하게|same|apply|yes|응|네|맞아)(?:\s*(?:해|해주세요|해줘|볼게|적용해|적용해줘))?\.?$/i.test(message.trim());
+  return /^(?:그대로|그대로\s*적용|같이|똑같이|동일하게|same|apply|yes|응|네|맞아)(?:\s*(?:해|해주세요|해줘|볼게|적용해|적용해줘))?\.?$/i.test(
+    message.trim(),
+  );
 }
 
 function isRejectScopedConditionAnswer(message: string): boolean {
-  return /(?:아니|아니야|아니요|ㄴㄴ|다시\s*정|새로\s*정|따로\s*정|다르게|별도로|적용하지\s*마|no|nope|don'?t\s*apply|different|separate)/i.test(message.trim());
+  return /(?:아니|아니야|아니요|ㄴㄴ|다시\s*정|새로\s*정|따로\s*정|다르게|별도로|적용하지\s*마|no|nope|don'?t\s*apply|different|separate)/i.test(
+    message.trim(),
+  );
 }
 
 function isConfirmConflictAnswer(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   return (
-    /^(?:응|네|맞아|좋아|ㅇㅇ|yes|yep|yeah|ok|okay|바꿔|변경|변경해|그걸로|그 기준으로|그렇게|apply|change)(?:\s*(?:해|해주세요|해줘|할게|가자|적용해|적용해줘|바꿔|바꿔줘))?\.?$/i.test(normalized)
-    || /(?:응|네|yes|ok|okay|좋아).{0,12}(?:바꿔|변경|적용|그걸로|그렇게)/i.test(normalized)
+    /^(?:응|네|맞아|좋아|ㅇㅇ|yes|yep|yeah|ok|okay|바꿔|변경|변경해|그걸로|그 기준으로|그렇게|apply|change)(?:\s*(?:해|해주세요|해줘|할게|가자|적용해|적용해줘|바꿔|바꿔줘))?\.?$/i.test(
+      normalized,
+    ) || /(?:응|네|yes|ok|okay|좋아).{0,12}(?:바꿔|변경|적용|그걸로|그렇게)/i.test(normalized)
   );
 }
 
 function isRejectConflictAnswer(message: string): boolean {
-  return /^(?:아니|아니야|ㄴㄴ|no|nope|유지|그대로|기존|원래대로|90|90%|이전)(?:\s*(?:해|해주세요|해줘|둘게|유지해|유지해줘))?\.?$/i.test(message.trim());
+  return /^(?:아니|아니야|ㄴㄴ|no|nope|유지|그대로|기존|원래대로|90|90%|이전)(?:\s*(?:해|해주세요|해줘|둘게|유지해|유지해줘))?\.?$/i.test(
+    message.trim(),
+  );
 }
 
 function isAmbiguousAnswer(message: string): boolean {
@@ -2480,14 +2823,19 @@ function isAmbiguousAnswer(message: string): boolean {
   if (isNoPreferenceAnswer(normalized) || isApplyScopedConditionAnswer(normalized)) return false;
 
   return (
-    /^(?:글쎄(?:요)?|잘\s*모르겠(?:어|어요|음)?|모르겠(?:어|어요|음)?|애매(?:해|하네|함)?|아마(?:도)?|maybe|not\s*sure|unsure|depends|it\s*depends|그때\s*봐서|상황(?:에)?\s*따라|적당히|대충|괜찮은\s*걸로|좋은\s*걸로|아무\s*거나는\s*아닌데.*|흠+|음+)\.?$/i.test(normalized)
-    || /(?:글쎄|잘\s*모르겠|모르겠|애매|not\s*sure|unsure|depends|상황(?:에)?\s*따라)/i.test(normalized)
+    /^(?:글쎄(?:요)?|잘\s*모르겠(?:어|어요|음)?|모르겠(?:어|어요|음)?|애매(?:해|하네|함)?|아마(?:도)?|maybe|not\s*sure|unsure|depends|it\s*depends|그때\s*봐서|상황(?:에)?\s*따라|적당히|대충|괜찮은\s*걸로|좋은\s*걸로|아무\s*거나는\s*아닌데.*|흠+|음+)\.?$/i.test(
+      normalized,
+    ) ||
+    /(?:글쎄|잘\s*모르겠|모르겠|애매|not\s*sure|unsure|depends|상황(?:에)?\s*따라)/i.test(
+      normalized,
+    )
   );
 }
 
 function extractBatteryThresholdLabel(memoryText: string): string | null {
-  const match = memoryText.match(/(?:battery|배터리|성능)[^0-9]{0,30}((?:[7-9][0-9]|100)\s*%?)/i)
-    ?? memoryText.match(/((?:[7-9][0-9]|100)\s*%?)[^a-z0-9가-힣]{0,30}(?:battery|배터리|성능)/i);
+  const match =
+    memoryText.match(/(?:battery|배터리|성능)[^0-9]{0,30}((?:[7-9][0-9]|100)\s*%?)/i) ??
+    memoryText.match(/((?:[7-9][0-9]|100)\s*%?)[^a-z0-9가-힣]{0,30}(?:battery|배터리|성능)/i);
   if (!match?.[1]) return null;
 
   const numeric = match[1].replace(/\s+/g, "");
@@ -2519,30 +2867,37 @@ function isNoPreferenceAnswer(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   if (!normalized) return false;
 
-  return /^(?:없어(?:요)?|없음|없다|아니(?:요)?|상관\s*없(?:어|어요|음)?|무관(?:해|함)?|괜찮(?:아|아요)?|필요\s*없(?:어|어요|음)?|신경\s*안\s*써(?:요)?|아무거나|none|no preference|doesn'?t matter|not important|no need)\.?$/i.test(normalized);
+  return /^(?:없어(?:요)?|없음|없다|아니(?:요)?|상관\s*없(?:어|어요|음)?|무관(?:해|함)?|괜찮(?:아|아요)?|필요\s*없(?:어|어요|음)?|신경\s*안\s*써(?:요)?|아무거나|none|no preference|doesn'?t matter|not important|no need)\.?$/i.test(
+    normalized,
+  );
 }
 
 function hasGeneralNoPreference(memoryText: string): boolean {
-  return /(?:no additional requirements|no preference|none|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/i.test(memoryText);
+  return /(?:no additional requirements|no preference|none|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/i.test(
+    memoryText,
+  );
 }
 
-function memoryTextFromNegotiationAgentBuilderMemory(memory: NegotiationAgentBuilderMemory): string {
-  return [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ].join(" ").toLowerCase();
+function memoryTextFromNegotiationAgentBuilderMemory(
+  memory: NegotiationAgentBuilderMemory,
+): string {
+  return [memory.categoryInterest, ...memory.mustHave, ...memory.avoid, ...memory.source]
+    .join(" ")
+    .toLowerCase();
 }
 
 function replyAsksQuestion(reply: string): boolean {
   return getQuestionWindows(reply).length > 0;
 }
 
-function buildNoPreferenceAcknowledgement(memory: NegotiationAgentBuilderMemory, agentProfileName: string): string {
-  const product = memory.categoryInterest && memory.categoryInterest !== "탐색 중"
-    ? memory.categoryInterest
-    : "이 제품";
+function buildNoPreferenceAcknowledgement(
+  memory: NegotiationAgentBuilderMemory,
+  agentProfileName: string,
+): string {
+  const product =
+    memory.categoryInterest && memory.categoryInterest !== "탐색 중"
+      ? memory.categoryInterest
+      : "이 제품";
   const agentPrefix = agentProfileName === "팹" ? "좋아." : "알겠습니다.";
 
   return `${agentPrefix} 추가 조건은 없는 걸로 저장하고, ${product} 기준으로 바로 후보를 좁혀볼게요.`;
@@ -2556,7 +2911,9 @@ function parseJSON(raw: string): unknown {
   return JSON.parse(cleaned);
 }
 
-function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilderMemory): DemoMemoryCard[] {
+function buildNegotiationAgentBuilderMemoryCards(
+  memory: NegotiationAgentBuilderMemory,
+): DemoMemoryCard[] {
   const normalizedMemory = normalizeNegotiationAgentBuilderBudgetMemory(memory, {
     latestMessage: memory.source.join(" "),
     listings: [],
@@ -2625,11 +2982,15 @@ function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilder
   return cards;
 }
 
-function hasNegotiationAgentBuilderActiveIntentSwitch(memory: NegotiationAgentBuilderMemory): boolean {
+function hasNegotiationAgentBuilderActiveIntentSwitch(
+  memory: NegotiationAgentBuilderMemory,
+): boolean {
   return memory.source.some((item) => /active intent switched/i.test(item));
 }
 
-function buildNegotiationAgentBuilderMemoryFromStoredCards(cards: Array<{ summary?: unknown; memory?: unknown; memory_key?: unknown }>): NegotiationAgentBuilderMemory | null {
+function buildNegotiationAgentBuilderMemoryFromStoredCards(
+  cards: Array<{ summary?: unknown; memory?: unknown; memory_key?: unknown }>,
+): NegotiationAgentBuilderMemory | null {
   if (cards.length === 0) return null;
 
   const memory: NegotiationAgentBuilderMemory = {
@@ -2645,12 +3006,13 @@ function buildNegotiationAgentBuilderMemoryFromStoredCards(cards: Array<{ summar
   let foundUsefulMemory = false;
 
   for (const card of cards) {
-    const data = card.memory && typeof card.memory === "object"
-      ? card.memory as Record<string, unknown>
-      : {};
+    const data =
+      card.memory && typeof card.memory === "object"
+        ? (card.memory as Record<string, unknown>)
+        : {};
     const memoryKey = stringFrom(card.memory_key) ?? stringFrom(data.normalizedValue) ?? "";
-    const isPresetTuningCard = memoryKey.startsWith("advisor:preset_tuning:")
-      || memoryKey.startsWith("preset_tuning:");
+    const isPresetTuningCard =
+      memoryKey.startsWith("advisor:preset_tuning:") || memoryKey.startsWith("preset_tuning:");
     const categoryInterest = stringFrom(data.categoryInterest);
     const targetPrice = numberFrom(data.targetPrice);
     const budgetMax = numberFrom(data.budgetMax);
@@ -2682,7 +3044,10 @@ function buildNegotiationAgentBuilderMemoryFromStoredCards(cards: Array<{ summar
       foundUsefulMemory = true;
     }
     if (structured) {
-      memory.structured = mergeStructuredNegotiationAgentBuilderMemory(memory.structured, structured);
+      memory.structured = mergeStructuredNegotiationAgentBuilderMemory(
+        memory.structured,
+        structured,
+      );
       foundUsefulMemory = true;
     }
     if (riskStyle) {
@@ -2707,9 +3072,9 @@ function buildNegotiationAgentBuilderMemoryFromStoredCards(cards: Array<{ summar
 
   return foundUsefulMemory
     ? normalizeNegotiationAgentBuilderBudgetMemory(memory, {
-      latestMessage: memory.source.join(" "),
-      listings: [],
-    })
+        latestMessage: memory.source.join(" "),
+        listings: [],
+      })
     : null;
 }
 
@@ -2724,10 +3089,11 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   const normalized = { ...memory };
   const explicitBudget = extractExplicitDollarBudget(context.latestMessage, context.previousMemory);
   const electronicsLike = isConsumerElectronicsMemory(normalized, context.listings);
-  const latestIsNonBudgetNumeric = (hasPercentNumber(context.latestMessage)
-    || hasProductModelNumber(context.latestMessage)
-    || isShortModelAnswerToPendingQuestion(context.latestMessage, context.previousMemory))
-    && !hasExplicitMoneyUnit(context.latestMessage);
+  const latestIsNonBudgetNumeric =
+    (hasPercentNumber(context.latestMessage) ||
+      hasProductModelNumber(context.latestMessage) ||
+      isShortModelAnswerToPendingQuestion(context.latestMessage, context.previousMemory)) &&
+    !hasExplicitMoneyUnit(context.latestMessage);
 
   if (latestIsNonBudgetNumeric) {
     normalized.budgetMax = context.previousMemory?.budgetMax;
@@ -2737,7 +3103,11 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   if (explicitBudget !== undefined) {
     const previousBudget = normalized.budgetMax;
     normalized.budgetMax = explicitBudget;
-    normalized.targetPrice = normalizeTargetAgainstBudget(normalized.targetPrice, previousBudget, explicitBudget);
+    normalized.targetPrice = normalizeTargetAgainstBudget(
+      normalized.targetPrice,
+      previousBudget,
+      explicitBudget,
+    );
     return normalized;
   }
 
@@ -2747,9 +3117,9 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   }
 
   if (
-    normalized.budgetMax !== undefined
-    && normalized.targetPrice !== undefined
-    && normalized.targetPrice > normalized.budgetMax
+    normalized.budgetMax !== undefined &&
+    normalized.targetPrice !== undefined &&
+    normalized.targetPrice > normalized.budgetMax
   ) {
     normalized.targetPrice = Math.max(1, Math.round(normalized.budgetMax * 0.9));
   }
@@ -2757,10 +3127,20 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   return normalized;
 }
 
-function extractExplicitDollarBudget(message: string, previousMemory?: NegotiationAgentBuilderMemory): number | undefined {
+function extractExplicitDollarBudget(
+  message: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): number | undefined {
   const text = message.trim().toLowerCase();
-  if (hasPercentNumber(text) || hasProductModelNumber(text) || isShortModelAnswerToPendingQuestion(text, previousMemory)) return undefined;
-  const maxMatch = text.match(/(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i);
+  if (
+    hasPercentNumber(text) ||
+    hasProductModelNumber(text) ||
+    isShortModelAnswerToPendingQuestion(text, previousMemory)
+  )
+    return undefined;
+  const maxMatch = text.match(
+    /(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i,
+  );
   const maxParsed = parseDollarNumber(maxMatch?.[1]);
   if (maxParsed !== undefined) return maxParsed;
 
@@ -2778,14 +3158,19 @@ function extractExplicitDollarBudget(message: string, previousMemory?: Negotiati
   const numbers = Array.from(text.matchAll(/\b\d[\d,]*(?:\.\d{1,2})?\b/g))
     .map((match) => parseDollarNumber(match[0]))
     .filter((value): value is number => value !== undefined);
-  const budgetContext = (
-    /(?:예산|최대|목표가|가격|budget|max|target|달러라고|불이라고)/i.test(message)
-    || previousMemory?.questions.some((question) => /(?:예산|최대|목표가|가격|budget|max|target)/i.test(question))
-  );
+  const budgetContext =
+    /(?:예산|최대|목표가|가격|budget|max|target|달러라고|불이라고)/i.test(message) ||
+    previousMemory?.questions.some((question) =>
+      /(?:예산|최대|목표가|가격|budget|max|target)/i.test(question),
+    );
 
   if (budgetContext && numbers.length === 1) {
     const value = numbers[0];
-    if (value < 100 && !hasExplicitMoneyUnit(text) && !/(?:예산|최대|목표가|budget|max|target)[^0-9$]{0,20}\d{2}/i.test(text)) {
+    if (
+      value < 100 &&
+      !hasExplicitMoneyUnit(text) &&
+      !/(?:예산|최대|목표가|budget|max|target)[^0-9$]{0,20}\d{2}/i.test(text)
+    ) {
       return undefined;
     }
     return value;
@@ -2798,12 +3183,20 @@ function hasPercentNumber(text: string): boolean {
 }
 
 function hasProductModelNumber(text: string): boolean {
-  return /(?:iphone|아이폰|model|모델)\s*\d{1,2}\b/i.test(text)
-    || /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text);
+  return (
+    /(?:iphone|아이폰|model|모델)\s*\d{1,2}\b/i.test(text) ||
+    /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text)
+  );
 }
 
-function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: NegotiationAgentBuilderMemory): boolean {
-  if (!previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))) return false;
+function isShortModelAnswerToPendingQuestion(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): boolean {
+  if (
+    !previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))
+  )
+    return false;
   return /^\s*(?:1[1-9]|[2-9])\s*(?:은|는|로|요|\?)*\s*$/i.test(text.trim());
 }
 
@@ -2849,13 +3242,21 @@ function isConsumerElectronicsMemory(
     ...memory.avoid,
     ...memory.source,
     ...listings.map((listing) => `${listing.title} ${listing.category}`),
-  ].join(" ").toLowerCase();
+  ]
+    .join(" ")
+    .toLowerCase();
 
-  if (/(iphone|아이폰|ipad|아이패드|phone|smartphone|휴대폰|핸드폰|macbook|laptop|electronics)/i.test(text)) {
+  if (
+    /(iphone|아이폰|ipad|아이패드|phone|smartphone|휴대폰|핸드폰|macbook|laptop|electronics)/i.test(
+      text,
+    )
+  ) {
     return true;
   }
 
-  const prices = listings.map((listing) => listing.askPriceMinor / 100).filter((price) => price > 0);
+  const prices = listings
+    .map((listing) => listing.askPriceMinor / 100)
+    .filter((price) => price > 0);
   return prices.length > 0 && Math.max(...prices) <= 5000;
 }
 
@@ -2904,20 +3305,16 @@ function mergeStructuredNegotiationAgentBuilderMemory(
       ...(base?.discardedSignals ?? []),
       ...next.discardedSignals,
     ]),
-    memoryConflicts: [
-      ...(base?.memoryConflicts ?? []),
-      ...next.memoryConflicts,
-    ].slice(-16),
+    memoryConflicts: [...(base?.memoryConflicts ?? []), ...next.memoryConflicts].slice(-16),
     scopedConditionDecisions: uniqueScopedConditionDecisions([
       ...(base?.scopedConditionDecisions ?? []),
       ...next.scopedConditionDecisions,
     ]),
     sessionMemory: next.sessionMemory ?? base?.sessionMemory,
     longTermMemory: next.longTermMemory ?? base?.longTermMemory,
-    promotionDecisions: [
-      ...(base?.promotionDecisions ?? []),
-      ...next.promotionDecisions,
-    ].slice(-24),
+    promotionDecisions: [...(base?.promotionDecisions ?? []), ...next.promotionDecisions].slice(
+      -24,
+    ),
     compression: next.compression ?? base?.compression,
   };
 }
@@ -2937,15 +3334,25 @@ function uniqueDiscardedSignals(
 }
 
 function riskStyleFrom(value: unknown): NegotiationAgentBuilderMemory["riskStyle"] | undefined {
-  return value === "safe_first" || value === "balanced" || value === "lowest_price" ? value : undefined;
+  return value === "safe_first" || value === "balanced" || value === "lowest_price"
+    ? value
+    : undefined;
 }
 
-function negotiationStyleFrom(value: unknown): NegotiationAgentBuilderMemory["negotiationStyle"] | undefined {
-  return value === "defensive" || value === "balanced" || value === "aggressive" ? value : undefined;
+function negotiationStyleFrom(
+  value: unknown,
+): NegotiationAgentBuilderMemory["negotiationStyle"] | undefined {
+  return value === "defensive" || value === "balanced" || value === "aggressive"
+    ? value
+    : undefined;
 }
 
-function openingTacticFrom(value: unknown): NegotiationAgentBuilderMemory["openingTactic"] | undefined {
-  return value === "condition_anchor" || value === "fair_market_anchor" || value === "speed_close" ? value : undefined;
+function openingTacticFrom(
+  value: unknown,
+): NegotiationAgentBuilderMemory["openingTactic"] | undefined {
+  return value === "condition_anchor" || value === "fair_market_anchor" || value === "speed_close"
+    ? value
+    : undefined;
 }
 
 function unique(values: string[]): string[] {
@@ -3098,10 +3505,10 @@ async function upsertNegotiationAgentBuilderMemoryCards(
 
 function presetTuningFeedbackDelta(input: z.infer<typeof presetTuningFeedbackBodySchema>): number {
   if (
-    input.outcome === "accepted"
-    && input.final_price_minor
-    && input.price_cap_minor
-    && input.final_price_minor <= input.price_cap_minor
+    input.outcome === "accepted" &&
+    input.final_price_minor &&
+    input.price_cap_minor &&
+    input.final_price_minor <= input.price_cap_minor
   ) {
     return input.application_mode === "auto" ? 0.035 : 0.045;
   }
@@ -3216,48 +3623,64 @@ async function staleActiveNegotiationAgentBuilderMemoryCards(db: Database, userI
   `);
 }
 
-function buildAdvisorSourceMessageId(body: z.infer<typeof saveNegotiationAgentBuilderMemoryBodySchema>): string {
+function buildAdvisorSourceMessageId(
+  body: z.infer<typeof saveNegotiationAgentBuilderMemoryBodySchema>,
+): string {
   const hash = createHash("sha256")
-    .update(stableStringify({
-      userId: body.user_id,
-      agentId: body.agent_id ?? null,
-      message: body.message,
-      memory: body.memory,
-    }))
+    .update(
+      stableStringify({
+        userId: body.user_id,
+        agentId: body.agent_id ?? null,
+        message: body.message,
+        memory: body.memory,
+      }),
+    )
     .digest("hex")
     .slice(0, 32);
 
   return `advisor:${hash}`;
 }
 
-function buildPresetTuningSourceMessageId(body: z.infer<typeof savePresetTuningBodySchema>): string {
+function buildPresetTuningSourceMessageId(
+  body: z.infer<typeof savePresetTuningBodySchema>,
+): string {
   const hash = createHash("sha256")
-    .update(stableStringify({
-      userId: body.user_id,
-      agentId: body.agent_id ?? null,
-      draft: {
-        draftId: body.draft.draftId,
-        presetId: body.draft.presetId,
-        listingId: body.draft.listing.id,
-        priceCapMinor: body.draft.priceCapMinor,
-        openingOfferMinor: body.draft.openingOfferMinor,
-        mustVerify: body.draft.mustVerify.map((term) => [term.termId, term.checked, term.enforcement]),
-        leverage: body.draft.leverage.map((item) => [item.termId, item.enabled]),
-        walkAway: body.draft.walkAway.map((item) => [item.id, item.enabled]),
-      },
-    }))
+    .update(
+      stableStringify({
+        userId: body.user_id,
+        agentId: body.agent_id ?? null,
+        draft: {
+          draftId: body.draft.draftId,
+          presetId: body.draft.presetId,
+          listingId: body.draft.listing.id,
+          priceCapMinor: body.draft.priceCapMinor,
+          openingOfferMinor: body.draft.openingOfferMinor,
+          mustVerify: body.draft.mustVerify.map((term) => [
+            term.termId,
+            term.checked,
+            term.enforcement,
+          ]),
+          leverage: body.draft.leverage.map((item) => [item.termId, item.enabled]),
+          walkAway: body.draft.walkAway.map((item) => [item.id, item.enabled]),
+        },
+      }),
+    )
     .digest("hex")
     .slice(0, 32);
 
   return `preset_tuning:${hash}`;
 }
 
-function buildPresetTuningMemoryCard(draft: z.infer<typeof presetTuningDraftSchema>): DemoMemoryCard {
+function buildPresetTuningMemoryCard(
+  draft: z.infer<typeof presetTuningDraftSchema>,
+): DemoMemoryCard {
   const scope = presetTuningScope(draft);
   const enabledLeverage = draft.leverage.filter((item) => item.enabled);
   const enabledWalkAway = draft.walkAway.filter((item) => item.enabled);
   const checkedTerms = draft.mustVerify.filter((term) => term.checked);
-  const uncheckedHardTerms = draft.mustVerify.filter((term) => !term.checked && term.enforcement !== "soft");
+  const uncheckedHardTerms = draft.mustVerify.filter(
+    (term) => !term.checked && term.enforcement !== "soft",
+  );
 
   return {
     cardType: "preference",
@@ -3293,20 +3716,22 @@ function buildPresetTuningMemoryCard(draft: z.infer<typeof presetTuningDraftSche
         id: item.id,
         label: item.label,
       })),
-      engineReview: draft.engineReview ? {
-        status: draft.engineReview.status,
-        blockers: draft.engineReview.blockers.map((blocker) => ({
-          id: blocker.id,
-          label: blocker.label,
-          severity: blocker.severity,
-        })),
-        nextActions: draft.engineReview.nextActions.map((action) => ({
-          termId: action.termId,
-          label: action.label,
-          control: action.control,
-          controlConfig: action.controlConfig,
-        })),
-      } : undefined,
+      engineReview: draft.engineReview
+        ? {
+            status: draft.engineReview.status,
+            blockers: draft.engineReview.blockers.map((blocker) => ({
+              id: blocker.id,
+              label: blocker.label,
+              severity: blocker.severity,
+            })),
+            nextActions: draft.engineReview.nextActions.map((action) => ({
+              termId: action.termId,
+              label: action.label,
+              control: action.control,
+              controlConfig: action.controlConfig,
+            })),
+          }
+        : undefined,
       sourceBadges: draft.sourceBadges,
     },
     strength: 0.78,
@@ -3314,14 +3739,18 @@ function buildPresetTuningMemoryCard(draft: z.infer<typeof presetTuningDraftSche
 }
 
 function presetTuningScope(draft: z.infer<typeof presetTuningDraftSchema>): string {
-  const tag = draft.listing.tags.find((item) => /iphone|macbook|tesla|laptop|phone|electronics/i.test(item));
+  const tag = draft.listing.tags.find((item) =>
+    /iphone|macbook|tesla|laptop|phone|electronics/i.test(item),
+  );
   const titleScope = draft.listing.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 48);
 
-  return (tag || draft.listing.category || titleScope || "default").toLowerCase().replace(/[^a-z0-9:_-]+/g, "_");
+  return (tag || draft.listing.category || titleScope || "default")
+    .toLowerCase()
+    .replace(/[^a-z0-9:_-]+/g, "_");
 }
 
 function stableStringify(value: unknown): string {
@@ -3392,7 +3821,11 @@ async function deleteDemoMemoryData(db: Database, userId: string) {
 
 function rowsFromResult(result: unknown): Record<string, unknown>[] {
   if (Array.isArray(result)) return result as Record<string, unknown>[];
-  if (result && typeof result === "object" && Array.isArray((result as { rows?: unknown[] }).rows)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { rows?: unknown[] }).rows)
+  ) {
     return (result as { rows: Record<string, unknown>[] }).rows;
   }
   return [];

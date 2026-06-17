@@ -62,8 +62,7 @@ export function ListingCard({
   imageAspect?: "square" | "4/3";
   from?: string | null;
 }) {
-  const aspectClass =
-    imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
+  const aspectClass = imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
   const href = from
     ? `/l/${listing.publicId}?from=${encodeURIComponent(from)}`
     : `/l/${listing.publicId}`;
@@ -72,19 +71,19 @@ export function ListingCard({
     <Link
       href={href}
       onClick={onClick}
-      className={`group overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50 transition-colors hover:border-slate-700 hover:bg-slate-800/50 ${className}`}
+      className={`group overflow-hidden rounded-xl border border-line bg-surface-raised transition-colors hover:border-line-strong hover:bg-surface-sunken ${className}`}
       style={style}
     >
-      <div className={`${aspectClass} w-full overflow-hidden bg-slate-800`}>
+      <div className={`${aspectClass} w-full overflow-hidden bg-surface-sunken`}>
         {listing.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+          // biome-ignore lint/performance/noImgElement: remote listing photo
           <img
             src={listing.photoUrl}
             alt={listing.title ?? "Listing"}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-slate-600">
+          <div className="flex h-full items-center justify-center text-ink-muted">
             <svg
               width="40"
               height="40"
@@ -92,6 +91,7 @@ export function ListingCard({
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
+              aria-hidden="true"
             >
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
@@ -101,26 +101,20 @@ export function ListingCard({
         )}
       </div>
       <div className="p-3 sm:p-4">
-        <h3 className="mb-1 truncate text-sm font-medium text-white">
+        <h3 className="mb-1 truncate text-sm font-medium text-ink">
           {listing.title ?? "Untitled"}
         </h3>
-        <div className="mb-2 flex items-center gap-1.5 text-xs text-slate-400">
-          {listing.category && (
-            <span className="capitalize">{listing.category}</span>
-          )}
+        <div className="mb-2 flex items-center gap-1.5 text-xs text-ink-secondary">
+          {listing.category && <span className="capitalize">{listing.category}</span>}
           {listing.category && listing.condition && <span>·</span>}
-          {listing.condition && (
-            <span>{formatCondition(listing.condition)}</span>
-          )}
+          {listing.condition && <span>{formatCondition(listing.condition)}</span>}
         </div>
         <div className="flex items-center justify-between gap-2">
-          <div className="text-base font-semibold text-emerald-400">
+          <div className="text-base font-semibold text-action-primary">
             {formatPrice(listing.targetPrice)}
           </div>
           {listing.publishedAt && (
-            <div className="text-xs text-slate-500">
-              {formatTimeAgo(listing.publishedAt)}
-            </div>
+            <div className="text-xs text-ink-muted">{formatTimeAgo(listing.publishedAt)}</div>
           )}
         </div>
         {matchReasons && matchReasons.length > 0 && (
@@ -128,7 +122,7 @@ export function ListingCard({
             {matchReasons.slice(0, 2).map((reason) => (
               <span
                 key={reason}
-                className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400"
+                className="rounded-full bg-surface-sunken px-2 py-0.5 text-[10px] text-ink-secondary"
               >
                 {reason}
               </span>
@@ -140,20 +134,15 @@ export function ListingCard({
   );
 }
 
-export function ListingCardSkeleton({
-  imageAspect = "4/3",
-}: {
-  imageAspect?: "square" | "4/3";
-}) {
-  const aspectClass =
-    imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
+export function ListingCardSkeleton({ imageAspect = "4/3" }: { imageAspect?: "square" | "4/3" }) {
+  const aspectClass = imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
-      <div className={`${aspectClass} w-full animate-pulse bg-slate-800`} />
+    <div className="overflow-hidden rounded-xl border border-line bg-surface-raised">
+      <div className={`${aspectClass} w-full animate-pulse bg-surface-sunken`} />
       <div className="space-y-2 p-3 sm:p-4">
-        <div className="h-4 w-3/4 animate-pulse rounded bg-slate-800" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-slate-800" />
-        <div className="h-5 w-1/3 animate-pulse rounded bg-slate-800" />
+        <div className="h-4 w-3/4 animate-pulse rounded bg-surface-sunken" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-surface-sunken" />
+        <div className="h-5 w-1/3 animate-pulse rounded bg-surface-sunken" />
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import type { ListingDetail } from "./page";
-import { useAmplitude } from "@/providers/amplitude-provider";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
+import { useAmplitude } from "@/providers/amplitude-provider";
 import { AttestationWizard } from "./attestation-wizard";
+import type { ListingDetail } from "./page";
 
 interface AttestationStatus {
   listingId: string;
@@ -38,15 +38,15 @@ function formatMinorPrice(priceMinor: number | null): string {
 
 function statusBadgeClass(status: string): string {
   const map: Record<string, string> = {
-    ACTIVE: "text-cyan-400 bg-cyan-500/10",
-    NEAR_DEAL: "text-emerald-400 bg-emerald-500/10",
-    ACCEPTED: "text-emerald-400 bg-emerald-500/15",
-    REJECTED: "text-red-400 bg-red-500/10",
-    STALLED: "text-amber-400 bg-amber-500/10",
-    EXPIRED: "text-slate-500 bg-slate-800",
-    WAITING: "text-amber-400 bg-amber-500/10",
+    ACTIVE: "text-action-primary bg-action-primary/10",
+    NEAR_DEAL: "text-success bg-success-soft",
+    ACCEPTED: "text-success bg-success-soft",
+    REJECTED: "text-error bg-error-soft",
+    STALLED: "text-warning bg-warning-soft",
+    EXPIRED: "text-ink-muted bg-surface-sunken",
+    WAITING: "text-warning bg-warning-soft",
   };
-  return map[status] ?? "text-slate-400 bg-slate-800";
+  return map[status] ?? "text-ink-secondary bg-surface-sunken";
 }
 
 function negoTimeAgo(dateStr: string): string {
@@ -60,7 +60,13 @@ function negoTimeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-export function DetailContent({ listing, sellerId }: { listing: ListingDetail; sellerId?: string }) {
+export function DetailContent({
+  listing,
+  sellerId,
+}: {
+  listing: ListingDetail;
+  sellerId?: string;
+}) {
   const [copied, setCopied] = useState(false);
   const [sessions, setSessions] = useState<NegotiationSession[]>([]);
   const [attestation, setAttestation] = useState<AttestationStatus | null>(null);
@@ -77,9 +83,7 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
         `/negotiations/sessions?user_id=${sellerId}&role=SELLER`,
       )
       .then((data) => {
-        const filtered = (data.sessions ?? []).filter(
-          (s) => s.listing_id === listing.id,
-        );
+        const filtered = (data.sessions ?? []).filter((s) => s.listing_id === listing.id);
         setSessions(filtered);
       })
       .catch(() => {
@@ -97,9 +101,7 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
   }, [listing.id]);
 
   const shareUrl = `${origin}/l/${listing.publicId}`;
-  const price = listing.targetPrice
-    ? `$${Number(listing.targetPrice).toLocaleString()}`
-    : "\u2014";
+  const price = listing.targetPrice ? `$${Number(listing.targetPrice).toLocaleString()}` : "\u2014";
 
   const agentPreset = listing.negotiationAgentSnapshot?.preset as string | undefined;
   const agentLabel = agentPreset
@@ -122,9 +124,19 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
       {/* Back link */}
       <Link
         href="/sell/dashboard"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-6"
       >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polyline points="15 18 9 12 15 6" />
         </svg>
         Dashboard
@@ -134,22 +146,35 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 sm:gap-3 mb-1 flex-wrap">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400 shrink-0">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-action-primary shrink-0"
+            >
               <rect x="3" y="3" width="6" height="18" rx="1" />
               <rect x="9" y="9" width="6" height="12" rx="1" />
               <rect x="15" y="6" width="6" height="15" rx="1" />
             </svg>
-            <h1 className="text-xl sm:text-2xl font-bold text-white">{listing.title ?? "Untitled"}</h1>
-            <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">
+              {listing.title ?? "Untitled"}
+            </h1>
+            <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success">
               {listing.status === "published" ? "active" : listing.status}
             </span>
           </div>
-          <p className="text-sm text-slate-400">
-            Asking <span className="font-semibold text-white">{price}</span>
+          <p className="text-sm text-ink-secondary">
+            Asking <span className="font-semibold text-ink">{price}</span>
             {agentLabel && (
               <>
                 {" \u00b7 Agent: "}
-                <span className="text-cyan-400">{agentLabel}</span>
+                <span className="text-action-primary">{agentLabel}</span>
               </>
             )}
           </p>
@@ -157,10 +182,22 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
 
         {/* Share URL */}
         <button
+          type="button"
           onClick={handleCopy}
-          className="flex items-center gap-2 rounded-full border border-slate-700 bg-bg-card px-4 py-2 text-sm text-slate-300 hover:border-slate-600 transition-colors shrink-0 self-start cursor-pointer"
+          className="flex items-center gap-2 rounded-full border border-line bg-surface-raised px-4 py-2 text-sm text-ink-secondary hover:border-line-strong transition-colors shrink-0 self-start cursor-pointer"
         >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0"
+          >
             <circle cx="18" cy="5" r="3" />
             <circle cx="6" cy="12" r="3" />
             <circle cx="18" cy="19" r="3" />
@@ -169,11 +206,33 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
           </svg>
           <span className="max-w-32 sm:max-w-50 truncate">{shareUrl}</span>
           {copied ? (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-success shrink-0"
+            >
               <path d="M20 6 9 17l-5-5" />
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0"
+            >
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
@@ -185,102 +244,171 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
       {(() => {
         const totalCount = sessions.length;
         const withOffers = sessions.filter((s) => s.last_offer_price_minor !== null);
-        const avgOffer = withOffers.length > 0
-          ? Math.round(withOffers.reduce((acc, s) => acc + (s.last_offer_price_minor ?? 0), 0) / withOffers.length)
-          : null;
-        const bestOffer = withOffers.length > 0
-          ? Math.max(...withOffers.map((s) => s.last_offer_price_minor ?? 0))
-          : null;
+        const avgOffer =
+          withOffers.length > 0
+            ? Math.round(
+                withOffers.reduce((acc, s) => acc + (s.last_offer_price_minor ?? 0), 0) /
+                  withOffers.length,
+              )
+            : null;
+        const bestOffer =
+          withOffers.length > 0
+            ? Math.max(...withOffers.map((s) => s.last_offer_price_minor ?? 0))
+            : null;
         return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <KpiCard
-          icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          }
-          iconColor="text-cyan-400"
-          iconBg="bg-cyan-500/10"
-          value={String(totalCount)}
-          label="Total Negotiations"
-        />
-        <KpiCard
-          icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23" />
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          }
-          iconColor="text-emerald-400"
-          iconBg="bg-emerald-500/10"
-          value={avgOffer !== null ? formatMinorPrice(avgOffer) : "\u2014"}
-          label="Avg. Offer Price"
-        />
-        <KpiCard
-          icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-              <polyline points="16 7 22 7 22 13" />
-            </svg>
-          }
-          iconColor="text-purple-400"
-          iconBg="bg-purple-500/10"
-          value={bestOffer !== null ? formatMinorPrice(bestOffer) : "\u2014"}
-          label="Best Offer"
-        />
-        <KpiCard
-          icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          }
-          iconColor={timeLeft.expired ? "text-red-400" : "text-amber-400"}
-          iconBg={timeLeft.expired ? "bg-red-500/10" : "bg-amber-500/10"}
-          value={timeLeft.label}
-          label="Time Left"
-        />
-      </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <KpiCard
+              icon={
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              }
+              iconColor="text-action-primary"
+              iconBg="bg-action-primary/10"
+              value={String(totalCount)}
+              label="Total Negotiations"
+            />
+            <KpiCard
+              icon={
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="1" x2="12" y2="23" />
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              }
+              iconColor="text-success"
+              iconBg="bg-success-soft"
+              value={avgOffer !== null ? formatMinorPrice(avgOffer) : "\u2014"}
+              label="Avg. Offer Price"
+            />
+            <KpiCard
+              icon={
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                  <polyline points="16 7 22 7 22 13" />
+                </svg>
+              }
+              iconColor="text-info"
+              iconBg="bg-info-soft"
+              value={bestOffer !== null ? formatMinorPrice(bestOffer) : "\u2014"}
+              label="Best Offer"
+            />
+            <KpiCard
+              icon={
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              }
+              iconColor={timeLeft.expired ? "text-error" : "text-warning"}
+              iconBg={timeLeft.expired ? "bg-error-soft" : "bg-warning-soft"}
+              value={timeLeft.label}
+              label="Time Left"
+            />
+          </div>
         );
       })()}
 
       {/* Attestation Status */}
       <div className="mb-8">
-        <h2 className="text-lg font-bold text-white mb-4">Verification</h2>
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4 flex items-center gap-4">
+        <h2 className="text-lg font-bold text-ink mb-4">Verification</h2>
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-4 flex items-center gap-4">
           {attestationLoading ? (
-            <p className="text-sm text-slate-500">Checking verification status...</p>
+            <p className="text-sm text-ink-muted">Checking verification status...</p>
           ) : attestation?.committed ? (
             <>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success-soft">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-success"
+                >
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-emerald-400">Verified</p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-sm font-semibold text-success">Verified</p>
+                <p className="text-xs text-ink-secondary mt-0.5">
                   IMEI verified · Battery {attestation.batteryHealthPct}% · Find My off
                 </p>
               </div>
             </>
           ) : (
             <>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning-soft">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-warning"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-white">Not Verified</p>
-                <p className="text-xs text-slate-400 mt-0.5">Complete attestation to increase buyer confidence</p>
+                <p className="text-sm font-semibold text-ink">Not Verified</p>
+                <p className="text-xs text-ink-secondary mt-0.5">
+                  Complete attestation to increase buyer confidence
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowWizard(true)}
-                className="shrink-0 rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-600 transition-colors"
+                className="shrink-0 rounded-lg bg-cta px-3 py-1.5 text-xs font-semibold text-on-cta hover:bg-cta-hover transition-colors"
               >
                 Complete Attestation
               </button>
@@ -290,17 +418,28 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
       </div>
 
       {/* Negotiation History */}
-      <h2 className="text-lg font-bold text-white mb-4">Negotiation History</h2>
+      <h2 className="text-lg font-bold text-ink mb-4">Negotiation History</h2>
       {sessions.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ink-muted"
+            >
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-300 mb-1">No negotiations yet</h3>
-          <p className="text-sm text-slate-500">
+          <h3 className="text-lg font-semibold text-ink-secondary mb-1">No negotiations yet</h3>
+          <p className="text-sm text-ink-muted">
             Share your link to start receiving offers from buyers&apos; AI agents
           </p>
         </div>
@@ -310,25 +449,39 @@ export function DetailContent({ listing, sellerId }: { listing: ListingDetail; s
             <Link
               key={neg.id}
               href={`/sell/negotiations/${neg.id}`}
-              className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
+              className="flex items-center gap-3 sm:gap-4 rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4 hover:border-line transition-colors"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                  <span className="text-sm font-semibold text-white truncate font-mono">
+                  <span className="text-sm font-semibold text-ink truncate font-mono">
                     {neg.id.slice(0, 8)}...
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(neg.status)}`}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(neg.status)}`}
+                  >
                     {neg.status}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">
-                  Round {neg.current_round} · Last offer: {formatMinorPrice(neg.last_offer_price_minor)}
+                <p className="text-xs text-ink-secondary">
+                  Round {neg.current_round} · Last offer:{" "}
+                  {formatMinorPrice(neg.last_offer_price_minor)}
                 </p>
               </div>
               <div className="shrink-0 text-right mr-1">
-                <p className="text-xs text-slate-500">{negoTimeAgo(neg.updated_at)}</p>
+                <p className="text-xs text-ink-muted">{negoTimeAgo(neg.updated_at)}</p>
               </div>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-ink-muted shrink-0"
+              >
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </Link>
@@ -392,12 +545,12 @@ function KpiCard({
   label: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-4">
+    <div className="rounded-xl border border-line bg-surface-raised/50 p-4">
       <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>
         <span className={iconColor}>{icon}</span>
       </div>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      <p className="text-sm text-slate-400 mt-0.5">{label}</p>
+      <p className="text-2xl font-bold text-ink">{value}</p>
+      <p className="text-sm text-ink-secondary mt-0.5">{label}</p>
     </div>
   );
 }

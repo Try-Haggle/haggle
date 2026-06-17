@@ -5,6 +5,7 @@ import {
   registerAppResource,
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
+import { getRuntimeConfig } from "../config/runtime.js";
 
 export const LISTING_RESOURCE_URI = "ui://haggle/listing.html?v=2";
 
@@ -24,6 +25,14 @@ export function registerResources(server: McpServer) {
   } catch {
     console.warn(`[mcp/resources] Widget HTML not found at ${htmlPath}. Listing widget will be unavailable. Run 'pnpm --filter widget build' to generate it.`);
     html = `<!DOCTYPE html><html><body><p>Widget not available. Build the widget first.</p></body></html>`;
+  }
+
+  const { publicAppUrl } = getRuntimeConfig();
+  const runtimeScript = `<script>window.__HAGGLE_APP_URL__=${JSON.stringify(publicAppUrl)};</script>`;
+  if (html.includes("</head>")) {
+    html = html.replace("</head>", `${runtimeScript}</head>`);
+  } else {
+    html = `${runtimeScript}${html}`;
   }
 
   registerAppResource(

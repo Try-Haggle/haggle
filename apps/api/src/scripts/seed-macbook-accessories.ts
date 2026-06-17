@@ -7,16 +7,10 @@
  *   npx tsx src/scripts/backfill-embeddings.ts
  */
 
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../../../.env") });
-
+import "../config/load-env.js";
 import { randomBytes } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
 import { createDb, listingDrafts, listingsPublished } from "@haggle/db";
+import { createClient } from "@supabase/supabase-js";
 
 function generatePublicId(): string {
   return randomBytes(6).toString("base64url").slice(0, 8);
@@ -24,54 +18,64 @@ function generatePublicId(): string {
 
 const LISTINGS = [
   {
-    title: "MacBook Pro 14\" Hardshell Case - Clear",
-    description: "Crystal clear protective case for MacBook Pro 14-inch M3/M2. Snap-on design, full access to all ports. Scratch-resistant, doesn't add bulk. Brand new.",
+    title: 'MacBook Pro 14" Hardshell Case - Clear',
+    description:
+      "Crystal clear protective case for MacBook Pro 14-inch M3/M2. Snap-on design, full access to all ports. Scratch-resistant, doesn't add bulk. Brand new.",
     category: "electronics",
     condition: "new",
     tags: ["macbook", "case", "laptop", "protective", "accessory"],
     targetPrice: 35,
     floorPrice: 20,
-    photoUrl: "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/macbook-pro-hardshell-case.webp",
+    photoUrl:
+      "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/macbook-pro-hardshell-case.webp",
   },
   {
     title: "Apple 96W USB-C Power Adapter for MacBook Pro",
-    description: "Original Apple 96W USB-C charger. Compatible with MacBook Pro 14\" and 16\". Includes 2m USB-C cable. Used for 3 months, works perfectly.",
+    description:
+      'Original Apple 96W USB-C charger. Compatible with MacBook Pro 14" and 16". Includes 2m USB-C cable. Used for 3 months, works perfectly.',
     category: "electronics",
     condition: "like_new",
     tags: ["apple", "charger", "usb-c", "macbook", "power-adapter"],
     targetPrice: 55,
     floorPrice: 35,
-    photoUrl: "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/usb-c-power-adapter.webp",
+    photoUrl:
+      "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/usb-c-power-adapter.webp",
   },
   {
     title: "Rain Design mStand Laptop Stand - Silver",
-    description: "Aluminum laptop stand for MacBook. Elevates screen to eye level, improves airflow. Cable routing hole in back. Perfect for desk setup.",
+    description:
+      "Aluminum laptop stand for MacBook. Elevates screen to eye level, improves airflow. Cable routing hole in back. Perfect for desk setup.",
     category: "electronics",
     condition: "good",
     tags: ["laptop", "stand", "macbook", "desk", "ergonomic"],
     targetPrice: 40,
     floorPrice: 25,
-    photoUrl: "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/laptop-stand.webp",
+    photoUrl:
+      "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/laptop-stand.webp",
   },
   {
     title: "CalDigit TS4 Thunderbolt 4 Dock for MacBook",
-    description: "18-port Thunderbolt 4 dock. 98W charging, 2.5GbE ethernet, SD/microSD, 3x USB-A, 3x USB-C, DisplayPort, audio. The ultimate MacBook dock.",
+    description:
+      "18-port Thunderbolt 4 dock. 98W charging, 2.5GbE ethernet, SD/microSD, 3x USB-A, 3x USB-C, DisplayPort, audio. The ultimate MacBook dock.",
     category: "electronics",
     condition: "like_new",
     tags: ["caldigit", "thunderbolt", "dock", "macbook", "usb-c"],
     targetPrice: 280,
     floorPrice: 220,
-    photoUrl: "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/usb-c-dock.webp",
+    photoUrl:
+      "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/usb-c-dock.webp",
   },
   {
     title: "Tomtoc Laptop Sleeve for MacBook Pro 14-inch",
-    description: "Protective carrying sleeve with accessory pocket. 360° padding, water-resistant fabric. Fits MacBook Pro 14\" perfectly. Navy blue color.",
+    description:
+      'Protective carrying sleeve with accessory pocket. 360° padding, water-resistant fabric. Fits MacBook Pro 14" perfectly. Navy blue color.',
     category: "fashion",
     condition: "new",
     tags: ["sleeve", "macbook", "laptop", "bag", "carrying-case"],
     targetPrice: 30,
     floorPrice: 18,
-    photoUrl: "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/laptop-sleeve.webp",
+    photoUrl:
+      "https://gdmhbrcqhwinafntrjhb.supabase.co/storage/v1/object/public/listing-photos/laptop-sleeve.webp",
   },
 ];
 
@@ -145,14 +149,18 @@ async function main() {
       snapshotJson: draft as unknown as Record<string, unknown>,
     });
 
-    console.log(`  ✅ [${i + 1}/${LISTINGS.length}] "${listing.title}" → /l/${publicId} (${listing.category})`);
+    console.log(
+      `  ✅ [${i + 1}/${LISTINGS.length}] "${listing.title}" → /l/${publicId} (${listing.category})`,
+    );
   }
 
   console.log("\n🎉 Done! Now run: npx tsx src/scripts/backfill-embeddings.ts\n");
   process.exit(0);
 }
 
-main().then(() => process.exit(0)).catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error("Seed failed:", err);
+    process.exit(1);
+  });

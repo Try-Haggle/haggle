@@ -2,9 +2,9 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import type { PlaybackResponse } from "./types";
 import { AgentIcon } from "./agent-icon";
 import { formatPrice } from "./format";
+import type { PlaybackResponse } from "./types";
 
 interface PreFightProps {
   data: PlaybackResponse;
@@ -28,6 +28,7 @@ export function PreFight({ data, onBegin }: PreFightProps) {
     onBegin();
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run countdown once on mount
   useEffect(() => {
     // Auto-trigger after the full countdown (delay + duration).
     const triggerTimeout = setTimeout(
@@ -50,7 +51,6 @@ export function PreFight({ data, onBegin }: PreFightProps) {
       clearTimeout(tickerStart);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -71,32 +71,32 @@ export function PreFight({ data, onBegin }: PreFightProps) {
         >
           <div
             className="text-[11px] font-bold tracking-[0.2em]"
-            style={{ color: "#64748b" }}
+            style={{ color: "var(--text-muted)" }}
           >
             NEGOTIATION ARENA
           </div>
           <div
             className="text-[18px] sm:text-[22px] font-semibold mt-1.5"
-            style={{ color: "#f1f5f9" }}
+            style={{ color: "var(--text-primary)" }}
           >
             {listing.title}
           </div>
           <div
             className="mt-3 inline-flex items-center gap-2 rounded-full px-3 py-1"
             style={{
-              background: "rgba(15,23,42,0.6)",
-              border: "1px solid #1e293b",
+              background: "var(--bg-sunken)",
+              border: "1px solid var(--border-default)",
             }}
           >
             <span
               className="text-[10px] font-bold tracking-[0.18em]"
-              style={{ color: "#64748b" }}
+              style={{ color: "var(--text-muted)" }}
             >
               ASKING
             </span>
             <span
               className="text-[12px] font-bold tabular-nums pb-0.5"
-              style={{ color: "#f8fafc" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {formatPrice(listing.askingPrice, listing.currency)}
             </span>
@@ -105,12 +105,8 @@ export function PreFight({ data, onBegin }: PreFightProps) {
 
         {/* VS layout */}
         <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3 mt-7 sm:mt-8">
-          <PreFightAgent
-            agent={sellerAgent}
-            role="SELLER"
-            delay={0.15}
-            side="left"
-          />
+          {/* biome-ignore lint/a11y/useValidAriaRole: "role" is a PreFightAgent prop (BUYER/SELLER), not an ARIA role */}
+          <PreFightAgent agent={sellerAgent} role="SELLER" delay={0.15} side="left" />
           <motion.div
             initial={{ opacity: 0, scale: 0.6 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -119,10 +115,7 @@ export function PreFight({ data, onBegin }: PreFightProps) {
           >
             <motion.div
               className="text-[24px] sm:text-[32px] font-black tracking-[0.16em]"
-              style={{
-                color: "#475569",
-                textShadow: "0 0 24px rgba(148,163,184,0.2)",
-              }}
+              style={{ color: "var(--text-muted)" }}
               animate={{ opacity: [0.7, 1, 0.7] }}
               transition={{
                 duration: 2.4,
@@ -133,12 +126,8 @@ export function PreFight({ data, onBegin }: PreFightProps) {
               VS
             </motion.div>
           </motion.div>
-          <PreFightAgent
-            agent={buyerAgent}
-            role="BUYER"
-            delay={0.25}
-            side="right"
-          />
+          {/* biome-ignore lint/a11y/useValidAriaRole: "role" is a PreFightAgent prop (BUYER/SELLER), not an ARIA role */}
+          <PreFightAgent agent={buyerAgent} role="BUYER" delay={0.25} side="right" />
         </div>
 
         {/* Begin button — auto-fills over AUTO_START_SECONDS, click to skip wait. */}
@@ -150,8 +139,7 @@ export function PreFight({ data, onBegin }: PreFightProps) {
         >
           <motion.span
             aria-hidden
-            className="absolute -inset-1 -z-10 rounded-2xl blur-xl"
-            style={{ background: "rgba(16,185,129,0.4)" }}
+            className="absolute -inset-1 -z-10 rounded-2xl bg-action-primary/40 blur-xl"
             animate={{ opacity: [0.3, 0.6, 0.3] }}
             transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
           />
@@ -160,12 +148,8 @@ export function PreFight({ data, onBegin }: PreFightProps) {
             onClick={handleStart}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
-            className="group cursor-pointer relative flex w-full items-center justify-center gap-2.5 rounded-xl px-6 py-4 text-[15px] sm:text-[16px] font-semibold text-white transition-colors hover:bg-emerald-600"
-            style={{
-              background: "linear-gradient(135deg, #10b981, #059669)",
-              boxShadow:
-                "0 0 0 1px rgba(16,185,129,0.4), 0 18px 36px -12px rgba(16,185,129,0.5)",
-            }}
+            className="group cursor-pointer relative flex w-full items-center justify-center gap-2.5 rounded-xl px-6 py-4 text-[15px] sm:text-[16px] font-semibold text-on-cta transition-colors bg-cta hover:bg-cta-hover"
+            style={{ boxShadow: "var(--shadow-card)" }}
           >
             Begin Negotiation
             <svg
@@ -178,6 +162,7 @@ export function PreFight({ data, onBegin }: PreFightProps) {
               strokeLinecap="round"
               strokeLinejoin="round"
               className="transition-transform group-hover:translate-x-0.5"
+              aria-hidden="true"
             >
               <path d="M5 12h14" />
               <path d="m12 5 7 7-7 7" />
@@ -186,7 +171,7 @@ export function PreFight({ data, onBegin }: PreFightProps) {
           {secondsLeft > 0 && (
             <div
               className="mt-2.5 text-center text-[11px] tabular-nums"
-              style={{ color: "#64748b" }}
+              style={{ color: "var(--text-muted)" }}
             >
               Auto-starts in {secondsLeft}s
             </div>
@@ -243,21 +228,18 @@ function PreFightAgent({
       <div className="flex flex-col gap-0.5">
         <div
           className="text-[10px] font-bold tracking-[0.18em]"
-          style={{ color: "#475569" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {role}
         </div>
         <div
           className="text-[15px] sm:text-[16px] font-semibold"
-          style={{ color: "#f1f5f9" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {agent.name}
         </div>
         {role === "BUYER" && (
-          <div
-            className="text-[11px] sm:text-[12px]"
-            style={{ color: agent.accentColor }}
-          >
+          <div className="text-[11px] sm:text-[12px]" style={{ color: agent.accentColor }}>
             {agent.tagline}
           </div>
         )}

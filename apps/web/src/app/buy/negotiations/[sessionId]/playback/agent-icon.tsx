@@ -7,10 +7,7 @@ interface AgentIconProps {
 
 export function AgentIcon({ agent, size = 18 }: AgentIconProps) {
   return (
-    <span
-      style={{ fontSize: size, lineHeight: 1, display: "inline-block" }}
-      aria-hidden="true"
-    >
+    <span style={{ fontSize: size, lineHeight: 1, display: "inline-block" }} aria-hidden="true">
       {agent.emoji}
     </span>
   );

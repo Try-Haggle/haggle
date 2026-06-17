@@ -12,10 +12,7 @@
  * See the design doc: agent-builder-unified-design.html (v3).
  */
 
-import type {
-  NegotiationAgentPresetId,
-  NegotiationWeights,
-} from "../agent-presets/types.js";
+import type { NegotiationAgentPresetId, NegotiationWeights } from "../agent-presets/types.js";
 import type { EngineParameters } from "../agent-stats/types.js";
 
 /**
@@ -103,14 +100,31 @@ export interface AgentBuilderChatData {
 }
 
 /**
+ * Where the build started from — drives picker selection, analytics, and the
+ * publish "mint a fresh agent?" decision.
+ *  - "preset": id is a NegotiationAgentPresetId (hunter/closer/…)
+ *  - "custom": id is a previously-saved agent's id (agent.presetId stays the base)
+ */
+export interface AgentBuilderSource {
+  kind: "preset" | "custom";
+  id: string;
+}
+
+/**
  * The unified builder state. The whole object is passed to the chat and cached.
+ * Single in-memory source of truth for the build session across every surface.
  */
 export interface AgentBuilderState {
   side: BuilderSide;
+  /** Provenance of the current selection. */
+  source: AgentBuilderSource;
   agent: AgentBuilderAgent;
   /** Present only when building against a concrete listing. */
   item?: ItemContext;
   chatData: AgentBuilderChatData;
+  /** True once the user changes anything (chat tuning / advanced sliders) since
+   *  selecting the source. Drives Save gating. */
+  dirty: boolean;
 }
 
 /**
@@ -137,7 +151,7 @@ export function emptyChatData(): AgentBuilderChatData {
   };
 }
 
-/** Create a fresh builder state. */
+/** Create a fresh builder state from a preset (the default build entry point). */
 export function createBuilderState(input: {
   side: BuilderSide;
   presetId: NegotiationAgentPresetId;
@@ -146,8 +160,10 @@ export function createBuilderState(input: {
 }): AgentBuilderState {
   return {
     side: input.side,
+    source: { kind: "preset", id: input.presetId },
     agent: { presetId: input.presetId, name: input.name },
     item: input.item,
     chatData: emptyChatData(),
+    dirty: false,
   };
 }

@@ -1,19 +1,18 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { initDemo, executeRound } from "@/lib/demo-api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { executeRound, initDemo } from "@/lib/demo-api";
 import type { ChatMessage, DemoInitResponse } from "@/lib/demo-types";
-import { DemoHeader } from "./_components/demo-header";
+import { Celebration } from "./_components/celebration";
 import { ChatBubble } from "./_components/chat-bubble";
-import { TypingIndicator } from "./_components/typing-indicator";
+import { DemoHeader } from "./_components/demo-header";
 import { OfferInput } from "./_components/offer-input";
 import { PriceChart } from "./_components/price-chart";
 import { SavingsCard } from "./_components/savings-card";
-import { Celebration } from "./_components/celebration";
+import { TypingIndicator } from "./_components/typing-indicator";
 
 /* ── Constants ────────────────────────────────── */
 
-const MARKET_PRICE_CENTS = 92000;
 const MARKET_PRICE = 920;
 
 const LANGUAGES = [
@@ -43,11 +42,7 @@ interface DealResult {
 /* ── Helpers ──────────────────────────────────── */
 
 let msgIdCounter = 0;
-function createMsg(
-  role: ChatMessage["role"],
-  content: string,
-  price?: number,
-): ChatMessage {
+function createMsg(role: ChatMessage["role"], content: string, price?: number): ChatMessage {
   return {
     id: `msg-${++msgIdCounter}`,
     role,
@@ -83,6 +78,7 @@ export function UserDemo() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll on new messages
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll-to-bottom keyed on message/typing changes
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
@@ -164,22 +160,16 @@ export function UserDemo() {
         let aiContent = res.final.rendered_message;
 
         if (action === "COUNTER") {
-          aiContent =
-            aiContent || `I'd like to counter at $${decisionPrice}.`;
+          aiContent = aiContent || `I'd like to counter at $${decisionPrice}.`;
         } else if (action === "ACCEPT" || action === "CONFIRM") {
           aiContent = aiContent || `Deal! I'll take it for $${decisionPrice}.`;
         } else if (action === "REJECT") {
-          aiContent =
-            aiContent || "Sorry, I can't agree to that price. No deal.";
+          aiContent = aiContent || "Sorry, I can't agree to that price. No deal.";
         }
 
         setMessages((prev) => [
           ...prev,
-          createMsg(
-            "buyer",
-            aiContent,
-            action === "REJECT" ? undefined : res.final.decision.price,
-          ),
+          createMsg("buyer", aiContent, action === "REJECT" ? undefined : res.final.decision.price),
         ]);
 
         // Check if session is done
@@ -187,8 +177,7 @@ export function UserDemo() {
           setDone(true);
           setState("SESSION_DONE");
 
-          const accepted =
-            action === "ACCEPT" || action === "CONFIRM";
+          const accepted = action === "ACCEPT" || action === "CONFIRM";
           const finalDollars = accepted ? decisionPrice : 0;
           const savings = accepted ? MARKET_PRICE - finalDollars : 0;
 
@@ -206,10 +195,7 @@ export function UserDemo() {
           } else {
             setMessages((prev) => [
               ...prev,
-              createMsg(
-                "system",
-                "The negotiation has ended without a deal.",
-              ),
+              createMsg("system", "The negotiation has ended without a deal."),
             ]);
           }
         } else {
@@ -255,21 +241,16 @@ export function UserDemo() {
       <section className="mx-auto max-w-2xl px-4 sm:px-6 pt-10 sm:pt-14 pb-20">
         {/* Page title */}
         <div className="text-center mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-            Try AI Negotiation
-          </h1>
-          <p className="text-slate-400 text-sm">
-            Haggle&apos;s AI wants to buy your iPhone. How much will you sell it
-            for?
+          <h1 className="text-2xl sm:text-3xl font-bold text-ink mb-2">Try AI Negotiation</h1>
+          <p className="text-ink-secondary text-sm">
+            Haggle&apos;s AI wants to buy your iPhone. How much will you sell it for?
           </p>
         </div>
 
         {/* Language selection screen */}
         {state === "LANG_SELECT" && (
-          <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-6 mb-6 text-center">
-            <p className="text-sm text-slate-400 mb-4">
-              Choose the language for AI responses
-            </p>
+          <div className="rounded-xl border border-line bg-surface-sunken p-6 mb-6 text-center">
+            <p className="text-sm text-ink-secondary mb-4">Choose the language for AI responses</p>
             <div className="flex flex-wrap justify-center gap-2 mb-5">
               {LANGUAGES.map((l) => (
                 <button
@@ -278,8 +259,8 @@ export function UserDemo() {
                   onClick={() => setLanguage(l.code)}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
                     language === l.code
-                      ? "bg-cyan-600 text-white"
-                      : "border border-slate-700 bg-slate-900/60 text-slate-400 hover:border-cyan-500/50 hover:text-white"
+                      ? "bg-action-primary text-on-accent"
+                      : "border border-line bg-surface-overlay text-ink-secondary hover:border-focus hover:text-ink"
                   }`}
                 >
                   {l.label}
@@ -289,7 +270,7 @@ export function UserDemo() {
             <button
               type="button"
               onClick={handleStart}
-              className="rounded-xl bg-cyan-600 px-8 py-3 text-sm font-semibold text-white hover:bg-cyan-500 transition-colors cursor-pointer"
+              className="rounded-xl bg-cta px-8 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors cursor-pointer"
             >
               Start Negotiation
             </button>
@@ -303,14 +284,17 @@ export function UserDemo() {
         {state !== "LANG_SELECT" && <PriceChart priceHistory={priceHistory} />}
 
         {/* Chat area */}
-        <div className={`mb-4 space-y-3 max-h-[420px] overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/50 p-4 scroll-smooth ${state === "LANG_SELECT" ? "hidden" : ""}`}>
+        <div
+          className={`mb-4 space-y-3 max-h-[420px] overflow-y-auto rounded-xl border border-line bg-surface-sunken p-4 scroll-smooth ${state === "LANG_SELECT" ? "hidden" : ""}`}
+        >
           {state === "LOADING" && messages.length === 0 && (
             <div className="flex justify-center py-8">
-              <div className="flex items-center gap-2 text-sm text-slate-500">
+              <div className="flex items-center gap-2 text-sm text-ink-secondary">
                 <svg
                   className="animate-spin h-4 w-4"
                   viewBox="0 0 24 24"
                   fill="none"
+                  aria-hidden="true"
                 >
                   <circle
                     className="opacity-25"
@@ -332,12 +316,7 @@ export function UserDemo() {
           )}
 
           {messages.map((msg) => (
-            <ChatBubble
-              key={msg.id}
-              role={msg.role}
-              content={msg.content}
-              price={msg.price}
-            />
+            <ChatBubble key={msg.id} role={msg.role} content={msg.content} price={msg.price} />
           ))}
 
           {sending && <TypingIndicator />}

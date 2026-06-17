@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
-import { notificationApi, type Notification } from "@/lib/api-client";
+import { useTheme } from "@/hooks/use-theme";
+import { type Notification, notificationApi } from "@/lib/api-client";
+import { createClient } from "@/lib/supabase/client";
 
 type Mode = "selling" | "buying";
 
@@ -29,12 +30,7 @@ const BUY_TABS = [
   { label: "Staging", href: "/staging" },
 ];
 
-export function Nav({
-  userEmail,
-  userName,
-  userAvatarUrl,
-  modeOverride,
-}: NavProps) {
+export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -82,13 +78,15 @@ export function Nav({
   // Keep localStorage in sync — only write when path gives us a definitive mode
   // (avoid overwriting stored mode on ambiguous paths like /profile, /settings)
   useEffect(() => {
-    const isDefinitive = pathname.startsWith("/buy") || pathname.startsWith("/sell") || pathname.startsWith("/browse");
+    const isDefinitive =
+      pathname.startsWith("/buy") || pathname.startsWith("/sell") || pathname.startsWith("/browse");
     if (isDefinitive) {
       localStorage.setItem("haggle_mode", mode);
     }
   }, [mode, pathname]);
 
   // Reset error state when avatar URL changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on avatar URL change
   useEffect(() => {
     setAvatarError(false);
   }, [userAvatarUrl]);
@@ -118,18 +116,20 @@ export function Nav({
     router.push("/sign-in");
   };
 
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
+
   const logoHref = mode === "buying" ? "/buy/dashboard" : "/sell/dashboard";
-  const switchLabel =
-    mode === "selling" ? "Switch to buying" : "Switch to selling";
+  const switchLabel = mode === "selling" ? "Switch to buying" : "Switch to selling";
 
   return (
-    <nav className="fixed top-0 inset-x-0 z-50 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md hidden md:block">
+    <nav className="fixed inset-x-0 top-0 z-50 hidden border-line border-b bg-surface/80 backdrop-blur-md md:block">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Left: Logo + Tabs */}
-        <div className="flex items-center h-full gap-6">
+        <div className="flex h-full items-center gap-6">
           <Link
             href={logoHref}
-            className="text-lg font-bold text-white hover:text-cyan-400 transition-colors"
+            className="font-bold text-ink text-lg transition-colors hover:text-action-primary"
           >
             Haggle
           </Link>
@@ -144,11 +144,11 @@ export function Nav({
                 <Link
                   key={tab.href}
                   href={tab.href}
-                  className="relative px-3 py-1 text-sm font-medium text-white transition-colors"
+                  className="relative px-3 py-1 font-medium text-ink text-sm transition-colors"
                 >
                   {tab.label}
                   {isActive && (
-                    <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-cyan-400 rounded-full" />
+                    <span className="absolute right-3 bottom-0 left-3 h-0.5 rounded-full bg-action-primary" />
                   )}
                 </Link>
               );
@@ -160,8 +160,9 @@ export function Nav({
         <div className="flex items-center gap-5">
           {/* Mode switch — text only */}
           <button
+            type="button"
             onClick={handleModeSwitch}
-            className="text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+            className="cursor-pointer text-ink-muted text-sm transition-colors hover:text-ink"
           >
             {switchLabel}
           </button>
@@ -172,10 +173,12 @@ export function Nav({
           {/* User menu */}
           <div className="relative" ref={menuRef}>
             <button
+              type="button"
               onClick={() => setMenuOpen(!menuOpen)}
-              className="flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="flex cursor-pointer items-center gap-2 text-ink-secondary text-sm transition-colors hover:text-ink"
             >
               {userAvatarUrl && !avatarError ? (
+                // biome-ignore lint/performance/noImgElement: remote avatar (referrerPolicy + onError fallback)
                 <img
                   src={userAvatarUrl}
                   alt=""
@@ -184,7 +187,7 @@ export function Nav({
                   onError={() => setAvatarError(true)}
                 />
               ) : (
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-medium text-emerald-400">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-badge font-medium text-badge-text text-xs">
                   {(userName || userEmail).charAt(0).toUpperCase()}
                 </div>
               )}
@@ -197,34 +200,22 @@ export function Nav({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                aria-hidden="true"
               >
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-800 bg-bg-card py-1 shadow-xl">
-                <div className="px-4 py-2.5 border-b border-slate-800">
-                  <p className="text-xs text-slate-500">Signed in as</p>
-                  <p className="text-sm text-slate-300 truncate">{userEmail}</p>
+              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-line bg-surface-raised py-1 shadow-card">
+                <div className="border-line border-b px-4 py-2.5">
+                  <p className="text-ink-muted text-xs">Signed in as</p>
+                  <p className="truncate text-ink-secondary text-sm">{userEmail}</p>
                 </div>
                 <Link
                   href="/settings"
                   onClick={() => setMenuOpen(false)}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                >
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                  Account Settings
-                </Link>
-                {/* TODO(notification-prefs): hidden until prefs check implemented in bus.ts
-                <Link href="/settings/notifications">Notification Settings</Link>
-                */}
-                <button
-                  onClick={handleLogout}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-ink-secondary text-sm transition-colors hover:bg-surface-sunken hover:text-ink"
                 >
                   <svg
                     viewBox="0 0 24 24"
@@ -235,6 +226,66 @@ export function Nav({
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                  Account Settings
+                </Link>
+                {/* TODO(notification-prefs): hidden until prefs check implemented in bus.ts
+                <Link href="/settings/notifications">Notification Settings</Link>
+                */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isDark}
+                  onClick={toggleTheme}
+                  className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-ink-secondary text-sm transition-colors hover:bg-surface-sunken hover:text-ink"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                    Dark mode
+                  </span>
+                  <span
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                      isDark ? "bg-action-primary" : "bg-surface-sunken"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-on-accent shadow-sm transition-transform ${
+                        isDark ? "translate-x-4.5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full cursor-pointer items-center gap-2 border-line border-t px-4 py-2.5 text-ink-secondary text-sm transition-colors hover:bg-surface-sunken hover:text-ink"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
                   >
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                     <polyline points="16 17 21 12 16 7" />
@@ -306,30 +357,42 @@ function NotificationBell() {
   return (
     <div className="relative" ref={bellRef}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="relative p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+        className="relative cursor-pointer p-1.5 text-ink-secondary transition-colors hover:text-ink"
         aria-label="Notifications"
       >
         {/* Bell icon */}
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+          <span className="-top-0.5 -right-0.5 absolute flex h-4 w-4 items-center justify-center rounded-full bg-error-500 font-bold text-[10px] text-on-accent">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 rounded-xl border border-slate-800 bg-bg-card shadow-xl z-50">
+        <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-line bg-surface-raised shadow-card">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-            <span className="text-sm font-semibold text-slate-200">Notifications</span>
+          <div className="flex items-center justify-between border-line border-b px-4 py-3">
+            <span className="font-semibold text-ink text-sm">Notifications</span>
             <button
+              type="button"
               onClick={handleMarkAllRead}
-              className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+              className="cursor-pointer text-action-primary text-xs transition-colors hover:text-action-primary-hover"
             >
               Mark all read
             </button>
@@ -339,24 +402,29 @@ function NotificationBell() {
           <div className="max-h-72 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-action-primary border-t-transparent" />
               </div>
             ) : notifications.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500">No notifications yet</p>
+              <p className="py-8 text-center text-ink-muted text-sm">No notifications yet</p>
             ) : (
               notifications.map((n) => (
                 <button
+                  type="button"
                   key={n.id}
                   onClick={() => handleClickNotification(n)}
-                  className={`w-full text-left px-4 py-3 border-b border-slate-800/50 hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.readAt ? "bg-cyan-400/5" : ""}`}
+                  className={`w-full cursor-pointer border-line border-b px-4 py-3 text-left transition-colors hover:bg-surface-sunken ${!n.readAt ? "bg-action-primary/5" : ""}`}
                 >
                   <div className="flex items-start gap-2">
-                    {!n.readAt && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />}
-                    <p className={`text-sm leading-snug ${n.readAt ? "text-slate-400 ml-3.5" : "text-slate-200"}`}>
+                    {!n.readAt && (
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-action-primary" />
+                    )}
+                    <p
+                      className={`text-sm leading-snug ${n.readAt ? "ml-3.5 text-ink-secondary" : "text-ink"}`}
+                    >
                       {n.payload.displayTitle ?? n.eventType}
                     </p>
                   </div>
-                  <p className="mt-1 text-[11px] text-slate-600 ml-3.5">
+                  <p className="mt-1 ml-3.5 text-[11px] text-ink-muted">
                     {new Date(n.createdAt).toLocaleDateString()}
                   </p>
                 </button>
@@ -365,11 +433,11 @@ function NotificationBell() {
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-2.5 border-t border-slate-800">
+          <div className="border-line border-t px-4 py-2.5">
             <Link
               href="/notifications"
               onClick={() => setOpen(false)}
-              className="block text-center text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+              className="block text-center text-action-primary text-xs transition-colors hover:text-action-primary-hover"
             >
               View all notifications →
             </Link>

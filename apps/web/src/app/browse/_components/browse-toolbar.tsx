@@ -1,26 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ITEM_CONDITIONS, LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
 import * as Slider from "@radix-ui/react-slider";
-import {
-  ITEM_CONDITIONS,
-  LISTING_CATEGORIES,
-  LISTING_CATEGORY_LABELS,
-} from "@haggle/shared";
+import { useEffect, useState } from "react";
 import type { BrowseFilters, BrowseSort } from "../page";
-import { SearchBar } from "./search-bar";
-import { FilterSheet } from "./filter-sheet";
 import {
   CONDITION_LABELS,
-  PriceBucket,
-  SLIDER_RES,
-  SORT_LABELS,
   formatBucketLabel,
   makeScale,
+  type PriceBucket,
   priceLabel,
+  SLIDER_RES,
+  SORT_LABELS,
   useClickOutside,
   useUpdateParams,
 } from "./filter-shared";
+import { FilterSheet } from "./filter-sheet";
+import { SearchBar } from "./search-bar";
 
 type Condition = (typeof ITEM_CONDITIONS)[number];
 type Category = (typeof LISTING_CATEGORIES)[number];
@@ -42,8 +38,8 @@ function FilterButton({
       onClick={onClick}
       className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
         active
-          ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-200"
-          : "border-slate-700 bg-slate-900/60 text-slate-200 hover:border-slate-600 hover:bg-slate-800"
+          ? "border-action-primary bg-action-primary/10 text-action-primary"
+          : "border-line bg-surface-raised text-ink hover:border-line-strong hover:bg-surface-sunken"
       }`}
     >
       {label}
@@ -56,6 +52,7 @@ function FilterButton({
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+        aria-hidden="true"
         className={`transition-transform ${open ? "rotate-180" : ""}`}
       >
         <polyline points="6 9 12 15 18 9" />
@@ -89,12 +86,8 @@ function PriceFilter({
   // user is actively typing.
   const initial = (): [number, number] => {
     if (!bounds || !scale) return [0, SLIDER_RES];
-    const lo = filters.minPrice !== undefined
-      ? scale.priceToSlider(filters.minPrice)
-      : 0;
-    const hi = filters.maxPrice !== undefined
-      ? scale.priceToSlider(filters.maxPrice)
-      : SLIDER_RES;
+    const lo = filters.minPrice !== undefined ? scale.priceToSlider(filters.minPrice) : 0;
+    const hi = filters.maxPrice !== undefined ? scale.priceToSlider(filters.maxPrice) : SLIDER_RES;
     return [Math.min(lo, hi), Math.max(lo, hi)];
   };
   const [sliderValues, setSliderValues] = useState<[number, number]>(initial());
@@ -106,9 +99,9 @@ function PriceFilter({
   const [maxInput, setMaxInput] = useState<string>(String(liveHi));
 
   // Sync slider state when popover opens or external filters/bounds change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-sync only on open / external filter change
   useEffect(() => {
     if (open) setSliderValues(initial());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, bounds?.min, bounds?.max, filters.minPrice, filters.maxPrice]);
 
   // Mirror slider movement into the input fields (slider drives inputs).
@@ -161,29 +154,20 @@ function PriceFilter({
   }
 
   const active = filters.minPrice !== undefined || filters.maxPrice !== undefined;
-  const label = active
-    ? `Price: ${priceLabel(filters.minPrice, filters.maxPrice)}`
-    : "Price";
+  const label = active ? `Price: ${priceLabel(filters.minPrice, filters.maxPrice)}` : "Price";
 
   return (
     <div ref={ref} className="relative">
-      <FilterButton
-        active={active}
-        open={open}
-        label={label}
-        onClick={() => setOpen((v) => !v)}
-      />
+      <FilterButton active={active} open={open} label={label} onClick={() => setOpen((v) => !v)} />
       {open && (
-        <div className="absolute left-0 z-20 mt-2 w-96 rounded-lg border border-slate-700 bg-slate-900 p-4 shadow-xl">
+        <div className="absolute left-0 z-20 mt-2 w-96 rounded-lg border border-line bg-surface-raised p-4 shadow-card">
           {!bounds ? (
-            <p className="text-sm text-slate-400">
-              No priced listings to filter.
-            </p>
+            <p className="text-sm text-ink-secondary">No priced listings to filter.</p>
           ) : (
             <>
               <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="text-slate-300">${liveLo}</span>
-                <span className="text-slate-300">${liveHi}</span>
+                <span className="text-ink-secondary">${liveLo}</span>
+                <span className="text-ink-secondary">${liveHi}</span>
               </div>
               <Slider.Root
                 className="relative flex h-5 w-full touch-none select-none items-center"
@@ -195,26 +179,26 @@ function PriceFilter({
                 onValueChange={(v) => setSliderValues([v[0], v[1]] as [number, number])}
                 onValueCommit={(v) => commitFromSlider([v[0], v[1]] as [number, number])}
               >
-                <Slider.Track className="relative h-1 grow rounded-full bg-slate-700">
-                  <Slider.Range className="absolute h-full rounded-full bg-cyan-500" />
+                <Slider.Track className="relative h-1 grow rounded-full bg-surface-sunken">
+                  <Slider.Range className="absolute h-full rounded-full bg-action-primary" />
                 </Slider.Track>
                 <Slider.Thumb
-                  className="block h-4 w-4 cursor-pointer rounded-full border-2 border-cyan-500 bg-slate-950 shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                  className="block h-4 w-4 cursor-pointer rounded-full border-2 border-action-primary bg-surface-overlay shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   aria-label="Min price"
                 />
                 <Slider.Thumb
-                  className="block h-4 w-4 cursor-pointer rounded-full border-2 border-cyan-500 bg-slate-950 shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                  className="block h-4 w-4 cursor-pointer rounded-full border-2 border-action-primary bg-surface-overlay shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   aria-label="Max price"
                 />
               </Slider.Root>
-              <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+              <div className="mt-1 flex items-center justify-between text-xs text-ink-muted">
                 <span>${bounds.min}</span>
                 <span>${bounds.max}</span>
               </div>
 
               <div className="mt-4 flex items-center gap-2">
                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
                     $
                   </span>
                   <input
@@ -232,12 +216,12 @@ function PriceFilter({
                         commitFromInputs();
                       }
                     }}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-6 pr-3 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                    className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-6 pr-3 text-sm text-ink placeholder:text-ink-muted focus:border-action-primary focus:outline-none"
                   />
                 </div>
-                <span className="text-slate-500">–</span>
+                <span className="text-ink-muted">–</span>
                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
                     $
                   </span>
                   <input
@@ -255,14 +239,14 @@ function PriceFilter({
                         commitFromInputs();
                       }
                     }}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-6 pr-3 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                    className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-6 pr-3 text-sm text-ink placeholder:text-ink-muted focus:border-action-primary focus:outline-none"
                   />
                 </div>
               </div>
 
               {priceBuckets.length > 0 && (
                 <div className="mt-4">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">
+                  <p className="mb-2 text-xs uppercase tracking-wide text-ink-muted">
                     Popular ranges
                   </p>
                   <div className="flex flex-wrap gap-1.5">
@@ -272,8 +256,7 @@ function PriceFilter({
                       const isActive =
                         filters.minPrice === lo &&
                         (b.max === null
-                          ? filters.maxPrice === undefined ||
-                            filters.maxPrice >= bounds.max
+                          ? filters.maxPrice === undefined || filters.maxPrice >= bounds.max
                           : filters.maxPrice === hi);
                       return (
                         <button
@@ -282,14 +265,12 @@ function PriceFilter({
                           onClick={() => applyBucket(b)}
                           className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
                             isActive
-                              ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-200"
-                              : "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500 hover:text-white"
+                              ? "border-action-primary bg-action-primary/10 text-action-primary"
+                              : "border-line bg-surface-raised text-ink-secondary hover:border-line-strong hover:text-ink"
                           }`}
                         >
                           {formatBucketLabel(b)}
-                          <span className="text-[10px] text-slate-500">
-                            {b.count}
-                          </span>
+                          <span className="text-[10px] text-ink-muted">{b.count}</span>
                         </button>
                       );
                     })}
@@ -298,11 +279,11 @@ function PriceFilter({
               )}
 
               {active && (
-                <div className="mt-4 border-t border-slate-800 pt-3">
+                <div className="mt-4 border-t border-line pt-3">
                   <button
                     type="button"
                     onClick={clear}
-                    className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-slate-400 transition-colors hover:border-slate-700 hover:text-white"
+                    className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-line hover:text-ink"
                   >
                     Clear all
                   </button>
@@ -336,33 +317,26 @@ function ConditionFilter({ filters }: { filters: BrowseFilters }) {
   }
 
   const active = filters.conditions.length > 0;
-  const label = active
-    ? `Condition (${filters.conditions.length})`
-    : "Condition";
+  const label = active ? `Condition (${filters.conditions.length})` : "Condition";
 
   return (
     <div ref={ref} className="relative">
-      <FilterButton
-        active={active}
-        open={open}
-        label={label}
-        onClick={() => setOpen((v) => !v)}
-      />
+      <FilterButton active={active} open={open} label={label} onClick={() => setOpen((v) => !v)} />
       {open && (
-        <div className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-xl">
+        <div className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-line bg-surface-raised p-2 shadow-card">
           <div className="grid grid-cols-2 gap-1">
             {ITEM_CONDITIONS.map((c) => {
               const checked = filters.conditions.includes(c);
               return (
                 <label
                   key={c}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink hover:bg-surface-sunken"
                 >
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggle(c)}
-                    className="h-4 w-4 accent-cyan-500"
+                    className="h-4 w-4 accent-action-primary"
                   />
                   {CONDITION_LABELS[c] ?? c}
                 </label>
@@ -370,11 +344,11 @@ function ConditionFilter({ filters }: { filters: BrowseFilters }) {
             })}
           </div>
           {active && (
-            <div className="mt-2 border-t border-slate-800 pt-2">
+            <div className="mt-2 border-t border-line pt-2">
               <button
                 type="button"
                 onClick={clear}
-                className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-slate-400 transition-colors hover:border-slate-700 hover:text-white"
+                className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-line hover:text-ink"
               >
                 Clear all
               </button>
@@ -404,9 +378,9 @@ function SortDropdown({ filters }: { filters: BrowseFilters }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-200 transition-colors hover:border-slate-600 hover:bg-slate-800"
+        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink transition-colors hover:border-line-strong hover:bg-surface-sunken"
       >
-        <span className="text-slate-500">Sort:</span> {SORT_LABELS[filters.sort]}
+        <span className="text-ink-muted">Sort:</span> {SORT_LABELS[filters.sort]}
         <svg
           width="14"
           height="14"
@@ -416,20 +390,21 @@ function SortDropdown({ filters }: { filters: BrowseFilters }) {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          aria-hidden="true"
           className={`transition-transform ${open ? "rotate-180" : ""}`}
         >
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+        <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border border-line bg-surface-raised shadow-card">
           {(Object.keys(SORT_LABELS) as BrowseSort[]).map((opt) => (
             <button
               key={opt}
               type="button"
               onClick={() => pick(opt)}
-              className={`block w-full cursor-pointer px-3 py-2 text-left text-sm transition-colors hover:bg-slate-800 ${
-                filters.sort === opt ? "bg-slate-800 text-cyan-300" : "text-slate-200"
+              className={`block w-full cursor-pointer px-3 py-2 text-left text-sm transition-colors hover:bg-surface-sunken ${
+                filters.sort === opt ? "bg-surface-sunken text-action-primary" : "text-ink"
               }`}
             >
               {SORT_LABELS[opt]}
@@ -469,27 +444,22 @@ function CategoryFilter({ filters }: { filters: BrowseFilters }) {
 
   return (
     <div ref={ref} className="relative">
-      <FilterButton
-        active={active}
-        open={open}
-        label={label}
-        onClick={() => setOpen((v) => !v)}
-      />
+      <FilterButton active={active} open={open} label={label} onClick={() => setOpen((v) => !v)} />
       {open && (
-        <div className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-xl">
+        <div className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-line bg-surface-raised p-2 shadow-card">
           <div className="grid grid-cols-2 gap-1">
             {LISTING_CATEGORIES.map((c) => {
               const checked = filters.categories.includes(c);
               return (
                 <label
                   key={c}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink hover:bg-surface-sunken"
                 >
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggle(c)}
-                    className="h-4 w-4 accent-cyan-500"
+                    className="h-4 w-4 accent-action-primary"
                   />
                   {LISTING_CATEGORY_LABELS[c]}
                 </label>
@@ -497,11 +467,11 @@ function CategoryFilter({ filters }: { filters: BrowseFilters }) {
             })}
           </div>
           {active && (
-            <div className="mt-2 border-t border-slate-800 pt-2">
+            <div className="mt-2 border-t border-line pt-2">
               <button
                 type="button"
                 onClick={clear}
-                className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-slate-400 transition-colors hover:border-slate-700 hover:text-white"
+                className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-line hover:text-ink"
               >
                 Clear all
               </button>
@@ -527,8 +497,8 @@ function MobileFiltersButton({
       onClick={onClick}
       className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
         active
-          ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-200"
-          : "border-slate-700 bg-slate-900/60 text-slate-200 hover:border-slate-600 hover:bg-slate-800"
+          ? "border-action-primary bg-action-primary/10 text-action-primary"
+          : "border-line bg-surface-raised text-ink hover:border-line-strong hover:bg-surface-sunken"
       }`}
     >
       <svg
@@ -540,6 +510,7 @@ function MobileFiltersButton({
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+        aria-hidden="true"
       >
         <line x1="4" y1="6" x2="20" y2="6" />
         <line x1="7" y1="12" x2="17" y2="12" />
@@ -547,7 +518,7 @@ function MobileFiltersButton({
       </svg>
       Filters
       {active && (
-        <span className="rounded-full bg-cyan-500/20 px-1.5 py-0.5 text-[11px] font-medium text-cyan-200">
+        <span className="rounded-full bg-action-primary/20 px-1.5 py-0.5 text-[11px] font-medium text-action-primary">
           {activeCount}
         </span>
       )}
@@ -591,17 +562,13 @@ export function BrowseToolbar({
           <SearchBar initialQ={filters.q} />
         </div>
         <CategoryFilter filters={filters} />
-        <PriceFilter
-          filters={filters}
-          priceRange={priceRange}
-          priceBuckets={priceBuckets}
-        />
+        <PriceFilter filters={filters} priceRange={priceRange} priceBuckets={priceBuckets} />
         <ConditionFilter filters={filters} />
         {anyActive && (
           <button
             type="button"
             onClick={resetAll}
-            className="ml-3 cursor-pointer text-xs text-slate-400 underline-offset-2 hover:text-white hover:underline"
+            className="ml-3 cursor-pointer text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
           >
             Reset filters
           </button>
@@ -614,10 +581,7 @@ export function BrowseToolbar({
       <div className="flex flex-col gap-2 md:hidden">
         <SearchBar initialQ={filters.q} />
         <div className="flex items-center justify-between gap-2">
-          <MobileFiltersButton
-            activeCount={activeCount}
-            onClick={() => setSheetOpen(true)}
-          />
+          <MobileFiltersButton activeCount={activeCount} onClick={() => setSheetOpen(true)} />
           <SortDropdown filters={filters} />
         </div>
       </div>

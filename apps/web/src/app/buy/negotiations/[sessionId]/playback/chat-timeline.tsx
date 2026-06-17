@@ -2,9 +2,9 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
-import type { AgentCard, PlaybackRound } from "./types";
 import { ChatBubble } from "./chat-bubble";
 import { ThinkingDots } from "./thinking-dots";
+import type { AgentCard, PlaybackRound } from "./types";
 import type { PlaybackEngine } from "./use-playback-engine";
 
 interface ChatTimelineProps {
@@ -52,14 +52,14 @@ export function ChatTimeline({
       ref={containerRef}
       className="relative flex min-h-0 flex-1 flex-col gap-3 sm:gap-4 overflow-y-auto px-3 sm:px-5 py-4 sm:py-5"
       style={{
-        background: "linear-gradient(180deg, rgba(15,23,42,0.4), rgba(15,23,42,0.0))",
         scrollbarWidth: "thin",
       }}
     >
       <AnimatePresence initial={false} mode="popLayout">
         {visibleRounds.map((round) => {
           const agent = round.sender === "BUYER" ? buyerAgent : sellerAgent;
-          const isInFlightTyping = inFlight?.roundIndex === round.roundIndex && engine.phase === "typing";
+          const isInFlightTyping =
+            inFlight?.roundIndex === round.roundIndex && engine.phase === "typing";
           // Settled rounds: show full message. Typing in-flight: show partial.
           const partial = isInFlightTyping
             ? round.message.slice(0, engine.typingChars)

@@ -8,17 +8,24 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "lint": "turbo lint",
+    "lint": "biome lint .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check": "biome check .",
     "test": "turbo test",
     "clean": "turbo clean",
     "typecheck": "turbo typecheck",
     "verify:migrations": "node scripts/verify-drizzle-journal.mjs",
     "verify:db-invariants": "node scripts/verify-db-invariants.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test smoke.spec.ts"
+    "test:e2e:smoke": "playwright test smoke.spec.ts",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@playwright/test": "^1.60.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "next": "^15.5.0",
     "playwright": "^1.60.0",
     "turbo": "^2.4.0",

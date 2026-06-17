@@ -135,29 +135,29 @@ export function AdvancedSettingsModal({
     <div
       role="dialog"
       aria-modal="true"
+      aria-label="Advanced Settings"
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
-      style={{ background: "rgba(0,0,0,0.65)" }}
-      onClick={onClose}
     >
-      <div
-        className="bg-bg-card border border-border-default rounded-xl w-full max-w-[640px] max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <button
+        type="button"
+        aria-label="Close dialog"
+        className="absolute inset-0 z-0 cursor-default bg-black/50"
+        onClick={onClose}
+      />
+      <div className="relative z-10 bg-surface-raised border border-line rounded-xl w-full max-w-[640px] max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-border-default flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-text-primary">
-              Advanced Settings
-            </h2>
-            <p className="text-[12px] text-slate-400 mt-0.5">
-              Starting from <span className="text-cyan-400">{preset.copy.seller.name}</span>{" "}
-              · adjust 16 engine fields freely.
+            <h2 className="text-base font-bold text-ink">Advanced Settings</h2>
+            <p className="text-[12px] text-ink-secondary mt-0.5">
+              Starting from <span className="text-action-primary">{preset.copy.seller.name}</span> ·
+              adjust 16 engine fields freely.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-text-primary text-xl leading-none px-2"
+            className="text-ink-secondary hover:text-ink text-xl leading-none px-2"
             aria-label="Close"
           >
             ×
@@ -177,7 +177,10 @@ export function AdvancedSettingsModal({
             ))}
           </Section>
 
-          <Section title="Behavior Curves" subtitle="Each slider is independent within its envelope.">
+          <Section
+            title="Behavior Curves"
+            subtitle="Each slider is independent within its envelope."
+          >
             {tier2.map((d) => (
               <SliderRow
                 key={d.field}
@@ -192,7 +195,7 @@ export function AdvancedSettingsModal({
             <button
               type="button"
               onClick={() => setShowExpert((v) => !v)}
-              className="text-[12px] font-bold tracking-wider uppercase text-purple-300 hover:text-purple-200"
+              className="text-[12px] font-bold tracking-wider uppercase text-info hover:text-info"
             >
               {showExpert ? "▾" : "▸"} Expert — Sub-parameters (8)
             </button>
@@ -212,11 +215,11 @@ export function AdvancedSettingsModal({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-border-default flex items-center justify-between gap-2">
+        <div className="px-5 py-4 border-t border-line flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={handleReset}
-            className="text-[13px] text-slate-400 hover:text-text-primary"
+            className="text-[13px] text-ink-secondary hover:text-ink"
           >
             Reset to preset
           </button>
@@ -224,14 +227,14 @@ export function AdvancedSettingsModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm rounded-md text-slate-400 hover:text-text-primary border border-transparent hover:border-slate-700"
+              className="px-4 py-2 text-sm rounded-md text-ink-secondary hover:text-ink border border-transparent hover:border-line-strong"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => onApply(state)}
-              className="px-4 py-2 text-sm font-bold rounded-md bg-emerald-500 text-white hover:bg-emerald-600"
+              className="px-4 py-2 text-sm font-bold rounded-md bg-success text-on-accent hover:bg-success"
             >
               Apply
             </button>
@@ -253,12 +256,10 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="text-[12px] font-bold tracking-wider uppercase text-slate-300 mb-1">
+      <h3 className="text-[12px] font-bold tracking-wider uppercase text-ink-secondary mb-1">
         {title}
       </h3>
-      {subtitle && (
-        <p className="text-[11px] text-slate-500 mb-3">{subtitle}</p>
-      )}
+      {subtitle && <p className="text-[11px] text-ink-muted mb-3">{subtitle}</p>}
       <div className="space-y-3">{children}</div>
     </div>
   );
@@ -280,21 +281,22 @@ function SliderRow({
   return (
     <div>
       <div className="flex items-baseline justify-between mb-1">
-        <label className="text-[13px] font-medium text-text-primary">
+        <label htmlFor={`slider-${descriptor.field}`} className="text-[13px] font-medium text-ink">
           {descriptor.label}
         </label>
-        <span className="text-[12px] font-mono text-cyan-400">{display}</span>
+        <span className="text-[12px] font-mono text-action-primary">{display}</span>
       </div>
       <input
+        id={`slider-${descriptor.field}`}
         type="range"
         min={min}
         max={max}
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-cyan-500"
+        className="w-full accent-action-primary"
       />
-      <div className="flex justify-between text-[10px] text-slate-500 mt-1 gap-2">
+      <div className="flex justify-between text-[10px] text-ink-muted mt-1 gap-2">
         <span className="flex-1 text-left leading-tight">{descriptor.left}</span>
         <span className="flex-1 text-right leading-tight">{descriptor.right}</span>
       </div>

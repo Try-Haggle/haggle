@@ -1,9 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { AgentCard, PlaybackRound, UtilityBreakdown } from "./types";
 import { AgentIcon } from "./agent-icon";
 import { formatPct, formatSignedPct } from "./format";
+import type { AgentCard, PlaybackRound, UtilityBreakdown } from "./types";
 
 interface FactorsPanelProps {
   round: PlaybackRound | null;
@@ -15,10 +15,10 @@ interface FactorsPanelProps {
  *   v_p (Price), v_t (Time), v_r (Risk), v_s (Relationship)
  */
 const UTILITY_AXES: { key: keyof UtilityBreakdown; label: string; color: string }[] = [
-  { key: "price",        label: "Price",        color: "#10b981" },
-  { key: "time",         label: "Time",         color: "#f59e0b" },
-  { key: "risk",         label: "Risk",         color: "#06b6d4" },
-  { key: "relationship", label: "Relationship", color: "#a855f7" },
+  { key: "price", label: "Price", color: "var(--fb-success-fg)" },
+  { key: "time", label: "Time", color: "var(--fb-warning-fg)" },
+  { key: "risk", label: "Risk", color: "var(--action-primary)" },
+  { key: "relationship", label: "Relationship", color: "var(--fb-info-fg)" },
 ];
 
 export function FactorsPanel({ round, agent }: FactorsPanelProps) {
@@ -37,7 +37,7 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="flex flex-col gap-5 rounded-2xl p-5"
-      style={{ background: "#0f172a", border: "1px solid #1e293b" }}
+      style={{ background: "var(--bg-raised)", border: "1px solid var(--border-default)" }}
     >
       {/* Header */}
       <div className="flex items-center gap-2.5">
@@ -48,10 +48,16 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
           <AgentIcon agent={agent} size={16} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold tracking-[0.16em]" style={{ color: "#64748b" }}>
+          <div
+            className="text-[10px] font-bold tracking-[0.16em]"
+            style={{ color: "var(--text-muted)" }}
+          >
             ROUND {round.roundIndex} · {round.sender}
           </div>
-          <div className="text-[13px] font-semibold truncate" style={{ color: "#f1f5f9" }}>
+          <div
+            className="text-[13px] font-semibold truncate"
+            style={{ color: "var(--text-primary)" }}
+          >
             {agent.name}
           </div>
         </div>
@@ -63,7 +69,10 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
       {/* Utility breakdown — v_p / v_t / v_r / v_s */}
       {breakdown && (
         <div className="flex flex-col gap-2.5">
-          <div className="text-[10px] font-bold tracking-[0.16em]" style={{ color: "#64748b" }}>
+          <div
+            className="text-[10px] font-bold tracking-[0.16em]"
+            style={{ color: "var(--text-muted)" }}
+          >
             UTILITY BREAKDOWN
           </div>
           <div className="flex flex-col gap-2">
@@ -72,23 +81,33 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
               return (
                 <div key={axis.key}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-medium" style={{ color: "#cbd5e1" }}>
+                    <span
+                      className="text-[11px] font-medium"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
                       {axis.label}
                     </span>
-                    <span className="text-[11px] font-semibold tabular-nums" style={{ color: "#f1f5f9" }}>
+                    <span
+                      className="text-[11px] font-semibold tabular-nums"
+                      style={{ color: "var(--text-primary)" }}
+                    >
                       {formatPct(value)}
                     </span>
                   </div>
                   <div
                     className="h-1.5 w-full overflow-hidden rounded-full"
-                    style={{ background: "#0d1321" }}
+                    style={{ background: "var(--bg-sunken)" }}
                   >
                     <motion.div
                       className="h-full rounded-full"
-                      style={{ background: `linear-gradient(90deg, ${axis.color}, ${axis.color}cc)` }}
+                      style={{ background: axis.color }}
                       initial={{ width: 0 }}
                       animate={{ width: `${value * 100}%` }}
-                      transition={{ duration: 0.7, delay: 0.05 + i * 0.06, ease: [0.22, 1, 0.36, 1] }}
+                      transition={{
+                        duration: 0.7,
+                        delay: 0.05 + i * 0.06,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
                     />
                   </div>
                 </div>
@@ -106,14 +125,18 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
             <DeltaTile
               label="BATNA"
               value={formatSignedPct(round.factors.batnaDelta, 1)}
-              tone={round.factors.batnaDelta >= 0 ? "#10b981" : "#ef4444"}
+              tone={round.factors.batnaDelta >= 0 ? "var(--fb-success-fg)" : "var(--fb-error-fg)"}
             />
           )}
           {typeof round.factors.concessionPct === "number" && (
             <DeltaTile
               label="Concede"
-              value={round.factors.concessionPct > 0 ? formatSignedPct(-round.factors.concessionPct, 1) : "—"}
-              tone="#94a3b8"
+              value={
+                round.factors.concessionPct > 0
+                  ? formatSignedPct(-round.factors.concessionPct, 1)
+                  : "—"
+              }
+              tone="var(--text-secondary)"
             />
           )}
         </div>
@@ -122,7 +145,10 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
       {/* Tactic — DB tacticUsed (single free-form string) */}
       {tactic && (
         <div className="flex flex-col gap-2">
-          <div className="text-[10px] font-bold tracking-[0.16em]" style={{ color: "#64748b" }}>
+          <div
+            className="text-[10px] font-bold tracking-[0.16em]"
+            style={{ color: "var(--text-muted)" }}
+          >
             TACTIC
           </div>
           <span
@@ -137,7 +163,6 @@ export function FactorsPanel({ round, agent }: FactorsPanelProps) {
           </span>
         </div>
       )}
-
     </motion.div>
   );
 }
@@ -151,14 +176,14 @@ function UtilityRing({ score, accent }: { score: number; accent: string }) {
   return (
     <div className="flex items-center gap-4">
       <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
+        <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
           <circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="#1e293b"
             strokeWidth={stroke}
+            style={{ stroke: "var(--border-default)" }}
           />
           <motion.circle
             cx={size / 2}
@@ -175,19 +200,28 @@ function UtilityRing({ score, accent }: { score: number; accent: string }) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[20px] font-bold tabular-nums" style={{ color: "#f8fafc" }}>
+          <span
+            className="text-[20px] font-bold tabular-nums"
+            style={{ color: "var(--text-primary)" }}
+          >
             {Math.round(score * 100)}
           </span>
-          <span className="text-[9px] font-bold tracking-[0.12em]" style={{ color: "#64748b" }}>
+          <span
+            className="text-[9px] font-bold tracking-[0.12em]"
+            style={{ color: "var(--text-muted)" }}
+          >
             / 100
           </span>
         </div>
       </div>
       <div className="flex flex-col">
-        <span className="text-[10px] font-bold tracking-[0.16em]" style={{ color: "#64748b" }}>
+        <span
+          className="text-[10px] font-bold tracking-[0.16em]"
+          style={{ color: "var(--text-muted)" }}
+        >
           UTILITY
         </span>
-        <span className="text-[11px] mt-1 leading-snug" style={{ color: "#94a3b8" }}>
+        <span className="text-[11px] mt-1 leading-snug" style={{ color: "var(--text-secondary)" }}>
           Weighted score across all axes.
         </span>
       </div>
@@ -199,9 +233,12 @@ function DeltaTile({ label, value, tone }: { label: string; value: string; tone:
   return (
     <div
       className="rounded-lg p-2.5"
-      style={{ background: "rgba(15,23,42,0.6)", border: "1px solid #1e293b" }}
+      style={{ background: "var(--bg-sunken)", border: "1px solid var(--border-default)" }}
     >
-      <div className="text-[10px] font-bold tracking-[0.14em]" style={{ color: "#64748b" }}>
+      <div
+        className="text-[10px] font-bold tracking-[0.14em]"
+        style={{ color: "var(--text-muted)" }}
+      >
         {label}
       </div>
       <div className="text-[14px] font-semibold tabular-nums mt-0.5" style={{ color: tone }}>
@@ -215,13 +252,23 @@ function EmptyState() {
   return (
     <div
       className="flex flex-col items-center justify-center gap-3 rounded-2xl p-8 text-center"
-      style={{ background: "#0f172a", border: "1px dashed #1e293b" }}
+      style={{ background: "var(--bg-raised)", border: "1px dashed var(--border-default)" }}
     >
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="36"
+        height="36"
+        viewBox="0 0 24 24"
+        fill="none"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ stroke: "var(--text-muted)" }}
+        aria-hidden="true"
+      >
         <path d="M3 3v18h18" />
         <path d="M7 14l4-4 4 4 5-5" />
       </svg>
-      <div className="text-[12px] font-medium" style={{ color: "#94a3b8" }}>
+      <div className="text-[12px] font-medium" style={{ color: "var(--text-secondary)" }}>
         Tap any message to inspect the agent&apos;s utility, tactic, and reasoning.
       </div>
     </div>

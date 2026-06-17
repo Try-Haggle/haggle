@@ -1301,7 +1301,8 @@ export default function App() {
                   type="button"
                   className="btn-primary listing-live__dashboard-btn"
                   onClick={() => {
-                    const appUrl = import.meta.env.VITE_APP_URL ?? "http://localhost:3000";
+                    const injected = (window as unknown as { __HAGGLE_APP_URL__?: string }).__HAGGLE_APP_URL__;
+                    const appUrl = injected ?? import.meta.env.VITE_APP_URL ?? "http://localhost:3000";
                     window.open(`${appUrl}/sign-up?token=${publishResult.claimToken}`, "_blank");
                   }}
                 >

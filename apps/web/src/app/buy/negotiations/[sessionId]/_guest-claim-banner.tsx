@@ -42,20 +42,20 @@ export function GuestClaimBanner({
     <div
       className={
         dealClosed
-          ? "border-b border-emerald-500/30 bg-emerald-500/10"
-          : "border-b border-slate-700 bg-slate-800/60"
+          ? "border-b border-success/30 bg-success-soft"
+          : "border-b border-line bg-surface-raised"
       }
     >
       <div className="mx-auto flex max-w-6xl flex-col items-start gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex-1">
-          <p className="text-sm font-semibold text-white">
+          <p className="text-sm font-semibold text-ink">
             {dealClosed && price
               ? `Sign up to buy at ${price}`
               : dealClosed
                 ? "Sign up to lock in this deal"
                 : "Sign up to save this negotiation"}
           </p>
-          <p className="text-[12px] text-slate-300">
+          <p className="text-[12px] text-ink-secondary">
             Without an account, this session expires in 2 days and we can't
             tie it to a future purchase.
           </p>
@@ -64,8 +64,8 @@ export function GuestClaimBanner({
           href={href}
           className={
             dealClosed
-              ? "shrink-0 rounded-md bg-emerald-500 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-600"
-              : "shrink-0 rounded-md border border-slate-500 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
+              ? "shrink-0 rounded-md bg-success px-4 py-2 text-sm font-bold text-on-accent hover:bg-success/90"
+              : "shrink-0 rounded-md border border-line px-4 py-2 text-sm font-bold text-ink hover:bg-surface-sunken"
           }
         >
           Sign up

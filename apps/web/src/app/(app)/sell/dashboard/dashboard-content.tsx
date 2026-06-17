@@ -1,19 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef } from "react";
-import type { ListingSummary, DraftSummary } from "./page";
+import { useEffect, useRef, useState } from "react";
 import { useAmplitude } from "@/providers/amplitude-provider";
-
-const STEP_LABELS = ["Photo", "Details", "Category", "Pricing", "AI Agent"];
+import type { DraftSummary, ListingSummary } from "./page";
 
 export function DashboardContent({
-  userEmail,
   claimResult,
   listings,
   drafts = [],
 }: {
-  userEmail: string;
   claimResult: { ok: boolean; error?: string } | null;
   listings: ListingSummary[];
   drafts?: DraftSummary[];
@@ -23,6 +19,7 @@ export function DashboardContent({
 
   // Claim Token Used (1회)
   const claimTracked = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: track once on mount
   useEffect(() => {
     if (claimTracked.current) return;
     claimTracked.current = true;
@@ -38,20 +35,40 @@ export function DashboardContent({
         <div
           className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
             claimResult.ok
-              ? "border-emerald-500/30 bg-emerald-500/8 text-emerald-300"
-              : "border-red-500/30 bg-red-500/8 text-red-300"
+              ? "border-success/30 bg-success-soft text-success"
+              : "border-error/30 bg-error-soft text-error"
           }`}
         >
           {claimResult.ok ? (
             <div className="flex items-center gap-2">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M20 6 9 17l-5-5" />
               </svg>
               Listing claimed successfully! It&apos;s now linked to your account.
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <circle cx="12" cy="12" r="10" />
                 <line x1="15" y1="9" x2="9" y2="15" />
                 <line x1="9" y1="9" x2="15" y2="15" />
@@ -72,20 +89,43 @@ export function DashboardContent({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-400 shrink-0">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-action-primary shrink-0"
+            >
               <rect x="3" y="3" width="6" height="18" rx="1" />
               <rect x="9" y="9" width="6" height="12" rx="1" />
               <rect x="15" y="6" width="6" height="15" rx="1" />
             </svg>
-            <h1 className="text-2xl font-bold text-white">Seller Dashboard</h1>
+            <h1 className="text-2xl font-bold text-ink">Seller Dashboard</h1>
           </div>
-          <p className="text-sm text-slate-400">Manage your listings and track AI negotiations</p>
+          <p className="text-sm text-ink-secondary">
+            Manage your listings and track AI negotiations
+          </p>
         </div>
         <Link
           href="/sell/listings/new"
-          className="flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-200 transition-colors shrink-0 self-start sm:self-auto"
+          className="flex items-center gap-2 rounded-full bg-cta px-5 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors shrink-0 self-start sm:self-auto"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
@@ -97,50 +137,90 @@ export function DashboardContent({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <KpiCard
           icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M20 7h-9" />
               <path d="M14 17H5" />
               <circle cx="17" cy="17" r="3" />
               <circle cx="7" cy="7" r="3" />
             </svg>
           }
-          iconColor="text-cyan-400"
-          iconBg="bg-cyan-500/10"
+          iconColor="text-action-primary"
+          iconBg="bg-action-primary/10"
           value={String(activeCount)}
           label="Active Listings"
         />
         <KpiCard
           icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           }
-          iconColor="text-purple-400"
-          iconBg="bg-purple-500/10"
+          iconColor="text-info"
+          iconBg="bg-info-soft"
           value="0"
           label="Total Negotiations"
         />
         <KpiCard
           icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
               <polyline points="16 7 22 7 22 13" />
             </svg>
           }
-          iconColor="text-emerald-400"
-          iconBg="bg-emerald-500/10"
+          iconColor="text-success"
+          iconBg="bg-success-soft"
           value="0"
           label="Deals Closed"
         />
         <KpiCard
           icon={
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="12" y1="1" x2="12" y2="23" />
               <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
           }
-          iconColor="text-amber-400"
-          iconBg="bg-amber-500/10"
+          iconColor="text-warning"
+          iconBg="bg-warning-soft"
           value="$0"
           label="Revenue"
         />
@@ -149,7 +229,7 @@ export function DashboardContent({
       {/* Drafts Section */}
       {drafts.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-bold text-white mb-4">Drafts</h2>
+          <h2 className="text-lg font-bold text-ink mb-4">Drafts</h2>
           <div className="space-y-3">
             {drafts.map((draft) => (
               <DraftCard key={draft.id} draft={draft} />
@@ -159,21 +239,35 @@ export function DashboardContent({
       )}
 
       {/* Listings Section */}
-      <h2 className="text-lg font-bold text-white mb-4">Your Listings</h2>
+      <h2 className="text-lg font-bold text-ink mb-4">Your Listings</h2>
 
       {listings.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-8 sm:p-12 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-slate-800">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+        <div className="rounded-xl border border-line bg-surface-raised/50 p-8 sm:p-12 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-surface-sunken">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ink-muted"
+            >
               <path d="M20 7h-9" />
               <path d="M14 17H5" />
               <circle cx="17" cy="17" r="3" />
               <circle cx="7" cy="7" r="3" />
             </svg>
           </div>
-          <h3 className="text-base sm:text-lg font-semibold text-slate-300 mb-1">No listings yet</h3>
-          <p className="text-sm text-slate-500">
-            Create one with <span className="text-cyan-400 font-mono">/haggle</span> in ChatGPT, then claim it to see it here.
+          <h3 className="text-base sm:text-lg font-semibold text-ink-secondary mb-1">
+            No listings yet
+          </h3>
+          <p className="text-sm text-ink-muted">
+            Create one with <span className="text-action-primary font-mono">/haggle</span> in
+            ChatGPT, then claim it to see it here.
           </p>
         </div>
       ) : (
@@ -183,7 +277,6 @@ export function DashboardContent({
           ))}
         </div>
       )}
-
     </main>
   );
 }
@@ -202,44 +295,54 @@ function KpiCard({
   label: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4">
-      <div className={`mb-2 sm:mb-3 flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg ${iconBg}`}>
+    <div className="rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4">
+      <div
+        className={`mb-2 sm:mb-3 flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg ${iconBg}`}
+      >
         <span className={iconColor}>{icon}</span>
       </div>
-      <p className="text-xl sm:text-2xl font-bold text-white">{value}</p>
-      <p className="text-xs sm:text-sm text-slate-400 mt-0.5">{label}</p>
+      <p className="text-xl sm:text-2xl font-bold text-ink">{value}</p>
+      <p className="text-xs sm:text-sm text-ink-secondary mt-0.5">{label}</p>
     </div>
   );
 }
 
 function ListingCard({ listing }: { listing: ListingSummary }) {
-  const price = listing.targetPrice
-    ? `$${Number(listing.targetPrice).toLocaleString()}`
-    : "\u2014";
+  const price = listing.targetPrice ? `$${Number(listing.targetPrice).toLocaleString()}` : "\u2014";
 
   const conditionLabel = listing.condition
     ? listing.condition.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : null;
 
-  const meta = [conditionLabel, listing.category]
-    .filter(Boolean)
-    .join(" \u00b7 ");
+  const meta = [conditionLabel, listing.category].filter(Boolean).join(" \u00b7 ");
 
   return (
     <Link
       href={`/sell/listings/${listing.id}`}
-      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-slate-800 bg-bg-card/50 p-3 sm:p-4 hover:border-slate-700 transition-colors"
+      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4 hover:border-line transition-colors"
     >
       {/* Photo or placeholder */}
-      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-slate-800 overflow-hidden flex items-center justify-center">
+      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
         {listing.photoUrl ? (
+          // biome-ignore lint/performance/noImgElement: remote listing photo
           <img
             src={listing.photoUrl}
             alt={listing.title ?? "Listing"}
             className="h-full w-full object-cover"
           />
         ) : (
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-ink-muted"
+          >
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
             <line x1="7" y1="7" x2="7.01" y2="7" />
           </svg>
@@ -249,29 +352,53 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-white truncate text-sm sm:text-base">{listing.title ?? "Untitled"}</span>
-          <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+          <span className="font-semibold text-ink truncate text-sm sm:text-base">
+            {listing.title ?? "Untitled"}
+          </span>
+          <span className="shrink-0 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
             {listing.status === "published" ? "active" : listing.status}
           </span>
         </div>
-        {meta && <p className="text-xs sm:text-sm text-slate-400">{meta}</p>}
+        {meta && <p className="text-xs sm:text-sm text-ink-secondary">{meta}</p>}
       </div>
 
       {/* Price + negotiations */}
       <div className="shrink-0 text-right mr-1 sm:mr-2">
-        <p className="font-semibold text-white text-sm sm:text-base">{price}</p>
-        <p className="text-xs sm:text-sm text-slate-400">0 negotiations</p>
+        <p className="font-semibold text-ink text-sm sm:text-base">{price}</p>
+        <p className="text-xs sm:text-sm text-ink-secondary">0 negotiations</p>
       </div>
 
       {/* Action icons */}
       <div className="hidden sm:flex items-center gap-2 shrink-0">
         <ShareButton publicId={listing.publicId} />
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-ink-muted"
+        >
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </div>
       {/* Mobile chevron only */}
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 sm:hidden shrink-0">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-ink-muted sm:hidden shrink-0"
+      >
         <polyline points="9 18 15 12 9 6" />
       </svg>
     </Link>
@@ -279,20 +406,35 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
 }
 
 function DraftCard({ draft }: { draft: DraftSummary }) {
-  const stepLabel = STEP_LABELS[Math.min(draft.currentStep - 1, 4)] ?? "Photo";
   const updatedAgo = formatTimeAgo(draft.updatedAt);
 
   return (
     <Link
       href={`/sell/listings/new?draftId=${draft.id}`}
-      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-dashed border-slate-700 bg-bg-card/30 p-3 sm:p-4 hover:border-cyan-500/50 transition-colors"
+      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-dashed border-line bg-surface-raised/30 p-3 sm:p-4 hover:border-focus transition-colors"
     >
       {/* Photo or placeholder */}
-      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-slate-800 overflow-hidden flex items-center justify-center">
+      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
         {draft.photoUrl ? (
-          <img src={draft.photoUrl} alt={draft.title ?? "Draft"} className="h-full w-full object-cover" />
+          // biome-ignore lint/performance/noImgElement: remote draft photo
+          <img
+            src={draft.photoUrl}
+            alt={draft.title ?? "Draft"}
+            className="h-full w-full object-cover"
+          />
         ) : (
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-ink-muted"
+          >
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
           </svg>
@@ -302,22 +444,33 @@ function DraftCard({ draft }: { draft: DraftSummary }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-white truncate text-sm sm:text-base">
+          <span className="font-semibold text-ink truncate text-sm sm:text-base">
             {draft.draftName || draft.title || "Untitled Draft"}
           </span>
-          <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400">
+          <span className="shrink-0 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
             draft
           </span>
         </div>
-        <p className="text-xs sm:text-sm text-slate-400">
+        <p className="text-xs sm:text-sm text-ink-secondary">
           {draft.title ? `${draft.title} · ${updatedAgo}` : updatedAgo}
         </p>
       </div>
 
       {/* Resume button */}
       <div className="shrink-0 flex items-center gap-2">
-        <span className="hidden sm:inline text-xs font-medium text-cyan-400">Resume</span>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500">
+        <span className="hidden sm:inline text-xs font-medium text-action-primary">Resume</span>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-ink-muted"
+        >
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </div>
@@ -342,6 +495,7 @@ function ShareButton({ publicId }: { publicId: string }) {
 
   return (
     <button
+      type="button"
       onClick={(e) => {
         e.preventDefault();
         const url = `${window.location.origin}/l/${publicId}`;
@@ -350,15 +504,36 @@ function ShareButton({ publicId }: { publicId: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+      className="p-1.5 rounded-lg hover:bg-surface-sunken text-ink-secondary hover:text-ink transition-colors cursor-pointer"
       title="Copy share link"
     >
       {copied ? (
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-success"
+        >
           <path d="M20 6 9 17l-5-5" />
         </svg>
       ) : (
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="18" cy="5" r="3" />
           <circle cx="6" cy="12" r="3" />
           <circle cx="18" cy="19" r="3" />
@@ -369,4 +544,3 @@ function ShareButton({ publicId }: { publicId: string }) {
     </button>
   );
 }
-

@@ -1,14 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type {
-  DisputeInboxItem,
-  InboxType,
-  PaymentInboxItem,
-  TagInboxItem,
-} from "@/lib/admin-api";
-import { InboxTable, type ColumnDef } from "./InboxTable";
+import type { DisputeInboxItem, InboxType, PaymentInboxItem, TagInboxItem } from "@/lib/admin-api";
 import { DetailDrawer } from "./DetailDrawer";
+import { type ColumnDef, InboxTable } from "./InboxTable";
 
 const TABS: { key: InboxType; label: string }[] = [
   { key: "tag", label: "Tags" },
@@ -26,29 +21,27 @@ const tagColumns: ColumnDef<TagInboxItem>[] = [
   {
     key: "label",
     label: "Label",
-    render: (r) => <span className="font-medium text-neutral-900">{r.label}</span>,
+    render: (r) => <span className="font-medium text-ink">{r.label}</span>,
   },
   {
     key: "count",
     label: "Count",
-    render: (r) => <span className="text-neutral-700">{r.occurrenceCount}</span>,
+    render: (r) => <span className="text-ink-secondary">{r.occurrenceCount}</span>,
   },
   {
     key: "eligible",
     label: "Auto-promote",
     render: (r) =>
       r.autoPromoteEligible ? (
-        <span className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">
-          eligible
-        </span>
+        <span className="rounded bg-success-soft px-2 py-0.5 text-xs text-success">eligible</span>
       ) : (
-        <span className="text-xs text-neutral-400">—</span>
+        <span className="text-xs text-ink-muted">—</span>
       ),
   },
   {
     key: "createdAt",
     label: "Created",
-    render: (r) => <span className="text-neutral-500">{fmt(r.createdAt)}</span>,
+    render: (r) => <span className="text-ink-muted">{fmt(r.createdAt)}</span>,
   },
 ];
 
@@ -56,24 +49,22 @@ const disputeColumns: ColumnDef<DisputeInboxItem>[] = [
   {
     key: "orderId",
     label: "Order",
-    render: (r) => (
-      <span className="font-mono text-xs text-neutral-700">{r.orderId}</span>
-    ),
+    render: (r) => <span className="font-mono text-xs text-ink-secondary">{r.orderId}</span>,
   },
   {
     key: "status",
     label: "Status",
-    render: (r) => <span className="text-neutral-700">{r.status}</span>,
+    render: (r) => <span className="text-ink-secondary">{r.status}</span>,
   },
   {
     key: "reason",
     label: "Reason",
-    render: (r) => <span className="text-neutral-600">{r.reasonCode}</span>,
+    render: (r) => <span className="text-ink-secondary">{r.reasonCode}</span>,
   },
   {
     key: "openedAt",
     label: "Opened",
-    render: (r) => <span className="text-neutral-500">{fmt(r.openedAt)}</span>,
+    render: (r) => <span className="text-ink-muted">{fmt(r.openedAt)}</span>,
   },
 ];
 
@@ -81,39 +72,27 @@ const paymentColumns: ColumnDef<PaymentInboxItem>[] = [
   {
     key: "orderId",
     label: "Order",
-    render: (r) => (
-      <span className="font-mono text-xs text-neutral-700">
-        {r.orderId ?? "—"}
-      </span>
-    ),
+    render: (r) => <span className="font-mono text-xs text-ink-secondary">{r.orderId ?? "—"}</span>,
   },
   {
     key: "amount",
     label: "Amount",
-    render: (r) => (
-      <span className="text-neutral-800">
-        {(r.amountMinor / 100).toFixed(2)}
-      </span>
-    ),
+    render: (r) => <span className="text-ink">{(r.amountMinor / 100).toFixed(2)}</span>,
   },
   {
     key: "rail",
     label: "Rail",
-    render: (r) => <span className="text-neutral-600">{r.rail ?? "—"}</span>,
+    render: (r) => <span className="text-ink-secondary">{r.rail ?? "—"}</span>,
   },
   {
     key: "error",
     label: "Error",
-    render: (r) => (
-      <span className="truncate text-xs text-red-700">
-        {r.providerError ?? "—"}
-      </span>
-    ),
+    render: (r) => <span className="truncate text-xs text-error">{r.providerError ?? "—"}</span>,
   },
   {
     key: "failedAt",
     label: "Failed",
-    render: (r) => <span className="text-neutral-500">{fmt(r.failedAt)}</span>,
+    render: (r) => <span className="text-ink-muted">{fmt(r.failedAt)}</span>,
   },
 ];
 
@@ -135,7 +114,7 @@ export function InboxTabs() {
       <div
         role="tablist"
         aria-label="Inbox categories"
-        className="mb-4 flex gap-1 border-b border-neutral-200"
+        className="mb-4 flex gap-1 border-b border-line"
       >
         {TABS.map((tab) => {
           const active = tab.key === activeTab;
@@ -153,8 +132,8 @@ export function InboxTabs() {
               className={
                 "px-4 py-2 text-sm font-medium transition-colors " +
                 (active
-                  ? "border-b-2 border-neutral-900 text-neutral-900"
-                  : "text-neutral-500 hover:text-neutral-800")
+                  ? "border-b-2 border-action-primary text-ink"
+                  : "text-ink-muted hover:text-ink")
               }
             >
               {tab.label}

@@ -59,6 +59,10 @@ ENV HOST=0.0.0.0
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
 COPY --from=build /app/apps/api/dist ./apps/api/dist
+# Widget HTML (Vite single-file build) — read at runtime by mcp/resources.ts
+# and served as the ui://haggle/listing.html MCP App resource. Without this the
+# server falls back to a "Widget not available" stub and the ChatGPT form is blank.
+COPY --from=build /app/apps/api/widget/dist ./apps/api/widget/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /app/package.json ./

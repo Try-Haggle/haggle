@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { NegotiationAgentPreset, ChatStrategy } from "@haggle/shared";
+import type { ChatStrategy, NegotiationAgentPreset } from "@haggle/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -85,7 +85,9 @@ function agentKey(listingId: string): string {
 export function saveSelectedAgent(listingId: string, agentId: string): void {
   try {
     localStorage.setItem(agentKey(listingId), JSON.stringify({ agentId, updatedAt: Date.now() }));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function loadSelectedAgentId(listingId: string): string | null {
@@ -98,11 +100,17 @@ export function loadSelectedAgentId(listingId: string): string | null {
       return null;
     }
     return data.agentId;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export function clearSelectedAgent(listingId: string): void {
-  try { localStorage.removeItem(agentKey(listingId)); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(agentKey(listingId));
+  } catch {
+    /* ignore */
+  }
 }
 
 function saveSession(listingId: string, agentId: string, session: PersistedSession): void {
@@ -139,23 +147,14 @@ function clearSession(listingId: string, agentId: string): void {
 
 /* ─── Constants ───────────────────────────────────────────── */
 
-
 function buildInitialMemory(
   agent: NegotiationAgentPreset | null,
   category: string | null,
 ): NegotiationAgentBuilderMemory {
   const negotiationStyle =
-    agent?.id === "hunter"
-      ? "aggressive"
-      : agent?.id === "closer"
-        ? "defensive"
-        : "balanced";
+    agent?.id === "hunter" ? "aggressive" : agent?.id === "closer" ? "defensive" : "balanced";
   const riskStyle =
-    agent?.id === "hunter"
-      ? "lowest_price"
-      : agent?.id === "verifier"
-        ? "safe_first"
-        : "balanced";
+    agent?.id === "hunter" ? "lowest_price" : agent?.id === "verifier" ? "safe_first" : "balanced";
   const openingTactic =
     agent?.id === "verifier"
       ? "condition_anchor"
@@ -219,7 +218,7 @@ function extractChips(memory: NegotiationAgentBuilderMemory): StrategyChip[] {
 
 function renderMarkdownLite(text: string): string {
   return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-ink">$1</strong>')
     .replace(/\n/g, "<br />");
 }
 
@@ -233,7 +232,7 @@ function TypingDots() {
           key={i}
           className="inline-block h-[5px] w-[5px] rounded-full"
           style={{
-            backgroundColor: "#06b6d4",
+            backgroundColor: "var(--color-action-primary)",
             opacity: 0.5,
             animation: `dotPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
           }}
@@ -266,16 +265,20 @@ function BudgetWidget({
   const [max, setMax] = useState(basePrice);
 
   return (
-    <div className="mt-4 p-4 rounded-xl bg-[#0f172a] border border-[#1e293b]">
+    <div className="mt-4 p-4 rounded-xl bg-surface-raised border border-line">
       <div className="flex justify-between items-center mb-5">
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target price</p>
-          <p className="text-[16px] font-bold text-cyan-400">${target.toLocaleString()}</p>
+          <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
+            Target price
+          </p>
+          <p className="text-[16px] font-bold text-action-primary">${target.toLocaleString()}</p>
         </div>
-        <div className="h-[30px] w-[1px] bg-[#1e293b]" />
+        <div className="h-[30px] w-[1px] bg-surface-sunken" />
         <div className="text-center">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Max budget</p>
-          <p className="text-[16px] font-bold text-blue-400">${max.toLocaleString()}</p>
+          <p className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1">
+            Max budget
+          </p>
+          <p className="text-[16px] font-bold text-action-primary">${max.toLocaleString()}</p>
         </div>
       </div>
 
@@ -292,7 +295,7 @@ function BudgetWidget({
               setTarget(val);
               if (val > max) setMax(val);
             }}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            className="w-full h-1.5 bg-surface-sunken rounded-lg appearance-none cursor-pointer accent-action-primary"
           />
         </div>
         <div className="relative">
@@ -307,7 +310,7 @@ function BudgetWidget({
               setMax(val);
               if (val < target) setTarget(val);
             }}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            className="w-full h-1.5 bg-surface-sunken rounded-lg appearance-none cursor-pointer accent-action-primary"
           />
         </div>
       </div>
@@ -315,7 +318,7 @@ function BudgetWidget({
       <button
         type="button"
         onClick={() => onSubmit(target, max)}
-        className="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+        className="w-full py-2.5 bg-cta hover:bg-cta-hover text-on-cta text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
       >
         Set budget
       </button>
@@ -325,31 +328,29 @@ function BudgetWidget({
 
 /* ─── Chip Category Colors ────────────────────────────────── */
 
-const CHIP_COLORS: Record<
-  StrategyChip["category"],
-  { bg: string; border: string; text: string }
-> = {
-  pricing: {
-    bg: "rgba(16,185,129,0.08)",
-    border: "rgba(16,185,129,0.25)",
-    text: "#34d399",
-  },
-  style: {
-    bg: "rgba(6,182,212,0.08)",
-    border: "rgba(6,182,212,0.25)",
-    text: "#22d3ee",
-  },
-  preference: {
-    bg: "rgba(59,130,246,0.08)",
-    border: "rgba(59,130,246,0.25)",
-    text: "#60a5fa",
-  },
-  constraint: {
-    bg: "rgba(239,68,68,0.08)",
-    border: "rgba(239,68,68,0.25)",
-    text: "#f87171",
-  },
-};
+const CHIP_COLORS: Record<StrategyChip["category"], { bg: string; border: string; text: string }> =
+  {
+    pricing: {
+      bg: "rgba(16,185,129,0.08)",
+      border: "rgba(16,185,129,0.25)",
+      text: "#34d399",
+    },
+    style: {
+      bg: "rgba(6,182,212,0.08)",
+      border: "rgba(6,182,212,0.25)",
+      text: "#22d3ee",
+    },
+    preference: {
+      bg: "rgba(59,130,246,0.08)",
+      border: "rgba(59,130,246,0.25)",
+      text: "#60a5fa",
+    },
+    constraint: {
+      bg: "rgba(239,68,68,0.08)",
+      border: "rgba(239,68,68,0.25)",
+      text: "#f87171",
+    },
+  };
 
 /* ─── Main Component ──────────────────────────────────────── */
 
@@ -476,7 +477,7 @@ export function NegotiationAgentBuilderChat({
     }
     // Always persist agent selection
     saveSelectedAgent(listingPublicId, agent.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent?.id, listingPublicId]);
 
   // Scroll chat to bottom locally without affecting page scroll
@@ -484,7 +485,7 @@ export function NegotiationAgentBuilderChat({
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({
         top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth"
+        behavior: "smooth",
       });
     }
   }, [messages.length, isLoading]);
@@ -493,9 +494,7 @@ export function NegotiationAgentBuilderChat({
   // so it can ground answers in the actual product/price the buyer is on
   // instead of asking "what are you looking for?".
   const buildAdvisorListings = useCallback(() => {
-    const askPriceMinor = listingPrice
-      ? Math.round(parseFloat(listingPrice) * 100)
-      : 0;
+    const askPriceMinor = listingPrice ? Math.round(parseFloat(listingPrice) * 100) : 0;
     if (!askPriceMinor) return [];
     const floorMinor = listingFloorPrice
       ? Math.round(parseFloat(listingFloorPrice) * 100)
@@ -620,7 +619,18 @@ export function NegotiationAgentBuilderChat({
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, memory, agent, side, listingPublicId, onNegotiationAgentBuilderMemoryUpdate, onStrategyUpdate, buildAdvisorListings, buildCurrentStrategy]);
+  }, [
+    input,
+    isLoading,
+    memory,
+    agent,
+    side,
+    listingPublicId,
+    onNegotiationAgentBuilderMemoryUpdate,
+    onStrategyUpdate,
+    buildAdvisorListings,
+    buildCurrentStrategy,
+  ]);
 
   const handleReset = useCallback(() => {
     if (!agent) return;
@@ -643,72 +653,32 @@ export function NegotiationAgentBuilderChat({
     scrollToTop();
   }, [agent, listingPublicId, listingCategory, listingTitle, listingPrice, scrollToTop]);
 
-  const handleBudgetSubmit = useCallback(async (target: number, max: number) => {
-    if (isLoading) return;
+  const handleBudgetSubmit = useCallback(
+    async (target: number, max: number) => {
+      if (isLoading) return;
 
-    const userText = `My target price is $${target}, and my max budget is $${max}.`;
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      text: userText,
-      timestamp: Date.now(),
-    };
-
-    // Optimistic memory update
-    const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
-    setMemory(updatedMemoryOptimistic);
-    onNegotiationAgentBuilderMemoryUpdate?.(updatedMemoryOptimistic);
-
-    setMessages((prev) => {
-      // Remove widget from the greeting
-      const withoutWidget = prev.map(m => m.id === "greeting" ? { ...m, widget: undefined } : m);
-      const next = [...withoutWidget, userMsg];
-      if (agent) {
-        saveSession(listingPublicId, agent.id, {
-          memory: updatedMemoryOptimistic,
-          messages: next,
-          agentId: agent.id,
-          updatedAt: Date.now(),
-        });
-      }
-      return next;
-    });
-    setIsLoading(true);
-
-    try {
-      const data = await apiClient<{
-        memory?: NegotiationAgentBuilderMemory;
-        reply?: string;
-        strategy?: ChatStrategy;
-      }>("/negotiations/agents/builder/chat-turn", {
-        method: "POST",
-        body: JSON.stringify({
-          message: userText,
-          previous_memory: updatedMemoryOptimistic,
-          side,
-          agent_id: agent?.id ?? "balancer",
-          listings: buildAdvisorListings(),
-          current_strategy: buildCurrentStrategy(),
-        }),
-        skipAuth: true,
-      });
-
-      const updatedMemory: NegotiationAgentBuilderMemory = data.memory ?? updatedMemoryOptimistic;
-      setMemory(updatedMemory);
-      onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
-      if (data.strategy) onStrategyUpdate?.(data.strategy);
-
-      const agentMsg: ChatMessage = {
-        id: `agent-${Date.now()}`,
-        role: "agent",
-        text: data.reply ?? "Got it. Any conditions you want to require or avoid?",
+      const userText = `My target price is $${target}, and my max budget is $${max}.`;
+      const userMsg: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        text: userText,
         timestamp: Date.now(),
       };
+
+      // Optimistic memory update
+      const updatedMemoryOptimistic = { ...memory, targetPrice: target, budgetMax: max };
+      setMemory(updatedMemoryOptimistic);
+      onNegotiationAgentBuilderMemoryUpdate?.(updatedMemoryOptimistic);
+
       setMessages((prev) => {
-        const next = [...prev, agentMsg];
+        // Remove widget from the greeting
+        const withoutWidget = prev.map((m) =>
+          m.id === "greeting" ? { ...m, widget: undefined } : m,
+        );
+        const next = [...withoutWidget, userMsg];
         if (agent) {
           saveSession(listingPublicId, agent.id, {
-            memory: updatedMemory,
+            memory: updatedMemoryOptimistic,
             messages: next,
             agentId: agent.id,
             updatedAt: Date.now(),
@@ -716,29 +686,84 @@ export function NegotiationAgentBuilderChat({
         }
         return next;
       });
-    } catch (err: unknown) {
-      console.error("[negotiation-agent-builder-chat] API error:", err);
-      const errorMsg: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: "agent",
-        text: "Connection problem. Please try again in a moment.",
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => {
-        if (agent && prev.length > 1) {
-          saveSession(listingPublicId, agent.id, {
-            memory: updatedMemoryOptimistic,
-            messages: prev,
-            agentId: agent.id,
-            updatedAt: Date.now(),
-          });
-        }
-        return [...prev, errorMsg];
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading, memory, agent, side, listingPublicId, onNegotiationAgentBuilderMemoryUpdate, onStrategyUpdate, buildAdvisorListings, buildCurrentStrategy]);
+      setIsLoading(true);
+
+      try {
+        const data = await apiClient<{
+          memory?: NegotiationAgentBuilderMemory;
+          reply?: string;
+          strategy?: ChatStrategy;
+        }>("/negotiations/agents/builder/chat-turn", {
+          method: "POST",
+          body: JSON.stringify({
+            message: userText,
+            previous_memory: updatedMemoryOptimistic,
+            side,
+            agent_id: agent?.id ?? "balancer",
+            listings: buildAdvisorListings(),
+            current_strategy: buildCurrentStrategy(),
+          }),
+          skipAuth: true,
+        });
+
+        const updatedMemory: NegotiationAgentBuilderMemory = data.memory ?? updatedMemoryOptimistic;
+        setMemory(updatedMemory);
+        onNegotiationAgentBuilderMemoryUpdate?.(updatedMemory);
+        if (data.strategy) onStrategyUpdate?.(data.strategy);
+
+        const agentMsg: ChatMessage = {
+          id: `agent-${Date.now()}`,
+          role: "agent",
+          text: data.reply ?? "Got it. Any conditions you want to require or avoid?",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => {
+          const next = [...prev, agentMsg];
+          if (agent) {
+            saveSession(listingPublicId, agent.id, {
+              memory: updatedMemory,
+              messages: next,
+              agentId: agent.id,
+              updatedAt: Date.now(),
+            });
+          }
+          return next;
+        });
+      } catch (err: unknown) {
+        console.error("[negotiation-agent-builder-chat] API error:", err);
+        const errorMsg: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: "agent",
+          text: "Connection problem. Please try again in a moment.",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => {
+          if (agent && prev.length > 1) {
+            saveSession(listingPublicId, agent.id, {
+              memory: updatedMemoryOptimistic,
+              messages: prev,
+              agentId: agent.id,
+              updatedAt: Date.now(),
+            });
+          }
+          return [...prev, errorMsg];
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      isLoading,
+      memory,
+      agent,
+      side,
+      listingPublicId,
+      onNegotiationAgentBuilderMemoryUpdate,
+      onStrategyUpdate,
+      buildAdvisorListings,
+      buildCurrentStrategy,
+    ],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -756,22 +781,22 @@ export function NegotiationAgentBuilderChat({
       ref={chatTopRef}
       className="mt-4 flex-1 flex flex-col rounded-xl border overflow-hidden transition-all duration-300"
       style={{
-        borderColor: "#1e293b",
-        background: "#0f172a",
-        minHeight: isExpanded ? "400px" : "200px"
+        borderColor: "var(--color-border-default)",
+        background: "var(--color-surface-raised)",
+        minHeight: isExpanded ? "400px" : "200px",
       }}
     >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-3 shrink-0"
-        style={{ borderBottom: "1px solid #1e293b" }}
+        style={{ borderBottom: "1px solid var(--color-border-default)" }}
       >
         <svg
           viewBox="0 0 24 24"
           width="16"
           height="16"
           fill="none"
-          stroke={agent?.accentColor ?? "#06b6d4"}
+          stroke={agent?.accentColor ?? "var(--color-action-primary)"}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -780,7 +805,7 @@ export function NegotiationAgentBuilderChat({
         </svg>
         <span
           className="text-[13px] font-semibold flex-1"
-          style={{ color: agent?.accentColor ?? "#06b6d4" }}
+          style={{ color: agent?.accentColor ?? "var(--color-action-primary)" }}
         >
           {agent ? agent.copy[role].name : role === "seller" ? "Selling Agent" : "Buying Agent"}
         </span>
@@ -789,7 +814,7 @@ export function NegotiationAgentBuilderChat({
             className="text-[10px] font-medium px-2 py-0.5 rounded-full"
             style={{
               background: "rgba(6,182,212,0.1)",
-              color: "#06b6d4",
+              color: "var(--color-action-primary)",
               border: "1px solid rgba(6,182,212,0.2)",
             }}
           >
@@ -801,11 +826,20 @@ export function NegotiationAgentBuilderChat({
           <button
             type="button"
             onClick={handleReset}
-            className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-white/5"
+            className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-surface-sunken"
             title="Reset conversation"
             aria-label="Reset strategy chat"
           >
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="var(--color-ink-muted)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="1 4 1 10 7 10" />
               <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
             </svg>
@@ -838,8 +872,8 @@ export function NegotiationAgentBuilderChat({
                         border: "1px solid rgba(6,182,212,0.2)",
                       }
                     : {
-                        background: "#111827",
-                        border: "1px solid #1e293b",
+                        background: "var(--color-surface-raised)",
+                        border: "1px solid var(--color-border-default)",
                       }
                 }
               >
@@ -848,15 +882,15 @@ export function NegotiationAgentBuilderChat({
                     <span
                       className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
                       style={{
-                        backgroundColor: `${agent?.accentColor ?? "#06b6d4"}22`,
-                        color: agent?.accentColor ?? "#06b6d4",
+                        backgroundColor: `${agent?.accentColor ?? "var(--color-action-primary)"}22`,
+                        color: agent?.accentColor ?? "var(--color-action-primary)",
                       }}
                     >
                       🤖
                     </span>
                     <span
                       className="text-[10px] font-semibold"
-                      style={{ color: agent?.accentColor ?? "#06b6d4" }}
+                      style={{ color: agent?.accentColor ?? "var(--color-action-primary)" }}
                     >
                       {agent?.copy[role].name ?? "Agent"}
                     </span>
@@ -864,17 +898,16 @@ export function NegotiationAgentBuilderChat({
                 )}
                 <p
                   className="text-[13px] leading-[1.6]"
-                  style={{ color: msg.role === "user" ? "#e2e8f0" : "#cbd5e1" }}
+                  style={{
+                    color: msg.role === "user" ? "var(--color-ink)" : "var(--color-ink-secondary)",
+                  }}
                   dangerouslySetInnerHTML={{
                     __html: renderMarkdownLite(msg.text),
                   }}
                 />
 
                 {msg.widget === "budget-slider" && (
-                  <BudgetWidget
-                    listingPrice={listingPrice}
-                    onSubmit={handleBudgetSubmit}
-                  />
+                  <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
                 )}
               </div>
             </div>
@@ -885,14 +918,17 @@ export function NegotiationAgentBuilderChat({
             <div className="flex justify-start" style={{ animation: "fadeSlideIn 0.2s ease-out" }}>
               <div
                 className="rounded-xl px-3.5 py-2.5"
-                style={{ background: "#111827", border: "1px solid #1e293b" }}
+                style={{
+                  background: "var(--color-surface-raised)",
+                  border: "1px solid var(--color-border-default)",
+                }}
               >
                 <div className="flex items-center gap-1.5">
                   <span
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
                     style={{
-                      backgroundColor: `${agent?.accentColor ?? "#06b6d4"}22`,
-                      color: agent?.accentColor ?? "#06b6d4",
+                      backgroundColor: `${agent?.accentColor ?? "var(--color-action-primary)"}22`,
+                      color: agent?.accentColor ?? "var(--color-action-primary)",
                     }}
                   >
                     🤖
@@ -912,13 +948,13 @@ export function NegotiationAgentBuilderChat({
         <div
           className="px-4 py-2 flex flex-wrap gap-1.5 overflow-x-auto shrink-0"
           style={{
-            borderTop: "1px solid #1e293b",
-            background: "#0d1321",
+            borderTop: "1px solid var(--color-border-default)",
+            background: "var(--color-surface-overlay)",
           }}
         >
           <span
             className="text-[10px] font-semibold tracking-wider mr-1 self-center"
-            style={{ color: "#475569" }}
+            style={{ color: "var(--color-ink-muted)" }}
           >
             STRATEGY
           </span>
@@ -946,8 +982,8 @@ export function NegotiationAgentBuilderChat({
       <div
         className="px-3 py-2.5 flex items-center gap-2 shrink-0"
         style={{
-          borderTop: "1px solid #1e293b",
-          background: "#0d1321",
+          borderTop: "1px solid var(--color-border-default)",
+          background: "var(--color-surface-overlay)",
         }}
       >
         <input
@@ -964,7 +1000,7 @@ export function NegotiationAgentBuilderChat({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={!hasAgentSelected || isLoading}
-          className="flex-1 bg-transparent text-[13px] text-slate-200 placeholder-slate-600 outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:opacity-40 disabled:cursor-not-allowed"
         />
         <button
           type="button"
@@ -974,9 +1010,9 @@ export function NegotiationAgentBuilderChat({
           style={{
             background:
               input.trim() && hasAgentSelected
-                ? agent?.accentColor ?? "#06b6d4"
+                ? (agent?.accentColor ?? "var(--color-action-primary)")
                 : "transparent",
-            border: `1px solid ${input.trim() && hasAgentSelected ? "transparent" : "#334155"}`,
+            border: `1px solid ${input.trim() && hasAgentSelected ? "transparent" : "var(--color-border-default)"}`,
           }}
           aria-label="Send message"
         >
@@ -986,7 +1022,7 @@ export function NegotiationAgentBuilderChat({
             height="14"
             fill="none"
             stroke={
-              input.trim() && hasAgentSelected ? "#ffffff" : "#475569"
+              input.trim() && hasAgentSelected ? "var(--color-on-cta)" : "var(--color-ink-muted)"
             }
             strokeWidth="2"
             strokeLinecap="round"

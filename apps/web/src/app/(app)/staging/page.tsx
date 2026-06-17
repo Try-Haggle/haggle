@@ -159,9 +159,9 @@ const DEMO_PAGES: FlowStep[] = [
 ];
 
 const STATUS_BADGE = {
-  ready: { label: "Ready", color: "bg-emerald-500/20 text-emerald-400" },
-  needs_data: { label: "Needs Data", color: "bg-amber-500/20 text-amber-400" },
-  needs_deploy: { label: "Needs Deploy", color: "bg-red-500/20 text-red-400" },
+  ready: { label: "Ready", color: "bg-success-soft text-success" },
+  needs_data: { label: "Needs Data", color: "bg-warning-soft text-warning" },
+  needs_deploy: { label: "Needs Deploy", color: "bg-error-soft text-error" },
 };
 
 function FlowCard({ step }: { step: FlowStep }) {
@@ -169,12 +169,12 @@ function FlowCard({ step }: { step: FlowStep }) {
   return (
     <Link
       href={step.href}
-      className="group block rounded-xl border border-slate-800 bg-slate-900/50 p-5 hover:border-slate-600 transition-colors"
+      className="group block rounded-xl border border-line bg-surface-sunken/50 p-5 hover:border-line-strong transition-colors"
     >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <span className="text-xs font-mono text-slate-600">{step.num}</span>
-          <h3 className="text-base font-semibold text-white group-hover:text-cyan-400 transition-colors">
+          <span className="text-xs font-mono text-ink-muted">{step.num}</span>
+          <h3 className="text-base font-semibold text-ink group-hover:text-action-primary transition-colors">
             {step.title}
           </h3>
         </div>
@@ -182,10 +182,13 @@ function FlowCard({ step }: { step: FlowStep }) {
           {badge.label}
         </span>
       </div>
-      <p className="text-sm text-slate-400 mb-3">{step.description}</p>
+      <p className="text-sm text-ink-secondary mb-3">{step.description}</p>
       <div className="flex flex-wrap gap-1">
         {step.features.map((f) => (
-          <span key={f} className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">
+          <span
+            key={f}
+            className="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-ink-muted"
+          >
             {f}
           </span>
         ))}
@@ -198,75 +201,85 @@ export default function StagingPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Staging Hub</h1>
-        <p className="text-sm text-slate-400 mt-1">
+        <h1 className="text-2xl font-bold text-ink">Staging Hub</h1>
+        <p className="text-sm text-ink-secondary mt-1">
           Full Haggle flow — test everything end-to-end
         </p>
       </div>
 
       {/* Seller Flow */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <span className="rounded bg-cyan-500/20 px-2 py-0.5 text-xs text-cyan-400">Seller</span>
+        <h2 className="text-lg font-semibold text-ink mb-4 flex items-center gap-2">
+          <span className="rounded bg-action-primary/20 px-2 py-0.5 text-xs text-action-primary">
+            Seller
+          </span>
           Flow
         </h2>
         <div className="grid sm:grid-cols-3 gap-4">
-          {SELLER_FLOW.map((s) => <FlowCard key={s.num} step={s} />)}
+          {SELLER_FLOW.map((s) => (
+            <FlowCard key={s.num} step={s} />
+          ))}
         </div>
       </section>
 
       {/* Buyer Flow */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">Buyer</span>
+        <h2 className="text-lg font-semibold text-ink mb-4 flex items-center gap-2">
+          <span className="rounded bg-info-soft px-2 py-0.5 text-xs text-info">Buyer</span>
           Flow
         </h2>
         <div className="grid sm:grid-cols-3 gap-4">
-          {BUYER_FLOW.map((s) => <FlowCard key={s.num} step={s} />)}
+          {BUYER_FLOW.map((s) => (
+            <FlowCard key={s.num} step={s} />
+          ))}
         </div>
       </section>
 
       {/* Features */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">Features</span>
+        <h2 className="text-lg font-semibold text-ink mb-4 flex items-center gap-2">
+          <span className="rounded bg-info-soft px-2 py-0.5 text-xs text-info">Features</span>
           Common
         </h2>
         <div className="grid sm:grid-cols-3 gap-4">
-          {COMMON_FEATURES.map((s) => <FlowCard key={s.num} step={s} />)}
+          {COMMON_FEATURES.map((s) => (
+            <FlowCard key={s.num} step={s} />
+          ))}
         </div>
       </section>
 
       {/* Demo Pages */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <span className="rounded bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">Demo</span>
+        <h2 className="text-lg font-semibold text-ink mb-4 flex items-center gap-2">
+          <span className="rounded bg-warning-soft px-2 py-0.5 text-xs text-warning">Demo</span>
           Public Pages
         </h2>
         <div className="grid sm:grid-cols-3 gap-4">
-          {DEMO_PAGES.map((s) => <FlowCard key={s.num} step={s} />)}
+          {DEMO_PAGES.map((s) => (
+            <FlowCard key={s.num} step={s} />
+          ))}
         </div>
       </section>
 
       {/* API Health */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-white mb-4">API Endpoints</h2>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 font-mono text-xs space-y-1 text-slate-400">
-          <div>GET  /health — API health check</div>
-          <div>GET  /payments/onramp/status — Stripe onramp availability</div>
-          <div>GET  /hfmi/:model/median — Market price query</div>
-          <div>GET  /me/level — Agent level & XP</div>
-          <div>GET  /buddies — User's buddy list</div>
-          <div>GET  /leaderboard — Global rankings</div>
+        <h2 className="text-lg font-semibold text-ink mb-4">API Endpoints</h2>
+        <div className="rounded-xl border border-line bg-surface-sunken/50 p-5 font-mono text-xs space-y-1 text-ink-secondary">
+          <div>GET /health — API health check</div>
+          <div>GET /payments/onramp/status — Stripe onramp availability</div>
+          <div>GET /hfmi/:model/median — Market price query</div>
+          <div>GET /me/level — Agent level & XP</div>
+          <div>GET /buddies — User's buddy list</div>
+          <div>GET /leaderboard — Global rankings</div>
           <div>POST /negotiations/sessions — Create session</div>
           <div>POST /negotiations/sessions/:id/offers — Submit offer</div>
-          <div>WS   /ws/negotiations/:sessionId — Real-time updates</div>
+          <div>WS /ws/negotiations/:sessionId — Real-time updates</div>
         </div>
       </section>
 
       {/* Quick Stats */}
       <section>
-        <h2 className="text-lg font-semibold text-white mb-4">System Stats</h2>
+        <h2 className="text-lg font-semibold text-ink mb-4">System Stats</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat label="DB Tables" value="57" />
           <Stat label="HFMI Observations" value="1,881" />
@@ -284,9 +297,9 @@ export default function StagingPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-center">
-      <div className="text-lg font-bold text-white">{value}</div>
-      <div className="text-[10px] text-slate-500">{label}</div>
+    <div className="rounded-lg border border-line bg-surface-sunken/50 p-3 text-center">
+      <div className="text-lg font-bold text-ink">{value}</div>
+      <div className="text-[10px] text-ink-muted">{label}</div>
     </div>
   );
 }

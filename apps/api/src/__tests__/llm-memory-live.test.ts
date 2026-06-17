@@ -8,13 +8,9 @@
  * recommendations for the same listing/offer, while tracking estimated cost.
  */
 
+import "../config/load-env.js";
 import { describe, expect, it } from "vitest";
-import dotenv from "dotenv";
-import { resolve } from "node:path";
 import { callLLM } from "../negotiation/adapters/xai-client.js";
-
-dotenv.config({ path: resolve(import.meta.dirname, "../../../../.env") });
-dotenv.config({ path: resolve(import.meta.dirname, "../../.env"), override: false });
 
 const shouldRunLive = process.env.RUN_LIVE_LLM_TESTS === "1" && !!process.env.XAI_API_KEY;
 const describeLive = shouldRunLive ? describe : describe.skip;
@@ -106,8 +102,10 @@ describeLive("Live LLM memory behavior", () => {
 });
 
 function effectiveRecommendedPrice(recommendation: MemoryRecommendation): number {
-  if (typeof recommendation.counter_price_minor === "number") return recommendation.counter_price_minor;
-  if (typeof recommendation.accepted_price_minor === "number") return recommendation.accepted_price_minor;
+  if (typeof recommendation.counter_price_minor === "number")
+    return recommendation.counter_price_minor;
+  if (typeof recommendation.accepted_price_minor === "number")
+    return recommendation.accepted_price_minor;
   throw new Error(`Recommendation has no effective price: ${JSON.stringify(recommendation)}`);
 }
 

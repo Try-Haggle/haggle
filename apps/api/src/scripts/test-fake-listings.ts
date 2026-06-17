@@ -5,16 +5,9 @@
  *   npx tsx apps/api/src/scripts/test-fake-listings.ts
  */
 
-import { config } from "dotenv";
-import { resolve } from "node:path";
-config({ path: resolve(import.meta.dirname, "../../.env") });
-config({ path: resolve(import.meta.dirname, "../../../../.env"), override: false });
-
-import {
-  placeTagsWithLlm,
-  type LlmPlacementInput,
-} from "../services/tag-placement-llm.service.js";
+import "../config/load-env.js";
 import type { TagCandidate } from "../services/tag-candidate.service.js";
+import { type LlmPlacementInput, placeTagsWithLlm } from "../services/tag-placement-llm.service.js";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -38,7 +31,10 @@ function makeCand(id: string, label: string, idf: number): TagCandidate {
   };
 }
 
-function overlapScore(expected: string[], actual: string[]): {
+function overlapScore(
+  expected: string[],
+  actual: string[],
+): {
   matched: string[];
   missed: string[];
   unexpected: string[];
@@ -272,7 +268,9 @@ async function main() {
     const actualLabels = result.proposedTags.map((t) => t.label);
 
     // ── 5. LLM 결과 ──
-    console.log(`\n  📊 LLM 결과 (${result.latencyMs}ms, ${result.tokensIn}+${result.tokensOut} tok)`);
+    console.log(
+      `\n  📊 LLM 결과 (${result.latencyMs}ms, ${result.tokensIn}+${result.tokensOut} tok)`,
+    );
     console.log(`  ├─ 유지 (${kept.length}): ${kept.join(", ")}`);
     if (dropped.length > 0) console.log(`  ├─ 제거 (${dropped.length}): ${dropped.join(", ")}`);
     console.log(`  ├─ reasoning: "${result.reasoning}"`);

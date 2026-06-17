@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://haggle-production-7dee.up.railway.app";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.tryhaggle.ai";
 
 function makeDevToken(sub: string): string {
   const header = btoa(JSON.stringify({ alg: "HS256" })).replace(/=/g, "");
@@ -58,17 +58,17 @@ interface StrategyForm {
 
 const DEFAULT_STRATEGY: StrategyForm = {
   // Narrow ZOPA: buyer up to 10000, seller down to 9000 → overlap only 9000-10000
-  buyer_target: 7000,   // buyer's dream price
-  buyer_limit: 10000,   // buyer's walk-away
+  buyer_target: 7000, // buyer's dream price
+  buyer_limit: 10000, // buyer's walk-away
   seller_target: 12000, // seller's dream price
-  seller_limit: 9000,   // seller's walk-away
+  seller_limit: 9000, // seller's walk-away
   w_p: 0.6,
   w_t: 0.2,
   w_r: 0.1,
   w_s: 0.1,
-  alpha: 0.4,           // slower concession → more rounds
+  alpha: 0.4, // slower concession → more rounds
   beta: 1.2,
-  u_threshold: 0.7,     // higher bar → won't accept first decent offer
+  u_threshold: 0.7, // higher bar → won't accept first decent offer
   u_aspiration: 0.9,
 };
 
@@ -230,21 +230,25 @@ export default function NegotiatePage() {
     }
     setBusy(true);
     try {
-      const resp = (await api(targetToken, `/negotiations/sessions/${targetState.sessionId}/offers`, {
-        method: "POST",
-        body: JSON.stringify({
-          price_minor: price,
-          sender_role: from,
-          idempotency_key: crypto.randomUUID(),
-          round_data: {
-            r_score: 0.7,
-            i_completeness: 0.8,
-            t_elapsed: 60,
-            n_success: 5,
-            n_dispute_losses: 0,
-          },
-        }),
-      })) as unknown as OfferResponse;
+      const resp = (await api(
+        targetToken,
+        `/negotiations/sessions/${targetState.sessionId}/offers`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            price_minor: price,
+            sender_role: from,
+            idempotency_key: crypto.randomUUID(),
+            round_data: {
+              r_score: 0.7,
+              i_completeness: 0.8,
+              t_elapsed: 60,
+              n_success: 5,
+              n_dispute_losses: 0,
+            },
+          }),
+        },
+      )) as unknown as OfferResponse;
 
       setTimeline((prev) => [
         ...prev,
@@ -289,22 +293,40 @@ export default function NegotiatePage() {
         const targetToken = to === "BUYER" ? BUYER_TOKEN : SELLER_TOKEN;
         if (!targetState.sessionId) break;
 
-        const resp = (await api(targetToken, `/negotiations/sessions/${targetState.sessionId}/offers`, {
-          method: "POST",
-          body: JSON.stringify({
-            price_minor: Math.round(nextPrice),
-            sender_role: nextFrom,
-            idempotency_key: crypto.randomUUID(),
-            round_data: { r_score: 0.7, i_completeness: 0.8, t_elapsed: 60 + i * 30, n_success: 5, n_dispute_losses: 0 },
-          }),
-        })) as unknown as OfferResponse;
+        const resp = (await api(
+          targetToken,
+          `/negotiations/sessions/${targetState.sessionId}/offers`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              price_minor: Math.round(nextPrice),
+              sender_role: nextFrom,
+              idempotency_key: crypto.randomUUID(),
+              round_data: {
+                r_score: 0.7,
+                i_completeness: 0.8,
+                t_elapsed: 60 + i * 30,
+                n_success: 5,
+                n_dispute_losses: 0,
+              },
+            }),
+          },
+        )) as unknown as OfferResponse;
 
         const priceUsed = nextPrice;
-        setTimeline((prev) => [...prev, {
-          ts: Date.now(), from: nextFrom, to, price: Math.round(priceUsed),
-          decision: resp.decision, utility: resp.utility,
-          counterPrice: resp.outgoing_price, sessionStatus: resp.session_status,
-        }]);
+        setTimeline((prev) => [
+          ...prev,
+          {
+            ts: Date.now(),
+            from: nextFrom,
+            to,
+            price: Math.round(priceUsed),
+            decision: resp.decision,
+            utility: resp.utility,
+            counterPrice: resp.outgoing_price,
+            sessionStatus: resp.session_status,
+          },
+        ]);
         appendLog(
           `auto[${i + 1}] ${nextFrom}→${to} ${Math.round(priceUsed)} | ${resp.decision} counter=${resp.outgoing_price} U=${resp.utility.u_total.toFixed(3)} ${resp.session_status}`,
         );
@@ -315,7 +337,11 @@ export default function NegotiatePage() {
           appendLog(`✓ DEAL @ ${Math.round(priceUsed)}`);
           break;
         }
-        if (resp.decision === "REJECT" || resp.session_status === "REJECTED" || resp.session_status === "EXPIRED") {
+        if (
+          resp.decision === "REJECT" ||
+          resp.session_status === "REJECTED" ||
+          resp.session_status === "EXPIRED"
+        ) {
           appendLog(`✗ ended: ${resp.decision} / ${resp.session_status}`);
           break;
         }
@@ -404,24 +430,37 @@ export default function NegotiatePage() {
 
   return (
     <div style={pageStyle}>
-      <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>
-        Haggle Engine Playground
-      </h1>
-      <p style={{ color: "#555", marginBottom: 16, fontSize: 14 }}>
-        Real engine: <code>computeUtility</code> + <code>makeDecision</code> + <code>computeCounterOffer</code>.
-        Each side has its own session; an offer from X is evaluated by Y&apos;s engine.
+      <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 4 }}>Haggle Engine Playground</h1>
+      <p style={{ color: "var(--text-secondary)", marginBottom: 16, fontSize: 14 }}>
+        Real engine: <code>computeUtility</code> + <code>makeDecision</code> +{" "}
+        <code>computeCounterOffer</code>. Each side has its own session; an offer from X is
+        evaluated by Y&apos;s engine.
       </p>
 
-      <StrategyEditor strategy={strategy} setStrategy={setStrategy} disabled={busy || !!buyer.session} />
+      <StrategyEditor
+        strategy={strategy}
+        setStrategy={setStrategy}
+        disabled={busy || !!buyer.session}
+      />
 
       <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
-        <button onClick={createBothSessions} disabled={busy} style={primaryBtn}>
+        <button type="button" onClick={createBothSessions} disabled={busy} style={primaryBtn}>
           {buyer.session ? "↻ Recreate Sessions" : "1. Create BUYER + SELLER Sessions"}
         </button>
-        <button onClick={autoNegotiate} disabled={busy || !buyer.sessionId} style={{ ...primaryBtn, background: "#06f" }}>
+        <button
+          type="button"
+          onClick={autoNegotiate}
+          disabled={busy || !buyer.sessionId}
+          style={{ ...primaryBtn, background: "var(--fb-info-fg)" }}
+        >
           ▶ Auto-negotiate (ping-pong)
         </button>
-        <button onClick={simulateInMemory} disabled={busy} style={{ ...primaryBtn, background: "#a0f" }}>
+        <button
+          type="button"
+          onClick={simulateInMemory}
+          disabled={busy}
+          style={{ ...primaryBtn, background: "var(--action-primary)" }}
+        >
           ⚡ Simulate (in-memory, instant)
         </button>
       </div>
@@ -429,7 +468,7 @@ export default function NegotiatePage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <SidePanel
           title="🛒 BUYER engine"
-          color="#0a7"
+          color="var(--fb-info-fg)"
           state={buyer}
           offerValue={buyerOffer}
           onOfferChange={setBuyerOffer}
@@ -442,7 +481,7 @@ export default function NegotiatePage() {
         />
         <SidePanel
           title="🏪 SELLER engine"
-          color="#c63"
+          color="var(--badge-text)"
           state={seller}
           offerValue={sellerOffer}
           onOfferChange={setSellerOffer}
@@ -460,9 +499,14 @@ export default function NegotiatePage() {
       <section style={cardStyle}>
         <h2 style={h2Style}>📋 Activity Log</h2>
         <div style={{ fontFamily: "monospace", fontSize: 12, maxHeight: 200, overflow: "auto" }}>
-          {log.length === 0 && <em style={{ color: "#999" }}>no activity</em>}
-          {log.map((line, i) => (
-            <div key={i} style={{ padding: "2px 0", borderBottom: "1px solid #f0f0f0" }}>{line}</div>
+          {log.length === 0 && <em style={{ color: "var(--text-muted)" }}>no activity</em>}
+          {log.map((line) => (
+            <div
+              key={line}
+              style={{ padding: "2px 0", borderBottom: "1px solid var(--border-subtle)" }}
+            >
+              {line}
+            </div>
           ))}
         </div>
       </section>
@@ -471,42 +515,128 @@ export default function NegotiatePage() {
 }
 
 function StrategyEditor({
-  strategy, setStrategy, disabled,
-}: { strategy: StrategyForm; setStrategy: (s: StrategyForm) => void; disabled: boolean }) {
+  strategy,
+  setStrategy,
+  disabled,
+}: {
+  strategy: StrategyForm;
+  setStrategy: (s: StrategyForm) => void;
+  disabled: boolean;
+}) {
   function update<K extends keyof StrategyForm>(k: K, v: number) {
     setStrategy({ ...strategy, [k]: v });
   }
   return (
     <section style={{ ...cardStyle, marginBottom: 16 }}>
       <h2 style={h2Style}>⚙️ Strategy (MasterStrategy → reconstructStrategy)</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, fontSize: 12 }}>
-        <NumField label="Buyer target" value={strategy.buyer_target} onChange={(v) => update("buyer_target", v)} disabled={disabled} />
-        <NumField label="Buyer limit" value={strategy.buyer_limit} onChange={(v) => update("buyer_limit", v)} disabled={disabled} />
-        <NumField label="Seller target" value={strategy.seller_target} onChange={(v) => update("seller_target", v)} disabled={disabled} />
-        <NumField label="Seller limit" value={strategy.seller_limit} onChange={(v) => update("seller_limit", v)} disabled={disabled} />
-        <NumField label="w_p (price)" value={strategy.w_p} step={0.05} onChange={(v) => update("w_p", v)} disabled={disabled} />
-        <NumField label="w_t (time)" value={strategy.w_t} step={0.05} onChange={(v) => update("w_t", v)} disabled={disabled} />
-        <NumField label="w_r (rep)" value={strategy.w_r} step={0.05} onChange={(v) => update("w_r", v)} disabled={disabled} />
-        <NumField label="w_s (social)" value={strategy.w_s} step={0.05} onChange={(v) => update("w_s", v)} disabled={disabled} />
-        <NumField label="alpha (concession)" value={strategy.alpha} step={0.05} onChange={(v) => update("alpha", v)} disabled={disabled} />
-        <NumField label="beta (Faratin)" value={strategy.beta} step={0.1} onChange={(v) => update("beta", v)} disabled={disabled} />
-        <NumField label="u_threshold" value={strategy.u_threshold} step={0.05} onChange={(v) => update("u_threshold", v)} disabled={disabled} />
-        <NumField label="u_aspiration" value={strategy.u_aspiration} step={0.05} onChange={(v) => update("u_aspiration", v)} disabled={disabled} />
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, fontSize: 12 }}
+      >
+        <NumField
+          label="Buyer target"
+          value={strategy.buyer_target}
+          onChange={(v) => update("buyer_target", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="Buyer limit"
+          value={strategy.buyer_limit}
+          onChange={(v) => update("buyer_limit", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="Seller target"
+          value={strategy.seller_target}
+          onChange={(v) => update("seller_target", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="Seller limit"
+          value={strategy.seller_limit}
+          onChange={(v) => update("seller_limit", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="w_p (price)"
+          value={strategy.w_p}
+          step={0.05}
+          onChange={(v) => update("w_p", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="w_t (time)"
+          value={strategy.w_t}
+          step={0.05}
+          onChange={(v) => update("w_t", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="w_r (rep)"
+          value={strategy.w_r}
+          step={0.05}
+          onChange={(v) => update("w_r", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="w_s (social)"
+          value={strategy.w_s}
+          step={0.05}
+          onChange={(v) => update("w_s", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="alpha (concession)"
+          value={strategy.alpha}
+          step={0.05}
+          onChange={(v) => update("alpha", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="beta (Faratin)"
+          value={strategy.beta}
+          step={0.1}
+          onChange={(v) => update("beta", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="u_threshold"
+          value={strategy.u_threshold}
+          step={0.05}
+          onChange={(v) => update("u_threshold", v)}
+          disabled={disabled}
+        />
+        <NumField
+          label="u_aspiration"
+          value={strategy.u_aspiration}
+          step={0.05}
+          onChange={(v) => update("u_aspiration", v)}
+          disabled={disabled}
+        />
       </div>
-      <div style={{ marginTop: 8, fontSize: 11, color: "#888" }}>
-        Σw = {(strategy.w_p + strategy.w_t + strategy.w_r + strategy.w_s).toFixed(2)} (must be ≈ 1.0).
-        Locked after session creation — use Recreate to change.
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
+        Σw = {(strategy.w_p + strategy.w_t + strategy.w_r + strategy.w_s).toFixed(2)} (must be ≈
+        1.0). Locked after session creation — use Recreate to change.
       </div>
     </section>
   );
 }
 
 function NumField({
-  label, value, onChange, disabled, step = 1,
-}: { label: string; value: number; onChange: (v: number) => void; disabled: boolean; step?: number }) {
+  label,
+  value,
+  onChange,
+  disabled,
+  step = 1,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  disabled: boolean;
+  step?: number;
+}) {
   return (
     <label>
-      <div style={{ color: "#666", marginBottom: 2 }}>{label}</div>
+      <div style={{ color: "var(--text-secondary)", marginBottom: 2 }}>{label}</div>
       <input
         type="number"
         value={value}
@@ -532,27 +662,59 @@ function SidePanel(props: {
   target: number;
   limit: number;
 }) {
-  const { title, color, state, offerValue, onOfferChange, onOffer, onAccept, onReject, busy, target, limit } = props;
+  const {
+    title,
+    color,
+    state,
+    offerValue,
+    onOfferChange,
+    onOffer,
+    onAccept,
+    onReject,
+    busy,
+    target,
+    limit,
+  } = props;
   const u = state.session?.last_utility;
   return (
     <section style={{ ...cardStyle, borderTop: `4px solid ${color}` }}>
       <h2 style={{ ...h2Style, color }}>{title}</h2>
-      <div style={{ fontSize: 11, color: "#888", marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 8 }}>
         target={target} · limit={limit}
       </div>
       {state.session ? (
         <>
           <div style={{ fontSize: 13, marginBottom: 8, lineHeight: 1.6 }}>
-            <div><b>Status:</b> <span style={statusBadge(state.session.status)}>{state.session.status}</span></div>
-            <div><b>Round:</b> {state.session.current_round} · <b>v:</b> {state.session.version}</div>
-            <div><b>Last offer:</b> {state.session.last_offer_price_minor ?? "—"}</div>
+            <div>
+              <b>Status:</b>{" "}
+              <span style={statusBadge(state.session.status)}>{state.session.status}</span>
+            </div>
+            <div>
+              <b>Round:</b> {state.session.current_round} · <b>v:</b> {state.session.version}
+            </div>
+            <div>
+              <b>Last offer:</b> {state.session.last_offer_price_minor ?? "—"}
+            </div>
           </div>
 
           {u && (
-            <div style={{ background: "#f9f9f9", padding: 8, borderRadius: 4, fontSize: 11, marginBottom: 8 }}>
+            <div
+              style={{
+                background: "var(--bg-sunken)",
+                padding: 8,
+                borderRadius: 4,
+                fontSize: 11,
+                marginBottom: 8,
+              }}
+            >
               <div style={{ fontWeight: 700, marginBottom: 2 }}>Last utility breakdown</div>
-              <div>U_total = <b>{u.u_total.toFixed(4)}</b></div>
-              <div>V_p={u.v_p.toFixed(3)} · V_t={u.v_t.toFixed(3)} · V_r={u.v_r.toFixed(3)} · V_s={u.v_s.toFixed(3)}</div>
+              <div>
+                U_total = <b>{u.u_total.toFixed(4)}</b>
+              </div>
+              <div>
+                V_p={u.v_p.toFixed(3)} · V_t={u.v_t.toFixed(3)} · V_r={u.v_r.toFixed(3)} · V_s=
+                {u.v_s.toFixed(3)}
+              </div>
             </div>
           )}
 
@@ -563,21 +725,45 @@ function SidePanel(props: {
               style={{ ...inputStyle, flex: 1 }}
               placeholder="price"
             />
-            <button onClick={onOffer} disabled={busy} style={{ ...btnStyle, background: color }}>
+            <button
+              type="button"
+              onClick={onOffer}
+              disabled={busy}
+              style={{ ...btnStyle, background: color }}
+            >
               Send offer
             </button>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={onAccept} disabled={busy} style={{ ...smallBtn, background: "#0a7" }}>Accept</button>
-            <button onClick={onReject} disabled={busy} style={{ ...smallBtn, background: "#c33" }}>Reject</button>
+            <button
+              type="button"
+              onClick={onAccept}
+              disabled={busy}
+              style={{ ...smallBtn, background: "var(--fb-success-fg)" }}
+            >
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={onReject}
+              disabled={busy}
+              style={{ ...smallBtn, background: "var(--fb-error-fg)" }}
+            >
+              Reject
+            </button>
           </div>
 
           <div style={{ marginTop: 12 }}>
             <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>Round history</div>
-            <div style={{ maxHeight: 140, overflow: "auto", fontSize: 11, fontFamily: "monospace" }}>
-              {state.rounds.length === 0 && <em style={{ color: "#999" }}>—</em>}
+            <div
+              style={{ maxHeight: 140, overflow: "auto", fontSize: 11, fontFamily: "monospace" }}
+            >
+              {state.rounds.length === 0 && <em style={{ color: "var(--text-muted)" }}>—</em>}
               {state.rounds.map((r) => (
-                <div key={r.id} style={{ padding: "2px 0", borderBottom: "1px solid #f0f0f0" }}>
+                <div
+                  key={r.id}
+                  style={{ padding: "2px 0", borderBottom: "1px solid var(--border-subtle)" }}
+                >
                   #{r.round_no} {r.sender_role} {r.message_type} {r.price_minor}
                   {r.counter_price_minor ? ` ↩ ${r.counter_price_minor}` : ""}
                   {r.decision ? ` [${r.decision}]` : ""}
@@ -588,7 +774,7 @@ function SidePanel(props: {
           </div>
         </>
       ) : (
-        <em style={{ color: "#999" }}>no session</em>
+        <em style={{ color: "var(--text-muted)" }}>no session</em>
       )}
     </section>
   );
@@ -598,13 +784,15 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
   return (
     <section style={{ ...cardStyle, marginBottom: 16 }}>
       <h2 style={h2Style}>💬 Negotiation Timeline ({entries.length})</h2>
-      {entries.length === 0 && <em style={{ color: "#999", fontSize: 12 }}>no offers yet</em>}
+      {entries.length === 0 && (
+        <em style={{ color: "var(--text-muted)", fontSize: 12 }}>no offers yet</em>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {entries.map((e, i) => {
+        {entries.map((e) => {
           const isBuyerFrom = e.from === "BUYER";
           return (
             <div
-              key={i}
+              key={`${e.ts}-${e.from}-${e.price}`}
               style={{
                 display: "flex",
                 justifyContent: isBuyerFrom ? "flex-start" : "flex-end",
@@ -612,8 +800,8 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
             >
               <div
                 style={{
-                  background: isBuyerFrom ? "#e6f7f0" : "#fff0e6",
-                  border: `1px solid ${isBuyerFrom ? "#0a7" : "#c63"}`,
+                  background: isBuyerFrom ? "var(--fb-info-bg)" : "var(--badge-bg)",
+                  border: `1px solid ${isBuyerFrom ? "var(--fb-info-fg)" : "var(--badge-text)"}`,
                   borderRadius: 8,
                   padding: "8px 12px",
                   maxWidth: "75%",
@@ -623,14 +811,18 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>
                   {e.from} → {e.to} · ${e.price.toLocaleString()}
                 </div>
-                <div style={{ color: "#444" }}>
+                <div style={{ color: "var(--text-secondary)" }}>
                   Engine decision: <b style={decisionStyle(e.decision)}>{e.decision}</b>
-                  {e.counterPrice && e.counterPrice !== e.price ? ` · counter $${e.counterPrice.toLocaleString()}` : ""}
+                  {e.counterPrice && e.counterPrice !== e.price
+                    ? ` · counter $${e.counterPrice.toLocaleString()}`
+                    : ""}
                 </div>
-                <div style={{ color: "#666", fontSize: 11 }}>
-                  U_total={e.utility.u_total.toFixed(3)} · V_p={e.utility.v_p.toFixed(2)} · V_t={e.utility.v_t.toFixed(2)} · V_r={e.utility.v_r.toFixed(2)} · V_s={e.utility.v_s.toFixed(2)}
+                <div style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+                  U_total={e.utility.u_total.toFixed(3)} · V_p={e.utility.v_p.toFixed(2)} · V_t=
+                  {e.utility.v_t.toFixed(2)} · V_r={e.utility.v_r.toFixed(2)} · V_s=
+                  {e.utility.v_s.toFixed(2)}
                 </div>
-                <div style={{ color: "#888", fontSize: 10 }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 10 }}>
                   status: {e.sessionStatus} · {new Date(e.ts).toLocaleTimeString()}
                 </div>
               </div>
@@ -644,17 +836,17 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
 
 function statusBadge(status: string): React.CSSProperties {
   const map: Record<string, string> = {
-    ACTIVE: "#06f",
-    CREATED: "#888",
-    NEAR_DEAL: "#f80",
-    ACCEPTED: "#0a7",
-    REJECTED: "#c33",
-    EXPIRED: "#666",
-    SUPERSEDED: "#888",
+    ACTIVE: "var(--fb-info-fg)",
+    CREATED: "var(--text-muted)",
+    NEAR_DEAL: "var(--fb-warning-fg)",
+    ACCEPTED: "var(--fb-success-fg)",
+    REJECTED: "var(--fb-error-fg)",
+    EXPIRED: "var(--text-muted)",
+    SUPERSEDED: "var(--text-muted)",
   };
   return {
-    background: map[status] ?? "#888",
-    color: "white",
+    background: map[status] ?? "var(--text-muted)",
+    color: "var(--text-on-accent)",
     padding: "2px 8px",
     borderRadius: 4,
     fontSize: 11,
@@ -664,13 +856,13 @@ function statusBadge(status: string): React.CSSProperties {
 
 function decisionStyle(decision: string): React.CSSProperties {
   const map: Record<string, string> = {
-    ACCEPT: "#0a7",
-    COUNTER: "#06f",
-    REJECT: "#c33",
-    NEAR_DEAL: "#f80",
-    ESCALATE: "#a0a",
+    ACCEPT: "var(--fb-success-fg)",
+    COUNTER: "var(--fb-info-fg)",
+    REJECT: "var(--fb-error-fg)",
+    NEAR_DEAL: "var(--fb-warning-fg)",
+    ESCALATE: "var(--fb-info-fg)",
   };
-  return { color: map[decision] ?? "#111" };
+  return { color: map[decision] ?? "var(--text-primary)" };
 }
 
 const pageStyle: React.CSSProperties = {
@@ -678,17 +870,17 @@ const pageStyle: React.CSSProperties = {
   margin: "2rem auto",
   padding: "1rem",
   fontFamily: "system-ui, -apple-system, sans-serif",
-  color: "#111",
-  background: "#fff",
+  color: "var(--text-primary)",
+  background: "var(--bg-primary)",
   minHeight: "100vh",
 };
 
 const cardStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #ddd",
+  background: "var(--bg-raised)",
+  border: "1px solid var(--border-default)",
   padding: 16,
   borderRadius: 8,
-  color: "#111",
+  color: "var(--text-primary)",
   marginBottom: 0,
 };
 
@@ -700,17 +892,17 @@ const h2Style: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   padding: "6px 8px",
-  border: "1px solid #ccc",
+  border: "1px solid var(--border-default)",
   borderRadius: 4,
-  background: "#fff",
-  color: "#111",
+  background: "var(--bg-overlay)",
+  color: "var(--text-primary)",
   fontSize: 13,
 };
 
 const btnStyle: React.CSSProperties = {
   padding: "6px 12px",
-  background: "#06f",
-  color: "white",
+  background: "var(--fb-info-fg)",
+  color: "var(--text-on-accent)",
   border: "none",
   borderRadius: 4,
   cursor: "pointer",
@@ -719,4 +911,9 @@ const btnStyle: React.CSSProperties = {
 };
 
 const smallBtn: React.CSSProperties = { ...btnStyle, padding: "4px 10px", fontSize: 12 };
-const primaryBtn: React.CSSProperties = { ...btnStyle, padding: "10px 18px", fontSize: 14, background: "#111" };
+const primaryBtn: React.CSSProperties = {
+  ...btnStyle,
+  padding: "10px 18px",
+  fontSize: 14,
+  background: "var(--ink-strong)",
+};

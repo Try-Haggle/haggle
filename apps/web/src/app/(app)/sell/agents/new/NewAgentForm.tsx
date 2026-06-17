@@ -1,44 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
-  getNegotiationAgentPreset,
+  type AgentBuilderState,
+  applyChatStrategyToState,
+  createBuilderState,
+  engineParamsFromPreset,
+  isBuilderCustomized,
   type NegotiationAgentPresetId,
+  resolveEffectivePreset,
 } from "@haggle/shared";
-import {
-  createNegotiationAgent,
-  type NegotiationAgentConfig,
-} from "@/lib/negotiation-agents-api";
-import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
-import {
-  AgentBuilder,
-  applyChatStrategyToDraft,
-  type NegotiationAgentDraft,
-} from "../_components/AgentBuilder";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { NegotiationAgentBuilderChat } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
+import { createNegotiationAgent, type NegotiationAgentConfig } from "@/lib/negotiation-agents-api";
+import { AgentBuilder } from "../_components/AgentBuilder";
 
 type Role = "buyer" | "seller";
 
-const RECOGNIZED_IDS: NegotiationAgentPresetId[] = [
-  "hunter",
-  "closer",
-  "verifier",
-  "balancer",
-];
+const RECOGNIZED_IDS: NegotiationAgentPresetId[] = ["hunter", "closer", "verifier", "balancer"];
 
-function initialValueFromPresetId(raw?: string): NegotiationAgentDraft | null {
+function initialStateFromPresetId(raw: string | undefined, side: Role): AgentBuilderState | null {
   if (!raw || !RECOGNIZED_IDS.includes(raw as NegotiationAgentPresetId)) return null;
-  const preset = getNegotiationAgentPreset(raw as NegotiationAgentPresetId);
-  if (!preset) return null;
-  return {
-    sourceKind: "preset",
-    sourceId: preset.id,
-    basePresetId: preset.id,
-    effectivePreset: preset,
-    overrides: null,
-    dirty: false,
-  };
+  return createBuilderState({ side, presetId: raw as NegotiationAgentPresetId });
 }
 
 interface NewAgentFormProps {
@@ -48,16 +32,17 @@ interface NewAgentFormProps {
 
 export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
   const router = useRouter();
-  const [value, setValue] = useState<NegotiationAgentDraft | null>(() =>
-    initialValueFromPresetId(initialPresetId),
+  const [value, setValue] = useState<AgentBuilderState | null>(() =>
+    initialStateFromPresetId(initialPresetId, role),
   );
   const [name, setName] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Latest memory captured from the builder chat. Persisted with the agent so
    *  budget/style stated during configuration carries into the snapshot. */
-  const [builderChatMemory, setBuilderChatMemory] =
-    useState<NegotiationAgentBuilderMemory | null>(null);
+  const [builderChatMemory, setBuilderChatMemory] = useState<NegotiationAgentBuilderMemory | null>(
+    null,
+  );
 
   const backHref = role === "buyer" ? "/buy/agents" : "/sell/agents";
 
@@ -65,32 +50,16 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
     if (!value) return;
     setSaving(true);
     setError(null);
-    const copy = value.effectivePreset.copy[role];
+    const ep = resolveEffectivePreset(value);
+    const copy = ep.copy[role];
     const config: NegotiationAgentConfig = {
-      emoji: value.effectivePreset.emoji,
-      basePresetId: value.basePresetId,
-      negotiationAgentPresetId: value.basePresetId,
-      weights: { ...value.effectivePreset.weights },
+      emoji: ep.emoji,
+      basePresetId: value.agent.presetId,
+      negotiationAgentPresetId: value.agent.presetId,
+      weights: { ...ep.weights },
       builderChatMemory: builderChatMemory ?? undefined,
-      ...(value.overrides
-        ? {
-            engineParams: {
-              alpha: value.overrides.alpha,
-              beta: value.overrides.beta,
-              u_threshold: value.overrides.u_threshold,
-              u_aspiration: value.overrides.u_aspiration,
-              anchor_ratio: value.overrides.anchor_ratio,
-              v_t_floor: value.overrides.v_t_floor,
-              w_rep: value.overrides.w_rep,
-              r_score_minimum: value.overrides.r_score_minimum,
-              i_completeness_minimum: value.overrides.i_completeness_minimum,
-              v_s_base: value.overrides.v_s_base,
-              n_threshold: value.overrides.n_threshold,
-              late_round_aggression_modifier:
-                value.overrides.late_round_aggression_modifier,
-            },
-          }
-        : {}),
+      // When customized, persist the full resolved engine knobs.
+      ...(isBuilderCustomized(value) ? { engineParams: engineParamsFromPreset(ep) } : {}),
     };
     try {
       await createNegotiationAgent({
@@ -105,12 +74,12 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
     }
   };
 
-  const presetKey = value?.basePresetId ?? "none";
+  const presetKey = value?.agent.presetId ?? "none";
   return (
     <>
       {error && (
         <div className="mx-auto mb-4 max-w-[1100px] px-4 sm:px-6">
-          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <div className="rounded-md border border-error/30 bg-error-soft px-3 py-2 text-sm text-error">
             {error}
           </div>
         </div>
@@ -127,7 +96,7 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
         chatSlot={
           value && (
             <NegotiationAgentBuilderChat
-              agent={value.effectivePreset}
+              agent={resolveEffectivePreset(value)}
               listingPublicId={`agent-new-${role}-${presetKey}`}
               listingTitle="General negotiation strategy"
               listingCategory={null}
@@ -135,7 +104,7 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
               role={role}
               onNegotiationAgentBuilderMemoryUpdate={setBuilderChatMemory}
               onStrategyUpdate={(s) =>
-                setValue((prev) => (prev ? applyChatStrategyToDraft(prev, s) : prev))
+                setValue((prev) => (prev ? applyChatStrategyToState(prev, s) : prev))
               }
             />
           )

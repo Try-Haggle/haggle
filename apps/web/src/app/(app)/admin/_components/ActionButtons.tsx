@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { adminApi, type AdminInboxDetail } from "@/lib/admin-api";
+import { type AdminInboxDetail, adminApi } from "@/lib/admin-api";
 import { MergeDialog } from "./MergeDialog";
 
 interface Props {
@@ -15,12 +15,9 @@ interface Props {
 
 const BTN_BASE =
   "rounded border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-const BTN_PRIMARY =
-  BTN_BASE + " border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800";
-const BTN_DANGER =
-  BTN_BASE + " border-red-300 bg-white text-red-700 hover:bg-red-50";
-const BTN_NEUTRAL =
-  BTN_BASE + " border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50";
+const BTN_PRIMARY = BTN_BASE + " border-action-primary bg-cta text-on-cta hover:bg-cta-hover";
+const BTN_DANGER = BTN_BASE + " border-error/30 bg-surface-raised text-error hover:bg-error-soft";
+const BTN_NEUTRAL = BTN_BASE + " border-line bg-surface-raised text-ink hover:bg-surface-sunken";
 
 export function ActionButtons({ detail, onDone }: Props) {
   const [busy, setBusy] = useState(false);
@@ -69,8 +66,7 @@ export function ActionButtons({ detail, onDone }: Props) {
             className={BTN_DANGER}
             onClick={() =>
               run(
-                () =>
-                  adminApi.actions.tagReject({ suggestionId: detail.item.id }),
+                () => adminApi.actions.tagReject({ suggestionId: detail.item.id }),
                 detail.item.id,
               )
             }
@@ -189,7 +185,7 @@ export function ActionButtons({ detail, onDone }: Props) {
         <div
           role="alert"
           data-testid="action-error"
-          className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+          className="rounded border border-error/30 bg-error-soft px-3 py-2 text-xs text-error"
         >
           {error}
         </div>
