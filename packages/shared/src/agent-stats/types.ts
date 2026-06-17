@@ -2,10 +2,7 @@
  * Agent stats types — see docs/engine/06_에이전트_스탯.md and 22_에이전트_스탯_UI_매핑.md
  */
 
-import type {
-  NegotiationAgentPresetId,
-  NegotiationWeights,
-} from "../agent-presets/types.js";
+import type { NegotiationAgentPresetId, NegotiationWeights } from "../agent-presets/types.js";
 
 export type StatKey =
   | "anchoring"

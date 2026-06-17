@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  priceSemantics,
-  createBuilderState,
-  emptyChatData,
-} from "../index.js";
+import { createBuilderState, emptyChatData, priceSemantics } from "../index.js";
 
 describe("priceSemantics", () => {
   it("seller: priceLimit is a floor, direction maximize", () => {
@@ -26,12 +22,8 @@ describe("priceSemantics", () => {
   });
 
   it("seller and buyer differ", () => {
-    expect(priceSemantics("seller").direction).not.toBe(
-      priceSemantics("buyer").direction,
-    );
-    expect(priceSemantics("seller").limitLabel).not.toBe(
-      priceSemantics("buyer").limitLabel,
-    );
+    expect(priceSemantics("seller").direction).not.toBe(priceSemantics("buyer").direction);
+    expect(priceSemantics("seller").limitLabel).not.toBe(priceSemantics("buyer").limitLabel);
   });
 });
 

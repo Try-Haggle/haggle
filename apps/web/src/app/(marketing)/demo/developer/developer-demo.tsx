@@ -6,7 +6,10 @@ import { executeRound, initDemo } from "@/lib/demo-api";
 import type { DemoInitRequest, DemoInitResponse, DemoRoundResponse } from "@/lib/demo-types";
 import type { PresetTuningDraft, StoredMemoryCard } from "@/lib/intelligence-demo-api";
 import { recordPresetTuningFeedback, resetDemoMemory } from "@/lib/intelligence-demo-api";
-import type { AdvisorListing, NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
+import type {
+  AdvisorListing,
+  NegotiationAgentBuilderMemory,
+} from "@/lib/negotiation-agent-builder-types";
 import { AgentProductAdvisor } from "./_components/agent-product-advisor";
 import { AutoTradeShowcase, buildSellerVoiceMessage } from "./_components/auto-trade-showcase";
 import { CostBadge } from "./_components/cost-badge";
@@ -207,7 +210,8 @@ export function DeveloperDemo() {
   const [buyerAncientId, setBuyerAncientId] = useState<AncientBeingId>("fab");
   const sellerAncientId = DEFAULT_SELLER_AGENT_ID;
   const [selectedListing, setSelectedListing] = useState<AdvisorListing | null>(null);
-  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] = useState<NegotiationAgentBuilderMemory | null>(null);
+  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] =
+    useState<NegotiationAgentBuilderMemory | null>(null);
   const [presetTuningDraft, setPresetTuningDraft] = useState<PresetTuningDraft | null>(null);
   const [negotiationBlockedReason, setNegotiationBlockedReason] = useState<string | null>(null);
   const [demoUserId, setDemoUserId] = useState(DEMO_USER_ID);
@@ -329,6 +333,7 @@ export function DeveloperDemo() {
     setNegotiationBlockedReason(readiness.ready ? null : readiness.reason);
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list intentionally fixed for this demo handler
   const handleRunAutoTrade = useCallback(
     async (listingOverride?: AdvisorListing, memoryOverride?: NegotiationAgentBuilderMemory) => {
       const listing = listingOverride ?? selectedListing;

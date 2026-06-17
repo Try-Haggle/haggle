@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
-  NEGOTIATION_AGENT_PRESETS,
   getNegotiationAgentPreset,
+  NEGOTIATION_AGENT_PRESETS,
   presetToEngineParameters,
 } from "../index.js";
 
@@ -163,9 +163,7 @@ describe("presetToEngineParameters", () => {
   it("produces w_info derived as 1 - w_rep for every preset", () => {
     for (const preset of NEGOTIATION_AGENT_PRESETS) {
       const params = presetToEngineParameters(preset);
-      expect(Math.abs(params.w_rep + params.w_info - 1)).toBeLessThan(
-        WEIGHT_SUM_TOLERANCE,
-      );
+      expect(Math.abs(params.w_rep + params.w_info - 1)).toBeLessThan(WEIGHT_SUM_TOLERANCE);
       expect(params.w_rep).toBe(preset.w_rep);
     }
   });
@@ -179,9 +177,7 @@ describe("presetToEngineParameters", () => {
     expect(params.i_completeness_minimum).toBe(verifier.i_completeness_minimum);
     expect(params.v_s_base).toBe(verifier.v_s_base);
     expect(params.n_threshold).toBe(verifier.n_threshold);
-    expect(params.late_round_aggression_modifier).toBe(
-      verifier.late_round_aggression_modifier,
-    );
+    expect(params.late_round_aggression_modifier).toBe(verifier.late_round_aggression_modifier);
   });
 
   it("market-awareness fields stay neutral across all presets", () => {

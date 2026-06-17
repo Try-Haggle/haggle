@@ -7,12 +7,12 @@
  * yet clicked" buffer; once Save lands, the agent is persisted via this API.
  */
 
-import { api } from "./api-client";
 import type {
   NegotiationAgent,
   NegotiationAgentPresetId,
   NegotiationWeights,
 } from "@haggle/shared";
+import { api } from "./api-client";
 
 /** Roles surfaced on /buy/agents vs /sell/agents. */
 export type NegotiationAgentRole = "buyer" | "seller" | "both";
@@ -72,13 +72,9 @@ export async function listNegotiationAgents(
   return data.agents ?? [];
 }
 
-export async function getNegotiationAgent(
-  id: string,
-): Promise<NegotiationAgentRow | null> {
+export async function getNegotiationAgent(id: string): Promise<NegotiationAgentRow | null> {
   try {
-    const data = await api.get<{ agent: NegotiationAgentRow }>(
-      `/negotiations/agents/${id}`,
-    );
+    const data = await api.get<{ agent: NegotiationAgentRow }>(`/negotiations/agents/${id}`);
     return data.agent ?? null;
   } catch {
     return null;
@@ -88,10 +84,7 @@ export async function getNegotiationAgent(
 export async function createNegotiationAgent(
   input: CreateNegotiationAgentInput,
 ): Promise<NegotiationAgentRow> {
-  const data = await api.post<{ agent: NegotiationAgentRow }>(
-    "/negotiations/agents",
-    input,
-  );
+  const data = await api.post<{ agent: NegotiationAgentRow }>("/negotiations/agents", input);
   return data.agent;
 }
 
@@ -99,10 +92,7 @@ export async function updateNegotiationAgent(
   id: string,
   input: UpdateNegotiationAgentInput,
 ): Promise<NegotiationAgentRow> {
-  const data = await api.patch<{ agent: NegotiationAgentRow }>(
-    `/negotiations/agents/${id}`,
-    input,
-  );
+  const data = await api.patch<{ agent: NegotiationAgentRow }>(`/negotiations/agents/${id}`, input);
   return data.agent;
 }
 
@@ -112,9 +102,7 @@ export async function deleteNegotiationAgent(id: string): Promise<void> {
 
 /** Convert a DB row to the in-memory `NegotiationAgent` shape used by the
  *  builder UI. The inverse of `negotiationAgentToCreateInput`. */
-export function rowToNegotiationAgent(
-  row: NegotiationAgentRow,
-): NegotiationAgent {
+export function rowToNegotiationAgent(row: NegotiationAgentRow): NegotiationAgent {
   const cfg = row.negotiationAgentConfig ?? {};
   return {
     id: row.id,

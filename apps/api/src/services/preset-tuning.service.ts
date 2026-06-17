@@ -1,4 +1,8 @@
-export type NegotiationAgentPresetId = "safe_buyer" | "balanced_closer" | "lowest_price" | "fast_close";
+export type NegotiationAgentPresetId =
+  | "safe_buyer"
+  | "balanced_closer"
+  | "lowest_price"
+  | "fast_close";
 
 export type TermEnforcement = "hard" | "soft" | "deal_breaker";
 
@@ -23,12 +27,15 @@ export type NegotiationAgentBuilderMemoryLike = {
       productScope?: string;
       status: "pending" | "ambiguous";
     }>;
-    productRequirements?: Record<string, {
-      mustHave?: string[];
-      avoid?: string[];
-      answeredSlots?: string[];
-      ambiguousSlots?: string[];
-    }>;
+    productRequirements?: Record<
+      string,
+      {
+        mustHave?: string[];
+        avoid?: string[];
+        answeredSlots?: string[];
+        ambiguousSlots?: string[];
+      }
+    >;
     globalPreferences?: {
       mustHave?: string[];
       avoid?: string[];
@@ -159,12 +166,12 @@ export type PresetTuningDraft = {
     opening_offer_minor: number;
     tuning_draft: {
       must_verify: PresetTermDraft[];
-        leverage: PresetLeverageDraft[];
-        walk_away: PresetWalkAwayDraft[];
-        concession_speed: "slow" | "medium" | "fast";
-        risk_tolerance: "low" | "medium" | "high";
-        engine_review: PresetEngineReview;
-      };
+      leverage: PresetLeverageDraft[];
+      walk_away: PresetWalkAwayDraft[];
+      concession_speed: "slow" | "medium" | "fast";
+      risk_tolerance: "low" | "medium" | "high";
+      engine_review: PresetEngineReview;
+    };
     memory_snapshot: {
       categoryInterest?: string;
       budgetMax?: number;
@@ -393,12 +400,14 @@ export function compilePresetTuningDraft(params: {
     .reduce((sum, item) => sum + item.priceImpactMinor, 0);
   const rawOpening = Math.round(listing.askPriceMinor * preset.openingMultiplier) - leverageImpact;
   const openingOfferMinor = clampOffer(rawOpening, listing, priceCapMinor, presetId);
-  const sourceBadges = Array.from(new Set([
-    "listing",
-    "preset",
-    "tag",
-    ...(memoryHasUsefulSignals(memory) ? ["memory" as const] : []),
-  ])) as PresetTuningDraft["sourceBadges"];
+  const sourceBadges = Array.from(
+    new Set([
+      "listing",
+      "preset",
+      "tag",
+      ...(memoryHasUsefulSignals(memory) ? ["memory" as const] : []),
+    ]),
+  ) as PresetTuningDraft["sourceBadges"];
   const memorySnapshot = {
     categoryInterest: memory.categoryInterest,
     budgetMax: memory.budgetMax,
@@ -464,16 +473,26 @@ export function listNegotiationAgentPresets() {
 }
 
 function presetFromMemory(memory: NegotiationAgentBuilderMemoryLike): NegotiationAgentPresetId {
-  if (memory.riskStyle === "safe_first" || memory.negotiationStyle === "defensive") return "safe_buyer";
-  if (memory.riskStyle === "lowest_price" || memory.negotiationStyle === "aggressive") return "lowest_price";
+  if (memory.riskStyle === "safe_first" || memory.negotiationStyle === "defensive")
+    return "safe_buyer";
+  if (memory.riskStyle === "lowest_price" || memory.negotiationStyle === "aggressive")
+    return "lowest_price";
   if (memory.openingTactic === "speed_close") return "fast_close";
   return "balanced_closer";
 }
 
-function normalizeCap(priceCapMinor: number | undefined, memory: NegotiationAgentBuilderMemoryLike, listing: PresetListingInput): number {
+function normalizeCap(
+  priceCapMinor: number | undefined,
+  memory: NegotiationAgentBuilderMemoryLike,
+  listing: PresetListingInput,
+): number {
   if (priceCapMinor && Number.isFinite(priceCapMinor) && priceCapMinor > 0) return priceCapMinor;
-  if (memory.budgetMax && Number.isFinite(memory.budgetMax) && memory.budgetMax > 0) return Math.round(memory.budgetMax * 100);
-  return Math.max(1, Math.min(listing.askPriceMinor, listing.marketMedianMinor ?? listing.askPriceMinor));
+  if (memory.budgetMax && Number.isFinite(memory.budgetMax) && memory.budgetMax > 0)
+    return Math.round(memory.budgetMax * 100);
+  return Math.max(
+    1,
+    Math.min(listing.askPriceMinor, listing.marketMedianMinor ?? listing.askPriceMinor),
+  );
 }
 
 function resolveTerms(
@@ -482,13 +501,15 @@ function resolveTerms(
   facts: ReturnType<typeof listingFacts>,
   memoryFacts: string,
 ): PresetTermDraft[] {
-  const terms = tagTermsForListing(listing)
-    .filter((term) => term.appliesToPresets.includes(presetId));
+  const terms = tagTermsForListing(listing).filter((term) =>
+    term.appliesToPresets.includes(presetId),
+  );
 
   return terms.map((term) => {
     const observed = termObserved(term.termId, facts);
-    const memoryMentions = memoryFacts.includes(term.termId.replace(/_/g, " "))
-      || memoryFacts.includes(term.label.toLowerCase());
+    const memoryMentions =
+      memoryFacts.includes(term.termId.replace(/_/g, " ")) ||
+      memoryFacts.includes(term.label.toLowerCase());
     const source = memoryMentions ? "memory" : observed ? "listing" : "tag";
     const checked = observed && term.enforcement !== "deal_breaker";
 
@@ -514,38 +535,68 @@ function observedConfirmedValue(
   switch (termId) {
     case "battery_health":
       return facts.batteryHealth !== null
-        ? { value: facts.batteryHealth, unit: "%", label: `${facts.batteryHealth}%`, source: confirmedSource }
+        ? {
+            value: facts.batteryHealth,
+            unit: "%",
+            label: `${facts.batteryHealth}%`,
+            source: confirmedSource,
+          }
         : undefined;
     case "battery_cycle_count":
       return facts.batteryCycleCount !== null
-        ? { value: facts.batteryCycleCount, unit: "cycles", label: `${facts.batteryCycleCount} cycles`, source: confirmedSource }
+        ? {
+            value: facts.batteryCycleCount,
+            unit: "cycles",
+            label: `${facts.batteryCycleCount} cycles`,
+            source: confirmedSource,
+          }
         : undefined;
     case "storage_capacity":
       return facts.storageGb !== null
-        ? { value: facts.storageGb, unit: "GB", label: facts.storageGb >= 1024 ? `${facts.storageGb / 1024}TB` : `${facts.storageGb}GB`, source: confirmedSource }
+        ? {
+            value: facts.storageGb,
+            unit: "GB",
+            label: facts.storageGb >= 1024 ? `${facts.storageGb / 1024}TB` : `${facts.storageGb}GB`,
+            source: confirmedSource,
+          }
         : undefined;
     case "carrier_lock":
-      return facts.unlocked ? { value: true, label: "Unlocked", source: confirmedSource } : undefined;
+      return facts.unlocked
+        ? { value: true, label: "Unlocked", source: confirmedSource }
+        : undefined;
     case "screen_condition":
       return facts.screenClear && !facts.screenRisk && !facts.hasVisibleWear
         ? { value: "clear", label: "Screen clear", source: confirmedSource }
         : undefined;
     case "imei_verification":
-      return facts.cleanImei ? { value: true, label: "Clean IMEI", source: confirmedSource } : undefined;
+      return facts.cleanImei
+        ? { value: true, label: "Clean IMEI", source: confirmedSource }
+        : undefined;
     case "keyboard_condition":
-      return facts.keyboardClear ? { value: true, label: "Keyboard works", source: confirmedSource } : undefined;
+      return facts.keyboardClear
+        ? { value: true, label: "Keyboard works", source: confirmedSource }
+        : undefined;
     case "applecare_status":
-      if (facts.appleCareDenied) return { value: "not_included", label: "AppleCare not included", source: confirmedSource };
-      return facts.appleCareMentioned ? { value: "mentioned", label: "AppleCare mentioned", source: confirmedSource } : undefined;
+      if (facts.appleCareDenied)
+        return { value: "not_included", label: "AppleCare not included", source: confirmedSource };
+      return facts.appleCareMentioned
+        ? { value: "mentioned", label: "AppleCare mentioned", source: confirmedSource }
+        : undefined;
     case "activation_lock":
-      return facts.activationLockMentioned === true ? { value: true, label: "Activation Lock off", source: confirmedSource } : undefined;
+      return facts.activationLockMentioned === true
+        ? { value: true, label: "Activation Lock off", source: confirmedSource }
+        : undefined;
     default:
       return undefined;
   }
 }
 
-function elevateEnforcement(term: TagTermRequirement, presetId: NegotiationAgentPresetId): TermEnforcement {
-  if (presetId === "safe_buyer" && term.enforcement === "soft" && term.defaultImportance === "high") return "hard";
+function elevateEnforcement(
+  term: TagTermRequirement,
+  presetId: NegotiationAgentPresetId,
+): TermEnforcement {
+  if (presetId === "safe_buyer" && term.enforcement === "soft" && term.defaultImportance === "high")
+    return "hard";
   if (presetId === "fast_close" && term.enforcement === "soft") return "soft";
   return term.enforcement;
 }
@@ -560,7 +611,11 @@ function resolveLeverage(
   const leverage: PresetLeverageDraft[] = [];
   const preferredBattery = preferredBatteryMin(memoryFacts);
 
-  if (facts.batteryHealth !== null && preferredBattery !== null && facts.batteryHealth < preferredBattery) {
+  if (
+    facts.batteryHealth !== null &&
+    preferredBattery !== null &&
+    facts.batteryHealth < preferredBattery
+  ) {
     leverage.push({
       termId: "battery_health",
       label: "Battery below preference",
@@ -591,7 +646,10 @@ function resolveLeverage(
     });
   }
 
-  if (memory.avoid?.some((item) => /damage|scratch|crack|wear|파손|흠집|기스/i.test(item)) && (facts.hasVisibleWear || facts.screenRisk)) {
+  if (
+    memory.avoid?.some((item) => /damage|scratch|crack|wear|파손|흠집|기스/i.test(item)) &&
+    (facts.hasVisibleWear || facts.screenRisk)
+  ) {
     leverage.push({
       termId: "condition_preference",
       label: "Conflicts with avoid list",
@@ -613,7 +671,11 @@ function resolveLeverage(
     });
   }
 
-  if (isMacbookListing(listing) && facts.batteryCycleCount !== null && facts.batteryCycleCount > 600) {
+  if (
+    isMacbookListing(listing) &&
+    facts.batteryCycleCount !== null &&
+    facts.batteryCycleCount > 600
+  ) {
     leverage.push({
       termId: "battery_cycle_count",
       label: "High battery cycle count",
@@ -721,18 +783,20 @@ function buildEngineReview(
     id: "required_terms",
     label: "Required terms",
     outcome: missingHardTerms.length > 0 ? "ask_user" : "continue",
-    reason: missingHardTerms.length > 0
-      ? `${missingHardTerms.length} hard/deal-breaker term(s) still need confirmation.`
-      : "Hard terms have usable listing evidence or user confirmation.",
+    reason:
+      missingHardTerms.length > 0
+        ? `${missingHardTerms.length} hard/deal-breaker term(s) still need confirmation.`
+        : "Hard terms have usable listing evidence or user confirmation.",
   });
 
   branches.push({
     id: "payment_permission",
     label: "Payment permission",
     outcome: productConflict || missingHardTerms.length > 0 ? "ask_user" : "continue",
-    reason: productConflict || missingHardTerms.length > 0
-      ? "Do not create payment permission until scope and required terms are resolved."
-      : "Draft can be converted into an AgentPaymentGrant after user confirmation.",
+    reason:
+      productConflict || missingHardTerms.length > 0
+        ? "Do not create payment permission until scope and required terms are resolved."
+        : "Draft can be converted into an AgentPaymentGrant after user confirmation.",
   });
 
   if (productConflict) {
@@ -776,7 +840,8 @@ function buildEngineReview(
       label: slotLabel(slot),
       severity: "soft",
       source: "memory",
-      reason: "Memory marks this slot as ambiguous, so it should be resolved before the engine treats it as a durable preference.",
+      reason:
+        "Memory marks this slot as ambiguous, so it should be resolved before the engine treats it as a durable preference.",
     });
     nextActions.push({
       termId: slot,
@@ -787,10 +852,14 @@ function buildEngineReview(
     });
   }
 
-  const hasHardBlocker = blockers.some((blocker) => blocker.severity === "hard" && blocker.id === "product_scope_conflict");
+  const hasHardBlocker = blockers.some(
+    (blocker) => blocker.severity === "hard" && blocker.id === "product_scope_conflict",
+  );
   const status: PresetEngineReview["status"] = hasHardBlocker
     ? "blocked"
-    : blockers.length > 0 ? "needs_user_input" : "ready";
+    : blockers.length > 0
+      ? "needs_user_input"
+      : "ready";
 
   return {
     cycle: "design_architecture_implementation_review",
@@ -847,13 +916,17 @@ function collectAmbiguousSlots(memory: NegotiationAgentBuilderMemoryLike): strin
     ...(structured?.pendingSlots ?? [])
       .filter((slot) => slot.status === "ambiguous")
       .map((slot) => slot.slotId),
-    ...Object.values(structured?.productRequirements ?? {})
-      .flatMap((req) => req.ambiguousSlots ?? []),
+    ...Object.values(structured?.productRequirements ?? {}).flatMap(
+      (req) => req.ambiguousSlots ?? [],
+    ),
   ];
   return Array.from(new Set(slots.filter(Boolean)));
 }
 
-function controlForTerm(termId: string, facts: ReturnType<typeof listingFacts>): PresetEngineReview["nextActions"][number]["control"] {
+function controlForTerm(
+  termId: string,
+  facts: ReturnType<typeof listingFacts>,
+): PresetEngineReview["nextActions"][number]["control"] {
   if (/battery_health/.test(termId)) return "slider";
   if (/battery_cycle_count/.test(termId)) return "text";
   if (/carrier|lock|imei|find_my|activation/.test(termId)) return "toggle";
@@ -922,19 +995,20 @@ function controlConfigForTerm(
 }
 
 function slotLabel(slotId: string): string {
-  return slotId
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return slotId.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function questionForAmbiguousSlot(slotId: string): string {
   if (/battery/.test(slotId)) return "배터리 조건을 몇 퍼센트 이상으로 적용할까요?";
   if (/price|budget|cap/.test(slotId)) return "이 숫자를 예산 상한으로 저장해도 될까요?";
-  if (/model|scope|product/.test(slotId)) return "이 조건을 현재 상품에도 적용할까요, 아니면 다른 상품 기억으로 남길까요?";
+  if (/model|scope|product/.test(slotId))
+    return "이 조건을 현재 상품에도 적용할까요, 아니면 다른 상품 기억으로 남길까요?";
   return "이 조건을 협상에 적용할지 확인해 주세요.";
 }
 
-function dedupeActions(actions: PresetEngineReview["nextActions"]): PresetEngineReview["nextActions"] {
+function dedupeActions(
+  actions: PresetEngineReview["nextActions"],
+): PresetEngineReview["nextActions"] {
   const seen = new Set<string>();
   return actions.filter((action) => {
     const key = `${action.termId ?? action.label}:${action.control}`;
@@ -951,25 +1025,48 @@ function resolveStrategyNotes(
   memoryFacts: string,
 ): string[] {
   const notes = [...preset.notes];
-  if (memory.budgetMax) notes.push(`사용자 메모리의 max budget $${memory.budgetMax}을 cap 기본값으로 사용한다.`);
-  if (memory.targetPrice) notes.push(`사용자 target $${memory.targetPrice} 근처에서 opening offer를 보정한다.`);
-  if (facts.storageGb !== null) notes.push(`Listing storage ${facts.storageGb}GB를 payload에 유지한다.`);
-  if (/original box|box included|박스/.test(memoryFacts)) notes.push("원박스 선호가 있으면 accessories term을 leverage로 남긴다.");
+  if (memory.budgetMax)
+    notes.push(`사용자 메모리의 max budget $${memory.budgetMax}을 cap 기본값으로 사용한다.`);
+  if (memory.targetPrice)
+    notes.push(`사용자 target $${memory.targetPrice} 근처에서 opening offer를 보정한다.`);
+  if (facts.storageGb !== null)
+    notes.push(`Listing storage ${facts.storageGb}GB를 payload에 유지한다.`);
+  if (/original box|box included|박스/.test(memoryFacts))
+    notes.push("원박스 선호가 있으면 accessories term을 leverage로 남긴다.");
   return notes.slice(0, 6);
 }
 
-function clampOffer(rawOpening: number, listing: PresetListingInput, cap: number, presetId: NegotiationAgentPresetId): number {
-  const floor = Math.max(1, Math.min(listing.floorPriceMinor ?? Math.round(listing.askPriceMinor * 0.55), listing.askPriceMinor));
+function clampOffer(
+  rawOpening: number,
+  listing: PresetListingInput,
+  cap: number,
+  presetId: NegotiationAgentPresetId,
+): number {
+  const floor = Math.max(
+    1,
+    Math.min(
+      listing.floorPriceMinor ?? Math.round(listing.askPriceMinor * 0.55),
+      listing.askPriceMinor,
+    ),
+  );
   const minimum = presetId === "lowest_price" ? Math.round(floor * 0.92) : Math.round(floor * 0.98);
   return Math.max(1, Math.min(cap, listing.askPriceMinor, Math.max(minimum, rawOpening)));
 }
 
 function listingFacts(listing: PresetListingInput) {
-  const text = `${listing.title} ${listing.category ?? ""} ${listing.condition} ${listing.tags.join(" ")} ${listing.sellerNote ?? ""}`.toLowerCase();
-  const batteryMatch = text.match(/battery[_\s-]*(?:health)?[_\s:>=-]*(\d{2,3})\s*%?/) ?? text.match(/(\d{2,3})\s*%\s*battery/);
-  const batteryHealth = batteryMatch ? clampPercent(Number(batteryMatch[1])) : listing.tags.includes("battery_90_plus") ? 90 : null;
-  const cycleMatch = text.match(/(?:cycle[_\s-]*count|battery[_\s-]*cycles?|cycles?)[_\s:=-]*(\d{1,4})/)
-    ?? text.match(/(\d{1,4})\s*(?:battery\s*)?cycles?\b/);
+  const text =
+    `${listing.title} ${listing.category ?? ""} ${listing.condition} ${listing.tags.join(" ")} ${listing.sellerNote ?? ""}`.toLowerCase();
+  const batteryMatch =
+    text.match(/battery[_\s-]*(?:health)?[_\s:>=-]*(\d{2,3})\s*%?/) ??
+    text.match(/(\d{2,3})\s*%\s*battery/);
+  const batteryHealth = batteryMatch
+    ? clampPercent(Number(batteryMatch[1]))
+    : listing.tags.includes("battery_90_plus")
+      ? 90
+      : null;
+  const cycleMatch =
+    text.match(/(?:cycle[_\s-]*count|battery[_\s-]*cycles?|cycles?)[_\s:=-]*(\d{1,4})/) ??
+    text.match(/(\d{1,4})\s*(?:battery\s*)?cycles?\b/);
   const batteryCycleCount = cycleMatch ? clampCycleCount(Number(cycleMatch[1])) : null;
   const storageMatch = text.match(/(\d{2,4})\s*(gb|tb)/);
   const storageGb = storageMatch
@@ -984,12 +1081,24 @@ function listingFacts(listing: PresetListingInput) {
     unlocked: /\bunlocked\b|factory unlocked|sim free|carrier[_\s-]?unlocked/.test(text),
     cleanImei: /clean[_\s-]?imei|imei[_\s-]?clean/.test(text),
     appleCareMentioned: /apple\s*care|applecare/.test(text),
-    appleCareDenied: /no\s*apple\s*care|no\s*applecare|apple\s*care\s*(?:expired|none)|without\s*apple\s*care/.test(text),
-    keyboardClear: /keyboard[_\s-]?(?:clean|works?|perfect)|all\s*keys\s*work|no\s*sticky\s*keys|키보드\s*(?:정상|깨끗)/.test(text),
-    activationLockMentioned: /activation\s*lock\s*(?:off|disabled)|find\s*my\s*mac\s*(?:off|disabled)/.test(text)
-      ? true
-      : /activation\s*lock|find\s*my\s*mac/.test(text) ? false : null,
-    screenClear: /screen[_\s-]?(mint|clean|flawless)|mint[_\s-]?screen|no[_\s-]?scratch|화면\s*깨끗/.test(text),
+    appleCareDenied:
+      /no\s*apple\s*care|no\s*applecare|apple\s*care\s*(?:expired|none)|without\s*apple\s*care/.test(
+        text,
+      ),
+    keyboardClear:
+      /keyboard[_\s-]?(?:clean|works?|perfect)|all\s*keys\s*work|no\s*sticky\s*keys|키보드\s*(?:정상|깨끗)/.test(
+        text,
+      ),
+    activationLockMentioned:
+      /activation\s*lock\s*(?:off|disabled)|find\s*my\s*mac\s*(?:off|disabled)/.test(text)
+        ? true
+        : /activation\s*lock|find\s*my\s*mac/.test(text)
+          ? false
+          : null,
+    screenClear:
+      /screen[_\s-]?(mint|clean|flawless)|mint[_\s-]?screen|no[_\s-]?scratch|화면\s*깨끗/.test(
+        text,
+      ),
     hasVisibleWear: /visible[_\s-]?wear|wear|scratch|scratches|scuff|dent|기스|흠집/.test(text),
     screenRisk: /crack|cracked|screen[_\s-]?replaced|replacement|교체|액정/.test(text),
   };
@@ -1008,8 +1117,11 @@ function clampCycleCount(value: number): number | null {
 function memoryText(memory: NegotiationAgentBuilderMemoryLike): string {
   const structured = memory.structured;
   const scoped = structured?.productRequirements
-    ? Object.entries(structured.productRequirements)
-        .flatMap(([scope, req]) => [scope, ...(req.mustHave ?? []), ...(req.avoid ?? [])])
+    ? Object.entries(structured.productRequirements).flatMap(([scope, req]) => [
+        scope,
+        ...(req.mustHave ?? []),
+        ...(req.avoid ?? []),
+      ])
     : [];
   return [
     memory.categoryInterest,
@@ -1028,22 +1140,26 @@ function memoryText(memory: NegotiationAgentBuilderMemoryLike): string {
 
 function memoryHasUsefulSignals(memory: NegotiationAgentBuilderMemoryLike): boolean {
   return Boolean(
-    memory.categoryInterest
-      || memory.budgetMax
-      || memory.targetPrice
-      || memory.mustHave?.length
-      || memory.avoid?.length
-      || memory.source?.length
-      || memory.structured?.activeIntent?.productScope,
+    memory.categoryInterest ||
+      memory.budgetMax ||
+      memory.targetPrice ||
+      memory.mustHave?.length ||
+      memory.avoid?.length ||
+      memory.source?.length ||
+      memory.structured?.activeIntent?.productScope,
   );
 }
 
 function isIphoneListing(listing: PresetListingInput): boolean {
-  return `${listing.title} ${listing.category ?? ""} ${listing.tags.join(" ")}`.toLowerCase().includes("iphone");
+  return `${listing.title} ${listing.category ?? ""} ${listing.tags.join(" ")}`
+    .toLowerCase()
+    .includes("iphone");
 }
 
 function isMacbookListing(listing: PresetListingInput): boolean {
-  return /macbook|mac book|맥북/.test(`${listing.title} ${listing.category ?? ""} ${listing.tags.join(" ")}`.toLowerCase());
+  return /macbook|mac book|맥북/.test(
+    `${listing.title} ${listing.category ?? ""} ${listing.tags.join(" ")}`.toLowerCase(),
+  );
 }
 
 function tagTermsForListing(listing: PresetListingInput): TagTermRequirement[] {
@@ -1054,16 +1170,26 @@ function tagTermsForListing(listing: PresetListingInput): TagTermRequirement[] {
 
 function termObserved(termId: string, facts: ReturnType<typeof listingFacts>): boolean {
   switch (termId) {
-    case "battery_health": return facts.batteryHealth !== null;
-    case "battery_cycle_count": return facts.batteryCycleCount !== null;
-    case "carrier_lock": return facts.unlocked;
-    case "storage_capacity": return facts.storageGb !== null;
-    case "screen_condition": return facts.screenClear && !facts.screenRisk && !facts.hasVisibleWear;
-    case "imei_verification": return facts.cleanImei;
-    case "keyboard_condition": return facts.keyboardClear;
-    case "applecare_status": return facts.appleCareMentioned;
-    case "activation_lock": return facts.activationLockMentioned === true;
-    default: return false;
+    case "battery_health":
+      return facts.batteryHealth !== null;
+    case "battery_cycle_count":
+      return facts.batteryCycleCount !== null;
+    case "carrier_lock":
+      return facts.unlocked;
+    case "storage_capacity":
+      return facts.storageGb !== null;
+    case "screen_condition":
+      return facts.screenClear && !facts.screenRisk && !facts.hasVisibleWear;
+    case "imei_verification":
+      return facts.cleanImei;
+    case "keyboard_condition":
+      return facts.keyboardClear;
+    case "applecare_status":
+      return facts.appleCareMentioned;
+    case "activation_lock":
+      return facts.activationLockMentioned === true;
+    default:
+      return false;
   }
 }
 
@@ -1083,12 +1209,15 @@ function termRationale(
     return "Listing says AppleCare is not included, so keep repair risk visible.";
   }
   if (observed) return "Listing already gives usable evidence, keep it in the payload.";
-  if (memoryMentions) return "User memory says this condition matters, so require it before execution.";
+  if (memoryMentions)
+    return "User memory says this condition matters, so require it before execution.";
   return "Tag Garden marks this as a relevant negotiation term for this product.";
 }
 
 function preferredBatteryMin(memoryFacts: string): number | null {
-  const match = memoryFacts.match(/battery\s*(?:>=|over|above|이상)?\s*(\d{2,3})\s*%?/) ?? memoryFacts.match(/배터리\s*(\d{2,3})/);
+  const match =
+    memoryFacts.match(/battery\s*(?:>=|over|above|이상)?\s*(\d{2,3})\s*%?/) ??
+    memoryFacts.match(/배터리\s*(\d{2,3})/);
   const value = match ? Number(match[1]) : null;
   return value && value >= 1 && value <= 100 ? value : null;
 }
@@ -1098,6 +1227,10 @@ function batteryImpact(delta: number, presetId: NegotiationAgentPresetId): numbe
   return Math.min(8000, Math.max(1500, Math.round(delta * perPoint)));
 }
 
-function makeDraftId(listing: PresetListingInput, presetId: NegotiationAgentPresetId, cap: number): string {
+function makeDraftId(
+  listing: PresetListingInput,
+  presetId: NegotiationAgentPresetId,
+  cap: number,
+): string {
   return `draft_${listing.id}_${presetId}_${cap}`.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 96);
 }

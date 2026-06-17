@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PresetTuningDraft } from "@/lib/intelligence-demo-api";
 import {
-  processNegotiationAgentBuilderTurn,
-  getAdvisorDemoListings,
-  getDemoMemoryCards,
-  saveNegotiationAgentBuilderMemory,
   type AdvisorCandidatePlan,
   type AdvisorDemoListingsResponse,
+  getAdvisorDemoListings,
+  getDemoMemoryCards,
   type NegotiationAgentBuilderTurnCost,
+  processNegotiationAgentBuilderTurn,
   type StoredMemoryCard,
+  saveNegotiationAgentBuilderMemory,
 } from "@/lib/intelligence-demo-api";
-import type { AdvisorListing, NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
-import type { PresetTuningDraft } from "@/lib/intelligence-demo-api";
+import type {
+  AdvisorListing,
+  NegotiationAgentBuilderMemory,
+} from "@/lib/negotiation-agent-builder-types";
 import { ANCIENT_BEINGS, type AncientBeingId } from "./negotiation-avatar-coach";
 import { PresetTuningPanel } from "./preset-tuning-panel";
 
@@ -245,13 +248,11 @@ const STOP_TERMS = new Set([
   "용도",
 ]);
 
-function buildListingSearchQuery(memory: NegotiationAgentBuilderMemory, latestMessage: string): string {
-  const raw = [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    latestMessage,
-  ]
+function buildListingSearchQuery(
+  memory: NegotiationAgentBuilderMemory,
+  latestMessage: string,
+): string {
+  const raw = [memory.categoryInterest, ...memory.mustHave, ...memory.avoid, latestMessage]
     .join(" ")
     .replace(/탐색 중|not specified|unknown/gi, " ")
     .trim();
@@ -271,7 +272,10 @@ function buildListingSearchQuery(memory: NegotiationAgentBuilderMemory, latestMe
     .slice(0, 240);
 }
 
-function buildNegotiationBrief(memory: NegotiationAgentBuilderMemory, listing: AdvisorListing): string[] {
+function buildNegotiationBrief(
+  memory: NegotiationAgentBuilderMemory,
+  listing: AdvisorListing,
+): string[] {
   return [
     `target_price: $${memory.targetPrice ?? Math.max(minorToDollars(listing.floorPriceMinor), minorToDollars(listing.askPriceMinor) - 40)}`,
     `max_budget: $${memory.budgetMax ?? minorToDollars(listing.askPriceMinor)}`,
@@ -345,21 +349,12 @@ function normalizeForIntent(value: string): string {
     .trim();
 }
 
-function memoryIntentText(memory: NegotiationAgentBuilderMemory): string {
-  return [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ].join(" ");
+function _memoryIntentText(memory: NegotiationAgentBuilderMemory): string {
+  return [memory.categoryInterest, ...memory.mustHave, ...memory.avoid, ...memory.source].join(" ");
 }
 
 function activeMemoryIntentText(memory: NegotiationAgentBuilderMemory): string {
-  return [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-  ].join(" ");
+  return [memory.categoryInterest, ...memory.mustHave, ...memory.avoid].join(" ");
 }
 
 function listingIntentText(listing: AdvisorListing): string {
@@ -672,8 +667,13 @@ function alignmentIntervention(alignment: ListingAlignment): AlignmentInterventi
   };
 }
 
-function evaluateListingAlignment(memory: NegotiationAgentBuilderMemory, listing?: AdvisorListing | null): ListingAlignment {
-  const emptyAlignment = (listingIntent: string | null = listing?.title ?? null): ListingAlignment => ({
+function evaluateListingAlignment(
+  memory: NegotiationAgentBuilderMemory,
+  listing?: AdvisorListing | null,
+): ListingAlignment {
+  const emptyAlignment = (
+    listingIntent: string | null = listing?.title ?? null,
+  ): ListingAlignment => ({
     status: "unknown",
     issue: "generic",
     reason: null,
@@ -1082,8 +1082,14 @@ function hasProductModelNumber(text: string): boolean {
   );
 }
 
-function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: NegotiationAgentBuilderMemory): boolean {
-  if (!previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))) return false;
+function isShortModelAnswerToPendingQuestion(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): boolean {
+  if (
+    !previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))
+  )
+    return false;
   return /^\s*(?:1[1-9]|[2-9])\s*(?:은|는|로|요|\?)*\s*$/i.test(text.trim());
 }
 
@@ -1091,7 +1097,10 @@ function hasExplicitMoneyUnit(text: string): boolean {
   return /[$]|(?:usd|dollars?|bucks?|달러|불)\b/i.test(text);
 }
 
-function extractExplicitBudgetDollars(text: string, previousMemory?: NegotiationAgentBuilderMemory): number | null {
+function extractExplicitBudgetDollars(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): number | null {
   const raw = text.toLowerCase().replace(/,/g, " ");
   if (
     hasPercentNumber(raw) ||
@@ -1751,7 +1760,11 @@ function inferSlotIdFromQuestion(question: string): string {
   return "buyer_priority";
 }
 
-function applySlotControlValue(memory: NegotiationAgentBuilderMemory, slot: MissingInfoSlot, value: SlotControlValue): NegotiationAgentBuilderMemory {
+function applySlotControlValue(
+  memory: NegotiationAgentBuilderMemory,
+  slot: MissingInfoSlot,
+  value: SlotControlValue,
+): NegotiationAgentBuilderMemory {
   let next: NegotiationAgentBuilderMemory = {
     ...memory,
     mustHave: [...memory.mustHave],
@@ -1828,7 +1841,10 @@ function applySlotControlValue(memory: NegotiationAgentBuilderMemory, slot: Miss
   return markSlotAnswered(next, slot);
 }
 
-function markSlotAnswered(memory: NegotiationAgentBuilderMemory, slot: MissingInfoSlot): NegotiationAgentBuilderMemory {
+function markSlotAnswered(
+  memory: NegotiationAgentBuilderMemory,
+  slot: MissingInfoSlot,
+): NegotiationAgentBuilderMemory {
   if (!memory.structured) return memory;
   const activeScope = slot.productScope ?? memory.structured.activeIntent?.productScope;
   const productRequirements = { ...memory.structured.productRequirements };
@@ -1902,7 +1918,11 @@ export function AgentProductAdvisor({
   userId: string;
   selectedAgentId: AncientBeingId;
   selectedListingId?: string;
-  onStartNegotiation: (listing: AdvisorListing, memory: NegotiationAgentBuilderMemory, readiness: NegotiationReadiness) => void;
+  onStartNegotiation: (
+    listing: AdvisorListing,
+    memory: NegotiationAgentBuilderMemory,
+    readiness: NegotiationReadiness,
+  ) => void;
   onPresetDraftChange?: (draft: PresetTuningDraft | null) => void;
   presetFeedbackUpdate?: {
     id: string;
@@ -1912,7 +1932,9 @@ export function AgentProductAdvisor({
   onEndDemo: () => void;
   endingDemo: boolean;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages(selectedAgentId));
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    createInitialMessages(selectedAgentId),
+  );
   const [memory, setMemory] = useState<NegotiationAgentBuilderMemory>(() => createBaseMemory());
   const memoryRef = useRef<NegotiationAgentBuilderMemory>(memory);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2153,7 +2175,10 @@ export function AgentProductAdvisor({
     });
   }, [selectedAgentId]);
 
-  async function persistMemory(text: string, nextMemory: NegotiationAgentBuilderMemory): Promise<boolean> {
+  async function persistMemory(
+    text: string,
+    nextMemory: NegotiationAgentBuilderMemory,
+  ): Promise<boolean> {
     setBackendState((prev) => ({
       ...prev,
       status: "saving",

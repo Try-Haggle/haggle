@@ -217,7 +217,10 @@ function extractChips(memory: NegotiationAgentBuilderMemory): StrategyChip[] {
 /* ─── Markdown-lite renderer ─────────────────────────────── */
 
 function renderMarkdownLite(text: string): string {
-  return text
+  // Escape HTML first so user/LLM text can't inject markup — only the
+  // **bold** → <strong> and \n → <br> transforms below emit real tags.
+  const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return escaped
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-ink">$1</strong>')
     .replace(/\n/g, "<br />");
 }
@@ -257,7 +260,7 @@ function BudgetWidget({
   listingPrice: string | null;
   onSubmit: (target: number, max: number) => void;
 }) {
-  const basePrice = listingPrice ? parseInt(listingPrice) : 1000;
+  const basePrice = listingPrice ? parseInt(listingPrice, 10) : 1000;
   const minRange = Math.floor(basePrice * 0.5);
   const maxRange = Math.floor(basePrice * 1.5);
 
@@ -389,7 +392,7 @@ export function NegotiationAgentBuilderChat({
     buildInitialMemory(agent, listingCategory),
   );
   const [isExpanded, setIsExpanded] = useState(false);
-  const [hasRestoredSession, setHasRestoredSession] = useState(false);
+  const [_hasRestoredSession, setHasRestoredSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -440,6 +443,7 @@ export function NegotiationAgentBuilderChat({
   }, []);
 
   // Load from localStorage or reset when agent changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on agent id / listing change
   useEffect(() => {
     if (!agent) {
       setMessages([]);
@@ -481,6 +485,7 @@ export function NegotiationAgentBuilderChat({
   }, [agent?.id, listingPublicId]);
 
   // Scroll chat to bottom locally without affecting page scroll
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll only when message count or loading state changes
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({
@@ -632,6 +637,7 @@ export function NegotiationAgentBuilderChat({
     buildCurrentStrategy,
   ]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset deps intentionally fixed; greeting is rebuilt inline and excluded on purpose
   const handleReset = useCallback(() => {
     if (!agent) return;
     clearSession(listingPublicId, agent.id);
@@ -792,6 +798,7 @@ export function NegotiationAgentBuilderChat({
         style={{ borderBottom: "1px solid var(--color-border-default)" }}
       >
         <svg
+          aria-hidden="true"
           viewBox="0 0 24 24"
           width="16"
           height="16"
@@ -831,6 +838,7 @@ export function NegotiationAgentBuilderChat({
             aria-label="Reset strategy chat"
           >
             <svg
+              aria-hidden="true"
               viewBox="0 0 24 24"
               width="12"
               height="12"
@@ -901,6 +909,7 @@ export function NegotiationAgentBuilderChat({
                   style={{
                     color: msg.role === "user" ? "var(--color-ink)" : "var(--color-ink-secondary)",
                   }}
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: intentional sanitized markdown rendering
                   dangerouslySetInnerHTML={{
                     __html: renderMarkdownLite(msg.text),
                   }}
@@ -958,11 +967,11 @@ export function NegotiationAgentBuilderChat({
           >
             STRATEGY
           </span>
-          {chips.map((chip, i) => {
+          {chips.map((chip) => {
             const colors = CHIP_COLORS[chip.category];
             return (
               <span
-                key={`${chip.category}-${i}`}
+                key={`${chip.category}-${chip.value}`}
                 className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap transition-all duration-300"
                 style={{
                   background: colors.bg,
@@ -1017,6 +1026,7 @@ export function NegotiationAgentBuilderChat({
           aria-label="Send message"
         >
           <svg
+            aria-hidden="true"
             viewBox="0 0 24 24"
             width="14"
             height="14"

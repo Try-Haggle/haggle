@@ -44,10 +44,7 @@ function buildApp(user?: AuthUser) {
   app.addHook("onRequest", async (request) => {
     request.user = user;
   });
-  registerNegotiationAgentRoutes(
-    app,
-    {} as unknown as import("@haggle/db").Database,
-  );
+  registerNegotiationAgentRoutes(app, {} as unknown as import("@haggle/db").Database);
   return app;
 }
 

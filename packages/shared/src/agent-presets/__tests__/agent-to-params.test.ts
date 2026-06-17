@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_PRESETS,
-  resolveAgentToEngineParameters,
-  getNegotiationAgentPreset,
-  presetToEngineParameters,
-  type NegotiationAgent,
   type EngineStats,
+  getNegotiationAgentPreset,
+  type NegotiationAgent,
+  presetToEngineParameters,
+  resolveAgentToEngineParameters,
 } from "../../index.js";
 
 const NOW = 1_700_000_000_000;

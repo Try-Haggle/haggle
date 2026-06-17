@@ -8,7 +8,7 @@
  * with DB + xAI mocked. Verifies phase transitions, LLM invocation points,
  * price movement, coaching, and validation across a full iPhone 15 Pro negotiation.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks
@@ -34,33 +34,33 @@ const {
   mockMapRawToDbSession: vi.fn(),
 }));
 
-vi.mock('../services/negotiation-round.service.js', () => ({
+vi.mock("../services/negotiation-round.service.js", () => ({
   getRoundByIdempotencyKey: (...args: unknown[]) => mockGetRoundByIdempotencyKey(...args),
   createRound: (...args: unknown[]) => mockCreateRound(...args),
   getRoundsBySessionId: (...args: unknown[]) => mockGetRoundsBySessionId(...args),
 }));
 
-vi.mock('../services/negotiation-session.service.js', () => ({
+vi.mock("../services/negotiation-session.service.js", () => ({
   getSessionById: (...args: unknown[]) => mockGetSessionById(...args),
   updateSessionState: (...args: unknown[]) => mockUpdateSessionState(...args),
 }));
 
-vi.mock('../services/conversation-signal-sink.js', () => ({
+vi.mock("../services/conversation-signal-sink.js", () => ({
   recordRoundConversationSignals: vi.fn().mockResolvedValue({
     incoming: { extracted: 0, inserted: 0 },
     outgoing: { extracted: 0, inserted: 0 },
   }),
 }));
 
-vi.mock('../negotiation/adapters/xai-client.js', () => ({
+vi.mock("../negotiation/adapters/xai-client.js", () => ({
   callLLM: (...args: unknown[]) => mockCallLLM(...args),
 }));
 
-vi.mock('@haggle/db', () => ({
+vi.mock("@haggle/db", () => ({
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
 }));
 
-vi.mock('../lib/negotiation-executor.js', () => ({
+vi.mock("../lib/negotiation-executor.js", () => ({
   mapRawToDbSession: (...args: unknown[]) => mockMapRawToDbSession(...args),
 }));
 
@@ -68,9 +68,9 @@ vi.mock('../lib/negotiation-executor.js', () => ({
 // Imports
 // ---------------------------------------------------------------------------
 
-import { executeLLMNegotiationRound } from '../lib/llm-negotiation-executor.js';
-import type { RoundExecutionInput } from '../lib/negotiation-executor.js';
-import type { DbSession, DbRound } from '../lib/session-reconstructor.js';
+import { executeLLMNegotiationRound } from "../lib/llm-negotiation-executor.js";
+import type { RoundExecutionInput } from "../lib/negotiation-executor.js";
+import type { DbRound, DbSession } from "../lib/session-reconstructor.js";
 
 // ---------------------------------------------------------------------------
 // iPhone 15 Pro Scenario — $750 target, $950 floor (buyer side)
@@ -78,11 +78,11 @@ import type { DbSession, DbRound } from '../lib/session-reconstructor.js';
 // ---------------------------------------------------------------------------
 
 const SCENARIO = {
-  item: 'iPhone 15 Pro 256GB Natural Titanium',
-  buyerTarget: 75000,  // $750
-  buyerFloor: 95000,   // $950
+  item: "iPhone 15 Pro 256GB Natural Titanium",
+  buyerTarget: 75000, // $750
+  buyerFloor: 95000, // $950
   sellerTarget: 90000, // $900
-  sellerFloor: 70000,  // $700
+  sellerFloor: 70000, // $700
   maxRounds: 15,
 };
 
@@ -94,16 +94,16 @@ const NOW = Date.now();
 
 function makeSession(overrides: Partial<DbSession> = {}): DbSession {
   return {
-    id: 'sess-lifecycle-001',
+    id: "sess-lifecycle-001",
     groupId: null,
-    intentId: 'intent-001',
-    listingId: 'listing-iphone15pro',
-    strategyId: 'default',
-    role: 'BUYER',
-    status: 'CREATED',
-    buyerId: 'buyer-001',
-    sellerId: 'seller-001',
-    counterpartyId: 'seller-001',
+    intentId: "intent-001",
+    listingId: "listing-iphone15pro",
+    strategyId: "default",
+    role: "BUYER",
+    status: "CREATED",
+    buyerId: "buyer-001",
+    sellerId: "seller-001",
+    counterpartyId: "seller-001",
     currentRound: 0,
     roundsNoConcession: 0,
     lastOfferPriceMinor: null,
@@ -116,8 +116,8 @@ function makeSession(overrides: Partial<DbSession> = {}): DbSession {
     },
     version: 1,
     expiresAt: null,
-    createdAt: new Date('2026-04-11'),
-    updatedAt: new Date('2026-04-11'),
+    createdAt: new Date("2026-04-11"),
+    updatedAt: new Date("2026-04-11"),
     ...overrides,
   };
 }
@@ -125,26 +125,26 @@ function makeSession(overrides: Partial<DbSession> = {}): DbSession {
 function makeRound(overrides: Partial<DbRound> = {}): DbRound {
   return {
     id: `round-${overrides.roundNo ?? 1}`,
-    sessionId: 'sess-lifecycle-001',
+    sessionId: "sess-lifecycle-001",
     roundNo: 1,
-    senderRole: 'SELLER',
-    messageType: 'OFFER',
-    priceminor: '92000',
-    counterPriceMinor: '67500',
+    senderRole: "SELLER",
+    messageType: "OFFER",
+    priceminor: "92000",
+    counterPriceMinor: "67500",
     utility: { u_total: 0.5, v_p: 0.4, v_t: 0.04, v_r: 0.03, v_s: 0.03 },
-    decision: 'COUNTER',
+    decision: "COUNTER",
     metadata: null,
     idempotencyKey: `idem-${overrides.roundNo ?? 1}`,
-    createdAt: new Date('2026-04-11'),
+    createdAt: new Date("2026-04-11"),
     ...overrides,
   };
 }
 
 function makeInput(overrides: Partial<RoundExecutionInput> = {}): RoundExecutionInput {
   return {
-    sessionId: 'sess-lifecycle-001',
+    sessionId: "sess-lifecycle-001",
     offerPriceMinor: 92000,
-    senderRole: 'SELLER',
+    senderRole: "SELLER",
     idempotencyKey: `idem-${Date.now()}-${Math.random()}`,
     roundData: { r_score: 0.8 },
     nowMs: NOW,
@@ -152,7 +152,7 @@ function makeInput(overrides: Partial<RoundExecutionInput> = {}): RoundExecution
   };
 }
 
-function makeLLMResponse(action = 'COUNTER', priceMinor = 78000) {
+function makeLLMResponse(action = "COUNTER", priceMinor = 78000) {
   // Adapter contract: LLM returns USD dollars; adapter multiplies by 100 → cents.
   // Tests express prices in minor units (cents) for consistency with the rest of
   // the codebase, so convert to dollars here before serializing.
@@ -161,7 +161,7 @@ function makeLLMResponse(action = 'COUNTER', priceMinor = 78000) {
       action,
       price: priceMinor / 100,
       reasoning: `Strategic ${action.toLowerCase()} at $${priceMinor / 100}.`,
-      tactic_used: 'reciprocal_concession',
+      tactic_used: "reciprocal_concession",
     }),
     usage: { prompt_tokens: 400, completion_tokens: 90 },
     reasoning_used: false,
@@ -215,7 +215,7 @@ interface RoundResult {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
+describe("Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)", () => {
   beforeEach(() => resetMocks());
   afterEach(() => vi.restoreAllMocks());
 
@@ -223,13 +223,13 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Phase 1: OPENING — 초기 제안
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Phase 1: OPENING — 앵커링', () => {
-    it('CREATED 세션에서 첫 제안 → COUNTER (10% 마진 앵커링)', async () => {
-      const session = makeSession({ currentRound: 0, status: 'CREATED' });
+  describe("Phase 1: OPENING — 앵커링", () => {
+    it("CREATED 세션에서 첫 제안 → COUNTER (10% 마진 앵커링)", async () => {
+      const session = makeSession({ currentRound: 0, status: "CREATED" });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([]);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 67500));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 67500));
 
       const result = await executeLLMNegotiationRound(
         db as any,
@@ -244,15 +244,15 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       // Phase should transition OPENING → BARGAINING (COUNTER_OFFER_MADE)
       const roundData = mockCreateRound.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
       expect(roundData).toBeDefined();
-      expect(roundData!.phaseAtRound).toBe('BARGAINING');
+      expect(roundData!.phaseAtRound).toBe("BARGAINING");
     });
 
-    it('OPENING 앵커 가격이 target 기반 10% 마진', async () => {
-      const session = makeSession({ currentRound: 0, status: 'CREATED' });
+    it("OPENING 앵커 가격이 target 기반 10% 마진", async () => {
+      const session = makeSession({ currentRound: 0, status: "CREATED" });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([]);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 68000));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 68000));
 
       const result = await executeLLMNegotiationRound(
         db as any,
@@ -261,13 +261,13 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
 
       // Skill auto-calculates: $750 × 0.90 = $675, then LLM adjusts to $680
       // The important thing is it's below target
-      if (result.decision === 'COUNTER') {
+      if (result.decision === "COUNTER") {
         expect(result.outgoingPrice).toBeLessThanOrEqual(SCENARIO.buyerTarget);
       }
     });
 
-    it('seller가 target 이하 제안 → 즉시 ACCEPT (LLM 불필요)', async () => {
-      const session = makeSession({ currentRound: 0, status: 'CREATED' });
+    it("seller가 target 이하 제안 → 즉시 ACCEPT (LLM 불필요)", async () => {
+      const session = makeSession({ currentRound: 0, status: "CREATED" });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([]);
@@ -278,16 +278,16 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         makeInput({ offerPriceMinor: 74000 }),
       );
 
-      expect(result.decision).toBe('ACCEPT');
+      expect(result.decision).toBe("ACCEPT");
       expect(mockCallLLM).not.toHaveBeenCalled();
     });
 
-    it('seller가 극단적 가격 제안 → 즉시 REJECT (LLM 불필요)', async () => {
+    it("seller가 극단적 가격 제안 → 즉시 REJECT (LLM 불필요)", async () => {
       // Branch change: a price merely above floor now counter-anchors instead of
       // rejecting (real negotiations don't end because an opening is "too high").
       // REJECT only fires for extreme prices (> 2× the target..floor range from
       // floor) or when no rounds remain. Use an extreme offer here.
-      const session = makeSession({ currentRound: 0, status: 'CREATED' });
+      const session = makeSession({ currentRound: 0, status: "CREATED" });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([]);
@@ -299,7 +299,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         makeInput({ offerPriceMinor: 200000 }),
       );
 
-      expect(result.decision).toBe('REJECT');
+      expect(result.decision).toBe("REJECT");
       expect(mockCallLLM).not.toHaveBeenCalled();
     });
   });
@@ -308,23 +308,23 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Phase 2: BARGAINING — Faratin 양보 곡선 + LLM
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Phase 2: BARGAINING — 가격 수렴', () => {
-    it('BARGAINING COUNTER → LLM 호출 + coaching + validation', async () => {
+  describe("Phase 2: BARGAINING — 가격 수렴", () => {
+    it("BARGAINING COUNTER → LLM 호출 + coaching + validation", async () => {
       const session = makeSession({
         currentRound: 3,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '78000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "78000",
         version: 3,
       });
       const db = makeMockDb(session);
 
       const rounds = [
-        makeRound({ roundNo: 1, priceminor: '92000', counterPriceMinor: '67500' }),
-        makeRound({ roundNo: 2, priceminor: '88000', counterPriceMinor: '72000' }),
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '78000' }),
+        makeRound({ roundNo: 1, priceminor: "92000", counterPriceMinor: "67500" }),
+        makeRound({ roundNo: 2, priceminor: "88000", counterPriceMinor: "72000" }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "78000" }),
       ];
       mockGetRoundsBySessionId.mockResolvedValue(rounds);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 80000));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 80000));
 
       const result = await executeLLMNegotiationRound(
         db as any,
@@ -338,27 +338,27 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       expect(roundData.coaching).toBeDefined();
       expect(roundData.validation).toBeDefined();
       expect(roundData.message).toBeDefined();
-      expect(roundData.metadata).toHaveProperty('engine', 'llm');
+      expect(roundData.metadata).toHaveProperty("engine", "llm");
     });
 
-    it('가격이 라운드마다 수렴 (buyer 상승, seller 하락)', async () => {
+    it("가격이 라운드마다 수렴 (buyer 상승, seller 하락)", async () => {
       // Round 4: buyer has been moving up, seller moving down
       const session = makeSession({
         currentRound: 4,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '78000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "78000",
         version: 4,
       });
       const db = makeMockDb(session);
 
       const rounds = [
-        makeRound({ roundNo: 1, priceminor: '92000', counterPriceMinor: '67500' }),
-        makeRound({ roundNo: 2, priceminor: '88000', counterPriceMinor: '72000' }),
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '75000' }),
-        makeRound({ roundNo: 4, priceminor: '83000', counterPriceMinor: '78000' }),
+        makeRound({ roundNo: 1, priceminor: "92000", counterPriceMinor: "67500" }),
+        makeRound({ roundNo: 2, priceminor: "88000", counterPriceMinor: "72000" }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "75000" }),
+        makeRound({ roundNo: 4, priceminor: "83000", counterPriceMinor: "78000" }),
       ];
       mockGetRoundsBySessionId.mockResolvedValue(rounds);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 79500));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 79500));
 
       const result = await executeLLMNegotiationRound(
         db as any,
@@ -366,26 +366,26 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       );
 
       // Counter should be between previous buyer offer and seller's current offer
-      if (result.decision === 'COUNTER') {
+      if (result.decision === "COUNTER") {
         expect(result.outgoingPrice).toBeGreaterThanOrEqual(78000);
         expect(result.outgoingPrice).toBeLessThanOrEqual(82000);
       }
     });
 
-    it('LLM 실패 → rule-based fallback (서비스 중단 없음)', async () => {
+    it("LLM 실패 → rule-based fallback (서비스 중단 없음)", async () => {
       const session = makeSession({
         currentRound: 3,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '78000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "78000",
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
         makeRound({ roundNo: 1 }),
-        makeRound({ roundNo: 2, priceminor: '88000', counterPriceMinor: '72000' }),
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '78000' }),
+        makeRound({ roundNo: 2, priceminor: "88000", counterPriceMinor: "72000" }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "78000" }),
       ]);
-      mockCallLLM.mockRejectedValue(new Error('XAI_TIMEOUT'));
+      mockCallLLM.mockRejectedValue(new Error("XAI_TIMEOUT"));
 
       const result = await executeLLMNegotiationRound(
         db as any,
@@ -398,30 +398,27 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       expect(mockCreateRound).toHaveBeenCalledOnce();
     });
 
-    it('opponent pattern → coaching 전술 적용', async () => {
+    it("opponent pattern → coaching 전술 적용", async () => {
       const session = makeSession({
         currentRound: 5,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '80000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "80000",
         version: 5,
       });
       const db = makeMockDb(session);
 
       // Seller barely conceding (BOULWARE pattern)
       const rounds = [
-        makeRound({ roundNo: 1, priceminor: '92000', counterPriceMinor: '67500' }),
-        makeRound({ roundNo: 2, priceminor: '91000', counterPriceMinor: '72000' }),
-        makeRound({ roundNo: 3, priceminor: '90000', counterPriceMinor: '75000' }),
-        makeRound({ roundNo: 4, priceminor: '89500', counterPriceMinor: '78000' }),
-        makeRound({ roundNo: 5, priceminor: '89000', counterPriceMinor: '80000' }),
+        makeRound({ roundNo: 1, priceminor: "92000", counterPriceMinor: "67500" }),
+        makeRound({ roundNo: 2, priceminor: "91000", counterPriceMinor: "72000" }),
+        makeRound({ roundNo: 3, priceminor: "90000", counterPriceMinor: "75000" }),
+        makeRound({ roundNo: 4, priceminor: "89500", counterPriceMinor: "78000" }),
+        makeRound({ roundNo: 5, priceminor: "89000", counterPriceMinor: "80000" }),
       ];
       mockGetRoundsBySessionId.mockResolvedValue(rounds);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 81000));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 81000));
 
-      await executeLLMNegotiationRound(
-        db as any,
-        makeInput({ offerPriceMinor: 88500 }),
-      );
+      await executeLLMNegotiationRound(db as any, makeInput({ offerPriceMinor: 88500 }));
 
       const roundData = mockCreateRound.mock.calls[0][1] as Record<string, unknown>;
       const coaching = roundData.coaching as Record<string, unknown>;
@@ -430,11 +427,11 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       expect(coaching.suggested_tactic).toBeDefined();
     });
 
-    it('stagnation 4라운드 → STALLED 상태', async () => {
+    it("stagnation 4라운드 → STALLED 상태", async () => {
       const session = makeSession({
         currentRound: 6,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '80000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "80000",
         roundsNoConcession: 4,
         version: 6,
       });
@@ -442,18 +439,15 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
 
       // Same prices for 4 rounds → stagnation
       const rounds = [
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '80000' }),
-        makeRound({ roundNo: 4, priceminor: '85000', counterPriceMinor: '80000' }),
-        makeRound({ roundNo: 5, priceminor: '85000', counterPriceMinor: '80000' }),
-        makeRound({ roundNo: 6, priceminor: '85000', counterPriceMinor: '80000' }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "80000" }),
+        makeRound({ roundNo: 4, priceminor: "85000", counterPriceMinor: "80000" }),
+        makeRound({ roundNo: 5, priceminor: "85000", counterPriceMinor: "80000" }),
+        makeRound({ roundNo: 6, priceminor: "85000", counterPriceMinor: "80000" }),
       ];
       mockGetRoundsBySessionId.mockResolvedValue(rounds);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 80500));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 80500));
 
-      await executeLLMNegotiationRound(
-        db as any,
-        makeInput({ offerPriceMinor: 85000 }),
-      );
+      await executeLLMNegotiationRound(db as any, makeInput({ offerPriceMinor: 85000 }));
 
       const updateCall = mockUpdateSessionState.mock.calls[0];
       expect(updateCall).toBeDefined();
@@ -465,12 +459,12 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Phase 3: CLOSING — Near-Deal 감지
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Phase 3: CLOSING — Near-Deal 감지', () => {
-    it('gap < 5% → auto-ACCEPT (near-deal)', async () => {
+  describe("Phase 3: CLOSING — Near-Deal 감지", () => {
+    it("gap < 5% → auto-ACCEPT (near-deal)", async () => {
       const session = makeSession({
         currentRound: 7,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '82000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "82000",
         version: 7,
         negotiationAgentSnapshot: {
           p_target: SCENARIO.buyerTarget,
@@ -481,8 +475,8 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
-        makeRound({ roundNo: 6, priceminor: '83000', counterPriceMinor: '81500' }),
-        makeRound({ roundNo: 7, priceminor: '82500', counterPriceMinor: '82000' }),
+        makeRound({ roundNo: 6, priceminor: "83000", counterPriceMinor: "81500" }),
+        makeRound({ roundNo: 7, priceminor: "82500", counterPriceMinor: "82000" }),
       ]);
 
       // Seller offers $825 — gap from $820 = $500 = 2.5% of $20K range
@@ -492,21 +486,21 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       );
 
       // Skill detects gap < 5% → ACCEPT
-      expect(result.decision).toBe('ACCEPT');
+      expect(result.decision).toBe("ACCEPT");
       expect(mockCallLLM).not.toHaveBeenCalled();
     });
 
-    it('NEAR_DEAL 상태 세션 → CLOSING phase', async () => {
+    it("NEAR_DEAL 상태 세션 → CLOSING phase", async () => {
       const session = makeSession({
         currentRound: 7,
-        status: 'NEAR_DEAL',
-        lastOfferPriceMinor: '82000',
+        status: "NEAR_DEAL",
+        lastOfferPriceMinor: "82000",
         version: 7,
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
-        makeRound({ roundNo: 7, priceminor: '82500', counterPriceMinor: '82000' }),
+        makeRound({ roundNo: 7, priceminor: "82500", counterPriceMinor: "82000" }),
       ]);
 
       // Offer at exact our price → ACCEPT
@@ -515,22 +509,22 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         makeInput({ offerPriceMinor: 82000 }),
       );
 
-      expect(result.decision).toBe('ACCEPT');
+      expect(result.decision).toBe("ACCEPT");
     });
 
-    it('CLOSING phase에서 CONFIRM 생성', async () => {
+    it("CLOSING phase에서 CONFIRM 생성", async () => {
       // When session is in CLOSING phase (detected via NEAR_DEAL status)
       const session = makeSession({
         currentRound: 8,
-        status: 'NEAR_DEAL',
-        lastOfferPriceMinor: '82000',
+        status: "NEAR_DEAL",
+        lastOfferPriceMinor: "82000",
         version: 8,
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
-        makeRound({ roundNo: 7, priceminor: '82500', counterPriceMinor: '82000' }),
-        makeRound({ roundNo: 8, priceminor: '82100', counterPriceMinor: '82000' }),
+        makeRound({ roundNo: 7, priceminor: "82500", counterPriceMinor: "82000" }),
+        makeRound({ roundNo: 8, priceminor: "82100", counterPriceMinor: "82000" }),
       ]);
 
       const result = await executeLLMNegotiationRound(
@@ -539,7 +533,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       );
 
       // Near target → ACCEPT or in CLOSING → CONFIRM
-      expect(['ACCEPT', 'COUNTER', 'NEAR_DEAL']).toContain(result.decision);
+      expect(["ACCEPT", "COUNTER", "NEAR_DEAL"]).toContain(result.decision);
     });
   });
 
@@ -547,41 +541,41 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Phase 4: SETTLEMENT — 최종 확정
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Phase 4: SETTLEMENT — 최종 확정', () => {
-    it('ACCEPTED 세션에 추가 제안 → SESSION_TERMINAL 에러', async () => {
-      const session = makeSession({ status: 'ACCEPTED', currentRound: 8 });
+  describe("Phase 4: SETTLEMENT — 최종 확정", () => {
+    it("ACCEPTED 세션에 추가 제안 → SESSION_TERMINAL 에러", async () => {
+      const session = makeSession({ status: "ACCEPTED", currentRound: 8 });
       const db = makeMockDb(session);
 
-      await expect(
-        executeLLMNegotiationRound(db as any, makeInput()),
-      ).rejects.toThrow('SESSION_TERMINAL');
+      await expect(executeLLMNegotiationRound(db as any, makeInput())).rejects.toThrow(
+        "SESSION_TERMINAL",
+      );
     });
 
-    it('REJECTED 세션에 추가 제안 → SESSION_TERMINAL 에러', async () => {
-      const session = makeSession({ status: 'REJECTED', currentRound: 5 });
+    it("REJECTED 세션에 추가 제안 → SESSION_TERMINAL 에러", async () => {
+      const session = makeSession({ status: "REJECTED", currentRound: 5 });
       const db = makeMockDb(session);
 
-      await expect(
-        executeLLMNegotiationRound(db as any, makeInput()),
-      ).rejects.toThrow('SESSION_TERMINAL');
+      await expect(executeLLMNegotiationRound(db as any, makeInput())).rejects.toThrow(
+        "SESSION_TERMINAL",
+      );
     });
 
-    it('만료된 세션 → SESSION_EXPIRED 에러', async () => {
+    it("만료된 세션 → SESSION_EXPIRED 에러", async () => {
       const session = makeSession({
         expiresAt: new Date(NOW - 60000),
         currentRound: 3,
       });
       const db = makeMockDb(session);
 
-      await expect(
-        executeLLMNegotiationRound(db as any, makeInput()),
-      ).rejects.toThrow('SESSION_EXPIRED');
+      await expect(executeLLMNegotiationRound(db as any, makeInput())).rejects.toThrow(
+        "SESSION_EXPIRED",
+      );
     });
 
-    it('ACCEPT 시 negotiation.agreed 이벤트 발행', async () => {
+    it("ACCEPT 시 negotiation.agreed 이벤트 발행", async () => {
       const session = makeSession({
         currentRound: 0,
-        status: 'CREATED',
+        status: "CREATED",
       });
       const db = makeMockDb(session);
 
@@ -592,7 +586,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
 
       mockGetSessionById.mockResolvedValue({
         ...session,
-        lastOfferPriceMinor: '74000',
+        lastOfferPriceMinor: "74000",
       });
 
       const result = await executeLLMNegotiationRound(
@@ -601,11 +595,11 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         dispatcher as any,
       );
 
-      if (result.sessionStatus === 'ACCEPTED') {
+      if (result.sessionStatus === "ACCEPTED") {
         expect(mockDispatch).toHaveBeenCalledOnce();
         const evt = mockDispatch.mock.calls[0][0];
-        expect(evt.type).toBe('negotiation.agreed');
-        expect(evt.payload.session_id).toBe('sess-lifecycle-001');
+        expect(evt.type).toBe("negotiation.agreed");
+        expect(evt.payload.session_id).toBe("sess-lifecycle-001");
       }
     });
   });
@@ -614,58 +608,78 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Referee — Validation + Auto-fix
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Referee — 검증 + 자동 수정', () => {
-    it('LLM이 floor 위반 가격 제시 → Referee가 자동 수정', async () => {
+  describe("Referee — 검증 + 자동 수정", () => {
+    it("LLM이 floor 위반 가격 제시 → Referee가 자동 수정", async () => {
       const session = makeSession({
-        role: 'SELLER',
+        role: "SELLER",
         currentRound: 4,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '85000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "85000",
         version: 4,
         negotiationAgentSnapshot: {
           p_target: 90000,
-          p_limit: 70000,  // seller floor $700
+          p_limit: 70000, // seller floor $700
           max_rounds: 15,
         },
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
-        makeRound({ roundNo: 1, senderRole: 'BUYER', priceminor: '70000', counterPriceMinor: '92000' }),
-        makeRound({ roundNo: 2, senderRole: 'BUYER', priceminor: '73000', counterPriceMinor: '88000' }),
-        makeRound({ roundNo: 3, senderRole: 'BUYER', priceminor: '76000', counterPriceMinor: '86000' }),
-        makeRound({ roundNo: 4, senderRole: 'BUYER', priceminor: '78000', counterPriceMinor: '85000' }),
+        makeRound({
+          roundNo: 1,
+          senderRole: "BUYER",
+          priceminor: "70000",
+          counterPriceMinor: "92000",
+        }),
+        makeRound({
+          roundNo: 2,
+          senderRole: "BUYER",
+          priceminor: "73000",
+          counterPriceMinor: "88000",
+        }),
+        makeRound({
+          roundNo: 3,
+          senderRole: "BUYER",
+          priceminor: "76000",
+          counterPriceMinor: "86000",
+        }),
+        makeRound({
+          roundNo: 4,
+          senderRole: "BUYER",
+          priceminor: "78000",
+          counterPriceMinor: "85000",
+        }),
       ]);
 
       // LLM returns price below seller floor
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 60000));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 60000));
 
       const result = await executeLLMNegotiationRound(
         db as any,
-        makeInput({ offerPriceMinor: 80000, senderRole: 'BUYER' }),
+        makeInput({ offerPriceMinor: 80000, senderRole: "BUYER" }),
       );
 
       // Referee should correct price to be >= floor
-      if (result.decision === 'COUNTER') {
+      if (result.decision === "COUNTER") {
         expect(result.outgoingPrice).toBeGreaterThanOrEqual(70000);
       }
     });
 
-    it('방향 전환 감지 → SOFT violation (경고만, 진행 차단 안 함)', async () => {
+    it("방향 전환 감지 → SOFT violation (경고만, 진행 차단 안 함)", async () => {
       const session = makeSession({
         currentRound: 5,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '80000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "80000",
         version: 5,
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '78000' }),
-        makeRound({ roundNo: 4, priceminor: '83000', counterPriceMinor: '80000' }),
-        makeRound({ roundNo: 5, priceminor: '82000', counterPriceMinor: '80000' }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "78000" }),
+        makeRound({ roundNo: 4, priceminor: "83000", counterPriceMinor: "80000" }),
+        makeRound({ roundNo: 5, priceminor: "82000", counterPriceMinor: "80000" }),
       ]);
-      mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 80500));
+      mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 80500));
 
       const result = await executeLLMNegotiationRound(
         db as any,
@@ -684,63 +698,57 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Prompt Construction — LLM 프롬프트 구조 검증
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Prompt Construction — 프롬프트 구조', () => {
-    it('system prompt에 Skill 컨텍스트 + JSON 스키마 포함', async () => {
+  describe("Prompt Construction — 프롬프트 구조", () => {
+    it("system prompt에 Skill 컨텍스트 + JSON 스키마 포함", async () => {
       const session = makeSession({
         currentRound: 3,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '78000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "78000",
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
         makeRound({ roundNo: 1 }),
-        makeRound({ roundNo: 2, priceminor: '88000', counterPriceMinor: '72000' }),
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '78000' }),
+        makeRound({ roundNo: 2, priceminor: "88000", counterPriceMinor: "72000" }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "78000" }),
       ]);
       mockCallLLM.mockResolvedValue(makeLLMResponse());
 
-      await executeLLMNegotiationRound(
-        db as any,
-        makeInput({ offerPriceMinor: 83000 }),
-      );
+      await executeLLMNegotiationRound(db as any, makeInput({ offerPriceMinor: 83000 }));
 
       const [systemPrompt, userPrompt] = mockCallLLM.mock.calls[0];
 
       // System prompt has skill context
-      expect(systemPrompt).toContain('iPhone Pro');
-      expect(systemPrompt).toContain('JSON');
+      expect(systemPrompt).toContain("iPhone Pro");
+      expect(systemPrompt).toContain("JSON");
 
       // User prompt has compact memory encoding
-      expect(userPrompt).toContain('S:');
-      expect(userPrompt).toContain('B:');
-      expect(userPrompt).toContain('C:');
+      expect(userPrompt).toContain("S:");
+      expect(userPrompt).toContain("B:");
+      expect(userPrompt).toContain("C:");
     });
 
-    it('reasoning 모드 플래그가 callLLM에 전달됨', async () => {
+    it("reasoning 모드 플래그가 callLLM에 전달됨", async () => {
       const session = makeSession({
         currentRound: 4,
-        status: 'ACTIVE',
-        lastOfferPriceMinor: '80000',
+        status: "ACTIVE",
+        lastOfferPriceMinor: "80000",
       });
       const db = makeMockDb(session);
 
       mockGetRoundsBySessionId.mockResolvedValue([
         makeRound({ roundNo: 1 }),
-        makeRound({ roundNo: 2, priceminor: '88000', counterPriceMinor: '72000' }),
-        makeRound({ roundNo: 3, priceminor: '85000', counterPriceMinor: '78000' }),
-        makeRound({ roundNo: 4, priceminor: '83000', counterPriceMinor: '80000' }),
+        makeRound({ roundNo: 2, priceminor: "88000", counterPriceMinor: "72000" }),
+        makeRound({ roundNo: 3, priceminor: "85000", counterPriceMinor: "78000" }),
+        makeRound({ roundNo: 4, priceminor: "83000", counterPriceMinor: "80000" }),
       ]);
       mockCallLLM.mockResolvedValue(makeLLMResponse());
 
-      await executeLLMNegotiationRound(
-        db as any,
-        makeInput({ offerPriceMinor: 82000 }),
-      );
+      await executeLLMNegotiationRound(db as any, makeInput({ offerPriceMinor: 82000 }));
 
       expect(mockCallLLM).toHaveBeenCalledOnce();
       const opts = mockCallLLM.mock.calls[0][2];
-      expect(typeof opts.reasoning).toBe('boolean');
+      expect(typeof opts.reasoning).toBe("boolean");
     });
   });
 
@@ -748,24 +756,24 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
   // Full Lifecycle — 8라운드 시나리오
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe('Full Lifecycle — 8라운드 iPhone 15 Pro', () => {
-    it('OPENING → BARGAINING → ACCEPT 전체 흐름', async () => {
+  describe("Full Lifecycle — 8라운드 iPhone 15 Pro", () => {
+    it("OPENING → BARGAINING → ACCEPT 전체 흐름", async () => {
       const results: RoundResult[] = [];
 
       // ── Round 1: OPENING ──
       {
         resetMocks();
-        const session = makeSession({ currentRound: 0, status: 'CREATED' });
+        const session = makeSession({ currentRound: 0, status: "CREATED" });
         const db = makeMockDb(session);
         mockGetRoundsBySessionId.mockResolvedValue([]);
-        mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', 68000));
+        mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", 68000));
 
         const r = await executeLLMNegotiationRound(
           db as any,
-          makeInput({ offerPriceMinor: 92000, idempotencyKey: 'life-r1' }),
+          makeInput({ offerPriceMinor: 92000, idempotencyKey: "life-r1" }),
         );
         results.push({
-          phase: 'OPENING→BARGAINING',
+          phase: "OPENING→BARGAINING",
           roundNo: r.roundNo,
           decision: r.decision,
           outgoingPrice: r.outgoingPrice,
@@ -783,8 +791,8 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         { seller: 82000, llmCounter: 81000 },
       ];
 
-      let roundHistory: DbRound[] = [
-        makeRound({ roundNo: 1, priceminor: '92000', counterPriceMinor: '68000' }),
+      const roundHistory: DbRound[] = [
+        makeRound({ roundNo: 1, priceminor: "92000", counterPriceMinor: "68000" }),
       ];
 
       for (let i = 0; i < bargainingPairs.length; i++) {
@@ -794,13 +802,13 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
 
         const session = makeSession({
           currentRound: rn - 1,
-          status: 'ACTIVE',
+          status: "ACTIVE",
           lastOfferPriceMinor: String(roundHistory[roundHistory.length - 1]!.counterPriceMinor),
           version: rn,
         });
         const db = makeMockDb(session);
         mockGetRoundsBySessionId.mockResolvedValue([...roundHistory]);
-        mockCallLLM.mockResolvedValue(makeLLMResponse('COUNTER', pair.llmCounter));
+        mockCallLLM.mockResolvedValue(makeLLMResponse("COUNTER", pair.llmCounter));
 
         const r = await executeLLMNegotiationRound(
           db as any,
@@ -811,7 +819,7 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         );
 
         results.push({
-          phase: 'BARGAINING',
+          phase: "BARGAINING",
           roundNo: r.roundNo,
           decision: r.decision,
           outgoingPrice: r.outgoingPrice,
@@ -833,8 +841,8 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         resetMocks();
         const session = makeSession({
           currentRound: 6,
-          status: 'ACTIVE',
-          lastOfferPriceMinor: '81000',
+          status: "ACTIVE",
+          lastOfferPriceMinor: "81000",
           version: 7,
         });
         const db = makeMockDb(session);
@@ -843,11 +851,11 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
         // Seller offers $815 — gap from $810 = $500, 2.5% of 20K range → auto ACCEPT
         const r = await executeLLMNegotiationRound(
           db as any,
-          makeInput({ offerPriceMinor: 81500, idempotencyKey: 'life-r7' }),
+          makeInput({ offerPriceMinor: 81500, idempotencyKey: "life-r7" }),
         );
 
         results.push({
-          phase: 'CLOSING',
+          phase: "CLOSING",
           roundNo: r.roundNo,
           decision: r.decision,
           outgoingPrice: r.outgoingPrice,
@@ -862,28 +870,28 @@ describe('Negotiation Phase Lifecycle — iPhone 15 Pro ($750 target)', () => {
       expect(results.length).toBe(7);
 
       // Phase progression
-      expect(results[0]!.phase).toBe('OPENING→BARGAINING');
-      expect(results[1]!.phase).toBe('BARGAINING');
-      expect(results[results.length - 1]!.phase).toBe('CLOSING');
+      expect(results[0]!.phase).toBe("OPENING→BARGAINING");
+      expect(results[1]!.phase).toBe("BARGAINING");
+      expect(results[results.length - 1]!.phase).toBe("CLOSING");
 
       // Price convergence: buyer offers monotonically increase
       const buyerOffers = results
-        .filter((r) => r.decision === 'COUNTER')
+        .filter((r) => r.decision === "COUNTER")
         .map((r) => r.outgoingPrice);
       for (let i = 1; i < buyerOffers.length; i++) {
         expect(buyerOffers[i]).toBeGreaterThanOrEqual(buyerOffers[i - 1]!);
       }
 
       // LLM called during BARGAINING
-      const bargainingResults = results.filter((r) => r.phase === 'BARGAINING');
+      const bargainingResults = results.filter((r) => r.phase === "BARGAINING");
       for (const r of bargainingResults) {
-        if (r.decision === 'COUNTER') {
+        if (r.decision === "COUNTER") {
           expect(r.llmCalled).toBe(true);
         }
       }
 
       // Final round should be ACCEPT
-      expect(results[results.length - 1]!.decision).toBe('ACCEPT');
+      expect(results[results.length - 1]!.decision).toBe("ACCEPT");
     });
   });
 });

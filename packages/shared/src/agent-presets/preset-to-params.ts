@@ -17,9 +17,7 @@ const MARKET_NEUTRAL_DEFAULTS = {
 } as const;
 
 /** Convert a NegotiationAgentPreset to a complete EngineParameters object. */
-export function presetToEngineParameters(
-  preset: NegotiationAgentPreset,
-): EngineParameters {
+export function presetToEngineParameters(preset: NegotiationAgentPreset): EngineParameters {
   return {
     weights: { ...preset.weights },
     alpha: preset.alpha,

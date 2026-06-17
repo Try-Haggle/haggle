@@ -1,5 +1,8 @@
 import { api } from "./api-client";
-import type { AdvisorListing, NegotiationAgentBuilderMemory } from "./negotiation-agent-builder-types";
+import type {
+  AdvisorListing,
+  NegotiationAgentBuilderMemory,
+} from "./negotiation-agent-builder-types";
 
 const DEMO_OPTS = { skipAuth: true } as const;
 
@@ -117,7 +120,11 @@ export type NegotiationAgentBuilderTurnCost = {
   };
 };
 
-export type NegotiationAgentPresetId = "safe_buyer" | "balanced_closer" | "lowest_price" | "fast_close";
+export type NegotiationAgentPresetId =
+  | "safe_buyer"
+  | "balanced_closer"
+  | "lowest_price"
+  | "fast_close";
 
 export type PresetTermDraft = {
   termId: string;
@@ -269,10 +276,9 @@ export async function processNegotiationAgentBuilderTurn(params: {
   );
 }
 
-export async function getAdvisorDemoListings(params: {
-  query?: string;
-  limit?: number;
-} = {}): Promise<AdvisorDemoListingsResponse> {
+export async function getAdvisorDemoListings(
+  params: { query?: string; limit?: number } = {},
+): Promise<AdvisorDemoListingsResponse> {
   const search = new URLSearchParams();
   if (params.query) search.set("q", params.query);
   if (params.limit) search.set("limit", String(params.limit));
@@ -320,7 +326,9 @@ export async function getTagGardenIntelligence(limit = 8): Promise<TagGardenInte
   );
 }
 
-export async function getNegotiationAgentPresets(): Promise<{ presets: NegotiationAgentPresetSummary[] }> {
+export async function getNegotiationAgentPresets(): Promise<{
+  presets: NegotiationAgentPresetSummary[];
+}> {
   return api.get("/intelligence/demo/negotiation-agent-presets", DEMO_OPTS);
 }
 
@@ -395,8 +403,5 @@ export async function resetDemoMemory(userId: string): Promise<{
     conversation_signal_sources: number;
   };
 }> {
-  return api.delete(
-    `/intelligence/demo/memory?user_id=${encodeURIComponent(userId)}`,
-    DEMO_OPTS,
-  );
+  return api.delete(`/intelligence/demo/memory?user_id=${encodeURIComponent(userId)}`, DEMO_OPTS);
 }

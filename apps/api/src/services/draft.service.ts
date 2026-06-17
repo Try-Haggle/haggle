@@ -1,26 +1,26 @@
 import { randomBytes } from "node:crypto";
 import {
-  type Database,
-  listingDrafts,
-  listingsPublished,
-  negotiationAgents,
-  tags,
-  eq,
   and,
-  or,
+  asc,
+  type Database,
+  desc,
+  eq,
   gt,
   gte,
+  inArray,
+  isNotNull,
+  isNull,
+  listingDrafts,
+  listingsPublished,
   lt,
   lte,
-  isNull,
-  isNotNull,
-  desc,
-  asc,
-  inArray,
+  negotiationAgents,
+  or,
   sql,
+  tags,
 } from "@haggle/db";
-import { placeListingTags } from "./tag-placement.service.js";
 import { triggerEmbeddingGeneration } from "./embedding.service.js";
+import { placeListingTags } from "./tag-placement.service.js";
 
 /** Fields that can be patched via haggle_apply_patch. */
 const PATCHABLE_FIELDS = [
@@ -41,16 +41,11 @@ const PATCHABLE_FIELDS = [
 type PatchableField = (typeof PATCHABLE_FIELDS)[number];
 
 /** Partial update payload — only patchable fields allowed. */
-export type DraftPatch = Partial<
-  Pick<typeof listingDrafts.$inferInsert, PatchableField>
->;
+export type DraftPatch = Partial<Pick<typeof listingDrafts.$inferInsert, PatchableField>>;
 
 /** Insert a new empty draft row with status "draft". */
 export async function createDraft(db: Database) {
-  const [row] = await db
-    .insert(listingDrafts)
-    .values({ status: "draft" })
-    .returning();
+  const [row] = await db.insert(listingDrafts).values({ status: "draft" }).returning();
   return row;
 }
 
@@ -63,11 +58,7 @@ export async function getDraftById(db: Database, id: string) {
 }
 
 /** Update allowed fields on a draft. Returns the updated row, or null if not found. */
-export async function patchDraft(
-  db: Database,
-  id: string,
-  patch: DraftPatch,
-) {
+export async function patchDraft(db: Database, id: string, patch: DraftPatch) {
   // Filter to only patchable fields that are actually present in the patch
   const updates: Record<string, unknown> = {};
   for (const key of PATCHABLE_FIELDS) {
@@ -165,7 +156,12 @@ const LISTING_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
  */
 async function persistListingAgent(
   db: Database,
-  draft: { id: string; userId: string | null; title: string | null; negotiationAgentSnapshot: Record<string, unknown> | null },
+  draft: {
+    id: string;
+    userId: string | null;
+    title: string | null;
+    negotiationAgentSnapshot: Record<string, unknown> | null;
+  },
 ): Promise<string | null> {
   const snap = draft.negotiationAgentSnapshot;
   if (!snap) return null;
@@ -270,10 +266,7 @@ export async function publishDraft(db: Database, draftId: string) {
     }
   } catch (err) {
     // Placement failure must NOT fail publish.
-    console.warn(
-      `[publish] tag placement failed for listing ${published.id}:`,
-      err,
-    );
+    console.warn(`[publish] tag placement failed for listing ${published.id}:`, err);
   }
 
   // Promote the listing's agent to a reusable record (slice 5).
@@ -385,10 +378,7 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
 // ─── Public Listing (Buyer) ─────────────────────────────────
 
 /** Fetch a published listing by its public_id. No auth required. */
-export async function getPublishedListingByPublicId(
-  db: Database,
-  publicId: string,
-) {
+export async function getPublishedListingByPublicId(db: Database, publicId: string) {
   const rows = await db
     .select({
       id: listingsPublished.id,
@@ -417,10 +407,7 @@ export async function getPublishedListingByPublicId(
  * negotiation session. Returns the publicId + display fields needed by the
  * buyer-side playback view; deliberately omits floorPrice/negotiationAgentSnapshot.
  */
-export async function getListingPlaybackSummaryByInternalId(
-  db: Database,
-  listingId: string,
-) {
+export async function getListingPlaybackSummaryByInternalId(db: Database, listingId: string) {
   const rows = await db
     .select({
       id: listingsPublished.id,
@@ -578,9 +565,7 @@ export async function listPublishedListings(
 // the dynamic preset bucket histogram. Buckets are [-inf, 25), [25, 50),
 // ..., [100000, +inf). The shape is intentionally coarse at the high end
 // where data is sparse and dense at the low end where most listings live.
-const PRICE_BUCKET_EDGES = [
-  25, 50, 100, 200, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000,
-];
+const PRICE_BUCKET_EDGES = [25, 50, 100, 200, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 /**
  * Compute the top-N most populated price buckets matching the given
@@ -620,10 +605,12 @@ export async function getPublishedPriceBuckets(
   for (let i = 0; i < PRICE_BUCKET_EDGES.length - 1; i++) {
     const lo = PRICE_BUCKET_EDGES[i];
     const hi = PRICE_BUCKET_EDGES[i + 1];
-    fields[`b${i + 1}`] = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lo} AND ${listingDrafts.targetPrice} < ${hi})`;
+    fields[`b${i + 1}`] =
+      sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lo} AND ${listingDrafts.targetPrice} < ${hi})`;
   }
   const lastEdge = PRICE_BUCKET_EDGES[PRICE_BUCKET_EDGES.length - 1];
-  fields[`b${PRICE_BUCKET_EDGES.length}`] = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lastEdge})`;
+  fields[`b${PRICE_BUCKET_EDGES.length}`] =
+    sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lastEdge})`;
 
   const [row] = await db
     .select(fields)
@@ -722,10 +709,7 @@ export async function claimListing(
   // Find draft with matching, non-expired claim token
   const draft = await db.query.listingDrafts.findFirst({
     where: (fields, ops) =>
-      ops.and(
-        ops.eq(fields.claimToken, claimToken),
-        ops.eq(fields.status, "published"),
-      ),
+      ops.and(ops.eq(fields.claimToken, claimToken), ops.eq(fields.status, "published")),
   });
 
   if (!draft) {

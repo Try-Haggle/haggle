@@ -1,8 +1,8 @@
-import { eq, listingDrafts, listingsPublished, type Database } from "@haggle/db";
+import { type Database, eq, listingDrafts, listingsPublished } from "@haggle/db";
 import {
-  compileNegotiationAgentSnapshot,
   type AgentStats,
   type CompiledNegotiationAgentSnapshot,
+  compileNegotiationAgentSnapshot,
 } from "@haggle/engine-session";
 
 export interface NegotiationAgentBuilderMemorySnapshot {
@@ -72,7 +72,8 @@ export function extractListingContext(
   if (base.condition) ctx.condition = base.condition;
   if (base.tags && base.tags.length > 0) ctx.tags = base.tags;
   if (base.photoUrl) ctx.photoUrl = base.photoUrl;
-  if (typeof negotiationAgentSnapshot.subtype === "string") ctx.subtype = negotiationAgentSnapshot.subtype;
+  if (typeof negotiationAgentSnapshot.subtype === "string")
+    ctx.subtype = negotiationAgentSnapshot.subtype;
 
   const attributes: Record<string, unknown> = {};
   for (const key of CATEGORY_ATTRIBUTE_KEYS) {
@@ -169,11 +170,7 @@ export async function loadListingStrategyContext(
   };
 
   let row = (
-    await db
-      .select(columns)
-      .from(listingDrafts)
-      .where(eq(listingDrafts.id, listingId))
-      .limit(1)
+    await db.select(columns).from(listingDrafts).where(eq(listingDrafts.id, listingId)).limit(1)
   )[0];
 
   if (!row) {
@@ -194,10 +191,13 @@ export async function loadListingStrategyContext(
     majorPriceToMinor(row.floorPrice) ??
     (askPriceMinor ? Math.round(askPriceMinor * 0.86) : undefined);
   const negotiationAgentSnapshot = (row.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
-  const sellerNegotiationAgentBuilderMemory = extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
+  const sellerNegotiationAgentBuilderMemory =
+    extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
   const listingContext = extractListingContext(row, negotiationAgentSnapshot);
   const sellerNegotiationAgentPresetId =
-    typeof negotiationAgentSnapshot.preset === "string" ? negotiationAgentSnapshot.preset : undefined;
+    typeof negotiationAgentSnapshot.preset === "string"
+      ? negotiationAgentSnapshot.preset
+      : undefined;
 
   const sellerStrategy =
     askPriceMinor && floorPriceMinor

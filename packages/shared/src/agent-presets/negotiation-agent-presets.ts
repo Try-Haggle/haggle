@@ -43,8 +43,7 @@ export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
         name: "Patient Lister",
         nameKo: "인내의 판매자",
         tagline: "Waits for the right buyer.",
-        description:
-          "Holds list price firm. Slow to concede, even if it takes longer to close.",
+        description: "Holds list price firm. Slow to concede, even if it takes longer to close.",
       },
     },
   },
@@ -77,8 +76,7 @@ export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
         name: "Quick Closer",
         nameKo: "신속 체결자",
         tagline: "Locks in deals fast.",
-        description:
-          "Prioritizes turnover. Drops price quickly to close before the buyer walks.",
+        description: "Prioritizes turnover. Drops price quickly to close before the buyer walks.",
       },
     },
   },
@@ -138,23 +136,19 @@ export const NEGOTIATION_AGENT_PRESETS: readonly NegotiationAgentPreset[] = [
         name: "Steady Buyer",
         nameKo: "균형 구매자",
         tagline: "Even-handed across price, time, and trust.",
-        description:
-          "No single dimension dominates. Safe default for most categories.",
+        description: "No single dimension dominates. Safe default for most categories.",
       },
       seller: {
         name: "Steady Seller",
         nameKo: "균형 판매자",
         tagline: "Even-handed across price, time, and trust.",
-        description:
-          "No single dimension dominates. Safe default for most categories.",
+        description: "No single dimension dominates. Safe default for most categories.",
       },
     },
   },
 ] as const;
 
 /** Look up a preset by id. */
-export function getNegotiationAgentPreset(
-  id: string,
-): NegotiationAgentPreset | undefined {
+export function getNegotiationAgentPreset(id: string): NegotiationAgentPreset | undefined {
   return NEGOTIATION_AGENT_PRESETS.find((p) => p.id === id);
 }

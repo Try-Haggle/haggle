@@ -1,21 +1,18 @@
-import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
-import { LISTING_CATEGORIES, ITEM_CONDITIONS } from "@haggle/shared";
+import { ITEM_CONDITIONS, LISTING_CATEGORIES } from "@haggle/shared";
+import type { FastifyInstance } from "fastify";
 import {
   getPublishedListingByPublicId,
   getPublishedPriceBuckets,
   getPublishedPriceRange,
-  listPublishedListings,
   type ListPublishedSort,
+  listPublishedListings,
 } from "../services/draft.service.js";
 import { extractListingContext } from "../services/listing-strategy.service.js";
 
 const SORT_VALUES = ["newest", "price_asc", "price_desc"] as const;
 
-export function registerPublicListingRoutes(
-  app: FastifyInstance,
-  db: Database,
-) {
+export function registerPublicListingRoutes(app: FastifyInstance, db: Database) {
   // GET /api/public/listings — no auth required
   // Query params:
   //   category?    (one of LISTING_CATEGORIES)
@@ -54,7 +51,10 @@ export function registerPublicListingRoutes(
 
     let categories: string[] | undefined;
     if (category) {
-      const list = category.split(",").map((s) => s.trim()).filter(Boolean);
+      const list = category
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const invalid = list.filter(
         (c) => !LISTING_CATEGORIES.includes(c as (typeof LISTING_CATEGORIES)[number]),
       );
@@ -108,7 +108,10 @@ export function registerPublicListingRoutes(
 
     let conditions: string[] | undefined;
     if (conditionRaw) {
-      const list = conditionRaw.split(",").map((s) => s.trim()).filter(Boolean);
+      const list = conditionRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const invalid = list.filter(
         (c) => !ITEM_CONDITIONS.includes(c as (typeof ITEM_CONDITIONS)[number]),
       );
@@ -141,7 +144,7 @@ export function registerPublicListingRoutes(
         return reply.status(400).send({
           ok: false,
           error: "invalid_cursor",
-          message: "cursor must be in format `${sortKey}_${publicId}`",
+          message: "cursor must be in format <sortKey>_<publicId>",
         });
       }
       const sortKey = cursorRaw.slice(0, sep);
@@ -187,9 +190,7 @@ export function registerPublicListingRoutes(
     if (listings.length === effectiveLimit) {
       const last = listings[listings.length - 1];
       const sortKey =
-        sort === "newest"
-          ? last.publishedAt.toISOString()
-          : (last.targetPrice ?? "0");
+        sort === "newest" ? last.publishedAt.toISOString() : (last.targetPrice ?? "0");
       nextCursor = `${sortKey}_${last.publicId}`;
     }
 

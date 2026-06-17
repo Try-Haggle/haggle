@@ -12,14 +12,14 @@
  *   - Buyer sees only buyer_* messages, seller sees only seller_*
  */
 
+import type { Database } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { requireAuth } from "../middleware/require-auth.js";
-import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { chat, analyzeCase, getHistory } from "../advisor/advisor-service.js";
-import { MAX_MESSAGE_LENGTH } from "../advisor/advisor-types.js";
+import { analyzeCase, chat, getHistory } from "../advisor/advisor-service.js";
 import type { AdvisorRole } from "../advisor/advisor-types.js";
+import { MAX_MESSAGE_LENGTH } from "../advisor/advisor-types.js";
+import { createOwnershipMiddleware } from "../middleware/ownership.js";
+import { requireAuth } from "../middleware/require-auth.js";
 
 const chatBodySchema = z.object({
   message: z
@@ -60,15 +60,11 @@ export function registerDisputeAdvisorRoutes(app: FastifyInstance, db: Database)
       // Validate body
       const parsed = chatBodySchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_MESSAGE", issues: parsed.error.issues });
+        return reply.code(400).send({ error: "INVALID_MESSAGE", issues: parsed.error.issues });
       }
 
       // Determine role server-side
-      const orderResource = (
-        request as unknown as Record<string, unknown>
-      ).orderResource as
+      const orderResource = (request as unknown as Record<string, unknown>).orderResource as
         | { buyerId: string; sellerId: string }
         | undefined;
       const userId = request.user!.id;
@@ -105,15 +101,11 @@ export function registerDisputeAdvisorRoutes(app: FastifyInstance, db: Database)
 
       const parsed = historyQuerySchema.safeParse(request.query);
       if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_QUERY", issues: parsed.error.issues });
+        return reply.code(400).send({ error: "INVALID_QUERY", issues: parsed.error.issues });
       }
 
       // Determine role server-side
-      const orderResource = (
-        request as unknown as Record<string, unknown>
-      ).orderResource as
+      const orderResource = (request as unknown as Record<string, unknown>).orderResource as
         | { buyerId: string; sellerId: string }
         | undefined;
       const userId = request.user!.id;
@@ -126,13 +118,7 @@ export function registerDisputeAdvisorRoutes(app: FastifyInstance, db: Database)
       }
 
       // Role isolation enforced inside getHistory via SQL WHERE clause
-      const messages = await getHistory(
-        db,
-        id,
-        userRole,
-        parsed.data.limit,
-        parsed.data.offset,
-      );
+      const messages = await getHistory(db, id, userRole, parsed.data.limit, parsed.data.offset);
 
       return reply.send({ messages });
     },
@@ -146,9 +132,7 @@ export function registerDisputeAdvisorRoutes(app: FastifyInstance, db: Database)
       const { id } = request.params;
 
       // Determine role server-side
-      const orderResource = (
-        request as unknown as Record<string, unknown>
-      ).orderResource as
+      const orderResource = (request as unknown as Record<string, unknown>).orderResource as
         | { buyerId: string; sellerId: string }
         | undefined;
       const userId = request.user!.id;

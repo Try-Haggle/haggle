@@ -1,21 +1,21 @@
-import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { type Database } from "@haggle/db";
-import { loadListingStrategyContext } from "../../services/listing-strategy.service.js";
+import type { Database } from "@haggle/db";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import type { EventDispatcher } from "../../lib/event-dispatcher.js";
+import { getExecutor } from "../../lib/executor-factory.js";
+import { uploadListingPhoto } from "../../lib/supabase-storage.js";
 import {
+  claimListing,
   createDraft,
   getDraftById,
   patchDraft,
-  validateDraft,
   publishDraft,
-  claimListing,
+  validateDraft,
 } from "../../services/draft.service.js";
-import { uploadListingPhoto } from "../../lib/supabase-storage.js";
-import { LISTING_RESOURCE_URI } from "../resources.js";
+import { loadListingStrategyContext } from "../../services/listing-strategy.service.js";
 import { createSession, getSessionById } from "../../services/negotiation-session.service.js";
-import { getExecutor } from "../../lib/executor-factory.js";
-import type { EventDispatcher } from "../../lib/event-dispatcher.js";
+import { LISTING_RESOURCE_URI } from "../resources.js";
 
 /**
  * Register all MCP tools with the server.
@@ -54,28 +54,28 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       description:
         "Start a new listing draft for selling an item. Opens the listing wizard UI where the user fills in details step by step. If the user provided specific item details (e.g. title, price, condition) in the same message, include them in the optional 'patch' parameter to pre-fill the form — do NOT call haggle_apply_patch separately. If the user only said something vague like 'I want to sell something' without concrete details, omit the patch and let them use the wizard UI.",
       inputSchema: {
-        patch: z.object({
-          title: z.string().optional(),
-          description: z.string().optional(),
-          tags: z.array(z.string()).optional(),
-          category: z
-            .enum([
-              "electronics",
-              "clothing",
-              "furniture",
-              "collectibles",
-              "sports",
-              "vehicles",
-              "books",
-              "other",
-            ])
-            .optional(),
-          condition: z
-            .enum(["new", "like_new", "good", "fair", "poor"])
-            .optional(),
-          targetPrice: z.string().optional(),
-          floorPrice: z.string().optional(),
-        }).optional(),
+        patch: z
+          .object({
+            title: z.string().optional(),
+            description: z.string().optional(),
+            tags: z.array(z.string()).optional(),
+            category: z
+              .enum([
+                "electronics",
+                "clothing",
+                "furniture",
+                "collectibles",
+                "sports",
+                "vehicles",
+                "books",
+                "other",
+              ])
+              .optional(),
+            condition: z.enum(["new", "like_new", "good", "fair", "poor"]).optional(),
+            targetPrice: z.string().optional(),
+            floorPrice: z.string().optional(),
+          })
+          .optional(),
       },
       annotations: {
         readOnlyHint: false,
@@ -175,9 +175,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
               "other",
             ])
             .optional(),
-          condition: z
-            .enum(["new", "like_new", "good", "fair", "poor"])
-            .optional(),
+          condition: z.enum(["new", "like_new", "good", "fair", "poor"]).optional(),
           photoUrl: z.string().optional(),
           targetPrice: z.string().optional(),
           floorPrice: z.string().optional(),
@@ -198,9 +196,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       // Convert ISO string to Date for timestamp field
       const servicePatch = {
         ...patch,
-        sellingDeadline: patch.sellingDeadline
-          ? new Date(patch.sellingDeadline)
-          : undefined,
+        sellingDeadline: patch.sellingDeadline ? new Date(patch.sellingDeadline) : undefined,
       };
 
       const draft = await patchDraft(db, draft_id, servicePatch);
@@ -385,9 +381,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
         "Upload a listing photo. Receives a base64-encoded image from the widget, stores it in Supabase Storage, and updates the draft's photoUrl. This tool is called automatically by the widget when the user selects a photo — do NOT call it from the model.",
       inputSchema: {
         draft_id: z.string().uuid(),
-        image_base64: z
-          .string()
-          .describe("Base64-encoded image data (without data URI prefix)"),
+        image_base64: z.string().describe("Base64-encoded image data (without data URI prefix)"),
         mime_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
       },
       annotations: {
@@ -406,11 +400,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
     },
     async ({ draft_id, image_base64, mime_type }) => {
       try {
-        const { publicUrl } = await uploadListingPhoto(
-          draft_id,
-          image_base64,
-          mime_type,
-        );
+        const { publicUrl } = await uploadListingPhoto(draft_id, image_base64, mime_type);
 
         // Patch draft with the uploaded photo URL
         const draft = await patchDraft(db, draft_id, { photoUrl: publicUrl });
@@ -436,8 +426,7 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
           ],
         };
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Photo upload failed";
+        const message = err instanceof Error ? err.message : "Photo upload failed";
         return {
           isError: true,
           content: [
@@ -478,7 +467,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       if (!draft) {
         return {
           isError: true,
-          content: [{ type: "text" as const, text: JSON.stringify({ error: "Draft not found", draft_id }) }],
+          content: [
+            { type: "text" as const, text: JSON.stringify({ error: "Draft not found", draft_id }) },
+          ],
         };
       }
       if (!draft.photoUrl || !draft.title) {
@@ -560,7 +551,9 @@ export function registerTools(server: McpServer, db: Database, eventDispatcher?:
       },
     },
     async ({ message, previous_memory, listing_title, listing_price, agent_preset }) => {
-      const { runSellerNegotiationAgentBuilderTurn } = await import("../../services/mcp-negotiation-agent-builder.service.js");
+      const { runSellerNegotiationAgentBuilderTurn } = await import(
+        "../../services/mcp-negotiation-agent-builder.service.js"
+      );
       const result = await runSellerNegotiationAgentBuilderTurn({
         message,
         previousMemory: previous_memory,
@@ -597,50 +590,126 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
       listing_id: z.string().uuid().describe("The listing to negotiate on"),
       buyer_id: z.string().uuid().describe("The buyer's user ID"),
       seller_id: z.string().uuid().describe("The seller's user ID"),
-      max_price: z.number().positive().describe("Maximum price the buyer is willing to pay (in cents). This is the walk-away point."),
-      target_price: z.number().positive().describe("Ideal price the buyer wants to achieve (in cents). Should be lower than max_price."),
+      max_price: z
+        .number()
+        .positive()
+        .describe(
+          "Maximum price the buyer is willing to pay (in cents). This is the walk-away point.",
+        ),
+      target_price: z
+        .number()
+        .positive()
+        .describe(
+          "Ideal price the buyer wants to achieve (in cents). Should be lower than max_price.",
+        ),
 
       // ── Optional: Timing ──
-      deadline_hours: z.number().positive().optional().describe("Buyer-side negotiation deadline in hours. Default 24. Listing sellingDeadline caps the actual time-value window when present."),
+      deadline_hours: z
+        .number()
+        .positive()
+        .optional()
+        .describe(
+          "Buyer-side negotiation deadline in hours. Default 24. Listing sellingDeadline caps the actual time-value window when present.",
+        ),
 
       // ── Optional: Priority weights (must sum to ~1.0) ──
-      alpha_price: z.number().min(0).max(1).optional().describe("How much the buyer cares about price. Default 0.4. Range 0.2-0.6."),
-      alpha_time: z.number().min(0).max(1).optional().describe("How much time pressure matters. Default 0.25. Patient: 0.1. Urgent: 0.4."),
-      alpha_reputation: z.number().min(0).max(1).optional().describe("How much seller trust matters. Default 0.2. Trusted seller: 0.3. Unknown: 0.1."),
-      alpha_satisfaction: z.number().min(0).max(1).optional().describe("How much overall deal satisfaction matters. Default 0.15."),
+      alpha_price: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("How much the buyer cares about price. Default 0.4. Range 0.2-0.6."),
+      alpha_time: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("How much time pressure matters. Default 0.25. Patient: 0.1. Urgent: 0.4."),
+      alpha_reputation: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("How much seller trust matters. Default 0.2. Trusted seller: 0.3. Unknown: 0.1."),
+      alpha_satisfaction: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("How much overall deal satisfaction matters. Default 0.15."),
 
       // ── Optional: Decision thresholds ──
-      accept_threshold: z.number().min(0).max(1).optional().describe("Minimum utility to auto-accept. Default 0.78. Aggressive: 0.82+. Easy-going: 0.65-0.70."),
-      counter_threshold: z.number().min(0).max(1).optional().describe("Minimum utility to counter (below = reject). Default 0.45."),
-      reject_threshold: z.number().min(0).max(1).optional().describe("Below this utility, hard reject. Default 0.2."),
-      near_deal_threshold: z.number().min(0).max(1).optional().describe("Utility level signaling 'almost there'. Default 0.72."),
+      accept_threshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe(
+          "Minimum utility to auto-accept. Default 0.78. Aggressive: 0.82+. Easy-going: 0.65-0.70.",
+        ),
+      counter_threshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("Minimum utility to counter (below = reject). Default 0.45."),
+      reject_threshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("Below this utility, hard reject. Default 0.2."),
+      near_deal_threshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe("Utility level signaling 'almost there'. Default 0.72."),
 
       // ── Optional: Concession behavior ──
-      concession_beta: z.number().min(0.1).max(1).optional().describe("How fast to concede. Default 0.6. Aggressive/firm: 0.2-0.4. Quick-deal: 0.7-0.9."),
-      concession_k: z.number().min(0.1).max(3).optional().describe("Concession curve shape. Default 1.2. Firm early: 0.5-0.8. Front-loaded: 1.5-2.0."),
+      concession_beta: z
+        .number()
+        .min(0.1)
+        .max(1)
+        .optional()
+        .describe(
+          "How fast to concede. Default 0.6. Aggressive/firm: 0.2-0.4. Quick-deal: 0.7-0.9.",
+        ),
+      concession_k: z
+        .number()
+        .min(0.1)
+        .max(3)
+        .optional()
+        .describe(
+          "Concession curve shape. Default 1.2. Firm early: 0.5-0.8. Front-loaded: 1.5-2.0.",
+        ),
 
       // ── Optional: Negotiation style label ──
-      style: z.enum(["balanced", "aggressive", "patient", "quick_deal", "firm"]).optional()
-        .describe("Shortcut: sets multiple params at once. Can be overridden by individual fields above."),
+      style: z
+        .enum(["balanced", "aggressive", "patient", "quick_deal", "firm"])
+        .optional()
+        .describe(
+          "Shortcut: sets multiple params at once. Can be overridden by individual fields above.",
+        ),
     },
     async (params) => {
       try {
-        const {
-          listing_id, buyer_id, seller_id, max_price, target_price,
-          style,
-        } = params;
+        const { listing_id, buyer_id, seller_id, max_price, target_price, style } = params;
 
         // Validate price relationship: target must be less than max
         if (target_price >= max_price) {
           return {
             isError: true,
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify({
-                error: "INVALID_PRICE_RANGE",
-                message: "target_price must be less than max_price. target_price is your ideal price, max_price is your walk-away point.",
-              }),
-            }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "INVALID_PRICE_RANGE",
+                  message:
+                    "target_price must be less than max_price. target_price is your ideal price, max_price is your walk-away point.",
+                }),
+              },
+            ],
           };
         }
 
@@ -668,24 +737,29 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         if (alphaSum < 0.95 || alphaSum > 1.05) {
           return {
             isError: true,
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify({
-                error: "INVALID_ALPHA_WEIGHTS",
-                message: `Alpha weights must sum to ~1.0 (got ${alphaSum.toFixed(3)}). Adjust alpha_price (${alphaPrice}), alpha_time (${alphaTime}), alpha_reputation (${alphaReputation}), alpha_satisfaction (${alphaSatisfaction}).`,
-              }),
-            }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: "INVALID_ALPHA_WEIGHTS",
+                  message: `Alpha weights must sum to ~1.0 (got ${alphaSum.toFixed(3)}). Adjust alpha_price (${alphaPrice}), alpha_time (${alphaTime}), alpha_reputation (${alphaReputation}), alpha_satisfaction (${alphaSatisfaction}).`,
+                }),
+              },
+            ],
           };
         }
 
         const concessionBeta = params.concession_beta ?? presets.concession_beta ?? 0.6;
         const concessionK = params.concession_k ?? presets.concession_k ?? 1.2;
         const sellerStrategy = listingContext?.sellerStrategy;
-        const sellerNegotiationAgentBuilderMemory = listingContext?.sellerNegotiationAgentBuilderMemory;
+        const sellerNegotiationAgentBuilderMemory =
+          listingContext?.sellerNegotiationAgentBuilderMemory;
         const sessionStrategy = sellerStrategy
           ? {
               ...sellerStrategy,
-              ...(sellerNegotiationAgentBuilderMemory ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory } : {}),
+              ...(sellerNegotiationAgentBuilderMemory
+                ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory }
+                : {}),
               buyer_requested_strategy: {
                 style: style ?? "balanced",
                 p_reservation: max_price,
@@ -722,7 +796,9 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
                 deadline_at_ms: effectiveDeadlineAtMs,
                 t_total_ms: timeTotalMs,
                 beta: concessionBeta,
-                source: listingContext?.deadlineAtMs ? "listing_selling_deadline" : "buyer_session_deadline",
+                source: listingContext?.deadlineAtMs
+                  ? "listing_selling_deadline"
+                  : "buyer_session_deadline",
               },
               listing_time_value: listingContext
                 ? {
@@ -773,17 +849,27 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
                 style: style ?? "balanced",
                 buyer_style: style ?? "balanced",
                 strategy_summary: {
-                  selected_playbook: sellerStrategy?.compiler.selected_playbook ?? style ?? "balanced",
+                  selected_playbook:
+                    sellerStrategy?.compiler.selected_playbook ?? style ?? "balanced",
                   role: sellerStrategy ? "SELLER" : "BUYER",
                   priority: sellerStrategy
                     ? `price ${Math.round(sellerStrategy.weights.w_p * 100)}% / time ${Math.round(sellerStrategy.weights.w_t * 100)}% / trust ${Math.round(sellerStrategy.weights.w_r * 100)}% / satisfaction ${Math.round(sellerStrategy.weights.w_s * 100)}%`
                     : `price ${Math.round(alphaPrice * 100)}% / time ${Math.round(alphaTime * 100)}% / trust ${Math.round(alphaReputation * 100)}% / satisfaction ${Math.round(alphaSatisfaction * 100)}%`,
-                  accept_above: sellerStrategy?.u_aspiration ?? params.accept_threshold ?? presets.accept_threshold ?? 0.78,
+                  accept_above:
+                    sellerStrategy?.u_aspiration ??
+                    params.accept_threshold ??
+                    presets.accept_threshold ??
+                    0.78,
                   concession_speed: sellerStrategy?.beta ?? concessionBeta,
-                  time_value_source: sellerStrategy?.time_value.source ?? (listingContext?.deadlineAtMs ? "listing_selling_deadline" : "buyer_session_deadline"),
+                  time_value_source:
+                    sellerStrategy?.time_value.source ??
+                    (listingContext?.deadlineAtMs
+                      ? "listing_selling_deadline"
+                      : "buyer_session_deadline"),
                 },
                 expires_at: expiresAt.toISOString(),
-                message: "Negotiation session created. Use haggle_submit_offer to send your first offer.",
+                message:
+                  "Negotiation session created. Use haggle_submit_offer to send your first offer.",
               }),
             },
           ],
@@ -811,7 +897,11 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
     "Submit a price offer in an active negotiation session. The engine evaluates and returns a counter-offer, acceptance, or rejection. Include the session_id and your offer price in cents.",
     {
       session_id: z.string().uuid().describe("The negotiation session ID"),
-      price_minor: z.number().int().positive().describe("Your offer price in cents (e.g. 5000 = $50.00)"),
+      price_minor: z
+        .number()
+        .int()
+        .positive()
+        .describe("Your offer price in cents (e.g. 5000 = $50.00)"),
       idempotency_key: z.string().min(1).describe("Unique key to prevent duplicate submissions"),
     },
     async ({ session_id, price_minor, idempotency_key }) => {
@@ -820,7 +910,9 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         if (!session) {
           return {
             isError: true,
-            content: [{ type: "text" as const, text: JSON.stringify({ error: "SESSION_NOT_FOUND" }) }],
+            content: [
+              { type: "text" as const, text: JSON.stringify({ error: "SESSION_NOT_FOUND" }) },
+            ],
           };
         }
 
@@ -898,7 +990,8 @@ Only fill in the optional fields you can confidently infer. Leave the rest as de
         if (!result.ok) {
           const errorMessages: Record<string, string> = {
             invalid_token: "Claim token not found or listing is not published.",
-            expired: "Claim token has expired (24-hour window). You need to re-publish the listing.",
+            expired:
+              "Claim token has expired (24-hour window). You need to re-publish the listing.",
             already_claimed: "This listing has already been claimed by another user.",
           };
 
@@ -969,38 +1062,64 @@ function getStylePreset(style?: string): StylePreset {
     case "aggressive":
       // 공격적: 낮은 가격 고집, 느린 양보, 높은 수락 기준
       return {
-        alpha_price: 0.55, alpha_time: 0.2, alpha_reputation: 0.1, alpha_satisfaction: 0.15,
-        accept_threshold: 0.83, counter_threshold: 0.5, reject_threshold: 0.25, near_deal_threshold: 0.76,
-        concession_beta: 0.35, concession_k: 0.7,
+        alpha_price: 0.55,
+        alpha_time: 0.2,
+        alpha_reputation: 0.1,
+        alpha_satisfaction: 0.15,
+        accept_threshold: 0.83,
+        counter_threshold: 0.5,
+        reject_threshold: 0.25,
+        near_deal_threshold: 0.76,
+        concession_beta: 0.35,
+        concession_k: 0.7,
       };
 
     case "patient":
       // 인내형: 시간 여유, 느린 양보, 좋은 딜 기다림
       return {
         deadline_hours: 72,
-        alpha_price: 0.4, alpha_time: 0.12, alpha_reputation: 0.25, alpha_satisfaction: 0.23,
-        accept_threshold: 0.8, counter_threshold: 0.45, reject_threshold: 0.2, near_deal_threshold: 0.74,
-        concession_beta: 0.45, concession_k: 1.0,
+        alpha_price: 0.4,
+        alpha_time: 0.12,
+        alpha_reputation: 0.25,
+        alpha_satisfaction: 0.23,
+        accept_threshold: 0.8,
+        counter_threshold: 0.45,
+        reject_threshold: 0.2,
+        near_deal_threshold: 0.74,
+        concession_beta: 0.45,
+        concession_k: 1.0,
       };
 
     case "quick_deal":
       // 속전속결: 빠른 양보, 낮은 수락 기준
       return {
         deadline_hours: 12,
-        alpha_price: 0.3, alpha_time: 0.35, alpha_reputation: 0.15, alpha_satisfaction: 0.2,
-        accept_threshold: 0.68, counter_threshold: 0.4, reject_threshold: 0.18, near_deal_threshold: 0.62,
-        concession_beta: 0.8, concession_k: 1.8,
+        alpha_price: 0.3,
+        alpha_time: 0.35,
+        alpha_reputation: 0.15,
+        alpha_satisfaction: 0.2,
+        accept_threshold: 0.68,
+        counter_threshold: 0.4,
+        reject_threshold: 0.18,
+        near_deal_threshold: 0.62,
+        concession_beta: 0.8,
+        concession_k: 1.8,
       };
 
     case "firm":
       // 단호형: 거의 양보 안 함, 가격 중시
       return {
-        alpha_price: 0.5, alpha_time: 0.2, alpha_reputation: 0.15, alpha_satisfaction: 0.15,
-        accept_threshold: 0.82, counter_threshold: 0.5, reject_threshold: 0.3, near_deal_threshold: 0.76,
-        concession_beta: 0.25, concession_k: 0.5,
+        alpha_price: 0.5,
+        alpha_time: 0.2,
+        alpha_reputation: 0.15,
+        alpha_satisfaction: 0.15,
+        accept_threshold: 0.82,
+        counter_threshold: 0.5,
+        reject_threshold: 0.3,
+        near_deal_threshold: 0.76,
+        concession_beta: 0.25,
+        concession_k: 0.5,
       };
-
-    case "balanced":
     default:
       // 기본: 모든 값 기본값 사용
       return {};

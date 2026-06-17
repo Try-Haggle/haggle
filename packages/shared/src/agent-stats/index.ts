@@ -1,40 +1,36 @@
-export type {
-  StatKey,
-  EngineStats,
-  StatGroup,
-  AgentRole,
-  StatCopy,
-  RoleCopy,
-  AgentPreset,
-  NegotiationAgent,
-  EngineParameters,
-} from "./types.js";
-
 export {
-  STAT_KEYS,
-  STAT_GROUP,
-  STAT_BUDGET,
-  STAT_MIN,
-  STAT_MAX,
-} from "./types.js";
-
+  BUYER_COPY,
+  copyFor,
+  SECTION_LABELS,
+  SECTION_SUBTITLES,
+  SELLER_COPY,
+  STAT_LABELS,
+} from "./copy.js";
 export {
   AGENT_PRESETS,
   DEFAULT_PRESET_ID,
   getPreset,
 } from "./presets.js";
-
 export {
-  SELLER_COPY,
-  BUYER_COPY,
-  STAT_LABELS,
-  SECTION_LABELS,
-  SECTION_SUBTITLES,
-  copyFor,
-} from "./copy.js";
-
-export {
+  type StatsValidation,
   statsToParameters,
   validateStats,
-  type StatsValidation,
 } from "./stats-to-params.js";
+export type {
+  AgentPreset,
+  AgentRole,
+  EngineParameters,
+  EngineStats,
+  NegotiationAgent,
+  RoleCopy,
+  StatCopy,
+  StatGroup,
+  StatKey,
+} from "./types.js";
+export {
+  STAT_BUDGET,
+  STAT_GROUP,
+  STAT_KEYS,
+  STAT_MAX,
+  STAT_MIN,
+} from "./types.js";

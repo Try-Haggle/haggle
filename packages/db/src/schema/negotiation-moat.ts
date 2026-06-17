@@ -1,4 +1,15 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 // ────────────────────────────────────────────────────────────────
 // negotiation_round_facts — append-only round-level process data
@@ -23,9 +34,10 @@ export const negotiationRoundFacts = pgTable(
     sellerTactic: text("seller_tactic"),
 
     // Conditions
-    conditionsChanged: jsonb("conditions_changed").$type<
-      { term: string; old_value: unknown; new_value: unknown; who: string }[]
-    >(),
+    conditionsChanged:
+      jsonb("conditions_changed").$type<
+        { term: string; old_value: unknown; new_value: unknown; who: string }[]
+      >(),
 
     // Coaching
     coachingRecommendedPrice: numeric("coaching_recommended_price", { precision: 18, scale: 0 }),
@@ -110,9 +122,7 @@ export const negotiationEscalations = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    index("negotiation_escalations_session_idx").on(table.sessionId),
-  ],
+  (table) => [index("negotiation_escalations_session_idx").on(table.sessionId)],
 );
 
 // ────────────────────────────────────────────────────────────────
@@ -141,9 +151,7 @@ export const negotiationCheckpoints = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    index("negotiation_checkpoints_session_phase_idx").on(table.sessionId, table.phase),
-  ],
+  (table) => [index("negotiation_checkpoints_session_phase_idx").on(table.sessionId, table.phase)],
 );
 
 // ────────────────────────────────────────────────────────────────

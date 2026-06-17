@@ -8,9 +8,9 @@
  * /claim/negotiation-sessions so the new user owns the sessions.
  */
 
-import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api, ApiError } from "@/lib/api-client";
+import { useEffect, useState } from "react";
+import { ApiError, api } from "@/lib/api-client";
 
 const STORAGE_KEY = "haggle:guest-buyer-ids";
 
@@ -30,9 +30,7 @@ export default function ClaimBuyerPage() {
     setState({ kind: "claiming" });
 
     const sessionId = search?.get("session_id") ?? null;
-    const redirectTo = sessionId
-      ? `/buy/negotiations/${sessionId}`
-      : "/buy/dashboard";
+    const redirectTo = sessionId ? `/buy/negotiations/${sessionId}` : "/buy/dashboard";
 
     let guestIds: string[] = [];
     try {
@@ -48,10 +46,9 @@ export default function ClaimBuyerPage() {
     }
 
     api
-      .post<{ ok: boolean; claimed_count: number }>(
-        "/claim/negotiation-sessions",
-        { guest_buyer_ids: guestIds },
-      )
+      .post<{ ok: boolean; claimed_count: number }>("/claim/negotiation-sessions", {
+        guest_buyer_ids: guestIds,
+      })
       .then((res) => {
         try {
           window.localStorage.removeItem(STORAGE_KEY);
@@ -69,9 +66,7 @@ export default function ClaimBuyerPage() {
         setState({
           kind: "error",
           message:
-            apiErr?.message ??
-            apiErr?.code ??
-            "Couldn't link your guest sessions. Try refreshing.",
+            apiErr?.message ?? apiErr?.code ?? "Couldn't link your guest sessions. Try refreshing.",
         });
       });
   }, [state.kind, search]);
@@ -95,9 +90,7 @@ export default function ClaimBuyerPage() {
         )}
         {state.kind === "done" && (
           <>
-            <p className="mb-2 text-base font-semibold text-emerald-400">
-              ✓ Account linked
-            </p>
+            <p className="mb-2 text-base font-semibold text-emerald-400">✓ Account linked</p>
             <p className="text-sm text-slate-400">
               {state.count > 0
                 ? `Claimed ${state.count} guest session${state.count === 1 ? "" : "s"}. Redirecting…`
@@ -107,9 +100,7 @@ export default function ClaimBuyerPage() {
         )}
         {state.kind === "error" && (
           <>
-            <p className="mb-2 text-base font-semibold text-rose-400">
-              Couldn't finish linking
-            </p>
+            <p className="mb-2 text-base font-semibold text-rose-400">Couldn't finish linking</p>
             <p className="mb-4 text-sm text-slate-400">{state.message}</p>
             <button
               type="button"

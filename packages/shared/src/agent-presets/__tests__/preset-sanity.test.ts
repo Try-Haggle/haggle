@@ -7,19 +7,19 @@
  * data is no longer differentiated and the UI is showing fake variety.
  */
 
+import {
+  computeCounterOffer,
+  computeUtility,
+  type DecisionAction,
+  makeDecision,
+  type NegotiationContext,
+} from "@haggle/engine-core";
 import { describe, expect, it } from "vitest";
 import {
-  computeUtility,
-  makeDecision,
-  computeCounterOffer,
-  type NegotiationContext,
-  type DecisionAction,
-} from "@haggle/engine-core";
-import {
-  NEGOTIATION_AGENT_PRESETS,
   getNegotiationAgentPreset,
-  presetToEngineParameters,
+  NEGOTIATION_AGENT_PRESETS,
   type NegotiationAgentPreset,
+  presetToEngineParameters,
 } from "../../index.js";
 
 /** Scenario: seller listing $1000 target, $1500 walk-away ceiling, buyer
@@ -119,14 +119,10 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
   });
 
   it("Verifier requires more trust than Closer (r_score_minimum)", () => {
-    const verifier = presetToEngineParameters(
-      getNegotiationAgentPreset("verifier")!,
-    );
+    const verifier = presetToEngineParameters(getNegotiationAgentPreset("verifier")!);
     const closer = presetToEngineParameters(getNegotiationAgentPreset("closer")!);
     expect(verifier.r_score_minimum).toBeGreaterThan(closer.r_score_minimum);
-    expect(verifier.i_completeness_minimum).toBeGreaterThan(
-      closer.i_completeness_minimum,
-    );
+    expect(verifier.i_completeness_minimum).toBeGreaterThan(closer.i_completeness_minimum);
   });
 
   it("u_aspiration ordering matches preset intent", () => {
@@ -139,13 +135,7 @@ describe("Preset Sanity — 4 presets differ in engine outcomes", () => {
   });
 
   it("Decision actions are sane (no preset crashes or returns nonsense)", () => {
-    const validActions: DecisionAction[] = [
-      "ACCEPT",
-      "COUNTER",
-      "REJECT",
-      "NEAR_DEAL",
-      "ESCALATE",
-    ];
+    const validActions: DecisionAction[] = ["ACCEPT", "COUNTER", "REJECT", "NEAR_DEAL", "ESCALATE"];
     for (const preset of NEGOTIATION_AGENT_PRESETS) {
       const { decision } = decisionFor(preset);
       expect(validActions).toContain(decision.action);

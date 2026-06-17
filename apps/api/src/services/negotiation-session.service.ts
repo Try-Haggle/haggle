@@ -1,16 +1,18 @@
-import {
-  eq,
-  and,
-  sql,
-  negotiationSessions,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, negotiationSessions, sql } from "@haggle/db";
 
 type SessionRole = "BUYER" | "SELLER";
 type SessionStatus =
-  | "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED"
-  | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING"
-  | "NEGOTIATING_VERSION" | "FAILED_COMPATIBILITY";
+  | "CREATED"
+  | "ACTIVE"
+  | "NEAR_DEAL"
+  | "STALLED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "SUPERSEDED"
+  | "WAITING"
+  | "NEGOTIATING_VERSION"
+  | "FAILED_COMPATIBILITY";
 
 // ---------------------------------------------------------------------------
 // Create
@@ -84,10 +86,7 @@ export async function getSessionsByUserId(
 }
 
 export async function getSessionsByGroupId(db: Database, groupId: string) {
-  return db
-    .select()
-    .from(negotiationSessions)
-    .where(eq(negotiationSessions.groupId, groupId));
+  return db.select().from(negotiationSessions).where(eq(negotiationSessions.groupId, groupId));
 }
 
 // ---------------------------------------------------------------------------
@@ -119,10 +118,7 @@ export async function updateSessionState(
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(negotiationSessions.id, sessionId),
-        eq(negotiationSessions.version, expectedVersion),
-      ),
+      and(eq(negotiationSessions.id, sessionId), eq(negotiationSessions.version, expectedVersion)),
     )
     .returning();
 

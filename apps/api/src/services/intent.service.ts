@@ -1,12 +1,4 @@
-import {
-  eq,
-  and,
-  sql,
-  inArray,
-  waitingIntents,
-  intentMatches,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, inArray, intentMatches, sql, waitingIntents } from "@haggle/db";
 
 type IntentRole = "BUYER" | "SELLER";
 type IntentStatus = "ACTIVE" | "MATCHED" | "FULFILLED" | "EXPIRED" | "CANCELLED";
@@ -25,11 +17,7 @@ export async function getIntentById(db: Database, intentId: string) {
   return rows[0] ?? null;
 }
 
-export async function getActiveIntentsByCategory(
-  db: Database,
-  category: string,
-  role?: string,
-) {
+export async function getActiveIntentsByCategory(db: Database, category: string, role?: string) {
   const conditions = [
     eq(waitingIntents.status, "ACTIVE" as IntentStatus),
     eq(waitingIntents.category, category),
@@ -47,11 +35,7 @@ export async function getActiveIntentsByCategory(
   return rows;
 }
 
-export async function getIntentsByUserId(
-  db: Database,
-  userId: string,
-  status?: string,
-) {
+export async function getIntentsByUserId(db: Database, userId: string, status?: string) {
   const conditions = [eq(waitingIntents.userId, userId)];
 
   if (status) {
@@ -160,10 +144,7 @@ export async function createMatch(
 }
 
 export async function getMatchesByIntentId(db: Database, intentId: string) {
-  const rows = await db
-    .select()
-    .from(intentMatches)
-    .where(eq(intentMatches.intentId, intentId));
+  const rows = await db.select().from(intentMatches).where(eq(intentMatches.intentId, intentId));
 
   return rows;
 }

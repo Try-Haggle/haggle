@@ -1,8 +1,8 @@
-import type { UserMemoryBrief } from "./user-memory-card.service.js";
 import {
   compareProductIdentity,
   type ProductIdentityComparison,
 } from "./product-identity-resolver.service.js";
+import type { UserMemoryBrief } from "./user-memory-card.service.js";
 
 export type NegotiationReadinessRole = "BUYER" | "SELLER";
 
@@ -59,10 +59,7 @@ export function evaluateNegotiationStartReadiness(
   if (!hasBuyerPriority(allFacts)) {
     missing.push("buyer_priority");
   }
-  if (
-    productIdentityGate.status === "confirm"
-    && !input.productIdentityConfirmed
-  ) {
+  if (productIdentityGate.status === "confirm" && !input.productIdentityConfirmed) {
     missing.push("product_identity_confirmation");
   }
   if (productIdentityGate.status === "block") {
@@ -96,7 +93,9 @@ function readyResult(
   };
 }
 
-function buildSourceSummary(input: NegotiationReadinessInput): NegotiationReadinessResult["source_summary"] {
+function buildSourceSummary(
+  input: NegotiationReadinessInput,
+): NegotiationReadinessResult["source_summary"] {
   return {
     negotiation_agent_snapshot: Object.keys(input.negotiationAgentSnapshot).length > 0,
     memory_cards: input.memoryBrief?.items.length ?? 0,
@@ -111,9 +110,11 @@ function hasProductIntent(strategyFacts: string[], memoryFacts: string[]): boole
   });
   if (strategyIntent) return true;
 
-  return memoryFacts.some((fact) => (
-    /(?:cardtype:interest|demand_intent|shopping intent|product|listing|category|iphone|아이폰|tesla|테슬라)/i.test(fact)
-  ));
+  return memoryFacts.some((fact) =>
+    /(?:cardtype:interest|demand_intent|shopping intent|product|listing|category|iphone|아이폰|tesla|테슬라)/i.test(
+      fact,
+    ),
+  );
 }
 
 function hasBudgetBoundary(facts: string[]): boolean {
@@ -123,43 +124,70 @@ function hasBudgetBoundary(facts: string[]): boolean {
     if (/(budget|target|ceiling|max|price|floor|reservation|willingness)/i.test(key)) {
       return hasMonetaryNumber(value) || /\$|usd|dollar|달러|불|ceiling|budget/i.test(value);
     }
-    return /(?:budget|ceiling|max|target|price|예산|최대|목표가).*(?:\$|usd|dollar|달러|불|\d)/i.test(fact);
+    return /(?:budget|ceiling|max|target|price|예산|최대|목표가).*(?:\$|usd|dollar|달러|불|\d)/i.test(
+      fact,
+    );
   });
 }
 
 function hasBuyerPriority(facts: string[]): boolean {
   return facts.some((fact) => {
     const [key, value] = splitFact(fact);
-    if (/(must|avoid|priority|preference|constraint|requirement|concern|risk|tactic|condition|deal.?breaker)/i.test(key)) {
+    if (
+      /(must|avoid|priority|preference|constraint|requirement|concern|risk|tactic|condition|deal.?breaker)/i.test(
+        key,
+      )
+    ) {
       return value.trim().length > 0 && !UNKNOWN_INTENT_VALUES.has(value.trim().toLowerCase());
     }
-    return /(?:must have|avoid|preference|constraint|requirement|deal breaker|priority|battery|unlocked|imei|damage|no additional requirements|no preference|필수|피하|조건|우선|배터리|언락|손상|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/i.test(fact);
+    return /(?:must have|avoid|preference|constraint|requirement|deal breaker|priority|battery|unlocked|imei|damage|no additional requirements|no preference|필수|피하|조건|우선|배터리|언락|손상|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/i.test(
+      fact,
+    );
   });
 }
 
-function buildReadinessReason(missing: string[], productIdentityGate?: ProductIdentityGateResult): string {
+function buildReadinessReason(
+  missing: string[],
+  productIdentityGate?: ProductIdentityGateResult,
+): string {
   if (missing.includes("product_identity_confirmation")) {
-    return productIdentityGate?.reason ?? "NEGOTIATION_READINESS_INCOMPLETE: product identity needs confirmation.";
+    return (
+      productIdentityGate?.reason ??
+      "NEGOTIATION_READINESS_INCOMPLETE: product identity needs confirmation."
+    );
   }
   if (missing.includes("product_identity_uncertain")) {
-    return productIdentityGate?.reason ?? "NEGOTIATION_READINESS_INCOMPLETE: product identity is uncertain.";
+    return (
+      productIdentityGate?.reason ??
+      "NEGOTIATION_READINESS_INCOMPLETE: product identity is uncertain."
+    );
   }
-  if (missing.includes("product_intent")) return "NEGOTIATION_READINESS_INCOMPLETE: product intent is missing.";
-  if (missing.includes("budget_boundary")) return "NEGOTIATION_READINESS_INCOMPLETE: buyer budget boundary is missing.";
-  if (missing.includes("buyer_priority")) return "NEGOTIATION_READINESS_INCOMPLETE: buyer priority or constraint is missing.";
+  if (missing.includes("product_intent"))
+    return "NEGOTIATION_READINESS_INCOMPLETE: product intent is missing.";
+  if (missing.includes("budget_boundary"))
+    return "NEGOTIATION_READINESS_INCOMPLETE: buyer budget boundary is missing.";
+  if (missing.includes("buyer_priority"))
+    return "NEGOTIATION_READINESS_INCOMPLETE: buyer priority or constraint is missing.";
   return "NEGOTIATION_READINESS_INCOMPLETE";
 }
 
-function buildReadinessQuestion(missing: string[], productIdentityGate?: ProductIdentityGateResult): string {
+function buildReadinessQuestion(
+  missing: string[],
+  productIdentityGate?: ProductIdentityGateResult,
+): string {
   if (missing.includes("product_identity_confirmation")) {
-    return productIdentityGate?.question ?? "Your saved target and selected product differ. Should I negotiate this selected product?";
+    return (
+      productIdentityGate?.question ??
+      "Your saved target and selected product differ. Should I negotiate this selected product?"
+    );
   }
   if (missing.includes("product_identity_uncertain")) {
     return productIdentityGate?.question ?? "Which exact product should I negotiate for?";
   }
   if (missing.includes("product_intent")) return "What product or category should I negotiate for?";
   if (missing.includes("budget_boundary")) return "What is your target price or maximum budget?";
-  if (missing.includes("buyer_priority")) return "What matters most before I negotiate: price, condition, safety, or a specific requirement?";
+  if (missing.includes("buyer_priority"))
+    return "What matters most before I negotiate: price, condition, safety, or a specific requirement?";
   return "What should I clarify before starting negotiation?";
 }
 
@@ -211,7 +239,10 @@ function extractSelectedProductText(strategyFacts: string[]): string | undefined
 }
 
 function extractRememberedProductText(memoryFacts: string[]): string | undefined {
-  return extractProductFactValue(memoryFacts, /(categoryinterest|category_interest|product|intent|demand_intent|shopping intent|model|iphone|아이폰|macbook|맥북|laptop|노트북)/i);
+  return extractProductFactValue(
+    memoryFacts,
+    /(categoryinterest|category_interest|product|intent|demand_intent|shopping intent|model|iphone|아이폰|macbook|맥북|laptop|노트북)/i,
+  );
 }
 
 function extractProductFactValue(facts: string[], keyPattern: RegExp): string | undefined {
@@ -220,7 +251,12 @@ function extractProductFactValue(facts: string[], keyPattern: RegExp): string | 
     if (!keyPattern.test(key) && !keyPattern.test(fact)) continue;
     const normalized = value.trim();
     if (!normalized || UNKNOWN_INTENT_VALUES.has(normalized.toLowerCase())) continue;
-    if (!/(iphone|아이폰|macbook|맥북|laptop|노트북|ipad|아이패드|tesla|테슬라|model\s*\d|\bps5\b|airpods)/i.test(normalized)) continue;
+    if (
+      !/(iphone|아이폰|macbook|맥북|laptop|노트북|ipad|아이패드|tesla|테슬라|model\s*\d|\bps5\b|airpods)/i.test(
+        normalized,
+      )
+    )
+      continue;
     return normalized;
   }
   return undefined;
@@ -247,9 +283,9 @@ function flattenStrategyFacts(value: unknown, path = "strategy"): string[] {
     return value.flatMap((item, index) => flattenStrategyFacts(item, `${path}.${index}`));
   }
   if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => (
-      flattenStrategyFacts(child, `${path}.${key}`)
-    ));
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+      flattenStrategyFacts(child, `${path}.${key}`),
+    );
   }
   return [];
 }

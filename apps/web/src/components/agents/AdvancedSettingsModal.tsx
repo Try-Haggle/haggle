@@ -1,12 +1,7 @@
 "use client";
 
+import { type FieldDescriptor, fieldsByTier, type NegotiationAgentPreset } from "@haggle/shared";
 import { useEffect, useState } from "react";
-import {
-  FIELD_DESCRIPTORS,
-  fieldsByTier,
-  type FieldDescriptor,
-  type NegotiationAgentPreset,
-} from "@haggle/shared";
 
 /**
  * Overrides editable in Advanced Settings. Mirrors the 16 preset-declared

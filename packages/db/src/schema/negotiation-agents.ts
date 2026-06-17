@@ -1,4 +1,14 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 // ────────────────────────────────────────────────────────────────
 // negotiation_agents — system presets + user-owned custom agents.
@@ -18,7 +28,9 @@ export const negotiationAgents = pgTable(
     negotiationAgentConfig: jsonb("negotiation_agent_config").$type<Record<string, unknown>>(),
     validatorSkills: jsonb("validator_skills").$type<string[]>(),
     /** Which surface the agent belongs on: `buyer`, `seller`, or `both`. Migration 0024. */
-    role: text("role", { enum: ["buyer", "seller", "both"] }).notNull().default("both"),
+    role: text("role", { enum: ["buyer", "seller", "both"] })
+      .notNull()
+      .default("both"),
     isSystem: boolean("is_system").notNull().default(true),
     userId: uuid("user_id"),
     avgSavingPct: numeric("avg_saving_pct", { precision: 8, scale: 4 }),

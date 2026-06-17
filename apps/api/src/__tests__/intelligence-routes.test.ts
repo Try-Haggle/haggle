@@ -76,10 +76,10 @@ describe("Intelligence routes", () => {
       }
       return Promise.resolve([]);
     });
-    const app = buildApp(
-      { execute } as unknown as import("@haggle/db").Database,
-      { id: "44444444-4444-4444-8444-444444444444", role: "authenticated" },
-    );
+    const app = buildApp({ execute } as unknown as import("@haggle/db").Database, {
+      id: "44444444-4444-4444-8444-444444444444",
+      role: "authenticated",
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -108,8 +108,12 @@ describe("Intelligence routes", () => {
       .map((call) => call[0] as { raw: string; values: unknown[] })
       .filter((query) => query.raw.includes("INSERT INTO user_memory_cards"));
     expect(memoryQueries.length).toBeGreaterThan(0);
-    expect(JSON.stringify(memoryQueries[0]?.values)).toContain("44444444-4444-4444-8444-444444444444");
-    expect(JSON.stringify(memoryQueries[0]?.values)).not.toContain("99999999-9999-4999-8999-999999999999");
+    expect(JSON.stringify(memoryQueries[0]?.values)).toContain(
+      "44444444-4444-4444-8444-444444444444",
+    );
+    expect(JSON.stringify(memoryQueries[0]?.values)).not.toContain(
+      "99999999-9999-4999-8999-999999999999",
+    );
     await app.close();
   });
 
@@ -126,25 +130,27 @@ describe("Intelligence routes", () => {
         evidenceRefs: ["round-1:incoming#3-14"],
       },
     ]);
-    const app = buildApp(
-      { execute } as unknown as import("@haggle/db").Database,
-      { id: "44444444-4444-4444-8444-444444444444", role: "authenticated" },
-    );
+    const app = buildApp({ execute } as unknown as import("@haggle/db").Database, {
+      id: "44444444-4444-4444-8444-444444444444",
+      role: "authenticated",
+    });
 
     const res = await app.inject({ method: "GET", url: "/intelligence/memory/cards" });
 
     expect(res.statusCode).toBe(200);
     expect(res.json().cards).toHaveLength(1);
-    expect(JSON.stringify(execute.mock.calls[0]?.[0].values)).toContain("44444444-4444-4444-8444-444444444444");
+    expect(JSON.stringify(execute.mock.calls[0]?.[0].values)).toContain(
+      "44444444-4444-4444-8444-444444444444",
+    );
     await app.close();
   });
 
   it("suppresses one authenticated user's memory card", async () => {
     const execute = vi.fn().mockResolvedValue([{ id: "55555555-5555-4555-8555-555555555555" }]);
-    const app = buildApp(
-      { execute } as unknown as import("@haggle/db").Database,
-      { id: "44444444-4444-4444-8444-444444444444", role: "authenticated" },
-    );
+    const app = buildApp({ execute } as unknown as import("@haggle/db").Database, {
+      id: "44444444-4444-4444-8444-444444444444",
+      role: "authenticated",
+    });
 
     const res = await app.inject({
       method: "PATCH",
@@ -159,10 +165,10 @@ describe("Intelligence routes", () => {
   });
 
   it("requires admin for source-only replay", async () => {
-    const app = buildApp(
-      { execute: vi.fn() } as unknown as import("@haggle/db").Database,
-      { id: "44444444-4444-4444-8444-444444444444", role: "authenticated" },
-    );
+    const app = buildApp({ execute: vi.fn() } as unknown as import("@haggle/db").Database, {
+      id: "44444444-4444-4444-8444-444444444444",
+      role: "authenticated",
+    });
 
     const res = await app.inject({
       method: "POST",

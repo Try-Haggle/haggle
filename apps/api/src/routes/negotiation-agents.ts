@@ -9,9 +9,9 @@
  * and the DEMO_USER_ID schema default.
  */
 
+import { and, type Database, eq, inArray, negotiationAgents, or } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { type Database, negotiationAgents, and, eq, inArray, or } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 import {
   negotiationAgentBuilderTurnBodySchema,
@@ -66,10 +66,7 @@ const listQuerySchema = z.object({
   role: z.enum(["buyer", "seller", "both", "any"]).default("any"),
 });
 
-export function registerNegotiationAgentRoutes(
-  app: FastifyInstance,
-  db: Database,
-) {
+export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Database) {
   /**
    * POST /negotiations/agents/builder/chat-turn
    *
@@ -82,9 +79,7 @@ export function registerNegotiationAgentRoutes(
   app.post("/negotiations/agents/builder/chat-turn", async (request, reply) => {
     const parsed = negotiationAgentBuilderTurnBodySchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply
-        .code(400)
-        .send({ error: "INVALID_BODY", issues: parsed.error.issues });
+      return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
     }
 
     const userId = request.user?.id ?? parsed.data.user_id ?? null;
@@ -100,10 +95,7 @@ export function registerNegotiationAgentRoutes(
         ...result,
       });
     } catch (err) {
-      request.log.error(
-        { err },
-        "negotiation agent builder chat turn failed",
-      );
+      request.log.error({ err }, "negotiation agent builder chat turn failed");
       return reply.code(502).send({
         error: "CHAT_TURN_FAILED",
         message: err instanceof Error ? err.message : "Chat turn failed",
@@ -117,72 +109,54 @@ export function registerNegotiationAgentRoutes(
   // included in list responses but cannot be edited or deleted by users.
 
   /** POST /negotiations/agents — create a user-owned agent. */
-  app.post(
-    "/negotiations/agents",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const userId = request.user!.id;
-      const parsed = createNegotiationAgentSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_AGENT", issues: parsed.error.issues });
-      }
+  app.post("/negotiations/agents", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+    const parsed = createNegotiationAgentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_AGENT", issues: parsed.error.issues });
+    }
 
-      const { name, description, role, config } = parsed.data;
+    const { name, description, role, config } = parsed.data;
 
-      const [inserted] = await db
-        .insert(negotiationAgents)
-        .values({
-          name,
-          displayName: name,
-          description: description ?? null,
-          advisorSkillId: DEFAULT_BUILDER_SKILL_ID,
-          negotiationAgentConfig: config,
-          role,
-          isSystem: false,
-          userId,
-        })
-        .returning();
+    const [inserted] = await db
+      .insert(negotiationAgents)
+      .values({
+        name,
+        displayName: name,
+        description: description ?? null,
+        advisorSkillId: DEFAULT_BUILDER_SKILL_ID,
+        negotiationAgentConfig: config,
+        role,
+        isSystem: false,
+        userId,
+      })
+      .returning();
 
-      return reply.code(201).send({ agent: inserted });
-    },
-  );
+    return reply.code(201).send({ agent: inserted });
+  });
 
   /** GET /negotiations/agents?role=buyer|seller|both|any
    *  Returns system presets + the caller's custom agents, optionally filtered
    *  by `role`. `any` returns all roles. */
-  app.get(
-    "/negotiations/agents",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const userId = request.user!.id;
-      const query = listQuerySchema.safeParse(request.query ?? {});
-      if (!query.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_QUERY", issues: query.error.issues });
-      }
+  app.get("/negotiations/agents", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+    const query = listQuerySchema.safeParse(request.query ?? {});
+    if (!query.success) {
+      return reply.code(400).send({ error: "INVALID_QUERY", issues: query.error.issues });
+    }
 
-      const ownership = or(
-        eq(negotiationAgents.isSystem, true),
-        eq(negotiationAgents.userId, userId),
-      );
-      const where =
-        query.data.role === "any"
-          ? ownership
-          : and(
-              ownership,
-              inArray(
-                negotiationAgents.role,
-                [query.data.role, "both"] as const,
-              ),
-            );
+    const ownership = or(
+      eq(negotiationAgents.isSystem, true),
+      eq(negotiationAgents.userId, userId),
+    );
+    const where =
+      query.data.role === "any"
+        ? ownership
+        : and(ownership, inArray(negotiationAgents.role, [query.data.role, "both"] as const));
 
-      const rows = await db.select().from(negotiationAgents).where(where);
-      return reply.send({ agents: rows });
-    },
-  );
+    const rows = await db.select().from(negotiationAgents).where(where);
+    return reply.send({ agents: rows });
+  });
 
   /** GET /negotiations/agents/:id — fetch one. Ownership-checked. */
   app.get<{ Params: { id: string } }>(
@@ -215,9 +189,7 @@ export function registerNegotiationAgentRoutes(
       const userId = request.user!.id;
       const parsed = updateNegotiationAgentSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_AGENT", issues: parsed.error.issues });
+        return reply.code(400).send({ error: "INVALID_AGENT", issues: parsed.error.issues });
       }
 
       const [existing] = await db
@@ -250,10 +222,7 @@ export function registerNegotiationAgentRoutes(
         .update(negotiationAgents)
         .set(patch)
         .where(
-          and(
-            eq(negotiationAgents.id, request.params.id),
-            eq(negotiationAgents.userId, userId),
-          ),
+          and(eq(negotiationAgents.id, request.params.id), eq(negotiationAgents.userId, userId)),
         )
         .returning();
 
@@ -284,10 +253,7 @@ export function registerNegotiationAgentRoutes(
       await db
         .delete(negotiationAgents)
         .where(
-          and(
-            eq(negotiationAgents.id, request.params.id),
-            eq(negotiationAgents.userId, userId),
-          ),
+          and(eq(negotiationAgents.id, request.params.id), eq(negotiationAgents.userId, userId)),
         );
 
       return reply.code(204).send();

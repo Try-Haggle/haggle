@@ -33,7 +33,8 @@ function write(agents: NegotiationAgent[]): void {
   window.dispatchEvent(new CustomEvent(DRAFT_NEGOTIATION_AGENT_STORE_UPDATED_EVENT));
 }
 
-export const DRAFT_NEGOTIATION_AGENT_STORE_UPDATED_EVENT = "haggle:draft-negotiation-agent-store-updated";
+export const DRAFT_NEGOTIATION_AGENT_STORE_UPDATED_EVENT =
+  "haggle:draft-negotiation-agent-store-updated";
 
 function isValidProfile(x: unknown): x is NegotiationAgent {
   if (!x || typeof x !== "object") return false;
@@ -65,9 +66,7 @@ export const draftNegotiationAgentStore = {
     return read().find((a) => a.id === id);
   },
 
-  create(
-    input: Omit<NegotiationAgent, "id" | "createdAt" | "updatedAt">,
-  ): NegotiationAgent {
+  create(input: Omit<NegotiationAgent, "id" | "createdAt" | "updatedAt">): NegotiationAgent {
     const now = Date.now();
     const agent: NegotiationAgent = {
       ...input,

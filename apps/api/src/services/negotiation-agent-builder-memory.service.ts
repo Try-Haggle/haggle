@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { type Database, sql } from "@haggle/db";
 import { z } from "zod";
-import { sql, type Database } from "@haggle/db";
 import { recordConversationSignalsForRound } from "./conversation-signal-sink.js";
 
 const optionalPositiveIntSchema = z.preprocess(
@@ -8,111 +8,160 @@ const optionalPositiveIntSchema = z.preprocess(
   z.number().int().positive().optional(),
 );
 
-const structuredNegotiationAgentBuilderMemorySchema = z.object({
-  activeIntent: z.object({
-    productScope: z.string().optional(),
-    source: z.string().optional(),
-  }).optional(),
-  productRequirements: z.record(z.object({
-    mustHave: z.array(z.string()).default([]),
-    avoid: z.array(z.string()).default([]),
-    answeredSlots: z.array(z.string()).default([]),
-    ambiguousSlots: z.array(z.string()).default([]),
-  })).default({}),
-  globalPreferences: z.object({
-    mustHave: z.array(z.string()).default([]),
-    avoid: z.array(z.string()).default([]),
-    budgetMax: optionalPositiveIntSchema,
-    targetPrice: optionalPositiveIntSchema,
-    riskStyle: z.enum(["safe_first", "balanced", "lowest_price"]).optional(),
-    negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]).optional(),
-    openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]).optional(),
-  }).default({}),
-  pendingSlots: z.array(z.object({
-    slotId: z.string(),
-    question: z.string(),
-    enforcement: z.enum(["hard", "soft"]),
-    productScope: z.string().optional(),
-    status: z.enum(["pending", "ambiguous"]),
-  })).default([]),
-  discardedSignals: z.array(z.object({
-    text: z.string(),
-    reason: z.enum(["off_topic", "ambiguous", "noise", "security"]),
-    relatedQuestion: z.string().optional(),
-  })).default([]),
-  memoryConflicts: z.array(z.object({
-    slotId: z.string(),
-    productScope: z.string().optional(),
-    previousValue: z.string().optional(),
-    currentValue: z.string().optional(),
-    status: z.enum(["current", "superseded", "conflicting", "needs_confirmation"]),
-    resolutionQuestion: z.string().optional(),
-    reason: z.string().optional(),
-  })).default([]),
-  scopedConditionDecisions: z.array(z.object({
-    slotId: z.string(),
-    sourceScope: z.string().optional(),
-    targetScope: z.string(),
-    decision: z.enum(["applied", "rejected"]),
-    reason: z.string().optional(),
-  })).default([]),
-  sessionMemory: z.object({
-    facts: z.array(z.string()).default([]),
-    pendingQuestions: z.array(z.string()).default([]),
-    reason: z.string().optional(),
-  }).optional(),
-  longTermMemory: z.object({
-    facts: z.array(z.string()).default([]),
-    productScopes: z.array(z.string()).default([]),
-    globalFacts: z.array(z.string()).default([]),
-  }).optional(),
-  promotionDecisions: z.array(z.object({
-    text: z.string(),
-    decision: z.enum(["promote", "session_only", "discard"]),
-    reason: z.enum([
-      "confirmed_product_requirement",
-      "explicit_budget",
-      "stable_global_preference",
-      "pending_hard_slot",
-      "ambiguous",
-      "off_topic",
-      "security",
-      "low_information",
-    ]),
-    target: z.enum(["long_term", "session", "none"]),
-    productScope: z.string().optional(),
-  })).default([]),
-  compression: z.object({
-    recentWindowFacts: z.array(z.string()).default([]),
-    carriedForwardFacts: z.array(z.string()).default([]),
-    droppedSignals: z.array(z.string()).default([]),
-    summary: z.string(),
-  }).optional(),
-  questionPlan: z.object({
-    policy: z.object({
-      maxQuestionsPerTurn: z.number().int().positive(),
-      order: z.array(z.enum(["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"])),
-      rationale: z.string(),
-    }),
-    budget: z.object({
-      maxQuestionsPerTurn: z.number().int().positive(),
-      used: z.number().int().min(0),
-    }),
-    askedThisTurn: z.object({
-      kind: z.enum(["conflict", "hard_slot", "soft_slot", "candidate", "none"]),
-      question: z.string().optional(),
-      slotId: z.string().optional(),
-      productScope: z.string().optional(),
-    }),
-    deferred: z.array(z.object({
-      slotId: z.string(),
-      question: z.string(),
-      enforcement: z.enum(["hard", "soft"]),
-      reason: z.enum(["question_budget", "conflict_resolution_first", "lower_priority", "already_answered"]),
-      productScope: z.string().optional(),
-    })).default([]),
-  }).optional(),
-}).default({});
+const structuredNegotiationAgentBuilderMemorySchema = z
+  .object({
+    activeIntent: z
+      .object({
+        productScope: z.string().optional(),
+        source: z.string().optional(),
+      })
+      .optional(),
+    productRequirements: z
+      .record(
+        z.object({
+          mustHave: z.array(z.string()).default([]),
+          avoid: z.array(z.string()).default([]),
+          answeredSlots: z.array(z.string()).default([]),
+          ambiguousSlots: z.array(z.string()).default([]),
+        }),
+      )
+      .default({}),
+    globalPreferences: z
+      .object({
+        mustHave: z.array(z.string()).default([]),
+        avoid: z.array(z.string()).default([]),
+        budgetMax: optionalPositiveIntSchema,
+        targetPrice: optionalPositiveIntSchema,
+        riskStyle: z.enum(["safe_first", "balanced", "lowest_price"]).optional(),
+        negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]).optional(),
+        openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]).optional(),
+      })
+      .default({}),
+    pendingSlots: z
+      .array(
+        z.object({
+          slotId: z.string(),
+          question: z.string(),
+          enforcement: z.enum(["hard", "soft"]),
+          productScope: z.string().optional(),
+          status: z.enum(["pending", "ambiguous"]),
+        }),
+      )
+      .default([]),
+    discardedSignals: z
+      .array(
+        z.object({
+          text: z.string(),
+          reason: z.enum(["off_topic", "ambiguous", "noise", "security"]),
+          relatedQuestion: z.string().optional(),
+        }),
+      )
+      .default([]),
+    memoryConflicts: z
+      .array(
+        z.object({
+          slotId: z.string(),
+          productScope: z.string().optional(),
+          previousValue: z.string().optional(),
+          currentValue: z.string().optional(),
+          status: z.enum(["current", "superseded", "conflicting", "needs_confirmation"]),
+          resolutionQuestion: z.string().optional(),
+          reason: z.string().optional(),
+        }),
+      )
+      .default([]),
+    scopedConditionDecisions: z
+      .array(
+        z.object({
+          slotId: z.string(),
+          sourceScope: z.string().optional(),
+          targetScope: z.string(),
+          decision: z.enum(["applied", "rejected"]),
+          reason: z.string().optional(),
+        }),
+      )
+      .default([]),
+    sessionMemory: z
+      .object({
+        facts: z.array(z.string()).default([]),
+        pendingQuestions: z.array(z.string()).default([]),
+        reason: z.string().optional(),
+      })
+      .optional(),
+    longTermMemory: z
+      .object({
+        facts: z.array(z.string()).default([]),
+        productScopes: z.array(z.string()).default([]),
+        globalFacts: z.array(z.string()).default([]),
+      })
+      .optional(),
+    promotionDecisions: z
+      .array(
+        z.object({
+          text: z.string(),
+          decision: z.enum(["promote", "session_only", "discard"]),
+          reason: z.enum([
+            "confirmed_product_requirement",
+            "explicit_budget",
+            "stable_global_preference",
+            "pending_hard_slot",
+            "ambiguous",
+            "off_topic",
+            "security",
+            "low_information",
+          ]),
+          target: z.enum(["long_term", "session", "none"]),
+          productScope: z.string().optional(),
+        }),
+      )
+      .default([]),
+    compression: z
+      .object({
+        recentWindowFacts: z.array(z.string()).default([]),
+        carriedForwardFacts: z.array(z.string()).default([]),
+        droppedSignals: z.array(z.string()).default([]),
+        summary: z.string(),
+      })
+      .optional(),
+    questionPlan: z
+      .object({
+        policy: z.object({
+          maxQuestionsPerTurn: z.number().int().positive(),
+          order: z.array(
+            z.enum(["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"]),
+          ),
+          rationale: z.string(),
+        }),
+        budget: z.object({
+          maxQuestionsPerTurn: z.number().int().positive(),
+          used: z.number().int().min(0),
+        }),
+        askedThisTurn: z.object({
+          kind: z.enum(["conflict", "hard_slot", "soft_slot", "candidate", "none"]),
+          question: z.string().optional(),
+          slotId: z.string().optional(),
+          productScope: z.string().optional(),
+        }),
+        deferred: z
+          .array(
+            z.object({
+              slotId: z.string(),
+              question: z.string(),
+              enforcement: z.enum(["hard", "soft"]),
+              reason: z.enum([
+                "question_budget",
+                "conflict_resolution_first",
+                "lower_priority",
+                "already_answered",
+              ]),
+              productScope: z.string().optional(),
+            }),
+          )
+          .default([]),
+      })
+      .optional(),
+  })
+  .default({});
 
 export const negotiationAgentBuilderMemorySchema = z.object({
   categoryInterest: z.string().min(1),
@@ -197,16 +246,22 @@ export async function saveNegotiationAgentBuilderMemorySnapshot(
   };
 }
 
-function hasNegotiationAgentBuilderActiveIntentSwitch(memory: NegotiationAgentBuilderMemory): boolean {
+function hasNegotiationAgentBuilderActiveIntentSwitch(
+  memory: NegotiationAgentBuilderMemory,
+): boolean {
   return memory.source.some((item) => /active intent switched/i.test(item));
 }
 
-function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilderMemory): NegotiationAgentBuilderMemoryCard[] {
+function buildNegotiationAgentBuilderMemoryCards(
+  memory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemoryCard[] {
   const normalizedMemory = normalizeNegotiationAgentBuilderBudgetMemory(memory, {
     latestMessage: memory.source.join(" "),
   });
   const promotionGate = buildPromotedNegotiationAgentBuilderMemory(normalizedMemory);
-  const promotedLongTerm = sanitizeLongTermNegotiationAgentBuilderMemory(normalizedMemory.structured?.longTermMemory);
+  const promotedLongTerm = sanitizeLongTermNegotiationAgentBuilderMemory(
+    normalizedMemory.structured?.longTermMemory,
+  );
   const promotedGlobalFacts = promotedLongTerm?.globalFacts ?? [];
   const hasStructuredPromotionGate = Boolean(normalizedMemory.structured?.longTermMemory);
   const cards: NegotiationAgentBuilderMemoryCard[] = [
@@ -216,17 +271,25 @@ function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilder
       summary: `Interested in ${normalizedMemory.categoryInterest}`,
       memory: {
         categoryInterest: normalizedMemory.categoryInterest,
-        source: promotionGate.source.length > 0 ? promotionGate.source : ["negotiation_agent_builder_memory"],
-        ...(normalizedMemory.structured ? { structured: buildPersistableStructuredNegotiationAgentBuilderMemory(normalizedMemory.structured) } : {}),
+        source:
+          promotionGate.source.length > 0
+            ? promotionGate.source
+            : ["negotiation_agent_builder_memory"],
+        ...(normalizedMemory.structured
+          ? {
+              structured: buildPersistableStructuredNegotiationAgentBuilderMemory(
+                normalizedMemory.structured,
+              ),
+            }
+          : {}),
       },
       strength: 0.65,
     },
   ];
 
-  const stylePromoted = (
-    !hasStructuredPromotionGate
-    || promotedGlobalFacts.some((fact) => /^(?:riskStyle|negotiationStyle|openingTactic):/.test(fact))
-  );
+  const stylePromoted =
+    !hasStructuredPromotionGate ||
+    promotedGlobalFacts.some((fact) => /^(?:riskStyle|negotiationStyle|openingTactic):/.test(fact));
   if (stylePromoted) {
     cards.push({
       cardType: "style",
@@ -241,10 +304,9 @@ function buildNegotiationAgentBuilderMemoryCards(memory: NegotiationAgentBuilder
     });
   }
 
-  const pricingPromoted = (
-    !hasStructuredPromotionGate
-    || promotedGlobalFacts.some((fact) => /^(?:budgetMax|targetPrice):/.test(fact))
-  );
+  const pricingPromoted =
+    !hasStructuredPromotionGate ||
+    promotedGlobalFacts.some((fact) => /^(?:budgetMax|targetPrice):/.test(fact));
   if (pricingPromoted && (normalizedMemory.budgetMax || normalizedMemory.targetPrice)) {
     cards.push({
       cardType: "pricing",
@@ -312,7 +374,8 @@ function factIsPromoted(fact: string, promotedText: string): boolean {
   if (!normalized) return false;
   if (promotedText.includes(normalized)) return true;
 
-  if (/battery\s*>=\s*(?:[7-9][0-9]|100)%?/.test(normalized)) return promotedText.includes(normalized);
+  if (/battery\s*>=\s*(?:[7-9][0-9]|100)%?/.test(normalized))
+    return promotedText.includes(normalized);
   if (/battery|배터리|성능/.test(normalized)) return promotedText.includes(normalized);
   if (/unlocked|locked|carrier|언락|잠금|통신사/.test(normalized)) {
     return /unlocked|locked|carrier|언락|잠금|통신사/.test(promotedText);
@@ -329,8 +392,14 @@ function buildPersistableStructuredNegotiationAgentBuilderMemory(
   structured: NonNullable<NegotiationAgentBuilderMemory["structured"]>,
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]> {
   const longTermMemory = sanitizeLongTermNegotiationAgentBuilderMemory(structured.longTermMemory);
-  const productRequirements = buildPersistableProductRequirements(structured.productRequirements, longTermMemory);
-  const globalPreferences = buildPersistableGlobalPreferences(structured.globalPreferences, longTermMemory);
+  const productRequirements = buildPersistableProductRequirements(
+    structured.productRequirements,
+    longTermMemory,
+  );
+  const globalPreferences = buildPersistableGlobalPreferences(
+    structured.globalPreferences,
+    longTermMemory,
+  );
   const productScopes = new Set([
     ...Object.keys(productRequirements),
     ...(longTermMemory?.productScopes ?? []),
@@ -342,20 +411,20 @@ function buildPersistableStructuredNegotiationAgentBuilderMemory(
     globalPreferences,
     pendingSlots: [],
     discardedSignals: [],
-    memoryConflicts: structured.memoryConflicts.filter((conflict) => (
-      isPersistableMemoryConflict(conflict, productScopes)
-    )),
+    memoryConflicts: structured.memoryConflicts.filter((conflict) =>
+      isPersistableMemoryConflict(conflict, productScopes),
+    ),
     scopedConditionDecisions: [],
     sessionMemory: undefined,
     longTermMemory,
-    promotionDecisions: structured.promotionDecisions.filter((decision) => (
-      decision.decision === "promote"
-      && isPersistableLongTermFact(decision.text)
-    )),
+    promotionDecisions: structured.promotionDecisions.filter(
+      (decision) => decision.decision === "promote" && isPersistableLongTermFact(decision.text),
+    ),
     compression: structured.compression
       ? {
           recentWindowFacts: [],
-          carriedForwardFacts: structured.compression.carriedForwardFacts.filter(isPersistableLongTermFact),
+          carriedForwardFacts:
+            structured.compression.carriedForwardFacts.filter(isPersistableLongTermFact),
           droppedSignals: [],
           summary: structured.compression.summary,
         }
@@ -374,13 +443,17 @@ function sanitizePersistableActiveIntent(
 
   return {
     productScope: activeIntent.productScope,
-    ...(activeIntent.source && !isUnsafeMemoryText(activeIntent.source) ? { source: activeIntent.source } : {}),
+    ...(activeIntent.source && !isUnsafeMemoryText(activeIntent.source)
+      ? { source: activeIntent.source }
+      : {}),
   };
 }
 
 function sanitizeLongTermNegotiationAgentBuilderMemory(
   longTerm: NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"] | undefined,
-): NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]> | undefined {
+):
+  | NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]>
+  | undefined {
   if (!longTerm) return undefined;
 
   const facts = uniqueStrings(longTerm.facts.filter(isPersistableLongTermFact));
@@ -406,7 +479,8 @@ function isPersistableMemoryConflict(
 ): boolean {
   if (conflict.status === "needs_confirmation" || conflict.status === "conflicting") return false;
   if (!productScopes.has(conflict.productScope ?? "")) return false;
-  if (!isPersistableConflictSlot(conflict.slotId, [conflict.previousValue, conflict.currentValue])) return false;
+  if (!isPersistableConflictSlot(conflict.slotId, [conflict.previousValue, conflict.currentValue]))
+    return false;
   if (conflict.previousValue && !isPersistableAdvisorFact(conflict.previousValue)) return false;
   if (conflict.currentValue && !isPersistableAdvisorFact(conflict.currentValue)) return false;
   if (conflict.reason && isUnsafeMemoryText(conflict.reason)) return false;
@@ -420,12 +494,17 @@ function isPersistableConflictSlot(slotId: string, facts: Array<string | undefin
 }
 
 function buildPersistableProductRequirements(
-  productRequirements: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"],
-  longTerm: NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]> | undefined,
+  productRequirements: NonNullable<
+    NegotiationAgentBuilderMemory["structured"]
+  >["productRequirements"],
+  longTerm:
+    | NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]>
+    | undefined,
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] {
   if (!longTerm) return {};
 
-  const result: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] = {};
+  const result: NonNullable<NegotiationAgentBuilderMemory["structured"]>["productRequirements"] =
+    {};
   for (const fact of longTerm.facts) {
     const parsed = parseScopedLongTermFact(fact);
     if (!parsed) continue;
@@ -464,7 +543,9 @@ function buildPersistableProductRequirements(
 
 function buildPersistableGlobalPreferences(
   globalPreferences: NonNullable<NegotiationAgentBuilderMemory["structured"]>["globalPreferences"],
-  longTerm: NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]> | undefined,
+  longTerm:
+    | NonNullable<NonNullable<NegotiationAgentBuilderMemory["structured"]>["longTermMemory"]>
+    | undefined,
 ): NonNullable<NegotiationAgentBuilderMemory["structured"]>["globalPreferences"] {
   if (!longTerm) return { mustHave: [], avoid: [] };
 
@@ -482,19 +563,32 @@ function buildPersistableGlobalPreferences(
     } else if (key === "targetPrice") {
       const value = Number(rawValue);
       if (Number.isFinite(value) && value > 0) result.targetPrice = Math.round(value);
-    } else if (key === "riskStyle" && ["safe_first", "balanced", "lowest_price"].includes(rawValue)) {
+    } else if (
+      key === "riskStyle" &&
+      ["safe_first", "balanced", "lowest_price"].includes(rawValue)
+    ) {
       result.riskStyle = rawValue as typeof result.riskStyle;
-    } else if (key === "negotiationStyle" && ["defensive", "balanced", "aggressive"].includes(rawValue)) {
+    } else if (
+      key === "negotiationStyle" &&
+      ["defensive", "balanced", "aggressive"].includes(rawValue)
+    ) {
       result.negotiationStyle = rawValue as typeof result.negotiationStyle;
-    } else if (key === "openingTactic" && ["condition_anchor", "fair_market_anchor", "speed_close"].includes(rawValue)) {
+    } else if (
+      key === "openingTactic" &&
+      ["condition_anchor", "fair_market_anchor", "speed_close"].includes(rawValue)
+    ) {
       result.openingTactic = rawValue as typeof result.openingTactic;
     }
   }
 
   return {
     ...result,
-    mustHave: globalPreferences.mustHave.filter((fact) => factIsPromoted(fact, longTerm.facts.join(" ").toLowerCase())),
-    avoid: globalPreferences.avoid.filter((fact) => factIsPromoted(fact, longTerm.facts.join(" ").toLowerCase())),
+    mustHave: globalPreferences.mustHave.filter((fact) =>
+      factIsPromoted(fact, longTerm.facts.join(" ").toLowerCase()),
+    ),
+    avoid: globalPreferences.avoid.filter((fact) =>
+      factIsPromoted(fact, longTerm.facts.join(" ").toLowerCase()),
+    ),
   };
 }
 
@@ -514,15 +608,19 @@ function isPersistableLongTermFact(fact: string): boolean {
 
 function isPersistableGlobalFact(fact: string): boolean {
   if (isUnsafeMemoryText(fact)) return false;
-  return /^(?:budgetMax|targetPrice):\s*\d+$/.test(fact)
-    || /^riskStyle:\s*(?:safe_first|balanced|lowest_price)$/.test(fact)
-    || /^negotiationStyle:\s*(?:defensive|balanced|aggressive)$/.test(fact)
-    || /^openingTactic:\s*(?:condition_anchor|fair_market_anchor|speed_close)$/.test(fact);
+  return (
+    /^(?:budgetMax|targetPrice):\s*\d+$/.test(fact) ||
+    /^riskStyle:\s*(?:safe_first|balanced|lowest_price)$/.test(fact) ||
+    /^negotiationStyle:\s*(?:defensive|balanced|aggressive)$/.test(fact) ||
+    /^openingTactic:\s*(?:condition_anchor|fair_market_anchor|speed_close)$/.test(fact)
+  );
 }
 
 function isPersistableAdvisorFact(fact: string): boolean {
   if (isUnsafeMemoryText(fact)) return false;
-  return /(?:battery\s*>=\s*(?:[7-9][0-9]|100)%?|battery no preference|carrier no preference|unlocked|locked|clean IMEI|original box included|screen mint|screen clean|visible wear|crack|scratch|Pro model)/i.test(fact);
+  return /(?:battery\s*>=\s*(?:[7-9][0-9]|100)%?|battery no preference|carrier no preference|unlocked|locked|clean IMEI|original box included|screen mint|screen clean|visible wear|crack|scratch|Pro model)/i.test(
+    fact,
+  );
 }
 
 function isUnsafeMemoryText(text: string): boolean {
@@ -531,7 +629,9 @@ function isUnsafeMemoryText(text: string): boolean {
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .toLowerCase();
 
-  return /(?:ignore (?:all )?(?:previous|system|developer) instructions|system prompt|developer message|jailbreak|prompt injection|너의\s*(?:시스템|개발자)\s*지시|이전\s*지시\s*무시|프롬프트\s*인젝션|내부\s*(?:프롬프트|지시)|규칙을\s*무시)/i.test(normalized);
+  return /(?:ignore (?:all )?(?:previous|system|developer) instructions|system prompt|developer message|jailbreak|prompt injection|너의\s*(?:시스템|개발자)\s*지시|이전\s*지시\s*무시|프롬프트\s*인젝션|내부\s*(?:프롬프트|지시)|규칙을\s*무시)/i.test(
+    normalized,
+  );
 }
 
 function slotsForPersistableFact(fact: string): string[] {
@@ -556,7 +656,11 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   if (explicitBudget !== undefined) {
     const previousBudget = normalized.budgetMax;
     normalized.budgetMax = explicitBudget;
-    normalized.targetPrice = normalizeTargetAgainstBudget(normalized.targetPrice, previousBudget, explicitBudget);
+    normalized.targetPrice = normalizeTargetAgainstBudget(
+      normalized.targetPrice,
+      previousBudget,
+      explicitBudget,
+    );
     return normalized;
   }
 
@@ -566,9 +670,9 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   }
 
   if (
-    normalized.budgetMax !== undefined
-    && normalized.targetPrice !== undefined
-    && normalized.targetPrice > normalized.budgetMax
+    normalized.budgetMax !== undefined &&
+    normalized.targetPrice !== undefined &&
+    normalized.targetPrice > normalized.budgetMax
   ) {
     normalized.targetPrice = Math.max(1, Math.round(normalized.budgetMax * 0.9));
   }
@@ -576,9 +680,14 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   return normalized;
 }
 
-function extractExplicitDollarBudget(message: string, previousMemory?: NegotiationAgentBuilderMemory): number | undefined {
+function extractExplicitDollarBudget(
+  message: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): number | undefined {
   const text = message.trim().toLowerCase();
-  const maxMatch = text.match(/(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i);
+  const maxMatch = text.match(
+    /(?:max|maximum|budget|예산|최대)[^0-9$]{0,20}(?:\$|usd\s*)?(\d[\d,]*(?:\.\d{1,2})?)/i,
+  );
   const maxParsed = parseDollarNumber(maxMatch?.[1]);
   if (maxParsed !== undefined) return maxParsed;
 
@@ -596,10 +705,11 @@ function extractExplicitDollarBudget(message: string, previousMemory?: Negotiati
   const numbers = Array.from(text.matchAll(/\b\d[\d,]*(?:\.\d{1,2})?\b/g))
     .map((match) => parseDollarNumber(match[0]))
     .filter((value): value is number => value !== undefined);
-  const budgetContext = (
-    /(?:예산|최대|목표가|가격|budget|max|target|달러라고|불이라고)/i.test(message)
-    || previousMemory?.questions.some((question) => /(?:예산|최대|목표가|가격|budget|max|target)/i.test(question))
-  );
+  const budgetContext =
+    /(?:예산|최대|목표가|가격|budget|max|target|달러라고|불이라고)/i.test(message) ||
+    previousMemory?.questions.some((question) =>
+      /(?:예산|최대|목표가|가격|budget|max|target)/i.test(question),
+    );
 
   if (budgetContext && numbers.length === 1) return numbers[0];
   return undefined;
@@ -634,14 +744,13 @@ function normalizeConsumerElectronicsDollarValue(value: number | undefined): num
 }
 
 function isConsumerElectronicsMemory(memory: NegotiationAgentBuilderMemory): boolean {
-  const text = [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ].join(" ").toLowerCase();
+  const text = [memory.categoryInterest, ...memory.mustHave, ...memory.avoid, ...memory.source]
+    .join(" ")
+    .toLowerCase();
 
-  return /(iphone|아이폰|ipad|아이패드|phone|smartphone|휴대폰|핸드폰|macbook|laptop|electronics)/i.test(text);
+  return /(iphone|아이폰|ipad|아이패드|phone|smartphone|휴대폰|핸드폰|macbook|laptop|electronics)/i.test(
+    text,
+  );
 }
 
 function parseDollarNumber(value: string | undefined): number | undefined {
@@ -813,12 +922,14 @@ function buildAdvisorSourceMessageId(input: {
   memory: NegotiationAgentBuilderMemory;
 }): string {
   const hash = createHash("sha256")
-    .update(stableStringify({
-      userId: input.userId,
-      agentId: input.agentId ?? null,
-      message: input.message,
-      memory: input.memory,
-    }))
+    .update(
+      stableStringify({
+        userId: input.userId,
+        agentId: input.agentId ?? null,
+        message: input.message,
+        memory: input.memory,
+      }),
+    )
     .digest("hex")
     .slice(0, 32);
 
@@ -838,7 +949,11 @@ function stableStringify(value: unknown): string {
 
 function rowsFromResult(result: unknown): Record<string, unknown>[] {
   if (Array.isArray(result)) return result as Record<string, unknown>[];
-  if (result && typeof result === "object" && Array.isArray((result as { rows?: unknown[] }).rows)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { rows?: unknown[] }).rows)
+  ) {
     return (result as { rows: Record<string, unknown>[] }).rows;
   }
   return [];
@@ -854,6 +969,7 @@ function normalizeMemoryCardRow(row: Record<string, unknown>) {
     memory: row.memory,
     strength: String(row.strength),
     version: Number(row.version),
-    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
+    updated_at:
+      row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at),
   };
 }

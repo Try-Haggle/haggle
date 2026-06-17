@@ -377,6 +377,7 @@ export function BuyerLanding({
               value={agentValue}
               onChange={setAgentValue}
               chatSlot={
+                // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
                 <NegotiationAgentBuilderChat
                   agent={selectedAgent}
                   listingPublicId={listing.publicId}

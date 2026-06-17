@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { type Database, sql } from "@haggle/db";
 import { priceSemantics } from "@haggle/shared";
 // (FastifyInstance import removed — this is now a pure service file)
@@ -9,14 +9,7 @@ import {
   type AdvisorCandidatePlan,
   buildAdvisorCandidatePlan,
 } from "../services/advisor-candidate-planner.service.js";
-import { recordConversationSignalsForRound } from "../services/conversation-signal-sink.js";
 import { generateTextEmbedding } from "../services/embedding.service.js";
-import { saveNegotiationAgentBuilderMemorySnapshot } from "../services/negotiation-agent-builder-memory.service.js";
-import {
-  compilePresetTuningDraft,
-  listNegotiationAgentPresets,
-} from "../services/preset-tuning.service.js";
-import { getTagGardenIntelligenceSnapshot } from "../services/tag-garden-intelligence.service.js";
 import {
   buildAdvisorRequirementPlan,
   EMPTY_TAG_REQUIREMENT_PLAN,
@@ -254,7 +247,7 @@ export const negotiationAgentBuilderTurnBodySchema = z.object({
   current_strategy: chatStrategySchema.optional(),
 });
 
-const presetTuningBodySchema = z.object({
+const _presetTuningBodySchema = z.object({
   listing: advisorListingSchema.extend({
     floorPriceMinor: z.number().int().positive().optional(),
     marketMedianMinor: z.number().int().positive().optional(),
@@ -447,19 +440,19 @@ function clampChatStrategy(
   };
 }
 
-const memoryQuerySchema = z.object({
+const _memoryQuerySchema = z.object({
   user_id: z.string().uuid().default(DEMO_USER_ID),
 });
 
-const resetDemoMemoryQuerySchema = z.object({
+const _resetDemoMemoryQuerySchema = z.object({
   user_id: z.string().uuid().default(DEMO_USER_ID),
 });
 
-const tagGardenIntelligenceQuerySchema = z.object({
+const _tagGardenIntelligenceQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(8),
 });
 
-const advisorListingsQuerySchema = z.object({
+const _advisorListingsQuerySchema = z.object({
   q: z.string().trim().max(300).optional(),
   limit: z.coerce.number().int().min(1).max(20).default(8),
 });
@@ -490,7 +483,7 @@ type DemoMemoryCard = {
   strength: number;
 };
 
-async function listAdvisorDemoListings(
+async function _listAdvisorDemoListings(
   db: Database,
   options: { q?: string; limit?: number } = {},
 ): Promise<{
@@ -1385,11 +1378,12 @@ function getQuestionMatchTokens(value: string): string[] {
 function getQuestionWindows(reply: string): string[] {
   const windows: string[] = [];
   const questionMarkPattern = /[?？]/g;
-  let match: RegExpExecArray | null;
+  let match: RegExpExecArray | null = questionMarkPattern.exec(reply);
 
-  while ((match = questionMarkPattern.exec(reply)) !== null) {
+  while (match !== null) {
     const index = match.index;
     windows.push(reply.slice(Math.max(0, index - 120), Math.min(reply.length, index + 120)));
+    match = questionMarkPattern.exec(reply);
   }
 
   for (const sentence of reply.split(/(?<=[.!?。！？])\s+/)) {
@@ -2461,8 +2455,8 @@ function hasSlotNoPreference(text: string, slot: "battery" | "carrier"): boolean
 
 function hasSharedNoPreferenceForBatteryAndCarrier(normalized: string): boolean {
   const noPreference = String.raw`(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|no preference|doesn'?t matter|not important|no need)`;
-  const battery = String.raw`(?:battery|배터리|성능)`;
-  const carrier = String.raw`(?:carrier|통신사|언락|unlocked|locked|잠금)`;
+  const battery = "(?:battery|배터리|성능)";
+  const carrier = "(?:carrier|통신사|언락|unlocked|locked|잠금)";
   const connector = String.raw`(?:랑|와|과|및|하고|,|\/|&|\+|and)`;
   return (
     new RegExp(
@@ -2911,7 +2905,7 @@ function parseJSON(raw: string): unknown {
   return JSON.parse(cleaned);
 }
 
-function buildNegotiationAgentBuilderMemoryCards(
+function _buildNegotiationAgentBuilderMemoryCards(
   memory: NegotiationAgentBuilderMemory,
 ): DemoMemoryCard[] {
   const normalizedMemory = normalizeNegotiationAgentBuilderBudgetMemory(memory, {
@@ -2982,13 +2976,13 @@ function buildNegotiationAgentBuilderMemoryCards(
   return cards;
 }
 
-function hasNegotiationAgentBuilderActiveIntentSwitch(
+function _hasNegotiationAgentBuilderActiveIntentSwitch(
   memory: NegotiationAgentBuilderMemory,
 ): boolean {
   return memory.source.some((item) => /active intent switched/i.test(item));
 }
 
-function buildNegotiationAgentBuilderMemoryFromStoredCards(
+function _buildNegotiationAgentBuilderMemoryFromStoredCards(
   cards: Array<{ summary?: unknown; memory?: unknown; memory_key?: unknown }>,
 ): NegotiationAgentBuilderMemory | null {
   if (cards.length === 0) return null;
@@ -3359,7 +3353,7 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values)).slice(0, 12);
 }
 
-async function upsertNegotiationAgentBuilderMemoryCards(
+async function _upsertNegotiationAgentBuilderMemoryCards(
   db: Database,
   input: {
     userId: string;
@@ -3503,7 +3497,7 @@ async function upsertNegotiationAgentBuilderMemoryCards(
   return stored;
 }
 
-function presetTuningFeedbackDelta(input: z.infer<typeof presetTuningFeedbackBodySchema>): number {
+function _presetTuningFeedbackDelta(input: z.infer<typeof presetTuningFeedbackBodySchema>): number {
   if (
     input.outcome === "accepted" &&
     input.final_price_minor &&
@@ -3518,7 +3512,7 @@ function presetTuningFeedbackDelta(input: z.infer<typeof presetTuningFeedbackBod
   return -0.015;
 }
 
-async function recordPresetTuningFeedback(
+async function _recordPresetTuningFeedback(
   db: Database,
   input: {
     userId: string;
@@ -3612,7 +3606,7 @@ async function recordPresetTuningFeedback(
   return rowsFromResult(result).map(normalizeMemoryCardRow);
 }
 
-async function staleActiveNegotiationAgentBuilderMemoryCards(db: Database, userId: string) {
+async function _staleActiveNegotiationAgentBuilderMemoryCards(db: Database, userId: string) {
   await db.execute(sql`
     UPDATE user_memory_cards
     SET status = 'STALE',
@@ -3623,7 +3617,7 @@ async function staleActiveNegotiationAgentBuilderMemoryCards(db: Database, userI
   `);
 }
 
-function buildAdvisorSourceMessageId(
+function _buildAdvisorSourceMessageId(
   body: z.infer<typeof saveNegotiationAgentBuilderMemoryBodySchema>,
 ): string {
   const hash = createHash("sha256")
@@ -3641,7 +3635,7 @@ function buildAdvisorSourceMessageId(
   return `advisor:${hash}`;
 }
 
-function buildPresetTuningSourceMessageId(
+function _buildPresetTuningSourceMessageId(
   body: z.infer<typeof savePresetTuningBodySchema>,
 ): string {
   const hash = createHash("sha256")
@@ -3671,7 +3665,7 @@ function buildPresetTuningSourceMessageId(
   return `preset_tuning:${hash}`;
 }
 
-function buildPresetTuningMemoryCard(
+function _buildPresetTuningMemoryCard(
   draft: z.infer<typeof presetTuningDraftSchema>,
 ): DemoMemoryCard {
   const scope = presetTuningScope(draft);
@@ -3764,7 +3758,7 @@ function stableStringify(value: unknown): string {
     .join(",")}}`;
 }
 
-async function listDemoMemoryCards(db: Database, userId: string) {
+async function _listDemoMemoryCards(db: Database, userId: string) {
   const result = await db.execute(sql`
     SELECT
       id,
@@ -3786,7 +3780,7 @@ async function listDemoMemoryCards(db: Database, userId: string) {
   return rowsFromResult(result).map(normalizeMemoryCardRow);
 }
 
-async function deleteDemoMemoryData(db: Database, userId: string) {
+async function _deleteDemoMemoryData(db: Database, userId: string) {
   const memoryEvents = await db.execute(sql`
     DELETE FROM user_memory_events
     WHERE user_id = ${userId}

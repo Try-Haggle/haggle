@@ -80,6 +80,7 @@ function createFakeDb(): FakeDb {
         db.calls.push({ op: "select.limit", payload: n });
         return chain;
       },
+      // biome-ignore lint/suspicious/noThenProperty: intentional thenable mock — production code awaits this query chain
       then: (r) => Promise.resolve(r(rows)),
     };
     return chain;
@@ -107,8 +108,7 @@ function createFakeDb(): FakeDb {
           where: (cond: unknown) => {
             db.calls.push({ op: "update.where", payload: cond });
             return {
-              returning: () =>
-                Promise.resolve(db.updateResults.shift() ?? []),
+              returning: () => Promise.resolve(db.updateResults.shift() ?? []),
             };
           },
         };
@@ -310,9 +310,7 @@ describe("GET /negotiations/agents/:id", () => {
 
   it("returns 403 when fetching another user's custom agent", async () => {
     const app = buildApp(db, USER);
-    db.selectResults.push([
-      agentRow({ isSystem: false, userId: OTHER_USER_ID }),
-    ]);
+    db.selectResults.push([agentRow({ isSystem: false, userId: OTHER_USER_ID })]);
     const res = await app.inject({
       method: "GET",
       url: "/negotiations/agents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -323,9 +321,7 @@ describe("GET /negotiations/agents/:id", () => {
 
   it("allows reading system presets even when userId mismatches", async () => {
     const app = buildApp(db, USER);
-    db.selectResults.push([
-      agentRow({ isSystem: true, userId: null }),
-    ]);
+    db.selectResults.push([agentRow({ isSystem: true, userId: null })]);
     const res = await app.inject({
       method: "GET",
       url: "/negotiations/agents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -381,9 +377,7 @@ describe("DELETE /negotiations/agents/:id", () => {
 
   it("returns 403 for another user's agent", async () => {
     const app = buildApp(db, USER);
-    db.selectResults.push([
-      agentRow({ isSystem: false, userId: OTHER_USER_ID }),
-    ]);
+    db.selectResults.push([agentRow({ isSystem: false, userId: OTHER_USER_ID })]);
     const res = await app.inject({
       method: "DELETE",
       url: "/negotiations/agents/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

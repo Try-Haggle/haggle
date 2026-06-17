@@ -2,16 +2,16 @@
 
 import { useMemo, useState } from "react";
 import type { DemoInitResponse, DemoRoundResponse } from "@/lib/demo-types";
+import type {
+  AdvisorListing,
+  NegotiationAgentBuilderMemory,
+} from "@/lib/negotiation-agent-builder-types";
 import {
   ANCIENT_BEINGS,
   type AncientBeing,
   type AncientBeingId,
   type Expression,
 } from "./negotiation-avatar-coach";
-import type {
-  AdvisorListing,
-  NegotiationAgentBuilderMemory,
-} from "@/lib/negotiation-agent-builder-types";
 
 type DemoState =
   | "IDLE"

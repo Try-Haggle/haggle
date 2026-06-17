@@ -115,8 +115,9 @@ describe("POST /claim/negotiation-sessions", () => {
   });
 
   it("rejects more than 64 ids", async () => {
-    const ids = Array.from({ length: 65 }, (_, i) =>
-      `${"0".repeat(8 - String(i).length)}${i}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+    const ids = Array.from(
+      { length: 65 },
+      (_, i) => `${"0".repeat(8 - String(i).length)}${i}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
     );
     const app = buildApp(db, USER);
     const res = await app.inject({

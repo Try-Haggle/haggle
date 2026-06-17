@@ -2056,6 +2056,7 @@ export function NewListingWizard({
 
             {/* ── STEP 5: Agent ── */}
             {step === 5 && (
+              // biome-ignore lint/a11y/useValidAriaRole: "role" is an AgentBuilder prop (buyer/seller), not an ARIA role
               <AgentBuilder
                 role="seller"
                 embedded
@@ -2063,6 +2064,7 @@ export function NewListingWizard({
                 onChange={setAgentValue}
                 chatSlot={
                   agentValue && (
+                    // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
                     <NegotiationAgentBuilderChat
                       agent={resolveEffectivePreset(agentValue)}
                       listingPublicId={`listing-draft-${agentValue.agent.presetId}`}

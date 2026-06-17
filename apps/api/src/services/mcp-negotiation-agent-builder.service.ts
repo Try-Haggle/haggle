@@ -12,11 +12,11 @@
 import OpenAI from "openai";
 
 export interface SellerNegotiationAgentBuilderMemory {
-  dealBreakers: string[];      // 절대 안 되는 조건
-  mustEmphasize: string[];     // 강조하고 싶은 부분 (e.g. "like new condition", "original box included")
+  dealBreakers: string[]; // 절대 안 되는 조건
+  mustEmphasize: string[]; // 강조하고 싶은 부분 (e.g. "like new condition", "original box included")
   tone: "firm" | "friendly" | "flexible";
   urgency: "high" | "medium" | "low";
-  notes: string[];             // 기타 자유 메모
+  notes: string[]; // 기타 자유 메모
 }
 
 export interface SellerNegotiationAgentBuilderInput {
@@ -24,7 +24,7 @@ export interface SellerNegotiationAgentBuilderInput {
   previousMemory: SellerNegotiationAgentBuilderMemory;
   listingTitle: string;
   listingPrice: string;
-  agentPreset: string;         // e.g. "gatekeeper", "diplomat"
+  agentPreset: string; // e.g. "gatekeeper", "diplomat"
 }
 
 export interface SellerNegotiationAgentBuilderResult {
@@ -82,7 +82,10 @@ Seller says: "${input.message}"`;
     });
 
     const content = resp.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(content) as { memory?: SellerNegotiationAgentBuilderMemory; reply?: string };
+    const parsed = JSON.parse(content) as {
+      memory?: SellerNegotiationAgentBuilderMemory;
+      reply?: string;
+    };
 
     return {
       memory: {

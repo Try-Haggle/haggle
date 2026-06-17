@@ -1,16 +1,25 @@
-import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "./helpers.js";
 
 // ─── Hoisted mocks (vi.mock factories run before module-level const) ─
 
 const {
-  mockCreateSession, mockGetSessionById, mockGetSessionsByUserId,
-  mockGetSessionsByGroupId, mockUpdateSessionState, mockBatchUpdateSessionStatus,
-  mockCreateRound, mockGetRoundsBySessionId, mockGetRoundByIdempotencyKey,
-  mockCreateGroup, mockGetGroupById, mockUpdateGroupStatus,
+  mockCreateSession,
+  mockGetSessionById,
+  mockGetSessionsByUserId,
+  mockGetSessionsByGroupId,
+  mockUpdateSessionState,
+  mockBatchUpdateSessionStatus,
+  mockCreateRound,
+  mockGetRoundsBySessionId,
+  mockGetRoundByIdempotencyKey,
+  mockCreateGroup,
+  mockGetGroupById,
+  mockUpdateGroupStatus,
   mockExecuteNegotiationRound,
-  mockExecuteGroupOrchestration, mockExecuteGroupTerminal,
+  mockExecuteGroupOrchestration,
+  mockExecuteGroupTerminal,
   mockLoadUserMemoryBrief,
   mockEventDispatch,
 } = vi.hoisted(() => ({
@@ -50,7 +59,9 @@ const mockSession = {
   roundsNoConcession: 0,
   lastOfferPriceMinor: "10000",
   lastUtility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
-  negotiationAgentSnapshot: { alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 } },
+  negotiationAgentSnapshot: {
+    alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
+  },
   version: 1,
   expiresAt: null,
   createdAt: new Date("2026-04-01"),
@@ -131,7 +142,10 @@ vi.mock("../lib/negotiation-executor.js", () => ({
 // calling executeNegotiationRound directly. Route the factory through the
 // same mockExecuteNegotiationRound so existing test setups keep working.
 vi.mock("../lib/executor-factory.js", () => ({
-  getExecutor: () => (...args: unknown[]) => mockExecuteNegotiationRound(...args),
+  getExecutor:
+    () =>
+    (...args: unknown[]) =>
+      mockExecuteNegotiationRound(...args),
   getPipelineMode: () => "staged",
 }));
 
@@ -281,19 +295,23 @@ vi.mock("../lib/action-handlers.js", () => ({
 // ─── Auth helper ────────────────────────────────────────────────────
 
 const AUTH_HEADERS = {
-  authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJidXllci0wMDEiLCJlbWFpbCI6InRlc3RAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
+  authorization:
+    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJidXllci0wMDEiLCJlbWFpbCI6InRlc3RAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
 };
 
 const SESSION_BUYER_AUTH_HEADERS = {
-  authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTQwMDAtYTAwMC0wMDAwMDAwMDAwMTAiLCJlbWFpbCI6InRlc3RAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
+  authorization:
+    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTQwMDAtYTAwMC0wMDAwMDAwMDAwMTAiLCJlbWFpbCI6InRlc3RAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
 };
 
 const SELLER_AUTH_HEADERS = {
-  authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzZWxsZXItMDAxIiwiZW1haWwiOiJzZWxsZXJAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
+  authorization:
+    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzZWxsZXItMDAxIiwiZW1haWwiOiJzZWxsZXJAaGFnZ2xlLmFpIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQifQ.fake",
 };
 
 const INTRUDER_AUTH_HEADERS = {
-  authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJpbnRydWRlci0wMDEiLCJlbWFpbCI6ImludHJ1ZGVyQGhhZ2dsZS5haSIsInJvbGUiOiJhdXRoZW50aWNhdGVkIn0.fake",
+  authorization:
+    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJpbnRydWRlci0wMDEiLCJlbWFpbCI6ImludHJ1ZGVyQGhhZ2dsZS5haSIsInJvbGUiOiJhdXRoZW50aWNhdGVkIn0.fake",
 };
 
 // ─── Valid payloads ─────────────────────────────────────────────────
@@ -924,7 +942,12 @@ describe("Negotiation API", () => {
             proposal_id: "proposal-auto-hash",
             issues: [
               { issue_id: "hnp.issue.price.total", value: 48000, unit: "USD", kind: "NEGOTIABLE" },
-              { issue_id: "vendor.apple.storage_gb", value: 128, unit: "GB", kind: "INFORMATIONAL" },
+              {
+                issue_id: "vendor.apple.storage_gb",
+                value: 128,
+                unit: "GB",
+                kind: "INFORMATIONAL",
+              },
             ],
             total_price: { currency: "USD", units_minor: 48000 },
             valid_until: "2026-04-29T00:00:00.000Z",
@@ -969,7 +992,11 @@ describe("Negotiation API", () => {
           payload: {
             ...payload.hnp.payload,
             issues: [...payload.hnp.payload.issues].reverse(),
-            settlement_preconditions: ["tracked_shipping_required", "escrow_authorized", "escrow_authorized"],
+            settlement_preconditions: [
+              "tracked_shipping_required",
+              "escrow_authorized",
+              "escrow_authorized",
+            ],
           },
         },
       };
@@ -1006,7 +1033,12 @@ describe("Negotiation API", () => {
             payload: {
               proposal_id: "proposal-bad-hash",
               issues: [
-                { issue_id: "hnp.issue.price.total", value: 48000, unit: "USD", kind: "NEGOTIABLE" },
+                {
+                  issue_id: "hnp.issue.price.total",
+                  value: 48000,
+                  unit: "USD",
+                  kind: "NEGOTIABLE",
+                },
               ],
               total_price: { currency: "USD", units_minor: 48000 },
               proposal_hash: "sha256:not-the-real-hash",
@@ -1170,7 +1202,9 @@ describe("Negotiation API", () => {
 
     it("returns 409 for CONCURRENT_MODIFICATION", async () => {
       mockGetSessionById.mockResolvedValue(mockSession);
-      mockExecuteNegotiationRound.mockRejectedValue(new Error("CONCURRENT_MODIFICATION: version conflict"));
+      mockExecuteNegotiationRound.mockRejectedValue(
+        new Error("CONCURRENT_MODIFICATION: version conflict"),
+      );
 
       const res = await app.inject({
         method: "POST",
@@ -1253,8 +1287,12 @@ describe("Negotiation API", () => {
 
     it("accepts optional round_data", async () => {
       mockExecuteNegotiationRound.mockResolvedValue({
-        idempotent: false, roundId: "r1", roundNo: 1, decision: "COUNTER",
-        outgoingPrice: 9000, utility: { u_total: 0.5, v_p: 0.5, v_t: 0, v_r: 0, v_s: 0 },
+        idempotent: false,
+        roundId: "r1",
+        roundNo: 1,
+        decision: "COUNTER",
+        outgoingPrice: 9000,
+        utility: { u_total: 0.5, v_p: 0.5, v_t: 0, v_r: 0, v_s: 0 },
         sessionStatus: "ACTIVE",
       });
       mockGetSessionById.mockResolvedValue(mockSession);
@@ -1278,7 +1316,10 @@ describe("Negotiation API", () => {
 
   describe("PATCH /negotiations/sessions/:id/accept", () => {
     it("returns 401 without auth", async () => {
-      const res = await app.inject({ method: "PATCH", url: "/negotiations/sessions/sess-001/accept" });
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/sess-001/accept",
+      });
       expect(res.statusCode).toBe(401);
     });
 
@@ -1485,7 +1526,9 @@ describe("Negotiation API", () => {
 
     it("checks participant access before HNP accept ordering", async () => {
       mockGetSessionById.mockResolvedValue({ ...mockSession, status: "ACTIVE" });
-      mockGetRoundsBySessionId.mockResolvedValue([{ ...mockRound, metadata: { protocol: { hnp: { messageId: "prior" } } } }]);
+      mockGetRoundsBySessionId.mockResolvedValue([
+        { ...mockRound, metadata: { protocol: { hnp: { messageId: "prior" } } } },
+      ]);
 
       const res = await app.inject({
         method: "PATCH",
@@ -1599,7 +1642,12 @@ describe("Negotiation API", () => {
               accepted_proposal_id: "proposal-1",
               accepted_proposal_hash: "sha256:expected",
               accepted_issues: [
-                { issue_id: "hnp.issue.price.total", value: 50000, unit: "USD", kind: "NEGOTIABLE" },
+                {
+                  issue_id: "hnp.issue.price.total",
+                  value: 50000,
+                  unit: "USD",
+                  kind: "NEGOTIABLE",
+                },
               ],
             },
           },
@@ -1632,7 +1680,9 @@ describe("Negotiation API", () => {
       });
       expect(res.json().agreement.agreement_id).toMatch(/^agr_/);
       expect(res.json().agreement.agreement_hash).toMatch(/^sha256:/);
-      expect(res.json().transaction_handoff.agreement_hash).toBe(res.json().agreement.agreement_hash);
+      expect(res.json().transaction_handoff.agreement_hash).toBe(
+        res.json().agreement.agreement_hash,
+      );
       expect(res.json().transaction_handoff.handoff_id).toMatch(/^handoff_/);
       expect(res.json().transaction_handoff.handoff_hash).toMatch(/^sha256:/);
       expect(res.json().transaction_handoff_summary.chain_hash).toMatch(/^sha256:/);
@@ -1668,12 +1718,14 @@ describe("Negotiation API", () => {
           currentRound: 2,
         }),
       );
-      expect(mockEventDispatch).toHaveBeenCalledWith(expect.objectContaining({
-        type: "negotiation.agreed",
-        payload: expect.objectContaining({
-          agreed_price_minor: 50000,
+      expect(mockEventDispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "negotiation.agreed",
+          payload: expect.objectContaining({
+            agreed_price_minor: 50000,
+          }),
         }),
-      }));
+      );
     });
 
     it("returns a human-approval handoff when HNP accept includes payment approval signals", async () => {
@@ -1718,7 +1770,12 @@ describe("Negotiation API", () => {
               accepted_proposal_id: "proposal-approval",
               accepted_proposal_hash: "sha256:approval",
               accepted_issues: [
-                { issue_id: "hnp.issue.price.total", value: 53000, unit: "USD", kind: "NEGOTIABLE" },
+                {
+                  issue_id: "hnp.issue.price.total",
+                  value: 53000,
+                  unit: "USD",
+                  kind: "NEGOTIABLE",
+                },
               ],
             },
           },
@@ -1758,7 +1815,12 @@ describe("Negotiation API", () => {
                 proposalHash: "sha256:eurproposal",
                 currency: "EUR",
                 issues: [
-                  { issue_id: "hnp.issue.price.total", value: 70000, unit: "EUR", kind: "NEGOTIABLE" },
+                  {
+                    issue_id: "hnp.issue.price.total",
+                    value: 70000,
+                    unit: "EUR",
+                    kind: "NEGOTIABLE",
+                  },
                   { issue_id: "hnp.issue.delivery.window", value: "3d", kind: "NEGOTIABLE" },
                 ],
                 settlementPreconditions: ["escrow_authorized"],
@@ -1808,12 +1870,14 @@ describe("Negotiation API", () => {
           settlement_preconditions: ["escrow_authorized"],
         },
       });
-      expect(mockEventDispatch).toHaveBeenCalledWith(expect.objectContaining({
-        type: "negotiation.agreed",
-        payload: expect.objectContaining({
-          agreed_price_minor: 70000,
+      expect(mockEventDispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "negotiation.agreed",
+          payload: expect.objectContaining({
+            agreed_price_minor: 70000,
+          }),
         }),
-      }));
+      );
     });
 
     it("rejects an HNP accept when accepted issues conflict with the stored proposal", async () => {
@@ -1830,8 +1894,18 @@ describe("Negotiation API", () => {
                 proposalHash: "sha256:issuebound",
                 currency: "USD",
                 issues: [
-                  { issue_id: "hnp.issue.price.total", value: 48000, unit: "USD", kind: "NEGOTIABLE" },
-                  { issue_id: "vendor.apple.storage_gb", value: 128, unit: "GB", kind: "INFORMATIONAL" },
+                  {
+                    issue_id: "hnp.issue.price.total",
+                    value: 48000,
+                    unit: "USD",
+                    kind: "NEGOTIABLE",
+                  },
+                  {
+                    issue_id: "vendor.apple.storage_gb",
+                    value: 128,
+                    unit: "GB",
+                    kind: "INFORMATIONAL",
+                  },
                 ],
                 sequence: 1,
               },
@@ -1862,8 +1936,18 @@ describe("Negotiation API", () => {
               accepted_proposal_id: "proposal-issue-bound",
               accepted_proposal_hash: "sha256:issuebound",
               accepted_issues: [
-                { issue_id: "hnp.issue.price.total", value: 45000, unit: "USD", kind: "NEGOTIABLE" },
-                { issue_id: "vendor.apple.storage_gb", value: 128, unit: "GB", kind: "INFORMATIONAL" },
+                {
+                  issue_id: "hnp.issue.price.total",
+                  value: 45000,
+                  unit: "USD",
+                  kind: "NEGOTIABLE",
+                },
+                {
+                  issue_id: "vendor.apple.storage_gb",
+                  value: 128,
+                  unit: "GB",
+                  kind: "INFORMATIONAL",
+                },
               ],
             },
           },
@@ -1875,9 +1959,11 @@ describe("Negotiation API", () => {
         error: "INVALID_PROPOSAL_ISSUES",
       });
       expect(mockUpdateSessionState).not.toHaveBeenCalled();
-      expect(mockEventDispatch).not.toHaveBeenCalledWith(expect.objectContaining({
-        type: "negotiation.agreed",
-      }));
+      expect(mockEventDispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "negotiation.agreed",
+        }),
+      );
     });
 
     it("rejects invalid transaction handoff signals before accepting the session", async () => {
@@ -1994,7 +2080,10 @@ describe("Negotiation API", () => {
 
   describe("PATCH /negotiations/sessions/:id/reject", () => {
     it("returns 401 without auth", async () => {
-      const res = await app.inject({ method: "PATCH", url: "/negotiations/sessions/sess-001/reject" });
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/sessions/sess-001/reject",
+      });
       expect(res.statusCode).toBe(401);
     });
 
@@ -2267,7 +2356,10 @@ describe("Group API", () => {
 
   describe("POST /negotiations/groups/:id/orchestrate", () => {
     it("returns 401 without auth", async () => {
-      const res = await app.inject({ method: "POST", url: "/negotiations/groups/group-001/orchestrate" });
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/groups/group-001/orchestrate",
+      });
       expect(res.statusCode).toBe(401);
     });
 
@@ -2357,7 +2449,10 @@ describe("Settlement Approval API", () => {
 
   describe("GET /settlement-approvals", () => {
     it("returns 401 without auth", async () => {
-      const res = await app.inject({ method: "GET", url: "/settlement-approvals?user_id=buyer-001" });
+      const res = await app.inject({
+        method: "GET",
+        url: "/settlement-approvals?user_id=buyer-001",
+      });
       expect(res.statusCode).toBe(401);
     });
 

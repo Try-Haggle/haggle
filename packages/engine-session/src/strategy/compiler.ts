@@ -1,6 +1,6 @@
-import type { MasterStrategy } from './types.js';
+import type { MasterStrategy } from "./types.js";
 
-export type StrategyRole = 'BUYER' | 'SELLER';
+export type StrategyRole = "BUYER" | "SELLER";
 
 export type AgentStats = {
   priceAggression?: number;
@@ -31,8 +31,8 @@ export type StrategyCompilerInput = {
 
 export type CompiledNegotiationAgentSnapshot = MasterStrategy & {
   compiler: {
-    version: 'strategy-compiler-v1';
-    source: 'listing_context';
+    version: "strategy-compiler-v1";
+    source: "listing_context";
     selected_playbook: string;
     candidate_playbooks: string[];
   };
@@ -43,12 +43,12 @@ export type CompiledNegotiationAgentSnapshot = MasterStrategy & {
   created_at_ms: number;
   deadline_at_ms: number;
   time_value: {
-    curve: 'faratin';
+    curve: "faratin";
     listed_at_ms: number;
     deadline_at_ms: number;
     t_total_ms: number;
     beta: number;
-    source: 'listing_selling_deadline' | 'compiler_default_window';
+    source: "listing_selling_deadline" | "compiler_default_window";
   };
   utility_weights: {
     price: number;
@@ -85,7 +85,9 @@ const DEFAULT_STATS: NormalizedStats = {
   detailFocus: 50,
 };
 
-export function compileNegotiationAgentSnapshot(input: StrategyCompilerInput): CompiledNegotiationAgentSnapshot {
+export function compileNegotiationAgentSnapshot(
+  input: StrategyCompilerInput,
+): CompiledNegotiationAgentSnapshot {
   const stats = normalizeAgentStats(input.agentStats, input.preset);
   const nowMs = input.nowMs ?? Date.now();
   const listedAtMs = saneMillis(input.listing.listedAtMs, nowMs);
@@ -109,13 +111,12 @@ export function compileNegotiationAgentSnapshot(input: StrategyCompilerInput): C
   const concession = deriveConcession(stats);
   const pTarget = Math.max(1, input.listing.targetPriceMinor);
   const rawLimit = Math.max(1, input.listing.floorPriceMinor);
-  const pLimit = input.role === 'SELLER'
-    ? Math.min(pTarget, rawLimit)
-    : Math.max(pTarget, rawLimit);
+  const pLimit =
+    input.role === "SELLER" ? Math.min(pTarget, rawLimit) : Math.max(pTarget, rawLimit);
 
   return {
     id: input.strategyId ?? `${input.role.toLowerCase()}_${selectedPlaybook}`,
-    user_id: input.userId ?? '',
+    user_id: input.userId ?? "",
     role: input.role,
     persona: selectedPlaybook,
     weights: {
@@ -145,12 +146,12 @@ export function compileNegotiationAgentSnapshot(input: StrategyCompilerInput): C
     created_at_ms: listedAtMs,
     deadline_at_ms: deadlineAtMs,
     time_value: {
-      curve: 'faratin',
+      curve: "faratin",
       listed_at_ms: listedAtMs,
       deadline_at_ms: deadlineAtMs,
       t_total_ms: totalMs,
       beta: concession.beta,
-      source: input.listing.deadlineAtMs ? 'listing_selling_deadline' : 'compiler_default_window',
+      source: input.listing.deadlineAtMs ? "listing_selling_deadline" : "compiler_default_window",
     },
     utility_weights: {
       price: weights.price,
@@ -161,8 +162,8 @@ export function compileNegotiationAgentSnapshot(input: StrategyCompilerInput): C
     thresholds,
     concession,
     compiler: {
-      version: 'strategy-compiler-v1',
-      source: 'listing_context',
+      version: "strategy-compiler-v1",
+      source: "listing_context",
       selected_playbook: selectedPlaybook,
       candidate_playbooks: rankPlaybooks(stats),
     },
@@ -188,36 +189,79 @@ export function normalizeAgentStats(stats?: AgentStats | null, preset?: string):
 
 function presetToStats(preset?: string): NormalizedStats {
   switch (preset) {
-    case 'gatekeeper':
-    case 'firm':
-      return { priceAggression: 85, patienceLevel: 90, riskTolerance: 20, speedBias: 30, detailFocus: 75 };
-    case 'storyteller':
-      return { priceAggression: 60, patienceLevel: 80, riskTolerance: 35, speedBias: 25, detailFocus: 95 };
-    case 'dealmaker':
-    case 'quick_deal':
-      return { priceAggression: 40, patienceLevel: 25, riskTolerance: 75, speedBias: 95, detailFocus: 35 };
-    case 'aggressive':
-      return { priceAggression: 90, patienceLevel: 70, riskTolerance: 35, speedBias: 45, detailFocus: 60 };
-    case 'patient':
-      return { priceAggression: 65, patienceLevel: 90, riskTolerance: 30, speedBias: 20, detailFocus: 75 };
-    case 'diplomat':
-    case 'balanced':
+    case "gatekeeper":
+    case "firm":
+      return {
+        priceAggression: 85,
+        patienceLevel: 90,
+        riskTolerance: 20,
+        speedBias: 30,
+        detailFocus: 75,
+      };
+    case "storyteller":
+      return {
+        priceAggression: 60,
+        patienceLevel: 80,
+        riskTolerance: 35,
+        speedBias: 25,
+        detailFocus: 95,
+      };
+    case "dealmaker":
+    case "quick_deal":
+      return {
+        priceAggression: 40,
+        patienceLevel: 25,
+        riskTolerance: 75,
+        speedBias: 95,
+        detailFocus: 35,
+      };
+    case "aggressive":
+      return {
+        priceAggression: 90,
+        patienceLevel: 70,
+        riskTolerance: 35,
+        speedBias: 45,
+        detailFocus: 60,
+      };
+    case "patient":
+      return {
+        priceAggression: 65,
+        patienceLevel: 90,
+        riskTolerance: 30,
+        speedBias: 20,
+        detailFocus: 75,
+      };
     default:
       return DEFAULT_STATS;
   }
 }
 
 function selectPlaybook(stats: NormalizedStats, preset?: string): string {
-  if (preset && ['gatekeeper', 'diplomat', 'storyteller', 'dealmaker'].includes(preset)) return preset;
-  return rankPlaybooks(stats)[0] ?? 'balanced';
+  if (preset && ["gatekeeper", "diplomat", "storyteller", "dealmaker"].includes(preset))
+    return preset;
+  return rankPlaybooks(stats)[0] ?? "balanced";
 }
 
 function rankPlaybooks(stats: NormalizedStats): string[] {
   const scores = [
-    ['gatekeeper', stats.priceAggression * 0.45 + stats.patienceLevel * 0.35 + (100 - stats.riskTolerance) * 0.20],
-    ['dealmaker', stats.speedBias * 0.55 + stats.riskTolerance * 0.25 + (100 - stats.patienceLevel) * 0.20],
-    ['storyteller', stats.detailFocus * 0.55 + stats.patienceLevel * 0.25 + stats.priceAggression * 0.20],
-    ['diplomat', (100 - Math.abs(stats.priceAggression - 55)) * 0.35 + (100 - Math.abs(stats.speedBias - 50)) * 0.35 + stats.riskTolerance * 0.30],
+    [
+      "gatekeeper",
+      stats.priceAggression * 0.45 + stats.patienceLevel * 0.35 + (100 - stats.riskTolerance) * 0.2,
+    ],
+    [
+      "dealmaker",
+      stats.speedBias * 0.55 + stats.riskTolerance * 0.25 + (100 - stats.patienceLevel) * 0.2,
+    ],
+    [
+      "storyteller",
+      stats.detailFocus * 0.55 + stats.patienceLevel * 0.25 + stats.priceAggression * 0.2,
+    ],
+    [
+      "diplomat",
+      (100 - Math.abs(stats.priceAggression - 55)) * 0.35 +
+        (100 - Math.abs(stats.speedBias - 50)) * 0.35 +
+        stats.riskTolerance * 0.3,
+    ],
   ] as const;
   return [...scores].sort((a, b) => b[1] - a[1]).map(([name]) => name);
 }
@@ -266,8 +310,8 @@ function deriveThresholds(stats: NormalizedStats, role: StrategyRole) {
   const aggression = stats.priceAggression / 100;
   const speed = stats.speedBias / 100;
   const risk = stats.riskTolerance / 100;
-  const roleFirmness = role === 'SELLER' ? 0.03 : 0;
-  const accept = clamp01(0.68 + aggression * 0.16 - speed * 0.10 - risk * 0.04 + roleFirmness);
+  const roleFirmness = role === "SELLER" ? 0.03 : 0;
+  const accept = clamp01(0.68 + aggression * 0.16 - speed * 0.1 - risk * 0.04 + roleFirmness);
   return {
     accept: round3(accept),
     counter: round3(clamp01(0.42 + aggression * 0.1 - speed * 0.06)),
@@ -280,7 +324,7 @@ function deriveConcession(stats: NormalizedStats) {
   const speed = stats.speedBias / 100;
   const patience = stats.patienceLevel / 100;
   const aggression = stats.priceAggression / 100;
-  const beta = 0.35 + speed * 0.45 + (1 - patience) * 0.20 - aggression * 0.15;
+  const beta = 0.35 + speed * 0.45 + (1 - patience) * 0.2 - aggression * 0.15;
   const k = 0.6 + speed * 1.4 + (1 - aggression) * 0.35;
   return {
     beta: round3(clamp(beta, 0.2, 0.95)),
@@ -308,11 +352,13 @@ function normalizeWeights(input: {
 }
 
 function saneMillis(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function clampScore(value: unknown): number {
-  return Math.round(clamp(typeof value === 'number' && Number.isFinite(value) ? value : 50, 0, 100));
+  return Math.round(
+    clamp(typeof value === "number" && Number.isFinite(value) ? value : 50, 0, 100),
+  );
 }
 
 function clamp01(value: number): number {

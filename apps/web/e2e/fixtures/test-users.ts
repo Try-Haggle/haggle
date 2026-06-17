@@ -18,5 +18,4 @@ export const BUYER_USER = {
 };
 
 /** A pre-seeded published listing the buyer flow targets. */
-export const SEED_LISTING_PUBLIC_ID =
-  process.env.E2E_SEED_LISTING_PUBLIC_ID ?? "seed-iphone-pro";
+export const SEED_LISTING_PUBLIC_ID = process.env.E2E_SEED_LISTING_PUBLIC_ID ?? "seed-iphone-pro";

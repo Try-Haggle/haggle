@@ -1,4 +1,15 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 // ────────────────────────────────────────────────────────────────
 // negotiation_groups — 1:N orchestration container
@@ -22,9 +33,7 @@ export const negotiationGroups = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    index("negotiation_groups_anchor_status_idx").on(table.anchorUserId, table.status),
-  ],
+  (table) => [index("negotiation_groups_anchor_status_idx").on(table.anchorUserId, table.status)],
 );
 
 // ────────────────────────────────────────────────────────────────
@@ -42,11 +51,21 @@ export const negotiationSessions = pgTable(
     role: text("role", { enum: ["BUYER", "SELLER"] }).notNull(),
     status: text("status", {
       enum: [
-        "CREATED", "ACTIVE", "NEAR_DEAL", "STALLED",
-        "ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "WAITING",
-        "NEGOTIATING_VERSION", "FAILED_COMPATIBILITY",
+        "CREATED",
+        "ACTIVE",
+        "NEAR_DEAL",
+        "STALLED",
+        "ACCEPTED",
+        "REJECTED",
+        "EXPIRED",
+        "SUPERSEDED",
+        "WAITING",
+        "NEGOTIATING_VERSION",
+        "FAILED_COMPATIBILITY",
       ],
-    }).notNull().default("CREATED"),
+    })
+      .notNull()
+      .default("CREATED"),
     buyerId: uuid("buyer_id").notNull(),
     sellerId: uuid("seller_id").notNull(),
     counterpartyId: uuid("counterparty_id").notNull(),
@@ -60,7 +79,9 @@ export const negotiationSessions = pgTable(
       v_r: number;
       v_s: number;
     }>(),
-    negotiationAgentSnapshot: jsonb("negotiation_agent_snapshot").$type<Record<string, unknown>>().notNull(),
+    negotiationAgentSnapshot: jsonb("negotiation_agent_snapshot")
+      .$type<Record<string, unknown>>()
+      .notNull(),
     version: integer("version").notNull().default(1),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     // LLM negotiation engine columns (Step 57)
@@ -146,12 +167,16 @@ export const negotiationRounds = pgTable(
     concessionRate: numeric("concession_rate", { precision: 8, scale: 6 }),
     coachRecommendedMinor: numeric("coach_recommended_minor", { precision: 18, scale: 0 }),
     deviationFromCoach: integer("deviation_from_coach"),
-    refereeViolations: jsonb("referee_violations").$type<{ rule: string; severity: 'HARD' | 'SOFT' }[]>(),
+    refereeViolations:
+      jsonb("referee_violations").$type<{ rule: string; severity: "HARD" | "SOFT" }[]>(),
     llmLatencyMs: integer("llm_latency_ms"),
   },
   (table) => [
     index("negotiation_rounds_session_round_idx").on(table.sessionId, table.roundNo),
-    uniqueIndex("negotiation_rounds_session_idempotency_key_idx").on(table.sessionId, table.idempotencyKey),
+    uniqueIndex("negotiation_rounds_session_idempotency_key_idx").on(
+      table.sessionId,
+      table.idempotencyKey,
+    ),
     index("negotiation_rounds_tactic_idx").on(table.tacticUsed),
   ],
 );

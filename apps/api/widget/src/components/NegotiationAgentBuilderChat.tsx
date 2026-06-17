@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
 import type { NegotiationAgentPreset } from "@haggle/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -50,9 +50,10 @@ function buildGreeting(agent: NegotiationAgentPreset | null, title: string): str
 }
 
 function renderMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br />");
+  // Escape HTML first so user/LLM text can't inject markup — only the
+  // **bold** → <strong> and \n → <br> transforms below emit real tags.
+  const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br />");
 }
 
 function TypingDots() {
@@ -95,9 +96,9 @@ interface Chip {
 
 const CHIP_COLORS: Record<ChipCategory, { bg: string; border: string; color: string }> = {
   dealBreaker: { bg: "rgba(239,68,68,.08)", border: "rgba(239,68,68,.25)", color: "#f87171" },
-  emphasize:   { bg: "rgba(59,130,246,.08)", border: "rgba(59,130,246,.25)", color: "#60a5fa" },
-  style:       { bg: "rgba(6,182,212,.08)", border: "rgba(6,182,212,.25)", color: "#22d3ee" },
-  urgency:     { bg: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.25)", color: "#fbbf24" },
+  emphasize: { bg: "rgba(59,130,246,.08)", border: "rgba(59,130,246,.25)", color: "#60a5fa" },
+  style: { bg: "rgba(6,182,212,.08)", border: "rgba(6,182,212,.25)", color: "#22d3ee" },
+  urgency: { bg: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.25)", color: "#fbbf24" },
 };
 
 function extractChips(memory: SellerNegotiationAgentBuilderMemory): Chip[] {
@@ -125,13 +126,16 @@ export default function NegotiationAgentBuilderChat({
   callTool,
 }: NegotiationAgentBuilderChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [memory, setMemory] = useState<SellerNegotiationAgentBuilderMemory>(buildInitialSellerNegotiationAgentBuilderMemory);
+  const [memory, setMemory] = useState<SellerNegotiationAgentBuilderMemory>(
+    buildInitialSellerNegotiationAgentBuilderMemory,
+  );
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Show greeting when agent changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only when the agent id changes
   useEffect(() => {
     if (!agent) {
       setMessages([]);
@@ -148,6 +152,7 @@ export default function NegotiationAgentBuilderChat({
   }, [agent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll chat to bottom
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll only when message count or loading state changes
   useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
@@ -238,18 +243,34 @@ export default function NegotiationAgentBuilderChat({
           borderBottom: "1px solid #1e293b",
         }}
       >
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          width="15"
+          height="15"
+          fill="none"
+          stroke={accentColor}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         <span style={{ fontSize: 13, fontWeight: 600, color: accentColor, flex: 1 }}>
           Strategy Chat
         </span>
         {chips.length > 0 && (
-          <span style={{
-            fontSize: 10, fontWeight: 500, padding: "2px 8px", borderRadius: 20,
-            background: `${accentColor}18`, color: accentColor,
-            border: `1px solid ${accentColor}33`,
-          }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 500,
+              padding: "2px 8px",
+              borderRadius: 20,
+              background: `${accentColor}18`,
+              color: accentColor,
+              border: `1px solid ${accentColor}33`,
+            }}
+          >
             {chips.length} hint{chips.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -310,13 +331,27 @@ export default function NegotiationAgentBuilderChat({
                       </span>
                     </div>
                   )}
+                  {/* biome-ignore lint/security/noDangerouslySetInnerHtml: intentional sanitized markdown rendering */}
                   <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.text) }} />
                 </div>
               </div>
             ))}
             {isLoading && (
-              <div style={{ display: "flex", justifyContent: "flex-start", animation: "scFade 0.2s ease-out" }}>
-                <div style={{ padding: "9px 12px", borderRadius: 10, background: "#111827", border: "1px solid #1e293b" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-start",
+                  animation: "scFade 0.2s ease-out",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: 10,
+                    background: "#111827",
+                    border: "1px solid #1e293b",
+                  }}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span style={{ fontSize: 10 }}>🤖</span>
                     <TypingDots />
@@ -330,28 +365,45 @@ export default function NegotiationAgentBuilderChat({
 
       {/* Strategy chips */}
       {chips.length > 0 && (
-        <div style={{
-          padding: "8px 14px",
-          borderTop: "1px solid #1e293b",
-          background: "#0d1321",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          alignItems: "center",
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: "#475569", letterSpacing: "0.05em", marginRight: 2 }}>
+        <div
+          style={{
+            padding: "8px 14px",
+            borderTop: "1px solid #1e293b",
+            background: "#0d1321",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: "#475569",
+              letterSpacing: "0.05em",
+              marginRight: 2,
+            }}
+          >
             STRATEGY
           </span>
-          {chips.map((chip, i) => {
+          {chips.map((chip) => {
             const c = CHIP_COLORS[chip.category];
             return (
-              <span key={i} style={{
-                fontSize: 11, fontWeight: 500,
-                padding: "2px 10px", borderRadius: 20,
-                background: c.bg, border: `1px solid ${c.border}`, color: c.color,
-                animation: "scFade 0.3s ease-out",
-                whiteSpace: "nowrap",
-              }}>
+              <span
+                key={`${chip.category}-${chip.value}`}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  padding: "2px 10px",
+                  borderRadius: 20,
+                  background: c.bg,
+                  border: `1px solid ${c.border}`,
+                  color: c.color,
+                  animation: "scFade 0.3s ease-out",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {chip.label}
               </span>
             );
@@ -360,14 +412,16 @@ export default function NegotiationAgentBuilderChat({
       )}
 
       {/* Input */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 10px",
-        borderTop: "1px solid #1e293b",
-        background: "#0d1321",
-      }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          borderTop: "1px solid #1e293b",
+          background: "#0d1321",
+        }}
+      >
         <input
           ref={inputRef}
           type="text"
@@ -375,7 +429,9 @@ export default function NegotiationAgentBuilderChat({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={!agent || isLoading}
-          placeholder={agent ? "e.g. No trades, highlight original box included..." : "Select an agent first"}
+          placeholder={
+            agent ? "e.g. No trades, highlight original box included..." : "Select an agent first"
+          }
           style={{
             flex: 1,
             background: "transparent",
@@ -406,9 +462,17 @@ export default function NegotiationAgentBuilderChat({
           }}
           aria-label="Send"
         >
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none"
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="13"
+            height="13"
+            fill="none"
             stroke={input.trim() && agent ? "#fff" : "#475569"}
-            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>

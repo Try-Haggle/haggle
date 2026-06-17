@@ -7,19 +7,18 @@
  * Pattern follows apps/api/src/lib/session-reconstructor.ts for DB ↔ engine type mapping.
  */
 
+import { DEFAULT_BUDDY_DNA, DEFAULT_INTERVENTION_MODE, DEFAULT_MAX_ROUNDS } from "../config.js";
 import type {
-  CoreMemory,
-  RoundFact,
-  OpponentPattern,
-  NegotiationPhase,
   BuddyDNA,
+  CoreMemory,
   HumanInterventionMode,
-  RefereeCoaching,
-  ActiveTerm,
   ListingContextMemory,
+  NegotiationPhase,
+  OpponentPattern,
+  RefereeCoaching,
+  RoundFact,
   StrategyContextMemory,
-} from '../types.js';
-import { DEFAULT_BUDDY_DNA, DEFAULT_INTERVENTION_MODE, DEFAULT_MAX_ROUNDS } from '../config.js';
+} from "../types.js";
 
 // ---------------------------------------------------------------------------
 // DB Row Types (aligned with session-reconstructor.ts DbSession / DbRound)
@@ -27,7 +26,7 @@ import { DEFAULT_BUDDY_DNA, DEFAULT_INTERVENTION_MODE, DEFAULT_MAX_ROUNDS } from
 
 export interface DbSessionForMemory {
   id: string;
-  role: 'BUYER' | 'SELLER';
+  role: "BUYER" | "SELLER";
   status: string;
   currentRound: number;
   roundsNoConcession: number;
@@ -44,7 +43,7 @@ export interface DbSessionForMemory {
 
 export interface DbRoundForMemory {
   roundNo: number;
-  senderRole: 'BUYER' | 'SELLER';
+  senderRole: "BUYER" | "SELLER";
   priceminor: string;
   counterPriceMinor: string | null;
   decision: string | null;
@@ -67,26 +66,26 @@ export interface DbRoundForMemory {
 export function inferPhaseFromStatus(
   status: string,
   currentRound: number,
-  roundsNoConcession: number,
+  _roundsNoConcession: number,
 ): NegotiationPhase {
   switch (status) {
-    case 'CREATED':
-      return 'OPENING'; // Skip DISCOVERY per plan
-    case 'ACTIVE':
-      return currentRound <= 1 ? 'OPENING' : 'BARGAINING';
-    case 'NEAR_DEAL':
-      return 'CLOSING';
-    case 'STALLED':
-      return 'BARGAINING';
-    case 'ACCEPTED':
-    case 'REJECTED':
-    case 'EXPIRED':
-    case 'SUPERSEDED':
-      return 'SETTLEMENT';
-    case 'WAITING':
-      return 'BARGAINING';
+    case "CREATED":
+      return "OPENING"; // Skip DISCOVERY per plan
+    case "ACTIVE":
+      return currentRound <= 1 ? "OPENING" : "BARGAINING";
+    case "NEAR_DEAL":
+      return "CLOSING";
+    case "STALLED":
+      return "BARGAINING";
+    case "ACCEPTED":
+    case "REJECTED":
+    case "EXPIRED":
+    case "SUPERSEDED":
+      return "SETTLEMENT";
+    case "WAITING":
+      return "BARGAINING";
     default:
-      return 'OPENING';
+      return "OPENING";
   }
 }
 
@@ -102,27 +101,27 @@ export function phaseToDbStatus(
   // auto-play loop keeps going and the rejected offer gets propagated as a
   // fake counter (producing nonsensical "REJECT then ACCEPT at same price"
   // transcripts).
-  if (action === 'REJECT') return 'REJECTED';
+  if (action === "REJECT") return "REJECTED";
   // An ACCEPT/CONFIRM also terminates the session regardless of phase. The
   // CLOSING branch below used to swallow ACCEPTs and persist them as
   // 'NEAR_DEAL', which made the result UI show "Negotiation paused" + no
   // confetti even though both sides had agreed. Treat ACCEPT/CONFIRM as
   // authoritative deal-closes.
-  if (action === 'ACCEPT' || action === 'CONFIRM') return 'ACCEPTED';
+  if (action === "ACCEPT" || action === "CONFIRM") return "ACCEPTED";
   switch (phase) {
-    case 'OPENING':
-      return 'ACTIVE';
-    case 'BARGAINING':
-      if (action === 'HOLD') return 'WAITING';
-      return roundsNoConcession >= 4 ? 'STALLED' : 'ACTIVE';
-    case 'CLOSING':
-      return 'NEAR_DEAL';
-    case 'SETTLEMENT':
+    case "OPENING":
+      return "ACTIVE";
+    case "BARGAINING":
+      if (action === "HOLD") return "WAITING";
+      return roundsNoConcession >= 4 ? "STALLED" : "ACTIVE";
+    case "CLOSING":
+      return "NEAR_DEAL";
+    case "SETTLEMENT":
       // ACCEPT/CONFIRM already handled above; reaching SETTLEMENT without one
       // means the session ended unresolved (e.g., abort) — treat as rejected.
-      return 'REJECTED';
+      return "REJECTED";
     default:
-      return 'ACTIVE';
+      return "ACTIVE";
   }
 }
 
@@ -140,19 +139,23 @@ export function reconstructCoreMemory(
   coaching: RefereeCoaching,
 ): CoreMemory {
   const strategy = negotiationAgentSnapshot as Record<string, unknown>;
-  const role = dbSession.role.toLowerCase() as 'buyer' | 'seller';
+  const role = dbSession.role.toLowerCase() as "buyer" | "seller";
 
   // Extract price boundaries from strategy snapshot
-  const myTarget = extractNumber(strategy, 'p_target') ?? extractNumber(strategy, 'target_price') ?? 0;
-  const myFloor = extractNumber(strategy, 'p_limit') ?? extractNumber(strategy, 'floor_price') ?? 0;
-  const maxRounds = extractNumber(strategy, 'max_rounds') ?? DEFAULT_MAX_ROUNDS;
+  const myTarget =
+    extractNumber(strategy, "p_target") ?? extractNumber(strategy, "target_price") ?? 0;
+  const myFloor = extractNumber(strategy, "p_limit") ?? extractNumber(strategy, "floor_price") ?? 0;
+  const maxRounds = extractNumber(strategy, "max_rounds") ?? DEFAULT_MAX_ROUNDS;
 
-  const currentOffer = dbSession.lastOfferPriceMinor ? Number(dbSession.lastOfferPriceMinor) : myTarget;
+  const currentOffer = dbSession.lastOfferPriceMinor
+    ? Number(dbSession.lastOfferPriceMinor)
+    : myTarget;
   const opponentOffer = coaching.recommended_price > 0 ? coaching.recommended_price : currentOffer;
   const gap = Math.abs(currentOffer - opponentOffer);
 
   // Phase: use stored phase or infer from status
-  const phase: NegotiationPhase = (dbSession.phase as NegotiationPhase) ??
+  const phase: NegotiationPhase =
+    (dbSession.phase as NegotiationPhase) ??
     inferPhaseFromStatus(dbSession.status, dbSession.currentRound, dbSession.roundsNoConcession);
 
   // Intervention mode
@@ -161,7 +164,7 @@ export function reconstructCoreMemory(
 
   // BuddyDNA: use stored or default
   const buddyDna: BuddyDNA = dbSession.buddyTone
-    ? { ...DEFAULT_BUDDY_DNA, tone: dbSession.buddyTone as unknown as BuddyDNA['tone'] }
+    ? { ...DEFAULT_BUDDY_DNA, tone: dbSession.buddyTone as unknown as BuddyDNA["tone"] }
     : DEFAULT_BUDDY_DNA;
 
   const listingContext = extractListingContextMemory(strategy);
@@ -176,9 +179,13 @@ export function reconstructCoreMemory(
       role,
       max_rounds: maxRounds,
       intervention_mode: interventionMode,
-      created_at_ms: extractTimeValueMillis(strategy, 'listed_at_ms') ?? dbSession.createdAt.getTime(),
-      deadline_at_ms: extractTimeValueMillis(strategy, 'deadline_at_ms'),
-      max_duration_ms: extractTimeValueMillis(strategy, 't_total_ms') ?? extractNumber(strategy, 't_max') ?? undefined,
+      created_at_ms:
+        extractTimeValueMillis(strategy, "listed_at_ms") ?? dbSession.createdAt.getTime(),
+      deadline_at_ms: extractTimeValueMillis(strategy, "deadline_at_ms"),
+      max_duration_ms:
+        extractTimeValueMillis(strategy, "t_total_ms") ??
+        extractNumber(strategy, "t_max") ??
+        undefined,
     },
     boundaries: {
       my_target: myTarget,
@@ -189,11 +196,11 @@ export function reconstructCoreMemory(
     },
     terms: {
       active: [], // Terms populated from separate term tracking (future)
-      resolved_summary: '',
+      resolved_summary: "",
     },
     coaching,
     buddy_dna: buddyDna,
-    skill_summary: 'electronics-iphone-pro-v1',
+    skill_summary: "electronics-iphone-pro-v1",
     ...(listingContext ? { listing_context: listingContext } : {}),
     ...(strategyContext ? { strategy_context: strategyContext } : {}),
   };
@@ -203,20 +210,20 @@ function extractListingContextMemory(
   strategy: Record<string, unknown>,
 ): ListingContextMemory | undefined {
   const raw = strategy.listing_context;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const src = raw as Record<string, unknown>;
   const out: ListingContextMemory = {};
-  if (typeof src.title === 'string') out.title = src.title;
-  if (typeof src.description === 'string') out.description = src.description;
-  if (typeof src.category === 'string') out.category = src.category;
-  if (typeof src.condition === 'string') out.condition = src.condition;
-  if (typeof src.photoUrl === 'string') out.photoUrl = src.photoUrl;
-  if (typeof src.subtype === 'string') out.subtype = src.subtype;
+  if (typeof src.title === "string") out.title = src.title;
+  if (typeof src.description === "string") out.description = src.description;
+  if (typeof src.category === "string") out.category = src.category;
+  if (typeof src.condition === "string") out.condition = src.condition;
+  if (typeof src.photoUrl === "string") out.photoUrl = src.photoUrl;
+  if (typeof src.subtype === "string") out.subtype = src.subtype;
   if (Array.isArray(src.tags)) {
-    const tags = src.tags.filter((t): t is string => typeof t === 'string');
+    const tags = src.tags.filter((t): t is string => typeof t === "string");
     if (tags.length > 0) out.tags = tags;
   }
-  if (src.attributes && typeof src.attributes === 'object' && !Array.isArray(src.attributes)) {
+  if (src.attributes && typeof src.attributes === "object" && !Array.isArray(src.attributes)) {
     out.attributes = src.attributes as Record<string, unknown>;
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -224,20 +231,24 @@ function extractListingContextMemory(
 
 function extractStrategyContextMemory(
   strategy: Record<string, unknown>,
-  role: 'buyer' | 'seller',
+  role: "buyer" | "seller",
 ): StrategyContextMemory | undefined {
   const out: StrategyContextMemory = {};
-  if (typeof strategy.negotiation_agent_preset_id === 'string') out.negotiation_agent_preset_id = strategy.negotiation_agent_preset_id;
-  if (strategy.agent_weights && typeof strategy.agent_weights === 'object') {
+  if (typeof strategy.negotiation_agent_preset_id === "string")
+    out.negotiation_agent_preset_id = strategy.negotiation_agent_preset_id;
+  if (strategy.agent_weights && typeof strategy.agent_weights === "object") {
     out.agent_weights = strategy.agent_weights as Record<string, unknown>;
   }
-  if (strategy.agent_overrides && typeof strategy.agent_overrides === 'object') {
+  if (strategy.agent_overrides && typeof strategy.agent_overrides === "object") {
     out.agent_overrides = strategy.agent_overrides as Record<string, unknown>;
   }
   // Side-specific advisor memory keys (set by routes/negotiations.ts).
-  const advisorKey = role === 'buyer' ? 'buyer_negotiation_agent_builder_memory' : 'seller_negotiation_agent_builder_memory';
+  const advisorKey =
+    role === "buyer"
+      ? "buyer_negotiation_agent_builder_memory"
+      : "seller_negotiation_agent_builder_memory";
   const advisor = strategy[advisorKey];
-  if (advisor && typeof advisor === 'object' && !Array.isArray(advisor)) {
+  if (advisor && typeof advisor === "object" && !Array.isArray(advisor)) {
     out.negotiation_agent_builder_memory = advisor as Record<string, unknown>;
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -252,7 +263,7 @@ function extractStrategyContextMemory(
  */
 export function reconstructRoundFacts(
   dbRounds: DbRoundForMemory[],
-  sessionRole: 'BUYER' | 'SELLER',
+  _sessionRole: "BUYER" | "SELLER",
 ): RoundFact[] {
   const facts: RoundFact[] = [];
 
@@ -260,16 +271,16 @@ export function reconstructRoundFacts(
   // Each DB round is a single event; we need to pair them up
   for (let i = 0; i < dbRounds.length; i++) {
     const round = dbRounds[i]!;
-    const prevRound = i > 0 ? dbRounds[i - 1] : null;
+    const _prevRound = i > 0 ? dbRounds[i - 1] : null;
 
     const incomingPrice = Number(round.priceminor);
     const counterPrice = round.counterPriceMinor ? Number(round.counterPriceMinor) : incomingPrice;
 
-    const buyerOffer = round.senderRole === 'BUYER' ? incomingPrice : counterPrice;
-    const sellerOffer = round.senderRole === 'SELLER' ? incomingPrice : counterPrice;
+    const buyerOffer = round.senderRole === "BUYER" ? incomingPrice : counterPrice;
+    const sellerOffer = round.senderRole === "SELLER" ? incomingPrice : counterPrice;
 
-    const phase: NegotiationPhase = (round.phaseAtRound as NegotiationPhase) ??
-      inferPhaseFromStatus('ACTIVE', round.roundNo, 0);
+    const phase: NegotiationPhase =
+      (round.phaseAtRound as NegotiationPhase) ?? inferPhaseFromStatus("ACTIVE", round.roundNo, 0);
 
     facts.push({
       round: round.roundNo,
@@ -282,7 +293,7 @@ export function reconstructRoundFacts(
       conditions_changed: {},
       coaching_given: {
         recommended: (round.coaching as { recommended_price?: number })?.recommended_price ?? 0,
-        tactic: (round.coaching as { suggested_tactic?: string })?.suggested_tactic ?? '',
+        tactic: (round.coaching as { suggested_tactic?: string })?.suggested_tactic ?? "",
       },
       coaching_followed: false, // Computed retroactively if needed
       human_intervened: false,
@@ -303,7 +314,7 @@ export function reconstructRoundFacts(
  */
 export function reconstructOpponentPattern(
   facts: RoundFact[],
-  role: 'buyer' | 'seller',
+  role: "buyer" | "seller",
 ): OpponentPattern | null {
   if (facts.length < 2) return null;
 
@@ -316,17 +327,17 @@ export function reconstructOpponentPattern(
     const prev = facts[i - 1]!;
     const curr = facts[i]!;
 
-    const opponentPrev = role === 'buyer' ? prev.seller_offer : prev.buyer_offer;
-    const opponentCurr = role === 'buyer' ? curr.seller_offer : curr.buyer_offer;
+    const opponentPrev = role === "buyer" ? prev.seller_offer : prev.buyer_offer;
+    const opponentCurr = role === "buyer" ? curr.seller_offer : curr.buyer_offer;
 
     if (opponentPrev > 0) {
       const concession = (opponentPrev - opponentCurr) / opponentPrev;
-      const adjusted = role === 'buyer' ? concession : -concession;
+      const adjusted = role === "buyer" ? concession : -concession;
       ema = EMA_ALPHA * adjusted + (1 - EMA_ALPHA) * ema;
     }
 
     opponentFloorEstimate = opponentCurr;
-    const tactic = role === 'buyer' ? curr.seller_tactic : curr.buyer_tactic;
+    const tactic = role === "buyer" ? curr.seller_tactic : curr.buyer_tactic;
     if (tactic && !tactics.includes(tactic)) tactics.push(tactic);
   }
 
@@ -336,7 +347,7 @@ export function reconstructOpponentPattern(
   return {
     aggression,
     concession_rate: Math.abs(ema),
-    preferred_tactics: tactics.length > 0 ? tactics : ['unknown'],
+    preferred_tactics: tactics.length > 0 ? tactics : ["unknown"],
     condition_flexibility: 0.5, // Default — no term data yet
     estimated_floor: opponentFloorEstimate,
   };
@@ -348,19 +359,22 @@ export function reconstructOpponentPattern(
 
 function extractNumber(obj: Record<string, unknown>, key: string): number | null {
   const val = obj[key];
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') {
+  if (typeof val === "number") return val;
+  if (typeof val === "string") {
     const parsed = Number(val);
     return Number.isNaN(parsed) ? null : parsed;
   }
   return null;
 }
 
-function extractTimeValueMillis(strategy: Record<string, unknown>, key: string): number | undefined {
+function extractTimeValueMillis(
+  strategy: Record<string, unknown>,
+  key: string,
+): number | undefined {
   const timeValue = strategy.time_value as Record<string, unknown> | undefined;
   const value = timeValue?.[key] ?? strategy[key];
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
-  if (typeof value === 'string') {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string") {
     const numeric = Number(value);
     if (Number.isFinite(numeric) && numeric > 0) return numeric;
     const parsed = Date.parse(value);

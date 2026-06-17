@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
 import { DetailContent } from "./detail-content";
 
 export interface ListingDetail {
@@ -20,11 +20,7 @@ export interface ListingDetail {
   publicId: string;
 }
 
-export default async function ListingDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
   const {
     data: { user },

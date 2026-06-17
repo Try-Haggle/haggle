@@ -10,16 +10,10 @@
  */
 
 import { statsToParameters } from "../agent-stats/stats-to-params.js";
-import type {
-  NegotiationAgent,
-  EngineParameters,
-} from "../agent-stats/types.js";
+import type { EngineParameters, NegotiationAgent } from "../agent-stats/types.js";
 import { getNegotiationAgentPreset } from "./negotiation-agent-presets.js";
 import { presetToEngineParameters } from "./preset-to-params.js";
-import {
-  DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
-  type NegotiationAgentPresetId,
-} from "./types.js";
+import { DEFAULT_NEGOTIATION_AGENT_PRESET_ID, type NegotiationAgentPresetId } from "./types.js";
 
 export interface ResolveOptions {
   /** Preset to fall back to when the new-flow agent has neither
@@ -30,10 +24,7 @@ export interface ResolveOptions {
 /** Detect which strategy path the agent declares. */
 function declaresNewFlow(agent: NegotiationAgent): boolean {
   return Boolean(
-    agent.negotiationAgentPresetId ||
-      agent.weights ||
-      agent.engineParams ||
-      agent.categoryAnswers,
+    agent.negotiationAgentPresetId || agent.weights || agent.engineParams || agent.categoryAnswers,
   );
 }
 

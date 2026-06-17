@@ -1,20 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 import {
   assembleContext,
   compileNegotiationAgentSnapshot,
   executeRound,
   type MasterStrategy,
   type NegotiationSession,
-} from '../src/index.js';
-import type { HnpMessage } from '../src/protocol/types.js';
+} from "../src/index.js";
+import type { HnpMessage } from "../src/protocol/types.js";
 
 const listedAtMs = Date.UTC(2026, 3, 25, 12);
 
-describe('compileNegotiationAgentSnapshot', () => {
-  it('compiles seller playbooks into engine-native strategy parameters', () => {
+describe("compileNegotiationAgentSnapshot", () => {
+  it("compiles seller playbooks into engine-native strategy parameters", () => {
     const gatekeeper = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
-      preset: 'gatekeeper',
+      role: "SELLER",
+      preset: "gatekeeper",
       listing: {
         targetPriceMinor: 50_000,
         floorPriceMinor: 43_000,
@@ -24,8 +24,8 @@ describe('compileNegotiationAgentSnapshot', () => {
     });
 
     const dealmaker = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
-      preset: 'dealmaker',
+      role: "SELLER",
+      preset: "dealmaker",
       listing: {
         targetPriceMinor: 50_000,
         floorPriceMinor: 43_000,
@@ -34,20 +34,20 @@ describe('compileNegotiationAgentSnapshot', () => {
       },
     });
 
-    expect(gatekeeper.role).toBe('SELLER');
+    expect(gatekeeper.role).toBe("SELLER");
     expect(gatekeeper.p_target).toBe(50_000);
     expect(gatekeeper.p_limit).toBe(43_000);
     expect(gatekeeper.weights.w_p).toBeGreaterThan(dealmaker.weights.w_p);
     expect(gatekeeper.u_aspiration).toBeGreaterThan(dealmaker.u_aspiration);
     expect(gatekeeper.beta).toBeLessThan(dealmaker.beta);
-    expect(gatekeeper.compiler.selected_playbook).toBe('gatekeeper');
-    expect(dealmaker.compiler.selected_playbook).toBe('dealmaker');
+    expect(gatekeeper.compiler.selected_playbook).toBe("gatekeeper");
+    expect(dealmaker.compiler.selected_playbook).toBe("dealmaker");
   });
 
-  it('produces engine-valid weights for every seller playbook', () => {
-    for (const preset of ['gatekeeper', 'diplomat', 'storyteller', 'dealmaker']) {
+  it("produces engine-valid weights for every seller playbook", () => {
+    for (const preset of ["gatekeeper", "diplomat", "storyteller", "dealmaker"]) {
       const snapshot = compileNegotiationAgentSnapshot({
-        role: 'SELLER',
+        role: "SELLER",
         preset,
         listing: {
           targetPriceMinor: 50_000,
@@ -56,7 +56,8 @@ describe('compileNegotiationAgentSnapshot', () => {
           deadlineAtMs: listedAtMs + 5 * 24 * 60 * 60 * 1000,
         },
       });
-      const weightSum = snapshot.weights.w_p + snapshot.weights.w_t + snapshot.weights.w_r + snapshot.weights.w_s;
+      const weightSum =
+        snapshot.weights.w_p + snapshot.weights.w_t + snapshot.weights.w_r + snapshot.weights.w_s;
       const ctx = assembleContext(snapshot, {
         p_effective: 47_000,
         r_score: 0.8,
@@ -72,10 +73,10 @@ describe('compileNegotiationAgentSnapshot', () => {
     }
   });
 
-  it('makes the same listing behave differently under different seller strategies', () => {
+  it("makes the same listing behave differently under different seller strategies", () => {
     const gatekeeper = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
-      preset: 'gatekeeper',
+      role: "SELLER",
+      preset: "gatekeeper",
       listing: {
         targetPriceMinor: 50_000,
         floorPriceMinor: 43_000,
@@ -84,8 +85,8 @@ describe('compileNegotiationAgentSnapshot', () => {
       },
     });
     const dealmaker = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
-      preset: 'dealmaker',
+      role: "SELLER",
+      preset: "dealmaker",
       listing: {
         targetPriceMinor: 50_000,
         floorPriceMinor: 43_000,
@@ -107,14 +108,14 @@ describe('compileNegotiationAgentSnapshot', () => {
       makeRoundData(dealmaker, 0.25, 45_000),
     );
 
-    expect(gatekeeperRound.decision).toBe('COUNTER');
-    expect(dealmakerRound.decision).toBe('COUNTER');
+    expect(gatekeeperRound.decision).toBe("COUNTER");
+    expect(dealmakerRound.decision).toBe("COUNTER");
     expect(gatekeeperRound.message.price).toBeGreaterThan(dealmakerRound.message.price);
     expect(gatekeeperRound.message.price).toBeLessThanOrEqual(gatekeeper.p_target);
     expect(dealmakerRound.message.price).toBeGreaterThanOrEqual(dealmaker.p_limit);
   });
 
-  it('reuses preference shape across products but recompiles product-specific prices', () => {
+  it("reuses preference shape across products but recompiles product-specific prices", () => {
     const sharedStats = {
       priceAggression: 70,
       patienceLevel: 65,
@@ -123,7 +124,7 @@ describe('compileNegotiationAgentSnapshot', () => {
       detailFocus: 80,
     };
     const phone = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
+      role: "SELLER",
       agentStats: sharedStats,
       listing: {
         targetPriceMinor: 50_000,
@@ -133,7 +134,7 @@ describe('compileNegotiationAgentSnapshot', () => {
       },
     });
     const laptop = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
+      role: "SELLER",
       agentStats: sharedStats,
       listing: {
         targetPriceMinor: 120_000,
@@ -152,10 +153,10 @@ describe('compileNegotiationAgentSnapshot', () => {
     expect(laptop.concession).toEqual(phone.concession);
   });
 
-  it('increases time weight when the same seller strategy has a short listing deadline', () => {
+  it("increases time weight when the same seller strategy has a short listing deadline", () => {
     const base = {
-      role: 'SELLER' as const,
-      preset: 'diplomat',
+      role: "SELLER" as const,
+      preset: "diplomat",
       listing: {
         targetPriceMinor: 50_000,
         floorPriceMinor: 43_000,
@@ -175,15 +176,15 @@ describe('compileNegotiationAgentSnapshot', () => {
     expect(shortDeadline.t_deadline).toBeLessThan(longDeadline.t_deadline);
   });
 
-  it('keeps deadline math as absolute epoch milliseconds', () => {
+  it("keeps deadline math as absolute epoch milliseconds", () => {
     const deadlineAtMs = listedAtMs + 36 * 60 * 60 * 1000;
     const snapshot = compileNegotiationAgentSnapshot({
-      role: 'SELLER',
-      preset: 'diplomat',
+      role: "SELLER",
+      preset: "diplomat",
       listing: {
-        id: 'listing-1',
-        category: 'electronics',
-        condition: 'good',
+        id: "listing-1",
+        category: "electronics",
+        condition: "good",
         targetPriceMinor: 50_000,
         floorPriceMinor: 44_000,
         listedAtMs,
@@ -198,12 +199,12 @@ describe('compileNegotiationAgentSnapshot', () => {
       listed_at_ms: listedAtMs,
       deadline_at_ms: deadlineAtMs,
       t_total_ms: deadlineAtMs - listedAtMs,
-      source: 'listing_selling_deadline',
+      source: "listing_selling_deadline",
     });
     expect(snapshot.listing_context).toMatchObject({
-      id: 'listing-1',
-      category: 'electronics',
-      condition: 'good',
+      id: "listing-1",
+      category: "electronics",
+      condition: "good",
     });
   });
 });
@@ -218,11 +219,11 @@ function forceCounter(strategy: MasterStrategy): MasterStrategy {
 
 function makeSellerSession(strategy: MasterStrategy): NegotiationSession {
   return {
-    session_id: 'seller-session',
+    session_id: "seller-session",
     strategy_id: strategy.id,
-    role: 'SELLER',
-    status: 'ACTIVE',
-    counterparty_id: 'buyer-1',
+    role: "SELLER",
+    status: "ACTIVE",
+    counterparty_id: "buyer-1",
     rounds: [],
     current_round: 1,
     rounds_no_concession: 0,
@@ -235,11 +236,11 @@ function makeSellerSession(strategy: MasterStrategy): NegotiationSession {
 
 function makeBuyerOffer(price: number): HnpMessage {
   return {
-    session_id: 'seller-session',
+    session_id: "seller-session",
     round: 2,
-    type: 'OFFER',
+    type: "OFFER",
     price,
-    sender_role: 'BUYER',
+    sender_role: "BUYER",
     timestamp: listedAtMs,
   };
 }

@@ -6,7 +6,7 @@
  */
 
 import type { SessionSnapshot } from "@haggle/engine-core";
-import type { NegotiationGroup, GroupSnapshot } from "@haggle/engine-session";
+import type { GroupSnapshot, NegotiationGroup } from "@haggle/engine-session";
 import type { DbSession } from "./session-reconstructor.js";
 
 // ---------------------------------------------------------------------------
@@ -56,10 +56,7 @@ export interface DbGroup {
 /**
  * Build an engine NegotiationGroup from DB group + session IDs.
  */
-export function buildEngineGroup(
-  dbGroup: DbGroup,
-  sessionIds: string[],
-): NegotiationGroup {
+export function buildEngineGroup(dbGroup: DbGroup, sessionIds: string[]): NegotiationGroup {
   return {
     group_id: dbGroup.id,
     topology: dbGroup.topology,
@@ -76,10 +73,7 @@ export function buildEngineGroup(
 /**
  * Build a full GroupSnapshot for orchestration.
  */
-export function buildGroupSnapshot(
-  dbGroup: DbGroup,
-  dbSessions: DbSession[],
-): GroupSnapshot {
+export function buildGroupSnapshot(dbGroup: DbGroup, dbSessions: DbSession[]): GroupSnapshot {
   const activeStatuses = new Set(["CREATED", "ACTIVE", "NEAR_DEAL", "STALLED", "WAITING"]);
   const activeSessions = dbSessions.filter((s) => activeStatuses.has(s.status));
   const sessionIds = dbSessions.map((s) => s.id);

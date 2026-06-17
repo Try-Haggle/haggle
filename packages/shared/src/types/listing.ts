@@ -10,12 +10,7 @@ export type ListingCategory =
   | "books"
   | "other";
 
-export type ItemCondition =
-  | "new"
-  | "like_new"
-  | "good"
-  | "fair"
-  | "poor";
+export type ItemCondition = "new" | "like_new" | "good" | "fair" | "poor";
 
 /**
  * TypeScript representation of a listing_drafts DB row (camelCase).

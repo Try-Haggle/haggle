@@ -23,9 +23,7 @@ test.describe("Buyer guest claim flow", () => {
   }) => {
     // 1. Land on the public listing as a guest.
     await page.goto(`/l/${SEED_LISTING_PUBLIC_ID}`);
-    await expect(
-      page.getByRole("heading", { name: /Item for Sale/i }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Item for Sale/i })).toBeVisible();
 
     // 2. Pick the default preset and start the negotiation.
     const startButton = page.getByRole("button", { name: /start negotiation/i });
@@ -38,9 +36,7 @@ test.describe("Buyer guest claim flow", () => {
     await expect(banner).toBeVisible();
 
     // The guest_buyer_id should have been written to localStorage.
-    const stored = await page.evaluate(() =>
-      window.localStorage.getItem("haggle:guest-buyer-ids"),
-    );
+    const stored = await page.evaluate(() => window.localStorage.getItem("haggle:guest-buyer-ids"));
     expect(stored).toBeTruthy();
     const ids = JSON.parse(stored as string) as string[];
     expect(ids.length).toBeGreaterThan(0);
