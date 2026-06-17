@@ -173,10 +173,8 @@ export const negotiationRounds = pgTable(
   },
   (table) => [
     index("negotiation_rounds_session_round_idx").on(table.sessionId, table.roundNo),
-    uniqueIndex("negotiation_rounds_session_idempotency_key_idx").on(
-      table.sessionId,
-      table.idempotencyKey,
-    ),
+    // biome-ignore format: kept on one line for scripts/verify-db-invariants.mjs string check
+    uniqueIndex("negotiation_rounds_session_idempotency_key_idx").on(table.sessionId, table.idempotencyKey),
     index("negotiation_rounds_tactic_idx").on(table.tacticUsed),
   ],
 );
