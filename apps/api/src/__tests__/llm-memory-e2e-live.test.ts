@@ -9,16 +9,20 @@
  * normal unit tests. Hitting the running API keeps this test honest.
  */
 
-import "../config/load-env.js";
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
+
+dotenv.config({ path: resolve(import.meta.dirname, "../../../../.env") });
+dotenv.config({ path: resolve(import.meta.dirname, "../../.env"), override: false });
 
 const API_BASE = process.env.LIVE_API_BASE ?? "http://127.0.0.1:3001";
 const shouldRunLive = process.env.RUN_LIVE_LLM_E2E_TESTS === "1" && !!process.env.XAI_API_KEY;
 const describeLive = shouldRunLive ? describe : describe.skip;
 const MAX_E2E_USD = Number(process.env.LIVE_LLM_E2E_MAX_USD ?? "0.08");
 
-type AdvisorMemory = {
+type NegotiationAgentBuilderMemory = {
   categoryInterest: string;
   budgetMax?: number;
   targetPrice?: number;
@@ -31,8 +35,8 @@ type AdvisorMemory = {
   source: string[];
 };
 
-type AdvisorTurnResponse = {
-  memory: AdvisorMemory;
+type NegotiationAgentBuilderTurnResponse = {
+  memory: NegotiationAgentBuilderMemory;
   reply: string;
   turn_cost: {
     tokens: { prompt: number; completion: number; total: number };
@@ -108,34 +112,42 @@ describeLive("Live LLM memory E2E over HTTP", () => {
       const advisorMessage =
         "아이폰 15 프로 256GB 찾고 있어. 예산은 최대 500달러고, 배터리 90% 이상이고 언락 모델이면 좋아. 너무 끌지 말고 괜찮으면 빠르게 거래하고 싶어.";
 
-      const advisorTurn = await postJson<AdvisorTurnResponse>("/intelligence/demo/advisor-turn", {
-        user_id: userId,
-        agent_id: agentId,
-        message: advisorMessage,
-        previous_memory: emptyAdvisorMemory(),
-        listings: [
-          {
-            id: "live-e2e-iphone-15-pro",
-            title: "iPhone 15 Pro 256GB Black",
-            category: "electronics",
-            condition: "battery 91%, unlocked, clean IMEI, light wear",
-            askPriceMinor: 50_000,
-            floorPriceMinor: 43_000,
-            marketMedianMinor: 52_000,
-            tags: ["electronics/phones/iphone", "electronics/phones/iphone/pro"],
-            sellerNote: "Seller can close today if the buyer is decisive.",
-          },
-        ],
-      });
-      totalEstimatedUsd += advisorTurn.turn_cost.estimated_usd;
+      const negotiationAgentBuilderTurn = await postJson<NegotiationAgentBuilderTurnResponse>(
+        "/intelligence/demo/advisor-turn",
+        {
+          user_id: userId,
+          agent_id: agentId,
+          message: advisorMessage,
+          previous_memory: emptyNegotiationAgentBuilderMemory(),
+          listings: [
+            {
+              id: "live-e2e-iphone-15-pro",
+              title: "iPhone 15 Pro 256GB Black",
+              category: "electronics",
+              condition: "battery 91%, unlocked, clean IMEI, light wear",
+              askPriceMinor: 50_000,
+              floorPriceMinor: 43_000,
+              marketMedianMinor: 52_000,
+              tags: ["electronics/phones/iphone", "electronics/phones/iphone/pro"],
+              sellerNote: "Seller can close today if the buyer is decisive.",
+            },
+          ],
+        },
+      );
+      totalEstimatedUsd += negotiationAgentBuilderTurn.turn_cost.estimated_usd;
 
-      expect(advisorTurn.reply.length).toBeGreaterThan(0);
-      expect(advisorTurn.memory.categoryInterest.length).toBeGreaterThan(0);
+      expect(negotiationAgentBuilderTurn.reply.length).toBeGreaterThan(0);
+      expect(negotiationAgentBuilderTurn.memory.categoryInterest.length).toBeGreaterThan(0);
       expect(
-        [advisorTurn.memory.categoryInterest, ...advisorTurn.memory.source].join(" ").toLowerCase(),
+        [
+          negotiationAgentBuilderTurn.memory.categoryInterest,
+          ...negotiationAgentBuilderTurn.memory.source,
+        ]
+          .join(" ")
+          .toLowerCase(),
       ).toMatch(/iphone|아이폰/);
-      expect(advisorTurn.memory.budgetMax).toBe(500);
-      expect(advisorTurn.memory.mustHave.join(" ").toLowerCase()).toMatch(
+      expect(negotiationAgentBuilderTurn.memory.budgetMax).toBe(500);
+      expect(negotiationAgentBuilderTurn.memory.mustHave.join(" ").toLowerCase()).toMatch(
         /battery|배터리|unlock|언락/,
       );
 
@@ -143,7 +155,7 @@ describeLive("Live LLM memory E2E over HTTP", () => {
         user_id: userId,
         agent_id: agentId,
         message: advisorMessage,
-        memory: advisorTurn.memory,
+        memory: negotiationAgentBuilderTurn.memory,
       });
 
       const storedMemory = await getJson<MemoryResponse>(
@@ -195,7 +207,8 @@ describeLive("Live LLM memory E2E over HTTP", () => {
             "I can do $480 if we close today. Battery health is 91%, it is unlocked, and the IMEI is clean.",
         },
       );
-      totalEstimatedUsd = advisorTurn.turn_cost.estimated_usd + round.cost.total_usd;
+      totalEstimatedUsd =
+        negotiationAgentBuilderTurn.turn_cost.estimated_usd + round.cost.total_usd;
 
       expect(round.round).toBe(1);
       expect(round.final.rendered_message.length).toBeGreaterThan(0);
@@ -214,7 +227,8 @@ describeLive("Live LLM memory E2E over HTTP", () => {
             key: card.memory_key,
             summary: card.summary,
           })),
-          advisor_turn_cost_usd: advisorTurn.turn_cost.estimated_usd,
+          negotiation_agent_builder_turn_cost_usd:
+            negotiationAgentBuilderTurn.turn_cost.estimated_usd,
           negotiation_total_cost_usd: round.cost.total_usd,
           estimated_total_usd: Number(totalEstimatedUsd.toFixed(8)),
           init_strategy: init.strategy,
@@ -234,7 +248,7 @@ describeLive("Live LLM memory E2E over HTTP", () => {
   }, 180_000);
 });
 
-function emptyAdvisorMemory(): AdvisorMemory {
+function emptyNegotiationAgentBuilderMemory(): NegotiationAgentBuilderMemory {
   return {
     categoryInterest: "electronics",
     mustHave: [],

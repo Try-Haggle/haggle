@@ -1,4 +1,4 @@
-export type AdvisorMemory = {
+export type NegotiationAgentBuilderMemory = {
   categoryInterest: string;
   /** User-facing dollars captured from advisor chat, converted at API boundaries. */
   budgetMax?: number;
@@ -16,12 +16,15 @@ export type AdvisorMemory = {
       productScope?: string;
       source?: string;
     };
-    productRequirements: Record<string, {
-      mustHave: string[];
-      avoid: string[];
-      answeredSlots: string[];
-      ambiguousSlots: string[];
-    }>;
+    productRequirements: Record<
+      string,
+      {
+        mustHave: string[];
+        avoid: string[];
+        answeredSlots: string[];
+        ambiguousSlots: string[];
+      }
+    >;
     globalPreferences: {
       mustHave: string[];
       avoid: string[];
@@ -110,7 +113,11 @@ export type AdvisorMemory = {
         slotId: string;
         question: string;
         enforcement: "hard" | "soft";
-        reason: "question_budget" | "conflict_resolution_first" | "lower_priority" | "already_answered";
+        reason:
+          | "question_budget"
+          | "conflict_resolution_first"
+          | "lower_priority"
+          | "already_answered";
         productScope?: string;
       }>;
     };

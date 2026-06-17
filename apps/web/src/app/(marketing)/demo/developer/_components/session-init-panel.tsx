@@ -36,7 +36,7 @@ interface SessionInitPanelProps {
     buyer_budget: { max_budget_minor: number };
     language: string;
     preset?: PresetName;
-    custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
+    custom_skills?: { advisor: string; negotiation_agent_config?: Record<string, unknown> };
   }) => void;
   loading: boolean;
 }

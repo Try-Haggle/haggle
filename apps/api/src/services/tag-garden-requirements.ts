@@ -13,7 +13,7 @@ export type TagRequirementSlot = {
   answerOptions?: string[];
 };
 
-export type AdvisorMemoryForRequirements = {
+export type NegotiationAgentBuilderMemoryForRequirements = {
   categoryInterest: string;
   budgetMax?: number;
   mustHave: string[];
@@ -95,7 +95,8 @@ const TAG_REQUIREMENTS: Record<string, TagRequirementSlot[]> = {
       slotId: "battery_health",
       tagPath: "electronics/phones/iphone",
       label: "battery health",
-      questionKo: "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      questionKo:
+        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
       stage: "advisor_recommendation",
       enforcement: "hard",
       priority: 40,
@@ -110,7 +111,16 @@ const TAG_REQUIREMENTS: Record<string, TagRequirementSlot[]> = {
       stage: "advisor_recommendation",
       enforcement: "hard",
       priority: 50,
-      aliases: ["unlocked", "locked", "carrier", "carrier_lock", "factory unlocked", "언락", "잠금", "통신사"],
+      aliases: [
+        "unlocked",
+        "locked",
+        "carrier",
+        "carrier_lock",
+        "factory unlocked",
+        "언락",
+        "잠금",
+        "통신사",
+      ],
       answerOptions: ["언락 필수", "통신사 잠금도 가능", "상관없음"],
     },
     {
@@ -204,13 +214,30 @@ export function resolveTagGardenQuestionForSlot(
   };
 }
 
+/**
+ * Empty plan for flows that must NOT surface buyer requirement slots — e.g. the
+ * seller-side agent builder. Feeding this into the structured-memory builders
+ * keeps buyer-only slots (max_budget, buyer_priority, …) out of seller memory.
+ */
+export const EMPTY_TAG_REQUIREMENT_PLAN: TagRequirementPlan = {
+  matchedTags: [],
+  requiredSlots: [],
+  missingSlots: [],
+  blockingSlots: [],
+  nextSlot: null,
+  question: null,
+  hasBlockingMissingSlots: false,
+};
+
 export function buildAdvisorRequirementPlan(input: {
-  memory: AdvisorMemoryForRequirements;
+  memory: NegotiationAgentBuilderMemoryForRequirements;
   listings: ListingForRequirements[];
 }): TagRequirementPlan {
   const matchedTags = resolveMatchedTags(input.memory, input.listings);
   const tagSlots = matchedTags.flatMap((tag) => TAG_REQUIREMENTS[tag] ?? []);
-  const requiredSlots = [...UNIVERSAL_BUYER_SLOTS, ...tagSlots].sort((a, b) => a.priority - b.priority);
+  const requiredSlots = [...UNIVERSAL_BUYER_SLOTS, ...tagSlots].sort(
+    (a, b) => a.priority - b.priority,
+  );
   const activeScope = resolveActiveProductScope(input.memory, input.listings);
   const missingSlots = requiredSlots.flatMap((slot) => {
     if (slot.stage !== "advisor_recommendation") return [];
@@ -243,14 +270,15 @@ export function formatTagRequirementPlanForPrompt(plan: TagRequirementPlan): str
   return [
     `matched_tags: ${plan.matchedTags.join(", ") || "none"}`,
     "required_slots:",
-    ...plan.requiredSlots.map((slot) => (
-      `- ${slot.slotId} | tag=${slot.tagPath} | stage=${slot.stage} | enforcement=${slot.enforcement} | label=${slot.label} | question="${slot.questionKo}"${slot.answerOptions ? ` | options=${slot.answerOptions.join("/")}` : ""}`
-    )),
+    ...plan.requiredSlots.map(
+      (slot) =>
+        `- ${slot.slotId} | tag=${slot.tagPath} | stage=${slot.stage} | enforcement=${slot.enforcement} | label=${slot.label} | question="${slot.questionKo}"${slot.answerOptions ? ` | options=${slot.answerOptions.join("/")}` : ""}`,
+    ),
   ].join("\n");
 }
 
 function resolveMatchedTags(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   listings: ListingForRequirements[],
 ): string[] {
   const memoryText = [
@@ -258,14 +286,18 @@ function resolveMatchedTags(
     ...memory.mustHave,
     ...memory.avoid,
     ...memory.source,
-  ].join(" ").toLowerCase();
+  ]
+    .join(" ")
+    .toLowerCase();
   const matched = new Set<string>();
 
   if (/iphone|아이폰/.test(memoryText)) {
     matched.add("electronics/phones/iphone");
   }
 
-  const intentMatchedListings = listings.filter((listing) => listingMatchesMemoryIntent(listing, memoryText));
+  const intentMatchedListings = listings.filter((listing) =>
+    listingMatchesMemoryIntent(listing, memoryText),
+  );
   for (const tag of Object.keys(TAG_REQUIREMENTS)) {
     if (intentMatchedListings.some((listing) => listing.tags.includes(tag))) matched.add(tag);
   }
@@ -276,11 +308,7 @@ function resolveMatchedTags(
 function listingMatchesMemoryIntent(listing: ListingForRequirements, memoryText: string): boolean {
   if (!hasShoppingIntent(memoryText)) return false;
 
-  const listingText = [
-    listing.title,
-    listing.condition,
-    ...listing.tags,
-  ].join(" ").toLowerCase();
+  const listingText = [listing.title, listing.condition, ...listing.tags].join(" ").toLowerCase();
 
   return memoryText
     .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
@@ -289,7 +317,10 @@ function listingMatchesMemoryIntent(listing: ListingForRequirements, memoryText:
     .some((term) => listingText.includes(term));
 }
 
-function memorySatisfiesSlot(memory: AdvisorMemoryForRequirements, slot: TagRequirementSlot): boolean {
+function memorySatisfiesSlot(
+  memory: NegotiationAgentBuilderMemoryForRequirements,
+  slot: TagRequirementSlot,
+): boolean {
   if (slot.slotId === "shopping_intent") return hasShoppingIntent(memory.categoryInterest);
   if (slot.slotId === "max_budget") return Boolean(memory.budgetMax);
 
@@ -298,10 +329,16 @@ function memorySatisfiesSlot(memory: AdvisorMemoryForRequirements, slot: TagRequ
     ...memory.mustHave,
     ...memory.avoid,
     ...memory.source,
-  ].join(" ").toLowerCase();
+  ]
+    .join(" ")
+    .toLowerCase();
 
   if (slot.slotId === "buyer_priority") {
-    return memory.mustHave.length > 0 || memory.avoid.length > 0 || hasNoAdditionalRequirements(memoryText);
+    return (
+      memory.mustHave.length > 0 ||
+      memory.avoid.length > 0 ||
+      hasNoAdditionalRequirements(memoryText)
+    );
   }
   if (slot.slotId === "battery_health") {
     return hasBatteryThreshold(memoryText) || hasBatteryNoPreference(memoryText);
@@ -319,18 +356,17 @@ type ProductScope = {
 };
 
 function getHardSlotScopeMismatch(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope | null,
 ): { memoryScope: ProductScope; activeScope: ProductScope } | null {
-  if (slot.enforcement !== "hard" || !activeScope || !memorySatisfiesSlot(memory, slot)) return null;
+  if (slot.enforcement !== "hard" || !activeScope || !memorySatisfiesSlot(memory, slot))
+    return null;
   if (slot.slotId === "shopping_intent" || slot.slotId === "max_budget") return null;
 
-  const evidenceLines = [
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ].filter((line) => slotSatisfiedByText(line, slot));
+  const evidenceLines = [...memory.mustHave, ...memory.avoid, ...memory.source].filter((line) =>
+    slotSatisfiedByText(line, slot),
+  );
   const evidenceScopes = evidenceLines.flatMap(extractProductScopes);
   if (evidenceScopes.some((scope) => scope.key === activeScope.key)) return null;
 
@@ -341,24 +377,22 @@ function getHardSlotScopeMismatch(
 }
 
 function activeScopeSatisfiesSlot(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope,
 ): boolean {
   if (slot.slotId === "shopping_intent" || slot.slotId === "max_budget") return false;
-  const evidenceLines = [
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ].filter((line) => slotSatisfiedByText(line, slot));
+  const evidenceLines = [...memory.mustHave, ...memory.avoid, ...memory.source].filter((line) =>
+    slotSatisfiedByText(line, slot),
+  );
 
-  return evidenceLines.some((line) => (
-    extractProductScopes(line).some((scope) => scope.key === activeScope.key)
-  ));
+  return evidenceLines.some((line) =>
+    extractProductScopes(line).some((scope) => scope.key === activeScope.key),
+  );
 }
 
 function hasScopedConditionRejection(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope,
 ): boolean {
@@ -368,28 +402,38 @@ function hasScopedConditionRejection(
 }
 
 function latestScopedConditionDecision(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
   activeScope: ProductScope,
-): NonNullable<NonNullable<AdvisorMemoryForRequirements["structured"]>["scopedConditionDecisions"]>[number] | null {
-  return memory.structured?.scopedConditionDecisions
-    ?.slice()
-    .reverse()
-    .find((decision) => (
-      decision.slotId === slot.slotId
-      && extractProductScopes(decision.targetScope).some((scope) => scope.key === activeScope.key)
-    )) ?? null;
+):
+  | NonNullable<
+      NonNullable<
+        NegotiationAgentBuilderMemoryForRequirements["structured"]
+      >["scopedConditionDecisions"]
+    >[number]
+  | null {
+  return (
+    memory.structured?.scopedConditionDecisions
+      ?.slice()
+      .reverse()
+      .find(
+        (decision) =>
+          decision.slotId === slot.slotId &&
+          extractProductScopes(decision.targetScope).some((scope) => scope.key === activeScope.key),
+      ) ?? null
+  );
 }
 
 function buildScopeConfirmationSlot(
   slot: TagRequirementSlot,
   mismatch: { memoryScope: ProductScope; activeScope: ProductScope },
 ): TagRequirementSlot {
-  const conditionName = slot.slotId === "battery_health"
-    ? "배터리 조건"
-    : slot.slotId === "carrier_lock"
-      ? "언락/통신사 조건"
-      : "이 조건";
+  const conditionName =
+    slot.slotId === "battery_health"
+      ? "배터리 조건"
+      : slot.slotId === "carrier_lock"
+        ? "언락/통신사 조건"
+        : "이 조건";
 
   return {
     ...slot,
@@ -409,7 +453,7 @@ function slotSatisfiedByText(text: string, slot: TagRequirementSlot): boolean {
 }
 
 function resolveActiveProductScope(
-  memory: AdvisorMemoryForRequirements,
+  memory: NegotiationAgentBuilderMemoryForRequirements,
   listings: ListingForRequirements[],
 ): ProductScope | null {
   for (const line of [...memory.source].reverse()) {
@@ -443,12 +487,16 @@ function extractProductScopes(text: string): ProductScope[] {
     scopes.push(scope);
   };
 
-  for (const match of text.matchAll(/(?:iphone|아이폰)\s*(1[1-9]|[2-9])\s*(pro\s*max|pro|max|plus|mini)?/gi)) {
+  for (const match of text.matchAll(
+    /(?:iphone|아이폰)\s*(1[1-9]|[2-9])\s*(pro\s*max|pro|max|plus|mini)?/gi,
+  )) {
     const generation = match[1]!;
     const variant = normalizeVariant(match[2]);
     const label = ["iPhone", generation, variant].filter(Boolean).join(" ");
     add({
-      key: ["iphone", generation, variant?.toLowerCase().replace(/\s+/g, "_")].filter(Boolean).join("_"),
+      key: ["iphone", generation, variant?.toLowerCase().replace(/\s+/g, "_")]
+        .filter(Boolean)
+        .join("_"),
       label,
     });
   }
@@ -458,11 +506,13 @@ function extractProductScopes(text: string): ProductScope[] {
 
 function isActiveProductScopeSource(text: string): boolean {
   return (
-    /(?:이번(?:에는|엔)?|now|also|too|include|expanded|switched|active intent|보고|볼게|찾고|관심)/i.test(text)
-    && !hasBatteryThreshold(text.toLowerCase())
-    && !hasBatteryNoPreference(text.toLowerCase())
-    && !hasCarrierDecision(text.toLowerCase())
-    && !hasCarrierNoPreference(text.toLowerCase())
+    /(?:이번(?:에는|엔)?|now|also|too|include|expanded|switched|active intent|보고|볼게|찾고|관심)/i.test(
+      text,
+    ) &&
+    !hasBatteryThreshold(text.toLowerCase()) &&
+    !hasBatteryNoPreference(text.toLowerCase()) &&
+    !hasCarrierDecision(text.toLowerCase()) &&
+    !hasCarrierNoPreference(text.toLowerCase())
   );
 }
 
@@ -477,42 +527,56 @@ function normalizeVariant(value?: string): string | undefined {
 function hasShoppingIntent(categoryInterest: string): boolean {
   const normalized = categoryInterest.trim().toLowerCase();
   return (
-    normalized.length > 0
-    && !["탐색 중", "not specified", "unknown", "none", "n/a"].includes(normalized)
+    normalized.length > 0 &&
+    !["탐색 중", "not specified", "unknown", "none", "n/a"].includes(normalized)
   );
 }
 
 function hasBatteryThreshold(memoryText: string): boolean {
   return (
-    /battery(?:\s+health)?[^0-9]{0,24}(?:>=|>|at least|minimum|min)?\s*(?:[7-9][0-9]|100)\s*%?\+?/.test(memoryText)
-    || /(?:배터리|성능)[^0-9]{0,20}(?:[7-9][0-9]|100)\s*%?/.test(memoryText)
-    || /(?:[7-9][0-9]|100)\s*%?[^a-z0-9가-힣]{0,20}(?:battery|배터리|성능)/.test(memoryText)
+    /battery(?:\s+health)?[^0-9]{0,24}(?:>=|>|at least|minimum|min)?\s*(?:[7-9][0-9]|100)\s*%?\+?/.test(
+      memoryText,
+    ) ||
+    /(?:배터리|성능)[^0-9]{0,20}(?:[7-9][0-9]|100)\s*%?/.test(memoryText) ||
+    /(?:[7-9][0-9]|100)\s*%?[^a-z0-9가-힣]{0,20}(?:battery|배터리|성능)/.test(memoryText)
   );
 }
 
 function hasBatteryNoPreference(memoryText: string): boolean {
   return (
-    /battery\s+no\s+preference/.test(memoryText)
-    || /(?:배터리|성능)[^.!?。！？]{0,30}(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/.test(memoryText)
-    || /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)[^.!?。！？]{0,30}(?:배터리|성능)/.test(memoryText)
+    /battery\s+no\s+preference/.test(memoryText) ||
+    /(?:배터리|성능)[^.!?。！？]{0,30}(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/.test(
+      memoryText,
+    ) ||
+    /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)[^.!?。！？]{0,30}(?:배터리|성능)/.test(
+      memoryText,
+    )
   );
 }
 
 function hasCarrierDecision(memoryText: string): boolean {
   return (
-    /\b(?:unlocked|factory unlocked|locked)\b/.test(memoryText)
-    || /(?:언락|잠금\s*(?:필수|무관|상관없|상관 없어|필요없|필요 없어)|통신사\s*(?:잠금|무관|상관없|상관 없어))/.test(memoryText)
+    /\b(?:unlocked|factory unlocked|locked)\b/.test(memoryText) ||
+    /(?:언락|잠금\s*(?:필수|무관|상관없|상관 없어|필요없|필요 없어)|통신사\s*(?:잠금|무관|상관없|상관 없어))/.test(
+      memoryText,
+    )
   );
 }
 
 function hasCarrierNoPreference(memoryText: string): boolean {
   return (
-    /carrier\s+no\s+preference/.test(memoryText)
-    || /(?:언락|잠금|통신사)[^.!?。！？]{0,30}(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/.test(memoryText)
-    || /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)[^.!?。！？]{0,30}(?:언락|잠금|통신사)/.test(memoryText)
+    /carrier\s+no\s+preference/.test(memoryText) ||
+    /(?:언락|잠금|통신사)[^.!?。！？]{0,30}(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/.test(
+      memoryText,
+    ) ||
+    /(?:상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)[^.!?。！？]{0,30}(?:언락|잠금|통신사)/.test(
+      memoryText,
+    )
   );
 }
 
 function hasNoAdditionalRequirements(memoryText: string): boolean {
-  return /(?:no additional requirements|no preference|none|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/.test(memoryText);
+  return /(?:no additional requirements|no preference|none|상관\s*없|무관|필요\s*없|신경\s*안\s*써|특별히\s*없|조건\s*없|선호\s*없)/.test(
+    memoryText,
+  );
 }

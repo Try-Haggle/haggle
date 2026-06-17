@@ -1,5 +1,5 @@
 import { api } from "./api-client";
-import type { AdvisorMemory } from "./advisor-demo-types";
+import type { NegotiationAgentBuilderMemory } from "./negotiation-agent-builder-types";
 
 export type StoredMemoryCard = {
   id: string;
@@ -13,7 +13,7 @@ export type StoredMemoryCard = {
   updated_at: string;
 };
 
-export type SaveAdvisorMemoryResponse = {
+export type SaveNegotiationAgentBuilderMemoryResponse = {
   user_id: string;
   session_id: string;
   source_message_id: string;
@@ -24,14 +24,14 @@ export type SaveAdvisorMemoryResponse = {
   memory_cards: StoredMemoryCard[];
 };
 
-export async function saveAdvisorMemoryForCurrentUser(params: {
+export async function saveNegotiationAgentBuilderMemoryForCurrentUser(params: {
   sessionId?: string;
   agentId?: string;
   message: string;
-  memory: AdvisorMemory;
-}): Promise<SaveAdvisorMemoryResponse> {
-  return api.post<SaveAdvisorMemoryResponse>(
-    "/intelligence/advisor-memory",
+  memory: NegotiationAgentBuilderMemory;
+}): Promise<SaveNegotiationAgentBuilderMemoryResponse> {
+  return api.post<SaveNegotiationAgentBuilderMemoryResponse>(
+    "/intelligence/negotiation-agent-builder-memory",
     {
       session_id: params.sessionId,
       agent_id: params.agentId,

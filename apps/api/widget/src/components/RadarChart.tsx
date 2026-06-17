@@ -4,10 +4,10 @@
  *
  * Order, clockwise from 12 o'clock: P · T · R · S · α · β · uT · uA
  */
-import type { NegotiationPreset } from "@haggle/shared";
+import type { NegotiationAgentPreset } from "@haggle/shared";
 
 interface RadarChartProps {
-  preset: NegotiationPreset;
+  preset: NegotiationAgentPreset;
   /** Show short axis labels (P/T/R/S/α/β/uT/uA) around vertices. */
   labels?: boolean;
   /** Diameter in px. Default 250. */
@@ -39,12 +39,7 @@ function normalize(
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
 }
 
-function vertex(
-  i: number,
-  r: number,
-  cx: number,
-  cy: number,
-): [number, number] {
+function vertex(i: number, r: number, cx: number, cy: number): [number, number] {
   const angle = (Math.PI * 2 * i) / 8 - Math.PI / 2;
   return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
 }
@@ -58,11 +53,7 @@ function octagon(r: number, cx: number, cy: number): string {
 
 const GRID_LEVELS = [0.25, 0.5, 0.75, 1.0];
 
-export default function RadarChart({
-  preset,
-  labels = false,
-  size = 250,
-}: RadarChartProps) {
+export default function RadarChart({ preset, labels = false, size = 250 }: RadarChartProps) {
   const center = size / 2;
   const labelMargin = labels ? 24 : 8;
   const radius = size / 2 - labelMargin;
@@ -104,11 +95,11 @@ export default function RadarChart({
           stroke="rgba(148,163,184,0.18)"
         />
       ))}
-      {AXES.map((_, i) => {
+      {AXES.map((axis, i) => {
         const [x, y] = vertex(i, radius, center, center);
         return (
           <line
-            key={i}
+            key={axis.key}
             x1={center}
             y1={center}
             x2={x.toFixed(2)}
@@ -127,13 +118,7 @@ export default function RadarChart({
       {values.map((v, i) => {
         const [x, y] = vertex(i, v * radius, center, center);
         return (
-          <circle
-            key={i}
-            cx={x.toFixed(2)}
-            cy={y.toFixed(2)}
-            r={2.5}
-            fill="#06b6d4"
-          />
+          <circle key={AXES[i].key} cx={x.toFixed(2)} cy={y.toFixed(2)} r={2.5} fill="#06b6d4" />
         );
       })}
       {labels &&

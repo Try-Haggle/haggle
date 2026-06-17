@@ -1,9 +1,9 @@
 "use client";
 
-import type { NegotiationPreset } from "@haggle/shared";
+import type { NegotiationAgentPreset } from "@haggle/shared";
 
 interface StrategyRadarProps {
-  preset: NegotiationPreset;
+  preset: NegotiationAgentPreset;
   /** Diameter in px (square). */
   size?: number;
   /** Show short axis labels (P/T/R/S/α/β/uT/uA) around vertices. */

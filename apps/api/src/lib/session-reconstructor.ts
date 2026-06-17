@@ -6,16 +6,16 @@
  * 엔진 결과를 DB에 쓸 수 있는 형태로 분해한다.
  */
 
+import type { DecisionAction, UtilityResult } from "@haggle/engine-core";
 import type {
-  NegotiationSession,
   NegotiationRound as EngineRound,
-  MasterStrategy,
   HnpMessage,
-  HnpRole,
   HnpMessageType,
+  HnpRole,
+  MasterStrategy,
+  NegotiationSession,
   SessionStatus,
 } from "@haggle/engine-session";
-import type { UtilityResult, DecisionAction } from "@haggle/engine-core";
 
 const DEFAULT_NEGOTIATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -38,7 +38,7 @@ export interface DbSession {
   roundsNoConcession: number;
   lastOfferPriceMinor: string | null;
   lastUtility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number } | null;
-  strategySnapshot: Record<string, unknown>;
+  negotiationAgentSnapshot: Record<string, unknown>;
   version: number;
   expiresAt: Date | null;
   createdAt: Date;
@@ -70,10 +70,7 @@ export interface DbRound {
 // ---------------------------------------------------------------------------
 
 /** Reconstruct an engine NegotiationSession from DB session + rounds. */
-export function reconstructSession(
-  dbSession: DbSession,
-  dbRounds: DbRound[],
-): NegotiationSession {
+export function reconstructSession(dbSession: DbSession, dbRounds: DbRound[]): NegotiationSession {
   const rounds: EngineRound[] = dbRounds.map((r) => ({
     round_no: r.roundNo,
     message: {
@@ -99,9 +96,7 @@ export function reconstructSession(
     rounds,
     current_round: dbSession.currentRound,
     rounds_no_concession: dbSession.roundsNoConcession,
-    last_offer_price: dbSession.lastOfferPriceMinor
-      ? Number(dbSession.lastOfferPriceMinor)
-      : null,
+    last_offer_price: dbSession.lastOfferPriceMinor ? Number(dbSession.lastOfferPriceMinor) : null,
     last_utility: dbSession.lastUtility as UtilityResult | null,
     created_at: dbSession.createdAt.getTime(),
     updated_at: dbSession.updatedAt.getTime(),
@@ -147,7 +142,8 @@ export function reconstructStrategy(snapshot: Record<string, unknown>): MasterSt
     p_limit: (snapshot.p_reservation as number) ?? (snapshot.p_limit as number) ?? 0,
     alpha: wT, // time utility curve exponent (assembler uses strategy.alpha for time)
     beta: concession?.beta ?? 0.6,
-    t_deadline: timeWindow.durationMs ?? (snapshot.t_max as number) ?? DEFAULT_NEGOTIATION_WINDOW_MS,
+    t_deadline:
+      timeWindow.durationMs ?? (snapshot.t_max as number) ?? DEFAULT_NEGOTIATION_WINDOW_MS,
     v_t_floor: (snapshot.v_t_floor as number) ?? 0.1,
     n_threshold: (snapshot.n_threshold as number) ?? 3,
     v_s_base: (snapshot.v_s_base as number) ?? 0.5,
@@ -158,7 +154,9 @@ export function reconstructStrategy(snapshot: Record<string, unknown>): MasterSt
     persona: (snapshot.role as string) ?? "BUYER",
     gamma: (snapshot.gamma as number) ?? undefined,
     created_at: timeWindow.startMs ?? Date.now(),
-    expires_at: timeWindow.deadlineAtMs ?? Date.now() + ((snapshot.t_max as number) ?? DEFAULT_NEGOTIATION_WINDOW_MS),
+    expires_at:
+      timeWindow.deadlineAtMs ??
+      Date.now() + ((snapshot.t_max as number) ?? DEFAULT_NEGOTIATION_WINDOW_MS),
     term_space: snapshot.term_space as MasterStrategy["term_space"],
   } satisfies MasterStrategy;
 }
@@ -172,25 +170,29 @@ export function getStrategyTimeWindow(
   const startMs = extracted.startMs ?? fallbackStartMs;
   const deadlineAtMs = Math.max(
     startMs + 1,
-    extracted.deadlineAtMs ?? fallbackDeadlineAtMs ?? startMs + (extracted.durationMs ?? DEFAULT_NEGOTIATION_WINDOW_MS),
+    extracted.deadlineAtMs ??
+      fallbackDeadlineAtMs ??
+      startMs + (extracted.durationMs ?? DEFAULT_NEGOTIATION_WINDOW_MS),
   );
   const durationMs = Math.max(1, extracted.durationMs ?? deadlineAtMs - startMs);
 
   return { startMs, deadlineAtMs, durationMs };
 }
 
-function extractStrategyTimeWindow(
-  snapshot: Record<string, unknown>,
-): { startMs?: number; deadlineAtMs?: number; durationMs?: number } {
+function extractStrategyTimeWindow(snapshot: Record<string, unknown>): {
+  startMs?: number;
+  deadlineAtMs?: number;
+  durationMs?: number;
+} {
   const timeValue = snapshot.time_value as Record<string, unknown> | undefined;
-  const startMs = extractMillis(timeValue?.listed_at_ms)
-    ?? extractMillis(timeValue?.created_at_ms)
-    ?? extractMillis(snapshot.created_at_ms)
-    ?? extractMillis(snapshot.listed_at_ms);
-  const deadlineAtMs = extractMillis(timeValue?.deadline_at_ms)
-    ?? extractMillis(snapshot.deadline_at_ms);
-  const durationMs = extractMillis(timeValue?.t_total_ms)
-    ?? extractMillis(snapshot.t_max);
+  const startMs =
+    extractMillis(timeValue?.listed_at_ms) ??
+    extractMillis(timeValue?.created_at_ms) ??
+    extractMillis(snapshot.created_at_ms) ??
+    extractMillis(snapshot.listed_at_ms);
+  const deadlineAtMs =
+    extractMillis(timeValue?.deadline_at_ms) ?? extractMillis(snapshot.deadline_at_ms);
+  const durationMs = extractMillis(timeValue?.t_total_ms) ?? extractMillis(snapshot.t_max);
 
   return { startMs, deadlineAtMs, durationMs };
 }
@@ -242,7 +244,18 @@ export interface RoundPersistData {
 }
 
 export interface SessionUpdateData {
-  status: "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING" | "NEGOTIATING_VERSION" | "FAILED_COMPATIBILITY";
+  status:
+    | "CREATED"
+    | "ACTIVE"
+    | "NEAR_DEAL"
+    | "STALLED"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "EXPIRED"
+    | "SUPERSEDED"
+    | "WAITING"
+    | "NEGOTIATING_VERSION"
+    | "FAILED_COMPATIBILITY";
   currentRound: number;
   roundsNoConcession: number;
   lastOfferPriceMinor: string;

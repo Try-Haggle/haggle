@@ -301,6 +301,8 @@
   --color-bg-card: var(--bg-raised);
   --color-bg-input: var(--bg-overlay);
   --color-border-default: var(--border-default);
+  --color-text-primary: var(--ink);
+  --color-text-secondary: var(--ink-secondary);
 }
 
 /* ----------------------------------------------------------------

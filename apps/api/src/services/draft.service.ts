@@ -1,25 +1,26 @@
 import { randomBytes } from "node:crypto";
 import {
-  type Database,
-  listingDrafts,
-  listingsPublished,
-  tags,
-  eq,
   and,
-  or,
+  asc,
+  type Database,
+  desc,
+  eq,
   gt,
   gte,
+  inArray,
+  isNotNull,
+  isNull,
+  listingDrafts,
+  listingsPublished,
   lt,
   lte,
-  isNull,
-  isNotNull,
-  desc,
-  asc,
-  inArray,
+  negotiationAgents,
+  or,
   sql,
+  tags,
 } from "@haggle/db";
-import { placeListingTags } from "./tag-placement.service.js";
 import { triggerEmbeddingGeneration } from "./embedding.service.js";
+import { placeListingTags } from "./tag-placement.service.js";
 
 /** Fields that can be patched via haggle_apply_patch. */
 const PATCHABLE_FIELDS = [
@@ -32,7 +33,7 @@ const PATCHABLE_FIELDS = [
   "targetPrice",
   "floorPrice",
   "sellingDeadline",
-  "strategyConfig",
+  "negotiationAgentSnapshot",
   "currentStep",
   "draftName",
 ] as const;
@@ -40,16 +41,11 @@ const PATCHABLE_FIELDS = [
 type PatchableField = (typeof PATCHABLE_FIELDS)[number];
 
 /** Partial update payload — only patchable fields allowed. */
-export type DraftPatch = Partial<
-  Pick<typeof listingDrafts.$inferInsert, PatchableField>
->;
+export type DraftPatch = Partial<Pick<typeof listingDrafts.$inferInsert, PatchableField>>;
 
 /** Insert a new empty draft row with status "draft". */
 export async function createDraft(db: Database) {
-  const [row] = await db
-    .insert(listingDrafts)
-    .values({ status: "draft" })
-    .returning();
+  const [row] = await db.insert(listingDrafts).values({ status: "draft" }).returning();
   return row;
 }
 
@@ -62,11 +58,7 @@ export async function getDraftById(db: Database, id: string) {
 }
 
 /** Update allowed fields on a draft. Returns the updated row, or null if not found. */
-export async function patchDraft(
-  db: Database,
-  id: string,
-  patch: DraftPatch,
-) {
+export async function patchDraft(db: Database, id: string, patch: DraftPatch) {
   // Filter to only patchable fields that are actually present in the patch
   const updates: Record<string, unknown> = {};
   for (const key of PATCHABLE_FIELDS) {
@@ -150,6 +142,69 @@ function generateClaimToken(): string {
  * 2. Update draft status to "published" + set claim token
  * Returns the published record, or null if draft not found.
  */
+/** Skill id stamped on agents created by the listing builder (matches the
+ *  standalone /negotiations/agents create path). */
+const LISTING_BUILDER_SKILL_ID = "negotiation-agent-builder-v1";
+
+/**
+ * On publish, promote the listing's agent snapshot to provenance:
+ *   - returns a negotiation_agents row id when the snapshot was customized AND
+ *     the listing has an owner (so it becomes a reusable "My Agent")
+ *   - otherwise returns the preset id (string) — no duplicate row
+ *   - returns null when there is no usable snapshot
+ * The returned value is stored in listing_drafts.agent_id.
+ */
+async function persistListingAgent(
+  db: Database,
+  draft: {
+    id: string;
+    userId: string | null;
+    title: string | null;
+    negotiationAgentSnapshot: Record<string, unknown> | null;
+  },
+): Promise<string | null> {
+  const snap = draft.negotiationAgentSnapshot;
+  if (!snap) return null;
+  const presetId = typeof snap.preset === "string" ? snap.preset : null;
+  const customized = snap.customized === true;
+
+  // Unchanged preset, or guest (no owner) → just reference the preset id.
+  if (!customized || !draft.userId) {
+    return presetId;
+  }
+
+  // Customized + owned → create a reusable agent row from the snapshot.
+  const name = `${draft.title?.trim() || "Listing"} agent`;
+  const config: Record<string, unknown> = {
+    basePresetId: presetId,
+    negotiationAgentPresetId: presetId,
+    weights: snap.weights,
+    engineParams: snap.engineParams,
+    builderChatMemory: snap.negotiationAgentBuilderMemory,
+    forkedFromListing: draft.id,
+  };
+  try {
+    const [created] = await db
+      .insert(negotiationAgents)
+      .values({
+        name,
+        displayName: name,
+        description: null,
+        advisorSkillId: LISTING_BUILDER_SKILL_ID,
+        negotiationAgentConfig: config,
+        role: "seller",
+        isSystem: false,
+        userId: draft.userId,
+      })
+      .returning();
+    return created?.id ?? presetId;
+  } catch (err) {
+    // Agent promotion must NOT fail publish — fall back to preset reference.
+    console.warn(`[publish] agent promotion failed for draft ${draft.id}:`, err);
+    return presetId;
+  }
+}
+
 export async function publishDraft(db: Database, draftId: string) {
   const draft = await getDraftById(db, draftId);
   if (!draft) return null;
@@ -211,17 +266,21 @@ export async function publishDraft(db: Database, draftId: string) {
     }
   } catch (err) {
     // Placement failure must NOT fail publish.
-    console.warn(
-      `[publish] tag placement failed for listing ${published.id}:`,
-      err,
-    );
+    console.warn(`[publish] tag placement failed for listing ${published.id}:`, err);
   }
+
+  // Promote the listing's agent to a reusable record (slice 5).
+  //  • customized + owned → create a negotiation_agents row, reference its id
+  //  • otherwise         → reference the preset id (no duplicate row)
+  // The snapshot stays on the listing; the negotiation always runs off it.
+  const agentId = await persistListingAgent(db, draft);
 
   // Update draft status (+ claim info only if needed)
   const updateSet: Record<string, unknown> = {
     status: "published",
     updatedAt: new Date(),
   };
+  if (agentId) updateSet.agentId = agentId;
   if (claimToken) {
     updateSet.claimToken = claimToken;
     updateSet.claimExpiresAt = claimExpiresAt;
@@ -278,7 +337,7 @@ export async function getListingsByUserId(db: Database, userId: string) {
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       status: listingDrafts.status,
-      strategyConfig: listingDrafts.strategyConfig,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       createdAt: listingDrafts.createdAt,
       publicId: listingsPublished.publicId,
     })
@@ -304,7 +363,7 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
       floorPrice: listingDrafts.floorPrice,
       tags: listingDrafts.tags,
       status: listingDrafts.status,
-      strategyConfig: listingDrafts.strategyConfig,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       sellingDeadline: listingDrafts.sellingDeadline,
       createdAt: listingDrafts.createdAt,
       publicId: listingsPublished.publicId,
@@ -319,10 +378,7 @@ export async function getListingByIdForUser(db: Database, id: string, userId: st
 // ─── Public Listing (Buyer) ─────────────────────────────────
 
 /** Fetch a published listing by its public_id. No auth required. */
-export async function getPublishedListingByPublicId(
-  db: Database,
-  publicId: string,
-) {
+export async function getPublishedListingByPublicId(db: Database, publicId: string) {
   const rows = await db
     .select({
       id: listingsPublished.id,
@@ -336,7 +392,7 @@ export async function getPublishedListingByPublicId(
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
       tags: listingDrafts.tags,
-      strategyConfig: listingDrafts.strategyConfig,
+      negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       sellingDeadline: listingDrafts.sellingDeadline,
     })
     .from(listingsPublished)
@@ -349,12 +405,9 @@ export async function getPublishedListingByPublicId(
 /**
  * Lookup minimal listing summary by the internal listing_id stored on a
  * negotiation session. Returns the publicId + display fields needed by the
- * buyer-side playback view; deliberately omits floorPrice/strategyConfig.
+ * buyer-side playback view; deliberately omits floorPrice/negotiationAgentSnapshot.
  */
-export async function getListingPlaybackSummaryByInternalId(
-  db: Database,
-  listingId: string,
-) {
+export async function getListingPlaybackSummaryByInternalId(db: Database, listingId: string) {
   const rows = await db
     .select({
       id: listingsPublished.id,
@@ -363,7 +416,7 @@ export async function getListingPlaybackSummaryByInternalId(
       category: listingDrafts.category,
       photoUrl: listingDrafts.photoUrl,
       targetPrice: listingDrafts.targetPrice,
-      sellerAgentPreset: sql<string | null>`${listingDrafts.strategyConfig}->>'preset'`,
+      sellerAgentPreset: sql<string | null>`${listingDrafts.negotiationAgentSnapshot}->>'preset'`,
     })
     .from(listingsPublished)
     .innerJoin(listingDrafts, eq(listingDrafts.id, listingsPublished.draftId))
@@ -389,7 +442,7 @@ function buildSearchClause(q: string) {
 /**
  * List published listings for public browsing. No auth required.
  * Filters out expired drafts and listings past their sellingDeadline.
- * Returns only fields safe for public exposure (no floorPrice, strategyConfig, or sellerId).
+ * Returns only fields safe for public exposure (no floorPrice, negotiationAgentSnapshot, or sellerId).
  *
  * Cursor format is sort-aware:
  *   - newest:       sortKey = publishedAt ISO string
@@ -512,9 +565,7 @@ export async function listPublishedListings(
 // the dynamic preset bucket histogram. Buckets are [-inf, 25), [25, 50),
 // ..., [100000, +inf). The shape is intentionally coarse at the high end
 // where data is sparse and dense at the low end where most listings live.
-const PRICE_BUCKET_EDGES = [
-  25, 50, 100, 200, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000,
-];
+const PRICE_BUCKET_EDGES = [25, 50, 100, 200, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 /**
  * Compute the top-N most populated price buckets matching the given
@@ -554,10 +605,12 @@ export async function getPublishedPriceBuckets(
   for (let i = 0; i < PRICE_BUCKET_EDGES.length - 1; i++) {
     const lo = PRICE_BUCKET_EDGES[i];
     const hi = PRICE_BUCKET_EDGES[i + 1];
-    fields[`b${i + 1}`] = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lo} AND ${listingDrafts.targetPrice} < ${hi})`;
+    fields[`b${i + 1}`] =
+      sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lo} AND ${listingDrafts.targetPrice} < ${hi})`;
   }
   const lastEdge = PRICE_BUCKET_EDGES[PRICE_BUCKET_EDGES.length - 1];
-  fields[`b${PRICE_BUCKET_EDGES.length}`] = sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lastEdge})`;
+  fields[`b${PRICE_BUCKET_EDGES.length}`] =
+    sql<string>`COUNT(*) FILTER (WHERE ${listingDrafts.targetPrice} >= ${lastEdge})`;
 
   const [row] = await db
     .select(fields)
@@ -656,10 +709,7 @@ export async function claimListing(
   // Find draft with matching, non-expired claim token
   const draft = await db.query.listingDrafts.findFirst({
     where: (fields, ops) =>
-      ops.and(
-        ops.eq(fields.claimToken, claimToken),
-        ops.eq(fields.status, "published"),
-      ),
+      ops.and(ops.eq(fields.claimToken, claimToken), ops.eq(fields.status, "published")),
   });
 
   if (!draft) {

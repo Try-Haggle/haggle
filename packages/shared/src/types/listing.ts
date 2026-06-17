@@ -10,12 +10,7 @@ export type ListingCategory =
   | "books"
   | "other";
 
-export type ItemCondition =
-  | "new"
-  | "like_new"
-  | "good"
-  | "fair"
-  | "poor";
+export type ItemCondition = "new" | "like_new" | "good" | "fair" | "poor";
 
 /**
  * TypeScript representation of a listing_drafts DB row (camelCase).
@@ -36,7 +31,7 @@ export interface ListingDraft {
   targetPrice: string | null; // numeric(12,2) → string (Drizzle returns string for precision)
   floorPrice: string | null;
   sellingDeadline: Date | null;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;
 }

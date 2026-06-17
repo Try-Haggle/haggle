@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_NEGOTIATION_PRESET_ID,
-  NEGOTIATION_PRESETS,
-  getNegotiationPreset,
+  DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
+  getNegotiationAgentPreset,
+  NEGOTIATION_AGENT_PRESETS,
   presetToEngineParameters,
 } from "../index.js";
 
 const WEIGHT_SUM_TOLERANCE = 1e-6;
 
-describe("NEGOTIATION_PRESETS", () => {
+describe("NEGOTIATION_AGENT_PRESETS", () => {
   it("ships exactly the four presets — one per dominant 4D axis", () => {
-    expect(NEGOTIATION_PRESETS.map((p) => p.id)).toEqual([
+    expect(NEGOTIATION_AGENT_PRESETS.map((p) => p.id)).toEqual([
       "hunter",
       "closer",
       "verifier",
@@ -19,14 +19,14 @@ describe("NEGOTIATION_PRESETS", () => {
   });
 
   it("default id resolves to a real preset", () => {
-    expect(getNegotiationPreset(DEFAULT_NEGOTIATION_PRESET_ID)).toBeDefined();
+    expect(getNegotiationAgentPreset(DEFAULT_NEGOTIATION_AGENT_PRESET_ID)).toBeDefined();
   });
 
-  it("getNegotiationPreset returns undefined for unknown id", () => {
-    expect(getNegotiationPreset("unknown")).toBeUndefined();
+  it("getNegotiationAgentPreset returns undefined for unknown id", () => {
+    expect(getNegotiationAgentPreset("unknown")).toBeUndefined();
   });
 
-  describe.each(NEGOTIATION_PRESETS)("preset %s", (preset) => {
+  describe.each(NEGOTIATION_AGENT_PRESETS)("preset %s", (preset) => {
     it(`${preset.id}: weights sum to 1.0`, () => {
       const { w_p, w_t, w_r, w_s } = preset.weights;
       const sum = w_p + w_t + w_r + w_s;
@@ -88,28 +88,28 @@ describe("NEGOTIATION_PRESETS", () => {
   });
 
   it("hunter emphasizes price", () => {
-    const hunter = getNegotiationPreset("hunter")!;
+    const hunter = getNegotiationAgentPreset("hunter")!;
     expect(hunter.weights.w_p).toBeGreaterThan(hunter.weights.w_t);
     expect(hunter.weights.w_p).toBeGreaterThan(hunter.weights.w_r);
     expect(hunter.weights.w_p).toBeGreaterThan(hunter.weights.w_s);
   });
 
   it("closer emphasizes time", () => {
-    const closer = getNegotiationPreset("closer")!;
+    const closer = getNegotiationAgentPreset("closer")!;
     expect(closer.weights.w_t).toBeGreaterThan(closer.weights.w_p);
     expect(closer.weights.w_t).toBeGreaterThan(closer.weights.w_r);
     expect(closer.weights.w_t).toBeGreaterThan(closer.weights.w_s);
   });
 
   it("verifier emphasizes risk", () => {
-    const verifier = getNegotiationPreset("verifier")!;
+    const verifier = getNegotiationAgentPreset("verifier")!;
     expect(verifier.weights.w_r).toBeGreaterThan(verifier.weights.w_p);
     expect(verifier.weights.w_r).toBeGreaterThan(verifier.weights.w_t);
     expect(verifier.weights.w_r).toBeGreaterThan(verifier.weights.w_s);
   });
 
   it("balancer is closer to flat than the others", () => {
-    const balancer = getNegotiationPreset("balancer")!;
+    const balancer = getNegotiationAgentPreset("balancer")!;
     const w = balancer.weights;
     const max = Math.max(w.w_p, w.w_t, w.w_r, w.w_s);
     const min = Math.min(w.w_p, w.w_t, w.w_r, w.w_s);
@@ -119,7 +119,7 @@ describe("NEGOTIATION_PRESETS", () => {
 
 describe("presetToEngineParameters", () => {
   it("preserves preset-specified knobs verbatim", () => {
-    const hunter = getNegotiationPreset("hunter")!;
+    const hunter = getNegotiationAgentPreset("hunter")!;
     const params = presetToEngineParameters(hunter);
     expect(params.weights).toEqual(hunter.weights);
     expect(params.alpha).toBe(hunter.alpha);
@@ -129,13 +129,13 @@ describe("presetToEngineParameters", () => {
   });
 
   it("returns a fresh weights object (no shared reference)", () => {
-    const hunter = getNegotiationPreset("hunter")!;
+    const hunter = getNegotiationAgentPreset("hunter")!;
     const params = presetToEngineParameters(hunter);
     expect(params.weights).not.toBe(hunter.weights);
   });
 
   it("populates all 17 EngineParameters fields", () => {
-    const params = presetToEngineParameters(getNegotiationPreset("balancer")!);
+    const params = presetToEngineParameters(getNegotiationAgentPreset("balancer")!);
     const expectedKeys = [
       "weights",
       "anchor_ratio",
@@ -161,17 +161,15 @@ describe("presetToEngineParameters", () => {
   });
 
   it("produces w_info derived as 1 - w_rep for every preset", () => {
-    for (const preset of NEGOTIATION_PRESETS) {
+    for (const preset of NEGOTIATION_AGENT_PRESETS) {
       const params = presetToEngineParameters(preset);
-      expect(Math.abs(params.w_rep + params.w_info - 1)).toBeLessThan(
-        WEIGHT_SUM_TOLERANCE,
-      );
+      expect(Math.abs(params.w_rep + params.w_info - 1)).toBeLessThan(WEIGHT_SUM_TOLERANCE);
       expect(params.w_rep).toBe(preset.w_rep);
     }
   });
 
   it("propagates tier-3 sub-params verbatim", () => {
-    const verifier = getNegotiationPreset("verifier")!;
+    const verifier = getNegotiationAgentPreset("verifier")!;
     const params = presetToEngineParameters(verifier);
     expect(params.anchor_ratio).toBe(verifier.anchor_ratio);
     expect(params.v_t_floor).toBe(verifier.v_t_floor);
@@ -179,13 +177,11 @@ describe("presetToEngineParameters", () => {
     expect(params.i_completeness_minimum).toBe(verifier.i_completeness_minimum);
     expect(params.v_s_base).toBe(verifier.v_s_base);
     expect(params.n_threshold).toBe(verifier.n_threshold);
-    expect(params.late_round_aggression_modifier).toBe(
-      verifier.late_round_aggression_modifier,
-    );
+    expect(params.late_round_aggression_modifier).toBe(verifier.late_round_aggression_modifier);
   });
 
   it("market-awareness fields stay neutral across all presets", () => {
-    for (const preset of NEGOTIATION_PRESETS) {
+    for (const preset of NEGOTIATION_AGENT_PRESETS) {
       const params = presetToEngineParameters(preset);
       expect(params.gamma).toBe(0.1);
       expect(params.market_utilization).toBe(0.5);

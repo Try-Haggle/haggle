@@ -5,7 +5,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("blocks buyer starts when product, budget, and priority are missing", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: { alpha: { price: 0.4, time: 0.2 } },
+      negotiationAgentSnapshot: { alpha: { price: 0.4, time: 0.2 } },
       memoryBrief: null,
     });
 
@@ -19,7 +19,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("allows buyer starts when strategy snapshot has sufficient context", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: {
+      negotiationAgentSnapshot: {
         item: { title: "iPhone 15 Pro", category: "electronics" },
         buyer_budget: { max_budget_minor: 95000 },
         must_have: ["battery >= 90%", "unlocked"],
@@ -34,7 +34,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("uses HIL memory cards to fill missing strategy slots", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: { alpha: { price: 0.4 } },
+      negotiationAgentSnapshot: { alpha: { price: 0.4 } },
       memoryBrief: {
         userId: "buyer-1",
         items: [
@@ -73,7 +73,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("treats explicit no-preference memory as a completed buyer priority", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: { alpha: { price: 0.4 } },
+      negotiationAgentSnapshot: { alpha: { price: 0.4 } },
       memoryBrief: {
         userId: "buyer-1",
         items: [
@@ -104,7 +104,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("does not block seller-created sessions", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "SELLER",
-      strategySnapshot: {},
+      negotiationAgentSnapshot: {},
       memoryBrief: null,
     });
 
@@ -114,7 +114,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("asks for confirmation when memory targets iPhone 15 but selected product is iPhone 14", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: {
+      negotiationAgentSnapshot: {
         item: { title: "Apple iPhone 14 128GB unlocked" },
         buyer_budget: { max_budget_minor: 50000 },
         must_have: ["battery >= 90%"],
@@ -145,7 +145,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("allows confirmed product identity differences", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: {
+      negotiationAgentSnapshot: {
         item: { title: "Apple iPhone 15 256GB unlocked" },
         buyer_budget: { max_budget_minor: 50000 },
         must_have: ["battery >= 90%"],
@@ -176,7 +176,7 @@ describe("evaluateNegotiationStartReadiness", () => {
   it("observes unrelated product memory without blocking browsing flow", () => {
     const result = evaluateNegotiationStartReadiness({
       role: "BUYER",
-      strategySnapshot: {
+      negotiationAgentSnapshot: {
         item: { title: "Apple iPhone 15" },
         buyer_budget: { max_budget_minor: 50000 },
         must_have: ["battery >= 90%"],

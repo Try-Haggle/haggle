@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>에이전트 ↔ 협상 데이터 흐름 진단 — 2026-05-21</title>
+<style>
+:root {
+  --bg: #0b0d12;
+  --panel: #141821;
+  --panel-2: #1a1f2c;
+  --border: #2a3040;
+  --text: #e6e8ee;
+  --muted: #8b95a8;
+  --green: #5dd39e;
+  --red: #ff6b7a;
+  --yellow: #ffc266;
+  --blue: #6bb6ff;
+  --purple: #c39bff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Pretendard", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.55;
+}
+.app { max-width: 1280px; margin: 0 auto; padding: 28px 24px 80px; }
+
+/* Header */
+header {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  padding-bottom: 18px; border-bottom: 1px solid var(--border); margin-bottom: 22px;
+}
+h1 { font-size: 22px; letter-spacing: -0.3px; margin-bottom: 4px; }
+header .sub { color: var(--muted); font-size: 12.5px; }
+header .verdict {
+  text-align: right; font-size: 12.5px; color: var(--muted);
+}
+header .verdict strong { display: block; color: var(--red); font-size: 14px; margin-bottom: 2px; }
+
+/* Controls */
+.controls {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 18px;
+}
+.controls button {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+}
+.controls button:hover { background: #232a3a; border-color: #3a4254; }
+.controls button.primary { background: #2d5fa8; border-color: #4a7fc8; color: #fff; }
+.controls button.primary:hover { background: #366cb8; }
+.controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.step-indicator { margin-left: auto; color: var(--muted); font-size: 12px; }
+.step-indicator strong { color: var(--text); }
+
+/* Stage layout */
+.stage {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  min-height: 540px;
+  overflow: visible;
+}
+.stage-inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 24px;
+  min-height: 480px;
+}
+.column-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Node (rectangle for each component / table) */
+.node {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  position: relative;
+  transition: all 0.4s;
+}
+.node .node-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 3px;
+}
+.node .node-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #cfd6e4;
+}
+.node .node-path {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.node .fields {
+  margin-top: 6px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.node .field {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 10.5px;
+  background: #0c0f15;
+  border: 1px solid #2a3040;
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: #aab3c5;
+}
+.node .field.lost { color: var(--red); border-color: #5a2a30; text-decoration: line-through; opacity: 0.65; }
+.node .field.kept { color: var(--green); border-color: #2a5a3a; }
+
+.node.active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(107, 182, 255, 0.15), 0 0 24px rgba(107, 182, 255, 0.12);
+  background: #1a2336;
+}
+.node.broken {
+  border-color: var(--red);
+  background: #2a1418;
+}
+.node.broken.active { box-shadow: 0 0 0 2px rgba(255, 107, 122, 0.2), 0 0 24px rgba(255, 107, 122, 0.15); }
+
+.node.db { background: #1a1626; border-color: #3a2f50; }
+.node.db .node-label { color: var(--purple); }
+
+.node.broken::after {
+  content: "✗ DATA LOST";
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  font-size: 9.5px;
+  font-weight: 700;
+  background: var(--red);
+  color: #000;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+/* SVG overlay for arrows */
+.arrows-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.arrow-path {
+  stroke: #3a4254;
+  stroke-width: 1.5;
+  fill: none;
+  opacity: 0.6;
+}
+.arrow-path.broken {
+  stroke: var(--red);
+  stroke-dasharray: 6 4;
+  opacity: 0.7;
+}
+.arrow-path.active {
+  stroke: var(--green);
+  stroke-width: 2;
+  opacity: 1;
+}
+.arrow-path.active-broken {
+  stroke: var(--red);
+  stroke-width: 2;
+  opacity: 1;
+  stroke-dasharray: 6 4;
+}
+.arrow-head { fill: #3a4254; }
+.arrow-head.broken { fill: var(--red); }
+.arrow-head.active { fill: var(--green); }
+.arrow-head.active-broken { fill: var(--red); }
+
+/* Animated traveling dot */
+.token {
+  fill: var(--green);
+  filter: drop-shadow(0 0 6px rgba(93, 211, 158, 0.8));
+}
+.token.broken { fill: var(--red); filter: drop-shadow(0 0 6px rgba(255, 107, 122, 0.8)); }
+
+/* Step description bar */
+.step-desc {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  min-height: 88px;
+}
+.step-desc .label {
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.step-desc h3 {
+  font-size: 15px;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.step-desc .body { color: #b8c1d3; font-size: 13.5px; }
+.step-desc.broken { border-color: #5a2a30; background: #1d1418; }
+.step-desc.broken h3 { color: var(--red); }
+.step-desc.ok { border-color: #2a5a3a; background: #14201a; }
+.step-desc.ok h3 { color: var(--green); }
+
+/* Field fate table */
+.fate {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.fate h3 { font-size: 14px; margin-bottom: 4px; }
+.fate .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.fate table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fate th {
+  text-align: left; padding: 6px 8px; color: var(--muted);
+  font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+.fate td { padding: 7px 8px; border-bottom: 1px solid #1c2230; }
+.fate td.field { font-family: ui-monospace, monospace; color: #cfd6e4; }
+.fate .yes { color: var(--green); }
+.fate .no { color: var(--red); }
+.fate .partial { color: var(--yellow); }
+
+/* Step list (left of stage when toggled) */
+.steps-list {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.steps-list .pill {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+.steps-list .pill:hover { background: #1f2535; }
+.steps-list .pill.current { background: #1f2c44; border-color: #3d5680; color: var(--text); }
+.steps-list .pill .num { font-weight: 700; display: block; font-size: 14px; margin-bottom: 1px; }
+.steps-list .pill.broken.current { background: #2a1418; border-color: var(--red); color: var(--red); }
+
+.legend {
+  margin-top: 14px;
+  display: flex; flex-wrap: wrap; gap: 14px;
+  color: var(--muted); font-size: 12px;
+}
+.legend .dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 5px; vertical-align: middle;
+}
+.legend .dot.green { background: var(--green); }
+.legend .dot.red { background: var(--red); }
+.legend .dot.gray { background: #3a4254; }
+
+footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<header>
+  <div>
+    <h1>에이전트 ↔ 협상 데이터 흐름 진단</h1>
+    <div class="sub">대상: <code>strategy-chat.tsx</code> (바이어) → 협상 엔진 라운드 사용까지의 풀 트레이스 · 2026-05-21</div>
+  </div>
+  <div class="verdict">
+    <strong>🔴 루프 끊김 (4 군데)</strong>
+    LLM이 추출한 스타일·태도·전술 필드가 협상 엔진에 도달하지 못함
+  </div>
+</header>
+
+<div class="controls">
+  <button id="btnPrev">◀ 이전</button>
+  <button id="btnPlay" class="primary">▶ 자동재생</button>
+  <button id="btnNext">다음 ▶</button>
+  <button id="btnReset">⟲ 처음으로</button>
+  <div class="step-indicator">Step <strong id="stepNum">0</strong> / 6</div>
+</div>
+
+<!-- Stage -->
+<div class="stage">
+  <svg class="arrows-svg" id="arrows" viewBox="0 0 1200 540" preserveAspectRatio="none">
+    <!-- Arrow markers -->
+    <defs>
+      <marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-head" />
+      </marker>
+      <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-head active" />
+      </marker>
+      <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-head active-broken" />
+      </marker>
+    </defs>
+    <!-- Arrows will be drawn by JS using anchor points -->
+  </svg>
+
+  <div class="stage-inner">
+    <!-- COLUMN 1: Browser / Frontend -->
+    <div>
+      <div class="column-header">① 브라우저 (Next.js)</div>
+
+      <div class="node" id="n1">
+        <div class="node-label">User Input</div>
+        <div class="node-title">strategy-chat.tsx</div>
+        <div class="node-path">/l/[publicId] 의 채팅 UI</div>
+        <div class="fields">
+          <span class="field">message</span>
+        </div>
+      </div>
+
+      <div class="node" id="n2">
+        <div class="node-label">localStorage</div>
+        <div class="node-title">AdvisorMemory</div>
+        <div class="node-path">2일 만료</div>
+        <div class="fields">
+          <span class="field">budgetMax</span>
+          <span class="field">targetPrice</span>
+          <span class="field">negotiationStyle</span>
+          <span class="field">riskStyle</span>
+          <span class="field">openingTactic</span>
+        </div>
+      </div>
+
+      <div class="node" id="n3">
+        <div class="node-label">Click</div>
+        <div class="node-title">"Start Negotiation"</div>
+        <div class="node-path">buyer-landing.tsx:358</div>
+        <div class="fields">
+          <span class="field">publicId</span>
+          <span class="field">agentId</span>
+        </div>
+      </div>
+
+      <div class="node" id="n4">
+        <div class="node-label">Navigate</div>
+        <div class="node-title">/buy/negotiations/[mockId]</div>
+        <div class="node-path">mockId = ${publicId}-${agentId}</div>
+      </div>
+    </div>
+
+    <!-- COLUMN 2: API / Engine -->
+    <div>
+      <div class="column-header">② API (Fastify v5)</div>
+
+      <div class="node" id="n5">
+        <div class="node-label">REST · LLM</div>
+        <div class="node-title">POST /intelligence/demo/advisor-turn</div>
+        <div class="node-path">routes/intelligence-demo.ts:355</div>
+        <div class="fields">
+          <span class="field">→ analyzeAdvisorTurn()</span>
+          <span class="field">Claude 호출</span>
+        </div>
+      </div>
+
+      <div class="node" id="n6">
+        <div class="node-label">Expected · Missing</div>
+        <div class="node-title">POST /negotiations/sessions</div>
+        <div class="node-path">routes/negotiations.ts:183</div>
+        <div class="fields">
+          <span class="field">listing_id</span>
+          <span class="field">strategy_snapshot</span>
+        </div>
+      </div>
+
+      <div class="node" id="n7">
+        <div class="node-label">Pipeline</div>
+        <div class="node-title">6단계 협상 파이프라인</div>
+        <div class="node-path">negotiation/pipeline/executor.ts</div>
+        <div class="fields">
+          <span class="field">memory-reconstructor.ts:122</span>
+        </div>
+      </div>
+
+      <div class="node" id="n8">
+        <div class="node-label">Stage 3 · LLM</div>
+        <div class="node-title">DECIDE → ProtocolDecision</div>
+        <div class="node-path">xai-client.ts (Grok)</div>
+      </div>
+    </div>
+
+    <!-- COLUMN 3: DB -->
+    <div>
+      <div class="column-header">③ DB (Postgres / Drizzle)</div>
+
+      <div class="node db" id="d1">
+        <div class="node-label">테이블</div>
+        <div class="node-title">listings_published</div>
+        <div class="node-path">읽기 전용 — 매물 정보 출처</div>
+        <div class="fields">
+          <span class="field">publicId</span>
+          <span class="field">title</span>
+          <span class="field">askPriceMinor</span>
+        </div>
+      </div>
+
+      <div class="node db" id="d2">
+        <div class="node-label">테이블</div>
+        <div class="node-title">skill_presets</div>
+        <div class="node-path">하드코딩 preset 마스터</div>
+        <div class="fields">
+          <span class="field">advisorSkillId</span>
+          <span class="field">advisorConfig (JSONB)</span>
+        </div>
+      </div>
+
+      <div class="node db" id="d3">
+        <div class="node-label">테이블 — 핵심</div>
+        <div class="node-title">negotiation_sessions</div>
+        <div class="node-path">strategySnapshot 가 여기 박힘</div>
+        <div class="fields">
+          <span class="field kept">p_target ← 엔진이 읽음</span>
+          <span class="field kept">p_limit ← 엔진이 읽음</span>
+          <span class="field kept">max_rounds ← 엔진이 읽음</span>
+          <span class="field lost">negotiationStyle</span>
+          <span class="field lost">riskStyle</span>
+          <span class="field lost">openingTactic</span>
+        </div>
+      </div>
+
+      <div class="node db" id="d4">
+        <div class="node-label">테이블</div>
+        <div class="node-title">negotiation_rounds</div>
+        <div class="node-path">append-only 라운드 로그</div>
+        <div class="fields">
+          <span class="field">offerPriceMinor</span>
+          <span class="field">message</span>
+          <span class="field">tactic</span>
+        </div>
+      </div>
+
+      <div class="node db" id="d5">
+        <div class="node-label">테이블</div>
+        <div class="node-title">llm_telemetry</div>
+        <div class="node-path">stage별 토큰 / 비용 로깅</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step description -->
+<div class="step-desc" id="stepDesc">
+  <div class="label">현재 단계</div>
+  <h3 id="stepTitle">전체 흐름 한눈에 보기</h3>
+  <div class="body" id="stepBody">
+    재생 버튼을 누르거나 "다음 ▶"으로 단계별로 진행하세요.
+    노드가 <span style="color:var(--blue)">파란 외곽선</span>이면 활성,
+    <span style="color:var(--red)">붉은 외곽선 + ✗ DATA LOST</span>면 데이터가 그 지점에서 사라집니다.
+    화살표 위 움직이는 점은 데이터 토큰 — <span style="color:var(--green)">초록</span>은 도달,
+    <span style="color:var(--red)">붉은</span>은 중간에 소실.
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot gray"></span> 비활성</span>
+  <span><span class="dot green"></span> 활성 / 정상 흐름</span>
+  <span><span class="dot red"></span> 끊김 / 데이터 손실</span>
+  <span>· DB 노드는 보라색 라벨</span>
+</div>
+
+<!-- Step pills -->
+<div class="steps-list" id="stepsList">
+  <div class="pill" data-step="1"><span class="num">1</span>채팅 입력</div>
+  <div class="pill" data-step="2"><span class="num">2</span>LLM이 memory 추출</div>
+  <div class="pill broken" data-step="3"><span class="num">3</span>localStorage만 저장</div>
+  <div class="pill broken" data-step="4"><span class="num">4</span>가짜 세션ID로 이동</div>
+  <div class="pill broken" data-step="5"><span class="num">5</span>진짜 세션 못 만들어짐</div>
+  <div class="pill broken" data-step="6"><span class="num">6</span>엔진은 일부 필드만 읽음</div>
+</div>
+
+<!-- Field fate table -->
+<div class="fate">
+  <h3>필드별 운명 — LLM이 추출한 AdvisorMemory 가 어디까지 가는가</h3>
+  <div class="sub">각 필드가 어디서 살아남고 어디서 사라지는지를 한 줄로</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:22%">필드</th>
+        <th style="width:13%">LLM 추출</th>
+        <th style="width:13%">localStorage</th>
+        <th style="width:13%">서버 DB</th>
+        <th style="width:13%">엔진 읽음</th>
+        <th>비고</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="field">budgetMax / targetPrice</td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">✗</td>
+        <td class="partial">~</td>
+        <td><code>p_target</code>으로 매핑되면 읽힘 — 현재 클라이언트가 안 넣어줌</td>
+      </tr>
+      <tr>
+        <td class="field">floorPrice</td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">✗</td>
+        <td class="partial">~</td>
+        <td><code>p_limit</code>으로 매핑되면 읽힘 — 현재 클라이언트가 안 넣어줌</td>
+      </tr>
+      <tr>
+        <td class="field">maxRounds</td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">✗</td>
+        <td class="partial">~</td>
+        <td><code>max_rounds</code>로 매핑되면 읽힘 — 현재 안 넘김</td>
+      </tr>
+      <tr>
+        <td class="field">negotiationStyle</td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">✗</td>
+        <td class="no">✗</td>
+        <td>엔진의 extractNumber()가 number만 봄, style 자체를 매핑하지 않음</td>
+      </tr>
+      <tr>
+        <td class="field">riskStyle</td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">✗</td>
+        <td class="no">✗</td>
+        <td>엔진 어휘에 없음</td>
+      </tr>
+      <tr>
+        <td class="field">openingTactic</td>
+        <td class="yes">✓</td>
+        <td class="yes">✓</td>
+        <td class="no">✗</td>
+        <td class="no">✗</td>
+        <td>엔진 어휘에 없음</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="fate" style="margin-top:16px">
+  <h3>끊긴 4 군데 — 코드 위치 + 고쳐야 할 것</h3>
+  <table>
+    <thead>
+      <tr><th style="width:22%">끊긴 지점</th><th style="width:38%">현재 코드</th><th>최소 수정안</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>① memory 가 서버에 저장 안 됨</td>
+        <td><code>strategy-chat.tsx</code> — 응답을 받아 localStorage에만 setItem</td>
+        <td><code>POST /intelligence/demo/advisor-memory</code> 같은 endpoint 추가 또는, 세션 생성 시 memory를 함께 보냄</td>
+      </tr>
+      <tr>
+        <td>② Start 버튼이 진짜 세션을 안 만듦</td>
+        <td><code>buyer-landing.tsx:358</code> — mockId = ${publicId}-${agentId}로 그냥 navigate</td>
+        <td><code>POST /negotiations/sessions</code> 호출해서 실제 sessionId 받아 이동</td>
+      </tr>
+      <tr>
+        <td>③ 세션 생성에 advisor memory 미포함</td>
+        <td>negotiate page의 buildStrategy() 가 하드코딩 preset만 사용</td>
+        <td>localStorage 의 memory를 strategy_snapshot 로 변환하여 payload 에 포함</td>
+      </tr>
+      <tr>
+        <td>④ 엔진이 가격 필드만 읽음</td>
+        <td><code>memory-reconstructor.ts:122</code> — extractNumber(strategy, 'p_target' / 'p_limit' / 'max_rounds')</td>
+        <td>Stage 2 CONTEXT 조립 시 style/risk/tactic 도 briefing 에 포함, Stage 3 프롬프트에 전달</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<footer>
+  파일: <code>docs/wip/agent-negotiation-flow-2026-05-21.html</code> ·
+  근거: strategy-chat.tsx, buyer-landing.tsx, negotiation-api.ts, routes/intelligence-demo.ts, routes/negotiations.ts, memory-reconstructor.ts ·
+  v0.1
+</footer>
+
+</div>
+
+<script>
+// ================================================================
+// Step-by-step animation orchestrator
+// ================================================================
+
+// Anchor positions for arrows (in SVG viewBox 0..1200 x 0..540 coords)
+// Computed from real DOM rects at runtime, but we also pre-define logical edges.
+
+const EDGES = [
+  // step 1: user types
+  { id: "e1-5", from: "n1", to: "n5", brokenIn: null, activeIn: [1, 2] },           // chat -> API
+  { id: "e5-2", from: "n5", to: "n2", brokenIn: null, activeIn: [2, 3] },           // API -> localStorage (LLM returns memory)
+  { id: "e5-d5", from: "n5", to: "d5", brokenIn: null, activeIn: [2] },              // API -> llm_telemetry (we draw lightly)
+
+  // step 3: BROKEN — memory should also go to DB but doesn't
+  { id: "e2-d3", from: "n2", to: "d3", brokenIn: 3, activeIn: [3] },                 // localStorage -> (should be) negotiation_sessions  ← BROKEN
+
+  // step 4: Start click goes to /buy/negotiations/[mockId] without creating session
+  { id: "e3-4", from: "n3", to: "n4", brokenIn: 4, activeIn: [4] },                  // click -> mock navigate (BROKEN flow)
+
+  // step 5: missing call — n3 should call n6 but doesn't
+  { id: "e3-6", from: "n3", to: "n6", brokenIn: 5, activeIn: [5] },                  // click -> POST /sessions (MISSING)
+
+  // step 6: engine reads only number fields from session
+  { id: "e6-d3", from: "n6", to: "d3", brokenIn: null, activeIn: [6] },              // POST /sessions writes strategySnapshot (partial)
+  { id: "e7-d3", from: "n7", to: "d3", brokenIn: null, activeIn: [6] },              // pipeline reads from sessions
+  { id: "e7-n8", from: "n7", to: "n8", brokenIn: null, activeIn: [6] },              // pipeline -> stage 3 LLM
+  { id: "e8-d4", from: "n8", to: "d4", brokenIn: null, activeIn: [6] },              // stage 3 -> writes rounds
+  { id: "e1-d1", from: "n1", to: "d1", brokenIn: null, activeIn: [1] },              // listing read
+  { id: "ed2-n7", from: "d2", to: "n7", brokenIn: null, activeIn: [6] },             // preset → pipeline (current behavior)
+];
+
+const STEPS = [
+  {
+    title: "전체 흐름 한눈에 보기",
+    body: "재생 버튼을 누르거나 '다음 ▶'으로 단계별로 진행하세요. 단계마다 활성 노드 + 데이터 토큰이 시각화됩니다.",
+    active: [],
+    broken: [],
+    tone: ""
+  },
+  {
+    title: "Step 1 — 유저가 strategy-chat 에 메시지 입력",
+    body: "버튼 클릭 또는 엔터 시 클라이언트가 listing 정보 + 이전 memory를 함께 POST /intelligence/demo/advisor-turn 으로 보냅니다. listings_published 는 페이지 로드 시 이미 fetch 됨.",
+    active: ["n1", "n5", "d1"],
+    broken: [],
+    tone: "ok"
+  },
+  {
+    title: "Step 2 — 서버에서 Claude 가 AdvisorMemory 를 추출",
+    body: "analyzeAdvisorTurn() 이 LLM 호출하여 budgetMax / targetPrice / negotiationStyle / riskStyle / openingTactic 등 구조화된 필드를 뽑아 응답. llm_telemetry 에 기록.",
+    active: ["n5", "n2", "d5"],
+    broken: [],
+    tone: "ok"
+  },
+  {
+    title: "Step 3 — ⚠️ memory 가 localStorage 에만 저장됨",
+    body: "응답 받은 memory 를 setItem 으로 브라우저에 보관하고 끝. 서버 DB(negotiation_sessions 등) 에 저장하는 endpoint 호출이 없음. 사용자가 디바이스를 바꾸거나 시크릿모드에 있다면 그대로 휘발.",
+    active: ["n2"],
+    broken: ["e2-d3"],
+    tone: "broken"
+  },
+  {
+    title: "Step 4 — ⚠️ Start 버튼이 가짜 sessionId 를 만들어 페이지 이동",
+    body: "buyer-landing.tsx:358 에서 mockId = `${publicId}-${selectedAgent.id}` 를 만들어 /buy/negotiations/[mockId] 로 navigate 만 함. 진짜 negotiation_sessions row 생성 호출 없음.",
+    active: ["n3", "n4"],
+    broken: ["e3-4"],
+    tone: "broken"
+  },
+  {
+    title: "Step 5 — ⚠️ 호출되어야 할 POST /negotiations/sessions 가 호출 안 됨",
+    body: "원래는 Start 시점에 advisor memory 를 strategy_snapshot 으로 변환해서 세션 생성 endpoint 를 쳐야 함. 현재는 그 화살표 자체가 없음. 결과적으로 엔진은 실행될 거리도 없음 (mock 세션은 데이터 없는 빈 페이지로 가는 길).",
+    active: ["n3", "n6"],
+    broken: ["e3-6"],
+    tone: "broken"
+  },
+  {
+    title: "Step 6 — ⚠️ (가설) 세션이 만들어졌다 해도 엔진은 일부만 읽음",
+    body: "memory-reconstructor.ts:122 가 strategy_snapshot 에서 p_target / p_limit / max_rounds 만 extractNumber() 로 읽음. negotiationStyle / riskStyle / openingTactic 은 어휘 자체가 엔진에 없어서 무시. Stage 3 LLM 프롬프트에도 안 들어감.",
+    active: ["n6", "n7", "n8", "d2", "d3", "d4"],
+    broken: [],
+    extraLost: true,
+    tone: "broken"
+  },
+];
+
+let currentStep = 0;
+let playing = false;
+let playTimer = null;
+
+const svg = document.getElementById("arrows");
+const stepNumEl = document.getElementById("stepNum");
+const stepTitleEl = document.getElementById("stepTitle");
+const stepBodyEl = document.getElementById("stepBody");
+const stepDescEl = document.getElementById("stepDesc");
+
+// === Compute SVG arrow path between two DOM nodes ===
+function getAnchor(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const stageRect = document.querySelector(".stage").getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  // Determine which side to anchor based on column position.
+  // For simplicity: use right edge for col 1/2 nodes going right, left for col 2/3 going left, etc.
+  // We'll just pick center-right and center-left depending on source/target column.
+  return {
+    el,
+    rect: r,
+    stageRect,
+    cx: r.left + r.width / 2 - stageRect.left,
+    cy: r.top + r.height / 2 - stageRect.top,
+    rightX: r.right - stageRect.left,
+    leftX: r.left - stageRect.left,
+    topY: r.top - stageRect.top,
+    botY: r.bottom - stageRect.top,
+    width: r.width, height: r.height,
+  };
+}
+
+function columnIndex(id) {
+  // n1..n4 = col1, n5..n8 = col2, d1..d5 = col3
+  if (id.startsWith("d")) return 2;
+  const n = parseInt(id.slice(1), 10);
+  if (n <= 4) return 0;
+  return 1;
+}
+
+function pathBetween(fromId, toId) {
+  const a = getAnchor(fromId);
+  const b = getAnchor(toId);
+  if (!a || !b) return null;
+  const ci = columnIndex(fromId);
+  const cj = columnIndex(toId);
+
+  let x1, y1, x2, y2;
+  if (ci < cj) {
+    x1 = a.rightX; y1 = a.cy;
+    x2 = b.leftX;  y2 = b.cy;
+  } else if (ci > cj) {
+    x1 = a.leftX; y1 = a.cy;
+    x2 = b.rightX; y2 = b.cy;
+  } else {
+    // same column — go vertical via side
+    x1 = a.rightX; y1 = a.cy;
+    x2 = b.rightX; y2 = b.cy;
+  }
+
+  // bezier control points
+  const dx = Math.abs(x2 - x1);
+  const cx1 = x1 + (ci < cj ? dx * 0.45 : -dx * 0.45);
+  const cy1 = y1;
+  const cx2 = x2 + (ci < cj ? -dx * 0.45 : dx * 0.45);
+  const cy2 = y2;
+  return { d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`, x1, y1, x2, y2 };
+}
+
+// === Render arrows for given step ===
+function renderArrows(step) {
+  // clear
+  while (svg.children.length > 1) svg.removeChild(svg.lastChild); // keep <defs>
+
+  const stepInfo = STEPS[step];
+  // Set viewBox to match stage size
+  const stage = document.querySelector(".stage");
+  const w = stage.clientWidth, h = stage.clientHeight;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("width", w);
+  svg.setAttribute("height", h);
+
+  EDGES.forEach(edge => {
+    const p = pathBetween(edge.from, edge.to);
+    if (!p) return;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", p.d);
+    path.setAttribute("fill", "none");
+
+    const isActive = stepInfo.active && stepInfo.active.includes(edge.from) && stepInfo.active.includes(edge.to);
+    const isBrokenNow = edge.brokenIn === step;
+    const isActiveInList = (edge.activeIn || []).includes(step);
+    let cls = "arrow-path";
+    let marker = "url(#arr-gray)";
+
+    if (isBrokenNow) {
+      cls = "arrow-path active-broken";
+      marker = "url(#arr-red)";
+    } else if (isActiveInList) {
+      cls = "arrow-path active";
+      marker = "url(#arr-green)";
+    } else if (edge.brokenIn !== null) {
+      cls = "arrow-path broken";
+      marker = "url(#arr-red)";
+    } else {
+      cls = "arrow-path";
+      marker = "url(#arr-gray)";
+    }
+
+    path.setAttribute("class", cls);
+    path.setAttribute("marker-end", marker);
+    path.setAttribute("id", "path-" + edge.id);
+    svg.appendChild(path);
+
+    // Token animation along this path (only if active in this step)
+    if (isActiveInList) {
+      const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      token.setAttribute("r", "4.5");
+      token.setAttribute("class", "token" + (isBrokenNow ? " broken" : ""));
+
+      const animate = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+      animate.setAttribute("dur", isBrokenNow ? "1.6s" : "1.2s");
+      animate.setAttribute("repeatCount", "indefinite");
+      animate.setAttribute("path", p.d);
+      if (isBrokenNow) {
+        // Token vanishes midway via opacity animation
+        animate.setAttribute("keyPoints", "0;0.6");
+        animate.setAttribute("keyTimes", "0;1");
+      }
+      token.appendChild(animate);
+
+      if (isBrokenNow) {
+        // fade out token
+        const op = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+        op.setAttribute("attributeName", "opacity");
+        op.setAttribute("values", "1;1;0");
+        op.setAttribute("keyTimes", "0;0.7;1");
+        op.setAttribute("dur", "1.6s");
+        op.setAttribute("repeatCount", "indefinite");
+        token.appendChild(op);
+      }
+      svg.appendChild(token);
+    }
+  });
+}
+
+// === Apply step state to nodes ===
+function applyStep(step) {
+  const stepInfo = STEPS[step];
+  // Clear all node states
+  document.querySelectorAll(".node").forEach(n => {
+    n.classList.remove("active", "broken");
+  });
+  // Apply
+  (stepInfo.active || []).forEach(id => {
+    const n = document.getElementById(id);
+    if (n) n.classList.add("active");
+  });
+  // For "broken" nodes (the data-lost nodes)
+  if (step === 3) {
+    // n2 holds memory but can't reach DB
+    document.getElementById("n2").classList.add("active");
+  }
+  if (step === 4) {
+    document.getElementById("n4").classList.add("broken");
+  }
+  if (step === 5) {
+    document.getElementById("n6").classList.add("broken");
+  }
+  if (step === 6) {
+    document.getElementById("d3").classList.add("broken");
+  }
+
+  // Update text
+  stepNumEl.textContent = step;
+  stepTitleEl.textContent = stepInfo.title;
+  stepBodyEl.textContent = stepInfo.body;
+  stepDescEl.classList.remove("broken", "ok");
+  if (stepInfo.tone) stepDescEl.classList.add(stepInfo.tone);
+
+  // Update pills
+  document.querySelectorAll(".steps-list .pill").forEach(p => p.classList.remove("current"));
+  if (step > 0) {
+    const pill = document.querySelector(`.steps-list .pill[data-step="${step}"]`);
+    if (pill) pill.classList.add("current");
+  }
+
+  renderArrows(step);
+}
+
+// === Controls ===
+document.getElementById("btnNext").addEventListener("click", () => {
+  if (currentStep < STEPS.length - 1) {
+    currentStep++;
+    applyStep(currentStep);
+  }
+});
+document.getElementById("btnPrev").addEventListener("click", () => {
+  if (currentStep > 0) {
+    currentStep--;
+    applyStep(currentStep);
+  }
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  stopPlay();
+  currentStep = 0;
+  applyStep(currentStep);
+});
+document.getElementById("btnPlay").addEventListener("click", () => {
+  if (playing) stopPlay();
+  else startPlay();
+});
+function startPlay() {
+  playing = true;
+  document.getElementById("btnPlay").textContent = "⏸ 일시정지";
+  playTimer = setInterval(() => {
+    if (currentStep < STEPS.length - 1) {
+      currentStep++;
+      applyStep(currentStep);
+    } else {
+      stopPlay();
+    }
+  }, 3200);
+}
+function stopPlay() {
+  playing = false;
+  document.getElementById("btnPlay").textContent = "▶ 자동재생";
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+}
+
+document.querySelectorAll(".steps-list .pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    stopPlay();
+    currentStep = parseInt(pill.dataset.step, 10);
+    applyStep(currentStep);
+  });
+});
+
+// Initial render — wait a tick for layout
+window.addEventListener("load", () => {
+  setTimeout(() => applyStep(0), 50);
+});
+window.addEventListener("resize", () => {
+  setTimeout(() => applyStep(currentStep), 50);
+});
+</script>
+
+</body>
+</html>
