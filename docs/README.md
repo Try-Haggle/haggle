@@ -13,6 +13,7 @@
 | [`contracts/`](./contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 | [00_INDEX](./contracts/00_INDEX.md) |
 | [`strategy/`](./strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 | [00_INDEX](./strategy/00_INDEX.md) |
 | [`features/`](./features/00_INDEX.md) | 기능별 설계 문서 (태그, 분쟁, 게이미피케이션) | [00_INDEX](./features/00_INDEX.md) |
+| [`automation/`](./automation/00_INDEX.md) | 자동화 파이프라인 운영 규칙 | [00_INDEX](./automation/00_INDEX.md) |
 | [`meetings/`](./meetings/) | 미팅 노트, overview, 의사결정 기록 | — |
 | [`wip/`](./wip/) | 구현 중 임시 문서 (완료 시 삭제) | — |
 | [`archive/`](./archive/) | 구현 완료 또는 대체된 문서 (보존용) | — |
@@ -26,6 +27,7 @@
 | MVP 구현 계획 | [mvp/MVP_Final_Implementation_Plan.md](./mvp/MVP_Final_Implementation_Plan.md) |
 | MVP 기술 부채 | [mvp/MVP_TECH_DEBT.md](./mvp/MVP_TECH_DEBT.md) |
 | 스마트 컨트랙트 보안 | [contracts/smart-contract-security-report.md](./contracts/smart-contract-security-report.md) |
+| 자동화 브랜치 네이밍 | [automation/branch-naming.md](./automation/branch-naming.md) |
 | 해자 전략 | [strategy/Haggle_Moat_Strategy.md](./strategy/Haggle_Moat_Strategy.md) |
 | 태그 시스템 설계 | [features/tag-system-design.md](./features/tag-system-design.md) |
 | 분쟁 시스템 v2 | [features/분쟁_시스템_v2.md](./features/분쟁_시스템_v2.md) |
