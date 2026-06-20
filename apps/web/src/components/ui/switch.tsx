@@ -27,7 +27,7 @@ export function Switch({
       disabled={disabled}
       onClick={() => onCheckedChange?.(!checked)}
       className={cn(
-        "relative inline-flex shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+        "relative inline-flex shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50",
         sm ? "h-4 w-7" : "h-5 w-9",
         checked ? "bg-action-primary" : "bg-surface-sunken",
         className,

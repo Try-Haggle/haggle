@@ -9,10 +9,16 @@ export const chipStory: Story = {
   controls: {
     selected: { type: "boolean", default: false },
     size: { type: "select", options: ["sm", "md"], default: "md" },
+    removable: { type: "boolean", default: false },
     children: { type: "text", default: "전자기기" },
   },
   render: (a, className) => (
-    <Chip selected={a.selected as boolean} size={a.size as ChipProps["size"]} className={className}>
+    <Chip
+      selected={a.selected as boolean}
+      size={a.size as ChipProps["size"]}
+      onRemove={a.removable ? () => {} : undefined}
+      className={className}
+    >
       {a.children as string}
     </Chip>
   ),

@@ -35,7 +35,7 @@ export function ListRow({
   className,
 }: ListRowProps) {
   const classes = cn(
-    "group flex items-center gap-3 rounded-xl border p-4 text-left transition-colors",
+    "group flex items-center gap-3 rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
     active
       ? "border-action-primary/30 bg-action-primary/5"
       : "border-line bg-surface-raised hover:border-line-strong",
