@@ -4,6 +4,8 @@ import { backLinkStory } from "./back-link";
 import { badgeStory } from "./badge";
 import { buttonStory } from "./button";
 import { cardStory } from "./card";
+import { carouselStory } from "./carousel";
+import { chatBubbleStory } from "./chat-bubble";
 import { checkboxStory } from "./checkbox";
 import { chipStory } from "./chip";
 import { drawerStory } from "./drawer";
@@ -12,10 +14,12 @@ import { emptyStateStory } from "./empty-state";
 import { iconButtonStory } from "./icon-button";
 import { inputStory } from "./input";
 import { listRowStory } from "./list-row";
+import { messageListStory } from "./message-list";
 import { modalStory } from "./modal";
 import { pageHeaderStory } from "./page-header";
 import { popoverStory } from "./popover";
 import { progressBarStory } from "./progress-bar";
+import { radarStory } from "./radar";
 import { sectionHeaderStory } from "./section-header";
 import { selectStory } from "./select";
 import { spinnerStory } from "./spinner";
@@ -24,6 +28,7 @@ import { stepperStory } from "./stepper";
 import { switchStory } from "./switch";
 import { tabsStory } from "./tabs";
 import { textareaStory } from "./textarea";
+import { tierBadgeStory } from "./tier-badge";
 import type { Story, StoryArgs } from "./types";
 import { wizardShellStory } from "./wizard-shell";
 
@@ -56,6 +61,11 @@ export const stories: Story[] = [
   popoverStory,
   dropdownMenuStory,
   wizardShellStory,
+  radarStory,
+  carouselStory,
+  chatBubbleStory,
+  messageListStory,
+  tierBadgeStory,
 ];
 
 export interface StoryGroup {
@@ -68,10 +78,15 @@ export const storyGroups: StoryGroup[] = [
   { label: "Actions", slugs: ["button", "icon-button"] },
   { label: "Forms", slugs: ["input", "textarea", "select", "checkbox", "switch"] },
   { label: "Navigation", slugs: ["tabs", "stepper", "back-link"] },
-  { label: "Data display", slugs: ["avatar", "badge", "chip", "stat-tile", "list-row"] },
+  {
+    label: "Data display",
+    slugs: ["avatar", "badge", "chip", "tier-badge", "stat-tile", "list-row", "carousel"],
+  },
   { label: "Feedback", slugs: ["alert", "spinner", "progress-bar", "empty-state"] },
   { label: "Layout & surfaces", slugs: ["card", "page-header", "section-header"] },
   { label: "Overlays", slugs: ["modal", "drawer", "popover", "dropdown-menu", "wizard-shell"] },
+  { label: "Charts", slugs: ["radar"] },
+  { label: "Domain", slugs: ["chat-bubble", "message-list"] },
 ];
 
 export function getStory(slug: string): Story | undefined {
