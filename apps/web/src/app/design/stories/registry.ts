@@ -1,3 +1,4 @@
+import { activityFeedStory } from "./activity-feed";
 import { alertStory } from "./alert";
 import { avatarStory } from "./avatar";
 import { backLinkStory } from "./back-link";
@@ -16,12 +17,16 @@ import { inputStory } from "./input";
 import { listRowStory } from "./list-row";
 import { messageListStory } from "./message-list";
 import { modalStory } from "./modal";
+import { notificationItemStory } from "./notification-item";
 import { pageHeaderStory } from "./page-header";
 import { popoverStory } from "./popover";
 import { progressBarStory } from "./progress-bar";
+import { promoBannerStory } from "./promo-banner";
 import { radarStory } from "./radar";
+import { resultStateStory } from "./result-state";
 import { sectionHeaderStory } from "./section-header";
 import { selectStory } from "./select";
+import { selectableOptionCardStory } from "./selectable-option-card";
 import { spinnerStory } from "./spinner";
 import { statTileStory } from "./stat-tile";
 import { stepperStory } from "./stepper";
@@ -66,6 +71,11 @@ export const stories: Story[] = [
   chatBubbleStory,
   messageListStory,
   tierBadgeStory,
+  activityFeedStory,
+  notificationItemStory,
+  promoBannerStory,
+  resultStateStory,
+  selectableOptionCardStory,
 ];
 
 export interface StoryGroup {
@@ -76,13 +86,29 @@ export interface StoryGroup {
 /** Sidebar grouping for the catalog. Stories not listed here fall into "Other". */
 export const storyGroups: StoryGroup[] = [
   { label: "Actions", slugs: ["button", "icon-button"] },
-  { label: "Forms", slugs: ["input", "textarea", "select", "checkbox", "switch"] },
+  {
+    label: "Forms",
+    slugs: ["input", "textarea", "select", "checkbox", "switch", "selectable-option-card"],
+  },
   { label: "Navigation", slugs: ["tabs", "stepper", "back-link"] },
   {
     label: "Data display",
-    slugs: ["avatar", "badge", "chip", "tier-badge", "stat-tile", "list-row", "carousel"],
+    slugs: [
+      "avatar",
+      "badge",
+      "chip",
+      "tier-badge",
+      "stat-tile",
+      "list-row",
+      "carousel",
+      "activity-feed",
+      "notification-item",
+    ],
   },
-  { label: "Feedback", slugs: ["alert", "spinner", "progress-bar", "empty-state"] },
+  {
+    label: "Feedback",
+    slugs: ["alert", "spinner", "progress-bar", "empty-state", "promo-banner", "result-state"],
+  },
   { label: "Layout & surfaces", slugs: ["card", "page-header", "section-header"] },
   { label: "Overlays", slugs: ["modal", "drawer", "popover", "dropdown-menu", "wizard-shell"] },
   { label: "Charts", slugs: ["radar"] },
