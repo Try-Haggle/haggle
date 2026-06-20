@@ -58,6 +58,22 @@ export const stories: Story[] = [
   wizardShellStory,
 ];
 
+export interface StoryGroup {
+  label: string;
+  slugs: string[];
+}
+
+/** Sidebar grouping for the catalog. Stories not listed here fall into "Other". */
+export const storyGroups: StoryGroup[] = [
+  { label: "Actions", slugs: ["button", "icon-button"] },
+  { label: "Forms", slugs: ["input", "textarea", "select", "checkbox", "switch"] },
+  { label: "Navigation", slugs: ["tabs", "stepper", "back-link"] },
+  { label: "Data display", slugs: ["avatar", "badge", "chip", "stat-tile", "list-row"] },
+  { label: "Feedback", slugs: ["alert", "spinner", "progress-bar", "empty-state"] },
+  { label: "Layout & surfaces", slugs: ["card", "page-header", "section-header"] },
+  { label: "Overlays", slugs: ["modal", "drawer", "popover", "dropdown-menu", "wizard-shell"] },
+];
+
 export function getStory(slug: string): Story | undefined {
   return stories.find((s) => s.slug === slug);
 }
