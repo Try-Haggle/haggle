@@ -13,6 +13,7 @@ import { copyButtonStory } from "./copy-button";
 import { disclosureStory } from "./disclosure";
 import { drawerStory } from "./drawer";
 import { dropdownMenuStory } from "./dropdown-menu";
+import { dropzoneStory } from "./dropzone";
 import { emptyStateStory } from "./empty-state";
 import { evidenceCardStory } from "./evidence-card";
 import { iconButtonStory } from "./icon-button";
@@ -24,6 +25,7 @@ import { notificationItemStory } from "./notification-item";
 import { pageHeaderStory } from "./page-header";
 import { popoverStory } from "./popover";
 import { positionPanelStory } from "./position-panel";
+import { priceStory } from "./price";
 import { progressBarStory } from "./progress-bar";
 import { promoBannerStory } from "./promo-banner";
 import { radarStory } from "./radar";
@@ -38,6 +40,7 @@ import { statTileStory } from "./stat-tile";
 import { stepperStory } from "./stepper";
 import { switchStory } from "./switch";
 import { tabsStory } from "./tabs";
+import { tagInputStory } from "./tag-input";
 import { textareaStory } from "./textarea";
 import { tierBadgeStory } from "./tier-badge";
 import type { Story, StoryArgs } from "./types";
@@ -90,6 +93,9 @@ export const stories: Story[] = [
   skeletonStory,
   copyButtonStory,
   disclosureStory,
+  priceStory,
+  tagInputStory,
+  dropzoneStory,
 ];
 
 export interface StoryGroup {
@@ -109,6 +115,8 @@ export const storyGroups: StoryGroup[] = [
       "checkbox",
       "switch",
       "slider",
+      "tag-input",
+      "dropzone",
       "selectable-option-card",
     ],
   },
@@ -125,6 +133,7 @@ export const storyGroups: StoryGroup[] = [
       "carousel",
       "activity-feed",
       "notification-item",
+      "price",
     ],
   },
   {
