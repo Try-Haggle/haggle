@@ -4,17 +4,20 @@ import { backLinkStory } from "./back-link";
 import { badgeStory } from "./badge";
 import { buttonStory } from "./button";
 import { cardStory } from "./card";
+import { checkboxStory } from "./checkbox";
 import { chipStory } from "./chip";
 import { emptyStateStory } from "./empty-state";
 import { iconButtonStory } from "./icon-button";
 import { inputStory } from "./input";
 import { listRowStory } from "./list-row";
+import { modalStory } from "./modal";
 import { pageHeaderStory } from "./page-header";
 import { progressBarStory } from "./progress-bar";
 import { sectionHeaderStory } from "./section-header";
 import { selectStory } from "./select";
 import { spinnerStory } from "./spinner";
 import { statTileStory } from "./stat-tile";
+import { stepperStory } from "./stepper";
 import { switchStory } from "./switch";
 import { tabsStory } from "./tabs";
 import { textareaStory } from "./textarea";
@@ -29,6 +32,7 @@ export const stories: Story[] = [
   inputStory,
   textareaStory,
   selectStory,
+  checkboxStory,
   switchStory,
   alertStory,
   cardStory,
@@ -42,6 +46,8 @@ export const stories: Story[] = [
   backLinkStory,
   tabsStory,
   progressBarStory,
+  stepperStory,
+  modalStory,
 ];
 
 export function getStory(slug: string): Story | undefined {
