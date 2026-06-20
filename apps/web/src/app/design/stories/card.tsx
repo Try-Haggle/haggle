@@ -9,8 +9,13 @@ export const cardStory: Story = {
   name: "Card",
   componentName: "Card",
   controls: {
-    tone: { type: "select", options: ["default", "sunken", "premium"], default: "default" },
-    padding: { type: "select", options: ["none", "sm", "md"], default: "md" },
+    tone: {
+      type: "select",
+      options: ["default", "sunken", "danger", "premium"],
+      default: "default",
+    },
+    padding: { type: "select", options: ["none", "sm", "md", "lg"], default: "md" },
+    radius: { type: "select", options: ["lg", "xl"], default: "xl" },
   },
   render: (a, className) => {
     const premium = a.tone === "premium";
@@ -18,6 +23,7 @@ export const cardStory: Story = {
       <Card
         tone={a.tone as CardProps["tone"]}
         padding={a.padding as CardProps["padding"]}
+        radius={a.radius as CardProps["radius"]}
         className={cn("w-80", className)}
       >
         <Badge tone={premium ? "gold" : "info"} dot={!premium}>
