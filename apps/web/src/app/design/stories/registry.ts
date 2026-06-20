@@ -9,6 +9,8 @@ import { carouselStory } from "./carousel";
 import { chatBubbleStory } from "./chat-bubble";
 import { checkboxStory } from "./checkbox";
 import { chipStory } from "./chip";
+import { copyButtonStory } from "./copy-button";
+import { disclosureStory } from "./disclosure";
 import { drawerStory } from "./drawer";
 import { dropdownMenuStory } from "./dropdown-menu";
 import { emptyStateStory } from "./empty-state";
@@ -29,6 +31,7 @@ import { resultStateStory } from "./result-state";
 import { sectionHeaderStory } from "./section-header";
 import { selectStory } from "./select";
 import { selectableOptionCardStory } from "./selectable-option-card";
+import { skeletonStory } from "./skeleton";
 import { sliderStory } from "./slider";
 import { spinnerStory } from "./spinner";
 import { statTileStory } from "./stat-tile";
@@ -84,6 +87,9 @@ export const stories: Story[] = [
   positionPanelStory,
   voteSliderStory,
   sliderStory,
+  skeletonStory,
+  copyButtonStory,
+  disclosureStory,
 ];
 
 export interface StoryGroup {
@@ -93,7 +99,7 @@ export interface StoryGroup {
 
 /** Sidebar grouping for the catalog. Stories not listed here fall into "Other". */
 export const storyGroups: StoryGroup[] = [
-  { label: "Actions", slugs: ["button", "icon-button"] },
+  { label: "Actions", slugs: ["button", "icon-button", "copy-button"] },
   {
     label: "Forms",
     slugs: [
@@ -123,9 +129,17 @@ export const storyGroups: StoryGroup[] = [
   },
   {
     label: "Feedback",
-    slugs: ["alert", "spinner", "progress-bar", "empty-state", "promo-banner", "result-state"],
+    slugs: [
+      "alert",
+      "spinner",
+      "skeleton",
+      "progress-bar",
+      "empty-state",
+      "promo-banner",
+      "result-state",
+    ],
   },
-  { label: "Layout & surfaces", slugs: ["card", "page-header", "section-header"] },
+  { label: "Layout & surfaces", slugs: ["card", "page-header", "section-header", "disclosure"] },
   { label: "Overlays", slugs: ["modal", "drawer", "popover", "dropdown-menu", "wizard-shell"] },
   { label: "Charts", slugs: ["radar"] },
   {

@@ -1,0 +1,42 @@
+"use client";
+
+import { Check, Copy } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { cn } from "@/lib/cn";
+
+export interface CopyButtonProps {
+  value: string;
+  label?: ReactNode;
+  size?: "sm" | "md";
+  className?: string;
+}
+
+export function CopyButton({ value, label, size = "md", className }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable — no-op
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={copied ? "Copied" : "Copy"}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-lg border border-line text-ink-secondary transition hover:border-line-strong hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
+        size === "sm" ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-sm",
+        className,
+      )}
+    >
+      {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
+      {label}
+    </button>
+  );
+}
