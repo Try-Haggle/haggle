@@ -1,5 +1,6 @@
 export * from "./alert";
 export * from "./avatar";
+export * from "./back-link";
 export * from "./badge";
 export * from "./button";
 export * from "./card";
@@ -8,6 +9,10 @@ export * from "./empty-state";
 export * from "./icon-button";
 export * from "./input";
 export * from "./list-row";
+export * from "./page-header";
+export * from "./progress-bar";
+export * from "./section-header";
 export * from "./spinner";
 export * from "./stat-tile";
 export * from "./switch";
+export * from "./tabs";
