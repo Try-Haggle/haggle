@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 export function DesignSidebarNav({ items }: { items: { href: string; label: string }[] }) {
   const pathname = usePathname();
   return (
-    <nav className="space-y-0.5">
+    <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
       {items.map((item) => {
         const active = pathname === item.href;
         return (
