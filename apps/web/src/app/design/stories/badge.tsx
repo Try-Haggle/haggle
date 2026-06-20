@@ -12,11 +12,17 @@ export const badgeStory: Story = {
       options: ["gold", "success", "info", "warning", "error", "neutral"],
       default: "gold",
     },
+    size: { type: "select", options: ["sm", "md"], default: "md" },
     dot: { type: "boolean", default: false },
     children: { type: "text", default: "베타 출시" },
   },
   render: (a, className) => (
-    <Badge tone={a.tone as BadgeProps["tone"]} dot={a.dot as boolean} className={className}>
+    <Badge
+      tone={a.tone as BadgeProps["tone"]}
+      size={a.size as BadgeProps["size"]}
+      dot={a.dot as boolean}
+      className={className}
+    >
       {a.children as string}
     </Badge>
   ),
