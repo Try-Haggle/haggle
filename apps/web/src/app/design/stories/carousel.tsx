@@ -6,10 +6,12 @@ export const carouselStory: Story = {
   slug: "carousel",
   name: "Carousel",
   componentName: "Carousel",
-  controls: {},
-  render: (_a, className) => (
+  controls: {
+    withTitle: { type: "boolean", default: true },
+  },
+  render: (a, className) => (
     <div className={cn("w-[32rem] min-w-0 max-w-full", className)}>
-      <Carousel title="비슷한 매물" ariaLabel="데모 항목">
+      <Carousel title={a.withTitle ? "비슷한 매물" : undefined} ariaLabel="데모 항목">
         {Array.from({ length: 8 }, (_, i) => `card-${i + 1}`).map((key, i) => (
           <div
             key={key}
