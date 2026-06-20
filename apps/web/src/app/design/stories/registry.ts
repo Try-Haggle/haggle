@@ -6,12 +6,15 @@ import { buttonStory } from "./button";
 import { cardStory } from "./card";
 import { checkboxStory } from "./checkbox";
 import { chipStory } from "./chip";
+import { drawerStory } from "./drawer";
+import { dropdownMenuStory } from "./dropdown-menu";
 import { emptyStateStory } from "./empty-state";
 import { iconButtonStory } from "./icon-button";
 import { inputStory } from "./input";
 import { listRowStory } from "./list-row";
 import { modalStory } from "./modal";
 import { pageHeaderStory } from "./page-header";
+import { popoverStory } from "./popover";
 import { progressBarStory } from "./progress-bar";
 import { sectionHeaderStory } from "./section-header";
 import { selectStory } from "./select";
@@ -22,6 +25,7 @@ import { switchStory } from "./switch";
 import { tabsStory } from "./tabs";
 import { textareaStory } from "./textarea";
 import type { Story, StoryArgs } from "./types";
+import { wizardShellStory } from "./wizard-shell";
 
 /** Add a component to the catalog by appending its story here. */
 export const stories: Story[] = [
@@ -48,6 +52,10 @@ export const stories: Story[] = [
   progressBarStory,
   stepperStory,
   modalStory,
+  drawerStory,
+  popoverStory,
+  dropdownMenuStory,
+  wizardShellStory,
 ];
 
 export function getStory(slug: string): Story | undefined {
