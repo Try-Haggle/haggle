@@ -37,7 +37,7 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(
             type="button"
             onClick={onRemove}
             aria-label="Remove"
-            className="-mr-1 ml-0.5 rounded-full p-0.5 opacity-70 transition hover:bg-ink/10 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+            className="-mr-1 ml-0.5 rounded-full p-1 opacity-70 transition hover:bg-ink/10 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
           >
             <X className="size-3" />
           </button>

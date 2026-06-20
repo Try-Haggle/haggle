@@ -1,18 +1,49 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { Popover, type PopoverProps, usePopoverClose } from "./popover";
 
 export type DropdownMenuProps = Pick<
   PopoverProps,
-  "trigger" | "align" | "open" | "defaultOpen" | "onOpenChange" | "className"
+  "trigger" | "align" | "side" | "open" | "defaultOpen" | "onOpenChange" | "className"
 > & { children: ReactNode };
+
+function handleMenuKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+  const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
+  if (!keys.includes(e.key)) return;
+
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  if (items.length === 0) return;
+
+  e.preventDefault();
+  const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+  let nextIndex: number;
+  switch (e.key) {
+    case "ArrowDown":
+      nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+      break;
+    case "ArrowUp":
+      nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+      break;
+    case "Home":
+      nextIndex = 0;
+      break;
+    default:
+      nextIndex = items.length - 1;
+      break;
+  }
+
+  items[nextIndex]?.focus();
+}
 
 export function DropdownMenu({ children, ...props }: DropdownMenuProps) {
   return (
     <Popover {...props} panelClassName="min-w-[12rem] p-1">
-      {children}
+      <div role="menu" onKeyDown={handleMenuKeyDown}>
+        {children}
+      </div>
     </Popover>
   );
 }
@@ -30,6 +61,7 @@ export function DropdownMenuItem({ onSelect, icon, destructive, children }: Drop
   return (
     <button
       type="button"
+      role="menuitem"
       onClick={() => {
         onSelect?.();
         close();

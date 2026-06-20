@@ -1,8 +1,9 @@
 "use client";
 
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { cn } from "@/lib/cn";
 
 export interface DrawerProps {
@@ -35,6 +36,10 @@ export function Drawer({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open);
+  const titleId = useId();
+
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -61,8 +66,11 @@ export function Drawer({
         className="absolute inset-0 bg-black/50"
       />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        tabIndex={-1}
         className={cn(
           "absolute flex flex-col border-line bg-surface-raised shadow-xl",
           sideClass[side],
@@ -71,15 +79,19 @@ export function Drawer({
       >
         {title && (
           <div className="flex items-center justify-between gap-3 border-line border-b px-5 py-4">
-            <h2 className="font-semibold text-ink text-lg">{title}</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="-mr-1 rounded p-1 text-ink-muted transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
-            >
-              <X className="size-5" />
-            </button>
+            <h2 id={titleId} className="font-semibold text-ink text-lg">
+              {title}
+            </h2>
+            {dismissible && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="-mr-1 rounded p-1 text-ink-muted transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+              >
+                <X className="size-5" />
+              </button>
+            )}
           </div>
         )}
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>

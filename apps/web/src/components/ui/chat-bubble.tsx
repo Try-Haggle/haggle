@@ -27,7 +27,7 @@ export function ChatBubble({
         )}
       >
         {author && <div className="mb-1 font-medium text-ink-secondary text-xs">{author}</div>}
-        <div className="text-ink">{children}</div>
+        <div className="break-words text-ink">{children}</div>
         {footer && <div className="mt-1.5 text-ink-muted text-xs">{footer}</div>}
       </div>
     </div>

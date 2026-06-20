@@ -16,15 +16,24 @@ export interface MessageListProps {
  */
 export function MessageList({ children, autoScroll = true, className }: MessageListProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
 
   useEffect(() => {
-    if (autoScroll && ref.current) {
-      ref.current.scrollTop = ref.current.scrollHeight;
+    const el = ref.current;
+    if (autoScroll && el && atBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   });
 
   return (
-    <div ref={ref} className={cn("flex flex-col gap-2 overflow-y-auto", className)}>
+    <div
+      ref={ref}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+      }}
+      className={cn("flex flex-col gap-2 overflow-y-auto", className)}
+    >
       {children}
     </div>
   );

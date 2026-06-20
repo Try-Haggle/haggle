@@ -46,9 +46,8 @@ export function Radar({
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      width={size}
-      height={size}
-      className={className}
+      className={cn("h-auto w-full", className)}
+      style={{ maxWidth: size }}
       aria-hidden="true"
     >
       <g className="text-line" stroke="currentColor" fill="none">

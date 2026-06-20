@@ -56,7 +56,7 @@ export function Alert({
           type="button"
           onClick={onClose}
           aria-label="Dismiss"
-          className="-mr-1 -mt-1 shrink-0 rounded p-1 opacity-70 transition hover:opacity-100"
+          className="-mr-1 -mt-1 shrink-0 rounded p-1.5 opacity-70 transition hover:opacity-100"
         >
           <X className="size-4" />
         </button>

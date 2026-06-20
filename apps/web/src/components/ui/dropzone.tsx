@@ -10,10 +10,23 @@ export interface DropzoneProps {
   multiple?: boolean;
   label?: ReactNode;
   hint?: ReactNode;
+  disabled?: boolean;
+  buttonLabel?: string;
+  id?: string;
   className?: string;
 }
 
-export function Dropzone({ onFiles, accept, multiple, label, hint, className }: DropzoneProps) {
+export function Dropzone({
+  onFiles,
+  accept,
+  multiple,
+  label,
+  hint,
+  disabled = false,
+  buttonLabel = "파일 선택",
+  id,
+  className,
+}: DropzoneProps) {
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -22,14 +35,16 @@ export function Dropzone({ onFiles, accept, multiple, label, hint, className }: 
   };
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop is an enhancement; the "파일 선택" button is the accessible control
+    // biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop is an enhancement; the file-select button is the accessible control
     <div
       onDragOver={(e) => {
+        if (disabled) return;
         e.preventDefault();
         setOver(true);
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
+        if (disabled) return;
         e.preventDefault();
         setOver(false);
         emit(e.dataTransfer.files);
@@ -37,6 +52,7 @@ export function Dropzone({ onFiles, accept, multiple, label, hint, className }: 
       className={cn(
         "flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors",
         over ? "border-action-primary bg-action-primary/5" : "border-line",
+        disabled && "opacity-50",
         className,
       )}
     >
@@ -45,16 +61,19 @@ export function Dropzone({ onFiles, accept, multiple, label, hint, className }: 
       {hint && <div className="text-ink-muted text-xs">{hint}</div>}
       <button
         type="button"
+        disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        className="mt-1 rounded-lg border border-line px-3 py-1.5 text-ink-secondary text-sm transition hover:border-line-strong hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+        className="mt-1 rounded-lg border border-line px-3 py-1.5 text-ink-secondary text-sm transition hover:border-line-strong hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        파일 선택
+        {buttonLabel}
       </button>
       <input
         ref={inputRef}
+        id={id}
         type="file"
         accept={accept}
         multiple={multiple}
+        disabled={disabled}
         onChange={(e) => emit(e.target.files)}
         className="hidden"
       />

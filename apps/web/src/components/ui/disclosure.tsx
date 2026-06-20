@@ -7,17 +7,35 @@ import { cn } from "@/lib/cn";
 export interface DisclosureProps {
   title: ReactNode;
   defaultOpen?: boolean;
+  /** Controlled open state. Omit for uncontrolled (see `defaultOpen`). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
   className?: string;
 }
 
-export function Disclosure({ title, defaultOpen = false, children, className }: DisclosureProps) {
-  const [open, setOpen] = useState(defaultOpen);
+export function Disclosure({
+  title,
+  defaultOpen = false,
+  open: openProp,
+  onOpenChange,
+  children,
+  className,
+}: DisclosureProps) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const open = openProp ?? internalOpen;
+
+  function toggle() {
+    const next = !open;
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  }
+
   return (
     <div className={cn("rounded-xl border border-line", className)}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left font-medium text-ink text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
       >

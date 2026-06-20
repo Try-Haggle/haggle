@@ -18,7 +18,11 @@ import { cn } from "@/lib/cn";
 const PopoverContext = createContext<{ close: () => void }>({ close: () => {} });
 export const usePopoverClose = () => useContext(PopoverContext).close;
 
-type TriggerProps = { onClick?: MouseEventHandler; "aria-expanded"?: boolean };
+type TriggerProps = {
+  onClick?: MouseEventHandler;
+  "aria-expanded"?: boolean;
+  "aria-haspopup"?: boolean;
+};
 
 export interface PopoverProps {
   /** The clickable element that toggles the popover. */
@@ -28,6 +32,7 @@ export interface PopoverProps {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   align?: "left" | "right";
+  side?: "bottom" | "top";
   panelClassName?: string;
   className?: string;
 }
@@ -39,6 +44,7 @@ export function Popover({
   defaultOpen = false,
   onOpenChange,
   align = "left",
+  side = "bottom",
   panelClassName,
   className,
 }: PopoverProps) {
@@ -70,9 +76,10 @@ export function Popover({
         setOpen(!open);
       },
       "aria-expanded": open,
+      "aria-haspopup": true,
     })
   ) : (
-    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>
+    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup>
       {trigger}
     </button>
   );
@@ -84,7 +91,8 @@ export function Popover({
         <PopoverContext.Provider value={{ close: () => setOpen(false) }}>
           <div
             className={cn(
-              "absolute z-50 mt-2 rounded-xl border border-line bg-surface-raised p-2 shadow-card",
+              "absolute z-50 max-w-[calc(100vw-1rem)] rounded-xl border border-line bg-surface-raised p-2 shadow-card",
+              side === "top" ? "bottom-full mb-2" : "top-full mt-2",
               align === "right" ? "right-0" : "left-0",
               panelClassName,
             )}

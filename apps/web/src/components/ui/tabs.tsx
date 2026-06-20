@@ -1,4 +1,6 @@
-import type { KeyboardEvent, ReactNode } from "react";
+"use client";
+
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { cn } from "@/lib/cn";
 
 export interface TabItem {
@@ -9,7 +11,10 @@ export interface TabItem {
 
 export interface TabsProps {
   items: TabItem[];
-  value: string;
+  /** Controlled active key. Omit for uncontrolled (see `defaultValue`). */
+  value?: string;
+  /** Initial active key when uncontrolled. Defaults to the first item. */
+  defaultValue?: string;
   onValueChange?: (key: string) => void;
   variant?: "segmented" | "underline";
   /** Equal-width tabs spanning the full container. */
@@ -19,12 +24,21 @@ export interface TabsProps {
 
 export function Tabs({
   items,
-  value,
+  value: valueProp,
+  defaultValue,
   onValueChange,
   variant = "segmented",
   fullWidth = false,
   className,
 }: TabsProps) {
+  const [internalValue, setInternalValue] = useState(defaultValue ?? items[0]?.key);
+  const value = valueProp ?? internalValue;
+
+  function selectTab(key: string) {
+    if (valueProp === undefined) setInternalValue(key);
+    onValueChange?.(key);
+  }
+
   // Roving keyboard nav (ArrowLeft/Right/Home/End) per the ARIA tablist pattern.
   function handleKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
     const last = items.length - 1;
@@ -35,7 +49,7 @@ export function Tabs({
     else if (e.key === "End") next = last;
     if (next === null) return;
     e.preventDefault();
-    onValueChange?.(items[next].key);
+    selectTab(items[next].key);
     const buttons =
       e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
     buttons?.[next]?.focus();
@@ -47,6 +61,7 @@ export function Tabs({
     <div
       role="tablist"
       className={cn(
+        "overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
         segmented
           ? "inline-flex gap-1 rounded-lg bg-surface-sunken p-[3px]"
           : "flex gap-6 border-line border-b",
@@ -63,20 +78,20 @@ export function Tabs({
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
-            onClick={() => onValueChange?.(t.key)}
+            onClick={() => selectTab(t.key)}
             onKeyDown={(e) => handleKeyDown(e, i)}
             className={cn(
-              "font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
+              "min-h-10 shrink-0 whitespace-nowrap font-medium text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
               fullWidth && "flex-1 text-center",
               segmented
                 ? cn(
-                    "rounded-md px-3 py-1.5",
+                    "rounded-md px-3 py-2",
                     active
                       ? "bg-surface-raised text-ink shadow-sm"
                       : "text-ink-secondary hover:text-ink",
                   )
                 : cn(
-                    "-mb-px rounded-sm border-b-2 pb-2.5",
+                    "-mb-px rounded-sm border-b-2 py-2",
                     active
                       ? "border-action-primary text-ink"
                       : "border-transparent text-ink-secondary hover:text-ink",

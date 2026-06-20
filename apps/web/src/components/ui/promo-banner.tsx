@@ -7,7 +7,7 @@ export interface PromoBannerProps {
   description?: ReactNode;
   action?: ReactNode;
   icon?: ReactNode;
-  tone?: "default" | "success";
+  tone?: "default" | "success" | "info" | "warning";
   onClose?: () => void;
   className?: string;
 }
@@ -25,7 +25,10 @@ export function PromoBanner({
     <div
       className={cn(
         "flex items-center gap-4 rounded-xl border px-4 py-3",
-        tone === "success" ? "border-success/30 bg-success-soft" : "border-line bg-surface-sunken",
+        tone === "success" && "border-success/30 bg-success-soft",
+        tone === "info" && "border-info/30 bg-info-soft",
+        tone === "warning" && "border-warning/30 bg-warning-soft",
+        tone === "default" && "border-line bg-surface-sunken",
         className,
       )}
     >

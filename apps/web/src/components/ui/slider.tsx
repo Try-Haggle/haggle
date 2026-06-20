@@ -10,6 +10,7 @@ export interface SliderProps {
   max?: number;
   step?: number;
   disabled?: boolean;
+  name?: string;
   "aria-label"?: string;
   className?: string;
 }
@@ -21,6 +22,7 @@ export function Slider({
   max = 100,
   step = 1,
   disabled = false,
+  name,
   className,
   ...rest
 }: SliderProps) {
@@ -31,6 +33,7 @@ export function Slider({
       step={step}
       value={[value]}
       disabled={disabled}
+      name={name}
       onValueChange={(v) => onValueChange(v[0])}
       className={cn(
         "relative flex w-full touch-none select-none items-center data-[disabled]:opacity-50",

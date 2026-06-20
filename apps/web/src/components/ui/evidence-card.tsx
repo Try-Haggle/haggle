@@ -11,6 +11,8 @@ export interface EvidenceCardProps {
   submittedBy?: ReactNode;
   time?: ReactNode;
   previewUrl?: string;
+  /** Alt text for the preview image. */
+  previewAlt?: string;
   /** On-chain anchor hash, shown as a mono chip. */
   hash?: string;
   side?: "buyer" | "seller";
@@ -23,6 +25,7 @@ export function EvidenceCard({
   submittedBy,
   time,
   previewUrl,
+  previewAlt,
   hash,
   side,
   children,
@@ -43,11 +46,15 @@ export function EvidenceCard({
       {submittedBy && <div className="mt-0.5 text-ink-muted text-xs">{submittedBy}</div>}
       {previewUrl && (
         // biome-ignore lint/performance/noImgElement: evidence preview is a user-uploaded image
-        <img src={previewUrl} alt="" className="mt-3 max-h-40 w-full rounded-lg object-cover" />
+        <img
+          src={previewUrl}
+          alt={previewAlt ?? "제출된 증거"}
+          className="mt-3 max-h-40 w-full rounded-lg object-cover"
+        />
       )}
       {children && <p className="mt-2 text-ink-secondary text-sm">{children}</p>}
       {hash && (
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-surface-sunken px-2.5 py-1 font-mono text-[11px] text-ink-muted">
+        <div className="mt-3 inline-flex max-w-full items-center gap-1.5 truncate rounded-full bg-surface-sunken px-2.5 py-1 font-mono text-[11px] text-ink-muted">
           ⛓ Anchored {hash}
         </div>
       )}
