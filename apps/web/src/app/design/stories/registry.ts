@@ -29,6 +29,7 @@ import { priceStory } from "./price";
 import { progressBarStory } from "./progress-bar";
 import { promoBannerStory } from "./promo-banner";
 import { radarStory } from "./radar";
+import { rangeSliderStory } from "./range-slider";
 import { resultStateStory } from "./result-state";
 import { sectionHeaderStory } from "./section-header";
 import { selectStory } from "./select";
@@ -90,6 +91,7 @@ export const stories: Story[] = [
   positionPanelStory,
   voteSliderStory,
   sliderStory,
+  rangeSliderStory,
   skeletonStory,
   copyButtonStory,
   disclosureStory,
@@ -115,6 +117,7 @@ export const storyGroups: StoryGroup[] = [
       "checkbox",
       "switch",
       "slider",
+      "range-slider",
       "tag-input",
       "dropzone",
       "selectable-option-card",

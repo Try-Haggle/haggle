@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { Popover, type PopoverProps, usePopoverClose } from "./popover";
@@ -52,16 +53,25 @@ export interface DropdownMenuItemProps {
   onSelect?: () => void;
   icon?: ReactNode;
   destructive?: boolean;
+  /** Marks the current choice — shows a trailing check and emphasizes the label. */
+  selected?: boolean;
   children: ReactNode;
 }
 
 /** Closes the parent menu automatically after selection. */
-export function DropdownMenuItem({ onSelect, icon, destructive, children }: DropdownMenuItemProps) {
+export function DropdownMenuItem({
+  onSelect,
+  icon,
+  destructive,
+  selected,
+  children,
+}: DropdownMenuItemProps) {
   const close = usePopoverClose();
   return (
     <button
       type="button"
       role="menuitem"
+      aria-current={selected || undefined}
       onClick={() => {
         onSelect?.();
         close();
@@ -70,11 +80,14 @@ export function DropdownMenuItem({ onSelect, icon, destructive, children }: Drop
         "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60",
         destructive
           ? "text-error hover:bg-error-soft"
-          : "text-ink-secondary hover:bg-surface-sunken hover:text-ink",
+          : selected
+            ? "font-medium text-ink hover:bg-surface-sunken"
+            : "text-ink-secondary hover:bg-surface-sunken hover:text-ink",
       )}
     >
       {icon && <span className="shrink-0">{icon}</span>}
-      {children}
+      <span className="flex-1 truncate">{children}</span>
+      {selected && <Check className="size-4 shrink-0 text-action-primary" aria-hidden="true" />}
     </button>
   );
 }

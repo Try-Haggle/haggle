@@ -1,9 +1,13 @@
 "use client";
 
 import { ITEM_CONDITIONS, LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
-import * as Slider from "@radix-ui/react-slider";
 import { useEffect, useState } from "react";
-import { Drawer } from "vaul";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Chip } from "@/components/ui/chip";
+import { Drawer } from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
+import { RangeSlider } from "@/components/ui/slider";
 import type { BrowseFilters } from "../page";
 import {
   CONDITION_LABELS,
@@ -16,8 +20,6 @@ import {
 
 type Condition = (typeof ITEM_CONDITIONS)[number];
 type Category = (typeof LISTING_CATEGORIES)[number];
-
-const SNAP_POINTS = [0.85, 1] as const;
 
 export function FilterSheet({
   open,
@@ -33,7 +35,6 @@ export function FilterSheet({
   priceBuckets: PriceBucket[];
 }) {
   const update = useUpdateParams();
-  const [snap, setSnap] = useState<number | string | null>(SNAP_POINTS[0]);
 
   const bounds =
     priceRange && priceRange.max > priceRange.min
@@ -62,7 +63,6 @@ export function FilterSheet({
     if (!open) return;
     setCategories(filters.categories);
     setConditions(filters.conditions);
-    setSnap(SNAP_POINTS[0]);
     if (bounds && scale) {
       const lo = filters.minPrice !== undefined ? scale.priceToSlider(filters.minPrice) : 0;
       const hi =
@@ -143,216 +143,124 @@ export function FilterSheet({
     (conditions.length > 0 ? 1 : 0);
 
   return (
-    <Drawer.Root
+    <Drawer
       open={open}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      snapPoints={[...SNAP_POINTS]}
-      activeSnapPoint={snap}
-      setActiveSnapPoint={setSnap}
+      onClose={onClose}
+      side="bottom"
+      title="Filters"
+      footer={
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" onClick={resetLocal}>
+            Reset all
+          </Button>
+          <Button className="ml-auto" onClick={applyAll}>
+            Apply{localActiveCount > 0 ? ` (${localActiveCount})` : ""}
+          </Button>
+        </div>
+      }
     >
-      <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-50 bg-black/60" />
-        <Drawer.Content
-          aria-describedby={undefined}
-          className="fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-2xl border-t border-line bg-surface outline-none"
-          style={{
-            height: typeof snap === "number" ? `${snap * 100}dvh` : "100dvh",
-          }}
-        >
-          <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-surface-sunken" />
+      {/* Categories */}
+      <section className="pb-5">
+        <h3 className="mb-2 text-ink-muted text-xs uppercase tracking-wide">Categories</h3>
+        <div className="grid grid-cols-2 gap-1">
+          {LISTING_CATEGORIES.map((c) => (
+            <Checkbox
+              key={c}
+              checked={categories.includes(c)}
+              onChange={() => toggleCategory(c)}
+              label={LISTING_CATEGORY_LABELS[c]}
+            />
+          ))}
+        </div>
+      </section>
 
-          <div className="flex shrink-0 items-center justify-between px-5 pb-3 pt-3">
-            <Drawer.Title className="text-lg font-semibold text-ink">Filters</Drawer.Title>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close filters"
-              className="cursor-pointer rounded-lg p-1 text-ink-secondary hover:bg-surface-sunken hover:text-ink"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
+      {/* Price */}
+      <section className="border-line border-t py-5">
+        <h3 className="mb-2 text-ink-muted text-xs uppercase tracking-wide">Price</h3>
+        {!bounds ? (
+          <p className="text-ink-secondary text-sm">No priced listings to filter.</p>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center justify-between text-sm">
+              <span className="text-ink-secondary">${liveLo}</span>
+              <span className="text-ink-secondary">${liveHi}</span>
+            </div>
+            <RangeSlider
+              min={0}
+              max={SLIDER_RES}
+              step={1}
+              minStepsBetweenThumbs={1}
+              value={sliderValues}
+              onValueChange={setSliderValues}
+              minLabel="Min price"
+              maxLabel="Max price"
+            />
+            <div className="mt-1 flex items-center justify-between text-ink-muted text-xs">
+              <span>${bounds.min}</span>
+              <span>${bounds.max}</span>
+            </div>
 
-          <div className="flex-1 overflow-y-auto overscroll-contain">
-            {/* Categories */}
-            <section className="px-5 py-5">
-              <h3 className="mb-2 text-xs uppercase tracking-wide text-ink-muted">Categories</h3>
-              <div className="grid grid-cols-2 gap-1">
-                {LISTING_CATEGORIES.map((c) => {
-                  const checked = categories.includes(c);
-                  return (
-                    <label
-                      key={c}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink hover:bg-surface-sunken"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleCategory(c)}
-                        className="h-4 w-4 accent-action-primary"
-                      />
-                      {LISTING_CATEGORY_LABELS[c]}
-                    </label>
-                  );
-                })}
+            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={bounds.min}
+                max={bounds.max}
+                placeholder="Min"
+                value={minInput}
+                onChange={(e) => setMinInput(e.target.value)}
+                onBlur={applyInputs}
+                startAdornment="$"
+                aria-label="Minimum price"
+              />
+              <span className="text-ink-muted">–</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={bounds.min}
+                max={bounds.max}
+                placeholder="Max"
+                value={maxInput}
+                onChange={(e) => setMaxInput(e.target.value)}
+                onBlur={applyInputs}
+                startAdornment="$"
+                aria-label="Maximum price"
+              />
+            </div>
+
+            {priceBuckets.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-2 text-[11px] text-ink-muted uppercase tracking-wide">
+                  Popular ranges
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {priceBuckets.map((b) => (
+                    <Chip key={`${b.min}-${b.max}`} size="sm" onClick={() => applyBucket(b)}>
+                      {formatBucketLabel(b)}
+                      <span className="text-[10px] text-ink-muted">{b.count}</span>
+                    </Chip>
+                  ))}
+                </div>
               </div>
-            </section>
+            )}
+          </>
+        )}
+      </section>
 
-            {/* Price */}
-            <section className="border-t border-line px-5 py-5">
-              <h3 className="mb-2 text-xs uppercase tracking-wide text-ink-muted">Price</h3>
-              {!bounds ? (
-                <p className="text-sm text-ink-secondary">No priced listings to filter.</p>
-              ) : (
-                <>
-                  <div className="mb-3 flex items-center justify-between text-sm">
-                    <span className="text-ink-secondary">${liveLo}</span>
-                    <span className="text-ink-secondary">${liveHi}</span>
-                  </div>
-                  <Slider.Root
-                    className="relative flex h-5 w-full touch-none select-none items-center"
-                    min={0}
-                    max={SLIDER_RES}
-                    step={1}
-                    minStepsBetweenThumbs={1}
-                    value={sliderValues}
-                    onValueChange={(v) => setSliderValues([v[0], v[1]] as [number, number])}
-                  >
-                    <Slider.Track className="relative h-1 grow rounded-full bg-surface-sunken">
-                      <Slider.Range className="absolute h-full rounded-full bg-action-primary" />
-                    </Slider.Track>
-                    <Slider.Thumb
-                      className="block h-5 w-5 cursor-pointer rounded-full border-2 border-action-primary bg-surface-overlay shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                      aria-label="Min price"
-                    />
-                    <Slider.Thumb
-                      className="block h-5 w-5 cursor-pointer rounded-full border-2 border-action-primary bg-surface-overlay shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                      aria-label="Max price"
-                    />
-                  </Slider.Root>
-                  <div className="mt-1 flex items-center justify-between text-xs text-ink-muted">
-                    <span>${bounds.min}</span>
-                    <span>${bounds.max}</span>
-                  </div>
-
-                  <div className="mt-4 flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={bounds.min}
-                        max={bounds.max}
-                        placeholder="Min"
-                        value={minInput}
-                        onChange={(e) => setMinInput(e.target.value)}
-                        onBlur={applyInputs}
-                        className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-6 pr-3 text-sm text-ink placeholder:text-ink-muted focus:border-action-primary focus:outline-none"
-                      />
-                    </div>
-                    <span className="text-ink-muted">–</span>
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={bounds.min}
-                        max={bounds.max}
-                        placeholder="Max"
-                        value={maxInput}
-                        onChange={(e) => setMaxInput(e.target.value)}
-                        onBlur={applyInputs}
-                        className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-6 pr-3 text-sm text-ink placeholder:text-ink-muted focus:border-action-primary focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {priceBuckets.length > 0 && (
-                    <div className="mt-4">
-                      <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-muted">
-                        Popular ranges
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {priceBuckets.map((b) => (
-                          <button
-                            key={`${b.min}-${b.max}`}
-                            type="button"
-                            onClick={() => applyBucket(b)}
-                            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface-raised px-3 py-1 text-xs text-ink-secondary transition-colors hover:border-line-strong hover:text-ink"
-                          >
-                            {formatBucketLabel(b)}
-                            <span className="text-[10px] text-ink-muted">{b.count}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-
-            {/* Condition */}
-            <section className="border-t border-line px-5 py-5">
-              <h3 className="mb-2 text-xs uppercase tracking-wide text-ink-muted">Condition</h3>
-              <div className="grid grid-cols-2 gap-1">
-                {ITEM_CONDITIONS.map((c) => {
-                  const checked = conditions.includes(c);
-                  return (
-                    <label
-                      key={c}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink hover:bg-surface-sunken"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleCondition(c)}
-                        className="h-4 w-4 accent-action-primary"
-                      />
-                      {CONDITION_LABELS[c] ?? c}
-                    </label>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3 border-t border-line px-5 py-3">
-            <button
-              type="button"
-              onClick={resetLocal}
-              className="cursor-pointer text-sm text-ink-secondary hover:text-ink"
-            >
-              Reset all
-            </button>
-            <button
-              type="button"
-              onClick={applyAll}
-              className="ml-auto cursor-pointer rounded-lg bg-cta px-5 py-2 text-sm font-medium text-on-cta transition-colors hover:bg-cta-hover"
-            >
-              Apply{localActiveCount > 0 ? ` (${localActiveCount})` : ""}
-            </button>
-          </div>
-        </Drawer.Content>
-      </Drawer.Portal>
-    </Drawer.Root>
+      {/* Condition */}
+      <section className="border-line border-t py-5">
+        <h3 className="mb-2 text-ink-muted text-xs uppercase tracking-wide">Condition</h3>
+        <div className="grid grid-cols-2 gap-1">
+          {ITEM_CONDITIONS.map((c) => (
+            <Checkbox
+              key={c}
+              checked={conditions.includes(c)}
+              onChange={() => toggleCondition(c)}
+              label={CONDITION_LABELS[c] ?? c}
+            />
+          ))}
+        </div>
+      </section>
+    </Drawer>
   );
 }

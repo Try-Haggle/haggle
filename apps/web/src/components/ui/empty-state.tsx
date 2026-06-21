@@ -40,7 +40,9 @@ export function EmptyState({
       {icon && (
         <div
           className={cn(
-            "flex items-center justify-center rounded-full bg-surface-sunken text-ink-muted",
+            // dark: sunken (navy-950) is darker than the page, so it reads as a black
+            // hole — use raised (navy-800, lighter) so the chip stays visible.
+            "flex items-center justify-center rounded-full bg-surface-sunken text-ink-muted dark:bg-surface-raised",
             sm ? "size-10" : "size-12",
           )}
         >
