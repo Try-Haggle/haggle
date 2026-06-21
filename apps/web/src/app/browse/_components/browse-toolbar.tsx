@@ -1,8 +1,14 @@
 "use client";
 
 import { ITEM_CONDITIONS, LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
-import * as Slider from "@radix-ui/react-slider";
-import { useEffect, useState } from "react";
+import { type ButtonHTMLAttributes, useEffect, useState } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Chip } from "@/components/ui/chip";
+import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Popover } from "@/components/ui/popover";
+import { RangeSlider } from "@/components/ui/slider";
+import { cn } from "@/lib/cn";
 import type { BrowseFilters, BrowseSort } from "../page";
 import {
   CONDITION_LABELS,
@@ -12,7 +18,6 @@ import {
   priceLabel,
   SLIDER_RES,
   SORT_LABELS,
-  useClickOutside,
   useUpdateParams,
 } from "./filter-shared";
 import { FilterSheet } from "./filter-sheet";
@@ -25,22 +30,18 @@ function FilterButton({
   active,
   open,
   label,
-  onClick,
-}: {
-  active: boolean;
-  open: boolean;
-  label: string;
-  onClick: () => void;
-}) {
+  ...props
+}: { active: boolean; open: boolean; label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+      className={cn(
+        "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
         active
           ? "border-action-primary bg-action-primary/10 text-action-primary"
-          : "border-line bg-surface-raised text-ink hover:border-line-strong hover:bg-surface-sunken"
-      }`}
+          : "border-line bg-surface-raised text-ink hover:border-line-strong hover:bg-surface-sunken",
+      )}
+      {...props}
     >
       {label}
       <svg
@@ -53,10 +54,22 @@ function FilterButton({
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
-        className={`transition-transform ${open ? "rotate-180" : ""}`}
+        className={cn("transition-transform", open && "rotate-180")}
       >
         <polyline points="6 9 12 15 18 9" />
       </svg>
+    </button>
+  );
+}
+
+function ClearAllButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-ink-secondary text-xs transition-colors hover:border-line hover:text-ink"
+    >
+      Clear all
     </button>
   );
 }
@@ -72,7 +85,6 @@ function PriceFilter({
 }) {
   const [open, setOpen] = useState(false);
   const update = useUpdateParams();
-  const ref = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
 
   const bounds =
     priceRange && priceRange.max > priceRange.min
@@ -126,11 +138,6 @@ function PriceFilter({
     });
   }
 
-  function commitFromSlider(next: [number, number]) {
-    if (!scale) return;
-    commitDollars(scale.sliderToPrice(next[0]), scale.sliderToPrice(next[1]));
-  }
-
   function commitFromInputs() {
     const loN = Number(minInput);
     const hiN = Number(maxInput);
@@ -157,150 +164,120 @@ function PriceFilter({
   const label = active ? `Price: ${priceLabel(filters.minPrice, filters.maxPrice)}` : "Price";
 
   return (
-    <div ref={ref} className="relative">
-      <FilterButton active={active} open={open} label={label} onClick={() => setOpen((v) => !v)} />
-      {open && (
-        <div className="absolute left-0 z-20 mt-2 w-96 rounded-lg border border-line bg-surface-raised p-4 shadow-card">
-          {!bounds ? (
-            <p className="text-sm text-ink-secondary">No priced listings to filter.</p>
-          ) : (
-            <>
-              <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="text-ink-secondary">${liveLo}</span>
-                <span className="text-ink-secondary">${liveHi}</span>
-              </div>
-              <Slider.Root
-                className="relative flex h-5 w-full touch-none select-none items-center"
-                min={0}
-                max={SLIDER_RES}
-                step={1}
-                minStepsBetweenThumbs={1}
-                value={sliderValues}
-                onValueChange={(v) => setSliderValues([v[0], v[1]] as [number, number])}
-                onValueCommit={(v) => commitFromSlider([v[0], v[1]] as [number, number])}
-              >
-                <Slider.Track className="relative h-1 grow rounded-full bg-surface-sunken">
-                  <Slider.Range className="absolute h-full rounded-full bg-action-primary" />
-                </Slider.Track>
-                <Slider.Thumb
-                  className="block h-4 w-4 cursor-pointer rounded-full border-2 border-action-primary bg-surface-overlay shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                  aria-label="Min price"
-                />
-                <Slider.Thumb
-                  className="block h-4 w-4 cursor-pointer rounded-full border-2 border-action-primary bg-surface-overlay shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                  aria-label="Max price"
-                />
-              </Slider.Root>
-              <div className="mt-1 flex items-center justify-between text-xs text-ink-muted">
-                <span>${bounds.min}</span>
-                <span>${bounds.max}</span>
-              </div>
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      panelClassName="w-96 p-4"
+      trigger={<FilterButton active={active} open={open} label={label} />}
+    >
+      {!bounds ? (
+        <p className="text-ink-secondary text-sm">No priced listings to filter.</p>
+      ) : (
+        <>
+          <div className="mb-3 flex items-center justify-between text-sm">
+            <span className="text-ink-secondary">${liveLo}</span>
+            <span className="text-ink-secondary">${liveHi}</span>
+          </div>
+          <RangeSlider
+            min={0}
+            max={SLIDER_RES}
+            step={1}
+            minStepsBetweenThumbs={1}
+            value={sliderValues}
+            onValueChange={setSliderValues}
+            onValueCommit={(v) => {
+              if (scale) commitDollars(scale.sliderToPrice(v[0]), scale.sliderToPrice(v[1]));
+            }}
+            minLabel="Min price"
+            maxLabel="Max price"
+          />
+          <div className="mt-1 flex items-center justify-between text-ink-muted text-xs">
+            <span>${bounds.min}</span>
+            <span>${bounds.max}</span>
+          </div>
 
-              <div className="mt-4 flex items-center gap-2">
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={bounds.min}
-                    max={bounds.max}
-                    placeholder="Min"
-                    value={minInput}
-                    onChange={(e) => setMinInput(e.target.value)}
-                    onBlur={commitFromInputs}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitFromInputs();
-                      }
-                    }}
-                    className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-6 pr-3 text-sm text-ink placeholder:text-ink-muted focus:border-action-primary focus:outline-none"
-                  />
-                </div>
-                <span className="text-ink-muted">–</span>
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={bounds.min}
-                    max={bounds.max}
-                    placeholder="Max"
-                    value={maxInput}
-                    onChange={(e) => setMaxInput(e.target.value)}
-                    onBlur={commitFromInputs}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitFromInputs();
-                      }
-                    }}
-                    className="w-full rounded-lg border border-line bg-surface-overlay py-2 pl-6 pr-3 text-sm text-ink placeholder:text-ink-muted focus:border-action-primary focus:outline-none"
-                  />
-                </div>
+          <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={bounds.min}
+              max={bounds.max}
+              placeholder="Min"
+              value={minInput}
+              onChange={(e) => setMinInput(e.target.value)}
+              onBlur={commitFromInputs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitFromInputs();
+                }
+              }}
+              startAdornment="$"
+              aria-label="Minimum price"
+            />
+            <span className="text-ink-muted">–</span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={bounds.min}
+              max={bounds.max}
+              placeholder="Max"
+              value={maxInput}
+              onChange={(e) => setMaxInput(e.target.value)}
+              onBlur={commitFromInputs}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitFromInputs();
+                }
+              }}
+              startAdornment="$"
+              aria-label="Maximum price"
+            />
+          </div>
+
+          {priceBuckets.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-ink-muted text-xs uppercase tracking-wide">Popular ranges</p>
+              <div className="flex flex-wrap gap-1.5">
+                {priceBuckets.map((b) => {
+                  const lo = Math.max(b.min, bounds.min);
+                  const hi = b.max === null ? bounds.max : Math.min(b.max, bounds.max);
+                  const isActive =
+                    filters.minPrice === lo &&
+                    (b.max === null
+                      ? filters.maxPrice === undefined || filters.maxPrice >= bounds.max
+                      : filters.maxPrice === hi);
+                  return (
+                    <Chip
+                      key={`${b.min}-${b.max}`}
+                      size="sm"
+                      selected={isActive}
+                      onClick={() => applyBucket(b)}
+                    >
+                      {formatBucketLabel(b)}
+                      <span className="text-[10px] text-ink-muted">{b.count}</span>
+                    </Chip>
+                  );
+                })}
               </div>
-
-              {priceBuckets.length > 0 && (
-                <div className="mt-4">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-ink-muted">
-                    Popular ranges
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {priceBuckets.map((b) => {
-                      const lo = Math.max(b.min, bounds.min);
-                      const hi = b.max === null ? bounds.max : Math.min(b.max, bounds.max);
-                      const isActive =
-                        filters.minPrice === lo &&
-                        (b.max === null
-                          ? filters.maxPrice === undefined || filters.maxPrice >= bounds.max
-                          : filters.maxPrice === hi);
-                      return (
-                        <button
-                          key={`${b.min}-${b.max}`}
-                          type="button"
-                          onClick={() => applyBucket(b)}
-                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
-                            isActive
-                              ? "border-action-primary bg-action-primary/10 text-action-primary"
-                              : "border-line bg-surface-raised text-ink-secondary hover:border-line-strong hover:text-ink"
-                          }`}
-                        >
-                          {formatBucketLabel(b)}
-                          <span className="text-[10px] text-ink-muted">{b.count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {active && (
-                <div className="mt-4 border-t border-line pt-3">
-                  <button
-                    type="button"
-                    onClick={clear}
-                    className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-line hover:text-ink"
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
-            </>
+            </div>
           )}
-        </div>
+
+          {active && (
+            <div className="mt-4 border-line border-t pt-3">
+              <ClearAllButton onClick={clear} />
+            </div>
+          )}
+        </>
       )}
-    </div>
+    </Popover>
   );
 }
 
 function ConditionFilter({ filters }: { filters: BrowseFilters }) {
   const [open, setOpen] = useState(false);
   const update = useUpdateParams();
-  const ref = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
 
   function toggle(c: Condition) {
     const next = filters.conditions.includes(c)
@@ -320,50 +297,34 @@ function ConditionFilter({ filters }: { filters: BrowseFilters }) {
   const label = active ? `Condition (${filters.conditions.length})` : "Condition";
 
   return (
-    <div ref={ref} className="relative">
-      <FilterButton active={active} open={open} label={label} onClick={() => setOpen((v) => !v)} />
-      {open && (
-        <div className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-line bg-surface-raised p-2 shadow-card">
-          <div className="grid grid-cols-2 gap-1">
-            {ITEM_CONDITIONS.map((c) => {
-              const checked = filters.conditions.includes(c);
-              return (
-                <label
-                  key={c}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink hover:bg-surface-sunken"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggle(c)}
-                    className="h-4 w-4 accent-action-primary"
-                  />
-                  {CONDITION_LABELS[c] ?? c}
-                </label>
-              );
-            })}
-          </div>
-          {active && (
-            <div className="mt-2 border-t border-line pt-2">
-              <button
-                type="button"
-                onClick={clear}
-                className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-line hover:text-ink"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      panelClassName="w-72"
+      trigger={<FilterButton active={active} open={open} label={label} />}
+    >
+      <div className="grid grid-cols-2 gap-1">
+        {ITEM_CONDITIONS.map((c) => (
+          <Checkbox
+            key={c}
+            checked={filters.conditions.includes(c)}
+            onChange={() => toggle(c)}
+            label={CONDITION_LABELS[c] ?? c}
+          />
+        ))}
+      </div>
+      {active && (
+        <div className="mt-2 border-line border-t pt-2">
+          <ClearAllButton onClick={clear} />
         </div>
       )}
-    </div>
+    </Popover>
   );
 }
 
 function SortDropdown({ filters }: { filters: BrowseFilters }) {
   const [open, setOpen] = useState(false);
   const update = useUpdateParams();
-  const ref = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
 
   function pick(next: BrowseSort) {
     update((p) => {
@@ -374,52 +335,45 @@ function SortDropdown({ filters }: { filters: BrowseFilters }) {
   }
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink transition-colors hover:border-line-strong hover:bg-surface-sunken"
-      >
-        <span className="text-ink-muted">Sort:</span> {SORT_LABELS[filters.sort]}
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          className={`transition-transform ${open ? "rotate-180" : ""}`}
+    <DropdownMenu
+      open={open}
+      onOpenChange={setOpen}
+      align="right"
+      trigger={
+        <button
+          type="button"
+          className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-raised px-3 py-2 text-ink text-sm transition-colors hover:border-line-strong hover:bg-surface-sunken"
         >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border border-line bg-surface-raised shadow-card">
-          {(Object.keys(SORT_LABELS) as BrowseSort[]).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => pick(opt)}
-              className={`block w-full cursor-pointer px-3 py-2 text-left text-sm transition-colors hover:bg-surface-sunken ${
-                filters.sort === opt ? "bg-surface-sunken text-action-primary" : "text-ink"
-              }`}
-            >
-              {SORT_LABELS[opt]}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+          <span className="text-ink-muted">Sort:</span> {SORT_LABELS[filters.sort]}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={cn("transition-transform", open && "rotate-180")}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      }
+    >
+      {(Object.keys(SORT_LABELS) as BrowseSort[]).map((opt) => (
+        <DropdownMenuItem key={opt} selected={filters.sort === opt} onSelect={() => pick(opt)}>
+          {SORT_LABELS[opt]}
+        </DropdownMenuItem>
+      ))}
+    </DropdownMenu>
   );
 }
 
 function CategoryFilter({ filters }: { filters: BrowseFilters }) {
   const [open, setOpen] = useState(false);
   const update = useUpdateParams();
-  const ref = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
 
   function toggle(c: Category) {
     const next = filters.categories.includes(c)
@@ -443,43 +397,28 @@ function CategoryFilter({ filters }: { filters: BrowseFilters }) {
     : "All categories";
 
   return (
-    <div ref={ref} className="relative">
-      <FilterButton active={active} open={open} label={label} onClick={() => setOpen((v) => !v)} />
-      {open && (
-        <div className="absolute left-0 z-20 mt-2 w-72 rounded-lg border border-line bg-surface-raised p-2 shadow-card">
-          <div className="grid grid-cols-2 gap-1">
-            {LISTING_CATEGORIES.map((c) => {
-              const checked = filters.categories.includes(c);
-              return (
-                <label
-                  key={c}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-ink hover:bg-surface-sunken"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggle(c)}
-                    className="h-4 w-4 accent-action-primary"
-                  />
-                  {LISTING_CATEGORY_LABELS[c]}
-                </label>
-              );
-            })}
-          </div>
-          {active && (
-            <div className="mt-2 border-t border-line pt-2">
-              <button
-                type="button"
-                onClick={clear}
-                className="block w-full cursor-pointer rounded-lg border border-transparent px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-line hover:text-ink"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      panelClassName="w-72"
+      trigger={<FilterButton active={active} open={open} label={label} />}
+    >
+      <div className="grid grid-cols-2 gap-1">
+        {LISTING_CATEGORIES.map((c) => (
+          <Checkbox
+            key={c}
+            checked={filters.categories.includes(c)}
+            onChange={() => toggle(c)}
+            label={LISTING_CATEGORY_LABELS[c]}
+          />
+        ))}
+      </div>
+      {active && (
+        <div className="mt-2 border-line border-t pt-2">
+          <ClearAllButton onClick={clear} />
         </div>
       )}
-    </div>
+    </Popover>
   );
 }
 
@@ -495,11 +434,12 @@ function MobileFiltersButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+      className={cn(
+        "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
         active
           ? "border-action-primary bg-action-primary/10 text-action-primary"
-          : "border-line bg-surface-raised text-ink hover:border-line-strong hover:bg-surface-sunken"
-      }`}
+          : "border-line bg-surface-raised text-ink hover:border-line-strong hover:bg-surface-sunken",
+      )}
     >
       <svg
         width="16"
@@ -518,7 +458,7 @@ function MobileFiltersButton({
       </svg>
       Filters
       {active && (
-        <span className="rounded-full bg-action-primary/20 px-1.5 py-0.5 text-[11px] font-medium text-action-primary">
+        <span className="rounded-full bg-action-primary/20 px-1.5 py-0.5 font-medium text-[11px] text-action-primary">
           {activeCount}
         </span>
       )}
@@ -568,7 +508,7 @@ export function BrowseToolbar({
           <button
             type="button"
             onClick={resetAll}
-            className="ml-3 cursor-pointer text-xs text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+            className="ml-3 cursor-pointer text-ink-secondary text-xs underline-offset-2 hover:text-ink hover:underline"
           >
             Reset filters
           </button>

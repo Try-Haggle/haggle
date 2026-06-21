@@ -32,7 +32,7 @@ export function BrowseEmptyState({ categories, q }: { categories: Category[]; q:
   return (
     <div className="py-16 sm:py-20">
       <div className="mx-auto max-w-lg text-center">
-        <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken">
+        <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken dark:bg-surface-raised">
           <svg
             viewBox="0 0 24 24"
             width="26"

@@ -21,7 +21,9 @@ export const dropdownMenuStory: Story = {
       trigger={<Button variant="secondary">계정</Button>}
     >
       <DropdownMenuItem icon={<User className="size-4" />}>프로필</DropdownMenuItem>
-      <DropdownMenuItem icon={<Settings className="size-4" />}>설정</DropdownMenuItem>
+      <DropdownMenuItem icon={<Settings className="size-4" />} selected>
+        설정 (선택됨)
+      </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem icon={<LogOut className="size-4" />} destructive>
         로그아웃

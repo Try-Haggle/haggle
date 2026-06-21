@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Drawer as Vaul } from "vaul";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { cn } from "@/lib/cn";
 
@@ -20,7 +21,6 @@ export interface DrawerProps {
 const sideClass = {
   right: "top-0 right-0 h-full w-full max-w-md border-l",
   left: "top-0 left-0 h-full w-full max-w-md border-r",
-  bottom: "bottom-0 inset-x-0 max-h-[85vh] rounded-t-2xl border-t",
 } as const;
 
 export function Drawer({
@@ -37,11 +37,11 @@ export function Drawer({
   useEffect(() => setMounted(true), []);
 
   const panelRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(panelRef, open);
+  useFocusTrap(panelRef, open && side !== "bottom");
   const titleId = useId();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || side === "bottom") return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && dismissible) onClose();
     }
@@ -52,8 +52,52 @@ export function Drawer({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose, dismissible]);
+  }, [open, onClose, dismissible, side]);
 
+  // ─── Bottom sheet (vaul: drag-to-dismiss, sized to content up to 85vh) ───
+  if (side === "bottom") {
+    return (
+      <Vaul.Root
+        open={open}
+        onOpenChange={(o) => {
+          if (!o) onClose();
+        }}
+        dismissible={dismissible}
+      >
+        <Vaul.Portal>
+          <Vaul.Overlay className="fixed inset-0 z-50 bg-black/50" />
+          <Vaul.Content
+            aria-describedby={undefined}
+            className={cn(
+              "fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-2xl border-line border-t bg-surface-raised outline-none",
+              className,
+            )}
+          >
+            <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-surface-sunken" />
+            {title && (
+              <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-3 pb-3">
+                <Vaul.Title className="font-semibold text-ink text-lg">{title}</Vaul.Title>
+                {dismissible && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close"
+                    className="-mr-1 rounded p-1 text-ink-muted transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus/60"
+                  >
+                    <X className="size-5" />
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
+            {footer && <div className="shrink-0 border-line border-t px-5 py-4">{footer}</div>}
+          </Vaul.Content>
+        </Vaul.Portal>
+      </Vaul.Root>
+    );
+  }
+
+  // ─── Side sheet (right/left) ───
   if (!open || !mounted) return null;
 
   return createPortal(

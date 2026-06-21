@@ -23,41 +23,53 @@ export const inputVariants = cva(`h-11 px-3.5 ${fieldBase}`, {
   defaultVariants: { invalid: false },
 });
 
+// Wrapper for adorned inputs: the box owns the border/background/focus ring while
+// adornments and the input sit in a flex row, so any adornment (icon or text) keeps
+// a consistent gap from the value.
+const adornedFieldVariants = cva(
+  "flex h-11 items-center gap-2 rounded-[10px] border bg-surface-overlay px-3.5 transition has-[:disabled]:opacity-50",
+  {
+    variants: {
+      invalid: {
+        true: "border-error focus-within:border-error focus-within:ring-4 focus-within:ring-error/20",
+        false:
+          "border-line focus-within:border-focus focus-within:ring-4 focus-within:ring-action-primary/20",
+      },
+    },
+    defaultVariants: { invalid: false },
+  },
+);
+
 export type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "size"> &
   VariantProps<typeof inputVariants> & {
-    /** Decorative or interactive content pinned to the start (e.g. "$"). */
+    /** Decorative or interactive content pinned to the start (e.g. a search icon, "$"). */
     startAdornment?: ReactNode;
-    /** Content pinned to the end (e.g. "%", a show-password toggle). */
+    /** Content pinned to the end (e.g. "%", a clear button, a show-password toggle). */
     endAdornment?: ReactNode;
   };
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, invalid, startAdornment, endAdornment, ...props }, ref) => {
-    const input = (
-      <input
-        ref={ref}
-        className={cn(
-          inputVariants({ invalid }),
-          startAdornment && "pl-8",
-          endAdornment && "pr-9",
-          className,
-        )}
-        {...props}
-      />
-    );
-    if (!startAdornment && !endAdornment) return input;
+    if (!startAdornment && !endAdornment) {
+      return <input ref={ref} className={cn(inputVariants({ invalid }), className)} {...props} />;
+    }
     return (
-      <div className="relative">
+      <div className={adornedFieldVariants({ invalid })}>
         {startAdornment && (
-          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-ink-muted text-sm">
+          <span className="flex shrink-0 items-center text-ink-muted text-sm">
             {startAdornment}
           </span>
         )}
-        {input}
+        <input
+          ref={ref}
+          className={cn(
+            "h-full w-full min-w-0 bg-transparent text-ink text-sm outline-none placeholder:text-ink-muted",
+            className,
+          )}
+          {...props}
+        />
         {endAdornment && (
-          <span className="absolute inset-y-0 right-3 flex items-center text-ink-muted text-sm">
-            {endAdornment}
-          </span>
+          <span className="flex shrink-0 items-center text-ink-muted text-sm">{endAdornment}</span>
         )}
       </div>
     );

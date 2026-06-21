@@ -7,9 +7,18 @@ import { IconButton } from "./icon-button";
 
 export interface CarouselProps {
   children: ReactNode;
-  /** Optional title shown on the left of the control row. */
+  /** Optional heading shown on the left of the control row. */
   title?: ReactNode;
   ariaLabel?: string;
+  /**
+   * Scroll distance per control press.
+   * `page` (default) scrolls ~80% of the viewport; `card` scrolls whole items.
+   */
+  scrollBy?: "page" | "card";
+  /** Items advanced per press when `scrollBy="card"`. Default 2. */
+  cardsPerScroll?: number;
+  /** Snap strictness for the track. `proximity` (default) or `mandatory`. */
+  snap?: "proximity" | "mandatory";
   className?: string;
 }
 
@@ -17,7 +26,15 @@ export interface CarouselProps {
  * Horizontal scroll track with prev/next controls in a header row (not overlaying content).
  * Give each child a width + `snap-start`. Edge items intentionally peek to signal more.
  */
-export function Carousel({ children, title, ariaLabel, className }: CarouselProps) {
+export function Carousel({
+  children,
+  title,
+  ariaLabel,
+  scrollBy = "page",
+  cardsPerScroll = 2,
+  snap = "proximity",
+  className,
+}: CarouselProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
@@ -38,9 +55,20 @@ export function Carousel({ children, title, ariaLabel, className }: CarouselProp
     };
   }, []);
 
-  const scrollByPage = (dir: number) => {
+  const scroll = (dir: number) => {
     const el = ref.current;
-    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
+    if (!el) return;
+    let amount = el.clientWidth * 0.8;
+    if (scrollBy === "card") {
+      // Stride = distance between two adjacent items (card width + gap), so we
+      // land exactly on a card boundary. Advances `cardsPerScroll` items.
+      const first = el.children[0] as HTMLElement | undefined;
+      const second = el.children[1] as HTMLElement | undefined;
+      const stride =
+        first && second ? second.offsetLeft - first.offsetLeft : (first?.offsetWidth ?? 250);
+      amount = stride * Math.max(1, cardsPerScroll);
+    }
+    el.scrollBy({ left: dir * amount, behavior: "smooth" });
   };
 
   const scrollable = canLeft || canRight;
@@ -49,7 +77,7 @@ export function Carousel({ children, title, ariaLabel, className }: CarouselProp
     <section aria-label={ariaLabel} className={className}>
       {(title || scrollable) && (
         <div className="mb-3 flex items-center justify-between gap-3">
-          {title ? <h3 className="font-semibold text-ink">{title}</h3> : <span />}
+          {title ? <h3 className="font-bold text-ink text-lg">{title}</h3> : <span />}
           {scrollable && (
             <div className="flex gap-1.5">
               <IconButton
@@ -58,7 +86,7 @@ export function Carousel({ children, title, ariaLabel, className }: CarouselProp
                 shape="circle"
                 size="sm"
                 disabled={!canLeft}
-                onClick={() => scrollByPage(-1)}
+                onClick={() => scroll(-1)}
               >
                 <ChevronLeft className="size-4" />
               </IconButton>
@@ -68,7 +96,7 @@ export function Carousel({ children, title, ariaLabel, className }: CarouselProp
                 shape="circle"
                 size="sm"
                 disabled={!canRight}
-                onClick={() => scrollByPage(1)}
+                onClick={() => scroll(1)}
               >
                 <ChevronRight className="size-4" />
               </IconButton>
@@ -79,7 +107,8 @@ export function Carousel({ children, title, ariaLabel, className }: CarouselProp
       <div
         ref={ref}
         className={cn(
-          "flex snap-x gap-4 overflow-x-auto scroll-smooth [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
+          "flex gap-4 overflow-x-auto scroll-smooth [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
+          snap === "mandatory" ? "snap-x snap-mandatory" : "snap-x",
         )}
       >
         {children}

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { BrowseSort } from "../page";
 import { scrollToStickyToolbar } from "./sticky-toolbar";
 
@@ -66,24 +65,6 @@ export function formatBucketLabel(b: PriceBucket): string {
   if (b.min === 0 && b.max !== null) return `Under ${fmt(b.max)}`;
   if (b.max === null) return `Over ${fmt(b.min)}`;
   return `${fmt(b.min)}–${fmt(b.max)}`;
-}
-
-export function useClickOutside<T extends HTMLElement>(
-  open: boolean,
-  onClose: () => void,
-) {
-  const ref = useRef<T | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open, onClose]);
-  return ref;
 }
 
 export function useUpdateParams() {
