@@ -199,7 +199,7 @@ export function AgentsList({ role, embedded = false, selectMode }: AgentsListPro
                       {!inSelectMode && (
                         <div className="flex gap-3 text-[12px]">
                           <Link
-                            href={`/sell/agents/${agent.id}/edit`}
+                            href={`/${role === "buyer" ? "buy" : "sell"}/agents/${agent.id}/edit`}
                             className="text-action-primary hover:text-action-primary"
                           >
                             Edit
