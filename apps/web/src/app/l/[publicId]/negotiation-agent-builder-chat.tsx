@@ -409,25 +409,34 @@ export function NegotiationAgentBuilderChat({
     const money = (n: number) => `$${n.toLocaleString()}`;
 
     if (side === "seller") {
-      if (askNum && floorNum) {
+      // No listing context (standalone reusable agent) — price is set per-listing,
+      // so never ask for an asking/floor price here. Gather posture instead.
+      if (!askNum) {
+        return {
+          text: `I'll set up **${agentName}** for your selling negotiations. Tell me what you'd emphasize (condition, accessories, rarity), any deal-breakers, and how firmly you like to hold your price.`,
+        };
+      }
+      if (floorNum) {
         return {
           text: `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)} and won't go below ${money(floorNum)}. Tell me anything to emphasize (condition, accessories) or any deal-breakers.`,
         };
       }
+      // Listing exists with an asking price but no floor yet — only the floor is missing.
       return {
-        text: `I'll set up **${agentName}** to sell **${title}**. What's your asking price and the lowest you'd accept?`,
+        text: `I'll set up **${agentName}** to sell **${title}**. You're asking ${money(askNum)}. What's the lowest you'd accept, and anything to emphasize?`,
       };
     }
-    // buyer
+    // buyer — only offer the budget slider when there's a concrete listing.
     if (askNum) {
       return {
         text: `I'll help **${agentName}** negotiate **${title}** (listed at ${money(askNum)}). What's your ideal price and the most you'd pay?`,
         widget: "budget-slider",
       };
     }
+    // No listing context (standalone reusable agent) — budget is per-listing, so
+    // skip the budget slider and gather general style/preferences instead.
     return {
-      text: `I'll help **${agentName}** with this negotiation. What's your ideal price and the most you'd pay?`,
-      widget: "budget-slider",
+      text: `I'll set up **${agentName}** for your buying negotiations. Tell me your must-haves, deal-breakers, and how aggressively you like to negotiate.`,
     };
   }
 

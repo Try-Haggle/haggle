@@ -825,6 +825,15 @@ export async function processNegotiationAgentBuilderTurn(
   });
   const agentProfile = getAgentVoiceProfile(input.agent_id);
   const sem = priceSemantics(input.side);
+  // Standalone reusable agents (e.g. /sell/agents/new, /sell/agents/:id/edit)
+  // carry no listing, so there is no asking/floor/budget price to anchor on.
+  const hasListingContext = input.listings.length > 0;
+  // The buyer requirement/candidate planner is entirely listing + Tag-Garden
+  // driven (budget slots, candidate ranking, Korean prompts). A standalone
+  // reusable agent has no listing, so skip the planner there exactly like the
+  // seller side — otherwise it injects budget/candidate questions that make no
+  // sense without a listing. Only a buyer ON a listing uses the planner.
+  const usePlanner = input.side === "buyer" && hasListingContext;
 
   const response = await callLLM(
     `You are the Haggle negotiation-agent builder assistant, helping a ${input.side.toUpperCase()} configure their negotiation agent.
@@ -834,13 +843,21 @@ Side & price direction:
 - ${sem.promptHint}
 - ${
       input.side === "seller"
-        ? "Ask about asking price and the lowest the user will accept. Never call it a 'budget'."
-        : "Ask about the user's ideal price and the most they will pay (budget)."
+        ? hasListingContext
+          ? "The seller already set their asking price and floor on the listing. Do not ask about price; never call it a 'budget'."
+          : "This is a reusable agent not tied to any listing, so price is decided per-listing later and is unknown now. Do NOT ask about asking price, floor, or budget — gather negotiation posture instead."
+        : hasListingContext
+          ? "Ask about the user's ideal price and the most they will pay (budget)."
+          : "This is a reusable agent not tied to any listing, so budget is decided per-listing later and is unknown now. Do NOT ask for a budget or target price — gather must-haves, deal-breakers, and negotiation style instead."
     }
 ${
   input.side === "seller"
     ? `HARD SELLER RULES (these OVERRIDE any buyer-oriented rule below):
-- The seller has ALREADY set their asking price and floor (see the listing). NEVER ask the seller for a budget, asking price, or floor.
+- NEVER ask the seller for a budget, asking price, or floor.${
+        hasListingContext
+          ? " They already set their asking price and floor on the listing."
+          : " This agent is not tied to a listing yet, so price is set per-listing later — gather negotiation posture (what to emphasize, deal-breakers, how firmly to hold) instead."
+      }
 - Do NOT ask buyer-style requirement questions (battery %, IMEI, etc.). Instead ask what to EMPHASIZE (condition, accessories, rarity) or any deal-breakers.
 - Ignore the Tag Garden requirement slots entirely — they are buyer-side.`
     : ""
@@ -867,7 +884,8 @@ Rules:
 - Do not store off-platform payment as a buyer avoid item in this demo. Haggle handles protected payment and checkout by default.
 ${
   input.side === "buyer"
-    ? `- Infer budgetMax and targetPrice only from explicit budget/price.
+    ? hasListingContext
+      ? `- Infer budgetMax and targetPrice only from explicit budget/price.
 - budgetMax and targetPrice are user-facing USD dollars, not cents. If the buyer says "450", "$450", or "450 dollars", store 450.
 - targetPrice should be slightly below budgetMax when reasonable.
 - Do not decide required follow-up slots from intuition. Tag Garden requirement slots below are authoritative.
@@ -885,7 +903,17 @@ ${
 - If the user says they want box/original box/full package, record "original box included"; box itself is not a required iPhone slot unless Tag Garden marks it required.
 - If no advisor_recommendation slot is missing after updating memory, questions must be [].
 - If the budget is below all listing ask prices, keep the budget as stated and explain the negotiation will need a lower anchor or an older/safer-fit model; do not invent missing constraints.`
-    : `- The seller has already set asking and floor prices; do not ask for them. Help shape negotiation posture: what to emphasize, deal-breakers, and how firmly to hold.
+      : `- This is a reusable buying agent not tied to any listing. Do NOT ask for a budget or target price — budget is set per-listing later.
+- Do NOT ask what product they are looking for, and do NOT run product or Tag Garden requirement questions; there is no listing yet.
+- Gather durable preferences instead: typical must-haves, deal-breakers, risk style, and how aggressively to negotiate.
+- Put preferences in memory.mustHave / memory.avoid and reflect style via negotiationStyle, riskStyle, and openingTactic.
+- If the buyer volunteers a budget unprompted, you may still record budgetMax/targetPrice, but never ask for it.
+- If nothing essential is missing, questions must be [].`
+    : `- Do not ask the seller for an asking price or floor${
+        hasListingContext
+          ? " — they already set them on the listing"
+          : " — price is decided per-listing, not on this reusable agent"
+      }. Help shape negotiation posture: what to emphasize, deal-breakers, and how firmly to hold.
 - Put any "what to emphasize" items in memory.mustHave and deal-breakers in memory.avoid.
 - If nothing essential is missing, questions must be [].`
 }
@@ -936,13 +964,13 @@ ${input.message}
 
 Tag Garden requirement slots:
 ${
-  input.side === "seller"
-    ? "None — seller side; skip buyer requirement questions."
-    : formatTagRequirementPlanForPrompt(initialRequirementPlan)
+  usePlanner
+    ? formatTagRequirementPlanForPrompt(initialRequirementPlan)
+    : "None — no listing context; skip requirement questions."
 }
 
 Candidate planner:
-${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
+${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no listing context."}`,
     {
       correlationId: "intelligence-demo-advisor-turn",
       maxTokens: 700,
@@ -993,17 +1021,16 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     ),
     input.previous_memory,
   );
-  // Seller side has no buyer requirement slots (budget, buyer priority, …), so
-  // feed an empty plan into the structured-memory + question-plan builders.
-  // Otherwise buyer-only slots (and their Korean prompts) leak into the
-  // persisted seller agent memory.
-  const finalRequirementPlan =
-    input.side === "seller"
-      ? EMPTY_TAG_REQUIREMENT_PLAN
-      : buildAdvisorRequirementPlan({
-          memory,
-          listings: input.listings,
-        });
+  // The seller side and standalone (no-listing) buyer agents have no buyer
+  // requirement slots (budget, buyer priority, …), so feed an empty plan into
+  // the structured-memory + question-plan builders. Otherwise buyer-only slots
+  // (and their Korean prompts) leak into the persisted agent memory.
+  const finalRequirementPlan = usePlanner
+    ? buildAdvisorRequirementPlan({
+        memory,
+        listings: input.listings,
+      })
+    : EMPTY_TAG_REQUIREMENT_PLAN;
   const finalCandidatePlan = applyRequirementGateToCandidatePlan(
     buildAdvisorCandidatePlan({
       listings: input.listings,
@@ -1013,12 +1040,12 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     }),
     finalRequirementPlan,
   );
-  // Seller side skips the buyer-oriented requirement/candidate planner — its
-  // questions are buyer-specific (and Korean). Use the LLM's own questions.
-  let nextQuestions =
-    input.side === "seller"
-      ? (parsed.memory.questions ?? [])
-      : chooseNextAdvisorQuestions(finalCandidatePlan, finalRequirementPlan, memory);
+  // Without the planner (seller, or standalone buyer with no listing) the
+  // requirement/candidate questions are buyer+listing specific (and Korean), so
+  // use the LLM's own questions instead.
+  let nextQuestions = usePlanner
+    ? chooseNextAdvisorQuestions(finalCandidatePlan, finalRequirementPlan, memory)
+    : (parsed.memory.questions ?? []);
   const finalMemory = {
     ...memory,
     questions: nextQuestions,
@@ -1033,8 +1060,9 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     finalMemory.source,
     finalMemory.structured.memoryConflicts,
   );
-  const conflictQuestion =
-    input.side === "seller" ? null : chooseConflictResolutionQuestion(finalMemory.structured);
+  const conflictQuestion = usePlanner
+    ? chooseConflictResolutionQuestion(finalMemory.structured)
+    : null;
   if (conflictQuestion) {
     nextQuestions = [conflictQuestion];
     finalMemory.questions = nextQuestions;
@@ -1044,19 +1072,18 @@ ${formatCandidatePlanForPrompt(initialCandidatePlan)}`,
     requirementPlan: finalRequirementPlan,
     structured: finalMemory.structured,
   });
-  const reply =
-    input.side === "seller"
-      ? parsed.reply
-      : buildAdvisorReplyAfterPlanning({
-          parsedReply: parsed.reply,
-          nextQuestions,
-          candidatePlan: finalCandidatePlan,
-          requirementPlan: finalRequirementPlan,
-          latestMessage: input.message,
-          previousMemory: input.previous_memory,
-          memory: finalMemory,
-          agentProfileName: agentProfile.name,
-        });
+  const reply = !usePlanner
+    ? parsed.reply
+    : buildAdvisorReplyAfterPlanning({
+        parsedReply: parsed.reply,
+        nextQuestions,
+        candidatePlan: finalCandidatePlan,
+        requirementPlan: finalRequirementPlan,
+        latestMessage: input.message,
+        previousMemory: input.previous_memory,
+        memory: finalMemory,
+        agentProfileName: agentProfile.name,
+      });
 
   return {
     ...parsed,
