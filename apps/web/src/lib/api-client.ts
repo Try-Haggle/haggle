@@ -51,7 +51,10 @@ export async function apiClient<T = unknown>(path: string, options: ApiOptions =
     throw new ApiError(res.status, body.error || "UNKNOWN_ERROR", body.message);
   }
 
-  return res.json() as Promise<T>;
+  // Empty body (e.g. 204 No Content from DELETE) — nothing to parse. Reading
+  // text first avoids `res.json()` throwing "Unexpected end of JSON input".
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // Convenience methods

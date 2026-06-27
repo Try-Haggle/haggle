@@ -44,3 +44,4 @@ apps/web/.vercel/
 # Claude Code worktrees
 .claude/worktrees/
 .claude/settings.local.json
+test-results/

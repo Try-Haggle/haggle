@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Price } from "@/components/ui/price";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatCondition, formatTimeAgo } from "@/lib/format";
 
 export interface ListingCardListing {
   publicId: string;
@@ -8,41 +12,6 @@ export interface ListingCardListing {
   photoUrl: string | null;
   targetPrice: string | null;
   publishedAt?: string;
-}
-
-function formatPrice(price: string | null): string {
-  if (!price) return "$0";
-  const n = parseFloat(price);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function formatCondition(condition: string | null): string {
-  if (!condition) return "";
-  const map: Record<string, string> = {
-    new: "New",
-    like_new: "Like New",
-    good: "Good",
-    fair: "Fair",
-    poor: "Poor",
-  };
-  return map[condition] ?? condition;
-}
-
-function formatTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
 }
 
 export function ListingCard({
@@ -101,31 +70,26 @@ export function ListingCard({
         )}
       </div>
       <div className="p-3 sm:p-4">
-        <h3 className="mb-1 truncate text-sm font-medium text-ink">
+        <h3 className="mb-1 truncate font-medium text-ink text-sm">
           {listing.title ?? "Untitled"}
         </h3>
-        <div className="mb-2 flex items-center gap-1.5 text-xs text-ink-secondary">
+        <div className="mb-2 flex items-center gap-1.5 text-ink-secondary text-xs">
           {listing.category && <span className="capitalize">{listing.category}</span>}
           {listing.category && listing.condition && <span>·</span>}
           {listing.condition && <span>{formatCondition(listing.condition)}</span>}
         </div>
         <div className="flex items-center justify-between gap-2">
-          <div className="text-base font-semibold text-action-primary">
-            {formatPrice(listing.targetPrice)}
-          </div>
+          <Price amount={Number(listing.targetPrice ?? 0)} tone="accent" />
           {listing.publishedAt && (
-            <div className="text-xs text-ink-muted">{formatTimeAgo(listing.publishedAt)}</div>
+            <div className="text-ink-muted text-xs">{formatTimeAgo(listing.publishedAt)}</div>
           )}
         </div>
         {matchReasons && matchReasons.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {matchReasons.slice(0, 2).map((reason) => (
-              <span
-                key={reason}
-                className="rounded-full bg-surface-sunken px-2 py-0.5 text-[10px] text-ink-secondary"
-              >
+              <Badge key={reason} tone="neutral" size="sm">
                 {reason}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
@@ -138,11 +102,11 @@ export function ListingCardSkeleton({ imageAspect = "4/3" }: { imageAspect?: "sq
   const aspectClass = imageAspect === "square" ? "aspect-square" : "aspect-[4/3]";
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface-raised">
-      <div className={`${aspectClass} w-full animate-pulse bg-surface-sunken`} />
+      <Skeleton className={`${aspectClass} w-full rounded-none`} />
       <div className="space-y-2 p-3 sm:p-4">
-        <div className="h-4 w-3/4 animate-pulse rounded bg-surface-sunken" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-surface-sunken" />
-        <div className="h-5 w-1/3 animate-pulse rounded bg-surface-sunken" />
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-1/2" />
+        <Skeleton className="h-5 w-1/3" />
       </div>
     </div>
   );

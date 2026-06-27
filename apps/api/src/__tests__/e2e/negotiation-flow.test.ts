@@ -6,9 +6,10 @@
  *
  * Uses Fastify inject() — no real server or DB required.
  */
-import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
+
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "../helpers.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "../helpers.js";
 
 // ─── Hoisted mocks ───────────────────────────────────────────────────
 
@@ -76,7 +77,10 @@ vi.mock("../../lib/negotiation-executor.js", () => ({
 }));
 
 vi.mock("../../lib/executor-factory.js", () => ({
-  getExecutor: () => (...args: unknown[]) => mockExecuteNegotiationRound(...args),
+  getExecutor:
+    () =>
+    (...args: unknown[]) =>
+      mockExecuteNegotiationRound(...args),
   getPipelineMode: () => "staged",
 }));
 
@@ -265,7 +269,9 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     roundsNoConcession: 0,
     lastOfferPriceMinor: "80000",
     lastUtility: { u_total: 0.6, v_p: 0.5, v_t: 0.03, v_r: 0.04, v_s: 0.03 },
-    strategySnapshot: { alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 } },
+    negotiationAgentSnapshot: {
+      alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
+    },
     version: 1,
     expiresAt: null,
     createdAt: new Date("2026-04-13"),
@@ -369,7 +375,7 @@ describe("E2E: Full negotiation flow", () => {
         buyer_id: BUYER_ID,
         seller_id: SELLER_ID,
         counterparty_id: SELLER_ID,
-        strategy_snapshot: {
+        negotiation_agent_snapshot: {
           alpha: { price: 0.4, time: 0.2, reputation: 0.2, satisfaction: 0.2 },
           item: { title: "iPhone 15 Pro", category: "electronics" },
           buyer_budget: { max_budget_minor: 95000, target_price_minor: 90000 },

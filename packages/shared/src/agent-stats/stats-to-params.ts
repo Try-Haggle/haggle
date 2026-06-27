@@ -5,10 +5,10 @@
  * parameters. Formulas come from docs/engine/06_에이전트_스탯.md §3-6.
  *
  * Output shape matches engine-session MasterStrategy fields so the result
- * can be used directly as a session strategySnapshot.
+ * can be used directly as a session negotiationAgentSnapshot.
  */
 
-import type { EngineStats, EngineParameters } from "./types.js";
+import type { EngineParameters, EngineStats } from "./types.js";
 import { STAT_BUDGET, STAT_KEYS, STAT_MAX, STAT_MIN } from "./types.js";
 
 function r4(n: number): number {

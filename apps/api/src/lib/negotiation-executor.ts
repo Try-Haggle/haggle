@@ -5,27 +5,28 @@
  * 이 모듈은 엔진(순수 함수)과 DB(서비스 레이어)를 연결하는 유일한 브리지.
  */
 
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
+import type { EscalationRequest, RoundData, RoundResult } from "@haggle/engine-session";
 import { executeRound } from "@haggle/engine-session";
-import type { RoundData } from "@haggle/engine-session";
-import type { RoundResult, EscalationRequest } from "@haggle/engine-session";
-
-import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
-import { recordRoundConversationSignals } from "../services/conversation-signal-sink.js";
-import { broadcastToSession } from "../ws/negotiation-ws.js";
-import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
 import { DEFAULT_MAX_ROUNDS } from "../negotiation/config.js";
+import { recordRoundConversationSignals } from "../services/conversation-signal-sink.js";
 import {
+  createRound,
+  getRoundByIdempotencyKey,
+  getRoundsBySessionId,
+} from "../services/negotiation-round.service.js";
+import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
+import { broadcastToSession } from "../ws/negotiation-ws.js";
+import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
+import {
+  buildIncomingOffer,
+  type DbRound,
+  type DbSession,
+  extractPersistData,
+  getStrategyTimeWindow,
   reconstructSession,
   reconstructStrategy,
-  getStrategyTimeWindow,
-  buildIncomingOffer,
-  extractPersistData,
-  type DbSession,
-  type DbRound,
 } from "./session-reconstructor.js";
-
-import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,7 +120,11 @@ export async function executeNegotiationRound(
       decision: existingRound.decision ?? "COUNTER",
       outgoingPrice: Number(existingRound.counterPriceMinor ?? existingRound.priceminor),
       utility: (existingRound.utility as RoundExecutionResult["utility"]) ?? {
-        u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0,
+        u_total: 0,
+        v_p: 0,
+        v_t: 0,
+        v_r: 0,
+        v_s: 0,
       },
       sessionStatus: (await getSessionById(db, input.sessionId))?.status ?? "ACTIVE",
     };
@@ -147,8 +152,10 @@ export async function executeNegotiationRound(
     }
 
     // 2b. Check max rounds — auto-reject if exceeded
-    const maxRounds = (dbSession.strategySnapshot as Record<string, unknown>)?.max_rounds as number | undefined
-      ?? DEFAULT_MAX_ROUNDS;
+    const maxRounds =
+      ((dbSession.negotiationAgentSnapshot as Record<string, unknown>)?.max_rounds as
+        | number
+        | undefined) ?? DEFAULT_MAX_ROUNDS;
     if (dbSession.currentRound >= maxRounds) {
       await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
         status: "REJECTED",
@@ -166,7 +173,11 @@ export async function executeNegotiationRound(
     }
 
     // 3. Double-check idempotency inside transaction
-    const existingInTx = await getRoundByIdempotencyKey(tx as unknown as Database, input.sessionId, input.idempotencyKey);
+    const existingInTx = await getRoundByIdempotencyKey(
+      tx as unknown as Database,
+      input.sessionId,
+      input.idempotencyKey,
+    );
     if (existingInTx) {
       return {
         idempotent: true as const,
@@ -175,16 +186,23 @@ export async function executeNegotiationRound(
         decision: existingInTx.decision ?? "COUNTER",
         outgoingPrice: Number(existingInTx.counterPriceMinor ?? existingInTx.priceminor),
         utility: (existingInTx.utility as RoundExecutionResult["utility"]) ?? {
-          u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0,
+          u_total: 0,
+          v_p: 0,
+          v_t: 0,
+          v_r: 0,
+          v_s: 0,
         },
         sessionStatus: dbSession.status,
       };
     }
 
     // 4. Load rounds and reconstruct engine types
-    const dbRounds = await getRoundsBySessionId(tx as unknown as Database, input.sessionId) as DbRound[];
+    const dbRounds = (await getRoundsBySessionId(
+      tx as unknown as Database,
+      input.sessionId,
+    )) as DbRound[];
     const engineSession = reconstructSession(dbSession, dbRounds);
-    const strategy = reconstructStrategy(dbSession.strategySnapshot);
+    const strategy = reconstructStrategy(dbSession.negotiationAgentSnapshot);
 
     // 5. Build incoming offer
     const nextRound = engineSession.current_round + 1;
@@ -197,7 +215,7 @@ export async function executeNegotiationRound(
     );
 
     const timeWindow = getStrategyTimeWindow(
-      dbSession.strategySnapshot,
+      dbSession.negotiationAgentSnapshot,
       engineSession.created_at,
       dbSession.expiresAt?.getTime(),
     );
@@ -352,7 +370,12 @@ function buildTerminalEvent(
   sessionId: string,
   sessionStatus: string,
   decision: string,
-  session?: { buyerId: string; sellerId: string; lastOfferPriceMinor: string | null; intentId: string | null },
+  session?: {
+    buyerId: string;
+    sellerId: string;
+    lastOfferPriceMinor: string | null;
+    intentId: string | null;
+  },
 ): PipelineEvent | null {
   if (sessionStatus === "ACCEPTED") {
     return {
@@ -435,7 +458,7 @@ export function mapRawToDbSession(raw: Record<string, unknown>): DbSession {
     roundsNoConcession: raw.rounds_no_concession as number,
     lastOfferPriceMinor: (raw.last_offer_price_minor as string) ?? null,
     lastUtility: raw.last_utility as DbSession["lastUtility"],
-    strategySnapshot: raw.strategy_snapshot as Record<string, unknown>,
+    negotiationAgentSnapshot: raw.negotiation_agent_snapshot as Record<string, unknown>,
     version: raw.version as number,
     expiresAt: raw.expires_at ? new Date(raw.expires_at as string) : null,
     createdAt: new Date(raw.created_at as string),

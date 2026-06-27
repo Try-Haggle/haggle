@@ -1,17 +1,17 @@
+import type { Database } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
 import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { replayConversationSignalSources } from "../services/conversation-signal-replay.service.js";
+import {
+  negotiationAgentBuilderMemorySaveBodySchema,
+  saveNegotiationAgentBuilderMemorySnapshot,
+} from "../services/negotiation-agent-builder-memory.service.js";
 import {
   listUserMemoryCards,
   resetUserMemoryCards,
   suppressUserMemoryCard,
 } from "../services/user-memory-card.service.js";
-import { replayConversationSignalSources } from "../services/conversation-signal-replay.service.js";
-import {
-  advisorMemorySaveBodySchema,
-  saveAdvisorMemorySnapshot,
-} from "../services/advisor-memory.service.js";
 
 const listMemoryQuerySchema = z.object({
   include_suppressed: z.coerce.boolean().optional(),
@@ -33,24 +33,28 @@ const replayBodySchema = z.object({
 });
 
 export function registerIntelligenceRoutes(app: FastifyInstance, db: Database) {
-  app.post("/intelligence/advisor-memory", { preHandler: [requireAuth] }, async (request, reply) => {
-    const parsed = advisorMemorySaveBodySchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
-    }
+  app.post(
+    "/intelligence/negotiation-agent-builder-memory",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const parsed = negotiationAgentBuilderMemorySaveBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
+      }
 
-    const body = parsed.data;
-    const result = await saveAdvisorMemorySnapshot(db, {
-      userId: request.user!.id,
-      sessionId: body.session_id,
-      agentId: body.agent_id,
-      message: body.message,
-      memory: body.memory,
-      surface: "advisor_memory_api",
-    });
+      const body = parsed.data;
+      const result = await saveNegotiationAgentBuilderMemorySnapshot(db, {
+        userId: request.user!.id,
+        sessionId: body.session_id,
+        agentId: body.agent_id,
+        message: body.message,
+        memory: body.memory,
+        surface: "negotiation_agent_builder_memory_api",
+      });
 
-    return reply.send(result);
-  });
+      return reply.send(result);
+    },
+  );
 
   app.get("/intelligence/memory/cards", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = listMemoryQuerySchema.safeParse(request.query);
@@ -67,28 +71,32 @@ export function registerIntelligenceRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ user_id: request.user!.id, cards });
   });
 
-  app.patch("/intelligence/memory/cards/:cardId/suppress", { preHandler: [requireAuth] }, async (request, reply) => {
-    const params = suppressParamsSchema.safeParse(request.params);
-    if (!params.success) {
-      return reply.code(400).send({ error: "INVALID_PARAMS", issues: params.error.issues });
-    }
-    const body = memoryControlBodySchema.safeParse(request.body ?? {});
-    if (!body.success) {
-      return reply.code(400).send({ error: "INVALID_BODY", issues: body.error.issues });
-    }
+  app.patch(
+    "/intelligence/memory/cards/:cardId/suppress",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const params = suppressParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send({ error: "INVALID_PARAMS", issues: params.error.issues });
+      }
+      const body = memoryControlBodySchema.safeParse(request.body ?? {});
+      if (!body.success) {
+        return reply.code(400).send({ error: "INVALID_BODY", issues: body.error.issues });
+      }
 
-    const result = await suppressUserMemoryCard(db, {
-      userId: request.user!.id,
-      cardId: params.data.cardId,
-      reason: body.data.reason,
-    });
+      const result = await suppressUserMemoryCard(db, {
+        userId: request.user!.id,
+        cardId: params.data.cardId,
+        reason: body.data.reason,
+      });
 
-    if (result.affected === 0) {
-      return reply.code(404).send({ error: "MEMORY_CARD_NOT_FOUND" });
-    }
+      if (result.affected === 0) {
+        return reply.code(404).send({ error: "MEMORY_CARD_NOT_FOUND" });
+      }
 
-    return reply.send({ user_id: request.user!.id, ...result });
-  });
+      return reply.send({ user_id: request.user!.id, ...result });
+    },
+  );
 
   app.delete("/intelligence/memory", { preHandler: [requireAuth] }, async (request, reply) => {
     const body = memoryControlBodySchema.safeParse(request.body ?? {});
@@ -104,18 +112,22 @@ export function registerIntelligenceRoutes(app: FastifyInstance, db: Database) {
     return reply.send({ user_id: request.user!.id, ...result });
   });
 
-  app.post("/intelligence/ops/replay-source-only", { preHandler: [requireAdmin] }, async (request, reply) => {
-    const parsed = replayBodySchema.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
-    }
+  app.post(
+    "/intelligence/ops/replay-source-only",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const parsed = replayBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
+      }
 
-    const result = await replayConversationSignalSources(db, {
-      limit: parsed.data.limit,
-      sessionId: parsed.data.session_id,
-      sourceKey: parsed.data.source_key,
-    });
+      const result = await replayConversationSignalSources(db, {
+        limit: parsed.data.limit,
+        sessionId: parsed.data.session_id,
+        sourceKey: parsed.data.source_key,
+      });
 
-    return reply.send(result);
-  });
+      return reply.send(result);
+    },
+  );
 }

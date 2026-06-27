@@ -1,18 +1,30 @@
 "use client";
 
 import {
-  getNegotiationPreset,
+  type AgentBuilderState,
+  applyChatStrategyToState,
+  createBuilderState,
+  engineParamsFromPreset,
+  isBuilderCustomized,
   LISTING_CATEGORIES,
   LISTING_CATEGORY_LABELS,
-  type NegotiationPresetId,
+  type NegotiationAgentPresetId,
+  resolveEffectivePreset,
 } from "@haggle/shared";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { type AdvisorMemory, StrategyChat } from "@/app/l/[publicId]/strategy-chat";
+import {
+  NegotiationAgentBuilderChat,
+  type NegotiationAgentBuilderMemory,
+} from "@/app/l/[publicId]/negotiation-agent-builder-chat";
 import { api } from "@/lib/api-client";
+import { createNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { createClient } from "@/lib/supabase/client";
 import { useAmplitude } from "@/providers/amplitude-provider";
-import { AgentBuilder, type AgentBuilderValue } from "../../agents/_components/AgentBuilder";
+import {
+  AgentBuilder,
+  agentStrategySnapshotFromState,
+} from "../../agents/_components/AgentBuilder";
 
 /* ─── Constants ───────────────────────────────────────────── */
 
@@ -50,10 +62,15 @@ const STEP_SUBTITLES = [
 /* ─── Seller Agent Presets (4D weight system) ─────────────────
  *
  * Source of truth lives in @haggle/shared/agent-presets.
- * Step 5 uses NEGOTIATION_PRESETS + PresetGrid + StrategyRadar.
+ * Step 5 uses NEGOTIATION_AGENT_PRESETS + PresetGrid + StrategyRadar.
  */
 
-const RECOGNIZED_PRESET_IDS: NegotiationPresetId[] = ["hunter", "closer", "verifier", "balancer"];
+const RECOGNIZED_PRESET_IDS: NegotiationAgentPresetId[] = [
+  "hunter",
+  "closer",
+  "verifier",
+  "balancer",
+];
 
 /* ─── Image Compression ───────────────────────────────────── */
 
@@ -100,7 +117,7 @@ interface DraftData {
   targetPrice: string | null;
   floorPrice: string | null;
   sellingDeadline: string | null;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
 }
 
 /* ─── Main Wizard ─────────────────────────────────────────── */
@@ -157,11 +174,12 @@ export function NewListingWizard({
   const [floorPrice, setFloorPrice] = useState("");
   const [sellingDeadline, setSellingDeadline] = useState("");
 
-  // Step 5: Agent — all state lives in a single AgentBuilderValue.
-  const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
-  const prevAgentRef = useRef<AgentBuilderValue | null>(null);
+  // Step 5: Agent — all state lives in a single AgentBuilderState.
+  const [agentValue, setAgentValue] = useState<AgentBuilderState | null>(null);
+  const prevAgentRef = useRef<AgentBuilderState | null>(null);
   // Strategy chat memory captured from the advisor conversation.
-  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
+  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] =
+    useState<NegotiationAgentBuilderMemory | null>(null);
 
   // Published state
   const [publishResult, setPublishResult] = useState<{
@@ -172,7 +190,7 @@ export function NewListingWizard({
   const [storyDownloading, setStoryDownloading] = useState(false);
 
   // Seller-side display copy for headers/summary.
-  const selectedCopy = agentValue?.effectivePreset.copy.seller ?? null;
+  const selectedCopy = agentValue ? resolveEffectivePreset(agentValue).copy.seller : null;
 
   // Track preset/custom changes (don't fire on every override slider drag).
   useEffect(() => {
@@ -182,13 +200,15 @@ export function NewListingWizard({
       return;
     }
     const changed =
-      !prev || prev.sourceKind !== agentValue.sourceKind || prev.sourceId !== agentValue.sourceId;
+      !prev ||
+      prev.source.kind !== agentValue.source.kind ||
+      prev.source.id !== agentValue.source.id;
     if (changed) {
       track("Seller Agent Selected", {
-        agent_preset: agentValue.basePresetId,
+        agent_preset: agentValue.agent.presetId,
         draft_id: draftId,
-        source: agentValue.sourceKind,
-        ...(agentValue.sourceKind === "custom" ? { custom_agent_id: agentValue.sourceId } : {}),
+        source: agentValue.source.kind,
+        ...(agentValue.source.kind === "custom" ? { custom_agent_id: agentValue.source.id } : {}),
       });
     }
     prevAgentRef.current = agentValue;
@@ -261,15 +281,15 @@ export function NewListingWizard({
         if (d.floorPrice) setFloorPrice(String(Math.round(Number(d.floorPrice))));
         if (d.sellingDeadline) {
           const savedLocalDate =
-            typeof d.strategyConfig?.sellingDeadlineLocalDate === "string"
-              ? d.strategyConfig.sellingDeadlineLocalDate
+            typeof d.negotiationAgentSnapshot?.sellingDeadlineLocalDate === "string"
+              ? d.negotiationAgentSnapshot.sellingDeadlineLocalDate
               : null;
           setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(d.sellingDeadline)));
         }
         if (d.draftName) setDraftName(d.draftName);
-        if (d.strategyConfig?.subtype === "phone") {
+        if (d.negotiationAgentSnapshot?.subtype === "phone") {
           setSubtype("phone");
-          const pa = d.strategyConfig.phoneAnswers as Record<string, unknown> | undefined;
+          const pa = d.negotiationAgentSnapshot.phoneAnswers as Record<string, unknown> | undefined;
           if (pa) {
             if (typeof pa.batteryHealth === "string") setPhoneBatteryHealth(pa.batteryHealth);
             if (typeof pa.carrierLock === "string") setPhoneCarrierLock(pa.carrierLock);
@@ -278,20 +298,10 @@ export function NewListingWizard({
             if (pa.factoryResetConfirmed === true) setPhoneFactoryResetConfirmed(true);
           }
         }
-        if (typeof d.strategyConfig?.preset === "string") {
-          const candidate = d.strategyConfig.preset as NegotiationPresetId;
+        if (typeof d.negotiationAgentSnapshot?.preset === "string") {
+          const candidate = d.negotiationAgentSnapshot.preset as NegotiationAgentPresetId;
           if (RECOGNIZED_PRESET_IDS.includes(candidate)) {
-            const preset = getNegotiationPreset(candidate);
-            if (preset) {
-              setAgentValue({
-                sourceKind: "preset",
-                sourceId: candidate,
-                basePresetId: candidate,
-                effectivePreset: preset,
-                overrides: null,
-                dirty: false,
-              });
-            }
+            setAgentValue(createBuilderState({ side: "seller", presetId: candidate }));
           }
         }
       } catch {
@@ -442,16 +452,14 @@ export function NewListingWizard({
     }
     if (sellingDeadline) Object.assign(strategyBase, deadlineStrategyConfig());
     if (agentValue) {
-      strategyBase.preset = agentValue.basePresetId;
-      strategyBase.weights = { ...agentValue.effectivePreset.weights };
-      strategyBase.source = agentValue.sourceKind;
-      strategyBase.sourceId = agentValue.sourceId;
-      strategyBase.customized = !!agentValue.overrides;
+      // Single serializer — emits the full strategy (weights + every engine
+      // knob + memory). Same function publish uses, so the two can't diverge.
+      Object.assign(
+        strategyBase,
+        agentStrategySnapshotFromState(agentValue, negotiationAgentBuilderMemory),
+      );
     }
-    if (advisorMemory) {
-      strategyBase.advisorMemory = advisorMemory;
-    }
-    if (Object.keys(strategyBase).length > 0) patch.strategyConfig = strategyBase;
+    if (Object.keys(strategyBase).length > 0) patch.negotiationAgentSnapshot = strategyBase;
     return patch;
   }
 
@@ -640,15 +648,13 @@ export function NewListingWizard({
     setError(null);
 
     try {
+      // Same single serializer the wizard's step-save uses — guarantees publish
+      // persists the COMPLETE tuned strategy (weights + every engine knob), so
+      // the promoted "My Agents" record never loses chat/slider tuning.
       const ok = await patchDraft(draftId!, {
-        strategyConfig: {
+        negotiationAgentSnapshot: {
           ...(sellingDeadline ? deadlineStrategyConfig() : {}),
-          preset: agentValue!.basePresetId,
-          weights: { ...agentValue!.effectivePreset.weights },
-          source: agentValue!.sourceKind,
-          sourceId: agentValue!.sourceId,
-          customized: !!agentValue!.overrides,
-          ...(advisorMemory ? { advisorMemory } : {}),
+          ...agentStrategySnapshotFromState(agentValue!, negotiationAgentBuilderMemory),
         },
       });
       if (!ok) return;
@@ -682,8 +688,36 @@ export function NewListingWizard({
         condition,
         has_photo: !!photoUrl,
         has_floor_price: !!floorPrice,
-        agent_preset: agentValue!.basePresetId,
+        agent_preset: agentValue!.agent.presetId,
       });
+
+      // Side effect: persist the configured agent into the seller's library.
+      // Failure here is non-fatal — the listing is already live. We only mint a
+      // fresh agent when the wizard customized a preset; an existing custom
+      // agent picked from the list is already in DB.
+      if (agentValue!.source.kind === "preset" || isBuilderCustomized(agentValue!)) {
+        const ep = resolveEffectivePreset(agentValue!);
+        try {
+          await createNegotiationAgent({
+            name: `${ep.copy.seller.name} · ${title || data.publicId}`,
+            role: "seller",
+            config: {
+              emoji: ep.emoji,
+              basePresetId: agentValue!.agent.presetId,
+              negotiationAgentPresetId: agentValue!.agent.presetId,
+              weights: { ...ep.weights },
+              builderChatMemory: negotiationAgentBuilderMemory ?? undefined,
+              // Same engine-knob extractor as every other boundary (one source).
+              ...(isBuilderCustomized(agentValue!)
+                ? { engineParams: engineParamsFromPreset(ep) }
+                : {}),
+            },
+          });
+        } catch (saveErr) {
+          console.warn("[new-listing-wizard] post-publish agent save failed:", saveErr);
+        }
+      }
+
       setPublishResult({ publicId: data.publicId!, shareUrl: data.shareUrl! });
     } finally {
       setSaving(false);
@@ -792,7 +826,7 @@ export function NewListingWizard({
                 >
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: agentValue.effectivePreset.accentColor }}
+                    style={{ background: resolveEffectivePreset(agentValue).accentColor }}
                   />
                   Agent: {selectedCopy.name}
                 </p>
@@ -2030,15 +2064,22 @@ export function NewListingWizard({
                 onChange={setAgentValue}
                 chatSlot={
                   agentValue && (
-                    // biome-ignore lint/a11y/useValidAriaRole: "role" is a StrategyChat prop (buyer/seller), not an ARIA role
-                    <StrategyChat
-                      agent={agentValue.effectivePreset}
-                      listingPublicId={`listing-draft-${agentValue.basePresetId}`}
+                    // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
+                    <NegotiationAgentBuilderChat
+                      agent={resolveEffectivePreset(agentValue)}
+                      listingPublicId={`listing-draft-${agentValue.agent.presetId}`}
                       listingTitle={title || "this listing"}
                       listingCategory={category || null}
                       listingPrice={targetPrice || null}
+                      listingFloorPrice={floorPrice || null}
+                      listingCondition={condition || null}
+                      listingTags={tags}
+                      listingDescription={description || null}
                       role="seller"
-                      onMemoryUpdate={setAdvisorMemory}
+                      onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
+                      onStrategyUpdate={(s) =>
+                        setAgentValue((prev) => (prev ? applyChatStrategyToState(prev, s) : prev))
+                      }
                     />
                   )
                 }

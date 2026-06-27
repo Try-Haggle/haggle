@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
 import { executeRound, initDemo } from "@/lib/demo-api";
 import type { DemoInitRequest, DemoInitResponse, DemoRoundResponse } from "@/lib/demo-types";
 import type { PresetTuningDraft, StoredMemoryCard } from "@/lib/intelligence-demo-api";
 import { recordPresetTuningFeedback, resetDemoMemory } from "@/lib/intelligence-demo-api";
+import type {
+  AdvisorListing,
+  NegotiationAgentBuilderMemory,
+} from "@/lib/negotiation-agent-builder-types";
 import { AgentProductAdvisor } from "./_components/agent-product-advisor";
 import { AutoTradeShowcase, buildSellerVoiceMessage } from "./_components/auto-trade-showcase";
 import { CostBadge } from "./_components/cost-badge";
@@ -79,7 +82,7 @@ function getOrCreateDemoUserId(): string {
 
 function buildAutoTradeParams(
   listing: AdvisorListing,
-  memory: AdvisorMemory | null,
+  memory: NegotiationAgentBuilderMemory | null,
   userId: string,
   tuningDraft?: PresetTuningDraft | null,
 ): DemoInitRequest {
@@ -207,7 +210,8 @@ export function DeveloperDemo() {
   const [buyerAncientId, setBuyerAncientId] = useState<AncientBeingId>("fab");
   const sellerAncientId = DEFAULT_SELLER_AGENT_ID;
   const [selectedListing, setSelectedListing] = useState<AdvisorListing | null>(null);
-  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
+  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] =
+    useState<NegotiationAgentBuilderMemory | null>(null);
   const [presetTuningDraft, setPresetTuningDraft] = useState<PresetTuningDraft | null>(null);
   const [negotiationBlockedReason, setNegotiationBlockedReason] = useState<string | null>(null);
   const [demoUserId, setDemoUserId] = useState(DEMO_USER_ID);
@@ -306,7 +310,7 @@ export function DeveloperDemo() {
       }
       setDemoUserId(nextUserId);
       setSelectedListing(null);
-      setAdvisorMemory(null);
+      setNegotiationAgentBuilderMemory(null);
       setPresetTuningDraft(null);
       setPresetFeedbackUpdate(null);
       setPresetFeedbackMessage(null);
@@ -321,18 +325,19 @@ export function DeveloperDemo() {
 
   const handleStartNegotiationFromAdvisor = (
     listing: AdvisorListing,
-    memory: AdvisorMemory,
+    memory: NegotiationAgentBuilderMemory,
     readiness: { ready: boolean; reason: string | null },
   ) => {
     setSelectedListing(listing);
-    setAdvisorMemory(memory);
+    setNegotiationAgentBuilderMemory(memory);
     setNegotiationBlockedReason(readiness.ready ? null : readiness.reason);
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list intentionally fixed for this demo handler
   const handleRunAutoTrade = useCallback(
-    async (listingOverride?: AdvisorListing, memoryOverride?: AdvisorMemory) => {
+    async (listingOverride?: AdvisorListing, memoryOverride?: NegotiationAgentBuilderMemory) => {
       const listing = listingOverride ?? selectedListing;
-      const memory = memoryOverride ?? advisorMemory;
+      const memory = memoryOverride ?? negotiationAgentBuilderMemory;
       const draft = listing?.id === selectedListing?.id ? presetTuningDraft : null;
       const startBlockedReason = negotiationBlockedReason ?? engineReviewBlockedReason(draft);
 
@@ -450,12 +455,13 @@ export function DeveloperDemo() {
       }
     },
     [
-      advisorMemory,
+      negotiationAgentBuilderMemory,
       buyerAncientId,
       demoUserId,
       negotiationBlockedReason,
       presetTuningDraft,
       selectedListing,
+      sellerAncientId,
     ],
   );
 
@@ -537,7 +543,7 @@ export function DeveloperDemo() {
           buyerAncientId={buyerAncientId}
           sellerAncientId={sellerAncientId}
           listing={selectedListing}
-          buyerMemory={advisorMemory}
+          buyerMemory={negotiationAgentBuilderMemory}
           autoTradeRunning={autoTradeRunning}
           startBlockedReason={effectiveStartBlockedReason}
           onRunAutoTrade={handleRunAutoTrade}

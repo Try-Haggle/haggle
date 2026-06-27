@@ -1,6 +1,6 @@
 "use client";
 
-import { type FieldDescriptor, fieldsByTier, type NegotiationPreset } from "@haggle/shared";
+import { type FieldDescriptor, fieldsByTier, type NegotiationAgentPreset } from "@haggle/shared";
 import { useEffect, useState } from "react";
 
 /**
@@ -25,13 +25,13 @@ export interface AdvancedOverrides {
 
 interface AdvancedSettingsModalProps {
   open: boolean;
-  preset: NegotiationPreset;
+  preset: NegotiationAgentPreset;
   initial?: Partial<AdvancedOverrides>;
   onClose: () => void;
   onApply: (overrides: AdvancedOverrides) => void;
 }
 
-function presetToOverrides(preset: NegotiationPreset): AdvancedOverrides {
+function presetToOverrides(preset: NegotiationAgentPreset): AdvancedOverrides {
   return {
     weights: { ...preset.weights },
     alpha: preset.alpha,

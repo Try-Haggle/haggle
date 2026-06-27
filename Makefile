@@ -32,8 +32,9 @@ setup: ## 신규 개발자 1회 셋업: 의존성 → Supabase 기동 → 마이
 	@echo "✅ 셋업 완료. 'make dev'로 개발 서버를 시작하세요."
 	@echo "   Supabase Studio: http://127.0.0.1:54323"
 
-dev: ## 일상 개발: Supabase 기동(미기동 시) + api·web 동시 실행
+dev: ## 일상 개발: Supabase 기동(미기동 시) + 마이그레이션 동기 + api·web 동시 실행
 	@supabase status >/dev/null 2>&1 || supabase start
+	@$(MAKE) migrate
 	pnpm dev
 
 migrate: ## 로컬 DB에 마이그레이션 적용 (pgvector 확장 보장 후 drizzle migrate)

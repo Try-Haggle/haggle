@@ -1,18 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useApp } from "@modelcontextprotocol/ext-apps/react";
-import StepIndicator from "./components/StepIndicator";
-import TagInput from "./components/TagInput";
-import ChipSelector from "./components/ChipSelector";
-import SellerStrategyChat, { buildInitialSellerMemory, type SellerStrategyMemory } from "./components/SellerStrategyChat";
-import RadarChart from "./components/RadarChart";
 import {
-  NEGOTIATION_PRESETS,
+  getNegotiationAgentPreset,
   LISTING_CATEGORIES,
   LISTING_CATEGORY_LABELS,
-  getNegotiationPreset,
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgentPresetId,
   presetToEngineParameters,
-  type NegotiationPresetId,
 } from "@haggle/shared";
+import { useApp } from "@modelcontextprotocol/ext-apps/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import ChipSelector from "./components/ChipSelector";
+import NegotiationAgentBuilderChat, {
+  buildInitialSellerNegotiationAgentBuilderMemory,
+  type SellerNegotiationAgentBuilderMemory,
+} from "./components/NegotiationAgentBuilderChat";
+import RadarChart from "./components/RadarChart";
+import StepIndicator from "./components/StepIndicator";
+import TagInput from "./components/TagInput";
 
 const STEPS = [{ label: "Item Details" }, { label: "Pricing" }, { label: "AI Agent" }];
 
@@ -73,9 +76,10 @@ export default function App() {
   const [sellingDeadline, setSellingDeadline] = useState("");
 
   // Step 3 state
-  const [selectedAgent, setSelectedAgent] = useState<NegotiationPresetId | null>(null);
-  const [isStrategyCustomized, setIsStrategyCustomized] = useState(false);
-  const [sellerStrategy, setSellerStrategy] = useState<SellerStrategyMemory>(buildInitialSellerMemory);
+  const [selectedAgent, setSelectedAgent] = useState<NegotiationAgentPresetId | null>(null);
+  const [_isStrategyCustomized, _setIsStrategyCustomized] = useState(false);
+  const [sellerNegotiationAgentBuilderMemory, setSellerNegotiationAgentBuilderMemory] =
+    useState<SellerNegotiationAgentBuilderMemory>(buildInitialSellerNegotiationAgentBuilderMemory);
 
   // Auto-detect (vision LLM): subtype + suggested tags
   const [subtype, setSubtype] = useState<"phone" | null>(null);
@@ -102,19 +106,36 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const goToStep = (step: number) => setCurrentStep(step);
   const scrollToTop = useCallback(() => {
-    try { widgetRef.current?.scrollTo(0, 0); } catch {}
-    try { window.scrollTo(0, 0); } catch {}
-    try { document.documentElement.scrollTop = 0; } catch {}
-    try { document.body.scrollTop = 0; } catch {}
+    try {
+      widgetRef.current?.scrollTo(0, 0);
+    } catch {}
+    try {
+      window.scrollTo(0, 0);
+    } catch {}
+    try {
+      document.documentElement.scrollTop = 0;
+    } catch {}
+    try {
+      document.body.scrollTop = 0;
+    } catch {}
     const raf = requestAnimationFrame(() => {
-      try { widgetRef.current?.scrollTo(0, 0); } catch {}
-      try { window.scrollTo(0, 0); } catch {}
-      try { document.documentElement.scrollTop = 0; } catch {}
-      try { document.body.scrollTop = 0; } catch {}
+      try {
+        widgetRef.current?.scrollTo(0, 0);
+      } catch {}
+      try {
+        window.scrollTo(0, 0);
+      } catch {}
+      try {
+        document.documentElement.scrollTop = 0;
+      } catch {}
+      try {
+        document.body.scrollTop = 0;
+      } catch {}
     });
     return raf;
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentStep intentionally triggers scroll-to-top on every step change
   useEffect(() => {
     const raf = scrollToTop();
     return () => cancelAnimationFrame(raf);
@@ -142,7 +163,10 @@ export default function App() {
       const w = window as unknown as { openai?: { toolOutput?: Record<string, unknown> } };
       const initial = w.openai?.toolOutput;
       if (!initial) return;
-      console.log("[haggle] Initial toolOutput from window.openai:", JSON.stringify(initial).slice(0, 200));
+      console.log(
+        "[haggle] Initial toolOutput from window.openai:",
+        JSON.stringify(initial).slice(0, 200),
+      );
       const draftIdValue = initial.draft_id as string | undefined;
       if (draftIdValue) setDraftId(draftIdValue);
       const draft = initial.draft as Record<string, unknown> | undefined;
@@ -158,13 +182,19 @@ export default function App() {
         }
         if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
         if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
-        const sc = draft.strategyConfig as Record<string, unknown> | undefined;
+        const sc = draft.negotiationAgentSnapshot as Record<string, unknown> | undefined;
         if (sc?.subtype === "phone") {
           setSubtype("phone");
           setAutoDetectDone(true);
         }
         const pa = sc?.phoneAnswers as
-          | { batteryHealth?: string; carrierLock?: string; storage?: string; screenCondition?: string; factoryResetConfirmed?: boolean }
+          | {
+              batteryHealth?: string;
+              carrierLock?: string;
+              storage?: string;
+              screenCondition?: string;
+              factoryResetConfirmed?: boolean;
+            }
           | undefined;
         if (pa) {
           if (pa.batteryHealth) setPhoneBatteryHealth(pa.batteryHealth);
@@ -180,7 +210,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { app, isConnected, error: connectionError } = useApp({
+  const {
+    app,
+    isConnected,
+    error: connectionError,
+  } = useApp({
     appInfo: { name: "haggle-listing-widget", version: "0.1.0" },
     capabilities: {
       availableDisplayModes: ["inline", "fullscreen"],
@@ -216,12 +250,16 @@ export default function App() {
             if (draft.targetPrice) setTargetPrice(draft.targetPrice as string);
             if (draft.floorPrice) setFloorPrice(draft.floorPrice as string);
             if (draft.sellingDeadline) {
-              const strategyConfig = draft.strategyConfig as Record<string, unknown> | undefined;
+              const negotiationAgentSnapshot = draft.negotiationAgentSnapshot as
+                | Record<string, unknown>
+                | undefined;
               const savedLocalDate =
-                typeof strategyConfig?.sellingDeadlineLocalDate === "string"
-                  ? strategyConfig.sellingDeadlineLocalDate
+                typeof negotiationAgentSnapshot?.sellingDeadlineLocalDate === "string"
+                  ? negotiationAgentSnapshot.sellingDeadlineLocalDate
                   : null;
-              setSellingDeadline(savedLocalDate ?? formatLocalDateInput(new Date(draft.sellingDeadline as string)));
+              setSellingDeadline(
+                savedLocalDate ?? formatLocalDateInput(new Date(draft.sellingDeadline as string)),
+              );
             }
           }
         } catch (err) {
@@ -240,7 +278,11 @@ export default function App() {
 
   // Log connection state for debugging widget disappearing issue.
   useEffect(() => {
-    console.log("[haggle] Connection state:", { isConnected, hasApp: !!app, connectionError: connectionError?.message });
+    console.log("[haggle] Connection state:", {
+      isConnected,
+      hasApp: !!app,
+      connectionError: connectionError?.message,
+    });
     if (connectionError) {
       console.error("[haggle] Connection error:", connectionError);
     }
@@ -264,10 +306,7 @@ export default function App() {
     // If the host exposes availableDisplayModes, verify fullscreen is supported.
     // ChatGPT may not expose this field (protocol discrepancy), so skip check if absent.
     const ctx = app.getHostContext();
-    if (
-      ctx?.availableDisplayModes &&
-      !ctx.availableDisplayModes.includes("fullscreen")
-    ) {
+    if (ctx?.availableDisplayModes && !ctx.availableDisplayModes.includes("fullscreen")) {
       return;
     }
 
@@ -480,7 +519,7 @@ export default function App() {
             tags: tags.length > 0 ? tags : undefined,
             category,
             condition: condition || undefined,
-            ...(resolvedSubtype ? { strategyConfig: { subtype: resolvedSubtype } } : {}),
+            ...(resolvedSubtype ? { negotiationAgentSnapshot: { subtype: resolvedSubtype } } : {}),
           },
         },
       });
@@ -549,7 +588,7 @@ export default function App() {
             targetPrice: targetPrice.trim(),
             floorPrice: floorPrice.trim() || undefined,
             sellingDeadline: localDateToDeadlineIso(sellingDeadline),
-            strategyConfig: baseStrategy,
+            negotiationAgentSnapshot: baseStrategy,
           },
         },
       });
@@ -566,7 +605,16 @@ export default function App() {
     <div ref={widgetRef} className={`widget${isFullscreen ? " widget--fullscreen" : ""}`}>
       {/* Debug: show connection error if any */}
       {connectionError && (
-        <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
+        <div
+          style={{
+            background: "#7f1d1d",
+            color: "#fca5a5",
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontSize: 12,
+            marginBottom: 12,
+          }}
+        >
           Bridge error: {connectionError.message}
         </div>
       )}
@@ -581,6 +629,7 @@ export default function App() {
             aria-label="Exit fullscreen"
           >
             <svg
+              aria-hidden="true"
               xmlns="http://www.w3.org/2000/svg"
               width="16"
               height="16"
@@ -610,6 +659,7 @@ export default function App() {
             aria-label="Expand to fullscreen"
           >
             <svg
+              aria-hidden="true"
               xmlns="http://www.w3.org/2000/svg"
               width="16"
               height="16"
@@ -630,15 +680,14 @@ export default function App() {
       )}
 
       {/* Step Indicator — rendered here for Step 1 & 2 (Step 3 renders its own inside wrapper) */}
-      {currentStep !== 3 && (
-        <StepIndicator currentStep={currentStep} steps={STEPS} />
-      )}
+      {currentStep !== 3 && <StepIndicator currentStep={currentStep} steps={STEPS} />}
 
       {currentStep === 1 ? (
         <div>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
+              aria-hidden="true"
               className="section-heading__icon"
               xmlns="http://www.w3.org/2000/svg"
               width="20"
@@ -660,9 +709,9 @@ export default function App() {
 
           {/* Photo */}
           <div className="form-group">
-            <label className="form-label">
+            <span className="form-label">
               Photo <span className="required-star">*</span>
-            </label>
+            </span>
             <input
               ref={fileInputRef}
               type="file"
@@ -671,13 +720,21 @@ export default function App() {
               onChange={handlePhotoSelect}
             />
             {photoPreview ? (
+              // biome-ignore lint/a11y/noStaticElementInteractions: image preview is a file-picker trigger; kept as div to preserve styling
               <div
                 className="photo-preview"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
               >
                 <img src={photoPreview} alt="Preview" className="photo-preview__img" />
                 <div className="photo-preview__overlay">
                   <svg
+                    aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
                     width="24"
                     height="24"
@@ -695,11 +752,19 @@ export default function App() {
                 </div>
               </div>
             ) : (
+              // biome-ignore lint/a11y/noStaticElementInteractions: placeholder is a file-picker trigger; kept as div to preserve styling
               <div
                 className="photo-placeholder"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
               >
                 <svg
+                  aria-hidden="true"
                   className="photo-placeholder__icon"
                   xmlns="http://www.w3.org/2000/svg"
                   width="24"
@@ -722,9 +787,9 @@ export default function App() {
 
           {/* Title */}
           <div className="form-group">
-            <label className="form-label">
+            <span className="form-label">
               Title <span className="required-star">*</span>
-            </label>
+            </span>
             <input
               type="text"
               className="form-input"
@@ -740,7 +805,7 @@ export default function App() {
 
           {/* Description */}
           <div className="form-group">
-            <label className="form-label">Description</label>
+            <span className="form-label">Description</span>
             <textarea
               className="form-input form-textarea"
               placeholder="Describe key features, specs, included accessories, reason for selling..."
@@ -752,7 +817,7 @@ export default function App() {
           {/* Detected type (auto) */}
           {(autoDetecting || autoDetectDone) && (
             <div className="form-group">
-              <label className="form-label">Detected type</label>
+              <span className="form-label">Detected type</span>
               {autoDetecting ? (
                 <p className="form-helper">Analyzing photo & title…</p>
               ) : (
@@ -771,18 +836,14 @@ export default function App() {
           {/* Tags */}
           <div className="form-group">
             <div className="tags-row">
-              <label className="form-label tags-row__label">
+              <span className="form-label tags-row__label">
                 Tags {autoDetectDone && <span className="form-label__hint">(auto-suggested)</span>}
-              </label>
+              </span>
               <button
                 type="button"
                 className="tags-row__auto-btn"
                 onClick={handleAutoGenerateTags}
-                disabled={
-                  autoDetecting ||
-                  !title.trim() ||
-                  (!photoBase64 && !photoUploaded)
-                }
+                disabled={autoDetecting || !title.trim() || (!photoBase64 && !photoUploaded)}
               >
                 {autoDetecting ? "Analyzing…" : "✨ Auto-generate"}
               </button>
@@ -792,7 +853,7 @@ export default function App() {
 
           {/* Category */}
           <div className="form-group">
-            <label className="form-label">Category</label>
+            <span className="form-label">Category</span>
             <select
               className="form-select"
               value={category}
@@ -808,12 +869,8 @@ export default function App() {
 
           {/* Condition */}
           <div className="form-group">
-            <label className="form-label">Condition</label>
-            <ChipSelector
-              options={CONDITIONS}
-              selected={condition}
-              onChange={setCondition}
-            />
+            <span className="form-label">Condition</span>
+            <ChipSelector options={CONDITIONS} selected={condition} onChange={setCondition} />
           </div>
 
           {/* Next Button */}
@@ -833,13 +890,17 @@ export default function App() {
           <button
             type="button"
             className="btn-back"
-            onClick={() => { goToStep(1); setError(null); }}
+            onClick={() => {
+              goToStep(1);
+              setError(null);
+            }}
           >
             ← Back
           </button>
           {/* Section Heading */}
           <div className="section-heading">
             <svg
+              aria-hidden="true"
               className="section-heading__icon"
               xmlns="http://www.w3.org/2000/svg"
               width="20"
@@ -876,9 +937,9 @@ export default function App() {
 
           {/* Asking Price */}
           <div className="form-group">
-            <label className="form-label">
+            <span className="form-label">
               Asking Price <span className="required-star">*</span>
-            </label>
+            </span>
             <div className="price-input-wrapper">
               <span className="price-prefix">$</span>
               <input
@@ -899,10 +960,10 @@ export default function App() {
 
           {/* Minimum Acceptable Price */}
           <div className="form-group">
-            <label className="form-label">
+            <span className="form-label">
               Minimum Acceptable Price{" "}
               <span className="form-label__hint">(private — only your AI agent knows)</span>
-            </label>
+            </span>
             <div className="price-input-wrapper">
               <span className="price-prefix">$</span>
               <input
@@ -922,9 +983,9 @@ export default function App() {
 
           {/* Selling Deadline */}
           <div className="form-group">
-            <label className="form-label">
+            <span className="form-label">
               Selling Deadline <span className="required-star">*</span>
-            </label>
+            </span>
             <input
               type="date"
               className="form-input"
@@ -936,7 +997,9 @@ export default function App() {
                 if (error) setError(null);
               }}
             />
-            <p className="form-helper">Your AI agent may be more flexible as the deadline approaches</p>
+            <p className="form-helper">
+              Your AI agent may be more flexible as the deadline approaches
+            </p>
           </div>
 
           {/* Phone-specific required questions */}
@@ -950,9 +1013,9 @@ export default function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
+                <span className="form-label">
                   Storage <span className="required-star">*</span>
-                </label>
+                </span>
                 <ChipSelector
                   options={[
                     { value: "64gb", label: "64GB" },
@@ -968,9 +1031,9 @@ export default function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
+                <span className="form-label">
                   Battery health <span className="required-star">*</span>
-                </label>
+                </span>
                 <ChipSelector
                   options={[
                     { value: "ge_90", label: "90%+" },
@@ -985,9 +1048,9 @@ export default function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
+                <span className="form-label">
                   Carrier lock <span className="required-star">*</span>
-                </label>
+                </span>
                 <ChipSelector
                   options={[
                     { value: "unlocked", label: "Unlocked" },
@@ -1000,9 +1063,9 @@ export default function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
+                <span className="form-label">
                   Screen condition <span className="required-star">*</span>
-                </label>
+                </span>
                 <ChipSelector
                   options={[
                     { value: "perfect", label: "Perfect" },
@@ -1016,9 +1079,9 @@ export default function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
+                <span className="form-label">
                   Pre-ship checklist <span className="required-star">*</span>
-                </label>
+                </span>
                 <label className="phone-details__checkbox">
                   <input
                     type="checkbox"
@@ -1056,12 +1119,12 @@ export default function App() {
       ) : (
         /* ─── Step 3: AI Agent Setup ──────────────────────────── */
         (() => {
-          const activePreset = getNegotiationPreset(selectedAgent ?? "");
+          const activePreset = getNegotiationAgentPreset(selectedAgent ?? "");
           const activeCopy = activePreset?.copy.seller;
           const isStrategyCustomized = false; // Advanced editor wiring pending
           const formatPrice = (v: string) => {
             const n = parseFloat(v);
-            return isNaN(n) ? "$0" : `$${n.toLocaleString()}`;
+            return Number.isNaN(n) ? "$0" : `$${n.toLocaleString()}`;
           };
 
           // ─── Listing Live Screen ───────────────────────────
@@ -1070,16 +1133,29 @@ export default function App() {
               <div className="listing-live">
                 {/* Success Icon */}
                 <div className="listing-live__icon">
-                  <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    width="32"
+                    height="32"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-                    <path d="M20 3v4" /><path d="M22 5h-4" />
-                    <path d="M4 17v2" /><path d="M5 18H3" />
+                    <path d="M20 3v4" />
+                    <path d="M22 5h-4" />
+                    <path d="M4 17v2" />
+                    <path d="M5 18H3" />
                   </svg>
                 </div>
 
                 <h2 className="listing-live__title">Your listing is live!</h2>
                 <p className="listing-live__subtitle">
-                  Share the link below. When buyers click it, they'll negotiate with your AI agent automatically.
+                  Share the link below. When buyers click it, they'll negotiate with your AI agent
+                  automatically.
                 </p>
 
                 {/* Item Summary Card */}
@@ -1094,7 +1170,10 @@ export default function App() {
                     <p className="listing-live__item-price">{formatPrice(targetPrice)}</p>
                     {activePreset && activeCopy && (
                       <p className="listing-live__item-agent">
-                        <span className="listing-live__agent-dot" style={{ background: activePreset.accentColor }} />
+                        <span
+                          className="listing-live__agent-dot"
+                          style={{ background: activePreset.accentColor }}
+                        />
                         Agent: {activeCopy.name}
                       </p>
                     )}
@@ -1104,7 +1183,18 @@ export default function App() {
                 {/* Share Link */}
                 <div className="listing-live__section-label">YOUR HAGGLE LINK</div>
                 <div className="listing-live__link-box">
-                  <svg className="listing-live__link-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    aria-hidden="true"
+                    className="listing-live__link-icon"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>
@@ -1130,11 +1220,31 @@ export default function App() {
                     }}
                   >
                     {linkCopied ? (
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        width="18"
+                        height="18"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                     ) : (
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        width="18"
+                        height="18"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
                         <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
                       </svg>
@@ -1146,7 +1256,9 @@ export default function App() {
                 <div className="story-share">
                   <div className="story-share__header">
                     <span className="story-share__title">Share to Instagram Story</span>
-                    <span className="story-share__subtitle">Buyers tap your link → AI handles the rest</span>
+                    <span className="story-share__subtitle">
+                      Buyers tap your link → AI handles the rest
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -1208,8 +1320,8 @@ export default function App() {
                     <li>Save the card to your phone.</li>
                     <li>Open Instagram → Create Story → upload the card.</li>
                     <li>
-                      Tap the sticker icon → <strong>Link</strong> →
-                      paste your Haggle link (already copied above).
+                      Tap the sticker icon → <strong>Link</strong> → paste your Haggle link (already
+                      copied above).
                     </li>
                   </ol>
                   <p className="story-share__note">
@@ -1221,19 +1333,32 @@ export default function App() {
                 <div className="story-share" style={{ marginTop: 12 }}>
                   <div className="story-share__header">
                     <span className="story-share__title">Share on X</span>
-                    <span className="story-share__subtitle">Post your listing link directly to X</span>
+                    <span className="story-share__subtitle">
+                      Post your listing link directly to X
+                    </span>
                   </div>
                   <button
                     type="button"
                     className="story-share__download-btn"
-                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
                     onClick={() => {
                       const text = `🤝 Negotiating smarter with AI — check out my listing on Haggle`;
                       const url = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(publishResult.shareUrl)}`;
                       window.open(url, "_blank", "noopener,noreferrer");
                     }}
                   >
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      width="15"
+                      height="15"
+                      fill="currentColor"
+                    >
                       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                     </svg>
                     Post to X
@@ -1243,45 +1368,92 @@ export default function App() {
                 {/* Claim CTA */}
                 <div className="listing-live__claim-cta">
                   <div className="claim-cta__header">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      height="18"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <circle cx="12" cy="12" r="10" />
                       <line x1="12" y1="8" x2="12" y2="12" />
                       <line x1="12" y1="16" x2="12.01" y2="16" />
                     </svg>
                     <div>
                       <p className="claim-cta__title">Your listing isn't saved to an account yet</p>
-                      <p className="claim-cta__subtitle">You have 24 hours to claim this listing. After that, it will be removed and can't be recovered.</p>
+                      <p className="claim-cta__subtitle">
+                        You have 24 hours to claim this listing. After that, it will be removed and
+                        can't be recovered.
+                      </p>
                     </div>
                   </div>
 
                   <div className="claim-cta__features">
                     <div className="claim-cta__feature">
                       <div className="claim-cta__feature-icon claim-cta__feature-icon--cyan">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
                           <polyline points="16 7 22 7 22 13" />
                         </svg>
                       </div>
                       <div>
                         <p className="claim-cta__feature-title">Track every negotiation</p>
-                        <p className="claim-cta__feature-desc">See who offered what, win rates, and your AI's performance over time.</p>
+                        <p className="claim-cta__feature-desc">
+                          See who offered what, win rates, and your AI's performance over time.
+                        </p>
                       </div>
                     </div>
                     <div className="claim-cta__feature">
                       <div className="claim-cta__feature-icon claim-cta__feature-icon--green">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
                           <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                         </svg>
                       </div>
                       <div>
                         <p className="claim-cta__feature-title">Get notified when a deal closes</p>
-                        <p className="claim-cta__feature-desc">Without an account, you won't know if your AI sealed a deal.</p>
+                        <p className="claim-cta__feature-desc">
+                          Without an account, you won't know if your AI sealed a deal.
+                        </p>
                       </div>
                     </div>
                     <div className="claim-cta__feature">
                       <div className="claim-cta__feature-icon claim-cta__feature-icon--purple">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                           <circle cx="9" cy="7" r="4" />
                           <line x1="19" y1="8" x2="19" y2="14" />
@@ -1289,20 +1461,25 @@ export default function App() {
                         </svg>
                       </div>
                       <div>
-                        <p className="claim-cta__feature-title">Manage all your listings in one place</p>
-                        <p className="claim-cta__feature-desc">Pause, edit, or relist — your dashboard, your control.</p>
+                        <p className="claim-cta__feature-title">
+                          Manage all your listings in one place
+                        </p>
+                        <p className="claim-cta__feature-desc">
+                          Pause, edit, or relist — your dashboard, your control.
+                        </p>
                       </div>
                     </div>
                   </div>
-
                 </div>
 
                 <button
                   type="button"
                   className="btn-primary listing-live__dashboard-btn"
                   onClick={() => {
-                    const injected = (window as unknown as { __HAGGLE_APP_URL__?: string }).__HAGGLE_APP_URL__;
-                    const appUrl = injected ?? import.meta.env.VITE_APP_URL ?? "http://localhost:3000";
+                    const injected = (window as unknown as { __HAGGLE_APP_URL__?: string })
+                      .__HAGGLE_APP_URL__;
+                    const appUrl =
+                      injected ?? import.meta.env.VITE_APP_URL ?? "http://localhost:3000";
                     window.open(`${appUrl}/sign-up?token=${publishResult.claimToken}`, "_blank");
                   }}
                 >
@@ -1318,7 +1495,10 @@ export default function App() {
               <button
                 type="button"
                 className="btn-back"
-                onClick={() => { goToStep(currentStep - 1); setError(null); }}
+                onClick={() => {
+                  goToStep(currentStep - 1);
+                  setError(null);
+                }}
               >
                 ← Back
               </button>
@@ -1327,6 +1507,7 @@ export default function App() {
               {/* Section Heading — full width above the grid */}
               <div className="section-heading">
                 <svg
+                  aria-hidden="true"
                   className="section-heading__icon"
                   xmlns="http://www.w3.org/2000/svg"
                   width="20"
@@ -1347,215 +1528,260 @@ export default function App() {
                 <h2 className="section-heading__text">Set Up Your Selling Agent</h2>
               </div>
               <p className="step3-description">
-                Your AI will handle buyer negotiations automatically. Choose a style and customize its approach.
+                Your AI will handle buyer negotiations automatically. Choose a style and customize
+                its approach.
               </p>
 
               {/* Two-column row: cards + profile */}
               <div className="step3-layout">
-              {/* ── LEFT COLUMN ─────────────────────────────── */}
-              <div className="step3-left">
-                {/* Agent Preset Cards (3×2 grid) */}
-                <div className="agent-grid agent-grid--four">
-                  {NEGOTIATION_PRESETS.map((agent) => {
-                    const copy = agent.copy.seller;
-                    return (
-                      <button
-                        key={agent.id}
-                        type="button"
-                        className={`agent-card${selectedAgent === agent.id && !isStrategyCustomized ? " agent-card--selected" : ""}`}
-                        onClick={() => {
-                          setSelectedAgent(agent.id);
-                        }}
-                      >
-                        <div className="agent-card__header">
-                          <span
-                            className="agent-card__icon agent-card__icon--emoji"
-                            style={{ background: `${agent.accentColor}22` }}
-                          >
-                            {agent.emoji}
-                          </span>
-                          <div>
-                            <p className="agent-card__name">{copy.name}</p>
-                            <p className="agent-card__tagline">{copy.tagline}</p>
+                {/* ── LEFT COLUMN ─────────────────────────────── */}
+                <div className="step3-left">
+                  {/* Agent Preset Cards (3×2 grid) */}
+                  <div className="agent-grid agent-grid--four">
+                    {NEGOTIATION_AGENT_PRESETS.map((agent) => {
+                      const copy = agent.copy.seller;
+                      return (
+                        <button
+                          key={agent.id}
+                          type="button"
+                          className={`agent-card${selectedAgent === agent.id && !isStrategyCustomized ? " agent-card--selected" : ""}`}
+                          onClick={() => {
+                            setSelectedAgent(agent.id);
+                          }}
+                        >
+                          <div className="agent-card__header">
+                            <span
+                              className="agent-card__icon agent-card__icon--emoji"
+                              style={{ background: `${agent.accentColor}22` }}
+                            >
+                              {agent.emoji}
+                            </span>
+                            <div>
+                              <p className="agent-card__name">{copy.name}</p>
+                              <p className="agent-card__tagline">{copy.tagline}</p>
+                            </div>
                           </div>
-                        </div>
-                        <p className="agent-card__desc">{copy.description}</p>
-                      </button>
-                    );
-                  })}
+                          <p className="agent-card__desc">{copy.description}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Seller Strategy Chat */}
+                  <NegotiationAgentBuilderChat
+                    agent={activePreset ?? null}
+                    listingTitle={title}
+                    listingPrice={targetPrice}
+                    onMemoryUpdate={setSellerNegotiationAgentBuilderMemory}
+                    callTool={async (name, args) => {
+                      if (!app) throw new Error("App not connected");
+                      return app.callServerTool({ name, arguments: args });
+                    }}
+                  />
                 </div>
 
-                {/* Seller Strategy Chat */}
-                <SellerStrategyChat
-                  agent={activePreset ?? null}
-                  listingTitle={title}
-                  listingPrice={targetPrice}
-                  onMemoryUpdate={setSellerStrategy}
-                  callTool={async (name, args) => {
-                    if (!app) throw new Error("App not connected");
-                    return app.callServerTool({ name, arguments: args });
-                  }}
-                />
-              </div>
-
-              {/* ── RIGHT COLUMN ────────────────────────────── */}
-              <div className="step3-right">
-                <div className="agent-profile">
-                  {/* Profile Header */}
-                  <div className="agent-profile__header">
-                    <h3 className="agent-profile__title">AGENT PROFILE</h3>
-                    <span className={`agent-profile__pill${selectedAgent ? "" : " agent-profile__pill--empty"}`}>
-                      {!selectedAgent ? "No Agent" : isStrategyCustomized ? "Customized" : "Default"}
-                    </span>
-                  </div>
-
-                  {/* Pricing Summary Card */}
-                  <div className="pricing-card">
-                    <p className="pricing-card__label">{title || "Untitled"}</p>
-                    <p className="pricing-card__price">{formatPrice(targetPrice)}</p>
-                    <p className="pricing-card__floor">Floor: {formatPrice(floorPrice)} (private)</p>
-                  </div>
-
-                  {/* Selected Agent Display */}
-                  {activePreset && activeCopy ? (
-                    <div className="agent-selected">
+                {/* ── RIGHT COLUMN ────────────────────────────── */}
+                <div className="step3-right">
+                  <div className="agent-profile">
+                    {/* Profile Header */}
+                    <div className="agent-profile__header">
+                      <h3 className="agent-profile__title">AGENT PROFILE</h3>
                       <span
-                        className="agent-card__icon agent-card__icon--emoji"
-                        style={{ background: `${activePreset.accentColor}22` }}
+                        className={`agent-profile__pill${selectedAgent ? "" : " agent-profile__pill--empty"}`}
                       >
-                        {activePreset.emoji}
+                        {!selectedAgent
+                          ? "No Agent"
+                          : isStrategyCustomized
+                            ? "Customized"
+                            : "Default"}
                       </span>
-                      <div>
-                        <p className="agent-selected__name">
-                          {activeCopy.name}
-                          {isStrategyCustomized && (
-                            <span className="agent-selected__custom-badge">
-                              {" "}(Customized)
-                            </span>
-                          )}
-                        </p>
-                        <p className="agent-selected__tagline">{activeCopy.tagline}</p>
+                    </div>
+
+                    {/* Pricing Summary Card */}
+                    <div className="pricing-card">
+                      <p className="pricing-card__label">{title || "Untitled"}</p>
+                      <p className="pricing-card__price">{formatPrice(targetPrice)}</p>
+                      <p className="pricing-card__floor">
+                        Floor: {formatPrice(floorPrice)} (private)
+                      </p>
+                    </div>
+
+                    {/* Selected Agent Display */}
+                    {activePreset && activeCopy ? (
+                      <div className="agent-selected">
+                        <span
+                          className="agent-card__icon agent-card__icon--emoji"
+                          style={{ background: `${activePreset.accentColor}22` }}
+                        >
+                          {activePreset.emoji}
+                        </span>
+                        <div>
+                          <p className="agent-selected__name">
+                            {activeCopy.name}
+                            {isStrategyCustomized && (
+                              <span className="agent-selected__custom-badge"> (Customized)</span>
+                            )}
+                          </p>
+                          <p className="agent-selected__tagline">{activeCopy.tagline}</p>
+                        </div>
                       </div>
+                    ) : (
+                      <div className="agent-empty">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          width="28"
+                          height="28"
+                          fill="none"
+                          stroke="var(--text-secondary)"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          opacity="0.4"
+                        >
+                          <rect width="18" height="10" x="3" y="11" rx="2" />
+                          <circle cx="12" cy="5" r="2" />
+                          <path d="M12 7v4" />
+                        </svg>
+                        <p>Select an agent above</p>
+                      </div>
+                    )}
+
+                    {/* Preset description (replaces individual stat bars) */}
+                    {activePreset && activeCopy && (
+                      <p className="agent-description">{activeCopy.description}</p>
+                    )}
+
+                    {/* Radar Chart (8-vertex, no labels — clean visual) */}
+                    <div className="radar-section">
+                      <h4 className="radar-section__title">STRATEGY MATRIX</h4>
+                      {activePreset && <RadarChart preset={activePreset} labels={false} />}
                     </div>
-                  ) : (
-                    <div className="agent-empty">
-                      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.4">
-                        <rect width="18" height="10" x="3" y="11" rx="2" /><circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
+
+                    {/* Advanced Settings — fine-tune trigger */}
+                    <button
+                      type="button"
+                      className="btn-advanced"
+                      onClick={() => {
+                        // Advanced wiring pending — placeholder for parity with web app.
+                        // eslint-disable-next-line no-alert
+                        alert("Advanced settings coming soon for the widget.");
+                      }}
+                      disabled={!selectedAgent}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        width="14"
+                        height="14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                       </svg>
-                      <p>Select an agent above</p>
-                    </div>
-                  )}
+                      Advanced Settings
+                    </button>
 
-                  {/* Preset description (replaces individual stat bars) */}
-                  {activePreset && activeCopy && (
-                    <p className="agent-description">{activeCopy.description}</p>
-                  )}
-
-                  {/* Radar Chart (8-vertex, no labels — clean visual) */}
-                  <div className="radar-section">
-                    <h4 className="radar-section__title">STRATEGY MATRIX</h4>
-                    {activePreset && <RadarChart preset={activePreset} labels={false} />}
-                  </div>
-
-                  {/* Advanced Settings — fine-tune trigger */}
-                  <button
-                    type="button"
-                    className="btn-advanced"
-                    onClick={() => {
-                      // Advanced wiring pending — placeholder for parity with web app.
-                      // eslint-disable-next-line no-alert
-                      alert("Advanced settings coming soon for the widget.");
-                    }}
-                    disabled={!selectedAgent}
-                  >
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                    Advanced Settings
-                  </button>
-
-                  {/* CTA Button */}
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={!selectedAgent || isSubmitting}
-                    onClick={async () => {
-                      if (!app || !draftId || !selectedAgent) return;
-                      setIsSubmitting(true);
-                      setError(null);
-                      try {
-                        // 1. Save strategy config (8-stat + derived engine params)
-                        await app.callServerTool({
-                          name: "haggle_apply_patch",
-                          arguments: {
-                            draft_id: draftId,
-                            patch: {
-                              strategyConfig: {
-                                ...(sellingDeadline ? deadlineStrategyConfig(sellingDeadline) : {}),
-                                preset: selectedAgent,
-                                customized: isStrategyCustomized,
-                                weights: activePreset ? { ...activePreset.weights } : undefined,
-                                derivedParams: activePreset
-                                  ? presetToEngineParameters(activePreset)
-                                  : undefined,
-                                sellerStrategy,
+                    {/* CTA Button */}
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={!selectedAgent || isSubmitting}
+                      onClick={async () => {
+                        if (!app || !draftId || !selectedAgent) return;
+                        setIsSubmitting(true);
+                        setError(null);
+                        try {
+                          // 1. Save strategy config (8-stat + derived engine params)
+                          await app.callServerTool({
+                            name: "haggle_apply_patch",
+                            arguments: {
+                              draft_id: draftId,
+                              patch: {
+                                negotiationAgentSnapshot: {
+                                  ...(sellingDeadline
+                                    ? deadlineStrategyConfig(sellingDeadline)
+                                    : {}),
+                                  preset: selectedAgent,
+                                  customized: isStrategyCustomized,
+                                  weights: activePreset ? { ...activePreset.weights } : undefined,
+                                  derivedParams: activePreset
+                                    ? presetToEngineParameters(activePreset)
+                                    : undefined,
+                                  sellerNegotiationAgentBuilderMemory,
+                                },
                               },
                             },
-                          },
-                        });
-
-                        // 2. Validate
-                        const validateResult = await app.callServerTool({
-                          name: "haggle_validate_draft",
-                          arguments: { draft_id: draftId },
-                        });
-                        const validateData = validateResult?.structuredContent as Record<string, unknown> | undefined;
-                        // data-only tools return via content text, not structuredContent
-                        let validateParsed: { ok?: boolean; errors?: Array<{ field: string; message: string; step: number }> } = {};
-                        if (validateData?.ok !== undefined) {
-                          validateParsed = validateData as typeof validateParsed;
-                        } else {
-                          // Parse from content text
-                          const textContent = (validateResult as Record<string, unknown>)?.content;
-                          if (Array.isArray(textContent) && textContent[0]?.text) {
-                            validateParsed = JSON.parse(textContent[0].text as string);
-                          }
-                        }
-
-                        if (validateParsed.ok === false && validateParsed.errors?.length) {
-                          const firstError = validateParsed.errors[0];
-                          setError(firstError.message);
-                          goToStep(firstError.step);
-                          return;
-                        }
-
-                        // 3. Publish
-                        const publishRes = await app.callServerTool({
-                          name: "haggle_publish_listing",
-                          arguments: { draft_id: draftId },
-                        });
-                        const pubData = publishRes?.structuredContent as Record<string, unknown> | undefined;
-                        if (pubData?.share_url) {
-                          setPublishResult({
-                            publicId: pubData.public_id as string,
-                            shareUrl: pubData.share_url as string,
-                            claimToken: pubData.claim_token as string,
                           });
+
+                          // 2. Validate
+                          const validateResult = await app.callServerTool({
+                            name: "haggle_validate_draft",
+                            arguments: { draft_id: draftId },
+                          });
+                          const validateData = validateResult?.structuredContent as
+                            | Record<string, unknown>
+                            | undefined;
+                          // data-only tools return via content text, not structuredContent
+                          let validateParsed: {
+                            ok?: boolean;
+                            errors?: Array<{ field: string; message: string; step: number }>;
+                          } = {};
+                          if (validateData?.ok !== undefined) {
+                            validateParsed = validateData as typeof validateParsed;
+                          } else {
+                            // Parse from content text
+                            const textContent = (validateResult as Record<string, unknown>)
+                              ?.content;
+                            if (Array.isArray(textContent) && textContent[0]?.text) {
+                              validateParsed = JSON.parse(textContent[0].text as string);
+                            }
+                          }
+
+                          if (validateParsed.ok === false && validateParsed.errors?.length) {
+                            const firstError = validateParsed.errors[0];
+                            setError(firstError.message);
+                            goToStep(firstError.step);
+                            return;
+                          }
+
+                          // 3. Publish
+                          const publishRes = await app.callServerTool({
+                            name: "haggle_publish_listing",
+                            arguments: { draft_id: draftId },
+                          });
+                          const pubData = publishRes?.structuredContent as
+                            | Record<string, unknown>
+                            | undefined;
+                          if (pubData?.share_url) {
+                            setPublishResult({
+                              publicId: pubData.public_id as string,
+                              shareUrl: pubData.share_url as string,
+                              claimToken: pubData.claim_token as string,
+                            });
+                          }
+                        } catch (err) {
+                          setError("Failed to publish. Please try again.");
+                          console.error(err);
+                        } finally {
+                          setIsSubmitting(false);
                         }
-                      } catch (err) {
-                        setError("Failed to publish. Please try again.");
-                        console.error(err);
-                      } finally {
-                        setIsSubmitting(false);
-                      }
-                    }}
-                  >
-                    {isSubmitting ? "Publishing..." : "Save & Get Share Link"}
-                    {!isSubmitting && <span>→</span>}
-                  </button>
-                  {error && <p className="form-error" style={{ marginTop: 8 }}>{error}</p>}
+                      }}
+                    >
+                      {isSubmitting ? "Publishing..." : "Save & Get Share Link"}
+                      {!isSubmitting && <span>→</span>}
+                    </button>
+                    {error && (
+                      <p className="form-error" style={{ marginTop: 8 }}>
+                        {error}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
               </div>
 
               {/* Advanced Agent Editor — wiring pending for the 4D system. */}

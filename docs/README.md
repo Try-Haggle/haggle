@@ -32,6 +32,7 @@
 | 분쟁 시스템 v2 | [features/분쟁_시스템_v2.md](./features/분쟁_시스템_v2.md) |
 | 게이미피케이션 | [features/게이미피케이션_설계.md](./features/게이미피케이션_설계.md) |
 | 엔진 아키텍처 | [engine/01_아키텍처_개요.md](./engine/01_아키텍처_개요.md) |
+| 코드 네이밍 컨벤션 (협상 에이전트/빌더 챗) | [CODE_NAMING_CONVENTIONS.md](./CODE_NAMING_CONVENTIONS.md) |
 | 미팅 overview | [meetings/overview.html](./meetings/overview.html) |
 
 ---

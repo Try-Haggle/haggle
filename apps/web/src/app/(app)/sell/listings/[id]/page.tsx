@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
 import { DetailContent } from "./detail-content";
 
 export interface ListingDetail {
@@ -14,17 +14,13 @@ export interface ListingDetail {
   floorPrice: string | null;
   tags: string[] | null;
   status: string;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
   sellingDeadline: string | null;
   createdAt: string;
   publicId: string;
 }
 
-export default async function ListingDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
   const {
     data: { user },

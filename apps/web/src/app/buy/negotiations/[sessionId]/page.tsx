@@ -1,5 +1,7 @@
-import { getNegotiationPreset } from "@haggle/shared";
+import { getNegotiationAgentPreset } from "@haggle/shared";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
+import { GuestClaimBanner } from "./_guest-claim-banner";
 import { PlaybackArena } from "./playback/playback-arena";
 import type {
   AgentCard,
@@ -26,7 +28,7 @@ type ServerSession = {
   status: string;
   current_round: number;
   last_offer_price_minor: string | number | null;
-  buyer_agent_preset_id: string | null;
+  buyer_negotiation_agent_preset_id: string | null;
   listing: {
     public_id: string;
     title: string;
@@ -61,7 +63,7 @@ type ServerRound = {
 type SessionResponse = { session: ServerSession; rounds: ServerRound[] };
 
 function agentCardFor(presetId: string | null | undefined, role: "buyer" | "seller"): AgentCard {
-  const preset = presetId ? getNegotiationPreset(presetId) : null;
+  const preset = presetId ? getNegotiationAgentPreset(presetId) : null;
   if (preset) {
     return {
       presetId: preset.id,
@@ -129,7 +131,7 @@ function transform(payload: SessionResponse): PlaybackResponse {
   const { session, rounds } = payload;
   const askingMajor = targetPriceToMajor(session.listing?.target_price ?? null);
 
-  const buyerAgent = agentCardFor(session.buyer_agent_preset_id, "buyer");
+  const buyerAgent = agentCardFor(session.buyer_negotiation_agent_preset_id, "buyer");
   const sellerAgent = agentCardFor(session.listing?.seller_agent_preset ?? null, "seller");
 
   const isTerminal = ["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"].includes(
@@ -246,5 +248,23 @@ export default async function BuyerNegotiationPage({
   const { sessionId } = await params;
   const payload = await serverApi.get<SessionResponse>(`/negotiations/sessions/${sessionId}`);
   const data = transform(payload);
-  return <PlaybackArena data={data} />;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isGuest = !user;
+
+  return (
+    <>
+      {isGuest && (
+        <GuestClaimBanner
+          sessionId={sessionId}
+          status={data.session.finalStatus}
+          finalPriceMinor={data.session.finalPrice}
+        />
+      )}
+      <PlaybackArena data={data} />
+    </>
+  );
 }

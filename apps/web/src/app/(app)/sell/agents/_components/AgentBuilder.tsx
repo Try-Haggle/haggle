@@ -1,12 +1,17 @@
 "use client";
 
 import {
-  type AgentProfile,
-  getNegotiationPreset,
-  NEGOTIATION_PRESETS,
-  type NegotiationPreset,
-  type NegotiationPresetId,
-  type NegotiationWeights,
+  type AgentBuilderState,
+  builderStateFromAgentRow,
+  createBuilderState,
+  engineParamsFromPreset,
+  getNegotiationAgentPreset,
+  isBuilderCustomized,
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgent,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
+  resolveEffectivePreset,
 } from "@haggle/shared";
 import Link from "next/link";
 import { useState } from "react";
@@ -15,29 +20,16 @@ import {
   AdvancedSettingsModal,
 } from "@/components/agents/AdvancedSettingsModal";
 import { StrategyRadar } from "@/components/agents/StrategyRadar";
-import { localAgents } from "@/lib/local-agents";
+import { draftNegotiationAgentStore } from "@/lib/draft-negotiation-agent-store";
+import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import { AgentsList } from "./AgentsList";
 
 type Role = "buyer" | "seller";
 
-/** Controlled value used by both the standalone page builder and embedded
- *  pickers (wizard step 5, buyer-landing). */
-export interface AgentBuilderValue {
-  sourceKind: "preset" | "custom";
-  sourceId: string;
-  basePresetId: NegotiationPresetId;
-  effectivePreset: NegotiationPreset;
-  overrides: AdvancedOverrides | null;
-  /** True when the user has changed something since selecting this source
-   *  (Advanced sliders moved, future LLM tuning, etc.). False right after
-   *  picking a preset or my-agent. Drives the "Save as new agent" CTA. */
-  dirty: boolean;
-}
-
 export interface AgentBuilderProps {
   role: Role;
-  value: AgentBuilderValue | null;
-  onChange: (value: AgentBuilderValue | null) => void;
+  value: AgentBuilderState | null;
+  onChange: (value: AgentBuilderState | null) => void;
   /** When embedded (wizard, listing detail), hide page-level UI:
    *  Name input + Save/Cancel + page header. The picker UI stays. */
   embedded?: boolean;
@@ -54,7 +46,7 @@ export interface AgentBuilderProps {
   onDelete?: () => void;
 
   /** Optional slot rendered in the left column under the agent picker.
-   *  buyer-landing passes <StrategyChat> here so the LLM tuning sits inside
+   *  buyer-landing passes <NegotiationAgentBuilderChat> here so the LLM tuning sits inside
    *  the builder layout. Pages without listing context leave it undefined. */
   chatSlot?: React.ReactNode;
 
@@ -69,58 +61,36 @@ export interface AgentBuilderProps {
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 
-function applyOverridesToPreset(
-  base: NegotiationPreset,
-  o: AdvancedOverrides | null,
-): NegotiationPreset {
-  if (!o) return base;
+/** Build an AdvancedOverrides snapshot from a resolved preset (for the advanced
+ *  modal's initial slider values). */
+function overridesFromEffective(ep: NegotiationAgentPreset): AdvancedOverrides {
+  return { weights: { ...ep.weights }, ...engineParamsFromPreset(ep) };
+}
+
+/**
+ * Canonical serialization of the build state into the agent-strategy portion of
+ * the listing snapshot. THE one place that turns the in-memory build state into
+ * what gets persisted — used by the wizard's step-save AND publish so the two
+ * can never disagree. Always emits the full strategy: weights + every engine
+ * knob + optional builder-chat memory.
+ */
+export function agentStrategySnapshotFromState(
+  state: AgentBuilderState,
+  memory?: NegotiationAgentBuilderMemory | null,
+): Record<string, unknown> {
+  const ep = resolveEffectivePreset(state);
   return {
-    ...base,
-    weights: { ...o.weights },
-    alpha: o.alpha,
-    beta: o.beta,
-    u_threshold: o.u_threshold,
-    u_aspiration: o.u_aspiration,
-    anchor_ratio: o.anchor_ratio,
-    v_t_floor: o.v_t_floor,
-    w_rep: o.w_rep,
-    r_score_minimum: o.r_score_minimum,
-    i_completeness_minimum: o.i_completeness_minimum,
-    v_s_base: o.v_s_base,
-    n_threshold: o.n_threshold,
-    late_round_aggression_modifier: o.late_round_aggression_modifier,
+    preset: state.agent.presetId,
+    weights: { ...ep.weights },
+    source: state.source.kind,
+    sourceId: state.source.id,
+    customized: isBuilderCustomized(state),
+    engineParams: engineParamsFromPreset(ep),
+    ...(memory ? { negotiationAgentBuilderMemory: memory } : {}),
   };
 }
 
-function overridesFromAgent(
-  agent: AgentProfile,
-  base: NegotiationPreset,
-): { weights: NegotiationWeights; overrides: AdvancedOverrides | null } {
-  const weights = agent.weights ? { ...agent.weights } : { ...base.weights };
-  if (!agent.engineParams && !agent.weights) {
-    return { weights, overrides: null };
-  }
-  const overrides: AdvancedOverrides = {
-    weights,
-    alpha: agent.engineParams?.alpha ?? base.alpha,
-    beta: agent.engineParams?.beta ?? base.beta,
-    u_threshold: agent.engineParams?.u_threshold ?? base.u_threshold,
-    u_aspiration: agent.engineParams?.u_aspiration ?? base.u_aspiration,
-    anchor_ratio: agent.engineParams?.anchor_ratio ?? base.anchor_ratio,
-    v_t_floor: agent.engineParams?.v_t_floor ?? base.v_t_floor,
-    w_rep: agent.engineParams?.w_rep ?? base.w_rep,
-    r_score_minimum: agent.engineParams?.r_score_minimum ?? base.r_score_minimum,
-    i_completeness_minimum:
-      agent.engineParams?.i_completeness_minimum ?? base.i_completeness_minimum,
-    v_s_base: agent.engineParams?.v_s_base ?? base.v_s_base,
-    n_threshold: agent.engineParams?.n_threshold ?? base.n_threshold,
-    late_round_aggression_modifier:
-      agent.engineParams?.late_round_aggression_modifier ?? base.late_round_aggression_modifier,
-  };
-  return { weights, overrides };
-}
-
-const DEFAULT_FALLBACK_PRESET = NEGOTIATION_PRESETS[3]; // balancer
+const DEFAULT_FALLBACK_PRESET = NEGOTIATION_AGENT_PRESETS[3]; // balancer
 
 /* ─── Component ───────────────────────────────────────────── */
 
@@ -148,96 +118,58 @@ export function AgentBuilder({
   const [savedAsId, setSavedAsId] = useState<string | null>(null);
 
   const handleSaveAsAgent = () => {
-    if (!value?.overrides) return;
-    const baseCopy = value.effectivePreset.copy[role];
-    const finalName = saveAsName.trim() || `${baseCopy.name} (custom)`;
-    const agent = localAgents.create({
+    if (!value || !isBuilderCustomized(value)) return;
+    const ep = resolveEffectivePreset(value);
+    const finalName = saveAsName.trim() || `${ep.copy[role].name} (custom)`;
+    const agent = draftNegotiationAgentStore.create({
       name: finalName,
       role,
-      emoji: value.effectivePreset.emoji,
-      negotiationPresetId: value.basePresetId,
-      weights: { ...value.effectivePreset.weights },
-      engineParams: {
-        alpha: value.overrides.alpha,
-        beta: value.overrides.beta,
-        u_threshold: value.overrides.u_threshold,
-        u_aspiration: value.overrides.u_aspiration,
-        anchor_ratio: value.overrides.anchor_ratio,
-        v_t_floor: value.overrides.v_t_floor,
-        w_rep: value.overrides.w_rep,
-        r_score_minimum: value.overrides.r_score_minimum,
-        i_completeness_minimum: value.overrides.i_completeness_minimum,
-        v_s_base: value.overrides.v_s_base,
-        n_threshold: value.overrides.n_threshold,
-        late_round_aggression_modifier: value.overrides.late_round_aggression_modifier,
-      },
+      emoji: ep.emoji,
+      negotiationAgentPresetId: value.agent.presetId,
+      weights: { ...ep.weights },
+      engineParams: engineParamsFromPreset(ep),
     });
-    // Switch selection to the freshly-saved custom agent. The customization
-    // now lives on the agent itself, so we drop the "customized" overlay.
-    onChange({
-      sourceKind: "custom",
-      sourceId: agent.id,
-      basePresetId: value.basePresetId,
-      effectivePreset: value.effectivePreset,
-      overrides: null,
-      dirty: false,
-    });
+    // Re-select as the freshly-saved custom agent (the customization now lives
+    // on the agent itself, so the build is no longer "dirty").
+    onChange(builderStateFromAgentRow(agent, role, value.item));
     setSaveAsOpen(false);
     setSaveAsName("");
     setSavedAsId(agent.id);
   };
 
   const resolvedBackHref = backHref ?? (role === "buyer" ? "/buy/agents" : "/sell/agents");
-  const effective = value?.effectivePreset;
+  const effective = value ? resolveEffectivePreset(value) : undefined;
   const copy = effective?.copy[role];
 
-  const handlePresetSelect = (preset: NegotiationPreset) => {
-    onChange({
-      sourceKind: "preset",
-      sourceId: preset.id,
-      basePresetId: preset.id,
-      effectivePreset: preset,
-      overrides: null,
-      dirty: false,
-    });
+  const handlePresetSelect = (preset: NegotiationAgentPreset) => {
+    onChange(createBuilderState({ side: role, presetId: preset.id, item: value?.item }));
   };
 
-  const handleCustomSelect = (agent: AgentProfile) => {
-    const basePresetId = agent.negotiationPresetId ?? DEFAULT_FALLBACK_PRESET.id;
-    const base = getNegotiationPreset(basePresetId);
-    if (!base) return;
-    const { overrides } = overridesFromAgent(agent, base);
-    onChange({
-      sourceKind: "custom",
-      sourceId: agent.id,
-      basePresetId,
-      effectivePreset: applyOverridesToPreset(base, overrides),
-      overrides,
-      dirty: false,
-    });
+  const handleCustomSelect = (agent: NegotiationAgent) => {
+    onChange(builderStateFromAgentRow(agent, role, value?.item));
   };
 
   const handleOverridesApply = (o: AdvancedOverrides) => {
     if (!value) return;
-    const base = getNegotiationPreset(value.basePresetId);
-    if (!base) return;
+    // AdvancedOverrides = weights + the 12 engine knobs → split into the
+    // build-state shape (sparse overrides on top of the base preset).
+    const { weights, ...engineParams } = o;
     onChange({
       ...value,
-      effectivePreset: applyOverridesToPreset(base, o),
-      overrides: o,
+      agent: { ...value.agent, weights: { ...weights }, engineParams },
       dirty: true,
     });
     setAdvancedOpen(false);
   };
 
-  const basePresetForModal: NegotiationPreset = value
-    ? (getNegotiationPreset(value.basePresetId) ?? DEFAULT_FALLBACK_PRESET)
+  const basePresetForModal: NegotiationAgentPreset = value
+    ? (getNegotiationAgentPreset(value.agent.presetId) ?? DEFAULT_FALLBACK_PRESET)
     : DEFAULT_FALLBACK_PRESET;
 
   const saveAsControl =
     embedded && value?.dirty ? (
       <SaveAsAgentControl
-        baseName={value.effectivePreset.copy[role].name}
+        baseName={effective?.copy[role].name ?? "Agent"}
         open={saveAsOpen}
         name={saveAsName}
         onNameChange={setSaveAsName}
@@ -251,7 +183,7 @@ export function AgentBuilder({
     ) : null;
 
   const savedConfirmation =
-    embedded && savedAsId && value?.sourceId === savedAsId ? (
+    embedded && savedAsId && value?.source.id === savedAsId ? (
       <div
         className="rounded-md px-3 py-2 text-[11px]"
         style={{
@@ -281,7 +213,7 @@ export function AgentBuilder({
         <>
           <RightSidebar
             effective={effective}
-            hasOverrides={!!value?.overrides}
+            hasOverrides={value ? isBuilderCustomized(value) : false}
             onOpenAdvanced={() => setAdvancedOpen(true)}
           />
           {saveAsControl}
@@ -341,7 +273,7 @@ export function AgentBuilder({
 
             <RightSidebar
               effective={effective}
-              hasOverrides={!!value?.overrides}
+              hasOverrides={value ? isBuilderCustomized(value) : false}
               onOpenAdvanced={() => setAdvancedOpen(true)}
             />
 
@@ -352,7 +284,7 @@ export function AgentBuilder({
                 // agent — Save is gated by `dirty` only (no "already saved" hint
                 // because the page itself is for editing).
                 const isExistingClean =
-                  !hidePicker && value?.sourceKind === "custom" && !value.dirty;
+                  !hidePicker && value?.source.kind === "custom" && !value.dirty;
                 const editDisabledByClean = hidePicker && !value?.dirty && !!value;
                 const disabled =
                   !value || saving || !onSave || isExistingClean || editDisabledByClean;
@@ -420,7 +352,11 @@ export function AgentBuilder({
       <AdvancedSettingsModal
         open={advancedOpen}
         preset={basePresetForModal}
-        initial={value?.overrides ?? undefined}
+        initial={
+          value && effective && isBuilderCustomized(value)
+            ? overridesFromEffective(effective)
+            : undefined
+        }
         onClose={() => setAdvancedOpen(false)}
         onApply={handleOverridesApply}
       />
@@ -455,11 +391,11 @@ function LeftColumn({
   onSelectCustom,
 }: {
   role: Role;
-  value: AgentBuilderValue | null;
+  value: AgentBuilderState | null;
   hidePicker?: boolean;
   chatSlot?: React.ReactNode;
-  onSelectPreset: (p: NegotiationPreset) => void;
-  onSelectCustom: (a: AgentProfile) => void;
+  onSelectPreset: (p: NegotiationAgentPreset) => void;
+  onSelectCustom: (a: NegotiationAgent) => void;
 }) {
   return (
     <>
@@ -469,8 +405,10 @@ function LeftColumn({
           embedded
           selectMode={{
             selectedPresetId:
-              value?.sourceKind === "preset" ? (value.sourceId as NegotiationPresetId) : null,
-            selectedCustomId: value?.sourceKind === "custom" ? value.sourceId : null,
+              value?.source.kind === "preset"
+                ? (value.source.id as NegotiationAgentPresetId)
+                : null,
+            selectedCustomId: value?.source.kind === "custom" ? value.source.id : null,
             onSelectPreset,
             onSelectCustom,
           }}
@@ -487,7 +425,8 @@ function RightSidebar({
   hasOverrides,
   onOpenAdvanced,
 }: {
-  effective?: NegotiationPreset;
+  embedded?: boolean;
+  effective?: NegotiationAgentPreset;
   hasOverrides: boolean;
   onOpenAdvanced: () => void;
 }) {

@@ -1,17 +1,17 @@
 "use client";
 
 import {
-  NEGOTIATION_PRESETS,
-  type NegotiationPreset,
-  type NegotiationPresetId,
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
 } from "@haggle/shared";
 
 type Role = "buyer" | "seller";
 
 interface PresetGridProps {
   role: Role;
-  selectedId?: NegotiationPresetId | null;
-  onSelect?: (preset: NegotiationPreset) => void;
+  selectedId?: NegotiationAgentPresetId | null;
+  onSelect?: (preset: NegotiationAgentPreset) => void;
   /** Tailwind grid columns. Defaults to 1 / 2 / 4 responsive. */
   columns?: string;
 }
@@ -30,7 +30,7 @@ export function PresetGrid({
 }: PresetGridProps) {
   return (
     <div className={`grid ${columns} gap-3`}>
-      {NEGOTIATION_PRESETS.map((preset) => {
+      {NEGOTIATION_AGENT_PRESETS.map((preset) => {
         const copy = preset.copy[role];
         const isSelected = selectedId === preset.id;
         return (

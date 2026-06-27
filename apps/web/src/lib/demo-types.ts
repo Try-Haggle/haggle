@@ -23,7 +23,7 @@ export interface StageTrace {
 
 // ─── Preset Types ───
 
-export type PresetName = 'lowest_price' | 'balanced' | 'safe_first' | 'custom';
+export type PresetName = "lowest_price" | "balanced" | "safe_first" | "custom";
 
 export interface DemoInitRequest {
   user_id?: string;
@@ -32,7 +32,7 @@ export interface DemoInitRequest {
   buyer_budget?: { max_budget_minor?: number };
   language?: string;
   preset?: PresetName;
-  custom_skills?: { advisor: string; advisor_config?: Record<string, unknown> };
+  custom_skills?: { advisor: string; negotiation_agent_config?: Record<string, unknown> };
   buyer_agent_id?: string;
   seller_agent_id?: string;
   preset_tuning_draft?: Record<string, unknown>;
@@ -46,13 +46,13 @@ export interface DemoStrategy {
   opening_tactic: string;
   approach: string;
   key_concerns: string[];
-  negotiation_style: 'aggressive' | 'balanced' | 'defensive';
+  negotiation_style: "aggressive" | "balanced" | "defensive";
 }
 
 export interface TermAnalysis {
   priority_terms: Array<{
     id: string;
-    importance: 'critical' | 'important' | 'nice_to_have';
+    importance: "critical" | "important" | "nice_to_have";
     target_value: string;
     rationale: string;
   }>;
@@ -122,7 +122,7 @@ export interface LumenVoiceProfile {
 // ─── Round Response ───
 
 export interface ProtocolDecision {
-  action: 'COUNTER' | 'ACCEPT' | 'REJECT' | 'HOLD' | 'DISCOVER' | 'CONFIRM';
+  action: "COUNTER" | "ACCEPT" | "REJECT" | "HOLD" | "DISCOVER" | "CONFIRM";
   price: number;
   reasoning: string;
   tactic_used: string;
@@ -134,7 +134,7 @@ export interface ValidationInfo {
   hard_passed: boolean;
   violations: Array<{
     rule: string;
-    severity: 'HARD' | 'SOFT';
+    severity: "HARD" | "SOFT";
     description: string;
     suggested_fix?: Record<string, unknown>;
   }>;
@@ -218,7 +218,7 @@ export interface MockTelemetryRow {
 
 export interface ChatMessage {
   id: string;
-  role: 'buyer' | 'seller' | 'system';
+  role: "buyer" | "seller" | "system";
   content: string;
   price?: number;
   timestamp: number;

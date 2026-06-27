@@ -1,19 +1,23 @@
+import { type Database, eq, listingDrafts } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import { type Database, listingDrafts, eq } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
-import type { NotificationBus } from "../notification/index.js";
 import { getNotificationUserInfo } from "../notification/get-user-info.js";
+import type { NotificationBus } from "../notification/index.js";
 import {
   createDraft,
+  type DraftPatch,
   getDraftById,
   getDraftsByUserId,
   patchDraft,
-  validateDraft,
   publishDraft,
-  type DraftPatch,
+  validateDraft,
 } from "../services/draft.service.js";
 
-export function registerDraftRoutes(app: FastifyInstance, db: Database, notificationBus: NotificationBus) {
+export function registerDraftRoutes(
+  app: FastifyInstance,
+  db: Database,
+  notificationBus: NotificationBus,
+) {
   // GET /api/drafts — list user's in-progress drafts
   app.get("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
     const userId = request.user!.id;
@@ -22,14 +26,18 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database, notifica
   });
 
   // GET /api/drafts/:id — get a single draft
-  app.get<{ Params: { id: string } }>("/api/drafts/:id", { preHandler: [requireAuth] }, async (request, reply) => {
-    const { id } = request.params;
-    const userId = request.user!.id;
-    const draft = await getDraftById(db, id);
-    if (!draft) return reply.status(404).send({ ok: false, error: "not_found" });
-    if (draft.userId !== userId) return reply.status(403).send({ ok: false, error: "forbidden" });
-    return reply.send({ ok: true, draft });
-  });
+  app.get<{ Params: { id: string } }>(
+    "/api/drafts/:id",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const userId = request.user!.id;
+      const draft = await getDraftById(db, id);
+      if (!draft) return reply.status(404).send({ ok: false, error: "not_found" });
+      if (draft.userId !== userId) return reply.status(403).send({ ok: false, error: "forbidden" });
+      return reply.send({ ok: true, draft });
+    },
+  );
 
   // POST /api/drafts — create a new empty draft
   app.post("/api/drafts", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -63,7 +71,9 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database, notifica
       return reply.status(404).send({ ok: false, error: "not_found" });
     }
     if (existing.userId !== userId) {
-      return reply.status(403).send({ ok: false, error: "forbidden", message: "Not the owner of this draft" });
+      return reply
+        .status(403)
+        .send({ ok: false, error: "forbidden", message: "Not the owner of this draft" });
     }
 
     const draft = await patchDraft(db, id, patch);
@@ -101,10 +111,10 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database, notifica
     const mergedTags = [...existingTags];
     for (const t of result.tags) if (!mergedTags.includes(t)) mergedTags.push(t);
 
-    const existingConfig = (draft.strategyConfig ?? {}) as Record<string, unknown>;
+    const existingConfig = (draft.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
     await patchDraft(db, id, {
       tags: mergedTags,
-      strategyConfig: { ...existingConfig, subtype: result.subtype },
+      negotiationAgentSnapshot: { ...existingConfig, subtype: result.subtype },
     });
 
     return reply.send({ ok: true, subtype: result.subtype, tags: mergedTags });
@@ -179,8 +189,7 @@ export function registerDraftRoutes(app: FastifyInstance, db: Database, notifica
 
       return reply.send({ ok: true, ...result });
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to publish";
+      const message = err instanceof Error ? err.message : "Failed to publish";
       return reply.status(400).send({ ok: false, error: message });
     }
   });
