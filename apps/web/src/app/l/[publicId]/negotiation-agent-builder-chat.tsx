@@ -1,7 +1,17 @@
 "use client";
 
 import type { ChatStrategy, NegotiationAgentPreset } from "@haggle/shared";
+import { MessageSquare, RotateCcw, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Badge,
+  Button,
+  ChatBubble,
+  IconButton,
+  MessageList,
+  Slider,
+  TypingIndicator,
+} from "@/components/ui";
 import { apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
@@ -225,32 +235,6 @@ function renderMarkdownLite(text: string): string {
     .replace(/\n/g, "<br />");
 }
 
-/* ─── Typing dots ─────────────────────────────────────────── */
-
-function TypingDots() {
-  return (
-    <span className="inline-flex items-center gap-[3px]">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="inline-block h-[5px] w-[5px] rounded-full"
-          style={{
-            backgroundColor: "var(--color-action-primary)",
-            opacity: 0.5,
-            animation: `dotPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes dotPulse {
-          0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1.1); }
-        }
-      `}</style>
-    </span>
-  );
-}
-
 /* ─── Budget Slider Widget ──────────────────────────────────── */
 
 function BudgetWidget({
@@ -286,74 +270,61 @@ function BudgetWidget({
       </div>
 
       <div className="flex flex-col gap-6 mb-6">
-        <div className="relative">
-          <input
-            type="range"
-            min={minRange}
-            max={maxRange}
-            step={10}
-            value={target}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              setTarget(val);
-              if (val > max) setMax(val);
-            }}
-            className="w-full h-1.5 bg-surface-sunken rounded-lg appearance-none cursor-pointer accent-action-primary"
-          />
-        </div>
-        <div className="relative">
-          <input
-            type="range"
-            min={minRange}
-            max={maxRange}
-            step={10}
-            value={max}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              setMax(val);
-              if (val < target) setTarget(val);
-            }}
-            className="w-full h-1.5 bg-surface-sunken rounded-lg appearance-none cursor-pointer accent-action-primary"
-          />
-        </div>
+        <Slider
+          aria-label="Target price"
+          min={minRange}
+          max={maxRange}
+          step={10}
+          value={target}
+          onValueChange={(val) => {
+            setTarget(val);
+            if (val > max) setMax(val);
+          }}
+        />
+        <Slider
+          aria-label="Max budget"
+          min={minRange}
+          max={maxRange}
+          step={10}
+          value={max}
+          onValueChange={(val) => {
+            setMax(val);
+            if (val < target) setTarget(val);
+          }}
+        />
       </div>
 
-      <button
-        type="button"
-        onClick={() => onSubmit(target, max)}
-        className="w-full py-2.5 bg-cta hover:bg-cta-hover text-on-cta text-[13px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)]"
-      >
+      <Button variant="primary" fullWidth onClick={() => onSubmit(target, max)}>
         Set budget
-      </button>
+      </Button>
     </div>
   );
 }
 
-/* ─── Chip Category Colors ────────────────────────────────── */
+/* ─── Chip Category → Badge tone ──────────────────────────── */
 
-const CHIP_COLORS: Record<StrategyChip["category"], { bg: string; border: string; text: string }> =
-  {
-    pricing: {
-      bg: "rgba(16,185,129,0.08)",
-      border: "rgba(16,185,129,0.25)",
-      text: "#34d399",
-    },
-    style: {
-      bg: "rgba(6,182,212,0.08)",
-      border: "rgba(6,182,212,0.25)",
-      text: "#22d3ee",
-    },
-    preference: {
-      bg: "rgba(59,130,246,0.08)",
-      border: "rgba(59,130,246,0.25)",
-      text: "#60a5fa",
-    },
-    constraint: {
-      bg: "rgba(239,68,68,0.08)",
-      border: "rgba(239,68,68,0.25)",
-      text: "#f87171",
-    },
-  };
+const CHIP_TONE: Record<
+  StrategyChip["category"],
+  "success" | "info" | "warning" | "error" | "neutral"
+> = {
+  pricing: "success", // green — budget/target
+  style: "neutral", // (was cyan; no accent Badge tone — see migration notes)
+  preference: "info", // blue — must-haves
+  constraint: "error", // red — deal-breakers
+};
+
+/* ─── Agent avatar chip (accent-tinted) ───────────────────── */
+
+function AgentIcon({ accent }: { accent: string }) {
+  return (
+    <span
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
+      style={{ backgroundColor: `${accent}22`, color: accent }}
+    >
+      🤖
+    </span>
+  );
+}
 
 /* ─── Main Component ──────────────────────────────────────── */
 
@@ -393,9 +364,7 @@ export function NegotiationAgentBuilderChat({
   );
   const [isExpanded, setIsExpanded] = useState(false);
   const [_hasRestoredSession, setHasRestoredSession] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatTopRef = useRef<HTMLDivElement>(null);
 
   // Side-aware opening message. Acknowledges prices already provided (e.g. from
@@ -492,17 +461,6 @@ export function NegotiationAgentBuilderChat({
     saveSelectedAgent(listingPublicId, agent.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent?.id, listingPublicId]);
-
-  // Scroll chat to bottom locally without affecting page scroll
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll only when message count or loading state changes
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  }, [messages.length, isLoading]);
 
   // Build the listing context the advisor LLM sees on every turn,
   // so it can ground answers in the actual product/price the buyer is on
@@ -789,51 +747,23 @@ export function NegotiationAgentBuilderChat({
 
   const chips = extractChips(memory);
   const hasAgentSelected = agent !== null;
+  const accent = agent?.accentColor ?? "var(--color-action-primary)";
 
   return (
     <div
       id="negotiation-agent-builder-chat-container"
       ref={chatTopRef}
-      className="mt-4 flex-1 flex flex-col rounded-xl border overflow-hidden transition-all duration-300"
-      style={{
-        borderColor: "var(--color-border-default)",
-        background: "var(--color-surface-raised)",
-        minHeight: isExpanded ? "400px" : "200px",
-      }}
+      className="mt-4 flex flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface-raised transition-all duration-300"
+      style={{ minHeight: isExpanded ? "400px" : "200px" }}
     >
       {/* Header */}
-      <div
-        className="flex items-center gap-2 px-4 py-3 shrink-0"
-        style={{ borderBottom: "1px solid var(--color-border-default)" }}
-      >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke={agent?.accentColor ?? "var(--color-action-primary)"}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        <span
-          className="text-[13px] font-semibold flex-1"
-          style={{ color: agent?.accentColor ?? "var(--color-action-primary)" }}
-        >
+      <div className="flex shrink-0 items-center gap-2 border-line border-b px-4 py-3">
+        <MessageSquare size={16} style={{ color: accent }} aria-hidden="true" />
+        <span className="flex-1 font-semibold text-[13px]" style={{ color: accent }}>
           {agent ? agent.copy[role].name : role === "seller" ? "Selling Agent" : "Buying Agent"}
         </span>
         {messages.length > 1 && (
-          <span
-            className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-            style={{
-              background: "rgba(6,182,212,0.1)",
-              color: "var(--color-action-primary)",
-              border: "1px solid rgba(6,182,212,0.2)",
-            }}
-          >
+          <span className="rounded-full border border-action-primary/20 bg-action-primary/10 px-2 py-0.5 font-medium text-[10px] text-action-primary">
             {chips.length} strategy hints
           </span>
         )}
@@ -842,168 +772,85 @@ export function NegotiationAgentBuilderChat({
           <button
             type="button"
             onClick={handleReset}
-            className="flex h-5 w-5 items-center justify-center rounded transition-colors duration-150 hover:bg-surface-sunken"
+            className="flex h-5 w-5 items-center justify-center rounded text-ink-muted transition-colors duration-150 hover:bg-surface-sunken"
             title="Reset conversation"
             aria-label="Reset strategy chat"
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="12"
-              height="12"
-              fill="none"
-              stroke="var(--color-ink-muted)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="1 4 1 10 7 10" />
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-            </svg>
+            <RotateCcw size={12} />
           </button>
         )}
       </div>
 
       {/* Messages area */}
-      <div
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto transition-all duration-500 ease-out min-h-0"
-        style={{ scrollBehavior: "smooth" }}
-      >
-        <div className="flex flex-col gap-3 p-4">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              style={{
-                animation: msg.id !== "greeting" ? "fadeSlideIn 0.3s ease-out" : undefined,
-              }}
-            >
-              <div
-                className="rounded-xl px-3.5 py-2.5 max-w-[85%]"
-                style={
-                  msg.role === "user"
-                    ? {
-                        background:
-                          "linear-gradient(135deg, rgba(6,182,212,0.12), rgba(6,182,212,0.06))",
-                        border: "1px solid rgba(6,182,212,0.2)",
-                      }
-                    : {
-                        background: "var(--color-surface-raised)",
-                        border: "1px solid var(--color-border-default)",
-                      }
-                }
-              >
-                {msg.role === "agent" && (
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span
-                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
-                      style={{
-                        backgroundColor: `${agent?.accentColor ?? "var(--color-action-primary)"}22`,
-                        color: agent?.accentColor ?? "var(--color-action-primary)",
-                      }}
-                    >
-                      🤖
-                    </span>
-                    <span
-                      className="text-[10px] font-semibold"
-                      style={{ color: agent?.accentColor ?? "var(--color-action-primary)" }}
-                    >
-                      {agent?.copy[role].name ?? "Agent"}
-                    </span>
-                  </div>
-                )}
-                <p
-                  className="text-[13px] leading-[1.6]"
-                  style={{
-                    color: msg.role === "user" ? "var(--color-ink)" : "var(--color-ink-secondary)",
-                  }}
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: intentional sanitized markdown rendering
-                  dangerouslySetInnerHTML={{
-                    __html: renderMarkdownLite(msg.text),
-                  }}
-                />
-
-                {msg.widget === "budget-slider" && (
-                  <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* Typing indicator */}
-          {isLoading && (
-            <div className="flex justify-start" style={{ animation: "fadeSlideIn 0.2s ease-out" }}>
-              <div
-                className="rounded-xl px-3.5 py-2.5"
-                style={{
-                  background: "var(--color-surface-raised)",
-                  border: "1px solid var(--color-border-default)",
-                }}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
-                    style={{
-                      backgroundColor: `${agent?.accentColor ?? "var(--color-action-primary)"}22`,
-                      color: agent?.accentColor ?? "var(--color-action-primary)",
-                    }}
-                  >
-                    🤖
+      <MessageList className="min-h-0 flex-1 gap-3 p-4">
+        {messages.map((msg) => (
+          <ChatBubble
+            key={msg.id}
+            side={msg.role === "user" ? "right" : "left"}
+            className={msg.id !== "greeting" ? "msg-anim" : undefined}
+            author={
+              msg.role === "agent" ? (
+                <span className="flex items-center gap-1.5">
+                  <AgentIcon accent={accent} />
+                  <span className="font-semibold text-[10px]" style={{ color: accent }}>
+                    {agent?.copy[role].name ?? "Agent"}
                   </span>
-                  <TypingDots />
-                </div>
-              </div>
-            </div>
-          )}
+                </span>
+              ) : undefined
+            }
+          >
+            <p
+              className="text-[13px] leading-[1.6]"
+              style={{
+                color: msg.role === "user" ? "var(--color-ink)" : "var(--color-ink-secondary)",
+              }}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: intentional sanitized markdown rendering
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdownLite(msg.text),
+              }}
+            />
 
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
+            {msg.widget === "budget-slider" && (
+              <BudgetWidget listingPrice={listingPrice} onSubmit={handleBudgetSubmit} />
+            )}
+          </ChatBubble>
+        ))}
+
+        {/* Typing indicator */}
+        {isLoading && (
+          <ChatBubble side="left" className="msg-anim">
+            <span className="flex items-center gap-1.5">
+              <AgentIcon accent={accent} />
+              <TypingIndicator />
+            </span>
+          </ChatBubble>
+        )}
+      </MessageList>
 
       {/* Strategy chips — only show when we have them */}
       {chips.length > 0 && (
-        <div
-          className="px-4 py-2 flex flex-wrap gap-1.5 overflow-x-auto shrink-0"
-          style={{
-            borderTop: "1px solid var(--color-border-default)",
-            background: "var(--color-surface-overlay)",
-          }}
-        >
-          <span
-            className="text-[10px] font-semibold tracking-wider mr-1 self-center"
-            style={{ color: "var(--color-ink-muted)" }}
-          >
+        <div className="flex shrink-0 flex-wrap gap-1.5 overflow-x-auto border-line border-t bg-surface-overlay px-4 py-2">
+          <span className="mr-1 self-center font-semibold text-[10px] text-ink-muted tracking-wider">
             STRATEGY
           </span>
-          {chips.map((chip) => {
-            const colors = CHIP_COLORS[chip.category];
-            return (
-              <span
-                key={`${chip.category}-${chip.value}`}
-                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap transition-all duration-300"
-                style={{
-                  background: colors.bg,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.text,
-                  animation: "chipIn 0.3s ease-out",
-                }}
-              >
-                {chip.label}
-              </span>
-            );
-          })}
+          {chips.map((chip) => (
+            <Badge
+              key={`${chip.category}-${chip.value}`}
+              tone={CHIP_TONE[chip.category]}
+              size="sm"
+              className="whitespace-nowrap"
+              style={{ animation: "chipIn 0.3s ease-out" }}
+            >
+              {chip.label}
+            </Badge>
+          ))}
         </div>
       )}
 
-      {/* Input area */}
-      <div
-        className="px-3 py-2.5 flex items-center gap-2 shrink-0"
-        style={{
-          borderTop: "1px solid var(--color-border-default)",
-          background: "var(--color-surface-overlay)",
-        }}
-      >
+      {/* Input area — bespoke chat composer (flat transparent field); the shared Input is a
+          bordered form field and doesn't fit this toolbar. Send is a fixed-CTA IconButton
+          (not the agent accent) so action buttons read consistently across the app. */}
+      <div className="flex shrink-0 items-center gap-2 border-line border-t bg-surface-overlay px-3 py-2.5">
         <input
           ref={inputRef}
           type="text"
@@ -1018,39 +865,17 @@ export function NegotiationAgentBuilderChat({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={!hasAgentSelected || isLoading}
-          className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-muted outline-none disabled:cursor-not-allowed disabled:opacity-40"
         />
-        <button
-          type="button"
+        <IconButton
+          variant="solid"
           onClick={handleSend}
           disabled={!input.trim() || isLoading || !hasAgentSelected}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-          style={{
-            background:
-              input.trim() && hasAgentSelected
-                ? (agent?.accentColor ?? "var(--color-action-primary)")
-                : "transparent",
-            border: `1px solid ${input.trim() && hasAgentSelected ? "transparent" : "var(--color-border-default)"}`,
-          }}
           aria-label="Send message"
+          className="size-7 rounded-lg"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke={
-              input.trim() && hasAgentSelected ? "var(--color-on-cta)" : "var(--color-ink-muted)"
-            }
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+          <Send className="size-3.5" />
+        </IconButton>
       </div>
 
       {/* Animations */}
@@ -1063,6 +888,7 @@ export function NegotiationAgentBuilderChat({
           from { opacity: 0; transform: scale(0.9); }
           to { opacity: 1; transform: scale(1); }
         }
+        .msg-anim { animation: fadeSlideIn 0.3s ease-out; }
       `}</style>
     </div>
   );

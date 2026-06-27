@@ -4,6 +4,14 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useState } from "react";
 import { parseUnits } from "viem";
 import { useAccount, useBalance, useWriteContract } from "wagmi";
+import {
+  Alert,
+  Button,
+  ResultState,
+  SelectableOptionCard,
+  Spinner,
+  Stepper,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
 
 // USDC contract ABI (minimal: approve)
@@ -236,42 +244,31 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
       {step === "select_method" && (
         <div className="space-y-3">
           <p className="text-sm text-ink-secondary">Choose how to pay:</p>
-          <button
-            type="button"
+          <SelectableOptionCard
+            icon={<span className="text-2xl">💳</span>}
+            title={`Pay with Card ($${amountUsdc} + Stripe fee)`}
+            description="Credit/debit card via Stripe. 3% total fee. No wallet needed — Stripe handles everything."
             onClick={() => {
               setMethod("card");
               setStep("connect_wallet");
             }}
-            className="w-full flex items-center gap-3 rounded-lg border border-line p-4 hover:border-focus hover:bg-surface-sunken transition-colors text-left"
-          >
-            <span className="text-2xl">💳</span>
-            <div>
-              <div className="font-medium">Pay with Card (${amountUsdc} + Stripe fee)</div>
-              <div className="text-xs text-ink-muted">
-                Credit/debit card via Stripe. 3% total fee. No wallet needed &mdash; Stripe handles
-                everything.
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
+          />
+          <SelectableOptionCard
+            icon={<span className="text-2xl">🔗</span>}
+            title={`Pay with USDC ($${amountUsdc})`}
+            description={
+              <>
+                Direct USDC from your wallet on Base. 1.5% fee. Gas paid by Haggle.
+                <span className="mt-1 block text-action-primary">
+                  Don&apos;t have a wallet? Create one instantly with Coinbase — just your email
+                </span>
+              </>
+            }
             onClick={() => {
               setMethod("crypto");
               setStep("connect_wallet");
             }}
-            className="w-full flex items-center gap-3 rounded-lg border border-line p-4 hover:border-focus hover:bg-surface-sunken transition-colors text-left"
-          >
-            <span className="text-2xl">🔗</span>
-            <div>
-              <div className="font-medium">Pay with USDC (${amountUsdc})</div>
-              <div className="text-xs text-ink-muted">
-                Direct USDC from your wallet on Base. 1.5% fee. Gas paid by Haggle.
-              </div>
-              <div className="text-xs text-action-primary mt-1">
-                Don&apos;t have a wallet? Create one instantly with Coinbase &mdash; just your email
-              </div>
-            </div>
-          </button>
+          />
         </div>
       )}
 
@@ -285,37 +282,17 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
       {step === "onramp_loading" && (
         <div className="py-8 text-center text-ink-muted">
-          <div className="animate-spin inline-block w-6 h-6 border-2 border-line border-t-action-primary rounded-full mb-2" />
+          <Spinner className="mb-2 text-action-primary" />
           <p className="text-sm">Setting up card payment...</p>
         </div>
       )}
 
       {/* Step indicator */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-        {steps.map((s, i) => (
-          <div key={s.key} className="flex items-center">
-            <div
-              className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium shrink-0 ${
-                i < currentStepIndex
-                  ? "bg-success-500 text-on-accent"
-                  : i === currentStepIndex
-                    ? "bg-action-primary text-on-accent"
-                    : "bg-surface-sunken text-ink-muted"
-              }`}
-            >
-              {i < currentStepIndex ? "✓" : i + 1}
-            </div>
-            <span
-              className={`ml-1 text-xs hidden sm:block ${
-                i === currentStepIndex ? "text-action-primary font-medium" : "text-ink-muted"
-              }`}
-            >
-              {s.label}
-            </span>
-            {i < steps.length - 1 && <div className="mx-2 h-px w-4 bg-line shrink-0" />}
-          </div>
-        ))}
-      </div>
+      <Stepper
+        steps={steps.map((s) => s.label)}
+        current={currentStepIndex}
+        className="overflow-x-auto pb-2"
+      />
 
       {/* Step content */}
       <div className="space-y-4">
@@ -340,14 +317,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 </p>
                 <ConnectButton />
                 {isConnected && (
-                  <button
-                    type="button"
-                    onClick={handlePrepare}
-                    disabled={isLoading}
-                    className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
-                  >
+                  <Button fullWidth loading={isLoading} onClick={handlePrepare}>
                     {isLoading ? "Preparing..." : "Continue"}
-                  </button>
+                  </Button>
                 )}
               </>
             )}
@@ -374,14 +346,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleQuote}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
-            >
+            <Button fullWidth loading={isLoading} onClick={handleQuote}>
               {isLoading ? "Loading..." : "Get Quote"}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -391,8 +358,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               Approve the payment contract to spend <strong>{amountUsdc} USDC</strong> on your
               behalf.
             </p>
-            <button
-              type="button"
+            <Button
+              fullWidth
+              loading={isLoading || isWriting}
               onClick={() =>
                 handleApproveUsdc(
                   (process.env.NEXT_PUBLIC_SETTLEMENT_ROUTER_ADDRESS ?? "0x0") as `0x${string}`,
@@ -400,11 +368,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                     "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
                 )
               }
-              disabled={isLoading || isWriting}
-              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
             >
               {isLoading || isWriting ? "Approving..." : "Approve USDC"}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -413,42 +379,33 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
             <p className="text-sm text-ink-secondary">
               Sign the x402 payment authorization to complete the transaction.
             </p>
-            <button
-              type="button"
-              onClick={handleSubmitX402}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
-            >
+            <Button fullWidth loading={isLoading} onClick={handleSubmitX402}>
               {isLoading ? "Submitting..." : "Sign & Submit Payment"}
-            </button>
+            </Button>
           </div>
         )}
 
         {step === "complete" && (
-          <div className="text-center space-y-3 py-4">
-            <div className="text-4xl">✓</div>
-            <p className="text-success font-semibold">Payment Complete!</p>
-            <p className="text-sm text-ink-muted">
-              Your payment of {amountUsdc} {currency} has been submitted.
-            </p>
-          </div>
+          <ResultState
+            tone="success"
+            title="Payment Complete!"
+            description={`Your payment of ${amountUsdc} ${currency} has been submitted.`}
+          />
         )}
 
         {step === "error" && (
           <div className="space-y-3">
-            <div className="bg-error-soft border border-error/30 rounded-lg p-4">
-              <p className="text-sm text-error">{error}</p>
-            </div>
-            <button
-              type="button"
+            <Alert tone="error">{error}</Alert>
+            <Button
+              variant="secondary"
+              fullWidth
               onClick={() => {
                 setError(null);
                 setStep(isConnected ? "check_balance" : "connect_wallet");
               }}
-              className="w-full py-2 px-4 bg-surface-sunken text-ink-secondary rounded-lg text-sm font-medium hover:bg-surface-overlay transition-colors"
             >
               Try Again
-            </button>
+            </Button>
           </div>
         )}
       </div>

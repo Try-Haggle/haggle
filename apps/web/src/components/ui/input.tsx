@@ -27,7 +27,7 @@ export const inputVariants = cva(`h-11 px-3.5 ${fieldBase}`, {
 // adornments and the input sit in a flex row, so any adornment (icon or text) keeps
 // a consistent gap from the value.
 const adornedFieldVariants = cva(
-  "flex h-11 items-center gap-2 rounded-[10px] border bg-surface-overlay px-3.5 transition has-[:disabled]:opacity-50",
+  "flex h-11 w-full items-center gap-2 rounded-[10px] border bg-surface-overlay px-3.5 transition has-[:disabled]:opacity-50",
   {
     variants: {
       invalid: {
