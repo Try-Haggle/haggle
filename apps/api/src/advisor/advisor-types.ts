@@ -7,11 +7,7 @@
 
 export type AdvisorRole = "buyer" | "seller";
 
-export type AdvisorMessageRole =
-  | "buyer_advisor"
-  | "seller_advisor"
-  | "buyer_user"
-  | "seller_user";
+export type AdvisorMessageRole = "buyer_advisor" | "seller_advisor" | "buyer_user" | "seller_user";
 
 export interface AdvisorMessageMetadata {
   tokens_used?: number;

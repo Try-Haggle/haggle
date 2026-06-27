@@ -15,25 +15,25 @@
  */
 
 import type { Database } from "@haggle/db";
-import { advisorMessages, eq, and, desc, sql } from "@haggle/db";
-import { generateCanary, buildCanaryInstruction } from "../negotiation/guards/prompt-guard.js";
+import { advisorMessages, and, desc, eq, sql } from "@haggle/db";
+import { buildCanaryInstruction, generateCanary } from "../negotiation/guards/prompt-guard.js";
 import { assembleAdvisorContext } from "./advisor-context.js";
-import { buildAdvisorSystemPrompt } from "./advisor-prompts.js";
 import { guardAdvisorInput, guardAdvisorOutput } from "./advisor-guard.js";
 import { callAdvisorLLM } from "./advisor-llm.js";
+import { buildAdvisorSystemPrompt } from "./advisor-prompts.js";
 import type {
-  AdvisorRole,
-  AdvisorMessageRole,
   AdvisorChatRequest,
   AdvisorChatResponse,
   AdvisorMessage,
   AdvisorMessageMetadata,
+  AdvisorMessageRole,
+  AdvisorRole,
 } from "./advisor-types.js";
 import {
-  MAX_HISTORY_TURNS,
-  FALLBACK_RESPONSE,
   DEEPSEEK_COST_PER_1M_INPUT,
   DEEPSEEK_COST_PER_1M_OUTPUT,
+  FALLBACK_RESPONSE,
+  MAX_HISTORY_TURNS,
 } from "./advisor-types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -48,9 +48,7 @@ function userMessageRole(userRole: AdvisorRole): AdvisorMessageRole {
 
 /** Roles visible to a given user (isolation enforcement) */
 function visibleRoles(userRole: AdvisorRole): AdvisorMessageRole[] {
-  return userRole === "buyer"
-    ? ["buyer_advisor", "buyer_user"]
-    : ["seller_advisor", "seller_user"];
+  return userRole === "buyer" ? ["buyer_advisor", "buyer_user"] : ["seller_advisor", "seller_user"];
 }
 
 function computeCostUsd(promptTokens: number, completionTokens: number): number {
@@ -138,10 +136,7 @@ async function loadHistory(
     .select()
     .from(advisorMessages)
     .where(
-      and(
-        eq(advisorMessages.disputeId, disputeId),
-        sql`${advisorMessages.role} = ANY(${roles})`,
-      ),
+      and(eq(advisorMessages.disputeId, disputeId), sql`${advisorMessages.role} = ANY(${roles})`),
     )
     .orderBy(desc(advisorMessages.createdAt))
     .limit(limit);
@@ -172,13 +167,10 @@ export async function chat(
   const inputGuard = guardAdvisorInput(message);
   if (!inputGuard.safe) {
     // Never persist raw malicious input — store only a placeholder
-    const blocked = await saveMessage(
-      db,
-      dispute_id,
-      userMessageRole(user_role),
-      "[blocked]",
-      { blocked: true, block_reason: inputGuard.reason },
-    );
+    const blocked = await saveMessage(db, dispute_id, userMessageRole(user_role), "[blocked]", {
+      blocked: true,
+      block_reason: inputGuard.reason,
+    });
     return {
       reply: {
         id: blocked.id,
@@ -196,10 +188,10 @@ export async function chat(
   const history = await loadHistory(db, dispute_id, user_role);
 
   // 3. Assemble case context
-  let context;
+  let context: Awaited<ReturnType<typeof assembleAdvisorContext>>;
   try {
     context = await assembleAdvisorContext(db, dispute_id, user_role);
-  } catch (err) {
+  } catch (_err) {
     return {
       reply: {
         id: "",
@@ -214,9 +206,7 @@ export async function chat(
   // 4. Generate canary token
   const canarySecret = process.env.CANARY_SECRET;
   if (!canarySecret) {
-    throw new Error(
-      "CANARY_SECRET environment variable is required for advisor service",
-    );
+    throw new Error("CANARY_SECRET environment variable is required for advisor service");
   }
   const canaryToken = generateCanary(dispute_id, canarySecret);
   const canaryInstruction = buildCanaryInstruction(canaryToken);
@@ -235,8 +225,7 @@ export async function chat(
   }> = [{ role: "system", content: systemPrompt }];
 
   for (const msg of history) {
-    const isAdvisor =
-      msg.role === "buyer_advisor" || msg.role === "seller_advisor";
+    const isAdvisor = msg.role === "buyer_advisor" || msg.role === "seller_advisor";
     llmMessages.push({
       role: isAdvisor ? "assistant" : "user",
       content: msg.content,
@@ -246,29 +235,23 @@ export async function chat(
   llmMessages.push({ role: "user", content: message });
 
   // 7. Call LLM
-  let llmResponse;
+  let llmResponse: Awaited<ReturnType<typeof callAdvisorLLM>>;
   try {
     llmResponse = await callAdvisorLLM(llmMessages, {
       correlationId: dispute_id,
     });
-  } catch (err) {
+  } catch (_err) {
     // Save user message even on LLM failure
     await saveMessage(db, dispute_id, userMessageRole(user_role), message);
-    const fallback = await saveMessage(
-      db,
-      dispute_id,
-      advisorRole(user_role),
-      FALLBACK_RESPONSE,
-      { model: "fallback" },
-    );
+    const fallback = await saveMessage(db, dispute_id, advisorRole(user_role), FALLBACK_RESPONSE, {
+      model: "fallback",
+    });
     return { reply: fallback };
   }
 
   // 8. Guard output
   const outputGuard = guardAdvisorOutput(llmResponse.content, canaryToken);
-  const finalContent = outputGuard.safe
-    ? llmResponse.content
-    : outputGuard.sanitized;
+  const finalContent = outputGuard.safe ? llmResponse.content : outputGuard.sanitized;
 
   // 9. Extract strength + action suggestions
   const strength = extractStrength(finalContent);
@@ -283,24 +266,14 @@ export async function chat(
   // 11. Save both messages to DB
   await saveMessage(db, dispute_id, userMessageRole(user_role), message);
 
-  const advisorMsg = await saveMessage(
-    db,
-    dispute_id,
-    advisorRole(user_role),
-    finalContent,
-    {
-      tokens_used:
-        llmResponse.usage.prompt_tokens +
-        llmResponse.usage.completion_tokens,
-      model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
-      cost_usd: costUsd,
-      strength,
-      blocked: !outputGuard.safe,
-      block_reason: outputGuard.violations.length > 0
-        ? outputGuard.violations.join(", ")
-        : undefined,
-    },
-  );
+  const advisorMsg = await saveMessage(db, dispute_id, advisorRole(user_role), finalContent, {
+    tokens_used: llmResponse.usage.prompt_tokens + llmResponse.usage.completion_tokens,
+    model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro",
+    cost_usd: costUsd,
+    strength,
+    blocked: !outputGuard.safe,
+    block_reason: outputGuard.violations.length > 0 ? outputGuard.violations.join(", ") : undefined,
+  });
 
   return {
     reply: advisorMsg,
@@ -327,10 +300,7 @@ export async function analyzeCase(
     .select()
     .from(advisorMessages)
     .where(
-      and(
-        eq(advisorMessages.disputeId, disputeId),
-        eq(advisorMessages.role, existingAdvisorRole),
-      ),
+      and(eq(advisorMessages.disputeId, disputeId), eq(advisorMessages.role, existingAdvisorRole)),
     )
     .orderBy(advisorMessages.createdAt)
     .limit(1);
@@ -348,9 +318,8 @@ export async function analyzeCase(
         created_at: row.createdAt.toISOString(),
       },
       strength_assessment: metadata?.strength,
-      action_suggestions: extractActions(row.content).length > 0
-        ? extractActions(row.content)
-        : undefined,
+      action_suggestions:
+        extractActions(row.content).length > 0 ? extractActions(row.content) : undefined,
     };
   }
 
@@ -379,10 +348,7 @@ export async function getHistory(
     .select()
     .from(advisorMessages)
     .where(
-      and(
-        eq(advisorMessages.disputeId, disputeId),
-        sql`${advisorMessages.role} = ANY(${roles})`,
-      ),
+      and(eq(advisorMessages.disputeId, disputeId), sql`${advisorMessages.role} = ANY(${roles})`),
     )
     .orderBy(advisorMessages.createdAt)
     .limit(limit)

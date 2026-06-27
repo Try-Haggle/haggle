@@ -103,15 +103,12 @@ export async function callAdvisorLLM(
 
         if (!response.ok) {
           const text = await response.text().catch(() => "");
-          const err = new Error(
-            `DeepSeek API error ${response.status}: ${text}`,
-          ) as Error & { status: number; retryable: boolean };
+          const err = new Error(`DeepSeek API error ${response.status}: ${text}`) as Error & {
+            status: number;
+            retryable: boolean;
+          };
           err.status = response.status;
-          if (
-            response.status >= 400 &&
-            response.status < 500 &&
-            response.status !== 429
-          ) {
+          if (response.status >= 400 && response.status < 500 && response.status !== 429) {
             err.retryable = false;
             throw err;
           }
@@ -157,8 +154,7 @@ export async function callAdvisorLLM(
       extractUsage: (result) => ({
         promptTokens: result.usage.prompt_tokens,
         completionTokens: result.usage.completion_tokens,
-        totalTokens:
-          result.usage.prompt_tokens + result.usage.completion_tokens,
+        totalTokens: result.usage.prompt_tokens + result.usage.completion_tokens,
       }),
     },
   );

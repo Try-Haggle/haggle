@@ -6,7 +6,7 @@
  * Retry with backoff, timeout, telemetry integration.
  */
 
-import { withLLMTelemetry } from '../../lib/llm-telemetry.js';
+import { withLLMTelemetry } from "../../lib/llm-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,19 +46,19 @@ interface DeepSeekChatCompletion {
 // Config
 // ---------------------------------------------------------------------------
 
-const DEEPSEEK_API_BASE = 'https://api.deepseek.com/v1';
+const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
 const RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
 const GENERAL_TIMEOUT_MS = 60_000;
 const REASONING_TIMEOUT_MS = 90_000;
 
 function getApiKey(): string {
   const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error('DEEPSEEK_API_KEY not configured');
+  if (!key) throw new Error("DEEPSEEK_API_KEY not configured");
   return key;
 }
 
 function getModel(): string {
-  return process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro';
+  return process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
 }
 
 // ---------------------------------------------------------------------------
@@ -105,10 +105,10 @@ export async function callLLM(
   const body: Record<string, unknown> = {
     model,
     messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
-    response_format: { type: 'json_object' },
+    response_format: { type: "json_object" },
     temperature: reasoning ? 0.3 : 0.5,
     ...(maxTokens && { max_tokens: maxTokens }),
   };
@@ -121,9 +121,9 @@ export async function callLLM(
         const response = await fetchWithTimeout(
           `${DEEPSEEK_API_BASE}/chat/completions`,
           {
-            method: 'POST',
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${getApiKey()}`,
             },
             body: JSON.stringify(body),
@@ -132,8 +132,11 @@ export async function callLLM(
         );
 
         if (!response.ok) {
-          const text = await response.text().catch(() => '');
-          const err = new Error(`DeepSeek API error ${response.status}: ${text}`) as Error & { status: number; retryable: boolean };
+          const text = await response.text().catch(() => "");
+          const err = new Error(`DeepSeek API error ${response.status}: ${text}`) as Error & {
+            status: number;
+            retryable: boolean;
+          };
           err.status = response.status;
 
           // Don't retry on 4xx (except 429)
@@ -146,7 +149,7 @@ export async function callLLM(
         }
 
         const data = (await response.json()) as DeepSeekChatCompletion;
-        const content = data.choices?.[0]?.message?.content ?? '';
+        const content = data.choices?.[0]?.message?.content ?? "";
 
         return {
           content,
@@ -166,9 +169,9 @@ export async function callLLM(
         }
 
         // Check if abort (timeout)
-        if (lastError.name === 'AbortError') {
+        if (lastError.name === "AbortError") {
           lastError = new Error(`DeepSeek API timeout after ${timeoutMs}ms`);
-          (lastError as Error & { name: string }).name = 'TimeoutError';
+          (lastError as Error & { name: string }).name = "TimeoutError";
         }
 
         // Wait before retry (if retries remaining)
@@ -178,15 +181,15 @@ export async function callLLM(
       }
     }
 
-    throw lastError ?? new Error('DeepSeek API call failed');
+    throw lastError ?? new Error("DeepSeek API call failed");
   };
 
   // Wrap with telemetry
   return withLLMTelemetry(
     {
-      service: 'deepseek.chat',
+      service: "deepseek.chat",
       model,
-      operation: 'negotiation-round',
+      operation: "negotiation-round",
       correlationId,
     },
     doCall,

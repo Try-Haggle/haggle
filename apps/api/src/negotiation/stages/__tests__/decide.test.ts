@@ -1,14 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
-import { decide } from '../decide.js';
-import { DeepSeekAdapter } from '../../adapters/deepseek-adapter.js';
-import { DefaultEngineSkill } from '../../skills/default-engine-skill.js';
-import type { CoreMemory, OpponentPattern, StageConfig, RefereeCoaching, ContextLayers } from '../../types.js';
-import type { ContextOutput, DecideInput } from '../../pipeline/types.js';
-import type { RefereeBriefing } from '../../skills/skill-types.js';
-import { DEFAULT_BUDDY_DNA } from '../../config.js';
+import { describe, expect, it, vi } from "vitest";
+import { DeepSeekAdapter } from "../../adapters/deepseek-adapter.js";
+import { DEFAULT_BUDDY_DNA } from "../../config.js";
+import type { ContextOutput } from "../../pipeline/types.js";
+import { DefaultEngineSkill } from "../../skills/default-engine-skill.js";
+import type { RefereeBriefing } from "../../skills/skill-types.js";
+import type { CoreMemory, OpponentPattern, RefereeCoaching, StageConfig } from "../../types.js";
+import { decide } from "../decide.js";
 
-vi.mock('../../adapters/deepseek-client.js', () => ({
-  callLLM: vi.fn().mockRejectedValue(new Error('mock llm unavailable')),
+vi.mock("../../adapters/deepseek-client.js", () => ({
+  callLLM: vi.fn().mockRejectedValue(new Error("mock llm unavailable")),
 }));
 
 const adapter = new DeepSeekAdapter();
@@ -18,9 +18,9 @@ function makeCoaching(): RefereeCoaching {
   return {
     recommended_price: 87000,
     acceptable_range: { min: 83000, max: 95000 },
-    suggested_tactic: 'reciprocal_concession',
-    hint: '',
-    opponent_pattern: 'LINEAR',
+    suggested_tactic: "reciprocal_concession",
+    hint: "",
+    opponent_pattern: "LINEAR",
     convergence_rate: 0.5,
     time_pressure: 0.3,
     utility_snapshot: { u_price: 0.6, u_time: 0.7, u_risk: 0.5, u_quality: 0.5, u_total: 0.6 },
@@ -29,16 +29,16 @@ function makeCoaching(): RefereeCoaching {
   };
 }
 
-function makeMemory(phase: CoreMemory['session']['phase'] = 'BARGAINING'): CoreMemory {
+function makeMemory(phase: CoreMemory["session"]["phase"] = "BARGAINING"): CoreMemory {
   return {
     session: {
-      session_id: 'test-session',
+      session_id: "test-session",
       phase,
       round: 3,
       rounds_remaining: 7,
-      role: 'buyer',
+      role: "buyer",
       max_rounds: 10,
-      intervention_mode: 'FULL_AUTO',
+      intervention_mode: "FULL_AUTO",
     },
     boundaries: {
       my_target: 83000,
@@ -47,25 +47,25 @@ function makeMemory(phase: CoreMemory['session']['phase'] = 'BARGAINING'): CoreM
       opponent_offer: 90000,
       gap: 5000,
     },
-    terms: { active: [], resolved_summary: '' },
+    terms: { active: [], resolved_summary: "" },
     coaching: makeCoaching(),
     buddy_dna: DEFAULT_BUDDY_DNA,
-    skill_summary: 'electronics-iphone-pro-v1',
+    skill_summary: "electronics-iphone-pro-v1",
   };
 }
 
 function makeConfig(): StageConfig {
   return {
     adapters: { UNDERSTAND: adapter, DECIDE: adapter, RESPOND: adapter },
-    modes: { RESPOND: 'template', VALIDATE: 'full' },
-    memoEncoding: 'codec',
+    modes: { RESPOND: "template", VALIDATE: "full" },
+    memoEncoding: "codec",
     reasoningEnabled: true,
   };
 }
 
 function makeBriefing(): RefereeBriefing {
   return {
-    opponentPattern: 'LINEAR',
+    opponentPattern: "LINEAR",
     timePressure: 0.3,
     gapTrend: [],
     opponentMoves: [],
@@ -79,16 +79,16 @@ function makeContextOutput(): ContextOutput {
   const briefing = makeBriefing();
   return {
     layers: {
-      L0_protocol: 'protocol',
-      L1_model: 'model',
-      L2_skill: 'skill',
-      L3_coaching: 'coaching',
-      L4_history: '',
-      L5_signals: '',
+      L0_protocol: "protocol",
+      L1_model: "model",
+      L2_skill: "skill",
+      L3_coaching: "coaching",
+      L4_history: "",
+      L5_signals: "",
     },
     briefing,
     coaching: briefing,
-    memo_snapshot: 'NS:BARGAINING',
+    memo_snapshot: "NS:BARGAINING",
     skills_applied: [],
   };
 }
@@ -96,73 +96,73 @@ function makeContextOutput(): ContextOutput {
 const defaultOpponent: OpponentPattern = {
   aggression: 0.5,
   concession_rate: 0.03,
-  preferred_tactics: ['reciprocal_concession'],
+  preferred_tactics: ["reciprocal_concession"],
   condition_flexibility: 0.5,
   estimated_floor: 88000,
 };
 
-describe('Stage 3: decide', () => {
-  it('uses skill for non-BARGAINING phases', async () => {
-    const memory = makeMemory('OPENING');
+describe("Stage 3: decide", () => {
+  it("uses skill for non-BARGAINING phases", async () => {
+    const memory = makeMemory("OPENING");
     const result = await decide({
       context: makeContextOutput(),
       adapter,
       skill,
-      phase: 'OPENING',
+      phase: "OPENING",
       config: makeConfig(),
       memory,
       facts: [],
       opponent: defaultOpponent,
     });
 
-    expect(result.source).toBe('skill');
-    expect(result.decision.action).toBe('COUNTER');
+    expect(result.source).toBe("skill");
+    expect(result.decision.action).toBe("COUNTER");
     expect(result.reasoning_mode).toBe(false);
   });
 
-  it('uses skill for DISCOVERY phase', async () => {
-    const memory = makeMemory('DISCOVERY');
+  it("uses skill for DISCOVERY phase", async () => {
+    const memory = makeMemory("DISCOVERY");
     const result = await decide({
       context: makeContextOutput(),
       adapter,
       skill,
-      phase: 'DISCOVERY',
+      phase: "DISCOVERY",
       config: makeConfig(),
       memory,
       facts: [],
       opponent: defaultOpponent,
     });
 
-    expect(result.source).toBe('skill');
-    expect(result.decision.action).toBe('DISCOVER');
+    expect(result.source).toBe("skill");
+    expect(result.decision.action).toBe("DISCOVER");
   });
 
-  it('uses skill for CLOSING phase', async () => {
-    const memory = makeMemory('CLOSING');
+  it("uses skill for CLOSING phase", async () => {
+    const memory = makeMemory("CLOSING");
     const result = await decide({
       context: makeContextOutput(),
       adapter,
       skill,
-      phase: 'CLOSING',
+      phase: "CLOSING",
       config: makeConfig(),
       memory,
       facts: [],
       opponent: defaultOpponent,
     });
 
-    expect(result.source).toBe('skill');
-    expect(result.decision.action).toBe('CONFIRM');
+    expect(result.source).toBe("skill");
+    expect(result.decision.action).toBe("CONFIRM");
   });
 
-  it('falls back to skill when LLM fails in BARGAINING', async () => {
+  it("falls back to skill when LLM fails in BARGAINING", async () => {
     // Mock callLLM to fail by using a mock module
     // Since we can't mock callLLM without full mock setup, test the skill fallback path
-    const memory = makeMemory('BARGAINING');
+    const memory = makeMemory("BARGAINING");
     const result = await decide({
       context: makeContextOutput(),
       adapter,
       skill,
-      phase: 'BARGAINING',
+      phase: "BARGAINING",
       config: makeConfig(),
       memory,
       facts: [],
@@ -170,26 +170,26 @@ describe('Stage 3: decide', () => {
     });
 
     // Without a real LLM, it should fall back to skill
-    expect(result.source).toBe('skill');
+    expect(result.source).toBe("skill");
     expect(result.decision).toBeDefined();
     expect(result.latency_ms).toBeGreaterThanOrEqual(0);
   });
 
-  it('passes Stage 2 L5 signal lines into the LLM prompt', async () => {
-    const memory = makeMemory('BARGAINING');
+  it("passes Stage 2 L5 signal lines into the LLM prompt", async () => {
+    const memory = makeMemory("BARGAINING");
     const promptAdapter = new DeepSeekAdapter();
-    const promptSpy = vi.spyOn(promptAdapter, 'buildUserPrompt');
+    const promptSpy = vi.spyOn(promptAdapter, "buildUserPrompt");
     const context = makeContextOutput();
     context.layers.L5_signals = [
-      'USER_MEMORY_HINTS:non_authoritative',
-      'MEM:pricing:ceiling_70000|strength:0.65',
-    ].join('\n');
+      "USER_MEMORY_HINTS:non_authoritative",
+      "MEM:pricing:ceiling_70000|strength:0.65",
+    ].join("\n");
 
     await decide({
       context,
       adapter: promptAdapter,
       skill,
-      phase: 'BARGAINING',
+      phase: "BARGAINING",
       config: {
         ...makeConfig(),
         adapters: { UNDERSTAND: promptAdapter, DECIDE: promptAdapter, RESPOND: promptAdapter },
@@ -201,29 +201,29 @@ describe('Stage 3: decide', () => {
 
     expect(promptSpy).toHaveBeenCalled();
     expect(promptSpy.mock.calls[0]?.[2]).toEqual([
-      'USER_MEMORY_HINTS:non_authoritative',
-      'MEM:pricing:ceiling_70000|strength:0.65',
+      "USER_MEMORY_HINTS:non_authoritative",
+      "MEM:pricing:ceiling_70000|strength:0.65",
     ]);
   });
 
-  it('returns latency_ms', async () => {
-    const memory = makeMemory('OPENING');
+  it("returns latency_ms", async () => {
+    const memory = makeMemory("OPENING");
     const result = await decide({
       context: makeContextOutput(),
       adapter,
       skill,
-      phase: 'OPENING',
+      phase: "OPENING",
       config: makeConfig(),
       memory,
       facts: [],
       opponent: defaultOpponent,
     });
 
-    expect(typeof result.latency_ms).toBe('number');
+    expect(typeof result.latency_ms).toBe("number");
   });
 
-  it('auto-accepts when gap is near zero', async () => {
-    const memory = makeMemory('BARGAINING');
+  it("auto-accepts when gap is near zero", async () => {
+    const memory = makeMemory("BARGAINING");
     memory.boundaries.current_offer = 89900;
     memory.boundaries.opponent_offer = 90000;
     memory.boundaries.gap = 100;
@@ -232,7 +232,7 @@ describe('Stage 3: decide', () => {
       context: makeContextOutput(),
       adapter,
       skill,
-      phase: 'BARGAINING',
+      phase: "BARGAINING",
       config: makeConfig(),
       memory,
       facts: [],
@@ -240,7 +240,7 @@ describe('Stage 3: decide', () => {
     });
 
     // Near deal → skill should ACCEPT
-    expect(result.decision.action).toBe('ACCEPT');
-    expect(result.source).toBe('skill');
+    expect(result.decision.action).toBe("ACCEPT");
+    expect(result.source).toBe("skill");
   });
 });

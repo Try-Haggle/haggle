@@ -8,9 +8,9 @@
  */
 
 import {
-  runPromptGuard,
   checkCanaryLeak,
   type PromptGuardResult,
+  runPromptGuard,
 } from "../negotiation/guards/prompt-guard.js";
 import { MAX_MESSAGE_LENGTH, SANITIZED_RESPONSE } from "./advisor-types.js";
 
@@ -83,8 +83,7 @@ export interface OutputGuardResult {
 const LEGAL_TERM_PATTERN =
   /\b(?:legal\s+advice|lawsuit|attorney|court\s+order|verdict|judge|litigation|sue|counsel|deposition|subpoena|lawyer)\b/i;
 
-const LEGAL_TERM_PATTERN_KO =
-  /(?:법적\s*조언|소송|변호사|판사|법원|재판|고소|고발|법률\s*상담)/;
+const LEGAL_TERM_PATTERN_KO = /(?:법적\s*조언|소송|변호사|판사|법원|재판|고소|고발|법률\s*상담)/;
 
 // System info leak patterns
 const SYSTEM_INFO_PATTERN =
@@ -102,10 +101,7 @@ const WALLET_PATTERN = /0x[a-fA-F0-9]{40}/g;
  *     - System info leaks
  *     - PII (wallet addresses)
  */
-export function guardAdvisorOutput(
-  response: string,
-  canaryToken: string,
-): OutputGuardResult {
+export function guardAdvisorOutput(response: string, canaryToken: string): OutputGuardResult {
   const violations: string[] = [];
 
   // L3: Canary leak check

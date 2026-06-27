@@ -5,20 +5,21 @@
  * Calls stages sequentially, accumulating results into PipelineResult.
  */
 
+import { resolveMemoEncoding } from "../config.js";
+import { createSnapshot } from "../memo/memo-manager.js";
+import { assembleStageContext } from "../stages/context.js";
+import { decide } from "../stages/decide.js";
+import { persist } from "../stages/persist.js";
+import { respond } from "../stages/respond.js";
+import { understand, understandFromStructured } from "../stages/understand.js";
+import { validateStage } from "../stages/validate.js";
 import type {
-  PipelineResult,
-  PipelineDeps,
-  UnderstandOutput,
   PersistInput,
-} from './types.js';
-import { understand, understandFromStructured } from '../stages/understand.js';
-import { assembleStageContext } from '../stages/context.js';
-import { decide } from '../stages/decide.js';
-import { validateStage } from '../stages/validate.js';
-import { respond } from '../stages/respond.js';
-import { persist } from '../stages/persist.js';
-import { createSnapshot } from '../memo/memo-manager.js';
-import { resolveMemoEncoding } from '../config.js';
+  PersistOutput,
+  PipelineDeps,
+  PipelineResult,
+  UnderstandOutput,
+} from "./types.js";
 
 // Token cost estimate: ~$0.0007 per 1K tokens (deepseek-v4-pro avg of cache-miss input + output)
 const USD_PER_1K_TOKENS = 0.0007;
@@ -39,12 +40,18 @@ export async function executePipeline(
 
   // ─── Stage 1: Understand ───
   let understandOutput: UnderstandOutput;
-  if (typeof message === 'string') {
+  if (typeof message === "string") {
     if (offerPrice !== undefined) {
       // Structured input bypass
-      understandOutput = understandFromStructured(offerPrice, deps.memory.session.role === 'buyer' ? 'seller' : 'buyer');
+      understandOutput = understandFromStructured(
+        offerPrice,
+        deps.memory.session.role === "buyer" ? "seller" : "buyer",
+      );
     } else {
-      understandOutput = understand({ raw_message: message, sender_role: deps.memory.session.role === 'buyer' ? 'seller' : 'buyer' });
+      understandOutput = understand({
+        raw_message: message,
+        sender_role: deps.memory.session.role === "buyer" ? "seller" : "buyer",
+      });
     }
   } else {
     understandOutput = message;
@@ -54,23 +61,27 @@ export async function executePipeline(
   // NOTE: modelContextWindow and tokenCostPerM are not yet available from adapter config.
   // Until StageConfig exposes these, 'auto' always resolves to 'codec' (safe default).
   const resolvedEncoding = resolveMemoEncoding({
-    encoding: deps.memoEncoding as 'auto' | 'codec' | 'raw',
+    encoding: deps.memoEncoding as "auto" | "codec" | "raw",
   });
 
   // ─── Build hook context for SkillStack ───
-  const hookContext = deps.skillStack ? {
-    memory: deps.memory,
-    recentFacts: deps.facts.slice(-5),
-    opponentPattern: deps.opponent,
-    phase: deps.phase,
-  } : null;
+  const hookContext = deps.skillStack
+    ? {
+        memory: deps.memory,
+        recentFacts: deps.facts.slice(-5),
+        opponentPattern: deps.opponent,
+        phase: deps.phase,
+      }
+    : null;
 
   // ─── Stage 1.5: Skill 'understand' hook ───
   if (deps.skillStack && hookContext) {
     try {
-      await deps.skillStack.dispatchHook({ ...hookContext, stage: 'understand' });
+      await deps.skillStack.dispatchHook({ ...hookContext, stage: "understand" });
       // termHints from understand hook can enrich future NLP parsing
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
   // ─── Stage 2: Context ───
@@ -93,7 +104,10 @@ export async function executePipeline(
   // ─── Stage 2.5: Skill 'context' hook (knowledge + market data) ───
   if (deps.skillStack && hookContext) {
     try {
-      const contextHookResult = await deps.skillStack.dispatchHook({ ...hookContext, stage: 'context' });
+      const contextHookResult = await deps.skillStack.dispatchHook({
+        ...hookContext,
+        stage: "context",
+      });
       // Inject market data from HfmiMarketSkill into context output
       if (contextHookResult.decide?.marketData) {
         for (const md of contextHookResult.decide.marketData) {
@@ -103,45 +117,54 @@ export async function executePipeline(
       // Inject knowledge body from ElectronicsKnowledgeSkill
       for (const [skillId, result] of Object.entries(contextHookResult.bySkill)) {
         const body = (result.content as Record<string, unknown>).body;
-        if (typeof body === 'string') {
+        if (typeof body === "string") {
           contextOutput.layers.L2_skill += `\n[${skillId}] ${body}`;
         }
         // Merge observations
         const obs = (result.content as Record<string, unknown>).observations;
         if (Array.isArray(obs)) {
-          contextOutput.layers.L5_signals += '\n' + obs.join('\n');
+          contextOutput.layers.L5_signals += "\n" + obs.join("\n");
         }
       }
-    } catch { /* non-fatal: skills failing doesn't block pipeline */ }
+    } catch {
+      /* non-fatal: skills failing doesn't block pipeline */
+    }
   }
 
   // ─── Stage 3: Decide ───
   // First, get skill advisories for the decide stage
-  let skillAdvisories: string[] = [];
+  const skillAdvisories: string[] = [];
   if (deps.skillStack && hookContext) {
     try {
-      const decideHookResult = await deps.skillStack.dispatchHook({ ...hookContext, stage: 'decide' });
+      const decideHookResult = await deps.skillStack.dispatchHook({
+        ...hookContext,
+        stage: "decide",
+      });
       if (decideHookResult.decide?.advisories) {
         for (const adv of decideHookResult.decide.advisories) {
           if (adv.recommendedPrice) {
-            skillAdvisories.push(`Advisor(${adv.skillId}): suggested price $${(adv.recommendedPrice / 100).toFixed(2)}`);
+            skillAdvisories.push(
+              `Advisor(${adv.skillId}): suggested price $${(adv.recommendedPrice / 100).toFixed(2)}`,
+            );
           }
           if (adv.suggestedTactic) {
             skillAdvisories.push(`Advisor(${adv.skillId}): tactic=${adv.suggestedTactic}`);
           }
           if (adv.observations) {
-            skillAdvisories.push(...adv.observations.map(o => `Advisor(${adv.skillId}): ${o}`));
+            skillAdvisories.push(...adv.observations.map((o) => `Advisor(${adv.skillId}): ${o}`));
           }
         }
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
   // Inject advisories into context L3 layer (optional, LLM may ignore)
   if (skillAdvisories.length > 0) {
     contextOutput.layers.L3_coaching +=
-      '\n## Advisor Notes (optional, you may ignore)\n' +
-      skillAdvisories.map(a => `- ${a}`).join('\n');
+      "\n## Advisor Notes (optional, you may ignore)\n" +
+      skillAdvisories.map((a) => `- ${a}`).join("\n");
   }
 
   const decideOutput = await decide({
@@ -170,16 +193,24 @@ export async function executePipeline(
   // ─── Stage 4.5: Skill 'validate' hook (custom rules) ───
   if (deps.skillStack && hookContext) {
     try {
-      const validateHookResult = await deps.skillStack.dispatchHook({ ...hookContext, stage: 'validate' });
+      const validateHookResult = await deps.skillStack.dispatchHook({
+        ...hookContext,
+        stage: "validate",
+      });
       // Future: merge skill hard/soft rules with validateOutput
       // For now, log any skill-provided rules for observability
       if (validateHookResult.validate) {
         const { hardRules, softRules } = validateHookResult.validate;
         if (hardRules.length > 0 || softRules.length > 0) {
-          console.info('[pipeline] skill validation rules:', { hard: hardRules.length, soft: softRules.length });
+          console.info("[pipeline] skill validation rules:", {
+            hard: hardRules.length,
+            soft: softRules.length,
+          });
         }
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
   // ─── Stage 5: Respond ───
@@ -209,7 +240,7 @@ export async function executePipeline(
     explainability: validateOutput.explainability,
   };
 
-  let persistOutput;
+  let persistOutput: PersistOutput;
   if (deps.persistFn) {
     persistOutput = await deps.persistFn(persistInput);
   } else {
@@ -217,8 +248,11 @@ export async function executePipeline(
   }
 
   // ─── Cost calculation ───
-  const totalTokens = (decideOutput.tokens?.prompt ?? 0) + (decideOutput.tokens?.completion ?? 0)
-    + (respondOutput.tokens?.prompt ?? 0) + (respondOutput.tokens?.completion ?? 0);
+  const totalTokens =
+    (decideOutput.tokens?.prompt ?? 0) +
+    (decideOutput.tokens?.completion ?? 0) +
+    (respondOutput.tokens?.prompt ?? 0) +
+    (respondOutput.tokens?.completion ?? 0);
   const totalLatencyMs = Date.now() - startMs;
   const usdCost = (totalTokens / 1000) * USD_PER_1K_TOKENS;
 

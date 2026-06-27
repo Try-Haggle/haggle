@@ -6,9 +6,9 @@
  * Does NOT touch the existing DeepSeekAdapter S:|B:|C: encoding.
  */
 
-import type { CoreMemory, RoundFact } from '../types.js';
+import type { CoreMemory, RoundFact } from "../types.js";
 
-export type MemoEncoding = 'codec' | 'raw';
+export type MemoEncoding = "codec" | "raw";
 
 function toDollars(minor: number | undefined | null): string {
   return ((minor ?? 0) / 100).toFixed(2);
@@ -35,7 +35,7 @@ function toDollars(minor: number | undefined | null): string {
 export function encodeCompressed(memory: CoreMemory, recentFacts?: RoundFact[]): string {
   const shared = encodeSharedLayer(memory, recentFacts);
   const priv = encodePrivateLayer(memory);
-  return shared + '\n---\n' + priv;
+  return shared + "\n---\n" + priv;
 }
 
 /**
@@ -54,15 +54,22 @@ export function encodeRaw(memory: CoreMemory): string {
       time_pressure: memory.coaching.time_pressure,
     },
     terms: memory.terms,
-    buddy_dna: { style: memory.buddy_dna.style, preferred_tactic: memory.buddy_dna.preferred_tactic },
+    buddy_dna: {
+      style: memory.buddy_dna.style,
+      preferred_tactic: memory.buddy_dna.preferred_tactic,
+    },
   });
 }
 
 /**
  * Encode using specified encoding.
  */
-export function encodeMemo(memory: CoreMemory, encoding: MemoEncoding, recentFacts?: RoundFact[]): string {
-  if (encoding === 'codec') {
+export function encodeMemo(
+  memory: CoreMemory,
+  encoding: MemoEncoding,
+  recentFacts?: RoundFact[],
+): string {
+  if (encoding === "codec") {
     return encodeCompressed(memory, recentFacts);
   }
   return encodeRaw(memory);
@@ -82,9 +89,10 @@ function encodeSharedLayer(memory: CoreMemory, recentFacts?: RoundFact[]): strin
   );
 
   // PT: Price Trajectory (USD)
-  const gapPct = boundaries.my_target !== 0
-    ? ((boundaries.gap / Math.abs(boundaries.my_target)) * 100).toFixed(1)
-    : '0.0';
+  const gapPct =
+    boundaries.my_target !== 0
+      ? ((boundaries.gap / Math.abs(boundaries.my_target)) * 100).toFixed(1)
+      : "0.0";
   lines.push(
     `PT:$${toDollars(boundaries.current_offer)}→$${toDollars(boundaries.opponent_offer)}|gap:$${toDollars(boundaries.gap)}(${gapPct}%)`,
   );
@@ -98,13 +106,13 @@ function encodeSharedLayer(memory: CoreMemory, recentFacts?: RoundFact[]): strin
   if (recentFacts && recentFacts.length > 0) {
     const recent = recentFacts.slice(-5);
     const rmEntries = recent.map((f) => {
-      const tactic = f.buyer_tactic || f.seller_tactic || '';
-      return `R${f.round}:$${toDollars(f.buyer_offer)}→$${toDollars(f.seller_offer)}${tactic ? '|t:' + tactic : ''}`;
+      const tactic = f.buyer_tactic || f.seller_tactic || "";
+      return `R${f.round}:$${toDollars(f.buyer_offer)}→$${toDollars(f.seller_offer)}${tactic ? "|t:" + tactic : ""}`;
     });
-    lines.push('RM:' + rmEntries.join('|'));
+    lines.push("RM:" + rmEntries.join("|"));
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -116,13 +124,18 @@ function encodePrivateLayer(memory: CoreMemory): string {
   const lines: string[] = [];
 
   // SS: Strategy Snapshot
-  const beta = buddy_dna.style === 'aggressive' ? 2.0 : buddy_dna.style === 'defensive' ? 0.5 : 1.5;
-  lines.push(`SS:t:$${toDollars(boundaries.my_target)}|f:$${toDollars(boundaries.my_floor)}|β:${beta.toFixed(1)}`);
+  const beta = buddy_dna.style === "aggressive" ? 2.0 : buddy_dna.style === "defensive" ? 0.5 : 1.5;
+  lines.push(
+    `SS:t:$${toDollars(boundaries.my_target)}|f:$${toDollars(boundaries.my_floor)}|β:${beta.toFixed(1)}`,
+  );
 
   // OM: Opponent Model
-  const oppAgg = coaching.opponent_pattern === 'BOULWARE' ? 0.8
-    : coaching.opponent_pattern === 'CONCEDER' ? 0.2
-    : 0.5;
+  const oppAgg =
+    coaching.opponent_pattern === "BOULWARE"
+      ? 0.8
+      : coaching.opponent_pattern === "CONCEDER"
+        ? 0.2
+        : 0.5;
   lines.push(
     `OM:${coaching.opponent_pattern}(${oppAgg.toFixed(2)})|conv:${coaching.convergence_rate.toFixed(2)}|shifts:0`,
   );
@@ -130,15 +143,15 @@ function encodePrivateLayer(memory: CoreMemory): string {
   // TA: Terms Active
   if (terms.active.length > 0) {
     const termEntries = terms.active.map(
-      (t) => `${t.term_id}=${t.status}${t.value !== undefined ? ':' + String(t.value) : ''}`,
+      (t) => `${t.term_id}=${t.status}${t.value !== undefined ? ":" + String(t.value) : ""}`,
     );
-    lines.push('TA:' + termEntries.join('|'));
+    lines.push("TA:" + termEntries.join("|"));
   }
 
   // TR: Tracking (warnings from coaching)
   if (coaching.warnings.length > 0) {
-    lines.push('TR:' + coaching.warnings.map((w) => w.slice(0, 50)).join('|'));
+    lines.push("TR:" + coaching.warnings.map((w) => w.slice(0, 50)).join("|"));
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
