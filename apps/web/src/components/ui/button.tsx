@@ -17,6 +17,8 @@ export const buttonVariants = cva(
           "bg-transparent text-ink-secondary hover:bg-surface-sunken hover:text-ink disabled:opacity-50",
         destructive:
           "border border-error/30 bg-error-soft text-error hover:border-error/60 disabled:opacity-50",
+        success:
+          "border border-success/30 bg-success-soft text-success hover:border-success/60 disabled:opacity-50",
         "grad-gold": "bg-cta-primary text-on-accent hover:brightness-95 disabled:opacity-50",
         "grad-navy": "bg-cta-secondary text-on-ink hover:brightness-110 disabled:opacity-50",
       },

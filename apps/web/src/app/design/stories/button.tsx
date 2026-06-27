@@ -9,7 +9,16 @@ export const buttonStory: Story = {
   controls: {
     variant: {
       type: "select",
-      options: ["primary", "secondary", "ink", "ghost", "destructive", "grad-gold", "grad-navy"],
+      options: [
+        "primary",
+        "secondary",
+        "ink",
+        "ghost",
+        "destructive",
+        "success",
+        "grad-gold",
+        "grad-navy",
+      ],
       default: "primary",
     },
     size: { type: "select", options: ["sm", "md", "lg"], default: "md" },

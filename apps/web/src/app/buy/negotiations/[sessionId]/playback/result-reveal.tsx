@@ -2,8 +2,10 @@
 
 import confetti from "canvas-confetti";
 import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
+import { Button } from "@/components/ui";
 import { formatPrice, formatSignedPct } from "./format";
 import type { PlaybackResponse } from "./types";
 
@@ -193,27 +195,10 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
           className="shrink-0 sm:self-center"
         >
           {isAccepted && onAccept ? (
-            <button
-              type="button"
-              onClick={onAccept}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-cta px-5 py-3 text-[13px] sm:text-[14px] font-semibold text-on-cta transition-colors hover:bg-cta-hover sm:w-auto"
-            >
+            <Button onClick={onAccept} className="w-full sm:w-auto">
               Continue to checkout
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </button>
+              <ArrowRight className="size-3.5" />
+            </Button>
           ) : !isAccepted ? (
             <Link
               href="/browse"
