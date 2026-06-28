@@ -21,6 +21,7 @@ import { inputStory } from "./input";
 import { listRowStory } from "./list-row";
 import { messageListStory } from "./message-list";
 import { modalStory } from "./modal";
+import { navTabStory } from "./nav-tab";
 import { notificationItemStory } from "./notification-item";
 import { pageHeaderStory } from "./page-header";
 import { paginationStory } from "./pagination";
@@ -72,6 +73,7 @@ export const stories: Story[] = [
   sectionHeaderStory,
   backLinkStory,
   tabsStory,
+  navTabStory,
   paginationStory,
   progressBarStory,
   stepperStory,
@@ -127,7 +129,7 @@ export const storyGroups: StoryGroup[] = [
       "selectable-option-card",
     ],
   },
-  { label: "Navigation", slugs: ["tabs", "pagination", "stepper", "back-link"] },
+  { label: "Navigation", slugs: ["tabs", "nav-tab", "pagination", "stepper", "back-link"] },
   {
     label: "Data display",
     slugs: [

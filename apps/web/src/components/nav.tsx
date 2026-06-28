@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
+import { Avatar, NavTab, NotificationItem, Spinner } from "@/components/ui";
 import { useTheme } from "@/hooks/use-theme";
 import { type Notification, notificationApi } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
@@ -35,7 +36,6 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
   const searchParams = useSearchParams();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
   const [storedMode, setStoredMode] = useState<Mode | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,12 +84,6 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
       localStorage.setItem("haggle_mode", mode);
     }
   }, [mode, pathname]);
-
-  // Reset error state when avatar URL changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on avatar URL change
-  useEffect(() => {
-    setAvatarError(false);
-  }, [userAvatarUrl]);
 
   const handleModeSwitch = () => {
     if (mode === "selling") {
@@ -140,18 +134,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
               const isActive = activeHrefFromOrigin
                 ? tab.href === activeHrefFromOrigin
                 : pathname.startsWith(tab.href);
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className="relative px-3 py-1 font-medium text-ink text-sm transition-colors"
-                >
-                  {tab.label}
-                  {isActive && (
-                    <span className="absolute right-3 bottom-0 left-3 h-0.5 rounded-full bg-action-primary" />
-                  )}
-                </Link>
-              );
+              return <NavTab key={tab.href} href={tab.href} label={tab.label} active={isActive} />;
             })}
           </div>
         </div>
@@ -177,20 +160,7 @@ export function Nav({ userEmail, userName, userAvatarUrl, modeOverride }: NavPro
               onClick={() => setMenuOpen(!menuOpen)}
               className="flex cursor-pointer items-center gap-2 text-ink-secondary text-sm transition-colors hover:text-ink"
             >
-              {userAvatarUrl && !avatarError ? (
-                // biome-ignore lint/performance/noImgElement: remote avatar (referrerPolicy + onError fallback)
-                <img
-                  src={userAvatarUrl}
-                  alt=""
-                  className="h-7 w-7 rounded-full object-cover"
-                  referrerPolicy="no-referrer"
-                  onError={() => setAvatarError(true)}
-                />
-              ) : (
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-badge font-medium text-badge-text text-xs">
-                  {(userName || userEmail).charAt(0).toUpperCase()}
-                </div>
-              )}
+              <Avatar src={userAvatarUrl} name={userName || userEmail} size="sm" />
               <svg
                 viewBox="0 0 24 24"
                 width="14"
@@ -378,7 +348,7 @@ function NotificationBell() {
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="-top-0.5 -right-0.5 absolute flex h-4 w-4 items-center justify-center rounded-full bg-error-500 font-bold text-[10px] text-on-accent">
+          <span className="-top-0.5 -right-0.5 absolute flex h-4 w-4 items-center justify-center rounded-full bg-error font-bold text-[10px] text-on-accent">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
@@ -399,36 +369,25 @@ function NotificationBell() {
           </div>
 
           {/* List */}
-          <div className="max-h-72 overflow-y-auto">
+          <div className="max-h-72 overflow-y-auto p-2">
             {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-action-primary border-t-transparent" />
+              <div className="flex items-center justify-center py-8 text-action-primary">
+                <Spinner size="sm" />
               </div>
             ) : notifications.length === 0 ? (
               <p className="py-8 text-center text-ink-muted text-sm">No notifications yet</p>
             ) : (
-              notifications.map((n) => (
-                <button
-                  type="button"
-                  key={n.id}
-                  onClick={() => handleClickNotification(n)}
-                  className={`w-full cursor-pointer border-line border-b px-4 py-3 text-left transition-colors hover:bg-surface-sunken ${!n.readAt ? "bg-action-primary/5" : ""}`}
-                >
-                  <div className="flex items-start gap-2">
-                    {!n.readAt && (
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-action-primary" />
-                    )}
-                    <p
-                      className={`text-sm leading-snug ${n.readAt ? "ml-3.5 text-ink-secondary" : "text-ink"}`}
-                    >
-                      {n.payload.displayTitle ?? n.eventType}
-                    </p>
-                  </div>
-                  <p className="mt-1 ml-3.5 text-[11px] text-ink-muted">
-                    {new Date(n.createdAt).toLocaleDateString()}
-                  </p>
-                </button>
-              ))
+              <div className="space-y-1">
+                {notifications.map((n) => (
+                  <NotificationItem
+                    key={n.id}
+                    read={!!n.readAt}
+                    title={n.payload.displayTitle ?? n.eventType}
+                    time={new Date(n.createdAt).toLocaleDateString()}
+                    onClick={() => handleClickNotification(n)}
+                  />
+                ))}
+              </div>
             )}
           </div>
 

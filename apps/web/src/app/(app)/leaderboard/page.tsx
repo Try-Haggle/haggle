@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EmptyState, Spinner, Tabs } from "@/components/ui";
 import { api } from "@/lib/api-client";
 
 type SortField = "level" | "volume" | "savings" | "deals";
@@ -54,28 +55,22 @@ export default function LeaderboardPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-lg bg-surface-sunken p-1">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setSortBy(tab.key)}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              sortBy === tab.key
-                ? "bg-surface-overlay text-ink"
-                : "text-ink-secondary hover:text-ink"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        className="mb-6"
+        fullWidth
+        items={TABS.map((t) => ({ key: t.key, label: t.label }))}
+        value={sortBy}
+        onValueChange={(k) => setSortBy(k as SortField)}
+      />
 
       {/* Table */}
       {loading ? (
-        <div className="py-12 text-center text-ink-muted">Loading...</div>
+        <div className="flex items-center justify-center gap-2 py-12 text-ink-muted text-sm">
+          <Spinner size="sm" />
+          Loading...
+        </div>
       ) : entries.length === 0 ? (
-        <div className="py-12 text-center text-ink-muted">No agents on the leaderboard yet.</div>
+        <EmptyState className="bg-surface-raised/50" title="No agents on the leaderboard yet." />
       ) : (
         <>
           <div className="overflow-hidden rounded-xl border border-line">

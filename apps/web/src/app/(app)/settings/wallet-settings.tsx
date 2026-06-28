@@ -3,6 +3,7 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
+import { Alert, Badge, Button, Checkbox, Select } from "@/components/ui";
 
 interface Wallet {
   id: string;
@@ -125,15 +126,14 @@ export function WalletSettings() {
                 >
                   Network
                 </label>
-                <select
+                <Select
                   id="wallet-network"
                   value={network}
                   onChange={(e) => setNetwork(e.target.value as "base" | "base-sepolia")}
-                  className="w-full text-sm border border-line rounded-md px-2 py-1.5 bg-surface-overlay"
                 >
                   <option value="base">Base (Mainnet)</option>
                   <option value="base-sepolia">Base Sepolia (Testnet)</option>
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -143,52 +143,34 @@ export function WalletSettings() {
                 >
                   Role
                 </label>
-                <select
+                <Select
                   id="wallet-role"
                   value={role}
                   onChange={(e) => setRole(e.target.value as "buyer" | "seller" | "both")}
-                  className="w-full text-sm border border-line rounded-md px-2 py-1.5 bg-surface-overlay"
                 >
                   <option value="both">Buyer & Seller</option>
                   <option value="buyer">Buyer only</option>
                   <option value="seller">Seller only</option>
-                </select>
+                </Select>
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-ink-secondary">
-              <input
-                type="checkbox"
-                checked={isPrimary}
-                onChange={(e) => setIsPrimary(e.target.checked)}
-                className="rounded border-line"
-              />
-              Set as primary wallet
-            </label>
+            <Checkbox
+              checked={isPrimary}
+              onChange={(e) => setIsPrimary(e.target.checked)}
+              label="Set as primary wallet"
+            />
 
-            <button
-              type="button"
-              onClick={handleSaveWallet}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-cta text-on-cta rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-cta-hover transition-colors"
-            >
+            <Button fullWidth onClick={handleSaveWallet} loading={isLoading}>
               {isLoading ? "Saving..." : "Save Wallet"}
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {/* Messages */}
-      {error && (
-        <div className="bg-error-soft border border-error/30 rounded-lg p-3">
-          <p className="text-sm text-error">{error}</p>
-        </div>
-      )}
-      {success && (
-        <div className="bg-success-soft border border-success/30 rounded-lg p-3">
-          <p className="text-sm text-success">{success}</p>
-        </div>
-      )}
+      {error && <Alert tone="error">{error}</Alert>}
+      {success && <Alert tone="success">{success}</Alert>}
 
       {/* Saved wallets */}
       <div className="space-y-3">
@@ -209,9 +191,9 @@ export function WalletSettings() {
                       {wallet.wallet_address.slice(0, 6)}...{wallet.wallet_address.slice(-4)}
                     </span>
                     {wallet.is_primary && (
-                      <span className="text-xs bg-info-soft text-info px-1.5 py-0.5 rounded">
+                      <Badge tone="info" size="sm">
                         Primary
-                      </span>
+                      </Badge>
                     )}
                   </div>
                   <p className="text-xs text-ink-muted">
@@ -222,7 +204,7 @@ export function WalletSettings() {
                   type="button"
                   onClick={() => handleDeleteWallet(wallet.id)}
                   disabled={isLoading}
-                  className="ml-3 text-xs text-error-500 hover:text-error-700 disabled:opacity-50 shrink-0"
+                  className="ml-3 shrink-0 text-error text-xs hover:text-error/80 disabled:opacity-50"
                 >
                   Remove
                 </button>

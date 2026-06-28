@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BackLink, Badge, StatTile, TierBadge } from "@/components/ui";
 import { serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -12,17 +12,6 @@ const SPECIES_EMOJI: Record<string, string> = {
   DRAGON: "🐉",
   EAGLE: "🦅",
   WOLF: "🐺",
-};
-
-// Rarity tiers are a deliberate distinct-hue palette (not feedback states),
-// kept readable in both themes via dark: variants.
-const RARITY_COLORS: Record<string, string> = {
-  COMMON: "text-ink-secondary",
-  UNCOMMON: "text-green-600 dark:text-green-400",
-  RARE: "text-blue-600 dark:text-blue-400",
-  EPIC: "text-purple-600 dark:text-purple-400",
-  LEGENDARY: "text-orange-600 dark:text-orange-400",
-  MYTHIC: "text-red-600 dark:text-red-400",
 };
 
 interface Buddy {
@@ -84,25 +73,16 @@ export default async function BuddyDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <Link
-        href="/profile/buddies"
-        className="mb-6 inline-block text-sm text-ink-secondary hover:text-ink"
-      >
-        &larr; Back to Buddies
-      </Link>
+      <BackLink href="/profile/buddies" className="mb-6">
+        Back to Buddies
+      </BackLink>
 
       {/* Buddy header */}
       <div className="mb-8 rounded-xl border border-line bg-surface-raised p-6 text-center">
         <div className="mb-2 text-7xl">{SPECIES_EMOJI[buddy.species] ?? "🐾"}</div>
         <h1 className="mb-1 text-2xl font-bold text-ink">{buddy.name}</h1>
         <div className="flex items-center justify-center gap-3">
-          <span
-            className={`text-sm font-semibold ${
-              RARITY_COLORS[buddy.rarity] ?? "text-ink-secondary"
-            }`}
-          >
-            {buddy.rarity}
-          </span>
+          <TierBadge tier={buddy.rarity} palette="rarity" size="sm" />
           <span className="text-sm text-ink-muted">
             {buddy.species} &middot; Lv. {buddy.level}
           </span>
@@ -117,18 +97,9 @@ export default async function BuddyDetailPage({ params }: { params: Promise<{ id
       {/* Trade summary */}
       <h2 className="mb-4 text-lg font-semibold">Trade Stats</h2>
       <div className="mb-8 grid grid-cols-3 gap-3">
-        <div className="rounded-lg border border-line bg-surface-raised p-4 text-center">
-          <div className="text-2xl font-bold text-success">{tradeSummary.deals}</div>
-          <div className="text-xs text-ink-muted">Deals</div>
-        </div>
-        <div className="rounded-lg border border-line bg-surface-raised p-4 text-center">
-          <div className="text-2xl font-bold text-ink">{tradeSummary.total}</div>
-          <div className="text-xs text-ink-muted">Total</div>
-        </div>
-        <div className="rounded-lg border border-line bg-surface-raised p-4 text-center">
-          <div className="text-2xl font-bold text-action-primary">{winRate}%</div>
-          <div className="text-xs text-ink-muted">Win Rate</div>
-        </div>
+        <StatTile align="center" tone="success" value={tradeSummary.deals} label="Deals" />
+        <StatTile align="center" value={tradeSummary.total} label="Total" />
+        <StatTile align="center" tone="accent" value={`${winRate}%`} label="Win Rate" />
       </div>
 
       {/* Trade history */}
@@ -143,17 +114,18 @@ export default async function BuddyDetailPage({ params }: { params: Promise<{ id
               className="flex items-center justify-between rounded-lg border border-line bg-surface-raised px-4 py-3"
             >
               <div className="flex items-center gap-3">
-                <span
-                  className={`text-sm font-medium ${
+                <Badge
+                  tone={
                     trade.outcome === "DEAL"
-                      ? "text-success"
+                      ? "success"
                       : trade.outcome === "REJECT"
-                        ? "text-error"
-                        : "text-ink-secondary"
-                  }`}
+                        ? "error"
+                        : "neutral"
+                  }
+                  size="sm"
                 >
                   {trade.outcome}
-                </span>
+                </Badge>
                 {trade.category && <span className="text-xs text-ink-muted">{trade.category}</span>}
               </div>
               <div className="flex items-center gap-4 text-sm">

@@ -3,6 +3,7 @@
 import { Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { EmptyState, NotificationItem, Skeleton, Spinner } from "@/components/ui";
 import { type Notification, notificationApi } from "@/lib/api-client";
 import { useNotificationContext } from "../_components/notification-provider";
 
@@ -86,54 +87,32 @@ export default function NotificationsPage() {
       {loading ? (
         <div className="space-y-3">
           {["s1", "s2", "s3", "s4", "s5"].map((key) => (
-            <div key={key} className="h-16 rounded-xl bg-surface-sunken/50 animate-pulse" />
+            <Skeleton key={key} className="h-16 rounded-xl" />
           ))}
         </div>
       ) : notifications.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken">
-            <Bell className="h-7 w-7 text-ink-muted" />
-          </div>
-          <p className="text-ink-secondary">No notifications yet</p>
-          <p className="mt-1 text-sm text-ink-muted">
-            You&apos;ll see updates about your negotiations and listings here.
-          </p>
-        </div>
+        <EmptyState
+          padding="lg"
+          bordered={false}
+          icon={<Bell className="size-7 text-ink-muted" />}
+          title="No notifications yet"
+          description="You'll see updates about your negotiations and listings here."
+        />
       ) : (
         <div className="space-y-2">
           {notifications.map((n) => (
-            <button
+            <NotificationItem
               key={n.id}
-              type="button"
+              read={!!n.readAt}
+              title={n.payload.displayTitle ?? n.eventType}
+              time={new Date(n.createdAt).toLocaleString()}
               onClick={() => handleClick(n)}
-              className={`w-full text-left rounded-xl border px-4 py-3.5 transition-colors cursor-pointer
-                ${
-                  n.readAt
-                    ? "border-line bg-surface-raised hover:bg-surface-sunken/50"
-                    : "border-action-primary/20 bg-action-primary/5 hover:bg-action-primary/10"
-                }`}
-            >
-              <div className="flex items-start gap-3">
-                {!n.readAt && (
-                  <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-action-primary" />
-                )}
-                <div className={n.readAt ? "" : ""}>
-                  <p
-                    className={`text-sm leading-snug ${n.readAt ? "text-ink-secondary" : "text-ink"}`}
-                  >
-                    {n.payload.displayTitle ?? n.eventType}
-                  </p>
-                  <p className="mt-1 text-xs text-ink-muted">
-                    {new Date(n.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </button>
+            />
           ))}
 
           {loadingMore && (
             <div className="flex justify-center py-4">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-action-primary border-t-transparent" />
+              <Spinner size="sm" />
             </div>
           )}
           {nextCursor && <div ref={sentinelRef} className="h-10" />}
