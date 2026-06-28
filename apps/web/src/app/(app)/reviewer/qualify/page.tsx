@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { Badge, Button, buttonVariants, PositionPanel, Spinner, VoteSlider } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 
 // ─── Types ───────────────────────────────────────────────────
 interface QualifyCase {
@@ -226,8 +228,6 @@ export default function ReviewerQualifyPage() {
   }
 
   const amt = parseFloat(currentCase?.amount.replace(/[$,]/g, "") || "0");
-  const buyerAmt = ((amt * currentVote) / 100).toFixed(0);
-  const sellerAmt = ((amt * (100 - currentVote)) / 100).toFixed(0);
 
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
@@ -300,13 +300,9 @@ export default function ReviewerQualifyPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={startTest}
-              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-cta px-6 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
-            >
+            <Button size="lg" onClick={startTest} className="mt-8">
               Start Qualification Test
-            </button>
+            </Button>
           </section>
         </div>
       )}
@@ -346,31 +342,21 @@ export default function ReviewerQualifyPage() {
                     {currentCase.case_id} · {currentCase.amount}
                   </span>
                 </div>
-                <span className="rounded-full border border-warning/30 bg-warning-soft px-2.5 py-0.5 font-mono text-[10px] font-semibold text-warning">
+                <Badge tone="warning" size="sm" className="font-mono">
                   {currentCase.reason}
-                </span>
+                </Badge>
               </div>
             </div>
 
             <div className="p-6 space-y-5">
               {/* Buyer vs Seller */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-info/20 border-l-[3px] border-l-info bg-info-soft p-4">
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-info font-semibold mb-2">
-                    Buyer&apos;s Claim
-                  </div>
-                  <p className="text-sm text-ink-secondary leading-relaxed">
-                    {currentCase.buyer_claim}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-badge-text/20 border-l-[3px] border-l-badge-text bg-badge p-4">
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-badge-text font-semibold mb-2">
-                    Seller&apos;s Defense
-                  </div>
-                  <p className="text-sm text-ink-secondary leading-relaxed">
-                    {currentCase.seller_defense}
-                  </p>
-                </div>
+                <PositionPanel side="buyer" label="Buyer's Claim">
+                  {currentCase.buyer_claim}
+                </PositionPanel>
+                <PositionPanel side="seller" label="Seller's Defense">
+                  {currentCase.seller_defense}
+                </PositionPanel>
               </div>
 
               {/* Evidence */}
@@ -380,12 +366,9 @@ export default function ReviewerQualifyPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {currentCase.evidence.map((e) => (
-                    <span
-                      key={e}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-sunken/50 px-3 py-1.5 text-xs text-ink-secondary"
-                    >
+                    <Badge key={e} tone="neutral" size="md" className="font-normal">
                       {e}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -399,58 +382,19 @@ export default function ReviewerQualifyPage() {
                   What percentage should go to the buyer?
                 </div>
 
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
+                <VoteSlider
                   value={currentVote}
-                  onChange={(e) => setCurrentVote(Number(e.target.value))}
-                  className="w-full accent-action-primary"
-                  aria-label="Refund percentage to buyer"
+                  onChange={setCurrentVote}
+                  amount={amt}
+                  buyerLabel="Buyer"
+                  sellerLabel="Seller"
                 />
-                <div className="flex justify-between mt-1 font-mono text-[10px] text-ink-muted">
-                  <span>0% Seller wins</span>
-                  <span>100% Buyer wins</span>
-                </div>
 
-                {/* Quick buttons */}
-                <div className="flex gap-2 mt-4 mb-4 flex-wrap">
-                  {[0, 25, 50, 75, 100].map((v) => (
-                    <button
-                      type="button"
-                      key={v}
-                      onClick={() => setCurrentVote(v)}
-                      className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold transition-all ${
-                        currentVote === v
-                          ? "border-action-primary bg-action-primary text-on-accent"
-                          : "border-line bg-surface-sunken/50 text-ink-secondary hover:border-line-strong hover:text-ink"
-                      }`}
-                    >
-                      {v}%
-                    </button>
-                  ))}
-                </div>
-
-                {/* Live calculation */}
-                <div className="flex items-center justify-between rounded-xl border border-line bg-surface-sunken/50 p-3">
-                  <span className="text-sm text-ink-secondary">
-                    Your vote: <strong className="font-mono text-ink">{currentVote}%</strong> to
-                    buyer
-                  </span>
-                  <span className="font-mono text-xs text-ink-muted">
-                    Buyer ${buyerAmt} &middot; Seller ${sellerAmt}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={submitVote}
-                  className="mt-4 w-full rounded-xl bg-cta px-4 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
-                >
+                <Button fullWidth onClick={submitVote} className="mt-4">
                   {currentIdx < totalCases - 1
                     ? `Submit & Next (${currentIdx + 2}/${totalCases})`
                     : "Submit & See Results"}
-                </button>
+                </Button>
               </div>
             </div>
           </section>
@@ -459,10 +403,9 @@ export default function ReviewerQualifyPage() {
 
       {/* ── SUBMITTING ── */}
       {phase === "submitting" && (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-ink-secondary text-sm animate-pulse">
-            Evaluating your responses...
-          </div>
+        <div className="flex items-center justify-center gap-2 py-20 text-ink-secondary text-sm">
+          <Spinner size="sm" />
+          Evaluating your responses...
         </div>
       )}
 
@@ -474,13 +417,9 @@ export default function ReviewerQualifyPage() {
               <div className="text-5xl mb-3">&#x26A0;&#xFE0F;</div>
               <h1 className="text-2xl font-bold text-ink tracking-tight">Submission Failed</h1>
               <p className="mt-2 text-sm text-error">{submitError}</p>
-              <button
-                type="button"
-                onClick={startTest}
-                className="mt-6 inline-flex items-center gap-2 rounded-xl border border-line bg-surface-sunken/50 px-6 py-3 text-sm font-medium text-ink hover:border-line-strong transition-colors"
-              >
+              <Button variant="secondary" size="lg" onClick={startTest} className="mt-6">
                 Try Again
-              </button>
+              </Button>
             </section>
           )}
 
@@ -603,18 +542,14 @@ export default function ReviewerQualifyPage() {
                 {result.passed && (
                   <Link
                     href="/reviewer"
-                    className="inline-flex items-center gap-2 rounded-xl bg-cta px-6 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
+                    className={cn(buttonVariants({ variant: "primary", size: "lg" }))}
                   >
                     Go to Dashboard
                   </Link>
                 )}
-                <button
-                  type="button"
-                  onClick={startTest}
-                  className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface-sunken/50 px-6 py-3 text-sm font-medium text-ink hover:border-line-strong transition-colors"
-                >
+                <Button variant="secondary" size="lg" onClick={startTest}>
                   {result.passed ? "Retake for practice" : "Try Again"}
-                </button>
+                </Button>
               </div>
             </>
           )}

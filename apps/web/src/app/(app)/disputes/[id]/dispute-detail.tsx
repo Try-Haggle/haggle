@@ -1,7 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  ActivityFeed,
+  Alert,
+  BackLink,
+  Badge,
+  Button,
+  EvidenceCard,
+  type ActivityEvent as FeedEvent,
+  Field,
+  Input,
+  Select,
+  StatusBadge,
+  Textarea,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
 import { AdvisorChat } from "./_components/advisor-chat";
 import type { Dispute, DisputeEvidence } from "./page";
@@ -13,27 +26,6 @@ const EVIDENCE_TYPES = [
   { value: "payment_proof", label: "Payment Proof" },
   { value: "other", label: "Other" },
 ] as const;
-
-function statusBadge(status: string): { label: string; color: string } {
-  const map: Record<string, { label: string; color: string }> = {
-    OPEN: { label: "Open", color: "text-warning bg-warning-soft" },
-    UNDER_REVIEW: { label: "Under Review", color: "text-info bg-info-soft" },
-    WAITING_FOR_BUYER: { label: "Awaiting Your Evidence", color: "text-info bg-info-soft" },
-    WAITING_FOR_SELLER: { label: "Awaiting Seller Evidence", color: "text-info bg-info-soft" },
-    ESCALATED: { label: "Escalated", color: "text-warning bg-warning-soft" },
-    RESOLVED_BUYER_FAVOR: {
-      label: "Resolved - Buyer Favor",
-      color: "text-success bg-success-soft",
-    },
-    RESOLVED_SELLER_FAVOR: {
-      label: "Resolved - Seller Favor",
-      color: "text-success bg-success-soft",
-    },
-    PARTIAL_REFUND: { label: "Partial Refund", color: "text-info bg-info-soft" },
-    CLOSED: { label: "Closed", color: "text-ink-secondary bg-surface-sunken" },
-  };
-  return map[status] ?? { label: status, color: "text-ink-secondary bg-surface-sunken" };
-}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -87,7 +79,7 @@ function DisputeTimeline({ status }: { status: string }) {
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
                     isDone
-                      ? "bg-success-soft border-success-500 text-success"
+                      ? "bg-success-soft border-success text-success"
                       : isCurrent
                         ? "bg-action-primary/20 border-action-primary text-action-primary animate-pulse"
                         : "bg-surface-sunken border-line text-ink-muted"
@@ -122,7 +114,7 @@ function DisputeTimeline({ status }: { status: string }) {
               {i < TIMELINE_STEPS.length - 1 && (
                 <div
                   className={`flex-1 h-0.5 mx-2 mt-[-1rem] ${
-                    i < currentStep ? "bg-success-500/50" : "bg-line"
+                    i < currentStep ? "bg-success/50" : "bg-line"
                   }`}
                 />
               )}
@@ -293,17 +285,24 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
   return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }
 
-const ACTIVITY_ICON_COLORS: Record<string, string> = {
-  open: "bg-warning-soft text-warning",
-  evidence: "bg-info-soft text-info",
-  review: "bg-info-soft text-info",
-  resolve: "bg-success-soft text-success",
-  close: "bg-surface-sunken text-ink-secondary",
+const ACTIVITY_TONES: Record<string, FeedEvent["tone"]> = {
+  open: "warning",
+  evidence: "info",
+  review: "info",
+  resolve: "success",
+  close: "default",
 };
 
 function ActivityLog({ dispute }: { dispute: Dispute }) {
   const events = buildActivityLog(dispute);
   if (events.length === 0) return null;
+
+  const feedEvents: FeedEvent[] = events.map((event) => ({
+    id: `${event.icon}-${event.timestamp}`,
+    label: event.label,
+    time: formatDate(event.timestamp),
+    tone: ACTIVITY_TONES[event.icon] ?? "default",
+  }));
 
   return (
     <div className="rounded-xl border border-line bg-surface-raised/50 mb-6 overflow-hidden">
@@ -325,20 +324,8 @@ function ActivityLog({ dispute }: { dispute: Dispute }) {
         </svg>
         <span className="text-sm font-semibold text-ink">Activity</span>
       </div>
-      <div className="p-4 space-y-3">
-        {events.map((event) => (
-          <div key={`${event.icon}-${event.timestamp}`} className="flex items-start gap-3">
-            <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${ACTIVITY_ICON_COLORS[event.icon] ?? "bg-surface-sunken text-ink-secondary"}`}
-            >
-              <div className="w-2 h-2 rounded-full bg-current" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-ink-secondary">{event.label}</p>
-              <p className="text-xs text-ink-muted mt-0.5">{formatDate(event.timestamp)}</p>
-            </div>
-          </div>
-        ))}
+      <div className="p-4">
+        <ActivityFeed events={feedEvents} />
       </div>
     </div>
   );
@@ -348,26 +335,23 @@ function ActivityLog({ dispute }: { dispute: Dispute }) {
 function EvidenceItem({ evidence }: { evidence: DisputeEvidence }) {
   const typeLabel = EVIDENCE_TYPES.find((t) => t.value === evidence.type)?.label ?? evidence.type;
   return (
-    <div className="rounded-lg border border-line bg-surface-raised/30 p-3">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs font-medium text-ink-secondary">{typeLabel}</span>
-        <span className="text-xs text-ink-muted">by {evidence.submitted_by}</span>
-        <span className="ml-auto text-xs text-ink-muted">
-          {formatDate(evidenceTimestamp(evidence))}
-        </span>
-      </div>
-      {evidence.text && <p className="text-sm text-ink-secondary mt-1">{evidence.text}</p>}
+    <EvidenceCard
+      type={typeLabel}
+      submittedBy={`by ${evidence.submitted_by}`}
+      time={formatDate(evidenceTimestamp(evidence))}
+    >
+      {evidence.text && <span className="block">{evidence.text}</span>}
       {evidence.uri && (
         <a
           href={evidence.uri}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-action-primary hover:text-action-primary-hover mt-1 inline-block break-all"
+          className="mt-1 inline-block break-all text-action-primary text-xs hover:text-action-primary-hover"
         >
           View attachment
         </a>
       )}
-    </div>
+    </EvidenceCard>
   );
 }
 
@@ -397,7 +381,6 @@ export function DisputeDetail({
   const [depositWallet, setDepositWallet] = useState("");
   const [depositCollection, setDepositCollection] = useState<DepositCollection | null>(null);
 
-  const badge = statusBadge(dispute.status);
   const isResolved =
     dispute.status === "RESOLVED_BUYER_FAVOR" ||
     dispute.status === "RESOLVED_SELLER_FAVOR" ||
@@ -408,9 +391,7 @@ export function DisputeDetail({
   const currentTier = (meta?.tier as number | undefined) ?? null;
   const effectiveAmount = amountMinor ?? 0;
 
-  // Role-based accent colors
-  const accentBorder = userRole === "buyer" ? "border-info/30" : "border-badge-text/30";
-  const accentBg = userRole === "buyer" ? "bg-info-soft" : "bg-badge";
+  // Role-based accent (buyer → info/blue, seller → gold) for inline text + icons.
   const accentText = userRole === "buyer" ? "text-info" : "text-badge-text";
 
   // Determine if seller has a waiting deadline
@@ -536,70 +517,32 @@ export function DisputeDetail({
 
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
-      <Link
-        href="/disputes"
-        className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-6"
-      >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
+      <BackLink href="/disputes" className="mb-6">
         All Disputes
-      </Link>
+      </BackLink>
 
       {/* Header with role-based accent */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-xl font-bold text-ink">Dispute</h1>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${accentBorder} ${accentBg} ${accentText}`}
-            >
+            <Badge tone={userRole === "seller" ? "gold" : "info"} size="sm" className="capitalize">
               {userRole}
-            </span>
+            </Badge>
           </div>
           <p className="text-xs text-ink-muted font-mono">{dispute.id}</p>
           {userRole === "buyer" && (
             <p className={`text-xs ${accentText} mt-1 font-medium`}>Your AI Advocate</p>
           )}
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-medium ${badge.color}`}>
-          {badge.label}
-        </span>
+        <StatusBadge domain="dispute" status={dispute.status} className="px-3 py-1" />
       </div>
 
       {/* Seller deadline warning */}
       {isSellerWaiting && (
-        <div className="rounded-xl border border-warning/30 bg-warning-soft p-3 mb-4 flex items-center gap-2">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-warning flex-shrink-0"
-          >
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          <p className="text-sm text-warning">
-            Action required: Please respond to this dispute promptly to avoid default resolution.
-          </p>
-        </div>
+        <Alert tone="warning" className="mb-4">
+          Action required: Please respond to this dispute promptly to avoid default resolution.
+        </Alert>
       )}
 
       {/* Timeline */}
@@ -635,9 +578,9 @@ export function DisputeDetail({
           <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3">
             <span className="text-sm font-semibold text-ink">Review Escalation</span>
             {deposit && (
-              <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium text-ink-secondary">
+              <Badge tone="neutral" size="sm">
                 {deposit.status}
-              </span>
+              </Badge>
             )}
           </div>
           <div className="p-4 space-y-3">
@@ -669,67 +612,62 @@ export function DisputeDetail({
 
                 {userRole === "seller" && deposit.status === "PENDING" && (
                   <div className="space-y-2 border-t border-line pt-3">
-                    <select
+                    <Select
                       value={depositRail}
                       onChange={(event) => setDepositRail(event.target.value as "usdc" | "stripe")}
-                      className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink focus:border-focus focus:outline-none"
                     >
                       <option value="usdc">USDC</option>
                       <option value="stripe">Stripe Onramp</option>
-                    </select>
-                    <input
+                    </Select>
+                    <Input
                       value={depositWallet}
                       onChange={(event) => setDepositWallet(event.target.value)}
                       placeholder="0x wallet address"
-                      className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none"
                     />
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={handleStartDeposit}
-                        disabled={submitting}
-                        className="rounded-lg bg-cta px-3 py-2 text-sm font-semibold text-on-cta transition-colors hover:bg-cta-hover disabled:opacity-40"
-                      >
+                      <Button size="sm" loading={submitting} onClick={handleStartDeposit}>
                         Start Deposit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleConfirmUsdcDeposit}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         disabled={submitting || !depositWallet}
-                        className="rounded-lg border border-action-primary/30 bg-action-primary/10 px-3 py-2 text-sm font-semibold text-action-primary transition-colors hover:bg-action-primary/20 disabled:opacity-40"
+                        onClick={handleConfirmUsdcDeposit}
                       >
                         Confirm USDC
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
 
                 {depositCollection?.usdc_approval && (
-                  <div className="rounded-lg border border-info/20 bg-info-soft p-3 text-xs text-info space-y-1">
-                    <p>
-                      Spender:{" "}
-                      <span className="font-mono">
-                        {depositCollection.usdc_approval.spender_address}
-                      </span>
-                    </p>
-                    <p>
-                      Token:{" "}
-                      <span className="font-mono">
-                        {depositCollection.usdc_approval.token_address}
-                      </span>
-                    </p>
-                    <p>
-                      Amount wei:{" "}
-                      <span className="font-mono">
-                        {depositCollection.usdc_approval.amount_wei}
-                      </span>
-                    </p>
-                  </div>
+                  <Alert tone="info" hideIcon className="text-xs">
+                    <div className="space-y-1">
+                      <p>
+                        Spender:{" "}
+                        <span className="font-mono">
+                          {depositCollection.usdc_approval.spender_address}
+                        </span>
+                      </p>
+                      <p>
+                        Token:{" "}
+                        <span className="font-mono">
+                          {depositCollection.usdc_approval.token_address}
+                        </span>
+                      </p>
+                      <p>
+                        Amount wei:{" "}
+                        <span className="font-mono">
+                          {depositCollection.usdc_approval.amount_wei}
+                        </span>
+                      </p>
+                    </div>
+                  </Alert>
                 )}
                 {depositCollection?.stripe_client_secret && (
-                  <div className="rounded-lg border border-info/20 bg-info-soft p-3 text-xs text-info">
+                  <Alert tone="info" hideIcon className="text-xs">
                     Stripe deposit session created.
-                  </div>
+                  </Alert>
                 )}
               </div>
             )}
@@ -778,97 +716,73 @@ export function DisputeDetail({
           <div className="px-4 py-3 border-b border-line">
             <span className="text-sm font-semibold text-ink">Submit Evidence</span>
           </div>
-          <form onSubmit={handleSubmitEvidence} className="p-4 space-y-3">
-            <div>
-              <label
-                htmlFor="evidence-type"
-                className="block text-xs font-medium text-ink-secondary mb-1"
-              >
-                Evidence Type
-              </label>
-              <select
+          <form onSubmit={handleSubmitEvidence} className="p-4">
+            <Field label="Evidence Type" htmlFor="evidence-type">
+              <Select
                 id="evidence-type"
                 value={evidenceType}
                 onChange={(e) => setEvidenceType(e.target.value as typeof evidenceType)}
-                className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink focus:border-focus focus:outline-none"
               >
                 {EVIDENCE_TYPES.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
                   </option>
                 ))}
-              </select>
-            </div>
+              </Select>
+            </Field>
 
-            <div>
-              <label
-                htmlFor="evidence-description"
-                className="block text-xs font-medium text-ink-secondary mb-1"
-              >
-                Description
-              </label>
-              <textarea
+            <Field label="Description" htmlFor="evidence-description">
+              <Textarea
                 id="evidence-description"
                 rows={3}
                 placeholder="Describe the issue in detail..."
                 value={evidenceText}
                 onChange={(e) => setEvidenceText(e.target.value)}
-                className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none resize-none"
+                className="resize-none"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label
-                htmlFor="evidence-uri"
-                className="block text-xs font-medium text-ink-secondary mb-1"
-              >
-                Attachment URL (optional)
-              </label>
-              <input
+            <Field label="Attachment URL (optional)" htmlFor="evidence-uri">
+              <Input
                 id="evidence-uri"
                 type="url"
                 placeholder="https://..."
                 value={evidenceUri}
                 onChange={(e) => setEvidenceUri(e.target.value)}
-                className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none"
               />
-            </div>
+            </Field>
 
             {error && (
-              <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2 text-sm text-error">
+              <Alert tone="error" className="mb-3">
                 {error}
-              </div>
+              </Alert>
             )}
             {success && (
-              <div className="rounded-lg border border-success/20 bg-success-soft px-3 py-2 text-sm text-success">
+              <Alert tone="success" className="mb-3">
                 {success}
-              </div>
+              </Alert>
             )}
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
-                userRole === "buyer" ? "bg-cta hover:bg-cta-hover" : "bg-cta hover:bg-cta-hover"
-              }`}
-            >
+            <Button type="submit" fullWidth loading={submitting}>
               {submitting ? "Submitting..." : "Submit Evidence"}
-            </button>
+            </Button>
           </form>
         </div>
       )}
 
       {isResolved && (
-        <div className="rounded-xl border border-success/20 bg-success-soft p-4 text-center mb-6">
-          <p className="text-sm font-medium text-success">
-            This dispute has been {dispute.status.replace(/_/g, " ").toLowerCase()}.
-          </p>
-          {dispute.refundAmountMinor != null && dispute.refundAmountMinor > 0 && (
-            <p className="text-xs text-ink-secondary mt-1">
-              Refund: ${(dispute.refundAmountMinor / 100).toFixed(2)}
+        <Alert tone="success" className="mb-6">
+          <div>
+            <p className="font-medium">
+              This dispute has been {dispute.status.replace(/_/g, " ").toLowerCase()}.
             </p>
-          )}
-        </div>
+            {dispute.refundAmountMinor != null && dispute.refundAmountMinor > 0 && (
+              <p className="mt-1 text-ink-secondary text-xs">
+                Refund: ${(dispute.refundAmountMinor / 100).toFixed(2)}
+              </p>
+            )}
+          </div>
+        </Alert>
       )}
 
       {/* AI Advisor Chat */}

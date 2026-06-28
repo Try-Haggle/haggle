@@ -1,6 +1,16 @@
 "use client";
 
+import { Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Badge,
+  Chip,
+  IconButton,
+  ProgressBar,
+  Textarea,
+  TypingIndicator,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -38,32 +48,13 @@ interface AnalyzeResponse {
 // ─── Subcomponents ──────────────────────────────────────────────────────
 
 function StrengthMeter({ value }: { value: number }) {
-  const color = value >= 70 ? "bg-success-500" : value >= 40 ? "bg-warning-500" : "bg-error-500";
   const textColor = value >= 70 ? "text-success" : value >= 40 ? "text-warning" : "text-error";
 
   return (
     <div className="flex items-center gap-2 mt-2 mb-1">
       <span className="text-xs text-ink-muted">Case Strength</span>
-      <div className="flex-1 h-1.5 rounded-full bg-line overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
-          style={{ width: `${value}%` }}
-        />
-      </div>
+      <ProgressBar value={value} tone="threshold" size="sm" className="flex-1" />
       <span className={`text-xs font-bold ${textColor}`}>{value}%</span>
-    </div>
-  );
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-1 px-3 py-2">
-      <div className="flex gap-1">
-        <div className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce [animation-delay:0ms]" />
-        <div className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce [animation-delay:150ms]" />
-        <div className="w-1.5 h-1.5 rounded-full bg-ink-muted animate-bounce [animation-delay:300ms]" />
-      </div>
-      <span className="text-xs text-ink-muted ml-1">Advisor is thinking...</span>
     </div>
   );
 }
@@ -79,14 +70,9 @@ function ActionChips({
   return (
     <div className="flex flex-wrap gap-1.5 mt-2">
       {actions.map((action) => (
-        <button
-          key={action}
-          type="button"
-          onClick={() => onAction(action)}
-          className="rounded-full border border-line bg-surface-sunken/50 px-2.5 py-1 text-xs text-ink-secondary hover:border-focus hover:text-action-primary transition-colors"
-        >
+        <Chip key={action} size="sm" onClick={() => onAction(action)}>
           {action}
-        </button>
+        </Chip>
       ))}
     </div>
   );
@@ -94,10 +80,12 @@ function ActionChips({
 
 function BlockedMessage({ reason }: { reason?: string }) {
   return (
-    <div className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
-      <span className="font-medium">Message could not be processed.</span>
-      {reason && <span className="ml-1 text-warning/80">{reason}</span>}
-    </div>
+    <Alert tone="warning" hideIcon className="px-3 py-2 text-xs">
+      <span>
+        <span className="font-medium">Message could not be processed.</span>
+        {reason && <span className="ml-1 text-warning/80">{reason}</span>}
+      </span>
+    </Alert>
   );
 }
 
@@ -269,11 +257,9 @@ export function AdvisorChat({
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         <span className="text-sm font-semibold text-ink">AI Advisor</span>
-        <span
-          className={`ml-auto rounded-full border px-2 py-0.5 text-xs font-medium ${accentBorder} ${accentText}`}
-        >
+        <Badge tone={userRole === "buyer" ? "info" : "gold"} size="sm" className="ml-auto">
           {userRole === "buyer" ? "Buyer" : "Seller"}
-        </span>
+        </Badge>
       </div>
 
       {/* Strength Meter */}
@@ -350,7 +336,12 @@ export function AdvisorChat({
           );
         })}
 
-        {sending && <TypingIndicator />}
+        {sending && (
+          <div className="flex items-center gap-1 px-3 py-2">
+            <TypingIndicator />
+            <span className="ml-1 text-xs text-ink-muted">Advisor is thinking...</span>
+          </div>
+        )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -365,15 +356,15 @@ export function AdvisorChat({
       {/* Error */}
       {error && (
         <div className="px-4 pb-2">
-          <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2 text-xs text-error">
+          <Alert tone="error" className="px-3 py-2 text-xs">
             {error}
-          </div>
+          </Alert>
         </div>
       )}
 
       {/* Input Bar */}
       <div className="border-t border-line p-3 flex items-end gap-2">
-        <textarea
+        <Textarea
           ref={inputRef}
           rows={1}
           placeholder="Ask your AI Advisor..."
@@ -382,30 +373,16 @@ export function AdvisorChat({
           onKeyDown={handleKeyDown}
           maxLength={2000}
           disabled={sending}
-          className="flex-1 rounded-lg border border-line bg-surface-sunken/50 px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none resize-none disabled:opacity-50"
-          style={{ maxHeight: "100px" }}
+          className="max-h-[100px] resize-none"
         />
-        <button
-          type="button"
+        <IconButton
+          variant="solid"
+          aria-label="Send message"
           onClick={handleSend}
           disabled={sending || !input.trim()}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-on-cta transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-cta hover:bg-cta-hover"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+          <Send className="size-4" />
+        </IconButton>
       </div>
     </div>
   );

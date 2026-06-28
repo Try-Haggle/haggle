@@ -23,6 +23,7 @@ import { messageListStory } from "./message-list";
 import { modalStory } from "./modal";
 import { notificationItemStory } from "./notification-item";
 import { pageHeaderStory } from "./page-header";
+import { paginationStory } from "./pagination";
 import { popoverStory } from "./popover";
 import { positionPanelStory } from "./position-panel";
 import { priceStory } from "./price";
@@ -38,6 +39,7 @@ import { skeletonStory } from "./skeleton";
 import { sliderStory } from "./slider";
 import { spinnerStory } from "./spinner";
 import { statTileStory } from "./stat-tile";
+import { statusBadgeStory } from "./status-badge";
 import { stepperStory } from "./stepper";
 import { switchStory } from "./switch";
 import { tabsStory } from "./tabs";
@@ -70,6 +72,7 @@ export const stories: Story[] = [
   sectionHeaderStory,
   backLinkStory,
   tabsStory,
+  paginationStory,
   progressBarStory,
   stepperStory,
   modalStory,
@@ -82,6 +85,7 @@ export const stories: Story[] = [
   chatBubbleStory,
   messageListStory,
   tierBadgeStory,
+  statusBadgeStory,
   activityFeedStory,
   notificationItemStory,
   promoBannerStory,
@@ -123,7 +127,7 @@ export const storyGroups: StoryGroup[] = [
       "selectable-option-card",
     ],
   },
-  { label: "Navigation", slugs: ["tabs", "stepper", "back-link"] },
+  { label: "Navigation", slugs: ["tabs", "pagination", "stepper", "back-link"] },
   {
     label: "Data display",
     slugs: [
@@ -131,6 +135,7 @@ export const storyGroups: StoryGroup[] = [
       "badge",
       "chip",
       "tier-badge",
+      "status-badge",
       "stat-tile",
       "list-row",
       "carousel",
