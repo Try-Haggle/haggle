@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Badge, buttonVariants, EmptyState, Spinner, TierBadge } from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 
 // ─── Types ───────────────────────────────────────────────────
 interface ReviewerProfile {
@@ -67,32 +69,6 @@ interface AssignmentsResponse {
 }
 
 // ─── Constants ───────────────────────────────────────────────
-// Reviewer rank tiers are a deliberate distinct-hue palette (not feedback
-// states), kept readable in both themes via dark: variants.
-const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  BRONZE: {
-    bg: "bg-amber-100 dark:bg-amber-900/30",
-    text: "text-amber-700 dark:text-amber-400",
-    border: "border-amber-300 dark:border-amber-500/30",
-  },
-  SILVER: { bg: "bg-surface-sunken", text: "text-ink-secondary", border: "border-line" },
-  GOLD: {
-    bg: "bg-yellow-100 dark:bg-yellow-900/30",
-    text: "text-yellow-700 dark:text-yellow-400",
-    border: "border-yellow-300 dark:border-yellow-500/30",
-  },
-  PLATINUM: {
-    bg: "bg-violet-100 dark:bg-violet-900/30",
-    text: "text-violet-700 dark:text-violet-400",
-    border: "border-violet-300 dark:border-violet-500/30",
-  },
-  DIAMOND: {
-    bg: "bg-cyan-100 dark:bg-cyan-900/30",
-    text: "text-cyan-700 dark:text-cyan-400",
-    border: "border-cyan-300 dark:border-cyan-500/30",
-  },
-};
-
 type CaseTab = "active" | "voted" | "decided";
 
 function formatCurrency(minor: number) {
@@ -133,10 +109,9 @@ export default function ReviewerDashboardPage() {
   if (loading) {
     return (
       <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-5xl mx-auto">
-        <div className="flex items-center justify-center py-20">
-          <div className="text-ink-secondary text-sm animate-pulse">
-            Loading reviewer dashboard...
-          </div>
+        <div className="flex items-center justify-center gap-2 py-20 text-ink-secondary text-sm">
+          <Spinner size="sm" />
+          Loading reviewer dashboard...
         </div>
       </main>
     );
@@ -146,12 +121,14 @@ export default function ReviewerDashboardPage() {
   if (error || !profile) {
     return (
       <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-5xl mx-auto">
-        <div className="rounded-xl border border-line bg-surface-sunken/50 p-12 text-center">
-          <p className="text-ink-secondary text-sm">{error ?? "Unable to load profile."}</p>
-        </div>
+        <EmptyState className="bg-surface-sunken/50" title={error ?? "Unable to load profile."} />
       </main>
     );
   }
+
+  // API may omit `qualification` for some profiles — fall back to zeros so the
+  // requirement cards render instead of crashing.
+  const qual = profile.qualification ?? { transactions: 0, trust_score: 0, test_score: null };
 
   // ─── Not qualified: show CTA ────────────────────────────
   if (!profile.qualified) {
@@ -168,31 +145,27 @@ export default function ReviewerDashboardPage() {
           <div className="mt-8 grid grid-cols-3 gap-4 max-w-sm mx-auto">
             <QualReqCard
               label="Transactions"
-              value={`${profile.qualification.transactions}`}
+              value={`${qual.transactions}`}
               required="5+"
-              met={profile.qualification.transactions >= 5}
+              met={qual.transactions >= 5}
             />
             <QualReqCard
               label="Trust Score"
-              value={`${profile.qualification.trust_score}`}
+              value={`${qual.trust_score}`}
               required="50+"
-              met={profile.qualification.trust_score >= 50}
+              met={qual.trust_score >= 50}
             />
             <QualReqCard
               label="Test Score"
-              value={
-                profile.qualification.test_score != null
-                  ? `${profile.qualification.test_score}%`
-                  : "N/A"
-              }
+              value={qual.test_score != null ? `${qual.test_score}%` : "N/A"}
               required="70%+"
-              met={(profile.qualification.test_score ?? 0) >= 70}
+              met={(qual.test_score ?? 0) >= 70}
             />
           </div>
 
           <Link
             href="/reviewer/qualify"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-cta px-6 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors"
+            className={cn(buttonVariants({ variant: "primary", size: "lg" }), "mt-8")}
           >
             Take Qualification Test
           </Link>
@@ -202,8 +175,6 @@ export default function ReviewerDashboardPage() {
   }
 
   // ─── Qualified: full dashboard ──────────────────────────
-  const tc = TIER_COLORS[profile.tier] ?? TIER_COLORS.BRONZE;
-
   const activeCases = assignments.filter((a) => a.status === "active");
   const votedCases = assignments.filter((a) => a.status === "voted");
   const decidedCases = assignments.filter((a) => a.status === "decided");
@@ -235,11 +206,9 @@ export default function ReviewerDashboardPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-ink">{profile.display_name}</h2>
                   <div className="flex items-center gap-2 mt-1">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-xs font-semibold ${tc.bg} ${tc.text} ${tc.border}`}
-                    >
+                    <TierBadge tier={profile.tier} className="gap-1.5 font-mono">
                       {"*".repeat(profile.stars)} {profile.tier}
-                    </span>
+                    </TierBadge>
                     <span className="font-mono text-xs text-ink-secondary">
                       Score {profile.score}/100
                     </span>
@@ -249,9 +218,9 @@ export default function ReviewerDashboardPage() {
                   </div>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success-soft px-2.5 py-1 font-mono text-[10px] font-semibold text-success">
+              <Badge tone="success" size="sm" className="font-mono">
                 Qualified
-              </span>
+              </Badge>
             </div>
 
             {/* Stats grid */}
@@ -346,7 +315,6 @@ export default function ReviewerDashboardPage() {
               </div>
               <div className="p-5 space-y-3">
                 {profile.specializations.map((s) => {
-                  const stc = TIER_COLORS[s.tier] ?? TIER_COLORS.BRONZE;
                   return (
                     <div
                       key={s.tag}
@@ -355,11 +323,9 @@ export default function ReviewerDashboardPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-ink">{s.tag}</span>
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stc.bg} ${stc.text} ${stc.border}`}
-                          >
+                          <TierBadge tier={s.tier} size="sm" className="gap-1">
                             {"*".repeat(s.stars)} {s.tier}
-                          </span>
+                          </TierBadge>
                         </div>
                         <div className="text-xs text-ink-muted mt-1">
                           {s.cases} cases · {Math.round(s.hit_rate * 100)}% hit rate · score{" "}
@@ -440,22 +406,18 @@ export default function ReviewerDashboardPage() {
             <div className="space-y-2">
               <QualRow
                 label="Transactions"
-                value={`${profile.qualification.transactions} completed`}
-                pass={profile.qualification.transactions >= 5}
+                value={`${qual.transactions} completed`}
+                pass={qual.transactions >= 5}
               />
               <QualRow
                 label="Trust Score"
-                value={`${profile.qualification.trust_score}`}
-                pass={profile.qualification.trust_score >= 50}
+                value={`${qual.trust_score}`}
+                pass={qual.trust_score >= 50}
               />
               <QualRow
                 label="Qualify Test"
-                value={
-                  profile.qualification.test_score != null
-                    ? `${profile.qualification.test_score}% (passed)`
-                    : "N/A"
-                }
-                pass={(profile.qualification.test_score ?? 0) >= 70}
+                value={qual.test_score != null ? `${qual.test_score}% (passed)` : "N/A"}
+                pass={(qual.test_score ?? 0) >= 70}
               />
               {profile.qualified_at && (
                 <QualRow
@@ -479,14 +441,14 @@ export default function ReviewerDashboardPage() {
               {activeCases.length > 0 && (
                 <Link
                   href={`/reviewer/cases/${activeCases[0].dispute_id}`}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface-sunken/50 px-4 py-2.5 text-sm font-medium text-ink hover:border-focus transition-all"
+                  className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
                 >
                   Vote on active case
                 </Link>
               )}
               <Link
                 href="/reviewer/qualify"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface-sunken/50 px-4 py-2.5 text-sm font-medium text-ink-secondary hover:border-line-strong hover:text-ink transition-all"
+                className={cn(buttonVariants({ variant: "secondary" }), "w-full")}
               >
                 Retake qualification test
               </Link>
@@ -502,17 +464,18 @@ export default function ReviewerDashboardPage() {
             </div>
             <div className="mt-3 grid grid-cols-5 gap-1 text-center font-mono text-[9px]">
               {(["BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"] as const).map((t) => {
-                const tc2 = TIER_COLORS[t];
                 const active = t === profile.tier;
-                return (
-                  <div
+                return active ? (
+                  <TierBadge
                     key={t}
-                    className={`rounded-md border p-1.5 ${
-                      active
-                        ? `${tc2.bg} ${tc2.border} ${tc2.text} font-bold`
-                        : "border-line text-ink-muted"
-                    }`}
+                    tier={t}
+                    size="sm"
+                    className="justify-center rounded-md px-0 py-1.5 font-bold tracking-normal"
                   >
+                    {t.slice(0, 3)}
+                  </TierBadge>
+                ) : (
+                  <div key={t} className="rounded-md border border-line p-1.5 text-ink-muted">
                     {t.slice(0, 3)}
                   </div>
                 );

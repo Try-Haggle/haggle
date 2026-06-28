@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /** Categorical rank palette (BRONZE→DIAMOND) — intentional literals with dark variants. */
@@ -24,9 +25,17 @@ export interface TierBadgeProps {
   palette?: "rank" | "rarity";
   size?: "sm" | "md";
   className?: string;
+  /** Override the rendered content (e.g. add a star prefix); palette still derives from `tier`. */
+  children?: ReactNode;
 }
 
-export function TierBadge({ tier, palette = "rank", size = "md", className }: TierBadgeProps) {
+export function TierBadge({
+  tier,
+  palette = "rank",
+  size = "md",
+  className,
+  children,
+}: TierBadgeProps) {
   const map = palette === "rank" ? RANK : RARITY;
   const tone = map[tier.toUpperCase()] ?? "bg-surface-sunken text-ink-muted";
   return (
@@ -38,7 +47,7 @@ export function TierBadge({ tier, palette = "rank", size = "md", className }: Ti
         className,
       )}
     >
-      {tier}
+      {children ?? tier}
     </span>
   );
 }

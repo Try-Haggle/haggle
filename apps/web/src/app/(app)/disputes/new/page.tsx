@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { Alert, BackLink, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api-client";
 
 const REASON_CODES = [
@@ -63,25 +63,9 @@ function NewDisputeForm() {
 
   return (
     <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-xl mx-auto">
-      <Link
-        href="/buy/dashboard"
-        className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-6"
-      >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
+      <BackLink href="/buy/dashboard" className="mb-6">
         Dashboard
-      </Link>
+      </BackLink>
 
       <div className="mb-6">
         <h1 className="text-xl font-bold text-ink mb-1">Report an Issue</h1>
@@ -89,76 +73,52 @@ function NewDisputeForm() {
       </div>
 
       <div className="rounded-xl border border-line bg-surface-raised/50 overflow-hidden">
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div>
-            <label
-              htmlFor="dispute-order-id"
-              className="block text-sm font-medium text-ink-secondary mb-1.5"
-            >
-              Order ID <span className="text-error">*</span>
-            </label>
-            <input
+        <form onSubmit={handleSubmit} className="p-5">
+          <Field label="Order ID" required htmlFor="dispute-order-id">
+            <Input
               id="dispute-order-id"
               type="text"
               placeholder="e.g. order_abc123"
               value={orderId}
               onChange={(e) => setOrderId(e.target.value)}
               required
-              className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label
-              htmlFor="dispute-reason"
-              className="block text-sm font-medium text-ink-secondary mb-1.5"
-            >
-              Reason <span className="text-error">*</span>
-            </label>
-            <select
+          <Field label="Reason" required htmlFor="dispute-reason">
+            <Select
               id="dispute-reason"
               value={reasonCode}
               onChange={(e) => setReasonCode(e.target.value)}
-              className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2.5 text-sm text-ink focus:border-focus focus:outline-none"
             >
               {REASON_CODES.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
 
-          <div>
-            <label
-              htmlFor="dispute-description"
-              className="block text-sm font-medium text-ink-secondary mb-1.5"
-            >
-              Description
-            </label>
-            <textarea
+          <Field label="Description" htmlFor="dispute-description">
+            <Textarea
               id="dispute-description"
               rows={4}
               placeholder="Describe what happened in detail..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-line bg-surface-raised px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-focus focus:outline-none resize-none"
+              className="resize-none"
             />
-          </div>
+          </Field>
 
           {error && (
-            <div className="rounded-lg border border-error/20 bg-error-soft px-3 py-2 text-sm text-error">
+            <Alert tone="error" className="mb-4">
               {error}
-            </div>
+            </Alert>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting || !orderId.trim()}
-            className="w-full rounded-xl bg-cta px-4 py-3 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
+          <Button type="submit" fullWidth loading={submitting} disabled={!orderId.trim()}>
             {submitting ? "Opening dispute..." : "Open Dispute"}
-          </button>
+          </Button>
         </form>
       </div>
 

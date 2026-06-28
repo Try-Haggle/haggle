@@ -1,7 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  Badge,
+  EmptyState,
+  ListRow,
+  Pagination,
+  Select,
+  Spinner,
+  StatusBadge,
+  Tabs,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -30,17 +39,6 @@ interface DisputeListResponse {
 }
 
 // ─── Status config ───────────────────────────────────────────
-const STATUS_COLORS: Record<string, string> = {
-  OPEN: "bg-warning-soft text-warning border-warning/30",
-  UNDER_REVIEW: "bg-info-soft text-info border-info/30",
-  WAITING_FOR_BUYER: "bg-info-soft text-info border-info/30",
-  WAITING_FOR_SELLER: "bg-info-soft text-info border-info/30",
-  RESOLVED_BUYER_FAVOR: "bg-success-soft text-success border-success/30",
-  RESOLVED_SELLER_FAVOR: "bg-success-soft text-success border-success/30",
-  PARTIAL_REFUND: "bg-info-soft text-info border-info/30",
-  CLOSED: "bg-surface-sunken text-ink-secondary border-line",
-};
-
 const ALL_STATUSES = [
   "OPEN",
   "UNDER_REVIEW",
@@ -52,33 +50,14 @@ const ALL_STATUSES = [
   "CLOSED",
 ];
 
-// Role tags kept visually distinct: buyer → info (blue), seller → badge (gold).
-const ROLE_COLORS: Record<string, string> = {
-  buyer: "bg-info-soft text-info border-info/30",
-  seller: "bg-badge text-badge-text border-badge-text/30",
-};
-
 type RoleTab = "all" | "buyer" | "seller";
 
-function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status] ?? "bg-surface-sunken text-ink-secondary border-line";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${color}`}
-    >
-      {status.replace(/_/g, " ")}
-    </span>
-  );
-}
-
+// Role tags kept visually distinct: buyer → info (blue), seller → gold.
 function RoleBadge({ role }: { role: string }) {
-  const color = ROLE_COLORS[role] ?? "bg-surface-sunken text-ink-secondary border-line";
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${color}`}
-    >
+    <Badge tone={role === "seller" ? "gold" : "info"} size="sm" className="capitalize">
       {role}
-    </span>
+    </Badge>
   );
 }
 
@@ -168,32 +147,17 @@ export default function DisputesListPage() {
 
       {/* Tabs + Filter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
-        {/* Role tabs */}
-        <div className="flex rounded-lg border border-line overflow-hidden">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? "bg-surface-overlay text-ink"
-                  : "bg-transparent text-ink-secondary hover:text-ink"
-              }`}
-            >
-              {tab.label}
-              {tab.count !== undefined && (
-                <span className="ml-1.5 text-xs text-ink-muted">({tab.count})</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          items={tabs.map((t) => ({ key: t.key, label: t.label, count: t.count }))}
+          value={activeTab}
+          onValueChange={(k) => setActiveTab(k as RoleTab)}
+        />
 
         {/* Status filter */}
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary outline-none focus:border-focus"
+          className="h-9 w-auto py-0 text-sm"
         >
           <option value="">All Statuses</option>
           {ALL_STATUSES.map((s) => (
@@ -201,93 +165,73 @@ export default function DisputesListPage() {
               {s.replace(/_/g, " ")}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Disputes list */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-ink-secondary text-sm animate-pulse">Loading disputes...</div>
+        <div className="flex items-center justify-center gap-2 py-20 text-ink-secondary text-sm">
+          <Spinner size="sm" />
+          Loading disputes...
         </div>
       ) : disputes.length === 0 ? (
-        <div className="rounded-xl border border-line bg-surface-raised/50 p-12 text-center">
-          <p className="text-ink-secondary text-sm">No disputes found.</p>
-          <p className="text-ink-muted text-xs mt-1">
-            Disputes will appear here when opened on your orders.
-          </p>
-        </div>
+        <EmptyState
+          className="bg-surface-raised/50"
+          title="No disputes found."
+          description="Disputes will appear here when opened on your orders."
+        />
       ) : (
         <div className="space-y-3">
           {disputes.map((dispute) => (
-            <Link
+            <ListRow
               key={dispute.id}
               href={`/disputes/${dispute.id}`}
-              className="block rounded-xl border border-line bg-surface-raised/50 p-4 hover:border-line-strong transition-colors"
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <p className="text-sm font-medium text-ink truncate">
-                      {dispute.item_title ?? "Dispute"}
-                    </p>
-                    <StatusBadge status={dispute.status} />
-                    <RoleBadge role={dispute.user_role} />
-                    {dispute.needs_action && (
-                      <span className="inline-flex items-center rounded-full bg-error-soft border border-error/30 px-2 py-0.5 text-xs font-medium text-error">
-                        Action needed
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-ink-muted">
-                    <span>{dispute.reason_code.replace(/_/g, " ")}</span>
-                    <span>{formatDate(dispute.opened_at)}</span>
-                    {dispute.tier && (
-                      <span className="font-medium text-ink-secondary">T{dispute.tier}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
+              title={dispute.item_title ?? "Dispute"}
+              badges={
+                <>
+                  <StatusBadge domain="dispute" status={dispute.status} />
+                  <RoleBadge role={dispute.user_role} />
+                  {dispute.needs_action && (
+                    <Badge tone="error" size="sm">
+                      Action needed
+                    </Badge>
+                  )}
+                </>
+              }
+              meta={
+                <span className="flex items-center gap-3">
+                  <span>{dispute.reason_code.replace(/_/g, " ")}</span>
+                  <span>{formatDate(dispute.opened_at)}</span>
+                  {dispute.tier && (
+                    <span className="font-medium text-ink-secondary">T{dispute.tier}</span>
+                  )}
+                </span>
+              }
+              trailing={
+                <>
                   {dispute.amount_minor != null && (
-                    <p className="text-sm font-semibold text-ink">
+                    <p className="font-semibold text-ink text-sm">
                       {formatCurrency(dispute.amount_minor)}
                     </p>
                   )}
                   {dispute.resolution_outcome && (
-                    <p className="text-xs text-ink-muted mt-0.5 capitalize">
+                    <p className="mt-0.5 text-ink-muted text-xs capitalize">
                       {dispute.resolution_outcome.replace(/_/g, " ")}
                     </p>
                   )}
-                </div>
-              </div>
-            </Link>
+                </>
+              }
+            />
           ))}
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6">
-          <button
-            type="button"
-            onClick={() => setOffset(Math.max(0, offset - limit))}
-            disabled={offset === 0}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-secondary hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-sm text-ink-muted">
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={() => setOffset(offset + limit)}
-            disabled={currentPage >= totalPages}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-secondary hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      <Pagination
+        page={currentPage}
+        totalPages={totalPages}
+        onPageChange={(p) => setOffset((p - 1) * limit)}
+        className="mt-6"
+      />
     </main>
   );
 }

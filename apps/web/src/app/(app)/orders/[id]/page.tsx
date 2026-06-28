@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityFeed,
+  BackLink,
+  Button,
+  buttonVariants,
+  type ActivityEvent as FeedEvent,
+  Spinner,
+  StatusBadge,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -147,45 +157,6 @@ const EMPTY_ADDRESS_FORM: AddressFormState = {
   email: "",
 };
 
-// ─── Status config ───────────────────────────────────────────
-// In-progress states (quoted/authorized/transit/settlement/delivery/refund)
-// consolidate to the `info` token; terminal states map to success/error/warning.
-const STATUS_COLORS: Record<string, string> = {
-  PAYMENT_PENDING: "bg-warning-soft text-warning border-warning/30",
-  CREATED: "bg-surface-sunken text-ink-secondary border-line",
-  QUOTED: "bg-info-soft text-info border-info/30",
-  AUTHORIZED: "bg-info-soft text-info border-info/30",
-  SETTLEMENT_PENDING: "bg-info-soft text-info border-info/30",
-  SETTLED: "bg-success-soft text-success border-success/30",
-  PAID: "bg-success-soft text-success border-success/30",
-  FULFILLMENT_PENDING: "bg-warning-soft text-warning border-warning/30",
-  FULFILLMENT_ACTIVE: "bg-info-soft text-info border-info/30",
-  IN_TRANSIT: "bg-info-soft text-info border-info/30",
-  LABEL_PENDING: "bg-surface-sunken text-ink-secondary border-line",
-  LABEL_CREATED: "bg-info-soft text-info border-info/30",
-  OUT_FOR_DELIVERY: "bg-info-soft text-info border-info/30",
-  DELIVERED: "bg-success-soft text-success border-success/30",
-  DELIVERY_EXCEPTION: "bg-error-soft text-error border-error/30",
-  IN_DISPUTE: "bg-error-soft text-error border-error/30",
-  OPEN: "bg-error-soft text-error border-error/30",
-  UNDER_REVIEW: "bg-warning-soft text-warning border-warning/30",
-  CLOSED: "bg-surface-sunken text-ink-secondary border-line",
-  REFUNDED: "bg-info-soft text-info border-info/30",
-  FAILED: "bg-error-soft text-error border-error/30",
-  CANCELED: "bg-surface-sunken text-ink-secondary border-line",
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status] ?? "bg-surface-sunken text-ink-secondary border-line";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${color}`}
-    >
-      {status.replace(/_/g, " ")}
-    </span>
-  );
-}
-
 function formatCurrency(minor: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -223,7 +194,7 @@ function TimelineStep({
         <div
           className={`w-3 h-3 rounded-full border-2 ${
             status === "done"
-              ? "bg-success-500 border-success-500"
+              ? "bg-success border-success"
               : status === "active"
                 ? "bg-action-primary border-action-primary animate-pulse"
                 : "bg-transparent border-line-strong"
@@ -232,7 +203,7 @@ function TimelineStep({
         {!isLast && (
           <div
             className={`w-0.5 flex-1 min-h-[24px] ${
-              status === "done" ? "bg-success-500/40" : "bg-line"
+              status === "done" ? "bg-success/40" : "bg-line"
             }`}
           />
         )}
@@ -294,7 +265,7 @@ function PaymentSection({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm text-ink-secondary">Status</span>
-          <StatusBadge status={payment.status} />
+          <StatusBadge domain="order" status={payment.status} />
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm text-ink-secondary">Amount</span>
@@ -407,7 +378,7 @@ function ShippingSection({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm text-ink-secondary">Status</span>
-          <StatusBadge status={shipment.status} />
+          <StatusBadge domain="order" status={shipment.status} />
         </div>
         {shipment.tracking_number && (
           <div className="flex items-center justify-between">
@@ -672,7 +643,7 @@ function DisputeSection({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink-secondary">Status</span>
-            <StatusBadge status={dispute.status} />
+            <StatusBadge domain="order" status={dispute.status} />
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink-secondary">Reason</span>
@@ -723,7 +694,7 @@ function DisputeSection({
       <p className="text-sm text-ink-secondary mb-3">No dispute for this order.</p>
       <Link
         href={`/disputes/new?orderId=${orderId}`}
-        className="block w-full text-center rounded-lg border border-error/30 bg-error-soft px-3 py-2 text-sm font-medium text-error hover:bg-error-soft transition-colors"
+        className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "w-full")}
       >
         Report an Issue
       </Link>
@@ -949,22 +920,17 @@ function ActionButton({
   variant?: "primary" | "danger";
 }) {
   const isLoading = loading === action;
-  const base =
-    "w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-  const styles =
-    variant === "danger"
-      ? "border border-error/30 bg-error-soft text-error hover:bg-error-soft"
-      : "bg-cta text-on-cta hover:bg-cta-hover";
-
   return (
-    <button
-      type="button"
-      onClick={() => onClick(action)}
+    <Button
+      variant={variant === "danger" ? "destructive" : "primary"}
+      size="sm"
+      fullWidth
+      loading={isLoading}
       disabled={!!loading}
-      className={`${base} ${styles}`}
+      onClick={() => onClick(action)}
     >
       {isLoading ? `${label}...` : label}
-    </button>
+    </Button>
   );
 }
 
@@ -1011,8 +977,27 @@ interface LogEntry {
   status: "success" | "error" | "info";
 }
 
+const LOG_TONES: Record<LogEntry["status"], FeedEvent["tone"]> = {
+  success: "success",
+  error: "error",
+  info: "default",
+};
+
 function ActivityLog({ entries }: { entries: LogEntry[] }) {
   if (entries.length === 0) return null;
+
+  const feedEvents: FeedEvent[] = entries.map((entry) => ({
+    id: `${entry.time}-${entry.action}`,
+    label: (
+      <span>
+        <span className="font-medium text-ink-secondary">{entry.action}</span>
+        <span className="text-ink-muted"> {entry.detail}</span>
+      </span>
+    ),
+    time: entry.time,
+    tone: LOG_TONES[entry.status],
+  }));
+
   return (
     <div className="rounded-xl border border-line bg-surface-raised/50 overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-3 border-b border-line">
@@ -1033,25 +1018,8 @@ function ActivityLog({ entries }: { entries: LogEntry[] }) {
         </span>
         <h2 className="text-sm font-semibold text-ink">Activity Log</h2>
       </div>
-      <div className="p-5 max-h-64 overflow-y-auto space-y-2">
-        {entries.map((entry) => (
-          <div key={`${entry.time}-${entry.action}`} className="flex items-start gap-2 text-xs">
-            <span
-              className={`mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full ${
-                entry.status === "success"
-                  ? "bg-success-500"
-                  : entry.status === "error"
-                    ? "bg-error-500"
-                    : "bg-line-strong"
-              }`}
-            />
-            <div className="flex-1 min-w-0">
-              <span className="text-ink-muted">{entry.time}</span>{" "}
-              <span className="text-ink-secondary font-medium">{entry.action}</span>
-              <span className="text-ink-muted"> {entry.detail}</span>
-            </div>
-          </div>
-        ))}
+      <div className="p-5 max-h-64 overflow-y-auto">
+        <ActivityFeed events={feedEvents} />
       </div>
     </div>
   );
@@ -1487,8 +1455,9 @@ export default function OrderDetailPage() {
   // ─── Render ─────────────────────────────────────────────────
   if (initialLoading) {
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
-        <div className="text-ink-secondary text-sm animate-pulse">Loading order...</div>
+      <main className="min-h-[calc(100vh-4rem)] flex items-center justify-center gap-2 text-ink-secondary text-sm">
+        <Spinner size="sm" />
+        Loading order...
       </main>
     );
   }
@@ -1500,25 +1469,9 @@ export default function OrderDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <Link
-            href="/buy/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink transition-colors mb-3"
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+          <BackLink href="/buy/dashboard" className="mb-3">
             Back
-          </Link>
+          </BackLink>
           <h1 className="text-xl font-bold text-ink">Order Details</h1>
           <p className="text-sm text-ink-secondary font-mono mt-0.5">{orderId}</p>
         </div>
@@ -1527,7 +1480,7 @@ export default function OrderDetailPage() {
             <p className="text-lg font-bold text-ink">
               {formatCurrency(state.order.amountMinor, state.order.currency)}
             </p>
-            <StatusBadge status={state.order.status} />
+            <StatusBadge domain="order" status={state.order.status} />
           </div>
         )}
       </div>

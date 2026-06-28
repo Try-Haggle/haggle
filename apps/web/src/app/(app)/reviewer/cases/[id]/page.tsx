@@ -3,7 +3,18 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import {
+  Alert,
+  Button,
+  buttonVariants,
+  Disclosure,
+  PositionPanel,
+  Spinner,
+  Textarea,
+  VoteSlider,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 
 // ─── Types ───────────────────────────────────────────────────
 interface CaseDetail {
@@ -148,8 +159,9 @@ export default function ReviewerCasePage() {
   if (loading) {
     return (
       <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-3xl mx-auto">
-        <div className="flex items-center justify-center py-20">
-          <div className="text-ink-secondary text-sm animate-pulse">Loading case...</div>
+        <div className="flex items-center justify-center gap-2 py-20 text-ink-secondary text-sm">
+          <Spinner size="sm" />
+          Loading case...
         </div>
       </main>
     );
@@ -172,8 +184,6 @@ export default function ReviewerCasePage() {
   }
 
   const amount = caseData.amount_minor / 100;
-  const buyerAmt = ((amount * voteValue) / 100).toFixed(2);
-  const sellerAmt = ((amount * (100 - voteValue)) / 100).toFixed(2);
 
   // Determine view mode from status
   const isActive = caseData.status === "active";
@@ -268,18 +278,12 @@ export default function ReviewerCasePage() {
                 <strong className="text-ink">Summary.</strong> {caseData.briefing.summary}
               </div>
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-info/20 border-l-[3px] border-l-info bg-info-soft p-4 text-sm leading-relaxed text-ink-secondary">
-                  <h4 className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-widest text-info">
-                    Buyer position
-                  </h4>
-                  <p>{caseData.briefing.buyer_position}</p>
-                </div>
-                <div className="rounded-xl border border-badge-text/20 border-l-[3px] border-l-badge-text bg-badge p-4 text-sm leading-relaxed text-ink-secondary">
-                  <h4 className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-widest text-badge-text">
-                    Seller position
-                  </h4>
-                  <p>{caseData.briefing.seller_position}</p>
-                </div>
+                <PositionPanel side="buyer" label="Buyer position">
+                  {caseData.briefing.buyer_position}
+                </PositionPanel>
+                <PositionPanel side="seller" label="Seller position">
+                  {caseData.briefing.seller_position}
+                </PositionPanel>
               </div>
               <div className="mt-4 rounded-xl border-l-[3px] border-l-white bg-surface-sunken/50 p-5 text-base font-medium leading-relaxed text-ink">
                 Core question: <em>{caseData.briefing.core_question}</em>
@@ -302,8 +306,8 @@ export default function ReviewerCasePage() {
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <EvidenceColumn label="Buyer" color="cyan" items={caseData.evidence.buyer} />
-                <EvidenceColumn label="Seller" color="violet" items={caseData.evidence.seller} />
+                <EvidenceColumn label="Buyer" side="buyer" items={caseData.evidence.buyer} />
+                <EvidenceColumn label="Seller" side="seller" items={caseData.evidence.seller} />
               </div>
             </div>
           </section>
@@ -312,7 +316,7 @@ export default function ReviewerCasePage() {
           {caseData.specialist_verification && (
             <section className="rounded-xl border border-line bg-surface-sunken/50 p-5">
               <div className="mb-2.5 flex items-center gap-2.5 font-mono text-xs uppercase tracking-widest text-ink-muted">
-                <span className="h-[7px] w-[7px] rounded-full bg-success-500" />
+                <span className="h-[7px] w-[7px] rounded-full bg-success" />
                 Specialist Verification:{" "}
                 <strong className="text-ink-secondary">
                   {caseData.specialist_verification.provider}
@@ -351,63 +355,15 @@ export default function ReviewerCasePage() {
               What percentage of the ${amount.toFixed(2)} escrow should go to the buyer?
             </div>
 
-            {/* Slider */}
-            <div className="mt-5">
-              <div className="flex justify-between font-mono text-[11px] uppercase tracking-wide text-ink-muted mb-1">
-                <span>
-                  <span className="font-semibold text-badge-text">0%</span> Seller wins
-                </span>
-                <span className="font-semibold text-ink-secondary">50% Split</span>
-                <span>
-                  <span className="font-semibold text-info">100%</span> Buyer wins
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={voteValue}
-                onChange={(e) => setVoteValue(Number(e.target.value))}
-                className="mt-4 w-full accent-action-primary"
-                aria-label="Refund percentage to buyer"
-              />
-            </div>
-
-            {/* Quick buttons */}
-            <div className="mt-4 grid grid-cols-5 gap-1.5">
-              {[0, 25, 50, 75, 100].map((q) => (
-                <button
-                  type="button"
-                  key={q}
-                  onClick={() => setVoteValue(q)}
-                  className={`rounded-lg border px-1.5 py-2 font-mono text-xs font-semibold transition-all ${
-                    voteValue === q
-                      ? "border-action-primary bg-action-primary text-on-accent"
-                      : "border-line bg-surface-sunken/50 text-ink-secondary hover:border-line-strong hover:text-ink"
-                  }`}
-                >
-                  {q}%
-                </button>
-              ))}
-            </div>
-
-            {/* Summary */}
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-sunken/50 p-4">
-              <div>
-                <div className="font-mono text-[11px] uppercase tracking-widest text-ink-muted mb-0.5">
-                  Your vote
-                </div>
-                <div className="font-mono text-xl font-semibold text-ink">
-                  {voteValue}% to buyer
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-ink-muted mb-0.5">Buyer receives</div>
-                <div className="font-mono text-xl font-semibold text-info">${buyerAmt}</div>
-                <div className="mt-1 text-[11px] text-ink-muted">Seller receives ${sellerAmt}</div>
-              </div>
-            </div>
+            {/* Slider + presets + split readout */}
+            <VoteSlider
+              className="mt-5"
+              value={voteValue}
+              onChange={setVoteValue}
+              amount={amount}
+              buyerLabel="Buyer"
+              sellerLabel="Seller"
+            />
 
             {/* Reasoning */}
             <label
@@ -416,29 +372,27 @@ export default function ReviewerCasePage() {
             >
               Optional reasoning (anonymized)
             </label>
-            <textarea
+            <Textarea
               id="vote-reasoning"
               value={reasoning}
               onChange={(e) => setReasoning(e.target.value)}
-              className="mt-2 w-full min-h-[80px] resize-y rounded-xl border border-line bg-surface-sunken/50 p-3 text-sm leading-relaxed text-ink-secondary outline-none focus:border-focus placeholder:text-ink-muted"
+              className="mt-2 min-h-[80px] resize-y"
               placeholder="Share your reasoning for this vote..."
             />
 
             {/* Warning */}
-            <div className="mt-4 flex gap-2.5 rounded-lg border border-warning/30 bg-warning-soft p-3 text-xs text-ink-secondary">
-              <span className="text-warning">!</span>
+            <Alert tone="warning" className="mt-4">
               <span>
-                <strong className="text-warning">Vote is final and cannot be changed.</strong>{" "}
-                Voting within the agreement zone earns your reward. Votes outside the zone receive 0
-                USDC.
+                <strong>Vote is final and cannot be changed.</strong> Voting within the agreement
+                zone earns your reward. Votes outside the zone receive 0 USDC.
               </span>
-            </div>
+            </Alert>
 
             {/* Submit error */}
             {submitError && (
-              <div className="mt-3 rounded-lg border border-error/30 bg-error-soft p-3 text-xs text-error">
+              <Alert tone="error" className="mt-3">
                 {submitError}
-              </div>
+              </Alert>
             )}
 
             {/* CTA */}
@@ -446,65 +400,52 @@ export default function ReviewerCasePage() {
               <div className="flex-1 text-sm text-ink-muted">
                 Current vote: <strong className="text-ink">{voteValue}% to buyer</strong>
               </div>
-              <button
-                type="button"
-                onClick={handleSubmitVote}
-                disabled={submitting}
-                className="rounded-xl bg-cta px-5 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+              <Button loading={submitting} onClick={handleSubmitVote}>
                 {submitting ? "Submitting..." : "Submit vote"}
-              </button>
+              </Button>
             </div>
           </section>
 
           {/* Precedents (collapsible) */}
           {caseData.precedents.length > 0 && (
-            <section className="rounded-xl border border-line bg-surface-sunken/50">
-              <button
-                type="button"
-                onClick={() => setPrecedentOpen(!precedentOpen)}
-                className="flex w-full items-center justify-between px-6 py-4 text-left"
-              >
-                <div>
-                  <div className="font-mono text-[11px] uppercase tracking-widest text-ink-muted">
+            <Disclosure
+              open={precedentOpen}
+              onOpenChange={setPrecedentOpen}
+              title={
+                <span>
+                  <span className="block font-mono text-[11px] uppercase tracking-widest text-ink-muted">
                     Precedent
-                  </div>
-                  <h2 className="mt-1 text-sm font-semibold text-ink">
+                  </span>
+                  <span className="mt-1 block text-sm font-semibold text-ink">
                     Similar past cases ({caseData.precedents.length})
-                  </h2>
-                </div>
-                <span
-                  className={`text-xs text-ink-muted transition-transform ${precedentOpen ? "rotate-90" : ""}`}
-                >
-                  &#x25B6;
+                  </span>
                 </span>
-              </button>
-              {precedentOpen && (
-                <div className="border-t border-line p-6 space-y-3">
-                  {caseData.precedents.map((p) => (
-                    <div key={p.case_id} className="flex items-center gap-4 text-sm">
-                      <span className="font-mono text-xs text-ink-muted min-w-[100px]">
-                        {p.case_id}
-                      </span>
-                      <span className="flex-1 text-ink-secondary leading-relaxed">
-                        {p.description}
-                      </span>
-                      <span
-                        className={`font-mono text-xs font-semibold ${
-                          p.outcome_color === "buyer"
-                            ? "text-info"
-                            : p.outcome_color === "seller"
-                              ? "text-badge-text"
-                              : "text-ink-secondary"
-                        }`}
-                      >
-                        {p.outcome}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+              }
+            >
+              <div className="space-y-3">
+                {caseData.precedents.map((p) => (
+                  <div key={p.case_id} className="flex items-center gap-4 text-sm">
+                    <span className="font-mono text-xs text-ink-muted min-w-[100px]">
+                      {p.case_id}
+                    </span>
+                    <span className="flex-1 text-ink-secondary leading-relaxed">
+                      {p.description}
+                    </span>
+                    <span
+                      className={`font-mono text-xs font-semibold ${
+                        p.outcome_color === "buyer"
+                          ? "text-info"
+                          : p.outcome_color === "seller"
+                            ? "text-badge-text"
+                            : "text-ink-secondary"
+                      }`}
+                    >
+                      {p.outcome}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Disclosure>
           )}
         </div>
       )}
@@ -601,10 +542,7 @@ export default function ReviewerCasePage() {
           )}
 
           <div className="mt-5 flex gap-3">
-            <Link
-              href="/reviewer"
-              className="rounded-xl border border-line bg-surface-overlay px-4 py-2.5 text-sm font-medium text-ink hover:bg-surface-sunken transition-colors"
-            >
+            <Link href="/reviewer" className={cn(buttonVariants({ variant: "secondary" }))}>
               Reviewer dashboard
             </Link>
           </div>
@@ -718,7 +656,7 @@ export default function ReviewerCasePage() {
               </div>
               <div className="mt-2.5 flex flex-wrap gap-4 font-mono text-xs text-ink-muted">
                 <span>
-                  <span className="mr-1.5 inline-block h-[2px] w-2.5 align-middle bg-success-500" />
+                  <span className="mr-1.5 inline-block h-[2px] w-2.5 align-middle bg-success" />
                   Agreement zone
                 </span>
                 <span>
@@ -765,10 +703,7 @@ export default function ReviewerCasePage() {
           )}
 
           <div className="mt-5 flex gap-3">
-            <Link
-              href="/reviewer"
-              className="rounded-xl border border-line bg-surface-overlay px-4 py-2.5 text-sm font-medium text-ink hover:bg-surface-sunken transition-colors"
-            >
+            <Link href="/reviewer" className={cn(buttonVariants({ variant: "secondary" }))}>
               Back to dashboard
             </Link>
           </div>
@@ -831,16 +766,16 @@ function InfoCard({
 
 function EvidenceColumn({
   label,
-  color,
+  side,
   items,
 }: {
   label: string;
-  color: "cyan" | "violet";
+  side: "buyer" | "seller";
   items: EvidenceItem[];
 }) {
-  const dotColor = color === "cyan" ? "bg-info" : "bg-badge-text";
+  const dotColor = side === "buyer" ? "bg-info" : "bg-badge-text";
   const hashColor =
-    color === "cyan"
+    side === "buyer"
       ? "text-info border-info/30 bg-info-soft"
       : "text-badge-text border-badge-text/30 bg-badge";
 
