@@ -25,6 +25,7 @@ export function Avatar({ src, name, size = "md", className }: AvatarProps) {
         src={src}
         alt={name ?? ""}
         onError={() => setErrored(true)}
+        referrerPolicy="no-referrer"
         className={cn("rounded-full object-cover", dim, className)}
       />
     );

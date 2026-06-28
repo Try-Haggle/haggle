@@ -21,6 +21,7 @@ export * from "./input";
 export * from "./list-row";
 export * from "./message-list";
 export * from "./modal";
+export * from "./nav-tab";
 export * from "./notification-item";
 export * from "./page-header";
 export * from "./pagination";

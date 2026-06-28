@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ProgressBar, StatTile } from "@/components/ui";
 import { serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -70,12 +71,7 @@ export default async function LevelPage() {
             )}
           </span>
         </div>
-        <div className="h-3 overflow-hidden rounded-full bg-surface-sunken">
-          <div
-            className="h-full rounded-full bg-success-500 transition-all"
-            style={{ width: `${xpProgress}%` }}
-          />
-        </div>
+        <ProgressBar value={xpProgress} tone="success" />
         {levelInfo.nextLevelXp == null && (
           <div className="mt-1 text-center text-xs text-action-primary">MAX LEVEL</div>
         )}
@@ -83,29 +79,20 @@ export default async function LevelPage() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-4">
-        <StatCard label="Total Trades" value={levelInfo.totalTrades} />
-        <StatCard label="Deals Closed" value={levelInfo.totalDeals} />
-        <StatCard
+        <StatTile label="Total Trades" value={levelInfo.totalTrades} />
+        <StatTile label="Deals Closed" value={levelInfo.totalDeals} />
+        <StatTile
           label="Volume"
           value={`$${(Number(levelInfo.totalVolume) / 100).toLocaleString()}`}
         />
-        <StatCard
+        <StatTile
           label="Total Saved"
           value={`$${(Number(levelInfo.totalSaved) / 100).toLocaleString()}`}
         />
-        <StatCard label="Avg Savings" value={`${Number(levelInfo.avgSavingPct).toFixed(1)}%`} />
-        <StatCard label="Best Savings" value={`${Number(levelInfo.bestSavingPct).toFixed(1)}%`} />
-        <StatCard label="Win Streak" value={levelInfo.consecutiveDeals} />
+        <StatTile label="Avg Savings" value={`${Number(levelInfo.avgSavingPct).toFixed(1)}%`} />
+        <StatTile label="Best Savings" value={`${Number(levelInfo.bestSavingPct).toFixed(1)}%`} />
+        <StatTile label="Win Streak" value={levelInfo.consecutiveDeals} />
       </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-line bg-surface-raised p-4">
-      <div className="text-xs text-ink-muted">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-ink">{value}</div>
     </div>
   );
 }

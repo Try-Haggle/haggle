@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { Alert, Avatar, Button, Field, Input } from "@/components/ui";
 import { ApiError, api } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 
@@ -19,7 +20,6 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
   // Profile state
   const [name, setName] = useState(displayName);
   const [avatarPreview, setAvatarPreview] = useState(avatarUrl);
-  const [avatarError, setAvatarError] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{
@@ -57,7 +57,6 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
     }
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
-    setAvatarError(false);
     setProfileMsg(null);
   };
 
@@ -205,34 +204,18 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
 
         {/* Avatar */}
         <div className="mb-5">
-          <label htmlFor="avatar-upload" className="block text-sm text-ink-secondary mb-2">
-            Avatar
-          </label>
+          <span className="block text-sm text-ink-secondary mb-2">Avatar</span>
           <div className="flex items-center gap-4">
-            <div className="relative">
-              {avatarPreview && !avatarError ? (
-                // biome-ignore lint/performance/noImgElement: user-uploaded avatar preview
-                <img
-                  src={avatarPreview}
-                  alt=""
-                  className="h-16 w-16 rounded-full object-cover border border-line"
-                  referrerPolicy="no-referrer"
-                  onError={() => setAvatarError(true)}
-                />
-              ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-badge text-xl font-medium text-badge-text border border-line">
-                  {(name || email).charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
+            <Avatar
+              src={avatarPreview || undefined}
+              name={name || email}
+              size="lg"
+              className="border border-line"
+            />
             <div>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="rounded-lg border border-line bg-surface-sunken px-3 py-1.5 text-sm text-ink-secondary hover:bg-surface-overlay transition-colors cursor-pointer"
-              >
+              <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
                 Change
-              </button>
+              </Button>
               <input
                 id="avatar-upload"
                 ref={fileRef}
@@ -247,53 +230,30 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
         </div>
 
         {/* Name */}
-        <div className="mb-5">
-          <label htmlFor="display-name" className="block text-sm text-ink-secondary mb-1.5">
-            Display name
-          </label>
-          <input
+        <Field label="Display name" htmlFor="display-name">
+          <Input
             id="display-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-focus transition-colors"
           />
-        </div>
+        </Field>
 
         {/* Email (read-only) */}
-        <div className="mb-5">
-          <label htmlFor="email" className="block text-sm text-ink-secondary mb-1.5">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            disabled
-            className="w-full rounded-lg border border-line bg-surface-sunken/50 px-3 py-2 text-sm text-ink-muted cursor-not-allowed"
-          />
-          <p className="mt-1 text-xs text-ink-muted">Email cannot be changed.</p>
-        </div>
+        <Field label="Email" htmlFor="email" hint="Email cannot be changed.">
+          <Input id="email" type="email" value={email} disabled />
+        </Field>
 
         {profileMsg && (
-          <p
-            className={`mb-3 text-sm ${
-              profileMsg.type === "success" ? "text-success" : "text-error"
-            }`}
-          >
+          <Alert tone={profileMsg.type} className="mb-3">
             {profileMsg.text}
-          </p>
+          </Alert>
         )}
 
-        <button
-          type="button"
-          onClick={handleProfileSave}
-          disabled={profileSaving}
-          className="rounded-lg bg-cta px-4 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
+        <Button onClick={handleProfileSave} loading={profileSaving}>
           {profileSaving ? "Saving…" : "Save Profile"}
-        </button>
+        </Button>
       </section>
 
       {/* ── Password Section ───────────────────────────── */}
@@ -305,52 +265,39 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
             : "Update your password."}
         </p>
 
-        <div className="mb-4">
-          <label htmlFor="new-password" className="block text-sm text-ink-secondary mb-1.5">
-            New password
-          </label>
-          <input
+        <Field label="New password" htmlFor="new-password">
+          <Input
             id="new-password"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className="w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-focus transition-colors"
           />
-        </div>
+        </Field>
 
-        <div className="mb-4">
-          <label htmlFor="confirm-password" className="block text-sm text-ink-secondary mb-1.5">
-            Confirm password
-          </label>
-          <input
+        <Field label="Confirm password" htmlFor="confirm-password">
+          <Input
             id="confirm-password"
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Repeat password"
-            className="w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-focus transition-colors"
           />
-        </div>
+        </Field>
 
         {passwordMsg && (
-          <p
-            className={`mb-3 text-sm ${
-              passwordMsg.type === "success" ? "text-success" : "text-error"
-            }`}
-          >
+          <Alert tone={passwordMsg.type} className="mb-3">
             {passwordMsg.text}
-          </p>
+          </Alert>
         )}
 
-        <button
-          type="button"
+        <Button
           onClick={handlePasswordSave}
-          disabled={passwordSaving || !newPassword || !confirmPassword}
-          className="rounded-lg bg-cta px-4 py-2 text-sm font-medium text-on-cta hover:bg-cta-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          loading={passwordSaving}
+          disabled={!newPassword || !confirmPassword}
         >
           {passwordSaving ? "Saving…" : isOAuth ? "Set Password" : "Update Password"}
-        </button>
+        </Button>
       </section>
 
       {/* ── Delete Account Section ─────────────────────── */}
@@ -361,48 +308,47 @@ export function SettingsContent({ email, displayName, avatarUrl, provider }: Set
         </p>
 
         {!deleteOpen ? (
-          <button
-            type="button"
-            onClick={() => setDeleteOpen(true)}
-            className="rounded-lg border border-error px-4 py-2 text-sm font-medium text-error hover:bg-error-soft transition-colors cursor-pointer"
-          >
+          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
             Delete my account
-          </button>
+          </Button>
         ) : (
           <div className="rounded-lg border border-error/30 bg-error-soft p-4">
             <p className="text-sm text-ink-secondary mb-3">
               Type <span className="font-mono text-error">{email}</span> to confirm:
             </p>
-            <input
+            <Input
               type="text"
               value={deleteConfirm}
               onChange={(e) => setDeleteConfirm(e.target.value)}
               placeholder={email}
-              className="w-full rounded-lg border border-error/30 bg-surface-sunken px-3 py-2 text-sm text-ink placeholder:text-ink-muted outline-none focus:border-error transition-colors mb-3"
+              className="mb-3"
             />
 
-            {deleteMsg && <p className="mb-3 text-sm text-error">{deleteMsg.text}</p>}
+            {deleteMsg && (
+              <Alert tone="error" className="mb-3">
+                {deleteMsg.text}
+              </Alert>
+            )}
 
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={handleDelete}
                 disabled={deleteConfirm !== email || deleting}
-                className="rounded-lg bg-error-500 px-4 py-2 text-sm font-medium text-on-accent hover:bg-error-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="rounded-lg bg-error px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-error/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deleting ? "Deleting…" : "Permanently Delete"}
               </button>
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setDeleteOpen(false);
                   setDeleteConfirm("");
                   setDeleteMsg(null);
                 }}
-                type="button"
-                className="rounded-lg border border-line px-4 py-2 text-sm text-ink-secondary hover:bg-surface-sunken transition-colors cursor-pointer"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}

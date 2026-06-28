@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
+import { NavTab } from "@/components/ui";
 
 type Mode = "selling" | "buying";
 
@@ -236,21 +236,15 @@ export function BottomNav() {
               : pathname.startsWith(tab.href);
 
           return (
-            <Link
+            <NavTab
               key={tab.href}
               href={tab.href}
-              className={`flex flex-col items-center gap-0.5 transition-colors ${
-                isActive ? "text-action-primary" : "text-ink-muted"
-              }`}
-            >
-              <div className="relative">
-                {tab.icon}
-                {tab.label === "Inbox" && unreadCount > 0 && (
-                  <span className="-top-0.5 -right-0.5 absolute h-2 w-2 rounded-full bg-error-500" />
-                )}
-              </div>
-              <span className="font-medium text-[10px]">{tab.label}</span>
-            </Link>
+              label={tab.label}
+              variant="stacked"
+              icon={tab.icon}
+              active={isActive}
+              badge={tab.label === "Inbox" && unreadCount > 0}
+            />
           );
         })}
       </div>

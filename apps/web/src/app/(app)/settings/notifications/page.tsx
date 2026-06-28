@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Switch } from "@/components/ui";
 import { type NotificationPreferences, notificationApi } from "@/lib/api-client";
 
 const CATEGORIES = ["negotiation", "account", "listing"] as const;
@@ -91,19 +92,12 @@ export default function NotificationSettingsPage() {
                 return (
                   <div key={channel} className="flex items-center justify-between">
                     <span className="text-sm text-ink-secondary">{CHANNEL_LABELS[channel]}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(category, channel, enabled)}
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={() => handleToggle(category, channel, enabled)}
                       disabled={saving === key}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
-                        ${enabled ? "bg-action-primary" : "bg-line"}
-                        ${saving === key ? "opacity-50" : ""}`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-on-accent shadow-lg transform transition duration-200 ease-in-out
-                          ${enabled ? "translate-x-4" : "translate-x-0"}`}
-                      />
-                    </button>
+                      aria-label={`${CATEGORY_LABELS[category]} ${CHANNEL_LABELS[channel]}`}
+                    />
                   </div>
                 );
               })}
