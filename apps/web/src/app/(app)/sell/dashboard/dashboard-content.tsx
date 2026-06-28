@@ -1,7 +1,30 @@
 "use client";
 
+import {
+  BarChart3,
+  Check,
+  DollarSign,
+  ImageOff,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Share2,
+  Tag,
+  TrendingUp,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Badge,
+  buttonVariants,
+  EmptyState,
+  IconButton,
+  ListRow,
+  PageHeader,
+  StatTile,
+} from "@/components/ui";
+import { formatCondition, formatPrice, formatTimeAgo } from "@/lib/format";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import type { DraftSummary, ListingSummary } from "./page";
 
@@ -29,198 +52,59 @@ export function DashboardContent({
   }, []);
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] px-4 py-6 sm:p-6 max-w-6xl mx-auto">
+    <main className="mx-auto min-h-[calc(100vh-4rem)] max-w-6xl px-4 py-6 sm:p-6">
       {/* Claim Result Banner */}
       {claimResult && (
-        <div
-          className={`mb-6 rounded-lg border px-4 py-3 text-sm ${
-            claimResult.ok
-              ? "border-success/30 bg-success-soft text-success"
-              : "border-error/30 bg-error-soft text-error"
-          }`}
-        >
-          {claimResult.ok ? (
-            <div className="flex items-center gap-2">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-              Listing claimed successfully! It&apos;s now linked to your account.
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="15" y1="9" x2="9" y2="15" />
-                <line x1="9" y1="9" x2="15" y2="15" />
-              </svg>
-              {claimResult.error === "expired"
-                ? "This claim link has expired. Listings must be claimed within 24 hours."
-                : claimResult.error === "already_claimed"
-                  ? "This listing has already been claimed."
-                  : claimResult.error === "invalid_token"
-                    ? "Invalid claim link. Please check your link and try again."
-                    : "Failed to process claim. Please try again."}
-            </div>
-          )}
-        </div>
+        <Alert tone={claimResult.ok ? "success" : "error"} className="mb-6">
+          {claimResult.ok
+            ? "Listing claimed successfully! It's now linked to your account."
+            : claimResult.error === "expired"
+              ? "This claim link has expired. Listings must be claimed within 24 hours."
+              : claimResult.error === "already_claimed"
+                ? "This listing has already been claimed."
+                : claimResult.error === "invalid_token"
+                  ? "Invalid claim link. Please check your link and try again."
+                  : "Failed to process claim. Please try again."}
+        </Alert>
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-action-primary shrink-0"
-            >
-              <rect x="3" y="3" width="6" height="18" rx="1" />
-              <rect x="9" y="9" width="6" height="12" rx="1" />
-              <rect x="15" y="6" width="6" height="15" rx="1" />
-            </svg>
-            <h1 className="text-2xl font-bold text-ink">Seller Dashboard</h1>
-          </div>
-          <p className="text-sm text-ink-secondary">
-            Manage your listings and track AI negotiations
-          </p>
-        </div>
-        <Link
-          href="/sell/listings/new"
-          className="flex items-center gap-2 rounded-full bg-cta px-5 py-2.5 text-sm font-semibold text-on-cta hover:bg-cta-hover transition-colors shrink-0 self-start sm:self-auto"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          New Listing
-        </Link>
-      </div>
+      <PageHeader
+        className="mb-8"
+        icon={<BarChart3 className="size-6" />}
+        title="Seller Dashboard"
+        subtitle="Manage your listings and track AI negotiations"
+        actions={
+          <Link href="/sell/listings/new" className={buttonVariants({ variant: "primary" })}>
+            <Plus className="size-4" />
+            New Listing
+          </Link>
+        }
+      />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <KpiCard
-          icon={
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M20 7h-9" />
-              <path d="M14 17H5" />
-              <circle cx="17" cy="17" r="3" />
-              <circle cx="7" cy="7" r="3" />
-            </svg>
-          }
-          iconColor="text-action-primary"
-          iconBg="bg-action-primary/10"
+      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <StatTile
+          icon={<Tag className="size-5" />}
+          iconTone="accent"
           value={String(activeCount)}
           label="Active Listings"
         />
-        <KpiCard
-          icon={
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          }
-          iconColor="text-info"
-          iconBg="bg-info-soft"
+        <StatTile
+          icon={<MessageSquare className="size-5" />}
+          iconTone="info"
           value="0"
           label="Total Negotiations"
         />
-        <KpiCard
-          icon={
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-              <polyline points="16 7 22 7 22 13" />
-            </svg>
-          }
-          iconColor="text-success"
-          iconBg="bg-success-soft"
+        <StatTile
+          icon={<TrendingUp className="size-5" />}
+          iconTone="success"
           value="0"
           label="Deals Closed"
         />
-        <KpiCard
-          icon={
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="12" y1="1" x2="12" y2="23" />
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          }
-          iconColor="text-warning"
-          iconBg="bg-warning-soft"
+        <StatTile
+          icon={<DollarSign className="size-5" />}
+          iconTone="warning"
           value="$0"
           label="Revenue"
         />
@@ -229,7 +113,7 @@ export function DashboardContent({
       {/* Drafts Section */}
       {drafts.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-lg font-bold text-ink mb-4">Drafts</h2>
+          <h2 className="mb-4 font-bold text-ink text-lg">Drafts</h2>
           <div className="space-y-3">
             {drafts.map((draft) => (
               <DraftCard key={draft.id} draft={draft} />
@@ -239,37 +123,20 @@ export function DashboardContent({
       )}
 
       {/* Listings Section */}
-      <h2 className="text-lg font-bold text-ink mb-4">Your Listings</h2>
+      <h2 className="mb-4 font-bold text-ink text-lg">Your Listings</h2>
 
       {listings.length === 0 ? (
-        <div className="rounded-xl border border-line bg-surface-raised/50 p-8 sm:p-12 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-surface-sunken">
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-ink-muted"
-            >
-              <path d="M20 7h-9" />
-              <path d="M14 17H5" />
-              <circle cx="17" cy="17" r="3" />
-              <circle cx="7" cy="7" r="3" />
-            </svg>
-          </div>
-          <h3 className="text-base sm:text-lg font-semibold text-ink-secondary mb-1">
-            No listings yet
-          </h3>
-          <p className="text-sm text-ink-muted">
-            Create one with <span className="text-action-primary font-mono">/haggle</span> in
-            ChatGPT, then claim it to see it here.
-          </p>
-        </div>
+        <EmptyState
+          className="bg-surface-raised/50"
+          icon={<Tag className="size-6" />}
+          title="No listings yet"
+          description={
+            <>
+              Create one with <span className="font-mono text-action-primary">/haggle</span> in
+              ChatGPT, then claim it to see it here.
+            </>
+          }
+        />
       ) : (
         <div className="space-y-3">
           {listings.map((listing) => (
@@ -281,127 +148,48 @@ export function DashboardContent({
   );
 }
 
-function KpiCard({
-  icon,
-  iconColor,
-  iconBg,
-  value,
-  label,
-}: {
-  icon: React.ReactNode;
-  iconColor: string;
-  iconBg: string;
-  value: string;
-  label: string;
-}) {
-  return (
-    <div className="rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4">
-      <div
-        className={`mb-2 sm:mb-3 flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg ${iconBg}`}
-      >
-        <span className={iconColor}>{icon}</span>
-      </div>
-      <p className="text-xl sm:text-2xl font-bold text-ink">{value}</p>
-      <p className="text-xs sm:text-sm text-ink-secondary mt-0.5">{label}</p>
-    </div>
-  );
-}
-
 function ListingCard({ listing }: { listing: ListingSummary }) {
-  const price = listing.targetPrice ? `$${Number(listing.targetPrice).toLocaleString()}` : "\u2014";
-
-  const conditionLabel = listing.condition
-    ? listing.condition.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : null;
-
-  const meta = [conditionLabel, listing.category].filter(Boolean).join(" \u00b7 ");
+  const price = listing.targetPrice ? formatPrice(Number(listing.targetPrice)) : "—";
+  const conditionLabel = listing.condition ? formatCondition(listing.condition) : null;
+  const meta = [conditionLabel, listing.category].filter(Boolean).join(" · ");
 
   return (
-    <Link
+    <ListRow
       href={`/sell/listings/${listing.id}`}
-      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-line bg-surface-raised/50 p-3 sm:p-4 hover:border-line transition-colors"
-    >
-      {/* Photo or placeholder */}
-      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
-        {listing.photoUrl ? (
-          // biome-ignore lint/performance/noImgElement: remote listing photo
-          <img
-            src={listing.photoUrl}
-            alt={listing.title ?? "Listing"}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-ink-muted"
-          >
-            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-            <line x1="7" y1="7" x2="7.01" y2="7" />
-          </svg>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-ink truncate text-sm sm:text-base">
-            {listing.title ?? "Untitled"}
-          </span>
-          <span className="shrink-0 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
-            {listing.status === "published" ? "active" : listing.status}
+      showChevron
+      leading={
+        <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg bg-surface-sunken sm:size-14">
+          {listing.photoUrl ? (
+            // biome-ignore lint/performance/noImgElement: remote listing photo
+            <img
+              src={listing.photoUrl}
+              alt={listing.title ?? "Listing"}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ImageOff className="size-6 text-ink-muted" />
+          )}
+        </div>
+      }
+      title={listing.title ?? "Untitled"}
+      badges={
+        <Badge tone="success" size="sm">
+          {listing.status === "published" ? "active" : listing.status}
+        </Badge>
+      }
+      meta={meta || undefined}
+      trailing={
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="font-semibold text-ink text-sm sm:text-base">{price}</p>
+            <p className="text-ink-secondary text-xs sm:text-sm">0 negotiations</p>
+          </div>
+          <span className="hidden sm:inline-flex">
+            <ShareButton publicId={listing.publicId} />
           </span>
         </div>
-        {meta && <p className="text-xs sm:text-sm text-ink-secondary">{meta}</p>}
-      </div>
-
-      {/* Price + negotiations */}
-      <div className="shrink-0 text-right mr-1 sm:mr-2">
-        <p className="font-semibold text-ink text-sm sm:text-base">{price}</p>
-        <p className="text-xs sm:text-sm text-ink-secondary">0 negotiations</p>
-      </div>
-
-      {/* Action icons */}
-      <div className="hidden sm:flex items-center gap-2 shrink-0">
-        <ShareButton publicId={listing.publicId} />
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-ink-muted"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </div>
-      {/* Mobile chevron only */}
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="text-ink-muted sm:hidden shrink-0"
-      >
-        <polyline points="9 18 15 12 9 6" />
-      </svg>
-    </Link>
+      }
+    />
   );
 }
 
@@ -409,84 +197,36 @@ function DraftCard({ draft }: { draft: DraftSummary }) {
   const updatedAgo = formatTimeAgo(draft.updatedAt);
 
   return (
-    <Link
+    <ListRow
       href={`/sell/listings/new?draftId=${draft.id}`}
-      className="flex items-center gap-3 sm:gap-4 rounded-xl border border-dashed border-line bg-surface-raised/30 p-3 sm:p-4 hover:border-focus transition-colors"
-    >
-      {/* Photo or placeholder */}
-      <div className="shrink-0 h-12 w-12 sm:h-14 sm:w-14 rounded-lg bg-surface-sunken overflow-hidden flex items-center justify-center">
-        {draft.photoUrl ? (
-          // biome-ignore lint/performance/noImgElement: remote draft photo
-          <img
-            src={draft.photoUrl}
-            alt={draft.title ?? "Draft"}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            width="24"
-            height="24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-ink-muted"
-          >
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-          </svg>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-ink truncate text-sm sm:text-base">
-            {draft.draftName || draft.title || "Untitled Draft"}
-          </span>
-          <span className="shrink-0 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
-            draft
-          </span>
+      showChevron
+      className="border-dashed bg-surface-raised/30"
+      leading={
+        <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg bg-surface-sunken sm:size-14">
+          {draft.photoUrl ? (
+            // biome-ignore lint/performance/noImgElement: remote draft photo
+            <img
+              src={draft.photoUrl}
+              alt={draft.title ?? "Draft"}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <Pencil className="size-6 text-ink-muted" />
+          )}
         </div>
-        <p className="text-xs sm:text-sm text-ink-secondary">
-          {draft.title ? `${draft.title} · ${updatedAgo}` : updatedAgo}
-        </p>
-      </div>
-
-      {/* Resume button */}
-      <div className="shrink-0 flex items-center gap-2">
-        <span className="hidden sm:inline text-xs font-medium text-action-primary">Resume</span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-ink-muted"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </div>
-    </Link>
+      }
+      title={draft.draftName || draft.title || "Untitled Draft"}
+      badges={
+        <Badge tone="warning" size="sm">
+          draft
+        </Badge>
+      }
+      meta={draft.title ? `${draft.title} · ${updatedAgo}` : updatedAgo}
+      trailing={
+        <span className="hidden font-medium text-action-primary text-xs sm:inline">Resume</span>
+      }
+    />
   );
-}
-
-function formatTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 function ShareButton({ publicId }: { publicId: string }) {
@@ -494,8 +234,11 @@ function ShareButton({ publicId }: { publicId: string }) {
   const { track } = useAmplitude();
 
   return (
-    <button
-      type="button"
+    <IconButton
+      variant="ghost"
+      aria-label="Copy share link"
+      title="Copy share link"
+      className="size-8"
       onClick={(e) => {
         e.preventDefault();
         const url = `${window.location.origin}/l/${publicId}`;
@@ -504,43 +247,8 @@ function ShareButton({ publicId }: { publicId: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="p-1.5 rounded-lg hover:bg-surface-sunken text-ink-secondary hover:text-ink transition-colors cursor-pointer"
-      title="Copy share link"
     >
-      {copied ? (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-success"
-        >
-          <path d="M20 6 9 17l-5-5" />
-        </svg>
-      ) : (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="18" cy="5" r="3" />
-          <circle cx="6" cy="12" r="3" />
-          <circle cx="18" cy="19" r="3" />
-          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-        </svg>
-      )}
-    </button>
+      {copied ? <Check className="size-4 text-success" /> : <Share2 className="size-4" />}
+    </IconButton>
   );
 }
