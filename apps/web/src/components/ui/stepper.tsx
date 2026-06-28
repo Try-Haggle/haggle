@@ -8,10 +8,19 @@ export interface StepperProps {
   current: number;
   /** When provided, step markers become buttons calling this with the step index. */
   onStepClick?: (index: number) => void;
+  /** Show step labels next to markers (sm+). Turn off in tight spaces (e.g. a
+   *  narrow modal) for a compact full-width marker row. Default true. */
+  showLabels?: boolean;
   className?: string;
 }
 
-export function Stepper({ steps, current, onStepClick, className }: StepperProps) {
+export function Stepper({
+  steps,
+  current,
+  onStepClick,
+  showLabels = true,
+  className,
+}: StepperProps) {
   return (
     <div className={cn("flex items-center", className)}>
       {steps.map((label, i) => {
@@ -44,14 +53,16 @@ export function Stepper({ steps, current, onStepClick, className }: StepperProps
               ) : (
                 <span className={markerClassName}>{markerContent}</span>
               )}
-              <span
-                className={cn(
-                  "hidden font-medium text-sm sm:inline",
-                  active ? "text-ink" : "text-ink-muted",
-                )}
-              >
-                {label}
-              </span>
+              {showLabels && (
+                <span
+                  className={cn(
+                    "hidden font-medium text-sm sm:inline",
+                    active ? "text-ink" : "text-ink-muted",
+                  )}
+                >
+                  {label}
+                </span>
+              )}
             </div>
           </Fragment>
         );

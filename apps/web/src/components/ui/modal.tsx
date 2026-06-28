@@ -69,13 +69,15 @@ export function Modal({
         aria-labelledby={title ? titleId : undefined}
         tabIndex={-1}
         className={cn(
-          "relative w-full rounded-2xl border border-line bg-surface-raised shadow-xl",
+          // flex column + max height so tall content scrolls in the body while
+          // the title/footer stay pinned.
+          "relative flex max-h-[90vh] w-full flex-col rounded-2xl border border-line bg-surface-raised shadow-xl",
           sizeClass[size],
           className,
         )}
       >
         {title && (
-          <div className="flex items-center justify-between gap-3 border-line border-b px-5 py-4">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-line border-b px-5 py-4">
             <h2 id={titleId} className="font-semibold text-ink text-lg">
               {title}
             </h2>
@@ -91,9 +93,11 @@ export function Modal({
             )}
           </div>
         )}
-        <div className="px-5 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-line border-t px-5 py-4">{footer}</div>
+          <div className="flex shrink-0 justify-end gap-2 border-line border-t px-5 py-4">
+            {footer}
+          </div>
         )}
       </div>
     </div>,

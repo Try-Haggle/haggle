@@ -12,6 +12,7 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { NegotiationAgentBuilderChat } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import { Alert, BackLink, Spinner } from "@/components/ui";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import {
   deleteNegotiationAgent,
@@ -112,23 +113,20 @@ export function EditAgentForm() {
 
   if (agent === undefined) {
     return (
-      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8">
-        <p className="text-ink-secondary text-[13px]">Loading agent…</p>
+      <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
+        <div className="flex items-center gap-2 text-[13px] text-ink-secondary">
+          <Spinner size="sm" />
+          Loading agent…
+        </div>
       </div>
     );
   }
 
   if (agent === null) {
     return (
-      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8">
-        <p className="text-error text-[13px] mb-3">Agent not found. It may have been deleted.</p>
-        <button
-          type="button"
-          onClick={() => router.push(backHref)}
-          className="text-[13px] text-action-primary hover:text-action-primary-hover"
-        >
-          ← Back to Agents
-        </button>
+      <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6">
+        <p className="mb-3 text-[13px] text-error">Agent not found. It may have been deleted.</p>
+        <BackLink href={backHref}>Back to Agents</BackLink>
       </div>
     );
   }
@@ -137,9 +135,7 @@ export function EditAgentForm() {
     <>
       {error && (
         <div className="mx-auto mb-4 max-w-[1100px] px-4 sm:px-6">
-          <div className="rounded-md border border-error/30 bg-error-soft px-3 py-2 text-sm text-error">
-            {error}
-          </div>
+          <Alert tone="error">{error}</Alert>
         </div>
       )}
       <AgentBuilder

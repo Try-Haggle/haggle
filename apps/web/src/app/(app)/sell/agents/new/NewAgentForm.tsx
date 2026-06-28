@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { NegotiationAgentBuilderChat } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import { Alert } from "@/components/ui";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import { createNegotiationAgent, type NegotiationAgentConfig } from "@/lib/negotiation-agents-api";
 import { AgentBuilder } from "../_components/AgentBuilder";
@@ -79,9 +80,7 @@ export function NewAgentForm({ role, initialPresetId }: NewAgentFormProps) {
     <>
       {error && (
         <div className="mx-auto mb-4 max-w-[1100px] px-4 sm:px-6">
-          <div className="rounded-md border border-error/30 bg-error-soft px-3 py-2 text-sm text-error">
-            {error}
-          </div>
+          <Alert tone="error">{error}</Alert>
         </div>
       )}
       <AgentBuilder

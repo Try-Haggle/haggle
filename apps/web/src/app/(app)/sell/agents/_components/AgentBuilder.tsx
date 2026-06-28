@@ -13,6 +13,7 @@ import {
   type NegotiationAgentPresetId,
   resolveEffectivePreset,
 } from "@haggle/shared";
+import { Save, Settings2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -20,6 +21,8 @@ import {
   AdvancedSettingsModal,
 } from "@/components/agents/AdvancedSettingsModal";
 import { StrategyRadar } from "@/components/agents/StrategyRadar";
+import { Button, buttonVariants, Input, PageHeader } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { draftNegotiationAgentStore } from "@/lib/draft-negotiation-agent-store";
 import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
 import { AgentsList } from "./AgentsList";
@@ -184,14 +187,7 @@ export function AgentBuilder({
 
   const savedConfirmation =
     embedded && savedAsId && value?.source.id === savedAsId ? (
-      <div
-        className="rounded-md px-3 py-2 text-[11px]"
-        style={{
-          background: "var(--fb-success-bg)",
-          border: "1px solid color-mix(in srgb, var(--fb-success-fg) 40%, transparent)",
-          color: "var(--fb-success-fg)",
-        }}
-      >
+      <div className="rounded-md border border-success/40 bg-success-soft px-3 py-2 text-[11px] text-success">
         ✓ Saved to My Agents — reusable in future listings.
       </div>
     ) : null;
@@ -222,22 +218,15 @@ export function AgentBuilder({
       }
     />
   ) : (
-    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8 sm:py-10">
-      <div className="flex items-center justify-between mb-6 gap-3">
-        <div>
-          <h1 className="text-[22px] font-bold text-ink mb-1">{pageTitle ?? "Create Agent"}</h1>
-          <p className="text-[13px] text-ink-secondary">
-            {pageSubtitle ??
-              `Your AI will handle ${role === "seller" ? "buyer" : "seller"} negotiations automatically. Pick a style and customize its approach.`}
-          </p>
-        </div>
-        <Link
-          href={resolvedBackHref}
-          className="text-[13px] text-ink-secondary hover:text-ink whitespace-nowrap"
-        >
-          ← Back
-        </Link>
-      </div>
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6 sm:py-10">
+      <PageHeader
+        backHref={resolvedBackHref}
+        title={pageTitle ?? "Create Agent"}
+        subtitle={
+          pageSubtitle ??
+          `Your AI will handle ${role === "seller" ? "buyer" : "seller"} negotiations automatically. Pick a style and customize its approach.`
+        }
+      />
 
       <SplitLayout
         role={role}
@@ -254,20 +243,18 @@ export function AgentBuilder({
         right={
           <>
             {/* Name input */}
-            <div className="bg-surface-raised border border-line rounded-xl p-5">
+            <div className="rounded-xl border border-line bg-surface-raised p-5">
               <label
                 htmlFor="agent-name"
-                className="block text-[11px] font-bold tracking-wider uppercase text-ink-secondary mb-2"
+                className="mb-2 block font-bold text-[11px] text-ink-secondary uppercase tracking-wider"
               >
                 Agent Name
               </label>
-              <input
+              <Input
                 id="agent-name"
-                type="text"
                 value={name}
                 onChange={(e) => onNameChange?.(e.target.value)}
                 placeholder={copy?.name ?? "Untitled Agent"}
-                className="w-full px-3 py-2 text-sm rounded-md bg-surface-sunken/60 border border-line text-ink placeholder:text-ink-muted focus:outline-none focus:border-focus focus:ring-1 focus:ring-focus"
               />
             </div>
 
@@ -290,14 +277,9 @@ export function AgentBuilder({
                   !value || saving || !onSave || isExistingClean || editDisabledByClean;
                 return (
                   <>
-                    <button
-                      type="button"
-                      onClick={onSave}
-                      disabled={disabled}
-                      className="w-full px-4 py-2.5 text-sm font-bold rounded-md bg-cta text-on-cta hover:bg-cta-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                    <Button fullWidth loading={saving} disabled={disabled} onClick={onSave}>
                       {saving ? "Saving..." : (saveLabel ?? "Save Agent")}
-                    </button>
+                    </Button>
                     {isExistingClean && (
                       <p className="text-[11px] text-ink-muted text-center">
                         Already saved. Change something to save a new version.
@@ -311,33 +293,15 @@ export function AgentBuilder({
               })()}
               <Link
                 href={resolvedBackHref}
-                className="block w-full px-4 py-2.5 text-sm font-medium rounded-md text-center text-ink-secondary bg-surface-sunken border border-line hover:bg-surface-overlay transition-colors"
+                className={cn(buttonVariants({ variant: "secondary", fullWidth: true }))}
               >
                 Cancel
               </Link>
               {onDelete && (
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-error-soft border border-error/40 text-error hover:bg-error-soft transition-colors"
-                >
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M3 6h18" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
+                <Button variant="destructive" fullWidth onClick={onDelete}>
+                  <Trash2 className="size-3.5" />
                   Delete agent
-                </button>
+                </Button>
               )}
             </div>
           </>
@@ -453,24 +417,11 @@ function RightSidebar({
         type="button"
         onClick={onOpenAdvanced}
         disabled={!effective}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-info-soft border border-info/40 text-info hover:bg-info-soft transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-info/40 bg-info-soft px-4 py-2.5 font-medium text-info text-sm transition-colors hover:bg-info-soft disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
+        <Settings2 className="size-3.5" />
         Advanced Settings
-        {hasOverrides && <span className="text-[10px] font-mono ml-1">●</span>}
+        {hasOverrides && <span className="ml-1 font-mono text-[10px]">●</span>}
       </button>
     </>
   );
@@ -500,38 +451,17 @@ function SaveAsAgentControl({
       <button
         type="button"
         onClick={onOpen}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-action-primary/10 border border-action-primary/40 text-action-primary hover:bg-action-primary/20 transition-colors"
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-action-primary/40 bg-action-primary/10 px-4 py-2.5 font-medium text-action-primary text-sm transition-colors hover:bg-action-primary/20"
       >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-          <polyline points="17 21 17 13 7 13 7 21" />
-          <polyline points="7 3 7 8 15 8" />
-        </svg>
+        <Save className="size-3.5" />
         Save as new agent
       </button>
     );
   }
   return (
-    <div
-      className="rounded-md p-3"
-      style={{
-        background: "color-mix(in srgb, var(--fb-success-fg) 6%, transparent)",
-        border: "1px solid color-mix(in srgb, var(--fb-success-fg) 40%, transparent)",
-      }}
-    >
-      <p className="text-[11px] text-ink-secondary mb-2">Save as new agent</p>
-      <input
-        type="text"
+    <div className="rounded-md border border-success/40 bg-success-soft p-3">
+      <p className="mb-2 text-[11px] text-ink-secondary">Save as new agent</p>
+      <Input
         value={name}
         onChange={(e) => onNameChange(e.target.value)}
         onKeyDown={(e) => {
@@ -539,23 +469,15 @@ function SaveAsAgentControl({
           else if (e.key === "Escape") onCancel();
         }}
         placeholder={`${baseName} (custom)`}
-        className="w-full px-2.5 py-1.5 text-[12px] rounded-md bg-surface-sunken/60 border border-line text-ink placeholder:text-ink-muted focus:outline-none focus:border-focus focus:ring-1 focus:ring-focus mb-2"
+        className="mb-2"
       />
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="flex-1 px-3 py-1.5 text-[12px] font-bold rounded-md bg-cta text-on-cta hover:bg-cta-hover"
-        >
+        <Button size="sm" className="flex-1" onClick={onConfirm}>
           Save
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 text-[12px] text-ink-secondary hover:text-ink"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

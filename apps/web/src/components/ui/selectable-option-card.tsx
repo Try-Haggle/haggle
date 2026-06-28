@@ -1,7 +1,7 @@
 import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-export type SelectableOptionCardProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+export type SelectableOptionCardProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
   selected?: boolean;
   icon?: ReactNode;
   title: ReactNode;

@@ -19,6 +19,16 @@ const valueTone = {
   info: "text-info",
 } as const;
 
+// Tinted icon-chip palettes (KPI cards). Omit to use the default sunken chip.
+const iconToneStyles = {
+  accent: "bg-action-primary/10 text-action-primary",
+  success: "bg-success-soft text-success",
+  warning: "bg-warning-soft text-warning",
+  error: "bg-error-soft text-error",
+  info: "bg-info-soft text-info",
+  neutral: "bg-surface-sunken text-ink-muted",
+} as const;
+
 export interface StatTileProps extends VariantProps<typeof statTileVariants> {
   label: ReactNode;
   value: ReactNode;
@@ -28,6 +38,8 @@ export interface StatTileProps extends VariantProps<typeof statTileVariants> {
   icon?: ReactNode;
   /** Color of the value. */
   tone?: keyof typeof valueTone;
+  /** Tint of the icon chip. Defaults to the sunken/accent chip. */
+  iconTone?: keyof typeof iconToneStyles;
   className?: string;
 }
 
@@ -37,6 +49,7 @@ export function StatTile({
   sub,
   icon,
   tone = "default",
+  iconTone,
   size,
   align,
   className,
@@ -45,7 +58,12 @@ export function StatTile({
   return (
     <div className={cn(statTileVariants({ size, align }), className)}>
       {icon && (
-        <div className="mb-2 flex size-9 items-center justify-center rounded-lg bg-surface-sunken text-action-primary">
+        <div
+          className={cn(
+            "mb-2 flex size-9 items-center justify-center rounded-lg",
+            iconTone ? iconToneStyles[iconTone] : "bg-surface-sunken text-action-primary",
+          )}
+        >
           {icon}
         </div>
       )}

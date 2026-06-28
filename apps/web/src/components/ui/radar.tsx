@@ -15,10 +15,13 @@ export interface RadarProps {
   showLabels?: boolean;
   /** Series color (CSS color). Defaults to the brand action color. */
   color?: string;
+  /** When set, the chart is exposed as an accessible `img` with this label;
+   *  otherwise it is `aria-hidden` (decorative). */
+  ariaLabel?: string;
   className?: string;
 }
 
-/** Generic radar/spider chart. Theme-aware via currentColor on grid/series. */
+/** Generic radar/spider chart for any axis count. Theme-aware via currentColor on grid/series. */
 export function Radar({
   axes,
   size = 180,
@@ -26,6 +29,7 @@ export function Radar({
   levels = 4,
   showLabels = true,
   color,
+  ariaLabel,
   className,
 }: RadarProps) {
   const pad = showLabels ? 28 : 8;
@@ -48,7 +52,9 @@ export function Radar({
       viewBox={`0 0 ${size} ${size}`}
       className={cn("h-auto w-full", className)}
       style={{ maxWidth: size }}
-      aria-hidden="true"
+      role={ariaLabel ? "img" : undefined}
+      aria-label={ariaLabel}
+      aria-hidden={ariaLabel ? undefined : true}
     >
       <g className="text-line" stroke="currentColor" fill="none">
         {Array.from({ length: levels }, (_, l) => l + 1).map((level) => (

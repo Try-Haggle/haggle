@@ -11,12 +11,26 @@ import {
   type NegotiationAgentPresetId,
   resolveEffectivePreset,
 } from "@haggle/shared";
+import { ChevronLeft, ChevronRight, Link2, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   NegotiationAgentBuilderChat,
   type NegotiationAgentBuilderMemory,
 } from "@/app/l/[publicId]/negotiation-agent-builder-chat";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Chip,
+  CopyButton,
+  Dropzone,
+  IconButton,
+  Input,
+  Modal,
+  Spinner,
+  Textarea,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
 import { createNegotiationAgent } from "@/lib/negotiation-agents-api";
 import { createClient } from "@/lib/supabase/client";
@@ -132,7 +146,6 @@ export function NewListingWizard({
   resumeDraftId?: string;
 }) {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { track } = useAmplitude();
 
   // Wizard state
@@ -149,7 +162,6 @@ export function NewListingWizard({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
 
   // Step 2: Title & Description
   const [title, setTitle] = useState("");
@@ -186,7 +198,6 @@ export function NewListingWizard({
     publicId: string;
     shareUrl: string;
   } | null>(null);
-  const [copied, setCopied] = useState(false);
   const [storyDownloading, setStoryDownloading] = useState(false);
 
   // Seller-side display copy for headers/summary.
@@ -348,28 +359,6 @@ export function NewListingWizard({
     setPhotoPreview(URL.createObjectURL(file));
     setPhotoUrl(null);
     setError(null);
-  }
-
-  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(true);
-  }
-
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
   }
 
   async function uploadPhoto(dId: string): Promise<string | null> {
@@ -749,83 +738,32 @@ export function NewListingWizard({
     };
 
     return (
-      <div
-        className="fixed inset-0 z-50 overflow-y-auto px-4 py-12"
-        style={{ background: "var(--bg-primary)" }}
-      >
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-surface px-4 py-12">
         <div className="mx-auto w-full max-w-lg text-center">
-          <div
-            className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-xl"
-            style={{
-              background: "color-mix(in srgb, var(--fb-success-fg) 12%, transparent)",
-              border: "1.5px solid color-mix(in srgb, var(--fb-success-fg) 35%, transparent)",
-            }}
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="32"
-              height="32"
-              fill="none"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ stroke: "var(--fb-success-fg)" }}
-            >
-              <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-              <path d="M20 3v4" />
-              <path d="M22 5h-4" />
-              <path d="M4 17v2" />
-              <path d="M5 18H3" />
-            </svg>
+          <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-xl border border-success/35 bg-success-soft text-success">
+            <Sparkles className="size-8" strokeWidth={1.5} />
           </div>
 
-          <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text-primary)" }}>
-            Your listing is live!
-          </h2>
-          <p
-            className="mx-auto mb-8 max-w-sm text-sm leading-relaxed"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <h2 className="mb-2 font-bold text-2xl text-ink">Your listing is live!</h2>
+          <p className="mx-auto mb-8 max-w-sm text-ink-secondary text-sm leading-relaxed">
             Share the link below. Buyers will negotiate with your AI agent automatically.
           </p>
 
           {/* Item Summary */}
-          <div
-            className="flex items-center gap-4 rounded-xl text-left mb-8"
-            style={{
-              padding: "18px 20px",
-              background: "var(--bg-raised)",
-              border: "1px solid var(--border-default)",
-            }}
-          >
+          <div className="mb-8 flex items-center gap-4 rounded-xl border border-line bg-surface-raised p-5 text-left">
             {photoPreview ? (
               // biome-ignore lint/performance/noImgElement: local object-URL photo preview
-              <img
-                src={photoPreview}
-                alt=""
-                className="h-14 w-14 shrink-0 rounded-lg object-cover"
-              />
+              <img src={photoPreview} alt="" className="size-14 shrink-0 rounded-lg object-cover" />
             ) : (
-              <div
-                className="h-14 w-14 shrink-0 rounded-lg"
-                style={{ background: "var(--border-default)" }}
-              />
+              <div className="size-14 shrink-0 rounded-lg bg-surface-sunken" />
             )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                {title || "Untitled"}
-              </p>
-              <p className="text-xl font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
-                {formatPrice(targetPrice)}
-              </p>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-ink text-sm">{title || "Untitled"}</p>
+              <p className="mt-0.5 font-bold text-ink text-xl">{formatPrice(targetPrice)}</p>
               {agentValue && selectedCopy && (
-                <p
-                  className="flex items-center gap-1.5 text-xs mt-1"
-                  style={{ color: "var(--fb-success-fg)" }}
-                >
+                <p className="mt-1 flex items-center gap-1.5 text-success text-xs">
                   <span
-                    className="h-2 w-2 shrink-0 rounded-full"
+                    className="size-2 shrink-0 rounded-full"
                     style={{ background: resolveEffectivePreset(agentValue).accentColor }}
                   />
                   Agent: {selectedCopy.name}
@@ -835,113 +773,29 @@ export function NewListingWizard({
           </div>
 
           {/* Share Link */}
-          <p
-            className="mb-2.5 text-left text-xs font-bold tracking-widest"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          <p className="mb-2.5 text-left font-bold text-ink-secondary text-xs tracking-widest">
             YOUR HAGGLE LINK
           </p>
-          <div
-            className="flex items-center gap-3 rounded-xl mb-6"
-            style={{
-              padding: "16px 18px",
-              background: "var(--bg-raised)",
-              border: "1px solid var(--border-default)",
-            }}
-          >
-            <svg
-              aria-hidden="true"
-              className="shrink-0"
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              fill="none"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ stroke: "var(--text-secondary)" }}
-            >
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-            <span
-              className="flex-1 truncate text-left text-sm"
-              style={{ color: "var(--text-primary)" }}
-            >
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-line bg-surface-raised p-4">
+            <Link2 className="size-4.5 shrink-0 text-ink-secondary" />
+            <span className="flex-1 truncate text-left text-ink text-sm">
               {publishResult.shareUrl}
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(publishResult.shareUrl);
+            <CopyButton
+              value={publishResult.shareUrl}
+              onCopy={() =>
                 track("Share Link Copied", {
                   public_id: publishResult.publicId,
                   source: "publish_screen",
-                });
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors"
-              style={{
-                background: "var(--bg-sunken)",
-                border: "1px solid var(--border-default)",
-                color: "var(--text-secondary)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--action-primary)";
-                e.currentTarget.style.color = "var(--action-primary)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--border-default)";
-                e.currentTarget.style.color = "var(--text-secondary)";
-              }}
-            >
-              {copied ? (
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                </svg>
-              )}
-            </button>
+                })
+              }
+            />
           </div>
 
           {/* Instagram Story Share */}
-          <div
-            className="mb-3 rounded-xl text-left"
-            style={{
-              padding: "18px 20px",
-              background: "var(--bg-raised)",
-              border: "1px solid var(--border-default)",
-            }}
-          >
-            <p className="text-sm font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>
-              Share to Instagram Story
-            </p>
-            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          <div className="mb-3 rounded-xl border border-line bg-surface-raised p-5 text-left">
+            <p className="mb-0.5 font-semibold text-ink text-sm">Share to Instagram Story</p>
+            <p className="mb-4 text-ink-muted text-xs">
               Buyers tap your link → AI handles the rest
             </p>
             <button
@@ -985,54 +839,27 @@ export function NewListingWizard({
                 window.open(ogUrl, "_blank", "noopener,noreferrer");
                 setStoryDownloading(false);
               }}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                padding: "10px 16px",
-                background: "color-mix(in srgb, var(--action-primary) 8%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--action-primary) 25%, transparent)",
-                color: "var(--action-primary)",
-              }}
-              onMouseEnter={(e) => {
-                if (!storyDownloading)
-                  e.currentTarget.style.background =
-                    "color-mix(in srgb, var(--action-primary) 14%, transparent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background =
-                  "color-mix(in srgb, var(--action-primary) 8%, transparent)";
-              }}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-action-primary/25 bg-action-primary/10 px-4 py-2.5 font-semibold text-action-primary text-sm transition-colors hover:bg-action-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {storyDownloading ? "Preparing…" : "📥 Download story card"}
             </button>
-            <ol className="mt-4 space-y-1 pl-4 text-xs" style={{ color: "var(--text-muted)" }}>
+            <ol className="mt-4 space-y-1 pl-4 text-ink-muted text-xs">
               <li>Save the card to your phone.</li>
               <li>Open Instagram → Create Story → upload the card.</li>
               <li>
-                Tap the sticker icon →{" "}
-                <strong style={{ color: "var(--text-secondary)" }}>Link</strong> → paste your Haggle
-                link (already copied above).
+                Tap the sticker icon → <strong className="text-ink-secondary">Link</strong> → paste
+                your Haggle link (already copied above).
               </li>
             </ol>
-            <p className="mt-3 text-xs" style={{ color: "var(--border-strong)" }}>
+            <p className="mt-3 text-ink-muted text-xs">
               The link sticker is what makes buyers tap through. Don't skip it.
             </p>
           </div>
 
           {/* Share on X */}
-          <div
-            className="mb-6 rounded-xl text-left"
-            style={{
-              padding: "18px 20px",
-              background: "var(--bg-raised)",
-              border: "1px solid var(--border-default)",
-            }}
-          >
-            <p className="text-sm font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>
-              Share on X
-            </p>
-            <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-              Post your listing link directly to X
-            </p>
+          <div className="mb-6 rounded-xl border border-line bg-surface-raised p-5 text-left">
+            <p className="mb-0.5 font-semibold text-ink text-sm">Share on X</p>
+            <p className="mb-4 text-ink-muted text-xs">Post your listing link directly to X</p>
             <button
               type="button"
               onClick={() => {
@@ -1040,21 +867,7 @@ export function NewListingWizard({
                 const url = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(publishResult.shareUrl)}`;
                 window.open(url, "_blank", "noopener,noreferrer");
               }}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors"
-              style={{
-                padding: "10px 16px",
-                background: "color-mix(in srgb, var(--action-primary) 8%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--action-primary) 25%, transparent)",
-                color: "var(--action-primary)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background =
-                  "color-mix(in srgb, var(--action-primary) 14%, transparent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background =
-                  "color-mix(in srgb, var(--action-primary) 8%, transparent)";
-              }}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-action-primary/25 bg-action-primary/10 px-4 py-2.5 font-semibold text-action-primary text-sm transition-colors hover:bg-action-primary/15"
             >
               <svg
                 aria-hidden="true"
@@ -1072,14 +885,7 @@ export function NewListingWizard({
           <button
             type="button"
             onClick={() => router.push("/sell/dashboard")}
-            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border-none text-sm font-semibold text-ink transition-colors"
-            style={{ background: "var(--fb-success-fg)", padding: "14px 24px" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--fb-success-fg)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--fb-success-fg)";
-            }}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-success px-6 py-3.5 font-semibold text-on-accent text-sm transition-opacity hover:opacity-90"
           >
             Go to Dashboard
           </button>
@@ -1108,197 +914,64 @@ export function NewListingWizard({
       `}</style>
 
       {/* ── Exit Modal ── */}
-      {showExitModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center px-4"
-          style={{ animation: "modal-overlay-in 0.2s ease-out" }}
-        >
-          {/* Backdrop */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: decorative backdrop dismiss; close button provides the keyboard path */}
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: decorative backdrop dismiss; close button provides the keyboard path */}
-          <div
-            className="absolute inset-0"
-            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-            onClick={() => setShowExitModal(false)}
-          />
-
-          {/* Modal */}
-          <div
-            className="relative w-full max-w-sm rounded-2xl p-6"
-            style={{
-              background: "var(--bg-raised)",
-              border: "1px solid var(--border-default)",
-              boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
-              animation: "modal-content-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-                Save as draft?
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowExitModal(false)}
-                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors"
-                style={{ color: "var(--text-muted)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background =
-                    "color-mix(in srgb, var(--text-secondary) 10%, transparent)";
-                  e.currentTarget.style.color = "var(--text-primary)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                }}
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <path d="M18 6 6 18" />
-                  <path d="m6 6 12 12" />
-                </svg>
-              </button>
-            </div>
-            <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
-              You can resume this listing anytime from your dashboard.
-            </p>
-
-            {/* Draft name input — only for new drafts */}
-            {!resumeDraftId && (
-              <>
-                <label
-                  htmlFor="wf-1"
-                  className="block text-xs font-medium mb-2"
-                  style={{ color: "var(--text-secondary)" }}
-                >
-                  Draft name
-                </label>
-                <input
-                  id="wf-1"
-                  type="text"
-                  value={draftName}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  placeholder="Draft 1"
-                  className="mb-6 w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors"
-                  style={{
-                    background: "var(--bg-primary)",
-                    borderColor: "var(--border-default)",
-                    color: "var(--text-primary)",
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "var(--action-primary)")}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveDraft();
-                  }}
-                />
-              </>
-            )}
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleDiscard}
-                className="flex-1 cursor-pointer rounded-xl border py-2.5 text-sm font-medium transition-colors"
-                style={{
-                  borderColor: "var(--border-default)",
-                  color: "var(--text-secondary)",
-                  background: "transparent",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "var(--border-strong)";
-                  e.currentTarget.style.color = "var(--text-primary)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "var(--border-default)";
-                  e.currentTarget.style.color = "var(--text-secondary)";
-                }}
-              >
-                Exit
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                disabled={saving}
-                className="flex-1 cursor-pointer rounded-xl border-none py-2.5 text-sm font-semibold text-ink transition-colors disabled:opacity-40"
-                style={{ background: "var(--action-primary)" }}
-                onMouseEnter={(e) => {
-                  if (!saving) e.currentTarget.style.background = "var(--action-primary-hover)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--action-primary)";
-                }}
-              >
-                {saving ? "Saving..." : "Save Draft"}
-              </button>
-            </div>
+      <Modal
+        open={showExitModal}
+        onClose={() => setShowExitModal(false)}
+        title="Save as draft?"
+        size="sm"
+        footer={
+          <div className="flex w-full gap-3">
+            <Button variant="secondary" className="flex-1" onClick={handleDiscard}>
+              Exit
+            </Button>
+            <Button className="flex-1" loading={saving} onClick={handleSaveDraft}>
+              {saving ? "Saving..." : "Save Draft"}
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <p className="mb-5 text-ink-muted text-sm">
+          You can resume this listing anytime from your dashboard.
+        </p>
+        {/* Draft name input — only for new drafts */}
+        {!resumeDraftId && (
+          <div>
+            <label htmlFor="wf-1" className="mb-2 block font-medium text-ink-secondary text-xs">
+              Draft name
+            </label>
+            <Input
+              id="wf-1"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              placeholder="Draft 1"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveDraft();
+              }}
+            />
+          </div>
+        )}
+      </Modal>
 
       {/* ── Progress bar — pinned to top edge ── */}
-      <div
-        className="absolute top-0 left-0 right-0 z-10 h-[3px]"
-        style={{ background: "color-mix(in srgb, var(--border-default) 50%, transparent)" }}
-      >
+      <div className="absolute top-0 right-0 left-0 z-10 h-[3px] bg-line/50">
         <div
-          className="h-full rounded-r-full transition-all duration-700 ease-out"
-          style={{
-            width: `${(step / TOTAL_STEPS) * 100}%`,
-            background: "linear-gradient(90deg, var(--action-primary), var(--action-primary))",
-            boxShadow: "0 0 12px color-mix(in srgb, var(--action-primary) 40%, transparent)",
-          }}
+          className="h-full rounded-r-full bg-action-primary transition-all duration-700 ease-out"
+          style={{ width: `${(step / TOTAL_STEPS) * 100}%` }}
         />
       </div>
 
       {/* ── Close button — top right ── */}
       <div className="absolute top-4 right-5 z-10 sm:top-5 sm:right-8">
-        <button
-          type="button"
+        <IconButton
+          variant="outline"
+          shape="circle"
           onClick={handleExitClick}
           disabled={saving}
-          className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border transition-all disabled:opacity-40"
-          style={{
-            borderColor: "var(--border-default)",
-            color: "var(--text-muted)",
-            background: "rgba(10,15,26,0.8)",
-            backdropFilter: "blur(8px)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--border-strong)";
-            e.currentTarget.style.color = "var(--text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--border-default)";
-            e.currentTarget.style.color = "var(--text-muted)";
-          }}
+          aria-label="Save & Exit"
           title="Save & Exit"
         >
-          {saving ? (
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-line-strong border-t-action-primary" />
-          ) : (
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          )}
-        </button>
+          {saving ? <Spinner size="sm" /> : <X className="size-4.5" />}
+        </IconButton>
       </div>
 
       {/* ── Scrollable content area — vertically centered ── */}
@@ -1313,126 +986,34 @@ export function NewListingWizard({
           >
             {/* Step title & subtitle */}
             <div className="mb-10">
-              <h1
-                className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight"
-                style={{ color: "var(--text-primary)" }}
-              >
+              <h1 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight text-ink">
                 {STEP_TITLES[step - 1]}
               </h1>
-              <p className="text-sm sm:text-base" style={{ color: "var(--text-muted)" }}>
-                {STEP_SUBTITLES[step - 1]}
-              </p>
+              <p className="text-sm sm:text-base text-ink-muted">{STEP_SUBTITLES[step - 1]}</p>
             </div>
 
             {/* Error */}
             {error && (
-              <div className="mb-6 rounded-xl border border-error/20 bg-error-500/5 px-4 py-3 text-sm text-error">
+              <Alert tone="error" className="mb-6">
                 {error}
-              </div>
+              </Alert>
             )}
 
             {/* ── STEP 1: Photo ── */}
             {step === 1 && (
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={handlePhotoSelect}
-                />
-                {photoPreview ? (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    className="group relative aspect-square w-full cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed transition-colors"
-                    style={{
-                      borderColor: dragging ? "var(--action-primary)" : "var(--border-strong)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!dragging) e.currentTarget.style.borderColor = "var(--action-primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!dragging) e.currentTarget.style.borderColor = "var(--border-strong)";
-                    }}
-                  >
-                    {/* biome-ignore lint/performance/noImgElement: local object-URL photo preview */}
-                    <img src={photoPreview} alt="Preview" className="h-full w-full object-cover" />
-                    <div
-                      className={`absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 transition-opacity ${dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-                    >
-                      <svg
-                        aria-hidden="true"
-                        width="28"
-                        height="28"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" x2="12" y1="3" y2="15" />
-                      </svg>
-                      <span className="text-sm font-medium text-ink">
-                        {dragging ? "Drop to replace" : "Change photo"}
-                      </span>
-                    </div>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    className="mx-auto flex aspect-square w-full max-w-lg cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed transition-colors"
-                    style={{
-                      borderColor: dragging ? "var(--action-primary)" : "var(--border-strong)",
-                      color: dragging ? "var(--action-primary)" : "var(--text-secondary)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!dragging) {
-                        e.currentTarget.style.borderColor = "var(--action-primary)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!dragging) {
-                        e.currentTarget.style.borderColor = "var(--border-strong)";
-                        e.currentTarget.style.color = "var(--text-secondary)";
-                      }
-                    }}
-                  >
-                    <svg
-                      aria-hidden="true"
-                      width="40"
-                      height="40"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ opacity: dragging ? 0.8 : 0.4 }}
-                    >
-                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                      <circle cx="9" cy="9" r="2" />
-                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                    </svg>
-                    <span className="text-sm">
-                      {dragging ? "Drop your photo here" : "Click or drag a photo here"}
-                    </span>
-                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      PNG, JPG or WebP · Max 5 MB
-                    </span>
-                  </button>
-                )}
-              </div>
+              <Dropzone
+                accept="image/png,image/jpeg,image/webp"
+                className="mx-auto aspect-square w-full max-w-lg"
+                preview={photoPreview ?? undefined}
+                previewLabel="Change photo"
+                buttonLabel=""
+                label="Click or drag a photo here"
+                hint="PNG, JPG or WebP · Max 5 MB"
+                onFiles={(files) => {
+                  const file = files[0];
+                  if (file) processFile(file);
+                }}
+              />
             )}
 
             {/* ── STEP 2: Title & Description ── */}
@@ -1441,53 +1022,34 @@ export function NewListingWizard({
                 <div>
                   <label
                     htmlFor="wf-2"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
+                    className="mb-2 block font-semibold text-ink-secondary text-xs uppercase tracking-wider"
                   >
-                    Title <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                    Title <span className="text-warning">*</span>
                   </label>
-                  <input
+                  <Input
                     id="wf-2"
-                    type="text"
                     value={title}
                     onChange={(e) => {
                       setTitle(e.target.value);
                       if (error) setError(null);
                     }}
                     placeholder="e.g. MacBook Pro M3, 14 inch"
-                    className="w-full rounded-xl border px-4 py-3 text-sm outline-none transition-colors"
-                    style={{
-                      background: "var(--bg-raised)",
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-primary)",
-                    }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = "var(--action-primary)")}
-                    onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
                   />
                 </div>
 
                 <div>
                   <label
                     htmlFor="wf-3"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
+                    className="mb-2 block font-semibold text-ink-secondary text-xs uppercase tracking-wider"
                   >
                     Description
                   </label>
-                  <textarea
+                  <Textarea
                     id="wf-3"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe key features, specs, included accessories, reason for selling..."
                     rows={4}
-                    className="w-full resize-y rounded-xl border px-4 py-3 text-sm outline-none transition-colors"
-                    style={{
-                      background: "var(--bg-raised)",
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-primary)",
-                    }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = "var(--action-primary)")}
-                    onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
                   />
                 </div>
               </div>
@@ -1498,96 +1060,36 @@ export function NewListingWizard({
               <div className="space-y-8">
                 {/* Category */}
                 <div>
-                  <span
-                    className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
+                  <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
                     Category
                   </span>
                   <div className="flex flex-wrap gap-2">
                     {CATEGORIES.map((c) => (
-                      <button
+                      <Chip
                         key={c.value}
-                        type="button"
+                        selected={category === c.value}
                         onClick={() => setCategory(c.value)}
-                        className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                        style={{
-                          background:
-                            category === c.value
-                              ? "color-mix(in srgb, var(--action-primary) 8%, transparent)"
-                              : "transparent",
-                          borderColor:
-                            category === c.value
-                              ? "var(--action-primary)"
-                              : "var(--border-default)",
-                          color:
-                            category === c.value
-                              ? "var(--action-primary)"
-                              : "var(--text-secondary)",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (category !== c.value) {
-                            e.currentTarget.style.borderColor = "var(--border-strong)";
-                            e.currentTarget.style.color = "var(--text-primary)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (category !== c.value) {
-                            e.currentTarget.style.borderColor = "var(--border-default)";
-                            e.currentTarget.style.color = "var(--text-secondary)";
-                          }
-                        }}
                       >
                         {c.label}
-                      </button>
+                      </Chip>
                     ))}
                   </div>
                 </div>
 
                 {/* Condition */}
                 <div>
-                  <span
-                    className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
+                  <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
                     Condition
                   </span>
                   <div className="flex flex-wrap gap-2">
                     {CONDITIONS.map((c) => (
-                      <button
+                      <Chip
                         key={c.value}
-                        type="button"
+                        selected={condition === c.value}
                         onClick={() => setCondition(c.value)}
-                        className="cursor-pointer rounded-full border px-5 py-2.5 text-sm font-medium transition-all"
-                        style={{
-                          background:
-                            condition === c.value
-                              ? "color-mix(in srgb, var(--action-primary) 8%, transparent)"
-                              : "transparent",
-                          borderColor:
-                            condition === c.value
-                              ? "var(--action-primary)"
-                              : "var(--border-default)",
-                          color:
-                            condition === c.value
-                              ? "var(--action-primary)"
-                              : "var(--text-secondary)",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (condition !== c.value) {
-                            e.currentTarget.style.borderColor = "var(--border-strong)";
-                            e.currentTarget.style.color = "var(--text-primary)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (condition !== c.value) {
-                            e.currentTarget.style.borderColor = "var(--border-default)";
-                            e.currentTarget.style.color = "var(--text-secondary)";
-                          }
-                        }}
                       >
                         {c.label}
-                      </button>
+                      </Chip>
                     ))}
                   </div>
                 </div>
@@ -1609,21 +1111,16 @@ export function NewListingWizard({
                           "1px solid color-mix(in srgb, var(--action-primary) 12%, transparent)",
                       }}
                     >
-                      <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                        📱 Phone details
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                      <p className="text-sm font-bold text-ink">📱 Phone details</p>
+                      <p className="text-xs mt-1 text-ink-secondary">
                         Buyers expect this info upfront. All required to publish.
                       </p>
                     </div>
 
                     {/* Storage */}
                     <div>
-                      <span
-                        className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Storage <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                        Storage <span className="text-warning">*</span>
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1634,51 +1131,22 @@ export function NewListingWizard({
                           { v: "1tb", l: "1TB" },
                           { v: "other", l: "Other" },
                         ].map(({ v, l }) => (
-                          <button
+                          <Chip
                             key={v}
-                            type="button"
+                            size="sm"
+                            selected={phoneStorage === v}
                             onClick={() => setPhoneStorage(v)}
-                            className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
-                            style={{
-                              background:
-                                phoneStorage === v
-                                  ? "color-mix(in srgb, var(--action-primary) 8%, transparent)"
-                                  : "transparent",
-                              borderColor:
-                                phoneStorage === v
-                                  ? "var(--action-primary)"
-                                  : "var(--border-default)",
-                              color:
-                                phoneStorage === v
-                                  ? "var(--action-primary)"
-                                  : "var(--text-secondary)",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (phoneStorage !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-strong)";
-                                e.currentTarget.style.color = "var(--text-primary)";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (phoneStorage !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-default)";
-                                e.currentTarget.style.color = "var(--text-secondary)";
-                              }
-                            }}
                           >
                             {l}
-                          </button>
+                          </Chip>
                         ))}
                       </div>
                     </div>
 
                     {/* Battery Health */}
                     <div>
-                      <span
-                        className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Battery Health <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                        Battery Health <span className="text-warning">*</span>
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1688,51 +1156,22 @@ export function NewListingWizard({
                           { v: "lt_80", l: "Under 80%" },
                           { v: "unknown", l: "Not sure" },
                         ].map(({ v, l }) => (
-                          <button
+                          <Chip
                             key={v}
-                            type="button"
+                            size="sm"
+                            selected={phoneBatteryHealth === v}
                             onClick={() => setPhoneBatteryHealth(v)}
-                            className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
-                            style={{
-                              background:
-                                phoneBatteryHealth === v
-                                  ? "color-mix(in srgb, var(--action-primary) 8%, transparent)"
-                                  : "transparent",
-                              borderColor:
-                                phoneBatteryHealth === v
-                                  ? "var(--action-primary)"
-                                  : "var(--border-default)",
-                              color:
-                                phoneBatteryHealth === v
-                                  ? "var(--action-primary)"
-                                  : "var(--text-secondary)",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (phoneBatteryHealth !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-strong)";
-                                e.currentTarget.style.color = "var(--text-primary)";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (phoneBatteryHealth !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-default)";
-                                e.currentTarget.style.color = "var(--text-secondary)";
-                              }
-                            }}
                           >
                             {l}
-                          </button>
+                          </Chip>
                         ))}
                       </div>
                     </div>
 
                     {/* Carrier Lock */}
                     <div>
-                      <span
-                        className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Carrier Lock <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                        Carrier Lock <span className="text-warning">*</span>
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1740,51 +1179,22 @@ export function NewListingWizard({
                           { v: "locked", l: "Carrier-locked" },
                           { v: "unknown", l: "Not sure" },
                         ].map(({ v, l }) => (
-                          <button
+                          <Chip
                             key={v}
-                            type="button"
+                            size="sm"
+                            selected={phoneCarrierLock === v}
                             onClick={() => setPhoneCarrierLock(v)}
-                            className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
-                            style={{
-                              background:
-                                phoneCarrierLock === v
-                                  ? "color-mix(in srgb, var(--action-primary) 8%, transparent)"
-                                  : "transparent",
-                              borderColor:
-                                phoneCarrierLock === v
-                                  ? "var(--action-primary)"
-                                  : "var(--border-default)",
-                              color:
-                                phoneCarrierLock === v
-                                  ? "var(--action-primary)"
-                                  : "var(--text-secondary)",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (phoneCarrierLock !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-strong)";
-                                e.currentTarget.style.color = "var(--text-primary)";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (phoneCarrierLock !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-default)";
-                                e.currentTarget.style.color = "var(--text-secondary)";
-                              }
-                            }}
                           >
                             {l}
-                          </button>
+                          </Chip>
                         ))}
                       </div>
                     </div>
 
                     {/* Screen Condition */}
                     <div>
-                      <span
-                        className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Screen Condition <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                        Screen Condition <span className="text-warning">*</span>
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1793,86 +1203,46 @@ export function NewListingWizard({
                           { v: "visible_scratches", l: "Visible scratches" },
                           { v: "cracked", l: "Cracked" },
                         ].map(({ v, l }) => (
-                          <button
+                          <Chip
                             key={v}
-                            type="button"
+                            size="sm"
+                            selected={phoneScreenCondition === v}
                             onClick={() => setPhoneScreenCondition(v)}
-                            className="cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all"
-                            style={{
-                              background:
-                                phoneScreenCondition === v
-                                  ? "color-mix(in srgb, var(--action-primary) 8%, transparent)"
-                                  : "transparent",
-                              borderColor:
-                                phoneScreenCondition === v
-                                  ? "var(--action-primary)"
-                                  : "var(--border-default)",
-                              color:
-                                phoneScreenCondition === v
-                                  ? "var(--action-primary)"
-                                  : "var(--text-secondary)",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (phoneScreenCondition !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-strong)";
-                                e.currentTarget.style.color = "var(--text-primary)";
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (phoneScreenCondition !== v) {
-                                e.currentTarget.style.borderColor = "var(--border-default)";
-                                e.currentTarget.style.color = "var(--text-secondary)";
-                              }
-                            }}
                           >
                             {l}
-                          </button>
+                          </Chip>
                         ))}
                       </div>
                     </div>
 
                     {/* Pre-ship checklist */}
                     <div>
-                      <span
-                        className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        Pre-ship Checklist <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                      <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                        Pre-ship Checklist <span className="text-warning">*</span>
                       </span>
-                      <span
-                        className="flex cursor-pointer items-start gap-3 text-sm"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={phoneFactoryResetConfirmed}
-                          onChange={(e) => setPhoneFactoryResetConfirmed(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-action-primary"
-                        />
-                        <span>
-                          Before shipping, I will{" "}
-                          <strong style={{ color: "var(--text-primary)" }}>turn off Find My</strong>{" "}
-                          and{" "}
-                          <strong style={{ color: "var(--text-primary)" }}>factory reset</strong>{" "}
-                          the phone so the buyer can activate it.
-                        </span>
-                      </span>
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={phoneFactoryResetConfirmed}
+                        onChange={(e) => setPhoneFactoryResetConfirmed(e.target.checked)}
+                        label={
+                          <span className="text-ink-secondary text-sm">
+                            Before shipping, I will{" "}
+                            <strong className="text-ink">turn off Find My</strong> and{" "}
+                            <strong className="text-ink">factory reset</strong> the phone so the
+                            buyer can activate it.
+                          </span>
+                        }
+                      />
                     </div>
                   </div>
                 )}
 
                 {/* Tags */}
                 <div>
-                  <span
-                    className="mb-3 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
+                  <span className="mb-3 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
                     Tags{" "}
                     {subtype === "phone" && tags.length > 0 && (
-                      <span
-                        className="ml-1 font-normal normal-case tracking-normal"
-                        style={{ color: "var(--text-muted)" }}
-                      >
+                      <span className="ml-1 font-normal normal-case tracking-normal text-ink-muted">
                         (auto-suggested)
                       </span>
                     )}
@@ -1894,12 +1264,7 @@ export function NewListingWizard({
                           setTagEditing(false);
                         }}
                         placeholder="tag name..."
-                        className="h-9 w-28 rounded-full border px-4 text-sm outline-none"
-                        style={{
-                          background: "var(--bg-raised)",
-                          borderColor: "var(--action-primary)",
-                          color: "var(--text-primary)",
-                        }}
+                        className="h-9 w-28 rounded-full border border-action-primary bg-surface-raised px-4 text-ink text-sm outline-none"
                       />
                     ) : (
                       <button
@@ -1934,86 +1299,37 @@ export function NewListingWizard({
               <div className="space-y-6">
                 {/* Asking price */}
                 <div>
-                  <span
-                    className="mb-2 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Asking Price <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                    Asking Price <span className="text-warning">*</span>
                   </span>
-                  <div className="relative">
-                    <span
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      $
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatWithCommas(targetPrice)}
-                      onChange={(e) => handlePriceChange(e.target.value, setTargetPrice)}
-                      placeholder="0"
-                      className="w-full rounded-xl border py-3 pl-8 pr-4 text-sm outline-none transition-colors"
-                      style={{
-                        background: "var(--bg-raised)",
-                        borderColor: "var(--border-default)",
-                        color: "var(--text-primary)",
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = "var(--action-primary)";
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "var(--border-default)";
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <Input
+                    inputMode="numeric"
+                    value={formatWithCommas(targetPrice)}
+                    onChange={(e) => handlePriceChange(e.target.value, setTargetPrice)}
+                    placeholder="0"
+                    startAdornment="$"
+                  />
+                  <p className="mt-1.5 text-ink-muted text-xs">
                     The starting price buyers will see
                   </p>
                 </div>
 
                 {/* Floor price */}
                 <div>
-                  <span
-                    className="mb-2 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">
                     Minimum Acceptable Price{" "}
-                    <span
-                      className="font-normal normal-case tracking-normal"
-                      style={{ color: "var(--text-muted)" }}
-                    >
+                    <span className="font-normal normal-case tracking-normal text-ink-muted">
                       (private)
                     </span>
                   </span>
-                  <div className="relative">
-                    <span
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      $
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatWithCommas(floorPrice)}
-                      onChange={(e) => handlePriceChange(e.target.value, setFloorPrice)}
-                      placeholder="0"
-                      className="w-full rounded-xl border py-3 pl-8 pr-4 text-sm outline-none transition-colors"
-                      style={{
-                        background: "var(--bg-raised)",
-                        borderColor: "var(--border-default)",
-                        color: "var(--text-primary)",
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = "var(--action-primary)";
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = "var(--border-default)";
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <Input
+                    inputMode="numeric"
+                    value={formatWithCommas(floorPrice)}
+                    onChange={(e) => handlePriceChange(e.target.value, setFloorPrice)}
+                    placeholder="0"
+                    startAdornment="$"
+                  />
+                  <p className="mt-1.5 text-ink-muted text-xs">
                     Your AI agent will never agree below this price
                   </p>
                 </div>
@@ -2022,32 +1338,19 @@ export function NewListingWizard({
                 <div>
                   <label
                     htmlFor="wf-4"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
+                    className="mb-2 block font-semibold text-ink-secondary text-xs uppercase tracking-wider"
                   >
-                    Selling Deadline <span style={{ color: "var(--fb-warning-fg)" }}>*</span>
+                    Selling Deadline <span className="text-warning">*</span>
                   </label>
-                  <input
+                  <Input
                     id="wf-4"
                     type="date"
                     min={today}
                     value={sellingDeadline}
                     onChange={(e) => setSellingDeadline(e.target.value)}
-                    className="w-full cursor-pointer rounded-xl border px-4 py-3 text-sm outline-none transition-colors"
-                    style={{
-                      background: "var(--bg-raised)",
-                      borderColor: "var(--border-default)",
-                      color: "var(--text-primary)",
-                      colorScheme: "dark",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = "var(--action-primary)";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = "var(--border-default)";
-                    }}
+                    className="cursor-pointer"
                   />
-                  <p className="mt-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <p className="mt-1.5 text-xs text-ink-muted">
                     Your AI agent becomes more flexible as the deadline approaches
                   </p>
                 </div>
@@ -2090,90 +1393,42 @@ export function NewListingWizard({
       </div>
 
       {/* ── Bottom bar: Back / Next ── */}
-      <div
-        className="shrink-0 px-4 pb-3 pt-2 sm:px-8 sm:pb-6 sm:pt-3"
-        style={{ borderTop: "1px solid var(--border-default)" }}
-      >
+      <div className="shrink-0 border-line border-t px-4 pt-2 pb-3 sm:px-8 sm:pt-3 sm:pb-6">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
           {/* Back (hidden on step 1) */}
           {step > 1 ? (
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex w-24 sm:w-28 cursor-pointer items-center justify-center gap-1 sm:gap-1.5 rounded-xl border py-2.5 sm:py-3 text-xs sm:text-sm font-semibold transition-colors"
-              style={{ borderColor: "var(--border-default)", color: "var(--text-secondary)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--border-strong)";
-                e.currentTarget.style.color = "var(--text-primary)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--border-default)";
-                e.currentTarget.style.color = "var(--text-secondary)";
-              }}
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <path d="m15 18-6-6 6-6" />
-              </svg>
+            <Button variant="secondary" className="w-24 sm:w-28" onClick={handleBack}>
+              <ChevronLeft className="size-4" />
               Back
-            </button>
+            </Button>
           ) : (
             <div />
           )}
 
           {/* Next / Publish */}
           {step < TOTAL_STEPS ? (
-            <button
-              type="button"
+            <Button
+              className="w-24 sm:w-28"
+              loading={saving}
+              disabled={!canProceed()}
               onClick={handleNext}
-              disabled={saving || !canProceed()}
-              className="flex w-24 sm:w-28 cursor-pointer items-center justify-center gap-1 sm:gap-1.5 rounded-xl border-none py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "var(--action-primary)" }}
-              onMouseEnter={(e) => {
-                if (!saving && canProceed())
-                  e.currentTarget.style.background = "var(--action-primary-hover)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--action-primary)";
-              }}
             >
-              {saving ? "Saving..." : "Next"}
-              {!saving && (
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
+              {saving ? (
+                "Saving..."
+              ) : (
+                <>
+                  Next
+                  <ChevronRight className="size-4" />
+                </>
               )}
-            </button>
+            </Button>
           ) : (
+            // Solid-success final CTA — Button has no solid-green variant.
             <button
               type="button"
               onClick={handlePublish}
               disabled={saving || !agentValue}
-              className="flex w-24 sm:w-28 cursor-pointer items-center justify-center gap-2 rounded-xl border-none py-2.5 sm:py-3 text-xs sm:text-sm font-semibold text-ink transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "var(--fb-success-fg)" }}
-              onMouseEnter={(e) => {
-                if (!saving) e.currentTarget.style.background = "var(--fb-success-fg)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--fb-success-fg)";
-              }}
+              className="flex w-24 cursor-pointer items-center justify-center gap-2 rounded-xl bg-success py-2.5 font-semibold text-on-accent text-xs transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:w-28 sm:py-3 sm:text-sm"
             >
               {saving ? "Publishing..." : "Submit"}
             </button>

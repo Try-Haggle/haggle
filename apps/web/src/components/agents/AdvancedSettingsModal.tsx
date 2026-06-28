@@ -2,6 +2,7 @@
 
 import { type FieldDescriptor, fieldsByTier, type NegotiationAgentPreset } from "@haggle/shared";
 import { useEffect, useState } from "react";
+import { Button, Disclosure, Modal, Slider } from "@/components/ui";
 
 /**
  * Overrides editable in Advanced Settings. Mirrors the 16 preset-declared
@@ -91,7 +92,6 @@ export function AdvancedSettingsModal({
     ...presetToOverrides(preset),
     ...initial,
   }));
-  const [showExpert, setShowExpert] = useState(false);
 
   // Reset when preset changes or modal reopens
   useEffect(() => {
@@ -99,8 +99,6 @@ export function AdvancedSettingsModal({
       setState({ ...presetToOverrides(preset), ...initial });
     }
   }, [open, preset, initial]);
-
-  if (!open) return null;
 
   const handleChange = (descriptor: FieldDescriptor, raw: number) => {
     const value = descriptor.integer ? Math.round(raw) : raw;
@@ -127,116 +125,70 @@ export function AdvancedSettingsModal({
   const tier3 = fieldsByTier(3);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Advanced Settings"
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
-    >
-      <button
-        type="button"
-        aria-label="Close dialog"
-        className="absolute inset-0 z-0 cursor-default bg-black/50"
-        onClick={onClose}
-      />
-      <div className="relative z-10 bg-surface-raised border border-line rounded-xl w-full max-w-[640px] max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-bold text-ink">Advanced Settings</h2>
-            <p className="text-[12px] text-ink-secondary mt-0.5">
-              Starting from <span className="text-action-primary">{preset.copy.seller.name}</span> ·
-              adjust 16 engine fields freely.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-ink-secondary hover:text-ink text-xl leading-none px-2"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
-          <Section title="Weights" subtitle="Sum = 1.0. Moving one auto-balances the rest.">
-            {tier1.map((d) => (
-              <SliderRow
-                key={d.field}
-                descriptor={d}
-                value={readField(state, d.field)}
-                onChange={(v) => handleChange(d, v)}
-              />
-            ))}
-          </Section>
-
-          <Section
-            title="Behavior Curves"
-            subtitle="Each slider is independent within its envelope."
-          >
-            {tier2.map((d) => (
-              <SliderRow
-                key={d.field}
-                descriptor={d}
-                value={readField(state, d.field)}
-                onChange={(v) => handleChange(d, v)}
-              />
-            ))}
-          </Section>
-
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowExpert((v) => !v)}
-              className="text-[12px] font-bold tracking-wider uppercase text-info hover:text-info"
-            >
-              {showExpert ? "▾" : "▸"} Expert — Sub-parameters (8)
-            </button>
-            {showExpert && (
-              <div className="mt-3 space-y-3">
-                {tier3.map((d) => (
-                  <SliderRow
-                    key={d.field}
-                    descriptor={d}
-                    value={readField(state, d.field)}
-                    onChange={(v) => handleChange(d, v)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-line flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={handleReset}
-            className="text-[13px] text-ink-secondary hover:text-ink"
-          >
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Advanced Settings"
+      size="lg"
+      className="max-w-[640px]"
+      footer={
+        <div className="flex w-full items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={handleReset}>
             Reset to preset
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded-md text-ink-secondary hover:text-ink border border-transparent hover:border-line-strong"
-            >
+            <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => onApply(state)}
-              className="px-4 py-2 text-sm font-bold rounded-md bg-success text-on-accent hover:bg-success"
-            >
+            </Button>
+            <Button size="sm" onClick={() => onApply(state)}>
               Apply
-            </button>
+            </Button>
           </div>
         </div>
+      }
+    >
+      <p className="mb-5 text-[12px] text-ink-secondary">
+        Starting from <span className="text-action-primary">{preset.copy.seller.name}</span> ·
+        adjust 16 engine fields freely.
+      </p>
+
+      <div className="space-y-6">
+        <Section title="Weights" subtitle="Sum = 1.0. Moving one auto-balances the rest.">
+          {tier1.map((d) => (
+            <SliderRow
+              key={d.field}
+              descriptor={d}
+              value={readField(state, d.field)}
+              onChange={(v) => handleChange(d, v)}
+            />
+          ))}
+        </Section>
+
+        <Section title="Behavior Curves" subtitle="Each slider is independent within its envelope.">
+          {tier2.map((d) => (
+            <SliderRow
+              key={d.field}
+              descriptor={d}
+              value={readField(state, d.field)}
+              onChange={(v) => handleChange(d, v)}
+            />
+          ))}
+        </Section>
+
+        <Disclosure title="Expert — Sub-parameters (8)">
+          <div className="space-y-3">
+            {tier3.map((d) => (
+              <SliderRow
+                key={d.field}
+                descriptor={d}
+                value={readField(state, d.field)}
+                onChange={(v) => handleChange(d, v)}
+              />
+            ))}
+          </div>
+        </Disclosure>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -275,23 +227,19 @@ function SliderRow({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <label htmlFor={`slider-${descriptor.field}`} className="text-[13px] font-medium text-ink">
-          {descriptor.label}
-        </label>
-        <span className="text-[12px] font-mono text-action-primary">{display}</span>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="font-medium text-[13px] text-ink">{descriptor.label}</span>
+        <span className="font-mono text-[12px] text-action-primary">{display}</span>
       </div>
-      <input
-        id={`slider-${descriptor.field}`}
-        type="range"
+      <Slider
+        aria-label={descriptor.label}
         min={min}
         max={max}
         step={step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-action-primary"
+        onValueChange={onChange}
       />
-      <div className="flex justify-between text-[10px] text-ink-muted mt-1 gap-2">
+      <div className="mt-1 flex justify-between gap-2 text-[10px] text-ink-muted">
         <span className="flex-1 text-left leading-tight">{descriptor.left}</span>
         <span className="flex-1 text-right leading-tight">{descriptor.right}</span>
       </div>
