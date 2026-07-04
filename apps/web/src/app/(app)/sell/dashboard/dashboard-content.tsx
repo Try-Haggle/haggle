@@ -182,7 +182,10 @@ function ListingCard({ listing }: { listing: ListingSummary }) {
         <div className="flex items-center gap-3">
           <div>
             <p className="font-semibold text-ink text-sm sm:text-base">{price}</p>
-            <p className="text-ink-secondary text-xs sm:text-sm">0 negotiations</p>
+            <p className="text-ink-secondary text-xs sm:text-sm">
+              {listing.negotiationCount}{" "}
+              {listing.negotiationCount === 1 ? "negotiation" : "negotiations"}
+            </p>
           </div>
           <span className="hidden sm:inline-flex">
             <ShareButton publicId={listing.publicId} />

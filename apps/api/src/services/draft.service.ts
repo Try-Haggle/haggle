@@ -15,6 +15,7 @@ import {
   lt,
   lte,
   negotiationAgents,
+  negotiationSessions,
   or,
   sql,
   tags,
@@ -340,10 +341,13 @@ export async function getListingsByUserId(db: Database, userId: string) {
       negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
       createdAt: listingDrafts.createdAt,
       publicId: listingsPublished.publicId,
+      negotiationCount: sql<number>`count(distinct ${negotiationSessions.id})::int`,
     })
     .from(listingDrafts)
     .innerJoin(listingsPublished, eq(listingsPublished.draftId, listingDrafts.id))
+    .leftJoin(negotiationSessions, eq(negotiationSessions.listingId, listingsPublished.id))
     .where(eq(listingDrafts.userId, userId))
+    .groupBy(listingDrafts.id, listingsPublished.id)
     .orderBy(listingDrafts.createdAt);
 
   return drafts;
