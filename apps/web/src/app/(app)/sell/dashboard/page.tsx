@@ -14,6 +14,7 @@ export interface ListingSummary {
   negotiationAgentSnapshot: Record<string, unknown> | null;
   createdAt: string;
   publicId: string;
+  negotiationCount: number;
 }
 
 export interface DraftSummary {

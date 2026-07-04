@@ -213,6 +213,20 @@ export async function executePipeline(
     }
   }
 
+  // ─── ACCEPT price/message reconciliation ───
+  // ACCEPT means agreeing to the exact offer on the table. The LLM may set a
+  // divergent `price` or author a free-text `message` stating a different
+  // number. Pin the accepted price to the incoming offer and drop the LLM
+  // message so the deterministic renderer echoes that same price — keeping the
+  // chat text, the persisted price, and the charged amount in agreement.
+  if (validateOutput.final_decision.action === "ACCEPT") {
+    const acceptedPrice = offerPrice ?? understandOutput.price_offer;
+    if (acceptedPrice !== undefined) {
+      validateOutput.final_decision.price = acceptedPrice;
+    }
+    validateOutput.final_decision.message = undefined;
+  }
+
   // ─── Stage 5: Respond ───
   const respondOutput = respond({
     validated: validateOutput,
