@@ -200,6 +200,22 @@ describe("6-Stage Pipeline E2E", () => {
     }
   });
 
+  it("pins ACCEPT price and message to the incoming offer on the table", async () => {
+    // Buyer accepts when the offer is at/below target. The skill would accept at
+    // its own `opponent_offer` (82000), but the real offer on the table passed by
+    // the API is 90000. The pipeline must reconcile both the persisted price and
+    // the chat message to 90000 so the UI and the message text never diverge.
+    const memory = makeMemory();
+    memory.boundaries.opponent_offer = 82000; // <= my_target (83000) → skill ACCEPTs
+
+    const result = await executePipeline("Offer: $90000", 90000, makeDeps({ memory }));
+
+    expect(result.stages.decide.decision.action).toBe("ACCEPT");
+    expect(result.stages.validate.final_decision.price).toBe(90000);
+    expect(result.stages.respond.message).toContain("$900.00");
+    expect(result.stages.respond.message).not.toContain("$820.00");
+  });
+
   it("includes context with memo snapshot", async () => {
     const result = await executePipeline("Offer: $90000", 90000, makeDeps());
 
