@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Start Here — 협상 엔진 · Haggle Docs</title>
+<link rel="stylesheet" href="assets/style.css" />
+<style>
+  /* Start-Here 전용 소품 */
+  .truth{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .truth .tn{flex:none;width:30px;height:30px;border-radius:8px;background:var(--accent2);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .truth .tt{font-weight:700;font-size:14.5px;margin-bottom:3px}
+  .truth .td{font-size:13px;color:var(--ink2)}
+  .flow{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:#11141a;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;white-space:pre}
+  .flow b{color:var(--accent)} .flow .llm{color:#c4b5fd} .flow .c{color:#6b7587}
+  .lens{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:5px;letter-spacing:.3px;vertical-align:middle}
+  .lens.what{background:rgba(110,168,254,.16);color:var(--accent)}
+  .lens.math{background:rgba(52,211,153,.16);color:var(--ok)}
+  .lens.llm{background:rgba(139,92,246,.2);color:#c4b5fd}
+  .round-row{display:grid;grid-template-columns:44px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .round-row .rn{font-weight:800;color:var(--accent);font-family:var(--mono);font-size:13px}
+  .round-row .who2{font-size:11px;color:var(--ink3)}
+  .prompt-blocks summary{background:var(--card2)}
+  mark{background:rgba(251,191,36,.22);color:#fde68a;padding:0 3px;border-radius:3px}
+  .k{color:#c792ea}
+  /* code source label: folder/file + production/demo badge */
+  .src{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:11.5px;margin:14px 0 4px}
+  .src code{font-family:var(--mono);font-size:11px;color:var(--ink2);background:#22262f;padding:1px 6px;border-radius:4px}
+  .srcb{font-weight:800;padding:1px 8px;border-radius:20px;font-size:10px;letter-spacing:.2px;white-space:nowrap}
+  .srcb.prod{background:rgba(52,211,153,.15);color:var(--ok);border:1px solid rgba(52,211,153,.3)}
+  .srcb.demo{background:rgba(251,191,36,.14);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
+  .srcb.ex{background:rgba(110,168,254,.13);color:var(--accent);border:1px solid rgba(110,168,254,.3)}
+  /* SVG diagrams */
+  .diagram{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px}
+  .diagram svg{max-width:100%;height:auto;display:block;margin:0 auto}
+  .dgcap{text-align:center;color:var(--ink3);font-size:11.5px;margin:2px 0 6px}
+  /* 쉽게 말하면 — 어려운 것 바로 옆 평이한 설명 */
+  .plain{background:rgba(52,211,153,.08);border-left:3px solid var(--ok);border-radius:0 9px 9px 0;padding:10px 14px;margin:10px 0;font-size:14px;line-height:1.6}
+  .plain .pl{font-weight:800;color:var(--ok);font-size:12px;display:block;margin-bottom:3px}
+  .plain b{color:var(--ink)}
+  .aside{font-size:12px;color:var(--ink3);border-left:2px solid var(--line);padding:2px 0 2px 10px;margin:8px 0}
+  /* 낱말 뜻: 어려운 용어에 밑줄 + hover 설명 */
+  .term{border-bottom:1px dotted var(--ink3);cursor:help}
+  /* 수식 + 기호 범례: 수식 그대로 보여주고 각 기호 뜻을 바로 아래 */
+  .eq{font-family:var(--mono);font-size:15px;color:#e6e9ef;background:#11141a;border:1px solid var(--line);border-radius:9px 9px 0 0;padding:15px 16px;overflow-x:auto;white-space:nowrap;letter-spacing:.3px}
+  .eq .sym{color:#82aaff;font-weight:700}
+  .legend{background:#161a21;border:1px solid var(--line);border-top:none;border-radius:0 0 9px 9px;padding:9px 14px;margin-bottom:8px}
+  .legend .row{display:flex;gap:12px;padding:3.5px 0;font-size:13px;align-items:baseline}
+  .legend .row+.row{border-top:1px solid #232833}
+  .legend .sy{font-family:var(--mono);color:#82aaff;min-width:96px;flex:none;font-size:12px}
+  .legend .me{color:var(--ink2)} .legend .me b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="logo"></span>Haggle Docs</div>
+  <div class="brandsub">협상 엔진 · Start Here</div>
+  <div id="site-features"></div>
+  <div id="page-toc" class="toc"></div>
+</nav>
+<main>
+
+<!-- Intro -->
+<section id="intro" class="hero" data-nav="시작하기">
+  <h2 class="sec">Start Here · 신규 팀원용</h2>
+  <h1>협상 엔진, 처음부터 끝까지</h1>
+  <p class="sub">이 엔진을 처음 보는 개발자를 위한 문서입니다. <b>에이전트가 어떻게 만들어지고 → 그 설정이 협상에 어떻게 반영되고 → 매 라운드 무엇이 수학적으로 계산되고 → LLM이 어떤 데이터를 받아 무슨 프롬프트로 무엇을 결정하는지</b>를, <b>iPhone 협상 한 건</b>으로 실제 숫자를 따라가며 봅니다.</p>
+  <p class="sub" style="margin-top:10px">목표는 단순 사용법이 아니라 <b>전체 과정을 정확히 이해해서 "더 나은 방법이 없을까"를 고민할 수 있게</b> 하는 것입니다. 그래서 각 단계에서 <b>실제로 도는 것 vs 형식적으로만 있는 것</b>을 정직하게 구분합니다.</p>
+  <div class="meta">읽는 렌즈: <span class="lens what">무엇</span> 데이터·필드 · <span class="lens math">수학</span> 계산 · <span class="lens llm">LLM</span> 모델이 받는 것/하는 것. 자세한 근거는 항상 <a href="negotiation-engine.html">SOT 레퍼런스</a>로 링크.</div>
+  <div class="callout co-info" style="margin-top:16px">
+    <div class="ct">📂 코드 인용 표기 — 데모/프로덕션 구분</div>
+    <div>이 문서의 코드는 전부 <b>실제 저장소</b>에서 가져왔고, 블록마다 출처 파일과 성격을 답니다:
+      <span class="srcb prod">🟢 프로덕션</span> 실전 협상 경로 · <span class="srcb demo">🟡 데모·테스트</span> 실전 미사용 · <span class="srcb ex">⚪ 예시</span> 설명용 값(구조는 실제).
+      <b>이 페이지는 데모 파일(<code>scripts/demo-*.ts</code> 등)에서 가져온 코드가 없습니다</b> — 전부 프로덕션 경로거나 예시입니다.</div>
+  </div>
+</section>
+
+<!-- Part 0 -->
+<section id="mental" data-nav="0 · 30초 멘탈모델">
+  <h2 class="sec">Part 0</h2>
+  <h2 class="title">먼저 알아야 할 3가지</h2>
+  <p class="lead">이 3개를 모르면 코드가 통째로 오해됩니다. 나머지는 전부 이 위에 얹힙니다.</p>
+  <div class="grid" style="gap:10px;margin-top:8px">
+    <div class="truth"><div class="tn">1</div><div><div class="tt">협상은 AI vs AI 자동재생이다</div><div class="td">유저가 "협상 시작"을 누르면(<code>POST /negotiations/start</code>), 서버가 <b>구매자·판매자 양쪽 AI 에이전트를 만들어 한 요청에서 협상 전체를 끝까지 자동으로 돌립니다.</b> 사람이 라운드마다 개입하지 않습니다. (외부 에이전트가 오퍼를 하나씩 넣는 <code>/offers</code> 경로도 따로 있음.)</div></div></div>
+    <div class="truth"><div class="tn">2</div><div><div class="tt">가격은 LLM이 정하고, 엔진은 코치+심판이다</div><div class="td">"엔진이 두뇌"라는 상식과 반대입니다. 순수 수학 엔진은 <b>추천가를 계산(코치)</b>하고 <b>규칙을 검증(심판/Referee)</b>할 뿐, 실제 가격·메시지는 <b>LLM(grok)이 작성</b>합니다.</div></div></div>
+    <div class="truth"><div class="tn">3</div><div><div class="tt">상태는 4계층으로 흐른다</div><div class="td"><code>EngineParameters</code>(성향) → <code>MasterStrategy</code>(성향+이 거래 가격) → <code>negotiation_sessions</code>(살아있는 상태) → <code>CoreMemory</code>(매 라운드 재조립되는 작업본). 같은 데이터가 옷을 갈아입습니다.</div></div></div>
+  </div>
+
+  <h3>한 장 그림</h3>
+  <div class="diagram">
+  <svg viewBox="0 0 780 480" role="img" aria-label="협상 엔진 전체 흐름">
+    <defs>
+      <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#7e8794"/>
+      </marker>
+    </defs>
+    <style>
+      rect.bx{fill:#21262f;stroke:#2c323d;stroke-width:1.2}
+      text.tx{fill:#e6e9ef;font-family:-apple-system,'Malgun Gothic',sans-serif;font-size:13px;font-weight:600}
+      text.sub{fill:#7e8794;font-family:ui-monospace,monospace;font-size:10.5px}
+      path.ln{stroke:#7e8794;stroke-width:1.4;fill:none;marker-end:url(#ar)}
+      text.lbl{fill:#7e8794;font-family:-apple-system,sans-serif;font-size:11px}
+    </style>
+    <!-- user -->
+    <rect class="bx" x="285" y="16" width="210" height="46" rx="9"/>
+    <text class="tx" x="390" y="38" text-anchor="middle">유저 — 에이전트 설정</text>
+    <text class="sub" x="390" y="53" text-anchor="middle">프리셋 · 슬라이더 · 빌더챗</text>
+    <path class="ln" d="M390,62 L390,86"/>
+    <!-- start -->
+    <rect class="bx" x="270" y="88" width="240" height="46" rx="9" fill="#1c2433" stroke="#3a4a6b"/>
+    <text class="tx" x="390" y="110" text-anchor="middle">협상 시작</text>
+    <text class="sub" x="390" y="125" text-anchor="middle">POST /negotiations/start</text>
+    <path class="ln" d="M390,134 L390,166"/>
+    <!-- loop container -->
+    <rect x="24" y="170" width="732" height="176" rx="12" fill="none" stroke="#8b5cf6" stroke-width="1.3" stroke-dasharray="6 5"/>
+    <text x="40" y="190" fill="#c4b5fd" font-family="-apple-system,sans-serif" font-size="12" font-weight="700">매 라운드 반복 · auto-play (구매자·판매자 양쪽 AI)</text>
+    <!-- step 1 CoreMemory -->
+    <rect class="bx" x="40" y="210" width="150" height="64" rx="9"/>
+    <text class="tx" x="115" y="238" text-anchor="middle" font-size="12.5">CoreMemory</text>
+    <text class="sub" x="115" y="255" text-anchor="middle">재조립</text>
+    <path class="ln" d="M190,242 L214,242"/>
+    <!-- step 2 coach -->
+    <rect x="216" y="210" width="150" height="64" rx="9" fill="#14261e" stroke="#2f6f52"/>
+    <text x="291" y="234" text-anchor="middle" fill="#34d399" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700">코치: 추천가</text>
+    <text class="sub" x="291" y="251" text-anchor="middle" fill="#34d399">수학 · Faratin</text>
+    <path class="ln" d="M366,242 L390,242"/>
+    <!-- step 3 LLM -->
+    <rect x="392" y="210" width="150" height="64" rx="9" fill="#221a33" stroke="#5b4a86"/>
+    <text x="467" y="234" text-anchor="middle" fill="#c4b5fd" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700">LLM</text>
+    <text class="sub" x="467" y="251" text-anchor="middle" fill="#c4b5fd">가격 · 메시지 작성</text>
+    <path class="ln" d="M542,242 L566,242"/>
+    <!-- step 4 referee -->
+    <rect class="bx" x="568" y="210" width="150" height="64" rx="9"/>
+    <text class="tx" x="643" y="234" text-anchor="middle" font-size="12.5">Referee 검증</text>
+    <text class="sub" x="643" y="251" text-anchor="middle">→ 저장 · phase</text>
+    <!-- loop back arrow -->
+    <path class="ln" d="M643,274 L643,300 Q643,314 629,314 L129,314 Q115,314 115,300 L115,278"/>
+    <text class="lbl" x="380" y="330" text-anchor="middle">다음 라운드 (역할 교대) — 타결/결렬/마감까지</text>
+    <!-- out -->
+    <path class="ln" d="M390,346 L390,378"/>
+    <rect class="bx" x="285" y="380" width="210" height="46" rx="9" fill="#14261e" stroke="#2f6f52"/>
+    <text x="390" y="402" text-anchor="middle" fill="#34d399" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">결과 — 합의가 · 상태</text>
+    <text class="sub" x="390" y="417" text-anchor="middle" fill="#34d399">ACCEPTED / REJECTED / EXPIRED</text>
+  </svg>
+  <div class="dgcap">유저 설정 → 협상 시작 → auto-play 루프(CoreMemory→코치→LLM→Referee) → 결과</div>
+  </div>
+  <p class="muted">아래 Part 1~5가 이 그림의 각 상자를 실제 데이터로 확대합니다.</p>
+</section>
+
+<!-- Part 1 -->
+<section id="agent" data-nav="1 · 에이전트가 만들어진다">
+  <h2 class="sec">Part 1 · <span class="lens what">무엇</span></h2>
+  <h2 class="title">에이전트가 만들어진다 — EngineParameters</h2>
+  <p class="lead">유저는 프리셋을 고르고, 필요하면 슬라이더/빌더챗으로 튜닝합니다. 방법이 뭐든 결국 <b>단 하나의 폼 <code>EngineParameters</code></b>로 모입니다. 이게 에이전트의 "성향"입니다. (가격은 아직 없음 — 성향은 여러 매물에 재사용.)</p>
+
+  <h4>예시: 판매자가 "가격 사냥꾼(hunter)" 프리셋 선택</h4>
+  <div class="src"><span class="srcb prod">🟢 프로덕션</span><code>packages/shared/src/agent-presets/negotiation-agent-presets.ts</code><span style="color:var(--ink3)">· 실제 프리셋 값</span></div>
+<div class="json"><span class="c">// EngineParameters — hunter 프리셋</span>
+<span class="p">{</span>
+  <span class="lbl">"weights"</span>: { <span class="lbl">"w_p"</span>:<span class="num">0.5</span>, <span class="lbl">"w_t"</span>:<span class="num">0.15</span>, <span class="lbl">"w_r"</span>:<span class="num">0.2</span>, <span class="lbl">"w_s"</span>:<span class="num">0.15</span> },  <span class="c">// 가격 중시 50%</span>
+  <span class="lbl">"beta"</span>:<span class="num">0.4</span>,          <span class="c">// ★ 양보 속도 — 낮을수록 고집 (막판까지 버팀)</span>
+  <span class="lbl">"anchor_ratio"</span>:<span class="num">0.5</span>,  <span class="c">// ★ 오프닝 앵커 강도 — 낮을수록 공격적</span>
+  <span class="lbl">"u_threshold"</span>:<span class="num">0.55</span>, <span class="lbl">"u_aspiration"</span>:<span class="num">0.7</span>, <span class="lbl">"v_t_floor"</span>:<span class="num">0.7</span>, <span class="lbl">"alpha"</span>:<span class="num">0.5</span>, …
+<span class="p">}</span></div>
+  <p class="muted">그리고 빌더챗에 "IMEI 확인 필수, 안 급해"라고 적으면 → <code>builderChatMemory: { dealBreakers:["IMEI verification required"], urgency:"low" }</code>가 붙습니다.</p>
+
+  <h4>필드가 하는 일 (요약)</h4>
+  <div class="tbl-scroll"><table>
+    <tr><th>필드</th><th>의미</th><th>★ 실제 영향?</th></tr>
+    <tr><td><code>beta</code></td><td>양보 곡선 지수. &lt;1 버팀(Boulware), &gt;1 빨리 양보(Conceder)</td><td>✅ 큼</td></tr>
+    <tr><td><code>anchor_ratio</code></td><td>첫 제안(앵커)을 얼마나 극단적으로</td><td>✅ 큼</td></tr>
+    <tr><td><code>weights</code> (4D)</td><td>가격/시간/신뢰/관계 중 무엇을 중시</td><td>🚧 거의 없음*</td></tr>
+    <tr><td><code>u_threshold</code>·<code>u_aspiration</code></td><td>워크어웨이/즉시수락 효용 기준</td><td>🚧 거의 없음*</td></tr>
+    <tr><td><code>alpha</code>·<code>v_t_floor</code>·<code>w_rep</code>·<code>n_threshold</code>·<code>gamma</code>…</td><td>시간·위험·관계·경쟁 계수</td><td>🚧 거의 없음*</td></tr>
+    <tr><td>빌더챗 메모리(dealBreakers·urgency·tone)</td><td>자연어 협상 지침</td><td>✅ LLM이 봄</td></tr>
+  </table></div>
+  <div class="callout co-warn">
+    <div class="ct">* 여기서부터 정직해야 합니다 (개선 여지의 시작)</div>
+    <div>폼엔 17개 필드가 있지만 <b>실제로 협상 결과를 바꾸는 건 <code>beta</code>·<code>anchor_ratio</code> 2개</b>입니다. 왜 그런지는 Part 2에서 코드로 보여줍니다. 이걸 알아야 "나머지 필드를 어떻게 살릴까"를 고민할 수 있습니다. → <a href="negotiation-engine.html#params">SOT §4</a></div>
+  </div>
+</section>
+
+<!-- Part 2 -->
+<section id="compile" data-nav="2 · 필드가 전략이 된다">
+  <h2 class="sec">Part 2 · <span class="lens what">무엇→어디</span></h2>
+  <h2 class="title">필드가 협상 전략이 된다 — 컴파일</h2>
+  <p class="lead">협상이 시작되면 컴파일러가 <b>성향 폼 + 이 거래의 리스팅(가격·마감)</b>을 합쳐 <code>MasterStrategy</code> 스냅샷을 만듭니다. 이게 세션에 저장돼 협상 내내 불변입니다.</p>
+
+  <div class="src"><span class="srcb prod">🟢 프로덕션</span><code>packages/engine-session/src/strategy/compiler.ts</code> · <code>compileNegotiationAgentSnapshot()</code></div>
+  <div class="diagram">
+  <svg viewBox="0 0 780 300" role="img" aria-label="컴파일 흐름">
+    <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7e8794"/></marker></defs>
+    <style>
+      .l2{stroke:#7e8794;stroke-width:1.4;fill:none;marker-end:url(#ar2)}
+      .t2{fill:#e6e9ef;font-family:-apple-system,'Malgun Gothic',sans-serif;font-size:13px;font-weight:700}
+      .m2{fill:#aab1bd;font-family:ui-monospace,monospace;font-size:11px}
+      .st{fill:#f78c6c;font-family:ui-monospace,monospace;font-size:11px}
+    </style>
+    <!-- Input A: EngineParameters -->
+    <rect x="26" y="24" width="300" height="104" rx="10" fill="#221a33" stroke="#5b4a86"/>
+    <text class="t2" x="42" y="48" fill="#c4b5fd">EngineParameters (hunter)</text>
+    <text class="m2" x="42" y="70">weights .5/.15/.2/.15</text>
+    <text class="m2" x="42" y="88"><tspan fill="#34d399">★ beta 0.4</tspan> · <tspan fill="#34d399">★ anchor_ratio 0.5</tspan></text>
+    <text class="m2" x="42" y="106" fill="#7e8794">u_threshold .55 · v_t_floor .7 …</text>
+    <!-- Input B: Listing -->
+    <rect x="454" y="24" width="300" height="104" rx="10" fill="#1c2433" stroke="#3a4a6b"/>
+    <text class="t2" x="470" y="48" fill="#6ea8fe">리스팅 (이 거래)</text>
+    <text class="st" x="470" y="72">target $500  ·  floor $430</text>
+    <text class="st" x="470" y="92">deadline +7일</text>
+    <text class="m2" x="470" y="112" fill="#7e8794">성향에 없는 거래별 데이터</text>
+    <!-- converge -->
+    <path class="l2" d="M176,128 L360,168"/>
+    <path class="l2" d="M604,128 L420,168"/>
+    <rect x="330" y="150" width="120" height="44" rx="9" fill="#21262f" stroke="#2c323d"/>
+    <text class="t2" x="390" y="177" text-anchor="middle" font-size="12.5">compile()</text>
+    <path class="l2" d="M390,194 L390,222"/>
+    <!-- Output -->
+    <rect x="170" y="224" width="440" height="66" rx="10" fill="#14261e" stroke="#2f6f52"/>
+    <text class="t2" x="188" y="248" fill="#34d399">MasterStrategy 스냅샷</text>
+    <text class="m2" x="188" y="269">p_target 50000 · p_limit 43000 <tspan fill="#7e8794">(리스팅)</tspan></text>
+    <text class="m2" x="188" y="285">beta 0.4 · anchor_ratio 0.5 <tspan fill="#7e8794">(성향 그대로 통과) · thresholds{…}</tspan></text>
+  </svg>
+  <div class="dgcap">성향 폼 + 이 거래의 리스팅 → 하나의 MasterStrategy 스냅샷 (세션 내내 불변)</div>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">🔑 왜 "2개만 작동"인가 — 여기가 핵심</div>
+    <div>컴파일러는 파라미터를 <b>손실 없이</b> 스냅샷에 다 넣습니다. 문제는 그 다음입니다. 매 라운드 스냅샷에서 값을 꺼내 쓰는 <code>StrategyParams</code> 추출기가 7개만 뽑고, 그중에서도 <b>실제 계산에 쓰는 코드가 있는 건 <code>beta</code>·<code>anchor_ratio</code> 뿐</b>입니다. 나머지는 스냅샷에 저장만 되고 아무도 안 읽습니다.</div>
+  </div>
+  <details>
+    <summary>코드로 확인: strategy_params를 읽는 런타임 코드 전부 (grep)<span class="path">apps/api · packages</span></summary>
+<pre><span class="c">$ grep -rn "strategy_params" apps/api/src packages --include=*.ts | grep -v test</span>
+default-engine-skill.ts:75   strategy_params?.<span class="s">anchor_ratio</span>
+default-engine-skill.ts:99   strategy_params?.<span class="s">beta</span>
+coach.ts                     params?.<span class="s">anchor_ratio</span> / params?.<span class="s">beta</span>
+
+<span class="c">// alpha·v_t_floor·u_threshold·u_aspiration·weights 를 읽는 코드: 0건</span></pre>
+  </details>
+</section>
+
+<!-- Part 3 -->
+<section id="runtime" data-nav="3 · 협상이 돌아간다">
+  <h2 class="sec">Part 3 · <span class="lens what">런타임</span></h2>
+  <h2 class="title">협상이 돌아간다 — auto-play와 라운드 루프</h2>
+  <p class="lead"><code>/start</code>는 구매자·판매자 스냅샷을 둘 다 만들고, 루프를 돌며 <b>매 라운드 세션의 "관점(역할·스냅샷)"을 교체</b>하면서 executor를 호출합니다. 한 요청 안에서 협상이 끝까지 재생됩니다.</p>
+  <div class="src"><span class="srcb prod">🟢 프로덕션</span><code>apps/api/src/routes/negotiations.ts</code><span style="color:var(--ink3)">· /start 루프 (가독성 위해 요약)</span></div>
+<div class="flow"><span class="c">// /start 자동재생 루프 (요지)</span>
+for (라운드 i = 0 … MAX) {
+  setSessionPerspective(<b>이번에 응답할 역할</b>, 그 역할의 스냅샷)   <span class="c">// 관점 교체</span>
+  result = <b>executeStagedNegotiationRound</b>(session, 이번 오퍼, …)  <span class="c">// 한 라운드</span>
+  if (타결 || 결렬 || 무효) break
+  다음 오퍼 = result.outgoingPrice ; 역할 교대
+}</div>
+
+  <h4>한 라운드가 하는 일 (executor)</h4>
+  <p class="lead">상대 오퍼가 들어오면 <b>세션 상태에서 이번 라운드에 필요한 값만 뽑아 <code>CoreMemory</code>로 재조립</b>하고, 6단계 파이프라인을 돕니다.</p>
+  <div class="src"><span class="srcb ex">⚪ 예시값</span><span class="srcb prod">🟢 구조는 프로덕션</span><code>apps/api/src/negotiation/memory/memory-reconstructor.ts</code><span style="color:var(--ink3)">· reconstructCoreMemory 반환 형태</span></div>
+<div class="json"><span class="c">// CoreMemory (이번 라운드 작업본) — 판매자 관점, 구매자가 $450 제시</span>
+<span class="p">{</span>
+  <span class="lbl">"session"</span>: { <span class="lbl">"phase"</span>:<span class="str">"BARGAINING"</span>, <span class="lbl">"round"</span>:<span class="num">2</span>, <span class="lbl">"role"</span>:<span class="str">"seller"</span> },
+  <span class="lbl">"boundaries"</span>: { <span class="lbl">"my_target"</span>:<span class="num">50000</span>, <span class="lbl">"my_floor"</span>:<span class="num">43000</span>, <span class="lbl">"opponent_offer"</span>:<span class="num">45000</span> },
+  <span class="lbl">"strategy_params"</span>: { <span class="lbl">"beta"</span>:<span class="num">0.4</span>, <span class="lbl">"anchor_ratio"</span>:<span class="num">0.5</span> },   <span class="c">// ← 결정이 읽는 부분</span>
+  <span class="lbl">"strategy_context"</span>: { <span class="lbl">"builder_memory"</span>: { <span class="lbl">"dealBreakers"</span>:[<span class="str">"IMEI…"</span>], <span class="lbl">"urgency"</span>:<span class="str">"low"</span> } },
+  <span class="lbl">"coaching"</span>: { … }   <span class="c">// ← Part 4에서 채워짐</span>
+<span class="p">}</span></div>
+
+  <div class="pipe" style="margin-top:14px">
+    <div class="pstep"><div class="pn">S1</div><div class="pnm">Understand</div><span class="pk code">규칙</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S2</div><div class="pnm">Context</div><span class="pk code">코드</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S3</div><div class="pnm">Decide</div><span class="pk llm">LLM</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S4</div><div class="pnm">Validate</div><span class="pk code">심판</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S5</div><div class="pnm">Respond</div><span class="pk code">코드</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S6</div><div class="pnm">Persist</div><span class="pk code">코드</span></div>
+  </div>
+  <p class="muted">LLM은 <b>S3 Decide 한 곳</b>에서만 호출됩니다(라운드당 최대 1회). S1은 정규식, S5는 템플릿. → <a href="negotiation-engine.html#pipeline">SOT §5</a></p>
+</section>
+
+<!-- Part 4 -->
+<section id="math" data-nav="4 · 수학이 값을 만든다">
+  <h2 class="sec">Part 4 · <span class="lens math">수학</span></h2>
+  <h2 class="title">수학이 값을 만든다</h2>
+  <p class="lead">이 라운드에 실제로 도는 계산은 셋입니다. <b>가격을 만드는 건 ① 하나</b>이고, 나머지는 참고용입니다.</p>
+  <div class="plain"><span class="pl">💡 읽는 법</span> 수식이 나와도 겁먹지 마세요. 각 수식 옆에 <b>💡 쉽게 말하면</b> 상자로 우리말 설명을 붙였습니다. <b>기호가 안 와닿으면 💡만 읽어도 충분</b>합니다.</div>
+
+  <h3>① Faratin 양보 곡선 — 추천가를 만든다 <span class="badge b-ok">✅ 실제 사용</span></h3>
+  <p>"시간이 갈수록 마지노선 쪽으로 양보한다"를 한 줄로 모델링합니다. 코치가 이걸로 "이번엔 얼마 부를까"를 계산해서, LLM에게 <b>"이 값 근처로 불러라"는 기준값</b>(=앵커)으로 건넵니다.</p>
+  <div class="plain"><span class="pl">💡 쉽게 말하면</span>
+    협상 초반엔 <b>목표가</b>(내가 받고 싶은 값)를 고집하다가, 시간이 갈수록 <b>마지노선</b>(이보다 나쁘면 안 파는 값) 쪽으로 조금씩 내려주는 곡선이에요. <b>β(베타)</b>라는 숫자 하나가 "얼마나 버티느냐"를 정합니다 — <b>낮으면 끝까지 버티고, 높으면 초반부터 잘 깎아줍니다.</b>
+  </div>
+  <div class="src"><span class="srcb prod">🟢 프로덕션</span><code>packages/engine-core/src/decision/faratin.ts</code><span style="color:var(--ink3)">· computeCounterOffer (코치가 import) · 계산 예시</span></div>
+  <div class="eq">추천가 = 목표가 + (마지노선 − 목표가) × 진행도^(1/<span class="sym">β</span>)</div>
+  <div class="legend">
+    <div class="row"><span class="sy">목표가</span><span class="me">내가 받고 싶은 값 (예 $500)</span></div>
+    <div class="row"><span class="sy">마지노선</span><span class="me">이보다 나쁘면 안 파는 값 (예 $430)</span></div>
+    <div class="row"><span class="sy">진행도</span><span class="me">협상이 얼마나 지났나 — 0=시작, 1=마감</span></div>
+    <div class="row"><span class="sy">β (베타)</span><span class="me">버티는 정도 — <b>낮으면 끝까지 버팀, 높으면 잘 깎아줌</b></span></div>
+  </div>
+<div class="flow"><span class="c">// 판매자: 목표 $500, 마지노선 $430, 진행도 = 8라운드 중 2번째 = 0.25, β = 0.4(hunter)</span>
+추천가 = 50000 + (43000 − 50000) × 0.25^(1/0.4)
+      = 50000 − 7000 × 0.031  ≈  <b>$497.8</b>   <span class="c">// 거의 안 내림 = 고집</span>
+
+<span class="c">// 만약 β=2.0(closer)이었다면? 50000 − 7000×0.5 = $465 (훨씬 양보)</span></div>
+  <p class="muted"><b>이게 "성향이 가격을 바꾼다"의 실제 증거.</b> 같은 상황·같은 시점인데 β 한 숫자로 $497.8 vs $465로 갈립니다. → <a href="negotiation-engine.html#math">SOT §6.2</a></p>
+
+  <h3>② 상대방 양보율 — EMA <span class="badge b-ok">✅</span></h3>
+  <p>상대가 라운드마다 얼마나 값을 움직여주는지를 추적해 <b>BOULWARE(잘 안 물러남)/LINEAR(꾸준히 양보)/CONCEDER(잘 깎아줌)</b>로 분류합니다. LLM 프롬프트에 "이 상대는 이런 타입"이라는 힌트로 들어갑니다.</p>
+  <div class="plain"><span class="pl">💡 쉽게 말하면</span>
+    상대가 매번 얼마나 깎아주는지 지켜보면서 "이 사람 잘 안 물러나네 / 잘 깎아주네"를 판단합니다. <b>EMA</b>는 그 평균을 낼 때 <b>오래된 것보다 최근 행동에 더 무게를 두는 방식</b>이에요(<code>0.3</code>=이번 것 비중, <code>0.7</code>=지금까지 비중).
+  </div>
+  <div class="src"><span class="srcb prod">🟢 프로덕션</span><code>apps/api/src/negotiation/memory/memory-reconstructor.ts</code> · <code>referee/coach.ts</code></div>
+  <div class="eq">ema ← <span class="sym">0.3</span> × 이번 양보율 + <span class="sym">0.7</span> × 이전 ema</div>
+  <div class="legend">
+    <div class="row"><span class="sy">ema</span><span class="me">상대의 <b>평균 양보율</b> — 매 라운드 갱신되는 값</span></div>
+    <div class="row"><span class="sy">이번 양보율</span><span class="me">이번 라운드에 상대가 값을 얼마나 움직였나</span></div>
+    <div class="row"><span class="sy">0.3 / 0.7</span><span class="me">이번 것 비중 / 지금까지 비중 — <b>최근에 더 무게</b></span></div>
+  </div>
+<div class="flow"><span class="c">// ema로 상대 유형 분류 (2라운드부터)</span>
+ema &lt; 0.005 → BOULWARE(잘 안 물러남) · ema &gt; 0.05 → CONCEDER(잘 깎아줌) · 그 외 → LINEAR</div>
+
+  <h3>③ 효용 점수 — "이 딜이 나한테 얼마나 좋은가" <span class="badge b-warn">🚧 참고용</span></h3>
+  <div class="plain"><span class="pl">💡 쉽게 말하면</span>
+    "이 거래가 나한테 얼마나 좋은가"를 <b>0~1 사이 한 점수</b>로 요약한 겁니다. 가격만 보는 게 아니라 <b>가격·시간·신뢰·관계</b> 네 가지에 각각 점수를 매기고, 각각이 얼마나 중요한지를 곱해서 더합니다.
+  </div>
+  <div class="src"><span class="srcb prod">🟢 프로덕션(코치)</span><code>apps/api/src/negotiation/referee/coach.ts:163</code></div>
+  <div class="eq">U_total = <span class="sym">w_p</span>·<span class="sym">V_p</span> + <span class="sym">w_t</span>·<span class="sym">V_t</span> + <span class="sym">w_r</span>·<span class="sym">V_r</span> + <span class="sym">w_s</span>·<span class="sym">V_s</span></div>
+  <div class="legend">
+    <div class="row"><span class="sy">U_total</span><span class="me">이 거래 <b>총점</b> — 0~1, 높을수록 좋은 딜</span></div>
+    <div class="row"><span class="sy">V_p V_t V_r V_s</span><span class="me">각 항목 <b>점수</b>(0~1) — 순서대로 <b>가격·시간·신뢰·관계</b></span></div>
+    <div class="row"><span class="sy">w_p w_t w_r w_s</span><span class="me">각 항목 <b>중요도</b>(가중치) — 다 더하면 1</span></div>
+    <div class="row"><span class="sy">w · V</span><span class="me">중요도 × 점수, 그걸 네 항목 다 더한 게 총점</span></div>
+  </div>
+  <div class="aside">🔍 <b>몰라도 되는 디테일:</b> '가격 점수(V_p)'는 마지노선에 가까울수록 1달러를 더 크게 느끼도록 <b>로그</b>라는 곡선을 씁니다. 지금은 그냥 넘어가도 됩니다.</div>
+  <div class="callout co-warn"><div class="ct">그런데 — 지금은 이 점수가 결정에 안 쓰입니다</div><div>실제 가격은 ①Faratin이 정하고, 이 효용 점수는 참고용으로만 흐릅니다. 게다가 사용자가 고른 '중요도'가 아니라 <b>고정된 값(0.5 / 0.2 / 0.15 / 0.15)</b>을 씁니다. 가장 정교한 계산이 정작 안 쓰이는 것 — 이게 큰 개선 후보입니다(Part 7).</div></div>
+</section>
+
+<!-- Part 5 -->
+<section id="llm" data-nav="5 · LLM이 결정한다">
+  <h2 class="sec">Part 5 · <span class="lens llm">LLM</span></h2>
+  <h2 class="title">LLM이 결정한다 — 데이터·프롬프트·역할</h2>
+  <p class="lead">가장 중요한 부분입니다. LLM(grok-4-fast)은 <b>코치가 만든 추천가 + 경계값 + 전략(빌더 메모리) + 종료 힌트</b>를 압축 프롬프트로 받아, <b>실제 가격과 상대에게 보낼 메시지를 작성</b>합니다.</p>
+
+  <h4>LLM이 받는 데이터 (무엇이 프롬프트에 실리나)</h4>
+  <div class="tbl-scroll"><table>
+    <tr><th>블록</th><th>내용</th><th>출처</th></tr>
+    <tr><td><code>LISTING</code></td><td>제목·카테고리·상태·속성(배터리·저장용량 등)</td><td>listing_context</td></tr>
+    <tr><td><code>STRATEGY</code></td><td>persona + <b>빌더 메모리</b>(tone·urgency·dealBreakers·mustEmphasize…)</td><td>strategy_context</td></tr>
+    <tr><td><code>S:/B:/C:</code></td><td>상태 / 경계(target·floor·내오퍼·상대오퍼·gap) / <b>추천가</b>·tactic·상대패턴</td><td>CoreMemory + 코치</td></tr>
+    <tr><td><code>HIST</code>·<code>OPP_SAID</code></td><td>지난 라운드 가격들·상대의 마지막 말</td><td>라운드 로그</td></tr>
+    <tr><td><code>NEGOTIATION_HINT</code></td><td>gap이 작으면 서버가 "ACCEPT하라"를 직접 주입</td><td>encodeClosingHint</td></tr>
+  </table></div>
+  <div class="callout co-warn">
+    <div class="ct">🔎 놀라운 사실 — 숫자 파라미터는 프롬프트에 안 들어간다</div>
+    <div>STRATEGY 블록은 persona와 <b>빌더챗 메모리(자연어)만</b> 넣습니다. <code>weights</code>·<code>alpha</code>·<code>u_threshold</code> 같은 숫자 성향은 <b>프롬프트에 아예 안 실립니다.</b> 즉 LLM에 닿는 유일한 "성향 신호"는 빌더 메모리(dealBreakers 등)와, 코치가 β로 계산한 <b>추천가</b>뿐입니다.</div>
+  </div>
+
+  <h4>실제 프롬프트 (iPhone 라운드 2, 판매자) — 펼쳐서 보기</h4>
+  <div class="src"><span class="srcb prod">🟢 프로덕션 어댑터</span><code>apps/api/src/negotiation/adapters/grok-fast-adapter.ts</code><span style="color:var(--ink3)">· ①시스템=buildSystemPrompt 원문 · ②유저=buildUserPrompt 인코더로 iPhone 값 대입 재현 · ③응답=예시</span></div>
+  <div class="prompt-blocks">
+  <details>
+    <summary>① 시스템 프롬프트 (역할·협상 규칙·출력 스키마)<span class="path">grok-fast-adapter.ts:buildSystemPrompt</span></summary>
+<pre>You are the SELLER. You own this item and you are talking directly to a real buyer who is interested in it.
+Your job is to defend the value of your item, respond to the buyer's arguments on their merits, and find a
+price you can both live with. ... You never propose a price below your floor, and you do not drop straight
+to your floor — concessions are earned, not given.
+
+<span class="k">## How to negotiate like a real person</span>
+1. READ what the opponent just said. If they made an argument (condition, market price, urgency), engage with it.
+2. JUSTIFY your move with one concrete signal from the LISTING or your STRATEGY.
+3. CONCEDE proportionally. If the opponent moved toward you, move toward them — by less than they did.
+4. ACCEPT when the offer is at or better than your target, or the gap is small and you are running out of rounds.
+5. Keep messages to 1–2 short sentences. Match the tone in STRATEGY...
+
+<span class="k">## Reading the compact memo</span>
+In "B:t$X/f$Y/c$Z/o$W": t = YOUR target, f = YOUR floor (hard limit), c = YOUR last offer, o = OPPONENT's last offer.
+
+<span class="k">## Output</span> — Respond ONLY with valid JSON:
+{"action":"COUNTER|ACCEPT|REJECT|HOLD|CONFIRM","price":number,"reasoning":"string","message":"string","tactic_used":"string"}
+- "price": USD dollars (e.g., 450.00), NOT cents. Omit for ACCEPT/REJECT/HOLD.
+- "message": the chat line the buyer actually sees. 1–2 sentences. Must respond to OPP_SAID and cite one concrete signal.</pre>
+  </details>
+  <details>
+    <summary>② 유저 프롬프트 (이번 라운드 데이터, 압축)<span class="path">grok-fast-adapter.ts:buildUserPrompt</span></summary>
+<pre>LISTING:
+  title: iPhone 14 Pro 128GB
+  category: electronics/smartphone
+  condition: used-good
+  attrs: storage=128GB, battery=89%
+STRATEGY:
+  persona: hunter
+  urgency: low
+  <mark>dealBreakers: IMEI verification required</mark>
+S:BARGAINING|R2/8|seller|FULL_AUTO
+B:t$500.00/f$430.00/c$500.00/o$450.00/g$50.00
+C:rec$<mark>497.81</mark>|reciprocal_concession|opp:UNKNOWN|conv:0.00|tp:0.25
+HIST:R1:$450.00/$500.00|g$50.00
+OPP_SAID: Hi, I'm interested in this listing. I'd like to offer $450.</pre>
+    <p style="font-size:12px;color:var(--ink3);padding:0 15px 12px">↑ <code>rec$497.81</code>이 Part 4에서 β로 계산한 추천가. <code>dealBreakers</code>가 빌더 메모리. 숫자 파라미터(weights 등)는 여기 없음.</p>
+  </details>
+  <details>
+    <summary>③ LLM 응답 (JSON)<span class="path">parseResponse</span></summary>
+<pre>{
+  "action": "COUNTER",
+  "price": 497.00,
+  "reasoning": "Buyer opened low; hold near target, offer IMEI check to build trust.",
+  "message": "I can do $497 — clean unit, 89% battery, box included. Happy to verify IMEI on a call.",
+  "tactic_used": "reciprocal_concession"
+}</pre>
+    <p style="font-size:12px;color:var(--ink3);padding:0 15px 12px">LLM이 추천가($497.8) 근처에서 <b>IMEI(dealBreaker)를 메시지에 반영</b>. 가격은 dollars → 내부에서 ×100(minor)로 변환.</p>
+  </details>
+  </div>
+
+  <h4>LLM이 하는 것 / 안 하는 것</h4>
+  <div class="grid c2">
+    <div class="card"><h4 style="color:var(--ok)">✅ 담당</h4><p style="font-size:13px">OPENING/BARGAINING의 COUNTER에서 <b>실제 가격 + 자연어 메시지 작성</b>. 상대 말에 반응, dealBreaker 반영, 종료 판단(ACCEPT/REJECT).</p></div>
+    <div class="card"><h4 style="color:var(--ink3)">❌ 안 함</h4><p style="font-size:13px">추천가 계산(코치가 함) · 규칙 검증(Referee가 함) · 메시지 렌더 안전검사(respond가 함). ACCEPT/REJECT/CLOSING이면 LLM 호출 자체가 없음(규칙 처리).</p></div>
+  </div>
+
+  <h4>그 다음 — Referee(심판)가 검증</h4>
+  <p class="lead">LLM 결정은 바로 안 나갑니다. Referee가 7규칙으로 검사합니다: 가격이 floor 넘나(V1), 이 phase에서 허용된 action인가(V2)… HARD 위반이면 최대 2회 자동교정.</p>
+  <div class="callout co-warn"><div class="ct">개선 여지</div><div>Referee의 HARD 위반은 사실 <b>실제로 차단하지 않습니다</b> — 2회 교정 후 위반이 남아도 통과하고 'BLOCK'은 로그 라벨일 뿐. "진짜 차단할 것인가"가 안전성 개선 후보. → <a href="negotiation-engine.html#pipeline">SOT §5.5</a></div></div>
+</section>
+
+<!-- Part 6 -->
+<section id="walkthrough" data-nav="6 · 한 협상 전체">
+  <h2 class="sec">Part 6</h2>
+  <h2 class="title">한 협상 전체 — iPhone, 라운드별</h2>
+  <p class="lead">Part 1~5가 매 라운드 어떻게 맞물리는지, auto-play가 끝까지 도는 모습입니다. (판매자=hunter β0.4, 구매자=balancer, <b>합의 가능 구간</b>은 $430~$480 — 이 안에서 값이 만나면 거래 성사.)</p>
+  <div class="src"><span class="srcb ex">⚪ 예시 전사</span><span style="color:var(--ink3)">R1·R2 가격은 실제 Faratin 계산값, R3~R7은 설명용 예시. 실제 로그로 교체하려면 시뮬레이션 필요.</span></div>
+  <div>
+    <div class="round-row"><div class="rn">R1<div class="who2">구매자</div></div><div>구매자 오퍼 <b>$450</b>. "관심 있어요, $450 제안합니다." <span class="muted">— auto-play 첫 오퍼는 구매자 목표가.</span></div></div>
+    <div class="round-row"><div class="rn">R2<div class="who2">판매자</div></div><div>코치 추천 <b>$497.8</b>(β0.4=고집) → LLM COUNTER <b>$497</b> + "IMEI 확인 가능". <span class="muted">— dealBreaker 반영.</span></div></div>
+    <div class="round-row"><div class="rn">R3<div class="who2">구매자</div></div><div>구매자 EMA가 판매자를 BOULWARE로 감지 → 소폭 상향 <b>$462</b>.</div></div>
+    <div class="round-row"><div class="rn">R4<div class="who2">판매자</div></div><div>진행도↑ → 추천 <b>$488</b> → LLM <b>$486</b>. 여전히 천천히.</div></div>
+    <div class="round-row"><div class="rn">R5–6<div class="who2">양측</div></div><div>구매자 $470 → 판매자 $478. gap $8로 좁혀짐.</div></div>
+    <div class="round-row"><div class="rn">R7<div class="who2">구매자</div></div><div>gap이 target↔floor 범위의 5% 미만 → 서버가 <code>NEGOTIATION_HINT: ACCEPT</code> 주입 → 구매자 <b>ACCEPT $478</b>.</div></div>
+  </div>
+  <div class="callout co-info"><div class="ct">타결</div><div>$478에 합의. 세션 status=ACCEPTED, outcome=DEAL. 한 <code>/start</code> 요청 안에서 7라운드가 자동으로 돌아 끝났습니다. <b>β(고집)와 dealBreaker(IMEI)라는 성향이 최종가·대화에 실제로 배어든 것</b>을 보세요.</div></div>
+</section>
+
+<!-- Part 7 -->
+<section id="improve" data-nav="7 · 더 나은 방법?">
+  <h2 class="sec">Part 7</h2>
+  <h2 class="title">더 나은 방법은? — 개선 여지 지도</h2>
+  <p class="lead">이제 전체 과정을 알았으니, "정직하게 표시한 crude/advisory/dead 지점"이 곧 개선 후보입니다. 각각 어디를 건드리는지 함께 적었습니다.</p>
+  <div class="tbl-scroll"><table>
+    <tr><th>지점</th><th>지금</th><th>더 나은 방향</th><th>어디</th></tr>
+    <tr><td>파라미터 대부분 사장</td><td>17개 중 beta·anchor_ratio만</td><td>효용/시간 파라미터를 추천가·프롬프트에 배선, 또는 engine-core를 결정 뇌로 복귀</td><td>coach·memory-reconstructor</td></tr>
+    <tr><td>효용함수가 참고용</td><td>하드코딩 가중치, 결정에 미반영</td><td>사용자 weights로 실제 결정 게이트(makeDecision)</td><td>coach·decide</td></tr>
+    <tr><td>시간이 거칠다</td><td>라운드 비율 근사</td><td>실제 마감시각 + α·v_t_floor 곡선</td><td>coach·time-pressure</td></tr>
+    <tr><td>상대모델 단순</td><td>EMA 3버킷</td><td>베이지안 β 추정 + 6종 이동분류</td><td>memory-reconstructor</td></tr>
+    <tr><td>Referee가 안 막음</td><td>HARD도 통과, 가격 lock 없음</td><td>진짜 차단/clamp 여부 결정</td><td>validate·respond</td></tr>
+    <tr><td>무결성 검증 미작동</td><td>해시 write-only</td><td>verify 런타임 연결 + 온체인 앵커</td><td>memo·integrity</td></tr>
+    <tr><td>1:N 전부 dormant</td><td>그룹 미생성</td><td>/start가 그룹 생성하도록 or 별도 트리거</td><td>routes·group-executor</td></tr>
+  </table></div>
+  <hr/>
+  <p class="muted">전체 근거·파일·라인은 <a href="negotiation-engine.html">SOT 레퍼런스</a>와 <code>docs/engine/SOT.md</code>. 이 페이지는 "이해하고 개선을 고민하기 위한" 입문서입니다.</p>
+</section>
+
+</main>
+</div>
+<script src="assets/site.js"></script>
+</body>
+</html>

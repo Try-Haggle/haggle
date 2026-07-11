@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Haggle Docs</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="logo"></span>Haggle Docs</div>
+  <div class="brandsub">엔진 · 프로토콜 기술 문서</div>
+  <div id="site-features"></div>
+  <div id="page-toc" class="toc"></div>
+</nav>
+<main>
+  <section class="hero">
+    <h1>Haggle 기술 문서</h1>
+    <p class="sub">AI 협상 + 온체인 결제 프로토콜 인프라. 이 문서는 <b>실제 저장소 코드를 감사해</b> 현재 구현된 기능·구조·모델을 설명합니다. 설계 문서(<code>docs/engine/*.md</code>)의 희망사항이 아니라, <b>오늘 프로덕션에서 실제로 도는 것</b>에 집중합니다.</p>
+    <div class="meta">각 feature 페이지는 독립적으로 읽을 수 있습니다. 우선 <b>Negotiation Engine</b>부터 작성 중입니다.</div>
+  </section>
+
+  <section>
+    <h2 class="sec">Features</h2>
+    <h2 class="title">무엇을 다루나</h2>
+    <div class="feature-grid">
+      <a class="fcard" href="negotiation-engine-start-here.html" style="border-color:var(--accent2)">
+        <div class="ficon">🚀</div>
+        <div class="ftitle">Start Here — 협상 엔진 <span class="badge b-doc">신규 팀원</span></div>
+        <div class="fdesc">처음 오는 개발자용. 에이전트 생성 → 필드 → 협상 반영 → 수학 → LLM(실제 프롬프트 토글)까지 iPhone 협상 한 건으로 전체 과정을 따라갑니다. 개선을 고민하기 위한 입문서.</div>
+      </a>
+      <a class="fcard" href="negotiation-engine.html">
+        <div class="ficon">⚙️</div>
+        <div class="ftitle">Negotiation Engine <span class="badge b-ok">SOT</span></div>
+        <div class="fdesc">이상적 목표 설계(SOT) ↔ 현재 구현(현황)을 능력 단위로 대조. 1차 소스 <code>docs/engine/SOT.md</code>의 렌더 뷰. 상태 모델 · 파이프라인 · 협상 수학 · 백로그.</div>
+      </a>
+      <span class="fcard disabled">
+        <div class="ficon">🛡️</div>
+        <div class="ftitle">Trust &amp; Reputation <span class="badge b-warn">예정</span></div>
+        <div class="fdesc">신뢰 점수 엔진(trust-core). 온체인 신뢰 프로필, 정산 신뢰도, 전문성 배지.</div>
+      </span>
+      <span class="fcard disabled">
+        <div class="ficon">⚖️</div>
+        <div class="ftitle">Disputes <span class="badge b-warn">예정</span></div>
+        <div class="fdesc">분쟁 비용 모델 + DS 패널(dispute-core).</div>
+      </span>
+      <span class="fcard disabled">
+        <div class="ficon">⏳</div>
+        <div class="ftitle">Adaptive Review Period <span class="badge b-warn">예정</span></div>
+        <div class="fdesc">적응형 리뷰 기간(arp-core).</div>
+      </span>
+      <span class="fcard disabled">
+        <div class="ficon">🏷️</div>
+        <div class="ftitle">Tag Lifecycle <span class="badge b-warn">예정</span></div>
+        <div class="fdesc">태그 라이프사이클(tag-core).</div>
+      </span>
+      <span class="fcard disabled">
+        <div class="ficon">🔗</div>
+        <div class="ftitle">Smart Contracts <span class="badge b-warn">예정</span></div>
+        <div class="fdesc">Base L2 스마트 컨트랙트(Foundry). 비수탁 결제 · 거버넌스.</div>
+      </span>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Principle</h2>
+    <h2 class="title">이 문서의 원칙</h2>
+    <div class="callout co-info">
+      <div class="ct">📐 코드가 진실의 원천 (Code is the source of truth)</div>
+      <div>모든 서술은 실제 코드 경로를 추적해 검증합니다. 설계 문서에만 있고 코드엔 없는 것, 정의됐지만 실행 경로에서 안 읽히는 것은 <b>정직하게 구분</b>해 표기합니다 — <span class="badge b-ok">✅ 실제 동작</span> · <span class="badge b-warn">🚧 advisory/부분</span> · <span class="badge b-dead">💀 미사용/죽음</span> · <span class="badge b-todo">🚧 조사 예정</span>.</div>
+    </div>
+  </section>
+</main>
+</div>
+<script src="assets/site.js"></script>
+</body>
+</html>
