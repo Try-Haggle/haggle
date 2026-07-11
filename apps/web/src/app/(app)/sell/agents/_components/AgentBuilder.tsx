@@ -82,6 +82,10 @@ export function agentStrategySnapshotFromState(
   memory?: NegotiationAgentBuilderMemory | null,
 ): Record<string, unknown> {
   const ep = resolveEffectivePreset(state);
+  // Prefer freshly-captured chat memory; otherwise fall back to the durable
+  // memory carried by a reused saved agent so its posture survives publish even
+  // when the seller doesn't re-run the builder chat.
+  const effectiveMemory = memory ?? state.agent.builderChatMemory ?? null;
   return {
     preset: state.agent.presetId,
     weights: { ...ep.weights },
@@ -89,7 +93,7 @@ export function agentStrategySnapshotFromState(
     sourceId: state.source.id,
     customized: isBuilderCustomized(state),
     engineParams: engineParamsFromPreset(ep),
-    ...(memory ? { negotiationAgentBuilderMemory: memory } : {}),
+    ...(effectiveMemory ? { negotiationAgentBuilderMemory: effectiveMemory } : {}),
   };
 }
 

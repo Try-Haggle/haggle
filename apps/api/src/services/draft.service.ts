@@ -21,6 +21,7 @@ import {
   tags,
 } from "@haggle/db";
 import { triggerEmbeddingGeneration } from "./embedding.service.js";
+import { sanitizePersistedBuilderMemory } from "./negotiation-agent-builder-chat.service.js";
 import { placeListingTags } from "./tag-placement.service.js";
 
 /** Fields that can be patched via haggle_apply_patch. */
@@ -181,7 +182,9 @@ async function persistListingAgent(
     negotiationAgentPresetId: presetId,
     weights: snap.weights,
     engineParams: snap.engineParams,
-    builderChatMemory: snap.negotiationAgentBuilderMemory,
+    builderChatMemory: sanitizePersistedBuilderMemory(
+      snap.negotiationAgentBuilderMemory as Record<string, unknown> | null | undefined,
+    ),
     forkedFromListing: draft.id,
   };
   try {

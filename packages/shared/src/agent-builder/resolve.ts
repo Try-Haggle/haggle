@@ -114,6 +114,7 @@ export function builderStateFromAgentRow(
       engineParams: agent.engineParams ? { ...agent.engineParams } : undefined,
       categoryAnswers: agent.categoryAnswers,
       voiceId: agent.voiceId,
+      builderChatMemory: agent.builderChatMemory ? { ...agent.builderChatMemory } : undefined,
     },
     item,
     chatData: emptyChatData(),

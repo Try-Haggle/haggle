@@ -30,6 +30,11 @@ export interface NegotiationAgentBuilderMemory {
   targetPrice?: number;
   mustHave: string[];
   avoid: string[];
+  /** Negotiation-facing signals (seller side primarily). Optional for back-compat. */
+  dealBreakers?: string[];
+  mustEmphasize?: string[];
+  notes?: string[];
+  urgency?: string;
   riskStyle: "safe_first" | "balanced" | "lowest_price";
   negotiationStyle: "defensive" | "balanced" | "aggressive";
   openingTactic: "condition_anchor" | "fair_market_anchor" | "speed_close";
@@ -204,8 +209,14 @@ function extractChips(memory: NegotiationAgentBuilderMemory): StrategyChip[] {
   for (const item of memory.mustHave) {
     chips.push({ label: `✅ ${item}`, value: item, category: "preference" });
   }
+  for (const item of memory.mustEmphasize ?? []) {
+    chips.push({ label: `📣 ${item}`, value: item, category: "preference" });
+  }
   for (const item of memory.avoid) {
     chips.push({ label: `❌ ${item}`, value: item, category: "constraint" });
+  }
+  for (const item of memory.dealBreakers ?? []) {
+    chips.push({ label: `⛔ ${item}`, value: item, category: "constraint" });
   }
 
   const styleLabels: Record<string, string> = {

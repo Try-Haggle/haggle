@@ -18,6 +18,7 @@ import type {
   RefereeCoaching,
   RoundFact,
   StrategyContextMemory,
+  StrategyParams,
 } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -169,6 +170,7 @@ export function reconstructCoreMemory(
 
   const listingContext = extractListingContextMemory(strategy);
   const strategyContext = extractStrategyContextMemory(strategy, role);
+  const strategyParams = extractStrategyParams(strategy);
 
   return {
     session: {
@@ -203,7 +205,50 @@ export function reconstructCoreMemory(
     skill_summary: "electronics-iphone-pro-v1",
     ...(listingContext ? { listing_context: listingContext } : {}),
     ...(strategyContext ? { strategy_context: strategyContext } : {}),
+    ...(strategyParams ? { strategy_params: strategyParams } : {}),
   };
+}
+
+/**
+ * Pull the agent's resolved engine knobs from the compiled snapshot. These are
+ * flat MasterStrategy fields written by compileNegotiationAgentSnapshot
+ * (beta/alpha/anchor_ratio/...). Returns undefined when none are present so
+ * consumers keep their existing fallbacks.
+ */
+function extractStrategyParams(strategy: Record<string, unknown>): StrategyParams | undefined {
+  const out: StrategyParams = {};
+  const num = (key: string): number | undefined => {
+    const v = strategy[key];
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  };
+  const beta = num("beta");
+  const alpha = num("alpha");
+  const anchorRatio = num("anchor_ratio");
+  const vTFloor = num("v_t_floor");
+  const uThreshold = num("u_threshold");
+  const uAspiration = num("u_aspiration");
+  if (beta !== undefined) out.beta = beta;
+  if (alpha !== undefined) out.alpha = alpha;
+  if (anchorRatio !== undefined) out.anchor_ratio = anchorRatio;
+  if (vTFloor !== undefined) out.v_t_floor = vTFloor;
+  if (uThreshold !== undefined) out.u_threshold = uThreshold;
+  if (uAspiration !== undefined) out.u_aspiration = uAspiration;
+
+  const w = strategy.weights;
+  if (w && typeof w === "object" && !Array.isArray(w)) {
+    const wr = w as Record<string, unknown>;
+    const keys = ["w_p", "w_t", "w_r", "w_s"] as const;
+    if (keys.every((k) => typeof wr[k] === "number")) {
+      out.weights = {
+        w_p: wr.w_p as number,
+        w_t: wr.w_t as number,
+        w_r: wr.w_r as number,
+        w_s: wr.w_s as number,
+      };
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function extractListingContextMemory(

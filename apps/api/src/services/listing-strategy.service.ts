@@ -1,9 +1,24 @@
 import { type Database, eq, listingDrafts, listingsPublished } from "@haggle/db";
 import {
-  type AgentStats,
   type CompiledNegotiationAgentSnapshot,
   compileNegotiationAgentSnapshot,
+  type EngineParamsInput,
 } from "@haggle/engine-session";
+import {
+  DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
+  type EngineParameters,
+  getNegotiationAgentPreset,
+  presetToEngineParameters,
+} from "@haggle/shared";
+
+/** Resolve the canonical default preset's parameters (balancer). */
+function defaultEngineParameters(): EngineParameters {
+  const preset =
+    getNegotiationAgentPreset(DEFAULT_NEGOTIATION_AGENT_PRESET_ID) ??
+    getNegotiationAgentPreset("balancer");
+  // balancer always exists; the non-null assertion is safe.
+  return presetToEngineParameters(preset!);
+}
 
 export interface NegotiationAgentBuilderMemorySnapshot {
   budgetMax?: number;
@@ -95,26 +110,48 @@ function majorPriceToMinor(value: unknown): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : undefined;
 }
 
-export function extractAgentStats(
-  negotiationAgentSnapshot: Record<string, unknown>,
-): AgentStats | undefined {
-  const keys = [
-    "priceAggression",
-    "patienceLevel",
-    "riskTolerance",
-    "speedBias",
-    "detailFocus",
-  ] as const;
-  const stats: AgentStats = {};
-  let hasStats = false;
-  for (const key of keys) {
-    const value = negotiationAgentSnapshot[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      stats[key] = value;
-      hasStats = true;
-    }
+function extractWeights(raw: unknown): EngineParameters["weights"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const keys = ["w_p", "w_t", "w_r", "w_s"] as const;
+  const out: Record<string, number> = {};
+  for (const k of keys) {
+    const v = r[k];
+    if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
+    out[k] = v;
   }
-  return hasStats ? stats : undefined;
+  return out as EngineParameters["weights"];
+}
+
+function numericFields(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Resolve the agent's personality (the single EngineParameters form) from a
+ * stored listing snapshot. Precedence: the snapshot's own `weights`/`engineParams`
+ * (written by the agent builder) → the named preset → the balancer default.
+ * This guarantees real parameters reach the compiler instead of a flat default.
+ */
+export function resolveSnapshotParams(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): EngineParamsInput {
+  const presetId =
+    typeof negotiationAgentSnapshot.preset === "string"
+      ? negotiationAgentSnapshot.preset
+      : undefined;
+  const preset = presetId ? getNegotiationAgentPreset(presetId) : undefined;
+  const base = preset ? presetToEngineParameters(preset) : defaultEngineParameters();
+
+  const weights = extractWeights(negotiationAgentSnapshot.weights) ?? base.weights;
+  const overrides = numericFields(negotiationAgentSnapshot.engineParams);
+
+  return { ...base, ...overrides, weights };
 }
 
 export function extractUserPreferenceRef(
@@ -199,6 +236,8 @@ export async function loadListingStrategyContext(
       ? negotiationAgentSnapshot.preset
       : undefined;
 
+  const sellerParams = resolveSnapshotParams(negotiationAgentSnapshot);
+
   const sellerStrategy =
     askPriceMinor && floorPriceMinor
       ? compileNegotiationAgentSnapshot({
@@ -212,7 +251,7 @@ export async function loadListingStrategyContext(
             typeof negotiationAgentSnapshot.preset === "string"
               ? negotiationAgentSnapshot.preset
               : undefined,
-          agentStats: extractAgentStats(negotiationAgentSnapshot),
+          params: sellerParams,
           userPreferences: extractUserPreferenceRef(negotiationAgentSnapshot),
           listing: {
             id: row.id,

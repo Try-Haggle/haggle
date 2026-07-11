@@ -28,7 +28,6 @@ export interface NegotiationAgentConfig {
   voiceId?: string;
   /** Loose shape — typed `NegotiationAgentBuilderMemory` survives JSON. */
   builderChatMemory?: Record<string, unknown> | unknown;
-  stats?: Record<string, number>;
 }
 
 /** Raw row shape returned by GET /negotiations/agents. */
@@ -111,12 +110,15 @@ export function rowToNegotiationAgent(row: NegotiationAgentRow): NegotiationAgen
     emoji: cfg.emoji,
     role: row.role,
     basePresetId: cfg.basePresetId,
-    stats: cfg.stats as NegotiationAgent["stats"] | undefined,
     negotiationAgentPresetId: cfg.negotiationAgentPresetId,
     weights: cfg.weights,
     engineParams: cfg.engineParams as NegotiationAgent["engineParams"],
     categoryAnswers: cfg.categoryAnswers,
     voiceId: cfg.voiceId,
+    builderChatMemory:
+      cfg.builderChatMemory && typeof cfg.builderChatMemory === "object"
+        ? (cfg.builderChatMemory as Record<string, unknown>)
+        : undefined,
     createdAt: new Date(row.createdAt).getTime(),
     updatedAt: new Date(row.updatedAt).getTime(),
   };

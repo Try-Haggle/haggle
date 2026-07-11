@@ -1,45 +1,45 @@
+import { computeCounterOffer } from "@haggle/engine-core";
+import { ELECTRONICS_TERMS } from "../term/standard-terms.js";
 import type {
+  CoreMemory,
+  EngineDecision,
+  NegotiationPhase,
   NegotiationSkill,
+  OpponentPattern,
+  RoundFact,
   SkillConstraint,
   SkillTermDeclaration,
-  CoreMemory,
-  RoundFact,
-  OpponentPattern,
-  NegotiationPhase,
-  EngineDecision,
-} from '../types.js';
-import { computeCounterOffer } from '@haggle/engine-core';
-import { ELECTRONICS_TERMS } from '../term/standard-terms.js';
+} from "../types.js";
 
 export class DefaultEngineSkill implements NegotiationSkill {
-  readonly id = 'electronics-iphone-pro-v1';
-  readonly version = '1.0.0';
+  readonly id = "electronics-iphone-pro-v1";
+  readonly version = "1.0.0";
 
   getLLMContext(): string {
     return [
-      '## Category: Electronics — iPhone Pro',
-      'Market: US used iPhone Pro (13/14/15). Reference: Swappa 30d median.',
-      'Key factors: battery health, carrier lock, screen condition, storage, cosmetic grade.',
-      'IMEI and Find My verification are deal-breakers.',
-    ].join('\n');
+      "## Category: Electronics — iPhone Pro",
+      "Market: US used iPhone Pro (13/14/15). Reference: Swappa 30d median.",
+      "Key factors: battery health, carrier lock, screen condition, storage, cosmetic grade.",
+      "IMEI and Find My verification are deal-breakers.",
+    ].join("\n");
   }
 
   getTactics(): string[] {
     return [
-      'anchoring',
-      'reciprocal_concession',
-      'condition_trade',
-      'time_pressure_close',
-      'nibble',
-      'bundling',
+      "anchoring",
+      "reciprocal_concession",
+      "condition_trade",
+      "time_pressure_close",
+      "nibble",
+      "bundling",
     ];
   }
 
   getConstraints(): SkillConstraint[] {
     return [
-      { rule: 'IMEI_REQUIRED', description: 'IMEI must be verified before CLOSING phase' },
-      { rule: 'FIND_MY_REQUIRED', description: 'Find My must be disabled before sale' },
-      { rule: 'BATTERY_THRESHOLD', description: 'Battery below 80% triggers mandatory disclosure' },
+      { rule: "IMEI_REQUIRED", description: "IMEI must be verified before CLOSING phase" },
+      { rule: "FIND_MY_REQUIRED", description: "Find My must be disabled before sale" },
+      { rule: "BATTERY_THRESHOLD", description: "Battery below 80% triggers mandatory disclosure" },
     ];
   }
 
@@ -47,51 +47,56 @@ export class DefaultEngineSkill implements NegotiationSkill {
     return {
       supported_terms: ELECTRONICS_TERMS.map((t) => t.id),
       category_terms: ELECTRONICS_TERMS,
-      custom_term_handling: 'basic',
+      custom_term_handling: "basic",
     };
   }
 
   async generateMove(
     memory: CoreMemory,
-    recentFacts: RoundFact[],
+    _recentFacts: RoundFact[],
     opponentPattern: OpponentPattern | null,
     phase: NegotiationPhase,
   ): Promise<EngineDecision> {
     // Rule-based fallback — used when LLM is unavailable or for non-BARGAINING phases
     const { session, boundaries } = memory;
 
-    if (phase === 'DISCOVERY') {
+    if (phase === "DISCOVERY") {
       return {
-        action: 'DISCOVER',
-        reasoning: 'Discovery phase — gathering item information.',
+        action: "DISCOVER",
+        reasoning: "Discovery phase — gathering item information.",
       };
     }
 
-    if (phase === 'OPENING') {
-      // Seller anchors 10% above target; buyer holds at target (already opened there —
+    if (phase === "OPENING") {
+      // Seller anchors above target; buyer holds at target (already opened there —
       // going lower would mean countering below the buyer's own initial offer).
-      const price = session.role === 'buyer'
-        ? boundaries.my_target
-        : boundaries.my_target * 1.10;
+      // Anchor strength comes from the agent's anchor_ratio when set (lower ratio
+      // = more extreme anchor), else the default 10%.
+      const anchorRatio = memory.strategy_params?.anchor_ratio;
+      const margin = anchorRatio !== undefined ? (1 - anchorRatio) * 0.2 : 0.1;
+      const price =
+        session.role === "buyer" ? boundaries.my_target : boundaries.my_target * (1 + margin);
       return {
-        action: 'COUNTER',
+        action: "COUNTER",
         price: Math.round(price),
-        reasoning: 'Opening anchor.',
-        tactic_used: 'anchoring',
+        reasoning: "Opening anchor.",
+        tactic_used: "anchoring",
       };
     }
 
-    if (phase === 'CLOSING') {
+    if (phase === "CLOSING") {
       return {
-        action: 'CONFIRM',
+        action: "CONFIRM",
         price: boundaries.current_offer,
-        reasoning: 'Confirming current offer for closing.',
+        reasoning: "Confirming current offer for closing.",
       };
     }
 
-    // BARGAINING — use Faratin curve
+    // BARGAINING — use Faratin curve. Concession speed (beta) comes from the
+    // agent's tuned strategy when present (preset / advanced sliders), else the
+    // opponent-derived heuristic.
     const t = session.max_rounds > 0 ? session.round / session.max_rounds : 0;
-    const beta = this.deriveBeta(opponentPattern);
+    const beta = memory.strategy_params?.beta ?? this.deriveBeta(opponentPattern);
     const price = computeCounterOffer({
       p_start: boundaries.my_target,
       p_limit: boundaries.my_floor,
@@ -105,18 +110,18 @@ export class DefaultEngineSkill implements NegotiationSkill {
     const range = Math.abs(boundaries.my_target - boundaries.my_floor);
     if (range > 0 && gap / range < 0.05) {
       return {
-        action: 'ACCEPT',
+        action: "ACCEPT",
         price: boundaries.opponent_offer,
         reasoning: `Gap is ${((gap / range) * 100).toFixed(1)}% of range — accepting.`,
-        tactic_used: 'near_deal_acceptance',
+        tactic_used: "near_deal_acceptance",
       };
     }
 
     return {
-      action: 'COUNTER',
+      action: "COUNTER",
       price: Math.round(price),
       reasoning: `Faratin curve counter at t=${t.toFixed(2)}, beta=${beta.toFixed(1)}.`,
-      tactic_used: 'reciprocal_concession',
+      tactic_used: "reciprocal_concession",
     };
   }
 
@@ -129,15 +134,16 @@ export class DefaultEngineSkill implements NegotiationSkill {
     const { boundaries, session } = memory;
 
     // Auto-accept if at or better than target
-    const isAtTarget = session.role === 'buyer'
-      ? incomingOffer.price <= boundaries.my_target
-      : incomingOffer.price >= boundaries.my_target;
+    const isAtTarget =
+      session.role === "buyer"
+        ? incomingOffer.price <= boundaries.my_target
+        : incomingOffer.price >= boundaries.my_target;
 
     if (isAtTarget) {
       return {
-        action: 'ACCEPT',
+        action: "ACCEPT",
         price: incomingOffer.price,
-        reasoning: 'Offer meets or exceeds target price.',
+        reasoning: "Offer meets or exceeds target price.",
       };
     }
 
@@ -145,9 +151,10 @@ export class DefaultEngineSkill implements NegotiationSkill {
     // Real negotiations don't end because the opening price is "too low" — they
     // counter back toward target. Only REJECT when there are no rounds left to
     // negotiate, or the price is so extreme that countering is meaningless.
-    const isBeyondFloor = session.role === 'buyer'
-      ? incomingOffer.price > boundaries.my_floor
-      : incomingOffer.price < boundaries.my_floor;
+    const isBeyondFloor =
+      session.role === "buyer"
+        ? incomingOffer.price > boundaries.my_floor
+        : incomingOffer.price < boundaries.my_floor;
 
     if (isBeyondFloor) {
       const roundsLeft = session.rounds_remaining;
@@ -158,7 +165,7 @@ export class DefaultEngineSkill implements NegotiationSkill {
 
       if (roundsLeft <= 1 || isExtreme) {
         return {
-          action: 'REJECT',
+          action: "REJECT",
           reasoning:
             roundsLeft <= 1
               ? `Offer $${incomingOffer.price} is beyond floor $${boundaries.my_floor} with no rounds left.`

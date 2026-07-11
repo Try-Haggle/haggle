@@ -5,12 +5,18 @@ import {
   createHnpAgreementObject,
   createHnpTransactionHandoff,
   createHnpTransactionHandoffFromSignals,
+  type EngineParamsInput,
   type HnpAgreementObject,
   type HnpTransactionHandoff,
   type HnpTransactionHandoffChainSummary,
   summarizeHnpTransactionHandoffChain,
   validateHnpTransactionHandoff,
 } from "@haggle/engine-session";
+import {
+  type EngineParameters,
+  getNegotiationAgentPreset,
+  presetToEngineParameters,
+} from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
@@ -999,13 +1005,22 @@ export function registerNegotiationRoutes(
     // the executor's round-limit check fires symmetrically.
     const AUTO_PLAY_MAX_ROUNDS = 8;
 
+    // Resolve the buyer's chosen agent into the single EngineParameters form:
+    // start from the named preset, then layer the builder/advanced overrides the
+    // client sent, so the buyer's preset AND tuning reach the negotiation.
+    const buyerParams = resolveRequestedTuning(
+      body.negotiation_agent_preset_id,
+      body.agent_weights,
+      body.agent_overrides,
+    );
+
     // Buyer-side compiled snapshot (mirror of the seller one).
     const buyerCompiled = compileNegotiationAgentSnapshot({
       role: "BUYER",
       userId: buyer.id,
       strategyId: `buyer_${body.negotiation_agent_preset_id}`,
-      preset: undefined,
-      agentStats: undefined,
+      preset: body.negotiation_agent_preset_id,
+      params: buyerParams,
       listing: {
         id: listing.id,
         category: null,
@@ -1023,6 +1038,20 @@ export function registerNegotiationRoutes(
     const sellerSnapshot: Record<string, unknown> = {
       ...sellerStrategy,
       max_rounds: AUTO_PLAY_MAX_ROUNDS,
+      // Surface the seller's resolved tuning to the LLM STRATEGY block, mirroring
+      // the buyer's agent_weights/agent_overrides (extractStrategyContextMemory).
+      agent_weights: sellerStrategy.weights,
+      agent_overrides: {
+        alpha: sellerStrategy.alpha,
+        beta: sellerStrategy.beta,
+        u_threshold: sellerStrategy.u_threshold,
+        u_aspiration: sellerStrategy.u_aspiration,
+        anchor_ratio: sellerStrategy.anchor_ratio,
+        v_t_floor: sellerStrategy.v_t_floor,
+        w_rep: sellerStrategy.w_rep,
+        v_s_base: sellerStrategy.v_s_base,
+        n_threshold: sellerStrategy.n_threshold,
+      },
       ...(sellerNegotiationAgentBuilderMemory
         ? { seller_negotiation_agent_builder_memory: sellerNegotiationAgentBuilderMemory }
         : {}),
@@ -1192,6 +1221,63 @@ function toMinorOrUndefined(value: number | undefined | null): number | undefine
   if (value === undefined || value === null) return undefined;
   if (!Number.isFinite(value) || value <= 0) return undefined;
   return Math.round(value * 100);
+}
+
+const ENGINE_PARAM_KEYS = [
+  "alpha",
+  "beta",
+  "u_threshold",
+  "u_aspiration",
+  "anchor_ratio",
+  "v_t_floor",
+  "w_rep",
+  "v_s_base",
+  "n_threshold",
+  "late_round_aggression_modifier",
+  "gamma",
+] as const;
+
+function pickNumericFields(raw: Record<string, unknown> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw) return out;
+  for (const key of ENGINE_PARAM_KEYS) {
+    const v = raw[key];
+    if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
+  }
+  return out;
+}
+
+function defaultEngineParameters(): EngineParameters {
+  const preset = getNegotiationAgentPreset("balancer");
+  // balancer always exists; non-null assertion is safe.
+  return presetToEngineParameters(preset!);
+}
+
+/**
+ * Resolve a request-provided agent (preset id + optional weight/knob overrides)
+ * into the single EngineParameters form the compiler consumes. Precedence:
+ * named preset → client overrides → balancer default.
+ */
+function resolveRequestedTuning(
+  presetId: string | undefined,
+  weights: Record<string, number> | undefined,
+  overrides: Record<string, unknown> | undefined,
+): EngineParamsInput {
+  const preset = presetId ? getNegotiationAgentPreset(presetId) : undefined;
+  const base = preset ? presetToEngineParameters(preset) : defaultEngineParameters();
+  const overrideParams = pickNumericFields(overrides);
+
+  const resolvedWeights =
+    weights && ["w_p", "w_t", "w_r", "w_s"].every((k) => typeof weights[k] === "number")
+      ? {
+          w_p: weights.w_p as number,
+          w_t: weights.w_t as number,
+          w_r: weights.w_r as number,
+          w_s: weights.w_s as number,
+        }
+      : base.weights;
+
+  return { ...base, ...overrideParams, weights: resolvedWeights };
 }
 
 // Map a buyer-side negotiationStyle keyword to default alpha/threshold/concession
