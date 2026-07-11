@@ -185,6 +185,25 @@ export interface CoreMemory {
    * tone/dealbreakers/mustEmphasize, etc.
    */
   strategy_context?: StrategyContextMemory;
+  /**
+   * The agent's resolved engine knobs (from the chosen preset + advanced/builder
+   * tuning) that decision-makers actually consume — concession curve, anchor
+   * strength, thresholds, weights. Populated from the compiled snapshot so a
+   * user's tuning reaches the rule path and coach recommendations instead of
+   * collapsing to defaults.
+   */
+  strategy_params?: StrategyParams;
+}
+
+/** Resolved engine knobs surfaced to the live decision-makers. */
+export interface StrategyParams {
+  beta?: number;
+  alpha?: number;
+  anchor_ratio?: number;
+  v_t_floor?: number;
+  u_threshold?: number;
+  u_aspiration?: number;
+  weights?: { w_p: number; w_t: number; w_r: number; w_s: number };
 }
 
 /** Mirror of services/listing-strategy.service.ts:ListingContext, kept local

@@ -257,10 +257,9 @@ export type {
 } from "./session/types.js";
 export { assembleContext } from "./strategy/assembler.js";
 export {
-  type AgentStats,
   type CompiledNegotiationAgentSnapshot,
   compileNegotiationAgentSnapshot,
-  normalizeAgentStats,
+  type EngineParamsInput,
   type StrategyCompilerInput,
   type StrategyRole,
 } from "./strategy/compiler.js";

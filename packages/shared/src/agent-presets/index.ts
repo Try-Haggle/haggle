@@ -1,8 +1,4 @@
 export {
-  type ResolveOptions,
-  resolveAgentToEngineParameters,
-} from "./agent-to-params.js";
-export {
   FIELD_DESCRIPTORS,
   type FieldDescriptor,
   type FieldDimension,

@@ -40,6 +40,12 @@ export interface AgentBuilderAgent {
   categoryAnswers?: Record<string, Record<string, unknown>>;
   /** Voice profile id — wiring reserved for a later sprint. */
   voiceId?: string;
+  /**
+   * Durable builder-chat memory carried from a saved agent (must-haves,
+   * deal-breakers, urgency, style). Surfaced so reusing a saved agent sends its
+   * negotiation posture even when the user doesn't re-run the builder chat.
+   */
+  builderChatMemory?: Record<string, unknown>;
 }
 
 /**

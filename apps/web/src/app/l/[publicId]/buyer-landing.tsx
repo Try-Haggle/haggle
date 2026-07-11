@@ -425,8 +425,16 @@ export function BuyerLanding({
                                   ...engineParamsFromPreset(selectedAgent),
                                 }
                               : undefined,
+                          // Prefer memory captured in this session's builder
+                          // chat; otherwise fall back to the durable memory
+                          // saved on the reused agent so a picked "My Agent"
+                          // still carries its deal-breakers/must-haves/urgency.
                           negotiation_agent_builder_memory:
-                            negotiationAgentBuilderMemory ?? undefined,
+                            negotiationAgentBuilderMemory ??
+                            (agentValue?.agent.builderChatMemory as
+                              | NegotiationAgentBuilderMemory
+                              | undefined) ??
+                            undefined,
                         });
                         // Stash guest buyer id for the post-signup claim step.
                         // Logged-in callers never receive guest_buyer_id back,

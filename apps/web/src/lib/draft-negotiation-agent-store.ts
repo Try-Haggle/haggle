@@ -44,13 +44,12 @@ function isValidProfile(x: unknown): x is NegotiationAgent {
     return false;
   }
   // At least one strategy shape must be present.
-  const hasStats = typeof p.stats === "object" && p.stats !== null;
-  const hasNewFlow =
+  return (
     typeof p.negotiationAgentPresetId === "string" ||
     typeof p.weights === "object" ||
     typeof p.engineParams === "object" ||
-    typeof p.categoryAnswers === "object";
-  return hasStats || hasNewFlow;
+    typeof p.categoryAnswers === "object"
+  );
 }
 
 function uid(): string {

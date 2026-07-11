@@ -1,21 +1,21 @@
 /** @deprecated Use RefereeBriefing (briefing.ts) + FaratinCoachingSkill instead. */
 
+import { type Database, eq, trustScores } from "@haggle/db";
+import { computeCounterOffer } from "@haggle/engine-core";
+import { computeSessionTimePressure } from "../time-pressure.js";
 import type {
-  CoreMemory,
-  RoundFact,
-  OpponentPattern,
   BuddyDNA,
-  RefereeCoaching,
+  CoreMemory,
+  OpponentPattern,
   OpponentPatternType,
-} from '../types.js';
-import { computeCounterOffer } from '@haggle/engine-core';
-import { eq, trustScores, type Database } from '@haggle/db';
-import { computeSessionTimePressure } from '../time-pressure.js';
+  RefereeCoaching,
+  RoundFact,
+} from "../types.js";
 
 // ─── Style-based margin for opening anchor ───
-const STYLE_MARGIN: Record<BuddyDNA['style'], number> = {
+const STYLE_MARGIN: Record<BuddyDNA["style"], number> = {
   aggressive: 0.15,
-  balanced: 0.10,
+  balanced: 0.1,
   defensive: 0.05,
 };
 
@@ -80,28 +80,40 @@ function _computeCoaching(
   const { session, boundaries } = memory;
   const { phase, role, max_rounds, round } = session;
 
+  // Agent-tuned engine knobs (preset / advanced sliders). When present these
+  // drive the recommended price the LLM anchors on, so the agent's chosen
+  // concession speed / anchor strength actually shows up in the offers. Falls
+  // back to the buddyDna.style heuristic when absent.
+  const params = memory.strategy_params;
+
   // ─── Time pressure ───
   const time_pressure = computeSessionTimePressure(session);
 
   // ─── Recommended price (phase-dependent) ───
   let recommended_price: number;
-  if (phase === 'DISCOVERY') {
+  if (phase === "DISCOVERY") {
     // No price recommendation during discovery
     recommended_price = 0;
-  } else if (phase === 'OPENING') {
-    // Initial anchor: target + margin based on style
-    const margin = STYLE_MARGIN[buddyDna.style] ?? 0.10;
-    if (role === 'buyer') {
+  } else if (phase === "OPENING") {
+    // Initial anchor: target + margin. Prefer the agent's anchor_ratio (lower =
+    // more extreme), else the style-based default margin.
+    const margin =
+      params?.anchor_ratio !== undefined
+        ? (1 - params.anchor_ratio) * 0.2
+        : (STYLE_MARGIN[buddyDna.style] ?? 0.1);
+    if (role === "buyer") {
       // Buyer wants lower: start below target
       recommended_price = boundaries.my_target * (1 - margin);
     } else {
       // Seller wants higher: start above target
       recommended_price = boundaries.my_target * (1 + margin);
     }
-  } else if (phase === 'BARGAINING') {
+  } else if (phase === "BARGAINING") {
     // Faratin concession curve
     const t = time_pressure || (max_rounds > 0 ? round / max_rounds : 0);
-    const beta = buddyDna.style === 'aggressive' ? 2.0 : buddyDna.style === 'defensive' ? 0.5 : 1.0;
+    const beta =
+      params?.beta ??
+      (buddyDna.style === "aggressive" ? 2.0 : buddyDna.style === "defensive" ? 0.5 : 1.0);
     recommended_price = computeCounterOffer({
       p_start: boundaries.my_target,
       p_limit: boundaries.my_floor,
@@ -117,7 +129,7 @@ function _computeCoaching(
   // ─── Acceptable range ───
   const rangePadding = Math.abs(boundaries.my_target - boundaries.my_floor) * 0.1;
   let acceptable_range: { min: number; max: number };
-  if (role === 'buyer') {
+  if (role === "buyer") {
     // Buyer: min = recommended - padding, max = floor (ceiling for buyer)
     acceptable_range = {
       min: Math.max(0, recommended_price - rangePadding),
@@ -138,9 +150,12 @@ function _computeCoaching(
   const convergence_rate = computeConvergenceRate(recentFacts);
 
   // ─── Utility snapshot (simplified — real u_total from engine-core would be better) ───
-  const u_price_raw = boundaries.my_floor > 0
-    ? 1 - Math.abs(boundaries.current_offer - boundaries.my_target) / Math.abs(boundaries.my_floor - boundaries.my_target || 1)
-    : 0.5;
+  const u_price_raw =
+    boundaries.my_floor > 0
+      ? 1 -
+        Math.abs(boundaries.current_offer - boundaries.my_target) /
+          Math.abs(boundaries.my_floor - boundaries.my_target || 1)
+      : 0.5;
   const u_price = clamp01(u_price_raw);
   const u_time = 1 - time_pressure;
   // u_risk comes from trust-core DB query (counterparty combined score / 100), or 0.5 fallback
@@ -158,9 +173,11 @@ function _computeCoaching(
 
   // ─── Warnings ───
   const warnings: string[] = [];
-  if (time_pressure > 0.8) warnings.push('Running low on rounds — consider closing.');
-  if (convergence_rate < 0.01 && recentFacts.length >= 3) warnings.push('Stagnation detected — try changing approach.');
-  if (opponent_pattern === 'BOULWARE') warnings.push('Opponent is firm — small concessions may not yield results.');
+  if (time_pressure > 0.8) warnings.push("Running low on rounds — consider closing.");
+  if (convergence_rate < 0.01 && recentFacts.length >= 3)
+    warnings.push("Stagnation detected — try changing approach.");
+  if (opponent_pattern === "BOULWARE")
+    warnings.push("Opponent is firm — small concessions may not yield results.");
 
   return {
     recommended_price,
@@ -170,7 +187,13 @@ function _computeCoaching(
     opponent_pattern,
     convergence_rate,
     time_pressure,
-    utility_snapshot: { u_price, u_time: clamp01(u_time), u_risk, u_quality, u_total: clamp01(u_total) },
+    utility_snapshot: {
+      u_price,
+      u_time: clamp01(u_time),
+      u_risk,
+      u_quality,
+      u_total: clamp01(u_total),
+    },
     strategic_hints,
     warnings,
   };
@@ -184,36 +207,37 @@ function clamp01(v: number): number {
 
 function classifyOpponent(
   facts: RoundFact[],
-  myRole: 'buyer' | 'seller',
+  myRole: "buyer" | "seller",
   existingPattern: OpponentPattern | null,
 ): OpponentPatternType {
-  if (facts.length < 2) return existingPattern ? classifyFromAggression(existingPattern.aggression) : 'UNKNOWN';
+  if (facts.length < 2)
+    return existingPattern ? classifyFromAggression(existingPattern.aggression) : "UNKNOWN";
 
   // Compute EMA of opponent concession rates
   let ema = 0;
   for (let i = 1; i < facts.length; i++) {
     const prev = facts[i - 1]!;
     const curr = facts[i]!;
-    const opponentPrev = myRole === 'buyer' ? prev.seller_offer : prev.buyer_offer;
-    const opponentCurr = myRole === 'buyer' ? curr.seller_offer : curr.buyer_offer;
+    const opponentPrev = myRole === "buyer" ? prev.seller_offer : prev.buyer_offer;
+    const opponentCurr = myRole === "buyer" ? curr.seller_offer : curr.buyer_offer;
 
     if (opponentPrev === 0) continue;
     const concession = (opponentPrev - opponentCurr) / opponentPrev;
     // For seller opponent, concession = price drop (positive = conceding)
     // For buyer opponent, concession = price rise (negative of this calc = conceding)
-    const adjustedConcession = myRole === 'buyer' ? concession : -concession;
+    const adjustedConcession = myRole === "buyer" ? concession : -concession;
     ema = EMA_ALPHA * adjustedConcession + (1 - EMA_ALPHA) * ema;
   }
 
-  if (ema > 0.05) return 'CONCEDER';
-  if (ema < 0.005) return 'BOULWARE';
-  return 'LINEAR';
+  if (ema > 0.05) return "CONCEDER";
+  if (ema < 0.005) return "BOULWARE";
+  return "LINEAR";
 }
 
 function classifyFromAggression(aggression: number): OpponentPatternType {
-  if (aggression > 0.7) return 'BOULWARE';
-  if (aggression < 0.3) return 'CONCEDER';
-  return 'LINEAR';
+  if (aggression > 0.7) return "BOULWARE";
+  if (aggression < 0.3) return "CONCEDER";
+  return "LINEAR";
 }
 
 function computeConvergenceRate(facts: RoundFact[]): number {
@@ -238,14 +262,14 @@ function deriveTactic(
   opponentPattern: OpponentPatternType,
   buddyDna: BuddyDNA,
 ): string {
-  if (phase === 'DISCOVERY') return 'ask_questions';
-  if (phase === 'CLOSING') return 'confirm_terms';
+  if (phase === "DISCOVERY") return "ask_questions";
+  if (phase === "CLOSING") return "confirm_terms";
 
-  if (timePressure > 0.7) return 'time_pressure_close';
-  if (opponentPattern === 'BOULWARE') return 'nibble';
-  if (opponentPattern === 'CONCEDER') return 'anchoring';
+  if (timePressure > 0.7) return "time_pressure_close";
+  if (opponentPattern === "BOULWARE") return "nibble";
+  if (opponentPattern === "CONCEDER") return "anchoring";
 
-  return buddyDna.preferred_tactic || 'reciprocal_concession';
+  return buddyDna.preferred_tactic || "reciprocal_concession";
 }
 
 function deriveStrategicHints(
@@ -257,29 +281,31 @@ function deriveStrategicHints(
   const hints: string[] = [];
 
   // Style-based
-  if (buddyDna.style === 'aggressive') {
-    hints.push('Push for larger concessions early.');
-  } else if (buddyDna.style === 'defensive') {
-    hints.push('Protect floor — small concessions only.');
+  if (buddyDna.style === "aggressive") {
+    hints.push("Push for larger concessions early.");
+  } else if (buddyDna.style === "defensive") {
+    hints.push("Protect floor — small concessions only.");
   }
 
   // Opponent-based
-  if (opponentPattern === 'BOULWARE') {
-    hints.push('Opponent is firm. Consider non-price trades to create value.');
-  } else if (opponentPattern === 'CONCEDER') {
-    hints.push('Opponent is flexible. Hold position to maximize gains.');
+  if (opponentPattern === "BOULWARE") {
+    hints.push("Opponent is firm. Consider non-price trades to create value.");
+  } else if (opponentPattern === "CONCEDER") {
+    hints.push("Opponent is flexible. Hold position to maximize gains.");
   }
 
   // Time-based
   if (timePressure > 0.6) {
-    hints.push('Time running low — prioritize closing.');
+    hints.push("Time running low — prioritize closing.");
   }
 
   // Competition-aware
   if (memory.competition) {
-    hints.push(`Competition active: ${memory.competition.n_active_sessions} sessions, BATNA at $${memory.competition.batna_price}.`);
+    hints.push(
+      `Competition active: ${memory.competition.n_active_sessions} sessions, BATNA at $${memory.competition.batna_price}.`,
+    );
     if (memory.competition.my_rank > 1) {
-      hints.push('Not the best offer — increase urgency.');
+      hints.push("Not the best offer — increase urgency.");
     }
   }
 

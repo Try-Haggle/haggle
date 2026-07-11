@@ -16,6 +16,7 @@ import { requireAuth } from "../middleware/require-auth.js";
 import {
   negotiationAgentBuilderTurnBodySchema,
   processNegotiationAgentBuilderTurn,
+  sanitizePersistedBuilderMemory,
 } from "../services/negotiation-agent-builder-chat.service.js";
 
 /** Default skill id stored in the legacy `advisor_skill_id` column. The column
@@ -38,14 +39,17 @@ const weightsSchema = z.object({
 const negotiationAgentConfigSchema = z.object({
   emoji: z.string().optional(),
   basePresetId: z.string().optional(),
-  stats: z.record(z.number()).optional(),
   negotiationAgentPresetId: z.string().optional(),
   weights: weightsSchema.optional(),
   engineParams: z.record(z.unknown()).optional(),
   categoryAnswers: z.record(z.record(z.unknown())).optional(),
   voiceId: z.string().optional(),
-  /** Latest memory snapshot captured from the builder chat. */
-  builderChatMemory: z.record(z.unknown()).optional(),
+  /** Latest memory snapshot captured from the builder chat. Sanitized to the
+   *  durable fields only — the session-only scratchpad is dropped on persist. */
+  builderChatMemory: z
+    .record(z.unknown())
+    .optional()
+    .transform((m) => sanitizePersistedBuilderMemory(m)),
 });
 
 const createNegotiationAgentSchema = z.object({

@@ -27,6 +27,13 @@ const optionalPositiveIntSchema = z.preprocess(
   z.number().int().positive().optional(),
 );
 
+// The LLM emits `null` (not omission) when a signal is absent; coerce to
+// undefined so an absent urgency doesn't fail validation.
+const optionalStringSchema = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.string().optional(),
+);
+
 const structuredNegotiationAgentBuilderMemorySchema = z
   .object({
     activeIntent: z
@@ -188,6 +195,14 @@ const negotiationAgentBuilderMemorySchema = z.object({
   targetPrice: optionalPositiveIntSchema,
   mustHave: z.array(z.string()).default([]),
   avoid: z.array(z.string()).default([]),
+  // Negotiation-facing signals consumed by the adapter's encodeStrategyContext.
+  // dealBreakers: hard non-negotiables. mustEmphasize: leverage points to push.
+  // notes: discretionary/ambiguous guidance ("use your judgment"). urgency: a
+  // short inferred descriptor of how rushed the principal is.
+  dealBreakers: z.array(z.string()).default([]),
+  mustEmphasize: z.array(z.string()).default([]),
+  notes: z.array(z.string()).default([]),
+  urgency: optionalStringSchema,
   riskStyle: z.enum(["safe_first", "balanced", "lowest_price"]),
   negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]),
   openingTactic: z.enum(["condition_anchor", "fair_market_anchor", "speed_close"]),
@@ -195,6 +210,43 @@ const negotiationAgentBuilderMemorySchema = z.object({
   source: z.array(z.string()).default([]),
   structured: structuredNegotiationAgentBuilderMemorySchema.optional(),
 });
+
+/**
+ * Durable builder-memory fields worth persisting on an agent. Everything else
+ * the chat returns — `structured` (the LLM's per-turn context-engineering
+ * scratchpad), `questions` (pending follow-ups), and `source` (raw chat lines)
+ * — is session-only and never read at negotiation time, so it is stripped
+ * before storage. The kept fields mirror what the negotiation adapter's
+ * `encodeStrategyContext` consumes (grok-fast-adapter.ts).
+ */
+export const PERSISTED_BUILDER_MEMORY_KEYS = [
+  "categoryInterest",
+  "budgetMax",
+  "targetPrice",
+  "mustHave",
+  "avoid",
+  "dealBreakers",
+  "mustEmphasize",
+  "notes",
+  "urgency",
+  "riskStyle",
+  "negotiationStyle",
+  "openingTactic",
+] as const;
+
+/** Keep only the durable builder-memory fields; drop the session-only blob. */
+export function sanitizePersistedBuilderMemory(
+  memory: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!memory || typeof memory !== "object") return undefined;
+  const out: Record<string, unknown> = {};
+  for (const key of PERSISTED_BUILDER_MEMORY_KEYS) {
+    if ((memory as Record<string, unknown>)[key] !== undefined) {
+      out[key] = (memory as Record<string, unknown>)[key];
+    }
+  }
+  return out;
+}
 
 const saveNegotiationAgentBuilderMemoryBodySchema = z.object({
   user_id: z.string().uuid().default(DEMO_USER_ID),
@@ -882,6 +934,12 @@ Rules:
 - Normalize concise constraints into memory.mustHave, e.g. "original box included", "clean IMEI", "unlocked", "battery >= 90%", "screen mint", "Pro model".
 - Normalize avoid constraints only for product, seller claim, or condition preferences, e.g. "visible cracks", "low battery", "heavily worn frame".
 - Do not store off-platform payment as a buyer avoid item in this demo. Haggle handles protected payment and checkout by default.
+- Extract negotiation-facing signals from what the user means (never store raw tone or transcript):
+  - memory.dealBreakers: absolute, non-negotiable limits. Strong/absolute wording ("절대", "무조건", "must", "보장", "no exceptions") signals these. The agent must not cross them.
+  - memory.mustEmphasize: leverage/selling points the user wants pushed (condition, accessories, rarity, barely used, recent purchase).
+  - memory.notes: discretionary or ambiguous guidance to weigh but NOT treat as a hard rule, e.g. "상황 봐서 알아서 해줘", "단골이면 좀 깎아줘", "급하면 양보 가능".
+  - memory.urgency: a SHORT inferred descriptor of how rushed/flexible the principal sounds, e.g. "high — wants a fast close" or "low — no rush, hold firm". Infer it from wording; do NOT copy the user's phrasing.
+  - Keep these stable across turns; add only when the latest message clearly introduces one, and do not duplicate an item already held in another bucket.
 ${
   input.side === "buyer"
     ? hasListingContext
@@ -914,7 +972,7 @@ ${
           ? " — they already set them on the listing"
           : " — price is decided per-listing, not on this reusable agent"
       }. Help shape negotiation posture: what to emphasize, deal-breakers, and how firmly to hold.
-- Put any "what to emphasize" items in memory.mustHave and deal-breakers in memory.avoid.
+- Put "what to emphasize" items in memory.mustEmphasize and deal-breakers in memory.dealBreakers.
 - If nothing essential is missing, questions must be [].`
 }
 - Never mention Tag Garden, tags, requirement slots, internal criteria, or context engineering in the user-facing reply.
@@ -930,6 +988,10 @@ Return valid JSON only:
     "targetPrice": number optional,
     "mustHave": string[],
     "avoid": string[],
+    "dealBreakers": string[],
+    "mustEmphasize": string[],
+    "notes": string[],
+    "urgency": string optional,
     "riskStyle": "safe_first"|"balanced"|"lowest_price",
     "negotiationStyle": "defensive"|"balanced"|"aggressive",
     "openingTactic": "condition_anchor"|"fair_market_anchor"|"speed_close",
@@ -3018,6 +3080,9 @@ function _buildNegotiationAgentBuilderMemoryFromStoredCards(
     categoryInterest: "탐색 중",
     mustHave: [],
     avoid: [],
+    dealBreakers: [],
+    mustEmphasize: [],
+    notes: [],
     riskStyle: "balanced",
     negotiationStyle: "balanced",
     openingTactic: "fair_market_anchor",
