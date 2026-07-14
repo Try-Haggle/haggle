@@ -24,9 +24,11 @@ import {
   buildSettlementMessage,
   buildConditionalSettlementMessage,
   buildConditionalReleaseMessage,
+  buildConditionalRefundMessage,
   signSettlement,
   signConditionalSettlement,
   signConditionalRelease,
+  signConditionalRefund,
   createSettlementSigner,
   createConditionalSettlementSigner,
   type ConditionalSettlementSignerConfig,
@@ -395,6 +397,80 @@ describe("settlement-signer", () => {
       expect(message.feeAmount).toBe(1_500_000n);
       expect(message.sellerAmount).toBe(98_500_000n);
       expect(message.sellerAmount + message.feeAmount).toBe(100_000_000n);
+      expect(recovered.toLowerCase()).toBe(TEST_ACCOUNT.address.toLowerCase());
+    });
+
+    it("moves an APV seller offset into the fee-wallet amount without changing gross", () => {
+      const message = buildConditionalReleaseMessage(
+        {
+          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
+          feeWallet: TEST_FEE_WALLET,
+          grossAmountMinor: 100_000_000,
+          feeBps: 150,
+          sellerOffsetMinor: 550,
+          deadline: 1_900_000_000n,
+        },
+        TEST_SIGNER_NONCE,
+      );
+      expect(message.sellerAmount).toBe(98_499_450n);
+      expect(message.feeAmount).toBe(1_500_550n);
+      expect(message.sellerAmount + message.feeAmount).toBe(100_000_000n);
+    });
+
+    it("rejects an APV offset larger than the seller payout", () => {
+      expect(() => buildConditionalReleaseMessage(
+        {
+          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
+          feeWallet: TEST_FEE_WALLET,
+          grossAmountMinor: 100,
+          feeBps: 150,
+          sellerOffsetMinor: 100,
+        },
+        TEST_SIGNER_NONCE,
+      )).toThrow("sellerOffsetMinor");
+    });
+
+    it("rejects an APV offset that would exceed the onchain 10% fee cap", () => {
+      expect(() => buildConditionalReleaseMessage(
+        {
+          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
+          feeWallet: TEST_FEE_WALLET,
+          grossAmountMinor: 10_000,
+          feeBps: 150,
+          sellerOffsetMinor: 851,
+        },
+        TEST_SIGNER_NONCE,
+      )).toThrow("fee cap");
+    });
+
+    it("produces a recoverable Refund EIP-712 signature", async () => {
+      const config = makeConditionalTestConfig();
+      const message = buildConditionalRefundMessage(
+        {
+          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          deadline: 1_900_000_000n,
+        },
+        TEST_SIGNER_NONCE,
+      );
+
+      const result = await signConditionalRefund(message, config);
+      const recovered = await recoverTypedDataAddress({
+        domain: {
+          ...CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+          chainId: TEST_CHAIN_ID,
+          verifyingContract: TEST_CONDITIONAL_SETTLEMENT_ADDRESS,
+        },
+        types: CONDITIONAL_SETTLEMENT_EIP712_TYPES,
+        primaryType: "Refund",
+        message,
+        signature: result.signature,
+      });
+
+      expect(result.deadline).toBe(message.deadline);
+      expect(result.signer_nonce).toBe(message.signerNonce);
       expect(recovered.toLowerCase()).toBe(TEST_ACCOUNT.address.toLowerCase());
     });
   });

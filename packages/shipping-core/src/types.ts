@@ -83,6 +83,9 @@ export interface ShipmentEvent {
   carrier_raw_status?: string;
   message?: string;
   location?: string;
+  state_changed?: boolean;
+  ordering_disposition?: string;
+  provider_event_key?: string;
 }
 
 export interface Shipment {
@@ -94,10 +97,15 @@ export interface Shipment {
   label_url?: string;
   label_qr_code_url?: string;
   label_qr_code_available?: boolean;
+  label_refund_status?: "NONE" | "REQUESTING" | "SUBMITTED" | "REFUNDED" | "REJECTED" | "NOT_APPLICABLE" | "FAILED";
+  label_refund_requested_at?: string;
+  label_refund_updated_at?: string;
   metadata?: Record<string, unknown>;
   status: ShipmentStatus;
   events: ShipmentEvent[];
   delivered_at?: string;
+  last_carrier_event_at?: string;
+  last_carrier_event_key?: string;
   created_at: string;
   updated_at: string;
 }

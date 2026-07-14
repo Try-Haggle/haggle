@@ -267,6 +267,706 @@
       "when": 1778868001000,
       "tag": "0032_payment_operation_in_progress_intent_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783822500000,
+      "tag": "0033_dispute_ai_assessment_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783823700000,
+      "tag": "0034_dispute_ai_assessment_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783824300000,
+      "tag": "0035_dispute_operation_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783824700000,
+      "tag": "0036_shipping_rate_limit_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783825200000,
+      "tag": "0037_dispute_ai_assessment_hash_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1783826500000,
+      "tag": "0038_dispute_evidence_quarantine",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1783827800000,
+      "tag": "0039_dispute_camera_capture_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1783829000000,
+      "tag": "0040_dispute_camera_similarity_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1783830500000,
+      "tag": "0041_dispute_evidence_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1783831800000,
+      "tag": "0042_webhook_event_claim_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1783833100000,
+      "tag": "0043_shipment_carrier_event_watermark",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1783833700000,
+      "tag": "0044_shipment_carrier_event_watermark_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1783835000000,
+      "tag": "0045_shipment_label_refund_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1783839600000,
+      "tag": "0046_shipment_apv_adjustment_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1783843200000,
+      "tag": "0047_shipment_apv_seller_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1783845000000,
+      "tag": "0048_shipment_apv_review_decision_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1783846800000,
+      "tag": "0049_shipment_apv_revision_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1783848600000,
+      "tag": "0050_shipment_apv_revision_application",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1783850400000,
+      "tag": "0051_shipment_apv_evidence_payout_offset",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1783852200000,
+      "tag": "0052_shipment_apv_seller_liability_carry",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1783854000000,
+      "tag": "0053_shipment_apv_payout_reservation_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1783855800000,
+      "tag": "0054_shipment_apv_payout_cancel_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1783857600000,
+      "tag": "0055_shipment_apv_payout_cancel_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1783859400000,
+      "tag": "0056_shipment_apv_payout_cancel_hash_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1783861200000,
+      "tag": "0057_shipment_apv_payout_cancel_audit_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1783863000000,
+      "tag": "0058_dispute_camera_similarity_multisignal",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1783864800000,
+      "tag": "0059_dispute_similarity_review_expiry_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1783866600000,
+      "tag": "0060_dispute_similarity_review_event_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1783868400000,
+      "tag": "0061_dispute_similarity_review_audit_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1783870200000,
+      "tag": "0062_dispute_ai_audit_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1783872000000,
+      "tag": "0063_dispute_ai_audit_discovery_failures",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1783873800000,
+      "tag": "0064_dispute_ai_audit_discovery_retry_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1783875600000,
+      "tag": "0065_dispute_evidence_derived_artifacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1783877400000,
+      "tag": "0066_dispute_evidence_derived_artifacts_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1783879200000,
+      "tag": "0067_dispute_evidence_provenance_archive_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1783881000000,
+      "tag": "0068_payment_test_operation_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1783882800000,
+      "tag": "0069_shipment_apv_invoice_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1783884600000,
+      "tag": "0070_shipment_apv_invoice_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1783886400000,
+      "tag": "0071_shipment_apv_invoice_restoration",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1783888200000,
+      "tag": "0072_shipment_apv_invoice_restoration_staging",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1783890000000,
+      "tag": "0073_shipment_apv_invoice_restoration_remediation",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1783891800000,
+      "tag": "0074_shipment_apv_invoice_restoration_remediation_acknowledgments",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1783893600000,
+      "tag": "0075_shipment_apv_invoice_restoration_remediation_recovery_cursor_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1783895400000,
+      "tag": "0076_shipment_apv_remediation_cursor_retention_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1783897200000,
+      "tag": "0077_shipment_apv_cursor_retention_first_observed",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1783899000000,
+      "tag": "0078_shipment_apv_chaos_failure_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1783900800000,
+      "tag": "0079_shipment_apv_chaos_failure_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1783904400000,
+      "tag": "0080_shipment_apv_failure_alert_approval_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1783906200000,
+      "tag": "0081_shipment_apv_failure_alert_approval_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1783908000000,
+      "tag": "0082_shipment_apv_failure_alert_approval_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1783909800000,
+      "tag": "0083_shipment_apv_failure_alert_decision_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1783911600000,
+      "tag": "0084_shipment_apv_failure_alert_decision_binding_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1783913400000,
+      "tag": "0085_shipment_apv_failure_alert_delivery_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1783915200000,
+      "tag": "0086_shipment_apv_failure_alert_delivery_grant_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1783917000000,
+      "tag": "0087_shipment_apv_failure_alert_payload_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1783918800000,
+      "tag": "0088_shipment_apv_failure_alert_payload_outbox_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1783920600000,
+      "tag": "0089_shipment_apv_failure_alert_payload_pgcrypto",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1783922400000,
+      "tag": "0090_shipment_apv_failure_alert_payload_canonical_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1783924200000,
+      "tag": "0091_shipment_apv_failure_alert_payload_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1783926000000,
+      "tag": "0092_shipment_apv_failure_alert_payload_signature_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1783927800000,
+      "tag": "0093_shipment_apv_failure_alert_signing_key_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1783929600000,
+      "tag": "0094_shipment_apv_failure_alert_signing_key_registry_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1783931400000,
+      "tag": "0095_shipment_apv_failure_alert_signature_registry_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1783933200000,
+      "tag": "0096_shipment_apv_failure_alert_delivery_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1783935000000,
+      "tag": "0097_shipment_apv_failure_alert_delivery_intent_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1783936800000,
+      "tag": "0098_shipment_apv_failure_alert_delivery_intent_current_key_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1783938600000,
+      "tag": "0099_shipment_apv_failure_alert_receiver_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1783940400000,
+      "tag": "0100_shipment_apv_failure_alert_receiver_claim_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1783942200000,
+      "tag": "0101_shipment_apv_failure_alert_receiver_claim_manifest_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1783944000000,
+      "tag": "0102_shipment_apv_failure_alert_receiver_claim_manifest_receipt_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1783945800000,
+      "tag": "0103_shipment_apv_failure_alert_receiver_manifest_archive_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1783947600000,
+      "tag": "0104_shipment_apv_failure_alert_receiver_manifest_archive_intent_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1783949400000,
+      "tag": "0105_shipment_apv_receiver_manifest_archive_alert_approval_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1783951200000,
+      "tag": "0106_shipment_apv_receiver_manifest_archive_alert_approval_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1783953000000,
+      "tag": "0107_shipment_apv_receiver_manifest_archive_alert_approval_reason_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1783954800000,
+      "tag": "0108_shipment_apv_receiver_manifest_archive_alert_approval_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1783956600000,
+      "tag": "0109_shipment_apv_receiver_manifest_archive_alert_approval_decision_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1783958400000,
+      "tag": "0110_shipment_apv_receiver_manifest_archive_alert_approval_decision_time_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1783960200000,
+      "tag": "0111_shipment_apv_receiver_manifest_archive_alert_delivery_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1783962000000,
+      "tag": "0112_shipment_apv_receiver_manifest_archive_alert_delivery_grant_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1783963800000,
+      "tag": "0113_shipment_apv_receiver_manifest_archive_alert_payload_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1783965600000,
+      "tag": "0114_shipment_apv_receiver_manifest_archive_alert_payload_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1783967400000,
+      "tag": "0115_shipment_apv_receiver_manifest_archive_alert_payload_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1783969200000,
+      "tag": "0116_shipment_apv_receiver_manifest_archive_alert_signature_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1783971000000,
+      "tag": "0117_shipment_apv_receiver_manifest_archive_alert_delivery_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1783972800000,
+      "tag": "0118_shipment_apv_receiver_manifest_archive_alert_delivery_intent_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1783974600000,
+      "tag": "0119_shipment_apv_receiver_manifest_archive_alert_receiver_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1783976400000,
+      "tag": "0120_shipment_apv_receiver_manifest_archive_alert_receiver_claim_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1783978200000,
+      "tag": "0121_dispute_evidence_scan_retry",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1783980000000,
+      "tag": "0122_dispute_evidence_scan_retry_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1783981800000,
+      "tag": "0123_dispute_evidence_scanner_circuit",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1783983600000,
+      "tag": "0124_dispute_evidence_scanner_circuit_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1783985400000,
+      "tag": "0125_dispute_evidence_scan_retry_alert_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1783987200000,
+      "tag": "0126_dispute_evidence_scan_retry_alert_snapshot_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1783989000000,
+      "tag": "0127_dispute_evidence_scan_retry_alert_snapshot_delete_guard_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1783990800000,
+      "tag": "0128_dispute_evidence_scan_retry_alert_snapshot_retention_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1783992600000,
+      "tag": "0129_dispute_evidence_scan_retry_alert_snapshot_retention_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1783994400000,
+      "tag": "0130_dispute_evidence_scan_retry_alert_snapshot_v3",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1784080800000,
+      "tag": "0131_api_rate_limit_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1784082600000,
+      "tag": "0132_websocket_auth_tickets",
+      "breakpoints": true
     }
   ]
 }

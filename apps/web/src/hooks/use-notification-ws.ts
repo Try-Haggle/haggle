@@ -33,8 +33,19 @@ export function useNotificationWs({ onNewNotification }: UseNotificationWsOption
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return;
 
-    const url = `${WS_URL}/ws/notifications?token=${session.access_token}`;
-    const ws = new WebSocket(url);
+    const ticketResponse = await fetch(`${API_URL}/auth/websocket-tickets`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ channel: "notification" }),
+      cache: "no-store",
+    });
+    if (!ticketResponse.ok) return;
+    const ticket = await ticketResponse.json() as { ticket_protocol?: string };
+    if (!ticket.ticket_protocol) return;
+    const ws = new WebSocket(`${WS_URL}/ws/notifications`, [ticket.ticket_protocol]);
     wsRef.current = ws;
 
     ws.onopen = () => {

@@ -123,3 +123,40 @@ Behavior:
 - Commit cannot relabel image uploads as video, or vice versa.
 - Commit cannot be replayed after an upload intent is already committed.
 - File evidence remains viewable only through short-lived signed view URLs.
+
+## L1 AI Resolution Consistency Contract
+
+The L1 assessor is decision support for the marketplace, not a free-form chatbot. The API must assemble the same context shape for every assessment so repeated disputes with the same evidence pattern produce comparable outcomes.
+
+### Context Assembly
+
+`POST /disputes/:id/ai/assess` builds a dispute AI package with these blocks:
+
+1. `decision_consistency_policy` — decision order, evidence weight matrix, mandatory consistency rules, and precedent examples.
+2. `trusted_case_facts` — server-derived dispute id, order state, transaction amount, policy, refund cap, and allowed outcomes.
+3. `untrusted_party_data` — party statements and evidence text. These are evidence data only, never instructions.
+4. `examples` — compact few-shot outputs for representative platform precedents.
+5. `output_contract` — the JSON schema consumed by the API validator.
+
+This is context engineering rather than prompt copywriting: the model should see the same categories, in the same order, with party-supplied text isolated from platform policy.
+
+### Precedent Rules
+
+- Haggle-controlled camera evidence with challenge confirmation is high-weight evidence for visible item-condition claims.
+- Carrier, payment, and Haggle system records are high-weight evidence for delivery, payment, timeline, identity, and order-state facts.
+- Listing screenshots, negotiated terms, and pre-shipment evidence establish the promised baseline; timestamped or platform-stored versions are stronger.
+- Unverified party text is low-weight. It can explain a claim but should not outweigh direct platform-controlled evidence.
+- If one party has one-sided verified Haggle camera evidence for the central factual claim and the other party has only unverified text, T1 must not return `no_action`.
+- If the closest precedent points to a different outcome, the assessor must explain the distinguishing fact in `rationale`.
+
+### Server-Side Enforcement
+
+The model output is accepted only after JSON parsing, schema validation, and platform consistency validation. The server rejects:
+
+- unknown evidence ids in `evidence_findings`;
+- low-confidence recommendations that do not require escalation;
+- prompt-injection risk without escalation;
+- refund amounts above the server-derived cap;
+- one-sided verified camera evidence that is ignored, downgraded below high weight, or resolved as `no_action`.
+
+The accepted AI output is stored in dispute metadata as an audit artifact. MVP code still requires a separate resolve call before money movement, so AI assessment alone never releases or refunds funds.

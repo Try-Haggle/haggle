@@ -41,6 +41,11 @@ export interface EasyPostConfig {
   is_test?: boolean;
 }
 
+/** EasyPost test keys currently use EZTK; EZTEST is retained for legacy fixtures. */
+export function isEasyPostTestApiKey(apiKey: string): boolean {
+  return apiKey.startsWith("EZTK") || apiKey.startsWith("EZTEST");
+}
+
 // ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
 import type { SettlementApproval } from "@haggle/commerce-core";
 import type {
   AgentPaymentGrant,
+  FulfillmentType,
   AgentPaymentGrantStatus,
   PaymentLegalAcknowledgement,
   PaymentTermTag,
@@ -44,6 +45,27 @@ function toIso(value: Date | string | null | undefined): string | undefined {
     return undefined;
   }
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function asOptionalNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function asOptionalFulfillmentType(value: unknown): FulfillmentType | undefined {
+  if (typeof value !== "string") return undefined;
+  if (
+    value === "physical_shipping"
+    || value === "shipped"
+    || value === "local_pickup"
+    || value === "digital_delivery"
+    || value === "external_platform_transfer"
+    || value === "onchain_transfer"
+  ) {
+    return value;
+  }
+  return undefined;
 }
 
 function mapSettlementApproval(row: typeof settlementApprovals.$inferSelect): SettlementApproval {
@@ -76,6 +98,17 @@ function mapSettlementApproval(row: typeof settlementApprovals.$inferSelect): Se
       currency: row.currency,
       selected_payment_rail: row.selectedPaymentRail,
       shipment_input_due_at: toIso(row.shipmentInputDueAt),
+      shipping_cost_minor: asOptionalNumber(termsSnapshot.shipping_cost_minor),
+      shipping_cost_bearer:
+        termsSnapshot.shipping_cost_bearer === "buyer"
+        || termsSnapshot.shipping_cost_bearer === "seller"
+        || termsSnapshot.shipping_cost_bearer === "split"
+          ? termsSnapshot.shipping_cost_bearer
+          : undefined,
+      shipping_cost_buyer_share_minor: asOptionalNumber(termsSnapshot.shipping_cost_buyer_share_minor),
+      shipping_cost_seller_share_minor: asOptionalNumber(termsSnapshot.shipping_cost_seller_share_minor),
+      weight_buffer_minor: asOptionalNumber(termsSnapshot.weight_buffer_minor),
+      fulfillment_type: asOptionalFulfillmentType(termsSnapshot.fulfillment_type),
     },
     hold_snapshot: row.holdKind
       ? {
@@ -501,6 +534,7 @@ export async function getActivePaymentIntentByOrderId(
     where: (fields, ops) => ops.and(
       ops.eq(fields.orderId, orderId),
       ops.inArray(fields.status, ["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING", "SETTLED"]),
+      ops.inArray(fields.canonicalStatus, ["pending", "authorized", "captured", "partially_refunded", "disputed"]),
     ),
   });
   return row ? mapPaymentIntent(row) : null;

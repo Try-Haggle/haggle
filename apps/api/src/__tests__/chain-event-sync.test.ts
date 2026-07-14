@@ -82,6 +82,13 @@ describe("chain event sync production wiring", () => {
         eventName: "SettlementFunded",
         args: {
           settlementId: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          orderId: "0x1111111111111111111111111111111111111111111111111111111111111111",
+          paymentIntentId: "0x2222222222222222222222222222222222222222222222222222222222222222",
+          approvalPolicyHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+          buyer: "0x4444444444444444444444444444444444444444",
+          seller: "0x5555555555555555555555555555555555555555",
+          asset: "0x6666666666666666666666666666666666666666",
+          grossAmount: 100_000_000n,
         },
       },
     );
@@ -92,6 +99,13 @@ describe("chain event sync production wiring", () => {
           settlement_id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           funding_tx_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           status: "FUNDING_CONFIRMED",
+          order_id_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+          payment_intent_id_hash: "0x2222222222222222222222222222222222222222222222222222222222222222",
+          approval_policy_hash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+          buyer_wallet: "0x4444444444444444444444444444444444444444",
+          seller_wallet: "0x5555555555555555555555555555555555555555",
+          asset: "0x6666666666666666666666666666666666666666",
+          gross_amount_minor: "100000000",
         }),
       }),
     }));

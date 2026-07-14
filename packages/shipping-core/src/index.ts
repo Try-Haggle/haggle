@@ -3,6 +3,7 @@ export * from "./sla-defaults.js";
 export * from "./sla-validation.js";
 export * from "./sla-violation.js";
 export * from "./state-machine.js";
+export * from "./carrier-event-ordering.js";
 export * from "./provider.js";
 export * from "./service.js";
 export * from "./escalation.js";

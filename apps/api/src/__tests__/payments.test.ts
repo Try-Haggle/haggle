@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
 import { PAYMENT_DISCLOSURE_TEXT_HASH, PAYMENT_DISCLOSURE_VERSION } from "@haggle/shared";
-import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
+import { getTestApp, closeTestApp, ADMIN_HEADERS, AUTH_HEADERS } from "./helpers.js";
+import { createPublicClient, decodeEventLog } from "viem";
 import {
   createAgentPaymentGrantRecord,
   createPaymentDisclosureRecord,
@@ -11,7 +12,9 @@ import {
   createRefundRecord,
   createStoredPaymentIntent,
   ensureCommerceOrderForApproval,
+  getAgentPaymentGrantById,
   getActivePaymentIntentByOrderId,
+  getCommerceOrderByOrderId,
   getInProgressPaymentOperationForIntent,
   getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
@@ -24,6 +27,11 @@ import {
 } from "../services/payment-record.service.js";
 import { createSettlementReleaseRecord } from "../services/settlement-release.service.js";
 import { createShipmentRecord } from "../services/shipment-record.service.js";
+import {
+  claimWebhookEvent,
+  completeWebhookEvent,
+  failWebhookEvent,
+} from "../services/webhook-event-claim.service.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
@@ -49,6 +57,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   getCommerceOrderByOrderId: vi.fn().mockResolvedValue(null),
   getPaymentIntentByOrderId: vi.fn().mockResolvedValue(null),
+  setPaymentIntentProviderContext: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../services/settlement-release.service.js", () => ({
@@ -72,6 +81,20 @@ vi.mock("../services/trust-ledger.service.js", () => ({
 
 vi.mock("../services/admin-action-log.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../services/webhook-event-claim.service.js", () => ({
+  webhookPayloadSha256: vi.fn(() => "a".repeat(64)),
+  claimWebhookEvent: vi.fn().mockResolvedValue({
+    outcome: "acquired",
+    source: "x402",
+    eventId: "event",
+    claimId: "11111111-1111-4111-8111-111111111111",
+    attemptCount: 1,
+  }),
+  completeWebhookEvent: vi.fn().mockResolvedValue(true),
+  failWebhookEvent: vi.fn().mockResolvedValue(undefined),
+  startWebhookClaimHeartbeat: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("../services/dispute-record.service.js", () => ({
@@ -142,7 +165,9 @@ const mockCreateAgentPaymentGrantRecord = vi.mocked(createAgentPaymentGrantRecor
 const mockCreatePaymentDisclosureRecord = vi.mocked(createPaymentDisclosureRecord);
 const mockCreateStoredPaymentIntent = vi.mocked(createStoredPaymentIntent);
 const mockEnsureCommerceOrderForApproval = vi.mocked(ensureCommerceOrderForApproval);
+const mockGetAgentPaymentGrantById = vi.mocked(getAgentPaymentGrantById);
 const mockGetActivePaymentIntentByOrderId = vi.mocked(getActivePaymentIntentByOrderId);
+const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
 const mockGetInProgressPaymentOperationForIntent = vi.mocked(getInProgressPaymentOperationForIntent);
 const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
@@ -157,16 +182,36 @@ const mockCompletePaymentOperationIdempotencyRecord = vi.mocked(completePaymentO
 const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(createPaymentOperationIdempotencyRecord);
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
+const mockCreatePublicClient = vi.mocked(createPublicClient);
+const mockDecodeEventLog = vi.mocked(decodeEventLog);
+const mockClaimWebhookEvent = vi.mocked(claimWebhookEvent);
+const mockCompleteWebhookEvent = vi.mocked(completeWebhookEvent);
+const mockFailWebhookEvent = vi.mocked(failWebhookEvent);
 
 describe("Payment routes", () => {
   let app: FastifyInstance;
+  let originalConditionalSettlementAddress: string | undefined;
+  let originalUsdcAssetAddress: string | undefined;
+  let originalBaseRpcUrl: string | undefined;
 
   beforeAll(async () => {
+    originalConditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
+    originalUsdcAssetAddress = process.env.HAGGLE_X402_USDC_ASSET_ADDRESS;
+    originalBaseRpcUrl = process.env.HAGGLE_BASE_RPC_URL;
+    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = "0xcccccccccccccccccccccccccccccccccccccccc";
+    process.env.HAGGLE_X402_USDC_ASSET_ADDRESS = "0x3333333333333333333333333333333333333333";
+    process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
     app = await getTestApp();
   });
 
   afterAll(async () => {
     await closeTestApp();
+    if (originalConditionalSettlementAddress === undefined) delete process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
+    else process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = originalConditionalSettlementAddress;
+    if (originalUsdcAssetAddress === undefined) delete process.env.HAGGLE_X402_USDC_ASSET_ADDRESS;
+    else process.env.HAGGLE_X402_USDC_ASSET_ADDRESS = originalUsdcAssetAddress;
+    if (originalBaseRpcUrl === undefined) delete process.env.HAGGLE_BASE_RPC_URL;
+    else process.env.HAGGLE_BASE_RPC_URL = originalBaseRpcUrl;
   });
 
   // Health check
@@ -928,6 +973,7 @@ describe("Payment routes", () => {
 
   it("POST /payments/:id/settle retries fulfillment finalization for an already settled intent", async () => {
     mockGetPaymentIntentById.mockClear();
+    mockGetCommerceOrderByOrderId.mockClear();
     mockUpdateStoredPaymentIntent.mockClear();
     mockCreateSettlementReleaseRecord.mockClear();
     mockCreateShipmentRecord.mockClear();
@@ -973,6 +1019,68 @@ describe("Payment routes", () => {
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
     expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "test-user-001");
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+  });
+
+  it("POST /payments/:id/settle finalizes digital fulfillment without creating a shipment", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetCommerceOrderByOrderId.mockClear();
+    mockUpdateStoredPaymentIntent.mockClear();
+    mockCreateSettlementReleaseRecord.mockClear();
+    mockCreateShipmentRecord.mockClear();
+    mockUpdateCommerceOrderStatus.mockClear();
+    mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce({
+      id: "settlement_digital_existing",
+      payment_intent_id: "pi_digital_settled_retry",
+      rail: "x402",
+      provider_reference: "conditional_settlement_existing",
+      settled_amount: { currency: "USD", amount_minor: 5_00 },
+      settled_at: new Date().toISOString(),
+      status: "SETTLED",
+    });
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "order_123",
+      status: "PAID",
+      orderSnapshot: {
+        terms: {
+          fulfillment_type: "digital_delivery",
+        },
+      },
+    } as never);
+    const intent = {
+      id: "pi_digital_settled_retry",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 5_00 },
+      status: "SETTLED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_digital_settled_retry/settle",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      intent: expect.objectContaining({ id: "pi_digital_settled_retry", status: "SETTLED" }),
+      idempotent: true,
+      fulfillment: {
+        type: "digital_delivery",
+        requires_shipment: false,
+      },
+    });
+    expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
+    expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
+    expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
   });
 
@@ -1251,6 +1359,536 @@ describe("Payment routes", () => {
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
   });
 
+  it("POST /payments/:id/x402/conditional-settlement-request blocks Stripe before onramp funding", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockGetAgentPaymentGrantById.mockClear();
+    const intent = {
+      id: "pi_stripe_not_funded",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe", "x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      agent_payment_grant_id: "grant_123",
+      approval_policy_hash: "sha256:policy",
+      agreement_hash: "sha256:agreement",
+      listing_hash: "sha256:listing",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {},
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_stripe_not_funded/x402/conditional-settlement-request",
+      headers: AUTH_HEADERS,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "STRIPE_ONRAMP_NOT_FUNDED",
+    });
+    expect(mockGetAgentPaymentGrantById).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/x402/conditional-settlement-request keeps x402 direct eligible for conditional funding", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    const intent = {
+      id: "pi_x402_conditional_eligible",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {},
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_x402_conditional_eligible/x402/conditional-settlement-request",
+      headers: AUTH_HEADERS,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: "PAYMENT_POLICY_BINDING_REQUIRED",
+    });
+  });
+
+  it("POST /payments/:id/x402/conditional-settlement-request blocks x402 intent after Stripe onramp session is created but not funded", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockGetAgentPaymentGrantById.mockClear();
+    const intent = {
+      id: "pi_x402_onramp_not_funded",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      agent_payment_grant_id: "grant_123",
+      approval_policy_hash: "sha256:policy",
+      agreement_hash: "sha256:agreement",
+      listing_hash: "sha256:listing",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        stripe_onramp: {
+          status: "SESSION_CREATED",
+          session_id: "cos_123",
+        },
+      },
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_x402_onramp_not_funded/x402/conditional-settlement-request",
+      headers: AUTH_HEADERS,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "STRIPE_ONRAMP_NOT_FUNDED",
+    });
+    expect(mockGetAgentPaymentGrantById).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/:id/x402/conditional-settlement-request rejects Stripe onramp wallet mismatch", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockGetAgentPaymentGrantById.mockClear();
+    const buyerWallet = "0x1111111111111111111111111111111111111111";
+    const onrampWallet = "0x2222222222222222222222222222222222222222";
+    const intent = {
+      id: "pi_stripe_wallet_mismatch",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe", "x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      agent_payment_grant_id: "grant_123",
+      approval_policy_hash: "sha256:policy",
+      agreement_hash: "sha256:agreement",
+      listing_hash: "sha256:listing",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        stripe_onramp: {
+          status: "ONRAMP_FUNDED",
+          session_id: "cos_123",
+          destination_wallet: onrampWallet,
+          destination_network: "base",
+          destination_currency: "usdc",
+          destination_amount_minor: "500000000",
+        },
+      },
+    } as never);
+    mockGetAgentPaymentGrantById.mockResolvedValueOnce({
+      id: "grant_123",
+      status: "ACTIVE",
+      buyer_id: "test-user-001",
+      seller_id: "seller_123",
+      order_id: "order_123",
+      approval_policy_hash: "sha256:policy",
+      nonce: "grant-nonce",
+    } as never);
+    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_stripe_wallet_mismatch/x402/conditional-settlement-request",
+        headers: AUTH_HEADERS,
+        payload: {
+          buyer_wallet_address: buyerWallet,
+        },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({
+        error: "STRIPE_ONRAMP_WALLET_MISMATCH",
+      });
+    } finally {
+      delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+        .__HAGGLE_TEST_DB_SELECT_ROWS__;
+    }
+  });
+
+  it("POST /payments/:id/x402/conditional-settlement-request allows Stripe after matching onramp funding", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockGetAgentPaymentGrantById.mockClear();
+    const buyerWallet = "0x1111111111111111111111111111111111111111";
+    const sellerWallet = "0x2222222222222222222222222222222222222222";
+    const intent = {
+      id: "pi_stripe_onramp_funded",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "stripe",
+      allowed_rails: ["stripe", "x402"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      agent_payment_grant_id: "grant_123",
+      approval_policy_hash: "sha256:policy",
+      agreement_hash: "sha256:agreement",
+      listing_hash: "sha256:listing",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        seller_wallet: sellerWallet,
+        stripe_onramp: {
+          status: "ONRAMP_FUNDED",
+          session_id: "cos_123",
+          destination_wallet: buyerWallet,
+          destination_network: "base",
+          destination_currency: "usdc",
+          destination_amount_minor: "500000000",
+        },
+      },
+    } as never);
+    mockGetAgentPaymentGrantById.mockResolvedValueOnce({
+      id: "grant_123",
+      status: "ACTIVE",
+      buyer_id: "test-user-001",
+      seller_id: "seller_123",
+      order_id: "order_123",
+      approval_policy_hash: "sha256:policy",
+      nonce: "grant-nonce",
+    } as never);
+    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_stripe_onramp_funded/x402/conditional-settlement-request",
+        headers: AUTH_HEADERS,
+        payload: {
+          buyer_wallet_address: buyerWallet,
+        },
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({
+        error: "CONDITIONAL_SETTLEMENT_SIGNATURE_UNAVAILABLE",
+      });
+      expect(mockGetAgentPaymentGrantById).toHaveBeenCalledWith(expect.anything(), "grant_123");
+    } finally {
+      delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+        .__HAGGLE_TEST_DB_SELECT_ROWS__;
+    }
+  });
+
+  it("POST /payments/:id/x402/conditional-refund-confirmation rejects receipts without a matching refund event", async () => {
+    const originalRpc = process.env.HAGGLE_BASE_RPC_URL;
+    process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
+    const settlementId = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const txHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const intent = {
+      id: "pi_conditional_refund_mismatch",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 10_000 },
+      status: "SETTLEMENT_PENDING",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById.mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        conditional_settlement: {
+          status: "REFUND_SUBMITTED",
+          settlement_id: settlementId,
+          refund_tx_hash: txHash,
+          buyer_wallet: "0x1111111111111111111111111111111111111111",
+        },
+      },
+    } as never);
+    mockCreatePublicClient.mockReturnValueOnce({
+      getBlockNumber: vi.fn().mockResolvedValue(101n),
+      getBlock: vi.fn().mockResolvedValue({ hash: `0x${"cc".repeat(32)}` }),
+      getTransactionReceipt: vi.fn().mockResolvedValue({
+        status: "success",
+        blockNumber: 100n,
+        blockHash: `0x${"cc".repeat(32)}`,
+        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+      }),
+    } as never);
+    mockDecodeEventLog.mockReturnValueOnce({
+      eventName: "SettlementReleased",
+      args: {},
+    } as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_conditional_refund_mismatch/x402/conditional-refund-confirmation",
+        headers: ADMIN_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({
+        error: "CONDITIONAL_REFUND_EVENT_MISMATCH",
+      });
+      expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({
+          conditional_settlement: expect.objectContaining({ status: "REFUND_EVENT_MISMATCH" }),
+        }),
+      );
+      expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+      expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "order_123", "REFUNDED");
+    } finally {
+      if (originalRpc === undefined) delete process.env.HAGGLE_BASE_RPC_URL;
+      else process.env.HAGGLE_BASE_RPC_URL = originalRpc;
+    }
+  });
+
+  it("POST /payments/:id/x402/conditional-refund-confirmation records a verified escrow refund", async () => {
+    const originalRpc = process.env.HAGGLE_BASE_RPC_URL;
+    process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
+    const settlementId = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const txHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const buyerWallet = "0x1111111111111111111111111111111111111111";
+    const intent = {
+      id: "pi_conditional_refund_ok",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 10_000 },
+      status: "SETTLEMENT_PENDING",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById.mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {
+        conditional_settlement: {
+          status: "REFUND_SUBMITTED",
+          settlement_id: settlementId,
+          refund_tx_hash: txHash,
+          buyer_wallet: buyerWallet,
+        },
+      },
+    } as never);
+    mockGetRefundRecordsByPaymentIntentId.mockResolvedValueOnce([]);
+    mockCreatePublicClient.mockReturnValueOnce({
+      getBlockNumber: vi.fn().mockResolvedValue(101n),
+      getBlock: vi.fn().mockResolvedValue({ hash: `0x${"cc".repeat(32)}` }),
+      getTransactionReceipt: vi.fn().mockResolvedValue({
+        status: "success",
+        blockNumber: 100n,
+        blockHash: `0x${"cc".repeat(32)}`,
+        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+      }),
+    } as never);
+    mockDecodeEventLog.mockReturnValueOnce({
+      eventName: "SettlementRefunded",
+      args: {
+        settlementId,
+        buyer: buyerWallet,
+        amount: 100_000_000n,
+      },
+    } as never);
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_conditional_refund_ok/x402/conditional-refund-confirmation",
+        headers: ADMIN_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockCreateRefundRecord).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          payment_intent_id: "pi_conditional_refund_ok",
+          amount: { currency: "USD", amount_minor: 10_000 },
+          reason_code: "CONDITIONAL_SETTLEMENT_REFUND",
+          status: "COMPLETED",
+        }),
+        txHash,
+      );
+      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "REFUNDED");
+      expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          production_status: "refunded",
+        }),
+        expect.objectContaining({
+          conditional_settlement: expect.objectContaining({
+            status: "REFUND_CONFIRMED",
+            refund_buyer_wallet: buyerWallet,
+            refund_amount_minor: "100000000",
+          }),
+        }),
+      );
+    } finally {
+      if (originalRpc === undefined) delete process.env.HAGGLE_BASE_RPC_URL;
+      else process.env.HAGGLE_BASE_RPC_URL = originalRpc;
+    }
+  });
+
+  it("POST /payments/:id/x402/conditional-refund-confirmation keeps one-block receipts pending without final mutation", async () => {
+    const originalRpc = process.env.HAGGLE_BASE_RPC_URL;
+    process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
+    const settlementId = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const txHash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const intent = {
+      id: "pi_conditional_refund_one_block",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 10_000 },
+      status: "SETTLEMENT_PENDING",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById.mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: { conditional_settlement: { settlement_id: settlementId, refund_tx_hash: txHash } },
+    } as never);
+    mockCreatePublicClient.mockReturnValueOnce({
+      getBlockNumber: vi.fn().mockResolvedValue(100n),
+      getBlock: vi.fn(),
+      getTransactionReceipt: vi.fn().mockResolvedValue({
+        status: "success",
+        blockNumber: 100n,
+        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+      }),
+    } as never);
+    mockDecodeEventLog.mockClear();
+    mockCreateRefundRecord.mockClear();
+    mockUpdateCommerceOrderStatus.mockClear();
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_conditional_refund_one_block/x402/conditional-refund-confirmation",
+        headers: ADMIN_HEADERS,
+      });
+      expect(res.statusCode).toBe(202);
+      expect(res.headers["retry-after"]).toBe("2");
+      expect(res.json()).toMatchObject({ conditional_settlement: {
+        status: "REFUND_CONFIRMATIONS_PENDING",
+        finality: { observed_confirmations: 1, required_confirmations: 2 },
+      }, retry: { after_seconds: 2, reuse_transaction_hash: true, use_new_idempotency_key: true } });
+      expect(mockDecodeEventLog).not.toHaveBeenCalled();
+      expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+      expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+    } finally {
+      if (originalRpc === undefined) delete process.env.HAGGLE_BASE_RPC_URL;
+      else process.env.HAGGLE_BASE_RPC_URL = originalRpc;
+    }
+  });
+
+  it("POST /payments/:id/x402/conditional-refund-confirmation blocks orphaned receipt blocks without final mutation", async () => {
+    const originalRpc = process.env.HAGGLE_BASE_RPC_URL;
+    process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
+    const settlementId = `0x${"aa".repeat(32)}`;
+    const txHash = `0x${"bb".repeat(32)}`;
+    const receiptBlockHash = `0x${"cc".repeat(32)}`;
+    const intent = {
+      id: "pi_conditional_refund_orphaned",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 10_000 },
+      status: "SETTLEMENT_PENDING",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById.mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: { conditional_settlement: { settlement_id: settlementId, refund_tx_hash: txHash } },
+    } as never);
+    mockCreatePublicClient.mockReturnValueOnce({
+      getBlockNumber: vi.fn().mockResolvedValue(101n),
+      getBlock: vi.fn().mockResolvedValue({ hash: `0x${"dd".repeat(32)}` }),
+      getTransactionReceipt: vi.fn().mockResolvedValue({
+        status: "success",
+        blockNumber: 100n,
+        blockHash: receiptBlockHash,
+        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+      }),
+    } as never);
+    mockDecodeEventLog.mockClear();
+    mockCreateRefundRecord.mockClear();
+    mockUpdateCommerceOrderStatus.mockClear();
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/pi_conditional_refund_orphaned/x402/conditional-refund-confirmation",
+        headers: ADMIN_HEADERS,
+      });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({ conditional_settlement: {
+        status: "REFUND_FINALITY_UNAVAILABLE",
+        finality: { reason: "RECEIPT_BLOCK_NOT_CANONICAL" },
+      } });
+      expect(res.json()).not.toHaveProperty("retry");
+      expect(mockDecodeEventLog).not.toHaveBeenCalled();
+      expect(mockCreateRefundRecord).not.toHaveBeenCalled();
+      expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+    } finally {
+      if (originalRpc === undefined) delete process.env.HAGGLE_BASE_RPC_URL;
+      else process.env.HAGGLE_BASE_RPC_URL = originalRpc;
+    }
+  });
+
   it("POST /payments/:id/quote returns buyer-visible amount and fee confirmation", async () => {
     const originalFeeBps = process.env.HAGGLE_X402_FEE_BPS;
     const originalStripeFeeBps = process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
@@ -1317,7 +1955,7 @@ describe("Payment routes", () => {
             items: expect.arrayContaining([
               expect.objectContaining({
                 code: "haggle_platform_fee",
-                payer: "seller",
+                payer: "negotiated_total",
                 amount: { currency: "USD", amount_minor: 750 },
                 included_in_buyer_total: true,
               }),
@@ -1472,7 +2110,7 @@ describe("Payment routes", () => {
             items: [
               expect.objectContaining({
                 code: "haggle_platform_fee",
-                payer: "seller",
+                payer: "negotiated_total",
                 amount: { currency: "USD", amount_minor: 750 },
                 rate_bps: 150,
               }),
@@ -1708,10 +2346,12 @@ describe("Payment routes", () => {
     process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_123";
     process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = "150";
     process.env.HAGGLE_X402_FEE_BPS = "150";
-    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[
-        { walletAddress: "0x1111111111111111111111111111111111111111" },
-      ]];
+	    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+	      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[
+	        { walletAddress: "0x1111111111111111111111111111111111111111" },
+	      ], [
+	        { walletAddress: "0x2222222222222222222222222222222222222222" },
+	      ]];
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
@@ -1776,7 +2416,8 @@ describe("Payment routes", () => {
       });
       const body = new URLSearchParams(String(mockFetch.mock.calls[0]?.[1]?.body));
       expect(body.get("destination_amount")).toBe("500.00");
-      expect(body.get("metadata[destination_amount_minor]")).toBe("50000");
+      expect(body.get("metadata[destination_amount_minor]")).toBe("500000000");
+      expect(body.get("metadata[destination_amount_usd_minor]")).toBe("50000");
       expect(body.get("metadata[buyer_total_minor]")).toBe("50750");
       expect(body.get("metadata[buyer_fee_minor]")).toBe("750");
       expect(body.get("metadata[seller_receives_minor]")).toBe("49250");
@@ -1852,6 +2493,50 @@ describe("Payment routes", () => {
       error: "INVALID_PAYMENT_PREPARE_REQUEST",
     });
     expect(mockGetSettlementApprovalById).not.toHaveBeenCalled();
+    expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+    expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/prepare rejects monetary values outside the safe integer range", async () => {
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    const now = new Date().toISOString();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/prepare",
+      headers: AUTH_HEADERS,
+      payload: {
+        settlement_approval: {
+          id: "00000000-0000-4000-a000-000000000099",
+          approval_state: "APPROVED",
+          seller_policy: {
+            mode: "AUTO_WITHIN_POLICY",
+            fulfillment_sla: { shipment_input_due_days: 3 },
+            responsiveness: {
+              median_response_minutes: 30,
+              p95_response_minutes: 120,
+              reliable_fast_responder: true,
+            },
+          },
+          terms: {
+            listing_id: "00000000-0000-4000-a000-000000000011",
+            seller_id: "00000000-0000-4000-a000-000000000033",
+            buyer_id: "test-user-001",
+            final_amount_minor: Number.MAX_SAFE_INTEGER + 1,
+            currency: "USD",
+            selected_payment_rail: "x402",
+          },
+          buyer_approved_at: now,
+          seller_approved_at: now,
+          created_at: now,
+          updated_at: now,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("INVALID_PAYMENT_PREPARE_REQUEST");
     expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
     expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
   });
@@ -2676,6 +3361,43 @@ describe("Payment routes", () => {
     expect(body.accepted).toBe(true);
     expect(body.action).toBe("ignored");
     expect(body.reason).toBe("unknown_intent");
+    expect(mockCompleteWebhookEvent).toHaveBeenCalled();
+  });
+
+  it("POST /payments/webhooks/x402 returns duplicate without applying the event twice", async () => {
+    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "duplicate", source: "x402", eventId: "evt_duplicate" });
+    mockGetPaymentIntentById.mockClear();
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: { event_id: "evt_duplicate", event_type: "settlement.confirmed", payment_intent_id: "pi_123" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ accepted: true, action: "duplicate" });
+    expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+  });
+
+  it("POST /payments/webhooks/x402 asks the provider to retry while another server owns the claim", async () => {
+    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "in_progress", source: "x402", eventId: "evt_busy" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: { event_id: "evt_busy", event_type: "settlement.confirmed", payment_intent_id: "pi_123" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("WEBHOOK_PROCESSING_IN_PROGRESS");
+  });
+
+  it("POST /payments/webhooks/x402 rejects a changed payload for the same provider event id", async () => {
+    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "payload_conflict", source: "x402", eventId: "evt_changed" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/webhooks/x402",
+      payload: { event_id: "evt_changed", event_type: "settlement.failed", payment_intent_id: "pi_other" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("WEBHOOK_PAYLOAD_CONFLICT");
+    expect(mockFailWebhookEvent).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventId: "evt_changed" }));
   });
 
   // Stripe webhook - missing stripe-signature header returns 401

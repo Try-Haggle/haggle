@@ -124,6 +124,10 @@ export interface EasyPostWebhookPayload {
   carrier: string;
   est_delivery_date?: string;
   tracking_details: EasyPostWebhookTrackingDetail[];
+  occurred_at?: string;
+  carrier_raw_status: string;
+  message?: string;
+  location?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +135,8 @@ export interface EasyPostWebhookPayload {
 // ---------------------------------------------------------------------------
 
 export interface EasyPostInvoiceAdjustment {
+  invoice_event: "created" | "updated";
+  invoice_id: string;
   shipment_id: string;
   tracking_code: string;
   original_rate_minor: number;
@@ -145,7 +151,7 @@ export interface EasyPostInvoiceAdjustment {
  * Expected shape:
  * ```json
  * {
- *   "description": "shipment_invoice.created",
+ *   "description": "shipment.invoice.created",
  *   "result": {
  *     "id": "shinv_...",
  *     "shipment_id": "shp_...",
@@ -167,40 +173,52 @@ export function parseEasyPostInvoicePayload(
     const event = body as Record<string, unknown>;
     const description = event.description as string | undefined;
 
-    // Only handle shipment_invoice events
-    if (!description || !description.startsWith("shipment_invoice")) return null;
+    // EasyPost documents dotted event names. Keep the legacy underscore form
+    // for already-recorded fixtures while normalizing both to one event type.
+    const invoiceEvent = description === "shipment.invoice.created" || description === "shipment_invoice.created"
+      ? "created"
+      : description === "shipment.invoice.updated" || description === "shipment_invoice.updated"
+        ? "updated"
+        : null;
+    if (!invoiceEvent) return null;
 
     const result = event.result as Record<string, unknown> | undefined;
     if (!result) return null;
 
+    const invoice_id = result.id as string | undefined;
     const shipment_id = result.shipment_id as string | undefined;
     const tracking_code = result.tracking_code as string | undefined;
     const original_rate_str = result.original_rate as string | undefined;
 
-    if (!shipment_id || !tracking_code || !original_rate_str) return null;
+    if (!invoice_id || !shipment_id || !tracking_code || !original_rate_str) return null;
+    if (invoice_id.length > 128 || shipment_id.length > 128 || tracking_code.length > 128) return null;
 
     const original_rate = parseFloat(original_rate_str);
-    if (Number.isNaN(original_rate)) return null;
+    if (!Number.isFinite(original_rate) || original_rate < 0 || original_rate > 100_000) return null;
 
     // Sum all shipping charges to get the adjusted total
     const charges = result.charges as Array<Record<string, unknown>> | undefined;
     if (!charges || charges.length === 0) return null;
 
     let adjusted_total = 0;
+    let shippingChargeCount = 0;
     for (const charge of charges) {
       if (charge.type === "shipping") {
         const amount = parseFloat(charge.amount as string);
-        if (!Number.isNaN(amount)) {
-          adjusted_total += amount;
-        }
+        if (!Number.isFinite(amount) || amount < 0 || amount > 100_000) return null;
+        adjusted_total += amount;
+        shippingChargeCount += 1;
       }
     }
+    if (shippingChargeCount === 0 || !Number.isFinite(adjusted_total) || adjusted_total > 100_000) return null;
 
     const original_rate_minor = Math.round(original_rate * 100);
     const adjusted_rate_minor = Math.round(adjusted_total * 100);
     const adjustment_minor = adjusted_rate_minor - original_rate_minor;
 
     return {
+      invoice_event: invoiceEvent,
+      invoice_id,
       shipment_id,
       tracking_code,
       original_rate_minor,
@@ -277,6 +295,16 @@ export function parseEasyPostWebhookPayload(
       };
     });
 
+    const latestDetail = trackingDetails.reduce<EasyPostWebhookTrackingDetail | undefined>((latest, detail) => {
+      const detailTime = new Date(detail.datetime).getTime();
+      if (!Number.isFinite(detailTime)) return latest;
+      if (!latest) return detail;
+      return detailTime > new Date(latest.datetime).getTime() ? detail : latest;
+    }, undefined);
+    const location = latestDetail
+      ? [latestDetail.city, latestDetail.state].filter(Boolean).join(", ")
+      : undefined;
+
     return {
       tracking_code: trackingCode,
       status: mapEasyPostStatus(rawStatus),
@@ -284,6 +312,10 @@ export function parseEasyPostWebhookPayload(
       est_delivery_date:
         (result.est_delivery_date as string) ?? undefined,
       tracking_details: trackingDetails,
+      occurred_at: latestDetail?.datetime || undefined,
+      carrier_raw_status: rawStatus,
+      message: latestDetail?.message || undefined,
+      location: location || undefined,
     };
   } catch {
     return null;

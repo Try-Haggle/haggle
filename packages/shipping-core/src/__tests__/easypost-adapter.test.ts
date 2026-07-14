@@ -359,6 +359,18 @@ describe("verifyEasyPostWebhook", () => {
 // 4. EasyPostCarrierAdapter — label generation
 // ===========================================================================
 
+describe("EasyPost test key detection", () => {
+  it.each([
+    ["EZTK_test_key", true],
+    ["EZTEST_legacy_fixture", true],
+    ["EZAK_production_key", false],
+    ["", false],
+  ])("classifies %s", async (apiKey, expected) => {
+    const { isEasyPostTestApiKey } = await import("../easypost-adapter.js");
+    expect(isEasyPostTestApiKey(apiKey)).toBe(expected);
+  });
+});
+
 describe("EasyPostCarrierAdapter label generation", () => {
   const config = { api_key: "EZTK_test", is_test: true };
   const adapter = new EasyPostCarrierAdapter(config);

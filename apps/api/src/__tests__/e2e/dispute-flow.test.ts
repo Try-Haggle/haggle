@@ -74,6 +74,19 @@ vi.mock("../../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("../../services/dispute-operation-lease.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../services/dispute-operation-lease.service.js")>();
+  return {
+    ...actual,
+    acquireDisputeOperationLease: vi.fn().mockImplementation(async (_db, input) => ({
+      key: `${input.disputeId}:${input.operation}`,
+      ...input,
+      expiresAt: new Date(Date.now() + 60_000),
+    })),
+    releaseDisputeOperationLease: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 vi.mock("../../services/authentication-record.service.js", () => ({
   getAuthenticationByOrderId: vi.fn().mockResolvedValue(null),
   createAuthenticationRecord: vi.fn().mockResolvedValue(null),

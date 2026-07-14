@@ -26,6 +26,16 @@ function normalizeHex(value: unknown): string | undefined {
   return typeof value === "string" ? value.toLowerCase() : undefined;
 }
 
+function normalizeAddress(value: unknown): string | undefined {
+  return typeof value === "string" ? value.toLowerCase() : undefined;
+}
+
+function stringifyUint(value: unknown): string | undefined {
+  return typeof value === "bigint" || typeof value === "number" || typeof value === "string"
+    ? String(value)
+    : undefined;
+}
+
 function getConditionalSettlementContext(providerContext: unknown): Record<string, unknown> {
   if (!isRecord(providerContext)) return {};
   const context = providerContext.conditional_settlement;
@@ -115,6 +125,13 @@ export async function handleConditionalSettlementEvent(
         funding_tx_hash: txHash,
         status: "FUNDING_CONFIRMED",
         confirmed_at: new Date().toISOString(),
+        order_id_hash: normalizeHex(event.args.orderId),
+        payment_intent_id_hash: normalizeHex(event.args.paymentIntentId),
+        approval_policy_hash: normalizeHex(event.args.approvalPolicyHash),
+        buyer_wallet: normalizeAddress(event.args.buyer),
+        seller_wallet: normalizeAddress(event.args.seller),
+        asset: normalizeAddress(event.args.asset),
+        gross_amount_minor: stringifyUint(event.args.grossAmount),
       });
       break;
 
@@ -124,6 +141,10 @@ export async function handleConditionalSettlementEvent(
         release_tx_hash: txHash,
         status: "RELEASE_CONFIRMED",
         release_confirmed_at: new Date().toISOString(),
+        release_seller_wallet: normalizeAddress(event.args.sellerWallet),
+        release_fee_wallet: normalizeAddress(event.args.feeWallet),
+        release_seller_amount_minor: stringifyUint(event.args.sellerAmount),
+        release_fee_amount_minor: stringifyUint(event.args.feeAmount),
       });
       break;
 

@@ -1,5 +1,6 @@
 import type { TrustTriggerEvent } from "@haggle/commerce-core";
 import { createId } from "./id.js";
+import { mapLegacyStatusToProductionState } from "./production-readiness.js";
 import { transitionPaymentIntent } from "./state-machine.js";
 import { trustTriggersForPaymentTransition } from "./trust-events.js";
 import type {
@@ -172,6 +173,7 @@ export class PaymentService {
     return {
       ...intent,
       status,
+      production_status: mapLegacyStatusToProductionState(status),
       updated_at: nowIso(now),
     };
   }

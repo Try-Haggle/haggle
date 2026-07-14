@@ -54,6 +54,23 @@ vi.mock("../../services/admin-action-log.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../services/webhook-event-claim.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../services/webhook-event-claim.service.js")>();
+  return {
+    ...actual,
+    claimWebhookEvent: vi.fn().mockResolvedValue({
+      outcome: "acquired",
+      source: "x402",
+      eventId: "evt_e2e_unknown",
+      claimId: "44444444-4444-4444-8444-444444444444",
+      attemptCount: 1,
+    }),
+    completeWebhookEvent: vi.fn().mockResolvedValue(true),
+    failWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    startWebhookClaimHeartbeat: vi.fn(() => vi.fn()),
+  };
+});
+
 vi.mock("../../services/dispute-record.service.js", () => ({
   createDisputeRecord: vi.fn().mockResolvedValue(null),
   getDisputeById: vi.fn().mockResolvedValue(null),
@@ -263,6 +280,7 @@ describe("E2E: Payment lifecycle", () => {
         "x-haggle-x402-signature": "mock-hmac-sig-abc123",
       },
       payload: {
+        event_id: `evt_e2e_unknown_${Date.now()}`,
         event_type: "settlement.confirmed",
         payment_intent_id: "pi_unknown_e2e",
         tx_hash: "0xabc123def456",

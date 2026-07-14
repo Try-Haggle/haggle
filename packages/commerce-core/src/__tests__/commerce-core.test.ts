@@ -758,4 +758,17 @@ describe("validateMinimumTransaction", () => {
   it("allows local pickup at $1", () => {
     expect(validateMinimumTransaction(1_00, "local_pickup").valid).toBe(true);
   });
+
+  it("allows digital delivery below the shipped minimum", () => {
+    expect(validateMinimumTransaction(1_00, "digital_delivery").valid).toBe(true);
+  });
+
+  it("allows onchain transfer below the shipped minimum", () => {
+    expect(validateMinimumTransaction(1_00, "onchain_transfer").valid).toBe(true);
+  });
+
+  it("keeps physical shipping on the shipped minimum", () => {
+    const result = validateMinimumTransaction(9_99, "physical_shipping");
+    expect(result.valid).toBe(false);
+  });
 });

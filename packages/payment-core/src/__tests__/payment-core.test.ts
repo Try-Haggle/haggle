@@ -473,6 +473,7 @@ describe("PaymentService", () => {
       const quoteResult = await svc.quoteIntent(intent, NOW);
       intent = quoteResult.intent;
       expect(intent.status).toBe("QUOTED");
+      expect(intent.production_status).toBe("pending");
       expect(quoteResult.value).toBeDefined();
       expect(quoteResult.value!.rail).toBe("x402");
       expect(quoteResult.value!.provider_reference).toContain("x402_quote");
@@ -482,6 +483,7 @@ describe("PaymentService", () => {
       const authResult = await svc.authorizeIntent(intent, NOW);
       intent = authResult.intent;
       expect(intent.status).toBe("AUTHORIZED");
+      expect(intent.production_status).toBe("authorized");
       expect(authResult.value).toBeDefined();
       expect(authResult.value!.rail).toBe("x402");
       expect(authResult.trust_triggers).toEqual([]);
@@ -490,12 +492,14 @@ describe("PaymentService", () => {
       const pendingResult = svc.markSettlementPending(intent, NOW);
       intent = pendingResult.intent;
       expect(intent.status).toBe("SETTLEMENT_PENDING");
+      expect(intent.production_status).toBe("authorized");
       expect(pendingResult.trust_triggers).toEqual([]);
 
       // Settle
       const settleResult = await svc.settleIntent(intent, NOW);
       intent = settleResult.intent;
       expect(intent.status).toBe("SETTLED");
+      expect(intent.production_status).toBe("captured");
       expect(settleResult.value).toBeDefined();
       expect(settleResult.value!.status).toBe("SETTLED");
       expect(settleResult.trust_triggers).toHaveLength(2);

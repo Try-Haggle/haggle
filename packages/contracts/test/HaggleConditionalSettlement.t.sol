@@ -14,8 +14,8 @@ contract HaggleConditionalSettlementTest is Test {
 
     address owner = makeAddr("owner");
     address buyer = makeAddr("buyer");
-    address seller = makeAddr("seller");
-    address sellerWallet = makeAddr("sellerWallet");
+    address seller = makeAddr("sellerWallet");
+    address alternateSellerWallet = makeAddr("alternateSellerWallet");
     address feeWallet = makeAddr("feeWallet");
     address attacker = makeAddr("attacker");
 
@@ -163,7 +163,7 @@ contract HaggleConditionalSettlementTest is Test {
         bytes32 settlementId = _fund();
         HaggleConditionalSettlement.ReleaseParams memory p = HaggleConditionalSettlement.ReleaseParams({
             settlementId: settlementId,
-            sellerWallet: sellerWallet,
+            sellerWallet: seller,
             feeWallet: feeWallet,
             sellerAmount: sellerAmount,
             feeAmount: feeAmount,
@@ -174,7 +174,7 @@ contract HaggleConditionalSettlementTest is Test {
 
         settlement.release(p, sig);
 
-        assertEq(usdc.balanceOf(sellerWallet), sellerAmount);
+        assertEq(usdc.balanceOf(seller), sellerAmount);
         assertEq(usdc.balanceOf(feeWallet), feeAmount);
         assertEq(usdc.balanceOf(address(settlement)), 0);
     }
@@ -241,7 +241,7 @@ contract HaggleConditionalSettlementTest is Test {
         bytes32 settlementId = _fund();
         HaggleConditionalSettlement.ReleaseParams memory p = HaggleConditionalSettlement.ReleaseParams({
             settlementId: settlementId,
-            sellerWallet: sellerWallet,
+            sellerWallet: seller,
             feeWallet: feeWallet,
             sellerAmount: 80_000_000,
             feeAmount: 20_000_000,
@@ -251,6 +251,23 @@ contract HaggleConditionalSettlementTest is Test {
         bytes memory sig = _signRelease(SIGNER_PK, p);
 
         vm.expectRevert(HaggleConditionalSettlement.FeeTooHigh.selector);
+        settlement.release(p, sig);
+    }
+
+    function test_revert_releaseRejectsSellerWalletMismatchEvenWithValidSignature() public {
+        bytes32 settlementId = _fund();
+        HaggleConditionalSettlement.ReleaseParams memory p = HaggleConditionalSettlement.ReleaseParams({
+            settlementId: settlementId,
+            sellerWallet: alternateSellerWallet,
+            feeWallet: feeWallet,
+            sellerAmount: sellerAmount,
+            feeAmount: feeAmount,
+            deadline: block.timestamp + 1 hours,
+            signerNonce: settlement.signerNonce()
+        });
+        bytes memory sig = _signRelease(SIGNER_PK, p);
+
+        vm.expectRevert(HaggleConditionalSettlement.SellerWalletMismatch.selector);
         settlement.release(p, sig);
     }
 
@@ -269,5 +286,55 @@ contract HaggleConditionalSettlementTest is Test {
         });
         settlement.refund(p, _signRefund(SIGNER_PK, p));
         assertEq(usdc.balanceOf(buyer), 1_000_000_000);
+    }
+
+    function test_disputeCanReleaseAfterSignedSellerFavorResolution() public {
+        bytes32 settlementId = _fund();
+
+        vm.prank(buyer);
+        settlement.raiseDispute(settlementId, keccak256("evidence"));
+
+        HaggleConditionalSettlement.ReleaseParams memory p = HaggleConditionalSettlement.ReleaseParams({
+            settlementId: settlementId,
+            sellerWallet: seller,
+            feeWallet: feeWallet,
+            sellerAmount: sellerAmount,
+            feeAmount: feeAmount,
+            deadline: block.timestamp + 1 hours,
+            signerNonce: settlement.signerNonce()
+        });
+        settlement.release(p, _signRelease(SIGNER_PK, p));
+
+        assertEq(usdc.balanceOf(seller), sellerAmount);
+        assertEq(usdc.balanceOf(feeWallet), feeAmount);
+        assertEq(usdc.balanceOf(address(settlement)), 0);
+        assertEq(
+            uint8(settlement.settlementState(settlementId)),
+            uint8(HaggleConditionalSettlement.SettlementState.RELEASED)
+        );
+    }
+
+    function test_revert_disputeEvidenceCannotBeOverwritten() public {
+        bytes32 settlementId = _fund();
+
+        vm.prank(buyer);
+        settlement.raiseDispute(settlementId, keccak256("buyer-evidence"));
+
+        vm.prank(seller);
+        vm.expectRevert(HaggleConditionalSettlement.SettlementAlreadyDisputed.selector);
+        settlement.raiseDispute(settlementId, keccak256("seller-overwrite"));
+    }
+
+    function test_revert_disputedSettlementCannotBypassResolutionThroughExpiry() public {
+        HaggleConditionalSettlement.ConditionalSettlementParams memory params = _defaultParams();
+        bytes32 settlementId = _fund();
+
+        vm.prank(buyer);
+        settlement.raiseDispute(settlementId, keccak256("evidence"));
+        vm.warp(params.expiresAt + 1);
+
+        vm.expectRevert(HaggleConditionalSettlement.SettlementInDispute.selector);
+        settlement.expire(settlementId);
+        assertEq(usdc.balanceOf(address(settlement)), grossAmount);
     }
 }

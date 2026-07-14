@@ -62,8 +62,19 @@ export function useNegotiationWs({
         return;
       }
 
-      const wsUrl = `${WS_URL}/ws/negotiations/${sessionId}?token=${token}`;
-      const ws = new WebSocket(wsUrl);
+      const ticketResponse = await fetch(`${API_URL}/auth/websocket-tickets`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ channel: "negotiation", session_id: sessionId }),
+        cache: "no-store",
+      });
+      if (!ticketResponse.ok) throw new Error("WebSocket ticket issuance failed");
+      const ticket = await ticketResponse.json() as { ticket_protocol?: string };
+      if (!ticket.ticket_protocol) throw new Error("WebSocket ticket missing");
+      const ws = new WebSocket(`${WS_URL}/ws/negotiations/${sessionId}`, [ticket.ticket_protocol]);
       wsRef.current = ws;
 
       ws.onopen = () => {

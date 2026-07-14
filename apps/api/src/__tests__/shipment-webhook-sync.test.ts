@@ -6,6 +6,53 @@ vi.mock("../services/admin-action-log.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
+  return {
+    ...actual,
+    claimWebhookEvent: vi.fn().mockResolvedValue({
+      outcome: "acquired",
+      source: "easypost",
+      eventId: "tracker.updated:TRACK123",
+      claimId: "33333333-3333-4333-8333-333333333333",
+      attemptCount: 1,
+    }),
+    completeWebhookEvent: vi.fn().mockResolvedValue(true),
+    failWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    startWebhookClaimHeartbeat: vi.fn(() => vi.fn()),
+  };
+});
+
+vi.mock("../services/shipment-record.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/shipment-record.service.js")>();
+  return {
+    ...actual,
+    applyCarrierShipmentEvent: vi.fn().mockImplementation(async (db) => {
+      db.updates.push({ status: "DELIVERED" });
+      return {
+        shipment: {
+          id: "ship_1",
+          order_id: "ord_1",
+          seller_id: "seller_1",
+          buyer_id: "buyer_1",
+          shipment_type: "outbound",
+          status: "DELIVERED",
+          carrier: "easypost",
+          tracking_number: "TRACK123",
+          label_refund_status: "NONE",
+          events: [],
+          created_at: "2026-04-20T00:00:00.000Z",
+          updated_at: "2026-04-20T00:00:00.000Z",
+        },
+        event: {},
+        disposition: "applied",
+        stateChanged: true,
+        effectsRequired: true,
+      };
+    }),
+  };
+});
+
 function createDbMock() {
   const updates: Array<Record<string, unknown>> = [];
   const shipmentRow = {

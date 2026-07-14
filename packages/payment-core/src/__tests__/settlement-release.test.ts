@@ -69,7 +69,7 @@ describe("createSettlementRelease", () => {
     expect(r.updated_at).toBe(NOW);
   });
 
-  it("generates a unique id with sr_ prefix", () => {
+  it("generates a unique UUID id", () => {
     const a = createSettlementRelease({
       payment_intent_id: "pi_001",
       order_id: "ord_001",
@@ -82,8 +82,8 @@ describe("createSettlementRelease", () => {
       product_amount: PRODUCT,
       buffer_amount: BUFFER,
     });
-    expect(a.id).toMatch(/^sr_/);
-    expect(b.id).toMatch(/^sr_/);
+    expect(a.id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(b.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(a.id).not.toBe(b.id);
   });
 

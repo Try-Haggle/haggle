@@ -14,6 +14,7 @@ import {
 import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 import { writeAuditLog } from "../services/admin-action-log.service.js";
+import { completeWebhookEvent } from "../services/webhook-event-claim.service.js";
 
 vi.mock("../payments/providers.js", () => ({
   createPaymentServiceFromEnv: vi.fn(() => ({
@@ -118,6 +119,23 @@ vi.mock("../services/admin-action-log.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
+  return {
+    ...actual,
+    claimWebhookEvent: vi.fn().mockImplementation(async (_db, input) => ({
+      outcome: "acquired",
+      source: input.source,
+      eventId: input.eventId,
+      claimId: "11111111-1111-4111-8111-111111111111",
+      attemptCount: 1,
+    })),
+    completeWebhookEvent: vi.fn().mockResolvedValue(true),
+    failWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    startWebhookClaimHeartbeat: vi.fn(() => vi.fn()),
+  };
+});
+
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
 const mockSetPaymentIntentProviderContext = vi.mocked(setPaymentIntentProviderContext);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
@@ -130,6 +148,7 @@ const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
 const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockWriteAuditLog = vi.mocked(writeAuditLog);
+const mockCompleteWebhookEvent = vi.mocked(completeWebhookEvent);
 
 function buildDb() {
   const insert = vi.fn().mockReturnValue({
@@ -403,7 +422,7 @@ describe("payment webhook idempotency", () => {
     expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
-    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
   it("marks authorized x402 payments settlement pending before processing settlement-confirmed webhooks", async () => {
@@ -436,7 +455,7 @@ describe("payment webhook idempotency", () => {
     );
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalled();
     expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
-    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
   it("requires reconciliation for out-of-order settlement-confirmed webhooks before authorization", async () => {
@@ -653,7 +672,7 @@ describe("payment webhook idempotency", () => {
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
     expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
-    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
   it("does not move an already active fulfillment order back to fulfillment pending", async () => {
@@ -679,7 +698,7 @@ describe("payment webhook idempotency", () => {
     expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
     expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
-    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
   it("does not mark an x402 webhook processed when post-settlement finalization fails", async () => {

@@ -12,6 +12,36 @@ export type DisputeStatus =
   | "PARTIAL_REFUND"
   | "CLOSED";
 
+export interface DisputeEvidenceDerivedArtifact {
+  id: string;
+  kind: "image_visual_observation" | "image_metadata" | "video_keyframe" | "video_metadata" | "video_transcript" | "video_ocr";
+  source_evidence_id: string;
+  uri?: string;
+  text?: string;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface DisputeEvidenceDerivedArtifactsProvenance {
+  [key: string]: unknown;
+  manifest: {
+    schema: "haggle.dispute-evidence-derived-artifacts.v1";
+    dispute_id: string;
+    evidence_id: string;
+    source_content_sha256: string;
+    verifier_provider: string;
+    generated_at: string;
+    artifact_count: number;
+    artifacts_sha256: string;
+  };
+  signature: {
+    algorithm: "Ed25519";
+    key_id: string;
+    public_key_spki_base64: string;
+    value_base64: string;
+  };
+}
+
 export interface DisputeEvidence {
   id: string;
   dispute_id: string;
@@ -19,6 +49,11 @@ export interface DisputeEvidence {
   type: "text" | "image" | "video" | "tracking_snapshot" | "payment_proof" | "other";
   uri?: string;
   text?: string;
+  derived_artifacts?: DisputeEvidenceDerivedArtifact[];
+  source_content_sha256?: string;
+  derived_artifacts_provenance?: DisputeEvidenceDerivedArtifactsProvenance;
+  derived_artifacts_integrity?: "valid" | "invalid" | "unsigned";
+  derived_artifacts_integrity_reason?: string;
   created_at: string;
 }
 

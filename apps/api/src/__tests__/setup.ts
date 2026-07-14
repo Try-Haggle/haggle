@@ -8,6 +8,7 @@ import { vi } from "vitest";
 
 process.env.NODE_ENV ??= "test";
 process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/haggle_test";
+process.env.HAGGLE_ALLOW_UNVERIFIED_TEST_JWT ??= "true";
 
 // ─── Mock @haggle/db ─────────────────────────────────────────────────
 // createServer() validates DATABASE_URL before calling createDb(), which would
@@ -180,6 +181,22 @@ vi.mock("@haggle/db", () => ({
     updatedAt: "updatedAt",
   },
   shipmentEvents: { shipmentId: "shipmentId" },
+  apiRateLimitWindows: {
+    scope: "scope",
+    keyHash: "keyHash",
+    windowStartedAt: "windowStartedAt",
+    requestCount: "requestCount",
+    updatedAt: "updatedAt",
+  },
+  websocketAuthTickets: {
+    id: "id",
+    tokenHash: "tokenHash",
+    userId: "userId",
+    channel: "channel",
+    resourceId: "resourceId",
+    expiresAt: "expiresAt",
+    createdAt: "createdAt",
+  },
   settlementReleases: {
     id: "id",
     orderId: "orderId",
@@ -222,7 +239,9 @@ vi.mock("@haggle/payment-core/heavy/viem-contracts", () => ({
 vi.mock("viem", () => ({
   createPublicClient: vi.fn(),
   createWalletClient: vi.fn(),
+  decodeEventLog: vi.fn(),
   http: vi.fn(),
+  isAddress: vi.fn((value: unknown) => typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value)),
 }));
 
 vi.mock("viem/accounts", () => ({
@@ -270,11 +289,20 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
         return_to_sender: "RETURN_IN_TRANSIT",
         returned: "RETURNED",
       };
+      const details = Array.isArray(result.tracking_details)
+        ? result.tracking_details as Array<Record<string, unknown>>
+        : [];
+      const latest = details.at(-1);
+      const location = latest?.tracking_location as Record<string, unknown> | undefined;
       return {
         tracking_code: result.tracking_code,
         status: statusMap[String(result.status)] ?? "IN_TRANSIT",
         carrier: result.carrier,
-        tracking_details: [],
+        tracking_details: details,
+        occurred_at: typeof latest?.datetime === "string" ? latest.datetime : undefined,
+        carrier_raw_status: String(result.status),
+        message: typeof latest?.message === "string" ? latest.message : undefined,
+        location: location ? [location.city, location.state].filter(Boolean).join(", ") : undefined,
       };
     }),
     parseEasyPostInvoicePayload: vi.fn((body: unknown) => {

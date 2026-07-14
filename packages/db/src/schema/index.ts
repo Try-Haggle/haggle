@@ -12,13 +12,19 @@ export {
   paymentSettlements,
   refunds,
 } from "./payments.js";
-export { shipmentEvents, shipmentOperationIdempotency, shipments } from "./shipments.js";
+export { shipmentApvAdjustmentRevisions, shipmentApvAdjustments, shipmentApvPayoutCancellationRequests, shipmentApvPayoutOffsetAllocations, shipmentApvPayoutOffsets, shipmentApvSellerLiabilities, shipmentEvents, shipmentOperationIdempotency, shipments, shippingRateLimitWindows } from "./shipments.js";
 export { authentications, authenticationEvents } from "./authentications.js";
 export { settlementReleases } from "./settlement-releases.js";
 export {
   disputeCases,
+  disputeAiAssessmentEvents,
+  disputeAiAuditOutbox,
+  disputeAiAssessmentLeases,
+  disputeOperationLeases,
   disputeEvidence,
   disputeEvidenceUploads,
+  disputeEvidenceSimilarityReviewEvents,
+  disputeEvidenceSimilarityReviewAuditOutbox,
   disputeModuleIdempotencyKeys,
   disputeModuleWebhookOutbox,
   disputeResolutions,
@@ -75,6 +81,15 @@ export { vector } from "./pgvector.js";
 // TODO(slice-6): export { users } from "./users.js";
 export { userWallets } from "./user-wallets.js";
 export { webhookIdempotency } from "./webhook-idempotency.js";
+export { apiRateLimitWindows } from "./api-rate-limit.js";
+export { websocketAuthTickets } from "./websocket-auth-tickets.js";
+export { disputeEvidenceScanRetryAlertSnapshots } from
+  "./dispute-evidence-scan-retry-alert-snapshots.js";
+export { paymentTestOperationLeases } from "./payment-test-operation-leases.js";
+export { shipmentApvInvoiceDocuments } from "./shipment-apv-invoice-documents.js";
+export { shipmentApvInvoiceReconciliationEvents, shipmentApvInvoiceReconciliationRequests } from "./shipment-apv-invoice-reconciliation.js";
+export { shipmentApvInvoiceRestorationEvents, shipmentApvInvoiceRestorationRequests } from "./shipment-apv-invoice-restoration.js";
+export { shipmentApvInvoiceRestorationRemediationAcknowledgments, shipmentApvInvoiceRestorationRemediationEvents, shipmentApvInvoiceRestorationRemediationRequests } from "./shipment-apv-invoice-restoration-remediation.js";
 export { buddies } from "./buddies.js";
 export { buddyTrades } from "./buddy-trades.js";
 export { agentLevels } from "./agent-levels.js";

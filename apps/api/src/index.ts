@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 // Load .env from monorepo root, then local apps/api/.env (local overrides root)
 dotenv.config({ path: resolve(import.meta.dirname, "../../../.env") });
+dotenv.config({ path: resolve(import.meta.dirname, "../../../.env.easypost.local") });
 dotenv.config({ path: resolve(import.meta.dirname, "../.env") });
 
 const PORT = parseInt(process.env.PORT || "3001", 10);

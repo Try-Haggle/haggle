@@ -164,6 +164,16 @@ export function validateDisputeStoragePath(
   return stripped;
 }
 
+export function stripDisputeEvidenceBucket(storagePath: string): string {
+  const stripped = storagePath.startsWith(`${DISPUTE_EVIDENCE_BUCKET}/`)
+    ? storagePath.slice(DISPUTE_EVIDENCE_BUCKET.length + 1)
+    : storagePath;
+  if (TRAVERSAL_RE.test(stripped) || stripped.split("/").length !== 2) {
+    throw new Error("dispute-evidence: stored object path is invalid");
+  }
+  return stripped;
+}
+
 // ---------------------------------------------------------------------------
 // Content-type classification helpers
 // ---------------------------------------------------------------------------

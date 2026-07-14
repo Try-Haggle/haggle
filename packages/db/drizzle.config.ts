@@ -37,6 +37,8 @@ export default defineConfig({
     "./src/schema/notifications.ts",
     "./src/schema/notification-preferences.ts",
     "./src/schema/email-deliveries.ts",
+    "./src/schema/api-rate-limit.ts",
+    "./src/schema/websocket-auth-tickets.ts",
   ],
   out: "./drizzle",
   dbCredentials: {

@@ -81,7 +81,7 @@ export function createSettlementRelease(params: {
 }): SettlementRelease {
   const now = params.now ?? new Date().toISOString();
   return {
-    id: createId("sr"),
+    id: createId(),
     payment_intent_id: params.payment_intent_id,
     order_id: params.order_id,
     product_amount: { ...params.product_amount },

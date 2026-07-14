@@ -14,7 +14,6 @@ import {
   validateCaseGuideOutput,
   validateResolutionAssessorOutput,
 } from "@haggle/dispute-core";
-import { callLLM } from "../negotiation/adapters/xai-client.js";
 import { estimateLlmCostUsd, type LlmCostEstimate } from "../lib/llm-cost.js";
 
 export interface DisputeAiProviderResponse {
@@ -30,6 +29,19 @@ export interface DisputeAiProviderResponse {
 
 export interface DisputeAiProvider {
   completeJson(bundle: DisputeAiPromptBundle): Promise<DisputeAiProviderResponse>;
+}
+
+function mergeUsage(
+  first: DisputeAiProviderResponse["usage"],
+  second: DisputeAiProviderResponse["usage"],
+): DisputeAiProviderResponse["usage"] | undefined {
+  if (!first) return second;
+  if (!second) return first;
+  return {
+    promptTokens: first.promptTokens + second.promptTokens,
+    completionTokens: first.completionTokens + second.completionTokens,
+    totalTokens: first.totalTokens + second.totalTokens,
+  };
 }
 
 export type DisputeAiRunResult<TOutput> =
@@ -148,9 +160,125 @@ export function buildDisputeAiCaseContextFromDispute(
       text: evidence.text,
       uri: evidence.uri,
       created_at: evidence.created_at,
+      derived_artifacts: evidence.derived_artifacts,
+      derived_artifacts_integrity: evidence.derived_artifacts_integrity,
+      derived_artifacts_integrity_reason: evidence.derived_artifacts_integrity_reason,
     })),
     policy: options.policy,
     locale: options.locale,
+  };
+}
+
+interface OpenAiCompatibleChatCompletion {
+  choices: Array<{
+    message: { content: string };
+    finish_reason?: string;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  model?: string;
+}
+
+function parsePositiveInt(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function deepSeekApiBase(): string {
+  return (process.env.DEEPSEEK_API_BASE ?? "https://api.deepseek.com").replace(/\/+$/, "");
+}
+
+function deepSeekApiKey(): string {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error("DEEPSEEK_API_KEY not configured");
+  return key;
+}
+
+function deepSeekTimeoutMs(): number {
+  return parsePositiveInt(process.env.DEEPSEEK_TIMEOUT_MS) ?? 90_000;
+}
+
+function disputeAiMaxTokens(
+  role: DisputeAiPromptBundle["role"],
+  override: number | undefined,
+): number {
+  if (override !== undefined) return override;
+  if (role === "resolution_assessor") {
+    return parsePositiveInt(process.env.DISPUTE_AI_RESOLUTION_ASSESSOR_MAX_TOKENS) ?? 4096;
+  }
+  return parsePositiveInt(process.env.DISPUTE_AI_CASE_GUIDE_MAX_TOKENS) ?? 1600;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function createDeepSeekDisputeAiProvider(options: {
+  reasoning?: boolean;
+  model?: string;
+  caseGuideModel?: string;
+  resolutionAssessorModel?: string;
+  maxTokens?: number;
+  correlationId?: string;
+} = {}): DisputeAiProvider {
+  return {
+    async completeJson(bundle) {
+      const model = resolveDisputeAiModel(bundle.role, options);
+      const useLowerTemperature = options.reasoning ?? bundle.role === "resolution_assessor";
+      const body: Record<string, unknown> = {
+        model,
+        messages: [
+          { role: "system", content: `${bundle.system_prompt}\n\nReturn valid JSON only.` },
+          { role: "user", content: bundle.user_prompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: useLowerTemperature ? 0.3 : 0.5,
+        max_tokens: disputeAiMaxTokens(bundle.role, options.maxTokens),
+        stream: false,
+      };
+      const response = await fetchWithTimeout(`${deepSeekApiBase()}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${deepSeekApiKey()}`,
+        },
+        body: JSON.stringify(body),
+      }, deepSeekTimeoutMs());
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`DeepSeek API error ${response.status}: ${text}`);
+      }
+
+      const data = await response.json() as OpenAiCompatibleChatCompletion;
+      const usage = {
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        totalTokens: data.usage?.total_tokens
+          ?? (data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0),
+      };
+      const returnedModel = data.model ?? model;
+      return {
+        content: data.choices?.[0]?.message?.content ?? "",
+        model: returnedModel,
+        usage,
+        cost: estimateLlmCostUsd(returnedModel, usage),
+      };
+    },
   };
 }
 
@@ -162,31 +290,22 @@ export function createXaiDisputeAiProvider(options: {
   maxTokens?: number;
   correlationId?: string;
 } = {}): DisputeAiProvider {
-  return {
-    async completeJson(bundle) {
-      const model = resolveDisputeAiModel(bundle.role, options);
-      const response = await callLLM(bundle.system_prompt, bundle.user_prompt, {
-        reasoning: options.reasoning ?? bundle.role === "resolution_assessor",
-        model,
-        maxTokens: options.maxTokens ?? 1600,
-        correlationId: options.correlationId ?? `dispute-ai:${bundle.role}:${bundle.context_hash}`,
-      });
-      return {
-        content: response.content,
-        model: response.model,
-        usage: {
-          promptTokens: response.usage.prompt_tokens,
-          completionTokens: response.usage.completion_tokens,
-          totalTokens: response.usage.prompt_tokens + response.usage.completion_tokens,
-        },
-        cost: estimateLlmCostUsd(response.model, {
-          promptTokens: response.usage.prompt_tokens,
-          completionTokens: response.usage.completion_tokens,
-          totalTokens: response.usage.prompt_tokens + response.usage.completion_tokens,
-        }),
-      };
-    },
-  };
+  // Backward-compatible export name. The dispute AI provider now uses DeepSeek.
+  return createDeepSeekDisputeAiProvider({
+    ...options,
+    model: options.model ?? process.env.DISPUTE_AI_MODEL,
+  });
+}
+
+export function createDisputeAiProvider(options: {
+  reasoning?: boolean;
+  model?: string;
+  caseGuideModel?: string;
+  resolutionAssessorModel?: string;
+  maxTokens?: number;
+  correlationId?: string;
+} = {}): DisputeAiProvider {
+  return createDeepSeekDisputeAiProvider(options);
 }
 
 export function resolveDisputeAiModel(
@@ -202,14 +321,15 @@ export function resolveDisputeAiModel(
       ?? options.model
       ?? process.env.DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL
       ?? process.env.DISPUTE_AI_MODEL
-      ?? "grok-4.3";
+      ?? process.env.DEEPSEEK_MODEL
+      ?? "deepseek-v4-pro";
   }
   return options.caseGuideModel
     ?? options.model
     ?? process.env.DISPUTE_AI_CASE_GUIDE_MODEL
     ?? process.env.DISPUTE_AI_MODEL
-    ?? process.env.XAI_MODEL
-    ?? "grok-4-fast";
+    ?? process.env.DEEPSEEK_MODEL
+    ?? "deepseek-v4-flash";
 }
 
 async function completeAndValidate<TOutput>(
@@ -236,21 +356,84 @@ async function completeAndValidate<TOutput>(
   try {
     parsed = extractJsonObject(providerResponse.content);
   } catch (error) {
-    return {
-      ok: false,
-      role: bundle.role,
-      displayName: bundle.display_name,
-      schemaName: bundle.schema_name,
-      contextHash: bundle.context_hash,
-      error: "INVALID_JSON",
-      message: error instanceof Error ? error.message : String(error),
-      model: providerResponse.model,
-      usage: providerResponse.usage,
-      cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
-    };
+    try {
+      const repairResponse = await provider.completeJson({
+        ...bundle,
+        system_prompt: [
+          `You repair invalid JSON for ${bundle.schema_name}.`,
+          "Return valid JSON only. Do not add markdown, comments, or prose.",
+        ].join("\n"),
+        user_prompt: [
+          "The previous model output was invalid JSON.",
+          `Parse error: ${error instanceof Error ? error.message : String(error)}`,
+          "Repair it into one valid JSON object that satisfies the original schema.",
+          "Invalid output:",
+          providerResponse.content.slice(0, 12_000),
+        ].join("\n\n"),
+      });
+      providerResponse = {
+        ...repairResponse,
+        usage: mergeUsage(providerResponse.usage, repairResponse.usage),
+      };
+      parsed = extractJsonObject(providerResponse.content);
+    } catch (repairError) {
+      return {
+        ok: false,
+        role: bundle.role,
+        displayName: bundle.display_name,
+        schemaName: bundle.schema_name,
+        contextHash: bundle.context_hash,
+        error: "INVALID_JSON",
+        message: repairError instanceof Error ? repairError.message : String(repairError),
+        model: providerResponse.model,
+        usage: providerResponse.usage,
+        cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
+      };
+    }
   }
 
-  const issues = validate(parsed);
+  let issues = validate(parsed);
+  if (issues.length > 0) {
+    try {
+      const repairResponse = await provider.completeJson({
+        ...bundle,
+        system_prompt: [
+          `You repair a JSON object for ${bundle.schema_name}.`,
+          "Return valid JSON only. Keep the same case facts and recommendation unless a field is unsafe.",
+          "Fill every required field with the correct type.",
+          "Rewrite every field with a Korean-language validation issue in natural Korean.",
+        ].join("\n"),
+        user_prompt: [
+          "The previous JSON object failed schema validation.",
+          "Important consistency rule: if confidence is low, escalation_required must be true. If escalation_required is false, confidence must be medium or high.",
+          "Validation issues:",
+          JSON.stringify(issues),
+          "Repair this JSON object so it satisfies the schema:",
+          JSON.stringify(parsed).slice(0, 12_000),
+        ].join("\n\n"),
+      });
+      providerResponse = {
+        ...repairResponse,
+        usage: mergeUsage(providerResponse.usage, repairResponse.usage),
+      };
+      parsed = extractJsonObject(providerResponse.content);
+      issues = validate(parsed);
+    } catch (repairError) {
+      return {
+        ok: false,
+        role: bundle.role,
+        displayName: bundle.display_name,
+        schemaName: bundle.schema_name,
+        contextHash: bundle.context_hash,
+        error: "INVALID_AI_OUTPUT",
+        message: repairError instanceof Error ? repairError.message : String(repairError),
+        issues,
+        model: providerResponse.model,
+        usage: providerResponse.usage,
+        cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
+      };
+    }
+  }
   if (issues.length > 0) {
     return {
       ok: false,

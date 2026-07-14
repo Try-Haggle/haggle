@@ -7,6 +7,7 @@ import {
   getCommerceOrderByOrderId,
   getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
+  getPaymentIntentRowById,
   setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
@@ -14,6 +15,7 @@ import {
 import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
 import { writeAuditLog } from "../services/admin-action-log.service.js";
+import { completeWebhookEvent } from "../services/webhook-event-claim.service.js";
 
 const stripeEvent = {
   id: "evt_stripe_deposit_1",
@@ -98,9 +100,27 @@ vi.mock("../services/admin-action-log.service.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
+  return {
+    ...actual,
+    claimWebhookEvent: vi.fn().mockImplementation(async (_db, input) => ({
+      outcome: "acquired",
+      source: input.source,
+      eventId: input.eventId,
+      claimId: "22222222-2222-4222-8222-222222222222",
+      attemptCount: 1,
+    })),
+    completeWebhookEvent: vi.fn().mockResolvedValue(true),
+    failWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    startWebhookClaimHeartbeat: vi.fn(() => vi.fn()),
+  };
+});
+
 const mockGetDepositById = vi.mocked(getDepositById);
 const mockUpdateDepositStatus = vi.mocked(updateDepositStatus);
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
+const mockGetPaymentIntentRowById = vi.mocked(getPaymentIntentRowById);
 const mockSetPaymentIntentProviderContext = vi.mocked(setPaymentIntentProviderContext);
 const mockCreatePaymentSettlementRecord = vi.mocked(createPaymentSettlementRecord);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
@@ -112,6 +132,7 @@ const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecor
 const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 const mockWriteAuditLog = vi.mocked(writeAuditLog);
+const mockCompleteWebhookEvent = vi.mocked(completeWebhookEvent);
 
 function buildDb() {
   return {
@@ -224,16 +245,17 @@ describe("stripe deposit webhook", () => {
         }),
       }),
     );
-    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("runs payment finalization for an already settled Stripe intent before marking the webhook processed", async () => {
+  it("records Stripe onramp fulfillment without treating it as contract settlement", async () => {
     stripeEvent.id = "evt_stripe_payment_retry";
     stripeEvent.data.object.id = "cos_payment_retry";
     stripeEvent.data.object.metadata = {
       payment_intent_id: "pi_stripe_retry",
       order_id: "order_123",
       approval_policy_hash: "sha256:policy",
+      destination_amount_minor: "1000",
     };
     mockGetPaymentIntentById.mockResolvedValueOnce({
       id: "pi_stripe_retry",
@@ -249,18 +271,9 @@ describe("stripe deposit webhook", () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     } as never);
-    mockGetPaymentSettlementByPaymentIntentId.mockResolvedValueOnce({
-      id: "settlement_existing",
-      payment_intent_id: "pi_stripe_retry",
-      rail: "stripe",
-      provider_reference: "stripe_settle_existing",
-      settled_amount: { currency: "USD", amount_minor: 1000 },
-      settled_at: new Date().toISOString(),
-      status: "SETTLED",
-    });
-    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "sr_existing", order_id: "order_123" } as never);
-    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({ id: "order_123", status: "PAID" } as never);
-    mockGetShipmentByOrderId.mockResolvedValueOnce({ id: "shipment_existing", order_id: "order_123" } as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: { existing: true },
+    } as never);
 
     const res = await app.inject({
       method: "POST",
@@ -272,16 +285,30 @@ describe("stripe deposit webhook", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(expect.objectContaining({
       accepted: true,
-      action: "settled",
+      action: "onramp_funded",
       payment_intent_id: "pi_stripe_retry",
+      next_action: "fund_conditional_settlement",
     }));
+    expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
+      expect.anything(),
+      "pi_stripe_retry",
+      expect.objectContaining({
+        existing: true,
+        stripe_onramp: expect.objectContaining({
+          status: "ONRAMP_FUNDED",
+          session_id: "cos_payment_retry",
+          event_id: "evt_stripe_payment_retry",
+          destination_amount_minor: "1000",
+        }),
+      }),
+    );
+    expect(mockGetPaymentSettlementByPaymentIntentId).not.toHaveBeenCalled();
     expect(mockCreateSettlementReleaseRecord).not.toHaveBeenCalled();
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
-    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("requires reconciliation when Stripe fulfillment arrives before local authorization", async () => {
+  it("accepts Stripe onramp fulfillment before contract funding and records wallet-funded context", async () => {
     stripeEvent.id = "evt_stripe_before_auth";
     stripeEvent.data.object.id = "cos_payment_before_auth";
     stripeEvent.data.object.metadata = {
@@ -303,6 +330,9 @@ describe("stripe deposit webhook", () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     } as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: {},
+    } as never);
 
     const res = await app.inject({
       method: "POST",
@@ -311,34 +341,26 @@ describe("stripe deposit webhook", () => {
       payload: { ignored: true },
     });
 
-    expect(res.statusCode).toBe(409);
+    expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
-      accepted: false,
-      action: "reconciliation_required",
-      reason: "settlement_confirmed_before_authorization",
+      accepted: true,
+      action: "onramp_funded",
       payment_intent_id: "pi_stripe_before_auth",
-      local_status: "CREATED",
-      local_production_status: "pending",
-      provider: "stripe",
-      provider_event_id: "evt_stripe_before_auth",
-      event_type: "crypto.onramp_session.fulfillment_complete",
+      next_action: "fund_conditional_settlement",
     });
     expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
       expect.anything(),
       "pi_stripe_before_auth",
       expect.objectContaining({
-        reconciliation_needed: expect.objectContaining({
-          provider: "stripe",
-          provider_event_id: "evt_stripe_before_auth",
-          event_type: "crypto.onramp_session.fulfillment_complete",
-          reason: "settlement_confirmed_before_authorization",
-          local_status: "CREATED",
-          local_production_status: "pending",
+        stripe_onramp: expect.objectContaining({
+          status: "ONRAMP_FUNDED",
+          session_id: "cos_payment_before_auth",
+          event_id: "evt_stripe_before_auth",
         }),
       }),
     );
     expect(mockCreatePaymentSettlementRecord).not.toHaveBeenCalled();
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
-    expect(db.insert).not.toHaveBeenCalled();
+    expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 });

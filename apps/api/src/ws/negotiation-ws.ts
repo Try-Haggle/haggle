@@ -1,7 +1,8 @@
 /**
  * WebSocket handler for real-time negotiation updates.
  *
- * Channel: /ws/negotiations/:sessionId?token=JWT
+ * Channel: /ws/negotiations/:sessionId with a one-time ticket in
+ * Sec-WebSocket-Protocol: haggle-ticket.<ticket>
  *
  * Messages:
  *   Server → Client:
@@ -14,8 +15,9 @@
  */
 
 import type { FastifyInstance } from "fastify";
-import jwt from "jsonwebtoken";
-import { isProductionRuntime } from "../config/runtime.js";
+import type { Database } from "@haggle/db";
+import { createWebSocketTicketPreValidation } from
+  "../middleware/websocket-ticket-auth.js";
 
 // Minimal WebSocket interface matching ws package (avoids module resolution issues in pnpm)
 interface WebSocket {
@@ -58,11 +60,6 @@ const channels = new Map<string, Set<WebSocket>>();
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-interface SupabaseJwtPayload {
-  sub: string;
-  exp?: number;
-}
-
 function getOrCreateChannel(sessionId: string): Set<WebSocket> {
   let channel = channels.get(sessionId);
   if (!channel) {
@@ -102,90 +99,31 @@ export function getSessionClientCount(sessionId: string): number {
   return channels.get(sessionId)?.size ?? 0;
 }
 
-function verifyWebSocketJwt(token: string): SupabaseJwtPayload {
-  const jwtSecret = process.env.SUPABASE_JWT_SECRET;
-
-  if (!jwtSecret) {
-    if (isProductionRuntime()) {
-      throw new Error("SUPABASE_JWT_SECRET is required for WebSocket auth in production");
-    }
-
-    const decoded = jwt.decode(token) as SupabaseJwtPayload | null;
-    if (!decoded?.sub) {
-      throw new Error("Invalid JWT payload");
-    }
-    return decoded;
-  }
-
-  const payload = jwt.verify(token, jwtSecret) as SupabaseJwtPayload;
-  if (!payload.sub) {
-    throw new Error("Invalid JWT payload: missing sub");
-  }
-  return payload;
-}
-
 // ─── Route Registration ──────────────────────────────────────────────
 
-export async function registerWebSocketRoutes(app: FastifyInstance): Promise<void> {
+export async function registerWebSocketRoutes(app: FastifyInstance, db: Database): Promise<void> {
   app.get(
     "/ws/negotiations/:sessionId",
-    { websocket: true },
+    {
+      websocket: true,
+      preValidation: createWebSocketTicketPreValidation(db, "negotiation"),
+    },
     async (socket: WebSocket, req) => {
       const sessionId = (req.params as { sessionId: string }).sessionId;
 
-      // Auth: verify JWT from query param
-      const url = new URL(req.url ?? "", `http://${req.headers.host}`);
-      const token = url.searchParams.get("token");
-
-      if (!token) {
-        socket.close(4001, "Missing token");
-        return;
-      }
-
       try {
-        const payload = verifyWebSocketJwt(token);
-
-        // Check expiry
-        if (payload.exp && payload.exp * 1000 < Date.now()) {
-          socket.close(4001, "Token expired");
-          return;
-        }
-
-        // Verify user is a participant in this session
-        // payload.sub = userId; check against session participants
-        const userId = payload.sub;
+        const userId = req.wsTicketUserId;
         if (!userId) {
-          socket.close(4001, "Invalid token: no user");
+          socket.close(1011, "Ticket principal unavailable");
           return;
         }
-
-        // Session-level authorization: verify user belongs to this session
-        // Add to channel ONLY after auth succeeds
-        let authorized = true;
-        try {
-          const res = await app.inject({
-            method: "GET",
-            url: `/negotiations/sessions/${sessionId}`,
-            headers: { authorization: `Bearer ${token}` },
-          });
-          if (res.statusCode !== 200) {
-            app.log.warn({ sessionId, userId }, "WS unauthorized for session");
-            socket.close(4003, "Not authorized for this session");
-            authorized = false;
-          }
-        } catch {
-          // DB unavailable — allow connection, log warning
-          app.log.warn({ sessionId, userId }, "WS session auth check failed, allowing connection");
-        }
-
-        if (!authorized) return;
 
         // Add to channel only after authorization check
         const channel = getOrCreateChannel(sessionId);
         channel.add(socket);
 
         app.log.info(
-          { sessionId, userId: payload.sub, clients: channel.size },
+          { sessionId, userId, clients: channel.size },
           "WS client connected",
         );
 

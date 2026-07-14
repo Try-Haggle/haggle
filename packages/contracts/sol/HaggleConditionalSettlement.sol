@@ -92,6 +92,9 @@ contract HaggleConditionalSettlement is Ownable2Step, Pausable, ReentrancyGuard,
     error BuyerIsSeller();
     error RecipientIsContract();
     error SignerNonceMismatch();
+    error SellerWalletMismatch();
+    error SettlementInDispute();
+    error SettlementAlreadyDisputed();
 
     event SettlementFunded(
         bytes32 indexed settlementId,
@@ -182,6 +185,7 @@ contract HaggleConditionalSettlement is Ownable2Step, Pausable, ReentrancyGuard,
         if (p.signerNonce != signerNonce) revert SignerNonceMismatch();
         if (p.sellerWallet == address(0)) revert ZeroAddress();
         if (p.sellerWallet == address(this) || p.feeWallet == address(this)) revert RecipientIsContract();
+        if (p.sellerWallet != record.seller) revert SellerWalletMismatch();
         if (p.sellerAmount + p.feeAmount != record.grossAmount) revert AmountMismatch();
         if (p.feeAmount * 10000 > record.grossAmount * MAX_FEE_BPS) revert FeeTooHigh();
         if (p.feeAmount > 0 && p.feeWallet == address(0)) revert ZeroAddress();
@@ -213,6 +217,7 @@ contract HaggleConditionalSettlement is Ownable2Step, Pausable, ReentrancyGuard,
     function expire(bytes32 settlementId) external whenNotPaused nonReentrant {
         SettlementRecord storage record = _settlements[settlementId];
         _requireOpen(record);
+        if (record.state == SettlementState.DISPUTED) revert SettlementInDispute();
         if (block.timestamp <= record.expiresAt) revert SettlementNotExpired();
         _refund(settlementId, record);
     }
@@ -220,6 +225,7 @@ contract HaggleConditionalSettlement is Ownable2Step, Pausable, ReentrancyGuard,
     function raiseDispute(bytes32 settlementId, bytes32 evidenceHash) external whenNotPaused {
         SettlementRecord storage record = _settlements[settlementId];
         _requireOpen(record);
+        if (record.state == SettlementState.DISPUTED) revert SettlementAlreadyDisputed();
         if (msg.sender != record.buyer && msg.sender != record.seller) revert CallerNotParticipant();
         record.state = SettlementState.DISPUTED;
         record.disputeEvidenceHash = evidenceHash;

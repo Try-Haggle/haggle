@@ -555,6 +555,19 @@ describe("ShippingService", () => {
       expect(result.shipment.status).toBe("IN_TRANSIT");
       expect(result.shipment.events).toHaveLength(1);
     });
+
+    it("resolves carrier names case-insensitively", async () => {
+      const uspsService = new ShippingService({ usps: mockAdapter });
+      const shipment = makeShipment({
+        carrier: "USPS",
+        status: "LABEL_CREATED",
+        tracking_number: "MOCK-123",
+      });
+
+      const result = await uspsService.trackShipment(shipment);
+
+      expect(result.shipment.status).toBe("IN_TRANSIT");
+    });
   });
 
   describe("processWebhook", () => {

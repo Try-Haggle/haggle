@@ -186,6 +186,41 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
+## Loop-Driven MVP Execution
+
+결제, fulfillment, 분쟁 MVP는 루프 기반으로 진행한다. 기준 문서는
+[docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md](./docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md)이다.
+
+핵심 원칙:
+- 큰 자동화 하나가 아니라 `Orchestrator`, `Spec`, `Payment Funding`, `Fulfillment`, `Release Gate`, `Dispute`, `Operator Demo`, `Readiness`, `Repo Governance` 루프로 나눈다.
+- 각 slice는 시작 전에 branch/dirty files/README/CLAUDE 영향 범위를 확인한다.
+- 각 slice는 완료 전에 지정 테스트, `git diff --check`, README/CLAUDE/docs routing 필요 여부를 확인한다.
+- README는 개발자가 실행해야 하는 셋업·명령·데모 절차가 바뀔 때만 갱신한다.
+- CLAUDE.md는 durable architecture, branch, team workflow, non-negotiable safety rule이 바뀔 때만 갱신한다.
+- 커밋, merge, rebase, stash, push, PR 생성은 사람이 명시적으로 요청한 경우에만 한다.
+
+---
+
+## 결제·배송·분쟁 문서 라우팅
+
+MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 시작한다.
+
+| 영역 | 먼저 읽을 문서 | 용도 |
+|------|----------------|------|
+| 전체 루프 | [docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md](./docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md) | 결제 → fulfillment → release/dispute를 slice 단위로 실행하는 기준 |
+| 보안 기준 | [docs/mvp/payment-shipping-dispute-security-controls.md](./docs/mvp/payment-shipping-dispute-security-controls.md) | 구현된 결제·배송·분쟁 보호장치, 운영 설정, 남은 P0/P1 위험 |
+| 결제 | [docs/wip/payment-production-observability.md](./docs/wip/payment-production-observability.md) | 결제 운영 지표, webhook, reconciliation, safe logging 기준 |
+| 배송/fulfillment | [docs/wip/digital-fulfillment-settlement-design.md](./docs/wip/digital-fulfillment-settlement-design.md) | physical shipping과 no-shipping fulfillment를 같은 상위 모델로 묶는 기준 |
+| 분쟁 | [docs/features/분쟁_시스템_v2.md](./docs/features/분쟁_시스템_v2.md) | 분쟁 비용, 패널, 인센티브, trust 영향의 제품 기준 |
+| 분쟁 API | [docs/wip/dispute-start-api-design.md](./docs/wip/dispute-start-api-design.md) | 분쟁 시작, 증거 업로드, idempotency, money movement freeze 기준 |
+| 팀 E2E 리허설 | [docs/wip/fake-money-fake-address-e2e-test-plan.md](./docs/wip/fake-money-fake-address-e2e-test-plan.md) | 가짜 돈 + 가짜 주소로 결제/배송 상태 흐름을 닫는 Stage 1 기준 |
+
+실제 구현 위치는 `apps/api/src/routes/payments.ts`, `apps/api/src/routes/shipments.ts`,
+`apps/api/src/routes/disputes.ts`, `packages/payment-core/`, `packages/shipping-core/`,
+`packages/dispute-core/`를 함께 확인한다.
+
+---
+
 ## 3man Team (Arch / Bob / Richard)
 
 프로젝트 구현은 3man team 워크플로우를 사용합니다.
@@ -215,5 +250,5 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
-*Last Updated: 2026-04-03*
-*Version: 2.2*
+*Last Updated: 2026-06-22*
+*Version: 2.3*

@@ -169,7 +169,7 @@ export class ShippingService {
   }
 
   private resolveCarrier(name: string): CarrierProvider {
-    const carrier = this.carriers[name];
+    const carrier = this.carriers[name] ?? this.carriers[name.toLowerCase()];
     if (!carrier) {
       throw new Error(`no carrier provider registered: ${name}`);
     }

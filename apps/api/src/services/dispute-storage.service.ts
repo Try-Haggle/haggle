@@ -101,6 +101,26 @@ export async function disputeEvidenceExists(
   return data.some((entry) => entry?.name === filename);
 }
 
+export async function downloadDisputeEvidence(objectPath: string, maxBytes: number): Promise<Buffer> {
+  const client = getClient();
+  const { data, error } = await client.storage
+    .from(DISPUTE_EVIDENCE_BUCKET)
+    .download(objectPath);
+  if (error || !data) {
+    throw new Error(`dispute-storage: download failed: ${error?.message ?? "unknown"}`);
+  }
+  if (data.size > maxBytes) {
+    throw new Error("dispute-storage: downloaded file exceeds declared size");
+  }
+  return Buffer.from(await data.arrayBuffer());
+}
+
+export async function deleteDisputeEvidence(objectPath: string): Promise<void> {
+  const client = getClient();
+  const { error } = await client.storage.from(DISPUTE_EVIDENCE_BUCKET).remove([objectPath]);
+  if (error) throw new Error("dispute-storage: evidence deletion failed");
+}
+
 /**
  * Create a signed download URL for dispute evidence. Used by the
  * GET /disputes/:id/evidence/:evidenceId/view endpoint so dispute parties

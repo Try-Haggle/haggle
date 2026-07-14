@@ -425,6 +425,11 @@ export const HAGGLE_CONDITIONAL_SETTLEMENT_ABI = [
     anonymous: false,
   },
   {
+    type: "error",
+    name: "SellerWalletMismatch",
+    inputs: [],
+  },
+  {
     type: "function",
     name: "createAndFund",
     stateMutability: "nonpayable",
@@ -490,6 +495,13 @@ export const HAGGLE_CONDITIONAL_SETTLEMENT_ABI = [
       { name: "signature", type: "bytes" },
     ],
     outputs: [],
+  },
+  {
+    type: "function",
+    name: "settlementState",
+    stateMutability: "view",
+    inputs: [{ name: "settlementId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint8" }],
   },
   {
     type: "function",

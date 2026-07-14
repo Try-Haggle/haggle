@@ -156,6 +156,19 @@ export interface ConditionalReleaseSignatureContext {
   message: ConditionalReleaseMessage;
 }
 
+export interface ConditionalRefundMessage {
+  settlementId: Hex;
+  deadline: bigint;
+  signerNonce: bigint;
+}
+
+export interface ConditionalRefundSignatureContext {
+  signature: Hex;
+  deadline: bigint;
+  signer_nonce: bigint;
+  message: ConditionalRefundMessage;
+}
+
 /**
  * Read the current signerNonce from the on-chain SettlementRouter contract.
  * This is a global sequential counter that increments only during signer rotation.
@@ -401,6 +414,31 @@ export async function signConditionalRelease(
   };
 }
 
+export async function signConditionalRefund(
+  message: ConditionalRefundMessage,
+  config: Pick<ConditionalSettlementSignerConfig, "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId">,
+): Promise<ConditionalRefundSignatureContext> {
+  const account = privateKeyToAccount(config.relayerPrivateKey);
+
+  const signature = await account.signTypedData({
+    domain: {
+      ...CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
+      chainId: config.chainId,
+      verifyingContract: config.conditionalSettlementAddress,
+    },
+    types: CONDITIONAL_SETTLEMENT_EIP712_TYPES,
+    primaryType: "Refund",
+    message,
+  });
+
+  return {
+    signature,
+    deadline: message.deadline,
+    signer_nonce: message.signerNonce,
+    message,
+  };
+}
+
 export function buildConditionalReleaseMessage(
   params: {
     settlementId: string;
@@ -408,6 +446,7 @@ export function buildConditionalReleaseMessage(
     feeWallet: Address;
     grossAmountMinor: number;
     feeBps: number;
+    sellerOffsetMinor?: number;
     deadline?: bigint;
   },
   signerNonce: bigint,
@@ -416,12 +455,34 @@ export function buildConditionalReleaseMessage(
     params.grossAmountMinor,
     params.feeBps,
   );
+  const sellerOffsetMinor = params.sellerOffsetMinor ?? 0;
+  if (!Number.isSafeInteger(sellerOffsetMinor) || sellerOffsetMinor < 0 || sellerOffsetMinor > sellerAmountMinor) {
+    throw new Error("sellerOffsetMinor must be a nonnegative safe integer no greater than seller payout");
+  }
+  const maxFeeMinor = Math.floor(params.grossAmountMinor * MAX_HAGGLE_FEE_BPS / 10_000);
+  if (feeAmountMinor + sellerOffsetMinor > maxFeeMinor) {
+    throw new Error("sellerOffsetMinor exceeds the conditional settlement fee cap");
+  }
   return {
     settlementId: toPolicyBytes32(params.settlementId),
     sellerWallet: validateAddress(params.sellerWallet, "sellerWallet"),
     feeWallet: validateAddress(params.feeWallet, "feeWallet"),
-    sellerAmount: BigInt(sellerAmountMinor),
-    feeAmount: BigInt(feeAmountMinor),
+    sellerAmount: BigInt(sellerAmountMinor - sellerOffsetMinor),
+    feeAmount: BigInt(feeAmountMinor + sellerOffsetMinor),
+    deadline: params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 900),
+    signerNonce,
+  };
+}
+
+export function buildConditionalRefundMessage(
+  params: {
+    settlementId: string;
+    deadline?: bigint;
+  },
+  signerNonce: bigint,
+): ConditionalRefundMessage {
+  return {
+    settlementId: toPolicyBytes32(params.settlementId),
     deadline: params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 900),
     signerNonce,
   };
@@ -627,6 +688,7 @@ export function createConditionalReleaseSigner(overrides?: {
   feeWallet: Address;
   grossAmountMinor: number;
   feeBps: number;
+  sellerOffsetMinor?: number;
   deadline?: bigint;
 }) => Promise<ConditionalReleaseSignatureContext> {
   const relayerPrivateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as Hex | undefined;
@@ -675,5 +737,62 @@ export function createConditionalReleaseSigner(overrides?: {
 
     const message = buildConditionalReleaseMessage(params, signerNonce);
     return signConditionalRelease(message, config);
+  };
+}
+
+export function createConditionalRefundSigner(overrides?: {
+  nonceOverride?: bigint;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicClientOverride?: any;
+}): (params: {
+  settlementId: string;
+  deadline?: bigint;
+}) => Promise<ConditionalRefundSignatureContext> {
+  const relayerPrivateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as Hex | undefined;
+  if (!relayerPrivateKey) {
+    throw new Error(
+      "HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required for conditional refund signing",
+    );
+  }
+
+  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as Address | undefined;
+  if (!conditionalSettlementAddress) {
+    throw new Error(
+      "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required for conditional refund signing",
+    );
+  }
+
+  const network = process.env.HAGGLE_X402_NETWORK ?? "base";
+  const chainId = network === "base-sepolia" ? 84532 : 8453;
+  const chain = network === "base-sepolia" ? baseSepolia : base;
+  const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
+  const publicClient = overrides?.publicClientOverride ?? (
+    rpcUrl
+      ? createPublicClient({ chain, transport: http(rpcUrl) })
+      : null
+  );
+
+  const config: ConditionalSettlementSignerConfig = {
+    relayerPrivateKey,
+    conditionalSettlementAddress,
+    chainId,
+    assetAddress: "0x0000000000000000000000000000000000000000",
+    rpcUrl,
+  };
+
+  return async (params) => {
+    let signerNonce: bigint;
+    if (overrides?.nonceOverride !== undefined) {
+      signerNonce = overrides.nonceOverride;
+    } else if (publicClient) {
+      signerNonce = await readConditionalSettlementSignerNonce(conditionalSettlementAddress, publicClient);
+    } else {
+      throw new Error(
+        "HAGGLE_BASE_RPC_URL is required to read conditional settlement signerNonce (or provide nonceOverride for testing)",
+      );
+    }
+
+    const message = buildConditionalRefundMessage(params, signerNonce);
+    return signConditionalRefund(message, config);
   };
 }
