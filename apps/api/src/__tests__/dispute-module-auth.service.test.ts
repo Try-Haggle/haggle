@@ -29,7 +29,7 @@ function signed(overrides: Partial<Parameters<typeof verifyDisputeModuleSignatur
     signature,
     idempotencyKey: "idem_12345678",
     nowMs,
-    secretResolver: (platformId) => platformId === "platform_1" ? secret : null,
+    secretResolver: (platformId) => (platformId === "platform_1" ? secret : null),
     ...overrides,
   });
 }
@@ -52,10 +52,13 @@ describe("verifyDisputeModuleSignature", () => {
       rawBody,
     });
 
-    expect(signed({
-      signature,
-      secretResolver: (platformId) => platformId === "platform_1" ? [secret, previousSecret] : [],
-    })).toMatchObject({
+    expect(
+      signed({
+        signature,
+        secretResolver: (platformId) =>
+          platformId === "platform_1" ? [secret, previousSecret] : [],
+      }),
+    ).toMatchObject({
       ok: true,
       platformId: "platform_1",
     });

@@ -1,5 +1,16 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const agentPaymentGrants = pgTable("agent_payment_grants", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -14,14 +25,21 @@ export const agentPaymentGrants = pgTable("agent_payment_grants", {
   asset: text("asset").notNull().default("USDC"),
   network: text("network").notNull().default("base"),
   allowedRails: text("allowed_rails").array().notNull().default(["x402", "stripe"]),
-  preferredRail: text("preferred_rail", { enum: ["x402", "stripe"] }).notNull().default("x402"),
+  preferredRail: text("preferred_rail", { enum: ["x402", "stripe"] })
+    .notNull()
+    .default("x402"),
   terms: jsonb("terms").$type<Record<string, unknown>[]>().notNull().default([]),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   nonce: text("nonce").notNull(),
   humanConfirmationRequired: boolean("human_confirmation_required").notNull().default(true),
-  legalAcknowledgements: jsonb("legal_acknowledgements").$type<Record<string, unknown>>().notNull().default({}),
+  legalAcknowledgements: jsonb("legal_acknowledgements")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
   approvalPolicyHash: text("approval_policy_hash").notNull(),
-  status: text("status", { enum: ["ACTIVE", "USED", "REVOKED", "EXPIRED"] }).notNull().default("ACTIVE"),
+  status: text("status", { enum: ["ACTIVE", "USED", "REVOKED", "EXPIRED"] })
+    .notNull()
+    .default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -35,11 +53,21 @@ export const paymentIntents = pgTable("payment_intents", {
   allowedRails: text("allowed_rails").array().notNull().default(["x402", "stripe"]),
   buyerAuthorizationMode: text("buyer_authorization_mode", {
     enum: ["human_wallet", "agent_wallet"],
-  }).notNull().default("human_wallet"),
+  })
+    .notNull()
+    .default("human_wallet"),
   currency: text("currency").notNull().default("USD"),
   amountMinor: numeric("amount_minor", { precision: 18, scale: 0 }).notNull(),
   status: text("status", {
-    enum: ["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING", "SETTLED", "FAILED", "CANCELED"],
+    enum: [
+      "CREATED",
+      "QUOTED",
+      "AUTHORIZED",
+      "SETTLEMENT_PENDING",
+      "SETTLED",
+      "FAILED",
+      "CANCELED",
+    ],
   })
     .notNull()
     .default("CREATED"),
@@ -97,7 +125,9 @@ export const paymentSettlements = pgTable("payment_settlements", {
   providerReference: text("provider_reference").notNull(),
   settledAmountMinor: numeric("settled_amount_minor", { precision: 18, scale: 0 }).notNull(),
   currency: text("currency").notNull().default("USD"),
-  status: text("status", { enum: ["PENDING", "SETTLED", "FAILED"] }).notNull().default("PENDING"),
+  status: text("status", { enum: ["PENDING", "SETTLED", "FAILED"] })
+    .notNull()
+    .default("PENDING"),
   settledAt: timestamp("settled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -108,7 +138,9 @@ export const refunds = pgTable("refunds", {
   amountMinor: numeric("amount_minor", { precision: 18, scale: 0 }).notNull(),
   currency: text("currency").notNull().default("USD"),
   reasonCode: text("reason_code").notNull(),
-  status: text("status", { enum: ["REQUESTED", "PENDING", "COMPLETED", "FAILED"] }).notNull().default("REQUESTED"),
+  status: text("status", { enum: ["REQUESTED", "PENDING", "COMPLETED", "FAILED"] })
+    .notNull()
+    .default("REQUESTED"),
   providerReference: text("provider_reference"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -130,11 +162,15 @@ export const paymentOperationIdempotency = pgTable(
       .default(sql`now() + interval '30 days'`),
   },
   (table) => ({
-    operationKeyUnique: uniqueIndex("payment_operation_idem_operation_key_unique")
-      .on(table.operation, table.idempotencyKey),
+    operationKeyUnique: uniqueIndex("payment_operation_idem_operation_key_unique").on(
+      table.operation,
+      table.idempotencyKey,
+    ),
     inProgressIntentUnique: uniqueIndex("payment_operation_idem_in_progress_intent_unique")
       .on(table.paymentIntentId)
-      .where(sql`payment_intent_id is not null and response_status = 409 and response_body->>'error' = 'PAYMENT_OPERATION_IN_PROGRESS'`),
+      .where(
+        sql`payment_intent_id is not null and response_status = 409 and response_body->>'error' = 'PAYMENT_OPERATION_IN_PROGRESS'`,
+      ),
     paymentIntentIdx: index("payment_operation_idem_payment_intent_idx").on(table.paymentIntentId),
     expiresAtIdx: index("payment_operation_idem_expires_at_idx").on(table.expiresAt),
   }),

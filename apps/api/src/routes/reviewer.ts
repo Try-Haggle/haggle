@@ -1,49 +1,86 @@
-import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import type { Database } from "@haggle/db";
 import {
-  reviewerAssignments,
-  reviewerProfiles,
+  and,
   disputeCases,
-  commerceOrders,
   disputeEvidence as disputeEvidenceTable,
   eq,
-  and,
+  reviewerAssignments,
+  reviewerProfiles,
   sql,
-  isNull,
-  inArray,
 } from "@haggle/db";
-import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
-import {
-  evaluatePanelReview,
-  getReviewerCount,
-  computeDisputeCost,
-} from "@haggle/dispute-core";
-import type { DisputeTier, DisputeResolution } from "@haggle/dispute-core";
+import type { DisputeResolution, DisputeTier } from "@haggle/dispute-core";
+import { computeDisputeCost, evaluatePanelReview, getReviewerCount } from "@haggle/dispute-core";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import { getDisputeById } from "../services/dispute-record.service.js";
-import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
+import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 
 // ---------------------------------------------------------------------------
 // Qualification test cases (hardcoded precedent cases for MVP)
 // ---------------------------------------------------------------------------
 
-const QUALIFICATION_CASES: Array<{ case_index: number; correct_vote: number; description: string }> = [
-  { case_index: 0, correct_vote: 85, description: "Clear buyer favor: item not delivered, seller unresponsive" },
-  { case_index: 1, correct_vote: 20, description: "Seller favor: buyer remorse, item as described" },
-  { case_index: 2, correct_vote: 55, description: "Slight buyer lean: minor damage not in listing" },
-  { case_index: 3, correct_vote: 90, description: "Strong buyer favor: counterfeit item with proof" },
-  { case_index: 4, correct_vote: 10, description: "Strong seller favor: buyer damaged item after receipt" },
-  { case_index: 5, correct_vote: 50, description: "True toss-up: conflicting evidence, no tracking" },
-  { case_index: 6, correct_vote: 70, description: "Moderate buyer favor: shipping damage, unclear liability" },
-  { case_index: 7, correct_vote: 30, description: "Moderate seller favor: item works but not as expected" },
-  { case_index: 8, correct_vote: 75, description: "Buyer favor: wrong item shipped, seller acknowledges" },
-  { case_index: 9, correct_vote: 40, description: "Slight seller lean: late delivery but within tolerance" },
+const QUALIFICATION_CASES: Array<{
+  case_index: number;
+  correct_vote: number;
+  description: string;
+}> = [
+  {
+    case_index: 0,
+    correct_vote: 85,
+    description: "Clear buyer favor: item not delivered, seller unresponsive",
+  },
+  {
+    case_index: 1,
+    correct_vote: 20,
+    description: "Seller favor: buyer remorse, item as described",
+  },
+  {
+    case_index: 2,
+    correct_vote: 55,
+    description: "Slight buyer lean: minor damage not in listing",
+  },
+  {
+    case_index: 3,
+    correct_vote: 90,
+    description: "Strong buyer favor: counterfeit item with proof",
+  },
+  {
+    case_index: 4,
+    correct_vote: 10,
+    description: "Strong seller favor: buyer damaged item after receipt",
+  },
+  {
+    case_index: 5,
+    correct_vote: 50,
+    description: "True toss-up: conflicting evidence, no tracking",
+  },
+  {
+    case_index: 6,
+    correct_vote: 70,
+    description: "Moderate buyer favor: shipping damage, unclear liability",
+  },
+  {
+    case_index: 7,
+    correct_vote: 30,
+    description: "Moderate seller favor: item works but not as expected",
+  },
+  {
+    case_index: 8,
+    correct_vote: 75,
+    description: "Buyer favor: wrong item shipped, seller acknowledges",
+  },
+  {
+    case_index: 9,
+    correct_vote: 40,
+    description: "Slight seller lean: late delivery but within tolerance",
+  },
 ];
 
 const QUALIFY_MATCH_TOLERANCE = 15;
-const QUALIFY_PASS_RATE = 0.70;
-const QUALIFY_CONDITIONAL_RATE = 0.60;
+const QUALIFY_PASS_RATE = 0.7;
+const QUALIFY_CONDITIONAL_RATE = 0.6;
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -55,12 +92,14 @@ const voteSchema = z.object({
 });
 
 const qualifySchema = z.object({
-  votes: z.array(
-    z.object({
-      case_index: z.number().int().min(0).max(9),
-      vote: z.number().int().min(0).max(100),
-    }),
-  ).length(10),
+  votes: z
+    .array(
+      z.object({
+        case_index: z.number().int().min(0).max(9),
+        vote: z.number().int().min(0).max(100),
+      }),
+    )
+    .length(10),
 });
 
 const assignmentListQuerySchema = z.object({
@@ -166,7 +205,9 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
 
       const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 1;
       if (tier < 2) {
-        return reply.code(400).send({ error: "TIER_TOO_LOW", message: "Reviewer assignment requires T2 or T3" });
+        return reply
+          .code(400)
+          .send({ error: "TIER_TOO_LOW", message: "Reviewer assignment requires T2 or T3" });
       }
 
       const order = await getCommerceOrderByOrderId(db, dispute.order_id);
@@ -174,7 +215,7 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
       }
 
-      const amountCents = parseInt(String(order.amountMinor));
+      const amountCents = parseInt(String(order.amountMinor), 10);
       if (amountCents <= 0) {
         return reply.code(400).send({ error: "INVALID_AMOUNT" });
       }
@@ -326,9 +367,10 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       dispute_reason: row.dispute_reason,
       dispute_opened_at: row.dispute_opened_at,
       order_id: row.order_id,
-      amount_minor: row.amount_minor ? parseInt(row.amount_minor) : null,
+      amount_minor: row.amount_minor ? parseInt(row.amount_minor, 10) : null,
       item_title: row.order_snapshot
-        ? ((row.order_snapshot as Record<string, unknown>).terms as Record<string, unknown>)?.item_name ?? null
+        ? (((row.order_snapshot as Record<string, unknown>).terms as Record<string, unknown>)
+            ?.item_name ?? null)
         : null,
     }));
 
@@ -355,7 +397,9 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         );
 
       if (assignmentRows.length === 0) {
-        return reply.code(403).send({ error: "NOT_ASSIGNED", message: "You are not assigned to this dispute" });
+        return reply
+          .code(403)
+          .send({ error: "NOT_ASSIGNED", message: "You are not assigned to this dispute" });
       }
 
       const assignment = assignmentRows[0];
@@ -386,7 +430,7 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
 
       // Compute voting deadline from dispute metadata
       const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 2;
-      const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor)) : 0;
+      const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
       let votingDeadline: string | null = null;
       if (amountCents > 0) {
         const cost = computeDisputeCost(amountCents, tier as DisputeTier);
@@ -397,7 +441,8 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
       }
 
       // Get previous tier decision if T2 escalation from T1
-      const prevTierDecision = (dispute.metadata as Record<string, unknown>)?.previous_tier_decision ?? null;
+      const prevTierDecision =
+        (dispute.metadata as Record<string, unknown>)?.previous_tier_decision ?? null;
 
       const orderSnapshot = order?.orderSnapshot as Record<string, unknown> | null;
       const terms = orderSnapshot?.terms as Record<string, unknown> | undefined;
@@ -413,7 +458,7 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         order: {
           id: order?.id ?? null,
           item_title: terms?.item_name ?? null,
-          amount_minor: order?.amountMinor ? parseInt(String(order.amountMinor)) : null,
+          amount_minor: order?.amountMinor ? parseInt(String(order.amountMinor), 10) : null,
         },
         evidence,
         previous_tier_decision: prevTierDecision,
@@ -452,14 +497,18 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         );
 
       if (assignmentRows.length === 0) {
-        return reply.code(403).send({ error: "NOT_ASSIGNED", message: "You are not assigned to this dispute" });
+        return reply
+          .code(403)
+          .send({ error: "NOT_ASSIGNED", message: "You are not assigned to this dispute" });
       }
 
       const assignment = assignmentRows[0];
 
       // No double voting
       if (assignment.voteValue !== null) {
-        return reply.code(400).send({ error: "ALREADY_VOTED", message: "You have already voted on this dispute" });
+        return reply
+          .code(400)
+          .send({ error: "ALREADY_VOTED", message: "You have already voted on this dispute" });
       }
 
       // Verify dispute is still in voting phase
@@ -493,8 +542,8 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         .from(reviewerAssignments)
         .where(eq(reviewerAssignments.disputeId, disputeId));
 
-      const allVoted = allAssignments.every(
-        (a) => a.id === assignment.id ? true : a.voteValue !== null,
+      const allVoted = allAssignments.every((a) =>
+        a.id === assignment.id ? true : a.voteValue !== null,
       );
 
       // Auto-tally if all voted
@@ -502,7 +551,10 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
         try {
           await tallyDisputeVotes(db, disputeId);
         } catch (err) {
-          console.error("[reviewer] Auto-tally failed:", err instanceof Error ? err.message : String(err));
+          console.error(
+            "[reviewer] Auto-tally failed:",
+            err instanceof Error ? err.message : String(err),
+          );
         }
       }
 
@@ -544,7 +596,9 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
 
     const parsed = qualifySchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_QUALIFY_REQUEST", issues: parsed.error.issues });
+      return reply
+        .code(400)
+        .send({ error: "INVALID_QUALIFY_REQUEST", issues: parsed.error.issues });
     }
 
     const { votes } = parsed.data;
@@ -552,7 +606,9 @@ export function registerReviewerRoutes(app: FastifyInstance, db: Database) {
     // Ensure all 10 case indices are present
     const seenIndices = new Set(votes.map((v) => v.case_index));
     if (seenIndices.size !== 10) {
-      return reply.code(400).send({ error: "INCOMPLETE_VOTES", message: "Must provide votes for all 10 test cases" });
+      return reply
+        .code(400)
+        .send({ error: "INCOMPLETE_VOTES", message: "Must provide votes for all 10 test cases" });
     }
 
     // Compare against correct answers
@@ -655,7 +711,7 @@ async function tallyDisputeVotes(
     .where(eq(reviewerAssignments.disputeId, disputeId));
 
   const order = await getCommerceOrderByOrderId(db, dispute.order_id);
-  const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor)) : 0;
+  const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
   const tier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 2;
 
   const panel = evaluatePanelReview({
@@ -695,7 +751,7 @@ async function tallyDisputeVotes(
     status: resolveStatus as typeof dispute.status,
     resolution,
     metadata: {
-      ...(dispute.metadata as Record<string, unknown> ?? {}),
+      ...((dispute.metadata as Record<string, unknown>) ?? {}),
       tally_result: {
         weighted_median: panel.aggregation.weighted_median,
         strength: panel.aggregation.strength,

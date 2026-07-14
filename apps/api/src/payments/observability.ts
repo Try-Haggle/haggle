@@ -15,7 +15,7 @@ export const PAYMENT_METRIC_NAMES = [
   "payment.admin_override",
 ] as const;
 
-export type PaymentMetricName = typeof PAYMENT_METRIC_NAMES[number];
+export type PaymentMetricName = (typeof PAYMENT_METRIC_NAMES)[number];
 export type PaymentMetricEnvironment = "test" | "live";
 export type PaymentMetricOperation =
   | "prepare"
@@ -73,13 +73,24 @@ const metricNames = new Set<string>(PAYMENT_METRIC_NAMES);
 const metricDimensionKeys: Record<PaymentMetricName, ReadonlySet<PaymentMetricDimensionKey>> = {
   "payment.operation.started": new Set(["provider", "rail", "operation", "environment"]),
   "payment.operation.completed": new Set(["provider", "rail", "operation", "environment"]),
-  "payment.operation.failed": new Set(["provider", "rail", "operation", "environment", "failure_type"]),
+  "payment.operation.failed": new Set([
+    "provider",
+    "rail",
+    "operation",
+    "environment",
+    "failure_type",
+  ]),
   "payment.operation.duration_ms": new Set(["provider", "rail", "operation", "environment"]),
   "payment.idempotency.result": new Set(["operation", "idempotency_result", "environment"]),
   "payment.webhook.received": new Set(["provider", "event_type", "environment"]),
   "payment.webhook.rejected": new Set(["provider", "failure_type", "environment"]),
   "payment.webhook.duplicate": new Set(["provider", "event_type", "environment"]),
-  "payment.webhook.processing_failed": new Set(["provider", "event_type", "failure_type", "environment"]),
+  "payment.webhook.processing_failed": new Set([
+    "provider",
+    "event_type",
+    "failure_type",
+    "environment",
+  ]),
   "payment.reconciliation.finding": new Set(["provider", "reconciliation_type", "environment"]),
   "payment.reconciliation.drift_open": new Set(["provider", "reconciliation_type", "environment"]),
   "payment.stuck.count": new Set(["rail", "status", "environment"]),
@@ -179,7 +190,11 @@ export function toPaymentMetricOperation(operation: string): PaymentMetricOperat
 
 export function normalizePaymentMetricEventType(value: unknown): string {
   if (typeof value !== "string" || value.trim().length === 0) return "unknown";
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_.:-]/g, "_").slice(0, 80);
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]/g, "_")
+    .slice(0, 80);
   return isSafeMetricValue(normalized) ? normalized : "unknown";
 }
 

@@ -1,6 +1,5 @@
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvFailureAlertReceiverClaimManifestHealth } from
-  "./shipment-apv-chaos-failure-alert-receiver-claim-manifest-health.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvFailureAlertReceiverClaimManifestHealth } from "./shipment-apv-chaos-failure-alert-receiver-claim-manifest-health.service.js";
 
 const BLOCKING_REASONS = [
   "independent_worm_endpoint_missing",
@@ -52,11 +51,13 @@ function iso(value: unknown) {
 
 function publicIntent(row: ArchiveIntentRow) {
   const revision = Number(row.manifest_revision);
-  const blockers = Array.isArray(row.blocking_reasons)
-    ? row.blocking_reasons.map(String) : [];
-  if (!Number.isSafeInteger(revision) || revision < 1
-    || !/^[0-9a-f]{64}$/.test(String(row.manifest_digest))
-    || blockers.join("|") !== BLOCKING_REASONS.join("|")) {
+  const blockers = Array.isArray(row.blocking_reasons) ? row.blocking_reasons.map(String) : [];
+  if (
+    !Number.isSafeInteger(revision) ||
+    revision < 1 ||
+    !/^[0-9a-f]{64}$/.test(String(row.manifest_digest)) ||
+    blockers.join("|") !== BLOCKING_REASONS.join("|")
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_INVALID");
   }
   return {
@@ -80,11 +81,17 @@ function publicIntent(row: ArchiveIntentRow) {
   };
 }
 
-function matches(row: ArchiveIntentRow, input: {
-  clientArchiveIntentId: string; requestedBy: string;
-}) {
-  return String(row.client_archive_intent_id) === input.clientArchiveIntentId
-    && String(row.requested_by) === input.requestedBy;
+function matches(
+  row: ArchiveIntentRow,
+  input: {
+    clientArchiveIntentId: string;
+    requestedBy: string;
+  },
+) {
+  return (
+    String(row.client_archive_intent_id) === input.clientArchiveIntentId &&
+    String(row.requested_by) === input.requestedBy
+  );
 }
 
 function latestIntent(row: LatestReceiptRow): ArchiveIntentRow | null {
@@ -118,16 +125,19 @@ export async function createShipmentApvFailureAlertReceiverManifestArchiveIntent
   if (existing) {
     if (!matches(existing, input)) {
       throw new Error(
-        "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_REPLAY_CONFLICT");
+        "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_REPLAY_CONFLICT",
+      );
     }
     return publicIntent(existing);
   }
 
   const health = await getShipmentApvFailureAlertReceiverClaimManifestHealth(db);
-  if (health.status !== "healthy" || health.criticalCount !== 0
-    || !health.coverage.currentSourceCovered) {
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_HEALTH_BLOCKED");
+  if (
+    health.status !== "healthy" ||
+    health.criticalCount !== 0 ||
+    !health.coverage.currentSourceCovered
+  ) {
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_HEALTH_BLOCKED");
   }
 
   const latestRows = await db.execute(sql`SELECT receipt.id AS receipt_id,
@@ -143,13 +153,13 @@ export async function createShipmentApvFailureAlertReceiverManifestArchiveIntent
   const latest = (latestRows as unknown as LatestReceiptRow[])[0];
   if (!latest) {
     throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_RECEIPT_NOT_FOUND");
+      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_RECEIPT_NOT_FOUND",
+    );
   }
   const prior = latestIntent(latest);
   if (prior) {
     if (matches(prior, input)) return publicIntent(prior);
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_ALREADY_CREATED");
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_ALREADY_CREATED");
   }
 
   const now = input.now ?? new Date();
@@ -177,16 +187,15 @@ export async function createShipmentApvFailureAlertReceiverManifestArchiveIntent
     row = (winnerRows as unknown as ArchiveIntentRow[])[0];
   }
   if (!row) {
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_UNAVAILABLE");
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_UNAVAILABLE");
   }
   if (!matches(row, input)) {
     if (String(row.manifest_receipt_id) === String(latest.receipt_id)) {
       throw new Error(
-        "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_ALREADY_CREATED");
+        "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_ALREADY_CREATED",
+      );
     }
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_REPLAY_CONFLICT");
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_INTENT_REPLAY_CONFLICT");
   }
   return publicIntent(row);
 }

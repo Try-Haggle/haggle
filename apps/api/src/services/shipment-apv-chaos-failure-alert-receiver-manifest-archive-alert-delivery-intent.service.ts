@@ -1,17 +1,14 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
+import { SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_VERSION } from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-payload.service.js";
 import {
   getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
-import { SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_VERSION } from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-payload.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
 import {
   SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNING_DOMAIN,
   verifyShipmentApvReceiverManifestArchiveAlertPayloadSignature,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-signature.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-signature.service.js";
 
 const BLOCKING_REASONS = [
   "independent_trust_anchor_missing",
@@ -89,8 +86,7 @@ type BindingRow = {
 };
 
 function invalid() {
-  throw new Error(
-    "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_INVALID");
+  throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_INVALID");
 }
 
 function iso(value: unknown) {
@@ -109,16 +105,27 @@ function stringArray(value: unknown) {
 function payloadObject(value: unknown): Payload {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid();
   const keys = Object.keys(value as object).sort();
-  const expected = ["action", "event_type", "reasons", "schema_version",
-    "severity", "state_fingerprint"];
+  const expected = [
+    "action",
+    "event_type",
+    "reasons",
+    "schema_version",
+    "severity",
+    "state_fingerprint",
+  ];
   if (JSON.stringify(keys) !== JSON.stringify(expected)) invalid();
   return value as Payload;
 }
 
 function canonicalPayload(payload: Payload) {
-  return JSON.stringify({ action: payload.action, event_type: payload.event_type,
-    reasons: payload.reasons, schema_version: payload.schema_version,
-    severity: payload.severity, state_fingerprint: payload.state_fingerprint });
+  return JSON.stringify({
+    action: payload.action,
+    event_type: payload.event_type,
+    reasons: payload.reasons,
+    schema_version: payload.schema_version,
+    severity: payload.severity,
+    state_fingerprint: payload.state_fingerprint,
+  });
 }
 
 function sha256(value: string) {
@@ -145,8 +152,7 @@ function immutableAncestryValid(row: BindingRow) {
     "current_archive_intent_missing",
     "archive_intent_stale",
   ];
-  const reasonIndexes = previewReasons.map((reason) =>
-    orderedReasons.indexOf(reason));
+  const reasonIndexes = previewReasons.map((reason) => orderedReasons.indexOf(reason));
   const critical = reasonIndexes.some((index) => index >= 0 && index <= 4);
   const requestedAt = Date.parse(iso(row.request_created_at));
   const requestExpiresAt = Date.parse(iso(row.request_expires_at));
@@ -163,50 +169,60 @@ function immutableAncestryValid(row: BindingRow) {
     publicKeySpkiBase64: String(row.public_key_spki_base64),
     signatureBase64: String(row.signature_base64),
   };
-  return String(row.signature_id) !== ""
-    && String(row.signature_payload_outbox_id) === String(row.outbox_id)
-    && signature.payloadSha256 === String(row.payload_sha256)
-    && signature.signingDomain
-      === SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNING_DOMAIN
-    && String(row.signature_status) === "SIGNED_DRY_RUN"
-    && String(row.outbox_delivery_grant_id) === String(row.grant_id)
-    && String(row.outbox_status) === "UNSIGNED_DRY_RUN"
-    && String(row.grant_status) === "GRANTED_DRY_RUN"
-    && String(row.created_by) === String(row.signed_by)
-    && String(row.created_by) === String(row.granted_by)
-    && String(row.decision) === "APPROVED"
-    && String(row.decision_reason) === "checker_approved_snapshot"
-    && String(row.decided_by) === String(row.granted_by)
-    && String(row.requested_by) !== String(row.granted_by)
-    && String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && /^[0-9a-f]{64}$/.test(String(row.state_fingerprint))
-    && previewReasons.length >= 1 && previewReasons.length <= 7
-    && reasonIndexes.every((index) => index >= 0)
-    && reasonIndexes.every((index, position) => position === 0
-      || index > reasonIndexes[position - 1]!)
-    && (expected.action === "review_warning"
+  return (
+    String(row.signature_id) !== "" &&
+    String(row.signature_payload_outbox_id) === String(row.outbox_id) &&
+    signature.payloadSha256 === String(row.payload_sha256) &&
+    signature.signingDomain === SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNING_DOMAIN &&
+    String(row.signature_status) === "SIGNED_DRY_RUN" &&
+    String(row.outbox_delivery_grant_id) === String(row.grant_id) &&
+    String(row.outbox_status) === "UNSIGNED_DRY_RUN" &&
+    String(row.grant_status) === "GRANTED_DRY_RUN" &&
+    String(row.created_by) === String(row.signed_by) &&
+    String(row.created_by) === String(row.granted_by) &&
+    String(row.decision) === "APPROVED" &&
+    String(row.decision_reason) === "checker_approved_snapshot" &&
+    String(row.decided_by) === String(row.granted_by) &&
+    String(row.requested_by) !== String(row.granted_by) &&
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    /^[0-9a-f]{64}$/.test(String(row.state_fingerprint)) &&
+    previewReasons.length >= 1 &&
+    previewReasons.length <= 7 &&
+    reasonIndexes.every((index) => index >= 0) &&
+    reasonIndexes.every(
+      (index, position) => position === 0 || index > reasonIndexes[position - 1]!,
+    ) &&
+    (expected.action === "review_warning"
       ? expected.severity === "warning" && !critical
-      : expected.action === "escalate_critical"
-        && expected.severity === "critical" && critical)
-    && requestExpiresAt > requestedAt
-    && requestExpiresAt <= requestedAt + 15 * 60_000
-    && decidedAt >= requestedAt && decidedAt < requestExpiresAt
-    && grantedAt >= decidedAt && grantedAt < requestExpiresAt
-    && cooldownExpiresAt === grantedAt + 15 * 60_000
-    && outboxCreatedAt >= grantedAt && outboxCreatedAt < cooldownExpiresAt
-    && signedAt >= outboxCreatedAt && signedAt < cooldownExpiresAt
-    && canonicalPayload(payload) === canonicalPayload(expected)
-    && String(row.canonical_payload) === canonicalPayload(expected)
-    && String(row.payload_sha256) === sha256(canonicalPayload(expected))
-    && String(row.registry_event_type) === "REGISTERED"
-    && String(row.registry_public_key) === signature.publicKeySpkiBase64
-    && Date.parse(iso(row.registry_event_created_at)) <= signedAt
-    && verifyShipmentApvReceiverManifestArchiveAlertPayloadSignature(signature);
+      : expected.action === "escalate_critical" && expected.severity === "critical" && critical) &&
+    requestExpiresAt > requestedAt &&
+    requestExpiresAt <= requestedAt + 15 * 60_000 &&
+    decidedAt >= requestedAt &&
+    decidedAt < requestExpiresAt &&
+    grantedAt >= decidedAt &&
+    grantedAt < requestExpiresAt &&
+    cooldownExpiresAt === grantedAt + 15 * 60_000 &&
+    outboxCreatedAt >= grantedAt &&
+    outboxCreatedAt < cooldownExpiresAt &&
+    signedAt >= outboxCreatedAt &&
+    signedAt < cooldownExpiresAt &&
+    canonicalPayload(payload) === canonicalPayload(expected) &&
+    String(row.canonical_payload) === canonicalPayload(expected) &&
+    String(row.payload_sha256) === sha256(canonicalPayload(expected)) &&
+    String(row.registry_event_type) === "REGISTERED" &&
+    String(row.registry_public_key) === signature.publicKeySpkiBase64 &&
+    Date.parse(iso(row.registry_event_created_at)) <= signedAt &&
+    verifyShipmentApvReceiverManifestArchiveAlertPayloadSignature(signature)
+  );
 }
 
 function safelyValidAncestry(row: BindingRow) {
-  try { return immutableAncestryValid(row); } catch { return false; }
+  try {
+    return immutableAncestryValid(row);
+  } catch {
+    return false;
+  }
 }
 
 function intentValid(row: BindingRow) {
@@ -214,38 +230,48 @@ function intentValid(row: BindingRow) {
   const createdAt = Date.parse(iso(row.intent_created_at));
   const signedAt = Date.parse(iso(row.signed_at));
   const expiresAt = Date.parse(iso(row.cooldown_expires_at));
-  return String(row.intent_payload_signature_id) === String(row.signature_id)
-    && String(row.intent_payload_outbox_id) === String(row.outbox_id)
-    && String(row.intent_payload_sha256) === String(row.payload_sha256)
-    && String(row.intent_key_id) === String(row.key_id)
-    && String(row.intent_status) === "BLOCKED_CONFIGURATION_DRY_RUN"
-    && JSON.stringify(stringArray(row.blocking_reasons))
-      === JSON.stringify(BLOCKING_REASONS)
-    && row.http_request_created === false
-    && row.delivery_attempted === false
-    && String(row.intent_requested_by) === String(row.signed_by)
-    && createdAt >= signedAt && createdAt < expiresAt;
+  return (
+    String(row.intent_payload_signature_id) === String(row.signature_id) &&
+    String(row.intent_payload_outbox_id) === String(row.outbox_id) &&
+    String(row.intent_payload_sha256) === String(row.payload_sha256) &&
+    String(row.intent_key_id) === String(row.key_id) &&
+    String(row.intent_status) === "BLOCKED_CONFIGURATION_DRY_RUN" &&
+    JSON.stringify(stringArray(row.blocking_reasons)) === JSON.stringify(BLOCKING_REASONS) &&
+    row.http_request_created === false &&
+    row.delivery_attempted === false &&
+    String(row.intent_requested_by) === String(row.signed_by) &&
+    createdAt >= signedAt &&
+    createdAt < expiresAt
+  );
 }
 
 function safelyValidIntent(row: BindingRow) {
-  try { return intentValid(row); } catch { return false; }
+  try {
+    return intentValid(row);
+  } catch {
+    return false;
+  }
 }
 
-function exactReplayMatches(row: BindingRow, input: {
-  payloadSignatureId: string;
-  clientDeliveryIntentId: string;
-  requestedBy: string;
-}) {
-  return String(row.client_delivery_intent_id) === input.clientDeliveryIntentId
-    && String(row.intent_payload_signature_id) === input.payloadSignatureId
-    && String(row.intent_requested_by) === input.requestedBy;
+function exactReplayMatches(
+  row: BindingRow,
+  input: {
+    payloadSignatureId: string;
+    clientDeliveryIntentId: string;
+    requestedBy: string;
+  },
+) {
+  return (
+    String(row.client_delivery_intent_id) === input.clientDeliveryIntentId &&
+    String(row.intent_payload_signature_id) === input.payloadSignatureId &&
+    String(row.intent_requested_by) === input.requestedBy
+  );
 }
 
 function publicIntent(row: BindingRow, replayed: boolean) {
   if (!intentValid(row)) invalid();
   return {
-    schemaVersion:
-      "shipment-apv-failure-alert-receiver-manifest-archive-alert-delivery-intent-v1",
+    schemaVersion: "shipment-apv-failure-alert-receiver-manifest-archive-alert-delivery-intent-v1",
     deliveryIntentId: String(row.intent_id),
     clientDeliveryIntentId: String(row.client_delivery_intent_id),
     payloadSignatureId: String(row.intent_payload_signature_id),
@@ -273,13 +299,18 @@ function publicIntent(row: BindingRow, replayed: boolean) {
   };
 }
 
-function previewMatches(row: BindingRow, preview: Awaited<ReturnType<
-  typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>>) {
-  return String(row.state_fingerprint) === preview.stateFingerprint
-    && String(row.preview_action) === preview.action
-    && String(row.preview_severity) === preview.severity
-    && JSON.stringify(stringArray(row.preview_reasons))
-      === JSON.stringify(preview.reasons);
+function previewMatches(
+  row: BindingRow,
+  preview: Awaited<
+    ReturnType<typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>
+  >,
+) {
+  return (
+    String(row.state_fingerprint) === preview.stateFingerprint &&
+    String(row.preview_action) === preview.action &&
+    String(row.preview_severity) === preview.severity &&
+    JSON.stringify(stringArray(row.preview_reasons)) === JSON.stringify(preview.reasons)
+  );
 }
 
 const historicalBindingSql = sql`SELECT
@@ -438,7 +469,8 @@ export async function createShipmentApvReceiverManifestArchiveAlertDeliveryInten
     if (existing) {
       if (!exactReplayMatches(existing, input) || !safelyValidIntent(existing)) {
         throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_REPLAY_CONFLICT");
+          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_REPLAY_CONFLICT",
+        );
       }
       return publicIntent(existing, true);
     }
@@ -447,48 +479,50 @@ export async function createShipmentApvReceiverManifestArchiveAlertDeliveryInten
       WHERE signature.id = ${input.payloadSignatureId}::uuid LIMIT 1`);
     const binding = (bindingRows as unknown as BindingRow[])[0];
     if (!binding) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNATURE_NOT_FOUND");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNATURE_NOT_FOUND");
     }
     if (!safelyValidAncestry(binding)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNATURE_INVALID");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNATURE_INVALID");
     }
     if (String(binding.signed_by) !== input.requestedBy) {
       throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_ACTOR_MISMATCH");
+        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_ACTOR_MISMATCH",
+      );
     }
     if (binding.intent_id) {
       if (exactReplayMatches(binding, input) && safelyValidIntent(binding)) {
         return publicIntent(binding, true);
       }
       throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_ALREADY_CREATED");
+        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_ALREADY_CREATED",
+      );
     }
     const grantedAt = Date.parse(iso(binding.granted_at));
     const expiresAt = Date.parse(iso(binding.cooldown_expires_at));
-    if (String(binding.current_cooldown_grant_id) !== String(binding.grant_id)
-      || Date.parse(iso(binding.current_cooldown_claimed_at)) !== grantedAt
-      || Date.parse(iso(binding.current_cooldown_expires_at)) !== expiresAt
-      || now.getTime() < grantedAt || now.getTime() >= expiresAt) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_COOLDOWN_EXPIRED");
+    if (
+      String(binding.current_cooldown_grant_id) !== String(binding.grant_id) ||
+      Date.parse(iso(binding.current_cooldown_claimed_at)) !== grantedAt ||
+      Date.parse(iso(binding.current_cooldown_expires_at)) !== expiresAt ||
+      now.getTime() < grantedAt ||
+      now.getTime() >= expiresAt
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_COOLDOWN_EXPIRED");
     }
-    if (String(binding.current_registry_event_type) !== "REGISTERED"
-      || String(binding.current_registry_public_key)
-        !== String(binding.public_key_spki_base64)
-      || Date.parse(iso(binding.current_registry_event_created_at))
-        > now.getTime()) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNING_KEY_NOT_ACTIVE");
+    if (
+      String(binding.current_registry_event_type) !== "REGISTERED" ||
+      String(binding.current_registry_public_key) !== String(binding.public_key_spki_base64) ||
+      Date.parse(iso(binding.current_registry_event_created_at)) > now.getTime()
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_SIGNING_KEY_NOT_ACTIVE");
     }
     const preview =
-      await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(
-        transaction);
-    if (preview.action === "none" || !preview.approval.required
-      || !previewMatches(binding, preview)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
+      await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(transaction);
+    if (
+      preview.action === "none" ||
+      !preview.approval.required ||
+      !previewMatches(binding, preview)
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
     }
 
     await transaction.execute(sql`INSERT INTO
@@ -510,16 +544,15 @@ export async function createShipmentApvReceiverManifestArchiveAlertDeliveryInten
       LIMIT 1`);
     const winner = (winnerRows as unknown as BindingRow[])[0];
     if (!winner) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_UNAVAILABLE");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_UNAVAILABLE");
     }
     if (!exactReplayMatches(winner, input)) {
       throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_ALREADY_CREATED");
+        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_ALREADY_CREATED",
+      );
     }
     if (!safelyValidIntent(winner)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_INVALID");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_INVALID");
     }
     return publicIntent(winner, false);
   });

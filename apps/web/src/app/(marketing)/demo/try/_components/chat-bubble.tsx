@@ -10,7 +10,7 @@ export function ChatBubble({ role, content, price }: ChatBubbleProps) {
   if (role === "system") {
     return (
       <div className="flex justify-center animate-fade-in">
-        <p className="text-sm text-slate-500 italic text-center max-w-md px-4 py-2">
+        <p className="text-sm text-ink-secondary italic text-center max-w-md px-4 py-2">
           {content}
         </p>
       </div>
@@ -20,24 +20,20 @@ export function ChatBubble({ role, content, price }: ChatBubbleProps) {
   const isBuyer = role === "buyer";
 
   return (
-    <div
-      className={`flex ${isBuyer ? "justify-start" : "justify-end"} animate-fade-in`}
-    >
+    <div className={`flex ${isBuyer ? "justify-start" : "justify-end"} animate-fade-in`}>
       <div
         className={`rounded-xl px-4 py-3 max-w-sm sm:max-w-md ${
           isBuyer
-            ? "bg-slate-800 border border-slate-700"
-            : "bg-cyan-500/10 border border-cyan-500/20"
+            ? "bg-surface-sunken border border-line"
+            : "bg-[color-mix(in_srgb,var(--action-primary)_10%,transparent)] border border-[color-mix(in_srgb,var(--action-primary)_20%,transparent)]"
         }`}
       >
-        <p className="text-xs text-slate-500 mb-1">
+        <p className="text-xs text-ink-secondary mb-1">
           {isBuyer ? "🤖 AI Buyer" : "You (Seller)"}
         </p>
-        <p className="text-sm text-slate-200 whitespace-pre-wrap">{content}</p>
+        <p className="text-sm text-ink whitespace-pre-wrap">{content}</p>
         {price != null && (
-          <p
-            className={`text-lg font-bold mt-1 ${isBuyer ? "text-blue-400" : "text-cyan-400"}`}
-          >
+          <p className={`text-lg font-bold mt-1 ${isBuyer ? "text-info" : "text-action-primary"}`}>
             ${(price / 100).toLocaleString()}
           </p>
         )}

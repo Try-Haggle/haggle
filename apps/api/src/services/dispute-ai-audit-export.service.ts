@@ -2,9 +2,9 @@ import {
   createHash,
   createPrivateKey,
   createPublicKey,
+  type KeyObject,
   sign,
   verify,
-  type KeyObject,
 } from "node:crypto";
 import {
   canonicalDisputeAuditJson,
@@ -33,7 +33,11 @@ export class DisputeAuditSigningNotConfiguredError extends Error {
 
 function privateKeyFromBase64(value: string | undefined): KeyObject {
   if (!value?.trim()) throw new DisputeAuditSigningNotConfiguredError();
-  return createPrivateKey({ key: Buffer.from(value.trim(), "base64"), format: "der", type: "pkcs8" });
+  return createPrivateKey({
+    key: Buffer.from(value.trim(), "base64"),
+    format: "der",
+    type: "pkcs8",
+  });
 }
 
 export function createSignedDisputeAiAuditExport(input: {
@@ -63,8 +67,11 @@ export function createSignedDisputeAiAuditExport(input: {
     sealed_events: input.chain.sealedEvents,
     legacy_unsealed_events: input.chain.legacyUnsealedEvents,
   };
-  const privateKey = input.privateKey
-    ?? privateKeyFromBase64(input.privateKeyBase64 ?? process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64);
+  const privateKey =
+    input.privateKey ??
+    privateKeyFromBase64(
+      input.privateKeyBase64 ?? process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64,
+    );
   const publicKey = createPublicKey(privateKey);
   const publicKeyDer = publicKey.export({ format: "der", type: "spki" });
   const manifestBytes = Buffer.from(canonicalDisputeAuditJson(manifest));
@@ -80,16 +87,30 @@ export function createSignedDisputeAiAuditExport(input: {
   };
 }
 
-export function verifySignedDisputeAiAuditExport(value: ReturnType<typeof createSignedDisputeAiAuditExport>): boolean {
+export function verifySignedDisputeAiAuditExport(
+  value: ReturnType<typeof createSignedDisputeAiAuditExport>,
+): boolean {
   try {
     if (value.signature.algorithm !== "Ed25519") return false;
-    const eventsDigest = createHash("sha256").update(canonicalDisputeAuditJson(value.events)).digest("hex");
+    const eventsDigest = createHash("sha256")
+      .update(canonicalDisputeAuditJson(value.events))
+      .digest("hex");
     if (eventsDigest !== value.manifest.events_sha256) return false;
     const publicKeyDer = Buffer.from(value.signature.public_key_spki_base64, "base64");
-    if (createHash("sha256").update(publicKeyDer).digest("hex").slice(0, 24) !== value.signature.key_id) return false;
+    if (
+      createHash("sha256").update(publicKeyDer).digest("hex").slice(0, 24) !==
+      value.signature.key_id
+    )
+      return false;
     const publicKey = createPublicKey({ key: publicKeyDer, format: "der", type: "spki" });
     if (publicKey.asymmetricKeyType !== "ed25519") return false;
-    return verify(null, Buffer.from(canonicalDisputeAuditJson(value.manifest)), publicKey,
-      Buffer.from(value.signature.value_base64, "base64"));
-  } catch { return false; }
+    return verify(
+      null,
+      Buffer.from(canonicalDisputeAuditJson(value.manifest)),
+      publicKey,
+      Buffer.from(value.signature.value_base64, "base64"),
+    );
+  } catch {
+    return false;
+  }
 }

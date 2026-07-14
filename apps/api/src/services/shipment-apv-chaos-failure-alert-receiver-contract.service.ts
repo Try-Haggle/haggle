@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { verifyShipmentApvFailureAlertPayloadSignature } from
-  "./shipment-apv-chaos-failure-alert-signature.service.js";
+import { type Database, sql } from "@haggle/db";
+import { verifyShipmentApvFailureAlertPayloadSignature } from "./shipment-apv-chaos-failure-alert-signature.service.js";
 
 const FRESHNESS_WINDOW_SECONDS = 300;
 const FUTURE_TOLERANCE_SECONDS = 5;
@@ -33,32 +32,53 @@ function parsedTime(value: unknown) {
 function verifyPayloadContract(canonicalPayload: string) {
   try {
     const payload = JSON.parse(canonicalPayload) as Record<string, unknown>;
-    const expectedKeys = ["action", "event_type", "reasons", "schema_version",
-      "severity", "state_fingerprint"];
-    if (Object.keys(payload).join("|") !== expectedKeys.join("|")
-      || payload.schema_version !== "shipment-apv-failure-alert-payload-v1"
-      || payload.event_type !== "shipment_apv_failure_alert"
-      || !["review_warning", "escalate_critical", "review_recovery"].includes(
-        String(payload.action))
-      || !["warning", "critical"].includes(String(payload.severity))
-      || !Array.isArray(payload.reasons) || payload.reasons.length < 1
-      || payload.reasons.length > 3
-      || !payload.reasons.every((reason) => typeof reason === "string"
-        && /^[a-z_]{3,80}$/.test(reason))
-      || typeof payload.state_fingerprint !== "string"
-      || !/^[0-9a-f]{64}$/.test(payload.state_fingerprint)) return false;
-    const warningReasons = new Set(["rollback_verification_warning",
-      "rollback_failure_isolation_warning", "fixture_execution_warning"]);
-    const criticalReasons = new Set(["rollback_verification_critical",
-      "rollback_failure_isolation_critical", "fixture_execution_critical"]);
-    const semantic = (payload.action === "review_warning" && payload.severity === "warning"
-        && payload.reasons.every((reason) => warningReasons.has(String(reason))))
-      || (payload.action === "escalate_critical" && payload.severity === "critical"
-        && payload.reasons.every((reason) => criticalReasons.has(String(reason))))
-      || (payload.action === "review_recovery"
-        && ["warning", "critical"].includes(String(payload.severity))
-        && payload.reasons.length === 1
-        && payload.reasons[0] === `recovered_from_${payload.severity}`);
+    const expectedKeys = [
+      "action",
+      "event_type",
+      "reasons",
+      "schema_version",
+      "severity",
+      "state_fingerprint",
+    ];
+    if (
+      Object.keys(payload).join("|") !== expectedKeys.join("|") ||
+      payload.schema_version !== "shipment-apv-failure-alert-payload-v1" ||
+      payload.event_type !== "shipment_apv_failure_alert" ||
+      !["review_warning", "escalate_critical", "review_recovery"].includes(
+        String(payload.action),
+      ) ||
+      !["warning", "critical"].includes(String(payload.severity)) ||
+      !Array.isArray(payload.reasons) ||
+      payload.reasons.length < 1 ||
+      payload.reasons.length > 3 ||
+      !payload.reasons.every(
+        (reason) => typeof reason === "string" && /^[a-z_]{3,80}$/.test(reason),
+      ) ||
+      typeof payload.state_fingerprint !== "string" ||
+      !/^[0-9a-f]{64}$/.test(payload.state_fingerprint)
+    )
+      return false;
+    const warningReasons = new Set([
+      "rollback_verification_warning",
+      "rollback_failure_isolation_warning",
+      "fixture_execution_warning",
+    ]);
+    const criticalReasons = new Set([
+      "rollback_verification_critical",
+      "rollback_failure_isolation_critical",
+      "fixture_execution_critical",
+    ]);
+    const semantic =
+      (payload.action === "review_warning" &&
+        payload.severity === "warning" &&
+        payload.reasons.every((reason) => warningReasons.has(String(reason)))) ||
+      (payload.action === "escalate_critical" &&
+        payload.severity === "critical" &&
+        payload.reasons.every((reason) => criticalReasons.has(String(reason)))) ||
+      (payload.action === "review_recovery" &&
+        ["warning", "critical"].includes(String(payload.severity)) &&
+        payload.reasons.length === 1 &&
+        payload.reasons[0] === `recovered_from_${payload.severity}`);
     return semantic && JSON.stringify(payload) === canonicalPayload;
   } catch {
     return false;
@@ -100,10 +120,11 @@ export async function verifyShipmentApvFailureAlertReceiverContract(
   const payloadSha256 = String(row.payload_sha256);
   const canonicalPayload = String(row.canonical_payload);
   const payloadContractVerified = verifyPayloadContract(canonicalPayload);
-  const payloadHashVerified = createHash("sha256")
-    .update(canonicalPayload, "utf8").digest("hex") === payloadSha256;
-  const keyBindingVerified = String(row.registry_public_key)
-    === String(row.signature_public_key) && String(row.key_event_type) === "REGISTERED";
+  const payloadHashVerified =
+    createHash("sha256").update(canonicalPayload, "utf8").digest("hex") === payloadSha256;
+  const keyBindingVerified =
+    String(row.registry_public_key) === String(row.signature_public_key) &&
+    String(row.key_event_type) === "REGISTERED";
   const signatureVerified = verifyShipmentApvFailureAlertPayloadSignature({
     payloadSha256,
     signingDomain: String(row.signing_domain),
@@ -114,14 +135,23 @@ export async function verifyShipmentApvFailureAlertReceiverContract(
   });
   const signedAt = parsedTime(row.signed_at);
   const ageMilliseconds = signedAt === null ? null : now.getTime() - signedAt;
-  const freshnessVerified = ageMilliseconds !== null
-    && ageMilliseconds >= -FUTURE_TOLERANCE_SECONDS * 1000
-    && ageMilliseconds <= FRESHNESS_WINDOW_SECONDS * 1000;
-  const intentBlocked = String(row.intent_status) === "BLOCKED_CONFIGURATION_DRY_RUN"
-    && row.http_request_created === false && row.delivery_attempted === false;
+  const freshnessVerified =
+    ageMilliseconds !== null &&
+    ageMilliseconds >= -FUTURE_TOLERANCE_SECONDS * 1000 &&
+    ageMilliseconds <= FRESHNESS_WINDOW_SECONDS * 1000;
+  const intentBlocked =
+    String(row.intent_status) === "BLOCKED_CONFIGURATION_DRY_RUN" &&
+    row.http_request_created === false &&
+    row.delivery_attempted === false;
 
-  if (!payloadContractVerified || !payloadHashVerified || !keyBindingVerified || !signatureVerified
-    || !freshnessVerified || !intentBlocked) {
+  if (
+    !payloadContractVerified ||
+    !payloadHashVerified ||
+    !keyBindingVerified ||
+    !signatureVerified ||
+    !freshnessVerified ||
+    !intentBlocked
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_CONTRACT_REJECTED");
   }
 

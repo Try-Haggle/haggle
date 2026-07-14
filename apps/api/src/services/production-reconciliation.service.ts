@@ -1,5 +1,6 @@
 import {
   commerceOrders,
+  type Database,
   desc,
   disputeCases,
   disputeResolutions,
@@ -9,7 +10,6 @@ import {
   refunds,
   settlementReleases,
   shipments,
-  type Database,
 } from "@haggle/db";
 
 type Severity = "warning" | "critical";
@@ -218,7 +218,7 @@ function parseMinor(value: string | number | null | undefined): number {
 
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -293,7 +293,9 @@ function mapDisputeStatus(status: typeof disputeCases.$inferSelect.status): Disp
   }
 }
 
-function mapDisputeOutcome(outcome: typeof disputeResolutions.$inferSelect.outcome | null | undefined): DisputeOutcome | undefined {
+function mapDisputeOutcome(
+  outcome: typeof disputeResolutions.$inferSelect.outcome | null | undefined,
+): DisputeOutcome | undefined {
   switch (outcome) {
     case "buyer_favor":
     case "seller_favor":
@@ -306,11 +308,13 @@ function mapDisputeOutcome(outcome: typeof disputeResolutions.$inferSelect.outco
 }
 
 function uniqueNextActions(findings: Array<{ recommended_action?: string }>): string[] {
-  return Array.from(new Set(
-    findings
-      .map((finding) => finding.recommended_action)
-      .filter((value): value is string => typeof value === "string" && value.length > 0),
-  ));
+  return Array.from(
+    new Set(
+      findings
+        .map((finding) => finding.recommended_action)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  );
 }
 
 function paymentRecommendedAction(finding: ReconciliationFinding): string {
@@ -329,7 +333,12 @@ function paymentRecommendedAction(finding: ReconciliationFinding): string {
 }
 
 function paymentCapturedLike(state: PaymentState): boolean {
-  return state === "captured" || state === "partially_refunded" || state === "refunded" || state === "disputed";
+  return (
+    state === "captured" ||
+    state === "partially_refunded" ||
+    state === "refunded" ||
+    state === "disputed"
+  );
 }
 
 function detectPaymentReconciliationFindings(
@@ -347,7 +356,9 @@ function detectPaymentReconciliationFindings(
 
   for (const local of localPayments) {
     const provider = local.provider_reference
-      ? providerPayments.find((candidate) => candidate.provider_reference === local.provider_reference)
+      ? providerPayments.find(
+          (candidate) => candidate.provider_reference === local.provider_reference,
+        )
       : undefined;
 
     if (paymentCapturedLike(local.state) && (!provider || !paymentCapturedLike(provider.state))) {
@@ -385,8 +396,11 @@ function detectPaymentReconciliationFindings(
   }
 
   for (const provider of providerPayments) {
-    const local = localByProviderRef.get(provider.provider_reference)
-      ?? (provider.local_payment_intent_id ? localByIntentId.get(provider.local_payment_intent_id) : undefined);
+    const local =
+      localByProviderRef.get(provider.provider_reference) ??
+      (provider.local_payment_intent_id
+        ? localByIntentId.get(provider.local_payment_intent_id)
+        : undefined);
 
     if (!local) {
       findings.push({
@@ -419,8 +433,17 @@ function shipmentReturnState(state: ShipmentState): boolean {
 }
 
 function fulfillableOrder(status?: string): boolean {
-  return !status || ["PAID", "FULFILLMENT_PENDING", "FULFILLMENT_ACTIVE", "DELIVERED", "IN_DISPUTE", "CLOSED"]
-    .includes(status);
+  return (
+    !status ||
+    [
+      "PAID",
+      "FULFILLMENT_PENDING",
+      "FULFILLMENT_ACTIVE",
+      "DELIVERED",
+      "IN_DISPUTE",
+      "CLOSED",
+    ].includes(status)
+  );
 }
 
 function detectShipmentReconciliationFindings(
@@ -429,11 +452,14 @@ function detectShipmentReconciliationFindings(
 ): ShipmentReconciliationFinding[] {
   const findings: ShipmentReconciliationFinding[] = [];
   for (const local of localShipments) {
-    const provider = providerShipments.find((candidate) =>
-      (local.provider_shipment_id && candidate.provider_shipment_id === local.provider_shipment_id)
-      || (local.provider_tracker_id && candidate.provider_tracker_id === local.provider_tracker_id)
-      || (local.tracking_number && candidate.tracking_number === local.tracking_number)
-      || (candidate.local_shipment_id && candidate.local_shipment_id === local.shipment_id)
+    const provider = providerShipments.find(
+      (candidate) =>
+        (local.provider_shipment_id &&
+          candidate.provider_shipment_id === local.provider_shipment_id) ||
+        (local.provider_tracker_id &&
+          candidate.provider_tracker_id === local.provider_tracker_id) ||
+        (local.tracking_number && candidate.tracking_number === local.tracking_number) ||
+        (candidate.local_shipment_id && candidate.local_shipment_id === local.shipment_id),
     );
 
     if (local.state !== "label_pending" && !fulfillableOrder(local.order_status)) {
@@ -443,7 +469,8 @@ function detectShipmentReconciliationFindings(
         shipment_id: local.shipment_id,
         order_id: local.order_id,
         message: "Shipment has moved past label pending for a non-fulfillable order.",
-        recommended_action: "Pause fulfillment, verify payment/order status, and void or hold the label if possible.",
+        recommended_action:
+          "Pause fulfillment, verify payment/order status, and void or hold the label if possible.",
       });
     }
 
@@ -454,7 +481,8 @@ function detectShipmentReconciliationFindings(
         shipment_id: local.shipment_id,
         order_id: local.order_id,
         message: "Shipment label exists locally without a tracking number.",
-        recommended_action: "Fetch provider shipment/tracker state and update the local tracking fields.",
+        recommended_action:
+          "Fetch provider shipment/tracker state and update the local tracking fields.",
       });
     }
 
@@ -468,7 +496,8 @@ function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number,
         message: "Provider reports a purchased label but no local label or QR URL is available.",
-        recommended_action: "Re-fetch the purchased label assets and block seller print/QR flow until recovered.",
+        recommended_action:
+          "Re-fetch the purchased label assets and block seller print/QR flow until recovered.",
       });
     }
 
@@ -482,7 +511,8 @@ function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number ?? local.tracking_number,
         message: "Local shipment is terminal but provider shipment is not terminal.",
-        recommended_action: "Reconcile against carrier tracking before releasing funds or closing the order.",
+        recommended_action:
+          "Reconcile against carrier tracking before releasing funds or closing the order.",
       });
     }
 
@@ -502,11 +532,14 @@ function detectShipmentReconciliationFindings(
   }
 
   for (const provider of providerShipments) {
-    const local = localShipments.find((candidate) =>
-      (provider.provider_shipment_id && candidate.provider_shipment_id === provider.provider_shipment_id)
-      || (provider.provider_tracker_id && candidate.provider_tracker_id === provider.provider_tracker_id)
-      || (provider.tracking_number && candidate.tracking_number === provider.tracking_number)
-      || (provider.local_shipment_id && candidate.shipment_id === provider.local_shipment_id)
+    const local = localShipments.find(
+      (candidate) =>
+        (provider.provider_shipment_id &&
+          candidate.provider_shipment_id === provider.provider_shipment_id) ||
+        (provider.provider_tracker_id &&
+          candidate.provider_tracker_id === provider.provider_tracker_id) ||
+        (provider.tracking_number && candidate.tracking_number === provider.tracking_number) ||
+        (provider.local_shipment_id && candidate.shipment_id === provider.local_shipment_id),
     );
 
     if (!local) {
@@ -517,7 +550,8 @@ function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number,
         message: "Provider shipment has no matching local shipment record.",
-        recommended_action: "Find the owning order before exposing tracking, billing shipment fees, or closing fulfillment.",
+        recommended_action:
+          "Find the owning order before exposing tracking, billing shipment fees, or closing fulfillment.",
       });
     } else if (shipmentDeliveredLike(provider.state) && !shipmentDeliveredLike(local.state)) {
       findings.push({
@@ -529,18 +563,24 @@ function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number ?? local.tracking_number,
         message: "Provider shipment is terminal but local shipment is not terminal.",
-        recommended_action: "Refresh local shipment/order state and check whether funds can be released.",
+        recommended_action:
+          "Refresh local shipment/order state and check whether funds can be released.",
       });
     }
   }
 
-  return findings.sort((a, b) => a.severity === b.severity
-    ? a.type.localeCompare(b.type)
-    : a.severity === "critical" ? -1 : 1);
+  return findings.sort((a, b) =>
+    a.severity === b.severity ? a.type.localeCompare(b.type) : a.severity === "critical" ? -1 : 1,
+  );
 }
 
 function resolvedDispute(status: DisputeStatus): boolean {
-  return status === "resolved_buyer_favor" || status === "resolved_seller_favor" || status === "partial_refund" || status === "closed";
+  return (
+    status === "resolved_buyer_favor" ||
+    status === "resolved_seller_favor" ||
+    status === "partial_refund" ||
+    status === "closed"
+  );
 }
 
 function terminalOrder(status?: string): boolean {
@@ -552,7 +592,9 @@ function refundComplete(status?: string): boolean {
 }
 
 function releaseComplete(status?: string): boolean {
-  return status === "RELEASED" || status === "SETTLED" || status === "released" || status === "settled";
+  return (
+    status === "RELEASED" || status === "SETTLED" || status === "released" || status === "settled"
+  );
 }
 
 function returnCompleteOrNotRequired(status?: string): boolean {
@@ -574,7 +616,8 @@ function detectDisputeFinalizationFindings(
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Resolved dispute does not have a finalization marker.",
-        recommended_action: "Verify the finalizer ran once and write an audited finalization timestamp.",
+        recommended_action:
+          "Verify the finalizer ran once and write an audited finalization timestamp.",
       });
     }
     if (!terminalOrder(dispute.order_status)) {
@@ -584,7 +627,8 @@ function detectDisputeFinalizationFindings(
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Resolved dispute is attached to a non-terminal order.",
-        recommended_action: "Block order closure side effects until refund, release, and return state are reconciled.",
+        recommended_action:
+          "Block order closure side effects until refund, release, and return state are reconciled.",
       });
     }
     if ((dispute.finalization_attempts ?? 0) > 1) {
@@ -594,7 +638,8 @@ function detectDisputeFinalizationFindings(
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Dispute finalization has been attempted more than once.",
-        recommended_action: "Check idempotency keys and audit log before retrying financial side effects.",
+        recommended_action:
+          "Check idempotency keys and audit log before retrying financial side effects.",
       });
     }
     if (dispute.outcome === "buyer_favor") {
@@ -615,7 +660,8 @@ function detectDisputeFinalizationFindings(
           dispute_id: dispute.dispute_id,
           order_id: dispute.order_id,
           message: "Buyer-favor dispute is resolved without a completed refund.",
-          recommended_action: "Run refund reconciliation and complete or manually review the refund.",
+          recommended_action:
+            "Run refund reconciliation and complete or manually review the refund.",
         });
       }
     }
@@ -629,26 +675,30 @@ function detectDisputeFinalizationFindings(
           dispute_id: dispute.dispute_id,
           order_id: dispute.order_id,
           message: "Partial-refund dispute does not match the expected completed refund amount.",
-          recommended_action: "Compare provider refund amount with the dispute resolution before closing the case.",
+          recommended_action:
+            "Compare provider refund amount with the dispute resolution before closing the case.",
         });
       }
     }
-    if ((dispute.outcome === "seller_favor" || dispute.outcome === "no_action")
-      && !releaseComplete(dispute.settlement_release_status)) {
+    if (
+      (dispute.outcome === "seller_favor" || dispute.outcome === "no_action") &&
+      !releaseComplete(dispute.settlement_release_status)
+    ) {
       findings.push({
         type: "resolved_seller_favor_without_release",
         severity: "critical",
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Seller-favor/no-action dispute is resolved without settlement release.",
-        recommended_action: "Run settlement release reconciliation and complete or manually review the release.",
+        recommended_action:
+          "Run settlement release reconciliation and complete or manually review the release.",
       });
     }
   }
 
-  return findings.sort((a, b) => a.severity === b.severity
-    ? a.type.localeCompare(b.type)
-    : a.severity === "critical" ? -1 : 1);
+  return findings.sort((a, b) =>
+    a.severity === b.severity ? a.type.localeCompare(b.type) : a.severity === "critical" ? -1 : 1,
+  );
 }
 
 async function collectLocalPaymentSnapshots(
@@ -656,11 +706,7 @@ async function collectLocalPaymentSnapshots(
   limit: number,
 ): Promise<LocalPaymentSnapshot[]> {
   const [intentRows, authorizationRows, settlementRows, refundRows] = await Promise.all([
-    db
-      .select()
-      .from(paymentIntents)
-      .orderBy(desc(paymentIntents.updatedAt))
-      .limit(limit),
+    db.select().from(paymentIntents).orderBy(desc(paymentIntents.updatedAt)).limit(limit),
     db
       .select()
       .from(paymentAuthorizations)
@@ -718,11 +764,7 @@ async function collectLocalShipmentSnapshots(
   limit: number,
 ): Promise<LocalShipmentSnapshot[]> {
   const [shipmentRows, orderRows] = await Promise.all([
-    db
-      .select()
-      .from(shipments)
-      .orderBy(desc(shipments.updatedAt))
-      .limit(limit),
+    db.select().from(shipments).orderBy(desc(shipments.updatedAt)).limit(limit),
     db
       .select({
         id: commerceOrders.id,
@@ -752,12 +794,16 @@ async function collectLocalDisputeSnapshots(
   db: Database,
   limit: number,
 ): Promise<DisputeFinalizationSnapshot[]> {
-  const [disputeRows, resolutionRows, orderRows, paymentRows, refundRows, releaseRows, shipmentRows] = await Promise.all([
-    db
-      .select()
-      .from(disputeCases)
-      .orderBy(desc(disputeCases.updatedAt))
-      .limit(limit),
+  const [
+    disputeRows,
+    resolutionRows,
+    orderRows,
+    paymentRows,
+    refundRows,
+    releaseRows,
+    shipmentRows,
+  ] = await Promise.all([
+    db.select().from(disputeCases).orderBy(desc(disputeCases.updatedAt)).limit(limit),
     db
       .select()
       .from(disputeResolutions)
@@ -837,15 +883,15 @@ async function collectLocalDisputeSnapshots(
       order_status: orderStatusById.get(row.orderId),
       refund_status: refund?.status,
       refund_amount_minor: refund?.amountMinor == null ? undefined : parseMinor(refund.amountMinor),
-      expected_refund_amount_minor: resolution?.refundAmountMinor == null
-        ? undefined
-        : parseMinor(resolution.refundAmountMinor),
+      expected_refund_amount_minor:
+        resolution?.refundAmountMinor == null
+          ? undefined
+          : parseMinor(resolution.refundAmountMinor),
       settlement_release_status: release?.productReleaseStatus,
       return_shipment_status: returnStatus ? mapShipmentState(returnStatus) : undefined,
       finalized_at: row.resolvedAt?.toISOString() ?? row.closedAt?.toISOString(),
-      finalization_attempts: typeof finalizationAttempts === "number"
-        ? finalizationAttempts
-        : undefined,
+      finalization_attempts:
+        typeof finalizationAttempts === "number" ? finalizationAttempts : undefined,
     };
   });
 }
@@ -870,12 +916,14 @@ export async function collectProductionReconciliationInput(
 
   return {
     generatedAt: options.generatedAt,
-    payments: options.providerSource?.listPaymentProviderSnapshots || options.includePaymentsWithoutProviderSource
-      ? {
-          local: localPayments,
-          provider: providerPaymentSnapshots,
-        }
-      : undefined,
+    payments:
+      options.providerSource?.listPaymentProviderSnapshots ||
+      options.includePaymentsWithoutProviderSource
+        ? {
+            local: localPayments,
+            provider: providerPaymentSnapshots,
+          }
+        : undefined,
     shipments: {
       local: localShipments,
       provider: providerShipmentSnapshots,
@@ -899,11 +947,7 @@ export function buildProductionReconciliationReport(
     ? detectDisputeFinalizationFindings(input.disputes.local)
     : [];
 
-  const allFindings = [
-    ...paymentFindings,
-    ...shipmentFindings,
-    ...disputeFindings,
-  ];
+  const allFindings = [...paymentFindings, ...shipmentFindings, ...disputeFindings];
 
   return {
     generatedAt: input.generatedAt ?? new Date().toISOString(),

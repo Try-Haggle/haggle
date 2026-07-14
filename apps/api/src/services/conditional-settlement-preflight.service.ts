@@ -1,4 +1,4 @@
-import { createPublicClient, http, type Address, type Hex } from "viem";
+import { type Address, createPublicClient, type Hex, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 
@@ -76,18 +76,40 @@ export function validateConditionalSettlementPreflightConfig(input: {
   usdcAddress?: string;
   relayerPrivateKey?: string;
   requireHttps?: boolean;
-}): { ok: true; config: ConditionalSettlementPreflightConfig } | { ok: false; blockedBy: string[] } {
+}):
+  | { ok: true; config: ConditionalSettlementPreflightConfig }
+  | { ok: false; blockedBy: string[] } {
   const blockedBy: string[] = [];
-  if (input.network !== "base" && input.network !== "base-sepolia") blockedBy.push("supported_network");
+  if (input.network !== "base" && input.network !== "base-sepolia")
+    blockedBy.push("supported_network");
   try {
     const url = new URL(input.rpcUrl ?? "");
-    if ((input.requireHttps && url.protocol !== "https:") || (!input.requireHttps && url.protocol !== "http:" && url.protocol !== "https:")) blockedBy.push("base_rpc");
+    if (
+      (input.requireHttps && url.protocol !== "https:") ||
+      (!input.requireHttps && url.protocol !== "http:" && url.protocol !== "https:")
+    )
+      blockedBy.push("base_rpc");
   } catch {
     blockedBy.push("base_rpc");
   }
-  if (!input.settlementAddress || !EVM_ADDRESS.test(input.settlementAddress) || /^0x0{40}$/i.test(input.settlementAddress)) blockedBy.push("conditional_settlement_address");
-  if (!input.usdcAddress || !EVM_ADDRESS.test(input.usdcAddress) || /^0x0{40}$/i.test(input.usdcAddress)) blockedBy.push("usdc_asset_address");
-  if (!input.relayerPrivateKey || !PRIVATE_KEY.test(input.relayerPrivateKey) || /^0x0{64}$/i.test(input.relayerPrivateKey)) blockedBy.push("relayer_signer");
+  if (
+    !input.settlementAddress ||
+    !EVM_ADDRESS.test(input.settlementAddress) ||
+    /^0x0{40}$/i.test(input.settlementAddress)
+  )
+    blockedBy.push("conditional_settlement_address");
+  if (
+    !input.usdcAddress ||
+    !EVM_ADDRESS.test(input.usdcAddress) ||
+    /^0x0{40}$/i.test(input.usdcAddress)
+  )
+    blockedBy.push("usdc_asset_address");
+  if (
+    !input.relayerPrivateKey ||
+    !PRIVATE_KEY.test(input.relayerPrivateKey) ||
+    /^0x0{64}$/i.test(input.relayerPrivateKey)
+  )
+    blockedBy.push("relayer_signer");
   if (blockedBy.length > 0) return { ok: false, blockedBy: [...new Set(blockedBy)] };
   return {
     ok: true,
@@ -123,10 +145,15 @@ export async function runConditionalSettlementPreflight(
   let observedChainId: number | null = null;
   let settlementCode: Hex | undefined;
   let usdcCode: Hex | undefined;
-  const client = options.client ?? createPublicClient({
-    chain: config.network === "base-sepolia" ? baseSepolia : base,
-    transport: http(config.rpcUrl, { retryCount: 0, timeout: Math.min(options.timeoutMs ?? 5_000, 5_000) }),
-  });
+  const client =
+    options.client ??
+    createPublicClient({
+      chain: config.network === "base-sepolia" ? baseSepolia : base,
+      transport: http(config.rpcUrl, {
+        retryCount: 0,
+        timeout: Math.min(options.timeoutMs ?? 5_000, 5_000),
+      }),
+    });
   const timeoutMs = Math.max(250, Math.min(options.timeoutMs ?? 5_000, 5_000));
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
@@ -143,27 +170,45 @@ export async function runConditionalSettlementPreflight(
       checks.usdc_bytecode = hasCode(usdcCode);
       if (!checks.chain_id_match || !checks.settlement_bytecode || !checks.usdc_bytecode) return;
 
-      const expectedSigner = (options.expectedSignerAddress ?? privateKeyToAccount(config.relayerPrivateKey).address).toLowerCase();
+      const expectedSigner = (
+        options.expectedSignerAddress ?? privateKeyToAccount(config.relayerPrivateKey).address
+      ).toLowerCase();
       const [deployedSigner, usdcAllowed] = await Promise.all([
-        client.readContract({ address: config.settlementAddress, abi: SETTLEMENT_PREFLIGHT_ABI, functionName: "signer" }),
-        client.readContract({ address: config.settlementAddress, abi: SETTLEMENT_PREFLIGHT_ABI, functionName: "allowedAssets", args: [config.usdcAddress] }),
+        client.readContract({
+          address: config.settlementAddress,
+          abi: SETTLEMENT_PREFLIGHT_ABI,
+          functionName: "signer",
+        }),
+        client.readContract({
+          address: config.settlementAddress,
+          abi: SETTLEMENT_PREFLIGHT_ABI,
+          functionName: "allowedAssets",
+          args: [config.usdcAddress],
+        }),
       ]);
-      checks.signer_matches = typeof deployedSigner === "string" && deployedSigner.toLowerCase() === expectedSigner;
+      checks.signer_matches =
+        typeof deployedSigner === "string" && deployedSigner.toLowerCase() === expectedSigner;
       checks.usdc_allowed = usdcAllowed === true;
     })();
     const timeout = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => reject(Object.assign(new Error("RPC_TIMEOUT"), { code: "RPC_TIMEOUT" })), timeoutMs);
+      timeoutHandle = setTimeout(
+        () => reject(Object.assign(new Error("RPC_TIMEOUT"), { code: "RPC_TIMEOUT" })),
+        timeoutMs,
+      );
     });
     await Promise.race([probe, timeout]);
   } catch (error) {
-    const errorCode = error && typeof error === "object" && "code" in error && error.code === "RPC_TIMEOUT"
-      ? "RPC_TIMEOUT"
-      : "RPC_UNAVAILABLE";
+    const errorCode =
+      error && typeof error === "object" && "code" in error && error.code === "RPC_TIMEOUT"
+        ? "RPC_TIMEOUT"
+        : "RPC_UNAVAILABLE";
     return {
       status: "unavailable",
       ready: false,
       checks,
-      blocked_by: Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
+      blocked_by: Object.entries(checks)
+        .filter(([, passed]) => !passed)
+        .map(([name]) => name),
       expected_chain_id: expectedId,
       observed_chain_id: observedChainId,
       settlement_bytecode_bytes: bytecodeBytes(settlementCode),
@@ -176,7 +221,9 @@ export async function runConditionalSettlementPreflight(
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 
-  const blockedBy = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+  const blockedBy = Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name);
   return {
     status: blockedBy.length === 0 ? "ready" : "blocked",
     ready: blockedBy.length === 0,

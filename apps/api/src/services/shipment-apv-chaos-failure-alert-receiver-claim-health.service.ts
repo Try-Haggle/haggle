@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 type HealthRow = {
   total_claims: unknown;
@@ -27,9 +27,7 @@ function iso(value: unknown) {
   return parsed.toISOString();
 }
 
-export async function getShipmentApvFailureAlertReceiverClaimHealth(
-  db: Pick<Database, "execute">,
-) {
+export async function getShipmentApvFailureAlertReceiverClaimHealth(db: Pick<Database, "execute">) {
   const rows = await db.execute(sql`WITH diagnostics AS (
       SELECT claim.received_at,
         intent.id IS NULL OR signature.id IS NULL
@@ -87,7 +85,7 @@ export async function getShipmentApvFailureAlertReceiverClaimHealth(
 
   return {
     schemaVersion: "shipment-apv-failure-alert-receiver-claim-health-v1",
-    status: criticalCount === 0 ? "healthy" as const : "critical" as const,
+    status: criticalCount === 0 ? ("healthy" as const) : ("critical" as const),
     totals,
     violations,
     criticalCount,

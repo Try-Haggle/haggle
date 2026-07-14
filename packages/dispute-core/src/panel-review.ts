@@ -1,6 +1,11 @@
-import { aggregateVotes } from "./vote-aggregation.js";
 import { computeDisputeCost, getReviewerCount } from "./dispute-cost.js";
-import { REVIEWER_SHARE, type AggregationResult, type DisputeCostResult, type ReviewerVote } from "./types.js";
+import {
+  type AggregationResult,
+  type DisputeCostResult,
+  REVIEWER_SHARE,
+  type ReviewerVote,
+} from "./types.js";
+import { aggregateVotes } from "./vote-aggregation.js";
 
 export type PanelReviewTier = 2 | 3;
 export type PanelReviewOutcome = "buyer_favor" | "seller_favor" | "partial_refund";
@@ -72,20 +77,17 @@ export function evaluatePanelReview(params: {
   }
 
   const tier = params.tier === 2 || params.tier === 3 ? params.tier : null;
-  const expectedReviewerCount = tier && params.amount_cents > 0
-    ? getReviewerCount(params.amount_cents, tier)
-    : null;
+  const expectedReviewerCount =
+    tier && params.amount_cents > 0 ? getReviewerCount(params.amount_cents, tier) : null;
   const assignedCount = params.assignments.length;
   const votedCount = params.assignments.filter((assignment) => assignment.vote !== null).length;
-  const hasInvalidAssignment = params.assignments.some((assignment) => (
-    !Number.isFinite(assignment.weight) ||
-    assignment.weight <= 0 ||
-    (assignment.vote !== null && (
-      !Number.isInteger(assignment.vote) ||
-      assignment.vote < 0 ||
-      assignment.vote > 100
-    ))
-  ));
+  const hasInvalidAssignment = params.assignments.some(
+    (assignment) =>
+      !Number.isFinite(assignment.weight) ||
+      assignment.weight <= 0 ||
+      (assignment.vote !== null &&
+        (!Number.isInteger(assignment.vote) || assignment.vote < 0 || assignment.vote > 100)),
+  );
 
   if (hasInvalidAssignment) {
     issues.push("INVALID_ASSIGNMENT");
@@ -111,16 +113,18 @@ export function evaluatePanelReview(params: {
   const aggregation = aggregateVotes(votes, params.dispute_id);
   const cost = computeDisputeCost(params.amount_cents, tier);
   const buyerPct = aggregation.weighted_median / 100;
-  const outcome: PanelReviewOutcome = aggregation.weighted_median < 50
-    ? "seller_favor"
-    : buyerPct >= 0.90
-      ? "buyer_favor"
-      : "partial_refund";
-  const refundAmountMinor = outcome === "seller_favor"
-    ? 0
-    : outcome === "buyer_favor"
-      ? params.amount_cents
-      : Math.round(params.amount_cents * buyerPct);
+  const outcome: PanelReviewOutcome =
+    aggregation.weighted_median < 50
+      ? "seller_favor"
+      : buyerPct >= 0.9
+        ? "buyer_favor"
+        : "partial_refund";
+  const refundAmountMinor =
+    outcome === "seller_favor"
+      ? 0
+      : outcome === "buyer_favor"
+        ? params.amount_cents
+        : Math.round(params.amount_cents * buyerPct);
 
   const medianSide = aggregation.weighted_median >= 50 ? "buyer" : "seller";
   const majorityIds = new Set(

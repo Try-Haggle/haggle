@@ -2,15 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertDisputeEvidenceScannerConfig,
   contentMatchesClaimedType,
+  type DisputeEvidenceScannerConfig,
   getDisputeEvidenceScannerPolicyStatus,
   resolveDisputeEvidenceScannerConfigFromEnv,
   scanDisputeEvidence,
-  type DisputeEvidenceScannerConfig,
 } from "../services/dispute-evidence-scan.service.js";
 
-const png = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
-]);
+const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const originalNodeEnv = process.env.NODE_ENV;
 const originalVercelEnv = process.env.VERCEL_ENV;
 
@@ -35,7 +33,8 @@ afterEach(() => {
     "DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS",
     "DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP",
     "DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK",
-  ]) delete process.env[key];
+  ])
+    delete process.env[key];
   if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalNodeEnv;
   if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
@@ -62,41 +61,56 @@ describe("dispute evidence scanning", () => {
 
   it("rejects MIME and byte-size mismatches before an external call", async () => {
     const fetchImpl = vi.fn();
-    const typeMismatch = await scanDisputeEvidence({
-      bytes: png,
-      contentType: "image/jpeg",
-      expectedSizeBytes: png.length,
-      filename: "fake.jpg",
-    }, { config: config(), fetchImpl });
-    const sizeMismatch = await scanDisputeEvidence({
-      bytes: png,
-      contentType: "image/png",
-      expectedSizeBytes: png.length + 1,
-      filename: "truncated.png",
-    }, { config: config(), fetchImpl });
+    const typeMismatch = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/jpeg",
+        expectedSizeBytes: png.length,
+        filename: "fake.jpg",
+      },
+      { config: config(), fetchImpl },
+    );
+    const sizeMismatch = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/png",
+        expectedSizeBytes: png.length + 1,
+        filename: "truncated.png",
+      },
+      { config: config(), fetchImpl },
+    );
     expect(typeMismatch).toMatchObject({
-      status: "INFECTED", detail: "CONTENT_TYPE_MISMATCH",
+      status: "INFECTED",
+      detail: "CONTENT_TYPE_MISMATCH",
     });
     expect(sizeMismatch).toMatchObject({
-      status: "INFECTED", detail: "FILE_SIZE_MISMATCH",
+      status: "INFECTED",
+      detail: "FILE_SIZE_MISMATCH",
     });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("sends an authenticated no-redirect request and accepts JSON clean output", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ status: "clean" }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    ));
-    const result = await scanDisputeEvidence({
-      bytes: png,
-      contentType: "image/png",
-      expectedSizeBytes: png.length,
-      filename: "evidence.png",
-    }, { config: config(), fetchImpl });
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "clean" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/png",
+        expectedSizeBytes: png.length,
+        filename: "evidence.png",
+      },
+      { config: config(), fetchImpl },
+    );
 
     expect(result).toMatchObject({
-      status: "CLEAN", provider: "scanner.example.test", detail: "CLEAN",
+      status: "CLEAN",
+      provider: "scanner.example.test",
+      detail: "CLEAN",
     });
     expect(fetchImpl).toHaveBeenCalledWith(
       new URL("https://scanner.example.test/v1/scan"),
@@ -112,29 +126,40 @@ describe("dispute evidence scanning", () => {
 
   it("fails closed for non-JSON, oversized, malformed and unavailable responses", async () => {
     const requests = [
-      vi.fn().mockResolvedValue(new Response("clean", {
-        status: 200, headers: { "content-type": "text/plain" },
-      })),
-      vi.fn().mockResolvedValue(new Response("{}", {
-        status: 200,
-        headers: {
-          "content-type": "application/json",
-          "content-length": "20000",
-        },
-      })),
-      vi.fn().mockResolvedValue(new Response("not-json", {
-        status: 200, headers: { "content-type": "application/json" },
-      })),
+      vi.fn().mockResolvedValue(
+        new Response("clean", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+      ),
+      vi.fn().mockResolvedValue(
+        new Response("{}", {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": "20000",
+          },
+        }),
+      ),
+      vi.fn().mockResolvedValue(
+        new Response("not-json", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
       vi.fn().mockRejectedValue(new Error("private network detail")),
     ];
     const details = [];
     for (const fetchImpl of requests) {
-      const result = await scanDisputeEvidence({
-        bytes: png,
-        contentType: "image/png",
-        expectedSizeBytes: png.length,
-        filename: "evidence.png",
-      }, { config: config(), fetchImpl });
+      const result = await scanDisputeEvidence(
+        {
+          bytes: png,
+          contentType: "image/png",
+          expectedSizeBytes: png.length,
+          filename: "evidence.png",
+        },
+        { config: config(), fetchImpl },
+      );
       details.push(result.detail);
       expect(result).not.toHaveProperty("error");
     }
@@ -147,18 +172,21 @@ describe("dispute evidence scanning", () => {
   });
 
   it("fails closed before transport when DNS resolves to a blocked network", async () => {
-    const result = await scanDisputeEvidence({
-      bytes: png,
-      contentType: "image/png",
-      expectedSizeBytes: png.length,
-      filename: "dns-rebinding.png",
-    }, {
-      config: config(),
-      dnsLookupImpl: async () => [
-        { address: "8.8.8.8", family: 4 },
-        { address: "127.0.0.1", family: 4 },
-      ],
-    });
+    const result = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/png",
+        expectedSizeBytes: png.length,
+        filename: "dns-rebinding.png",
+      },
+      {
+        config: config(),
+        dnsLookupImpl: async () => [
+          { address: "8.8.8.8", family: 4 },
+          { address: "127.0.0.1", family: 4 },
+        ],
+      },
+    );
     expect(result).toMatchObject({
       status: "FAILED",
       provider: "scanner.example.test",
@@ -178,40 +206,50 @@ describe("dispute evidence scanning", () => {
         cancelled = true;
       },
     });
-    const result = await scanDisputeEvidence({
-      bytes: png,
-      contentType: "image/png",
-      expectedSizeBytes: png.length,
-      filename: "evidence.png",
-    }, {
-      config: config(),
-      fetchImpl: vi.fn().mockResolvedValue(new Response(stream, {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })),
-    });
+    const result = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/png",
+        expectedSizeBytes: png.length,
+        filename: "evidence.png",
+      },
+      {
+        config: config(),
+        fetchImpl: vi.fn().mockResolvedValue(
+          new Response(stream, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+      },
+    );
     expect(result).toMatchObject({
-      status: "FAILED", detail: "SCANNER_RESPONSE_TOO_LARGE",
+      status: "FAILED",
+      detail: "SCANNER_RESPONSE_TOO_LARGE",
     });
     expect(cancelled).toBe(true);
   });
 
   it("rejects unsafe URLs, weak tokens and production overrides", () => {
-    expect(() => assertDisputeEvidenceScannerConfig(
-      config({ url: "https://127.0.0.1/scan" }),
-    )).toThrow(/private network/);
-    expect(() => assertDisputeEvidenceScannerConfig(
-      config({ url: "https://[::ffff:7f00:1]/scan" }),
-    )).toThrow(/private network/);
-    expect(() => assertDisputeEvidenceScannerConfig(
-      config({ url: "https://user:pass@scanner.example.test/scan" }),
-    )).toThrow(/credentials/);
-    expect(() => assertDisputeEvidenceScannerConfig(
-      config({ token: "short" }),
-    )).toThrow(/16 to 512/);
-    expect(() => assertDisputeEvidenceScannerConfig(
-      config({ allowPrivateNetwork: true }), { production: true },
-    )).toThrow(/forbidden in production/);
+    expect(() =>
+      assertDisputeEvidenceScannerConfig(config({ url: "https://127.0.0.1/scan" })),
+    ).toThrow(/private network/);
+    expect(() =>
+      assertDisputeEvidenceScannerConfig(config({ url: "https://[::ffff:7f00:1]/scan" })),
+    ).toThrow(/private network/);
+    expect(() =>
+      assertDisputeEvidenceScannerConfig(
+        config({ url: "https://user:pass@scanner.example.test/scan" }),
+      ),
+    ).toThrow(/credentials/);
+    expect(() => assertDisputeEvidenceScannerConfig(config({ token: "short" }))).toThrow(
+      /16 to 512/,
+    );
+    expect(() =>
+      assertDisputeEvidenceScannerConfig(config({ allowPrivateNetwork: true }), {
+        production: true,
+      }),
+    ).toThrow(/forbidden in production/);
   });
 
   it("reports no-secret configuration state and rejects partial env config", () => {
@@ -228,20 +266,19 @@ describe("dispute evidence scanning", () => {
       },
       limits: { maxResolvedAddresses: 16 },
     });
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
-    expect(getDisputeEvidenceScannerPolicyStatus().configurationState)
-      .toBe("partial");
-    expect(() => resolveDisputeEvidenceScannerConfigFromEnv())
-      .toThrow(/configured together/);
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
+    expect(getDisputeEvidenceScannerPolicyStatus().configurationState).toBe("partial");
+    expect(() => resolveDisputeEvidenceScannerConfigFromEnv()).toThrow(/configured together/);
 
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     expect(getDisputeEvidenceScannerPolicyStatus()).toMatchObject({
-      configurationState: "valid", configured: true, authenticated: true,
+      configurationState: "valid",
+      configured: true,
+      authenticated: true,
     });
-    expect(JSON.stringify(getDisputeEvidenceScannerPolicyStatus()))
-      .not.toContain("scanner.example.test");
-    expect(JSON.stringify(getDisputeEvidenceScannerPolicyStatus()))
-      .not.toContain("scanner-secret");
+    expect(JSON.stringify(getDisputeEvidenceScannerPolicyStatus())).not.toContain(
+      "scanner.example.test",
+    );
+    expect(JSON.stringify(getDisputeEvidenceScannerPolicyStatus())).not.toContain("scanner-secret");
   });
 });

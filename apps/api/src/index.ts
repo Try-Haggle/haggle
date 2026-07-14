@@ -1,15 +1,14 @@
-import dotenv from "dotenv";
-import { resolve } from "node:path";
-
-// Load .env from monorepo root, then local apps/api/.env (local overrides root)
-dotenv.config({ path: resolve(import.meta.dirname, "../../../.env") });
-dotenv.config({ path: resolve(import.meta.dirname, "../../../.env.easypost.local") });
-dotenv.config({ path: resolve(import.meta.dirname, "../.env") });
+// Load environment variables before anything else reads process.env.
+import "./config/load-env.js";
+import { validateEnv } from "./config/validate-env.js";
 
 const PORT = parseInt(process.env.PORT || "3001", 10);
 const HOST = process.env.HOST || "0.0.0.0";
 
 async function main() {
+  // Fail fast with a single aggregated report if required env vars are missing.
+  validateEnv();
+
   const { createServer } = await import("./server.js");
   const server = await createServer();
 

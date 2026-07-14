@@ -49,26 +49,28 @@ describe("dispute production readiness helpers", () => {
   });
 
   it("does not flag fully finalized buyer and seller outcomes", () => {
-    expect(detectDisputeFinalizationFindings([
-      {
-        dispute_id: "disp_refunded",
-        order_id: "ord_refunded",
-        status: "resolved_buyer_favor",
-        outcome: "buyer_favor",
-        order_status: "REFUNDED",
-        refund_status: "COMPLETED",
-        return_shipment_status: "RETURNED",
-        finalized_at: "2026-05-12T00:00:00.000Z",
-      },
-      {
-        dispute_id: "disp_released",
-        order_id: "ord_released",
-        status: "resolved_seller_favor",
-        outcome: "seller_favor",
-        order_status: "CLOSED",
-        settlement_release_status: "RELEASED",
-        finalized_at: "2026-05-12T00:00:00.000Z",
-      },
-    ])).toEqual([]);
+    expect(
+      detectDisputeFinalizationFindings([
+        {
+          dispute_id: "disp_refunded",
+          order_id: "ord_refunded",
+          status: "resolved_buyer_favor",
+          outcome: "buyer_favor",
+          order_status: "REFUNDED",
+          refund_status: "COMPLETED",
+          return_shipment_status: "RETURNED",
+          finalized_at: "2026-05-12T00:00:00.000Z",
+        },
+        {
+          dispute_id: "disp_released",
+          order_id: "ord_released",
+          status: "resolved_seller_favor",
+          outcome: "seller_favor",
+          order_status: "CLOSED",
+          settlement_release_status: "RELEASED",
+          finalized_at: "2026-05-12T00:00:00.000Z",
+        },
+      ]),
+    ).toEqual([]);
   });
 });

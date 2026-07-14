@@ -14,10 +14,9 @@
  *     { type: 'ping' }
  */
 
-import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
-import { createWebSocketTicketPreValidation } from
-  "../middleware/websocket-ticket-auth.js";
+import type { FastifyInstance } from "fastify";
+import { createWebSocketTicketPreValidation } from "../middleware/websocket-ticket-auth.js";
 
 // Minimal WebSocket interface matching ws package (avoids module resolution issues in pnpm)
 interface WebSocket {
@@ -79,10 +78,7 @@ function removeFromChannel(sessionId: string, ws: WebSocket): void {
 }
 
 /** Broadcast a message to all clients in a session channel. */
-export function broadcastToSession(
-  sessionId: string,
-  message: WsServerMessage,
-): void {
+export function broadcastToSession(sessionId: string, message: WsServerMessage): void {
   const channel = channels.get(sessionId);
   if (!channel || channel.size === 0) return;
 
@@ -122,10 +118,7 @@ export async function registerWebSocketRoutes(app: FastifyInstance, db: Database
         const channel = getOrCreateChannel(sessionId);
         channel.add(socket);
 
-        app.log.info(
-          { sessionId, userId, clients: channel.size },
-          "WS client connected",
-        );
+        app.log.info({ sessionId, userId, clients: channel.size }, "WS client connected");
 
         // Heartbeat — wrap in try-catch to prevent uncaught exceptions if socket closes mid-send
         const heartbeat = setInterval(() => {
@@ -158,7 +151,10 @@ export async function registerWebSocketRoutes(app: FastifyInstance, db: Database
         socket.on("close", () => {
           clearInterval(heartbeat);
           removeFromChannel(sessionId, socket);
-          app.log.info({ sessionId, clients: getSessionClientCount(sessionId) }, "WS client disconnected");
+          app.log.info(
+            { sessionId, clients: getSessionClientCount(sessionId) },
+            "WS client disconnected",
+          );
         });
 
         socket.on("error", () => {

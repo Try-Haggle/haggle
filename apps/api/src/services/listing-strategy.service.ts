@@ -1,11 +1,26 @@
-import { eq, listingDrafts, listingsPublished, type Database } from "@haggle/db";
+import { type Database, eq, listingDrafts, listingsPublished } from "@haggle/db";
 import {
-  compileStrategySnapshot,
-  type AgentStats,
-  type CompiledStrategySnapshot,
+  type CompiledNegotiationAgentSnapshot,
+  compileNegotiationAgentSnapshot,
+  type EngineParamsInput,
 } from "@haggle/engine-session";
+import {
+  DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
+  type EngineParameters,
+  getNegotiationAgentPreset,
+  presetToEngineParameters,
+} from "@haggle/shared";
 
-export interface AdvisorMemorySnapshot {
+/** Resolve the canonical default preset's parameters (balancer). */
+function defaultEngineParameters(): EngineParameters {
+  const preset =
+    getNegotiationAgentPreset(DEFAULT_NEGOTIATION_AGENT_PRESET_ID) ??
+    getNegotiationAgentPreset("balancer");
+  // balancer always exists; the non-null assertion is safe.
+  return presetToEngineParameters(preset!);
+}
+
+export interface NegotiationAgentBuilderMemorySnapshot {
   budgetMax?: number;
   targetPrice?: number;
   mustHave?: string[];
@@ -13,7 +28,7 @@ export interface AdvisorMemorySnapshot {
   riskStyle?: string;
   negotiationStyle?: string;
   openingTactic?: string;
-  // Seller-side advisor (haggle_seller_advisor_turn) shape
+  // Seller-side advisor (haggle_seller_negotiation_agent_builder_turn) shape
   dealBreakers?: string[];
   mustEmphasize?: string[];
   tone?: string;
@@ -46,10 +61,10 @@ export interface ListingStrategyContext {
   deadlineAtMs?: number;
   askPriceMinor?: number;
   floorPriceMinor?: number;
-  sellerStrategy?: CompiledStrategySnapshot;
-  sellerAdvisorMemory?: AdvisorMemorySnapshot;
+  sellerStrategy?: CompiledNegotiationAgentSnapshot;
+  sellerNegotiationAgentBuilderMemory?: NegotiationAgentBuilderMemorySnapshot;
   listingContext?: ListingContext;
-  sellerAgentPresetId?: string;
+  sellerNegotiationAgentPresetId?: string;
 }
 
 const CATEGORY_ATTRIBUTE_KEYS = ["phoneAnswers"] as const;
@@ -63,7 +78,7 @@ export function extractListingContext(
     tags?: string[] | null;
     photoUrl?: string | null;
   },
-  strategyConfig: Record<string, unknown>,
+  negotiationAgentSnapshot: Record<string, unknown>,
 ): ListingContext {
   const ctx: ListingContext = {};
   if (base.title) ctx.title = base.title;
@@ -72,11 +87,12 @@ export function extractListingContext(
   if (base.condition) ctx.condition = base.condition;
   if (base.tags && base.tags.length > 0) ctx.tags = base.tags;
   if (base.photoUrl) ctx.photoUrl = base.photoUrl;
-  if (typeof strategyConfig.subtype === "string") ctx.subtype = strategyConfig.subtype;
+  if (typeof negotiationAgentSnapshot.subtype === "string")
+    ctx.subtype = negotiationAgentSnapshot.subtype;
 
   const attributes: Record<string, unknown> = {};
   for (const key of CATEGORY_ATTRIBUTE_KEYS) {
-    const raw = strategyConfig[key];
+    const raw = negotiationAgentSnapshot[key];
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
         if (v === null || v === undefined || v === "") continue;
@@ -94,30 +110,52 @@ function majorPriceToMinor(value: unknown): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : undefined;
 }
 
-export function extractAgentStats(
-  strategyConfig: Record<string, unknown>,
-): AgentStats | undefined {
-  const keys = [
-    "priceAggression",
-    "patienceLevel",
-    "riskTolerance",
-    "speedBias",
-    "detailFocus",
-  ] as const;
-  const stats: AgentStats = {};
-  let hasStats = false;
-  for (const key of keys) {
-    const value = strategyConfig[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      stats[key] = value;
-      hasStats = true;
-    }
+function extractWeights(raw: unknown): EngineParameters["weights"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const keys = ["w_p", "w_t", "w_r", "w_s"] as const;
+  const out: Record<string, number> = {};
+  for (const k of keys) {
+    const v = r[k];
+    if (typeof v !== "number" || !Number.isFinite(v)) return undefined;
+    out[k] = v;
   }
-  return hasStats ? stats : undefined;
+  return out as EngineParameters["weights"];
+}
+
+function numericFields(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * Resolve the agent's personality (the single EngineParameters form) from a
+ * stored listing snapshot. Precedence: the snapshot's own `weights`/`engineParams`
+ * (written by the agent builder) → the named preset → the balancer default.
+ * This guarantees real parameters reach the compiler instead of a flat default.
+ */
+export function resolveSnapshotParams(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): EngineParamsInput {
+  const presetId =
+    typeof negotiationAgentSnapshot.preset === "string"
+      ? negotiationAgentSnapshot.preset
+      : undefined;
+  const preset = presetId ? getNegotiationAgentPreset(presetId) : undefined;
+  const base = preset ? presetToEngineParameters(preset) : defaultEngineParameters();
+
+  const weights = extractWeights(negotiationAgentSnapshot.weights) ?? base.weights;
+  const overrides = numericFields(negotiationAgentSnapshot.engineParams);
+
+  return { ...base, ...overrides, weights };
 }
 
 export function extractUserPreferenceRef(
-  strategyConfig: Record<string, unknown>,
+  negotiationAgentSnapshot: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   const fields = [
     "sellerTimezone",
@@ -127,17 +165,17 @@ export function extractUserPreferenceRef(
   ];
   const ref: Record<string, unknown> = {};
   for (const field of fields) {
-    if (strategyConfig[field] !== undefined) ref[field] = strategyConfig[field];
+    if (negotiationAgentSnapshot[field] !== undefined) ref[field] = negotiationAgentSnapshot[field];
   }
   return Object.keys(ref).length > 0 ? ref : undefined;
 }
 
-export function extractAdvisorMemory(
-  strategyConfig: Record<string, unknown>,
-): AdvisorMemorySnapshot | undefined {
-  const raw = strategyConfig.advisorMemory;
+export function extractNegotiationAgentBuilderMemory(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): NegotiationAgentBuilderMemorySnapshot | undefined {
+  const raw = negotiationAgentSnapshot.negotiationAgentBuilderMemory;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as AdvisorMemorySnapshot;
+    return raw as NegotiationAgentBuilderMemorySnapshot;
   }
   return undefined;
 }
@@ -165,15 +203,11 @@ export async function loadListingStrategyContext(
     sellingDeadline: listingDrafts.sellingDeadline,
     targetPrice: listingDrafts.targetPrice,
     floorPrice: listingDrafts.floorPrice,
-    strategyConfig: listingDrafts.strategyConfig,
+    negotiationAgentSnapshot: listingDrafts.negotiationAgentSnapshot,
   };
 
   let row = (
-    await db
-      .select(columns)
-      .from(listingDrafts)
-      .where(eq(listingDrafts.id, listingId))
-      .limit(1)
+    await db.select(columns).from(listingDrafts).where(eq(listingDrafts.id, listingId)).limit(1)
   )[0];
 
   if (!row) {
@@ -193,27 +227,32 @@ export async function loadListingStrategyContext(
   const floorPriceMinor =
     majorPriceToMinor(row.floorPrice) ??
     (askPriceMinor ? Math.round(askPriceMinor * 0.86) : undefined);
-  const strategyConfig = (row.strategyConfig ?? {}) as Record<string, unknown>;
-  const sellerAdvisorMemory = extractAdvisorMemory(strategyConfig);
-  const listingContext = extractListingContext(row, strategyConfig);
-  const sellerAgentPresetId =
-    typeof strategyConfig.preset === "string" ? strategyConfig.preset : undefined;
+  const negotiationAgentSnapshot = (row.negotiationAgentSnapshot ?? {}) as Record<string, unknown>;
+  const sellerNegotiationAgentBuilderMemory =
+    extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
+  const listingContext = extractListingContext(row, negotiationAgentSnapshot);
+  const sellerNegotiationAgentPresetId =
+    typeof negotiationAgentSnapshot.preset === "string"
+      ? negotiationAgentSnapshot.preset
+      : undefined;
+
+  const sellerParams = resolveSnapshotParams(negotiationAgentSnapshot);
 
   const sellerStrategy =
     askPriceMinor && floorPriceMinor
-      ? compileStrategySnapshot({
+      ? compileNegotiationAgentSnapshot({
           role: "SELLER",
           userId: row.userId ?? undefined,
           strategyId:
-            typeof strategyConfig.preset === "string"
-              ? `seller_${strategyConfig.preset}`
+            typeof negotiationAgentSnapshot.preset === "string"
+              ? `seller_${negotiationAgentSnapshot.preset}`
               : "seller_compiled",
           preset:
-            typeof strategyConfig.preset === "string"
-              ? strategyConfig.preset
+            typeof negotiationAgentSnapshot.preset === "string"
+              ? negotiationAgentSnapshot.preset
               : undefined,
-          agentStats: extractAgentStats(strategyConfig),
-          userPreferences: extractUserPreferenceRef(strategyConfig),
+          params: sellerParams,
+          userPreferences: extractUserPreferenceRef(negotiationAgentSnapshot),
           listing: {
             id: row.id,
             category: row.category,
@@ -234,8 +273,8 @@ export async function loadListingStrategyContext(
     askPriceMinor,
     floorPriceMinor,
     sellerStrategy,
-    sellerAdvisorMemory,
+    sellerNegotiationAgentBuilderMemory,
     listingContext,
-    sellerAgentPresetId,
+    sellerNegotiationAgentPresetId,
   };
 }

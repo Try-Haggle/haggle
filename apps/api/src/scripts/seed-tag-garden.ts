@@ -29,12 +29,9 @@
  *   npx tsx apps/api/src/scripts/seed-tag-garden.ts
  */
 
-import { config } from "dotenv";
-import { resolve } from "node:path";
-config({ path: resolve(import.meta.dirname, "../../../../.env") });
-config({ path: resolve(import.meta.dirname, "../../.env"), override: false });
-
+import "../config/load-env.js";
 import { createDb, sql } from "@haggle/db";
+
 const db = createDb(process.env.DATABASE_URL!);
 
 // ─── Step 1: Create tables ────────────────────────────────
@@ -59,7 +56,9 @@ async function createTables() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS tags_normalized_name_idx ON tags(normalized_name)`);
+  await db.execute(
+    sql`CREATE UNIQUE INDEX IF NOT EXISTS tags_normalized_name_idx ON tags(normalized_name)`,
+  );
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS tag_edges (
@@ -70,7 +69,9 @@ async function createTables() {
       CONSTRAINT tag_edges_unique UNIQUE (parent_tag_id, child_tag_id)
     )
   `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS tag_edges_parent_idx ON tag_edges(parent_tag_id)`);
+  await db.execute(
+    sql`CREATE INDEX IF NOT EXISTS tag_edges_parent_idx ON tag_edges(parent_tag_id)`,
+  );
   await db.execute(sql`CREATE INDEX IF NOT EXISTS tag_edges_child_idx ON tag_edges(child_tag_id)`);
 
   await db.execute(sql`
@@ -90,7 +91,9 @@ async function createTables() {
       CONSTRAINT tag_suggestions_normalized_unique UNIQUE (normalized_label)
     )
   `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS tag_suggestions_status_idx ON tag_suggestions(status)`);
+  await db.execute(
+    sql`CREATE INDEX IF NOT EXISTS tag_suggestions_status_idx ON tag_suggestions(status)`,
+  );
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS tag_placement_cache (
@@ -296,7 +299,7 @@ const TAG_CATEGORY: Record<string, string> = {
   game: "activity",
   tabletop: "activity",
   catan: "product",
-  "hue": "brand",
+  hue: "brand",
   protective: "feature",
   trucker: "style",
   club: "product",
@@ -319,31 +322,31 @@ const TAG_CATEGORY: Record<string, string> = {
 
 // 스펙으로 제외 — 리스팅 structured attribute로 관리해야 할 것들
 const EXCLUDED_AS_SPEC = new Set([
-  "m3",             // 칩 모델 → spec: chip=M3
-  "intel",          // 칩 브랜드 → spec: processor=Intel
-  "thunderbolt",    // 포트 타입 → spec: port=Thunderbolt
-  "550",            // 모델번호 (New Balance 550)
-  "883",            // 모델번호 (Harley 883)
-  "501",            // 모델번호 (Levi's 501)
-  "330i",           // 모델번호 (BMW 330i)
-  "f-150",          // 모델번호 (Ford F-150)
-  "model-3",        // 모델번호 (Tesla Model 3)
-  "camry",          // 모델명 (Toyota Camry)
-  "civic",          // 모델명 (Honda Civic)
-  "presage",        // 모델명 (Seiko Presage)
-  "astrox",         // 모델명 (Yonex Astrox)
-  "pro",            // 너무 모호 (MacBook Pro? iPad Pro? Pro 등급?)
-  "panda",          // 컬러웨이 → spec: colorway=Panda
-  "one-owner",      // 차량 이력 → spec: owners=1
-  "low-mileage",    // 차량 상태 → spec: mileage=low
-  "4x4",            // 구동 방식 → spec: drivetrain=4x4
-  "s-pen",          // 포함 액세서리 → spec: includes=S-Pen
-  "pencil",         // 포함 액세서리 → spec: includes=Apple Pencil
-  "power-adapter",  // 포함 액세서리
-  "carrying-case",  // 포함 액세서리
-  "charger",        // 포함 액세서리
-  "business",       // 모호 (ThinkPad 용도)
-  "strategy",       // 보드게임 장르 → spec: genre=Strategy
+  "m3", // 칩 모델 → spec: chip=M3
+  "intel", // 칩 브랜드 → spec: processor=Intel
+  "thunderbolt", // 포트 타입 → spec: port=Thunderbolt
+  "550", // 모델번호 (New Balance 550)
+  "883", // 모델번호 (Harley 883)
+  "501", // 모델번호 (Levi's 501)
+  "330i", // 모델번호 (BMW 330i)
+  "f-150", // 모델번호 (Ford F-150)
+  "model-3", // 모델번호 (Tesla Model 3)
+  "camry", // 모델명 (Toyota Camry)
+  "civic", // 모델명 (Honda Civic)
+  "presage", // 모델명 (Seiko Presage)
+  "astrox", // 모델명 (Yonex Astrox)
+  "pro", // 너무 모호 (MacBook Pro? iPad Pro? Pro 등급?)
+  "panda", // 컬러웨이 → spec: colorway=Panda
+  "one-owner", // 차량 이력 → spec: owners=1
+  "low-mileage", // 차량 상태 → spec: mileage=low
+  "4x4", // 구동 방식 → spec: drivetrain=4x4
+  "s-pen", // 포함 액세서리 → spec: includes=S-Pen
+  "pencil", // 포함 액세서리 → spec: includes=Apple Pencil
+  "power-adapter", // 포함 액세서리
+  "carrying-case", // 포함 액세서리
+  "charger", // 포함 액세서리
+  "business", // 모호 (ThinkPad 용도)
+  "strategy", // 보드게임 장르 → spec: genre=Strategy
 ]);
 
 // ─── Step 3: DAG hierarchy ────────────────────────────────
@@ -610,7 +613,9 @@ async function seedTags(usage: TagUsage[]) {
     if (id) tagIdMap.set(normalized, id);
 
     const icon = status === "OFFICIAL" ? "🌳" : status === "EMERGING" ? "🌿" : "🌱";
-    console.log(`  ${icon} ${status.padEnd(10)} ${tag.padEnd(20)} cnt=${String(count).padEnd(3)} idf=${idf}  [${category}]`);
+    console.log(
+      `  ${icon} ${status.padEnd(10)} ${tag.padEnd(20)} cnt=${String(count).padEnd(3)} idf=${idf}  [${category}]`,
+    );
   }
 
   return tagIdMap;
@@ -692,7 +697,9 @@ async function main() {
   console.log(`${"═".repeat(55)}\n`);
 }
 
-main().then(() => process.exit(0)).catch((e) => {
-  console.error("Fatal:", e);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error("Fatal:", e);
+    process.exit(1);
+  });

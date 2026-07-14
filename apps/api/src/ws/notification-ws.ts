@@ -1,7 +1,6 @@
-import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
-import { createWebSocketTicketPreValidation } from
-  "../middleware/websocket-ticket-auth.js";
+import type { FastifyInstance } from "fastify";
+import { createWebSocketTicketPreValidation } from "../middleware/websocket-ticket-auth.js";
 import { registerUserSocket, unregisterUserSocket } from "../notification/ws-registry.js";
 
 // Minimal WebSocket interface — same pattern as negotiation-ws.ts
@@ -17,7 +16,10 @@ interface WebSocket {
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-export async function registerNotificationWsRoute(app: FastifyInstance, db: Database): Promise<void> {
+export async function registerNotificationWsRoute(
+  app: FastifyInstance,
+  db: Database,
+): Promise<void> {
   app.get(
     "/ws/notifications",
     {
@@ -52,7 +54,9 @@ export async function registerNotificationWsRoute(app: FastifyInstance, db: Data
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === "ping") socket.send(JSON.stringify({ type: "pong" }));
-        } catch { /* ignore malformed */ }
+        } catch {
+          /* ignore malformed */
+        }
       });
 
       socket.on("close", () => {

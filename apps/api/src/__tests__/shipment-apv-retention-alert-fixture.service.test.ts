@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { verifyShipmentApvRetentionAlertFixtureCleanupIsolation } from
-  "../services/shipment-apv-retention-alert-fixture.service.js";
-import { verifyShipmentApvFixtureRollbackFailureIsolation } from
-  "../services/shipment-apv-retention-alert-fixture.service.js";
+import {
+  verifyShipmentApvFixtureRollbackFailureIsolation,
+  verifyShipmentApvRetentionAlertFixtureCleanupIsolation,
+} from "../services/shipment-apv-retention-alert-fixture.service.js";
 
 describe("shipment APV retention alert fixture cleanup", () => {
   it("continues cleanup after isolated failures and never masks a failed release", async () => {

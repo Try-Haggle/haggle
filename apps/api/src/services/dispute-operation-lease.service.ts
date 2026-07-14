@@ -1,4 +1,4 @@
-import { and, disputeOperationLeases, eq, lte, type Database } from "@haggle/db";
+import { and, type Database, disputeOperationLeases, eq, lte } from "@haggle/db";
 
 const DISPUTE_OPERATION_LEASE_MS = 60 * 1000;
 

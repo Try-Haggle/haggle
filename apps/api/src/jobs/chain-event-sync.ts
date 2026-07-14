@@ -13,8 +13,8 @@ import type { Database } from "@haggle/db";
 import {
   createChainListenerConfig,
   syncConditionalSettlementEvents,
-  syncSettlementEvents,
   syncDisputeEvents,
+  syncSettlementEvents,
 } from "../chain/event-listener.js";
 
 export async function runChainEventSync(db: Database): Promise<void> {

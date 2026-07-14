@@ -4,16 +4,15 @@ import {
   getShipmentApvFailureAlertReceiverManifestArchiveIntentHealth,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_SCHEMA_VERSION,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-intent-health.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-intent-health.service.js";
 
 export const SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION =
   "shipment-apv-failure-alert-receiver-manifest-archive-alert-preview-v1";
-export const SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_TTL_SECONDS =
-  5;
+export const SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_TTL_SECONDS = 5;
 
-type ArchiveHealth = Awaited<ReturnType<
-  typeof getShipmentApvFailureAlertReceiverManifestArchiveIntentHealth>>;
+type ArchiveHealth = Awaited<
+  ReturnType<typeof getShipmentApvFailureAlertReceiverManifestArchiveIntentHealth>
+>;
 
 const VIOLATION_REASONS = [
   ["binding", "archive_intent_binding_violation"],
@@ -25,7 +24,8 @@ const VIOLATION_REASONS = [
 
 function invalid() {
   throw new Error(
-    "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_HEALTH_INVALID");
+    "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_HEALTH_INVALID",
+  );
 }
 
 function count(value: unknown) {
@@ -38,14 +38,17 @@ function optionalCount(value: unknown) {
 }
 
 function validateHealth(health: ArchiveHealth) {
-  if (health.schemaVersion
-      !== SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_SCHEMA_VERSION
-    || health.containsRawIdentifiers !== false
-    || health.httpRequestCreated !== false
-    || health.networkDelivered !== false
-    || health.externalReceiptVerified !== false
-    || health.productionAccepted !== false
-    || !Number.isFinite(Date.parse(health.observedAt))) invalid();
+  if (
+    health.schemaVersion !==
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_SCHEMA_VERSION ||
+    health.containsRawIdentifiers !== false ||
+    health.httpRequestCreated !== false ||
+    health.networkDelivered !== false ||
+    health.externalReceiptVerified !== false ||
+    health.productionAccepted !== false ||
+    !Number.isFinite(Date.parse(health.observedAt))
+  )
+    invalid();
 
   const totals = {
     intents: count(health.totals.intents),
@@ -60,25 +63,28 @@ function validateHealth(health: ArchiveHealth) {
     timestamp: count(health.violations.timestamp),
     sourceLimit: count(health.violations.sourceLimit),
   };
-  const criticalCount = Object.values(violations)
-    .reduce((sum, value) => sum + value, 0);
+  const criticalCount = Object.values(violations).reduce((sum, value) => sum + value, 0);
   const age = optionalCount(health.freshness.latestIntentAgeSeconds);
-  const stale = age !== null
-    && age > SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS;
+  const stale =
+    age !== null &&
+    age > SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS;
   const covered = health.coverage.currentReceiptIntentCovered;
-  if (typeof covered !== "boolean"
-    || health.coverage.missingCurrentArchiveIntent !== !covered
-    || health.freshness.slaSeconds
-      !== SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS
-    || health.freshness.stale !== stale
-    || health.criticalCount !== criticalCount
-    || violations.sourceLimit !== (totals.currentSourceEntries > 1000 ? 1 : 0)
-    || (covered && (totals.latestReceiptRevision === null
-      || totals.latestIntentRevision !== totals.latestReceiptRevision))
-    || (!covered && totals.latestIntentRevision !== null)) invalid();
+  if (
+    typeof covered !== "boolean" ||
+    health.coverage.missingCurrentArchiveIntent !== !covered ||
+    health.freshness.slaSeconds !==
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS ||
+    health.freshness.stale !== stale ||
+    health.criticalCount !== criticalCount ||
+    violations.sourceLimit !== (totals.currentSourceEntries > 1000 ? 1 : 0) ||
+    (covered &&
+      (totals.latestReceiptRevision === null ||
+        totals.latestIntentRevision !== totals.latestReceiptRevision)) ||
+    (!covered && totals.latestIntentRevision !== null)
+  )
+    invalid();
 
-  const expectedStatus = criticalCount > 0 ? "critical"
-    : !covered || stale ? "warning" : "healthy";
+  const expectedStatus = criticalCount > 0 ? "critical" : !covered || stale ? "warning" : "healthy";
   if (health.status !== expectedStatus) invalid();
   return { totals, violations, criticalCount, covered, age, stale };
 }
@@ -98,12 +104,15 @@ export function evaluateShipmentApvFailureAlertReceiverManifestArchiveAlertPrevi
   if (!checked.covered) reasons.push("current_archive_intent_missing");
   if (checked.stale) reasons.push("archive_intent_stale");
 
-  const action = health.status === "critical" ? "escalate_critical" as const
-    : health.status === "warning" ? "review_warning" as const : "none" as const;
+  const action =
+    health.status === "critical"
+      ? ("escalate_critical" as const)
+      : health.status === "warning"
+        ? ("review_warning" as const)
+        : ("none" as const);
   const actionable = action !== "none";
   const state = {
-    schemaVersion:
-      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
+    schemaVersion: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
     action,
     severity: health.status,
     reasons,
@@ -111,25 +120,22 @@ export function evaluateShipmentApvFailureAlertReceiverManifestArchiveAlertPrevi
     violations: checked.violations,
     coverage: { currentReceiptIntentCovered: checked.covered },
     freshness: {
-      slaSeconds:
-        SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
+      slaSeconds: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
       stale: checked.stale,
     },
   };
 
   return {
-    schemaVersion:
-      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
+    schemaVersion: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
     mode: "preview_only" as const,
     action,
     severity: health.status,
     reasons,
     stateFingerprint: fingerprint(state),
-    validForSeconds:
-      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_TTL_SECONDS,
+    validForSeconds: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_TTL_SECONDS,
     approval: {
       required: actionable,
-      state: actionable ? "not_requested" as const : "not_required" as const,
+      state: actionable ? ("not_requested" as const) : ("not_required" as const),
     },
     delivery: {
       endpointConfigured: false,
@@ -150,8 +156,7 @@ export function evaluateShipmentApvFailureAlertReceiverManifestArchiveAlertPrevi
         missingCurrentArchiveIntent: !checked.covered,
       },
       freshness: {
-        slaSeconds:
-          SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
+        slaSeconds: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
         latestIntentAgeSeconds: checked.age,
         stale: checked.stale,
       },
@@ -165,5 +170,6 @@ export async function getShipmentApvFailureAlertReceiverManifestArchiveAlertPrev
   db: Pick<Database, "execute">,
 ) {
   return evaluateShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(
-    await getShipmentApvFailureAlertReceiverManifestArchiveIntentHealth(db));
+    await getShipmentApvFailureAlertReceiverManifestArchiveIntentHealth(db),
+  );
 }

@@ -123,15 +123,21 @@ export function buildDisputeAiCaseContextFromDispute(
 ): DisputeAiCaseContext {
   const metadata = metadataRecord(dispute);
   const snapshot = transactionSnapshot(dispute);
-  const firstBuyerText = dispute.evidence.find((evidence) => evidence.submitted_by === "buyer" && evidence.text)?.text;
-  const firstSellerText = dispute.evidence.find((evidence) => evidence.submitted_by === "seller" && evidence.text)?.text;
+  const firstBuyerText = dispute.evidence.find(
+    (evidence) => evidence.submitted_by === "buyer" && evidence.text,
+  )?.text;
+  const firstSellerText = dispute.evidence.find(
+    (evidence) => evidence.submitted_by === "seller" && evidence.text,
+  )?.text;
 
   return {
     dispute_id: dispute.id,
-    platform_id: options.platformId ?? stringValue(metadata.platform_id) ?? stringValue(snapshot.platform_id),
-    external_order_id: options.externalOrderId
-      ?? stringValue(metadata.external_order_id)
-      ?? stringValue(snapshot.external_order_id),
+    platform_id:
+      options.platformId ?? stringValue(metadata.platform_id) ?? stringValue(snapshot.platform_id),
+    external_order_id:
+      options.externalOrderId ??
+      stringValue(metadata.external_order_id) ??
+      stringValue(snapshot.external_order_id),
     tier: options.tier ?? 1,
     opened_by: dispute.opened_by,
     reason_code: dispute.reason_code,
@@ -139,15 +145,18 @@ export function buildDisputeAiCaseContextFromDispute(
       amount_minor: options.transaction?.amount_minor ?? numberValue(snapshot.amount_minor) ?? 0,
       currency: options.transaction?.currency ?? stringValue(snapshot.currency) ?? "USD",
       status: options.transaction?.status ?? stringValue(snapshot.status) ?? "UNKNOWN",
-      item_title: options.transaction?.item_title
-        ?? stringValue(snapshot.item_title)
-        ?? (isRecord(snapshot.metadata) ? stringValue(snapshot.metadata.item_title) : undefined),
-      listed_condition: options.transaction?.listed_condition
-        ?? stringValue(snapshot.listed_condition)
-        ?? (isRecord(snapshot.metadata) ? stringValue(snapshot.metadata.listed_condition) : undefined),
-      delivered_at: options.transaction?.delivered_at
-        ?? stringValue(snapshot.delivered_at)
-        ?? (isRecord(snapshot.metadata) ? stringValue(snapshot.metadata.delivered_at) : undefined),
+      item_title:
+        options.transaction?.item_title ??
+        stringValue(snapshot.item_title) ??
+        (isRecord(snapshot.metadata) ? stringValue(snapshot.metadata.item_title) : undefined),
+      listed_condition:
+        options.transaction?.listed_condition ??
+        stringValue(snapshot.listed_condition) ??
+        (isRecord(snapshot.metadata) ? stringValue(snapshot.metadata.listed_condition) : undefined),
+      delivered_at:
+        options.transaction?.delivered_at ??
+        stringValue(snapshot.delivered_at) ??
+        (isRecord(snapshot.metadata) ? stringValue(snapshot.metadata.delivered_at) : undefined),
     },
     party_statements: {
       buyer: firstBuyerText,
@@ -227,14 +236,16 @@ async function fetchWithTimeout(
   }
 }
 
-export function createDeepSeekDisputeAiProvider(options: {
-  reasoning?: boolean;
-  model?: string;
-  caseGuideModel?: string;
-  resolutionAssessorModel?: string;
-  maxTokens?: number;
-  correlationId?: string;
-} = {}): DisputeAiProvider {
+export function createDeepSeekDisputeAiProvider(
+  options: {
+    reasoning?: boolean;
+    model?: string;
+    caseGuideModel?: string;
+    resolutionAssessorModel?: string;
+    maxTokens?: number;
+    correlationId?: string;
+  } = {},
+): DisputeAiProvider {
   return {
     async completeJson(bundle) {
       const model = resolveDisputeAiModel(bundle.role, options);
@@ -250,26 +261,31 @@ export function createDeepSeekDisputeAiProvider(options: {
         max_tokens: disputeAiMaxTokens(bundle.role, options.maxTokens),
         stream: false,
       };
-      const response = await fetchWithTimeout(`${deepSeekApiBase()}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${deepSeekApiKey()}`,
+      const response = await fetchWithTimeout(
+        `${deepSeekApiBase()}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${deepSeekApiKey()}`,
+          },
+          body: JSON.stringify(body),
         },
-        body: JSON.stringify(body),
-      }, deepSeekTimeoutMs());
+        deepSeekTimeoutMs(),
+      );
 
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         throw new Error(`DeepSeek API error ${response.status}: ${text}`);
       }
 
-      const data = await response.json() as OpenAiCompatibleChatCompletion;
+      const data = (await response.json()) as OpenAiCompatibleChatCompletion;
       const usage = {
         promptTokens: data.usage?.prompt_tokens ?? 0,
         completionTokens: data.usage?.completion_tokens ?? 0,
-        totalTokens: data.usage?.total_tokens
-          ?? (data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0),
+        totalTokens:
+          data.usage?.total_tokens ??
+          (data.usage?.prompt_tokens ?? 0) + (data.usage?.completion_tokens ?? 0),
       };
       const returnedModel = data.model ?? model;
       return {
@@ -282,14 +298,16 @@ export function createDeepSeekDisputeAiProvider(options: {
   };
 }
 
-export function createXaiDisputeAiProvider(options: {
-  reasoning?: boolean;
-  model?: string;
-  caseGuideModel?: string;
-  resolutionAssessorModel?: string;
-  maxTokens?: number;
-  correlationId?: string;
-} = {}): DisputeAiProvider {
+export function createXaiDisputeAiProvider(
+  options: {
+    reasoning?: boolean;
+    model?: string;
+    caseGuideModel?: string;
+    resolutionAssessorModel?: string;
+    maxTokens?: number;
+    correlationId?: string;
+  } = {},
+): DisputeAiProvider {
   // Backward-compatible export name. The dispute AI provider now uses DeepSeek.
   return createDeepSeekDisputeAiProvider({
     ...options,
@@ -297,14 +315,16 @@ export function createXaiDisputeAiProvider(options: {
   });
 }
 
-export function createDisputeAiProvider(options: {
-  reasoning?: boolean;
-  model?: string;
-  caseGuideModel?: string;
-  resolutionAssessorModel?: string;
-  maxTokens?: number;
-  correlationId?: string;
-} = {}): DisputeAiProvider {
+export function createDisputeAiProvider(
+  options: {
+    reasoning?: boolean;
+    model?: string;
+    caseGuideModel?: string;
+    resolutionAssessorModel?: string;
+    maxTokens?: number;
+    correlationId?: string;
+  } = {},
+): DisputeAiProvider {
   return createDeepSeekDisputeAiProvider(options);
 }
 
@@ -317,19 +337,23 @@ export function resolveDisputeAiModel(
   } = {},
 ): string {
   if (role === "resolution_assessor") {
-    return options.resolutionAssessorModel
-      ?? options.model
-      ?? process.env.DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL
-      ?? process.env.DISPUTE_AI_MODEL
-      ?? process.env.DEEPSEEK_MODEL
-      ?? "deepseek-v4-pro";
+    return (
+      options.resolutionAssessorModel ??
+      options.model ??
+      process.env.DISPUTE_AI_RESOLUTION_ASSESSOR_MODEL ??
+      process.env.DISPUTE_AI_MODEL ??
+      process.env.DEEPSEEK_MODEL ??
+      "deepseek-v4-pro"
+    );
   }
-  return options.caseGuideModel
-    ?? options.model
-    ?? process.env.DISPUTE_AI_CASE_GUIDE_MODEL
-    ?? process.env.DISPUTE_AI_MODEL
-    ?? process.env.DEEPSEEK_MODEL
-    ?? "deepseek-v4-flash";
+  return (
+    options.caseGuideModel ??
+    options.model ??
+    process.env.DISPUTE_AI_CASE_GUIDE_MODEL ??
+    process.env.DISPUTE_AI_MODEL ??
+    process.env.DEEPSEEK_MODEL ??
+    "deepseek-v4-flash"
+  );
 }
 
 async function completeAndValidate<TOutput>(
@@ -387,7 +411,9 @@ async function completeAndValidate<TOutput>(
         message: repairError instanceof Error ? repairError.message : String(repairError),
         model: providerResponse.model,
         usage: providerResponse.usage,
-        cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
+        cost:
+          providerResponse.cost ??
+          estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
       };
     }
   }
@@ -430,7 +456,9 @@ async function completeAndValidate<TOutput>(
         issues,
         model: providerResponse.model,
         usage: providerResponse.usage,
-        cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
+        cost:
+          providerResponse.cost ??
+          estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
       };
     }
   }
@@ -446,7 +474,8 @@ async function completeAndValidate<TOutput>(
       issues,
       model: providerResponse.model,
       usage: providerResponse.usage,
-      cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
+      cost:
+        providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
     };
   }
 
@@ -459,7 +488,8 @@ async function completeAndValidate<TOutput>(
     output: parsed as TOutput,
     model: providerResponse.model,
     usage: providerResponse.usage,
-    cost: providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
+    cost:
+      providerResponse.cost ?? estimateLlmCostUsd(providerResponse.model, providerResponse.usage),
   };
 }
 
@@ -468,10 +498,8 @@ export async function runResolutionAssessor(
   provider: DisputeAiProvider,
 ): Promise<DisputeAiRunResult<ResolutionAssessorOutput>> {
   const bundle = buildResolutionAssessorPrompt(context);
-  return completeAndValidate<ResolutionAssessorOutput>(
-    bundle,
-    provider,
-    (output) => validateResolutionAssessorOutput(output, context),
+  return completeAndValidate<ResolutionAssessorOutput>(bundle, provider, (output) =>
+    validateResolutionAssessorOutput(output, context),
   );
 }
 
@@ -481,9 +509,7 @@ export async function runCaseGuide(
   provider: DisputeAiProvider,
 ): Promise<DisputeAiRunResult<CaseGuideOutput>> {
   const bundle = buildCaseGuidePrompt(context, party);
-  return completeAndValidate<CaseGuideOutput>(
-    bundle,
-    provider,
-    (output) => validateCaseGuideOutput(output, party),
+  return completeAndValidate<CaseGuideOutput>(bundle, provider, (output) =>
+    validateCaseGuideOutput(output, party),
   );
 }

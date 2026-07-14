@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Database } from "@haggle/db";
+import { describe, expect, it } from "vitest";
 import {
   computeShipmentApvPayoutOffset,
   listExpiredShipmentApvPayoutReservations,
@@ -44,23 +44,34 @@ describe("shipment APV payout offset cap", () => {
       row("11111111-1111-4111-8111-111111111111", "2026-07-12T00:00:00.000Z"),
       row("55555555-5555-4555-8555-555555555555", "2026-07-12T00:01:00.000Z"),
     ];
-    const first = await listExpiredShipmentApvPayoutReservations({ execute } as unknown as Database, {
-      limit: 1,
-      now: new Date("2026-07-12T00:02:00.000Z"),
-    });
+    const first = await listExpiredShipmentApvPayoutReservations(
+      { execute } as unknown as Database,
+      {
+        limit: 1,
+        now: new Date("2026-07-12T00:02:00.000Z"),
+      },
+    );
     expect(first.items).toHaveLength(1);
     expect(first.nextCursor).toEqual(expect.any(String));
-    await expect(listExpiredShipmentApvPayoutReservations({ execute } as unknown as Database, {
-      limit: 1,
-      cursor: first.nextCursor!,
-      now: new Date("2026-07-12T00:02:00.000Z"),
-    })).resolves.toMatchObject({ items: [{ offsetId: "11111111-1111-4111-8111-111111111111" }] });
+    await expect(
+      listExpiredShipmentApvPayoutReservations({ execute } as unknown as Database, {
+        limit: 1,
+        cursor: first.nextCursor!,
+        now: new Date("2026-07-12T00:02:00.000Z"),
+      }),
+    ).resolves.toMatchObject({ items: [{ offsetId: "11111111-1111-4111-8111-111111111111" }] });
   });
 
   it("rejects malformed recovery queue cursors before querying the database", async () => {
-    const execute = () => { throw new Error("must not query"); };
-    await expect(listExpiredShipmentApvPayoutReservations({ execute } as unknown as Database, {
-      cursor: Buffer.from(JSON.stringify({ expiredAt: "2026-07-12T00:00:00.000Z", id: "not-a-uuid" })).toString("base64url"),
-    })).rejects.toThrow("INVALID_APV_PAYOUT_RESERVATION_CURSOR");
+    const execute = () => {
+      throw new Error("must not query");
+    };
+    await expect(
+      listExpiredShipmentApvPayoutReservations({ execute } as unknown as Database, {
+        cursor: Buffer.from(
+          JSON.stringify({ expiredAt: "2026-07-12T00:00:00.000Z", id: "not-a-uuid" }),
+        ).toString("base64url"),
+      }),
+    ).rejects.toThrow("INVALID_APV_PAYOUT_RESERVATION_CURSOR");
   });
 });

@@ -1,27 +1,27 @@
 import {
+  and,
+  type Database,
   disputeCases,
   disputeEvidence,
   disputeEvidenceUploads,
   disputeModuleIdempotencyKeys,
   disputeResolutions,
   eq,
-  and,
   sql,
-  type Database,
 } from "@haggle/db";
 import type {
   DisputeCase,
-  DisputeStatus,
   DisputeEvidence as DisputeEvidenceType,
   DisputeResolution,
+  DisputeStatus,
 } from "@haggle/dispute-core";
+import { resolveDisputeAuditPublicKeyRegistryFromEnv } from "./dispute-audit-public-key-registry.service.js";
+import { verifyTrustedDisputeEvidenceProvenance } from "./dispute-evidence-provenance.service.js";
 import {
   assessImageSimilarity,
   type ImageSimilarityAssessment,
   type ImageSimilarityFingerprint,
 } from "./dispute-image-similarity.service.js";
-import { resolveDisputeAuditPublicKeyRegistryFromEnv } from "./dispute-audit-public-key-registry.service.js";
-import { verifyTrustedDisputeEvidenceProvenance } from "./dispute-evidence-provenance.service.js";
 
 // Fingerprint fields are persisted by the workspace DB schema built with migration 0058.
 
@@ -104,17 +104,20 @@ export async function getDisputeById(db: Database, id: string): Promise<DisputeC
     provenanceKeys = [];
   }
   const evidence: DisputeEvidenceType[] = evidenceRows.map((e) => {
-    const artifacts = (e.derivedArtifacts ?? []) as NonNullable<DisputeEvidenceType["derived_artifacts"]>;
-    const integrity = artifacts.length > 0
-      ? verifyTrustedDisputeEvidenceProvenance({
-        provenance: e.derivedArtifactsProvenance,
-        artifacts,
-        disputeId: e.disputeId,
-        evidenceId: e.id,
-        sourceContentSha256: e.sourceContentSha256,
-        keys: provenanceKeys,
-      })
-      : null;
+    const artifacts = (e.derivedArtifacts ?? []) as NonNullable<
+      DisputeEvidenceType["derived_artifacts"]
+    >;
+    const integrity =
+      artifacts.length > 0
+        ? verifyTrustedDisputeEvidenceProvenance({
+            provenance: e.derivedArtifactsProvenance,
+            artifacts,
+            disputeId: e.disputeId,
+            evidenceId: e.id,
+            sourceContentSha256: e.sourceContentSha256,
+            keys: provenanceKeys,
+          })
+        : null;
     return {
       id: e.id,
       dispute_id: e.disputeId,
@@ -146,7 +149,10 @@ export async function getDisputeById(db: Database, id: string): Promise<DisputeC
   return mapDisputeCase(row, evidence, resolution);
 }
 
-export async function getDisputeByOrderId(db: Database, orderId: string): Promise<DisputeCase | null> {
+export async function getDisputeByOrderId(
+  db: Database,
+  orderId: string,
+): Promise<DisputeCase | null> {
   const row = await db.query.disputeCases.findFirst({
     where: (fields, ops) => ops.eq(fields.orderId, orderId),
   });
@@ -154,7 +160,10 @@ export async function getDisputeByOrderId(db: Database, orderId: string): Promis
   return getDisputeById(db, row.id);
 }
 
-export async function getActiveDisputeByOrderId(db: Database, orderId: string): Promise<DisputeCase | null> {
+export async function getActiveDisputeByOrderId(
+  db: Database,
+  orderId: string,
+): Promise<DisputeCase | null> {
   const row = await db.query.disputeCases.findFirst({
     where: (fields) => sql`
       ${fields.orderId} = ${orderId}
@@ -170,17 +179,16 @@ export async function getActiveDisputeByOrderId(db: Database, orderId: string): 
   return getDisputeById(db, row.id);
 }
 
-export async function updateDisputeRecord(
-  db: Database,
-  dispute: DisputeCase,
-): Promise<void> {
+export async function updateDisputeRecord(db: Database, dispute: DisputeCase): Promise<void> {
   await db
     .update(disputeCases)
     .set({
       status: dispute.status,
       resolutionSummary: dispute.resolution?.summary,
       metadata: dispute.metadata ?? undefined,
-      resolvedAt: dispute.resolution?.resolved_at ? new Date(dispute.resolution.resolved_at) : undefined,
+      resolvedAt: dispute.resolution?.resolved_at
+        ? new Date(dispute.resolution.resolved_at)
+        : undefined,
       closedAt: dispute.status === "CLOSED" ? new Date() : undefined,
       updatedAt: new Date(),
     })
@@ -222,7 +230,14 @@ export interface DisputeEvidenceUploadRecord {
   averageHash: string | null;
   colorHistogram: number[] | null;
   similaritySignals: Record<string, unknown> | null;
-  similarityStatus: "PENDING" | "CLEAR" | "REVIEW_REQUIRED" | "APPROVED" | "REJECTED" | "FAILED" | "SKIPPED";
+  similarityStatus:
+    | "PENDING"
+    | "CLEAR"
+    | "REVIEW_REQUIRED"
+    | "APPROVED"
+    | "REJECTED"
+    | "FAILED"
+    | "SKIPPED";
   similarityDistance: number | null;
   similarityReviewedBy: string | null;
   similarityReviewedAt: Date | null;
@@ -304,10 +319,8 @@ export async function getDisputeEvidenceUploadByPath(
   storagePath: string,
 ): Promise<DisputeEvidenceUploadRecord | null> {
   const row = await db.query.disputeEvidenceUploads.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.disputeId, disputeId),
-      ops.eq(fields.storagePath, storagePath),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.disputeId, disputeId), ops.eq(fields.storagePath, storagePath)),
   });
   return (row as DisputeEvidenceUploadRecord | undefined) ?? null;
 }
@@ -318,10 +331,8 @@ export async function getDisputeEvidenceUploadById(
   uploadId: string,
 ): Promise<DisputeEvidenceUploadRecord | null> {
   const row = await db.query.disputeEvidenceUploads.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.disputeId, disputeId),
-      ops.eq(fields.id, uploadId),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.disputeId, disputeId), ops.eq(fields.id, uploadId)),
   });
   return (row as DisputeEvidenceUploadRecord | undefined) ?? null;
 }
@@ -332,10 +343,8 @@ export async function getDisputeEvidenceUploadByEvidenceId(
   evidenceId: string,
 ): Promise<DisputeEvidenceUploadRecord | null> {
   const row = await db.query.disputeEvidenceUploads.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.disputeId, disputeId),
-      ops.eq(fields.committedEvidenceId, evidenceId),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.disputeId, disputeId), ops.eq(fields.committedEvidenceId, evidenceId)),
   });
   return (row as DisputeEvidenceUploadRecord | undefined) ?? null;
 }
@@ -354,16 +363,18 @@ export async function markDisputeEvidenceUploadCommitted(
       committedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(
-      eq(disputeEvidenceUploads.id, uploadId),
-      sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
-      allowSkipped
-        ? sql`${disputeEvidenceUploads.scanStatus} IN ('CLEAN', 'SKIPPED')`
-        : eq(disputeEvidenceUploads.scanStatus, "CLEAN"),
-      allowSkipped
-        ? sql`true`
-        : sql`(${disputeEvidenceUploads.cameraSessionId} IS NULL OR ${disputeEvidenceUploads.similarityStatus} IN ('CLEAR', 'APPROVED'))`,
-    ))
+    .where(
+      and(
+        eq(disputeEvidenceUploads.id, uploadId),
+        sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
+        allowSkipped
+          ? sql`${disputeEvidenceUploads.scanStatus} IN ('CLEAN', 'SKIPPED')`
+          : eq(disputeEvidenceUploads.scanStatus, "CLEAN"),
+        allowSkipped
+          ? sql`true`
+          : sql`(${disputeEvidenceUploads.cameraSessionId} IS NULL OR ${disputeEvidenceUploads.similarityStatus} IN ('CLEAR', 'APPROVED'))`,
+      ),
+    )
     .returning({ id: disputeEvidenceUploads.id });
   return rows.length === 1;
 }
@@ -392,22 +403,25 @@ export async function updateDisputeEvidenceUploadSimilarity(
       similarityDistance: result.distance,
       similarityReviewedBy: result.reviewedBy,
       similarityReviewedAt: result.reviewedBy ? new Date() : undefined,
-      expiresAt: result.status === "REVIEW_REQUIRED"
-        ? new Date(Date.now() + 24 * 60 * 60 * 1000)
-        : undefined,
+      expiresAt:
+        result.status === "REVIEW_REQUIRED"
+          ? new Date(Date.now() + 24 * 60 * 60 * 1000)
+          : undefined,
       updatedAt: new Date(),
     })
-    .where(and(
-      eq(disputeEvidenceUploads.id, uploadId),
-      sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
-    ));
+    .where(
+      and(
+        eq(disputeEvidenceUploads.id, uploadId),
+        sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
+      ),
+    );
 }
 
 export async function findNearestCommittedCameraEvidence(
   db: Database,
   fingerprint: ImageSimilarityFingerprint,
 ): Promise<{ uploadId: string; distance: number; assessment: ImageSimilarityAssessment } | null> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT id AS "uploadId", perceptual_hash AS "dHash", average_hash AS "aHash",
            color_histogram AS "colorHistogram",
            bit_count(perceptual_hash::bit(64) # ${fingerprint.dHash}::bit(64))::int AS "dHashDistance",
@@ -423,30 +437,54 @@ export async function findNearestCommittedCameraEvidence(
             ELSE bit_count(average_hash::bit(64) # ${fingerprint.aHash}::bit(64))::int END
      ) ASC
      LIMIT 50
-  `) as unknown as Array<{ uploadId: string; dHash: string; aHash: string | null; colorHistogram: number[] | null }>;
-  const assessed = rows.map((row) => ({
-    uploadId: row.uploadId,
-    assessment: assessImageSimilarity(fingerprint, {
-      dHash: row.dHash,
-      aHash: row.aHash,
-      colorHistogram: row.colorHistogram,
-    }),
-  })).sort((left, right) => left.assessment.score - right.assessment.score);
+  `)) as unknown as Array<{
+    uploadId: string;
+    dHash: string;
+    aHash: string | null;
+    colorHistogram: number[] | null;
+  }>;
+  const assessed = rows
+    .map((row) => ({
+      uploadId: row.uploadId,
+      assessment: assessImageSimilarity(fingerprint, {
+        dHash: row.dHash,
+        aHash: row.aHash,
+        colorHistogram: row.colorHistogram,
+      }),
+    }))
+    .sort((left, right) => left.assessment.score - right.assessment.score);
   const nearest = assessed[0];
-  return nearest ? { uploadId: nearest.uploadId, distance: nearest.assessment.dHashDistance, assessment: nearest.assessment } : null;
+  return nearest
+    ? {
+        uploadId: nearest.uploadId,
+        distance: nearest.assessment.dHashDistance,
+        assessment: nearest.assessment,
+      }
+    : null;
 }
 
-interface SimilarityReviewCursor { createdAt: string; id: string }
+interface SimilarityReviewCursor {
+  createdAt: string;
+  id: string;
+}
 
 function decodeSimilarityReviewCursor(value: string): SimilarityReviewCursor {
   try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<SimilarityReviewCursor>;
-    if (typeof parsed.createdAt !== "string" || !Number.isFinite(Date.parse(parsed.createdAt))
-      || typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)) {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<SimilarityReviewCursor>;
+    if (
+      typeof parsed.createdAt !== "string" ||
+      !Number.isFinite(Date.parse(parsed.createdAt)) ||
+      typeof parsed.id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)
+    ) {
       throw new Error("invalid cursor");
     }
     return { createdAt: new Date(parsed.createdAt).toISOString(), id: parsed.id };
-  } catch { throw new Error("INVALID_SIMILARITY_REVIEW_CURSOR"); }
+  } catch {
+    throw new Error("INVALID_SIMILARITY_REVIEW_CURSOR");
+  }
 }
 
 function encodeSimilarityReviewCursor(cursor: SimilarityReviewCursor) {
@@ -458,10 +496,11 @@ export async function listDisputeEvidenceSimilarityReviews(
   input: { limit?: number; cursor?: string; now?: Date } = {},
 ) {
   const limit = input.limit ?? 20;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("INVALID_SIMILARITY_REVIEW_LIMIT");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("INVALID_SIMILARITY_REVIEW_LIMIT");
   const cursor = input.cursor ? decodeSimilarityReviewCursor(input.cursor) : null;
   const now = input.now ?? new Date();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT review.id, review.dispute_id, review.uploaded_by, review.content_type,
            review.file_size_bytes, review.storage_path, review.similarity_distance,
            review.similarity_signals, review.expires_at, review.created_at,
@@ -479,7 +518,7 @@ export async function listDisputeEvidenceSimilarityReviews(
        ${cursor ? sql`AND (review.created_at, review.id) > (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)` : sql``}
      ORDER BY review.created_at ASC, review.id ASC
      LIMIT ${limit + 1}
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
   const items = pageRows.map((row) => ({
@@ -492,17 +531,30 @@ export async function listDisputeEvidenceSimilarityReviews(
     matchedUploadId: row.matched_upload_id ? String(row.matched_upload_id) : null,
     matchedStoragePath: row.matched_storage_path ? String(row.matched_storage_path) : null,
     similarityDistance: row.similarity_distance === null ? null : Number(row.similarity_distance),
-    similaritySignals: row.similarity_signals && typeof row.similarity_signals === "object" && !Array.isArray(row.similarity_signals)
-      ? row.similarity_signals as Record<string, unknown> : null,
+    similaritySignals:
+      row.similarity_signals &&
+      typeof row.similarity_signals === "object" &&
+      !Array.isArray(row.similarity_signals)
+        ? (row.similarity_signals as Record<string, unknown>)
+        : null,
     expiresAt: new Date(String(row.expires_at)).toISOString(),
     createdAt: new Date(String(row.created_at)).toISOString(),
-    waitingAgeSeconds: Math.max(0, Math.floor((now.getTime() - new Date(String(row.created_at)).getTime()) / 1000)),
-    dueInSeconds: Math.max(0, Math.floor((new Date(String(row.expires_at)).getTime() - now.getTime()) / 1000)),
+    waitingAgeSeconds: Math.max(
+      0,
+      Math.floor((now.getTime() - new Date(String(row.created_at)).getTime()) / 1000),
+    ),
+    dueInSeconds: Math.max(
+      0,
+      Math.floor((new Date(String(row.expires_at)).getTime() - now.getTime()) / 1000),
+    ),
   }));
   const last = items.at(-1);
   return {
     items,
-    nextCursor: hasMore && last ? encodeSimilarityReviewCursor({ createdAt: last.createdAt, id: last.uploadId }) : null,
+    nextCursor:
+      hasMore && last
+        ? encodeSimilarityReviewCursor({ createdAt: last.createdAt, id: last.uploadId })
+        : null,
     recordedAt: now.toISOString(),
   };
 }
@@ -526,9 +578,11 @@ export async function getDisputeEvidenceSimilarityReviewHealth(
   const now = input.now ?? new Date();
   const slaMinutes = input.slaMinutes ?? 15;
   const dueSoonMinutes = input.dueSoonMinutes ?? 60;
-  if (!Number.isInteger(slaMinutes) || slaMinutes < 1 || slaMinutes > 1440) throw new Error("INVALID_SIMILARITY_REVIEW_SLA");
-  if (!Number.isInteger(dueSoonMinutes) || dueSoonMinutes < 1 || dueSoonMinutes > 1440) throw new Error("INVALID_SIMILARITY_REVIEW_DUE_SOON");
-  const rows = await db.execute(sql`
+  if (!Number.isInteger(slaMinutes) || slaMinutes < 1 || slaMinutes > 1440)
+    throw new Error("INVALID_SIMILARITY_REVIEW_SLA");
+  if (!Number.isInteger(dueSoonMinutes) || dueSoonMinutes < 1 || dueSoonMinutes > 1440)
+    throw new Error("INVALID_SIMILARITY_REVIEW_DUE_SOON");
+  const rows = (await db.execute(sql`
     SELECT
       count(*) FILTER (WHERE expires_at > ${now.toISOString()}::timestamptz)::int AS pending_reviews,
       count(*) FILTER (
@@ -550,33 +604,45 @@ export async function getDisputeEvidenceSimilarityReviewHealth(
     FROM dispute_evidence_uploads
     WHERE status = 'QUARANTINED' AND similarity_status = 'REVIEW_REQUIRED'
       AND retention_status = 'ACTIVE'
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0] ?? {};
   const pendingReviews = Number(row.pending_reviews ?? 0);
   const overdueSla = Number(row.overdue_sla ?? 0);
   const dueSoon = Number(row.due_soon ?? 0);
   const expiredUnresolved = Number(row.expired_unresolved ?? 0);
   return {
-    status: expiredUnresolved > 0 ? "critical" : overdueSla > 0 || dueSoon > 0 ? "attention" : "healthy",
+    status:
+      expiredUnresolved > 0 ? "critical" : overdueSla > 0 || dueSoon > 0 ? "attention" : "healthy",
     pendingReviews,
     overdueSla,
     dueSoon,
     expiredUnresolved,
-    oldestPendingAgeSeconds: row.oldest_pending_age_seconds === null || row.oldest_pending_age_seconds === undefined
-      ? null : Math.max(0, Number(row.oldest_pending_age_seconds)),
+    oldestPendingAgeSeconds:
+      row.oldest_pending_age_seconds === null || row.oldest_pending_age_seconds === undefined
+        ? null
+        : Math.max(0, Number(row.oldest_pending_age_seconds)),
     autoExpiredLast24Hours: Number(row.auto_expired_last_24_hours ?? 0),
-    lastAutoExpiredAt: row.last_auto_expired_at ? new Date(String(row.last_auto_expired_at)).toISOString() : null,
+    lastAutoExpiredAt: row.last_auto_expired_at
+      ? new Date(String(row.last_auto_expired_at)).toISOString()
+      : null,
     recordedAt: now.toISOString(),
   };
 }
 
 export async function decideDisputeEvidenceSimilarityReview(
   db: Database,
-  input: { disputeId: string; uploadId: string; reviewerId: string; decision: "approve" | "reject"; note: string; now?: Date },
+  input: {
+    disputeId: string;
+    uploadId: string;
+    reviewerId: string;
+    decision: "approve" | "reject";
+    note: string;
+    now?: Date;
+  },
 ) {
   const now = input.now ?? new Date();
   return db.transaction(async (tx) => {
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       UPDATE dispute_evidence_uploads
          SET similarity_status = ${input.decision === "approve" ? "APPROVED" : "REJECTED"},
              similarity_reviewed_by = ${input.reviewerId}, similarity_reviewed_at = ${now.toISOString()}::timestamptz,
@@ -588,7 +654,7 @@ export async function decideDisputeEvidenceSimilarityReview(
          AND status = 'QUARANTINED' AND similarity_status = 'REVIEW_REQUIRED'
          AND retention_status = 'ACTIVE' AND expires_at > ${now.toISOString()}::timestamptz
        RETURNING similarity_distance, similarity_signals
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     if (!rows[0]) return { outcome: "not_pending" as const };
     await tx.execute(sql`
       INSERT INTO admin_action_log (actor_id, action_type, target_type, target_id, payload, created_at)
@@ -598,7 +664,9 @@ export async function decideDisputeEvidenceSimilarityReview(
                                  'signals', ${JSON.stringify(rows[0].similarity_signals ?? null)}::jsonb,
                                  'note', ${input.note.slice(0, 1000)}::text), ${now.toISOString()}::timestamptz)
     `);
-    return { outcome: input.decision === "approve" ? "approved" as const : "rejected" as const };
+    return {
+      outcome: input.decision === "approve" ? ("approved" as const) : ("rejected" as const),
+    };
   });
 }
 
@@ -629,10 +697,12 @@ export async function updateDisputeEvidenceUploadScan(
       scanLastError: retryable ? result.detail.slice(0, 200) : null,
       updatedAt: now,
     })
-    .where(and(
-      eq(disputeEvidenceUploads.id, uploadId),
-      sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
-    ));
+    .where(
+      and(
+        eq(disputeEvidenceUploads.id, uploadId),
+        sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
+      ),
+    );
 }
 
 export async function rejectDisputeEvidenceUpload(
@@ -649,10 +719,12 @@ export async function rejectDisputeEvidenceUpload(
       scanDetail: detail,
       updatedAt: new Date(),
     })
-    .where(and(
-      eq(disputeEvidenceUploads.id, uploadId),
-      sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
-    ));
+    .where(
+      and(
+        eq(disputeEvidenceUploads.id, uploadId),
+        sql`${disputeEvidenceUploads.status} IN ('PENDING', 'QUARANTINED')`,
+      ),
+    );
 }
 
 export async function listBlockingDisputeEvidenceUploads(
@@ -691,10 +763,8 @@ export async function getDisputeModuleIdempotencyRecord(
   idempotencyKey: string,
 ): Promise<DisputeModuleIdempotencyRecord | null> {
   const row = await db.query.disputeModuleIdempotencyKeys.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.platformId, platformId),
-      ops.eq(fields.idempotencyKey, idempotencyKey),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.platformId, platformId), ops.eq(fields.idempotencyKey, idempotencyKey)),
   });
   return (row as DisputeModuleIdempotencyRecord | undefined) ?? null;
 }
@@ -726,11 +796,14 @@ export async function createDisputeResolutionRecord(
   disputeId: string,
   resolution: DisputeResolution,
 ): Promise<void> {
-  await db.insert(disputeResolutions).values({
-    disputeId,
-    outcome: resolution.outcome,
-    summary: resolution.summary,
-    refundAmountMinor: resolution.refund_amount_minor?.toString(),
-    resolvedAt: resolution.resolved_at ? new Date(resolution.resolved_at) : undefined,
-  }).onConflictDoNothing({ target: disputeResolutions.disputeId });
+  await db
+    .insert(disputeResolutions)
+    .values({
+      disputeId,
+      outcome: resolution.outcome,
+      summary: resolution.summary,
+      refundAmountMinor: resolution.refund_amount_minor?.toString(),
+      resolvedAt: resolution.resolved_at ? new Date(resolution.resolved_at) : undefined,
+    })
+    .onConflictDoNothing({ target: disputeResolutions.disputeId });
 }

@@ -1,9 +1,8 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export const SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_SCHEMA_VERSION =
   "shipment-apv-failure-alert-receiver-manifest-archive-health-v1";
-export const SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS =
-  86_400;
+export const SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS = 86_400;
 
 type HealthRow = {
   intent_count: unknown;
@@ -23,8 +22,7 @@ type HealthRow = {
 function count(value: unknown) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_INVALID");
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_INVALID");
   }
   return parsed;
 }
@@ -36,8 +34,7 @@ function optionalCount(value: unknown) {
 function iso(value: unknown) {
   const parsed = new Date(String(value));
   if (!Number.isFinite(parsed.getTime())) {
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_INVALID");
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_INVALID");
   }
   return parsed.toISOString();
 }
@@ -130,8 +127,7 @@ export async function getShipmentApvFailureAlertReceiverManifestArchiveIntentHea
     FROM source_manifest`);
   const row = (rows as unknown as HealthRow[])[0];
   if (!row || typeof row.current_receipt_intent_covered !== "boolean") {
-    throw new Error(
-      "SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_INVALID");
+    throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_INVALID");
   }
 
   const totals = {
@@ -149,26 +145,30 @@ export async function getShipmentApvFailureAlertReceiverManifestArchiveIntentHea
   };
   const criticalCount = Object.values(violations).reduce((sum, value) => sum + value, 0);
   const latestIntentAgeSeconds = optionalCount(row.latest_intent_age_seconds);
-  const stale = latestIntentAgeSeconds !== null
-    && latestIntentAgeSeconds
-      > SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS;
+  const stale =
+    latestIntentAgeSeconds !== null &&
+    latestIntentAgeSeconds >
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS;
   const covered = row.current_receipt_intent_covered;
-  const status = criticalCount > 0 ? "critical" as const
-    : !covered || stale ? "warning" as const : "healthy" as const;
+  const status =
+    criticalCount > 0
+      ? ("critical" as const)
+      : !covered || stale
+        ? ("warning" as const)
+        : ("healthy" as const);
 
   return {
-    schemaVersion:
-      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_SCHEMA_VERSION,
+    schemaVersion: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_HEALTH_SCHEMA_VERSION,
     status,
     totals,
     violations,
     criticalCount,
-    coverage: { currentReceiptIntentCovered: covered,
-      missingCurrentArchiveIntent: !covered },
+    coverage: { currentReceiptIntentCovered: covered, missingCurrentArchiveIntent: !covered },
     freshness: {
-      slaSeconds:
-        SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
-      latestIntentAgeSeconds, stale },
+      slaSeconds: SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_FRESHNESS_SLA_SECONDS,
+      latestIntentAgeSeconds,
+      stale,
+    },
     containsRawIdentifiers: false,
     httpRequestCreated: false,
     networkDelivered: false,

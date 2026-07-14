@@ -3,8 +3,7 @@ import type { Database } from "@haggle/db";
 import {
   getShipmentApvChaosFailureHealth,
   SHIPMENT_APV_CHAOS_FAILURE_POLICY_VERSION,
-} from
-  "./shipment-apv-chaos-failure-metric.service.js";
+} from "./shipment-apv-chaos-failure-metric.service.js";
 
 export const SHIPMENT_APV_FAILURE_ALERT_PREVIEW_VERSION =
   "shipment-apv-chaos-failure-alert-preview-v1";
@@ -29,10 +28,11 @@ function publicStateFingerprint(input: Record<string, unknown>) {
 export function evaluateShipmentApvChaosFailureAlertPreview(health: FailureHealth) {
   const lifecycle = health.lifecycle;
   const activeReasons = health.policy.reasons.filter((reason) => ACTIVE_REASONS.has(reason));
-  if (health.policy.version !== SHIPMENT_APV_CHAOS_FAILURE_POLICY_VERSION
-    || activeReasons.length !== health.policy.reasons.length
-    || (lifecycle.phase === "active" && health.status !== "healthy"
-      && activeReasons.length === 0)) {
+  if (
+    health.policy.version !== SHIPMENT_APV_CHAOS_FAILURE_POLICY_VERSION ||
+    activeReasons.length !== health.policy.reasons.length ||
+    (lifecycle.phase === "active" && health.status !== "healthy" && activeReasons.length === 0)
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_PREVIEW_POLICY_UNAVAILABLE");
   }
   let action: "none" | "review_warning" | "escalate_critical" | "review_recovery" = "none";
@@ -50,8 +50,7 @@ export function evaluateShipmentApvChaosFailureAlertPreview(health: FailureHealt
   } else if (lifecycle.phase === "recovered" && lifecycle.warningObservedAt) {
     action = "review_recovery";
     severity = lifecycle.criticalObservedAt ? "critical" : "warning";
-    reasons = [lifecycle.criticalObservedAt
-      ? "recovered_from_critical" : "recovered_from_warning"];
+    reasons = [lifecycle.criticalObservedAt ? "recovered_from_critical" : "recovered_from_warning"];
   }
 
   const fingerprintInput = {
@@ -59,8 +58,9 @@ export function evaluateShipmentApvChaosFailureAlertPreview(health: FailureHealt
     action,
     severity,
     reasons,
-    counts: Object.fromEntries(Object.entries(health.stages)
-      .map(([stage, value]) => [stage, value.count])),
+    counts: Object.fromEntries(
+      Object.entries(health.stages).map(([stage, value]) => [stage, value.count]),
+    ),
     lifecycle: {
       phase: lifecycle.phase,
       firstObservedAt: lifecycle.firstObservedAt,
@@ -81,7 +81,7 @@ export function evaluateShipmentApvChaosFailureAlertPreview(health: FailureHealt
     validForSeconds: SHIPMENT_APV_FAILURE_ALERT_PREVIEW_TTL_SECONDS,
     approval: {
       required: actionable,
-      state: actionable ? "not_requested" as const : "not_required" as const,
+      state: actionable ? ("not_requested" as const) : ("not_required" as const),
     },
     delivery: { enabled: false, attempted: false },
     cooldown: {
@@ -99,5 +99,6 @@ export async function getShipmentApvChaosFailureAlertPreview(
   now = new Date(),
 ) {
   return evaluateShipmentApvChaosFailureAlertPreview(
-    await getShipmentApvChaosFailureHealth(db, now));
+    await getShipmentApvChaosFailureHealth(db, now),
+  );
 }

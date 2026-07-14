@@ -1,75 +1,85 @@
-import Fastify from "fastify";
 import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
 import { createDb } from "@haggle/db";
+import Fastify from "fastify";
+import { Resend } from "resend";
+import { getRuntimeConfig, isCorsOriginAllowed } from "./config/runtime.js";
+import { initCronJobs } from "./jobs/runner.js";
+import { registerActionHandlers } from "./lib/action-handlers.js";
+import { resolveApiRateLimitConfigFromEnv } from "./lib/api-rate-limit.js";
+import { createEventDispatcher } from "./lib/event-dispatcher.js";
+import { configuredJsonBodyLimit } from "./lib/input-limits.js";
+import { setTelemetryDb } from "./lib/llm-telemetry.js";
+import { configuredTrustedProxyCidrs } from "./lib/trusted-proxy.js";
+import { registerMcpRoutes } from "./mcp/router.js";
 import authPlugin from "./middleware/auth.js";
 import { createGlobalRateLimit } from "./middleware/rate-limit.js";
-import { registerMcpRoutes } from "./mcp/router.js";
-import { registerClaimRoutes } from "./routes/claim.js";
-import { registerListingsRoutes } from "./routes/listings.js";
+import { createNotificationBus } from "./notification/index.js";
 import { registerAccountRoutes } from "./routes/account.js";
-import { registerPublicListingRoutes } from "./routes/public-listing.js";
-import { registerDraftRoutes } from "./routes/drafts.js";
-import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
-import { registerSimilarListingsRoutes } from "./routes/similar-listings.js";
-import { registerRecommendationsRoutes } from "./routes/recommendations.js";
-import { registerInternalRoutes } from "./routes/internal.js";
-import { registerPaymentRoutes } from "./routes/payments.js";
-import { registerShipmentRoutes } from "./routes/shipments.js";
-import { registerDisputeRoutes } from "./routes/disputes.js";
-import { registerDisputeModuleRoutes } from "./routes/dispute-modules.js";
-import { registerAuthenticationRoutes } from "./routes/authentications.js";
-import { registerTrustRoutes } from "./routes/trust.js";
-import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
-import { registerARPRoutes } from "./routes/arp.js";
-import { registerTagRoutes } from "./routes/tags.js";
-import { registerIntentRoutes } from "./routes/intents.js";
-import { registerSkillRoutes } from "./routes/skills.js";
-import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
-import { registerSettlementApprovalRoutes } from "./routes/settlement-approvals.js";
-import { registerNegotiationRoutes } from "./routes/negotiations.js";
-import { registerHnpProfileRoutes } from "./routes/hnp-profile.js";
-import { registerStageRoutes } from "./routes/negotiation-stages.js";
-import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
-import { registerDemoRoute } from "./routes/negotiation-demo.js";
-import { registerGroupRoutes } from "./routes/groups.js";
+import { registerAddressRoutes } from "./routes/addresses.js";
 import { registerAdminRoutes } from "./routes/admin.js";
+import { registerARPRoutes } from "./routes/arp.js";
 import { registerAttestationRoutes } from "./routes/attestation.js";
-import { registerWalletRoutes } from "./routes/wallets.js";
+import { registerAuthenticationRoutes } from "./routes/authentications.js";
+import { registerBuddyRoutes } from "./routes/buddies.js";
+import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
+import { registerClaimRoutes } from "./routes/claim.js";
+import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
+import { registerDisputeAdvisorRoutes } from "./routes/dispute-advisor.js";
+import { registerDisputeModuleRoutes } from "./routes/dispute-modules.js";
+import { registerDisputeRoutes } from "./routes/disputes.js";
+import { registerDraftRoutes } from "./routes/drafts.js";
+import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
+import { registerGamificationRoutes } from "./routes/gamification.js";
+import { registerGroupRoutes } from "./routes/groups.js";
 import { registerHfmiRoutes } from "./routes/hfmi.js";
+import { registerHnpProfileRoutes } from "./routes/hnp-profile.js";
 import { registerIntelligenceRoutes } from "./routes/intelligence.js";
 import { registerIntelligenceDemoRoutes } from "./routes/intelligence-demo.js";
-import { registerPresetRoutes } from "./routes/presets.js";
-import { registerBuddyRoutes } from "./routes/buddies.js";
-import { registerGamificationRoutes } from "./routes/gamification.js";
-import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
-import { registerPaymentTestToolRoutes } from "./routes/payment-test-tools.js";
-import { registerReviewerRoutes } from "./routes/reviewer.js";
-import { registerAdvisorRoutes } from "./routes/advisor.js";
-import { registerAddressRoutes } from "./routes/addresses.js";
-import { registerOrderRoutes } from "./routes/orders.js";
+import { registerIntentRoutes } from "./routes/intents.js";
+import { registerInternalRoutes } from "./routes/internal.js";
+import { registerListingsRoutes } from "./routes/listings.js";
+import { registerNegotiationAgentRoutes } from "./routes/negotiation-agents.js";
+import { registerDemoRoute } from "./routes/negotiation-demo.js";
+import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
+import { registerStageRoutes } from "./routes/negotiation-stages.js";
+import { registerNegotiationRoutes } from "./routes/negotiations.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
 import { registerOpsAlertRoutes } from "./routes/ops-alerts.js";
-import websocket from "@fastify/websocket";
+import { registerOrderRoutes } from "./routes/orders.js";
+import { registerPaymentTestToolRoutes } from "./routes/payment-test-tools.js";
+import { registerPaymentRoutes } from "./routes/payments.js";
+import { registerPresetRoutes } from "./routes/presets.js";
+import { registerPublicListingRoutes } from "./routes/public-listing.js";
+import { registerRecommendationsRoutes } from "./routes/recommendations.js";
+import { registerReviewerRoutes } from "./routes/reviewer.js";
+import { registerSettlementApprovalRoutes } from "./routes/settlement-approvals.js";
+import { registerSettlementReleaseRoutes } from "./routes/settlement-releases.js";
+import { registerShipmentRoutes } from "./routes/shipments.js";
+import { registerSimilarListingsRoutes } from "./routes/similar-listings.js";
+import { registerSkillRoutes } from "./routes/skills.js";
+import { registerTagRoutes } from "./routes/tags.js";
+import { registerTrustRoutes } from "./routes/trust.js";
+import { registerWalletRoutes } from "./routes/wallets.js";
+import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
+import { registerWebSocketAuthRoutes } from "./routes/websocket-auth.js";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { registerNotificationWsRoute } from "./ws/notification-ws.js";
-import { registerWebSocketAuthRoutes } from "./routes/websocket-auth.js";
-import { createNotificationBus } from "./notification/index.js";
-import { Resend } from "resend";
-import { registerNotificationRoutes } from "./routes/notifications.js";
-import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
-import { createEventDispatcher } from "./lib/event-dispatcher.js";
-import { registerActionHandlers } from "./lib/action-handlers.js";
-import { setTelemetryDb } from "./lib/llm-telemetry.js";
-import { initCronJobs } from "./jobs/runner.js";
-import { getRuntimeConfig, isCorsOriginAllowed } from "./config/runtime.js";
-import { configuredJsonBodyLimit } from "./lib/input-limits.js";
-import { configuredTrustedProxyCidrs } from "./lib/trusted-proxy.js";
-import { resolveApiRateLimitConfigFromEnv } from "./lib/api-rate-limit.js";
 
 export const API_CORS_ALLOWED_HEADERS = [
-  "Content-Type", "Authorization", "Idempotency-Key", "mcp-session-id", "x-haggle-actor-id",
-  "x-haggle-actor-role", "x-haggle-x402-signature", "x-haggle-x402-timestamp",
-  "x-haggle-module-platform-id", "x-haggle-module-timestamp", "x-haggle-module-signature",
-  "x-haggle-idempotency-key", "stripe-signature",
+  "Content-Type",
+  "Authorization",
+  "Idempotency-Key",
+  "mcp-session-id",
+  "x-haggle-actor-id",
+  "x-haggle-actor-role",
+  "x-haggle-x402-signature",
+  "x-haggle-x402-timestamp",
+  "x-haggle-module-platform-id",
+  "x-haggle-module-timestamp",
+  "x-haggle-module-signature",
+  "x-haggle-idempotency-key",
+  "stripe-signature",
 ];
 
 export async function createServer() {
@@ -88,26 +98,25 @@ export async function createServer() {
   // ─── Raw Body Capture (for webhook signature verification) ──
   // Override the default JSON parser to store the raw buffer on the request.
   // Stripe and x402 webhooks require the exact raw bytes for HMAC verification.
-  app.addContentTypeParser(
-    "application/json",
-    { parseAs: "buffer" },
-    (_req, body, done) => {
-      // Store raw buffer on request for webhook handlers
-      (_req as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
-      if ((body as Buffer).byteLength > jsonBodyLimit) {
-        const err = new Error(`JSON body exceeds ${jsonBodyLimit} bytes`) as Error & { statusCode?: number; code?: string };
-        err.statusCode = 413;
-        err.code = "FST_ERR_CTP_BODY_TOO_LARGE";
-        done(err, undefined);
-        return;
-      }
-      try {
-        done(null, JSON.parse((body as Buffer).toString()));
-      } catch (err) {
-        done(err as Error, undefined);
-      }
-    },
-  );
+  app.addContentTypeParser("application/json", { parseAs: "buffer" }, (_req, body, done) => {
+    // Store raw buffer on request for webhook handlers
+    (_req as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
+    if ((body as Buffer).byteLength > jsonBodyLimit) {
+      const err = new Error(`JSON body exceeds ${jsonBodyLimit} bytes`) as Error & {
+        statusCode?: number;
+        code?: string;
+      };
+      err.statusCode = 413;
+      err.code = "FST_ERR_CTP_BODY_TOO_LARGE";
+      done(err, undefined);
+      return;
+    }
+    try {
+      done(null, JSON.parse((body as Buffer).toString()));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
 
   // ─── Database ──────────────────────────────────────────────
   const db = createDb(runtimeConfig.databaseUrl);
@@ -135,10 +144,13 @@ export async function createServer() {
   });
 
   // ─── Rate Limiting ───────────────────────────────────────
-  app.addHook("preHandler", createGlobalRateLimit({
-    db,
-    config: apiRateLimitConfig,
-  }));
+  app.addHook(
+    "preHandler",
+    createGlobalRateLimit({
+      db,
+      config: apiRateLimitConfig,
+    }),
+  );
 
   // ─── Auth Middleware ──────────────────────────────────────
   await app.register(authPlugin);
@@ -208,6 +220,9 @@ export async function createServer() {
   registerIntelligenceRoutes(app, db);
   registerIntelligenceDemoRoutes(app, db);
 
+  // ─── Negotiation Agent Builder (production) ───────────
+  registerNegotiationAgentRoutes(app, db);
+
   // ─── Gamification Routes ───────────────────────────────
   registerPresetRoutes(app, db);
   registerBuddyRoutes(app, db);
@@ -220,7 +235,7 @@ export async function createServer() {
   registerReviewerRoutes(app, db);
 
   // ─── AI Advisor Routes ──────────────────────────────────
-  registerAdvisorRoutes(app, db);
+  registerDisputeAdvisorRoutes(app, db);
 
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);

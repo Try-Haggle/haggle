@@ -325,9 +325,7 @@ export const HAGGLE_SETTLEMENT_ROUTER_ABI = [
   {
     type: "event",
     name: "SignerRotationCancelled",
-    inputs: [
-      { indexed: true, name: "cancelledSigner", type: "address" },
-    ],
+    inputs: [{ indexed: true, name: "cancelledSigner", type: "address" }],
     anonymous: false,
   },
   {

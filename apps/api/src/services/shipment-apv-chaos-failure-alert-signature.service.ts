@@ -2,13 +2,12 @@ import {
   createHash,
   createPublicKey,
   generateKeyPairSync,
+  type KeyObject,
   sign,
   verify,
-  type KeyObject,
 } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvChaosFailureAlertPreview } from
-  "./shipment-apv-chaos-failure-alert-preview.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvChaosFailureAlertPreview } from "./shipment-apv-chaos-failure-alert-preview.service.js";
 
 const SIGNING_DOMAIN = "haggle.shipment-apv-failure-alert.payload-sha256.v1";
 
@@ -93,14 +92,19 @@ function iso(value: unknown) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function signatureMatches(row: SignatureRow, input: {
-  clientSignatureId: string;
-  payloadOutboxId: string;
-  signedBy: string;
-}) {
-  return String(row.client_signature_id) === input.clientSignatureId
-    && String(row.payload_outbox_id) === input.payloadOutboxId
-    && String(row.signed_by) === input.signedBy;
+function signatureMatches(
+  row: SignatureRow,
+  input: {
+    clientSignatureId: string;
+    payloadOutboxId: string;
+    signedBy: string;
+  },
+) {
+  return (
+    String(row.client_signature_id) === input.clientSignatureId &&
+    String(row.payload_outbox_id) === input.payloadOutboxId &&
+    String(row.signed_by) === input.signedBy
+  );
 }
 
 export function verifyShipmentApvFailureAlertPayloadSignature(value: {
@@ -112,16 +116,24 @@ export function verifyShipmentApvFailureAlertPayloadSignature(value: {
   signatureBase64: string;
 }) {
   try {
-    if (value.signingDomain !== SIGNING_DOMAIN || value.algorithm !== "Ed25519"
-      || !/^[0-9a-f]{64}$/.test(value.payloadSha256)
-      || !/^[0-9a-f]{24}$/.test(value.keyId)) return false;
+    if (
+      value.signingDomain !== SIGNING_DOMAIN ||
+      value.algorithm !== "Ed25519" ||
+      !/^[0-9a-f]{64}$/.test(value.payloadSha256) ||
+      !/^[0-9a-f]{24}$/.test(value.keyId)
+    )
+      return false;
     const publicKeyDer = Buffer.from(value.publicKeySpkiBase64, "base64");
     const publicKey = createPublicKey({ key: publicKeyDer, format: "der", type: "spki" });
     if (publicKey.asymmetricKeyType !== "ed25519" || keyId(publicKeyDer) !== value.keyId) {
       return false;
     }
-    return verify(null, signingMessage(value.payloadSha256), publicKey,
-      Buffer.from(value.signatureBase64, "base64"));
+    return verify(
+      null,
+      signingMessage(value.payloadSha256),
+      publicKey,
+      Buffer.from(value.signatureBase64, "base64"),
+    );
   } catch {
     return false;
   }
@@ -178,8 +190,13 @@ function signatureFromBinding(row: BindingRow): SignatureRow | null {
 
 export async function createShipmentApvFailureAlertPayloadSignature(
   db: Pick<Database, "execute">,
-  input: { payloadOutboxId: string; clientSignatureId: string; signedBy: string;
-    signer: ShipmentApvFailureAlertPayloadSigner; now?: Date },
+  input: {
+    payloadOutboxId: string;
+    clientSignatureId: string;
+    signedBy: string;
+    signer: ShipmentApvFailureAlertPayloadSigner;
+    now?: Date;
+  },
 ) {
   const now = input.now ?? new Date();
   const existingRows = await db.execute(sql`SELECT *, false AS inserted
@@ -230,13 +247,19 @@ export async function createShipmentApvFailureAlertPayloadSignature(
     ) event ON true
     WHERE key.key_id = ${input.signer.keyId} LIMIT 1`);
   const registry = (registryRows as unknown as RegistryRow[])[0];
-  if (!registry || String(registry.event_type) !== "REGISTERED"
-    || String(registry.public_key_spki_base64) !== input.signer.publicKeySpkiBase64) {
+  if (
+    !registry ||
+    String(registry.event_type) !== "REGISTERED" ||
+    String(registry.public_key_spki_base64) !== input.signer.publicKeySpkiBase64
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_SIGNING_KEY_NOT_ACTIVE");
   }
   const preview = await getShipmentApvChaosFailureAlertPreview(db, now);
-  if (preview.action === "none" || !preview.approval.required
-    || preview.stateFingerprint !== String(binding.state_fingerprint)) {
+  if (
+    preview.action === "none" ||
+    !preview.approval.required ||
+    preview.stateFingerprint !== String(binding.state_fingerprint)
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_STATE_CHANGED");
   }
 

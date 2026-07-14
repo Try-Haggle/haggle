@@ -29,7 +29,12 @@ export class ScaffoldSettlementRouterContract implements SettlementRouterContrac
     readonly asset: "USDC",
   ) {}
 
-  async quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote> {
+  async quote(
+    request: Omit<
+      SettlementRouterExecutionRequest,
+      "quote_id" | "signature" | "deadline" | "signer_nonce"
+    >,
+  ): Promise<SettlementRouterQuote> {
     return {
       quote_id: createId("router_quote"),
       network: this.network,
@@ -41,7 +46,9 @@ export class ScaffoldSettlementRouterContract implements SettlementRouterContrac
     };
   }
 
-  async execute(_request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult> {
+  async execute(
+    _request: SettlementRouterExecutionRequest,
+  ): Promise<SettlementRouterExecutionResult> {
     return {
       execution_id: createId("router_exec"),
       router_reference: createId("router_ref"),
@@ -64,7 +71,12 @@ export class DisabledSettlementRouterContract implements SettlementRouterContrac
     private readonly reason = "server-side settlement router execution is disabled",
   ) {}
 
-  async quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote> {
+  async quote(
+    request: Omit<
+      SettlementRouterExecutionRequest,
+      "quote_id" | "signature" | "deadline" | "signer_nonce"
+    >,
+  ): Promise<SettlementRouterQuote> {
     return {
       quote_id: createId("router_quote"),
       network: this.network,
@@ -76,7 +88,9 @@ export class DisabledSettlementRouterContract implements SettlementRouterContrac
     };
   }
 
-  async execute(_request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult> {
+  async execute(
+    _request: SettlementRouterExecutionRequest,
+  ): Promise<SettlementRouterExecutionResult> {
     throw new Error(`SETTLEMENT_ROUTER_EXECUTION_DISABLED:${this.reason}`);
   }
 }
@@ -108,7 +122,9 @@ export class ScaffoldConditionalSettlementContract implements ConditionalSettlem
     readonly address?: string,
   ) {}
 
-  async createAndFund(request: ConditionalSettlementCreateRequest): Promise<ConditionalSettlementResult> {
+  async createAndFund(
+    request: ConditionalSettlementCreateRequest,
+  ): Promise<ConditionalSettlementResult> {
     return {
       settlement_id: `conditional_${request.order_id}_${request.payment_intent_id}`,
       contract_reference: createId("conditional_fund"),
@@ -118,7 +134,9 @@ export class ScaffoldConditionalSettlementContract implements ConditionalSettlem
     };
   }
 
-  async release(request: ConditionalSettlementReleaseRequest): Promise<ConditionalSettlementResult> {
+  async release(
+    request: ConditionalSettlementReleaseRequest,
+  ): Promise<ConditionalSettlementResult> {
     return {
       settlement_id: request.settlement_id,
       contract_reference: createId("conditional_release"),
@@ -148,7 +166,10 @@ export class ScaffoldConditionalSettlementContract implements ConditionalSettlem
     };
   }
 
-  async raiseDispute(settlementId: string, _evidenceHash: string): Promise<ConditionalSettlementResult> {
+  async raiseDispute(
+    settlementId: string,
+    _evidenceHash: string,
+  ): Promise<ConditionalSettlementResult> {
     return {
       settlement_id: settlementId,
       contract_reference: createId("conditional_dispute"),

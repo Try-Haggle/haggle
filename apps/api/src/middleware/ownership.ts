@@ -1,11 +1,11 @@
-import type { FastifyRequest, FastifyReply } from "fastify";
 import type { Database } from "@haggle/db";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { getDisputeById } from "../services/dispute-record.service.js";
 import {
   getCommerceOrderByOrderId,
+  getPaymentIntentById,
 } from "../services/payment-record.service.js";
-import { getDisputeById } from "../services/dispute-record.service.js";
 import { getShipmentById } from "../services/shipment-record.service.js";
-import { getPaymentIntentById } from "../services/payment-record.service.js";
 
 // ---------------------------------------------------------------------------
 // Types

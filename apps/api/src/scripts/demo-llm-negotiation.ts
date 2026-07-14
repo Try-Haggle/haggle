@@ -1,32 +1,32 @@
 /**
- * Haggle LLM Demo — Grok 4 Fast 기반 AI 자동 협상
+ * Haggle LLM Demo — DeepSeek V4 Pro 기반 AI 자동 협상
  *
- * 구매자 AI와 판매자 AI가 각각 Grok 4 Fast를 호출하여 협상합니다.
+ * 구매자 AI와 판매자 AI가 각각 DeepSeek V4 Pro를 호출하여 협상합니다.
  * 모든 프롬프트, 응답, 토큰 사용량, 비용을 추적하고
  * HTML 대시보드로 출력합니다.
  *
  * Usage:
- *   XAI_API_KEY=xai-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts
+ *   DEEPSEEK_API_KEY=sk-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts
  */
 
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // ─── Config ──────────────────────────────────────────────────
 
-const XAI_API_BASE = 'https://api.x.ai/v1';
-const MODEL = process.env.XAI_MODEL ?? 'grok-4-fast';
-const PRICE_INPUT_PER_M = 0.20;   // $/M input tokens
-const PRICE_OUTPUT_PER_M = 0.50;  // $/M output tokens
+const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
+const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+const PRICE_INPUT_PER_M = 0.435; // $/M input tokens (cache-miss)
+const PRICE_OUTPUT_PER_M = 0.87; // $/M output tokens
 
-const ITEM = 'iPhone 15 Pro 256GB Space Black (미개봉)';
+const ITEM = "iPhone 15 Pro 256GB Space Black (미개봉)";
 const MARKET_PRICE = 1_050;
 const MAX_ROUNDS = 8;
 
 // ─── Types ───────────────────────────────────────────────────
 
 interface LLMResponse {
-  action: 'COUNTER' | 'ACCEPT' | 'REJECT';
+  action: "COUNTER" | "ACCEPT" | "REJECT";
   price: number;
   reasoning: string;
   message_to_opponent: string;
@@ -34,7 +34,7 @@ interface LLMResponse {
 
 interface RoundLog {
   round: number;
-  role: 'BUYER' | 'SELLER';
+  role: "BUYER" | "SELLER";
   incoming_price: number;
   system_prompt: string;
   user_prompt: string;
@@ -59,54 +59,60 @@ interface NegotiationResult {
   total_duration_ms: number;
 }
 
-// ─── xAI API Call ────────────────────────────────────────────
+// ─── DeepSeek API Call ───────────────────────────────────────
 
 function getApiKey(): string {
-  const key = process.env.XAI_API_KEY;
+  const key = process.env.DEEPSEEK_API_KEY;
   if (!key) {
-    console.error('❌ XAI_API_KEY 환경변수를 설정해주세요.');
-    console.error('   XAI_API_KEY=xai-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts');
+    console.error("❌ DEEPSEEK_API_KEY 환경변수를 설정해주세요.");
+    console.error(
+      "   DEEPSEEK_API_KEY=sk-xxx npx tsx apps/api/src/scripts/demo-llm-negotiation.ts",
+    );
     process.exit(1);
   }
   return key;
 }
 
-async function callGrok(
+async function callDeepSeek(
   systemPrompt: string,
   userPrompt: string,
-): Promise<{ content: string; usage: { prompt_tokens: number; completion_tokens: number }; latency_ms: number }> {
+): Promise<{
+  content: string;
+  usage: { prompt_tokens: number; completion_tokens: number };
+  latency_ms: number;
+}> {
   const start = Date.now();
 
-  const response = await fetch(`${XAI_API_BASE}/chat/completions`, {
-    method: 'POST',
+  const response = await fetch(`${DEEPSEEK_API_BASE}/chat/completions`, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${getApiKey()}`,
     },
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
-      response_format: { type: 'json_object' },
+      response_format: { type: "json_object" },
       temperature: 0.4,
       max_tokens: 500,
     }),
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`xAI API error ${response.status}: ${text}`);
+    const text = await response.text().catch(() => "");
+    throw new Error(`DeepSeek API error ${response.status}: ${text}`);
   }
 
-  const data = await response.json() as {
+  const data = (await response.json()) as {
     choices: Array<{ message: { content: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 
   return {
-    content: data.choices?.[0]?.message?.content ?? '',
+    content: data.choices?.[0]?.message?.content ?? "",
     usage: {
       prompt_tokens: data.usage?.prompt_tokens ?? 0,
       completion_tokens: data.usage?.completion_tokens ?? 0,
@@ -172,7 +178,7 @@ RESPOND IN JSON:
 }
 
 function buildUserPrompt(
-  role: 'BUYER' | 'SELLER',
+  role: "BUYER" | "SELLER",
   round: number,
   incomingPrice: number,
   history: Array<{ round: number; buyer_price: number; seller_price: number }>,
@@ -180,26 +186,28 @@ function buildUserPrompt(
   const lines: string[] = [];
 
   lines.push(`=== Round ${round} ===`);
-  lines.push(`You received an ${role === 'BUYER' ? "seller's offer" : "buyer's offer"}: $${incomingPrice}`);
-  lines.push('');
+  lines.push(
+    `You received an ${role === "BUYER" ? "seller's offer" : "buyer's offer"}: $${incomingPrice}`,
+  );
+  lines.push("");
 
   if (history.length > 0) {
-    lines.push('NEGOTIATION HISTORY:');
+    lines.push("NEGOTIATION HISTORY:");
     for (const h of history) {
       lines.push(`  Round ${h.round}: Buyer $${h.buyer_price} ↔ Seller $${h.seller_price}`);
     }
-    lines.push('');
+    lines.push("");
   }
 
   lines.push(`This is round ${round} of maximum ${MAX_ROUNDS}.`);
   if (round >= MAX_ROUNDS - 1) {
-    lines.push('⚠️ This is nearly the last round. Consider closing the deal if reasonable.');
+    lines.push("⚠️ This is nearly the last round. Consider closing the deal if reasonable.");
   }
 
-  lines.push('');
-  lines.push('Decide: COUNTER (with your price), ACCEPT, or REJECT.');
+  lines.push("");
+  lines.push("Decide: COUNTER (with your price), ACCEPT, or REJECT.");
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 // ─── Main ────────────────────────────────────────────────────
@@ -207,7 +215,7 @@ function buildUserPrompt(
 async function main() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║  🤖 Haggle LLM Demo — Grok 4 Fast 기반 AI 협상             ║
+║  🤖 Haggle LLM Demo — DeepSeek V4 Pro 기반 AI 협상         ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  📱 ${ITEM.padEnd(50)}║
 ║  📊 시장가: $${MARKET_PRICE} | 모델: ${MODEL.padEnd(30)}║
@@ -230,7 +238,7 @@ async function main() {
     console.log(`  │ 받은 가격: $${currentPrice}`);
 
     const buyerSys = buyerSystemPrompt();
-    const buyerUsr = buildUserPrompt('BUYER', round, currentPrice, history);
+    const buyerUsr = buildUserPrompt("BUYER", round, currentPrice, history);
 
     let buyerParsed: LLMResponse;
     let buyerRaw: string;
@@ -238,7 +246,7 @@ async function main() {
     let buyerLatency: number;
 
     try {
-      const resp = await callGrok(buyerSys, buyerUsr);
+      const resp = await callDeepSeek(buyerSys, buyerUsr);
       buyerRaw = resp.content;
       buyerTokens = { input: resp.usage.prompt_tokens, output: resp.usage.completion_tokens };
       buyerLatency = resp.latency_ms;
@@ -249,29 +257,40 @@ async function main() {
       break;
     }
 
-    const buyerCost = (buyerTokens.input * PRICE_INPUT_PER_M + buyerTokens.output * PRICE_OUTPUT_PER_M) / 1_000_000;
+    const buyerCost =
+      (buyerTokens.input * PRICE_INPUT_PER_M + buyerTokens.output * PRICE_OUTPUT_PER_M) / 1_000_000;
 
     rounds.push({
-      round, role: 'BUYER', incoming_price: currentPrice,
-      system_prompt: buyerSys, user_prompt: buyerUsr,
-      raw_response: buyerRaw, parsed: buyerParsed,
-      tokens: buyerTokens, cost_usd: buyerCost, latency_ms: buyerLatency,
+      round,
+      role: "BUYER",
+      incoming_price: currentPrice,
+      system_prompt: buyerSys,
+      user_prompt: buyerUsr,
+      raw_response: buyerRaw,
+      parsed: buyerParsed,
+      tokens: buyerTokens,
+      cost_usd: buyerCost,
+      latency_ms: buyerLatency,
     });
 
-    console.log(`  │ 결정: ${buyerParsed.action}${buyerParsed.action === 'COUNTER' ? ` → $${buyerParsed.price}` : ''}`);
+    console.log(
+      `  │ 결정: ${buyerParsed.action}${buyerParsed.action === "COUNTER" ? ` → $${buyerParsed.price}` : ""}`,
+    );
     console.log(`  │ 이유: ${buyerParsed.reasoning}`);
     console.log(`  │ 메시지: "${buyerParsed.message_to_opponent}"`);
-    console.log(`  │ 토큰: ${buyerTokens.input}+${buyerTokens.output} = ${buyerTokens.input + buyerTokens.output} | $${buyerCost.toFixed(4)} | ${buyerLatency}ms`);
-    console.log('');
+    console.log(
+      `  │ 토큰: ${buyerTokens.input}+${buyerTokens.output} = ${buyerTokens.input + buyerTokens.output} | $${buyerCost.toFixed(4)} | ${buyerLatency}ms`,
+    );
+    console.log("");
 
-    if (buyerParsed.action === 'ACCEPT') {
+    if (buyerParsed.action === "ACCEPT") {
       deal = true;
       finalPrice = currentPrice;
-      acceptedBy = 'BUYER';
+      acceptedBy = "BUYER";
       break;
     }
-    if (buyerParsed.action === 'REJECT') {
-      console.log('  ❌ 구매자가 협상을 거부했습니다.');
+    if (buyerParsed.action === "REJECT") {
+      console.log("  ❌ 구매자가 협상을 거부했습니다.");
       break;
     }
 
@@ -282,7 +301,7 @@ async function main() {
     console.log(`  │ 받은 가격: $${buyerCounterPrice}`);
 
     const sellerSys = sellerSystemPrompt();
-    const sellerUsr = buildUserPrompt('SELLER', round, buyerCounterPrice, history);
+    const sellerUsr = buildUserPrompt("SELLER", round, buyerCounterPrice, history);
 
     let sellerParsed: LLMResponse;
     let sellerRaw: string;
@@ -290,7 +309,7 @@ async function main() {
     let sellerLatency: number;
 
     try {
-      const resp = await callGrok(sellerSys, sellerUsr);
+      const resp = await callDeepSeek(sellerSys, sellerUsr);
       sellerRaw = resp.content;
       sellerTokens = { input: resp.usage.prompt_tokens, output: resp.usage.completion_tokens };
       sellerLatency = resp.latency_ms;
@@ -301,29 +320,41 @@ async function main() {
       break;
     }
 
-    const sellerCost = (sellerTokens.input * PRICE_INPUT_PER_M + sellerTokens.output * PRICE_OUTPUT_PER_M) / 1_000_000;
+    const sellerCost =
+      (sellerTokens.input * PRICE_INPUT_PER_M + sellerTokens.output * PRICE_OUTPUT_PER_M) /
+      1_000_000;
 
     rounds.push({
-      round, role: 'SELLER', incoming_price: buyerCounterPrice,
-      system_prompt: sellerSys, user_prompt: sellerUsr,
-      raw_response: sellerRaw, parsed: sellerParsed,
-      tokens: sellerTokens, cost_usd: sellerCost, latency_ms: sellerLatency,
+      round,
+      role: "SELLER",
+      incoming_price: buyerCounterPrice,
+      system_prompt: sellerSys,
+      user_prompt: sellerUsr,
+      raw_response: sellerRaw,
+      parsed: sellerParsed,
+      tokens: sellerTokens,
+      cost_usd: sellerCost,
+      latency_ms: sellerLatency,
     });
 
-    console.log(`  │ 결정: ${sellerParsed.action}${sellerParsed.action === 'COUNTER' ? ` → $${sellerParsed.price}` : ''}`);
+    console.log(
+      `  │ 결정: ${sellerParsed.action}${sellerParsed.action === "COUNTER" ? ` → $${sellerParsed.price}` : ""}`,
+    );
     console.log(`  │ 이유: ${sellerParsed.reasoning}`);
     console.log(`  │ 메시지: "${sellerParsed.message_to_opponent}"`);
-    console.log(`  │ 토큰: ${sellerTokens.input}+${sellerTokens.output} = ${sellerTokens.input + sellerTokens.output} | $${sellerCost.toFixed(4)} | ${sellerLatency}ms`);
-    console.log('');
+    console.log(
+      `  │ 토큰: ${sellerTokens.input}+${sellerTokens.output} = ${sellerTokens.input + sellerTokens.output} | $${sellerCost.toFixed(4)} | ${sellerLatency}ms`,
+    );
+    console.log("");
 
-    if (sellerParsed.action === 'ACCEPT') {
+    if (sellerParsed.action === "ACCEPT") {
       deal = true;
       finalPrice = buyerCounterPrice;
-      acceptedBy = 'SELLER';
+      acceptedBy = "SELLER";
       break;
     }
-    if (sellerParsed.action === 'REJECT') {
-      console.log('  ❌ 판매자가 협상을 거부했습니다.');
+    if (sellerParsed.action === "REJECT") {
+      console.log("  ❌ 판매자가 협상을 거부했습니다.");
       break;
     }
 
@@ -352,120 +383,212 @@ async function main() {
     deal,
     final_price: finalPrice,
     accepted_by: acceptedBy,
-    total_rounds: Math.max(...rounds.map(r => r.round)),
+    total_rounds: Math.max(...rounds.map((r) => r.round)),
     total_tokens: totalTokens,
     total_cost_usd: totalCost,
     total_duration_ms: totalDuration,
   };
 
   // ─── Summary ───
-  console.log('');
+  console.log("");
   if (deal) {
     console.log(`  🎉 거래 성사! $${finalPrice} (${acceptedBy} 수락)`);
   } else {
-    console.log('  ❌ 거래 불성사');
+    console.log("  ❌ 거래 불성사");
   }
-  console.log(`  📊 총 ${result.total_rounds}라운드 | ${totalTokens.input + totalTokens.output} tokens | $${totalCost.toFixed(4)} | ${(totalDuration / 1000).toFixed(1)}s`);
+  console.log(
+    `  📊 총 ${result.total_rounds}라운드 | ${totalTokens.input + totalTokens.output} tokens | $${totalCost.toFixed(4)} | ${(totalDuration / 1000).toFixed(1)}s`,
+  );
 
   // ─── Generate HTML Dashboard ───
-  const htmlPath = resolve(import.meta.dirname, '../../../../docs/demo-llm-negotiation.html');
-  writeFileSync(htmlPath, generateDashboard(result), 'utf-8');
+  const htmlPath = resolve(import.meta.dirname, "../../../../docs/demo-llm-negotiation.html");
+  writeFileSync(htmlPath, generateDashboard(result), "utf-8");
   console.log(`  📄 대시보드: ${htmlPath}`);
-  console.log('     open docs/demo-llm-negotiation.html');
+  console.log("     open docs/demo-llm-negotiation.html");
 }
 
 // ─── HTML Dashboard Generator ────────────────────────────────
 
-function renderChartBar(p: { round: number; role: string; price: number }, isDeal: boolean): string {
+function renderChartBar(
+  p: { round: number; role: string; price: number },
+  isDeal: boolean,
+): string {
   const minP = 850;
   const maxP = 1150;
   const pct = ((p.price - minP) / (maxP - minP)) * 100;
-  const cls = isDeal ? 'deal' : p.role === 'S' ? 'seller' : 'buyer';
-  const label = p.round === 0 ? 'Start' : 'R' + p.round + ' ' + p.role;
-  const dealTag = isDeal ? '<span style="color:#2ecc71;font-weight:700"> ✅ DEAL</span>' : '';
-  return '<div class="chart-bar">' +
-    '<span class="chart-label">' + label + '</span>' +
-    '<span class="chart-price">$' + p.price + '</span>' +
-    '<div class="chart-fill ' + cls + '" style="width: ' + Math.max(2, pct) + '%"></div>' +
-    dealTag + '</div>';
+  const cls = isDeal ? "deal" : p.role === "S" ? "seller" : "buyer";
+  const label = p.round === 0 ? "Start" : "R" + p.round + " " + p.role;
+  const dealTag = isDeal ? '<span style="color:#2ecc71;font-weight:700"> ✅ DEAL</span>' : "";
+  return (
+    '<div class="chart-bar">' +
+    '<span class="chart-label">' +
+    label +
+    "</span>" +
+    '<span class="chart-price">$' +
+    p.price +
+    "</span>" +
+    '<div class="chart-fill ' +
+    cls +
+    '" style="width: ' +
+    Math.max(2, pct) +
+    '%"></div>' +
+    dealTag +
+    "</div>"
+  );
 }
 
 function renderPricingRow(r: RoundLog): string {
-  const roleLabel = r.role === 'BUYER' ? '🛒 구매자' : '🏪 판매자';
-  return '<tr>' +
-    '<td>R' + r.round + ' ' + roleLabel + '</td>' +
-    '<td>' + r.tokens.input + ' in + ' + r.tokens.output + ' out</td>' +
-    '<td>$' + PRICE_INPUT_PER_M + '/M + $' + PRICE_OUTPUT_PER_M + '/M</td>' +
-    '<td>$' + r.cost_usd.toFixed(4) + '</td></tr>';
+  const roleLabel = r.role === "BUYER" ? "🛒 구매자" : "🏪 판매자";
+  return (
+    "<tr>" +
+    "<td>R" +
+    r.round +
+    " " +
+    roleLabel +
+    "</td>" +
+    "<td>" +
+    r.tokens.input +
+    " in + " +
+    r.tokens.output +
+    " out</td>" +
+    "<td>$" +
+    PRICE_INPUT_PER_M +
+    "/M + $" +
+    PRICE_OUTPUT_PER_M +
+    "/M</td>" +
+    "<td>$" +
+    r.cost_usd.toFixed(4) +
+    "</td></tr>"
+  );
 }
 
 function renderRoundCard(r: RoundLog): string {
-  const icon = r.role === 'BUYER' ? '🛒' : '🏪';
-  const name = r.role === 'BUYER' ? 'Alice (구매자 AI)' : 'Bob (판매자 AI)';
-  const actionClass = r.parsed.action === 'ACCEPT' ? 'accept' : r.parsed.action === 'REJECT' ? 'reject' : 'counter';
-  const actionLabel = r.parsed.action === 'COUNTER' ? '역제안 → $' + r.parsed.price : r.parsed.action;
-  const counterHtml = r.parsed.action === 'COUNTER'
-    ? '<span class="arrow">→</span><span class="outgoing">역제안: <strong>$' + r.parsed.price + '</strong></span>'
-    : '';
+  const icon = r.role === "BUYER" ? "🛒" : "🏪";
+  const name = r.role === "BUYER" ? "Alice (구매자 AI)" : "Bob (판매자 AI)";
+  const actionClass =
+    r.parsed.action === "ACCEPT" ? "accept" : r.parsed.action === "REJECT" ? "reject" : "counter";
+  const actionLabel =
+    r.parsed.action === "COUNTER" ? "역제안 → $" + r.parsed.price : r.parsed.action;
+  const counterHtml =
+    r.parsed.action === "COUNTER"
+      ? '<span class="arrow">→</span><span class="outgoing">역제안: <strong>$' +
+        r.parsed.price +
+        "</strong></span>"
+      : "";
 
-  return '<div class="round-card ' + actionClass + '">' +
+  return (
+    '<div class="round-card ' +
+    actionClass +
+    '">' +
     '<div class="round-header">' +
-    '<span class="round-badge">R' + r.round + '</span>' +
-    '<span class="role-icon">' + icon + '</span>' +
-    '<span class="role-name">' + name + '</span>' +
-    '<span class="action-badge ' + actionClass + '">' + actionLabel + '</span>' +
-    '</div>' +
+    '<span class="round-badge">R' +
+    r.round +
+    "</span>" +
+    '<span class="role-icon">' +
+    icon +
+    "</span>" +
+    '<span class="role-name">' +
+    name +
+    "</span>" +
+    '<span class="action-badge ' +
+    actionClass +
+    '">' +
+    actionLabel +
+    "</span>" +
+    "</div>" +
     '<div class="round-body">' +
     '<div class="price-flow">' +
-    '<span class="incoming">받은 제안: <strong>$' + r.incoming_price + '</strong></span>' +
+    '<span class="incoming">받은 제안: <strong>$' +
+    r.incoming_price +
+    "</strong></span>" +
     counterHtml +
-    '</div>' +
-    '<div class="message-bubble ' + r.role.toLowerCase() + '">' +
-    '"' + escHtml(r.parsed.message_to_opponent) + '"' +
-    '</div>' +
+    "</div>" +
+    '<div class="message-bubble ' +
+    r.role.toLowerCase() +
+    '">' +
+    '"' +
+    escHtml(r.parsed.message_to_opponent) +
+    '"' +
+    "</div>" +
     '<div class="reasoning">' +
-    '<span class="reasoning-label">🧠 내부 추론:</span> ' + escHtml(r.parsed.reasoning) +
-    '</div>' +
+    '<span class="reasoning-label">🧠 내부 추론:</span> ' +
+    escHtml(r.parsed.reasoning) +
+    "</div>" +
     '<div class="meta-row">' +
-    '<span class="meta-item">📥 ' + r.tokens.input + ' in</span>' +
-    '<span class="meta-item">📤 ' + r.tokens.output + ' out</span>' +
-    '<span class="meta-item">💰 $' + r.cost_usd.toFixed(4) + '</span>' +
-    '<span class="meta-item">⏱️ ' + r.latency_ms + 'ms</span>' +
-    '</div>' +
+    '<span class="meta-item">📥 ' +
+    r.tokens.input +
+    " in</span>" +
+    '<span class="meta-item">📤 ' +
+    r.tokens.output +
+    " out</span>" +
+    '<span class="meta-item">💰 $' +
+    r.cost_usd.toFixed(4) +
+    "</span>" +
+    '<span class="meta-item">⏱️ ' +
+    r.latency_ms +
+    "ms</span>" +
+    "</div>" +
     '<details class="prompt-detail">' +
-    '<summary>프롬프트 보기</summary>' +
+    "<summary>프롬프트 보기</summary>" +
     '<div class="prompt-section"><div class="prompt-label">System Prompt</div>' +
-    '<pre class="prompt-text">' + escHtml(r.system_prompt) + '</pre></div>' +
+    '<pre class="prompt-text">' +
+    escHtml(r.system_prompt) +
+    "</pre></div>" +
     '<div class="prompt-section"><div class="prompt-label">User Prompt</div>' +
-    '<pre class="prompt-text">' + escHtml(r.user_prompt) + '</pre></div>' +
+    '<pre class="prompt-text">' +
+    escHtml(r.user_prompt) +
+    "</pre></div>" +
     '<div class="prompt-section"><div class="prompt-label">Raw Response</div>' +
-    '<pre class="prompt-text">' + escHtml(r.raw_response) + '</pre></div>' +
-    '</details></div></div>';
+    '<pre class="prompt-text">' +
+    escHtml(r.raw_response) +
+    "</pre></div>" +
+    "</details></div></div>"
+  );
 }
 
 function generateDashboard(result: NegotiationResult): string {
-  const { rounds, deal, final_price, total_rounds, total_tokens, total_cost_usd, total_duration_ms } = result;
+  const {
+    rounds,
+    deal,
+    final_price,
+    total_rounds,
+    total_tokens,
+    total_cost_usd,
+    total_duration_ms,
+  } = result;
 
   // Price chart data
-  const pricePoints: Array<{ round: number; role: string; price: number }> = [{ round: 0, role: 'S', price: 1120 }];
+  const pricePoints: Array<{ round: number; role: string; price: number }> = [
+    { round: 0, role: "S", price: 1120 },
+  ];
   for (const r of rounds) {
-    if (r.parsed.action === 'ACCEPT') {
-      pricePoints.push({ round: r.round, role: r.role === 'BUYER' ? 'B' : 'S', price: r.incoming_price });
+    if (r.parsed.action === "ACCEPT") {
+      pricePoints.push({
+        round: r.round,
+        role: r.role === "BUYER" ? "B" : "S",
+        price: r.incoming_price,
+      });
     } else {
-      pricePoints.push({ round: r.round, role: r.role === 'BUYER' ? 'B' : 'S', price: r.parsed.price });
+      pricePoints.push({
+        round: r.round,
+        role: r.role === "BUYER" ? "B" : "S",
+        price: r.parsed.price,
+      });
     }
   }
 
-  const chartBarsHtml = pricePoints.map((p, i) => {
-    const isDeal = deal && p.price === final_price && i === pricePoints.length - 1;
-    return renderChartBar(p, isDeal);
-  }).join('\n');
+  const chartBarsHtml = pricePoints
+    .map((p, i) => {
+      const isDeal = deal && p.price === final_price && i === pricePoints.length - 1;
+      return renderChartBar(p, isDeal);
+    })
+    .join("\n");
 
-  const roundCardsHtml = rounds.map(renderRoundCard).join('\n');
-  const pricingRowsHtml = rounds.map(renderPricingRow).join('\n');
+  const roundCardsHtml = rounds.map(renderRoundCard).join("\n");
+  const pricingRowsHtml = rounds.map(renderPricingRow).join("\n");
 
   const savings = deal && final_price ? MARKET_PRICE - final_price : 0;
-  const savingsPct = deal && final_price ? ((savings / MARKET_PRICE) * 100).toFixed(1) : '0';
+  const savingsPct = deal && final_price ? ((savings / MARKET_PRICE) * 100).toFixed(1) : "0";
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -750,16 +873,16 @@ function generateDashboard(result: NegotiationResult): string {
 <div class="header">
   <h1>🤖 Haggle LLM 협상 데모</h1>
   <div class="subtitle">
-    ${escHtml(result.item)} | 모델: ${escHtml(MODEL)} | ${new Date().toLocaleDateString('ko-KR')}
+    ${escHtml(result.item)} | 모델: ${escHtml(MODEL)} | ${new Date().toLocaleDateString("ko-KR")}
   </div>
 </div>
 
 <!-- Summary -->
 <div class="summary-grid">
-  <div class="summary-card ${deal ? 'deal' : ''}">
-    <div class="label">${deal ? '🎉 최종 가격' : '결과'}</div>
-    <div class="value">${deal ? '$' + final_price : '불성사'}</div>
-    <div class="sub">${deal ? '시장가 대비 ' + savingsPct + '% 절약' : ''}</div>
+  <div class="summary-card ${deal ? "deal" : ""}">
+    <div class="label">${deal ? "🎉 최종 가격" : "결과"}</div>
+    <div class="value">${deal ? "$" + final_price : "불성사"}</div>
+    <div class="sub">${deal ? "시장가 대비 " + savingsPct + "% 절약" : ""}</div>
   </div>
   <div class="summary-card">
     <div class="label">📊 시장가</div>
@@ -800,7 +923,7 @@ function generateDashboard(result: NegotiationResult): string {
 
 <!-- Pricing Info -->
 <div class="pricing-section">
-  <h2>💰 Grok 4 Fast 가격 정보</h2>
+  <h2>💰 DeepSeek V4 Pro 가격 정보</h2>
   <table class="pricing-table">
     <thead>
       <tr><th>항목</th><th>수량</th><th>단가</th><th>비용</th></tr>
@@ -816,13 +939,13 @@ function generateDashboard(result: NegotiationResult): string {
     </tbody>
   </table>
   <div style="margin-top:16px; font-size:13px; color:#888;">
-    <p>📋 <strong>Grok 4 Fast 가격표</strong></p>
-    <p>• Input: $0.20 / 1M tokens ($0.0002 / 1K tokens)</p>
-    <p>• Output: $0.50 / 1M tokens ($0.0005 / 1K tokens)</p>
-    <p>• Context window: 2M tokens</p>
-    <p>• Reasoning mode 사용 시: 동일 토큰 단가지만 reasoning tokens이 output으로 청구되어 실질 비용 증가</p>
-    <p style="margin-top:8px;">📊 <strong>비교</strong>: Claude Sonnet $3/$15 | GPT-4o $2.5/$10 | Grok 4 $2/$10</p>
-    <p style="color:#f39c12; margin-top:4px;">→ Grok 4 Fast는 가장 저렴한 Tier. 협상 한 건당 ~$0.001 수준.</p>
+    <p>📋 <strong>DeepSeek V4 Pro 가격표</strong></p>
+    <p>• Input (cache miss): $0.435 / 1M tokens</p>
+    <p>• Input (cache hit): $0.0028 / 1M tokens (~155x cheaper)</p>
+    <p>• Output: $0.87 / 1M tokens</p>
+    <p>• OpenAI-compatible API · JSON output · context caching 지원</p>
+    <p style="margin-top:8px;">📊 <strong>비교</strong>: Claude Sonnet $3/$15 | GPT-4o $2.5/$10 | DeepSeek V4 Pro $0.435/$0.87</p>
+    <p style="color:#f39c12; margin-top:4px;">→ 캐시 적중 시 협상 한 건당 ~$0.003 수준.</p>
   </div>
 </div>
 
@@ -836,12 +959,16 @@ function generateDashboard(result: NegotiationResult): string {
 }
 
 function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ─── Run ─────────────────────────────────────────────────────
 
 main().catch((e) => {
-  console.error('Fatal error:', e);
+  console.error("Fatal error:", e);
   process.exit(1);
 });

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { verifyShipmentApvFailureAlertReceiverContract } from
-  "./shipment-apv-chaos-failure-alert-receiver-contract.service.js";
+import { type Database, sql } from "@haggle/db";
+import { verifyShipmentApvFailureAlertReceiverContract } from "./shipment-apv-chaos-failure-alert-receiver-contract.service.js";
 
 const DELIVERY_DOMAIN = "haggle.shipment-apv-failure-alert.receiver-delivery.v1";
 
@@ -28,7 +27,8 @@ type BindingRow = {
 
 function deliveryId(intentId: string, payloadSha256: string) {
   return createHash("sha256")
-    .update(`${DELIVERY_DOMAIN}:${intentId}:${payloadSha256}`, "utf8").digest("hex");
+    .update(`${DELIVERY_DOMAIN}:${intentId}:${payloadSha256}`, "utf8")
+    .digest("hex");
 }
 
 function iso(value: unknown) {
@@ -37,11 +37,13 @@ function iso(value: unknown) {
 }
 
 function claimMatches(row: ClaimRow, binding: BindingRow, expectedDeliveryId: string) {
-  return String(row.delivery_id) === expectedDeliveryId
-    && String(row.delivery_intent_id) === String(binding.delivery_intent_id)
-    && String(row.payload_signature_id) === String(binding.payload_signature_id)
-    && String(row.payload_sha256) === String(binding.payload_sha256)
-    && String(row.key_id) === String(binding.key_id);
+  return (
+    String(row.delivery_id) === expectedDeliveryId &&
+    String(row.delivery_intent_id) === String(binding.delivery_intent_id) &&
+    String(row.payload_signature_id) === String(binding.payload_signature_id) &&
+    String(row.payload_sha256) === String(binding.payload_sha256) &&
+    String(row.key_id) === String(binding.key_id)
+  );
 }
 
 function publicClaim(row: ClaimRow) {
@@ -85,7 +87,9 @@ export async function createShipmentApvFailureAlertReceiverClaim(
   const binding = (bindingRows as unknown as BindingRow[])[0];
   if (!binding) throw new Error("SHIPMENT_APV_FAILURE_ALERT_DELIVERY_INTENT_NOT_FOUND");
   const expectedDeliveryId = deliveryId(
-    String(binding.delivery_intent_id), String(binding.payload_sha256));
+    String(binding.delivery_intent_id),
+    String(binding.payload_sha256),
+  );
 
   const rows = await db.execute(sql`WITH inserted AS (
       INSERT INTO shipment_apv_failure_alert_receiver_claims

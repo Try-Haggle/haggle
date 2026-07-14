@@ -7,11 +7,7 @@
 
 export type AdvisorRole = "buyer" | "seller";
 
-export type AdvisorMessageRole =
-  | "buyer_advisor"
-  | "seller_advisor"
-  | "buyer_user"
-  | "seller_user";
+export type AdvisorMessageRole = "buyer_advisor" | "seller_advisor" | "buyer_user" | "seller_user";
 
 export interface AdvisorMessageMetadata {
   tokens_used?: number;
@@ -43,9 +39,9 @@ export interface AdvisorChatResponse {
   action_suggestions?: string[];
 }
 
-/** Cost per 1M tokens for Grok-4-Fast (approximate) */
-export const GROK4_FAST_COST_PER_1M_INPUT = 0.30;
-export const GROK4_FAST_COST_PER_1M_OUTPUT = 0.50;
+/** Cost per 1M tokens for DeepSeek V4 Pro (cache-miss input). */
+export const DEEPSEEK_COST_PER_1M_INPUT = 0.435;
+export const DEEPSEEK_COST_PER_1M_OUTPUT = 0.87;
 
 /** Advisor conversation history cap (token budget control) */
 export const MAX_HISTORY_TURNS = 10;

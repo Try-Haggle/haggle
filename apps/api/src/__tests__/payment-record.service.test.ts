@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import { assertPaymentReadyForExecution } from "@haggle/payment-core";
+import { describe, expect, it, vi } from "vitest";
 import {
   completePaymentOperationIdempotencyRecord,
   createPaymentSettlementRecord,
@@ -227,9 +227,9 @@ describe("payment-record.service", () => {
       },
     };
 
-    await expect(getActivePaymentIntentByOrderId(db as never, "00000000-0000-4000-a000-000000000088"))
-      .rejects
-      .toThrow("incompatible payment statuses: legacy=CANCELED production=captured");
+    await expect(
+      getActivePaymentIntentByOrderId(db as never, "00000000-0000-4000-a000-000000000088"),
+    ).rejects.toThrow("incompatible payment statuses: legacy=CANCELED production=captured");
   });
 
   it("creates and maps a payment settlement record", async () => {
@@ -246,13 +246,15 @@ describe("payment-record.service", () => {
       status: "SETTLED",
     });
 
-    expect(db._mocks.values).toHaveBeenCalledWith(expect.objectContaining({
-      id: "settlement_123",
-      paymentIntentId: "pi_123",
-      providerReference: "tx_123",
-      settledAmountMinor: "1000",
-      status: "SETTLED",
-    }));
+    expect(db._mocks.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "settlement_123",
+        paymentIntentId: "pi_123",
+        providerReference: "tx_123",
+        settledAmountMinor: "1000",
+        status: "SETTLED",
+      }),
+    );
     expect(settlement).toEqual({
       id: "settlement_123",
       payment_intent_id: "pi_123",
@@ -289,15 +291,17 @@ describe("payment-record.service", () => {
   it("fails settlement creation when conflict fallback cannot find a row", async () => {
     const db = buildSettlementDb([], null);
 
-    await expect(createPaymentSettlementRecord(db as never, {
-      id: "settlement_retry",
-      payment_intent_id: "pi_missing",
-      rail: "x402",
-      provider_reference: "tx_retry",
-      settled_amount: { currency: "USD", amount_minor: 1000 },
-      settled_at: "2026-05-07T12:00:00.000Z",
-      status: "SETTLED",
-    })).rejects.toThrow("PAYMENT_SETTLEMENT_RECORD_NOT_CREATED:pi_missing");
+    await expect(
+      createPaymentSettlementRecord(db as never, {
+        id: "settlement_retry",
+        payment_intent_id: "pi_missing",
+        rail: "x402",
+        provider_reference: "tx_retry",
+        settled_amount: { currency: "USD", amount_minor: 1000 },
+        settled_at: "2026-05-07T12:00:00.000Z",
+        status: "SETTLED",
+      }),
+    ).rejects.toThrow("PAYMENT_SETTLEMENT_RECORD_NOT_CREATED:pi_missing");
   });
 
   it("looks up a settlement record by payment intent id", async () => {
@@ -323,12 +327,17 @@ describe("payment-record.service", () => {
   it("completes an in-progress payment idempotency record in place", async () => {
     const db = buildUpdateDb();
 
-    await completePaymentOperationIdempotencyRecord(db as never, "payment.capture", "idem-capture-1", {
-      responseStatus: 200,
-      responseBody: {
-        intent: { id: "pi_123", status: "SETTLED" },
+    await completePaymentOperationIdempotencyRecord(
+      db as never,
+      "payment.capture",
+      "idem-capture-1",
+      {
+        responseStatus: 200,
+        responseBody: {
+          intent: { id: "pi_123", status: "SETTLED" },
+        },
       },
-    });
+    );
 
     expect(db.update).toHaveBeenCalled();
     expect(db._mocks.set).toHaveBeenCalledWith({
@@ -356,11 +365,7 @@ describe("payment-record.service", () => {
       },
     };
 
-    const result = await getInProgressPaymentOperationForIntent(
-      db as never,
-      "pi_123",
-      "idem-new",
-    );
+    const result = await getInProgressPaymentOperationForIntent(db as never, "pi_123", "idem-new");
 
     expect(db.query.paymentOperationIdempotency.findFirst).toHaveBeenCalled();
     expect(result).toBe(row);
@@ -381,11 +386,7 @@ describe("payment-record.service", () => {
       },
     };
 
-    const result = await getInProgressPaymentOperationForIntent(
-      db as never,
-      "pi_123",
-      "idem-new",
-    );
+    const result = await getInProgressPaymentOperationForIntent(db as never, "pi_123", "idem-new");
 
     expect(result).toBeNull();
   });

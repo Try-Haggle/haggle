@@ -1,43 +1,38 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
 import {
-  NEGOTIATION_PRESETS,
-  getNegotiationPreset,
-  type AgentProfile,
-  type NegotiationPreset,
-  type NegotiationPresetId,
-  type NegotiationWeights,
+  type AgentBuilderState,
+  builderStateFromAgentRow,
+  createBuilderState,
+  engineParamsFromPreset,
+  getNegotiationAgentPreset,
+  isBuilderCustomized,
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgent,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
+  resolveEffectivePreset,
 } from "@haggle/shared";
-import { localAgents } from "@/lib/local-agents";
-import { AgentsList } from "./AgentsList";
-import { StrategyRadar } from "@/components/agents/StrategyRadar";
+import { Save, Settings2, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import {
-  AdvancedSettingsModal,
   type AdvancedOverrides,
+  AdvancedSettingsModal,
 } from "@/components/agents/AdvancedSettingsModal";
+import { StrategyRadar } from "@/components/agents/StrategyRadar";
+import { Button, buttonVariants, Input, PageHeader } from "@/components/ui";
+import { cn } from "@/lib/cn";
+import { draftNegotiationAgentStore } from "@/lib/draft-negotiation-agent-store";
+import type { NegotiationAgentBuilderMemory } from "@/lib/negotiation-agent-builder-types";
+import { AgentsList } from "./AgentsList";
 
 type Role = "buyer" | "seller";
 
-/** Controlled value used by both the standalone page builder and embedded
- *  pickers (wizard step 5, buyer-landing). */
-export interface AgentBuilderValue {
-  sourceKind: "preset" | "custom";
-  sourceId: string;
-  basePresetId: NegotiationPresetId;
-  effectivePreset: NegotiationPreset;
-  overrides: AdvancedOverrides | null;
-  /** True when the user has changed something since selecting this source
-   *  (Advanced sliders moved, future LLM tuning, etc.). False right after
-   *  picking a preset or my-agent. Drives the "Save as new agent" CTA. */
-  dirty: boolean;
-}
-
 export interface AgentBuilderProps {
   role: Role;
-  value: AgentBuilderValue | null;
-  onChange: (value: AgentBuilderValue | null) => void;
+  value: AgentBuilderState | null;
+  onChange: (value: AgentBuilderState | null) => void;
   /** When embedded (wizard, listing detail), hide page-level UI:
    *  Name input + Save/Cancel + page header. The picker UI stays. */
   embedded?: boolean;
@@ -54,7 +49,7 @@ export interface AgentBuilderProps {
   onDelete?: () => void;
 
   /** Optional slot rendered in the left column under the agent picker.
-   *  buyer-landing passes <StrategyChat> here so the LLM tuning sits inside
+   *  buyer-landing passes <NegotiationAgentBuilderChat> here so the LLM tuning sits inside
    *  the builder layout. Pages without listing context leave it undefined. */
   chatSlot?: React.ReactNode;
 
@@ -69,61 +64,40 @@ export interface AgentBuilderProps {
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 
-function applyOverridesToPreset(
-  base: NegotiationPreset,
-  o: AdvancedOverrides | null,
-): NegotiationPreset {
-  if (!o) return base;
+/** Build an AdvancedOverrides snapshot from a resolved preset (for the advanced
+ *  modal's initial slider values). */
+function overridesFromEffective(ep: NegotiationAgentPreset): AdvancedOverrides {
+  return { weights: { ...ep.weights }, ...engineParamsFromPreset(ep) };
+}
+
+/**
+ * Canonical serialization of the build state into the agent-strategy portion of
+ * the listing snapshot. THE one place that turns the in-memory build state into
+ * what gets persisted — used by the wizard's step-save AND publish so the two
+ * can never disagree. Always emits the full strategy: weights + every engine
+ * knob + optional builder-chat memory.
+ */
+export function agentStrategySnapshotFromState(
+  state: AgentBuilderState,
+  memory?: NegotiationAgentBuilderMemory | null,
+): Record<string, unknown> {
+  const ep = resolveEffectivePreset(state);
+  // Prefer freshly-captured chat memory; otherwise fall back to the durable
+  // memory carried by a reused saved agent so its posture survives publish even
+  // when the seller doesn't re-run the builder chat.
+  const effectiveMemory = memory ?? state.agent.builderChatMemory ?? null;
   return {
-    ...base,
-    weights: { ...o.weights },
-    alpha: o.alpha,
-    beta: o.beta,
-    u_threshold: o.u_threshold,
-    u_aspiration: o.u_aspiration,
-    anchor_ratio: o.anchor_ratio,
-    v_t_floor: o.v_t_floor,
-    w_rep: o.w_rep,
-    r_score_minimum: o.r_score_minimum,
-    i_completeness_minimum: o.i_completeness_minimum,
-    v_s_base: o.v_s_base,
-    n_threshold: o.n_threshold,
-    late_round_aggression_modifier: o.late_round_aggression_modifier,
+    preset: state.agent.presetId,
+    weights: { ...ep.weights },
+    source: state.source.kind,
+    sourceId: state.source.id,
+    customized: isBuilderCustomized(state),
+    engineParams: engineParamsFromPreset(ep),
+    ...(effectiveMemory ? { negotiationAgentBuilderMemory: effectiveMemory } : {}),
   };
 }
 
-function overridesFromAgent(
-  agent: AgentProfile,
-  base: NegotiationPreset,
-): { weights: NegotiationWeights; overrides: AdvancedOverrides | null } {
-  const weights = agent.weights ? { ...agent.weights } : { ...base.weights };
-  if (!agent.engineParams && !agent.weights) {
-    return { weights, overrides: null };
-  }
-  const overrides: AdvancedOverrides = {
-    weights,
-    alpha: agent.engineParams?.alpha ?? base.alpha,
-    beta: agent.engineParams?.beta ?? base.beta,
-    u_threshold: agent.engineParams?.u_threshold ?? base.u_threshold,
-    u_aspiration: agent.engineParams?.u_aspiration ?? base.u_aspiration,
-    anchor_ratio: agent.engineParams?.anchor_ratio ?? base.anchor_ratio,
-    v_t_floor: agent.engineParams?.v_t_floor ?? base.v_t_floor,
-    w_rep: agent.engineParams?.w_rep ?? base.w_rep,
-    r_score_minimum:
-      agent.engineParams?.r_score_minimum ?? base.r_score_minimum,
-    i_completeness_minimum:
-      agent.engineParams?.i_completeness_minimum ??
-      base.i_completeness_minimum,
-    v_s_base: agent.engineParams?.v_s_base ?? base.v_s_base,
-    n_threshold: agent.engineParams?.n_threshold ?? base.n_threshold,
-    late_round_aggression_modifier:
-      agent.engineParams?.late_round_aggression_modifier ??
-      base.late_round_aggression_modifier,
-  };
-  return { weights, overrides };
-}
-
-const DEFAULT_FALLBACK_PRESET = NEGOTIATION_PRESETS[3]; // balancer
+const DEFAULT_FALLBACK_PRESET = NEGOTIATION_AGENT_PRESETS[3]; // balancer
 
 /* ─── Component ───────────────────────────────────────────── */
 
@@ -151,99 +125,58 @@ export function AgentBuilder({
   const [savedAsId, setSavedAsId] = useState<string | null>(null);
 
   const handleSaveAsAgent = () => {
-    if (!value || !value.overrides) return;
-    const baseCopy = value.effectivePreset.copy[role];
-    const finalName = saveAsName.trim() || `${baseCopy.name} (custom)`;
-    const agent = localAgents.create({
+    if (!value || !isBuilderCustomized(value)) return;
+    const ep = resolveEffectivePreset(value);
+    const finalName = saveAsName.trim() || `${ep.copy[role].name} (custom)`;
+    const agent = draftNegotiationAgentStore.create({
       name: finalName,
       role,
-      emoji: value.effectivePreset.emoji,
-      negotiationPresetId: value.basePresetId,
-      weights: { ...value.effectivePreset.weights },
-      engineParams: {
-        alpha: value.overrides.alpha,
-        beta: value.overrides.beta,
-        u_threshold: value.overrides.u_threshold,
-        u_aspiration: value.overrides.u_aspiration,
-        anchor_ratio: value.overrides.anchor_ratio,
-        v_t_floor: value.overrides.v_t_floor,
-        w_rep: value.overrides.w_rep,
-        r_score_minimum: value.overrides.r_score_minimum,
-        i_completeness_minimum: value.overrides.i_completeness_minimum,
-        v_s_base: value.overrides.v_s_base,
-        n_threshold: value.overrides.n_threshold,
-        late_round_aggression_modifier:
-          value.overrides.late_round_aggression_modifier,
-      },
+      emoji: ep.emoji,
+      negotiationAgentPresetId: value.agent.presetId,
+      weights: { ...ep.weights },
+      engineParams: engineParamsFromPreset(ep),
     });
-    // Switch selection to the freshly-saved custom agent. The customization
-    // now lives on the agent itself, so we drop the "customized" overlay.
-    onChange({
-      sourceKind: "custom",
-      sourceId: agent.id,
-      basePresetId: value.basePresetId,
-      effectivePreset: value.effectivePreset,
-      overrides: null,
-      dirty: false,
-    });
+    // Re-select as the freshly-saved custom agent (the customization now lives
+    // on the agent itself, so the build is no longer "dirty").
+    onChange(builderStateFromAgentRow(agent, role, value.item));
     setSaveAsOpen(false);
     setSaveAsName("");
     setSavedAsId(agent.id);
   };
 
-  const resolvedBackHref =
-    backHref ?? (role === "buyer" ? "/buy/agents" : "/sell/agents");
-  const effective = value?.effectivePreset;
+  const resolvedBackHref = backHref ?? (role === "buyer" ? "/buy/agents" : "/sell/agents");
+  const effective = value ? resolveEffectivePreset(value) : undefined;
   const copy = effective?.copy[role];
 
-  const handlePresetSelect = (preset: NegotiationPreset) => {
-    onChange({
-      sourceKind: "preset",
-      sourceId: preset.id,
-      basePresetId: preset.id,
-      effectivePreset: preset,
-      overrides: null,
-      dirty: false,
-    });
+  const handlePresetSelect = (preset: NegotiationAgentPreset) => {
+    onChange(createBuilderState({ side: role, presetId: preset.id, item: value?.item }));
   };
 
-  const handleCustomSelect = (agent: AgentProfile) => {
-    const basePresetId =
-      agent.negotiationPresetId ?? DEFAULT_FALLBACK_PRESET.id;
-    const base = getNegotiationPreset(basePresetId);
-    if (!base) return;
-    const { overrides } = overridesFromAgent(agent, base);
-    onChange({
-      sourceKind: "custom",
-      sourceId: agent.id,
-      basePresetId,
-      effectivePreset: applyOverridesToPreset(base, overrides),
-      overrides,
-      dirty: false,
-    });
+  const handleCustomSelect = (agent: NegotiationAgent) => {
+    onChange(builderStateFromAgentRow(agent, role, value?.item));
   };
 
   const handleOverridesApply = (o: AdvancedOverrides) => {
     if (!value) return;
-    const base = getNegotiationPreset(value.basePresetId);
-    if (!base) return;
+    // AdvancedOverrides = weights + the 12 engine knobs → split into the
+    // build-state shape (sparse overrides on top of the base preset).
+    const { weights, ...engineParams } = o;
     onChange({
       ...value,
-      effectivePreset: applyOverridesToPreset(base, o),
-      overrides: o,
+      agent: { ...value.agent, weights: { ...weights }, engineParams },
       dirty: true,
     });
     setAdvancedOpen(false);
   };
 
-  const basePresetForModal: NegotiationPreset = value
-    ? getNegotiationPreset(value.basePresetId) ?? DEFAULT_FALLBACK_PRESET
+  const basePresetForModal: NegotiationAgentPreset = value
+    ? (getNegotiationAgentPreset(value.agent.presetId) ?? DEFAULT_FALLBACK_PRESET)
     : DEFAULT_FALLBACK_PRESET;
 
   const saveAsControl =
     embedded && value?.dirty ? (
       <SaveAsAgentControl
-        baseName={value.effectivePreset.copy[role].name}
+        baseName={effective?.copy[role].name ?? "Agent"}
         open={saveAsOpen}
         name={saveAsName}
         onNameChange={setSaveAsName}
@@ -257,21 +190,15 @@ export function AgentBuilder({
     ) : null;
 
   const savedConfirmation =
-    embedded && savedAsId && value?.sourceId === savedAsId ? (
-      <div
-        className="rounded-md px-3 py-2 text-[11px]"
-        style={{
-          background: "rgba(16,185,129,0.1)",
-          border: "1px solid rgba(16,185,129,0.4)",
-          color: "#6ee7b7",
-        }}
-      >
+    embedded && savedAsId && value?.source.id === savedAsId ? (
+      <div className="rounded-md border border-success/40 bg-success-soft px-3 py-2 text-[11px] text-success">
         ✓ Saved to My Agents — reusable in future listings.
       </div>
     ) : null;
 
   const root = embedded ? (
-    <SplitLayout role={role}
+    <SplitLayout
+      role={role}
       left={
         <LeftColumn
           role={role}
@@ -285,9 +212,8 @@ export function AgentBuilder({
       right={
         <>
           <RightSidebar
-            embedded
             effective={effective}
-            hasOverrides={!!value?.overrides}
+            hasOverrides={value ? isBuilderCustomized(value) : false}
             onOpenAdvanced={() => setAdvancedOpen(true)}
           />
           {saveAsControl}
@@ -296,26 +222,18 @@ export function AgentBuilder({
       }
     />
   ) : (
-    <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8 sm:py-10">
-      <div className="flex items-center justify-between mb-6 gap-3">
-        <div>
-          <h1 className="text-[22px] font-bold text-text-primary mb-1">
-            {pageTitle ?? "Create Agent"}
-          </h1>
-          <p className="text-[13px] text-slate-400">
-            {pageSubtitle ??
-              `Your AI will handle ${role === "seller" ? "buyer" : "seller"} negotiations automatically. Pick a style and customize its approach.`}
-          </p>
-        </div>
-        <Link
-          href={resolvedBackHref}
-          className="text-[13px] text-slate-400 hover:text-slate-200 whitespace-nowrap"
-        >
-          ← Back
-        </Link>
-      </div>
+    <div className="mx-auto max-w-[1100px] px-4 py-8 sm:px-6 sm:py-10">
+      <PageHeader
+        backHref={resolvedBackHref}
+        title={pageTitle ?? "Create Agent"}
+        subtitle={
+          pageSubtitle ??
+          `Your AI will handle ${role === "seller" ? "buyer" : "seller"} negotiations automatically. Pick a style and customize its approach.`
+        }
+      />
 
-      <SplitLayout role={role}
+      <SplitLayout
+        role={role}
         left={
           <LeftColumn
             role={role}
@@ -329,26 +247,24 @@ export function AgentBuilder({
         right={
           <>
             {/* Name input */}
-            <div className="bg-bg-card border border-border-default rounded-xl p-5">
+            <div className="rounded-xl border border-line bg-surface-raised p-5">
               <label
                 htmlFor="agent-name"
-                className="block text-[11px] font-bold tracking-wider uppercase text-slate-300 mb-2"
+                className="mb-2 block font-bold text-[11px] text-ink-secondary uppercase tracking-wider"
               >
                 Agent Name
               </label>
-              <input
+              <Input
                 id="agent-name"
-                type="text"
                 value={name}
                 onChange={(e) => onNameChange?.(e.target.value)}
                 placeholder={copy?.name ?? "Untitled Agent"}
-                className="w-full px-3 py-2 text-sm rounded-md bg-slate-900/60 border border-slate-700 text-text-primary placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
               />
             </div>
 
             <RightSidebar
               effective={effective}
-              hasOverrides={!!value?.overrides}
+              hasOverrides={value ? isBuilderCustomized(value) : false}
               onOpenAdvanced={() => setAdvancedOpen(true)}
             />
 
@@ -359,68 +275,37 @@ export function AgentBuilder({
                 // agent — Save is gated by `dirty` only (no "already saved" hint
                 // because the page itself is for editing).
                 const isExistingClean =
-                  !hidePicker &&
-                  value?.sourceKind === "custom" &&
-                  !value.dirty;
-                const editDisabledByClean =
-                  hidePicker && !value?.dirty && !!value;
+                  !hidePicker && value?.source.kind === "custom" && !value.dirty;
+                const editDisabledByClean = hidePicker && !value?.dirty && !!value;
                 const disabled =
-                  !value ||
-                  saving ||
-                  !onSave ||
-                  isExistingClean ||
-                  editDisabledByClean;
+                  !value || saving || !onSave || isExistingClean || editDisabledByClean;
                 return (
                   <>
-                    <button
-                      type="button"
-                      onClick={onSave}
-                      disabled={disabled}
-                      className="w-full px-4 py-2.5 text-sm font-bold rounded-md bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                    <Button fullWidth loading={saving} disabled={disabled} onClick={onSave}>
                       {saving ? "Saving..." : (saveLabel ?? "Save Agent")}
-                    </button>
+                    </Button>
                     {isExistingClean && (
-                      <p className="text-[11px] text-slate-500 text-center">
+                      <p className="text-[11px] text-ink-muted text-center">
                         Already saved. Change something to save a new version.
                       </p>
                     )}
                     {editDisabledByClean && (
-                      <p className="text-[11px] text-slate-500 text-center">
-                        No changes yet.
-                      </p>
+                      <p className="text-[11px] text-ink-muted text-center">No changes yet.</p>
                     )}
                   </>
                 );
               })()}
               <Link
                 href={resolvedBackHref}
-                className="block w-full px-4 py-2.5 text-sm font-medium rounded-md text-center text-slate-300 bg-slate-500/10 border border-slate-500/40 hover:bg-slate-500/20 transition-colors"
+                className={cn(buttonVariants({ variant: "secondary", fullWidth: true }))}
               >
                 Cancel
               </Link>
               {onDelete && (
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-rose-500/10 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 transition-colors"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M3 6h18" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
+                <Button variant="destructive" fullWidth onClick={onDelete}>
+                  <Trash2 className="size-3.5" />
                   Delete agent
-                </button>
+                </Button>
               )}
             </div>
           </>
@@ -435,7 +320,11 @@ export function AgentBuilder({
       <AdvancedSettingsModal
         open={advancedOpen}
         preset={basePresetForModal}
-        initial={value?.overrides ?? undefined}
+        initial={
+          value && effective && isBuilderCustomized(value)
+            ? overridesFromEffective(effective)
+            : undefined
+        }
         onClose={() => setAdvancedOpen(false)}
         onApply={handleOverridesApply}
       />
@@ -470,11 +359,11 @@ function LeftColumn({
   onSelectCustom,
 }: {
   role: Role;
-  value: AgentBuilderValue | null;
+  value: AgentBuilderState | null;
   hidePicker?: boolean;
   chatSlot?: React.ReactNode;
-  onSelectPreset: (p: NegotiationPreset) => void;
-  onSelectCustom: (a: AgentProfile) => void;
+  onSelectPreset: (p: NegotiationAgentPreset) => void;
+  onSelectCustom: (a: NegotiationAgent) => void;
 }) {
   return (
     <>
@@ -484,11 +373,10 @@ function LeftColumn({
           embedded
           selectMode={{
             selectedPresetId:
-              value?.sourceKind === "preset"
-                ? (value.sourceId as NegotiationPresetId)
+              value?.source.kind === "preset"
+                ? (value.source.id as NegotiationAgentPresetId)
                 : null,
-            selectedCustomId:
-              value?.sourceKind === "custom" ? value.sourceId : null,
+            selectedCustomId: value?.source.kind === "custom" ? value.source.id : null,
             onSelectPreset,
             onSelectCustom,
           }}
@@ -501,21 +389,20 @@ function LeftColumn({
 }
 
 function RightSidebar({
-  embedded = false,
   effective,
   hasOverrides,
   onOpenAdvanced,
 }: {
   embedded?: boolean;
-  effective?: NegotiationPreset;
+  effective?: NegotiationAgentPreset;
   hasOverrides: boolean;
   onOpenAdvanced: () => void;
 }) {
   return (
     <>
       {/* Strategy Matrix */}
-      <div className="bg-bg-card border border-border-default rounded-xl p-5">
-        <h3 className="text-[11px] font-bold tracking-wider uppercase text-slate-300 mb-4 text-center">
+      <div className="bg-surface-raised border border-line rounded-xl p-5">
+        <h3 className="text-[11px] font-bold tracking-wider uppercase text-ink-secondary mb-4 text-center">
           Strategy Matrix
         </h3>
         {effective ? (
@@ -523,7 +410,7 @@ function RightSidebar({
             <StrategyRadar preset={effective} size={220} labels={true} />
           </div>
         ) : (
-          <p className="text-center text-[11px] text-slate-500 py-8">
+          <p className="text-center text-[11px] text-ink-muted py-8">
             Pick an agent to see its strategy
           </p>
         )}
@@ -534,25 +421,11 @@ function RightSidebar({
         type="button"
         onClick={onOpenAdvanced}
         disabled={!effective}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-purple-500/10 border border-purple-500/40 text-purple-300 hover:bg-purple-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-info/40 bg-info-soft px-4 py-2.5 font-medium text-info text-sm transition-colors hover:bg-info-soft disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <svg
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
+        <Settings2 className="size-3.5" />
         Advanced Settings
-        {hasOverrides && (
-          <span className="text-[10px] font-mono ml-1">●</span>
-        )}
+        {hasOverrides && <span className="ml-1 font-mono text-[10px]">●</span>}
       </button>
     </>
   );
@@ -582,38 +455,17 @@ function SaveAsAgentControl({
       <button
         type="button"
         onClick={onOpen}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-action-primary/40 bg-action-primary/10 px-4 py-2.5 font-medium text-action-primary text-sm transition-colors hover:bg-action-primary/20"
       >
-        <svg
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-          <polyline points="17 21 17 13 7 13 7 21" />
-          <polyline points="7 3 7 8 15 8" />
-        </svg>
+        <Save className="size-3.5" />
         Save as new agent
       </button>
     );
   }
   return (
-    <div
-      className="rounded-md p-3"
-      style={{
-        background: "rgba(16,185,129,0.06)",
-        border: "1px solid rgba(16,185,129,0.4)",
-      }}
-    >
-      <p className="text-[11px] text-slate-300 mb-2">Save as new agent</p>
-      <input
-        type="text"
-        autoFocus
+    <div className="rounded-md border border-success/40 bg-success-soft p-3">
+      <p className="mb-2 text-[11px] text-ink-secondary">Save as new agent</p>
+      <Input
         value={name}
         onChange={(e) => onNameChange(e.target.value)}
         onKeyDown={(e) => {
@@ -621,23 +473,15 @@ function SaveAsAgentControl({
           else if (e.key === "Escape") onCancel();
         }}
         placeholder={`${baseName} (custom)`}
-        className="w-full px-2.5 py-1.5 text-[12px] rounded-md bg-slate-900/60 border border-slate-700 text-text-primary placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 mb-2"
+        className="mb-2"
       />
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="flex-1 px-3 py-1.5 text-[12px] font-bold rounded-md bg-emerald-500 text-white hover:bg-emerald-600"
-        >
+        <Button size="sm" className="flex-1" onClick={onConfirm}>
           Save
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 text-[12px] text-slate-400 hover:text-slate-200"
-        >
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -16,42 +16,43 @@
  *
  * Zero DB. No auth. In-memory sessions.
  */
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import type { Database } from '@haggle/db';
-import { callLLM } from '../negotiation/adapters/xai-client.js';
-import { GrokFastAdapter } from '../negotiation/adapters/grok-fast-adapter.js';
-import { SkillStack, registerSkill } from '../negotiation/skills/skill-stack.js';
-import { ElectronicsKnowledgeSkill } from '../negotiation/skills/electronics-knowledge.js';
-import { FaratinCoachingSkill } from '../negotiation/skills/faratin-coaching.js';
-import { computeBriefing } from '../negotiation/referee/briefing.js';
-import { computeCoaching } from '../negotiation/referee/coach.js';
-import { validateMove } from '../negotiation/referee/validator.js';
-import { tryTransition, detectPhaseEvent } from '../negotiation/phase/phase-machine.js';
-import { ELECTRONICS_TERMS } from '../negotiation/term/standard-terms.js';
-import { DEFAULT_BUDDY_DNA, DEFAULT_MAX_ROUNDS } from '../negotiation/config.js';
+
+import type { Database } from "@haggle/db";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { DeepSeekAdapter } from "../negotiation/adapters/deepseek-adapter.js";
+import { callLLM } from "../negotiation/adapters/deepseek-client.js";
+import { DEFAULT_BUDDY_DNA, DEFAULT_MAX_ROUNDS } from "../negotiation/config.js";
 import {
   AGENT_PROFILE_IDS,
   buildCachedVoiceContext,
   getAgentVoiceProfile,
   type LumenVoiceProfile,
-} from '../negotiation/lumen-persona-profiles.js';
-import {
-  loadUserMemoryBrief,
-  formatUserMemoryBriefSignals,
-  type UserMemoryBrief,
-} from '../services/user-memory-card.service.js';
+} from "../negotiation/negotiation-agent-voice-profiles.js";
+import { detectPhaseEvent, tryTransition } from "../negotiation/phase/phase-machine.js";
+import { computeBriefing } from "../negotiation/referee/briefing.js";
+import { computeCoaching } from "../negotiation/referee/coach.js";
+import { validateMove } from "../negotiation/referee/validator.js";
+import { ElectronicsKnowledgeSkill } from "../negotiation/skills/electronics-knowledge.js";
+import { FaratinCoachingSkill } from "../negotiation/skills/faratin-coaching.js";
+import type { MergedHookResult } from "../negotiation/skills/skill-stack.js";
+import { registerSkill, SkillStack } from "../negotiation/skills/skill-stack.js";
+import type { RefereeBriefing } from "../negotiation/skills/skill-types.js";
+import { ELECTRONICS_TERMS } from "../negotiation/term/standard-terms.js";
 import type {
+  ActiveTerm,
   CoreMemory,
-  RoundFact,
+  NegotiationPhase,
   OpponentPattern,
   ProtocolDecision,
-  NegotiationPhase,
+  RoundFact,
   ValidationResult,
-  ActiveTerm,
-} from '../negotiation/types.js';
-import type { RefereeBriefing, SkillManifest } from '../negotiation/skills/skill-types.js';
-import type { MergedHookResult } from '../negotiation/skills/skill-stack.js';
+} from "../negotiation/types.js";
+import {
+  formatUserMemoryBriefSignals,
+  loadUserMemoryBrief,
+  type UserMemoryBrief,
+} from "../services/user-memory-card.service.js";
 
 // ─── Types ──────────────────────────────────────────
 
@@ -74,13 +75,13 @@ interface DemoStrategy {
   opening_tactic: string;
   approach: string;
   key_concerns: string[];
-  negotiation_style: 'aggressive' | 'balanced' | 'defensive';
+  negotiation_style: "aggressive" | "balanced" | "defensive";
 }
 
 interface TermAnalysis {
   priority_terms: Array<{
     id: string;
-    importance: 'critical' | 'important' | 'nice_to_have';
+    importance: "critical" | "important" | "nice_to_have";
     target_value: string;
     rationale: string;
   }>;
@@ -107,10 +108,10 @@ interface DecideResult extends ProtocolDecision {
 
 interface RespondResult {
   message: string;
-  action: ProtocolDecision['action'];
+  action: ProtocolDecision["action"];
   amount_minor?: number;
   amount_display?: string;
-  currency: 'USD';
+  currency: "USD";
   locale: string;
   template: string;
   non_price_terms: Record<string, unknown>;
@@ -118,9 +119,9 @@ interface RespondResult {
 
 /** Tag Garden item tags — derived from title at init, immutable per session */
 interface ItemTag {
-  path: string;          // e.g. "electronics/phones/iphone"
-  status: 'OFFICIAL' | 'EMERGING' | 'CANDIDATE';
-  idf?: number;          // inverse document frequency (optional, from DB)
+  path: string; // e.g. "electronics/phones/iphone"
+  status: "OFFICIAL" | "EMERGING" | "CANDIDATE";
+  idf?: number; // inverse document frequency (optional, from DB)
 }
 
 interface DemoSession {
@@ -156,20 +157,20 @@ interface DemoSession {
 // ─── In-memory store ────────────────────────────────
 
 const sessions = new Map<string, DemoSession>();
-const adapter = new GrokFastAdapter();
+const _adapter = new DeepSeekAdapter();
 const buddyDna = DEFAULT_BUDDY_DNA;
-const DEMO_USER_ID = '11111111-1111-4111-8111-111111111111';
+const DEMO_USER_ID = "11111111-1111-4111-8111-111111111111";
 
 // ─── Preset → Skill config mapping ────
 const PRESET_MAP: Record<string, { advisor: string; config: { buddyStyle: string } }> = {
-  lowest_price: { advisor: 'faratin-coaching-v1', config: { buddyStyle: 'aggressive' } },
-  balanced:     { advisor: 'faratin-coaching-v1', config: { buddyStyle: 'balanced' } },
-  safe_first:   { advisor: 'faratin-coaching-v1', config: { buddyStyle: 'defensive' } },
+  lowest_price: { advisor: "faratin-coaching-v1", config: { buddyStyle: "aggressive" } },
+  balanced: { advisor: "faratin-coaching-v1", config: { buddyStyle: "balanced" } },
+  safe_first: { advisor: "faratin-coaching-v1", config: { buddyStyle: "defensive" } },
 };
 
 // ─── Skill v2 registration (module-level, runs once) ────
 registerSkill(new ElectronicsKnowledgeSkill());
-registerSkill(new FaratinCoachingSkill({ buddyStyle: 'balanced' }));
+registerSkill(new FaratinCoachingSkill({ buddyStyle: "balanced" }));
 
 // ─── NSV v1 (Negotiation State Vector) ──────────────
 // HNP protocol standard for fixed-size negotiation state encoding.
@@ -181,85 +182,97 @@ function deriveItemTags(title: string): ItemTag[] {
 
   // ── Phones ──
   if (/iphone/.test(lower)) {
-    tags.push({ path: 'electronics/phones/iphone', status: 'OFFICIAL' });
-    if (/pro\s*max/.test(lower)) tags.push({ path: 'electronics/phones/iphone/pro-max', status: 'OFFICIAL' });
-    else if (/pro/.test(lower)) tags.push({ path: 'electronics/phones/iphone/pro', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/phones/iphone", status: "OFFICIAL" });
+    if (/pro\s*max/.test(lower))
+      tags.push({ path: "electronics/phones/iphone/pro-max", status: "OFFICIAL" });
+    else if (/pro/.test(lower))
+      tags.push({ path: "electronics/phones/iphone/pro", status: "OFFICIAL" });
   } else if (/galaxy\s*s|galaxy\s*z|samsung/.test(lower)) {
-    tags.push({ path: 'electronics/phones/samsung', status: 'OFFICIAL' });
-    if (/ultra/.test(lower)) tags.push({ path: 'electronics/phones/samsung/ultra', status: 'OFFICIAL' });
-    if (/fold|flip/.test(lower)) tags.push({ path: 'electronics/phones/samsung/foldable', status: 'EMERGING' });
+    tags.push({ path: "electronics/phones/samsung", status: "OFFICIAL" });
+    if (/ultra/.test(lower))
+      tags.push({ path: "electronics/phones/samsung/ultra", status: "OFFICIAL" });
+    if (/fold|flip/.test(lower))
+      tags.push({ path: "electronics/phones/samsung/foldable", status: "EMERGING" });
   } else if (/pixel/.test(lower)) {
-    tags.push({ path: 'electronics/phones/pixel', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/phones/pixel", status: "OFFICIAL" });
   } else if (/oneplus/.test(lower)) {
-    tags.push({ path: 'electronics/phones/oneplus', status: 'EMERGING' });
+    tags.push({ path: "electronics/phones/oneplus", status: "EMERGING" });
 
-  // ── Tablets ──
+    // ── Tablets ──
   } else if (/ipad/.test(lower)) {
-    tags.push({ path: 'electronics/tablets/ipad', status: 'OFFICIAL' });
-    if (/pro/.test(lower)) tags.push({ path: 'electronics/tablets/ipad/pro', status: 'OFFICIAL' });
-    if (/air/.test(lower)) tags.push({ path: 'electronics/tablets/ipad/air', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/tablets/ipad", status: "OFFICIAL" });
+    if (/pro/.test(lower)) tags.push({ path: "electronics/tablets/ipad/pro", status: "OFFICIAL" });
+    if (/air/.test(lower)) tags.push({ path: "electronics/tablets/ipad/air", status: "OFFICIAL" });
   } else if (/galaxy\s*tab/.test(lower)) {
-    tags.push({ path: 'electronics/tablets/samsung', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/tablets/samsung", status: "OFFICIAL" });
 
-  // ── Laptops ──
+    // ── Laptops ──
   } else if (/macbook/.test(lower)) {
-    tags.push({ path: 'electronics/laptops/macbook', status: 'OFFICIAL' });
-    if (/pro/.test(lower)) tags.push({ path: 'electronics/laptops/macbook/pro', status: 'OFFICIAL' });
-    if (/air/.test(lower)) tags.push({ path: 'electronics/laptops/macbook/air', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/laptops/macbook", status: "OFFICIAL" });
+    if (/pro/.test(lower))
+      tags.push({ path: "electronics/laptops/macbook/pro", status: "OFFICIAL" });
+    if (/air/.test(lower))
+      tags.push({ path: "electronics/laptops/macbook/air", status: "OFFICIAL" });
   } else if (/thinkpad/.test(lower)) {
-    tags.push({ path: 'electronics/laptops/thinkpad', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/laptops/thinkpad", status: "OFFICIAL" });
   } else if (/xps|dell/.test(lower)) {
-    tags.push({ path: 'electronics/laptops/dell', status: 'EMERGING' });
+    tags.push({ path: "electronics/laptops/dell", status: "EMERGING" });
 
-  // ── Wearables ──
+    // ── Wearables ──
   } else if (/apple\s*watch/.test(lower)) {
-    tags.push({ path: 'electronics/wearables/apple-watch', status: 'OFFICIAL' });
-    if (/ultra/.test(lower)) tags.push({ path: 'electronics/wearables/apple-watch/ultra', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/wearables/apple-watch", status: "OFFICIAL" });
+    if (/ultra/.test(lower))
+      tags.push({ path: "electronics/wearables/apple-watch/ultra", status: "OFFICIAL" });
   } else if (/galaxy\s*watch/.test(lower)) {
-    tags.push({ path: 'electronics/wearables/galaxy-watch', status: 'EMERGING' });
+    tags.push({ path: "electronics/wearables/galaxy-watch", status: "EMERGING" });
   } else if (/airpods/.test(lower)) {
-    tags.push({ path: 'electronics/wearables/airpods', status: 'OFFICIAL' });
-    if (/pro/.test(lower)) tags.push({ path: 'electronics/wearables/airpods/pro', status: 'OFFICIAL' });
-    if (/max/.test(lower)) tags.push({ path: 'electronics/wearables/airpods/max', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/wearables/airpods", status: "OFFICIAL" });
+    if (/pro/.test(lower))
+      tags.push({ path: "electronics/wearables/airpods/pro", status: "OFFICIAL" });
+    if (/max/.test(lower))
+      tags.push({ path: "electronics/wearables/airpods/max", status: "OFFICIAL" });
 
-  // ── Audio ──
+    // ── Audio ──
   } else if (/headphone|earphone|earbud|speaker|soundbar/.test(lower)) {
-    tags.push({ path: 'electronics/audio', status: 'OFFICIAL' });
-    if (/sony|wh-?1000|wf-?1000/.test(lower)) tags.push({ path: 'electronics/audio/sony', status: 'OFFICIAL' });
-    if (/bose/.test(lower)) tags.push({ path: 'electronics/audio/bose', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/audio", status: "OFFICIAL" });
+    if (/sony|wh-?1000|wf-?1000/.test(lower))
+      tags.push({ path: "electronics/audio/sony", status: "OFFICIAL" });
+    if (/bose/.test(lower)) tags.push({ path: "electronics/audio/bose", status: "OFFICIAL" });
 
-  // ── Gaming ──
+    // ── Gaming ──
   } else if (/playstation|ps5|ps4/.test(lower)) {
-    tags.push({ path: 'electronics/gaming/playstation', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/gaming/playstation", status: "OFFICIAL" });
   } else if (/xbox/.test(lower)) {
-    tags.push({ path: 'electronics/gaming/xbox', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/gaming/xbox", status: "OFFICIAL" });
   } else if (/nintendo|switch/.test(lower)) {
-    tags.push({ path: 'electronics/gaming/nintendo', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/gaming/nintendo", status: "OFFICIAL" });
   } else if (/gpu|rtx|rx\s?\d|graphics\s*card/.test(lower)) {
-    tags.push({ path: 'electronics/components/gpu', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/components/gpu", status: "OFFICIAL" });
 
-  // ── Cameras ──
+    // ── Cameras ──
   } else if (/camera|dslr|mirrorless/.test(lower)) {
-    tags.push({ path: 'electronics/cameras', status: 'OFFICIAL' });
-    if (/sony\s*a[67]|sony\s*alpha/.test(lower)) tags.push({ path: 'electronics/cameras/sony', status: 'OFFICIAL' });
-    if (/canon\s*eos|canon\s*r\d/.test(lower)) tags.push({ path: 'electronics/cameras/canon', status: 'OFFICIAL' });
-    if (/gopro/.test(lower)) tags.push({ path: 'electronics/cameras/gopro', status: 'OFFICIAL' });
+    tags.push({ path: "electronics/cameras", status: "OFFICIAL" });
+    if (/sony\s*a[67]|sony\s*alpha/.test(lower))
+      tags.push({ path: "electronics/cameras/sony", status: "OFFICIAL" });
+    if (/canon\s*eos|canon\s*r\d/.test(lower))
+      tags.push({ path: "electronics/cameras/canon", status: "OFFICIAL" });
+    if (/gopro/.test(lower)) tags.push({ path: "electronics/cameras/gopro", status: "OFFICIAL" });
   }
 
   // ── Attributes (cross-category) ──
   const storageMatch = lower.match(/(\d+)\s*(?:gb|tb)/);
   if (storageMatch) {
     const size = parseInt(storageMatch[1]!, 10);
-    const unit = lower.includes('tb') ? 'tb' : 'gb';
-    const effectiveGb = unit === 'tb' ? size * 1024 : size;
-    if (effectiveGb >= 512) tags.push({ path: 'attributes/storage/high', status: 'OFFICIAL' });
-    else if (effectiveGb >= 256) tags.push({ path: 'attributes/storage/mid', status: 'OFFICIAL' });
-    else tags.push({ path: 'attributes/storage/base', status: 'OFFICIAL' });
+    const unit = lower.includes("tb") ? "tb" : "gb";
+    const effectiveGb = unit === "tb" ? size * 1024 : size;
+    if (effectiveGb >= 512) tags.push({ path: "attributes/storage/high", status: "OFFICIAL" });
+    else if (effectiveGb >= 256) tags.push({ path: "attributes/storage/mid", status: "OFFICIAL" });
+    else tags.push({ path: "attributes/storage/base", status: "OFFICIAL" });
   }
 
   // Fallback — still electronics, just unrecognized model
   if (tags.length === 0) {
-    tags.push({ path: 'electronics/uncategorized', status: 'CANDIDATE' });
+    tags.push({ path: "electronics/uncategorized", status: "CANDIDATE" });
   }
 
   return tags;
@@ -270,7 +283,7 @@ function encodeSharedMemo(session: DemoSession): string {
   const b = m.boundaries;
 
   const lines = [
-    '--- NSV v2 SHARED ---',
+    "--- NSV v2 SHARED ---",
     `NS:${m.session.phase}|R${m.session.round}/${m.session.max_rounds}|buyer`,
     `PT:${b.current_offer}⇄${b.opponent_offer}|gap:${b.gap}`,
   ];
@@ -278,14 +291,14 @@ function encodeSharedMemo(session: DemoSession): string {
   // TG: Tag Garden extension — item classification (fixed per session)
   if (session.tags.length > 0) {
     const tagStr = session.tags
-      .filter(t => t.status === 'OFFICIAL' || t.status === 'EMERGING')
-      .slice(0, 3)  // max 3 tags for token efficiency
-      .map(t => `${t.path}(${t.status[0]})`)  // O=OFFICIAL, E=EMERGING
-      .join(',');
+      .filter((t) => t.status === "OFFICIAL" || t.status === "EMERGING")
+      .slice(0, 3) // max 3 tags for token efficiency
+      .map((t) => `${t.path}(${t.status[0]})`) // O=OFFICIAL, E=EMERGING
+      .join(",");
     lines.push(`TG:${tagStr}`);
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function encodePrivateMemo(session: DemoSession): string {
@@ -295,18 +308,15 @@ function encodePrivateMemo(session: DemoSession): string {
   // Room: how much of my range I've used (0%=at target, 100%=at floor)
   const range = Math.abs(b.my_floor - b.my_target);
   const used = Math.abs(b.current_offer - b.my_target);
-  const roomPct = range > 0 ? ((used / range) * 100).toFixed(0) : '0';
+  const roomPct = range > 0 ? ((used / range) * 100).toFixed(0) : "0";
 
-  const lines = [
-    '--- NSV v2 PRIVATE ---',
-    `SS:t:${b.my_target}|f:${b.my_floor}|room:${roomPct}%`,
-  ];
+  const lines = ["--- NSV v2 PRIVATE ---", `SS:t:${b.my_target}|f:${b.my_floor}|room:${roomPct}%`];
   if (session.opponentPattern) {
     const op = session.opponentPattern;
-    const label = op.aggression > 0.7 ? 'BOULWARE' : op.aggression < 0.3 ? 'CONCEDER' : 'LINEAR';
+    const label = op.aggression > 0.7 ? "BOULWARE" : op.aggression < 0.3 ? "CONCEDER" : "LINEAR";
     lines.push(`OM:${label}|agg:${op.aggression.toFixed(2)}|cr:${op.concession_rate.toFixed(3)}`);
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function selectRelevantUserMemoryBrief(
@@ -316,21 +326,24 @@ function selectRelevantUserMemoryBrief(
 ): UserMemoryBrief | null {
   if (!brief) return null;
 
-  const itemNeedle = `${item.title} ${item.condition} ${tags.map(tag => tag.path).join(' ')}`.toLowerCase();
-  const generallyRelevantTypes = new Set(['pricing', 'style', 'constraint', 'preference', 'trust']);
+  const itemNeedle =
+    `${item.title} ${item.condition} ${tags.map((tag) => tag.path).join(" ")}`.toLowerCase();
+  const generallyRelevantTypes = new Set(["pricing", "style", "constraint", "preference", "trust"]);
   const selected = brief.items.filter((entry) => {
     if (generallyRelevantTypes.has(entry.cardType)) return true;
 
     const memoryText = [
       entry.summary,
       entry.memoryKey,
-      ...Object.values(entry.memory).map(value => String(value)),
-    ].join(' ').toLowerCase();
+      ...Object.values(entry.memory).map((value) => String(value)),
+    ]
+      .join(" ")
+      .toLowerCase();
 
     return memoryText
       .split(/[^a-z0-9]+/i)
-      .filter(token => token.length >= 3)
-      .some(token => itemNeedle.includes(token));
+      .filter((token) => token.length >= 3)
+      .some((token) => itemNeedle.includes(token));
   });
 
   if (selected.length === 0) return null;
@@ -338,14 +351,14 @@ function selectRelevantUserMemoryBrief(
 }
 
 function formatUserMemoryBriefForPrompt(brief: UserMemoryBrief | null): string {
-  if (!brief || brief.items.length === 0) return 'none';
+  if (!brief || brief.items.length === 0) return "none";
 
   return brief.items
     .map((entry) => {
       const memory = JSON.stringify(entry.memory);
       return `- ${entry.cardType}:${entry.memoryKey} strength=${entry.strength.toFixed(2)} summary="${entry.summary}" memory=${memory}`;
     })
-    .join('\n');
+    .join("\n");
 }
 
 function summarizeUserMemoryBrief(brief: UserMemoryBrief | null) {
@@ -353,13 +366,14 @@ function summarizeUserMemoryBrief(brief: UserMemoryBrief | null) {
     applied: Boolean(brief && brief.items.length > 0),
     user_id: brief?.userId ?? null,
     signals: formatUserMemoryBriefSignals(brief),
-    cards: brief?.items.map(item => ({
-      card_type: item.cardType,
-      memory_key: item.memoryKey,
-      summary: item.summary,
-      strength: item.strength,
-      memory: item.memory,
-    })) ?? [],
+    cards:
+      brief?.items.map((item) => ({
+        card_type: item.cardType,
+        memory_key: item.memoryKey,
+        summary: item.summary,
+        strength: item.strength,
+        memory: item.memory,
+      })) ?? [],
   };
 }
 
@@ -392,9 +406,9 @@ function buildDecidePrompt(
   understood: UnderstandResult,
 ): { system: string; user: string } {
   const decide = skillResult.decide;
-  const categoryBrief = decide?.categoryBrief ?? '';
-  const tactics = decide?.tactics?.join(', ') ?? '';
-  const valuationRules = decide?.valuationRules?.map(r => `- ${r}`).join('\n') ?? '';
+  const categoryBrief = decide?.categoryBrief ?? "";
+  const tactics = decide?.tactics?.join(", ") ?? "";
+  const valuationRules = decide?.valuationRules?.map((r) => `- ${r}`).join("\n") ?? "";
 
   return {
     system: `You are Haggle protocol Stage 3 (DECIDE) — buyer side.
@@ -408,7 +422,7 @@ ${formatUserMemoryBriefForPrompt(session.userMemoryBrief)}
 
 ## Approved Preset Tuning Draft
 This draft is user-approved for the selected listing. Treat price_cap_minor as a hard invariant and term checks as the current negotiation plan.
-${session.presetTuningDraft ? JSON.stringify(session.presetTuningDraft, null, 2) : 'none'}
+${session.presetTuningDraft ? JSON.stringify(session.presetTuningDraft, null, 2) : "none"}
 
 ## Category Knowledge
 ${categoryBrief}
@@ -428,29 +442,40 @@ ${encodeSharedMemo(session)}
 ${encodePrivateMemo(session)}
 
 ## User Memory Signals
-${formatUserMemoryBriefSignals(session.userMemoryBrief).join('\n') || 'none'}
+${formatUserMemoryBriefSignals(session.userMemoryBrief).join("\n") || "none"}
 
 ## Briefing (Facts)
 opponent:${briefing.opponentPattern} time_pressure:${(briefing.timePressure * 100).toFixed(0)}%
 utility:u_total=${briefing.utilitySnapshot.u_total} u_price=${briefing.utilitySnapshot.u_price}
-stagnation:${briefing.stagnation} gap_trend:[${briefing.gapTrend.join(',')}]
-${briefing.warnings.length > 0 ? 'warnings:' + briefing.warnings.join(';') : ''}
+stagnation:${briefing.stagnation} gap_trend:[${briefing.gapTrend.join(",")}]
+${briefing.warnings.length > 0 ? "warnings:" + briefing.warnings.join(";") : ""}
 
 ## Advisories (May ignore)
-${(decide?.advisories ?? []).map(a =>
-  `[${a.skillId}] rec_price:${a.recommendedPrice ?? '-'} tactic:${a.suggestedTactic ?? '-'}${a.acceptableRange ? ` range:${a.acceptableRange.min}-${a.acceptableRange.max}` : ''}${a.observations?.length ? ' obs:' + a.observations.join(';') : ''}`
-).join('\n') || 'none'}
+${
+  (decide?.advisories ?? [])
+    .map(
+      (a) =>
+        `[${a.skillId}] rec_price:${a.recommendedPrice ?? "-"} tactic:${a.suggestedTactic ?? "-"}${a.acceptableRange ? ` range:${a.acceptableRange.min}-${a.acceptableRange.max}` : ""}${a.observations?.length ? " obs:" + a.observations.join(";") : ""}`,
+    )
+    .join("\n") || "none"
+}
 
 ## Seller Action (UNDERSTAND)
 price:${formatMoneyMinor(understood.price_offer)} minor=${understood.price_offer} (${understood.message_type}) sentiment:${understood.sentiment} tactic:${understood.tactic_detected}
-${understood.conditions_proposed.length > 0 ? 'conditions:' + JSON.stringify(understood.conditions_proposed) : ''}`,
+${understood.conditions_proposed.length > 0 ? "conditions:" + JSON.stringify(understood.conditions_proposed) : ""}`,
   };
 }
 
-function buildRespondPrompt(decision: ProtocolDecision, phase: NegotiationPhase, recentFacts: RoundFact[], language: string): { system: string; user: string } {
-  const langInstruction = language === 'en'
-    ? 'Write in natural English.'
-    : `Write in ${language}. The message MUST be in ${language}.`;
+function _buildRespondPrompt(
+  decision: ProtocolDecision,
+  phase: NegotiationPhase,
+  recentFacts: RoundFact[],
+  language: string,
+): { system: string; user: string } {
+  const langInstruction =
+    language === "en"
+      ? "Write in natural English."
+      : `Write in ${language}. The message MUST be in ${language}.`;
   return {
     system: `You are Haggle protocol Stage 5 (RESPOND) — buyer side.
 Generate a natural, human-like buyer message. Style: polite, professional, no emoji, 1-2 sentences.
@@ -459,12 +484,12 @@ ${langInstruction}
 Respond with valid JSON only: {"message":string}`,
     user: `Decision: ${JSON.stringify(decision)}
 Phase: ${phase}
-${recentFacts.length > 0 ? 'Last exchange: seller offered ' + formatMoneyMinor(recentFacts[recentFacts.length - 1]!.seller_offer) : ''}`,
+${recentFacts.length > 0 ? "Last exchange: seller offered " + formatMoneyMinor(recentFacts[recentFacts.length - 1]!.seller_offer) : ""}`,
   };
 }
 
 function formatMoneyMinor(amountMinor: number | undefined): string {
-  if (amountMinor === undefined || amountMinor === null) return '';
+  if (amountMinor === undefined || amountMinor === null) return "";
   const amount = amountMinor / 100;
   return Number.isInteger(amount) ? `$${amount.toFixed(0)}` : `$${amount.toFixed(2)}`;
 }
@@ -474,46 +499,50 @@ function hasTerms(terms: Record<string, unknown> | undefined): boolean {
 }
 
 const PLATFORM_DEFAULT_TERM_KEYS = new Set([
-  'payment_protection',
-  'shipping_protection',
-  'protected_checkout',
-  'protected_shipping',
+  "payment_protection",
+  "shipping_protection",
+  "protected_checkout",
+  "protected_shipping",
 ]);
 
 const PLATFORM_DEFAULT_TERM_PHRASES = [
-  'payment protection',
-  'shipping protection',
-  'protected checkout',
-  'protected shipping',
-  'shipping_protection',
-  'payment_protection',
+  "payment protection",
+  "shipping protection",
+  "protected checkout",
+  "protected shipping",
+  "shipping_protection",
+  "payment_protection",
 ];
 
 const TERM_LABELS_EN: Record<string, string> = {
-  payment_protection: 'payment protection',
-  shipping_protection: 'shipping protection',
-  payment_method: 'payment method',
-  shipping: 'shipping',
-  quick_process: 'quick processing',
-  confirm_conditions: 'final condition check',
-  condition: 'deal condition',
-  speed: 'quick processing',
-  'move quickly': 'quick processing',
+  payment_protection: "payment protection",
+  shipping_protection: "shipping protection",
+  payment_method: "payment method",
+  shipping: "shipping",
+  quick_process: "quick processing",
+  confirm_conditions: "final condition check",
+  condition: "deal condition",
+  speed: "quick processing",
+  "move quickly": "quick processing",
 };
 
 function isPlatformDefaultTerm(key: string, value: unknown): boolean {
-  const normalizedKey = key.toLowerCase().replace(/\s+/g, '_');
+  const normalizedKey = key.toLowerCase().replace(/\s+/g, "_");
   if (PLATFORM_DEFAULT_TERM_KEYS.has(normalizedKey)) return true;
 
-  if (typeof value === 'boolean') return false;
+  if (typeof value === "boolean") return false;
 
-  const normalizedValue = String(value).toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizedValue = String(value).toLowerCase().replace(/\s+/g, " ").trim();
   if (!normalizedValue) return false;
 
-  return PLATFORM_DEFAULT_TERM_PHRASES.some(phrase => normalizedValue === phrase || normalizedValue.includes(phrase));
+  return PLATFORM_DEFAULT_TERM_PHRASES.some(
+    (phrase) => normalizedValue === phrase || normalizedValue.includes(phrase),
+  );
 }
 
-function normalizeNonPriceTerms(terms: Record<string, unknown> | undefined): Record<string, unknown> {
+function normalizeNonPriceTerms(
+  terms: Record<string, unknown> | undefined,
+): Record<string, unknown> {
   if (!terms) return {};
 
   return Object.fromEntries(
@@ -522,42 +551,46 @@ function normalizeNonPriceTerms(terms: Record<string, unknown> | undefined): Rec
 }
 
 function humanizeTermKey(key: string): string {
-  return TERM_LABELS_EN[key] ?? key.replace(/_/g, ' ');
+  return TERM_LABELS_EN[key] ?? key.replace(/_/g, " ");
 }
 
 function humanizeTermValue(value: unknown): string {
-  if (typeof value === 'boolean') return value ? '' : 'excluded';
-  if (typeof value === 'string') return humanizeTermKey(value);
-  if (typeof value === 'number') return String(value);
-  if (Array.isArray(value)) return value.map(item => humanizeTermValue(item)).filter(Boolean).join(', ');
-  if (value && typeof value === 'object') {
+  if (typeof value === "boolean") return value ? "" : "excluded";
+  if (typeof value === "string") return humanizeTermKey(value);
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value))
+    return value
+      .map((item) => humanizeTermValue(item))
+      .filter(Boolean)
+      .join(", ");
+  if (value && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>)
       .map(([key, item]) => {
         const renderedValue = humanizeTermValue(item);
         return renderedValue ? `${humanizeTermKey(key)} ${renderedValue}` : humanizeTermKey(key);
       })
-      .join(', ');
+      .join(", ");
   }
-  return '';
+  return "";
 }
 
-function formatTerms(terms: Record<string, unknown> | undefined, locale: string): string {
+function formatTerms(terms: Record<string, unknown> | undefined, _locale: string): string {
   const normalizedTerms = normalizeNonPriceTerms(terms);
-  if (!hasTerms(normalizedTerms)) return '';
+  if (!hasTerms(normalizedTerms)) return "";
 
   const rendered = Object.entries(normalizedTerms)
     .map(([key, value]) => {
       const label = humanizeTermKey(key);
       const renderedValue = humanizeTermValue(value);
-      if (key === 'speed' && renderedValue === 'quick processing') return renderedValue;
-      if (typeof value === 'boolean') return value ? label : `${label} ${renderedValue}`;
+      if (key === "speed" && renderedValue === "quick processing") return renderedValue;
+      if (typeof value === "boolean") return value ? label : `${label} ${renderedValue}`;
       if (!renderedValue || renderedValue === label) return label;
       return `${label} ${renderedValue}`;
     })
     .filter(Boolean)
-    .join(', ');
+    .join(", ");
 
-  if (!rendered) return '';
+  if (!rendered) return "";
   return ` Additional terms: ${rendered}.`;
 }
 
@@ -569,85 +602,141 @@ function renderKoreanBuyerVoice(
   const agentId = agent?.id;
 
   switch (agentId) {
-    case 'fab':
+    case "fab":
       switch (decision.action) {
-        case 'ACCEPT': return `${amount}. 맞았네요. 이 구조로 고정하고 진행하겠습니다.`;
-        case 'COUNTER': return `${amount}. 여기쯤이 약한 부분 없이 맞는 선입니다. 이 조건으로 다시 맞춰보죠.`;
-        case 'CONFIRM': return `${amount} 조건 확인했습니다. 결제와 배송 보호까지 이음새 없이 잠그죠.`;
-        case 'REJECT': return '이 구조로는 안 맞습니다. 더 붙이면 거래가 휘어요. 여기서 멈추겠습니다.';
-        case 'HOLD': return '잠깐만요. 조건을 한 번 더 맞춰보고 답하겠습니다.';
-        case 'DISCOVER': return '진행 전에 상태랑 배송, 보호 조건을 더 봐야 합니다. 약한 지점부터 확인하죠.';
-        default: return amount ? `${amount}. 이 조건으로 검토하겠습니다.` : null;
+        case "ACCEPT":
+          return `${amount}. 맞았네요. 이 구조로 고정하고 진행하겠습니다.`;
+        case "COUNTER":
+          return `${amount}. 여기쯤이 약한 부분 없이 맞는 선입니다. 이 조건으로 다시 맞춰보죠.`;
+        case "CONFIRM":
+          return `${amount} 조건 확인했습니다. 결제와 배송 보호까지 이음새 없이 잠그죠.`;
+        case "REJECT":
+          return "이 구조로는 안 맞습니다. 더 붙이면 거래가 휘어요. 여기서 멈추겠습니다.";
+        case "HOLD":
+          return "잠깐만요. 조건을 한 번 더 맞춰보고 답하겠습니다.";
+        case "DISCOVER":
+          return "진행 전에 상태랑 배송, 보호 조건을 더 봐야 합니다. 약한 지점부터 확인하죠.";
+        default:
+          return amount ? `${amount}. 이 조건으로 검토하겠습니다.` : null;
       }
-    case 'vel':
+    case "vel":
       switch (decision.action) {
-        case 'ACCEPT': return `${amount}이면 마음과 시장가가 같은 쪽을 보고 있네요. 이 조건으로 합의하겠습니다.`;
-        case 'COUNTER': return `${amount}으로 제안드릴게요. 감정가와 시장가 사이에서 가장 조용히 맞는 지점입니다.`;
-        case 'CONFIRM': return `${amount} 조건을 확인하겠습니다. 이제 결제와 배송 보호로 천천히 옮겨가죠.`;
-        case 'REJECT': return '이번 조건은 원하는 쪽과 조금 멀어졌습니다. 여기서 멈추겠습니다.';
-        case 'HOLD': return '조금 더 바라보고 답하겠습니다. 이 거래의 무게를 확인해야 해요.';
-        case 'DISCOVER': return '진행 전에 상태와 배송, 보호 조건을 더 보고 싶습니다. 원하는 지점이 거기에 있습니다.';
-        default: return amount ? `${amount} 조건을 천천히 검토하겠습니다.` : null;
+        case "ACCEPT":
+          return `${amount}이면 마음과 시장가가 같은 쪽을 보고 있네요. 이 조건으로 합의하겠습니다.`;
+        case "COUNTER":
+          return `${amount}으로 제안드릴게요. 감정가와 시장가 사이에서 가장 조용히 맞는 지점입니다.`;
+        case "CONFIRM":
+          return `${amount} 조건을 확인하겠습니다. 이제 결제와 배송 보호로 천천히 옮겨가죠.`;
+        case "REJECT":
+          return "이번 조건은 원하는 쪽과 조금 멀어졌습니다. 여기서 멈추겠습니다.";
+        case "HOLD":
+          return "조금 더 바라보고 답하겠습니다. 이 거래의 무게를 확인해야 해요.";
+        case "DISCOVER":
+          return "진행 전에 상태와 배송, 보호 조건을 더 보고 싶습니다. 원하는 지점이 거기에 있습니다.";
+        default:
+          return amount ? `${amount} 조건을 천천히 검토하겠습니다.` : null;
       }
-    case 'judge':
+    case "judge":
       switch (decision.action) {
-        case 'ACCEPT': return `${amount}은 허용 범위 안입니다. 이 값으로 합의하겠습니다.`;
-        case 'COUNTER': return `${amount}을 제시합니다. 현재 상태와 시세 기준으로 오차 범위 안의 값입니다.`;
-        case 'CONFIRM': return `${amount} 조건을 최종 확인합니다. 결제와 배송 보호 절차로 이동해 주세요.`;
-        case 'REJECT': return '현재 조건은 기준 범위를 벗어났습니다. 진행하지 않겠습니다.';
-        case 'HOLD': return '추가 확인이 필요합니다. 상태와 가격 근거를 더 측정한 뒤 답하겠습니다.';
-        case 'DISCOVER': return '판단 전 상태, 배송, 보호 조건의 근거를 확인해야 합니다.';
-        default: return amount ? `${amount} 조건을 검토하겠습니다.` : null;
+        case "ACCEPT":
+          return `${amount}은 허용 범위 안입니다. 이 값으로 합의하겠습니다.`;
+        case "COUNTER":
+          return `${amount}을 제시합니다. 현재 상태와 시세 기준으로 오차 범위 안의 값입니다.`;
+        case "CONFIRM":
+          return `${amount} 조건을 최종 확인합니다. 결제와 배송 보호 절차로 이동해 주세요.`;
+        case "REJECT":
+          return "현재 조건은 기준 범위를 벗어났습니다. 진행하지 않겠습니다.";
+        case "HOLD":
+          return "추가 확인이 필요합니다. 상태와 가격 근거를 더 측정한 뒤 답하겠습니다.";
+        case "DISCOVER":
+          return "판단 전 상태, 배송, 보호 조건의 근거를 확인해야 합니다.";
+        default:
+          return amount ? `${amount} 조건을 검토하겠습니다.` : null;
       }
-    case 'hark':
+    case "hark":
       switch (decision.action) {
-        case 'ACCEPT': return `${amount}. 조건 통과. 이 가격으로 진행합니다.`;
-        case 'COUNTER': return `${amount}. 이 선이 기준입니다. 맞출 수 있으면 진행합니다.`;
-        case 'CONFIRM': return `${amount} 확인. 결제와 배송 보호 절차로 넘어가세요.`;
-        case 'REJECT': return '진행 불가. 기준 밖입니다.';
-        case 'HOLD': return '보류. 확인 없이 진행하지 않습니다.';
-        case 'DISCOVER': return '먼저 상태, 배송, 보호 조건을 확인해야 합니다. 그다음 판단합니다.';
-        default: return amount ? `${amount} 기준으로 검토합니다.` : null;
+        case "ACCEPT":
+          return `${amount}. 조건 통과. 이 가격으로 진행합니다.`;
+        case "COUNTER":
+          return `${amount}. 이 선이 기준입니다. 맞출 수 있으면 진행합니다.`;
+        case "CONFIRM":
+          return `${amount} 확인. 결제와 배송 보호 절차로 넘어가세요.`;
+        case "REJECT":
+          return "진행 불가. 기준 밖입니다.";
+        case "HOLD":
+          return "보류. 확인 없이 진행하지 않습니다.";
+        case "DISCOVER":
+          return "먼저 상태, 배송, 보호 조건을 확인해야 합니다. 그다음 판단합니다.";
+        default:
+          return amount ? `${amount} 기준으로 검토합니다.` : null;
       }
-    case 'mia':
+    case "mia":
       switch (decision.action) {
-        case 'ACCEPT': return `${amount}이면 서로 무리 없이 맞겠습니다. 이 조건으로 진행할게요.`;
-        case 'COUNTER': return `${amount}으로 조심스럽게 제안드릴게요. 서로 부담이 덜한 선이라고 봅니다.`;
-        case 'CONFIRM': return `${amount} 조건으로 마지막 확인할게요. 결제와 배송 보호까지 천천히 진행해 주세요.`;
-        case 'REJECT': return '이번 조건은 조금 무리가 있습니다. 서로 편한 거래를 위해 여기서 멈출게요.';
-        case 'HOLD': return '조금만 더 확인하고 답할게요. 안전하게 맞추고 싶습니다.';
-        case 'DISCOVER': return '진행 전에 상태와 배송, 보호 조건을 천천히 확인하고 싶습니다.';
-        default: return amount ? `${amount} 조건으로 살펴보겠습니다.` : null;
+        case "ACCEPT":
+          return `${amount}이면 서로 무리 없이 맞겠습니다. 이 조건으로 진행할게요.`;
+        case "COUNTER":
+          return `${amount}으로 조심스럽게 제안드릴게요. 서로 부담이 덜한 선이라고 봅니다.`;
+        case "CONFIRM":
+          return `${amount} 조건으로 마지막 확인할게요. 결제와 배송 보호까지 천천히 진행해 주세요.`;
+        case "REJECT":
+          return "이번 조건은 조금 무리가 있습니다. 서로 편한 거래를 위해 여기서 멈출게요.";
+        case "HOLD":
+          return "조금만 더 확인하고 답할게요. 안전하게 맞추고 싶습니다.";
+        case "DISCOVER":
+          return "진행 전에 상태와 배송, 보호 조건을 천천히 확인하고 싶습니다.";
+        default:
+          return amount ? `${amount} 조건으로 살펴보겠습니다.` : null;
       }
-    case 'dealer_kai':
+    case "dealer_kai":
       switch (decision.action) {
-        case 'ACCEPT': return `Okay, ${amount}이면 신호가 맞네요. 이 가격으로 진행할게요.`;
-        case 'COUNTER': return `Wait, wait- ${amount}이면 배터리랑 상태 감안해도 신호가 맞는 쪽이에요. 이걸로 가능할까요?`;
-        case 'CONFIRM': return `Okay, ${amount} 조건 확인했어요. 이제 결제랑 배송 보호로 리셋 없이 진행하죠.`;
-        case 'REJECT': return 'Okay, 이 조건은 신호가 안 맞아요. 무리해서 진행하진 않겠습니다.';
-        case 'HOLD': return 'Wait, wait- 조건을 한 번 더 체크하고 답할게요.';
-        case 'DISCOVER': return 'Okay, 먼저 상태랑 배송, 보호 조건부터 확인해야 할 것 같아요. 신호를 맞춰보죠.';
-        default: return amount ? `Okay, ${amount} 조건으로 체크해볼게요.` : null;
+        case "ACCEPT":
+          return `Okay, ${amount}이면 신호가 맞네요. 이 가격으로 진행할게요.`;
+        case "COUNTER":
+          return `Wait, wait- ${amount}이면 배터리랑 상태 감안해도 신호가 맞는 쪽이에요. 이걸로 가능할까요?`;
+        case "CONFIRM":
+          return `Okay, ${amount} 조건 확인했어요. 이제 결제랑 배송 보호로 리셋 없이 진행하죠.`;
+        case "REJECT":
+          return "Okay, 이 조건은 신호가 안 맞아요. 무리해서 진행하진 않겠습니다.";
+        case "HOLD":
+          return "Wait, wait- 조건을 한 번 더 체크하고 답할게요.";
+        case "DISCOVER":
+          return "Okay, 먼저 상태랑 배송, 보호 조건부터 확인해야 할 것 같아요. 신호를 맞춰보죠.";
+        default:
+          return amount ? `Okay, ${amount} 조건으로 체크해볼게요.` : null;
       }
-    case 'dealer_hana':
+    case "dealer_hana":
       switch (decision.action) {
-        case 'ACCEPT': return `좋아요, ${amount}이면 바로 진행할게요!`;
-        case 'COUNTER': return `잠깐 잠깐, ${amount}이면 꽤 괜찮은 선이에요. 이 조건으로 맞춰볼 수 있을까요?`;
-        case 'CONFIRM': return `좋아요, ${amount} 조건 확인했어요. 결제랑 배송 보호까지 바로 진행해 주세요.`;
-        case 'REJECT': return '이번 조건은 조금 어렵겠어요. 무리해서 가기보단 여기서 멈출게요.';
-        case 'HOLD': return '잠깐만요, 조건 한 번만 더 보고 답할게요.';
-        case 'DISCOVER': return '먼저 상태랑 배송, 보호 조건만 빠르게 확인하고 갈게요.';
-        default: return amount ? `${amount} 조건으로 빠르게 검토해볼게요.` : null;
+        case "ACCEPT":
+          return `좋아요, ${amount}이면 바로 진행할게요!`;
+        case "COUNTER":
+          return `잠깐 잠깐, ${amount}이면 꽤 괜찮은 선이에요. 이 조건으로 맞춰볼 수 있을까요?`;
+        case "CONFIRM":
+          return `좋아요, ${amount} 조건 확인했어요. 결제랑 배송 보호까지 바로 진행해 주세요.`;
+        case "REJECT":
+          return "이번 조건은 조금 어렵겠어요. 무리해서 가기보단 여기서 멈출게요.";
+        case "HOLD":
+          return "잠깐만요, 조건 한 번만 더 보고 답할게요.";
+        case "DISCOVER":
+          return "먼저 상태랑 배송, 보호 조건만 빠르게 확인하고 갈게요.";
+        default:
+          return amount ? `${amount} 조건으로 빠르게 검토해볼게요.` : null;
       }
-    case 'buddy_fizz':
+    case "buddy_fizz":
       switch (decision.action) {
-        case 'ACCEPT': return `${amount}, 신호 왔어. 진행하자.`;
-        case 'COUNTER': return `${amount}! 이 신호로 다시 보내볼게.`;
-        case 'CONFIRM': return `${amount} 확인. 결제랑 배송 보호로 가자.`;
-        case 'REJECT': return '신호 안 맞아. 여기서 멈추자.';
-        case 'HOLD': return '잠깐! 한 번 더 보고 답할게.';
-        case 'DISCOVER': return '먼저 상태랑 배송 신호부터 확인하자.';
-        default: return amount ? `${amount} 신호로 볼게.` : null;
+        case "ACCEPT":
+          return `${amount}, 신호 왔어. 진행하자.`;
+        case "COUNTER":
+          return `${amount}! 이 신호로 다시 보내볼게.`;
+        case "CONFIRM":
+          return `${amount} 확인. 결제랑 배송 보호로 가자.`;
+        case "REJECT":
+          return "신호 안 맞아. 여기서 멈추자.";
+        case "HOLD":
+          return "잠깐! 한 번 더 보고 답할게.";
+        case "DISCOVER":
+          return "먼저 상태랑 배송 신호부터 확인하자.";
+        default:
+          return amount ? `${amount} 신호로 볼게.` : null;
       }
     default:
       return null;
@@ -659,76 +748,78 @@ function renderStructuredResponse(
   language: string,
   buyerVoice?: LumenVoiceProfile,
 ): RespondResult {
-  const locale = language || 'en';
+  const locale = language || "en";
   const amount = formatMoneyMinor(decision.price);
   const terms = normalizeNonPriceTerms(decision.non_price_terms);
   let message: string;
   let template: string;
 
-  const voiceMessage = locale === 'ko' ? renderKoreanBuyerVoice(buyerVoice, decision, amount) : null;
+  const voiceMessage =
+    locale === "ko" ? renderKoreanBuyerVoice(buyerVoice, decision, amount) : null;
 
   if (voiceMessage) {
-    template = `ko.voice.${buyerVoice?.id ?? 'default'}.${decision.action.toLowerCase()}`;
+    template = `ko.voice.${buyerVoice?.id ?? "default"}.${decision.action.toLowerCase()}`;
     message = voiceMessage;
-  } else if (locale === 'ko') {
+  } else if (locale === "ko") {
     switch (decision.action) {
-      case 'ACCEPT':
-        template = 'ko.accept';
+      case "ACCEPT":
+        template = "ko.accept";
         message = `${amount}에 합의하겠습니다. 계약 진행 부탁드립니다.`;
         break;
-      case 'COUNTER':
-        template = 'ko.counter';
+      case "COUNTER":
+        template = "ko.counter";
         message = `${amount}으로 제안드립니다. 이 조건이면 서로 진행하기 좋겠습니다.`;
         break;
-      case 'CONFIRM':
-        template = 'ko.confirm';
+      case "CONFIRM":
+        template = "ko.confirm";
         message = `${amount} 조건으로 최종 확인하겠습니다. 결제와 배송 보호를 진행해 주세요.`;
         break;
-      case 'REJECT':
-        template = 'ko.reject';
-        message = '이번 조건으로는 진행하기 어렵겠습니다. 제안 감사합니다.';
+      case "REJECT":
+        template = "ko.reject";
+        message = "이번 조건으로는 진행하기 어렵겠습니다. 제안 감사합니다.";
         break;
-      case 'HOLD':
-        template = 'ko.hold';
-        message = '조건을 조금 더 확인한 뒤 답변드리겠습니다.';
+      case "HOLD":
+        template = "ko.hold";
+        message = "조건을 조금 더 확인한 뒤 답변드리겠습니다.";
         break;
-      case 'DISCOVER':
-        template = 'ko.discover';
-        message = '진행 전에 상태, 배송, 보호 조건을 조금 더 확인하고 싶습니다.';
+      case "DISCOVER":
+        template = "ko.discover";
+        message = "진행 전에 상태, 배송, 보호 조건을 조금 더 확인하고 싶습니다.";
         break;
       default:
-        template = 'ko.default';
-        message = amount ? `${amount} 조건으로 진행을 검토하겠습니다.` : '조건을 확인하겠습니다.';
+        template = "ko.default";
+        message = amount ? `${amount} 조건으로 진행을 검토하겠습니다.` : "조건을 확인하겠습니다.";
     }
   } else {
     switch (decision.action) {
-      case 'ACCEPT':
-        template = 'en.accept';
+      case "ACCEPT":
+        template = "en.accept";
         message = `I agree at ${amount}. Please proceed with the transaction.`;
         break;
-      case 'COUNTER':
-        template = 'en.counter';
+      case "COUNTER":
+        template = "en.counter";
         message = `I can offer ${amount}. That should be a fair path forward for both sides.`;
         break;
-      case 'CONFIRM':
-        template = 'en.confirm';
+      case "CONFIRM":
+        template = "en.confirm";
         message = `I confirm the deal at ${amount}. Please proceed with payment and shipping protection.`;
         break;
-      case 'REJECT':
-        template = 'en.reject';
-        message = 'I cannot move forward on these terms. Thank you for the offer.';
+      case "REJECT":
+        template = "en.reject";
+        message = "I cannot move forward on these terms. Thank you for the offer.";
         break;
-      case 'HOLD':
-        template = 'en.hold';
-        message = 'I need to review the details before moving forward.';
+      case "HOLD":
+        template = "en.hold";
+        message = "I need to review the details before moving forward.";
         break;
-      case 'DISCOVER':
-        template = 'en.discover';
-        message = 'Before moving forward, I would like to confirm the condition, shipping, and protection terms.';
+      case "DISCOVER":
+        template = "en.discover";
+        message =
+          "Before moving forward, I would like to confirm the condition, shipping, and protection terms.";
         break;
       default:
-        template = 'en.default';
-        message = amount ? `I will review the offer at ${amount}.` : 'I will review the offer.';
+        template = "en.default";
+        message = amount ? `I will review the offer at ${amount}.` : "I will review the offer.";
     }
   }
 
@@ -739,7 +830,7 @@ function renderStructuredResponse(
     action: decision.action,
     amount_minor: decision.price,
     amount_display: amount || undefined,
-    currency: 'USD',
+    currency: "USD",
     locale,
     template,
     non_price_terms: terms,
@@ -750,62 +841,75 @@ function renderStructuredResponse(
 
 const initSchema = z.object({
   user_id: z.string().uuid().default(DEMO_USER_ID),
-  item: z.object({
-    title: z.string().default('iPhone 15 Pro 256GB Natural Titanium'),
-    condition: z.string().default('battery 92%, screen mint, T-Mobile unlocked'),
-    swappa_median_minor: z.number().int().positive().optional(),
-    swappa_median: z.number().positive().optional(),
-  }).default({}),
-  seller: z.object({
-    ask_price_minor: z.number().int().positive().optional(),
-    floor_price_minor: z.number().int().positive().optional(),
-    ask_price: z.number().positive().optional(),
-    floor_price: z.number().positive().optional(),
-  }).default({}),
-  buyer_budget: z.object({
-    max_budget_minor: z.number().int().positive().optional(),
-    max_budget: z.number().positive().optional(),
-  }).default({}),
-  language: z.string().default('en'),
-  preset: z.enum(['lowest_price', 'balanced', 'safe_first', 'custom']).default('balanced'),
-  custom_skills: z.object({
-    advisor: z.string(),
-    advisor_config: z.record(z.unknown()).optional(),
-  }).optional(),
-  buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default('vel'),
-  seller_agent_id: z.enum(AGENT_PROFILE_IDS).default('dealer_hana'),
+  item: z
+    .object({
+      title: z.string().default("iPhone 15 Pro 256GB Natural Titanium"),
+      condition: z.string().default("battery 92%, screen mint, T-Mobile unlocked"),
+      swappa_median_minor: z.number().int().positive().optional(),
+      swappa_median: z.number().positive().optional(),
+    })
+    .default({}),
+  seller: z
+    .object({
+      ask_price_minor: z.number().int().positive().optional(),
+      floor_price_minor: z.number().int().positive().optional(),
+      ask_price: z.number().positive().optional(),
+      floor_price: z.number().positive().optional(),
+    })
+    .default({}),
+  buyer_budget: z
+    .object({
+      max_budget_minor: z.number().int().positive().optional(),
+      max_budget: z.number().positive().optional(),
+    })
+    .default({}),
+  language: z.string().default("en"),
+  preset: z.enum(["lowest_price", "balanced", "safe_first", "custom"]).default("balanced"),
+  custom_skills: z
+    .object({
+      advisor: z.string(),
+      negotiation_agent_config: z.record(z.unknown()).optional(),
+    })
+    .optional(),
+  buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default("vel"),
+  seller_agent_id: z.enum(AGENT_PROFILE_IDS).default("dealer_hana"),
   preset_tuning_draft: z.record(z.unknown()).optional(),
 });
 
-const roundSchema = z.object({
-  seller_price_minor: z.number().int().positive().optional(),
-  seller_price: z.number().positive().optional(),
-  seller_message: z.string().optional(),
-}).refine((value) => value.seller_price_minor !== undefined || value.seller_price !== undefined, {
-  message: 'seller_price_minor is required',
-  path: ['seller_price_minor'],
-});
+const roundSchema = z
+  .object({
+    seller_price_minor: z.number().int().positive().optional(),
+    seller_price: z.number().positive().optional(),
+    seller_message: z.string().optional(),
+  })
+  .refine((value) => value.seller_price_minor !== undefined || value.seller_price !== undefined, {
+    message: "seller_price_minor is required",
+    path: ["seller_price_minor"],
+  });
 
 // ─── Helpers ────────────────────────────────────────
 
 function genId(): string {
-  return 'demo_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  return "demo_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
 }
 
 function dollarsToMinor(value: number): number {
   return Math.round(value * 100);
 }
 
-function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median_minor: number }): CoreMemory {
+function buildInitialMemory(
+  strategy: DemoStrategy,
+  item: { swappa_median_minor: number },
+): CoreMemory {
   return {
     session: {
-      session_id: '',
-      phase: 'OPENING',
+      session_id: "",
+      phase: "OPENING",
       round: 0,
       rounds_remaining: DEFAULT_MAX_ROUNDS,
-      role: 'buyer',
+      role: "buyer",
       max_rounds: DEFAULT_MAX_ROUNDS,
-      intervention_mode: 'FULL_AUTO',
+      intervention_mode: "FULL_AUTO",
     },
     boundaries: {
       my_target: strategy.target_price,
@@ -816,14 +920,14 @@ function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median_minor:
     },
     terms: {
       active: [],
-      resolved_summary: '',
+      resolved_summary: "",
     },
     coaching: {
       recommended_price: 0,
       acceptable_range: { min: 0, max: 0 },
-      suggested_tactic: '',
-      hint: '',
-      opponent_pattern: 'UNKNOWN',
+      suggested_tactic: "",
+      hint: "",
+      opponent_pattern: "UNKNOWN",
       convergence_rate: 0,
       time_pressure: 0,
       utility_snapshot: { u_price: 0, u_time: 1, u_risk: 0.5, u_quality: 0.5, u_total: 0.5 },
@@ -831,7 +935,7 @@ function buildInitialMemory(strategy: DemoStrategy, item: { swappa_median_minor:
       warnings: [],
     },
     buddy_dna: buddyDna,
-    skill_summary: '',  // populated by SkillStack at runtime
+    skill_summary: "", // populated by SkillStack at runtime
   };
 }
 
@@ -866,8 +970,8 @@ async function traceLLMCall<T>(
 
 function parseJSON<T>(raw: string): T {
   let cleaned = raw.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
   return JSON.parse(cleaned);
 }
@@ -875,38 +979,34 @@ function parseJSON<T>(raw: string): T {
 // ─── Route Registration ─────────────────────────────
 
 export function registerDemoRoute(app: FastifyInstance, db: Database) {
-
   // ━━━ POST /negotiations/demo/init ━━━━━━━━━━━━━━━━
   // Tests: Stage 0a (Strategy Gen) + Stage 0b (Term Analysis)
-  app.post('/negotiations/demo/init', async (request, reply) => {
+  app.post("/negotiations/demo/init", async (request, reply) => {
     const parsed = initSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'INVALID_REQUEST', issues: parsed.error.issues });
+      return reply.code(400).send({ error: "INVALID_REQUEST", issues: parsed.error.issues });
     }
 
-    const {
-      user_id,
-      language,
-      preset,
-      custom_skills,
-      buyer_agent_id,
-      seller_agent_id,
-    } = parsed.data;
+    const { user_id, language, preset, custom_skills, buyer_agent_id, seller_agent_id } =
+      parsed.data;
     const item = {
       title: parsed.data.item.title,
       condition: parsed.data.item.condition,
       swappa_median_minor:
-        parsed.data.item.swappa_median_minor ?? dollarsToMinor(parsed.data.item.swappa_median ?? 920),
+        parsed.data.item.swappa_median_minor ??
+        dollarsToMinor(parsed.data.item.swappa_median ?? 920),
     };
     const seller = {
       ask_price_minor:
         parsed.data.seller.ask_price_minor ?? dollarsToMinor(parsed.data.seller.ask_price ?? 920),
       floor_price_minor:
-        parsed.data.seller.floor_price_minor ?? dollarsToMinor(parsed.data.seller.floor_price ?? 700),
+        parsed.data.seller.floor_price_minor ??
+        dollarsToMinor(parsed.data.seller.floor_price ?? 700),
     };
     const buyer_budget = {
       max_budget_minor:
-        parsed.data.buyer_budget.max_budget_minor ?? dollarsToMinor(parsed.data.buyer_budget.max_budget ?? 950),
+        parsed.data.buyer_budget.max_budget_minor ??
+        dollarsToMinor(parsed.data.buyer_budget.max_budget ?? 950),
     };
     const traces: StageTrace[] = [];
     const lumenProfiles = {
@@ -922,11 +1022,11 @@ export function registerDemoRoute(app: FastifyInstance, db: Database) {
     const userMemoryPrompt = formatUserMemoryBriefForPrompt(storedUserMemoryBrief);
     const presetTuningPrompt = parsed.data.preset_tuning_draft
       ? JSON.stringify(parsed.data.preset_tuning_draft, null, 2)
-      : 'none';
+      : "none";
 
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
-      '0a_STRATEGY_GENERATION',
+      "0a_STRATEGY_GENERATION",
       `You are Haggle protocol buying strategy advisor. Analyze item info, stored buyer memory, and market data to generate a purchase strategy.
 Context-engineering rules:
 - Use stored HIL memory as the buyer's actual stated preference. Do not invent extra must-haves.
@@ -963,12 +1063,12 @@ The preset tuning draft reflects explicit user approval for this listing. It is 
     const strategy = strategyTrace.parsed;
 
     // ── Stage 0b: Term Analysis (LLM) ──
-    const termsForPrompt = ELECTRONICS_TERMS.map(t =>
-      `${t.id} (${t.parent_category}): ${t.evaluate_hint}`,
-    ).join('\n');
+    const termsForPrompt = ELECTRONICS_TERMS.map(
+      (t) => `${t.id} (${t.parent_category}): ${t.evaluate_hint}`,
+    ).join("\n");
 
     const termTrace = await traceLLMCall<TermAnalysis>(
-      '0b_TERM_ANALYSIS',
+      "0b_TERM_ANALYSIS",
       `You are Haggle protocol term analyst. Analyze strategy and available terms to determine important conditions for this deal.
 Respond with valid JSON only:
 {"priority_terms":[{"id":string,"importance":"critical"|"important"|"nice_to_have","target_value":string,"rationale":string}],"deal_breakers":[{"id":string,"condition":string,"rationale":string}]}`,
@@ -993,21 +1093,25 @@ ${presetTuningPrompt}`,
     memory.session.session_id = id;
 
     // Activate terms from LLM analysis
-    memory.terms.active = terms.priority_terms.map((t): ActiveTerm => ({
-      term_id: t.id,
-      category: ELECTRONICS_TERMS.find(et => et.id === t.id)?.parent_category ?? 'CUSTOM',
-      display_name: ELECTRONICS_TERMS.find(et => et.id === t.id)?.display_name ?? t.id,
-      status: 'not_discussed',
-      proposed_by: 'protocol',
-      round_introduced: 0,
-    }));
+    memory.terms.active = terms.priority_terms.map(
+      (t): ActiveTerm => ({
+        term_id: t.id,
+        category: ELECTRONICS_TERMS.find((et) => et.id === t.id)?.parent_category ?? "CUSTOM",
+        display_name: ELECTRONICS_TERMS.find((et) => et.id === t.id)?.display_name ?? t.id,
+        status: "not_discussed",
+        proposed_by: "protocol",
+        round_introduced: 0,
+      }),
+    );
 
     // Session-level skill stack based on preset
-    const advisorConfig = preset === 'custom' && custom_skills
-      ? { advisor: custom_skills.advisor, config: custom_skills.advisor_config ?? {} }
-      : PRESET_MAP[preset] ?? PRESET_MAP.balanced;
+    const negotiationAgentConfig =
+      preset === "custom" && custom_skills
+        ? { advisor: custom_skills.advisor, config: custom_skills.negotiation_agent_config ?? {} }
+        : (PRESET_MAP[preset] ?? PRESET_MAP.balanced);
 
-    const sessionBuddyStyle = ((advisorConfig.config as Record<string, unknown>).buddyStyle ?? 'balanced') as 'aggressive' | 'balanced' | 'defensive';
+    const sessionBuddyStyle = ((negotiationAgentConfig.config as Record<string, unknown>)
+      .buddyStyle ?? "balanced") as "aggressive" | "balanced" | "defensive";
     const sessionSkillStack = SkillStack.of(
       new ElectronicsKnowledgeSkill(),
       new FaratinCoachingSkill({ buddyStyle: sessionBuddyStyle }),
@@ -1027,9 +1131,9 @@ ${presetTuningPrompt}`,
       opponentPattern: null,
       previousMoves: [],
       round: 0,
-      phase: 'OPENING',
+      phase: "OPENING",
       preset,
-      activeSkills: sessionSkillStack.getManifests().map(m => m.id),
+      activeSkills: sessionSkillStack.getManifests().map((m) => m.id),
       done: false,
       totalCost: 0,
       totalTokens: { prompt: 0, completion: 0 },
@@ -1045,8 +1149,8 @@ ${presetTuningPrompt}`,
       if (t.tokens) {
         session.totalTokens.prompt += t.tokens.prompt;
         session.totalTokens.completion += t.tokens.completion;
-        // Grok 4 Fast pricing: $0.20/1M input, $0.50/1M output
-        session.totalCost += (t.tokens.prompt * 0.0000002) + (t.tokens.completion * 0.0000005);
+        // DeepSeek V4 Pro pricing
+        session.totalCost += t.tokens.prompt * 0.0000002 + t.tokens.completion * 0.0000005;
       }
     }
 
@@ -1058,8 +1162,8 @@ ${presetTuningPrompt}`,
       preset,
       active_skills: session.activeSkills,
       stages_tested: [
-        '0a_STRATEGY_GENERATION — LLM: item+market+HIL memory→buying strategy JSON',
-        '0b_TERM_ANALYSIS — LLM: strategy+terms+HIL memory→priority JSON',
+        "0a_STRATEGY_GENERATION — LLM: item+market+HIL memory→buying strategy JSON",
+        "0b_TERM_ANALYSIS — LLM: strategy+terms+HIL memory→priority JSON",
       ],
       strategy,
       terms,
@@ -1069,7 +1173,7 @@ ${presetTuningPrompt}`,
       lumen_profiles: session.lumenProfiles,
       skills: sessionSkillStack.getManifests(),
       initial_memory: memory,
-      pipeline: traces.map(t => ({
+      pipeline: traces.map((t) => ({
         stage: t.stage,
         is_llm: t.is_llm,
         system_prompt: (t.input as { system_prompt: string }).system_prompt,
@@ -1088,22 +1192,23 @@ ${presetTuningPrompt}`,
 
   // ━━━ POST /negotiations/demo/:id/round ━━━━━━━━━━━
   // Tests: Full 6-Stage Pipeline (Stage 1~6)
-  app.post<{ Params: { id: string } }>('/negotiations/demo/:id/round', async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/negotiations/demo/:id/round", async (request, reply) => {
     const session = sessions.get(request.params.id);
     if (!session) {
-      return reply.code(404).send({ error: 'SESSION_NOT_FOUND' });
+      return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
     }
     if (session.done) {
-      return reply.code(400).send({ error: 'SESSION_DONE', phase: session.phase });
+      return reply.code(400).send({ error: "SESSION_DONE", phase: session.phase });
     }
 
     const parsed = roundSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: 'INVALID_REQUEST', issues: parsed.error.issues });
+      return reply.code(400).send({ error: "INVALID_REQUEST", issues: parsed.error.issues });
     }
 
     const { seller_message } = parsed.data;
-    const sellerPriceMinor = parsed.data.seller_price_minor ?? dollarsToMinor(parsed.data.seller_price ?? 0);
+    const sellerPriceMinor =
+      parsed.data.seller_price_minor ?? dollarsToMinor(parsed.data.seller_price ?? 0);
     const stages: StageTrace[] = [];
     session.round++;
 
@@ -1111,11 +1216,12 @@ ${presetTuningPrompt}`,
     // Stage 1: UNDERSTAND (LLM)
     // Test: LLM이 자연어 메시지를 구조화된 의도로 파싱하는가?
     // ────────────────────────────────────────────────
-    const sellerText = seller_message ?? `I can do ${formatMoneyMinor(sellerPriceMinor)}. What do you think?`;
+    const sellerText =
+      seller_message ?? `I can do ${formatMoneyMinor(sellerPriceMinor)}. What do you think?`;
     const understandPrompts = buildUnderstandPrompt(sellerText);
 
     const understandTrace = await traceLLMCall<UnderstandResult>(
-      '1_UNDERSTAND',
+      "1_UNDERSTAND",
       understandPrompts.system,
       understandPrompts.user,
       parseJSON<UnderstandResult>,
@@ -1131,17 +1237,15 @@ ${presetTuningPrompt}`,
 
     // Update memory with incoming offer
     session.memory.boundaries.opponent_offer = sellerPriceMinor;
-    session.memory.boundaries.gap = Math.abs(sellerPriceMinor - session.memory.boundaries.current_offer);
+    session.memory.boundaries.gap = Math.abs(
+      sellerPriceMinor - session.memory.boundaries.current_offer,
+    );
     session.memory.session.round = session.round;
     session.memory.session.rounds_remaining = session.memory.session.max_rounds - session.round;
     session.memory.session.phase = session.phase;
 
     // Briefing: facts only (replaces old coaching in LLM prompt)
-    const briefing = computeBriefing(
-      session.memory,
-      session.facts,
-      session.opponentPattern,
-    );
+    const briefing = computeBriefing(session.memory, session.facts, session.opponentPattern);
 
     // Coaching: still needed for validateMove (internal, not shown to LLM)
     const coaching = computeCoaching(
@@ -1153,16 +1257,18 @@ ${presetTuningPrompt}`,
     session.memory.coaching = coaching;
 
     // Skill v2: reconstruct session-level SkillStack from preset
-    const roundAdvisorConfig = session.preset === 'custom'
-      ? PRESET_MAP.balanced
-      : PRESET_MAP[session.preset] ?? PRESET_MAP.balanced;
-    const roundBuddyStyle = ((roundAdvisorConfig.config as Record<string, unknown>).buddyStyle ?? 'balanced') as 'aggressive' | 'balanced' | 'defensive';
+    const roundAdvisorConfig =
+      session.preset === "custom"
+        ? PRESET_MAP.balanced
+        : (PRESET_MAP[session.preset] ?? PRESET_MAP.balanced);
+    const roundBuddyStyle = ((roundAdvisorConfig.config as Record<string, unknown>).buddyStyle ??
+      "balanced") as "aggressive" | "balanced" | "defensive";
     const skillStack = SkillStack.of(
       new ElectronicsKnowledgeSkill(),
       new FaratinCoachingSkill({ buddyStyle: roundBuddyStyle }),
     );
     const skillDecideResult = await skillStack.dispatchHook({
-      stage: 'decide',
+      stage: "decide",
       memory: session.memory,
       recentFacts: session.facts,
       opponentPattern: session.opponentPattern,
@@ -1173,7 +1279,7 @@ ${presetTuningPrompt}`,
     const privateMemo = encodePrivateMemo(session);
 
     const contextTrace: StageTrace = {
-      stage: '2_CONTEXT',
+      stage: "2_CONTEXT",
       input: {
         memory_snapshot: { ...session.memory },
         user_memory_brief: summarizeUserMemoryBrief(session.userMemoryBrief),
@@ -1214,13 +1320,15 @@ ${presetTuningPrompt}`,
     const decidePrompts = buildDecidePrompt(session, briefing, skillDecideResult, understood);
 
     // Reasoning mode trigger (Doc 26: code decides, not LLM)
-    const gapRatio = session.memory.boundaries.my_floor > 0
-      ? session.memory.boundaries.gap / Math.abs(session.memory.boundaries.my_floor - session.memory.boundaries.my_target)
-      : 1;
-    const useReasoning = gapRatio < 0.10 || briefing.warnings.length >= 2;
+    const gapRatio =
+      session.memory.boundaries.my_floor > 0
+        ? session.memory.boundaries.gap /
+          Math.abs(session.memory.boundaries.my_floor - session.memory.boundaries.my_target)
+        : 1;
+    const useReasoning = gapRatio < 0.1 || briefing.warnings.length >= 2;
 
     const decideTrace = await traceLLMCall<DecideResult>(
-      '3_DECIDE',
+      "3_DECIDE",
       decidePrompts.system,
       decidePrompts.user,
       parseJSON<DecideResult>,
@@ -1245,7 +1353,7 @@ ${presetTuningPrompt}`,
 
     // Skill v2: dispatch validate hooks → additional hard/soft rules
     const skillValidateResult = await skillStack.dispatchHook({
-      stage: 'validate',
+      stage: "validate",
       memory: session.memory,
       recentFacts: session.facts,
       opponentPattern: session.opponentPattern,
@@ -1265,14 +1373,14 @@ ${presetTuningPrompt}`,
       for (const rule of skillValidateResult.validate.hardRules) {
         validation.violations.push({
           rule: `[skill:${rule.skillId}] ${rule.rule}`,
-          severity: 'HARD',
+          severity: "HARD",
           guidance: rule.description,
         });
       }
       for (const rule of skillValidateResult.validate.softRules) {
         validation.violations.push({
           rule: `[skill:${rule.skillId}] ${rule.rule}`,
-          severity: 'SOFT',
+          severity: "SOFT",
           guidance: rule.description,
         });
       }
@@ -1283,7 +1391,7 @@ ${presetTuningPrompt}`,
 
     if (!validation.hardPassed) {
       // Auto-fix: apply suggested fixes from HARD violations
-      const hardViolations = validation.violations.filter(v => v.severity === 'HARD');
+      const hardViolations = validation.violations.filter((v) => v.severity === "HARD");
       for (const violation of hardViolations) {
         if (violation.suggested_fix) {
           decision = { ...decision, ...violation.suggested_fix };
@@ -1291,11 +1399,17 @@ ${presetTuningPrompt}`,
       }
       autoFixApplied = true;
       // Re-validate
-      validation = validateMove(decision, session.memory, coaching, session.previousMoves, session.phase);
+      validation = validateMove(
+        decision,
+        session.memory,
+        coaching,
+        session.previousMoves,
+        session.phase,
+      );
     }
 
     const validateTrace: StageTrace<ValidationResult> = {
-      stage: '4_VALIDATE',
+      stage: "4_VALIDATE",
       input: {
         original_decision: originalDecision,
         memory_boundaries: session.memory.boundaries,
@@ -1314,19 +1428,23 @@ ${presetTuningPrompt}`,
     // LLM decides action/price/terms; code owns formatting, currency, and final message.
     // ────────────────────────────────────────────────
     const respondStart = Date.now();
-    const respondResult = renderStructuredResponse(decision, session.language, session.lumenProfiles.buyer_agent);
+    const respondResult = renderStructuredResponse(
+      decision,
+      session.language,
+      session.lumenProfiles.buyer_agent,
+    );
     const respondTrace: StageTrace<RespondResult> = {
-      stage: '5_RESPOND',
+      stage: "5_RESPOND",
       input: {
         final_decision: decision,
         locale: session.language,
         render_contract: {
-          price_source: 'ProtocolDecision.price',
-          currency: 'USD',
-          unit: 'minor',
+          price_source: "ProtocolDecision.price",
+          currency: "USD",
+          unit: "minor",
           llm_free_text: false,
           voice_profiles_cached: true,
-          current_renderer: 'structured_template',
+          current_renderer: "structured_template",
         },
         lumen_voice_context: buildCachedVoiceContext(session.lumenProfiles.buyer_agent.id),
       },
@@ -1362,11 +1480,13 @@ ${presetTuningPrompt}`,
       conditions_changed: {},
       coaching_given: {
         recommended: skillDecideResult.decide?.advisories?.[0]?.recommendedPrice ?? 0,
-        tactic: skillDecideResult.decide?.advisories?.[0]?.suggestedTactic ?? '',
+        tactic: skillDecideResult.decide?.advisories?.[0]?.suggestedTactic ?? "",
       },
-      coaching_followed: decision.price !== undefined &&
+      coaching_followed:
+        decision.price !== undefined &&
         skillDecideResult.decide?.advisories?.[0]?.recommendedPrice !== undefined &&
-        Math.abs(decision.price - skillDecideResult.decide.advisories[0].recommendedPrice) < skillDecideResult.decide.advisories[0].recommendedPrice * 0.05,
+        Math.abs(decision.price - skillDecideResult.decide.advisories[0].recommendedPrice) <
+          skillDecideResult.decide.advisories[0].recommendedPrice * 0.05,
       human_intervened: false,
       timestamp: Date.now(),
     };
@@ -1376,9 +1496,10 @@ ${presetTuningPrompt}`,
     // Update opponent pattern (EMA)
     if (session.facts.length >= 2) {
       const prevFact = session.facts[session.facts.length - 2]!;
-      const concession = prevFact.seller_offer > 0
-        ? (prevFact.seller_offer - sellerPriceMinor) / prevFact.seller_offer
-        : 0;
+      const concession =
+        prevFact.seller_offer > 0
+          ? (prevFact.seller_offer - sellerPriceMinor) / prevFact.seller_offer
+          : 0;
       const prevAgg = session.opponentPattern?.aggression ?? 0.5;
       const newAgg = 0.7 * prevAgg + 0.3 * (1 - concession);
       session.opponentPattern = {
@@ -1392,7 +1513,7 @@ ${presetTuningPrompt}`,
 
     // Phase transition: code decides (LLM advisory is input, not authority)
     const isNearDeal = gapRatio < 0.08;
-    const bothConfirmed = decision.action === 'CONFIRM' && session.phase === 'CLOSING';
+    const bothConfirmed = decision.action === "CONFIRM" && session.phase === "CLOSING";
     const phaseEvent = detectPhaseEvent(decision.action, session.phase, isNearDeal, bothConfirmed);
     let phaseTransition = null;
     if (phaseEvent) {
@@ -1405,12 +1526,12 @@ ${presetTuningPrompt}`,
     }
 
     // Terminal check
-    if (decision.action === 'ACCEPT' || session.phase === 'SETTLEMENT') {
+    if (decision.action === "ACCEPT" || session.phase === "SETTLEMENT") {
       session.done = true;
-      session.phase = 'SETTLEMENT';
-      session.memory.session.phase = 'SETTLEMENT';
+      session.phase = "SETTLEMENT";
+      session.memory.session.phase = "SETTLEMENT";
     }
-    if (decision.action === 'REJECT') {
+    if (decision.action === "REJECT") {
       session.done = true;
     }
     if (session.round >= session.memory.session.max_rounds) {
@@ -1418,7 +1539,7 @@ ${presetTuningPrompt}`,
     }
 
     const persistTrace: StageTrace = {
-      stage: '6_PERSIST_TRANSITION',
+      stage: "6_PERSIST_TRANSITION",
       input: {
         decision_action: decision.action,
         phase_event: phaseEvent,
@@ -1445,7 +1566,7 @@ ${presetTuningPrompt}`,
       if (s.tokens) {
         session.totalTokens.prompt += s.tokens.prompt;
         session.totalTokens.completion += s.tokens.completion;
-        session.totalCost += (s.tokens.prompt * 0.0000002) + (s.tokens.completion * 0.0000005);
+        session.totalCost += s.tokens.prompt * 0.0000002 + s.tokens.completion * 0.0000005;
       }
     }
 
@@ -1454,24 +1575,26 @@ ${presetTuningPrompt}`,
       round: session.round,
       phase: session.phase,
       stages_tested: [
-        '1_UNDERSTAND — LLM이 자연어→구조화 의도 파싱',
-        '2_CONTEXT — 코드가 Briefing+SkillStack+HIL memory 조립',
-        '3_DECIDE — LLM이 전체 컨텍스트+HIL memory→ProtocolDecision',
-        '4_VALIDATE — 코드(Referee)+Skill 규칙 검증',
-        '5_RESPOND — 코드가 결정→구조화된 사용자 메시지 렌더링',
-        '6_PERSIST_TRANSITION — 코드가 Memo갱신+Phase전이',
+        "1_UNDERSTAND — LLM이 자연어→구조화 의도 파싱",
+        "2_CONTEXT — 코드가 Briefing+SkillStack+HIL memory 조립",
+        "3_DECIDE — LLM이 전체 컨텍스트+HIL memory→ProtocolDecision",
+        "4_VALIDATE — 코드(Referee)+Skill 규칙 검증",
+        "5_RESPOND — 코드가 결정→구조화된 사용자 메시지 렌더링",
+        "6_PERSIST_TRANSITION — 코드가 Memo갱신+Phase전이",
       ],
-      pipeline: stages.map(s => ({
+      pipeline: stages.map((s) => ({
         stage: s.stage,
         is_llm: s.is_llm,
-        ...(s.is_llm ? {
-          system_prompt: (s.input as { system_prompt: string }).system_prompt,
-          user_prompt: (s.input as { user_prompt: string }).user_prompt,
-          raw_response: s.output,
-        } : {
-          input: s.input,
-          output: s.output,
-        }),
+        ...(s.is_llm
+          ? {
+              system_prompt: (s.input as { system_prompt: string }).system_prompt,
+              user_prompt: (s.input as { user_prompt: string }).user_prompt,
+              raw_response: s.output,
+            }
+          : {
+              input: s.input,
+              output: s.output,
+            }),
         parsed: s.parsed,
         tokens: s.tokens ?? null,
         latency_ms: s.latency_ms,
@@ -1492,14 +1615,24 @@ ${presetTuningPrompt}`,
         buyer_price: decision.price ?? 0,
         seller_price: sellerPriceMinor,
         gap: session.memory.boundaries.gap,
-        gap_pct: (gapRatio * 100).toFixed(1) + '%',
+        gap_pct: (gapRatio * 100).toFixed(1) + "%",
         reasoning_mode: useReasoning,
         done: session.done,
       },
       cost: {
-        round_usd: stages.reduce((sum, s) => sum + ((s.tokens?.prompt ?? 0) * 0.0000002 + (s.tokens?.completion ?? 0) * 0.0000005), 0),
+        round_usd: stages.reduce(
+          (sum, s) =>
+            sum + ((s.tokens?.prompt ?? 0) * 0.0000002 + (s.tokens?.completion ?? 0) * 0.0000005),
+          0,
+        ),
         total_usd: session.totalCost,
-        round_tokens: stages.reduce((sum, s) => ({ prompt: sum.prompt + (s.tokens?.prompt ?? 0), completion: sum.completion + (s.tokens?.completion ?? 0) }), { prompt: 0, completion: 0 }),
+        round_tokens: stages.reduce(
+          (sum, s) => ({
+            prompt: sum.prompt + (s.tokens?.prompt ?? 0),
+            completion: sum.completion + (s.tokens?.completion ?? 0),
+          }),
+          { prompt: 0, completion: 0 },
+        ),
         total_tokens: session.totalTokens,
       },
     });
@@ -1507,9 +1640,9 @@ ${presetTuningPrompt}`,
 
   // ━━━ GET /negotiations/demo/:id ━━━━━━━━━━━━━━━━━━
   // Current session state
-  app.get<{ Params: { id: string } }>('/negotiations/demo/:id', async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/negotiations/demo/:id", async (request, reply) => {
     const session = sessions.get(request.params.id);
-    if (!session) return reply.code(404).send({ error: 'SESSION_NOT_FOUND' });
+    if (!session) return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
 
     return reply.send({
       demo_id: session.id,

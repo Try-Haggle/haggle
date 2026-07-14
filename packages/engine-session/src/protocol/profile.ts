@@ -1,8 +1,8 @@
 // HNP Profile & Discovery Types
 // Agent profiles, transport entries, auth, and /.well-known/hnp structure.
 
-import type { HnpCoreRevision, HnpTransport } from './core.js';
-import { HNP_CORE_CAPABILITY, HNP_CORE_REVISIONS } from './core.js';
+import type { HnpCoreRevision, HnpTransport } from "./core.js";
+import { HNP_CORE_CAPABILITY, HNP_CORE_REVISIONS } from "./core.js";
 
 export interface HnpCapabilitySupport {
   versions: string[];
@@ -20,10 +20,10 @@ export interface HnpAuthProfile {
   jwks_uri?: string;
 }
 
-export interface HnpAgentProfile {
+export interface HnpNegotiationAgent {
   agent_id: string;
   display_name: string;
-  roles: ('BUYER' | 'SELLER' | 'MEDIATOR')[];
+  roles: ("BUYER" | "SELLER" | "MEDIATOR")[];
   transports: HnpTransport[];
   supports_async_sessions?: boolean;
   supports_streaming?: boolean;
@@ -41,7 +41,7 @@ export interface HnpWellKnownProfile {
     signature_algorithms: string[];
     settlement_modes: string[];
     auth?: HnpAuthProfile;
-    agent_profile?: HnpAgentProfile;
+    agent_profile?: HnpNegotiationAgent;
   };
 }
 
@@ -54,7 +54,7 @@ export function createHnpProfile(input: {
   signature_algorithms?: string[];
   settlement_modes?: string[];
   auth?: HnpAuthProfile;
-  agent_profile?: HnpAgentProfile;
+  agent_profile?: HnpNegotiationAgent;
   core_revisions?: HnpCoreRevision[];
   preferred_core_revision?: HnpCoreRevision;
 }): HnpWellKnownProfile {
@@ -70,12 +70,12 @@ export function createHnpProfile(input: {
         endpoint: transport.endpoint || input.endpoint,
       })),
       capabilities: {
-        [HNP_CORE_CAPABILITY]: { versions: ['1.0.0'], required: true },
+        [HNP_CORE_CAPABILITY]: { versions: ["1.0.0"], required: true },
         ...input.capabilities,
       },
-      issue_namespaces: input.issue_namespaces ?? ['hnp.issue'],
+      issue_namespaces: input.issue_namespaces ?? ["hnp.issue"],
       signature_algorithms: input.signature_algorithms ?? [],
-      settlement_modes: input.settlement_modes ?? ['manual'],
+      settlement_modes: input.settlement_modes ?? ["manual"],
       ...(input.auth ? { auth: input.auth } : {}),
       ...(input.agent_profile ? { agent_profile: input.agent_profile } : {}),
     },

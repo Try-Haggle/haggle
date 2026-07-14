@@ -1,5 +1,17 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const disputeCases = pgTable("dispute_cases", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -37,15 +49,27 @@ export const disputeEvidence = pgTable("dispute_evidence", {
   id: uuid("id").defaultRandom().primaryKey(),
   disputeId: uuid("dispute_id").notNull(),
   submittedBy: text("submitted_by", { enum: ["buyer", "seller", "system"] }).notNull(),
-  type: text("type", { enum: ["text", "image", "video", "tracking_snapshot", "payment_proof", "other"] }).notNull(),
+  type: text("type", {
+    enum: ["text", "image", "video", "tracking_snapshot", "payment_proof", "other"],
+  }).notNull(),
   uri: text("uri"),
   text: text("text"),
-  derivedArtifacts: jsonb("derived_artifacts").$type<Array<{
-    id: string; kind: string; source_evidence_id: string; uri?: string; text?: string;
-    metadata?: Record<string, unknown>; created_at?: string;
-  }>>(),
+  derivedArtifacts:
+    jsonb("derived_artifacts").$type<
+      Array<{
+        id: string;
+        kind: string;
+        source_evidence_id: string;
+        uri?: string;
+        text?: string;
+        metadata?: Record<string, unknown>;
+        created_at?: string;
+      }>
+    >(),
   sourceContentSha256: text("source_content_sha256"),
-  derivedArtifactsProvenance: jsonb("derived_artifacts_provenance").$type<Record<string, unknown>>(),
+  derivedArtifactsProvenance: jsonb("derived_artifacts_provenance").$type<
+    Record<string, unknown>
+  >(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -59,8 +83,12 @@ export const disputeEvidenceUploads = pgTable(
     contentType: text("content_type").notNull(),
     fileSizeBytes: integer("file_size_bytes").notNull(),
     storagePath: text("storage_path").notNull(),
-    status: text("status", { enum: ["PENDING", "QUARANTINED", "COMMITTED", "REJECTED", "EXPIRED"] }).notNull().default("PENDING"),
-    scanStatus: text("scan_status", { enum: ["PENDING", "SCANNING", "CLEAN", "INFECTED", "FAILED", "SKIPPED"] })
+    status: text("status", { enum: ["PENDING", "QUARANTINED", "COMMITTED", "REJECTED", "EXPIRED"] })
+      .notNull()
+      .default("PENDING"),
+    scanStatus: text("scan_status", {
+      enum: ["PENDING", "SCANNING", "CLEAN", "INFECTED", "FAILED", "SKIPPED"],
+    })
       .notNull()
       .default("PENDING"),
     contentSha256: text("content_sha256"),
@@ -72,13 +100,17 @@ export const disputeEvidenceUploads = pgTable(
     similaritySignals: jsonb("similarity_signals").$type<Record<string, unknown>>(),
     similarityStatus: text("similarity_status", {
       enum: ["PENDING", "CLEAR", "REVIEW_REQUIRED", "APPROVED", "REJECTED", "FAILED", "SKIPPED"],
-    }).notNull().default("PENDING"),
+    })
+      .notNull()
+      .default("PENDING"),
     similarityDistance: integer("similarity_distance"),
     similarityReviewedBy: text("similarity_reviewed_by"),
     similarityReviewedAt: timestamp("similarity_reviewed_at", { withTimezone: true }),
     retentionStatus: text("retention_status", {
       enum: ["ACTIVE", "DELETING", "DELETED", "FAILED"],
-    }).notNull().default("ACTIVE"),
+    })
+      .notNull()
+      .default("ACTIVE"),
     retentionUntil: timestamp("retention_until", { withTimezone: true }),
     deletionClaimId: uuid("deletion_claim_id"),
     deletionClaimedAt: timestamp("deletion_claimed_at", { withTimezone: true }),
@@ -102,14 +134,29 @@ export const disputeEvidenceUploads = pgTable(
   },
   (table) => ({
     uniqueStoragePath: unique("dispute_evidence_uploads_storage_path_unique").on(table.storagePath),
-    disputeScanStatusIdx: index("dispute_evidence_uploads_dispute_scan_status_idx").on(table.disputeId, table.scanStatus),
-    scanRetryReadyIdx: index("dispute_evidence_uploads_scan_retry_ready_idx")
-      .on(table.scanStatus, table.scanNextAttemptAt, table.scanLeaseExpiresAt),
-    committedCameraSha256Unique: uniqueIndex("dispute_evidence_uploads_committed_camera_sha256_unique")
+    disputeScanStatusIdx: index("dispute_evidence_uploads_dispute_scan_status_idx").on(
+      table.disputeId,
+      table.scanStatus,
+    ),
+    scanRetryReadyIdx: index("dispute_evidence_uploads_scan_retry_ready_idx").on(
+      table.scanStatus,
+      table.scanNextAttemptAt,
+      table.scanLeaseExpiresAt,
+    ),
+    committedCameraSha256Unique: uniqueIndex(
+      "dispute_evidence_uploads_committed_camera_sha256_unique",
+    )
       .on(table.contentSha256)
-      .where(sql`${table.status} = 'COMMITTED' AND ${table.cameraSessionId} IS NOT NULL AND ${table.contentSha256} IS NOT NULL`),
-    similarityStatusIdx: index("dispute_evidence_uploads_similarity_status_idx").on(table.similarityStatus),
-    retentionStatusIdx: index("dispute_evidence_uploads_retention_status_idx").on(table.retentionStatus, table.retentionUntil),
+      .where(
+        sql`${table.status} = 'COMMITTED' AND ${table.cameraSessionId} IS NOT NULL AND ${table.contentSha256} IS NOT NULL`,
+      ),
+    similarityStatusIdx: index("dispute_evidence_uploads_similarity_status_idx").on(
+      table.similarityStatus,
+    ),
+    retentionStatusIdx: index("dispute_evidence_uploads_retention_status_idx").on(
+      table.retentionStatus,
+      table.retentionUntil,
+    ),
   }),
 );
 
@@ -126,10 +173,15 @@ export const disputeEvidenceSimilarityReviewEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    transitionUnique: uniqueIndex("dispute_evidence_similarity_review_event_transition_unique")
-      .on(table.uploadId, table.eventType),
-    timelineIdx: index("dispute_evidence_similarity_review_event_timeline_idx")
-      .on(table.uploadId, table.createdAt, table.id),
+    transitionUnique: uniqueIndex("dispute_evidence_similarity_review_event_transition_unique").on(
+      table.uploadId,
+      table.eventType,
+    ),
+    timelineIdx: index("dispute_evidence_similarity_review_event_timeline_idx").on(
+      table.uploadId,
+      table.createdAt,
+      table.id,
+    ),
     eventHashIdx: index("dispute_evidence_similarity_review_event_hash_idx")
       .on(table.eventHash)
       .where(sql`${table.eventHash} IS NOT NULL`),
@@ -144,7 +196,11 @@ export const disputeEvidenceSimilarityReviewAuditOutbox = pgTable(
     eventId: uuid("event_id").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     payloadSha256: text("payload_sha256").notNull(),
-    status: text("status", { enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"] }).notNull().default("PENDING"),
+    status: text("status", {
+      enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"],
+    })
+      .notNull()
+      .default("PENDING"),
     attemptCount: integer("attempt_count").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     leaseToken: uuid("lease_token"),
@@ -158,7 +214,9 @@ export const disputeEvidenceSimilarityReviewAuditOutbox = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    archiveKeyUnique: uniqueIndex("dispute_similarity_review_audit_archive_key_unique").on(table.archiveKey),
+    archiveKeyUnique: uniqueIndex("dispute_similarity_review_audit_archive_key_unique").on(
+      table.archiveKey,
+    ),
     eventIdx: index("dispute_similarity_review_audit_event_idx").on(table.eventId, table.createdAt),
     dueIdx: index("dispute_similarity_review_audit_due_idx").on(table.status, table.nextAttemptAt),
   }),
@@ -188,7 +246,10 @@ export const disputeAiAssessmentEvents = pgTable(
   (table) => [
     index("dispute_ai_assessment_events_dispute_created_idx").on(table.disputeId, table.createdAt),
     index("dispute_ai_assessment_events_event_hash_idx").on(table.eventHash),
-    unique("dispute_ai_assessment_events_dispute_revision_unique").on(table.disputeId, table.revision),
+    unique("dispute_ai_assessment_events_dispute_revision_unique").on(
+      table.disputeId,
+      table.revision,
+    ),
   ],
 );
 
@@ -203,7 +264,11 @@ export const disputeAiAuditOutbox = pgTable(
     chainHeadEventHash: text("chain_head_event_hash"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     payloadSha256: text("payload_sha256").notNull(),
-    status: text("status", { enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"] }).notNull().default("PENDING"),
+    status: text("status", {
+      enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"],
+    })
+      .notNull()
+      .default("PENDING"),
     attemptCount: integer("attempt_count").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     leaseToken: uuid("lease_token"),
@@ -229,10 +294,17 @@ export const disputeAiAuditDiscoveryFailures = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     disputeId: uuid("dispute_id").notNull(),
     eventCount: integer("event_count").notNull(),
-    failureCode: text("failure_code", { enum: [
-      "AI_AUDIT_ARCHIVE_TOO_LARGE", "AI_AUDIT_CHAIN_INVALID", "AI_AUDIT_CHAIN_UNSEALED", "AI_AUDIT_ARCHIVE_UNEXPECTED",
-    ] }).notNull(),
-    status: text("status", { enum: ["OPEN", "RETRY_REQUESTED", "RESOLVED"] }).notNull().default("OPEN"),
+    failureCode: text("failure_code", {
+      enum: [
+        "AI_AUDIT_ARCHIVE_TOO_LARGE",
+        "AI_AUDIT_CHAIN_INVALID",
+        "AI_AUDIT_CHAIN_UNSEALED",
+        "AI_AUDIT_ARCHIVE_UNEXPECTED",
+      ],
+    }).notNull(),
+    status: text("status", { enum: ["OPEN", "RETRY_REQUESTED", "RESOLVED"] })
+      .notNull()
+      .default("OPEN"),
     attemptCount: integer("attempt_count").notNull().default(1),
     firstFailedAt: timestamp("first_failed_at", { withTimezone: true }).notNull().defaultNow(),
     lastFailedAt: timestamp("last_failed_at", { withTimezone: true }).notNull().defaultNow(),
@@ -241,8 +313,14 @@ export const disputeAiAuditDiscoveryFailures = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    versionUnique: uniqueIndex("dispute_ai_audit_discovery_failure_version_unique").on(table.disputeId, table.eventCount),
-    openIdx: index("dispute_ai_audit_discovery_failure_open_idx").on(table.status, table.lastFailedAt),
+    versionUnique: uniqueIndex("dispute_ai_audit_discovery_failure_version_unique").on(
+      table.disputeId,
+      table.eventCount,
+    ),
+    openIdx: index("dispute_ai_audit_discovery_failure_open_idx").on(
+      table.status,
+      table.lastFailedAt,
+    ),
   }),
 );
 
@@ -302,7 +380,9 @@ export const disputeModuleWebhookOutbox = pgTable(
     disputeId: uuid("dispute_id").notNull(),
     eventType: text("event_type").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
-    status: text("status", { enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"] })
+    status: text("status", {
+      enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"],
+    })
       .notNull()
       .default("PENDING"),
     attemptCount: integer("attempt_count").notNull().default(0),

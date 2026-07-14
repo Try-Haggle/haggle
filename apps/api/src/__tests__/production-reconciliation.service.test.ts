@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@haggle/db";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildProductionReconciliationReport,
   collectProductionReconciliationInput,
@@ -23,37 +23,45 @@ describe("production reconciliation report service", () => {
     const report = buildProductionReconciliationReport({
       generatedAt: "2026-05-12T00:00:00.000Z",
       payments: {
-        local: [{
-          payment_intent_id: "pi_1",
-          order_id: "ord_1",
-          state: "authorized",
-          amount_minor: 1000,
-          provider_reference: "prov_1",
-        }],
-        provider: [{
-          provider_reference: "prov_1",
-          state: "captured",
-          amount_minor: 1000,
-        }],
+        local: [
+          {
+            payment_intent_id: "pi_1",
+            order_id: "ord_1",
+            state: "authorized",
+            amount_minor: 1000,
+            provider_reference: "prov_1",
+          },
+        ],
+        provider: [
+          {
+            provider_reference: "prov_1",
+            state: "captured",
+            amount_minor: 1000,
+          },
+        ],
       },
       shipments: {
-        local: [{
-          shipment_id: "ship_1",
-          order_id: "ord_1",
-          state: "label_created",
-          order_status: "PAYMENT_PENDING",
-        }],
+        local: [
+          {
+            shipment_id: "ship_1",
+            order_id: "ord_1",
+            state: "label_created",
+            order_status: "PAYMENT_PENDING",
+          },
+        ],
         provider: [],
       },
       disputes: {
-        local: [{
-          dispute_id: "disp_1",
-          order_id: "ord_1",
-          status: "resolved_buyer_favor",
-          outcome: "buyer_favor",
-          order_status: "IN_DISPUTE",
-          refund_status: "PENDING",
-        }],
+        local: [
+          {
+            dispute_id: "disp_1",
+            order_id: "ord_1",
+            status: "resolved_buyer_favor",
+            outcome: "buyer_favor",
+            order_status: "IN_DISPUTE",
+            refund_status: "PENDING",
+          },
+        ],
       },
     });
 
@@ -86,79 +94,103 @@ describe("production reconciliation report service", () => {
 
   it("collects local payment, shipment, and dispute snapshots without mutating state", async () => {
     const db = createSelectQueueDb([
-      [{
-        id: "pi_1",
-        orderId: "ord_1",
-        status: "SETTLED",
-        amountMinor: "1000",
-      }],
-      [{
-        paymentIntentId: "pi_1",
-        providerReference: "provider_payment_1",
-      }],
-      [],
-      [{
-        paymentIntentId: "pi_1",
-        status: "COMPLETED",
-        amountMinor: "250",
-      }],
-      [{
-        id: "ship_1",
-        orderId: "ord_1",
-        status: "LABEL_CREATED",
-        carrier: "USPS",
-        trackingNumber: null,
-        labelUrl: null,
-        metadata: {
-          easypost_shipment_id: "easypost_ship_1",
-          label_qr_code_url: "https://labels.test/qr.png",
+      [
+        {
+          id: "pi_1",
+          orderId: "ord_1",
+          status: "SETTLED",
+          amountMinor: "1000",
         },
-      }],
-      [{
-        id: "ord_1",
-        status: "PAID",
-      }],
-      [{
-        id: "disp_1",
-        orderId: "ord_1",
-        status: "RESOLVED_SELLER_FAVOR",
-        metadata: {
-          finalization_attempts: 2,
+      ],
+      [
+        {
+          paymentIntentId: "pi_1",
+          providerReference: "provider_payment_1",
         },
-        resolvedAt: new Date("2026-05-12T00:00:00.000Z"),
-        closedAt: null,
-      }],
-      [{
-        disputeId: "disp_1",
-        outcome: "seller_favor",
-        refundAmountMinor: null,
-      }],
-      [{
-        id: "ord_1",
-        status: "CLOSED",
-      }],
-      [{
-        id: "pi_1",
-        orderId: "ord_1",
-      }],
+      ],
       [],
-      [{
-        orderId: "ord_1",
-        productReleaseStatus: "PENDING_DELIVERY",
-      }],
+      [
+        {
+          paymentIntentId: "pi_1",
+          status: "COMPLETED",
+          amountMinor: "250",
+        },
+      ],
+      [
+        {
+          id: "ship_1",
+          orderId: "ord_1",
+          status: "LABEL_CREATED",
+          carrier: "USPS",
+          trackingNumber: null,
+          labelUrl: null,
+          metadata: {
+            easypost_shipment_id: "easypost_ship_1",
+            label_qr_code_url: "https://labels.test/qr.png",
+          },
+        },
+      ],
+      [
+        {
+          id: "ord_1",
+          status: "PAID",
+        },
+      ],
+      [
+        {
+          id: "disp_1",
+          orderId: "ord_1",
+          status: "RESOLVED_SELLER_FAVOR",
+          metadata: {
+            finalization_attempts: 2,
+          },
+          resolvedAt: new Date("2026-05-12T00:00:00.000Z"),
+          closedAt: null,
+        },
+      ],
+      [
+        {
+          disputeId: "disp_1",
+          outcome: "seller_favor",
+          refundAmountMinor: null,
+        },
+      ],
+      [
+        {
+          id: "ord_1",
+          status: "CLOSED",
+        },
+      ],
+      [
+        {
+          id: "pi_1",
+          orderId: "ord_1",
+        },
+      ],
+      [],
+      [
+        {
+          orderId: "ord_1",
+          productReleaseStatus: "PENDING_DELIVERY",
+        },
+      ],
       [],
     ]);
-    const listPaymentProviderSnapshots = vi.fn(async () => [{
-      provider_reference: "provider_payment_1",
-      state: "refunded" as const,
-      amount_minor: 1000,
-      refunded_amount_minor: 250,
-    }]);
-    const listShipmentProviderSnapshots = vi.fn(async () => [{
-      provider_shipment_id: "easypost_ship_1",
-      state: "label_created" as const,
-      label_purchased: true,
-    }]);
+    const listPaymentProviderSnapshots = vi.fn(async () => [
+      {
+        provider_reference: "provider_payment_1",
+        state: "refunded" as const,
+        amount_minor: 1000,
+        refunded_amount_minor: 250,
+      },
+    ]);
+    const listShipmentProviderSnapshots = vi.fn(async () => [
+      {
+        provider_shipment_id: "easypost_ship_1",
+        state: "label_created" as const,
+        label_purchased: true,
+      },
+    ]);
 
     const input = await collectProductionReconciliationInput(db, {
       limit: 10,
@@ -170,65 +202,75 @@ describe("production reconciliation report service", () => {
     });
 
     expect(input.generatedAt).toBe("2026-05-12T00:00:00.000Z");
-    expect(input.payments?.local).toEqual([{
-      payment_intent_id: "pi_1",
-      order_id: "ord_1",
-      state: "partially_refunded",
-      amount_minor: 1000,
-      refunded_amount_minor: 250,
-      provider_reference: "provider_payment_1",
-    }]);
-    expect(input.shipments?.local).toEqual([{
-      shipment_id: "ship_1",
-      order_id: "ord_1",
-      state: "label_created",
-      carrier: "USPS",
-      tracking_number: undefined,
-      provider_shipment_id: "easypost_ship_1",
-      provider_tracker_id: undefined,
-      label_url: undefined,
-      qr_code_url: "https://labels.test/qr.png",
-      order_status: "PAID",
-    }]);
-    expect(input.disputes?.local).toEqual([{
-      dispute_id: "disp_1",
-      order_id: "ord_1",
-      status: "resolved_seller_favor",
-      outcome: "seller_favor",
-      order_status: "CLOSED",
-      refund_status: undefined,
-      refund_amount_minor: undefined,
-      expected_refund_amount_minor: undefined,
-      settlement_release_status: "PENDING_DELIVERY",
-      return_shipment_status: undefined,
-      finalized_at: "2026-05-12T00:00:00.000Z",
-      finalization_attempts: 2,
-    }]);
+    expect(input.payments?.local).toEqual([
+      {
+        payment_intent_id: "pi_1",
+        order_id: "ord_1",
+        state: "partially_refunded",
+        amount_minor: 1000,
+        refunded_amount_minor: 250,
+        provider_reference: "provider_payment_1",
+      },
+    ]);
+    expect(input.shipments?.local).toEqual([
+      {
+        shipment_id: "ship_1",
+        order_id: "ord_1",
+        state: "label_created",
+        carrier: "USPS",
+        tracking_number: undefined,
+        provider_shipment_id: "easypost_ship_1",
+        provider_tracker_id: undefined,
+        label_url: undefined,
+        qr_code_url: "https://labels.test/qr.png",
+        order_status: "PAID",
+      },
+    ]);
+    expect(input.disputes?.local).toEqual([
+      {
+        dispute_id: "disp_1",
+        order_id: "ord_1",
+        status: "resolved_seller_favor",
+        outcome: "seller_favor",
+        order_status: "CLOSED",
+        refund_status: undefined,
+        refund_amount_minor: undefined,
+        expected_refund_amount_minor: undefined,
+        settlement_release_status: "PENDING_DELIVERY",
+        return_shipment_status: undefined,
+        finalized_at: "2026-05-12T00:00:00.000Z",
+        finalization_attempts: 2,
+      },
+    ]);
     expect(listPaymentProviderSnapshots).toHaveBeenCalledWith(input.payments?.local);
     expect(listShipmentProviderSnapshots).toHaveBeenCalledWith(input.shipments?.local);
   });
 
   it("omits payment findings when provider payment source is not configured", async () => {
-    const input = await collectProductionReconciliationInput(createSelectQueueDb([
-      [{
-        id: "pi_1",
-        orderId: "ord_1",
-        status: "SETTLED",
-        amountMinor: "1000",
-      }],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-    ]));
+    const input = await collectProductionReconciliationInput(
+      createSelectQueueDb([
+        [
+          {
+            id: "pi_1",
+            orderId: "ord_1",
+            status: "SETTLED",
+            amountMinor: "1000",
+          },
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ]),
+    );
 
     expect(input.payments).toBeUndefined();
     expect(input.shipments).toEqual({ local: [], provider: [] });

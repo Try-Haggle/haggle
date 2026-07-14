@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Negotiation Engine — SOT · Haggle Docs</title>
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="logo"></span>Haggle Docs</div>
+  <div class="brandsub">Negotiation Engine · SOT</div>
+  <div id="site-features"></div>
+  <div id="page-toc" class="toc"></div>
+</nav>
+<main>
+
+<!-- ══ Intro ══ -->
+<section id="intro" class="hero" data-nav="개요 & 범례">
+  <h2 class="sec">Source of Truth</h2>
+  <h1>협상 엔진 — SOT</h1>
+  <p class="sub">이 페이지 하나로 협상 엔진의 <b>이상적 목표 설계(SOT)</b>와 <b>현재 실제 구현(현황)</b>을 능력 단위로 나란히 봅니다. 모든 개발자·AI 툴이 "무엇이 목표이고 / 지금 어디까지 됐고 / 뭐가 known issue인지"를 여기서 확실히 파악합니다.</p>
+  <div class="meta">1차 소스: <code>docs/engine/SOT.md</code> (마크다운) · 이 HTML은 렌더 뷰 · 이상형=설계 문서, 현황=코드 대조 기준 · 브랜치 <code>feature/builder-memory-to-negotiation</code></div>
+
+  <div class="callout co-info" style="margin-top:20px">
+    <div class="ct">읽는 법 — 각 능력은 3단 블록</div>
+    <div>
+      <span class="badge b-doc">이상형 · SOT</span> 목표 설계 &nbsp;→&nbsp;
+      <span class="badge b-ok">현황</span> 실제 코드 (근거 파일 포함) &nbsp;→&nbsp;
+      <span class="badge b-todo">할 일</span> 둘의 갭.
+      <div style="margin-top:8px">현황 범례: <span class="badge b-ok">✅ 구현됨</span> <span class="badge b-warn">🚧 부분/advisory</span> <span class="badge b-dead">💀 미구현/죽음</span> <span class="badge b-doc">📄 설계만</span> <span class="badge b-todo">❓ 미확인</span></div>
+    </div>
+  </div>
+  <div class="callout co-ok">
+    <div class="ct">🚀 이 엔진이 처음이라면?</div>
+    <div>이 페이지는 밀도 높은 <b>레퍼런스</b>입니다. 처음 오는 개발자는 <a href="negotiation-engine-start-here.html"><b>Start Here — 협상 엔진</b></a>부터 보세요. iPhone 협상 한 건으로 전체 과정을 따라가고 실제 LLM 프롬프트도 볼 수 있습니다.</div>
+  </div>
+  <div class="callout co-warn">
+    <div class="ct">⚠️ 한 줄 총평</div>
+    <div>순수 수학 엔진(<code>engine-core</code>)은 설계대로 정확하나 <b>프로덕션 결정 경로에서 우회</b>돼 있습니다. 실제 결정은 LLM(grok)이 내리고 엔진은 추천가·검증 보조만 합니다. 이 괴리가 문서 전반의 핵심 known issue입니다.</div>
+  </div>
+</section>
+
+<!-- ══ 0 Goals ══ -->
+<section id="goals" data-nav="0 · 목표 & 비전">
+  <h2 class="sec">00 · Goals</h2>
+  <h2 class="title">목표 &amp; 비전</h2>
+  <p class="lead">AI 에이전트가 사람 대신 가격을 협상하도록 만드는 계산·의사결정 코어. 목표가·마지노선·성향을 설정하면 에이전트가 라운드를 주고받으며 <b>양쪽에 공정한 합의점</b>을 찾습니다.</p>
+  <div class="grid c3">
+    <div class="card"><h4>결정론</h4><p class="muted">동일 입력 → 동일 출력. 난수 없음.</p></div>
+    <div class="card"><h4>역할 대칭</h4><p class="muted">구매/판매 수식 동일, 파라미터 방향만 반대.</p></div>
+    <div class="card"><h4>양쪽 공정</h4><p class="muted">실제 BATNA만 사용, 허위 압력 금지.</p></div>
+  </div>
+  <div class="callout co-warn">
+    <div class="ct">현황 총평</div>
+    <div>결정론·역할대칭은 <code>engine-core</code>에서 지켜지나 그 레이어가 프로덕션에서 우회됨. 실제 결정은 LLM. → §1</div>
+  </div>
+</section>
+
+<!-- ══ 1 Architecture ══ -->
+<section id="arch" data-nav="1 · 아키텍처">
+  <h2 class="sec">01 · Architecture</h2>
+  <h2 class="title">아키텍처</h2>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">실행 파이프라인</span><span class="cap-badge badge b-ok">✅ 경로 / 🚧 역할</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div>
+      <p>4계층(L0 Gateway · L1 Skill · L2 Engine · L3 Wire+Data). 매 라운드 6-Stage, LLM이 Understand·Decide 담당, 엔진이 Validate에서 검증. <b>"LLM은 협상가, 엔진은 심판"</b>.</p>
+    </div>
+    <div class="block now ok"><div class="bl">현황</div>
+      <p>프로덕션 라운드는 단일 경로로 수렴:</p>
+<div class="json">POST /negotiations/… · MCP haggle_submit_offer
+  → getExecutor()                     <span class="c">lib/executor-factory.ts</span>
+  → executeStagedNegotiationRound      <span class="c">pipeline/executor.ts (DB 트랜잭션)</span>
+      └ executePipeline → decide → <span class="lbl">LLM(grok)</span>이 최종 가격 작성</div>
+      <p>✅ 6-Stage 실제 가동(유일 경로). Stage 1 Understand는 설계상 LLM이나 현재 정규식/휴리스틱 → 라운드당 LLM 콜 최대 1회(Decide).</p>
+    </div>
+    <div class="block now dead"><div class="bl">현황 · known issue: 엔진 우회</div>
+      <p>engine-core <code>computeUtility</code>/<code>makeDecision</code>과 engine-session <code>executeRound</code>는 <b>데모·테스트 전용</b>. 프로덕션 라우트가 호출 안 함(<code>executor-factory.ts</code> 주석 명시). 단 가격 함수 <code>computeCounterOffer</code>는 코치가 import해 씀 — "엔진의 <i>의사결정</i>이 죽음"이 정확.</p>
+    </div>
+    <div class="block todo"><div class="bl">할 일</div><p>엔진 코어를 권위 advisory로 결정 경로에 재연결할지 결정 (§11-1).</p></div>
+  </div>
+</section>
+
+<!-- ══ 2 State model ══ -->
+<section id="state" data-nav="2 · 상태 모델">
+  <h2 class="sec">02 · State model</h2>
+  <h2 class="title">상태 모델 — 4계층</h2>
+  <p class="lead"><code>EngineParameters</code>는 최하단 입력 한 조각. 진짜 "살아있는 상태"는 <code>negotiation_sessions</code> row.</p>
+<div class="json"><span class="lbl">①</span> EngineParameters   <span class="c">재사용 성향 폼 (가격 없음) · negotiation_agents</span>
+     │ compile (+리스팅 가격/마감)
+<span class="lbl">②</span> MasterStrategy     <span class="c">성향 + p_target/p_limit/t_deadline · = negotiationAgentSnapshot(jsonb)</span>
+     ▼
+<span class="lbl">③</span> negotiation_sessions (row) ★ <span class="c">살아있는 상태: status·phase·round·counters·snapshots</span>
+     │ 매 라운드 재구성
+<span class="lbl">④</span> CoreMemory         <span class="c">영속 아님, 매 라운드 조립</span>
+     ▼  StrategyParams = { beta, alpha, anchor_ratio, v_t_floor, u_threshold, u_aspiration, weights }
+        <span class="c">← 결정 로직이 실제 읽는 서브셋</span></div>
+  <div class="callout co-warn">
+    <div class="ct">현황 · known issue</div>
+    <div>🚧 <code>terms.active</code> 항상 <code>[]</code> (다중 Term 미구현) · <code>skill_summary</code>·L5 category <b>electronics 하드코딩</b> · <code>opponent_offer</code>는 재구성 시 플레이스홀더 후 executor가 실제 offer로 덮어씀(<code>executor.ts:222</code>).</div>
+  </div>
+  <div class="callout co-ok">
+    <div class="ct">컴파일러 (① → ②) ✅ — 파라미터 손실 아님</div>
+    <div><code>compileNegotiationAgentSnapshot</code>은 성향 파라미터를 <b>손실 없이 충실히</b> 스냅샷에 기록(stat→param 수식 없음). 리스팅에서 <code>p_target/p_limit</code>(역할별 방향)·<code>t_deadline</code>(기본 7일)·<code>thresholds</code> 파생. <b>"파라미터 사장"의 책임은 컴파일러가 아니라 하위 소비처</b>(§4) — 고칠 곳은 memory-reconstructor + coach/decide.</div>
+  </div>
+</section>
+
+<!-- ══ 3 State machine ══ -->
+<section id="phase-status" data-nav="3 · 상태 머신 (phase/status)">
+  <h2 class="sec">03 · State machine</h2>
+  <h2 class="title">상태 머신 — 두 개의 독립 축 <span class="badge b-ok">✅</span></h2>
+  <div class="grid c2">
+    <div class="card">
+      <h4>(a) <code>phase</code> — 협상 국면 (5)</h4>
+<div class="json">DISCOVERY <span class="c">(건너뜀)</span>
+ → OPENING → BARGAINING
+ → CLOSING → SETTLEMENT <span class="c">(종단)</span>
+역행: REVERT_REQUESTED · ABORT→SETTLEMENT</div>
+      <p class="muted"><span class="fileref">phase/phase-machine.ts</span></p>
+    </div>
+    <div class="card">
+      <h4>(b) <code>status</code> — 생명주기 (11)</h4>
+<div class="json">REJECT→REJECTED · ACCEPT→ACCEPTED
+OPENING→ACTIVE
+BARGAINING: HOLD→WAITING /
+  noConcession≥4→STALLED / else ACTIVE
+CLOSING→NEAR_DEAL</div>
+      <p class="muted">잇는 함수: <code>inferPhaseFromStatus</code>·<code>phaseToDbStatus</code></p>
+    </div>
+  </div>
+  <p class="muted"><b>phase = "어느 단계냐", status = "살아있냐/멈췄냐/끝났냐".</b> 🚧 DISCOVERY 우회 · ❓ NEGOTIATING_VERSION/FAILED_COMPATIBILITY 사용처 미확인.</p>
+</section>
+
+<!-- ══ 4 Parameters ══ -->
+<section id="params" data-nav="4 · 파라미터">
+  <h2 class="sec">04 · Parameters</h2>
+  <h2 class="title">EngineParameters</h2>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">성향 폼 17개 필드</span><span class="cap-badge badge b-warn">🚧 2개만 작동</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div>
+      <p>각 필드가 협상 행동(양보 속도·앵커·수락 기준·리스크 태도)을 조율. 프리셋·슬라이더·빌더챗이 무엇을 채우든 이 폼으로 모임.</p>
+    </div>
+    <div class="block now warn"><div class="bl">현황 · known issue</div>
+      <p>grep 검증 — <code>strategy_params</code> 필드를 읽는 런타임 코드는 <code>beta</code>·<code>anchor_ratio</code>뿐(<code>default-engine-skill.ts:75,99</code> · <code>coach.ts:101,115</code>).</p>
+      <div class="tbl-scroll"><table>
+        <tr><th>필드</th><th>상태</th><th>영향</th></tr>
+        <tr><td><code>beta</code> · <code>anchor_ratio</code></td><td><span class="badge b-ok">✅ 가격</span></td><td>Faratin 양보 / OPENING 앵커 마진</td></tr>
+        <tr><td><code>weights</code></td><td><span class="badge b-warn">🚧 무시</span></td><td>coach u_total이 하드코딩 가중치 사용 (<code>coach.ts:163</code>)</td></tr>
+        <tr><td><code>alpha·v_t_floor·u_threshold·u_aspiration·w_rep·v_s_base·n_threshold·gamma</code></td><td><span class="badge b-warn">🚧 미소비</span></td><td>engine-core(비활성)에만 존재</td></tr>
+        <tr><td><code>market_utilization·cross_pressure_sensitivity·r_score_minimum·i_completeness_minimum·late_round_aggression_modifier</code></td><td><span class="badge b-dead">💀 죽음</span></td><td>읽는 코드 전무 (일부는 영속화조차 안 됨)</td></tr>
+      </table></div>
+      <p>⚠️ <code>beta</code>·<code>anchor_ratio</code>조차 최종가를 직접 정하지 않고 LLM 프롬프트의 <b>추천가 계산 입력</b>. LLM이 유효가 반환 시 대체(<code>decide.ts:84</code>).</p>
+      <p>🔎 <b>프롬프트에도 안 감:</b> <code>agent_weights</code>·<code>agent_overrides</code>는 strategy_context에 저장되나 <code>encodeStrategyContext</code>(<code>grok-fast-adapter.ts:380</code>)가 <b>persona + 빌더챗 메모리만</b> 렌더 → 숫자 15개는 advisory 텍스트로도 미도달(죽은 데이터). <b>LLM에 닿는 유일한 전략 채널 = 빌더챗 메모리.</b></p>
+    </div>
+    <div class="block todo"><div class="bl">할 일 — 미사용 필드 살리기</div>
+      <p>연결 지점은 둘: (A) LLM 프롬프트로 가는 추천가·유틸, (B) LLM이 못 뒤집는 룰/레퍼리 게이트.</p>
+      <div class="tbl-scroll"><table>
+        <tr><th>필드</th><th>방법</th><th>규모</th></tr>
+        <tr><td>weights</td><td><code>coach:163</code>→params.weights. <b>단 프롬프트도 손대야 실효</b>(§5 utility 미도달)</td><td>🟢 헛수고 주의</td></tr>
+        <tr><td>alpha·v_t_floor</td><td><code>V_t=max(v_t_floor,(1−tp)^alpha)</code>로 recommended_price에 접기 (검증된 채널)</td><td>🟡</td></tr>
+        <tr><td>u_threshold·u_aspiration</td><td>decide/룰에서 u_total 비교 게이트</td><td>🟡 리스크</td></tr>
+        <tr><td><b>근본</b></td><td>매 라운드 NegotiationContext 조립 → engine-core computeUtility/makeDecision advisory</td><td>🟠 17개 전부 활성</td></tr>
+      </table></div>
+    </div>
+  </div>
+
+  <h4>4개 프리셋 값</h4>
+  <div class="tbl-scroll"><table>
+    <tr><th>필드</th><th>hunter 🎯</th><th>closer ⚡</th><th>verifier 🔍</th><th>balancer ⚖️</th></tr>
+    <tr><td>w_p/w_t/w_r/w_s</td><td>.5/.15/.2/.15</td><td>.2/.5/.15/.15</td><td>.25/.2/.4/.15</td><td>.3/.25/.25/.2</td></tr>
+    <tr><td><b>beta</b></td><td><b>0.4</b></td><td><b>2.0</b></td><td>1.0</td><td>1.0</td></tr>
+    <tr><td><b>anchor_ratio</b></td><td>0.5</td><td>0.85</td><td>0.7</td><td>0.7</td></tr>
+    <tr><td>u_threshold / u_aspiration</td><td>.55/.7</td><td>.4/.55</td><td>.6/.75</td><td>.5/.65</td></tr>
+  </table></div>
+</section>
+
+<!-- ══ 5 Pipeline ══ -->
+<section id="pipeline" data-nav="5 · 파이프라인 (6-Stage)">
+  <h2 class="sec">05 · Pipeline</h2>
+  <h2 class="title">라운드 파이프라인</h2>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">실행 모드 — 두 개의 진입점 ★</span><span class="cap-badge badge b-ok">✅ 실제 제품 흐름</span></div>
+    <div class="block now ok"><div class="bl">(A) POST /negotiations/start — AI-vs-AI 자동재생</div>
+      <p>buyer-landing 실제 흐름. <b>구매자·판매자 양쪽 스냅샷을 컴파일</b>(<code>:1018·1038</code>)하고, <code>for(i&lt;AUTO_PLAY_MAX_ROUNDS)</code> 루프(<code>:1099</code>)에서 <b><code>setSessionPerspective</code>로 역할·스냅샷을 교체</b>하며 executor를 번갈아 호출 — <b>협상 전체를 한 요청에서 서버가 자동으로 끝까지 재생</b>. 양쪽 다 Haggle AI, 사람은 라운드마다 개입 안 함.</p>
+      <p>⚠️ 제품의 실제 형태는 "사람 vs AI가 시간을 두고"가 아니라 <b>AI 양측 즉시 자동 협상</b> 후 결과 반환.</p>
+    </div>
+    <div class="block now"><div class="bl">(B) POST /sessions/:id/offers — 단건 오퍼</div>
+      <p>외부/HNP 에이전트가 오퍼 하나 제출 → executor가 <b>한 라운드</b>만 실행(<code>:429</code>). 그룹 소속이면 라운드 후 그룹 오케스트레이션(§9).</p>
+    </div>
+  </div>
+
+  <p class="muted">두 경로 모두 아래 executor 한 라운드를 공유합니다.</p>
+
+  <h4>executor 실행 흐름 <span class="badge b-ok">✅</span></h4>
+<div class="json"><span class="lbl">1</span> 세션 로드(락) · <span class="lbl">2b</span> 만료→EXPIRED · <span class="lbl">2c</span> 라운드한도(15)→REJECTED
+<span class="lbl">3</span> 멱등성 · <span class="lbl">4</span> 로그→facts→EMA→coach→CoreMemory (opponent_offer=실제offer)
+<span class="lbl">5</span> 스크리닝(스팸) · <span class="lbl">6</span> phase감지(NEAR_DEAL: round≥3 & gap<5%)
+<span class="lbl">7</span> 개입체크(auto아니면 WAITING) · <span class="lbl">8</span> L5시그널 · <span class="lbl">9</span> executePipeline</div>
+
+  <div class="pipe">
+    <div class="pstep"><div class="pn">S1</div><div class="pnm">Understand</div><span class="pk code">규칙</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S2</div><div class="pnm">Context</div><span class="pk code">코드</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S3</div><div class="pnm">Decide</div><span class="pk llm">LLM*</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S4</div><div class="pnm">Validate</div><span class="pk code">코드</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S5</div><div class="pnm">Respond</div><span class="pk code">코드</span></div><div class="pconn">→</div>
+    <div class="pstep"><div class="pn">S6</div><div class="pnm">Persist</div><span class="pk code">코드</span></div>
+  </div>
+
+  <div class="cap" id="coach" data-nav="↳ Coach vs Briefing" data-nav-sub>
+    <div class="cap-head"><span class="cap-t">Coach vs Briefing</span><span class="cap-badge badge b-warn">🚧</span></div>
+    <div class="block now warn"><div class="bl">현황 — 둘 다 LIVE, 역할 다름</div>
+      <p><b>coach</b>(<code>@deprecated</code>인데 여전히 LIVE) → <code>memory.coaching</code> → <b>LLM 프롬프트의 recommended_price 앵커 공급</b>(<code>decide.ts:60</code>→<code>grok-fast-adapter.ts:212</code>). phase별: OPENING <code>target×(1±margin)</code>·BARGAINING Faratin(beta)·CLOSING 확정가. <b>"briefing이 coach를 대체" 설계는 미완성.</b></p>
+      <p><b>briefing</b>(facts-only) → <code>context.briefing</code> → reasoning 모드 판단(<code>decide.ts:47</code>) + Validate에만. 가격 앵커 아님.</p>
+      <p>⚠️ utility_snapshot이 <b>두 곳에서 다른 하드코딩 가중치로 중복 계산</b> — coach(.5/.2/.15/.15) · briefing(.5/.2/.3). 둘 다 사용자 weights 무시.</p>
+    </div>
+  </div>
+
+  <div class="cap" id="decide" data-nav="↳ Decide (LLM)" data-nav-sub>
+    <div class="cap-head"><span class="cap-t">Stage 3 — Decide (LLM)</span><span class="cap-badge badge b-warn">🚧</span></div>
+    <div class="block now warn"><div class="bl">현황</div>
+      <p>✅ 어댑터 <b>GrokFastAdapter 하드코딩</b>(<code>executor.ts:70</code>), xAI(<code>api.x.ai/v1</code>), 모델 <code>XAI_MODEL ?? grok-4-fast</code>. 다른 어댑터 코드에 없음.</p>
+      <p>✅ 프롬프트 <code>C:</code> 라인은 <code>rec$..|tactic|opp|conv|tp</code>만 — <b>recommended_price만 하드 앵커, utility/weights 미도달</b>(<code>grok-fast-adapter.ts:212</code>).</p>
+      <p>🎯 <b>ACCEPT를 유도하는 gap 휴리스틱 = <code>encodeClosingHint</code></b>(<code>:317</code>): 서버가 gap 계산 → <b>gap&lt;5%/&lt;$5 → "ACCEPT하라"</b>를 프롬프트에 직접 주입. §7의 그 휴리스틱.</p>
+      <p>🔎 STRATEGY 블록 = persona + <b>빌더챗 메모리만</b>(숫자 파라미터 미도달, §4). <code>encodeDelta</code> 차등컨텍스트는 decide 경로에서 죽은 코드(prevMemory=undefined).</p>
+    </div>
+  </div>
+
+  <div class="cap" id="referee" data-nav="↳ Referee (Validate)" data-nav-sub>
+    <div class="cap-head"><span class="cap-t">Stage 4 — Referee</span><span class="cap-badge badge b-warn">🚧</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div><p>7규칙(V1~V3 HARD, V4~V7 SOFT) + auto-fix로 LLM 결정을 거르는 안전장치.</p></div>
+    <div class="block now warn"><div class="bl">현황 <span class="fileref" style="display:inline;margin:0">상세: reference/referee.md</span></div>
+      <p>✅ 7규칙 가동. V1 가격 floor 초과→floor · V2 phase 미허용 action→allowed[0] · V3 라운드소진 COUNTER→REJECT. V4~V7(역전·정체·일방양보·양보폭과다)는 SOFT, auto-fix 없음.</p>
+      <p>⚠️ <b>HARD도 실제로는 차단 안 됨</b> — auto-fix <code>MAX_RETRY=2</code> 후 위반 남아도 통과. <code>'BLOCK'</code>은 감사 라벨일 뿐.</p>
+      <p>⚠️ <b>"가격 lock" 없음</b> — respond에 clamp/lock 전무. 유일 개입은 V1 floor 덮어쓰기(soft). 💀 ViolationTracker 미사용 → 항상 full 모드.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 6 Math ══ -->
+<section id="math" data-nav="6 · 협상의 수학">
+  <h2 class="sec">06 · The math</h2>
+  <h2 class="title">협상의 수학</h2>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">6.2 Faratin 양보 곡선</span><span class="cap-badge badge b-ok">✅ 가격 결정</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div>
+      <p><code>P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)</code>. β&lt;1 Boulware(막판 양보)·β&gt;1 Conceder(초반 양보). 확장: 효용공간 역산·동적 β·AC_next.</p>
+    </div>
+    <div class="block now ok"><div class="bl">현황</div>
+      <p>✅ price-space <code>computeCounterOffer</code> 가동(<code>engine-core/decision/faratin.ts</code>), 코치·룰이 β와 사용.</p>
+      <p>🚧 <code>t</code>는 실경과시간 아닌 <code>time_pressure || round/max_rounds</code> 근사. 💀 효용공간·동적 β·AC_next·후반완화 미구현(β 고정).</p>
+    </div>
+  </div>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">6.1 효용 U_total</span><span class="cap-badge badge b-warn">🚧 advisory</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div><p><code>U_total = w_p·V_p + w_t·V_t + w_r·V_r + w_s·V_s</code>. V_p는 로그(한계효용 체감), V_s_base=0.5로 초면 중립.</p></div>
+    <div class="block now warn"><div class="bl">현황</div><p>engine-core에 정확 구현되나 <b>프로덕션 미사용</b>. 코치는 단순화·하드코딩 u_total만, 그마저 프롬프트 미도달.</p></div>
+    <div class="block todo"><div class="bl">할 일</div><p>§4 근본 해법으로 연결.</p></div>
+  </div>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">6.4 상대방 모델</span><span class="cap-badge badge b-ok">✅ EMA만</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div><p>EMA(Layer1) + 베이지안 β/Term 추정(Layer2) + Reputation prior + 6종 이동분류(Jonker).</p></div>
+    <div class="block now ok"><div class="bl">현황</div><p>✅ EMA만: <code>ema ← 0.3·obs + 0.7·ema</code>, aggression 3버킷, pattern BOULWARE/LINEAR/CONCEDER (2R부터). 📄 베이지안·6종·prior 코드 없음.</p></div>
+  </div>
+
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">6.3 시간 효용 V_t · 6.5 다중 Term</span><span class="cap-badge badge b-warn">🚧</span></div>
+    <div class="block now warn"><div class="bl">현황</div>
+      <p>🚧 <b>V_t:</b> time_pressure는 마감시각에서 계산되나 α·v_t_floor 미사용(선형).</p>
+      <p>🚧 <b>Term:</b> <code>terms.active</code> 항상 <code>[]</code>. 단일 가격 Term만. Offer Inverter 미구현.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 7 Tactics ══ -->
+<section id="tactics" data-nav="7 · 의사결정 전술">
+  <h2 class="sec">07 · Tactics</h2>
+  <h2 class="title">의사결정 전술</h2>
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">결정 규칙 + 전술</span><span class="cap-badge badge b-warn">🚧 LLM이 결정</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div>
+      <p>우선순위 규칙: ESCALATE(처리불가) → ACCEPT(u≥aspiration) → NEAR_DEAL(u≥threshold) → COUNTER(u&gt;0) → REJECT(u≤0) → ESCALATE(교착 noConcession≥4). 전술 엔진: 미러링, 상대패턴×단계 매트릭스.</p>
+    </div>
+    <div class="block now warn"><div class="bl">현황</div>
+      <p>🚧 위 규칙은 engine-core <code>makeDecision</code>(비활성)에 있음. <b>프로덕션 ACCEPT/REJECT는 LLM + gap 휴리스틱</b>. 코치가 <code>suggested_tactic</code>(nibble/anchoring 등) 파생해 프롬프트 전달하나 강제력 없음. 전술 매트릭스·미러링 미구현.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 8 LLM ══ -->
+<section id="llm" data-nav="8 · LLM 통합">
+  <h2 class="sec">08 · LLM</h2>
+  <h2 class="title">LLM 통합</h2>
+  <div class="callout co-ok">
+    <div class="ct">현황 <span class="badge b-ok">✅</span></div>
+    <div>💀 <b>"라운드당 2회"는 틀림 → 실제 1회(Decide만)</b>. Respond는 템플릿(LLM 미호출), pipeline respond 토큰 합산은 죽은 코드. · ✅ xAI 고정(<code>XAI_MODEL</code>, 기본 grok-4-fast), reasoning은 fast 모델엔 미적용. · ✅ 토큰 실측 → <code>negotiation_rounds.llm_tokens_used</code> 저장. · 🚧 <b>비용 러프 추정·DB 미저장</b>(<code>tokens/1000×0.0015</code>, 정확요금은 advisor 모듈에만). · 💀 세션당 비용 집계 없음("~$0.005/세션"은 데모값).</div>
+  </div>
+</section>
+
+<!-- ══ 9 Topology ══ -->
+<section id="topology" data-nav="9 · 토폴로지 (1:N)">
+  <h2 class="sec">09 · Topology</h2>
+  <h2 class="title">토폴로지 &amp; 크로스프레셔</h2>
+  <div class="cap">
+    <div class="cap-head"><span class="cap-t">1:N 병렬 협상</span><span class="cap-badge badge b-dead">💀 dormant</span></div>
+    <div class="block ideal"><div class="bl">이상형 · SOT</div><p>batchEvaluate로 Top N 세션, 나머지 WAITING. 한 세션 ACCEPTED 시 나머지 SUPERSEDED. 크로스프레셔는 BATNA만 주입(허위 금지, 세션당 ≤2회, 차이&lt;5%면 미주입). N:1 Anti-Sniping.</p></div>
+    <div class="block now dead"><div class="bl">현황 — 완성돼 있으나 도달 불가</div>
+      <p>서브시스템(엔진·DB·전용 라우트)은 배선됐으나 <b>프로덕션 <code>/negotiations/start</code>가 그룹을 생성 안 함</b>(<code>createSession</code> groupId 없이, <code>negotiations.ts:1079</code>). 그룹은 수동 <code>POST /negotiations/groups</code>로만, 웹앱 미호출.</p>
+      <p>💀 <code>batchEvaluate</code> 프로덕션 호출자 0 · 💀 크로스프레셔/BATNA <b>dead branch</b>(<code>memory.competition</code> 미설정, L5가 competition 미반환 "Not implemented in Phase 0") · 🚧 supersede는 <code>if(session.groupId)</code> 뒤 · 💀 Anti-Sniping 코드 없음.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 10 Persistence ══ -->
+<section id="persist" data-nav="10 · 영속화">
+  <h2 class="sec">10 · Persistence</h2>
+  <h2 class="title">데이터 영속화 <span class="badge b-ok">✅</span></h2>
+  <p class="lead"><code>db/schema/negotiation-sessions.ts</code></p>
+  <div class="tbl-scroll"><table>
+    <tr><th>테이블</th><th>내용</th></tr>
+    <tr><td><code>negotiation_sessions</code></td><td>세션 상태 + 스냅샷 + 데이터모트(outcome·priceTrajectory·opponentModel·coreMemorySnapshot·memoHash…)</td></tr>
+    <tr><td><code>negotiation_rounds</code></td><td>append-only 라운드 로그 (utility·coaching·validation·referee_violations·coach_recommended…)</td></tr>
+    <tr><td><code>negotiation_groups</code></td><td>1:N 컨테이너</td></tr>
+  </table></div>
+  <p class="muted">💀 <b>Memo/체인 무결성 = write-only, 검증 안 됨</b> — SHA-256 memo 해시 + Level-2 해시체인 생성·저장하나 저장 후 재계산·비교 런타임 경로 없음(<code>verifyMemoIntegrity</code>·<code>verifyChain</code> 호출자=테스트뿐). 온체인 앵커 미구현.</p>
+</section>
+
+<!-- ══ 11 Backlog ══ -->
+<section id="backlog" data-nav="11 · 종합 백로그" data-todo>
+  <h2 class="sec">11 · Backlog</h2>
+  <h2 class="title">종합 백로그 (SOT ↔ 현황 갭)</h2>
+  <div class="tbl-scroll"><table>
+    <tr><th>#</th><th>갭</th><th>현재</th><th>목표</th><th>규모</th></tr>
+    <tr><td>1</td><td>파라미터 사장</td><td>beta·anchor_ratio만</td><td>17개 관여</td><td>🟠 근본</td></tr>
+    <tr><td>2</td><td>효용함수 미사용</td><td>하드코딩·미도달</td><td>weights 반영</td><td>🟡</td></tr>
+    <tr><td>3</td><td>연속 시간 미반영</td><td>round 비율</td><td>실 마감+α·v_t_floor</td><td>🟡</td></tr>
+    <tr><td>4</td><td>상대모델 거침</td><td>EMA 3버킷</td><td>베이지안+6종</td><td>🟠</td></tr>
+    <tr><td>5</td><td>동적 β 없음</td><td>β 고정</td><td>경쟁·상대반응</td><td>🟡</td></tr>
+    <tr><td>6</td><td>다중 Term 없음</td><td>가격 단일</td><td>term_space</td><td>🟠</td></tr>
+    <tr><td>7</td><td>전술/미러링 없음</td><td>텍스트만</td><td>매트릭스 강제</td><td>🟡</td></tr>
+    <tr><td>8</td><td>1:N 전체 dormant</td><td>그룹 미생성 → 전부 도달 불가</td><td>/start 그룹 생성 트리거</td><td>🟠</td></tr>
+    <tr><td>9</td><td>카테고리 하드코딩</td><td>electronics 고정</td><td>일반화</td><td>🟡</td></tr>
+    <tr><td>10</td><td>Referee HARD 미차단</td><td>'BLOCK' 라벨뿐 통과</td><td>HARD 실제 차단 결정</td><td>🟡</td></tr>
+    <tr><td>11</td><td>무결성 검증 미작동</td><td>memo/체인 해시 write-only</td><td>verify 연결 + 온체인 앵커</td><td>🟡</td></tr>
+    <tr><td>12</td><td>비용 미저장</td><td>러프 추정, DB 미기록</td><td>정확 요금 + 세션 집계</td><td>🟢</td></tr>
+    <tr><td>—</td><td><b>조사 완료 ✅</b></td><td colspan="3">협상 엔진 주요 경로 코드 검증 완료 — 남은 미확인 없음</td></tr>
+  </table></div>
+  <hr/>
+  <p class="muted">1차 소스 <code>docs/engine/SOT.md</code> · 이상형=설계 통합, 현황=코드 대조.</p>
+</section>
+
+</main>
+</div>
+<script src="assets/site.js"></script>
+</body>
+</html>

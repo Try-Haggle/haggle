@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@haggle/db";
+import { describe, expect, it, vi } from "vitest";
 import {
   consumeWebSocketAuthTicket,
   extractWebSocketTicketProtocol,
@@ -41,41 +41,59 @@ describe("WebSocket one-time auth tickets", () => {
 
   it("requires negotiation participation before issuing a scoped ticket", async () => {
     const deniedDb = mockDb([[]]);
-    await expect(issueWebSocketAuthTicket(deniedDb, {
-      userId: "00000000-0000-4000-a000-000000000010",
-      channel: "negotiation",
-      resourceId: "11111111-1111-4111-8111-111111111111",
-    })).resolves.toBeNull();
+    await expect(
+      issueWebSocketAuthTicket(deniedDb, {
+        userId: "00000000-0000-4000-a000-000000000010",
+        channel: "negotiation",
+        resourceId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).resolves.toBeNull();
 
-    const allowedDb = mockDb([[{ authorized: true }], [], [], [],
-      [{ expires_at: new Date(Date.now() + 30_000) }]]);
-    await expect(issueWebSocketAuthTicket(allowedDb, {
-      userId: "00000000-0000-4000-a000-000000000010",
-      channel: "negotiation",
-      resourceId: "11111111-1111-4111-8111-111111111111",
-    })).resolves.toMatchObject({ expiresInSeconds: 30 });
+    const allowedDb = mockDb([
+      [{ authorized: true }],
+      [],
+      [],
+      [],
+      [{ expires_at: new Date(Date.now() + 30_000) }],
+    ]);
+    await expect(
+      issueWebSocketAuthTicket(allowedDb, {
+        userId: "00000000-0000-4000-a000-000000000010",
+        channel: "negotiation",
+        resourceId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).resolves.toMatchObject({ expiresInSeconds: 30 });
   });
 
   it("returns a principal only for one matching atomic consume", async () => {
     const ticket = "b".repeat(43);
     const db = mockDb([[{ user_id: "00000000-0000-4000-a000-000000000010" }], []]);
-    await expect(consumeWebSocketAuthTicket(db, {
-      ticket,
-      channel: "notification",
-    })).resolves.toEqual({ userId: "00000000-0000-4000-a000-000000000010" });
-    await expect(consumeWebSocketAuthTicket(db, {
-      ticket,
-      channel: "notification",
-    })).resolves.toBeNull();
+    await expect(
+      consumeWebSocketAuthTicket(db, {
+        ticket,
+        channel: "notification",
+      }),
+    ).resolves.toEqual({ userId: "00000000-0000-4000-a000-000000000010" });
+    await expect(
+      consumeWebSocketAuthTicket(db, {
+        ticket,
+        channel: "notification",
+      }),
+    ).resolves.toBeNull();
     expect(db.execute).toHaveBeenCalledTimes(2);
   });
 
   it("rejects malformed and scope-inconsistent consumes before the database", async () => {
     const db = mockDb([]);
-    await expect(consumeWebSocketAuthTicket(db, { ticket: "short", channel: "notification" })).resolves.toBeNull();
-    await expect(consumeWebSocketAuthTicket(db, {
-      ticket: "c".repeat(43), channel: "negotiation",
-    })).resolves.toBeNull();
+    await expect(
+      consumeWebSocketAuthTicket(db, { ticket: "short", channel: "notification" }),
+    ).resolves.toBeNull();
+    await expect(
+      consumeWebSocketAuthTicket(db, {
+        ticket: "c".repeat(43),
+        channel: "negotiation",
+      }),
+    ).resolves.toBeNull();
     expect(db.execute).not.toHaveBeenCalled();
   });
 

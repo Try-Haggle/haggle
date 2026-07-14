@@ -15,9 +15,9 @@ export interface LlmCostEstimate {
 }
 
 const DEFAULT_MODEL_PRICING: Record<string, LlmModelPricing> = {
-  "grok-4.3": { inputUsdPer1MTokens: 1.25, outputUsdPer1MTokens: 2.50 },
-  "grok-4-fast": { inputUsdPer1MTokens: 0.20, outputUsdPer1MTokens: 0.50 },
-  "grok-4.1-fast": { inputUsdPer1MTokens: 0.20, outputUsdPer1MTokens: 0.50 },
+  "grok-4.3": { inputUsdPer1MTokens: 1.25, outputUsdPer1MTokens: 2.5 },
+  "grok-4-fast": { inputUsdPer1MTokens: 0.2, outputUsdPer1MTokens: 0.5 },
+  "grok-4.1-fast": { inputUsdPer1MTokens: 0.2, outputUsdPer1MTokens: 0.5 },
 };
 
 function parseNonNegativeNumber(raw: string | undefined): number | null {

@@ -5,10 +5,10 @@
  * Routes to Skill (rule-based) or LLM depending on phase + action.
  */
 
-import type { DecideInput, DecideOutput } from '../pipeline/types.js';
-import type { EngineDecision } from '../types.js';
-import { shouldUseReasoning } from '../config.js';
-import { callLLM } from '../adapters/xai-client.js';
+import { callLLM } from "../adapters/deepseek-client.js";
+import { shouldUseReasoning } from "../config.js";
+import type { DecideInput, DecideOutput } from "../pipeline/types.js";
+import type { EngineDecision } from "../types.js";
 
 /**
  * Make a negotiation decision.
@@ -18,7 +18,7 @@ import { callLLM } from '../adapters/xai-client.js';
  * - All other cases → Skill rule-based (fallback when LLM unavailable)
  */
 export async function decide(input: DecideInput): Promise<DecideOutput> {
-  const { context, adapter, skill, phase, config, memory, facts, opponent, conversation } = input;
+  const { context, adapter, skill, phase, config, memory, facts, conversation } = input;
   const startMs = Date.now();
 
   // Step 1: Skill evaluateOffer (rule-based fallback, LLM augments in BARGAINING)
@@ -29,10 +29,10 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
     facts,
     phase,
   );
-  let source: DecideOutput['source'] = 'skill';
+  let source: DecideOutput["source"] = "skill";
   let reasoningMode = false;
   let llmRaw: string | undefined;
-  let tokens: DecideOutput['tokens'];
+  let tokens: DecideOutput["tokens"];
 
   // Step 2: LLM augmentation.
   // We let the LLM craft the actual move in OPENING and BARGAINING when the
@@ -40,18 +40,21 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
   // first anchor is made — leaving it to the deterministic skill alone made
   // every negotiation feel mechanical and stuck on a single price.
   const llmEligible =
-    (phase === 'OPENING' || phase === 'BARGAINING') &&
-    decision.action === 'COUNTER';
+    (phase === "OPENING" || phase === "BARGAINING") && decision.action === "COUNTER";
   if (llmEligible) {
     try {
-      const useReasoning = config.reasoningEnabled && shouldUseReasoning({
-        gap: memory.boundaries.gap,
-        gapRatio: memory.boundaries.gap /
-          Math.abs(memory.boundaries.my_target - memory.boundaries.my_floor || 1),
-        coachWarnings: context.briefing.warnings,
-        opponentPattern: context.briefing.opponentPattern as import('../types.js').OpponentPatternType,
-        softViolationCount: 0,
-      });
+      const useReasoning =
+        config.reasoningEnabled &&
+        shouldUseReasoning({
+          gap: memory.boundaries.gap,
+          gapRatio:
+            memory.boundaries.gap /
+            Math.abs(memory.boundaries.my_target - memory.boundaries.my_floor || 1),
+          coachWarnings: context.briefing.warnings,
+          opponentPattern: context.briefing
+            .opponentPattern as import("../types.js").OpponentPatternType,
+          softViolationCount: 0,
+        });
 
       reasoningMode = useReasoning;
 
@@ -81,17 +84,17 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
       const llmDecision = adapter.parseResponse(llmResponse.content);
 
       // Use LLM decision if it has a valid price for COUNTER
-      if (llmDecision.action === 'COUNTER' && llmDecision.price && llmDecision.price > 0) {
+      if (llmDecision.action === "COUNTER" && llmDecision.price && llmDecision.price > 0) {
         decision = llmDecision;
-        source = 'llm';
-      } else if (['ACCEPT', 'REJECT', 'HOLD'].includes(llmDecision.action)) {
+        source = "llm";
+      } else if (["ACCEPT", "REJECT", "HOLD"].includes(llmDecision.action)) {
         decision = llmDecision;
-        source = 'llm';
+        source = "llm";
       }
       // Otherwise, keep skill decision as fallback
     } catch (err) {
       // LLM failure → graceful fallback to skill decision
-      console.warn('[decide] LLM fallback:', (err as Error).message);
+      console.warn("[decide] LLM fallback:", (err as Error).message);
       // decision already set from skill.evaluateOffer()
     }
   }
@@ -109,8 +112,7 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
 }
 
 function signalLinesFromContext(context: DecideInput["context"]): string[] | undefined {
-  const lines = context.layers.L5_signals
-    .split("\n")
+  const lines = context.layers.L5_signals.split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
   return lines.length > 0 ? lines : undefined;

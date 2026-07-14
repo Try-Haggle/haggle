@@ -15,7 +15,7 @@ Auth/Storage/Postgres/pgvector가 모두 노트북 안에서 돌아가므로, �
 
 | 도구 | 설치 |
 |------|------|
-| Node 22 | `nvm install 22 && nvm use` (저장소에 `.nvmrc` 있음) |
+| Node 22 (arm64) | `nvm install 22 && nvm use` (저장소에 `.nvmrc` 있음). **Apple Silicon은 arm64 네이티브 Node 필수** — `node -p process.arch`가 `arm64`여야 한다 (`x64`면 터미널이 Rosetta로 떠 있는 것 → 아래 트러블슈팅 참고). 아키텍처가 어긋나면 네이티브 도구(Biome 등)가 깨진다. |
 | pnpm 9 | `corepack enable` |
 | Docker | Docker Desktop 실행 |
 | Supabase CLI | `brew install supabase/tap/supabase` |
@@ -68,6 +68,26 @@ make seed         # baseline fixtures 재시드
 make seed-full    # baseline + 확장(유사도 테스트용) 시드
 make reset        # DB 초기화 + 재마이그레이션 + 재시드 (PR 머지 후 동기화)
 make stop         # Supabase 스택 종료
+```
+
+### 코드 품질 (Lint / Format)
+
+린트·포맷은 **Biome**(`biome.json`) 단일 도구로 통일한다. 별도 셋업은 없다 —
+`make setup`(또는 `pnpm install`)이 `prepare: husky`를 실행해 커밋 훅을 자동 활성화한다.
+
+| 레이어 | 무엇이 강제되나 |
+|--------|----------------|
+| **에디터** | `.vscode/settings.json` — 저장 시 Biome 자동 포맷 + import 정리. VSCode가 Biome 확장 설치를 권장한다(`.vscode/extensions.json`). |
+| **커밋** | husky `pre-commit` → `lint-staged` → **변경 파일만** `biome check --write`. 자동수정 불가한 위반(미사용 변수/import, `==` 등)이 남으면 커밋이 차단된다. |
+| **CI** | PR/staging push 시 base 대비 **변경 파일만** 검사([.github/workflows/ci.yml](.github/workflows/ci.yml)). 훅을 우회한 커밋도 여기서 잡힌다. |
+
+> 점진 도입: 기존 코드는 일괄 정리하지 않는다. **앞으로 만지는 파일만** 규칙이 적용된다.
+
+```bash
+pnpm lint         # 전체 린트 검사 (수정 안 함)
+pnpm lint:fix     # 전체 자동수정 (포맷 + 린트)
+pnpm format       # 포맷만
+pnpm check        # 검사만 (CI와 동일)
 ```
 
 ### 마이그레이션 소스 = Drizzle (단일 소스)
@@ -145,6 +165,7 @@ make stop                  # 안 쓰는 Haggle 스택 종료
 | `make migrate` pgvector 에러 | `supabase/init-extensions.sql`이 먼저 실행되는지 확인 (`make migrate`로 실행) |
 | 로그인 안 됨 | `.env`의 `NEXT_PUBLIC_SUPABASE_ANON_KEY`가 `supabase status` 값과 일치하는지 |
 | Node 엔진 경고 | `nvm use` (저장소 `.nvmrc` = 22) |
+| Biome 확장 `Unable to find the Biome binary` / `wagmi`·`@rainbow-me/rainbowkit` `Cannot find module` (타입체크) | **Apple Silicon인데 x64 Node(Rosetta)로 `pnpm install`** 한 경우. pnpm이 x64용 네이티브 바이너리를 받아 arm64 도구·확장이 못 찾는다. `node -p process.arch` 확인 → `x64`면: ① `arch`가 `arm64`인지 확인(아니면 터미널 "Rosetta로 열기" 끄기) → ② `nvm install 22 && nvm use` → `node -p process.arch`가 `arm64`인지 재확인 → ③ `rm -rf node_modules && pnpm install` → ④ 에디터 창 새로고침. |
 | `supabase start` → `exec format error` (특정 컨테이너) | 해당 이미지가 잘못된 아키텍처(amd64)로 받아짐 (Apple Silicon). 로그에 찍힌 컨테이너만 arm64로 강제 재pull. 예시(studio): `docker rmi -f $(docker images 'public.ecr.aws/supabase/studio' -q)` → `docker pull --platform linux/arm64 public.ecr.aws/supabase/studio:<태그>` → `docker image inspect <이미지> --format '{{.Architecture}}'`로 `arm64` 확인 → `supabase start`. ⚠️ 전체 이미지를 지우고 받아도 일부가 또 amd64로 받아질 수 있으니, **막힌 이미지만 `--platform`으로 강제**하는 게 확실. |
 | `supabase start` 일부 서비스만 뜸 | Docker VM 불안정. Docker Desktop 재시작 → `docker info` 정상 확인 → `supabase stop && supabase start` |
 | `input/output error` (이미지 pull 중) | Docker 디스크 꽉 참/손상. `df -h /`·`docker system df`로 확인 → `docker image prune -f` 또는 Mac 디스크 정리 → 재시도. 지속되면 Docker Desktop 재시작 |

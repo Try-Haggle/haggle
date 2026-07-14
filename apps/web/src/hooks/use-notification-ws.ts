@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import type { Notification } from "@/lib/api-client";
+import { createClient } from "@/lib/supabase/client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.tryhaggle.ai";
 const WS_URL = API_URL.replace(/^http/, "ws");
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 2000;
@@ -30,7 +30,9 @@ export function useNotificationWs({ onNewNotification }: UseNotificationWsOption
 
   const connect = useCallback(async () => {
     const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session?.access_token) return;
 
     const ticketResponse = await fetch(`${API_URL}/auth/websocket-tickets`, {
@@ -43,7 +45,7 @@ export function useNotificationWs({ onNewNotification }: UseNotificationWsOption
       cache: "no-store",
     });
     if (!ticketResponse.ok) return;
-    const ticket = await ticketResponse.json() as { ticket_protocol?: string };
+    const ticket = (await ticketResponse.json()) as { ticket_protocol?: string };
     if (!ticket.ticket_protocol) return;
     const ws = new WebSocket(`${WS_URL}/ws/notifications`, [ticket.ticket_protocol]);
     wsRef.current = ws;

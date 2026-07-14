@@ -1,16 +1,18 @@
-import {
-  eq,
-  and,
-  sql,
-  negotiationSessions,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, negotiationSessions, sql } from "@haggle/db";
 
 type SessionRole = "BUYER" | "SELLER";
 type SessionStatus =
-  | "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED"
-  | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING"
-  | "NEGOTIATING_VERSION" | "FAILED_COMPATIBILITY";
+  | "CREATED"
+  | "ACTIVE"
+  | "NEAR_DEAL"
+  | "STALLED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "SUPERSEDED"
+  | "WAITING"
+  | "NEGOTIATING_VERSION"
+  | "FAILED_COMPATIBILITY";
 
 // ---------------------------------------------------------------------------
 // Create
@@ -27,7 +29,7 @@ export async function createSession(
     buyerId: string;
     sellerId: string;
     counterpartyId: string;
-    strategySnapshot: Record<string, unknown>;
+    negotiationAgentSnapshot: Record<string, unknown>;
     expiresAt?: Date;
   },
 ) {
@@ -42,7 +44,7 @@ export async function createSession(
       buyerId: data.buyerId,
       sellerId: data.sellerId,
       counterpartyId: data.counterpartyId,
-      strategySnapshot: data.strategySnapshot,
+      negotiationAgentSnapshot: data.negotiationAgentSnapshot,
       expiresAt: data.expiresAt,
     })
     .returning();
@@ -84,10 +86,7 @@ export async function getSessionsByUserId(
 }
 
 export async function getSessionsByGroupId(db: Database, groupId: string) {
-  return db
-    .select()
-    .from(negotiationSessions)
-    .where(eq(negotiationSessions.groupId, groupId));
+  return db.select().from(negotiationSessions).where(eq(negotiationSessions.groupId, groupId));
 }
 
 // ---------------------------------------------------------------------------
@@ -119,10 +118,7 @@ export async function updateSessionState(
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(negotiationSessions.id, sessionId),
-        eq(negotiationSessions.version, expectedVersion),
-      ),
+      and(eq(negotiationSessions.id, sessionId), eq(negotiationSessions.version, expectedVersion)),
     )
     .returning();
 
@@ -133,7 +129,7 @@ export async function updateSessionState(
 // Perspective swap (auto-play between rounds)
 //
 // Used by /negotiations/start to drive both sides from a single session row:
-// before each LLM round we flip session.role + session.strategy_snapshot so the
+// before each LLM round we flip session.role + session.negotiation_agent_snapshot so the
 // executor evaluates the incoming offer from the responder's point of view.
 // Does NOT bump version — the executor's own updateSessionState bumps it next.
 // ---------------------------------------------------------------------------
@@ -142,13 +138,13 @@ export async function setSessionPerspective(
   db: Database,
   sessionId: string,
   role: SessionRole,
-  strategySnapshot: Record<string, unknown>,
+  negotiationAgentSnapshot: Record<string, unknown>,
 ): Promise<void> {
   await db
     .update(negotiationSessions)
     .set({
       role,
-      strategySnapshot,
+      negotiationAgentSnapshot,
       updatedAt: new Date(),
     })
     .where(eq(negotiationSessions.id, sessionId));

@@ -1,29 +1,23 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
+import { createPublicClient, decodeEventLog } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import authPlugin from "../middleware/auth.js";
 import { registerDemoE2ERoutes } from "../routes/demo-e2e.js";
 import { registerSettlementApprovalRoutes } from "../routes/settlement-approvals.js";
 import { registerSettlementReleaseRoutes } from "../routes/settlement-releases.js";
-import { ADMIN_HEADERS, AUTH_HEADERS } from "./helpers.js";
-import { createPublicClient, decodeEventLog } from "viem";
+import { getDisputeByOrderId } from "../services/dispute-record.service.js";
 import {
   createPaymentSettlementRecord,
   getCommerceOrderByOrderId,
   getPaymentIntentById,
-  getPaymentIntentRowById,
   getPaymentIntentByOrderId,
+  getPaymentIntentRowById,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
-import {
-  getDisputeByOrderId,
-} from "../services/dispute-record.service.js";
-import {
-  getShipmentByOrderId,
-} from "../services/shipment-record.service.js";
-import {
-  getSettlementReleaseById,
-} from "../services/settlement-release.service.js";
+import { getSettlementReleaseById } from "../services/settlement-release.service.js";
+import { getShipmentByOrderId } from "../services/shipment-record.service.js";
+import { ADMIN_HEADERS, AUTH_HEADERS } from "./helpers.js";
 
 vi.mock("../services/payment-record.service.js", () => ({
   createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
@@ -123,7 +117,8 @@ describe("commerce security boundaries", () => {
     } else {
       process.env.SUPABASE_JWT_SECRET = originalSupabaseJwtSecret;
     }
-    if (originalConditionalSettlementAddress === undefined) delete process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
+    if (originalConditionalSettlementAddress === undefined)
+      delete process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
     else process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = originalConditionalSettlementAddress;
     if (originalFeeWallet === undefined) delete process.env.HAGGLE_X402_FEE_WALLET;
     else process.env.HAGGLE_X402_FEE_WALLET = originalFeeWallet;
@@ -163,21 +158,23 @@ describe("commerce security boundaries", () => {
       updated_at: new Date().toISOString(),
     });
 
-    app = await buildApp(buildDb({
-      query: {
-        commerceOrders: {
-          findFirst: vi.fn().mockResolvedValue({
-            id: "order_123",
-            buyerId: "someone-else",
-            sellerId: "another-user",
-          }),
+    app = await buildApp(
+      buildDb({
+        query: {
+          commerceOrders: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: "order_123",
+              buyerId: "someone-else",
+              sellerId: "another-user",
+            }),
+          },
+          settlementApprovals: {
+            findMany: vi.fn().mockResolvedValue([]),
+            findFirst: vi.fn().mockResolvedValue(null),
+          },
         },
-        settlementApprovals: {
-          findMany: vi.fn().mockResolvedValue([]),
-          findFirst: vi.fn().mockResolvedValue(null),
-        },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "GET",
@@ -203,7 +200,8 @@ describe("commerce security boundaries", () => {
   });
 
   it("rejects conditional release confirmation when the receipt lacks a matching release event", async () => {
-    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = "0xcccccccccccccccccccccccccccccccccccccccc";
+    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS =
+      "0xcccccccccccccccccccccccccccccccccccccccc";
     process.env.HAGGLE_X402_FEE_WALLET = "0xffffffffffffffffffffffffffffffffffffffff";
     process.env.HAGGLE_X402_FEE_BPS = "150";
     process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
@@ -242,7 +240,13 @@ describe("commerce security boundaries", () => {
         status: "success",
         blockNumber: 100n,
         blockHash: `0x${"cc".repeat(32)}`,
-        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+        logs: [
+          {
+            address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+            topics: ["0x1"],
+            data: "0x",
+          },
+        ],
       }),
     } as never);
     mockDecodeEventLog.mockReturnValueOnce({ eventName: "SettlementRefunded", args: {} } as never);
@@ -270,7 +274,8 @@ describe("commerce security boundaries", () => {
   });
 
   it("records Stripe-funded conditional release as Stripe even when the stored intent rail is x402", async () => {
-    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = "0xcccccccccccccccccccccccccccccccccccccccc";
+    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS =
+      "0xcccccccccccccccccccccccccccccccccccccccc";
     process.env.HAGGLE_X402_FEE_WALLET = "0xffffffffffffffffffffffffffffffffffffffff";
     process.env.HAGGLE_X402_FEE_BPS = "500";
     process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
@@ -319,7 +324,13 @@ describe("commerce security boundaries", () => {
         status: "success",
         blockNumber: 100n,
         blockHash: `0x${"cc".repeat(32)}`,
-        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+        logs: [
+          {
+            address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+            topics: ["0x1"],
+            data: "0x",
+          },
+        ],
       }),
     } as never);
     mockDecodeEventLog.mockReturnValueOnce({
@@ -388,8 +399,12 @@ describe("commerce security boundaries", () => {
     process.env.VERCEL_ENV = "production";
     process.env.SUPABASE_JWT_SECRET = "test-secret";
     const productionUserJwt = jwt.sign(
-      { sub: "00000000-0000-4000-a000-000000000010",
-        email: "test@haggle.ai", role: "authenticated", aud: "authenticated" },
+      {
+        sub: "00000000-0000-4000-a000-000000000010",
+        email: "test@haggle.ai",
+        role: "authenticated",
+        aud: "authenticated",
+      },
       "test-secret",
     );
     app = await buildApp();

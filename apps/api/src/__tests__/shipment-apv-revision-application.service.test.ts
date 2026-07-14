@@ -23,11 +23,13 @@ describe("shipment APV revision application policy", () => {
   });
 
   it("returns carrier credit to platform, seller liability, then buffer", () => {
-    expect(allocateShipmentApvCarrierCredit(175, {
-      platformLiabilityMinor: 100,
-      sellerLiabilityMinor: 50,
-      bufferAppliedMinor: 100,
-    })).toEqual({
+    expect(
+      allocateShipmentApvCarrierCredit(175, {
+        platformLiabilityMinor: 100,
+        sellerLiabilityMinor: 50,
+        bufferAppliedMinor: 100,
+      }),
+    ).toEqual({
       platformCreditMinor: 100,
       sellerCreditMinor: 50,
       bufferCreditMinor: 25,

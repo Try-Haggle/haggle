@@ -5,7 +5,7 @@
  * commerce-core의 routePipelineEvent이 반환한 action을 실제 DB 작업으로 실행.
  */
 
-import { settlementApprovals, negotiationSessions, eq, type Database } from "@haggle/db";
+import { type Database, eq, negotiationSessions, settlementApprovals } from "@haggle/db";
 import { updateIntentStatus } from "../services/intent.service.js";
 import { getSessionById } from "../services/negotiation-session.service.js";
 import { recordAgreedPrice } from "../services/price-observation-sink.js";
@@ -16,10 +16,7 @@ import type { EventDispatcher } from "./event-dispatcher.js";
  *
  * Each handler maps a PipelineAction type to the corresponding DB operation.
  */
-export function registerActionHandlers(
-  dispatcher: EventDispatcher,
-  db: Database,
-): void {
+export function registerActionHandlers(dispatcher: EventDispatcher, db: Database): void {
   // ── create_settlement ──────────────────────────────────────
   // negotiation.agreed → settlement approval row 생성
   // PipelineAction: { action: 'create_settlement', sessionId, agreedPriceMinor, buyerId, sellerId }

@@ -1,21 +1,20 @@
+import type { Database } from "@haggle/db";
 import Fastify from "fastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Database } from "@haggle/db";
 import { registerSettlementReleaseRoutes } from "../routes/settlement-releases.js";
+import { getActiveDisputeByOrderId } from "../services/dispute-record.service.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
 import {
   getSettlementReleaseById,
   getSettlementReleaseByOrderId,
   updateSettlementReleaseRecord,
 } from "../services/settlement-release.service.js";
-import { getActiveDisputeByOrderId } from "../services/dispute-record.service.js";
 import {
   decideShipmentApvPayoutCancellation,
   getShipmentApvPayoutCancellationTimeline,
   listPendingShipmentApvPayoutCancellations,
   requestShipmentApvPayoutCancellation,
 } from "../services/shipment-apv-payout-cancellation.service.js";
-import { createSignedShipmentApvPayoutCancellationAuditExport } from "../services/shipment-apv-payout-cancellation-audit-export.service.js";
 import {
   enqueueShipmentApvCancellationAuditArchive,
   getShipmentApvCancellationAuditArchiveHealth,
@@ -23,6 +22,7 @@ import {
   listShipmentApvCancellationAuditArchiveFailures,
   requeueShipmentApvCancellationAuditArchive,
 } from "../services/shipment-apv-payout-cancellation-audit-archive.service.js";
+import { createSignedShipmentApvPayoutCancellationAuditExport } from "../services/shipment-apv-payout-cancellation-audit-export.service.js";
 
 vi.mock("../services/payment-record.service.js", () => ({
   getCommerceOrderByOrderId: vi.fn(),
@@ -62,29 +62,54 @@ vi.mock("../services/shipment-apv-payout-cancellation.service.js", () => ({
   requestShipmentApvPayoutCancellation: vi.fn(),
   decideShipmentApvPayoutCancellation: vi.fn(),
   getShipmentApvPayoutCancellationTimeline: vi.fn(),
-  listPendingShipmentApvPayoutCancellations: vi.fn().mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
+  listPendingShipmentApvPayoutCancellations: vi
+    .fn()
+    .mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
 }));
 
 vi.mock("../services/shipment-apv-payout-cancellation-audit-export.service.js", () => ({
   ShipmentApvCancellationAuditSigningNotConfiguredError: class extends Error {},
   createSignedShipmentApvPayoutCancellationAuditExport: vi.fn().mockReturnValue({
-    manifest: { schema: "haggle.shipment-apv-payout-cancellation-audit.v1", chain_valid: true, event_count: 1 },
+    manifest: {
+      schema: "haggle.shipment-apv-payout-cancellation-audit.v1",
+      chain_valid: true,
+      event_count: 1,
+    },
     events: [],
-    signature: { algorithm: "Ed25519", key_id: "test-key", public_key_spki_base64: "key", value_base64: "signature" },
+    signature: {
+      algorithm: "Ed25519",
+      key_id: "test-key",
+      public_key_spki_base64: "key",
+      value_base64: "signature",
+    },
   }),
 }));
 
 vi.mock("../services/shipment-apv-payout-cancellation-audit-archive.service.js", () => ({
   enqueueShipmentApvCancellationAuditArchive: vi.fn(),
   getShipmentApvCancellationAuditArchiveHealth: vi.fn(),
-  getShipmentApvCancellationAuditArchiveDeliveryPolicyStatus: vi.fn(() => ({ configured: false, configurationState: "not_configured", jobEnabled: false, unfinishedMaxAgeMinutes: 15 })),
+  getShipmentApvCancellationAuditArchiveDeliveryPolicyStatus: vi.fn(() => ({
+    configured: false,
+    configurationState: "not_configured",
+    jobEnabled: false,
+    unfinishedMaxAgeMinutes: 15,
+  })),
   getShipmentApvCancellationAuditArchiveStatus: vi.fn(),
   listShipmentApvCancellationAuditArchiveFailures: vi.fn(),
   requeueShipmentApvCancellationAuditArchive: vi.fn(),
 }));
 
 vi.mock("../services/shipment-apv-payout-cancellation-audit-archive-alert.service.js", () => ({
-  getShipmentApvCancellationAuditArchiveAlertPolicyStatus: vi.fn(() => ({ configured: false, configurationState: "not_configured", jobEnabled: false, cooldownMinutes: 15, staleThreshold: 1, retryReadyThreshold: 5, deadLetterThreshold: 1, overdueUnfinishedThreshold: 1 })),
+  getShipmentApvCancellationAuditArchiveAlertPolicyStatus: vi.fn(() => ({
+    configured: false,
+    configurationState: "not_configured",
+    jobEnabled: false,
+    cooldownMinutes: 15,
+    staleThreshold: 1,
+    retryReadyThreshold: 5,
+    deadLetterThreshold: 1,
+    overdueUnfinishedThreshold: 1,
+  })),
 }));
 
 const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
@@ -96,12 +121,18 @@ const mockRequestPayoutCancellation = vi.mocked(requestShipmentApvPayoutCancella
 const mockDecidePayoutCancellation = vi.mocked(decideShipmentApvPayoutCancellation);
 const mockListPayoutCancellations = vi.mocked(listPendingShipmentApvPayoutCancellations);
 const mockGetPayoutCancellationTimeline = vi.mocked(getShipmentApvPayoutCancellationTimeline);
-const mockCreateCancellationAuditExport = vi.mocked(createSignedShipmentApvPayoutCancellationAuditExport);
+const mockCreateCancellationAuditExport = vi.mocked(
+  createSignedShipmentApvPayoutCancellationAuditExport,
+);
 const mockEnqueueCancellationAuditArchive = vi.mocked(enqueueShipmentApvCancellationAuditArchive);
 const mockGetCancellationAuditArchive = vi.mocked(getShipmentApvCancellationAuditArchiveStatus);
-const mockGetCancellationAuditArchiveHealth = vi.mocked(getShipmentApvCancellationAuditArchiveHealth);
+const mockGetCancellationAuditArchiveHealth = vi.mocked(
+  getShipmentApvCancellationAuditArchiveHealth,
+);
 const mockRequeueCancellationAuditArchive = vi.mocked(requeueShipmentApvCancellationAuditArchive);
-const mockListCancellationAuditArchiveFailures = vi.mocked(listShipmentApvCancellationAuditArchiveFailures);
+const mockListCancellationAuditArchiveFailures = vi.mocked(
+  listShipmentApvCancellationAuditArchiveFailures,
+);
 
 const release = {
   id: "release_1",
@@ -202,7 +233,10 @@ describe("settlement release dispute guard", () => {
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ cancellation_request: { status: "PENDING", version: 0 }, idempotent: false });
+    expect(res.json()).toMatchObject({
+      cancellation_request: { status: "PENDING", version: 0 },
+      idempotent: false,
+    });
     expect(mockRequestPayoutCancellation).toHaveBeenCalledOnce();
     await app.close();
   });
@@ -232,12 +266,17 @@ describe("settlement release dispute guard", () => {
       url: "/admin/settlement-releases/apv-payout-cancellation-requests/pending?limit=1&cursor=opaque-cursor",
     });
     expect(res.statusCode).toBe(200);
-    expect(mockListPayoutCancellations).toHaveBeenCalledWith(expect.anything(), { limit: 1, cursor: "opaque-cursor" });
+    expect(mockListPayoutCancellations).toHaveBeenCalledWith(expect.anything(), {
+      limit: 1,
+      cursor: "opaque-cursor",
+    });
     await app.close();
   });
 
   it("rejects malformed cancellation approval cursors without returning a server error", async () => {
-    mockListPayoutCancellations.mockRejectedValueOnce(new Error("INVALID_APV_PAYOUT_CANCELLATION_CURSOR"));
+    mockListPayoutCancellations.mockRejectedValueOnce(
+      new Error("INVALID_APV_PAYOUT_CANCELLATION_CURSOR"),
+    );
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const res = await app.inject({
       method: "GET",
@@ -258,18 +297,26 @@ describe("settlement release dispute guard", () => {
         created_at: "2026-07-12T00:00:00.000Z",
         decided_at: "2026-07-12T00:01:00.000Z",
       },
-      events: [{
-        id: "77777777-7777-4777-8777-777777777777",
-        cancellation_request_id: "44444444-4444-4444-8444-444444444444",
-        event_type: "REJECTED",
-        actor_id: "88888888-8888-4888-8888-888888888888",
-        request_version: 1,
-        metadata: {},
-        previous_event_hash: null,
-        event_hash: "a".repeat(64),
-        created_at: "2026-07-12T00:01:00.000Z",
-      }],
-      integrity: { valid: true, complete: true, sealedEvents: 1, legacyUnsealedEvents: 0, headEventHash: "a".repeat(64) },
+      events: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          cancellation_request_id: "44444444-4444-4444-8444-444444444444",
+          event_type: "REJECTED",
+          actor_id: "88888888-8888-4888-8888-888888888888",
+          request_version: 1,
+          metadata: {},
+          previous_event_hash: null,
+          event_hash: "a".repeat(64),
+          created_at: "2026-07-12T00:01:00.000Z",
+        },
+      ],
+      integrity: {
+        valid: true,
+        complete: true,
+        sealedEvents: 1,
+        legacyUnsealedEvents: 0,
+        headEventHash: "a".repeat(64),
+      },
     });
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const res = await app.inject({
@@ -277,7 +324,12 @@ describe("settlement release dispute guard", () => {
       url: "/admin/settlement-releases/apv-payout-cancellation-requests/44444444-4444-4444-8444-444444444444/timeline",
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ cancellation_timeline: { request: { status: "REJECTED" }, events: [{ event_type: "REJECTED" }] } });
+    expect(res.json()).toMatchObject({
+      cancellation_timeline: {
+        request: { status: "REJECTED" },
+        events: [{ event_type: "REJECTED" }],
+      },
+    });
     await app.close();
   });
 
@@ -295,18 +347,33 @@ describe("settlement release dispute guard", () => {
   it("returns a signed cancellation audit export only for a valid chain", async () => {
     mockGetPayoutCancellationTimeline.mockResolvedValueOnce({
       request: {
-        id: "44444444-4444-4444-8444-444444444444", status: "PENDING",
-        requester_id: "99999999-9999-4999-8999-999999999999", approver_id: null,
-        created_at: "2026-07-12T00:00:00.000Z", decided_at: null,
+        id: "44444444-4444-4444-8444-444444444444",
+        status: "PENDING",
+        requester_id: "99999999-9999-4999-8999-999999999999",
+        approver_id: null,
+        created_at: "2026-07-12T00:00:00.000Z",
+        decided_at: null,
       },
-      events: [{
-        id: "77777777-7777-4777-8777-777777777777",
-        cancellation_request_id: "44444444-4444-4444-8444-444444444444",
-        event_type: "REQUESTED", actor_id: "99999999-9999-4999-8999-999999999999",
-        request_version: 0, metadata: {}, previous_event_hash: null,
-        event_hash: "a".repeat(64), created_at: "2026-07-12T00:00:00.000Z",
-      }],
-      integrity: { valid: true, complete: true, sealedEvents: 1, legacyUnsealedEvents: 0, headEventHash: "a".repeat(64) },
+      events: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          cancellation_request_id: "44444444-4444-4444-8444-444444444444",
+          event_type: "REQUESTED",
+          actor_id: "99999999-9999-4999-8999-999999999999",
+          request_version: 0,
+          metadata: {},
+          previous_event_hash: null,
+          event_hash: "a".repeat(64),
+          created_at: "2026-07-12T00:00:00.000Z",
+        },
+      ],
+      integrity: {
+        valid: true,
+        complete: true,
+        sealedEvents: 1,
+        legacyUnsealedEvents: 0,
+        headEventHash: "a".repeat(64),
+      },
     });
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const res = await app.inject({
@@ -322,12 +389,21 @@ describe("settlement release dispute guard", () => {
   it("refuses to sign a cancellation audit export with a broken chain", async () => {
     mockGetPayoutCancellationTimeline.mockResolvedValueOnce({
       request: {
-        id: "44444444-4444-4444-8444-444444444444", status: "PENDING",
-        requester_id: "99999999-9999-4999-8999-999999999999", approver_id: null,
-        created_at: "2026-07-12T00:00:00.000Z", decided_at: null,
+        id: "44444444-4444-4444-8444-444444444444",
+        status: "PENDING",
+        requester_id: "99999999-9999-4999-8999-999999999999",
+        approver_id: null,
+        created_at: "2026-07-12T00:00:00.000Z",
+        decided_at: null,
       },
       events: [],
-      integrity: { valid: false, complete: false, sealedEvents: 0, legacyUnsealedEvents: 0, headEventHash: null },
+      integrity: {
+        valid: false,
+        complete: false,
+        sealedEvents: 0,
+        legacyUnsealedEvents: 0,
+        headEventHash: null,
+      },
     });
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const res = await app.inject({
@@ -346,16 +422,29 @@ describe("settlement release dispute guard", () => {
       cancellation_request_id: "44444444-4444-4444-8444-444444444444",
       event_type: "REJECTED" as const,
       actor_id: "99999999-9999-4999-8999-999999999999",
-      request_version: 1, metadata: {}, previous_event_hash: null,
-      event_hash: "a".repeat(64), created_at: "2026-07-12T00:00:00.000Z",
+      request_version: 1,
+      metadata: {},
+      previous_event_hash: null,
+      event_hash: "a".repeat(64),
+      created_at: "2026-07-12T00:00:00.000Z",
     };
     mockGetPayoutCancellationTimeline.mockResolvedValueOnce({
       request: {
-        id: event.cancellation_request_id, status: "REJECTED", requester_id: event.actor_id,
-        approver_id: "88888888-8888-4888-8888-888888888888", created_at: event.created_at, decided_at: event.created_at,
+        id: event.cancellation_request_id,
+        status: "REJECTED",
+        requester_id: event.actor_id,
+        approver_id: "88888888-8888-4888-8888-888888888888",
+        created_at: event.created_at,
+        decided_at: event.created_at,
       },
       events: [event],
-      integrity: { valid: true, complete: true, sealedEvents: 1, legacyUnsealedEvents: 0, headEventHash: event.event_hash },
+      integrity: {
+        valid: true,
+        complete: true,
+        sealedEvents: 1,
+        legacyUnsealedEvents: 0,
+        headEventHash: event.event_hash,
+      },
     });
     mockEnqueueCancellationAuditArchive.mockResolvedValueOnce({
       outcome: "enqueued",
@@ -364,10 +453,19 @@ describe("settlement release dispute guard", () => {
         archiveKey: `apvca_${"b".repeat(64)}`,
         cancellationRequestId: event.cancellation_request_id,
         payload: { secret: "must-not-be-returned" },
-        payloadSha256: "c".repeat(64), status: "PENDING", attemptCount: 0,
-        nextAttemptAt: event.created_at, leaseToken: null, leaseExpiresAt: null,
-        lastError: null, httpStatus: null, receiptId: null, receiptSha256: null,
-        deliveredAt: null, createdAt: event.created_at, updatedAt: event.created_at,
+        payloadSha256: "c".repeat(64),
+        status: "PENDING",
+        attemptCount: 0,
+        nextAttemptAt: event.created_at,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        lastError: null,
+        httpStatus: null,
+        receiptId: null,
+        receiptSha256: null,
+        deliveredAt: null,
+        createdAt: event.created_at,
+        updatedAt: event.created_at,
       },
     });
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
@@ -376,7 +474,10 @@ describe("settlement release dispute guard", () => {
       url: `/admin/settlement-releases/apv-payout-cancellation-requests/${event.cancellation_request_id}/audit-archive`,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ audit_archive: { status: "PENDING", payload_sha256: "c".repeat(64) }, idempotent: false });
+    expect(res.json()).toMatchObject({
+      audit_archive: { status: "PENDING", payload_sha256: "c".repeat(64) },
+      idempotent: false,
+    });
     expect(res.body).not.toContain("must-not-be-returned");
     await app.close();
   });
@@ -386,10 +487,20 @@ describe("settlement release dispute guard", () => {
       id: "88888888-8888-4888-8888-888888888888",
       archiveKey: `apvca_${"b".repeat(64)}`,
       cancellationRequestId: "44444444-4444-4444-8444-444444444444",
-      payload: {}, payloadSha256: "c".repeat(64), status: "DELIVERED", attemptCount: 1,
-      nextAttemptAt: "2026-07-12T00:00:00.000Z", leaseToken: null, leaseExpiresAt: null,
-      lastError: null, httpStatus: 201, receiptId: "worm_receipt_1", receiptSha256: "c".repeat(64),
-      deliveredAt: "2026-07-12T00:01:00.000Z", createdAt: "2026-07-12T00:00:00.000Z", updatedAt: "2026-07-12T00:01:00.000Z",
+      payload: {},
+      payloadSha256: "c".repeat(64),
+      status: "DELIVERED",
+      attemptCount: 1,
+      nextAttemptAt: "2026-07-12T00:00:00.000Z",
+      leaseToken: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      httpStatus: 201,
+      receiptId: "worm_receipt_1",
+      receiptSha256: "c".repeat(64),
+      deliveredAt: "2026-07-12T00:01:00.000Z",
+      createdAt: "2026-07-12T00:00:00.000Z",
+      updatedAt: "2026-07-12T00:01:00.000Z",
     });
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const res = await app.inject({
@@ -397,22 +508,40 @@ describe("settlement release dispute guard", () => {
       url: "/admin/settlement-releases/apv-payout-cancellation-requests/44444444-4444-4444-8444-444444444444/audit-archive",
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ audit_archive: { status: "DELIVERED", receipt_id: "worm_receipt_1" } });
+    expect(res.json()).toMatchObject({
+      audit_archive: { status: "DELIVERED", receipt_id: "worm_receipt_1" },
+    });
     await app.close();
   });
 
   it("returns aggregate archive health only to an admin", async () => {
     mockGetCancellationAuditArchiveHealth.mockResolvedValueOnce({
-      status: "attention", pending: 2, processing: 1, failed: 1, deadLetter: 0,
-      staleProcessing: 1, retryReady: 1, oldestUnfinishedAgeSeconds: 900,
-      overdueUnfinished: 1, unfinishedMaxAgeMinutes: 15,
+      status: "attention",
+      pending: 2,
+      processing: 1,
+      failed: 1,
+      deadLetter: 0,
+      staleProcessing: 1,
+      retryReady: 1,
+      oldestUnfinishedAgeSeconds: 900,
+      overdueUnfinished: 1,
+      unfinishedMaxAgeMinutes: 15,
       recordedAt: "2026-07-12T00:00:00.000Z",
     });
     const path = "/admin/settlement-releases/apv-payout-cancellation-audit-archives/health";
     const admin = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const response = await admin.inject({ method: "GET", url: path });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ audit_archive_health: { status: "attention", pending: 2, staleProcessing: 1, overdueUnfinished: 1 }, archive_delivery: { configured: false }, alerting: { configured: false } });
+    expect(response.json()).toMatchObject({
+      audit_archive_health: {
+        status: "attention",
+        pending: 2,
+        staleProcessing: 1,
+        overdueUnfinished: 1,
+      },
+      archive_delivery: { configured: false },
+      alerting: { configured: false },
+    });
     expect(response.body).not.toMatch(/request_id|archive_key|receipt_id/);
     await admin.close();
     const buyer = makeApp();
@@ -424,32 +553,72 @@ describe("settlement release dispute guard", () => {
     mockRequeueCancellationAuditArchive.mockResolvedValueOnce({
       outcome: "requeued",
       archive: {
-        id: "88888888-8888-4888-8888-888888888888", archiveKey: `apvca_${"b".repeat(64)}`,
-        cancellationRequestId: "44444444-4444-4444-8444-444444444444", payload: {}, payloadSha256: "c".repeat(64),
-        status: "PENDING", attemptCount: 0, nextAttemptAt: "2026-07-12T00:00:00.000Z",
-        leaseToken: null, leaseExpiresAt: null, lastError: null, httpStatus: null, receiptId: null,
-        receiptSha256: null, deliveredAt: null, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: "2026-07-12T00:00:00.000Z",
+        id: "88888888-8888-4888-8888-888888888888",
+        archiveKey: `apvca_${"b".repeat(64)}`,
+        cancellationRequestId: "44444444-4444-4444-8444-444444444444",
+        payload: {},
+        payloadSha256: "c".repeat(64),
+        status: "PENDING",
+        attemptCount: 0,
+        nextAttemptAt: "2026-07-12T00:00:00.000Z",
+        leaseToken: null,
+        leaseExpiresAt: null,
+        lastError: null,
+        httpStatus: null,
+        receiptId: null,
+        receiptSha256: null,
+        deliveredAt: null,
+        createdAt: "2026-07-12T00:00:00.000Z",
+        updatedAt: "2026-07-12T00:00:00.000Z",
       },
     });
     const app = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
-    const response = await app.inject({ method: "POST", url: "/admin/settlement-releases/apv-payout-cancellation-requests/44444444-4444-4444-8444-444444444444/audit-archive/retry", payload: { reason: "Retry after the external archive endpoint recovered." } });
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/settlement-releases/apv-payout-cancellation-requests/44444444-4444-4444-8444-444444444444/audit-archive/retry",
+      payload: { reason: "Retry after the external archive endpoint recovered." },
+    });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ outcome: "requeued", audit_archive: { status: "PENDING", attempt_count: 0 } });
-    expect(mockRequeueCancellationAuditArchive).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ actorId: "99999999-9999-4999-8999-999999999999" }));
+    expect(response.json()).toMatchObject({
+      outcome: "requeued",
+      audit_archive: { status: "PENDING", attempt_count: 0 },
+    });
+    expect(mockRequeueCancellationAuditArchive).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ actorId: "99999999-9999-4999-8999-999999999999" }),
+    );
     await app.close();
   });
 
   it("lists failed archives only for administrators without payloads", async () => {
     mockListCancellationAuditArchiveFailures.mockResolvedValueOnce({
-      items: [{ id: "88888888-8888-4888-8888-888888888888", cancellationRequestId: "44444444-4444-4444-8444-444444444444", payloadSha256: "c".repeat(64), status: "DEAD_LETTER", attemptCount: 3, nextAttemptAt: "2026-07-12T00:00:00.000Z", lastError: "HTTP 503", httpStatus: 503, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: "2026-07-12T00:01:00.000Z", failureAgeSeconds: 60 }],
-      nextCursor: null, recordedAt: "2026-07-12T00:02:00.000Z",
+      items: [
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          cancellationRequestId: "44444444-4444-4444-8444-444444444444",
+          payloadSha256: "c".repeat(64),
+          status: "DEAD_LETTER",
+          attemptCount: 3,
+          nextAttemptAt: "2026-07-12T00:00:00.000Z",
+          lastError: "HTTP 503",
+          httpStatus: 503,
+          createdAt: "2026-07-12T00:00:00.000Z",
+          updatedAt: "2026-07-12T00:01:00.000Z",
+          failureAgeSeconds: 60,
+        },
+      ],
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:02:00.000Z",
     });
-    const path = "/admin/settlement-releases/apv-payout-cancellation-audit-archives/failures?limit=20";
+    const path =
+      "/admin/settlement-releases/apv-payout-cancellation-audit-archives/failures?limit=20";
     const admin = makeApp({ id: "99999999-9999-4999-8999-999999999999", role: "admin" });
     const response = await admin.inject({ method: "GET", url: path });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ audit_archive_failures: { items: [{ status: "DEAD_LETTER", attemptCount: 3 }] } });
-    expect(response.body).not.toContain("payload\"");
+    expect(response.json()).toMatchObject({
+      audit_archive_failures: { items: [{ status: "DEAD_LETTER", attemptCount: 3 }] },
+    });
+    expect(response.body).not.toContain('payload"');
     await admin.close();
     const buyer = makeApp();
     expect((await buyer.inject({ method: "GET", url: path })).statusCode).toBe(403);

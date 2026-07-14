@@ -1,11 +1,12 @@
-import type { FastifyReply, FastifyRequest } from "fastify";
+// biome-ignore-all lint/suspicious/noImplicitAnyLet: Guarded assignments retain service return types.
 import type { Database } from "@haggle/db";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { getRuntimeConfig, isCorsOriginAllowed } from "../config/runtime.js";
 import {
   consumeWebSocketAuthTicket,
   extractWebSocketTicketProtocol,
   type WebSocketTicketChannel,
 } from "../services/websocket-auth-ticket.service.js";
-import { getRuntimeConfig, isCorsOriginAllowed } from "../config/runtime.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -13,10 +14,7 @@ declare module "fastify" {
   }
 }
 
-export function createWebSocketTicketPreValidation(
-  db: Database,
-  channel: WebSocketTicketChannel,
-) {
+export function createWebSocketTicketPreValidation(db: Database, channel: WebSocketTicketChannel) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     reply.header("Cache-Control", "no-store");
     if (!isCorsOriginAllowed(request.headers.origin, getRuntimeConfig())) {
@@ -26,20 +24,25 @@ export function createWebSocketTicketPreValidation(
       );
       return reply.code(403).send({ error: "WEBSOCKET_ORIGIN_FORBIDDEN" });
     }
-    const ticket = extractWebSocketTicketProtocol(
-      request.headers["sec-websocket-protocol"],
-    );
-    const resourceId = channel === "negotiation"
-      ? (request.params as { sessionId?: string }).sessionId
-      : undefined;
-    if (!ticket || (channel === "negotiation"
-      && (!resourceId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(resourceId)))) {
+    const ticket = extractWebSocketTicketProtocol(request.headers["sec-websocket-protocol"]);
+    const resourceId =
+      channel === "negotiation" ? (request.params as { sessionId?: string }).sessionId : undefined;
+    if (
+      !ticket ||
+      (channel === "negotiation" &&
+        (!resourceId ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            resourceId,
+          )))
+    ) {
       return reply.code(401).send({ error: "WEBSOCKET_TICKET_REQUIRED" });
     }
     let consumed;
     try {
       consumed = await consumeWebSocketAuthTicket(db, {
-        ticket, channel, resourceId,
+        ticket,
+        channel,
+        resourceId,
       });
     } catch {
       request.log.error(

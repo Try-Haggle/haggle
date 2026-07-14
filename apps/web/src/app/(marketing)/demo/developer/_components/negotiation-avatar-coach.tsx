@@ -64,7 +64,8 @@ export const ANCIENT_BEINGS: AncientBeing[] = [
     kind: "고대 존재",
     image: "/lumen/vel/default.png",
     selectionImage: "/lumen/selection/vel.png",
-    voice: "따뜻하고 직관적이며 부드럽게 설득합니다. 서로 원하는 지점을 읽고 거래 흐름을 밀어줍니다.",
+    voice:
+      "따뜻하고 직관적이며 부드럽게 설득합니다. 서로 원하는 지점을 읽고 거래 흐름을 밀어줍니다.",
     expressions: {
       curious: "/lumen/vel/curious.png",
       thinking: "/lumen/vel/thinking.png",
@@ -141,7 +142,8 @@ export const ANCIENT_BEINGS: AncientBeing[] = [
     kind: "딜러",
     image: "/lumen/kai.png",
     selectionImage: "/lumen/selection/dealer-kai.png",
-    voice: "생각을 입 밖으로 흘리고 질문이 많습니다. 거래를 배터리, 신호, 리셋 같은 전자기기 비유로 이해합니다.",
+    voice:
+      "생각을 입 밖으로 흘리고 질문이 많습니다. 거래를 배터리, 신호, 리셋 같은 전자기기 비유로 이해합니다.",
   },
   {
     id: "dealer_hana",
@@ -203,7 +205,10 @@ const SELECTABLE_DEMO_AGENTS = ANCIENT_BEINGS.filter(
   (being) => !HIDDEN_DEMO_SELECTOR_AGENT_IDS.includes(being.id),
 );
 
-const toneClass: Record<CoachTone, { shell: string; badge: string; ring: string; glow: string; orb: string }> = {
+const toneClass: Record<
+  CoachTone,
+  { shell: string; badge: string; ring: string; glow: string; orb: string }
+> = {
   cyan: {
     shell: "border-cyan-500/25 bg-cyan-500/5",
     badge: "bg-cyan-500/15 text-cyan-200 border-cyan-400/30",
@@ -329,7 +334,11 @@ function getSituation(round: DemoRoundResponse, previousRound?: DemoRoundRespons
     };
   }
 
-  if (decision.action === "DISCOVER" || decision.action === "HOLD" || tactic.includes("relationship")) {
+  if (
+    decision.action === "DISCOVER" ||
+    decision.action === "HOLD" ||
+    tactic.includes("relationship")
+  ) {
     return {
       expression: "curious",
       mood: "탐색",
@@ -419,32 +428,31 @@ export function AncientBeingSelector({
   const selectedImage = getSelectionImage(selectedBeing);
 
   return (
-    <div data-testid={testId} className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+    <div data-testid={testId} className="rounded-xl border border-line bg-surface-raised p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-white">{title}</h3>
-          <p className="mt-0.5 text-xs text-slate-400">
-            {description}
-          </p>
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <p className="mt-0.5 text-xs text-ink-secondary">{description}</p>
         </div>
-        <span className="hidden rounded-md bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-200 sm:inline-flex">
+        <span className="hidden rounded-md bg-info-soft px-2 py-1 text-[10px] font-semibold text-info sm:inline-flex">
           {defaultLabel}
         </span>
       </div>
-      <div className="mb-3 flex gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-slate-950 sm:h-32 sm:w-32">
+      <div className="mb-3 flex gap-3 rounded-xl border border-line bg-surface-sunken p-3">
+        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black sm:h-32 sm:w-32">
+          {/* biome-ignore lint/performance/noImgElement: decorative agent avatar, optimization not needed in demo */}
           <img src={selectedImage} alt="" className="h-full w-full object-cover object-top" />
         </div>
         <div className="min-w-0 self-center">
-          <span className="rounded bg-violet-500/15 px-2 py-1 text-[10px] font-semibold text-violet-100">
+          <span className="rounded bg-info-soft px-2 py-1 text-[10px] font-semibold text-info">
             선택됨
           </span>
-          <p className="mt-2 text-base font-bold text-white">{selectedBeing.name}</p>
-          <p className="text-xs font-semibold text-cyan-200/80">{selectedBeing.kind}</p>
-          <p className="mt-1 text-sm text-slate-400">{selectedBeing.role}</p>
+          <p className="mt-2 text-base font-bold text-ink">{selectedBeing.name}</p>
+          <p className="text-xs font-semibold text-action-primary">{selectedBeing.kind}</p>
+          <p className="mt-1 text-sm text-ink-secondary">{selectedBeing.role}</p>
         </div>
       </div>
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
         에이전트 선택
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2">
@@ -460,19 +468,28 @@ export function AncientBeingSelector({
               onClick={() => onSelect(being.id)}
               className={`min-h-24 rounded-xl border p-2.5 text-left transition-colors ${
                 selected
-                  ? "border-violet-300/70 bg-violet-500/15 text-white"
-                  : "border-slate-700 bg-slate-900/70 text-slate-400 hover:border-slate-500 hover:text-white"
+                  ? "border-info/70 bg-info-soft text-ink"
+                  : "border-line bg-surface-sunken text-ink-secondary hover:border-line-strong hover:text-ink"
               }`}
               aria-pressed={selected}
             >
               <div className="flex items-center gap-3">
-                <span className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-slate-950">
-                  <img src={selectionImage} alt="" className="h-full w-full object-cover object-top" />
+                <span className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black">
+                  {/* biome-ignore lint/performance/noImgElement: decorative agent avatar, optimization not needed in demo */}
+                  <img
+                    src={selectionImage}
+                    alt=""
+                    className="h-full w-full object-cover object-top"
+                  />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[10px] font-semibold text-cyan-200/80">{being.kind}</span>
+                  <span className="block text-[10px] font-semibold text-action-primary">
+                    {being.kind}
+                  </span>
                   <span className="block truncate text-sm font-semibold">{being.name}</span>
-                  <span className="block truncate text-[11px] leading-4 opacity-75">{being.role}</span>
+                  <span className="block truncate text-[11px] leading-4 opacity-75">
+                    {being.role}
+                  </span>
                 </span>
               </div>
             </button>
@@ -503,59 +520,64 @@ export function NegotiationAvatarCoach({
       style={{ animation: "fadeInUp 0.3s ease-out" }}
     >
       <div className="grid gap-0 md:grid-cols-[176px_1fr]">
-        <div className="relative min-h-[190px] border-b border-white/10 bg-slate-950/60 md:border-b-0 md:border-r">
+        <div className="relative min-h-[190px] border-b border-white/10 bg-black/60 md:border-b-0 md:border-r">
           <div
             className="absolute inset-0"
             style={{
               background: `radial-gradient(circle at 50% 20%, ${classes.orb}, transparent 58%)`,
             }}
           />
+          {/* biome-ignore lint/performance/noImgElement: decorative agent avatar, optimization not needed in demo */}
           <img
             src={image}
             alt={`${being.name} ${situation.mood} avatar`}
             className={`absolute inset-0 h-full w-full object-contain transition-all duration-500 ${expressionClass[situation.expression]}`}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/10 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
           <div className="absolute bottom-3 left-3 right-3">
-            <div className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${classes.badge}`}>
+            <div
+              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${classes.badge}`}
+            >
               {situation.mood}
             </div>
             <div className="mt-1 text-lg font-bold text-white">{being.name}</div>
-            <div className="text-[11px] text-slate-300">{being.role}</div>
+            <div className="text-[11px] text-white/80">{being.role}</div>
           </div>
         </div>
 
         <div className="p-4 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${classes.badge}`}>
+            <span
+              className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${classes.badge}`}
+            >
               My ancient
             </span>
-            <span className="rounded-md bg-slate-900/70 px-2 py-1 text-[10px] font-mono text-slate-400">
+            <span className="rounded-md bg-surface-sunken px-2 py-1 text-[10px] font-mono text-ink-secondary">
               {round.final.decision.action} · {round.final.decision.tactic_used}
             </span>
           </div>
 
           <div className={`mb-4 border-l-2 pl-3 ${classes.ring}`}>
-            <h3 className="text-sm font-semibold text-white">{situation.title}</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-300">{situation.line}</p>
+            <h3 className="text-sm font-semibold text-ink">{situation.title}</h3>
+            <p className="mt-1 text-xs leading-5 text-ink-secondary">{situation.line}</p>
           </div>
 
-          <div className="rounded-xl border border-cyan-500/20 bg-slate-950/65 p-4">
+          <div className="rounded-xl border border-action-primary/20 bg-surface-sunken p-4">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs font-semibold text-cyan-300">AI 구매자 메시지</span>
+              <span className="text-xs font-semibold text-action-primary">AI 구매자 메시지</span>
               <span
                 className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${
                   round.final.decision.action === "ACCEPT"
-                    ? "bg-emerald-500/20 text-emerald-300"
+                    ? "bg-success-soft text-success"
                     : round.final.decision.action === "REJECT"
-                      ? "bg-red-500/20 text-red-300"
-                      : "bg-cyan-500/20 text-cyan-300"
+                      ? "bg-error-soft text-error"
+                      : "bg-action-primary/20 text-action-primary"
                 }`}
               >
                 {round.final.decision.action}
               </span>
             </div>
-            <p className="text-sm leading-relaxed text-white">{round.final.rendered_message}</p>
+            <p className="text-sm leading-relaxed text-ink">{round.final.rendered_message}</p>
           </div>
         </div>
       </div>

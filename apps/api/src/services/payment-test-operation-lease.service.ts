@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export const FINALITY_ALERT_FIXTURE_LEASE_KEY = "conditional-settlement-finality-alert-fixture";
 export const SHIPMENT_APV_CHAOS_FIXTURE_LEASE_KEY = "shipment-apv-chaos-fixture";
@@ -22,7 +22,7 @@ async function acquirePaymentTestOperationLease(
   now = new Date(),
 ): Promise<PaymentTestOperationLease | null> {
   const expiresAt = new Date(now.getTime() + PAYMENT_TEST_OPERATION_LEASE_SECONDS * 1000);
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     INSERT INTO payment_test_operation_leases
       (key, lease_id, owner_id, expires_at, created_at, updated_at)
     VALUES
@@ -34,9 +34,16 @@ async function acquirePaymentTestOperationLease(
            expires_at = EXCLUDED.expires_at, updated_at = EXCLUDED.updated_at
      WHERE payment_test_operation_leases.expires_at <= ${now.toISOString()}::timestamptz
     RETURNING key, lease_id AS "leaseId", owner_id AS "ownerId", expires_at AS "expiresAt"
-  `) as unknown as Array<{ key: string; leaseId: string; ownerId: string; expiresAt: Date | string }>;
+  `)) as unknown as Array<{
+    key: string;
+    leaseId: string;
+    ownerId: string;
+    expiresAt: Date | string;
+  }>;
   const row = rows[0];
-  return row ? { ...row, expiresAt: row.expiresAt instanceof Date ? row.expiresAt : new Date(row.expiresAt) } : null;
+  return row
+    ? { ...row, expiresAt: row.expiresAt instanceof Date ? row.expiresAt : new Date(row.expiresAt) }
+    : null;
 }
 
 export async function acquireFinalityAlertFixtureLease(
@@ -65,11 +72,11 @@ export async function acquireShipmentApvChaosFixtureLeaseWithin(
 }
 
 async function releasePaymentTestOperationLease(db: Database, key: string, leaseId: string) {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     DELETE FROM payment_test_operation_leases
      WHERE key = ${key} AND lease_id = ${leaseId}
     RETURNING key
-  `) as unknown as Array<{ key: string }>;
+  `)) as unknown as Array<{ key: string }>;
   return rows.length === 1;
 }
 
@@ -80,19 +87,27 @@ export async function releaseFinalityAlertFixtureLease(
   return releasePaymentTestOperationLease(db, FINALITY_ALERT_FIXTURE_LEASE_KEY, leaseId);
 }
 
-export async function releaseShipmentApvChaosFixtureLease(db: Database, leaseId: string): Promise<boolean> {
+export async function releaseShipmentApvChaosFixtureLease(
+  db: Database,
+  leaseId: string,
+): Promise<boolean> {
   return releasePaymentTestOperationLease(db, SHIPMENT_APV_CHAOS_FIXTURE_LEASE_KEY, leaseId);
 }
 
-async function renewPaymentTestOperationLease(db: Database, key: string, leaseId: string, now: Date) {
+async function renewPaymentTestOperationLease(
+  db: Database,
+  key: string,
+  leaseId: string,
+  now: Date,
+) {
   const expiresAt = new Date(now.getTime() + PAYMENT_TEST_OPERATION_LEASE_SECONDS * 1000);
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE payment_test_operation_leases
        SET expires_at = ${expiresAt.toISOString()}::timestamptz,
            updated_at = ${now.toISOString()}::timestamptz
      WHERE key = ${key} AND lease_id = ${leaseId}
     RETURNING key
-  `) as unknown as Array<{ key: string }>;
+  `)) as unknown as Array<{ key: string }>;
   return rows.length === 1;
 }
 
@@ -105,14 +120,14 @@ export async function renewFinalityAlertFixtureLease(
 }
 
 export async function renewShipmentApvChaosFixtureLease(
-  db: Database, leaseId: string, now = new Date(),
+  db: Database,
+  leaseId: string,
+  now = new Date(),
 ): Promise<boolean> {
   return renewPaymentTestOperationLease(db, SHIPMENT_APV_CHAOS_FIXTURE_LEASE_KEY, leaseId, now);
 }
 
-function startPaymentTestOperationLeaseHeartbeat(
-  renew: () => Promise<boolean>,
-) {
+function startPaymentTestOperationLeaseHeartbeat(renew: () => Promise<boolean>) {
   let stopped = false;
   let inFlight = false;
   const state = { renewals: 0, failures: 0, lost: false };
@@ -130,7 +145,10 @@ function startPaymentTestOperationLeaseHeartbeat(
   }, PAYMENT_TEST_OPERATION_HEARTBEAT_SECONDS * 1000);
   timer.unref();
   return {
-    stop: () => { stopped = true; clearInterval(timer); },
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
     snapshot: () => ({ ...state }),
   };
 }
@@ -140,7 +158,9 @@ export function startFinalityAlertFixtureLeaseHeartbeat(db: Database, leaseId: s
 }
 
 export function startShipmentApvChaosFixtureLeaseHeartbeat(db: Database, leaseId: string) {
-  return startPaymentTestOperationLeaseHeartbeat(() => renewShipmentApvChaosFixtureLease(db, leaseId));
+  return startPaymentTestOperationLeaseHeartbeat(() =>
+    renewShipmentApvChaosFixtureLease(db, leaseId),
+  );
 }
 
 export async function runFinalityAlertFixtureLeaseVerification(
@@ -154,45 +174,71 @@ export async function runFinalityAlertFixtureLeaseVerification(
   let result: Record<string, unknown> | null = null;
   let cleanupRemaining = -1;
   try {
-    const first = await acquirePaymentTestOperationLease(db, key,
-      { leaseId: firstLeaseId, ownerId: "fixture-owner-1" }, now);
-    const blocked = await acquirePaymentTestOperationLease(db, key,
-      { leaseId: secondLeaseId, ownerId: "fixture-owner-2" }, new Date(now.getTime() + 1000));
+    const first = await acquirePaymentTestOperationLease(
+      db,
+      key,
+      { leaseId: firstLeaseId, ownerId: "fixture-owner-1" },
+      now,
+    );
+    const blocked = await acquirePaymentTestOperationLease(
+      db,
+      key,
+      { leaseId: secondLeaseId, ownerId: "fixture-owner-2" },
+      new Date(now.getTime() + 1000),
+    );
     const heartbeatAt = new Date(now.getTime() + 240 * 1000);
-    const heartbeatExpiresAt = new Date(heartbeatAt.getTime() + PAYMENT_TEST_OPERATION_LEASE_SECONDS * 1000);
-    const heartbeatRows = await db.execute(sql`
+    const heartbeatExpiresAt = new Date(
+      heartbeatAt.getTime() + PAYMENT_TEST_OPERATION_LEASE_SECONDS * 1000,
+    );
+    const heartbeatRows = (await db.execute(sql`
       UPDATE payment_test_operation_leases
          SET expires_at = ${heartbeatExpiresAt.toISOString()}::timestamptz,
              updated_at = ${heartbeatAt.toISOString()}::timestamptz
        WHERE key = ${key} AND lease_id = ${firstLeaseId}
       RETURNING key
-    `) as unknown as Array<{ key: string }>;
-    const originalExpiryTakeover = await acquirePaymentTestOperationLease(db, key,
+    `)) as unknown as Array<{ key: string }>;
+    const originalExpiryTakeover = await acquirePaymentTestOperationLease(
+      db,
+      key,
       { leaseId: secondLeaseId, ownerId: "fixture-owner-2" },
-      new Date(now.getTime() + (PAYMENT_TEST_OPERATION_LEASE_SECONDS + 1) * 1000));
-    const takeover = await acquirePaymentTestOperationLease(db, key,
+      new Date(now.getTime() + (PAYMENT_TEST_OPERATION_LEASE_SECONDS + 1) * 1000),
+    );
+    const takeover = await acquirePaymentTestOperationLease(
+      db,
+      key,
       { leaseId: secondLeaseId, ownerId: "fixture-owner-2" },
-      new Date(heartbeatExpiresAt.getTime() + 1000));
-    const oldOwnerReleased = await db.execute(sql`
+      new Date(heartbeatExpiresAt.getTime() + 1000),
+    );
+    const oldOwnerReleased = (await db.execute(sql`
       DELETE FROM payment_test_operation_leases WHERE key = ${key} AND lease_id = ${firstLeaseId} RETURNING key
-    `) as unknown as Array<{ key: string }>;
-    const newOwnerReleased = await db.execute(sql`
+    `)) as unknown as Array<{ key: string }>;
+    const newOwnerReleased = (await db.execute(sql`
       DELETE FROM payment_test_operation_leases WHERE key = ${key} AND lease_id = ${secondLeaseId} RETURNING key
-    `) as unknown as Array<{ key: string }>;
-    result = { pass: Boolean(first) && blocked === null && heartbeatRows.length === 1
-      && originalExpiryTakeover === null && takeover?.leaseId === secondLeaseId
-      && oldOwnerReleased.length === 0 && newOwnerReleased.length === 1,
-      firstAcquired: Boolean(first), competitorBlocked: blocked === null,
+    `)) as unknown as Array<{ key: string }>;
+    result = {
+      pass:
+        Boolean(first) &&
+        blocked === null &&
+        heartbeatRows.length === 1 &&
+        originalExpiryTakeover === null &&
+        takeover?.leaseId === secondLeaseId &&
+        oldOwnerReleased.length === 0 &&
+        newOwnerReleased.length === 1,
+      firstAcquired: Boolean(first),
+      competitorBlocked: blocked === null,
       heartbeatRenewed: heartbeatRows.length === 1,
       originalExpiryTakeoverBlocked: originalExpiryTakeover === null,
       takeoverAcquired: takeover?.leaseId === secondLeaseId,
-      oldOwnerFenced: oldOwnerReleased.length === 0, newOwnerReleased: newOwnerReleased.length === 1,
-      heartbeatAtSeconds: 240, takeoverAfterSeconds: 541 };
+      oldOwnerFenced: oldOwnerReleased.length === 0,
+      newOwnerReleased: newOwnerReleased.length === 1,
+      heartbeatAtSeconds: 240,
+      takeoverAfterSeconds: 541,
+    };
   } finally {
     await db.execute(sql`DELETE FROM payment_test_operation_leases WHERE key = ${key}`);
-    const remaining = await db.execute(sql`
+    const remaining = (await db.execute(sql`
       SELECT count(*) AS count FROM payment_test_operation_leases WHERE key = ${key}
-    `) as unknown as Array<{ count: string | number }>;
+    `)) as unknown as Array<{ count: string | number }>;
     cleanupRemaining = Number(remaining[0]?.count ?? -1);
   }
   if (!result) throw new Error("PAYMENT_TEST_OPERATION_LEASE_FIXTURE_DID_NOT_RUN");

@@ -1,6 +1,5 @@
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvChaosFailureAlertPreview } from
-  "./shipment-apv-chaos-failure-alert-preview.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvChaosFailureAlertPreview } from "./shipment-apv-chaos-failure-alert-preview.service.js";
 
 export type ShipmentApvFailureAlertDecision = "APPROVED" | "REJECTED";
 
@@ -49,16 +48,21 @@ function publicDecision(row: DecisionRow) {
   };
 }
 
-function decisionMatches(row: DecisionRow, input: {
-  clientDecisionId: string;
-  approvalRequestId: string;
-  decidedBy: string;
-  decision: ShipmentApvFailureAlertDecision;
-}) {
-  return String(row.client_decision_id) === input.clientDecisionId
-    && String(row.approval_request_id) === input.approvalRequestId
-    && String(row.decided_by) === input.decidedBy
-    && String(row.decision) === input.decision;
+function decisionMatches(
+  row: DecisionRow,
+  input: {
+    clientDecisionId: string;
+    approvalRequestId: string;
+    decidedBy: string;
+    decision: ShipmentApvFailureAlertDecision;
+  },
+) {
+  return (
+    String(row.client_decision_id) === input.clientDecisionId &&
+    String(row.approval_request_id) === input.approvalRequestId &&
+    String(row.decided_by) === input.decidedBy &&
+    String(row.decision) === input.decision
+  );
 }
 
 function existingDecisionFromRequest(row: RequestRow): DecisionRow | null {
@@ -69,8 +73,8 @@ function existingDecisionFromRequest(row: RequestRow): DecisionRow | null {
     approval_request_id: row.id,
     request_state_fingerprint: row.state_fingerprint,
     decision: row.decision,
-    decision_reason: row.decision === "APPROVED"
-      ? "checker_approved_snapshot" : "checker_rejected_snapshot",
+    decision_reason:
+      row.decision === "APPROVED" ? "checker_approved_snapshot" : "checker_rejected_snapshot",
     decided_by: row.decided_by,
     created_at: row.decision_created_at,
     inserted: false,
@@ -125,14 +129,17 @@ export async function decideShipmentApvFailureAlertApprovalRequest(
 
   if (input.decision === "APPROVED") {
     const preview = await getShipmentApvChaosFailureAlertPreview(db, now);
-    if (preview.action === "none" || !preview.approval.required
-      || preview.stateFingerprint !== String(request.state_fingerprint)) {
+    if (
+      preview.action === "none" ||
+      !preview.approval.required ||
+      preview.stateFingerprint !== String(request.state_fingerprint)
+    ) {
       throw new Error("SHIPMENT_APV_FAILURE_ALERT_STATE_CHANGED");
     }
   }
 
-  const reason = input.decision === "APPROVED"
-    ? "checker_approved_snapshot" : "checker_rejected_snapshot";
+  const reason =
+    input.decision === "APPROVED" ? "checker_approved_snapshot" : "checker_rejected_snapshot";
   const rows = await db.execute(sql`WITH inserted AS (
       INSERT INTO shipment_apv_failure_alert_approval_decisions
         (client_decision_id, approval_request_id, request_state_fingerprint,

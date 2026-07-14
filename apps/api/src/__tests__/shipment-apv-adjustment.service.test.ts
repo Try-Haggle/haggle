@@ -54,6 +54,8 @@ describe("shipment APV allocation", () => {
     const baseline = shipmentApvPayloadSha256(INPUT);
     expect(baseline).toHaveLength(64);
     expect(shipmentApvPayloadSha256({ ...INPUT, adjustedRateMinor: 801 })).not.toBe(baseline);
-    expect(shipmentApvPayloadSha256({ ...INPUT, shipmentId: "44444444-4444-4444-8444-444444444444" })).not.toBe(baseline);
+    expect(
+      shipmentApvPayloadSha256({ ...INPUT, shipmentId: "44444444-4444-4444-8444-444444444444" }),
+    ).not.toBe(baseline);
   });
 });

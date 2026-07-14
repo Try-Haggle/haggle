@@ -16,7 +16,7 @@
  * See handoff/ARCHITECT-BRIEF-step60-62.md §Step 60.
  */
 
-import { llmTelemetry, type Database } from "@haggle/db";
+import { type Database, llmTelemetry } from "@haggle/db";
 import { estimateLlmCostUsd } from "./llm-cost.js";
 
 // ─── Module-level DB instance (set via setTelemetryDb) ───
@@ -30,11 +30,7 @@ export function setTelemetryDb(db: Database): void {
   _telemetryDb = db;
 }
 
-export type LLMService =
-  | "openai.chat"
-  | "openai.embedding"
-  | "replicate.clip"
-  | string; // forward-compatible
+export type LLMService = "openai.chat" | "openai.embedding" | "replicate.clip" | string; // forward-compatible
 
 export interface LLMTelemetryMeta {
   service: LLMService;
@@ -90,12 +86,22 @@ function emit(record: LLMTelemetryRecord): void {
   }
 }
 
-async function emitToDb(record: LLMTelemetryRecord, meta: LLMTelemetryMeta & { sessionId?: string; roundNo?: number }): Promise<void> {
+async function emitToDb(
+  record: LLMTelemetryRecord,
+  meta: LLMTelemetryMeta & { sessionId?: string; roundNo?: number },
+): Promise<void> {
   if (!_telemetryDb) return;
   try {
     // Map operation to a valid stage enum value, defaulting to UNDERSTAND
-    const validStages = ["UNDERSTAND", "CONTEXT", "DECIDE", "VALIDATE", "RESPOND", "MEMO_UPDATE"] as const;
-    type ValidStage = typeof validStages[number];
+    const validStages = [
+      "UNDERSTAND",
+      "CONTEXT",
+      "DECIDE",
+      "VALIDATE",
+      "RESPOND",
+      "MEMO_UPDATE",
+    ] as const;
+    type ValidStage = (typeof validStages)[number];
     const operationUpper = record.operation.toUpperCase() as ValidStage;
     const stage: ValidStage = validStages.includes(operationUpper) ? operationUpper : "UNDERSTAND";
 
@@ -125,10 +131,7 @@ export function classifyLLMError(err: unknown): {
   errorType: string;
   errorMessage: string;
 } {
-  const anyErr = err as
-    | { message?: unknown; name?: unknown; status?: unknown }
-    | null
-    | undefined;
+  const anyErr = err as { message?: unknown; name?: unknown; status?: unknown } | null | undefined;
   const message =
     typeof anyErr?.message === "string"
       ? anyErr.message
@@ -142,8 +145,7 @@ export function classifyLLMError(err: unknown): {
             }
           })();
   const name = typeof anyErr?.name === "string" ? anyErr.name : "";
-  const status =
-    typeof anyErr?.status === "number" ? anyErr.status : undefined;
+  const status = typeof anyErr?.status === "number" ? anyErr.status : undefined;
   const haystack = `${name} ${message}`;
 
   let errorType = "unknown";
@@ -152,10 +154,7 @@ export function classifyLLMError(err: unknown): {
     errorType = "timeout";
   } else if (status === 429 || /rate.?limit/i.test(haystack)) {
     errorType = "rate_limit";
-  } else if (
-    status === 401 ||
-    /unauthori[sz]ed|invalid.?api.?key/i.test(haystack)
-  ) {
+  } else if (status === 401 || /unauthori[sz]ed|invalid.?api.?key/i.test(haystack)) {
     errorType = "auth";
   } else if (/ECONNREFUSED|ENOTFOUND|fetch failed|socket/i.test(haystack)) {
     errorType = "network";

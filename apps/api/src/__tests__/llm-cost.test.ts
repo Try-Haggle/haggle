@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  estimateLlmCostUsd,
-  resolveLlmModelPricing,
-} from "../lib/llm-cost.js";
+import { estimateLlmCostUsd, resolveLlmModelPricing } from "../lib/llm-cost.js";
 
 describe("llm-cost", () => {
   afterEach(() => {
@@ -10,11 +7,13 @@ describe("llm-cost", () => {
   });
 
   it("estimates Grok 4.3 cost from token usage", () => {
-    expect(estimateLlmCostUsd("grok-4.3", {
-      promptTokens: 1_000_000,
-      completionTokens: 1_000_000,
-      totalTokens: 2_000_000,
-    })).toMatchObject({
+    expect(
+      estimateLlmCostUsd("grok-4.3", {
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      }),
+    ).toMatchObject({
       model: "grok-4.3",
       pricing: {
         inputUsdPer1MTokens: 1.25,
@@ -41,11 +40,13 @@ describe("llm-cost", () => {
     vi.stubEnv("LLM_PRICE_INPUT_PER_1M_USD", "1");
     vi.stubEnv("LLM_PRICE_OUTPUT_PER_1M_USD", "2");
 
-    expect(estimateLlmCostUsd("custom-model", {
-      promptTokens: 500_000,
-      completionTokens: 250_000,
-      totalTokens: 750_000,
-    })).toMatchObject({
+    expect(
+      estimateLlmCostUsd("custom-model", {
+        promptTokens: 500_000,
+        completionTokens: 250_000,
+        totalTokens: 750_000,
+      }),
+    ).toMatchObject({
       inputUsd: 0.5,
       outputUsd: 0.5,
       totalUsd: 1,
@@ -54,11 +55,13 @@ describe("llm-cost", () => {
   });
 
   it("returns null when pricing or usage is unavailable", () => {
-    expect(estimateLlmCostUsd("unknown-model", {
-      promptTokens: 1,
-      completionTokens: 1,
-      totalTokens: 2,
-    })).toBeNull();
+    expect(
+      estimateLlmCostUsd("unknown-model", {
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+      }),
+    ).toBeNull();
     expect(estimateLlmCostUsd("grok-4.3", undefined)).toBeNull();
   });
 });

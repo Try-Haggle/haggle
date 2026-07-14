@@ -1,19 +1,22 @@
-import Fastify, { type FastifyInstance } from "fastify";
 import { createHmac } from "node:crypto";
+import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerPaymentRoutes } from "../routes/payments.js";
+import { writeAuditLog } from "../services/admin-action-log.service.js";
 import {
   createPaymentSettlementRecord,
   getCommerceOrderByOrderId,
-  getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
+  getPaymentSettlementByPaymentIntentId,
   setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
-import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
+import {
+  createSettlementReleaseRecord,
+  getSettlementReleaseByOrderId,
+} from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
-import { writeAuditLog } from "../services/admin-action-log.service.js";
 import { completeWebhookEvent } from "../services/webhook-event-claim.service.js";
 
 vi.mock("../payments/providers.js", () => ({
@@ -87,7 +90,9 @@ vi.mock("../services/payment-record.service.js", () => ({
   createRefundRecord: vi.fn(),
   createStoredPaymentIntent: vi.fn(),
   ensureCommerceOrderForApproval: vi.fn(),
-  getCommerceOrderByOrderId: vi.fn().mockResolvedValue({ id: "order_123", status: "PAYMENT_PENDING" }),
+  getCommerceOrderByOrderId: vi
+    .fn()
+    .mockResolvedValue({ id: "order_123", status: "PAYMENT_PENDING" }),
   getPaymentSettlementByPaymentIntentId: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn(),
   getInProgressPaymentOperationForIntent: vi.fn().mockResolvedValue(null),
@@ -120,7 +125,8 @@ vi.mock("../services/admin-action-log.service.js", () => ({
 }));
 
 vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
+  const actual =
+    await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
   return {
     ...actual,
     claimWebhookEvent: vi.fn().mockImplementation(async (_db, input) => ({
@@ -178,7 +184,14 @@ function buildDb() {
 }
 
 function paymentIntent(
-  status: "CREATED" | "QUOTED" | "AUTHORIZED" | "SETTLEMENT_PENDING" | "SETTLED" | "FAILED" | "CANCELED" = "SETTLEMENT_PENDING",
+  status:
+    | "CREATED"
+    | "QUOTED"
+    | "AUTHORIZED"
+    | "SETTLEMENT_PENDING"
+    | "SETTLED"
+    | "FAILED"
+    | "CANCELED" = "SETTLEMENT_PENDING",
 ) {
   return {
     id: "pi_123",
@@ -201,9 +214,7 @@ function signedX402Webhook(
   timestamp = new Date().toISOString(),
 ) {
   const rawBody = JSON.stringify(payload);
-  const signature = createHmac("sha256", secret)
-    .update(`${timestamp}.${rawBody}`)
-    .digest("hex");
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
   return {
     payload: rawBody,
     headers: {
@@ -222,14 +233,10 @@ describe("payment webhook idempotency", () => {
     vi.clearAllMocks();
     db = buildDb();
     app = Fastify();
-    app.addContentTypeParser(
-      "application/json",
-      { parseAs: "buffer" },
-      (request, body, done) => {
-        (request as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
-        done(null, JSON.parse((body as Buffer).toString()));
-      },
-    );
+    app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, body, done) => {
+      (request as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
+      done(null, JSON.parse((body as Buffer).toString()));
+    });
     registerPaymentRoutes(app, db as never);
     await app.ready();
   });
@@ -285,9 +292,7 @@ describe("payment webhook idempotency", () => {
       event_type: "settlement.confirmed",
       payment_intent_id: "pi_123",
     });
-    const signature = createHmac("sha256", "x402_webhook_secret")
-      .update(payload)
-      .digest("hex");
+    const signature = createHmac("sha256", "x402_webhook_secret").update(payload).digest("hex");
 
     const res = await app.inject({
       method: "POST",
@@ -358,7 +363,11 @@ describe("payment webhook idempotency", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ accepted: true, action: "ignored", reason: "unknown_intent" });
+    expect(res.json()).toMatchObject({
+      accepted: true,
+      action: "ignored",
+      reason: "unknown_intent",
+    });
     expect(mockWriteAuditLog).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -419,9 +428,22 @@ describe("payment webhook idempotency", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().action).toBe("settled");
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalled();
-    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "seller_123",
+      "buyer_123",
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "PAID",
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "FULFILLMENT_PENDING",
+    );
     expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
@@ -454,7 +476,12 @@ describe("payment webhook idempotency", () => {
       {},
     );
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalled();
-    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "buyer_123");
+    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "seller_123",
+      "buyer_123",
+    );
     expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
@@ -654,8 +681,14 @@ describe("payment webhook idempotency", () => {
     mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent());
     mockUpdateStoredPaymentIntent.mockResolvedValueOnce(null);
     mockCreatePaymentSettlementRecord.mockResolvedValueOnce(null as never);
-    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({ id: "order_123", status: "PAID" } as never);
-    mockGetShipmentByOrderId.mockResolvedValueOnce({ id: "shipment_existing", order_id: "order_123" } as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "order_123",
+      status: "PAID",
+    } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce({
+      id: "shipment_existing",
+      order_id: "order_123",
+    } as never);
 
     const res = await app.inject({
       method: "POST",
@@ -670,8 +703,16 @@ describe("payment webhook idempotency", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().action).toBe("settled");
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
-    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "PAID",
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "FULFILLMENT_PENDING",
+    );
     expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });
 
@@ -679,9 +720,18 @@ describe("payment webhook idempotency", () => {
     mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent());
     mockUpdateStoredPaymentIntent.mockResolvedValueOnce(null);
     mockCreatePaymentSettlementRecord.mockResolvedValueOnce(null as never);
-    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "sr_existing", order_id: "order_123" } as never);
-    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({ id: "order_123", status: "FULFILLMENT_ACTIVE" } as never);
-    mockGetShipmentByOrderId.mockResolvedValueOnce({ id: "shipment_existing", order_id: "order_123" } as never);
+    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({
+      id: "sr_existing",
+      order_id: "order_123",
+    } as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "order_123",
+      status: "FULFILLMENT_ACTIVE",
+    } as never);
+    mockGetShipmentByOrderId.mockResolvedValueOnce({
+      id: "shipment_existing",
+      order_id: "order_123",
+    } as never);
 
     const res = await app.inject({
       method: "POST",

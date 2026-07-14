@@ -6,10 +6,14 @@ export const waitingIntents = pgTable("waiting_intents", {
   role: text("role", { enum: ["BUYER", "SELLER"] }).notNull(),
   category: text("category").notNull(),
   keywords: jsonb("keywords").$type<string[]>().notNull(),
-  strategySnapshot: jsonb("strategy_snapshot").$type<Record<string, unknown>>().notNull(),
+  negotiationAgentSnapshot: jsonb("negotiation_agent_snapshot")
+    .$type<Record<string, unknown>>()
+    .notNull(),
   minUtotal: numeric("min_u_total", { precision: 8, scale: 4 }).notNull().default("0.3"),
   maxActiveSessions: integer("max_active_sessions").notNull().default(5),
-  status: text("status", { enum: ["ACTIVE", "MATCHED", "FULFILLED", "EXPIRED", "CANCELLED"] }).notNull().default("ACTIVE"),
+  status: text("status", { enum: ["ACTIVE", "MATCHED", "FULFILLED", "EXPIRED", "CANCELLED"] })
+    .notNull()
+    .default("ACTIVE"),
   matchedAt: timestamp("matched_at", { withTimezone: true }),
   fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

@@ -91,7 +91,9 @@ describe("evaluatePanelReview", () => {
     expect(result.total_reward_cents).toBe(840);
     expect(result.majority_count).toBe(4);
     expect(result.rewards.filter((reward) => reward.in_majority)).toHaveLength(4);
-    expect(result.rewards.find((reward) => reward.reviewer_id === "reviewer-5")?.reward_cents).toBe(0);
+    expect(result.rewards.find((reward) => reward.reviewer_id === "reviewer-5")?.reward_cents).toBe(
+      0,
+    );
   });
 
   it("requires the larger Tier 3 panel", () => {

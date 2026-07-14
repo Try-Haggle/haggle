@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { runDisputeEvidenceScanRetryAlertSnapshotRetention } from
-  "../services/dispute-evidence-scan-retry-alert-snapshot-retention.service.js";
+import { type Database, sql } from "@haggle/db";
+import { runDisputeEvidenceScanRetryAlertSnapshotRetention } from "../services/dispute-evidence-scan-retry-alert-snapshot-retention.service.js";
 
 const JOB_KEY = "snapshot_retention";
 const LEASE_MS = 15 * 60_000;
@@ -32,8 +31,7 @@ export interface DisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth {
 
 export function getDisputeEvidenceScanRetryAlertSnapshotRetentionJobStatus() {
   return {
-    jobEnabled:
-      process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
+    jobEnabled: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
     cronEnabled: process.env.ENABLE_CRON === "true",
     intervalSeconds: INTERVAL_SECONDS,
     leaseSeconds: LEASE_MS / 1_000,
@@ -44,7 +42,7 @@ export function getDisputeEvidenceScanRetryAlertSnapshotRetentionJobStatus() {
 async function claimRun(db: Database, now: Date) {
   const claimId = randomUUID();
   const leaseExpiresAt = new Date(now.getTime() + LEASE_MS);
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     INSERT INTO dispute_evidence_scan_retry_alert_snapshot_retention_state
       (job_key, status, claim_id, lease_expires_at, first_observed_at,
        last_started_at, updated_at)
@@ -61,19 +59,14 @@ async function claimRun(db: Database, now: Date) {
        OR dispute_evidence_scan_retry_alert_snapshot_retention_state.lease_expires_at
           <= ${now.toISOString()}::timestamptz
     RETURNING claim_id
-  `) as unknown as Array<{ claim_id: string }>;
+  `)) as unknown as Array<{ claim_id: string }>;
   return rows[0]
     ? { acquired: true as const, claimId }
     : { acquired: false as const, claimId: null };
 }
 
-async function completeRun(
-  db: Database,
-  claimId: string,
-  now: Date,
-  deleted: number,
-) {
-  const rows = await db.execute(sql`
+async function completeRun(db: Database, claimId: string, now: Date, deleted: number) {
+  const rows = (await db.execute(sql`
     UPDATE dispute_evidence_scan_retry_alert_snapshot_retention_state
        SET status = 'SUCCEEDED', claim_id = NULL, lease_expires_at = NULL,
            last_succeeded_at = ${now.toISOString()}::timestamptz,
@@ -82,7 +75,7 @@ async function completeRun(
      WHERE job_key = ${JOB_KEY} AND status = 'RUNNING'
        AND claim_id = ${claimId}::uuid
     RETURNING status
-  `) as unknown as Array<{ status: string }>;
+  `)) as unknown as Array<{ status: string }>;
   if (!rows[0]) {
     throw new Error("SCAN_RETRY_ALERT_SNAPSHOT_RETENTION_LEASE_LOST");
   }
@@ -104,35 +97,42 @@ export async function getDisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth
   db: Database,
   now = new Date(),
 ): Promise<DisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT status, lease_expires_at, first_observed_at, last_started_at,
            last_succeeded_at, last_failed_at, last_deleted_snapshots,
            last_failure_code
       FROM dispute_evidence_scan_retry_alert_snapshot_retention_state
      WHERE job_key = ${JOB_KEY}
      LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0];
   const policy = getDisputeEvidenceScanRetryAlertSnapshotRetentionJobStatus();
   const rawStatus = row?.status
-    ? String(row.status) as "NEVER" | "RUNNING" | "SUCCEEDED" | "FAILED"
+    ? (String(row.status) as "NEVER" | "RUNNING" | "SUCCEEDED" | "FAILED")
     : "NEVER";
-  const leaseStale = rawStatus === "RUNNING" && row?.lease_expires_at != null
-    && new Date(String(row.lease_expires_at)).getTime() <= now.getTime();
-  const lastRunStatus = leaseStale ? "STALE_RUNNING" as const : rawStatus;
+  const leaseStale =
+    rawStatus === "RUNNING" &&
+    row?.lease_expires_at != null &&
+    new Date(String(row.lease_expires_at)).getTime() <= now.getTime();
+  const lastRunStatus = leaseStale ? ("STALE_RUNNING" as const) : rawStatus;
   const firstObservedAt = row?.first_observed_at
-    ? new Date(String(row.first_observed_at)).toISOString() : null;
+    ? new Date(String(row.first_observed_at)).toISOString()
+    : null;
   const lastSucceededAt = row?.last_succeeded_at
-    ? new Date(String(row.last_succeeded_at)).toISOString() : null;
+    ? new Date(String(row.last_succeeded_at)).toISOString()
+    : null;
   const baseline = lastSucceededAt ?? firstObservedAt;
-  const overdue = Boolean(baseline
-    && now.getTime() - new Date(baseline).getTime()
-      >= MAX_START_DELAY_SECONDS * 1_000);
+  const overdue = Boolean(
+    baseline && now.getTime() - new Date(baseline).getTime() >= MAX_START_DELAY_SECONDS * 1_000,
+  );
   const active = policy.jobEnabled && policy.cronEnabled;
-  const status = !active ? "inactive" as const
-    : leaseStale ? "critical" as const
-      : rawStatus === "FAILED" || overdue ? "attention" as const
-        : "healthy" as const;
+  const status = !active
+    ? ("inactive" as const)
+    : leaseStale
+      ? ("critical" as const)
+      : rawStatus === "FAILED" || overdue
+        ? ("attention" as const)
+        : ("healthy" as const);
   return {
     status,
     lastRunStatus,
@@ -140,13 +140,13 @@ export async function getDisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth
     leaseStale,
     firstObservedAt,
     lastStartedAt: row?.last_started_at
-      ? new Date(String(row.last_started_at)).toISOString() : null,
+      ? new Date(String(row.last_started_at)).toISOString()
+      : null,
     lastSucceededAt,
-    lastFailedAt: row?.last_failed_at
-      ? new Date(String(row.last_failed_at)).toISOString() : null,
+    lastFailedAt: row?.last_failed_at ? new Date(String(row.last_failed_at)).toISOString() : null,
     lastDeletedSnapshots: Number(row?.last_deleted_snapshots ?? 0),
-    lastFailureCode: row?.last_failure_code === "RETENTION_EXECUTION_FAILED"
-      ? "RETENTION_EXECUTION_FAILED" : null,
+    lastFailureCode:
+      row?.last_failure_code === "RETENTION_EXECUTION_FAILED" ? "RETENTION_EXECUTION_FAILED" : null,
     policy,
     containsIdentifiers: false,
     recordedAt: now.toISOString(),
@@ -176,19 +176,13 @@ export async function runDisputeEvidenceScanRetryAlertSnapshotRetentionJob(
       batchSize: options.batchSize,
       onLockAcquired: options.onLockAcquired,
     });
-    await completeRun(
-      db,
-      claim.claimId,
-      options.finishedAt ?? new Date(),
-      result.deleted,
-    );
+    await completeRun(db, claim.claimId, options.finishedAt ?? new Date(), result.deleted);
     console.log(
       `[dispute-evidence-scan-retry-alert-snapshot-retention] status=${result.status} deleted=${result.deleted}`,
     );
     return result;
   } catch (error) {
-    await failRun(db, claim.claimId, options.finishedAt ?? new Date())
-      .catch(() => undefined);
+    await failRun(db, claim.claimId, options.finishedAt ?? new Date()).catch(() => undefined);
     throw error;
   }
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { registerActionHandlers } from "../lib/action-handlers.js";
 import type { EventDispatcher } from "../lib/event-dispatcher.js";
 import { createEventDispatcher } from "../lib/event-dispatcher.js";
-import { registerActionHandlers } from "../lib/action-handlers.js";
 import { getSessionById } from "../services/negotiation-session.service.js";
 import { recordAgreedPrice } from "../services/price-observation-sink.js";
 
@@ -76,37 +76,42 @@ describe("registerActionHandlers", () => {
       sellerId,
     });
 
-    expect(db.values).toHaveBeenCalledWith(expect.objectContaining({
-      id: sessionId,
-      listingId,
-      buyerId,
-      sellerId,
-      approvalState: "APPROVED",
-      sellerApprovalMode: "AUTO_WITHIN_POLICY",
-      selectedPaymentRail: "x402",
-      currency: "USD",
-      finalAmountMinor: "50000",
-      buyerApprovedAt: expect.any(Date),
-      sellerApprovedAt: expect.any(Date),
-      termsSnapshot: expect.objectContaining({
-        session_id: sessionId,
-        listing_id: listingId,
-        final_amount_minor: 50_000,
-        buyer_id: buyerId,
-        seller_id: sellerId,
-        selected_payment_rail: "x402",
+    expect(db.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: sessionId,
+        listingId,
+        buyerId,
+        sellerId,
+        approvalState: "APPROVED",
+        sellerApprovalMode: "AUTO_WITHIN_POLICY",
+        selectedPaymentRail: "x402",
         currency: "USD",
-        seller_policy_shipment_input_due_days: 3,
+        finalAmountMinor: "50000",
+        buyerApprovedAt: expect.any(Date),
+        sellerApprovedAt: expect.any(Date),
+        termsSnapshot: expect.objectContaining({
+          session_id: sessionId,
+          listing_id: listingId,
+          final_amount_minor: 50_000,
+          buyer_id: buyerId,
+          seller_id: sellerId,
+          selected_payment_rail: "x402",
+          currency: "USD",
+          seller_policy_shipment_input_due_days: 3,
+        }),
       }),
-    }));
+    );
     expect(db.onConflictDoNothing).toHaveBeenCalled();
-    expect(mockRecordAgreedPrice).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      sessionId,
-      finalPriceMinor: 50_000,
-      buyerId,
-      sellerId,
-      listingId,
-    }));
+    expect(mockRecordAgreedPrice).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sessionId,
+        finalPriceMinor: 50_000,
+        buyerId,
+        sellerId,
+        listingId,
+      }),
+    );
   });
 
   it("routes negotiation.agreed through the dispatcher and stores the session id as settlement approval id", async () => {
@@ -147,16 +152,18 @@ describe("registerActionHandlers", () => {
       buyerId,
       sellerId,
     });
-    expect(db.values).toHaveBeenCalledWith(expect.objectContaining({
-      id: sessionId,
-      approvalState: "APPROVED",
-      buyerId,
-      sellerId,
-      termsSnapshot: expect.objectContaining({
-        session_id: sessionId,
-        buyer_id: buyerId,
-        seller_id: sellerId,
+    expect(db.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: sessionId,
+        approvalState: "APPROVED",
+        buyerId,
+        sellerId,
+        termsSnapshot: expect.objectContaining({
+          session_id: sessionId,
+          buyer_id: buyerId,
+          seller_id: sellerId,
+        }),
       }),
-    }));
+    );
   });
 });

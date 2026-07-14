@@ -48,9 +48,7 @@ for (const [network, prefix, family] of [
 }
 
 function stripIpv6Brackets(hostname: string): string {
-  return hostname.startsWith("[") && hostname.endsWith("]")
-    ? hostname.slice(1, -1)
-    : hostname;
+  return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
 }
 
 function isPrivateHostname(hostname: string): boolean {
@@ -123,8 +121,7 @@ function awaitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T
       signal.removeEventListener("abort", onAbort);
       callback();
     };
-    const onAbort = () => finish(() =>
-      reject(new DOMException("aborted", "AbortError")));
+    const onAbort = () => finish(() => reject(new DOMException("aborted", "AbortError")));
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
       (value) => finish(() => resolve(value)),
@@ -139,23 +136,18 @@ export async function resolveDisputeModuleOutboundTarget(
   options: { lookupImpl?: DisputeModuleDnsLookup; signal?: AbortSignal } = {},
 ): Promise<{ url: URL; addresses: DisputeModuleResolvedAddress[] }> {
   const parsed = assertDisputeModuleOutboundUrl(String(url), policy);
-  const hostname = stripIpv6Brackets(parsed.hostname).toLowerCase()
-    .replace(/\.$/, "");
+  const hostname = stripIpv6Brackets(parsed.hostname).toLowerCase().replace(/\.$/, "");
   const literalFamily = isIP(hostname);
   let resolved: readonly DisputeModuleResolvedAddress[];
   try {
     resolved = literalFamily
       ? [{ address: hostname, family: literalFamily === 6 ? 6 : 4 }]
-      : await awaitWithAbort(
-        (options.lookupImpl ?? defaultDnsLookup)(hostname),
-        options.signal,
-      );
+      : await awaitWithAbort((options.lookupImpl ?? defaultDnsLookup)(hostname), options.signal);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new Error(`${policy.label} dns resolution failed`);
   }
-  if (resolved.length < 1
-    || resolved.length > DISPUTE_MODULE_MAX_RESOLVED_ADDRESSES) {
+  if (resolved.length < 1 || resolved.length > DISPUTE_MODULE_MAX_RESOLVED_ADDRESSES) {
     throw new Error(`${policy.label} dns resolution returned an unsafe address count`);
   }
   const unique = new Map<string, DisputeModuleResolvedAddress>();
@@ -165,8 +157,7 @@ export async function resolveDisputeModuleOutboundTarget(
     if ((family !== 4 && family !== 6) || family !== entry.family) {
       throw new Error(`${policy.label} dns resolution returned an invalid address`);
     }
-    if (!policy.allowPrivateNetwork
-      && isDisputeModuleBlockedNetworkAddress(address)) {
+    if (!policy.allowPrivateNetwork && isDisputeModuleBlockedNetworkAddress(address)) {
       throw new Error(`${policy.label} dns resolution targeted a blocked network`);
     }
     unique.set(`${family}:${address}`, { address, family });
@@ -181,28 +172,26 @@ export function createDisputeModulePinnedLookup(
   hostname: string,
   addresses: readonly DisputeModuleResolvedAddress[],
 ): LookupFunction {
-  const expectedHostname = stripIpv6Brackets(hostname).toLowerCase()
-    .replace(/\.$/, "");
+  const expectedHostname = stripIpv6Brackets(hostname).toLowerCase().replace(/\.$/, "");
   return ((
     requestedHostname: string,
     rawOptions: number | Record<string, unknown>,
     callback: (...args: unknown[]) => void,
   ) => {
-    const requested = stripIpv6Brackets(requestedHostname).toLowerCase()
-      .replace(/\.$/, "");
+    const requested = stripIpv6Brackets(requestedHostname).toLowerCase().replace(/\.$/, "");
     if (requested !== expectedHostname) {
       callback(new Error("outbound pinned lookup hostname mismatch"));
       return;
     }
-    const options = typeof rawOptions === "number"
-      ? { family: rawOptions, all: false }
-      : rawOptions as { family?: number; all?: boolean };
-    const requestedFamily = options?.family === 4 || options?.family === 6
-      ? options.family
-      : 0;
-    const candidates = requestedFamily === 0
-      ? [...addresses]
-      : addresses.filter(({ family }) => family === requestedFamily);
+    const options =
+      typeof rawOptions === "number"
+        ? { family: rawOptions, all: false }
+        : (rawOptions as { family?: number; all?: boolean });
+    const requestedFamily = options?.family === 4 || options?.family === 6 ? options.family : 0;
+    const candidates =
+      requestedFamily === 0
+        ? [...addresses]
+        : addresses.filter(({ family }) => family === requestedFamily);
     if (candidates.length < 1) {
       callback(new Error("outbound pinned lookup has no matching address"));
       return;
@@ -231,40 +220,49 @@ export async function postDisputeModulePinnedBytes(
   });
   const safeHeaders = new Headers(request.headers);
   for (const name of [
-    "host", "connection", "keep-alive", "proxy-authorization",
-    "proxy-authenticate", "te", "trailer", "transfer-encoding", "upgrade",
-  ]) safeHeaders.delete(name);
+    "host",
+    "connection",
+    "keep-alive",
+    "proxy-authorization",
+    "proxy-authenticate",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+  ])
+    safeHeaders.delete(name);
   safeHeaders.set("content-length", String(request.body.length));
   const headers = Object.fromEntries(safeHeaders.entries());
-  const requestFn = target.url.protocol === "https:"
-    ? httpsRequest
-    : httpRequest;
+  const requestFn = target.url.protocol === "https:" ? httpsRequest : httpRequest;
   return new Promise<Response>((resolve, reject) => {
-    const clientRequest = requestFn(target.url, {
-      method: "POST",
-      headers,
-      agent: false,
-      lookup: createDisputeModulePinnedLookup(
-        target.url.hostname,
-        target.addresses,
-      ),
-      signal: request.signal,
-    }, (incoming) => {
-      const responseHeaders = new Headers();
-      for (const [name, value] of Object.entries(incoming.headers)) {
-        if (Array.isArray(value)) {
-          for (const item of value) responseHeaders.append(name, item);
-        } else if (value !== undefined) {
-          responseHeaders.set(name, value);
+    const clientRequest = requestFn(
+      target.url,
+      {
+        method: "POST",
+        headers,
+        agent: false,
+        lookup: createDisputeModulePinnedLookup(target.url.hostname, target.addresses),
+        signal: request.signal,
+      },
+      (incoming) => {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          if (Array.isArray(value)) {
+            for (const item of value) responseHeaders.append(name, item);
+          } else if (value !== undefined) {
+            responseHeaders.set(name, value);
+          }
         }
-      }
-      const body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
-      resolve(new Response(body, {
-        status: incoming.statusCode ?? 500,
-        statusText: incoming.statusMessage,
-        headers: responseHeaders,
-      }));
-    });
+        const body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
+        resolve(
+          new Response(body, {
+            status: incoming.statusCode ?? 500,
+            statusText: incoming.statusMessage,
+            headers: responseHeaders,
+          }),
+        );
+      },
+    );
     clientRequest.on("error", reject);
     clientRequest.end(request.body);
   });

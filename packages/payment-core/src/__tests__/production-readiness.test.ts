@@ -17,7 +17,9 @@ describe("production payment state machine", () => {
   it("allows only production-safe payment transitions", () => {
     expect(transitionProductionPaymentState("pending", "authorize")).toBe("authorized");
     expect(transitionProductionPaymentState("authorized", "capture")).toBe("captured");
-    expect(transitionProductionPaymentState("captured", "partial_refund")).toBe("partially_refunded");
+    expect(transitionProductionPaymentState("captured", "partial_refund")).toBe(
+      "partially_refunded",
+    );
     expect(transitionProductionPaymentState("partially_refunded", "refund")).toBe("refunded");
   });
 
@@ -57,51 +59,61 @@ describe("production payment state machine", () => {
   });
 
   it("derives refund production states without mutating legacy captured status", () => {
-    expect(productionStateAfterRefund({
-      legacyStatus: "SETTLED",
-      paymentAmountMinor: 10_000,
-      refundAmountMinor: 2_500,
-    })).toBe("partially_refunded");
-    expect(productionStateAfterRefund({
-      legacyStatus: "SETTLED",
-      paymentAmountMinor: 10_000,
-      refundAmountMinor: 10_000,
-    })).toBe("refunded");
-    expect(() => productionStateAfterRefund({
-      legacyStatus: "AUTHORIZED",
-      paymentAmountMinor: 10_000,
-      refundAmountMinor: 1_000,
-    })).toThrow("refund production state requires SETTLED intent, got AUTHORIZED");
-    expect(() => productionStateAfterRefund({
-      legacyStatus: "SETTLED",
-      paymentAmountMinor: 10_000,
-      refundAmountMinor: 10_001,
-    })).toThrow("refund amount 10001 exceeds payment amount 10000");
+    expect(
+      productionStateAfterRefund({
+        legacyStatus: "SETTLED",
+        paymentAmountMinor: 10_000,
+        refundAmountMinor: 2_500,
+      }),
+    ).toBe("partially_refunded");
+    expect(
+      productionStateAfterRefund({
+        legacyStatus: "SETTLED",
+        paymentAmountMinor: 10_000,
+        refundAmountMinor: 10_000,
+      }),
+    ).toBe("refunded");
+    expect(() =>
+      productionStateAfterRefund({
+        legacyStatus: "AUTHORIZED",
+        paymentAmountMinor: 10_000,
+        refundAmountMinor: 1_000,
+      }),
+    ).toThrow("refund production state requires SETTLED intent, got AUTHORIZED");
+    expect(() =>
+      productionStateAfterRefund({
+        legacyStatus: "SETTLED",
+        paymentAmountMinor: 10_000,
+        refundAmountMinor: 10_001,
+      }),
+    ).toThrow("refund amount 10001 exceeds payment amount 10000");
   });
 });
 
 describe("payment sensitive data redaction", () => {
   it("redacts payment secrets recursively while preserving non-sensitive fields", () => {
-    expect(redactPaymentSensitiveData({
-      order_id: "ord_1",
-      client_secret: "pi_secret_123",
-      authorization: "Bearer sk_test_123",
-      nested: {
-        payment_method_id: "pm_123",
-        card: {
-          card_number: "4242424242424242",
-          exp_month: "12",
-          exp_year: "2030",
-          brand: "visa",
+    expect(
+      redactPaymentSensitiveData({
+        order_id: "ord_1",
+        client_secret: "pi_secret_123",
+        authorization: "Bearer sk_test_123",
+        nested: {
+          payment_method_id: "pm_123",
+          card: {
+            card_number: "4242424242424242",
+            exp_month: "12",
+            exp_year: "2030",
+            brand: "visa",
+          },
         },
-      },
-      events: [{ wallet_token: "tok_wallet", status: "pending" }],
-      shipping: {
-        account_number: "123456789",
-        routing_number: "021000021",
-        iban: "GB82WEST12345698765432",
-      },
-    })).toEqual({
+        events: [{ wallet_token: "tok_wallet", status: "pending" }],
+        shipping: {
+          account_number: "123456789",
+          routing_number: "021000021",
+          iban: "GB82WEST12345698765432",
+        },
+      }),
+    ).toEqual({
       order_id: "ord_1",
       client_secret: "[REDACTED]",
       authorization: "[REDACTED]",
@@ -124,13 +136,15 @@ describe("payment sensitive data redaction", () => {
   });
 
   it("redacts PAN values even when the field name is not sensitive", () => {
-    expect(redactPaymentSensitiveData({
-      note: "customer typed 4242 4242 4242 4242 in the support field",
-      primary_account_number: "5555555555554444",
-      pan: "4000000000000002",
-      span_id: "trace-span-1",
-      unrelated_number: "1234567890123",
-    })).toEqual({
+    expect(
+      redactPaymentSensitiveData({
+        note: "customer typed 4242 4242 4242 4242 in the support field",
+        primary_account_number: "5555555555554444",
+        pan: "4000000000000002",
+        span_id: "trace-span-1",
+        unrelated_number: "1234567890123",
+      }),
+    ).toEqual({
       note: "customer typed [REDACTED_PAN] in the support field",
       primary_account_number: "[REDACTED]",
       pan: "[REDACTED]",
@@ -163,10 +177,12 @@ describe("payment sensitive data redaction", () => {
     const circular: Record<string, unknown> = { client_secret: "secret" };
     circular.self = circular;
 
-    expect(redactPaymentSensitiveData({
-      circular,
-      error: new Error("provider secret sk_test_123"),
-    })).toEqual({
+    expect(
+      redactPaymentSensitiveData({
+        circular,
+        error: new Error("provider secret sk_test_123"),
+      }),
+    ).toEqual({
       circular: {
         client_secret: "[REDACTED]",
         self: "[Circular]",

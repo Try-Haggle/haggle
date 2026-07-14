@@ -23,13 +23,13 @@ import {
 import type { PaymentIntent } from "@haggle/payment-core";
 import type { X402SettlementSignatureContext } from "@haggle/payment-core/heavy/real-x402-adapter";
 import {
+  type Address,
   createPublicClient,
+  type Hex,
   http,
   isAddress,
   keccak256,
   stringToHex,
-  type Address,
-  type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
@@ -56,7 +56,7 @@ function toPolicyBytes32(value: string): Hex {
 // ── Config ───────────────────────────────────────────────────
 
 /** Maximum fee BPS allowed — matches contract's MAX_FEE_BPS (10%). */
-const MAX_FEE_BPS = MAX_HAGGLE_FEE_BPS;
+const _MAX_FEE_BPS = MAX_HAGGLE_FEE_BPS;
 
 /** Maximum deadline offset: 1 hour from now. */
 const MAX_DEADLINE_OFFSET_SECONDS = 3600;
@@ -175,10 +175,7 @@ export interface ConditionalRefundSignatureContext {
  * All settlements must use the current on-chain nonce to pass validation.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readOnChainSignerNonce(
-  routerAddress: Address,
-  publicClient: any,
-): Promise<bigint> {
+async function readOnChainSignerNonce(routerAddress: Address, publicClient: any): Promise<bigint> {
   const nonce = await publicClient.readContract({
     address: routerAddress,
     abi: HAGGLE_SETTLEMENT_ROUTER_ABI,
@@ -235,18 +232,10 @@ export function buildSettlementMessage(
     deadline?: bigint;
   },
 ): SettlementMessage {
-  const deadlineOffset = Math.min(
-    config.deadlineOffsetSeconds ?? 900,
-    MAX_DEADLINE_OFFSET_SECONDS,
-  );
-  const deadline =
-    overrides?.deadline ??
-    BigInt(Math.floor(Date.now() / 1000) + deadlineOffset);
+  const deadlineOffset = Math.min(config.deadlineOffsetSeconds ?? 900, MAX_DEADLINE_OFFSET_SECONDS);
+  const deadline = overrides?.deadline ?? BigInt(Math.floor(Date.now() / 1000) + deadlineOffset);
 
-  const { sellerAmount, feeAmount } = splitAmount(
-    intent.amount.amount_minor,
-    config.feeBps,
-  );
+  const { sellerAmount, feeAmount } = splitAmount(intent.amount.amount_minor, config.feeBps);
 
   const buyer = overrides?.buyerAddress
     ? validateAddress(overrides.buyerAddress, "buyer")
@@ -289,7 +278,10 @@ export function buildConditionalSettlementMessage(
   },
 ): ConditionalSettlementMessage {
   const maxOffset = 30 * 24 * 60 * 60;
-  const expiresOffset = Math.min(params.expiresAt ? 0 : config.expiresOffsetSeconds ?? 24 * 60 * 60, maxOffset);
+  const expiresOffset = Math.min(
+    params.expiresAt ? 0 : (config.expiresOffsetSeconds ?? 24 * 60 * 60),
+    maxOffset,
+  );
   const expiresAt = params.expiresAt ?? BigInt(Math.floor(Date.now() / 1000) + expiresOffset);
   const approvalPolicyHash = params.approvalPolicyHash ?? intent.approval_policy_hash;
   const agreementHash = params.agreementHash ?? intent.agreement_hash;
@@ -366,7 +358,10 @@ export async function signSettlement(
 
 export async function signConditionalSettlement(
   message: ConditionalSettlementMessage,
-  config: Pick<ConditionalSettlementSignerConfig, "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId">,
+  config: Pick<
+    ConditionalSettlementSignerConfig,
+    "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId"
+  >,
 ): Promise<ConditionalSettlementSignatureContext> {
   const account = privateKeyToAccount(config.relayerPrivateKey);
 
@@ -391,7 +386,10 @@ export async function signConditionalSettlement(
 
 export async function signConditionalRelease(
   message: ConditionalReleaseMessage,
-  config: Pick<ConditionalSettlementSignerConfig, "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId">,
+  config: Pick<
+    ConditionalSettlementSignerConfig,
+    "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId"
+  >,
 ): Promise<ConditionalReleaseSignatureContext> {
   const account = privateKeyToAccount(config.relayerPrivateKey);
 
@@ -416,7 +414,10 @@ export async function signConditionalRelease(
 
 export async function signConditionalRefund(
   message: ConditionalRefundMessage,
-  config: Pick<ConditionalSettlementSignerConfig, "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId">,
+  config: Pick<
+    ConditionalSettlementSignerConfig,
+    "relayerPrivateKey" | "conditionalSettlementAddress" | "chainId"
+  >,
 ): Promise<ConditionalRefundSignatureContext> {
   const account = privateKeyToAccount(config.relayerPrivateKey);
 
@@ -456,10 +457,16 @@ export function buildConditionalReleaseMessage(
     params.feeBps,
   );
   const sellerOffsetMinor = params.sellerOffsetMinor ?? 0;
-  if (!Number.isSafeInteger(sellerOffsetMinor) || sellerOffsetMinor < 0 || sellerOffsetMinor > sellerAmountMinor) {
-    throw new Error("sellerOffsetMinor must be a nonnegative safe integer no greater than seller payout");
+  if (
+    !Number.isSafeInteger(sellerOffsetMinor) ||
+    sellerOffsetMinor < 0 ||
+    sellerOffsetMinor > sellerAmountMinor
+  ) {
+    throw new Error(
+      "sellerOffsetMinor must be a nonnegative safe integer no greater than seller payout",
+    );
   }
-  const maxFeeMinor = Math.floor(params.grossAmountMinor * MAX_HAGGLE_FEE_BPS / 10_000);
+  const maxFeeMinor = Math.floor((params.grossAmountMinor * MAX_HAGGLE_FEE_BPS) / 10_000);
   if (feeAmountMinor + sellerOffsetMinor > maxFeeMinor) {
     throw new Error("sellerOffsetMinor exceeds the conditional settlement fee cap");
   }
@@ -510,16 +517,12 @@ export function createSettlementSigner(overrides?: {
 }): (intent: PaymentIntent) => Promise<X402SettlementSignatureContext> {
   const relayerPrivateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as Hex | undefined;
   if (!relayerPrivateKey) {
-    throw new Error(
-      "HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required for settlement signing",
-    );
+    throw new Error("HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required for settlement signing");
   }
 
   const routerAddress = process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS as Address | undefined;
   if (!routerAddress) {
-    throw new Error(
-      "HAGGLE_SETTLEMENT_ROUTER_ADDRESS is required for settlement signing",
-    );
+    throw new Error("HAGGLE_SETTLEMENT_ROUTER_ADDRESS is required for settlement signing");
   }
 
   const network = process.env.HAGGLE_X402_NETWORK ?? "base";
@@ -528,16 +531,12 @@ export function createSettlementSigner(overrides?: {
 
   const assetAddress = process.env.HAGGLE_X402_USDC_ASSET_ADDRESS as Address | undefined;
   if (!assetAddress) {
-    throw new Error(
-      "HAGGLE_X402_USDC_ASSET_ADDRESS is required for settlement signing",
-    );
+    throw new Error("HAGGLE_X402_USDC_ASSET_ADDRESS is required for settlement signing");
   }
 
   const feeWalletAddress = process.env.HAGGLE_X402_FEE_WALLET as Address | undefined;
   if (!feeWalletAddress) {
-    throw new Error(
-      "HAGGLE_X402_FEE_WALLET is required for settlement signing",
-    );
+    throw new Error("HAGGLE_X402_FEE_WALLET is required for settlement signing");
   }
 
   const feeBps = readHaggleFeeBpsFromEnv();
@@ -545,11 +544,9 @@ export function createSettlementSigner(overrides?: {
   const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
 
   // Create public client for reading on-chain nonce (unless overridden for tests)
-  const publicClient = overrides?.publicClientOverride ?? (
-    rpcUrl
-      ? createPublicClient({ chain, transport: http(rpcUrl) })
-      : null
-  );
+  const publicClient =
+    overrides?.publicClientOverride ??
+    (rpcUrl ? createPublicClient({ chain, transport: http(rpcUrl) }) : null);
 
   const config: SettlementSignerConfig = {
     relayerPrivateKey,
@@ -612,7 +609,9 @@ export function createConditionalSettlementSigner(overrides?: {
     );
   }
 
-  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as Address | undefined;
+  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as
+    | Address
+    | undefined;
   if (!conditionalSettlementAddress) {
     throw new Error(
       "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required for conditional settlement signing",
@@ -631,11 +630,9 @@ export function createConditionalSettlementSigner(overrides?: {
   }
 
   const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
-  const publicClient = overrides?.publicClientOverride ?? (
-    rpcUrl
-      ? createPublicClient({ chain, transport: http(rpcUrl) })
-      : null
-  );
+  const publicClient =
+    overrides?.publicClientOverride ??
+    (rpcUrl ? createPublicClient({ chain, transport: http(rpcUrl) }) : null);
 
   const config: ConditionalSettlementSignerConfig = {
     relayerPrivateKey,
@@ -659,7 +656,10 @@ export function createConditionalSettlementSigner(overrides?: {
     if (overrides?.nonceOverride !== undefined) {
       signerNonce = overrides.nonceOverride;
     } else if (publicClient) {
-      signerNonce = await readConditionalSettlementSignerNonce(conditionalSettlementAddress, publicClient);
+      signerNonce = await readConditionalSettlementSignerNonce(
+        conditionalSettlementAddress,
+        publicClient,
+      );
     } else {
       throw new Error(
         "HAGGLE_BASE_RPC_URL is required to read conditional settlement signerNonce (or provide nonceOverride for testing)",
@@ -698,7 +698,9 @@ export function createConditionalReleaseSigner(overrides?: {
     );
   }
 
-  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as Address | undefined;
+  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as
+    | Address
+    | undefined;
   if (!conditionalSettlementAddress) {
     throw new Error(
       "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required for conditional release signing",
@@ -709,11 +711,9 @@ export function createConditionalReleaseSigner(overrides?: {
   const chainId = network === "base-sepolia" ? 84532 : 8453;
   const chain = network === "base-sepolia" ? baseSepolia : base;
   const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
-  const publicClient = overrides?.publicClientOverride ?? (
-    rpcUrl
-      ? createPublicClient({ chain, transport: http(rpcUrl) })
-      : null
-  );
+  const publicClient =
+    overrides?.publicClientOverride ??
+    (rpcUrl ? createPublicClient({ chain, transport: http(rpcUrl) }) : null);
 
   const config: ConditionalSettlementSignerConfig = {
     relayerPrivateKey,
@@ -728,7 +728,10 @@ export function createConditionalReleaseSigner(overrides?: {
     if (overrides?.nonceOverride !== undefined) {
       signerNonce = overrides.nonceOverride;
     } else if (publicClient) {
-      signerNonce = await readConditionalSettlementSignerNonce(conditionalSettlementAddress, publicClient);
+      signerNonce = await readConditionalSettlementSignerNonce(
+        conditionalSettlementAddress,
+        publicClient,
+      );
     } else {
       throw new Error(
         "HAGGLE_BASE_RPC_URL is required to read conditional settlement signerNonce (or provide nonceOverride for testing)",
@@ -750,12 +753,12 @@ export function createConditionalRefundSigner(overrides?: {
 }) => Promise<ConditionalRefundSignatureContext> {
   const relayerPrivateKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY as Hex | undefined;
   if (!relayerPrivateKey) {
-    throw new Error(
-      "HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required for conditional refund signing",
-    );
+    throw new Error("HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required for conditional refund signing");
   }
 
-  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as Address | undefined;
+  const conditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS as
+    | Address
+    | undefined;
   if (!conditionalSettlementAddress) {
     throw new Error(
       "HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS is required for conditional refund signing",
@@ -766,11 +769,9 @@ export function createConditionalRefundSigner(overrides?: {
   const chainId = network === "base-sepolia" ? 84532 : 8453;
   const chain = network === "base-sepolia" ? baseSepolia : base;
   const rpcUrl = process.env.HAGGLE_BASE_RPC_URL;
-  const publicClient = overrides?.publicClientOverride ?? (
-    rpcUrl
-      ? createPublicClient({ chain, transport: http(rpcUrl) })
-      : null
-  );
+  const publicClient =
+    overrides?.publicClientOverride ??
+    (rpcUrl ? createPublicClient({ chain, transport: http(rpcUrl) }) : null);
 
   const config: ConditionalSettlementSignerConfig = {
     relayerPrivateKey,
@@ -785,7 +786,10 @@ export function createConditionalRefundSigner(overrides?: {
     if (overrides?.nonceOverride !== undefined) {
       signerNonce = overrides.nonceOverride;
     } else if (publicClient) {
-      signerNonce = await readConditionalSettlementSignerNonce(conditionalSettlementAddress, publicClient);
+      signerNonce = await readConditionalSettlementSignerNonce(
+        conditionalSettlementAddress,
+        publicClient,
+      );
     } else {
       throw new Error(
         "HAGGLE_BASE_RPC_URL is required to read conditional settlement signerNonce (or provide nonceOverride for testing)",

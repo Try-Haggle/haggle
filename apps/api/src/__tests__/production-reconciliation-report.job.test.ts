@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@haggle/db";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runProductionReconciliationReport } from "../jobs/production-reconciliation-report.js";
 
 const collectProductionReconciliationInputMock = vi.fn();

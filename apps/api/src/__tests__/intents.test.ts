@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp, AUTH_HEADERS } from "./helpers.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createIntent, getIntentById, updateIntentStatus } from "../services/intent.service.js";
+import { AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // ─── Mock service layers ─────────────────────────────────────────────
 vi.mock("../services/payment-record.service.js", () => ({

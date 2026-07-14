@@ -1,18 +1,15 @@
+import type { Database } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
+import type { EventDispatcher } from "../lib/event-dispatcher.js";
+import { executeGroupOrchestration } from "../lib/group-executor.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import {
   createGroup,
   getGroupById,
   updateGroupStatus,
 } from "../services/negotiation-group.service.js";
-import {
-  createSession,
-  getSessionsByGroupId,
-} from "../services/negotiation-session.service.js";
-import { executeGroupOrchestration } from "../lib/group-executor.js";
-import type { EventDispatcher } from "../lib/event-dispatcher.js";
+import { createSession, getSessionsByGroupId } from "../services/negotiation-session.service.js";
 
 // ── Zod Schemas ────────────────────────────────────────────
 
@@ -30,7 +27,7 @@ const addSessionSchema = z.object({
   buyer_id: z.string().uuid(),
   seller_id: z.string().uuid(),
   counterparty_id: z.string().uuid(),
-  strategy_snapshot: z.record(z.unknown()),
+  negotiation_agent_snapshot: z.record(z.unknown()),
   expires_at: z.string().datetime().optional(),
 });
 
@@ -49,30 +46,26 @@ export function registerGroupRoutes(
   eventDispatcher: EventDispatcher,
 ) {
   // POST /negotiations/groups — 그룹 생성
-  app.post(
-    "/negotiations/groups",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const parsed = createGroupSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_GROUP_REQUEST", issues: parsed.error.issues });
-      }
+  app.post("/negotiations/groups", { preHandler: [requireAuth] }, async (request, reply) => {
+    const parsed = createGroupSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_GROUP_REQUEST", issues: parsed.error.issues });
+    }
 
-      const data = parsed.data;
-      if (request.user?.role !== "admin" && request.user?.id !== data.anchor_user_id) {
-        return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
-      }
+    const data = parsed.data;
+    if (request.user?.role !== "admin" && request.user?.id !== data.anchor_user_id) {
+      return reply.code(403).send({ error: "GROUP_ACTOR_MISMATCH" });
+    }
 
-      const group = await createGroup(db, {
-        topology: data.topology,
-        anchorUserId: data.anchor_user_id,
-        intentId: data.intent_id,
-        maxSessions: data.max_sessions,
-      });
+    const group = await createGroup(db, {
+      topology: data.topology,
+      anchorUserId: data.anchor_user_id,
+      intentId: data.intent_id,
+      maxSessions: data.max_sessions,
+    });
 
-      return reply.code(201).send({ group });
-    },
-  );
+    return reply.code(201).send({ group });
+  });
 
   // GET /negotiations/groups/:id — 그룹 + 세션 목록
   app.get<{ Params: { id: string } }>(
@@ -130,7 +123,9 @@ export function registerGroupRoutes(
       }
 
       if (group.status !== "ACTIVE") {
-        return reply.code(409).send({ error: "GROUP_NOT_ACTIVE", message: `Group status is ${group.status}` });
+        return reply
+          .code(409)
+          .send({ error: "GROUP_NOT_ACTIVE", message: `Group status is ${group.status}` });
       }
 
       // Check capacity
@@ -141,7 +136,9 @@ export function registerGroupRoutes(
 
       const parsed = addSessionSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_SESSION_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_SESSION_REQUEST", issues: parsed.error.issues });
       }
 
       const data = parsed.data;
@@ -152,7 +149,7 @@ export function registerGroupRoutes(
         buyerId: data.buyer_id,
         sellerId: data.seller_id,
         counterpartyId: data.counterparty_id,
-        strategySnapshot: data.strategy_snapshot,
+        negotiationAgentSnapshot: data.negotiation_agent_snapshot,
         groupId: group.id,
         expiresAt: data.expires_at ? new Date(data.expires_at) : undefined,
       });
@@ -193,7 +190,9 @@ export function registerGroupRoutes(
       }
 
       if (group.status !== "ACTIVE") {
-        return reply.code(409).send({ error: "GROUP_NOT_ACTIVE", message: `Group status is ${group.status}` });
+        return reply
+          .code(409)
+          .send({ error: "GROUP_NOT_ACTIVE", message: `Group status is ${group.status}` });
       }
 
       const updated = await updateGroupStatus(db, group.id, group.version, "CANCELLED");

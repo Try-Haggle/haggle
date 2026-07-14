@@ -8,20 +8,29 @@ function boundedLimit(raw: string | undefined) {
 
 export function getShipmentApvInvoiceRestorationRemediationExpiryJobStatus() {
   return {
-    jobEnabled: process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB === "true",
+    jobEnabled:
+      process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB === "true",
     limit: boundedLimit(process.env.SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_LIMIT),
     intervalSeconds: 60,
     staleApplyingSeconds: 300,
   };
 }
 
-export async function runShipmentApvInvoiceRestorationRemediationExpiry(db: Database, options: {
-  now?: Date; limit?: number;
-} = {}) {
+export async function runShipmentApvInvoiceRestorationRemediationExpiry(
+  db: Database,
+  options: {
+    now?: Date;
+    limit?: number;
+  } = {},
+) {
   const status = getShipmentApvInvoiceRestorationRemediationExpiryJobStatus();
   const expiry = await expireShipmentApvInvoiceRestorationRemediations(db, {
-    now: options.now, limit: options.limit ?? status.limit,
+    now: options.now,
+    limit: options.limit ?? status.limit,
   });
-  return { status: expiry.expired ? "completed" as const : "skipped" as const,
-    reason: expiry.expired ? undefined : "healthy" as const, expiry };
+  return {
+    status: expiry.expired ? ("completed" as const) : ("skipped" as const),
+    reason: expiry.expired ? undefined : ("healthy" as const),
+    expiry,
+  };
 }

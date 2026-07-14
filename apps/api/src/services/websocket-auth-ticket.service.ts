@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export type WebSocketTicketChannel = "negotiation" | "notification";
 
@@ -25,7 +25,7 @@ function hashTicket(ticket: string): string {
 function rowsOf<T>(result: unknown): T[] {
   if (Array.isArray(result)) return result as T[];
   const rows = (result as { rows?: unknown[] } | null)?.rows;
-  return Array.isArray(rows) ? rows as T[] : [];
+  return Array.isArray(rows) ? (rows as T[]) : [];
 }
 
 export function extractWebSocketTicketProtocol(raw: string | string[] | undefined): string | null {
@@ -45,13 +45,15 @@ export async function issueWebSocketAuthTicket(
   return db.transaction(async (tx) => {
     if (input.channel === "negotiation") {
       if (!input.resourceId) return null;
-      const participants = rowsOf<{ authorized: boolean }>(await tx.execute(sql`
+      const participants = rowsOf<{ authorized: boolean }>(
+        await tx.execute(sql`
         SELECT true AS authorized
         FROM negotiation_sessions
         WHERE id = ${input.resourceId}::uuid
           AND (${input.userId}::uuid = buyer_id OR ${input.userId}::uuid = seller_id)
         LIMIT 1
-      `));
+      `),
+      );
       if (participants.length !== 1) return null;
     } else if (input.resourceId !== undefined) {
       return null;
@@ -83,7 +85,8 @@ export async function issueWebSocketAuthTicket(
       USING expired
       WHERE ticket.id = expired.id
     `);
-    const inserted = rowsOf<{ expires_at: Date | string }>(await tx.execute(sql`
+    const inserted = rowsOf<{ expires_at: Date | string }>(
+      await tx.execute(sql`
       INSERT INTO websocket_auth_tickets
         (token_hash, user_id, channel, resource_id, expires_at)
       VALUES (
@@ -92,7 +95,8 @@ export async function issueWebSocketAuthTicket(
         now() + interval '30 seconds'
       )
       RETURNING expires_at
-    `));
+    `),
+    );
     if (inserted.length !== 1) throw new Error("WEBSOCKET_TICKET_NOT_CREATED");
     return {
       protocol: `${TICKET_PROTOCOL_PREFIX}${ticket}`,
@@ -109,14 +113,16 @@ export async function consumeWebSocketAuthTicket(
   if (!TOKEN_PATTERN.test(input.ticket)) return null;
   if ((input.channel === "negotiation") !== Boolean(input.resourceId)) return null;
   const tokenHash = hashTicket(input.ticket);
-  const consumed = rowsOf<{ user_id: string }>(await db.execute(sql`
+  const consumed = rowsOf<{ user_id: string }>(
+    await db.execute(sql`
     DELETE FROM websocket_auth_tickets
     WHERE token_hash = ${tokenHash}
       AND channel = ${input.channel}
       AND resource_id IS NOT DISTINCT FROM ${input.resourceId ?? null}::uuid
       AND expires_at > now()
     RETURNING user_id
-  `));
+  `),
+  );
   return consumed.length === 1 ? { userId: consumed[0].user_id } : null;
 }
 

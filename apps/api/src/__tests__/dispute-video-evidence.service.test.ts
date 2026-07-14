@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDisputeVideoKeyframeOffsets,
   buildDisputeVideoSingleKeyframeFfmpegArgs,
-  resolveDisputeVideoKeyframePolicy,
   type DisputeVideoProbeMetadata,
+  resolveDisputeVideoKeyframePolicy,
 } from "../services/dispute-video-evidence.service.js";
 
 const metadata: DisputeVideoProbeMetadata = {
@@ -39,15 +39,18 @@ describe("dispute video evidence extraction policy", () => {
   });
 
   it("spreads offsets across long videos when dense sampling exceeds the cap", () => {
-    const offsets = buildDisputeVideoKeyframeOffsets({
-      ...metadata,
-      durationSec: 120,
-    }, {
-      intervalSec: 1,
-      maxFrames: 24,
-      scaleWidth: 1280,
-      quality: 3,
-    });
+    const offsets = buildDisputeVideoKeyframeOffsets(
+      {
+        ...metadata,
+        durationSec: 120,
+      },
+      {
+        intervalSec: 1,
+        maxFrames: 24,
+        scaleWidth: 1280,
+        quality: 3,
+      },
+    );
 
     expect(offsets).toHaveLength(24);
     expect(offsets[0]).toBe(0);
@@ -70,17 +73,19 @@ describe("dispute video evidence extraction policy", () => {
   });
 
   it("builds ffmpeg args for a precise single-frame extraction", () => {
-    expect(buildDisputeVideoSingleKeyframeFfmpegArgs({
-      inputPath: "/tmp/evidence.mp4",
-      outputPath: "/tmp/frames/frame_001.jpg",
-      offsetSec: 37.5,
-      policy: {
-        intervalSec: 0.5,
-        maxFrames: 60,
-        scaleWidth: 1600,
-        quality: 4,
-      },
-    })).toEqual([
+    expect(
+      buildDisputeVideoSingleKeyframeFfmpegArgs({
+        inputPath: "/tmp/evidence.mp4",
+        outputPath: "/tmp/frames/frame_001.jpg",
+        offsetSec: 37.5,
+        policy: {
+          intervalSec: 0.5,
+          maxFrames: 60,
+          scaleWidth: 1600,
+          quality: 4,
+        },
+      }),
+    ).toEqual([
       "-hide_banner",
       "-loglevel",
       "error",

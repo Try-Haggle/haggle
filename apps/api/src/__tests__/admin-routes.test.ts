@@ -5,10 +5,10 @@
  * request shape, Zod validation paths, and audit-log side effects.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "./helpers.js";
 
 // ─── Mock service layers ─────────────────────────────────────────────
 
@@ -52,15 +52,11 @@ let lastRunRow: Record<string, unknown> | null = null;
 
 vi.mock("../services/promotion-rule.service.js", () => ({
   listPromotionRules: vi.fn(async () => Array.from(ruleStore.values())),
-  getPromotionRule: vi.fn(async (_db: unknown, category: string) =>
-    ruleStore.get(category) ?? null,
+  getPromotionRule: vi.fn(
+    async (_db: unknown, category: string) => ruleStore.get(category) ?? null,
   ),
   upsertPromotionRule: vi.fn(
-    async (
-      _db: unknown,
-      category: string,
-      input: Record<string, unknown>,
-    ) => {
+    async (_db: unknown, category: string, input: Record<string, unknown>) => {
       const row = { category, ...input, updatedAt: new Date() };
       ruleStore.set(category, row);
       return row;
@@ -93,9 +89,7 @@ vi.mock("../services/tag-suggestion.service.js", () => ({
 const disputeStore = new Map<string, Record<string, unknown>>();
 
 vi.mock("../services/dispute-record.service.js", () => ({
-  getDisputeById: vi.fn(async (_db: unknown, id: string) =>
-    disputeStore.get(id) ?? null,
-  ),
+  getDisputeById: vi.fn(async (_db: unknown, id: string) => disputeStore.get(id) ?? null),
   updateDisputeRecord: vi.fn(async (_db: unknown, dispute: Record<string, unknown>) => {
     disputeStore.set(dispute.id as string, dispute);
   }),
@@ -103,15 +97,22 @@ vi.mock("../services/dispute-record.service.js", () => ({
 }));
 
 vi.mock("../services/dispute-resolution-finalizer.js", () => ({
-  finalizeDisputeResolution: vi.fn(async (_db: unknown, dispute: Record<string, unknown>, resolution: Record<string, unknown>, resolvedDispute: Record<string, unknown>) => {
-    disputeStore.set(dispute.id as string, resolvedDispute);
-    return {
-      dispute: resolvedDispute,
-      auto_refund: null,
-      deposit_refund: null,
-      resolution,
-    };
-  }),
+  finalizeDisputeResolution: vi.fn(
+    async (
+      _db: unknown,
+      dispute: Record<string, unknown>,
+      resolution: Record<string, unknown>,
+      resolvedDispute: Record<string, unknown>,
+    ) => {
+      disputeStore.set(dispute.id as string, resolvedDispute);
+      return {
+        dispute: resolvedDispute,
+        auto_refund: null,
+        deposit_refund: null,
+        resolution,
+      };
+    },
+  ),
 }));
 
 const paymentStore = new Map<string, Record<string, unknown>>();
@@ -131,9 +132,7 @@ vi.mock("../services/payment-record.service.js", () => ({
   createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
   getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
   createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
-  getPaymentIntentRowById: vi.fn(async (_db: unknown, id: string) =>
-    paymentStore.get(id) ?? null,
-  ),
+  getPaymentIntentRowById: vi.fn(async (_db: unknown, id: string) => paymentStore.get(id) ?? null),
   setPaymentIntentProviderContext: (...args: unknown[]) =>
     setProviderContextMock(...(args as [unknown, string, Record<string, unknown>])),
   // Unused by admin.ts but imported elsewhere (kept for safety in case other
@@ -169,9 +168,7 @@ vi.mock("../services/trust-ledger.service.js", () => ({
 // constructor to return a deterministic resolve() that just stamps the
 // outcome onto the dispute.
 vi.mock("@haggle/dispute-core", async () => {
-  const actual = await vi.importActual<Record<string, unknown>>(
-    "@haggle/dispute-core",
-  );
+  const actual = await vi.importActual<Record<string, unknown>>("@haggle/dispute-core");
   return {
     ...actual,
     DisputeService: class {
@@ -232,10 +229,7 @@ vi.mock("../services/draft.service.js", () => ({
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function mintToken(role: "admin" | "user") {
-  return jwt.sign(
-    { sub: role === "admin" ? "admin-user-1" : "user-1", role },
-    "test-secret",
-  );
+  return jwt.sign({ sub: role === "admin" ? "admin-user-1" : "user-1", role }, "test-secret");
 }
 
 const adminAuth = { authorization: `Bearer ${mintToken("admin")}` };
@@ -372,7 +366,9 @@ describe("Admin routes", () => {
           { type: "resolved_dispute_missing_finalization_marker", severity: "warning" },
         ],
       },
-      nextActions: ["Hold fulfillment and reconcile provider capture before treating the order as paid."],
+      nextActions: [
+        "Hold fulfillment and reconcile provider capture before treating the order as paid.",
+      ],
     });
     const res = await app.inject({
       method: "POST",
@@ -381,37 +377,45 @@ describe("Admin routes", () => {
       payload: {
         generatedAt: "2026-05-12T00:00:00.000Z",
         payments: {
-          local: [{
-            payment_intent_id: "pi_1",
-            order_id: "ord_1",
-            state: "authorized",
-            amount_minor: 1000,
-            provider_reference: "prov_1",
-          }],
-          provider: [{
-            provider_reference: "prov_1",
-            state: "captured",
-            amount_minor: 1000,
-          }],
+          local: [
+            {
+              payment_intent_id: "pi_1",
+              order_id: "ord_1",
+              state: "authorized",
+              amount_minor: 1000,
+              provider_reference: "prov_1",
+            },
+          ],
+          provider: [
+            {
+              provider_reference: "prov_1",
+              state: "captured",
+              amount_minor: 1000,
+            },
+          ],
         },
         shipments: {
-          local: [{
-            shipment_id: "ship_1",
-            order_id: "ord_1",
-            state: "label_created",
-            order_status: "PAYMENT_PENDING",
-          }],
+          local: [
+            {
+              shipment_id: "ship_1",
+              order_id: "ord_1",
+              state: "label_created",
+              order_status: "PAYMENT_PENDING",
+            },
+          ],
           provider: [],
         },
         disputes: {
-          local: [{
-            dispute_id: "disp_1",
-            order_id: "ord_1",
-            status: "resolved_buyer_favor",
-            outcome: "buyer_favor",
-            order_status: "IN_DISPUTE",
-            refund_status: "PENDING",
-          }],
+          local: [
+            {
+              dispute_id: "disp_1",
+              order_id: "ord_1",
+              status: "resolved_buyer_favor",
+              outcome: "buyer_favor",
+              order_status: "IN_DISPUTE",
+              refund_status: "PENDING",
+            },
+          ],
         },
       },
     });
@@ -428,10 +432,9 @@ describe("Admin routes", () => {
       disputes: 3,
     });
     expect(body.report.findings.payments[0].type).toBe("provider_captured_local_not_captured");
-    expect(body.report.findings.shipments.map((finding: { type: string }) => finding.type)).toEqual([
-      "label_created_without_fulfillable_order",
-      "tracking_missing_after_label",
-    ]);
+    expect(body.report.findings.shipments.map((finding: { type: string }) => finding.type)).toEqual(
+      ["label_created_without_fulfillable_order", "tracking_missing_after_label"],
+    );
     expect(body.report.nextActions.length).toBeGreaterThan(0);
     expect(auditLog[0]).toMatchObject({
       actionType: "reconciliation.report",
@@ -448,11 +451,13 @@ describe("Admin routes", () => {
       headers: adminAuth,
       payload: {
         payments: {
-          local: [{
-            payment_intent_id: "pi_1",
-            state: "client_forced_success",
-            amount_minor: 1000,
-          }],
+          local: [
+            {
+              payment_intent_id: "pi_1",
+              state: "client_forced_success",
+              amount_minor: 1000,
+            },
+          ],
           provider: [],
         },
       },
@@ -659,9 +664,7 @@ describe("Admin routes", () => {
     );
     expect(auditLog.length).toBe(1);
     expect(auditLog[0].actionType).toBe("tag.merge");
-    expect(
-      (auditLog[0].payload as { targetTagId: unknown }).targetTagId,
-    ).toBe("tag-42");
+    expect((auditLog[0].payload as { targetTagId: unknown }).targetTagId).toBe("tag-42");
   });
 
   // 19

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export interface ShipmentApvPayoutOffsetRecord {
   id: string;
@@ -64,10 +64,15 @@ interface ExpiredReservationCursor {
 
 function decodeExpiredReservationCursor(value: string): ExpiredReservationCursor {
   try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<ExpiredReservationCursor>;
-    if (typeof parsed.expiredAt !== "string" || !Number.isFinite(Date.parse(parsed.expiredAt))
-      || typeof parsed.id !== "string"
-      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)) {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<ExpiredReservationCursor>;
+    if (
+      typeof parsed.expiredAt !== "string" ||
+      !Number.isFinite(Date.parse(parsed.expiredAt)) ||
+      typeof parsed.id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)
+    ) {
       throw new Error("invalid cursor payload");
     }
     return { expiredAt: new Date(parsed.expiredAt).toISOString(), id: parsed.id };
@@ -103,7 +108,9 @@ function mapOffset(row: Record<string, unknown>): ShipmentApvPayoutOffsetRecord 
     allocation_version: numeric(row.allocation_version),
     status: String(row.status) as ShipmentApvPayoutOffsetRecord["status"],
     release_tx_hash: typeof row.release_tx_hash === "string" ? row.release_tx_hash : undefined,
-    signature_deadline: row.signature_deadline ? new Date(String(row.signature_deadline)).toISOString() : undefined,
+    signature_deadline: row.signature_deadline
+      ? new Date(String(row.signature_deadline)).toISOString()
+      : undefined,
     reservation_expires_at: new Date(String(row.reservation_expires_at)).toISOString(),
     cancelled_at: row.cancelled_at ? new Date(String(row.cancelled_at)).toISOString() : undefined,
   };
@@ -128,12 +135,12 @@ export async function listShipmentApvSellerLiabilities(
   db: Database,
   sellerId: string,
 ): Promise<ShipmentApvSellerLiabilityRecord[]> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT * FROM shipment_apv_seller_liabilities
      WHERE seller_id = ${sellerId}
      ORDER BY CASE status WHEN 'OPEN' THEN 0 WHEN 'PARTIAL' THEN 1 ELSE 2 END,
               created_at ASC, id ASC
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   return rows.map(mapLiability);
 }
 
@@ -142,7 +149,7 @@ export async function getShipmentApvPayoutReservationHealth(
   now = new Date(),
 ): Promise<ShipmentApvPayoutReservationHealth> {
   const nowIso = now.toISOString();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT COUNT(*)::int AS expired_reserved,
            COUNT(*) FILTER (WHERE signature_deadline IS NOT NULL)::int AS signed_expired,
            COUNT(*) FILTER (WHERE signature_deadline IS NULL)::int AS unsigned_expired,
@@ -153,7 +160,7 @@ export async function getShipmentApvPayoutReservationHealth(
       FROM shipment_apv_payout_offsets
      WHERE status = 'RESERVED'
        AND COALESCE(signature_deadline, reservation_expires_at) < ${nowIso}::timestamptz
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0] ?? {};
   const expiredReserved = numeric(row.expired_reserved);
   return {
@@ -163,9 +170,10 @@ export async function getShipmentApvPayoutReservationHealth(
     unsignedExpired: numeric(row.unsigned_expired),
     affectedSellers: numeric(row.affected_sellers),
     appliedOffsetMinor: numeric(row.applied_offset_minor),
-    oldestExpiredAgeSeconds: row.oldest_expired_age_seconds === null || row.oldest_expired_age_seconds === undefined
-      ? null
-      : numeric(row.oldest_expired_age_seconds),
+    oldestExpiredAgeSeconds:
+      row.oldest_expired_age_seconds === null || row.oldest_expired_age_seconds === undefined
+        ? null
+        : numeric(row.oldest_expired_age_seconds),
     recordedAt: nowIso,
   };
 }
@@ -178,7 +186,8 @@ export async function listExpiredShipmentApvPayoutReservations(
   const now = input.now ?? new Date();
   const nowIso = now.toISOString();
   const cursor = input.cursor ? decodeExpiredReservationCursor(input.cursor) : null;
-  const cursorClause = cursor ? sql`
+  const cursorClause = cursor
+    ? sql`
     AND (
       COALESCE(signature_deadline, reservation_expires_at) > ${cursor.expiredAt}::timestamptz
       OR (
@@ -186,8 +195,9 @@ export async function listExpiredShipmentApvPayoutReservations(
         AND id > ${cursor.id}::uuid
       )
     )
-  ` : sql``;
-  const rows = await db.execute(sql`
+  `
+    : sql``;
+  const rows = (await db.execute(sql`
     SELECT id, settlement_release_id, order_id, seller_id, currency, applied_offset_minor,
            signature_deadline IS NOT NULL AS signed,
            COALESCE(signature_deadline, reservation_expires_at) AS expired_at,
@@ -200,7 +210,7 @@ export async function listExpiredShipmentApvPayoutReservations(
        ${cursorClause}
      ORDER BY COALESCE(signature_deadline, reservation_expires_at) ASC, id ASC
      LIMIT ${limit + 1}
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
   const items: ExpiredShipmentApvPayoutReservation[] = pageRows.map((row) => ({
@@ -218,7 +228,10 @@ export async function listExpiredShipmentApvPayoutReservations(
   const last = items.at(-1);
   return {
     items,
-    nextCursor: hasMore && last ? encodeExpiredReservationCursor({ expiredAt: last.expiredAt, id: last.offsetId }) : null,
+    nextCursor:
+      hasMore && last
+        ? encodeExpiredReservationCursor({ expiredAt: last.expiredAt, id: last.offsetId })
+        : null,
     recordedAt: nowIso,
   };
 }
@@ -243,20 +256,33 @@ function evidenceManifestSha256(rows: Array<Record<string, unknown>>): string {
 }
 
 function liabilityManifestSha256(rows: Array<Record<string, unknown>>): string {
-  return createHash("sha256").update(JSON.stringify(rows.map((row) => ({
-    id: String(row.id),
-    source_release_id: String(row.source_settlement_release_id),
-    source_order_id: String(row.source_order_id),
-    evidence_manifest_sha256: String(row.evidence_manifest_sha256),
-    original_amount_minor: numeric(row.original_amount_minor),
-    remaining_amount_minor: numeric(row.remaining_amount_minor),
-    available_amount_minor: numeric(row.available_amount_minor),
-  })))).digest("hex");
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        rows.map((row) => ({
+          id: String(row.id),
+          source_release_id: String(row.source_settlement_release_id),
+          source_order_id: String(row.source_order_id),
+          evidence_manifest_sha256: String(row.evidence_manifest_sha256),
+          original_amount_minor: numeric(row.original_amount_minor),
+          remaining_amount_minor: numeric(row.remaining_amount_minor),
+          available_amount_minor: numeric(row.available_amount_minor),
+        })),
+      ),
+    )
+    .digest("hex");
 }
 
-export function computeShipmentApvPayoutOffset(sellerLiabilityMinor: number, maxOffsetMinor: number) {
-  if (!Number.isSafeInteger(sellerLiabilityMinor) || sellerLiabilityMinor < 0
-    || !Number.isSafeInteger(maxOffsetMinor) || maxOffsetMinor < 0) {
+export function computeShipmentApvPayoutOffset(
+  sellerLiabilityMinor: number,
+  maxOffsetMinor: number,
+) {
+  if (
+    !Number.isSafeInteger(sellerLiabilityMinor) ||
+    sellerLiabilityMinor < 0 ||
+    !Number.isSafeInteger(maxOffsetMinor) ||
+    maxOffsetMinor < 0
+  ) {
     throw new Error("APV payout values must be nonnegative safe integers");
   }
   const appliedOffsetMinor = Math.min(sellerLiabilityMinor, maxOffsetMinor);
@@ -276,55 +302,55 @@ export async function reserveShipmentApvPayoutOffset(
   }
   try {
     return await db.transaction(async (tx) => {
-      const releaseRows = await tx.execute(sql`
+      const releaseRows = (await tx.execute(sql`
         SELECT release.*, orders.seller_id
           FROM settlement_releases AS release
           JOIN commerce_orders AS orders ON orders.id = release.order_id
          WHERE release.id = ${input.settlementReleaseId}
          FOR UPDATE OF release
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const release = releaseRows[0];
       if (!release) return { outcome: "not_found" } as const;
-      const existingRows = await tx.execute(sql`
+      const existingRows = (await tx.execute(sql`
         SELECT * FROM shipment_apv_payout_offsets
          WHERE settlement_release_id = ${input.settlementReleaseId}
            AND status IN ('RESERVED', 'APPLIED')
          FOR UPDATE
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (existingRows[0]) {
         const existing = mapOffset(existingRows[0]);
         return existing.request_id === input.requestId
-          ? { outcome: "duplicate", offset: existing } as const
-          : { outcome: "snapshot_conflict" } as const;
+          ? ({ outcome: "duplicate", offset: existing } as const)
+          : ({ outcome: "snapshot_conflict" } as const);
       }
 
       await tx.execute(sql`
         SELECT pg_advisory_xact_lock(hashtextextended(${`apv-liability:${String(release.seller_id)}`}, 0))
       `);
-      const pendingRows = await tx.execute(sql`
+      const pendingRows = (await tx.execute(sql`
         SELECT revision.id
           FROM shipment_apv_adjustment_revisions AS revision
           JOIN shipment_apv_adjustments AS adjustment ON adjustment.id = revision.adjustment_id
          WHERE adjustment.settlement_release_id = ${input.settlementReleaseId}
            AND revision.status = 'PENDING_REVIEW'
          LIMIT 1
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (pendingRows[0]) return { outcome: "pending_revision" } as const;
 
-      const liabilityRows = await tx.execute(sql`
+      const liabilityRows = (await tx.execute(sql`
         SELECT COALESCE(SUM(seller_liability_minor), 0) AS seller_liability_minor
           FROM shipment_apv_adjustments
          WHERE settlement_release_id = ${input.settlementReleaseId}
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const sellerLiabilityMinor = numeric(liabilityRows[0]?.seller_liability_minor);
-      const evidenceRows = await tx.execute(sql`
+      const evidenceRows = (await tx.execute(sql`
         SELECT adjustment.id AS adjustment_id, revision.revision_number, revision.payload_sha256,
                revision.evidence_sha256, revision.status, revision.decision, revision.seller_liability_minor
           FROM shipment_apv_adjustments AS adjustment
           JOIN shipment_apv_adjustment_revisions AS revision ON revision.adjustment_id = adjustment.id
          WHERE adjustment.settlement_release_id = ${input.settlementReleaseId}
          ORDER BY adjustment.id, revision.revision_number
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const currentEvidenceManifest = evidenceManifestSha256(evidenceRows);
       if (sellerLiabilityMinor > 0) {
         await tx.execute(sql`
@@ -340,7 +366,7 @@ export async function reserveShipmentApvPayoutOffset(
         `);
       }
 
-      const liabilities = await tx.execute(sql`
+      const liabilities = (await tx.execute(sql`
         SELECT liability.*,
                GREATEST(liability.remaining_amount_minor - COALESCE(reserved.amount_minor, 0), 0) AS available_amount_minor
           FROM shipment_apv_seller_liabilities AS liability
@@ -355,15 +381,18 @@ export async function reserveShipmentApvPayoutOffset(
            AND liability.remaining_amount_minor > 0
          ORDER BY liability.created_at ASC, liability.id ASC
          FOR UPDATE OF liability
-      `) as unknown as Array<Record<string, unknown>>;
-      const totalAvailableMinor = liabilities.reduce((sum, row) => sum + numeric(row.available_amount_minor), 0);
+      `)) as unknown as Array<Record<string, unknown>>;
+      const totalAvailableMinor = liabilities.reduce(
+        (sum, row) => sum + numeric(row.available_amount_minor),
+        0,
+      );
       const { appliedOffsetMinor, unappliedLiabilityMinor } = computeShipmentApvPayoutOffset(
         totalAvailableMinor,
         input.maxOffsetMinor,
       );
       const manifestSha256 = liabilityManifestSha256(liabilities);
 
-      const rows = await tx.execute(sql`
+      const rows = (await tx.execute(sql`
         INSERT INTO shipment_apv_payout_offsets
           (settlement_release_id, order_id, seller_id, currency, seller_liability_minor,
            applied_offset_minor, unapplied_liability_minor, evidence_manifest_sha256,
@@ -374,7 +403,7 @@ export async function reserveShipmentApvPayoutOffset(
            ${unappliedLiabilityMinor}, ${manifestSha256}, ${input.requestId}, 1, 'RESERVED',
            now() + interval '5 minutes', now(), now())
         RETURNING *
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const offset = mapOffset(rows[0]!);
       let remainingToReserve = appliedOffsetMinor;
       for (const liability of liabilities) {
@@ -402,31 +431,31 @@ export async function completeShipmentApvPayoutOffset(
   input: { settlementReleaseId: string; payoutOffsetId: string; releaseTxHash: string },
 ): Promise<ShipmentApvPayoutOffsetResult> {
   return db.transaction(async (tx) => {
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       SELECT * FROM shipment_apv_payout_offsets
        WHERE settlement_release_id = ${input.settlementReleaseId}
          AND id = ${input.payoutOffsetId}
        FOR UPDATE
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     const existing = rows[0];
     if (!existing) return { outcome: "not_found" } as const;
     if (existing.status === "APPLIED") {
       return existing.release_tx_hash === input.releaseTxHash
-        ? { outcome: "duplicate", offset: mapOffset(existing) } as const
-        : { outcome: "snapshot_conflict" } as const;
+        ? ({ outcome: "duplicate", offset: mapOffset(existing) } as const)
+        : ({ outcome: "snapshot_conflict" } as const);
     }
     if (numeric(existing.allocation_version) >= 1) {
       await tx.execute(sql`
         SELECT pg_advisory_xact_lock(hashtextextended(${`apv-liability:${String(existing.seller_id)}`}, 0))
       `);
-      const allocations = await tx.execute(sql`
+      const allocations = (await tx.execute(sql`
         SELECT allocation.*, liability.remaining_amount_minor
           FROM shipment_apv_payout_offset_allocations AS allocation
           JOIN shipment_apv_seller_liabilities AS liability ON liability.id = allocation.seller_liability_id
          WHERE allocation.payout_offset_id = ${String(existing.id)} AND allocation.status = 'RESERVED'
          ORDER BY allocation.created_at ASC, allocation.id ASC
          FOR UPDATE OF allocation, liability
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const allocationTotal = allocations.reduce((sum, row) => sum + numeric(row.amount_minor), 0);
       if (allocationTotal !== numeric(existing.applied_offset_minor)) {
         throw new Error("APV_PAYOUT_ALLOCATION_TOTAL_MISMATCH");
@@ -455,12 +484,12 @@ export async function completeShipmentApvPayoutOffset(
          WHERE payout_offset_id = ${String(existing.id)} AND status = 'RESERVED'
       `);
     }
-    const updatedRows = await tx.execute(sql`
+    const updatedRows = (await tx.execute(sql`
       UPDATE shipment_apv_payout_offsets
          SET status = 'APPLIED', release_tx_hash = ${input.releaseTxHash}, applied_at = now(), updated_at = now()
        WHERE settlement_release_id = ${input.settlementReleaseId} AND status = 'RESERVED'
       RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     if (!updatedRows[0]) throw new Error("APV_PAYOUT_OFFSET_CLAIM_LOST");
     return { outcome: "applied", offset: mapOffset(updatedRows[0]) } as const;
   });
@@ -470,41 +499,44 @@ export async function bindShipmentApvPayoutOffsetSignature(
   db: Database,
   input: { settlementReleaseId: string; payoutOffsetId: string; deadlineUnix: number },
 ) {
-  if (!Number.isSafeInteger(input.deadlineUnix) || input.deadlineUnix <= 0) return { outcome: "snapshot_conflict" } as const;
+  if (!Number.isSafeInteger(input.deadlineUnix) || input.deadlineUnix <= 0)
+    return { outcome: "snapshot_conflict" } as const;
   return db.transaction(async (tx) => {
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       SELECT * FROM shipment_apv_payout_offsets
        WHERE id = ${input.payoutOffsetId} AND settlement_release_id = ${input.settlementReleaseId}
        FOR UPDATE
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     const existing = rows[0];
     if (!existing) return { outcome: "not_found" } as const;
     if (existing.status !== "RESERVED") return { outcome: "invalid_state" } as const;
     if (existing.signature_deadline) {
-      const existingUnix = Math.floor(new Date(String(existing.signature_deadline)).getTime() / 1000);
+      const existingUnix = Math.floor(
+        new Date(String(existing.signature_deadline)).getTime() / 1000,
+      );
       return existingUnix === input.deadlineUnix
-        ? { outcome: "duplicate", offset: mapOffset(existing) } as const
-        : { outcome: "snapshot_conflict" } as const;
+        ? ({ outcome: "duplicate", offset: mapOffset(existing) } as const)
+        : ({ outcome: "snapshot_conflict" } as const);
     }
-    const updated = await tx.execute(sql`
+    const updated = (await tx.execute(sql`
       UPDATE shipment_apv_payout_offsets
          SET signature_deadline = to_timestamp(${input.deadlineUnix}),
              reservation_expires_at = to_timestamp(${input.deadlineUnix}), updated_at = now()
        WHERE id = ${input.payoutOffsetId} AND status = 'RESERVED'
       RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     return { outcome: "bound", offset: mapOffset(updated[0]!) } as const;
   });
 }
 
 export interface CancelExpiredShipmentApvPayoutOffsetInput {
-    settlementReleaseId: string;
-    payoutOffsetId: string;
-    actorId: string;
-    reason: string;
-    onchainState: "FUNDED" | "RELEASED" | "REFUNDED" | "DISPUTED" | "NONE";
-    approvalRequestId?: string;
-    now?: Date;
+  settlementReleaseId: string;
+  payoutOffsetId: string;
+  actorId: string;
+  reason: string;
+  onchainState: "FUNDED" | "RELEASED" | "REFUNDED" | "DISPUTED" | "NONE";
+  approvalRequestId?: string;
+  now?: Date;
 }
 
 export async function cancelExpiredShipmentApvPayoutOffsetInTransaction(
@@ -514,37 +546,39 @@ export async function cancelExpiredShipmentApvPayoutOffsetInTransaction(
   const now = input.now ?? new Date();
   const nowIso = now.toISOString();
   if (input.onchainState !== "FUNDED") return { outcome: "onchain_state_conflict" } as const;
-  if (input.reason.trim().length < 12 || input.reason.length > 500) return { outcome: "invalid_reason" } as const;
-    const rows = await tx.execute(sql`
+  if (input.reason.trim().length < 12 || input.reason.length > 500)
+    return { outcome: "invalid_reason" } as const;
+  const rows = (await tx.execute(sql`
       SELECT * FROM shipment_apv_payout_offsets
        WHERE id = ${input.payoutOffsetId} AND settlement_release_id = ${input.settlementReleaseId}
        FOR UPDATE
-    `) as unknown as Array<Record<string, unknown>>;
-    const existing = rows[0];
-    if (!existing) return { outcome: "not_found" } as const;
-    if (existing.status === "CANCELLED") return { outcome: "duplicate", offset: mapOffset(existing) } as const;
-    if (existing.status !== "RESERVED") return { outcome: "invalid_state" } as const;
-    const expiry = new Date(String(existing.signature_deadline ?? existing.reservation_expires_at));
-    if (!Number.isFinite(expiry.getTime()) || now.getTime() <= expiry.getTime()) {
-      return { outcome: "not_expired" } as const;
-    }
-    await tx.execute(sql`
+    `)) as unknown as Array<Record<string, unknown>>;
+  const existing = rows[0];
+  if (!existing) return { outcome: "not_found" } as const;
+  if (existing.status === "CANCELLED")
+    return { outcome: "duplicate", offset: mapOffset(existing) } as const;
+  if (existing.status !== "RESERVED") return { outcome: "invalid_state" } as const;
+  const expiry = new Date(String(existing.signature_deadline ?? existing.reservation_expires_at));
+  if (!Number.isFinite(expiry.getTime()) || now.getTime() <= expiry.getTime()) {
+    return { outcome: "not_expired" } as const;
+  }
+  await tx.execute(sql`
       SELECT pg_advisory_xact_lock(hashtextextended(${`apv-liability:${String(existing.seller_id)}`}, 0))
     `);
-    await tx.execute(sql`
+  await tx.execute(sql`
       UPDATE shipment_apv_payout_offset_allocations
          SET status = 'CANCELLED', cancelled_at = ${nowIso}::timestamptz
        WHERE payout_offset_id = ${input.payoutOffsetId} AND status = 'RESERVED'
     `);
-    const cancelled = await tx.execute(sql`
+  const cancelled = (await tx.execute(sql`
       UPDATE shipment_apv_payout_offsets
          SET status = 'CANCELLED', cancelled_at = ${nowIso}::timestamptz, cancelled_by = ${input.actorId},
              cancellation_reason = ${input.reason.trim()}, updated_at = ${nowIso}::timestamptz
        WHERE id = ${input.payoutOffsetId} AND status = 'RESERVED'
       RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
-    if (!cancelled[0]) throw new Error("APV_PAYOUT_CANCELLATION_CLAIM_LOST");
-    await tx.execute(sql`
+    `)) as unknown as Array<Record<string, unknown>>;
+  if (!cancelled[0]) throw new Error("APV_PAYOUT_CANCELLATION_CLAIM_LOST");
+  await tx.execute(sql`
       INSERT INTO admin_action_log (actor_id, action_type, target_type, target_id, payload, created_at)
       VALUES (
         ${input.actorId}::uuid,
@@ -562,7 +596,7 @@ export async function cancelExpiredShipmentApvPayoutOffsetInTransaction(
         ${nowIso}::timestamptz
       )
     `);
-    return { outcome: "cancelled", offset: mapOffset(cancelled[0]) } as const;
+  return { outcome: "cancelled", offset: mapOffset(cancelled[0]) } as const;
 }
 
 export async function cancelExpiredShipmentApvPayoutOffset(

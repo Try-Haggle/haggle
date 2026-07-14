@@ -1,4 +1,4 @@
-import { and, disputeAiAssessmentLeases, eq, lte, type Database } from "@haggle/db";
+import { and, type Database, disputeAiAssessmentLeases, eq, lte } from "@haggle/db";
 
 const AI_ASSESSMENT_LEASE_MS = 15 * 60 * 1000;
 
@@ -54,8 +54,10 @@ export async function releaseDisputeAiAssessmentLease(
 ): Promise<void> {
   await db
     .delete(disputeAiAssessmentLeases)
-    .where(and(
-      eq(disputeAiAssessmentLeases.disputeId, disputeId),
-      eq(disputeAiAssessmentLeases.leaseId, leaseId),
-    ));
+    .where(
+      and(
+        eq(disputeAiAssessmentLeases.disputeId, disputeId),
+        eq(disputeAiAssessmentLeases.leaseId, leaseId),
+      ),
+    );
 }

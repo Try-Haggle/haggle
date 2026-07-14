@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import { canonicalDisputeAuditJson } from "./dispute-ai-assessment-event.service.js";
 
 export interface HashableDisputeSimilarityExpiryEvent {
@@ -40,7 +40,7 @@ export async function expireDisputeSimilarityReviews(
     throw new Error("INVALID_SIMILARITY_REVIEW_EXPIRY_BATCH_SIZE");
   }
   return db.transaction(async (tx) => {
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       WITH candidates AS (
         SELECT upload.id
         FROM dispute_evidence_uploads upload
@@ -66,7 +66,7 @@ export async function expireDisputeSimilarityReviews(
          AND upload.status = 'QUARANTINED' AND upload.similarity_status = 'REVIEW_REQUIRED'
          AND upload.retention_status = 'ACTIVE' AND upload.expires_at <= ${now.toISOString()}::timestamptz
       RETURNING upload.id AS "uploadId", upload.dispute_id AS "disputeId", upload.expires_at AS "expiresAt"
-    `) as unknown as Array<{ uploadId: string; disputeId: string; expiresAt: Date | string }>;
+    `)) as unknown as Array<{ uploadId: string; disputeId: string; expiresAt: Date | string }>;
     for (const row of rows) {
       const eventId = randomUUID();
       const event: HashableDisputeSimilarityExpiryEvent = {
@@ -92,17 +92,28 @@ export async function expireDisputeSimilarityReviews(
   });
 }
 
-interface ExpiryEventCursor { createdAt: string; id: string }
+interface ExpiryEventCursor {
+  createdAt: string;
+  id: string;
+}
 
 function decodeExpiryEventCursor(value: string): ExpiryEventCursor {
   try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<ExpiryEventCursor>;
-    if (typeof parsed.createdAt !== "string" || !Number.isFinite(Date.parse(parsed.createdAt))
-      || typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)) {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<ExpiryEventCursor>;
+    if (
+      typeof parsed.createdAt !== "string" ||
+      !Number.isFinite(Date.parse(parsed.createdAt)) ||
+      typeof parsed.id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)
+    ) {
       throw new Error("invalid cursor");
     }
     return { createdAt: new Date(parsed.createdAt).toISOString(), id: parsed.id };
-  } catch { throw new Error("INVALID_SIMILARITY_REVIEW_EXPIRY_CURSOR"); }
+  } catch {
+    throw new Error("INVALID_SIMILARITY_REVIEW_EXPIRY_CURSOR");
+  }
 }
 
 function encodeExpiryEventCursor(cursor: ExpiryEventCursor) {
@@ -110,10 +121,15 @@ function encodeExpiryEventCursor(cursor: ExpiryEventCursor) {
 }
 
 function mapExpiryEventRow(row: Record<string, unknown>) {
-  const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
-    ? row.metadata as Record<string, unknown> : {};
-  const reviewExpiresAt = typeof metadata.review_expires_at === "string" && Number.isFinite(Date.parse(metadata.review_expires_at))
-    ? new Date(metadata.review_expires_at).toISOString() : null;
+  const metadata =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const reviewExpiresAt =
+    typeof metadata.review_expires_at === "string" &&
+    Number.isFinite(Date.parse(metadata.review_expires_at))
+      ? new Date(metadata.review_expires_at).toISOString()
+      : null;
   const createdAt = new Date(String(row.created_at)).toISOString();
   const hashable: HashableDisputeSimilarityExpiryEvent = {
     schema: "haggle.dispute-similarity-review-event.v1",
@@ -132,13 +148,17 @@ function mapExpiryEventRow(row: Record<string, unknown>) {
     uploadId: hashable.upload_id,
     disputeId: hashable.dispute_id,
     eventType: hashable.event_type,
-    actorKind: hashable.actor_id === null ? "system" as const : "unexpected" as const,
+    actorKind: hashable.actor_id === null ? ("system" as const) : ("unexpected" as const),
     reason: hashable.reason,
     reviewExpiresAt,
     createdAt,
     eventHash,
-    integrity: eventHash === null ? "legacy" as const
-      : hashDisputeSimilarityExpiryEvent(hashable) === eventHash ? "valid" as const : "invalid" as const,
+    integrity:
+      eventHash === null
+        ? ("legacy" as const)
+        : hashDisputeSimilarityExpiryEvent(hashable) === eventHash
+          ? ("valid" as const)
+          : ("invalid" as const),
     hashable,
   };
 }
@@ -148,33 +168,37 @@ export async function listDisputeSimilarityReviewExpiryEvents(
   input: { limit?: number; cursor?: string } = {},
 ) {
   const limit = input.limit ?? 20;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("INVALID_SIMILARITY_REVIEW_EXPIRY_LIMIT");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("INVALID_SIMILARITY_REVIEW_EXPIRY_LIMIT");
   const cursor = input.cursor ? decodeExpiryEventCursor(input.cursor) : null;
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT id, upload_id, dispute_id, event_type, actor_id, metadata, event_hash, created_at
       FROM dispute_evidence_similarity_review_events
      WHERE event_type = 'AUTO_EXPIRED'
        ${cursor ? sql`AND (created_at, id) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)` : sql``}
      ORDER BY created_at DESC, id DESC
      LIMIT ${limit + 1}
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
   const items = pageRows.map(mapExpiryEventRow);
   const last = items.at(-1);
   return {
     items,
-    nextCursor: hasMore && last ? encodeExpiryEventCursor({ createdAt: last.createdAt, id: last.eventId }) : null,
+    nextCursor:
+      hasMore && last
+        ? encodeExpiryEventCursor({ createdAt: last.createdAt, id: last.eventId })
+        : null,
   };
 }
 
 export async function getDisputeSimilarityReviewExpiryEventById(db: Database, eventId: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return null;
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT id, upload_id, dispute_id, event_type, actor_id, metadata, event_hash, created_at
       FROM dispute_evidence_similarity_review_events
      WHERE id = ${eventId}::uuid AND event_type = 'AUTO_EXPIRED'
      LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   return rows[0] ? mapExpiryEventRow(rows[0]) : null;
 }

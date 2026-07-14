@@ -1,25 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WebhookClaimHealth } from "../services/webhook-event-claim.service.js";
 import {
   buildWebhookClaimAlertPayload,
   evaluateWebhookClaimAlert,
   resolveWebhookClaimAlertConfigFromEnv,
   sendWebhookClaimAlert,
 } from "../services/webhook-claim-alert.service.js";
+import type { WebhookClaimHealth } from "../services/webhook-event-claim.service.js";
 
 const health: WebhookClaimHealth = {
   status: "critical",
   totals: { processing: 2, completed: 10, failed: 1, staleProcessing: 1, retryReady: 1 },
-  sources: [{
-    source: "easypost",
-    processing: 2,
-    completed: 10,
-    failed: 1,
-    staleProcessing: 1,
-    retryReady: 1,
-    maxAttemptCount: 3,
-    oldestUnfinishedAgeSeconds: 91,
-  }],
+  sources: [
+    {
+      source: "easypost",
+      processing: 2,
+      completed: 10,
+      failed: 1,
+      staleProcessing: 1,
+      retryReady: 1,
+      maxAttemptCount: 3,
+      oldestUnfinishedAgeSeconds: 91,
+    },
+  ],
   recordedAt: "2026-07-12T00:00:00.000Z",
 };
 
@@ -68,40 +70,59 @@ describe("webhook claim health alerts", () => {
   });
 
   it("marks recovery payloads explicitly", () => {
-    expect(buildWebhookClaimAlertPayload({ ...health, status: "healthy",
-      totals: { processing: 0, completed: 11, failed: 0, staleProcessing: 0, retryReady: 0 }, sources: [] },
-    { wouldAlert: true, severity: "recovery", reasons: ["webhook_claim_recovered"] })).toMatchObject({
-      state: "recovered", severity: "recovery", reasons: ["webhook_claim_recovered"],
+    expect(
+      buildWebhookClaimAlertPayload(
+        {
+          ...health,
+          status: "healthy",
+          totals: { processing: 0, completed: 11, failed: 0, staleProcessing: 0, retryReady: 0 },
+          sources: [],
+        },
+        { wouldAlert: true, severity: "recovery", reasons: ["webhook_claim_recovered"] },
+      ),
+    ).toMatchObject({
+      state: "recovered",
+      severity: "recovery",
+      reasons: ["webhook_claim_recovered"],
     });
   });
 
   it("sends a signed HTTPS alert", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
     const assessment = evaluateWebhookClaimAlert(health, config);
-    await expect(sendWebhookClaimAlert(health, assessment, {
-      config,
-      fetchImpl: fetchMock,
-      now: new Date("2026-07-12T00:00:00.000Z"),
-    })).resolves.toMatchObject({ status: "delivered", httpStatus: 200 });
-    expect(fetchMock).toHaveBeenCalledWith("https://ops.example/alerts", expect.objectContaining({
-      method: "POST",
-      redirect: "error",
-      headers: expect.objectContaining({
-        "x-haggle-alert-type": "webhook_claim.health",
-        "x-haggle-alert-signature": expect.stringMatching(/^sha256=[0-9a-f]{64}$/),
+    await expect(
+      sendWebhookClaimAlert(health, assessment, {
+        config,
+        fetchImpl: fetchMock,
+        now: new Date("2026-07-12T00:00:00.000Z"),
       }),
-    }));
+    ).resolves.toMatchObject({ status: "delivered", httpStatus: 200 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://ops.example/alerts",
+      expect.objectContaining({
+        method: "POST",
+        redirect: "error",
+        headers: expect.objectContaining({
+          "x-haggle-alert-type": "webhook_claim.health",
+          "x-haggle-alert-signature": expect.stringMatching(/^sha256=[0-9a-f]{64}$/),
+        }),
+      }),
+    );
   });
 
   it("rejects private alert targets by default", async () => {
-    await expect(sendWebhookClaimAlert(health, evaluateWebhookClaimAlert(health, config), {
-      config: { ...config, url: "https://127.0.0.1/alerts" },
-    })).rejects.toThrow("must not target localhost or private network hosts");
+    await expect(
+      sendWebhookClaimAlert(health, evaluateWebhookClaimAlert(health, config), {
+        config: { ...config, url: "https://127.0.0.1/alerts" },
+      }),
+    ).rejects.toThrow("must not target localhost or private network hosts");
   });
 
   it("requires a signing secret whenever an alert URL is configured", () => {
     process.env.WEBHOOK_CLAIM_ALERT_URL = "https://ops.example/alerts";
     delete process.env.WEBHOOK_CLAIM_ALERT_SECRET;
-    expect(() => resolveWebhookClaimAlertConfigFromEnv()).toThrow("secret must be at least 16 characters");
+    expect(() => resolveWebhookClaimAlertConfigFromEnv()).toThrow(
+      "secret must be at least 16 characters",
+    );
   });
 });

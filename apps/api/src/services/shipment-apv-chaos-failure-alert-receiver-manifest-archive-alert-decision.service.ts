@@ -1,12 +1,10 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
 
-export type ShipmentApvReceiverManifestArchiveAlertDecision =
-  "APPROVED" | "REJECTED";
+export type ShipmentApvReceiverManifestArchiveAlertDecision = "APPROVED" | "REJECTED";
 
 type DecisionRow = {
   id: unknown;
@@ -45,16 +43,14 @@ type RequestRow = {
 function iso(value: unknown) {
   const parsed = new Date(String(value));
   if (!Number.isFinite(parsed.getTime())) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
   }
   return parsed.toISOString();
 }
 
 function reasons(value: unknown) {
   if (!Array.isArray(value) || value.some((reason) => typeof reason !== "string")) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
   }
   return value as string[];
 }
@@ -73,8 +69,7 @@ function publicDecision(row: DecisionRow) {
       severity: String(row.preview_severity),
       reasons: reasons(row.preview_reasons),
     },
-    decision: String(row.decision) as
-      ShipmentApvReceiverManifestArchiveAlertDecision,
+    decision: String(row.decision) as ShipmentApvReceiverManifestArchiveAlertDecision,
     reason: String(row.decision_reason),
     decidedAt: iso(row.created_at),
     replayed: row.inserted === false,
@@ -92,16 +87,21 @@ function publicDecision(row: DecisionRow) {
   };
 }
 
-function decisionMatches(row: DecisionRow, input: {
-  approvalRequestId: string;
-  clientDecisionId: string;
-  decidedBy: string;
-  decision: ShipmentApvReceiverManifestArchiveAlertDecision;
-}) {
-  return String(row.client_decision_id) === input.clientDecisionId
-    && String(row.approval_request_id) === input.approvalRequestId
-    && String(row.decided_by) === input.decidedBy
-    && String(row.decision) === input.decision;
+function decisionMatches(
+  row: DecisionRow,
+  input: {
+    approvalRequestId: string;
+    clientDecisionId: string;
+    decidedBy: string;
+    decision: ShipmentApvReceiverManifestArchiveAlertDecision;
+  },
+) {
+  return (
+    String(row.client_decision_id) === input.clientDecisionId &&
+    String(row.approval_request_id) === input.approvalRequestId &&
+    String(row.decided_by) === input.decidedBy &&
+    String(row.decision) === input.decision
+  );
 }
 
 function decisionBindingValid(row: DecisionRow) {
@@ -120,22 +120,27 @@ function decisionBindingValid(row: DecisionRow) {
   const action = String(row.preview_action);
   const severity = String(row.preview_severity);
   const decision = String(row.decision);
-  const expectedReason = decision === "APPROVED"
-    ? "checker_approved_snapshot" : decision === "REJECTED"
-      ? "checker_rejected_snapshot" : "";
-  return String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && /^[0-9a-f]{64}$/.test(String(row.request_state_fingerprint))
-    && String(row.request_state_fingerprint)
-      === String(row.approval_state_fingerprint)
-    && values.length >= 1 && values.length <= 7
-    && indexes.every((index) => index >= 0)
-    && indexes.every((index, position) => position === 0
-      || index > indexes[position - 1]!)
-    && (action === "review_warning"
+  const expectedReason =
+    decision === "APPROVED"
+      ? "checker_approved_snapshot"
+      : decision === "REJECTED"
+        ? "checker_rejected_snapshot"
+        : "";
+  return (
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    /^[0-9a-f]{64}$/.test(String(row.request_state_fingerprint)) &&
+    String(row.request_state_fingerprint) === String(row.approval_state_fingerprint) &&
+    values.length >= 1 &&
+    values.length <= 7 &&
+    indexes.every((index) => index >= 0) &&
+    indexes.every((index, position) => position === 0 || index > indexes[position - 1]!) &&
+    (action === "review_warning"
       ? severity === "warning" && !critical
-      : action === "escalate_critical" && severity === "critical" && critical)
-    && expectedReason !== "" && String(row.decision_reason) === expectedReason;
+      : action === "escalate_critical" && severity === "critical" && critical) &&
+    expectedReason !== "" &&
+    String(row.decision_reason) === expectedReason
+  );
 }
 
 function decisionFromRequest(row: RequestRow): DecisionRow | null {
@@ -158,15 +163,20 @@ function decisionFromRequest(row: RequestRow): DecisionRow | null {
   };
 }
 
-function previewMatchesRequest(row: RequestRow, preview: Awaited<ReturnType<
-  typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>>) {
-  return String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && String(row.state_fingerprint) === preview.stateFingerprint
-    && String(row.preview_action) === preview.action
-    && String(row.preview_severity) === preview.severity
-    && JSON.stringify(reasons(row.preview_reasons))
-      === JSON.stringify(preview.reasons);
+function previewMatchesRequest(
+  row: RequestRow,
+  preview: Awaited<
+    ReturnType<typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>
+  >,
+) {
+  return (
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    String(row.state_fingerprint) === preview.stateFingerprint &&
+    String(row.preview_action) === preview.action &&
+    String(row.preview_severity) === preview.severity &&
+    JSON.stringify(reasons(row.preview_reasons)) === JSON.stringify(preview.reasons)
+  );
 }
 
 export async function decideShipmentApvReceiverManifestArchiveAlertApprovalRequest(
@@ -202,8 +212,7 @@ export async function decideShipmentApvReceiverManifestArchiveAlertApprovalReque
     const existing = (existingRows as unknown as DecisionRow[])[0];
     if (existing) {
       if (!decisionMatches(existing, input) || !decisionBindingValid(existing)) {
-        throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_REPLAY_CONFLICT");
+        throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_REPLAY_CONFLICT");
       }
       return publicDecision(existing);
     }
@@ -219,41 +228,38 @@ export async function decideShipmentApvReceiverManifestArchiveAlertApprovalReque
       LIMIT 1`);
     const request = (requestRows as unknown as RequestRow[])[0];
     if (!request) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REQUEST_NOT_FOUND");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REQUEST_NOT_FOUND");
     }
     if (String(request.requested_by) === input.decidedBy) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_MAKER_CHECKER_REQUIRED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_MAKER_CHECKER_REQUIRED");
     }
     const prior = decisionFromRequest(request);
     if (prior) {
       if (decisionMatches(prior, input) && decisionBindingValid(prior)) {
         return publicDecision(prior);
       }
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_ALREADY_DECIDED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_ALREADY_DECIDED");
     }
     const expiresAt = Date.parse(String(request.expires_at));
     if (!Number.isFinite(expiresAt)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
     }
     if (expiresAt <= now.getTime()) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REQUEST_EXPIRED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REQUEST_EXPIRED");
     }
 
     const preview =
       await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(transaction);
-    if (preview.action === "none" || !preview.approval.required
-      || !previewMatchesRequest(request, preview)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
+    if (
+      preview.action === "none" ||
+      !preview.approval.required ||
+      !previewMatchesRequest(request, preview)
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
     }
 
-    const reason = input.decision === "APPROVED"
-      ? "checker_approved_snapshot" : "checker_rejected_snapshot";
+    const reason =
+      input.decision === "APPROVED" ? "checker_approved_snapshot" : "checker_rejected_snapshot";
     const rows = await transaction.execute(sql`WITH inserted AS (
         INSERT INTO shipment_apv_manifest_archive_alert_approval_decisions
           (client_decision_id, approval_request_id, request_state_fingerprint,
@@ -283,16 +289,13 @@ export async function decideShipmentApvReceiverManifestArchiveAlertApprovalReque
       LIMIT 1`);
     const row = (rows as unknown as DecisionRow[])[0];
     if (!row) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_UNAVAILABLE");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_UNAVAILABLE");
     }
     if (!decisionMatches(row, input) || !decisionBindingValid(row)) {
       if (String(row.approval_request_id) === input.approvalRequestId) {
-        throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_ALREADY_DECIDED");
+        throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_ALREADY_DECIDED");
       }
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_REPLAY_CONFLICT");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_REPLAY_CONFLICT");
     }
     return publicDecision(row);
   });

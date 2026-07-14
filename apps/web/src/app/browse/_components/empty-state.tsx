@@ -1,16 +1,11 @@
+import { type LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { WaitlistForm } from "@/components/waitlist-form";
-import { LISTING_CATEGORIES, LISTING_CATEGORY_LABELS } from "@haggle/shared";
 
 type Category = (typeof LISTING_CATEGORIES)[number];
 
-export function BrowseEmptyState({
-  categories,
-  q,
-}: {
-  categories: Category[];
-  q: string;
-}) {
+export function BrowseEmptyState({ categories, q }: { categories: Category[]; q: string }) {
   const single = categories.length === 1 ? categories[0] : null;
   const source = q
     ? "browse-empty-search"
@@ -37,7 +32,7 @@ export function BrowseEmptyState({
   return (
     <div className="py-16 sm:py-20">
       <div className="mx-auto max-w-lg text-center">
-        <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-slate-800/60">
+        <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-surface-sunken dark:bg-surface-raised">
           <svg
             viewBox="0 0 24 24"
             width="26"
@@ -47,30 +42,26 @@ export function BrowseEmptyState({
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="text-slate-400"
+            className="text-ink-muted"
+            aria-hidden="true"
           >
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
           </svg>
         </div>
 
-        <h3 className="mb-2 text-xl font-semibold text-slate-100">{heading}</h3>
-        <p className="mb-8 text-sm text-slate-400">{subtitle}</p>
+        <h3 className="mb-2 font-semibold text-ink text-xl">{heading}</h3>
+        <p className="mb-8 text-ink-secondary text-sm">{subtitle}</p>
 
         <div>
           <WaitlistForm source={source} />
         </div>
 
-        <div className="my-10 h-px w-full bg-slate-800" />
+        <div className="my-10 h-px w-full bg-line" />
 
         <div>
-          <p className="mb-4 text-sm text-slate-400">
-            Or do you have something to sell?
-          </p>
-          <Link
-            href="/sell/listings/new"
-            className="inline-flex items-center justify-center rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
-          >
+          <p className="mb-4 text-ink-secondary text-sm">Or do you have something to sell?</p>
+          <Link href="/sell/listings/new" className={buttonVariants({ variant: "secondary" })}>
             List your item
           </Link>
         </div>

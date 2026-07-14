@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export type ShipmentApvRevisionDecision = "UPHELD" | "WAIVED" | "APPLY_CREDIT" | "ACKNOWLEDGE";
 
@@ -21,7 +21,17 @@ export interface ShipmentApvRevisionApplicationRecord {
 
 export type ShipmentApvRevisionApplicationResult =
   | { outcome: "applied" | "duplicate"; revision: ShipmentApvRevisionApplicationRecord }
-  | { outcome: "not_found" | "invalid_state" | "invalid_decision" | "evidence_required" | "predecessor_pending" | "aggregate_conflict" | "payout_reserved" | "request_conflict" };
+  | {
+      outcome:
+        | "not_found"
+        | "invalid_state"
+        | "invalid_decision"
+        | "evidence_required"
+        | "predecessor_pending"
+        | "aggregate_conflict"
+        | "payout_reserved"
+        | "request_conflict";
+    };
 
 function numeric(value: unknown): number {
   return Number(value ?? 0);
@@ -42,9 +52,12 @@ function mapRecord(row: Record<string, unknown>): ShipmentApvRevisionApplication
     carrier_credit_minor: numeric(row.carrier_credit_minor),
     buyer_effect_minor: 0,
     apply_version: numeric(row.apply_version),
-    applied_at: row.applied_at instanceof Date
-      ? row.applied_at.toISOString()
-      : typeof row.applied_at === "string" ? row.applied_at : undefined,
+    applied_at:
+      row.applied_at instanceof Date
+        ? row.applied_at.toISOString()
+        : typeof row.applied_at === "string"
+          ? row.applied_at
+          : undefined,
   };
 }
 
@@ -54,7 +67,10 @@ function isUniqueViolation(error: unknown): boolean {
   return candidate.code === "23505" || isUniqueViolation(candidate.cause);
 }
 
-export function isValidShipmentApvRevisionDecision(deltaMinor: number, decision: ShipmentApvRevisionDecision): boolean {
+export function isValidShipmentApvRevisionDecision(
+  deltaMinor: number,
+  decision: ShipmentApvRevisionDecision,
+): boolean {
   if (deltaMinor > 0) return decision === "UPHELD" || decision === "WAIVED";
   if (deltaMinor < 0) return decision === "APPLY_CREDIT";
   return decision === "ACKNOWLEDGE";
@@ -78,16 +94,28 @@ export function allocatePositiveShipmentApvRevision(
 
 export function allocateShipmentApvCarrierCredit(
   creditMinor: number,
-  burdens: { platformLiabilityMinor: number; sellerLiabilityMinor: number; bufferAppliedMinor: number },
+  burdens: {
+    platformLiabilityMinor: number;
+    sellerLiabilityMinor: number;
+    bufferAppliedMinor: number;
+  },
 ) {
   let remainingCredit = creditMinor;
-  const platformCreditMinor = Math.min(remainingCredit, Math.max(0, burdens.platformLiabilityMinor));
+  const platformCreditMinor = Math.min(
+    remainingCredit,
+    Math.max(0, burdens.platformLiabilityMinor),
+  );
   remainingCredit -= platformCreditMinor;
   const sellerCreditMinor = Math.min(remainingCredit, Math.max(0, burdens.sellerLiabilityMinor));
   remainingCredit -= sellerCreditMinor;
   const bufferCreditMinor = Math.min(remainingCredit, Math.max(0, burdens.bufferAppliedMinor));
   remainingCredit -= bufferCreditMinor;
-  return { platformCreditMinor, sellerCreditMinor, bufferCreditMinor, unallocatedCreditMinor: remainingCredit };
+  return {
+    platformCreditMinor,
+    sellerCreditMinor,
+    bufferCreditMinor,
+    unallocatedCreditMinor: remainingCredit,
+  };
 }
 
 export async function applyShipmentApvInvoiceRevision(
@@ -103,54 +131,60 @@ export async function applyShipmentApvInvoiceRevision(
 ): Promise<ShipmentApvRevisionApplicationResult> {
   try {
     return await db.transaction(async (tx) => {
-      const revisionRows = await tx.execute(sql`
+      const revisionRows = (await tx.execute(sql`
         SELECT * FROM shipment_apv_adjustment_revisions
          WHERE id = ${input.revisionId}
          FOR UPDATE
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const revision = revisionRows[0];
       if (!revision) return { outcome: "not_found" } as const;
       if (revision.status !== "PENDING_REVIEW") {
-        return revision.decision_request_id === input.requestId && revision.decision === input.decision
-          ? { outcome: "duplicate", revision: mapRecord(revision) } as const
-          : { outcome: "invalid_state" } as const;
+        return revision.decision_request_id === input.requestId &&
+          revision.decision === input.decision
+          ? ({ outcome: "duplicate", revision: mapRecord(revision) } as const)
+          : ({ outcome: "invalid_state" } as const);
       }
-      if (numeric(revision.apply_version) !== input.expectedVersion) return { outcome: "invalid_state" } as const;
+      if (numeric(revision.apply_version) !== input.expectedVersion)
+        return { outcome: "invalid_state" } as const;
 
       const deltaMinor = numeric(revision.delta_minor);
-      if (!isValidShipmentApvRevisionDecision(deltaMinor, input.decision)) return { outcome: "invalid_decision" } as const;
-      if (numeric(revision.revision_number) > 1 && !revision.evidence_sha256) return { outcome: "evidence_required" } as const;
-      const predecessorRows = await tx.execute(sql`
+      if (!isValidShipmentApvRevisionDecision(deltaMinor, input.decision))
+        return { outcome: "invalid_decision" } as const;
+      if (numeric(revision.revision_number) > 1 && !revision.evidence_sha256)
+        return { outcome: "evidence_required" } as const;
+      const predecessorRows = (await tx.execute(sql`
         SELECT id FROM shipment_apv_adjustment_revisions
          WHERE adjustment_id = ${String(revision.adjustment_id)}
            AND revision_number < ${numeric(revision.revision_number)}
            AND status = 'PENDING_REVIEW'
          LIMIT 1
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (predecessorRows[0]) return { outcome: "predecessor_pending" } as const;
 
-      const adjustmentRows = await tx.execute(sql`
+      const adjustmentRows = (await tx.execute(sql`
         SELECT * FROM shipment_apv_adjustments
          WHERE id = ${String(revision.adjustment_id)}
          FOR UPDATE
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const adjustment = adjustmentRows[0];
       if (!adjustment) return { outcome: "not_found" } as const;
-      const releaseRows = await tx.execute(sql`
+      const releaseRows = (await tx.execute(sql`
         SELECT * FROM settlement_releases
          WHERE id = ${String(adjustment.settlement_release_id)}
          FOR UPDATE
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const release = releaseRows[0];
       if (!release) return { outcome: "not_found" } as const;
-      const payoutRows = await tx.execute(sql`
+      const payoutRows = (await tx.execute(sql`
         SELECT id FROM shipment_apv_payout_offsets
          WHERE settlement_release_id = ${String(adjustment.settlement_release_id)}
          LIMIT 1
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (payoutRows[0]) return { outcome: "payout_reserved" } as const;
-      if (numeric(adjustment.adjusted_rate_minor) !== numeric(revision.prior_adjusted_rate_minor)
-        || numeric(adjustment.buffer_applied_minor) !== numeric(release.apv_adjustment_minor)) {
+      if (
+        numeric(adjustment.adjusted_rate_minor) !== numeric(revision.prior_adjusted_rate_minor) ||
+        numeric(adjustment.buffer_applied_minor) !== numeric(release.apv_adjustment_minor)
+      ) {
         return { outcome: "aggregate_conflict" } as const;
       }
 
@@ -163,9 +197,13 @@ export async function applyShipmentApvInvoiceRevision(
       let bufferCreditMinor = 0;
       let unallocatedCreditMinor = 0;
       if (deltaMinor > 0) {
-        const remainingBuffer = release.buffer_release_status === "RELEASED"
-          ? 0
-          : Math.max(0, numeric(release.buffer_amount_minor) - numeric(release.apv_adjustment_minor));
+        const remainingBuffer =
+          release.buffer_release_status === "RELEASED"
+            ? 0
+            : Math.max(
+                0,
+                numeric(release.buffer_amount_minor) - numeric(release.apv_adjustment_minor),
+              );
         const allocation = allocatePositiveShipmentApvRevision(
           deltaMinor,
           input.decision as "UPHELD" | "WAIVED",
@@ -215,10 +253,15 @@ export async function applyShipmentApvInvoiceRevision(
          WHERE id = ${String(revision.adjustment_id)}
       `);
 
-      const status = deltaMinor > 0
-        ? input.decision === "WAIVED" ? "WAIVED_TO_PLATFORM" : "APPLIED"
-        : deltaMinor < 0 ? "CREDIT_APPLIED" : "ACKNOWLEDGED";
-      const appliedRows = await tx.execute(sql`
+      const status =
+        deltaMinor > 0
+          ? input.decision === "WAIVED"
+            ? "WAIVED_TO_PLATFORM"
+            : "APPLIED"
+          : deltaMinor < 0
+            ? "CREDIT_APPLIED"
+            : "ACKNOWLEDGED";
+      const appliedRows = (await tx.execute(sql`
         UPDATE shipment_apv_adjustment_revisions
            SET status = ${status}, decision_request_id = ${input.requestId}, decision = ${input.decision},
                buffer_applied_minor = ${bufferAppliedMinor}, seller_liability_minor = ${sellerLiabilityMinor},
@@ -236,7 +279,7 @@ export async function applyShipmentApvInvoiceRevision(
          WHERE id = ${input.revisionId} AND status = 'PENDING_REVIEW'
            AND apply_version = ${input.expectedVersion}
         RETURNING *
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (!appliedRows[0]) throw new Error("APV_REVISION_APPLICATION_CLAIM_LOST");
       return { outcome: "applied", revision: mapRecord(appliedRows[0]) } as const;
     });

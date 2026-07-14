@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
 import { DashboardContent } from "./dashboard-content";
 
 export interface ListingSummary {
@@ -11,9 +11,10 @@ export interface ListingSummary {
   photoUrl: string | null;
   targetPrice: string | null;
   status: string;
-  strategyConfig: Record<string, unknown> | null;
+  negotiationAgentSnapshot: Record<string, unknown> | null;
   createdAt: string;
   publicId: string;
+  negotiationCount: number;
 }
 
 export interface DraftSummary {
@@ -51,10 +52,10 @@ export default async function DashboardPage({
 
   if (params.claim) {
     try {
-      claimResult = await serverApi.post<{ ok: boolean; error?: string }>(
-        `/api/claim`,
-        { claimToken: params.claim, userId: user.id },
-      );
+      claimResult = await serverApi.post<{ ok: boolean; error?: string }>(`/api/claim`, {
+        claimToken: params.claim,
+        userId: user.id,
+      });
     } catch {
       claimResult = { ok: false, error: "network_error" };
     }
@@ -65,9 +66,7 @@ export default async function DashboardPage({
   let drafts: DraftSummary[] = [];
   try {
     const [listingsData, draftsData] = await Promise.all([
-      serverApi.get<{ ok: boolean; listings: ListingSummary[] }>(
-        `/api/listings?userId=${user.id}`,
-      ),
+      serverApi.get<{ ok: boolean; listings: ListingSummary[] }>(`/api/listings?userId=${user.id}`),
       serverApi.get<{ ok: boolean; drafts: DraftSummary[] }>(`/api/drafts`),
     ]);
     if (listingsData.ok) listings = listingsData.listings;
@@ -76,12 +75,5 @@ export default async function DashboardPage({
     // Listings/drafts will be empty — dashboard still renders
   }
 
-  return (
-    <DashboardContent
-      userEmail={user.email ?? ""}
-      claimResult={claimResult}
-      listings={listings}
-      drafts={drafts}
-    />
-  );
+  return <DashboardContent claimResult={claimResult} listings={listings} drafts={drafts} />;
 }

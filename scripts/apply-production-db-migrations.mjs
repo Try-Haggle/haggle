@@ -68,7 +68,10 @@ function readEnvFile(path) {
     const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u);
     if (!match) continue;
     let value = match[2].trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     env[match[1]] = value;
@@ -127,7 +130,9 @@ async function preflight(sql) {
       and column_name in ${sql(REQUIRED_PAYMENT_INTENT_COLUMNS)}
   `;
   const foundColumns = new Set(columns.map((row) => row.column_name));
-  const missingColumns = REQUIRED_PAYMENT_INTENT_COLUMNS.filter((column) => !foundColumns.has(column));
+  const missingColumns = REQUIRED_PAYMENT_INTENT_COLUMNS.filter(
+    (column) => !foundColumns.has(column),
+  );
 
   const badStatuses = await sql`
     select status, count(*)::int as count
@@ -148,12 +153,17 @@ async function preflight(sql) {
 
   const failures = [];
   if (missingTables.length) failures.push(`missing baseline tables: ${missingTables.join(", ")}`);
-  if (missingColumns.length) failures.push(`payment_intents missing columns: ${missingColumns.join(", ")}`);
+  if (missingColumns.length)
+    failures.push(`payment_intents missing columns: ${missingColumns.join(", ")}`);
   if (badStatuses.length) {
-    failures.push(`unsupported payment_intents statuses: ${badStatuses.map((row) => `${row.status}(${row.count})`).join(", ")}`);
+    failures.push(
+      `unsupported payment_intents statuses: ${badStatuses.map((row) => `${row.status}(${row.count})`).join(", ")}`,
+    );
   }
   if (duplicateActivePaymentIntents.length) {
-    failures.push(`duplicate active payment_intents by order_id: ${duplicateActivePaymentIntents.length} sample rows`);
+    failures.push(
+      `duplicate active payment_intents by order_id: ${duplicateActivePaymentIntents.length} sample rows`,
+    );
   }
 
   if (failures.length) {
@@ -217,7 +227,9 @@ async function main() {
         lastMigration = { created_at: baselineCutoff };
         console.log(`baseline recorded: ${baseline.length} migrations through ${BASELINE_TAG}`);
       } else if (Number(lastMigration.created_at) < baselineCutoff) {
-        throw new Error(`Existing Drizzle history is older than ${BASELINE_TAG}; manual review required.`);
+        throw new Error(
+          `Existing Drizzle history is older than ${BASELINE_TAG}; manual review required.`,
+        );
       }
 
       let applied = 0;
@@ -231,7 +243,9 @@ async function main() {
       }
 
       if (args.dryRun) {
-        console.log(`dry-run ok: ${applied} target migrations applied in transaction; rolling back`);
+        console.log(
+          `dry-run ok: ${applied} target migrations applied in transaction; rolling back`,
+        );
         throw new Error("ROLLBACK_DRY_RUN_OK");
       }
 

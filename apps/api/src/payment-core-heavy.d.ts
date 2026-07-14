@@ -8,18 +8,18 @@
 
 declare module "@haggle/payment-core/heavy/real-x402-adapter" {
   import type {
-    PaymentProvider,
-    PaymentPartyWallet,
-    BuyerAuthorizationMode,
-    PaymentIntent,
-    PaymentQuote,
     AuthorizePaymentResult,
-    SettlePaymentResult,
-    RefundPaymentResult,
-    SettlementRouterContract,
+    BuyerAuthorizationMode,
     ConditionalSettlementContract,
     DisputeRegistryContract,
+    PaymentIntent,
+    PaymentPartyWallet,
+    PaymentProvider,
+    PaymentQuote,
     Refund,
+    RefundPaymentResult,
+    SettlementRouterContract,
+    SettlePaymentResult,
   } from "@haggle/payment-core";
 
   export interface X402SellerPayoutTarget {
@@ -70,19 +70,18 @@ declare module "@haggle/payment-core/heavy/real-x402-adapter" {
 
 declare module "@haggle/payment-core/heavy/viem-contracts" {
   import type {
+    ConditionalSettlementCapabilities,
+    ConditionalSettlementContract,
+    ConditionalSettlementCreateRequest,
+    ConditionalSettlementRefundRequest,
+    ConditionalSettlementReleaseRequest,
+    ConditionalSettlementResult,
+    DisputeAnchorRecord,
+    DisputeRegistryContract,
     SettlementRouterContract,
-    SettlementRouterCapabilities,
-    SettlementRouterQuote,
     SettlementRouterExecutionRequest,
     SettlementRouterExecutionResult,
-    ConditionalSettlementContract,
-    ConditionalSettlementCapabilities,
-    ConditionalSettlementCreateRequest,
-    ConditionalSettlementReleaseRequest,
-    ConditionalSettlementRefundRequest,
-    ConditionalSettlementResult,
-    DisputeRegistryContract,
-    DisputeAnchorRecord,
+    SettlementRouterQuote,
   } from "@haggle/payment-core";
 
   export class ViemSettlementRouterContract implements SettlementRouterContract {
@@ -102,11 +101,12 @@ declare module "@haggle/payment-core/heavy/viem-contracts" {
       assetAddress: `0x${string}`,
     );
     quote(
-      request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">,
+      request: Omit<
+        SettlementRouterExecutionRequest,
+        "quote_id" | "signature" | "deadline" | "signer_nonce"
+      >,
     ): Promise<SettlementRouterQuote>;
-    execute(
-      request: SettlementRouterExecutionRequest,
-    ): Promise<SettlementRouterExecutionResult>;
+    execute(request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult>;
   }
 
   export class ViemConditionalSettlementContract implements ConditionalSettlementContract {
@@ -124,24 +124,15 @@ declare module "@haggle/payment-core/heavy/viem-contracts" {
     createAndFund(
       request: ConditionalSettlementCreateRequest,
     ): Promise<ConditionalSettlementResult>;
-    release(
-      request: ConditionalSettlementReleaseRequest,
-    ): Promise<ConditionalSettlementResult>;
-    refund(
-      request: ConditionalSettlementRefundRequest,
-    ): Promise<ConditionalSettlementResult>;
+    release(request: ConditionalSettlementReleaseRequest): Promise<ConditionalSettlementResult>;
+    refund(request: ConditionalSettlementRefundRequest): Promise<ConditionalSettlementResult>;
     expire(settlementId: string): Promise<ConditionalSettlementResult>;
     raiseDispute(settlementId: string, evidenceHash: string): Promise<ConditionalSettlementResult>;
   }
 
   export class ViemDisputeRegistryContract implements DisputeRegistryContract {
     readonly network: string;
-    constructor(
-      network: string,
-      address: `0x${string}`,
-      publicClient: any,
-      walletClient: any,
-    );
+    constructor(network: string, address: `0x${string}`, publicClient: any, walletClient: any);
     anchor(record: DisputeAnchorRecord): Promise<DisputeAnchorRecord>;
   }
 }

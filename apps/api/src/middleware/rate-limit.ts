@@ -1,5 +1,5 @@
-import type { FastifyRequest, FastifyReply } from "fastify";
 import type { Database } from "@haggle/db";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ApiRateLimitConfig } from "../lib/api-rate-limit.js";
 import { API_GLOBAL_RATE_LIMIT } from "../lib/api-rate-limit.js";
 import { consumeApiRateLimit } from "../services/api-rate-limit.service.js";
@@ -75,10 +75,7 @@ function getUserKey(request: FastifyRequest): string {
   return request.user?.id ?? getIp(request);
 }
 
-export async function globalRateLimit(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+export async function globalRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const key = getIp(request);
   const result = globalLimiter.isAllowed(key);
   if (!result.allowed) {
@@ -89,10 +86,7 @@ export async function globalRateLimit(
   }
 }
 
-export function createGlobalRateLimit(input: {
-  db: Database;
-  config: ApiRateLimitConfig;
-}) {
+export function createGlobalRateLimit(input: { db: Database; config: ApiRateLimitConfig }) {
   if (input.config.mode === "local") return globalRateLimit;
   const hmacSecret = input.config.hmacSecret;
   return async function distributedGlobalRateLimit(
@@ -131,10 +125,7 @@ export function createGlobalRateLimit(input: {
   };
 }
 
-export async function offersRateLimit(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+export async function offersRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const key = getUserKey(request);
   const result = offersLimiter.isAllowed(key);
   if (!result.allowed) {

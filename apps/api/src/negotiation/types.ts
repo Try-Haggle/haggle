@@ -3,26 +3,21 @@
 // =========================================
 
 /** 5-Phase 협상 상태 */
-export type NegotiationPhase =
-  | 'DISCOVERY'
-  | 'OPENING'
-  | 'BARGAINING'
-  | 'CLOSING'
-  | 'SETTLEMENT';
+export type NegotiationPhase = "DISCOVERY" | "OPENING" | "BARGAINING" | "CLOSING" | "SETTLEMENT";
 
 /** Phase 전환 이벤트 */
 export type PhaseTransitionEvent =
-  | 'INITIAL_OFFER_MADE'
-  | 'COUNTER_OFFER_MADE'
-  | 'NEAR_DEAL_DETECTED'
-  | 'BOTH_CONFIRMED'
-  | 'REVERT_REQUESTED'
-  | 'TIMEOUT'
-  | 'ABORT';
+  | "INITIAL_OFFER_MADE"
+  | "COUNTER_OFFER_MADE"
+  | "NEAR_DEAL_DETECTED"
+  | "BOTH_CONFIRMED"
+  | "REVERT_REQUESTED"
+  | "TIMEOUT"
+  | "ABORT";
 
 /** Engine Decision — LLM/Skill이 반환하는 내부 순수 결정 (wire message 아님, message 없음) */
 export interface EngineDecision {
-  action: 'COUNTER' | 'ACCEPT' | 'REJECT' | 'HOLD' | 'DISCOVER' | 'CONFIRM';
+  action: "COUNTER" | "ACCEPT" | "REJECT" | "HOLD" | "DISCOVER" | "CONFIRM";
   price?: number;
   reasoning: string;
   non_price_terms?: Record<string, unknown>;
@@ -48,15 +43,11 @@ export interface NegotiationMove extends EngineDecision {
 }
 
 /** 4개 Human Intervention Mode */
-export type HumanInterventionMode =
-  | 'FULL_AUTO'
-  | 'APPROVE_ONLY'
-  | 'HYBRID'
-  | 'MANUAL';
+export type HumanInterventionMode = "FULL_AUTO" | "APPROVE_ONLY" | "HYBRID" | "MANUAL";
 
 /** HYBRID 모드 설정: Phase별 자동/수동 */
 export type HybridModeConfig = {
-  [phase in NegotiationPhase]?: 'auto' | 'manual';
+  [phase in NegotiationPhase]?: "auto" | "manual";
 };
 
 /** 심판이 매 라운드 제공하는 코칭 */
@@ -79,7 +70,7 @@ export interface RefereeCoaching {
   warnings: string[];
 }
 
-export type OpponentPatternType = 'BOULWARE' | 'CONCEDER' | 'LINEAR' | 'UNKNOWN';
+export type OpponentPatternType = "BOULWARE" | "CONCEDER" | "LINEAR" | "UNKNOWN";
 
 /** 검증 결과 */
 export interface ValidationResult {
@@ -91,7 +82,7 @@ export interface ValidationResult {
 
 export interface ValidationViolation {
   rule: string;
-  severity: 'HARD' | 'SOFT';
+  severity: "HARD" | "SOFT";
   guidance: string;
   suggested_fix?: Partial<EngineDecision>;
 }
@@ -102,22 +93,22 @@ export interface ValidationViolation {
 
 /** 표준 Term 카테고리 */
 export type TermCategory =
-  | 'FINANCIAL'
-  | 'LOGISTICS'
-  | 'CONDITION'
-  | 'WARRANTY'
-  | 'BUNDLE'
-  | 'TIMING'
-  | 'VERIFICATION'
-  | 'SERVICE'
-  | 'CUSTOM';
+  | "FINANCIAL"
+  | "LOGISTICS"
+  | "CONDITION"
+  | "WARRANTY"
+  | "BUNDLE"
+  | "TIMING"
+  | "VERIFICATION"
+  | "SERVICE"
+  | "CUSTOM";
 
 /** 카테고리 특화 Term (Skill이 추가 정의) */
 export interface CategoryTerm {
   id: string;
   parent_category: TermCategory;
   display_name: string;
-  value_type: 'number' | 'enum' | 'boolean' | 'text';
+  value_type: "number" | "enum" | "boolean" | "text";
   value_range?: { min?: number; max?: number } | string[];
   unit?: string;
   typical_impact: string;
@@ -128,7 +119,7 @@ export interface CategoryTerm {
 export interface SkillTermDeclaration {
   supported_terms: string[];
   category_terms: CategoryTerm[];
-  custom_term_handling: 'full' | 'basic' | 'none';
+  custom_term_handling: "full" | "basic" | "none";
 }
 
 /** 협상 중 활성화된 Term */
@@ -136,11 +127,11 @@ export interface ActiveTerm {
   term_id: string;
   category: TermCategory;
   display_name: string;
-  status: 'agreed' | 'unresolved' | 'not_discussed' | 'proposed';
+  status: "agreed" | "unresolved" | "not_discussed" | "proposed";
   value?: unknown;
   buyer_value_assessment?: number;
   seller_value_assessment?: number;
-  proposed_by: 'buyer' | 'seller' | 'protocol';
+  proposed_by: "buyer" | "seller" | "protocol";
   round_introduced: number;
 }
 
@@ -154,7 +145,7 @@ export interface CoreMemory {
     phase: NegotiationPhase;
     round: number;
     rounds_remaining: number;
-    role: 'buyer' | 'seller';
+    role: "buyer" | "seller";
     max_rounds: number;
     intervention_mode: HumanInterventionMode;
     /** Session creation timestamp in epoch ms — used for real-time t_elapsed */
@@ -164,7 +155,7 @@ export interface CoreMemory {
     /** Session max duration in ms — category-dependent fallback when no deadline is known. */
     max_duration_ms?: number;
     /** @deprecated Use created_at_ms/deadline_at_ms plus concession beta instead of urgency labels. */
-    urgency?: 'low' | 'normal' | 'high' | 'urgent';
+    urgency?: "low" | "normal" | "high" | "urgent";
   };
   boundaries: {
     my_target: number;
@@ -194,6 +185,25 @@ export interface CoreMemory {
    * tone/dealbreakers/mustEmphasize, etc.
    */
   strategy_context?: StrategyContextMemory;
+  /**
+   * The agent's resolved engine knobs (from the chosen preset + advanced/builder
+   * tuning) that decision-makers actually consume — concession curve, anchor
+   * strength, thresholds, weights. Populated from the compiled snapshot so a
+   * user's tuning reaches the rule path and coach recommendations instead of
+   * collapsing to defaults.
+   */
+  strategy_params?: StrategyParams;
+}
+
+/** Resolved engine knobs surfaced to the live decision-makers. */
+export interface StrategyParams {
+  beta?: number;
+  alpha?: number;
+  anchor_ratio?: number;
+  v_t_floor?: number;
+  u_threshold?: number;
+  u_aspiration?: number;
+  weights?: { w_p: number; w_t: number; w_r: number; w_s: number };
 }
 
 /** Mirror of services/listing-strategy.service.ts:ListingContext, kept local
@@ -212,15 +222,15 @@ export interface ListingContextMemory {
 /** Per-side negotiator profile. Captures persona + advisor memory + agent
  *  weight overrides. Populated symmetrically for buyer and seller. */
 export interface StrategyContextMemory {
-  agent_preset_id?: string;
+  negotiation_agent_preset_id?: string;
   agent_weights?: Record<string, unknown>;
   agent_overrides?: Record<string, unknown>;
-  advisor_memory?: Record<string, unknown>;
+  negotiation_agent_builder_memory?: Record<string, unknown>;
 }
 
 /** 버디 DNA — 경험 패턴 */
 export interface BuddyDNA {
-  style: 'aggressive' | 'defensive' | 'balanced';
+  style: "aggressive" | "defensive" | "balanced";
   preferred_tactic: string;
   category_experience: string;
   condition_trade_success_rate: number;
@@ -230,8 +240,8 @@ export interface BuddyDNA {
 
 /** 버디 말투 — 같은 EngineDecision을 다르게 표현 */
 export interface BuddyTone {
-  style: 'professional' | 'friendly' | 'analytical' | 'assertive' | 'casual';
-  formality: 'formal' | 'neutral' | 'informal';
+  style: "professional" | "friendly" | "analytical" | "assertive" | "casual";
+  formality: "formal" | "neutral" | "informal";
   emoji_use: boolean;
   signature_phrases?: string[];
 }
@@ -294,10 +304,10 @@ export interface RevertPolicy {
 
 export const DEFAULT_REVERT_POLICY: RevertPolicy = {
   allowed_transitions: [
-    { from: 'BARGAINING', to: 'OPENING' },
-    { from: 'CLOSING', to: 'BARGAINING' },
+    { from: "BARGAINING", to: "OPENING" },
+    { from: "CLOSING", to: "BARGAINING" },
   ],
-  blocked_from: ['SETTLEMENT'],
+  blocked_from: ["SETTLEMENT"],
   first_free: true,
   revert_cost_hc: 10,
 };
@@ -342,7 +352,7 @@ export interface SkillConstraint {
 export interface L5Signals {
   market?: {
     avg_sold_price_30d: number;
-    price_trend: 'rising' | 'stable' | 'falling';
+    price_trend: "rising" | "stable" | "falling";
     active_listings_count: number;
     source_prices: Array<{ platform: string; price: number }>;
   };
@@ -368,7 +378,7 @@ export interface RoundExplainability {
     acceptable_range: { min: number; max: number };
   };
   decision: {
-    source: 'llm' | 'skill';
+    source: "llm" | "skill";
     price?: number;
     action: string;
     tactic_used?: string;
@@ -377,10 +387,10 @@ export interface RoundExplainability {
   referee_result: {
     violations: Array<{
       rule: string;
-      severity: 'HARD' | 'SOFT';
+      severity: "HARD" | "SOFT";
       detail: string;
     }>;
-    action: 'PASS' | 'WARN_AND_PASS' | 'AUTO_FIX' | 'BLOCK';
+    action: "PASS" | "WARN_AND_PASS" | "AUTO_FIX" | "BLOCK";
     auto_fix_applied: boolean;
   };
   final_output: {
@@ -400,10 +410,10 @@ export interface StageConfig {
     RESPOND: ModelAdapter;
   };
   modes: {
-    RESPOND: 'template' | 'llm';
-    VALIDATE: 'full' | 'lite';
+    RESPOND: "template" | "llm";
+    VALIDATE: "full" | "lite";
   };
-  memoEncoding: 'auto' | 'codec' | 'raw';
+  memoEncoding: "auto" | "codec" | "raw";
   reasoningEnabled: boolean;
 }
 
@@ -418,7 +428,7 @@ export interface StageConfig {
  */
 export interface ConversationTurn {
   round: number;
-  sender: 'BUYER' | 'SELLER';
+  sender: "BUYER" | "SELLER";
   /** Trimmed message body (caller may truncate to keep tokens bounded). */
   text: string;
   /** Offer price in minor units, if the turn carried one. */
@@ -434,11 +444,11 @@ export interface ConversationContext {
 
 export interface ModelAdapter {
   readonly modelId: string;
-  readonly tier: 'basic' | 'standard' | 'advanced' | 'frontier';
-  readonly location: 'remote' | 'local';
-  readonly capabilities: readonly ('parse' | 'reason' | 'generate')[];
+  readonly tier: "basic" | "standard" | "advanced" | "frontier";
+  readonly location: "remote" | "local";
+  readonly capabilities: readonly ("parse" | "reason" | "generate")[];
 
-  buildSystemPrompt(skillContext: string, role?: 'buyer' | 'seller'): string;
+  buildSystemPrompt(skillContext: string, role?: "buyer" | "seller"): string;
   buildUserPrompt(
     memory: CoreMemory,
     recentFacts: RoundFact[],
@@ -447,7 +457,7 @@ export interface ModelAdapter {
     conversation?: ConversationContext,
   ): string;
   parseResponse(raw: string): EngineDecision;
-  coachingLevel(): 'DETAILED' | 'STANDARD' | 'LIGHT';
+  coachingLevel(): "DETAILED" | "STANDARD" | "LIGHT";
 }
 
 // =========================================
@@ -459,7 +469,7 @@ export interface MessageRenderer {
     decision: EngineDecision,
     context: {
       phase: NegotiationPhase;
-      role: 'buyer' | 'seller';
+      role: "buyer" | "seller";
       locale: string;
       activeTerms?: ActiveTerm[];
       tone: BuddyTone;
@@ -478,10 +488,10 @@ export interface CategoryRoundLimits {
 }
 
 export const ROUND_LIMITS: CategoryRoundLimits[] = [
-  { category: 'local_trade', ai_rounds: 15, human_bonus: 5 },
-  { category: 'shipped_trade', ai_rounds: 20, human_bonus: 5 },
-  { category: 'high_value', ai_rounds: 25, human_bonus: 5 },
-  { category: 'vehicle_realestate', ai_rounds: 30, human_bonus: 5 },
+  { category: "local_trade", ai_rounds: 15, human_bonus: 5 },
+  { category: "shipped_trade", ai_rounds: 20, human_bonus: 5 },
+  { category: "high_value", ai_rounds: 25, human_bonus: 5 },
+  { category: "vehicle_realestate", ai_rounds: 30, human_bonus: 5 },
 ];
 
 // =========================================

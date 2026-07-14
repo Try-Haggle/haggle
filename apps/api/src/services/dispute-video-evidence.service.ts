@@ -56,17 +56,30 @@ function parsePositiveInt(raw: string | undefined): number | null {
   return value === null ? null : Math.floor(value);
 }
 
-export function resolveDisputeVideoKeyframePolicy(options: {
-  amountMinor?: number;
-  highValueThresholdMinor?: number;
-} = {}): DisputeVideoKeyframePolicy {
+export function resolveDisputeVideoKeyframePolicy(
+  options: { amountMinor?: number; highValueThresholdMinor?: number } = {},
+): DisputeVideoKeyframePolicy {
   const highValueThreshold = options.highValueThresholdMinor ?? 50_000;
-  const base = (options.amountMinor ?? 0) >= highValueThreshold ? HIGH_VALUE_POLICY : DEFAULT_POLICY;
+  const base =
+    (options.amountMinor ?? 0) >= highValueThreshold ? HIGH_VALUE_POLICY : DEFAULT_POLICY;
   return {
-    intervalSec: parsePositiveNumber(process.env.DISPUTE_VIDEO_KEYFRAME_INTERVAL_SEC) ?? base.intervalSec,
-    maxFrames: Math.min(parsePositiveInt(process.env.DISPUTE_VIDEO_KEYFRAME_MAX_FRAMES) ?? base.maxFrames, 96),
-    scaleWidth: Math.min(parsePositiveInt(process.env.DISPUTE_VIDEO_KEYFRAME_SCALE_WIDTH) ?? base.scaleWidth, 1920),
-    quality: Math.min(Math.max(parsePositiveInt(process.env.DISPUTE_VIDEO_KEYFRAME_JPEG_QUALITY) ?? base.quality, 2), 8),
+    intervalSec:
+      parsePositiveNumber(process.env.DISPUTE_VIDEO_KEYFRAME_INTERVAL_SEC) ?? base.intervalSec,
+    maxFrames: Math.min(
+      parsePositiveInt(process.env.DISPUTE_VIDEO_KEYFRAME_MAX_FRAMES) ?? base.maxFrames,
+      96,
+    ),
+    scaleWidth: Math.min(
+      parsePositiveInt(process.env.DISPUTE_VIDEO_KEYFRAME_SCALE_WIDTH) ?? base.scaleWidth,
+      1920,
+    ),
+    quality: Math.min(
+      Math.max(
+        parsePositiveInt(process.env.DISPUTE_VIDEO_KEYFRAME_JPEG_QUALITY) ?? base.quality,
+        2,
+      ),
+      8,
+    ),
   };
 }
 
@@ -95,7 +108,11 @@ function runCommand(
         resolve(Buffer.concat(stdout).toString("utf8"));
         return;
       }
-      reject(new Error(`${command} exited ${code}: ${Buffer.concat(stderr).toString("utf8").slice(0, 500)}`));
+      reject(
+        new Error(
+          `${command} exited ${code}: ${Buffer.concat(stderr).toString("utf8").slice(0, 500)}`,
+        ),
+      );
     });
   });
 }
@@ -112,22 +129,19 @@ export async function probeDisputeVideoMetadata(
   inputPath: string,
   options: { ffprobePath?: string; timeoutMs?: number } = {},
 ): Promise<DisputeVideoProbeMetadata> {
-  const output = await runCommand(options.ffprobePath ?? "ffprobe", [
-    "-v",
-    "error",
-    "-show_format",
-    "-show_streams",
-    "-print_format",
-    "json",
-    inputPath,
-  ], { timeoutMs: options.timeoutMs ?? 15_000 });
+  const output = await runCommand(
+    options.ffprobePath ?? "ffprobe",
+    ["-v", "error", "-show_format", "-show_streams", "-print_format", "json", inputPath],
+    { timeoutMs: options.timeoutMs ?? 15_000 },
+  );
   const parsed = JSON.parse(output) as {
     streams?: Array<Record<string, unknown>>;
     format?: Record<string, unknown>;
   };
   const video = parsed.streams?.find((stream) => stream.codec_type === "video");
   const hasAudio = parsed.streams?.some((stream) => stream.codec_type === "audio") ?? false;
-  const duration = typeof parsed.format?.duration === "string" ? Number(parsed.format.duration) : null;
+  const duration =
+    typeof parsed.format?.duration === "string" ? Number(parsed.format.duration) : null;
   return {
     durationSec: duration !== null && Number.isFinite(duration) && duration > 0 ? duration : null,
     width: typeof video?.width === "number" ? video.width : null,
@@ -145,16 +159,22 @@ export function buildDisputeVideoKeyframeOffsets(
   const duration = metadata.durationSec;
   const maxFrames = Math.max(1, policy.maxFrames);
   if (!duration || duration <= 0) {
-    return Array.from({ length: maxFrames }, (_, index) => Number((index * policy.intervalSec).toFixed(3)));
+    return Array.from({ length: maxFrames }, (_, index) =>
+      Number((index * policy.intervalSec).toFixed(3)),
+    );
   }
   const denseCount = Math.floor(duration / policy.intervalSec) + 1;
   const count = Math.min(maxFrames, Math.max(1, denseCount));
   if (count === 1) return [0];
   if (denseCount <= maxFrames) {
-    return Array.from({ length: count }, (_, index) => Number(Math.min(index * policy.intervalSec, duration).toFixed(3)));
+    return Array.from({ length: count }, (_, index) =>
+      Number(Math.min(index * policy.intervalSec, duration).toFixed(3)),
+    );
   }
   const step = duration / (count - 1);
-  return Array.from({ length: count }, (_, index) => Number(Math.min(index * step, duration).toFixed(3)));
+  return Array.from({ length: count }, (_, index) =>
+    Number(Math.min(index * step, duration).toFixed(3)),
+  );
 }
 
 export function buildDisputeVideoSingleKeyframeFfmpegArgs(params: {
@@ -201,12 +221,16 @@ export async function extractDisputeVideoKeyframes(params: {
   const offsets = buildDisputeVideoKeyframeOffsets(metadata, policy);
   const frameTimeoutMs = params.timeoutMs ?? 30_000;
   for (const [index, offsetSec] of offsets.entries()) {
-    await runCommand(params.ffmpegPath ?? "ffmpeg", buildDisputeVideoSingleKeyframeFfmpegArgs({
-      inputPath: params.inputPath,
-      outputPath: join(params.outputDir, `frame_${String(index + 1).padStart(3, "0")}.jpg`),
-      offsetSec,
-      policy,
-    }), { timeoutMs: frameTimeoutMs });
+    await runCommand(
+      params.ffmpegPath ?? "ffmpeg",
+      buildDisputeVideoSingleKeyframeFfmpegArgs({
+        inputPath: params.inputPath,
+        outputPath: join(params.outputDir, `frame_${String(index + 1).padStart(3, "0")}.jpg`),
+        offsetSec,
+        policy,
+      }),
+      { timeoutMs: frameTimeoutMs },
+    );
   }
 
   return {

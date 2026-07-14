@@ -40,16 +40,24 @@ export class X402FacilitatorClient {
         if (classifyProviderError(error) !== "retryable" || attempt === maxAttempts - 1) {
           throw error;
         }
-        await new Promise((resolve) => setTimeout(resolve, calculateRetryDelayMs(attempt, {
-          baseDelayMs: 150,
-          maxDelayMs: 750,
-        })));
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            calculateRetryDelayMs(attempt, {
+              baseDelayMs: 150,
+              maxDelayMs: 750,
+            }),
+          ),
+        );
       }
     }
     throw lastError;
   }
 
-  async verify(paymentPayload: X402PaymentPayloadEnvelope, paymentRequirements: X402PaymentRequirement) {
+  async verify(
+    paymentPayload: X402PaymentPayloadEnvelope,
+    paymentRequirements: X402PaymentRequirement,
+  ) {
     const response = await this.withRetries(async () => {
       const candidate = await fetch(`${this.facilitatorUrl.replace(/\/$/, "")}/verify`, {
         method: "POST",
@@ -60,13 +68,17 @@ export class X402FacilitatorClient {
         }),
       });
       if (!candidate.ok && classifyProviderError({ status: candidate.status }) === "retryable") {
-        throw Object.assign(new Error(`x402 verify retryable status ${candidate.status}`), { status: candidate.status });
+        throw Object.assign(new Error(`x402 verify retryable status ${candidate.status}`), {
+          status: candidate.status,
+        });
       }
       return candidate;
     });
 
     if (!response.ok) {
-      throw Object.assign(new Error(`x402 verify failed with status ${response.status}`), { status: response.status });
+      throw Object.assign(new Error(`x402 verify failed with status ${response.status}`), {
+        status: response.status,
+      });
     }
 
     return (await response.json()) as X402FacilitatorVerifyResponse;
@@ -87,13 +99,17 @@ export class X402FacilitatorClient {
         }),
       });
       if (!candidate.ok && classifyProviderError({ status: candidate.status }) === "retryable") {
-        throw Object.assign(new Error(`x402 settle retryable status ${candidate.status}`), { status: candidate.status });
+        throw Object.assign(new Error(`x402 settle retryable status ${candidate.status}`), {
+          status: candidate.status,
+        });
       }
       return candidate;
     });
 
     if (!response.ok) {
-      throw Object.assign(new Error(`x402 settle failed with status ${response.status}`), { status: response.status });
+      throw Object.assign(new Error(`x402 settle failed with status ${response.status}`), {
+        status: response.status,
+      });
     }
 
     return (await response.json()) as X402FacilitatorSettleResponse;

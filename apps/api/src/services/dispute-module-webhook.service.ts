@@ -1,11 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
+import { type Database, disputeModuleWebhookOutbox, eq, sql } from "@haggle/db";
 import type { DisputeCase } from "@haggle/dispute-core";
-import {
-  disputeModuleWebhookOutbox,
-  eq,
-  sql,
-  type Database,
-} from "@haggle/db";
 import { assertDisputeModuleOutboundUrl } from "./dispute-module-outbound-url.service.js";
 
 export type DisputeModuleWebhookEventType =
@@ -87,17 +82,15 @@ export function createDisputeModuleWebhookEventId(
   return `evt_${createHash("sha256").update(`${type}:${disputeId}:${dedupeKey}`).digest("hex").slice(0, 32)}`;
 }
 
-export function buildDisputeModuleWebhookEnvelope(
-  params: {
-    type: DisputeModuleWebhookEventType;
-    platformId: string;
-    externalOrderId: string;
-    dispute: DisputeCase;
-    data?: Record<string, unknown>;
-    dedupeKey?: string;
-    now?: Date;
-  },
-): DisputeModuleWebhookEnvelope {
+export function buildDisputeModuleWebhookEnvelope(params: {
+  type: DisputeModuleWebhookEventType;
+  platformId: string;
+  externalOrderId: string;
+  dispute: DisputeCase;
+  data?: Record<string, unknown>;
+  dedupeKey?: string;
+  now?: Date;
+}): DisputeModuleWebhookEnvelope {
   return {
     id: createDisputeModuleWebhookEventId(params.type, params.dispute.id, params.dedupeKey),
     type: params.type,
@@ -268,13 +261,19 @@ export async function markDisputeModuleWebhookOutboxFailed(
 
 function rowsFromResult(result: unknown): Record<string, unknown>[] {
   if (Array.isArray(result)) return result as Record<string, unknown>[];
-  if (result && typeof result === "object" && Array.isArray((result as { rows?: unknown[] }).rows)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { rows?: unknown[] }).rows)
+  ) {
     return (result as { rows: Record<string, unknown>[] }).rows;
   }
   return [];
 }
 
-function mapDisputeModuleWebhookOutboxRow(row: Record<string, unknown>): DisputeModuleWebhookOutboxRecord {
+function mapDisputeModuleWebhookOutboxRow(
+  row: Record<string, unknown>,
+): DisputeModuleWebhookOutboxRecord {
   return {
     id: String(row.id),
     eventId: String(row.event_id),
@@ -286,10 +285,12 @@ function mapDisputeModuleWebhookOutboxRow(row: Record<string, unknown>): Dispute
     status: row.status as DisputeModuleWebhookOutboxRecord["status"],
     attemptCount: Number(row.attempt_count ?? 0),
     nextAttemptAt: new Date(String(row.next_attempt_at)),
-    lastError: row.last_error === null || row.last_error === undefined ? null : String(row.last_error),
-    deliveredAt: row.delivered_at === null || row.delivered_at === undefined
-      ? null
-      : new Date(String(row.delivered_at)),
+    lastError:
+      row.last_error === null || row.last_error === undefined ? null : String(row.last_error),
+    deliveredAt:
+      row.delivered_at === null || row.delivered_at === undefined
+        ? null
+        : new Date(String(row.delivered_at)),
     createdAt: new Date(String(row.created_at)),
     updatedAt: new Date(String(row.updated_at)),
   };
@@ -436,11 +437,9 @@ export async function deliverDisputeModuleWebhookOutboxRecord(
     return { status: "skipped", eventId: record.eventId, outboxStatus };
   }
 
-  const result = await deliverDisputeModuleWebhook(
-    record.payload,
-    config,
-    { fetchImpl: options.fetchImpl },
-  );
+  const result = await deliverDisputeModuleWebhook(record.payload, config, {
+    fetchImpl: options.fetchImpl,
+  });
 
   if (result.status === "delivered") {
     await markDisputeModuleWebhookOutboxDelivered(db, record.eventId, record.attemptCount + 1);
@@ -501,15 +500,13 @@ export async function dispatchDueDisputeModuleWebhookOutbox(
   return result;
 }
 
-export async function dispatchDisputeModuleCaseCreatedWebhook(
-  params: {
-    db?: Database;
-    platformId: string;
-    externalOrderId: string;
-    dispute: DisputeCase;
-    fetchImpl?: typeof fetch;
-  },
-): Promise<DisputeModuleWebhookDeliveryResult> {
+export async function dispatchDisputeModuleCaseCreatedWebhook(params: {
+  db?: Database;
+  platformId: string;
+  externalOrderId: string;
+  dispute: DisputeCase;
+  fetchImpl?: typeof fetch;
+}): Promise<DisputeModuleWebhookDeliveryResult> {
   const envelope = buildDisputeModuleWebhookEnvelope({
     type: "dispute.case.created",
     platformId: params.platformId,
@@ -518,7 +515,9 @@ export async function dispatchDisputeModuleCaseCreatedWebhook(
   });
   if (params.db) {
     const record = await createDisputeModuleWebhookOutboxRecord(params.db, envelope);
-    return deliverDisputeModuleWebhookOutboxRecord(params.db, record, { fetchImpl: params.fetchImpl });
+    return deliverDisputeModuleWebhookOutboxRecord(params.db, record, {
+      fetchImpl: params.fetchImpl,
+    });
   }
   return deliverDisputeModuleWebhook(
     envelope,

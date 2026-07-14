@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import type { Database } from "@haggle/db";
+import { getDisputeEvidenceScanRetryHealth } from "../services/dispute-evidence-scan-retry.service.js";
 import {
-  DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SOURCE,
   createDisputeEvidenceScanRetryAlertSnapshot,
+  DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SOURCE,
+  type DisputeEvidenceScanRetryAlertConfig,
   evaluateDisputeEvidenceScanRetryAlert,
   findLatestDeliveredDisputeEvidenceScanRetryIncident,
   findRetryableDisputeEvidenceScanRetryAlertSnapshot,
@@ -10,21 +12,15 @@ import {
   persistDisputeEvidenceScanRetryAlertSnapshot,
   resolveDisputeEvidenceScanRetryAlertConfigFromEnv,
   sendDisputeEvidenceScanRetryAlert,
-  type DisputeEvidenceScanRetryAlertConfig,
 } from "../services/dispute-evidence-scan-retry-alert.service.js";
-import { getDisputeEvidenceScanRetryHealth } from
-  "../services/dispute-evidence-scan-retry.service.js";
-import { getDisputeEvidenceScannerCircuitHealth } from
-  "../services/dispute-evidence-scanner-circuit.service.js";
-import { getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth } from
-  "../services/dispute-evidence-scan-retry-alert-snapshot-retention.service.js";
-import { getDisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth } from
-  "./dispute-evidence-scan-retry-alert-snapshot-retention.js";
+import { getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth } from "../services/dispute-evidence-scan-retry-alert-snapshot-retention.service.js";
+import { getDisputeEvidenceScannerCircuitHealth } from "../services/dispute-evidence-scanner-circuit.service.js";
 import {
   claimWebhookEvent,
   completeWebhookEvent,
   failWebhookEvent,
 } from "../services/webhook-event-claim.service.js";
+import { getDisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth } from "./dispute-evidence-scan-retry-alert-snapshot-retention.js";
 
 export async function runDisputeEvidenceScanRetryAlert(
   db: Database,
@@ -36,29 +32,30 @@ export async function runDisputeEvidenceScanRetryAlert(
     circuitKey?: string;
   } = {},
 ) {
-  const config = options.config
-    ?? resolveDisputeEvidenceScanRetryAlertConfigFromEnv();
+  const config = options.config ?? resolveDisputeEvidenceScanRetryAlertConfigFromEnv();
   if (!config) {
     return { status: "skipped" as const, reason: "not_configured" as const };
   }
   const now = options.now ?? new Date();
-  const claimSource = options.claimSource
-    ?? DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SOURCE;
+  const claimSource = options.claimSource ?? DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SOURCE;
   const [health, circuit, retention, retentionJob] = await Promise.all([
     getDisputeEvidenceScanRetryHealth(db, { now }),
     getDisputeEvidenceScannerCircuitHealth(db, {
-      now, circuitKey: options.circuitKey,
+      now,
+      circuitKey: options.circuitKey,
     }),
     getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth(db),
     getDisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth(db, now),
   ]);
   const assessment = evaluateDisputeEvidenceScanRetryAlert(
-    health, circuit, config, retention, retentionJob,
+    health,
+    circuit,
+    config,
+    retention,
+    retentionJob,
   );
 
-  const retryable = await findRetryableDisputeEvidenceScanRetryAlertSnapshot(
-    db, claimSource,
-  );
+  const retryable = await findRetryableDisputeEvidenceScanRetryAlertSnapshot(db, claimSource);
   if (retryable) {
     const claim = await claimWebhookEvent(db, {
       source: claimSource,
@@ -66,11 +63,12 @@ export async function runDisputeEvidenceScanRetryAlert(
       payloadSha256: retryable.payloadSha256,
     });
     if (claim.outcome !== "acquired") {
-      const reason = claim.outcome === "retry_later"
-        ? "snapshot_retry_backoff" as const
-        : claim.outcome === "payload_conflict"
-          ? "snapshot_claim_payload_conflict" as const
-          : "snapshot_already_sent_or_in_progress" as const;
+      const reason =
+        claim.outcome === "retry_later"
+          ? ("snapshot_retry_backoff" as const)
+          : claim.outcome === "payload_conflict"
+            ? ("snapshot_claim_payload_conflict" as const)
+            : ("snapshot_already_sent_or_in_progress" as const);
       return { status: "skipped" as const, reason, health, circuit };
     }
     const snapshotAssessment = {
@@ -79,24 +77,21 @@ export async function runDisputeEvidenceScanRetryAlert(
       reasons: retryable.snapshot.reasons,
     };
     try {
-      const alert = await sendDisputeEvidenceScanRetryAlert(
-        health, circuit, snapshotAssessment,
-        {
-          config,
-          deliveryId: retryable.snapshot.delivery_id,
-          snapshot: retryable.snapshot,
-          retention,
-          retentionJob,
-          fetchImpl: options.fetchImpl,
-          now,
-        },
-      );
+      const alert = await sendDisputeEvidenceScanRetryAlert(health, circuit, snapshotAssessment, {
+        config,
+        deliveryId: retryable.snapshot.delivery_id,
+        snapshot: retryable.snapshot,
+        retention,
+        retentionJob,
+        fetchImpl: options.fetchImpl,
+        now,
+      });
       if (alert.status === "delivered") {
         await completeWebhookEvent(db, claim, alert.httpStatus ?? 200);
         return {
           status: "retried" as const,
-          phase: retryable.snapshot.state === "firing"
-            ? "incident" as const : "recovery" as const,
+          phase:
+            retryable.snapshot.state === "firing" ? ("incident" as const) : ("recovery" as const),
           health,
           circuit,
           assessment: snapshotAssessment,
@@ -120,9 +115,7 @@ export async function runDisputeEvidenceScanRetryAlert(
   }
 
   if (!assessment.wouldAlert) {
-    const incident = await findLatestDeliveredDisputeEvidenceScanRetryIncident(
-      db, claimSource,
-    );
+    const incident = await findLatestDeliveredDisputeEvidenceScanRetryIncident(db, claimSource);
     if (!incident) {
       return {
         status: "skipped" as const,
@@ -133,31 +126,34 @@ export async function runDisputeEvidenceScanRetryAlert(
       };
     }
     const recoveryKey = `recovered:${incident.eventId}`;
-    const deliveryId = `recovery_${createHash("sha256")
-      .update(recoveryKey).digest("hex")}`;
+    const deliveryId = `recovery_${createHash("sha256").update(recoveryKey).digest("hex")}`;
     const recoveryAssessment = {
       wouldAlert: true,
       severity: "recovery" as const,
       reasons: ["scanner_scan_retry_and_retention_recovered"],
     };
     const snapshot = createDisputeEvidenceScanRetryAlertSnapshot(
-      health, circuit, recoveryAssessment, config, deliveryId,
-      retention, retentionJob,
+      health,
+      circuit,
+      recoveryAssessment,
+      config,
+      deliveryId,
+      retention,
+      retentionJob,
     );
-    const persisted = await persistDisputeEvidenceScanRetryAlertSnapshot(
-      db, claimSource, snapshot,
-    );
+    const persisted = await persistDisputeEvidenceScanRetryAlertSnapshot(db, claimSource, snapshot);
     const claim = await claimWebhookEvent(db, {
       source: claimSource,
       eventId: deliveryId,
       payloadSha256: persisted.payloadSha256,
     });
     if (claim.outcome !== "acquired") {
-      const reason = claim.outcome === "retry_later"
-        ? "recovery_retry_backoff" as const
-        : claim.outcome === "payload_conflict"
-          ? "recovery_claim_payload_conflict" as const
-          : "recovery_already_sent_or_in_progress" as const;
+      const reason =
+        claim.outcome === "retry_later"
+          ? ("recovery_retry_backoff" as const)
+          : claim.outcome === "payload_conflict"
+            ? ("recovery_claim_payload_conflict" as const)
+            : ("recovery_already_sent_or_in_progress" as const);
       return {
         status: "skipped" as const,
         reason,
@@ -167,18 +163,15 @@ export async function runDisputeEvidenceScanRetryAlert(
       };
     }
     try {
-      const alert = await sendDisputeEvidenceScanRetryAlert(
-        health, circuit, recoveryAssessment,
-        {
-          config,
-          deliveryId: claim.eventId,
-          snapshot: persisted.snapshot,
-          retention,
-          retentionJob,
-          fetchImpl: options.fetchImpl,
-          now,
-        },
-      );
+      const alert = await sendDisputeEvidenceScanRetryAlert(health, circuit, recoveryAssessment, {
+        config,
+        deliveryId: claim.eventId,
+        snapshot: persisted.snapshot,
+        retention,
+        retentionJob,
+        fetchImpl: options.fetchImpl,
+        now,
+      });
       if (alert.status === "delivered") {
         await completeWebhookEvent(db, claim, alert.httpStatus ?? 200);
         return {
@@ -204,9 +197,13 @@ export async function runDisputeEvidenceScanRetryAlert(
     }
   }
 
-  if (await hasRecentDeliveredDisputeEvidenceScanRetryIncident(
-    db, claimSource, config.cooldownMinutes,
-  )) {
+  if (
+    await hasRecentDeliveredDisputeEvidenceScanRetryIncident(
+      db,
+      claimSource,
+      config.cooldownMinutes,
+    )
+  ) {
     return {
       status: "skipped" as const,
       reason: "recent_incident_cooldown" as const,
@@ -216,31 +213,33 @@ export async function runDisputeEvidenceScanRetryAlert(
     };
   }
 
-  const bucket = Math.floor(
-    now.getTime() / (config.cooldownMinutes * 60_000),
+  const bucket = Math.floor(now.getTime() / (config.cooldownMinutes * 60_000));
+  const cooldownKey = [assessment.severity, ...[...assessment.reasons].sort(), String(bucket)].join(
+    ":",
   );
-  const cooldownKey = [assessment.severity,
-    ...[...assessment.reasons].sort(), String(bucket)].join(":");
-  const deliveryId = `health_${createHash("sha256")
-    .update(cooldownKey).digest("hex")}`;
+  const deliveryId = `health_${createHash("sha256").update(cooldownKey).digest("hex")}`;
   const snapshot = createDisputeEvidenceScanRetryAlertSnapshot(
-    health, circuit, assessment, config, deliveryId,
-    retention, retentionJob,
+    health,
+    circuit,
+    assessment,
+    config,
+    deliveryId,
+    retention,
+    retentionJob,
   );
-  const persisted = await persistDisputeEvidenceScanRetryAlertSnapshot(
-    db, claimSource, snapshot,
-  );
+  const persisted = await persistDisputeEvidenceScanRetryAlertSnapshot(db, claimSource, snapshot);
   const claim = await claimWebhookEvent(db, {
     source: claimSource,
     eventId: deliveryId,
     payloadSha256: persisted.payloadSha256,
   });
   if (claim.outcome !== "acquired") {
-    const reason = claim.outcome === "retry_later"
-      ? "delivery_retry_backoff" as const
-      : claim.outcome === "payload_conflict"
-        ? "delivery_claim_payload_conflict" as const
-        : "cooldown_or_in_progress" as const;
+    const reason =
+      claim.outcome === "retry_later"
+        ? ("delivery_retry_backoff" as const)
+        : claim.outcome === "payload_conflict"
+          ? ("delivery_claim_payload_conflict" as const)
+          : ("cooldown_or_in_progress" as const);
     return {
       status: "skipped" as const,
       reason,
@@ -250,22 +249,23 @@ export async function runDisputeEvidenceScanRetryAlert(
     };
   }
   try {
-    const alert = await sendDisputeEvidenceScanRetryAlert(
-      health, circuit, assessment,
-      {
-        config,
-        deliveryId: claim.eventId,
-        snapshot: persisted.snapshot,
-        retention,
-        retentionJob,
-        fetchImpl: options.fetchImpl,
-        now,
-      },
-    );
+    const alert = await sendDisputeEvidenceScanRetryAlert(health, circuit, assessment, {
+      config,
+      deliveryId: claim.eventId,
+      snapshot: persisted.snapshot,
+      retention,
+      retentionJob,
+      fetchImpl: options.fetchImpl,
+      now,
+    });
     if (alert.status === "delivered") {
       await completeWebhookEvent(db, claim, alert.httpStatus ?? 200);
       return {
-        status: "delivered" as const, health, circuit, assessment, alert,
+        status: "delivered" as const,
+        health,
+        circuit,
+        assessment,
+        alert,
       };
     }
     await failWebhookEvent(db, claim);
@@ -278,8 +278,6 @@ export async function runDisputeEvidenceScanRetryAlert(
 
 export async function runDisputeEvidenceScanRetryAlertJob(db: Database) {
   const result = await runDisputeEvidenceScanRetryAlert(db);
-  console.log(
-    `[dispute-evidence-scan-retry-alert] status=${result.status}`,
-  );
+  console.log(`[dispute-evidence-scan-retry-alert] status=${result.status}`);
   return result;
 }

@@ -14,10 +14,13 @@ afterEach(() => consume.mockReset());
 
 function buildApp() {
   const app = Fastify({ logger: false });
-  app.addHook("preHandler", createGlobalRateLimit({
-    db: {} as never,
-    config: { mode: "postgres", hmacSecret: "h".repeat(32) },
-  }));
+  app.addHook(
+    "preHandler",
+    createGlobalRateLimit({
+      db: {} as never,
+      config: { mode: "postgres", hmacSecret: "h".repeat(32) },
+    }),
+  );
   app.get("/limited", async () => ({ ok: true }));
   app.get("/health", async () => ({ status: "ok" }));
   return app;
@@ -26,7 +29,9 @@ function buildApp() {
 describe("distributed global rate-limit hook", () => {
   it("uses the Fastify client IP and returns a bounded 429", async () => {
     consume.mockResolvedValue({
-      allowed: false, retryAfterSeconds: 12, requestCount: 101,
+      allowed: false,
+      retryAfterSeconds: 12,
+      requestCount: 101,
     });
     const app = buildApp();
     const response = await app.inject({ method: "GET", url: "/limited" });
@@ -34,7 +39,8 @@ describe("distributed global rate-limit hook", () => {
     expect(response.headers["retry-after"]).toBe("12");
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.json()).toEqual({
-      error: "TOO_MANY_REQUESTS", retryAfter: 12,
+      error: "TOO_MANY_REQUESTS",
+      retryAfter: 12,
     });
     expect(consume).toHaveBeenCalledWith(expect.anything(), {
       scope: "global_ip",

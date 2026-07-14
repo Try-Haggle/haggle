@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
-export type WebhookClaimOutcome = "acquired" | "duplicate" | "in_progress" | "retry_later" | "payload_conflict";
+export type WebhookClaimOutcome =
+  | "acquired"
+  | "duplicate"
+  | "in_progress"
+  | "retry_later"
+  | "payload_conflict";
 
 export interface WebhookEventClaim {
   outcome: WebhookClaimOutcome;
@@ -26,7 +31,10 @@ export interface WebhookClaimHealthSource {
 
 export interface WebhookClaimHealth {
   status: "healthy" | "warning" | "critical";
-  totals: Omit<WebhookClaimHealthSource, "source" | "maxAttemptCount" | "oldestUnfinishedAgeSeconds">;
+  totals: Omit<
+    WebhookClaimHealthSource,
+    "source" | "maxAttemptCount" | "oldestUnfinishedAgeSeconds"
+  >;
   sources: WebhookClaimHealthSource[];
   recordedAt: string;
 }
@@ -41,7 +49,7 @@ export function getWebhookEventClaimLeaseSeconds(): number {
 }
 
 export async function getWebhookClaimHealth(db: Database): Promise<WebhookClaimHealth> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT source,
            count(*) FILTER (WHERE status = 'PROCESSING') AS processing,
            count(*) FILTER (WHERE status = 'COMPLETED') AS completed,
@@ -58,7 +66,7 @@ export async function getWebhookClaimHealth(db: Database): Promise<WebhookClaimH
      WHERE source <> 'haggle-webhook-claim-alert'
      GROUP BY source
      ORDER BY source
-  `) as unknown as Array<Record<string, string | number | null>>;
+  `)) as unknown as Array<Record<string, string | number | null>>;
   const sources = rows.map((row) => ({
     source: String(row.source),
     processing: Number(row.processing),
@@ -67,17 +75,21 @@ export async function getWebhookClaimHealth(db: Database): Promise<WebhookClaimH
     staleProcessing: Number(row.stale_processing),
     retryReady: Number(row.retry_ready),
     maxAttemptCount: Number(row.max_attempt_count),
-    oldestUnfinishedAgeSeconds: row.oldest_unfinished_age_seconds === null
-      ? null
-      : Math.max(0, Math.round(Number(row.oldest_unfinished_age_seconds))),
+    oldestUnfinishedAgeSeconds:
+      row.oldest_unfinished_age_seconds === null
+        ? null
+        : Math.max(0, Math.round(Number(row.oldest_unfinished_age_seconds))),
   }));
-  const totals = sources.reduce((acc, source) => ({
-    processing: acc.processing + source.processing,
-    completed: acc.completed + source.completed,
-    failed: acc.failed + source.failed,
-    staleProcessing: acc.staleProcessing + source.staleProcessing,
-    retryReady: acc.retryReady + source.retryReady,
-  }), { processing: 0, completed: 0, failed: 0, staleProcessing: 0, retryReady: 0 });
+  const totals = sources.reduce(
+    (acc, source) => ({
+      processing: acc.processing + source.processing,
+      completed: acc.completed + source.completed,
+      failed: acc.failed + source.failed,
+      staleProcessing: acc.staleProcessing + source.staleProcessing,
+      retryReady: acc.retryReady + source.retryReady,
+    }),
+    { processing: 0, completed: 0, failed: 0, staleProcessing: 0, retryReady: 0 },
+  );
   return {
     status: totals.staleProcessing > 0 ? "critical" : totals.failed > 0 ? "warning" : "healthy",
     totals,
@@ -92,7 +104,7 @@ export async function claimWebhookEvent(
 ): Promise<WebhookEventClaim> {
   const claimId = randomUUID();
   const lease = getWebhookEventClaimLeaseSeconds();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     INSERT INTO webhook_idempotency
       (idempotency_key, source, status, claim_id, lease_expires_at, attempt_count,
        payload_sha256, processed_at, expires_at, created_at)
@@ -113,7 +125,11 @@ export async function claimWebhookEvent(
            AND (webhook_idempotency.next_attempt_at IS NULL OR webhook_idempotency.next_attempt_at <= now()))
        )
     RETURNING claim_id AS "claimId", attempt_count AS "attemptCount", lease_expires_at AS "leaseExpiresAt"
-  `) as unknown as Array<{ claimId: string; attemptCount: number | string; leaseExpiresAt: Date | string }>;
+  `)) as unknown as Array<{
+    claimId: string;
+    attemptCount: number | string;
+    leaseExpiresAt: Date | string;
+  }>;
   const acquired = rows[0];
   if (acquired) {
     return {
@@ -122,25 +138,42 @@ export async function claimWebhookEvent(
       eventId: input.eventId,
       claimId: acquired.claimId,
       attemptCount: Number(acquired.attemptCount),
-      leaseExpiresAt: acquired.leaseExpiresAt instanceof Date ? acquired.leaseExpiresAt : new Date(acquired.leaseExpiresAt),
+      leaseExpiresAt:
+        acquired.leaseExpiresAt instanceof Date
+          ? acquired.leaseExpiresAt
+          : new Date(acquired.leaseExpiresAt),
     };
   }
-  const existing = await db.execute(sql`
+  const existing = (await db.execute(sql`
     SELECT status, payload_sha256 AS "payloadSha256", next_attempt_at AS "nextAttemptAt"
       FROM webhook_idempotency
      WHERE source = ${input.source} AND idempotency_key = ${input.eventId}
      LIMIT 1
-  `) as unknown as Array<{ status: "PROCESSING" | "COMPLETED" | "FAILED"; payloadSha256: string | null; nextAttemptAt: Date | null }>;
+  `)) as unknown as Array<{
+    status: "PROCESSING" | "COMPLETED" | "FAILED";
+    payloadSha256: string | null;
+    nextAttemptAt: Date | null;
+  }>;
   const current = existing[0];
   if (!current || (current.payloadSha256 && current.payloadSha256 !== input.payloadSha256)) {
     return { outcome: "payload_conflict", source: input.source, eventId: input.eventId };
   }
-  if (current.status === "COMPLETED") return { outcome: "duplicate", source: input.source, eventId: input.eventId };
-  if (current.status === "PROCESSING") return { outcome: "in_progress", source: input.source, eventId: input.eventId };
-  const nextAttemptMs = current.nextAttemptAt ? new Date(current.nextAttemptAt).getTime() : Date.now() + 1000;
+  if (current.status === "COMPLETED")
+    return { outcome: "duplicate", source: input.source, eventId: input.eventId };
+  if (current.status === "PROCESSING")
+    return { outcome: "in_progress", source: input.source, eventId: input.eventId };
+  const nextAttemptMs = current.nextAttemptAt
+    ? new Date(current.nextAttemptAt).getTime()
+    : Date.now() + 1000;
   const retryAfterSeconds = Number.isFinite(nextAttemptMs)
-    ? Math.min(300, Math.max(1, Math.ceil((nextAttemptMs - Date.now()) / 1000))) : 1;
-  return { outcome: "retry_later", source: input.source, eventId: input.eventId, retryAfterSeconds };
+    ? Math.min(300, Math.max(1, Math.ceil((nextAttemptMs - Date.now()) / 1000)))
+    : 1;
+  return {
+    outcome: "retry_later",
+    source: input.source,
+    eventId: input.eventId,
+    retryAfterSeconds,
+  };
 }
 
 export async function completeWebhookEvent(
@@ -149,7 +182,7 @@ export async function completeWebhookEvent(
   responseStatus: number,
 ): Promise<boolean> {
   if (!claim.claimId) return false;
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE webhook_idempotency
        SET status = 'COMPLETED', response_status = ${responseStatus}, completed_at = now(),
            processed_at = now(), claim_id = NULL, lease_expires_at = NULL,
@@ -157,21 +190,24 @@ export async function completeWebhookEvent(
      WHERE source = ${claim.source} AND idempotency_key = ${claim.eventId}
        AND status = 'PROCESSING' AND claim_id = ${claim.claimId}
      RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   if (rows.length !== 1) throw new Error("WEBHOOK_CLAIM_LOST");
   return true;
 }
 
-export async function renewWebhookEventClaim(db: Database, claim: WebhookEventClaim): Promise<boolean> {
+export async function renewWebhookEventClaim(
+  db: Database,
+  claim: WebhookEventClaim,
+): Promise<boolean> {
   if (!claim.claimId) return false;
   const lease = getWebhookEventClaimLeaseSeconds();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE webhook_idempotency
        SET lease_expires_at = now() + (${lease} * interval '1 second')
      WHERE source = ${claim.source} AND idempotency_key = ${claim.eventId}
        AND status = 'PROCESSING' AND claim_id = ${claim.claimId}
      RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return rows.length === 1;
 }
 
@@ -181,7 +217,7 @@ export function startWebhookClaimHeartbeat(db: Database, claim: WebhookEventClai
   const timer = setInterval(async () => {
     if (stopped) return;
     try {
-      if (!await renewWebhookEventClaim(db, claim)) {
+      if (!(await renewWebhookEventClaim(db, claim))) {
         stopped = true;
         clearInterval(timer);
       }
@@ -236,18 +272,15 @@ export async function cleanupWebhookChaosTestClaims(
 ): Promise<number> {
   assertChaosTestSource(source);
   if (!/^chaos_[0-9a-f-]{36}_$/.test(eventPrefix)) throw new Error("INVALID_WEBHOOK_CHAOS_PREFIX");
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     DELETE FROM webhook_idempotency
      WHERE source = ${source} AND idempotency_key LIKE ${`${eventPrefix}%`}
     RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return rows.length;
 }
 
-export async function failWebhookEvent(
-  db: Database,
-  claim: WebhookEventClaim,
-): Promise<void> {
+export async function failWebhookEvent(db: Database, claim: WebhookEventClaim): Promise<void> {
   if (!claim.claimId) return;
   const delaySeconds = Math.min(300, 2 ** Math.min(claim.attemptCount ?? 1, 8));
   await db.execute(sql`

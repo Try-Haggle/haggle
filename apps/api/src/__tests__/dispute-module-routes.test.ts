@@ -1,5 +1,5 @@
-import Fastify, { type FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
+import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerDisputeModuleRoutes } from "../routes/dispute-modules.js";
 import { signDisputeModulePayload } from "../services/dispute-module-auth.service.js";
@@ -27,7 +27,11 @@ function body(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function headers(rawBody: Buffer, overrides: Record<string, string> = {}, path = "/modules/disputes/v1/cases/preview") {
+function headers(
+  rawBody: Buffer,
+  overrides: Record<string, string> = {},
+  path = "/modules/disputes/v1/cases/preview",
+) {
   const timestamp = new Date().toISOString();
   return {
     "content-type": "application/json",
@@ -92,11 +96,13 @@ function escalationBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function dbForModuleRoute(options: {
-  activeDispute?: ReturnType<typeof disputeRow>;
-  idempotencyRecord?: Record<string, unknown>;
-  insertError?: Error;
-} = {}) {
+function dbForModuleRoute(
+  options: {
+    activeDispute?: ReturnType<typeof disputeRow>;
+    idempotencyRecord?: Record<string, unknown>;
+    insertError?: Error;
+  } = {},
+) {
   const disputeCaseFindFirst = vi.fn();
   if (options.activeDispute) {
     disputeCaseFindFirst
@@ -111,32 +117,36 @@ function dbForModuleRoute(options: {
       if (options.insertError) throw options.insertError;
       if (Array.isArray(value)) return [];
       if ("eventId" in value) {
-        return [{
-          id: "outbox_1",
-          eventId: value.eventId,
-          platformId: value.platformId,
-          externalOrderId: value.externalOrderId,
-          disputeId: value.disputeId,
-          eventType: value.eventType,
-          payload: value.payload,
-          status: value.status ?? "PENDING",
-          attemptCount: 0,
-          nextAttemptAt: value.nextAttemptAt ?? new Date("2026-05-05T00:00:00.000Z"),
-          lastError: null,
-          deliveredAt: null,
-          createdAt: new Date("2026-05-05T00:00:00.000Z"),
-          updatedAt: new Date("2026-05-05T00:00:00.000Z"),
-        }];
+        return [
+          {
+            id: "outbox_1",
+            eventId: value.eventId,
+            platformId: value.platformId,
+            externalOrderId: value.externalOrderId,
+            disputeId: value.disputeId,
+            eventType: value.eventType,
+            payload: value.payload,
+            status: value.status ?? "PENDING",
+            attemptCount: 0,
+            nextAttemptAt: value.nextAttemptAt ?? new Date("2026-05-05T00:00:00.000Z"),
+            lastError: null,
+            deliveredAt: null,
+            createdAt: new Date("2026-05-05T00:00:00.000Z"),
+            updatedAt: new Date("2026-05-05T00:00:00.000Z"),
+          },
+        ];
       }
-      return [disputeRow({
-        id: value.id,
-        orderId: value.orderId,
-        reasonCode: value.reasonCode,
-        status: value.status,
-        openedBy: value.openedBy,
-        openedAt: value.openedAt,
-        metadata: value.metadata,
-      })];
+      return [
+        disputeRow({
+          id: value.id,
+          orderId: value.orderId,
+          reasonCode: value.reasonCode,
+          status: value.status,
+          openedBy: value.openedBy,
+          openedAt: value.openedAt,
+          metadata: value.metadata,
+        }),
+      ];
     }),
   }));
 
@@ -172,14 +182,10 @@ describe("dispute module routes", () => {
     delete process.env.DISPUTE_MODULE_PLATFORM_CONFIGS;
     delete process.env.DISPUTE_MODULE_PLATFORM_WEBHOOKS;
     app = Fastify();
-    app.addContentTypeParser(
-      "application/json",
-      { parseAs: "buffer" },
-      (request, raw, done) => {
-        (request as unknown as { rawBody: Buffer }).rawBody = raw as Buffer;
-        done(null, JSON.parse((raw as Buffer).toString("utf8")));
-      },
-    );
+    app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, raw, done) => {
+      (request as unknown as { rawBody: Buffer }).rawBody = raw as Buffer;
+      done(null, JSON.parse((raw as Buffer).toString("utf8")));
+    });
     registerDisputeModuleRoutes(app, {} as never);
     await app.ready();
   });
@@ -246,12 +252,16 @@ describe("dispute module routes", () => {
   });
 
   it("rejects client-supplied module config", async () => {
-    const rawBody = Buffer.from(JSON.stringify(body({
-      config: {
-        tier2_rate: 0.001,
-        tier2_min_cents: 1,
-      },
-    })));
+    const rawBody = Buffer.from(
+      JSON.stringify(
+        body({
+          config: {
+            tier2_rate: 0.001,
+            tier2_min_cents: 1,
+          },
+        }),
+      ),
+    );
     const res = await app.inject({
       method: "POST",
       url: "/modules/disputes/v1/cases/preview",
@@ -331,12 +341,16 @@ describe("dispute module routes", () => {
   });
 
   it("rejects platform id mismatch between signature and transaction", async () => {
-    const rawBody = Buffer.from(JSON.stringify(body({
-      transaction: {
-        ...body().transaction,
-        platform_id: "platform_2",
-      },
-    })));
+    const rawBody = Buffer.from(
+      JSON.stringify(
+        body({
+          transaction: {
+            ...body().transaction,
+            platform_id: "platform_2",
+          },
+        }),
+      ),
+    );
     const res = await app.inject({
       method: "POST",
       url: "/modules/disputes/v1/cases/preview",
@@ -379,39 +393,45 @@ describe("dispute module routes", () => {
       idempotent: false,
       dispute: {
         opened_by: "buyer",
-          metadata: {
-            source: "dispute_module_api",
-            tier: 1,
-            platform_id: "platform_1",
-            external_order_id: "order_ext_1",
-            idempotency_key: "idem_route_123",
+        metadata: {
+          source: "dispute_module_api",
+          tier: 1,
+          platform_id: "platform_1",
+          external_order_id: "order_ext_1",
+          idempotency_key: "idem_route_123",
           request_fingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
         },
       },
     });
     expect(res.json().dispute.order_id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
-      openedBy: "buyer",
-      metadata: expect.objectContaining({
-        transaction_snapshot: expect.objectContaining({ external_order_id: "order_ext_1" }),
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openedBy: "buyer",
+        metadata: expect.objectContaining({
+          transaction_snapshot: expect.objectContaining({ external_order_id: "order_ext_1" }),
+        }),
       }),
-    }));
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
-      platformId: "platform_1",
-      idempotencyKey: "idem_route_123",
-      requestFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
-    }));
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: expect.stringMatching(/^evt_[0-9a-f]{32}$/),
-      platformId: "platform_1",
-      externalOrderId: "order_ext_1",
-      eventType: "dispute.case.created",
-      payload: expect.objectContaining({
-        type: "dispute.case.created",
-        platform_id: "platform_1",
-        external_order_id: "order_ext_1",
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platformId: "platform_1",
+        idempotencyKey: "idem_route_123",
+        requestFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       }),
-    }));
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^evt_[0-9a-f]{32}$/),
+        platformId: "platform_1",
+        externalOrderId: "order_ext_1",
+        eventType: "dispute.case.created",
+        payload: expect.objectContaining({
+          type: "dispute.case.created",
+          platform_id: "platform_1",
+          external_order_id: "order_ext_1",
+        }),
+      }),
+    );
 
     await localApp.close();
   });
@@ -422,7 +442,8 @@ describe("dispute module routes", () => {
         id: "idem_1",
         platformId: "platform_1",
         idempotencyKey: "idem_route_123",
-        requestFingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        requestFingerprint:
+          "sha256:0000000000000000000000000000000000000000000000000000000000000000",
         disputeId: "11111111-1111-5111-9111-111111111111",
         createdAt: new Date("2026-05-05T00:00:00.000Z"),
       },
@@ -439,12 +460,16 @@ describe("dispute module routes", () => {
     registerDisputeModuleRoutes(localApp, db as never);
     await localApp.ready();
 
-    const rawBody = Buffer.from(JSON.stringify(body({
-      transaction: {
-        ...body().transaction,
-        external_order_id: "order_ext_2",
-      },
-    })));
+    const rawBody = Buffer.from(
+      JSON.stringify(
+        body({
+          transaction: {
+            ...body().transaction,
+            external_order_id: "order_ext_2",
+          },
+        }),
+      ),
+    );
     const res = await localApp.inject({
       method: "POST",
       url: "/modules/disputes/v1/cases",
@@ -564,7 +589,8 @@ describe("dispute module routes", () => {
     registerDisputeModuleRoutes(localApp, db as never);
     await localApp.ready();
 
-    const path = "/modules/disputes/v1/cases/11111111-1111-5111-9111-111111111111/escalations/preview";
+    const path =
+      "/modules/disputes/v1/cases/11111111-1111-5111-9111-111111111111/escalations/preview";
     const rawBody = Buffer.from(JSON.stringify(escalationBody()));
     const res = await localApp.inject({
       method: "POST",
@@ -642,30 +668,34 @@ describe("dispute module routes", () => {
         },
       },
     });
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
-      platformId: "platform_1",
-      idempotencyKey: "idem_route_123",
-      requestFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
-      disputeId: "11111111-1111-5111-9111-111111111111",
-    }));
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: expect.stringMatching(/^evt_[0-9a-f]{32}$/),
-      platformId: "platform_1",
-      externalOrderId: "order_ext_1",
-      eventType: "dispute.case.escalated",
-      payload: expect.objectContaining({
-        type: "dispute.case.escalated",
-        platform_id: "platform_1",
-        external_order_id: "order_ext_1",
-        data: expect.objectContaining({
-          previous_tier: 1,
-          new_tier: 2,
-          requested_by_role: "buyer",
-          cost: expect.objectContaining({ tier: 2, cost_cents: 1_200 }),
-          seller_deposit_requirement: expect.objectContaining({ amount_cents: 50_000 }),
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platformId: "platform_1",
+        idempotencyKey: "idem_route_123",
+        requestFingerprint: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        disputeId: "11111111-1111-5111-9111-111111111111",
+      }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: expect.stringMatching(/^evt_[0-9a-f]{32}$/),
+        platformId: "platform_1",
+        externalOrderId: "order_ext_1",
+        eventType: "dispute.case.escalated",
+        payload: expect.objectContaining({
+          type: "dispute.case.escalated",
+          platform_id: "platform_1",
+          external_order_id: "order_ext_1",
+          data: expect.objectContaining({
+            previous_tier: 1,
+            new_tier: 2,
+            requested_by_role: "buyer",
+            cost: expect.objectContaining({ tier: 2, cost_cents: 1_200 }),
+            seller_deposit_requirement: expect.objectContaining({ amount_cents: 50_000 }),
+          }),
         }),
       }),
-    }));
+    );
 
     await localApp.close();
   });

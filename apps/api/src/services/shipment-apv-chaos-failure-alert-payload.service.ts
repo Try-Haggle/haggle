@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvChaosFailureAlertPreview } from
-  "./shipment-apv-chaos-failure-alert-preview.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvChaosFailureAlertPreview } from "./shipment-apv-chaos-failure-alert-preview.service.js";
 
 type Payload = {
   schema_version: "shipment-apv-failure-alert-payload-v1";
@@ -85,14 +84,19 @@ function publicOutbox(row: OutboxRow) {
   };
 }
 
-function outboxMatches(row: OutboxRow, input: {
-  clientOutboxId: string;
-  deliveryGrantId: string;
-  createdBy: string;
-}) {
-  return String(row.client_outbox_id) === input.clientOutboxId
-    && String(row.delivery_grant_id) === input.deliveryGrantId
-    && String(row.created_by) === input.createdBy;
+function outboxMatches(
+  row: OutboxRow,
+  input: {
+    clientOutboxId: string;
+    deliveryGrantId: string;
+    createdBy: string;
+  },
+) {
+  return (
+    String(row.client_outbox_id) === input.clientOutboxId &&
+    String(row.delivery_grant_id) === input.deliveryGrantId &&
+    String(row.created_by) === input.createdBy
+  );
 }
 
 function outboxFromBinding(row: BindingRow): OutboxRow | null {
@@ -160,8 +164,11 @@ export async function createShipmentApvFailureAlertPayloadOutbox(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_COOLDOWN_EXPIRED");
   }
   const preview = await getShipmentApvChaosFailureAlertPreview(db, now);
-  if (preview.action === "none" || !preview.approval.required
-    || preview.stateFingerprint !== String(binding.state_fingerprint)) {
+  if (
+    preview.action === "none" ||
+    !preview.approval.required ||
+    preview.stateFingerprint !== String(binding.state_fingerprint)
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_STATE_CHANGED");
   }
   const payload: Payload = {

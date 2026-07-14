@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
 import type { Database } from "@haggle/db";
 import {
-  runConditionalSettlementPreflight,
-  validateConditionalSettlementPreflightConfig,
   type ConditionalSettlementPreflightConfig,
   type ConditionalSettlementPreflightResult,
+  runConditionalSettlementPreflight,
+  validateConditionalSettlementPreflightConfig,
 } from "../services/conditional-settlement-preflight.service.js";
 import {
-  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SOURCE,
   assertConditionalSettlementPreflightAlertTimingSafe,
+  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SOURCE,
+  type ConditionalSettlementPreflightAlertConfig,
+  type ConditionalSettlementPreflightAlertSnapshot,
   evaluateConditionalSettlementPreflightAlert,
   findLatestDeliveredConditionalSettlementPreflightIncident,
   resolveConditionalSettlementPreflightAlertConfigFromEnv,
   sendConditionalSettlementPreflightAlert,
-  type ConditionalSettlementPreflightAlertConfig,
-  type ConditionalSettlementPreflightAlertSnapshot,
 } from "../services/conditional-settlement-preflight-alert.service.js";
 import {
   claimWebhookEvent,
@@ -26,17 +26,25 @@ import {
 const NON_ZERO_ADDRESS = /^0x(?!0{40}$)[0-9a-fA-F]{40}$/;
 
 function fullConfigBlockers(probeBlockers: string[]): string[] {
-  return [...new Set([
-    ...(process.env.HAGGLE_X402_MODE === "real" ? [] : ["x402_real_mode"]),
-    ...probeBlockers,
-    ...(NON_ZERO_ADDRESS.test(process.env.HAGGLE_X402_FEE_WALLET ?? "") ? [] : ["fee_wallet_address"]),
-  ])].sort();
+  return [
+    ...new Set([
+      ...(process.env.HAGGLE_X402_MODE === "real" ? [] : ["x402_real_mode"]),
+      ...probeBlockers,
+      ...(NON_ZERO_ADDRESS.test(process.env.HAGGLE_X402_FEE_WALLET ?? "")
+        ? []
+        : ["fee_wallet_address"]),
+    ]),
+  ].sort();
 }
 
-export async function collectConditionalSettlementPreflightAlertSnapshot(options: {
-  runProbe?: (config: ConditionalSettlementPreflightConfig) => Promise<ConditionalSettlementPreflightResult>;
-  now?: Date;
-} = {}): Promise<ConditionalSettlementPreflightAlertSnapshot> {
+export async function collectConditionalSettlementPreflightAlertSnapshot(
+  options: {
+    runProbe?: (
+      config: ConditionalSettlementPreflightConfig,
+    ) => Promise<ConditionalSettlementPreflightResult>;
+    now?: Date;
+  } = {},
+): Promise<ConditionalSettlementPreflightAlertSnapshot> {
   const network = process.env.HAGGLE_X402_NETWORK ?? "base-sepolia";
   const validation = validateConditionalSettlementPreflightConfig({
     network,
@@ -83,14 +91,19 @@ export async function collectConditionalSettlementPreflightAlertSnapshot(options
   };
 }
 
-export async function runConditionalSettlementPreflightAlert(db: Database, options: {
-  now?: Date;
-  fetchImpl?: typeof fetch;
-  config?: ConditionalSettlementPreflightAlertConfig;
-  claimSource?: string;
-  runProbe?: (config: ConditionalSettlementPreflightConfig) => Promise<ConditionalSettlementPreflightResult>;
-  collectSnapshot?: (now: Date) => Promise<ConditionalSettlementPreflightAlertSnapshot>;
-} = {}) {
+export async function runConditionalSettlementPreflightAlert(
+  db: Database,
+  options: {
+    now?: Date;
+    fetchImpl?: typeof fetch;
+    config?: ConditionalSettlementPreflightAlertConfig;
+    claimSource?: string;
+    runProbe?: (
+      config: ConditionalSettlementPreflightConfig,
+    ) => Promise<ConditionalSettlementPreflightResult>;
+    collectSnapshot?: (now: Date) => Promise<ConditionalSettlementPreflightAlertSnapshot>;
+  } = {},
+) {
   const config = options.config ?? resolveConditionalSettlementPreflightAlertConfigFromEnv();
   if (!config) return { status: "skipped" as const, reason: "not_configured" as const };
   assertConditionalSettlementPreflightAlertTimingSafe(config.timeoutMs);
@@ -102,8 +115,17 @@ export async function runConditionalSettlementPreflightAlert(db: Database, optio
   const assessment = evaluateConditionalSettlementPreflightAlert(snapshot);
 
   if (!assessment.wouldAlert) {
-    const incident = await findLatestDeliveredConditionalSettlementPreflightIncident(db, claimSource);
-    if (!incident) return { status: "skipped" as const, reason: "healthy_no_delivered_incident" as const, snapshot, assessment };
+    const incident = await findLatestDeliveredConditionalSettlementPreflightIncident(
+      db,
+      claimSource,
+    );
+    if (!incident)
+      return {
+        status: "skipped" as const,
+        reason: "healthy_no_delivered_incident" as const,
+        snapshot,
+        assessment,
+      };
     const recoveryKey = `recovered:${incident.eventId}`;
     const claim = await claimWebhookEvent(db, {
       source: claimSource,
@@ -111,14 +133,19 @@ export async function runConditionalSettlementPreflightAlert(db: Database, optio
       payloadSha256: webhookPayloadSha256(recoveryKey),
     });
     if (claim.outcome !== "acquired") {
-      const reason = claim.outcome === "retry_later"
-        ? "recovery_retry_backoff" as const
-        : claim.outcome === "payload_conflict"
-          ? "recovery_claim_payload_conflict" as const
-          : "recovery_already_sent_or_in_progress" as const;
+      const reason =
+        claim.outcome === "retry_later"
+          ? ("recovery_retry_backoff" as const)
+          : claim.outcome === "payload_conflict"
+            ? ("recovery_claim_payload_conflict" as const)
+            : ("recovery_already_sent_or_in_progress" as const);
       return { status: "skipped" as const, reason, snapshot, assessment };
     }
-    const recovery = { wouldAlert: true, severity: "recovery" as const, reasons: ["conditional_settlement_preflight_recovered"] };
+    const recovery = {
+      wouldAlert: true,
+      severity: "recovery" as const,
+      reasons: ["conditional_settlement_preflight_recovered"],
+    };
     try {
       const alert = await sendConditionalSettlementPreflightAlert(snapshot, recovery, {
         config,
@@ -131,7 +158,13 @@ export async function runConditionalSettlementPreflightAlert(db: Database, optio
         return { status: "recovered" as const, snapshot, assessment: recovery, alert };
       }
       await failWebhookEvent(db, claim);
-      return { status: "failed" as const, phase: "recovery" as const, snapshot, assessment: recovery, alert };
+      return {
+        status: "failed" as const,
+        phase: "recovery" as const,
+        snapshot,
+        assessment: recovery,
+        alert,
+      };
     } catch (error) {
       await failWebhookEvent(db, claim);
       throw error;
@@ -146,11 +179,12 @@ export async function runConditionalSettlementPreflightAlert(db: Database, optio
     payloadSha256: webhookPayloadSha256(cooldownKey),
   });
   if (claim.outcome !== "acquired") {
-    const reason = claim.outcome === "retry_later"
-      ? "delivery_retry_backoff" as const
-      : claim.outcome === "payload_conflict"
-        ? "delivery_claim_payload_conflict" as const
-        : "cooldown_or_in_progress" as const;
+    const reason =
+      claim.outcome === "retry_later"
+        ? ("delivery_retry_backoff" as const)
+        : claim.outcome === "payload_conflict"
+          ? ("delivery_claim_payload_conflict" as const)
+          : ("cooldown_or_in_progress" as const);
     return { status: "skipped" as const, reason, snapshot, assessment };
   }
   try {

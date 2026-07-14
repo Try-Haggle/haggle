@@ -6,7 +6,7 @@
  * this so audit trails are consistent.
  */
 
-import { type Database, adminActionLog } from "@haggle/db";
+import { adminActionLog, type Database } from "@haggle/db";
 
 export type AdminActionType =
   | "tag.approve"

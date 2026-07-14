@@ -12,11 +12,7 @@ export type PaymentIntentStatus =
   | "FAILED"
   | "CANCELED";
 
-export type RefundStatus =
-  | "REQUESTED"
-  | "PENDING"
-  | "COMPLETED"
-  | "FAILED";
+export type RefundStatus = "REQUESTED" | "PENDING" | "COMPLETED" | "FAILED";
 
 export interface Money {
   currency: string;

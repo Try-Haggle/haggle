@@ -10,7 +10,7 @@
  */
 
 /** Preset IDs. */
-export type NegotiationPresetId = "hunter" | "closer" | "verifier" | "balancer";
+export type NegotiationAgentPresetId = "hunter" | "closer" | "verifier" | "balancer";
 
 /** 4D negotiation weight vector. Components sum to 1.0. */
 export interface NegotiationWeights {
@@ -25,7 +25,7 @@ export interface NegotiationWeights {
 }
 
 /** Role-aware copy for one preset / one role. */
-export interface NegotiationPresetCopy {
+export interface NegotiationAgentPresetCopy {
   /** English primary name shown in the card. */
   name: string;
   /** Korean subname rendered next to or below the English name. */
@@ -44,8 +44,8 @@ export interface NegotiationPresetCopy {
  * cross_pressure_sensitivity) stay neutral across presets; w_info is derived
  * from w_rep. See docs/wip/engine-params-and-preset-fields-2026-05-12.html.
  */
-export interface NegotiationPreset {
-  id: NegotiationPresetId;
+export interface NegotiationAgentPreset {
+  id: NegotiationAgentPresetId;
   emoji: string;
   /** Tailwind-friendly accent color (hex). */
   accentColor: string;
@@ -83,10 +83,10 @@ export interface NegotiationPreset {
 
   /** Role-aware display copy. */
   copy: {
-    buyer: NegotiationPresetCopy;
-    seller: NegotiationPresetCopy;
+    buyer: NegotiationAgentPresetCopy;
+    seller: NegotiationAgentPresetCopy;
   };
 }
 
 /** Default preset selected when nothing is chosen. */
-export const DEFAULT_NEGOTIATION_PRESET_ID: NegotiationPresetId = "balancer";
+export const DEFAULT_NEGOTIATION_AGENT_PRESET_ID: NegotiationAgentPresetId = "balancer";

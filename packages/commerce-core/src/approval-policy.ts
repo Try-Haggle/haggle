@@ -1,6 +1,4 @@
-export type SellerApprovalMode =
-  | "AUTO_WITHIN_POLICY"
-  | "MANUAL_CONFIRMATION";
+export type SellerApprovalMode = "AUTO_WITHIN_POLICY" | "MANUAL_CONFIRMATION";
 
 export interface FulfillmentSlaPolicy {
   /**

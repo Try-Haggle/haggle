@@ -10,5 +10,7 @@ export const paymentTestOperationLeases = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => ({ expiresIdx: index("payment_test_operation_leases_expires_idx").on(table.expiresAt) }),
+  (table) => ({
+    expiresIdx: index("payment_test_operation_leases_expires_idx").on(table.expiresAt),
+  }),
 );

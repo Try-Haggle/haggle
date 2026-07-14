@@ -1,20 +1,17 @@
-import { describe, it, expect } from "vitest";
-import { checkHoldExpiration } from "../hold-expiration.js";
-import { determineNextAction, computeOrderPhase } from "../order-lifecycle.js";
+import { describe, expect, it } from "vitest";
+import type { HoldSnapshot } from "../approval-policy.js";
+import { validateMinimumTransaction } from "../approval-policy.js";
 import { transitionApprovalState } from "../approval-state-machine.js";
-import {
-  resolveTrustPenaltyReason,
-  trustPenaltyScore,
-  computeSettlementReliability,
-} from "../trust-policy.js";
+import { checkHoldExpiration } from "../hold-expiration.js";
+import { computeCompetitivePressure, inferPressureDirection } from "../market-pressure.js";
+import type { OrderState } from "../order-lifecycle.js";
+import { computeOrderPhase, determineNextAction } from "../order-lifecycle.js";
 import type { TrustTriggerEvent } from "../trust-policy.js";
 import {
-  computeCompetitivePressure,
-  inferPressureDirection,
-} from "../market-pressure.js";
-import { validateMinimumTransaction } from "../approval-policy.js";
-import type { HoldSnapshot } from "../approval-policy.js";
-import type { OrderState } from "../order-lifecycle.js";
+  computeSettlementReliability,
+  resolveTrustPenaltyReason,
+  trustPenaltyScore,
+} from "../trust-policy.js";
 
 // ---------------------------------------------------------------------------
 // Hold Expiration
@@ -198,12 +195,20 @@ describe("determineNextAction", () => {
   });
 
   it("DELIVERY phase with DELIVERED and pending product release returns start_buyer_review", () => {
-    const state: OrderState = { phase: "DELIVERY", shipment_status: "DELIVERED", product_release_status: "PENDING_DELIVERY" };
+    const state: OrderState = {
+      phase: "DELIVERY",
+      shipment_status: "DELIVERED",
+      product_release_status: "PENDING_DELIVERY",
+    };
     expect(determineNextAction(state)).toEqual({ type: "start_buyer_review" });
   });
 
   it("DELIVERY phase with DELIVERED and BUYER_REVIEW returns release_product_payment", () => {
-    const state: OrderState = { phase: "DELIVERY", shipment_status: "DELIVERED", product_release_status: "BUYER_REVIEW" };
+    const state: OrderState = {
+      phase: "DELIVERY",
+      shipment_status: "DELIVERED",
+      product_release_status: "BUYER_REVIEW",
+    };
     expect(determineNextAction(state)).toEqual({ type: "release_product_payment" });
   });
 
@@ -267,27 +272,27 @@ describe("computeOrderPhase", () => {
   });
 
   it("returns PAYMENT when payment is AUTHORIZED", () => {
-    expect(
-      computeOrderPhase({ approval_state: "APPROVED", payment_status: "AUTHORIZED" }),
-    ).toBe("PAYMENT");
+    expect(computeOrderPhase({ approval_state: "APPROVED", payment_status: "AUTHORIZED" })).toBe(
+      "PAYMENT",
+    );
   });
 
   it("returns PAYMENT when payment is PENDING", () => {
-    expect(
-      computeOrderPhase({ approval_state: "APPROVED", payment_status: "PENDING" }),
-    ).toBe("PAYMENT");
+    expect(computeOrderPhase({ approval_state: "APPROVED", payment_status: "PENDING" })).toBe(
+      "PAYMENT",
+    );
   });
 
   it("returns FULFILLMENT when payment is SETTLED and no shipment", () => {
-    expect(
-      computeOrderPhase({ approval_state: "APPROVED", payment_status: "SETTLED" }),
-    ).toBe("FULFILLMENT");
+    expect(computeOrderPhase({ approval_state: "APPROVED", payment_status: "SETTLED" })).toBe(
+      "FULFILLMENT",
+    );
   });
 
   it("returns FULFILLMENT when shipment is LABEL_CREATED", () => {
-    expect(
-      computeOrderPhase({ payment_status: "SETTLED", shipment_status: "LABEL_CREATED" }),
-    ).toBe("FULFILLMENT");
+    expect(computeOrderPhase({ payment_status: "SETTLED", shipment_status: "LABEL_CREATED" })).toBe(
+      "FULFILLMENT",
+    );
   });
 
   it("returns FULFILLMENT when shipment is PENDING_PICKUP", () => {
@@ -297,15 +302,15 @@ describe("computeOrderPhase", () => {
   });
 
   it("returns FULFILLMENT when shipment SLA is missed", () => {
-    expect(
-      computeOrderPhase({ payment_status: "SETTLED", shipment_status: "SLA_MISSED" }),
-    ).toBe("FULFILLMENT");
+    expect(computeOrderPhase({ payment_status: "SETTLED", shipment_status: "SLA_MISSED" })).toBe(
+      "FULFILLMENT",
+    );
   });
 
   it("returns DELIVERY when shipment is IN_TRANSIT", () => {
-    expect(
-      computeOrderPhase({ payment_status: "SETTLED", shipment_status: "IN_TRANSIT" }),
-    ).toBe("DELIVERY");
+    expect(computeOrderPhase({ payment_status: "SETTLED", shipment_status: "IN_TRANSIT" })).toBe(
+      "DELIVERY",
+    );
   });
 
   it("returns DELIVERY when shipment is OUT_FOR_DELIVERY", () => {
@@ -321,57 +326,43 @@ describe("computeOrderPhase", () => {
   });
 
   it("returns COMPLETED when shipment is DELIVERED", () => {
-    expect(
-      computeOrderPhase({ payment_status: "SETTLED", shipment_status: "DELIVERED" }),
-    ).toBe("COMPLETED");
+    expect(computeOrderPhase({ payment_status: "SETTLED", shipment_status: "DELIVERED" })).toBe(
+      "COMPLETED",
+    );
   });
 
   it("returns IN_DISPUTE when dispute is OPEN", () => {
-    expect(
-      computeOrderPhase({ payment_status: "SETTLED", dispute_status: "OPEN" }),
-    ).toBe("IN_DISPUTE");
+    expect(computeOrderPhase({ payment_status: "SETTLED", dispute_status: "OPEN" })).toBe(
+      "IN_DISPUTE",
+    );
   });
 
   it("returns IN_DISPUTE when dispute is UNDER_REVIEW", () => {
-    expect(
-      computeOrderPhase({ dispute_status: "UNDER_REVIEW" }),
-    ).toBe("IN_DISPUTE");
+    expect(computeOrderPhase({ dispute_status: "UNDER_REVIEW" })).toBe("IN_DISPUTE");
   });
 
   it("returns REFUNDED when dispute resolved with refund", () => {
-    expect(
-      computeOrderPhase({ dispute_status: "RESOLVED_REFUND" }),
-    ).toBe("REFUNDED");
+    expect(computeOrderPhase({ dispute_status: "RESOLVED_REFUND" })).toBe("REFUNDED");
   });
 
   it("returns COMPLETED when dispute resolved without refund", () => {
-    expect(
-      computeOrderPhase({ dispute_status: "RESOLVED_NO_REFUND" }),
-    ).toBe("COMPLETED");
+    expect(computeOrderPhase({ dispute_status: "RESOLVED_NO_REFUND" })).toBe("COMPLETED");
   });
 
   it("returns REFUNDED when payment is REFUNDED", () => {
-    expect(
-      computeOrderPhase({ payment_status: "REFUNDED" }),
-    ).toBe("REFUNDED");
+    expect(computeOrderPhase({ payment_status: "REFUNDED" })).toBe("REFUNDED");
   });
 
   it("returns CANCELED when approval DECLINED and no payment", () => {
-    expect(
-      computeOrderPhase({ approval_state: "DECLINED" }),
-    ).toBe("CANCELED");
+    expect(computeOrderPhase({ approval_state: "DECLINED" })).toBe("CANCELED");
   });
 
   it("returns CANCELED when approval EXPIRED and no payment", () => {
-    expect(
-      computeOrderPhase({ approval_state: "EXPIRED" }),
-    ).toBe("CANCELED");
+    expect(computeOrderPhase({ approval_state: "EXPIRED" })).toBe("CANCELED");
   });
 
   it("returns CANCELED when payment is CANCELED", () => {
-    expect(
-      computeOrderPhase({ payment_status: "CANCELED" }),
-    ).toBe("CANCELED");
+    expect(computeOrderPhase({ payment_status: "CANCELED" })).toBe("CANCELED");
   });
 
   it("dispute overrides shipment status", () => {
@@ -394,35 +385,43 @@ describe("computeOrderPhase", () => {
   });
 
   it("stays in DELIVERY when delivered but product not released", () => {
-    expect(computeOrderPhase({
-      payment_status: "SETTLED",
-      shipment_status: "DELIVERED",
-      product_release_status: "PENDING_DELIVERY",
-    })).toBe("DELIVERY");
+    expect(
+      computeOrderPhase({
+        payment_status: "SETTLED",
+        shipment_status: "DELIVERED",
+        product_release_status: "PENDING_DELIVERY",
+      }),
+    ).toBe("DELIVERY");
   });
 
   it("stays in DELIVERY during buyer review", () => {
-    expect(computeOrderPhase({
-      payment_status: "SETTLED",
-      shipment_status: "DELIVERED",
-      product_release_status: "BUYER_REVIEW",
-    })).toBe("DELIVERY");
+    expect(
+      computeOrderPhase({
+        payment_status: "SETTLED",
+        shipment_status: "DELIVERED",
+        product_release_status: "BUYER_REVIEW",
+      }),
+    ).toBe("DELIVERY");
   });
 
   it("COMPLETED when product released (even if buffer still held)", () => {
-    expect(computeOrderPhase({
-      payment_status: "SETTLED",
-      shipment_status: "DELIVERED",
-      product_release_status: "RELEASED",
-      buffer_release_status: "HELD",
-    })).toBe("COMPLETED");
+    expect(
+      computeOrderPhase({
+        payment_status: "SETTLED",
+        shipment_status: "DELIVERED",
+        product_release_status: "RELEASED",
+        buffer_release_status: "HELD",
+      }),
+    ).toBe("COMPLETED");
   });
 
   it("backward compat: COMPLETED when delivered without release status", () => {
-    expect(computeOrderPhase({
-      payment_status: "SETTLED",
-      shipment_status: "DELIVERED",
-    })).toBe("COMPLETED");
+    expect(
+      computeOrderPhase({
+        payment_status: "SETTLED",
+        shipment_status: "DELIVERED",
+      }),
+    ).toBe("COMPLETED");
   });
 });
 
@@ -434,7 +433,9 @@ describe("transitionApprovalState", () => {
     const mode = "AUTO_WITHIN_POLICY" as const;
 
     it("NEGOTIATING → reach_candidate → MUTUALLY_ACCEPTABLE", () => {
-      expect(transitionApprovalState(mode, "NEGOTIATING", "reach_candidate")).toBe("MUTUALLY_ACCEPTABLE");
+      expect(transitionApprovalState(mode, "NEGOTIATING", "reach_candidate")).toBe(
+        "MUTUALLY_ACCEPTABLE",
+      );
     });
 
     it("NEGOTIATING → decline → DECLINED", () => {
@@ -446,19 +447,27 @@ describe("transitionApprovalState", () => {
     });
 
     it("MUTUALLY_ACCEPTABLE → buyer_approve → APPROVED (auto)", () => {
-      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "buyer_approve")).toBe("APPROVED");
+      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "buyer_approve")).toBe(
+        "APPROVED",
+      );
     });
 
     it("MUTUALLY_ACCEPTABLE → buyer_hold → HELD_BY_BUYER", () => {
-      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "buyer_hold")).toBe("HELD_BY_BUYER");
+      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "buyer_hold")).toBe(
+        "HELD_BY_BUYER",
+      );
     });
 
     it("MUTUALLY_ACCEPTABLE → seller_reserve → RESERVED_PENDING_APPROVAL", () => {
-      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "seller_reserve")).toBe("RESERVED_PENDING_APPROVAL");
+      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "seller_reserve")).toBe(
+        "RESERVED_PENDING_APPROVAL",
+      );
     });
 
     it("HELD_BY_BUYER → resume_negotiation → NEGOTIATING", () => {
-      expect(transitionApprovalState(mode, "HELD_BY_BUYER", "resume_negotiation")).toBe("NEGOTIATING");
+      expect(transitionApprovalState(mode, "HELD_BY_BUYER", "resume_negotiation")).toBe(
+        "NEGOTIATING",
+      );
     });
 
     it("HELD_BY_BUYER → buyer_approve → APPROVED (auto)", () => {
@@ -466,11 +475,15 @@ describe("transitionApprovalState", () => {
     });
 
     it("RESERVED_PENDING_APPROVAL → buyer_approve → APPROVED (auto)", () => {
-      expect(transitionApprovalState(mode, "RESERVED_PENDING_APPROVAL", "buyer_approve")).toBe("APPROVED");
+      expect(transitionApprovalState(mode, "RESERVED_PENDING_APPROVAL", "buyer_approve")).toBe(
+        "APPROVED",
+      );
     });
 
     it("RESERVED_PENDING_APPROVAL → resume_negotiation → NEGOTIATING", () => {
-      expect(transitionApprovalState(mode, "RESERVED_PENDING_APPROVAL", "resume_negotiation")).toBe("NEGOTIATING");
+      expect(transitionApprovalState(mode, "RESERVED_PENDING_APPROVAL", "resume_negotiation")).toBe(
+        "NEGOTIATING",
+      );
     });
 
     it("terminal states return null", () => {
@@ -480,7 +493,9 @@ describe("transitionApprovalState", () => {
     });
 
     it("AWAITING_SELLER_APPROVAL is unreachable in AUTO mode", () => {
-      expect(transitionApprovalState(mode, "AWAITING_SELLER_APPROVAL", "seller_approve")).toBeNull();
+      expect(
+        transitionApprovalState(mode, "AWAITING_SELLER_APPROVAL", "seller_approve"),
+      ).toBeNull();
     });
 
     it("invalid events return null", () => {
@@ -493,11 +508,15 @@ describe("transitionApprovalState", () => {
     const mode = "MANUAL_CONFIRMATION" as const;
 
     it("MUTUALLY_ACCEPTABLE → buyer_approve → AWAITING_SELLER_APPROVAL (not direct APPROVED)", () => {
-      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "buyer_approve")).toBe("AWAITING_SELLER_APPROVAL");
+      expect(transitionApprovalState(mode, "MUTUALLY_ACCEPTABLE", "buyer_approve")).toBe(
+        "AWAITING_SELLER_APPROVAL",
+      );
     });
 
     it("AWAITING_SELLER_APPROVAL → seller_approve → APPROVED", () => {
-      expect(transitionApprovalState(mode, "AWAITING_SELLER_APPROVAL", "seller_approve")).toBe("APPROVED");
+      expect(transitionApprovalState(mode, "AWAITING_SELLER_APPROVAL", "seller_approve")).toBe(
+        "APPROVED",
+      );
     });
 
     it("AWAITING_SELLER_APPROVAL → decline → DECLINED", () => {
@@ -509,11 +528,15 @@ describe("transitionApprovalState", () => {
     });
 
     it("HELD_BY_BUYER → buyer_approve → AWAITING_SELLER_APPROVAL (manual)", () => {
-      expect(transitionApprovalState(mode, "HELD_BY_BUYER", "buyer_approve")).toBe("AWAITING_SELLER_APPROVAL");
+      expect(transitionApprovalState(mode, "HELD_BY_BUYER", "buyer_approve")).toBe(
+        "AWAITING_SELLER_APPROVAL",
+      );
     });
 
     it("RESERVED_PENDING_APPROVAL → buyer_approve → AWAITING_SELLER_APPROVAL (manual)", () => {
-      expect(transitionApprovalState(mode, "RESERVED_PENDING_APPROVAL", "buyer_approve")).toBe("AWAITING_SELLER_APPROVAL");
+      expect(transitionApprovalState(mode, "RESERVED_PENDING_APPROVAL", "buyer_approve")).toBe(
+        "AWAITING_SELLER_APPROVAL",
+      );
     });
 
     it("terminal states return null", () => {
@@ -529,29 +552,49 @@ describe("transitionApprovalState", () => {
 // ---------------------------------------------------------------------------
 describe("resolveTrustPenaltyReason", () => {
   it("maps buyer_approved_but_not_paid", () => {
-    const event: TrustTriggerEvent = { module: "payment", actor_role: "buyer", type: "buyer_approved_but_not_paid" };
+    const event: TrustTriggerEvent = {
+      module: "payment",
+      actor_role: "buyer",
+      type: "buyer_approved_but_not_paid",
+    };
     expect(resolveTrustPenaltyReason(event)).toBe("BUYER_APPROVED_BUT_NOT_PAID");
   });
 
   it("maps seller_approved_but_not_fulfilled", () => {
-    const event: TrustTriggerEvent = { module: "shipping", actor_role: "seller", type: "seller_approved_but_not_fulfilled" };
+    const event: TrustTriggerEvent = {
+      module: "shipping",
+      actor_role: "seller",
+      type: "seller_approved_but_not_fulfilled",
+    };
     expect(resolveTrustPenaltyReason(event)).toBe("SELLER_APPROVED_BUT_NOT_FULFILLED");
   });
 
   it("maps shipment_input_sla_missed", () => {
-    const event: TrustTriggerEvent = { module: "shipping", actor_role: "seller", type: "shipment_input_sla_missed" };
+    const event: TrustTriggerEvent = {
+      module: "shipping",
+      actor_role: "seller",
+      type: "shipment_input_sla_missed",
+    };
     expect(resolveTrustPenaltyReason(event)).toBe("SHIPMENT_INFO_SLA_MISSED");
   });
 
   it("maps dispute_loss", () => {
-    const event: TrustTriggerEvent = { module: "dispute", actor_role: "seller", type: "dispute_loss" };
+    const event: TrustTriggerEvent = {
+      module: "dispute",
+      actor_role: "seller",
+      type: "dispute_loss",
+    };
     expect(resolveTrustPenaltyReason(event)).toBe("DISPUTE_LOSS");
   });
 
   it("returns null for non-penalty events", () => {
     const win: TrustTriggerEvent = { module: "dispute", actor_role: "buyer", type: "dispute_win" };
     expect(resolveTrustPenaltyReason(win)).toBeNull();
-    const success: TrustTriggerEvent = { module: "payment", actor_role: "buyer", type: "successful_settlement" };
+    const success: TrustTriggerEvent = {
+      module: "payment",
+      actor_role: "buyer",
+      type: "successful_settlement",
+    };
     expect(resolveTrustPenaltyReason(success)).toBeNull();
   });
 });
@@ -578,25 +621,29 @@ describe("computeSettlementReliability", () => {
   const base = { actor_id: "user-1", actor_role: "seller" as const };
 
   it("returns 1.0 for perfect record", () => {
-    expect(computeSettlementReliability({
-      ...base,
-      successful_settlements: 10,
-      approval_defaults: 0,
-      shipment_sla_misses: 0,
-      dispute_wins: 0,
-      dispute_losses: 0,
-    })).toBe(1);
+    expect(
+      computeSettlementReliability({
+        ...base,
+        successful_settlements: 10,
+        approval_defaults: 0,
+        shipment_sla_misses: 0,
+        dispute_wins: 0,
+        dispute_losses: 0,
+      }),
+    ).toBe(1);
   });
 
   it("returns 1.0 for empty record", () => {
-    expect(computeSettlementReliability({
-      ...base,
-      successful_settlements: 0,
-      approval_defaults: 0,
-      shipment_sla_misses: 0,
-      dispute_wins: 0,
-      dispute_losses: 0,
-    })).toBe(1);
+    expect(
+      computeSettlementReliability({
+        ...base,
+        successful_settlements: 0,
+        approval_defaults: 0,
+        shipment_sla_misses: 0,
+        dispute_wins: 0,
+        dispute_losses: 0,
+      }),
+    ).toBe(1);
   });
 
   it("defaults reduce reliability", () => {

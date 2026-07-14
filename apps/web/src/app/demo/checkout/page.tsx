@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import CheckoutFlow from "../../(marketing)/demo/developer/_components/checkout-flow";
 
 function CheckoutInner() {
@@ -58,7 +58,17 @@ export default function CheckoutPage() {
       `}</style>
       <Suspense
         fallback={
-          <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f6f4ee", color: "#6b6b75", fontSize: 14 }}>
+          <div
+            style={{
+              minHeight: "100vh",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#f6f4ee",
+              color: "#6b6b75",
+              fontSize: 14,
+            }}
+          >
             Loading checkout...
           </div>
         }

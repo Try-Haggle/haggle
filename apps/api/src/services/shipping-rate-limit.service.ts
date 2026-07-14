@@ -1,4 +1,4 @@
-import { shippingRateLimitWindows, sql, type Database } from "@haggle/db";
+import { type Database, shippingRateLimitWindows, sql } from "@haggle/db";
 
 const WINDOW_MS = 60_000;
 
@@ -38,9 +38,10 @@ export async function consumeShippingRateMissBudget(
   if (!row) throw new Error("SHIPPING_RATE_LIMIT_COUNTER_NOT_RETURNED");
   return {
     allowed: row.requestCount <= limit,
-    retryAfterSeconds: row.requestCount <= limit
-      ? 0
-      : Math.max(1, Math.ceil((windowStartedAt.getTime() + WINDOW_MS - now.getTime()) / 1000)),
+    retryAfterSeconds:
+      row.requestCount <= limit
+        ? 0
+        : Math.max(1, Math.ceil((windowStartedAt.getTime() + WINDOW_MS - now.getTime()) / 1000)),
     requestCount: row.requestCount,
     windowStartedAt: row.windowStartedAt,
   };

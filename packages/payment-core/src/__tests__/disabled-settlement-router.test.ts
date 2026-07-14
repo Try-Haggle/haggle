@@ -44,7 +44,11 @@ describe("DisabledSettlementRouterContract", () => {
   });
 
   it("fails closed before server-side router execution", async () => {
-    const router = new DisabledSettlementRouterContract("base-sepolia", "USDC", "conditional settlement required");
+    const router = new DisabledSettlementRouterContract(
+      "base-sepolia",
+      "USDC",
+      "conditional settlement required",
+    );
 
     await expect(router.execute(makeExecutionRequest())).rejects.toThrow(
       "SETTLEMENT_ROUTER_EXECUTION_DISABLED:conditional settlement required",

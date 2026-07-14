@@ -12,21 +12,23 @@ function signedFixture() {
     disputeId: "11111111-1111-4111-8111-111111111111",
     generatedAt: new Date("2026-07-12T03:20:00.000Z"),
     privateKey,
-    events: [{
-      id: "event-1",
-      disputeId: "11111111-1111-4111-8111-111111111111",
-      eventType: "COMPLETED",
-      revision: 1,
-      evidenceSnapshotHash: "evidence-1",
-      policyVersion: "policy-1",
-      contextHash: "context-1",
-      requestedBy: "admin-1",
-      forced: false,
-      payload: { conclusion: "buyer_favor" },
-      createdAt: "2026-07-12T03:19:00.000Z",
-      previousEventHash: null,
-      eventHash: "event-hash-1",
-    }],
+    events: [
+      {
+        id: "event-1",
+        disputeId: "11111111-1111-4111-8111-111111111111",
+        eventType: "COMPLETED",
+        revision: 1,
+        evidenceSnapshotHash: "evidence-1",
+        policyVersion: "policy-1",
+        contextHash: "context-1",
+        requestedBy: "admin-1",
+        forced: false,
+        payload: { conclusion: "buyer_favor" },
+        createdAt: "2026-07-12T03:19:00.000Z",
+        previousEventHash: null,
+        eventHash: "event-hash-1",
+      },
+    ],
     chain: {
       valid: true,
       complete: true,
@@ -60,12 +62,20 @@ describe("signed dispute AI audit export", () => {
   });
 
   it("fails closed when a signing key is not configured", () => {
-    expect(() => createSignedDisputeAiAuditExport({
-      disputeId: "11111111-1111-4111-8111-111111111111",
-      generatedAt: new Date(),
-      privateKeyBase64: "",
-      events: [],
-      chain: { valid: true, complete: true, headEventHash: null, sealedEvents: 0, legacyUnsealedEvents: 0 },
-    })).toThrow(DisputeAuditSigningNotConfiguredError);
+    expect(() =>
+      createSignedDisputeAiAuditExport({
+        disputeId: "11111111-1111-4111-8111-111111111111",
+        generatedAt: new Date(),
+        privateKeyBase64: "",
+        events: [],
+        chain: {
+          valid: true,
+          complete: true,
+          headEventHash: null,
+          sealedEvents: 0,
+          legacyUnsealedEvents: 0,
+        },
+      }),
+    ).toThrow(DisputeAuditSigningNotConfiguredError);
   });
 });

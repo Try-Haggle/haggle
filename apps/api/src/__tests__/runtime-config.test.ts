@@ -1,9 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
-import { describe, expect, it, afterEach } from "vitest";
-import {
-  getRuntimeConfig,
-  isCorsOriginAllowed,
-} from "../config/runtime.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { getRuntimeConfig, isCorsOriginAllowed } from "../config/runtime.js";
 
 const originalEnv = {
   DATABASE_URL: process.env.DATABASE_URL,
@@ -15,8 +12,7 @@ const originalEnv = {
   VERCEL_ENV: process.env.VERCEL_ENV,
   DISPUTE_EVIDENCE_SCANNER_URL: process.env.DISPUTE_EVIDENCE_SCANNER_URL,
   DISPUTE_EVIDENCE_SCANNER_TOKEN: process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN,
-  DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS:
-    process.env.DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS,
+  DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS: process.env.DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS,
   DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP:
     process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP,
   DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK:
@@ -27,26 +23,19 @@ const originalEnv = {
     process.env.DISPUTE_EVIDENCE_SCANNER_CIRCUIT_OPEN_SECONDS,
   DISPUTE_EVIDENCE_SCANNER_PERMIT_LEASE_SECONDS:
     process.env.DISPUTE_EVIDENCE_SCANNER_PERMIT_LEASE_SECONDS,
-  DISPUTE_EVIDENCE_SCANNER_MAX_CONCURRENT:
-    process.env.DISPUTE_EVIDENCE_SCANNER_MAX_CONCURRENT,
-  ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB:
-    process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB,
-  DISPUTE_EVIDENCE_SCAN_RETRY_BATCH_SIZE:
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_BATCH_SIZE,
-  DISPUTE_EVIDENCE_SCAN_RETRY_MAX_ATTEMPTS:
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_MAX_ATTEMPTS,
-  DISPUTE_EVIDENCE_SCAN_RETRY_LEASE_SECONDS:
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_LEASE_SECONDS,
+  DISPUTE_EVIDENCE_SCANNER_MAX_CONCURRENT: process.env.DISPUTE_EVIDENCE_SCANNER_MAX_CONCURRENT,
+  ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB,
+  DISPUTE_EVIDENCE_SCAN_RETRY_BATCH_SIZE: process.env.DISPUTE_EVIDENCE_SCAN_RETRY_BATCH_SIZE,
+  DISPUTE_EVIDENCE_SCAN_RETRY_MAX_ATTEMPTS: process.env.DISPUTE_EVIDENCE_SCAN_RETRY_MAX_ATTEMPTS,
+  DISPUTE_EVIDENCE_SCAN_RETRY_LEASE_SECONDS: process.env.DISPUTE_EVIDENCE_SCAN_RETRY_LEASE_SECONDS,
   DISPUTE_EVIDENCE_SCAN_RETRY_BASE_BACKOFF_SECONDS:
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_BASE_BACKOFF_SECONDS,
   DISPUTE_EVIDENCE_SCAN_RETRY_MAX_BACKOFF_SECONDS:
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_MAX_BACKOFF_SECONDS,
   ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB:
     process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB,
-  DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL:
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL,
-  DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET:
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET,
+  DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL: process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL,
+  DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET: process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET,
   DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_PREVIOUS_SECRETS:
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_PREVIOUS_SECRETS,
   DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_ALLOW_INSECURE_HTTP:
@@ -61,40 +50,65 @@ const originalEnv = {
   WEBHOOK_CLAIM_ALERT_ALLOW_INSECURE_HTTP: process.env.WEBHOOK_CLAIM_ALERT_ALLOW_INSECURE_HTTP,
   WEBHOOK_CLAIM_ALERT_ALLOW_PRIVATE_NETWORK: process.env.WEBHOOK_CLAIM_ALERT_ALLOW_PRIVATE_NETWORK,
   ENABLE_SHIPMENT_APV_PAYOUT_ALERT_JOB: process.env.ENABLE_SHIPMENT_APV_PAYOUT_ALERT_JOB,
-  ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_JOB: process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_JOB,
-  SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID: process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID,
-  SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_LIMIT: process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_LIMIT,
-  ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB: process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB,
-  SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_LIMIT: process.env.SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_LIMIT,
-  ENABLE_SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_JOB: process.env.ENABLE_SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_JOB,
-  SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS: process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS,
-  SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT: process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT,
+  ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_JOB:
+    process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_JOB,
+  SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID:
+    process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID,
+  SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_LIMIT:
+    process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_LIMIT,
+  ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB:
+    process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB,
+  SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_LIMIT:
+    process.env.SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_LIMIT,
+  ENABLE_SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_JOB:
+    process.env.ENABLE_SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_JOB,
+  SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS:
+    process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS,
+  SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT:
+    process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT,
   SHIPMENT_APV_PAYOUT_ALERT_URL: process.env.SHIPMENT_APV_PAYOUT_ALERT_URL,
   SHIPMENT_APV_PAYOUT_ALERT_SECRET: process.env.SHIPMENT_APV_PAYOUT_ALERT_SECRET,
-  SHIPMENT_APV_PAYOUT_ALERT_ALLOW_INSECURE_HTTP: process.env.SHIPMENT_APV_PAYOUT_ALERT_ALLOW_INSECURE_HTTP,
-  SHIPMENT_APV_PAYOUT_ALERT_ALLOW_PRIVATE_NETWORK: process.env.SHIPMENT_APV_PAYOUT_ALERT_ALLOW_PRIVATE_NETWORK,
-  ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_JOB: process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_JOB,
+  SHIPMENT_APV_PAYOUT_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.SHIPMENT_APV_PAYOUT_ALERT_ALLOW_INSECURE_HTTP,
+  SHIPMENT_APV_PAYOUT_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.SHIPMENT_APV_PAYOUT_ALERT_ALLOW_PRIVATE_NETWORK,
+  ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_JOB:
+    process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_JOB,
   HAGGLE_AUDIT_ARCHIVE_URL: process.env.HAGGLE_AUDIT_ARCHIVE_URL,
   HAGGLE_AUDIT_ARCHIVE_ALLOW_INSECURE_HTTP: process.env.HAGGLE_AUDIT_ARCHIVE_ALLOW_INSECURE_HTTP,
-  HAGGLE_AUDIT_ARCHIVE_ALLOW_PRIVATE_NETWORK: process.env.HAGGLE_AUDIT_ARCHIVE_ALLOW_PRIVATE_NETWORK,
-  ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_ALERT_JOB: process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_ALERT_JOB,
+  HAGGLE_AUDIT_ARCHIVE_ALLOW_PRIVATE_NETWORK:
+    process.env.HAGGLE_AUDIT_ARCHIVE_ALLOW_PRIVATE_NETWORK,
+  ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_ALERT_JOB:
+    process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_ALERT_JOB,
   HAGGLE_AUDIT_ARCHIVE_ALERT_URL: process.env.HAGGLE_AUDIT_ARCHIVE_ALERT_URL,
   HAGGLE_AUDIT_ARCHIVE_ALERT_SECRET: process.env.HAGGLE_AUDIT_ARCHIVE_ALERT_SECRET,
-  HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP: process.env.HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP,
-  HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK: process.env.HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK,
-  ENABLE_DISPUTE_SIMILARITY_REVIEW_ALERT_JOB: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_ALERT_JOB,
+  HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP,
+  HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.HAGGLE_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK,
+  ENABLE_DISPUTE_SIMILARITY_REVIEW_ALERT_JOB:
+    process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_ALERT_JOB,
   DISPUTE_SIMILARITY_REVIEW_ALERT_URL: process.env.DISPUTE_SIMILARITY_REVIEW_ALERT_URL,
   DISPUTE_SIMILARITY_REVIEW_ALERT_SECRET: process.env.DISPUTE_SIMILARITY_REVIEW_ALERT_SECRET,
-  DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_INSECURE_HTTP: process.env.DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_INSECURE_HTTP,
-  DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_PRIVATE_NETWORK: process.env.DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_PRIVATE_NETWORK,
-  ENABLE_DISPUTE_SIMILARITY_REVIEW_EXPIRY_JOB: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_EXPIRY_JOB,
-  ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB,
+  DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_INSECURE_HTTP,
+  DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.DISPUTE_SIMILARITY_REVIEW_ALERT_ALLOW_PRIVATE_NETWORK,
+  ENABLE_DISPUTE_SIMILARITY_REVIEW_EXPIRY_JOB:
+    process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_EXPIRY_JOB,
+  ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB:
+    process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB,
   DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64: process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64,
-  ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_JOB: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_JOB,
-  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL: process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL,
-  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET: process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET,
-  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP: process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP,
-  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK: process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK,
+  ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_JOB:
+    process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_JOB,
+  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL:
+    process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL,
+  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET:
+    process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET,
+  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP,
+  DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK,
   ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_JOB: process.env.ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_JOB,
   DISPUTE_AUDIT_CURRENT_KEY_NOT_BEFORE: process.env.DISPUTE_AUDIT_CURRENT_KEY_NOT_BEFORE,
   DISPUTE_AUDIT_CURRENT_KEY_NOT_AFTER: process.env.DISPUTE_AUDIT_CURRENT_KEY_NOT_AFTER,
@@ -102,27 +116,43 @@ const originalEnv = {
   ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_ALERT_JOB: process.env.ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_ALERT_JOB,
   DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL: process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL,
   DISPUTE_AI_AUDIT_ARCHIVE_ALERT_SECRET: process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_SECRET,
-  DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP: process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP,
-  DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK: process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK,
-  ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB: process.env.ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB,
-  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL,
-  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SECRET: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SECRET,
-  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP,
-  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK,
-  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS,
-  ENABLE_CONDITIONAL_SETTLEMENT_FINALITY_ALERT_JOB: process.env.ENABLE_CONDITIONAL_SETTLEMENT_FINALITY_ALERT_JOB,
+  DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_INSECURE_HTTP,
+  DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_ALLOW_PRIVATE_NETWORK,
+  ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB:
+    process.env.ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB,
+  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL:
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL,
+  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SECRET:
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SECRET,
+  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP,
+  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK,
+  CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS:
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS,
+  ENABLE_CONDITIONAL_SETTLEMENT_FINALITY_ALERT_JOB:
+    process.env.ENABLE_CONDITIONAL_SETTLEMENT_FINALITY_ALERT_JOB,
   CONDITIONAL_SETTLEMENT_FINALITY_ALERT_URL: process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_URL,
-  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_SECRET: process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_SECRET,
-  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS: process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS,
-  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_INSECURE_HTTP: process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_INSECURE_HTTP,
-  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_PRIVATE_NETWORK: process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_PRIVATE_NETWORK,
-  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_TIMEOUT_MS: process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_TIMEOUT_MS,
+  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_SECRET:
+    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_SECRET,
+  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS:
+    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS,
+  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_INSECURE_HTTP:
+    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_INSECURE_HTTP,
+  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_PRIVATE_NETWORK:
+    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_ALLOW_PRIVATE_NETWORK,
+  CONDITIONAL_SETTLEMENT_FINALITY_ALERT_TIMEOUT_MS:
+    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_TIMEOUT_MS,
   WEBHOOK_EVENT_CLAIM_LEASE_SECONDS: process.env.WEBHOOK_EVENT_CLAIM_LEASE_SECONDS,
 };
 
 const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const { privateKey: disputeAuditPrivateKey } = generateKeyPairSync("ed25519");
-const validDisputeAuditPrivateKeyBase64 = disputeAuditPrivateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
+const validDisputeAuditPrivateKeyBase64 = disputeAuditPrivateKey
+  .export({ format: "der", type: "pkcs8" })
+  .toString("base64");
 const validTrustedJwks = JSON.stringify({
   keys: [{ ...publicKey.export({ format: "jwk" }), kid: "runtime-test-key", alg: "RS256" }],
 });
@@ -142,12 +172,9 @@ describe("runtime config", () => {
   it("fails fast for partial or unsafe dispute evidence scanner settings", () => {
     process.env.NODE_ENV = "development";
     process.env.DATABASE_URL = "postgres://test";
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
     delete process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN;
-    expect(() => getRuntimeConfig()).toThrow(
-      "Invalid dispute evidence scanner configuration",
-    );
+    expect(() => getRuntimeConfig()).toThrow("Invalid dispute evidence scanner configuration");
 
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     expect(getRuntimeConfig().isProduction).toBe(false);
@@ -179,8 +206,7 @@ describe("runtime config", () => {
       "Invalid dispute evidence scanner circuit configuration",
     );
     process.env.DISPUTE_EVIDENCE_SCANNER_MAX_CONCURRENT = "4";
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     process.env.DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS = "30000";
     process.env.DISPUTE_EVIDENCE_SCANNER_PERMIT_LEASE_SECONDS = "30";
@@ -197,8 +223,7 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow("ENABLE_CRON=true is required");
     process.env.ENABLE_CRON = "true";
     expect(() => getRuntimeConfig()).toThrow(/configured scanner is required/);
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     expect(getRuntimeConfig().isProduction).toBe(false);
   });
@@ -208,8 +233,7 @@ describe("runtime config", () => {
     process.env.DATABASE_URL = "postgres://test";
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB = "true";
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     process.env.DISPUTE_EVIDENCE_SCANNER_TIMEOUT_MS = "30000";
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_LEASE_SECONDS = "30";
@@ -228,16 +252,13 @@ describe("runtime config", () => {
       "ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB=true is required",
     );
     process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB = "true";
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     expect(() => getRuntimeConfig()).toThrow("an alert URL is required");
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL =
-      "https://ops.example/scan-retry";
+    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL = "https://ops.example/scan-retry";
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = "short";
     expect(() => getRuntimeConfig()).toThrow("16..128 characters");
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET =
-      "strong-scan-retry-alert-secret";
+    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = "strong-scan-retry-alert-secret";
     expect(getRuntimeConfig().isProduction).toBe(false);
   });
 
@@ -247,19 +268,13 @@ describe("runtime config", () => {
     process.env.SUPABASE_JWT_SECRET = "test-secret";
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB = "true";
-    process.env.DISPUTE_EVIDENCE_SCANNER_URL =
-      "https://scanner.example.test/v1/scan";
+    process.env.DISPUTE_EVIDENCE_SCANNER_URL = "https://scanner.example.test/v1/scan";
     process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN = "scanner-secret-123";
     process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB = "true";
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL =
-      "https://ops.example/scan-retry";
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET =
-      "strong-scan-retry-alert-secret";
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_ALLOW_PRIVATE_NETWORK =
-      "true";
-    expect(() => getRuntimeConfig()).toThrow(
-      "local network overrides are forbidden in production",
-    );
+    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_URL = "https://ops.example/scan-retry";
+    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = "strong-scan-retry-alert-secret";
+    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_ALLOW_PRIVATE_NETWORK = "true";
+    expect(() => getRuntimeConfig()).toThrow("local network overrides are forbidden in production");
   });
 
   it("fails fast when conditional settlement preflight alerting is partial or cron is disabled", () => {
@@ -323,8 +338,12 @@ describe("runtime config", () => {
     process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_SECRET = "finality-current-secret";
     process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS = "short";
     expect(() => getRuntimeConfig()).toThrow("receiver secrets must be 16..128 characters");
-    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS = ["previous-secret-01", "previous-secret-02",
-      "previous-secret-03", "previous-secret-04"].join(",");
+    process.env.CONDITIONAL_SETTLEMENT_FINALITY_ALERT_PREVIOUS_SECRETS = [
+      "previous-secret-01",
+      "previous-secret-02",
+      "previous-secret-03",
+      "previous-secret-04",
+    ].join(",");
     expect(() => getRuntimeConfig()).toThrow("accepts at most 4 secrets");
   });
   it("throws a clear error when DATABASE_URL is missing", () => {
@@ -332,9 +351,7 @@ describe("runtime config", () => {
     delete process.env.DATABASE_URL;
     process.env.SUPABASE_JWT_SECRET = "secret";
 
-    expect(() => getRuntimeConfig()).toThrow(
-      "[CONFIG] DATABASE_URL is required",
-    );
+    expect(() => getRuntimeConfig()).toThrow("[CONFIG] DATABASE_URL is required");
   });
 
   it("throws a clear error when NODE_ENV is missing", () => {
@@ -342,9 +359,7 @@ describe("runtime config", () => {
     process.env.DATABASE_URL = "postgresql://example";
     process.env.SUPABASE_JWT_SECRET = "secret";
 
-    expect(() => getRuntimeConfig()).toThrow(
-      "[CONFIG] NODE_ENV is required",
-    );
+    expect(() => getRuntimeConfig()).toThrow("[CONFIG] NODE_ENV is required");
   });
 
   it("requires SUPABASE_URL for default JWKS authentication in production", () => {
@@ -372,9 +387,7 @@ describe("runtime config", () => {
     process.env.HNP_REQUIRE_SIGNATURE = "true";
     delete process.env.HNP_TRUSTED_JWKS;
 
-    expect(() => getRuntimeConfig()).toThrow(
-      "[CONFIG] HNP_TRUSTED_JWKS is required",
-    );
+    expect(() => getRuntimeConfig()).toThrow("[CONFIG] HNP_TRUSTED_JWKS is required");
   });
 
   it("rejects malformed production HNP_TRUSTED_JWKS", () => {
@@ -384,9 +397,7 @@ describe("runtime config", () => {
     delete process.env.HNP_REQUIRE_SIGNATURE;
     process.env.HNP_TRUSTED_JWKS = "{not-json";
 
-    expect(() => getRuntimeConfig()).toThrow(
-      "[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS",
-    );
+    expect(() => getRuntimeConfig()).toThrow("[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS");
   });
 
   it("rejects production HNP_TRUSTED_JWKS without a usable public key", () => {
@@ -396,9 +407,7 @@ describe("runtime config", () => {
     delete process.env.HNP_REQUIRE_SIGNATURE;
     process.env.HNP_TRUSTED_JWKS = JSON.stringify({ keys: [] });
 
-    expect(() => getRuntimeConfig()).toThrow(
-      "[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS",
-    );
+    expect(() => getRuntimeConfig()).toThrow("[CONFIG] HNP_TRUSTED_JWKS must be a valid JWKS");
   });
 
   it("accepts production HNP_TRUSTED_JWKS with a usable public key", () => {
@@ -460,7 +469,9 @@ describe("runtime config", () => {
     process.env.WEBHOOK_CLAIM_ALERT_SECRET = "ops-alert-secret-with-length";
     process.env.WEBHOOK_CLAIM_ALERT_ALLOW_INSECURE_HTTP = "true";
     process.env.WEBHOOK_CLAIM_ALERT_ALLOW_PRIVATE_NETWORK = "true";
-    expect(() => getRuntimeConfig()).toThrow("network safety overrides are forbidden in production");
+    expect(() => getRuntimeConfig()).toThrow(
+      "network safety overrides are forbidden in production",
+    );
   });
 
   it("allows production startup without HNP_TRUSTED_JWKS only with explicit HNP signature override", () => {
@@ -506,7 +517,8 @@ describe("runtime config", () => {
     process.env.ENABLE_CRON = "true";
     delete process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID;
     expect(() => getRuntimeConfig()).toThrow("MAINTENANCE_ACTOR_ID must be a UUID");
-    process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID = "99999999-9999-4999-8999-999999999999";
+    process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID =
+      "99999999-9999-4999-8999-999999999999";
     process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_LIMIT = "1001";
     expect(() => getRuntimeConfig()).toThrow("MAINTENANCE_LIMIT must be an integer from 1 to 1000");
   });
@@ -516,7 +528,8 @@ describe("runtime config", () => {
     process.env.DATABASE_URL = "postgresql://example";
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_JOB = "true";
-    process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID = "99999999-9999-4999-8999-999999999999";
+    process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID =
+      "99999999-9999-4999-8999-999999999999";
     process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_LIMIT = "100";
     expect(getRuntimeConfig().isProduction).toBe(false);
   });
@@ -529,7 +542,9 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow("ENABLE_CRON=true is required");
     process.env.ENABLE_CRON = "true";
     process.env.SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_LIMIT = "0";
-    expect(() => getRuntimeConfig()).toThrow("REMEDIATION_EXPIRY_LIMIT must be an integer from 1 to 1000");
+    expect(() => getRuntimeConfig()).toThrow(
+      "REMEDIATION_EXPIRY_LIMIT must be an integer from 1 to 1000",
+    );
   });
 
   it("accepts complete APV restoration remediation expiry configuration", () => {
@@ -549,10 +564,14 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow("ENABLE_CRON=true is required");
     process.env.ENABLE_CRON = "true";
     process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS = "6";
-    expect(() => getRuntimeConfig()).toThrow("CURSOR_RETENTION_DAYS must be an integer from 7 to 365");
+    expect(() => getRuntimeConfig()).toThrow(
+      "CURSOR_RETENTION_DAYS must be an integer from 7 to 365",
+    );
     process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS = "30";
     process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT = "1001";
-    expect(() => getRuntimeConfig()).toThrow("CURSOR_RETENTION_LIMIT must be an integer from 1 to 1000");
+    expect(() => getRuntimeConfig()).toThrow(
+      "CURSOR_RETENTION_LIMIT must be an integer from 1 to 1000",
+    );
   });
 
   it("accepts complete APV cursor retention configuration", () => {
@@ -610,7 +629,9 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow("HAGGLE_AUDIT_ARCHIVE_URL is required");
     process.env.HAGGLE_AUDIT_ARCHIVE_URL = "https://worm.example/audits";
     delete process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64;
-    expect(() => getRuntimeConfig()).toThrow("DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64 is required");
+    expect(() => getRuntimeConfig()).toThrow(
+      "DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64 is required",
+    );
   });
 
   it("requires cron and an HTTPS target for APV cancellation audit archiving", () => {
@@ -667,7 +688,9 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow("ENABLE_CRON=true is required");
     process.env.ENABLE_CRON = "true";
     delete process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL;
-    expect(() => getRuntimeConfig()).toThrow("DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL is required");
+    expect(() => getRuntimeConfig()).toThrow(
+      "DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL is required",
+    );
     process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL = "https://ops.example/alerts";
     process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET = "short";
     expect(() => getRuntimeConfig()).toThrow("at least 16 characters");
@@ -679,7 +702,8 @@ describe("runtime config", () => {
     process.env.ENABLE_CRON = "true";
     process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_JOB = "true";
     process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_URL = "https://ops.example/alerts";
-    process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET = "similarity-archive-alert-secret";
+    process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET =
+      "similarity-archive-alert-secret";
     expect(getRuntimeConfig().isProduction).toBe(false);
   });
 
@@ -694,7 +718,9 @@ describe("runtime config", () => {
     expect(() => getRuntimeConfig()).toThrow("HAGGLE_AUDIT_ARCHIVE_URL is required");
     process.env.HAGGLE_AUDIT_ARCHIVE_URL = "https://archive.example/audits";
     delete process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64;
-    expect(() => getRuntimeConfig()).toThrow("DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64 is required");
+    expect(() => getRuntimeConfig()).toThrow(
+      "DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64 is required",
+    );
   });
 
   it("accepts complete dispute AI audit archive configuration", () => {
@@ -716,11 +742,13 @@ describe("runtime config", () => {
   });
 
   it("requires cron and a signed target for dispute AI audit archive alerts", () => {
-    process.env.NODE_ENV = "development"; process.env.DATABASE_URL = "postgresql://example";
+    process.env.NODE_ENV = "development";
+    process.env.DATABASE_URL = "postgresql://example";
     process.env.ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_ALERT_JOB = "true";
     delete process.env.ENABLE_CRON;
     expect(() => getRuntimeConfig()).toThrow("ENABLE_CRON=true is required");
-    process.env.ENABLE_CRON = "true"; delete process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL;
+    process.env.ENABLE_CRON = "true";
+    delete process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL;
     expect(() => getRuntimeConfig()).toThrow("DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL is required");
     process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL = "https://ops.example/alerts";
     process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_SECRET = "short";
@@ -728,7 +756,9 @@ describe("runtime config", () => {
   });
 
   it("accepts complete dispute AI audit archive alert configuration", () => {
-    process.env.NODE_ENV = "development"; process.env.DATABASE_URL = "postgresql://example"; process.env.ENABLE_CRON = "true";
+    process.env.NODE_ENV = "development";
+    process.env.DATABASE_URL = "postgresql://example";
+    process.env.ENABLE_CRON = "true";
     process.env.ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_ALERT_JOB = "true";
     process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_URL = "https://ops.example/alerts";
     process.env.DISPUTE_AI_AUDIT_ARCHIVE_ALERT_SECRET = "ai-archive-alert-secret";
@@ -758,14 +788,18 @@ describe("runtime config", () => {
       corsAllowedOrigins: new Set(["https://tryhaggle.ai"]),
     };
 
-    expect(isCorsOriginAllowed("http://localhost:3000", {
-      ...config,
-      isProduction: false,
-    })).toBe(true);
-    expect(isCorsOriginAllowed("http://localhost:3000", {
-      ...config,
-      isProduction: true,
-    })).toBe(false);
+    expect(
+      isCorsOriginAllowed("http://localhost:3000", {
+        ...config,
+        isProduction: false,
+      }),
+    ).toBe(true);
+    expect(
+      isCorsOriginAllowed("http://localhost:3000", {
+        ...config,
+        isProduction: true,
+      }),
+    ).toBe(false);
   });
 
   it("allows private LAN dashboard origins only outside production", () => {
@@ -773,25 +807,35 @@ describe("runtime config", () => {
       corsAllowedOrigins: new Set(["https://tryhaggle.ai"]),
     };
 
-    expect(isCorsOriginAllowed("http://10.0.0.132:4177", {
-      ...config,
-      isProduction: false,
-    })).toBe(true);
-    expect(isCorsOriginAllowed("http://192.168.1.25:4177", {
-      ...config,
-      isProduction: false,
-    })).toBe(true);
-    expect(isCorsOriginAllowed("http://172.20.10.4:4177", {
-      ...config,
-      isProduction: false,
-    })).toBe(true);
-    expect(isCorsOriginAllowed("http://10.0.0.132:4177", {
-      ...config,
-      isProduction: true,
-    })).toBe(false);
-    expect(isCorsOriginAllowed("http://203.0.113.10:4177", {
-      ...config,
-      isProduction: false,
-    })).toBe(false);
+    expect(
+      isCorsOriginAllowed("http://10.0.0.132:4177", {
+        ...config,
+        isProduction: false,
+      }),
+    ).toBe(true);
+    expect(
+      isCorsOriginAllowed("http://192.168.1.25:4177", {
+        ...config,
+        isProduction: false,
+      }),
+    ).toBe(true);
+    expect(
+      isCorsOriginAllowed("http://172.20.10.4:4177", {
+        ...config,
+        isProduction: false,
+      }),
+    ).toBe(true);
+    expect(
+      isCorsOriginAllowed("http://10.0.0.132:4177", {
+        ...config,
+        isProduction: true,
+      }),
+    ).toBe(false);
+    expect(
+      isCorsOriginAllowed("http://203.0.113.10:4177", {
+        ...config,
+        isProduction: false,
+      }),
+    ).toBe(false);
   });
 });

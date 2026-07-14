@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 const FRESHNESS_SLA_SECONDS = 86_400;
 
@@ -154,11 +154,14 @@ export async function getShipmentApvFailureAlertReceiverClaimManifestHealth(
   };
   const criticalCount = Object.values(violations).reduce((sum, value) => sum + value, 0);
   const latestReceiptAgeSeconds = optionalCount(row.latest_receipt_age_seconds);
-  const stale = latestReceiptAgeSeconds !== null
-    && latestReceiptAgeSeconds > FRESHNESS_SLA_SECONDS;
+  const stale = latestReceiptAgeSeconds !== null && latestReceiptAgeSeconds > FRESHNESS_SLA_SECONDS;
   const sourceCovered = row.source_covered;
-  const status = criticalCount > 0 ? "critical" as const
-    : !sourceCovered || stale ? "warning" as const : "healthy" as const;
+  const status =
+    criticalCount > 0
+      ? ("critical" as const)
+      : !sourceCovered || stale
+        ? ("warning" as const)
+        : ("healthy" as const);
 
   return {
     schemaVersion: "shipment-apv-failure-alert-receiver-claim-manifest-health-v1",
@@ -166,10 +169,8 @@ export async function getShipmentApvFailureAlertReceiverClaimManifestHealth(
     totals,
     violations,
     criticalCount,
-    coverage: { currentSourceCovered: sourceCovered,
-      missingCurrentReceipt: !sourceCovered },
-    freshness: { slaSeconds: FRESHNESS_SLA_SECONDS,
-      latestReceiptAgeSeconds, stale },
+    coverage: { currentSourceCovered: sourceCovered, missingCurrentReceipt: !sourceCovered },
+    freshness: { slaSeconds: FRESHNESS_SLA_SECONDS, latestReceiptAgeSeconds, stale },
     containsRawIdentifiers: false,
     externalArchive: false,
     networkDelivered: false,

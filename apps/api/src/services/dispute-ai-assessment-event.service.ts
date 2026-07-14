@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, disputeAiAssessmentEvents, eq, sql, type Database } from "@haggle/db";
+import { and, type Database, desc, disputeAiAssessmentEvents, eq, sql } from "@haggle/db";
 
 export interface DisputeAiAssessmentEventInput {
   id: string;
@@ -45,7 +45,10 @@ export function canonicalDisputeAuditJson(value: unknown): string {
   if (value instanceof Date) return JSON.stringify(value.toISOString());
   if (Array.isArray(value)) return `[${value.map(canonicalDisputeAuditJson).join(",")}]`;
   const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalDisputeAuditJson(record[key])}`).join(",")}}`;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalDisputeAuditJson(record[key])}`)
+    .join(",")}}`;
 }
 
 function canonicalEvent(event: HashableDisputeAiAssessmentEvent, previousEventHash: string | null) {
@@ -73,10 +76,14 @@ export function buildDisputeAiAssessmentEventHash(
   event: HashableDisputeAiAssessmentEvent,
   previousEventHash: string | null,
 ): string {
-  return createHash("sha256").update(canonicalDisputeAuditJson(canonicalEvent(event, previousEventHash))).digest("hex");
+  return createHash("sha256")
+    .update(canonicalDisputeAuditJson(canonicalEvent(event, previousEventHash)))
+    .digest("hex");
 }
 
-export function legacyDisputeAiAssessmentEventAnchor(event: HashableDisputeAiAssessmentEvent): string {
+export function legacyDisputeAiAssessmentEventAnchor(
+  event: HashableDisputeAiAssessmentEvent,
+): string {
   return createHash("sha256")
     .update(`legacy:${canonicalDisputeAuditJson(canonicalEvent(event, null))}`)
     .digest("hex");
@@ -95,7 +102,11 @@ export function verifyDisputeAiAssessmentEventChain(events: HashableDisputeAiAss
     if (!event.eventHash) {
       legacyUnsealed += 1;
     } else {
-      if (event.eventHash !== buildDisputeAiAssessmentEventHash(event, event.previousEventHash ?? null)) valid = false;
+      if (
+        event.eventHash !==
+        buildDisputeAiAssessmentEventHash(event, event.previousEventHash ?? null)
+      )
+        valid = false;
       if (previousEffectiveHash && event.previousEventHash !== previousEffectiveHash) valid = false;
     }
     previousEffectiveHash = effectiveHash;
@@ -121,22 +132,33 @@ export async function appendDisputeAiAssessmentEvent(
   });
 }
 
-async function appendLockedDisputeAiAssessmentEvent(db: Database, input: DisputeAiAssessmentEventInput) {
+async function appendLockedDisputeAiAssessmentEvent(
+  db: Database,
+  input: DisputeAiAssessmentEventInput,
+) {
   const [latest] = await db
     .select()
     .from(disputeAiAssessmentEvents)
     .where(eq(disputeAiAssessmentEvents.disputeId, input.disputeId))
     .orderBy(desc(disputeAiAssessmentEvents.createdAt), desc(disputeAiAssessmentEvents.id))
     .limit(1);
-  const [latestCompleted] = input.eventType === "COMPLETED" ? await db
-    .select()
-    .from(disputeAiAssessmentEvents)
-    .where(and(
-      eq(disputeAiAssessmentEvents.disputeId, input.disputeId),
-      eq(disputeAiAssessmentEvents.eventType, "COMPLETED"),
-    ))
-    .orderBy(desc(disputeAiAssessmentEvents.revision), desc(disputeAiAssessmentEvents.createdAt))
-    .limit(1) : [];
+  const [latestCompleted] =
+    input.eventType === "COMPLETED"
+      ? await db
+          .select()
+          .from(disputeAiAssessmentEvents)
+          .where(
+            and(
+              eq(disputeAiAssessmentEvents.disputeId, input.disputeId),
+              eq(disputeAiAssessmentEvents.eventType, "COMPLETED"),
+            ),
+          )
+          .orderBy(
+            desc(disputeAiAssessmentEvents.revision),
+            desc(disputeAiAssessmentEvents.createdAt),
+          )
+          .limit(1)
+      : [];
   if (input.eventType === "COMPLETED") {
     const expectedRevision = (latestCompleted?.revision ?? 0) + 1;
     if (input.revision !== expectedRevision) throw new Error("AI_AUDIT_REVISION_CONFLICT");
@@ -146,11 +168,12 @@ async function appendLockedDisputeAiAssessmentEvent(db: Database, input: Dispute
     }
   }
   const previousEventHash = latest
-    ? latest.eventHash ?? legacyDisputeAiAssessmentEventAnchor(latest)
+    ? (latest.eventHash ?? legacyDisputeAiAssessmentEventAnchor(latest))
     : null;
-  const createdAt = latest && input.createdAt.getTime() <= new Date(latest.createdAt).getTime()
-    ? new Date(new Date(latest.createdAt).getTime() + 1)
-    : input.createdAt;
+  const createdAt =
+    latest && input.createdAt.getTime() <= new Date(latest.createdAt).getTime()
+      ? new Date(new Date(latest.createdAt).getTime() + 1)
+      : input.createdAt;
   const eventHash = buildDisputeAiAssessmentEventHash({ ...input, createdAt }, previousEventHash);
   await db.insert(disputeAiAssessmentEvents).values({
     id: input.id,

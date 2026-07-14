@@ -1,61 +1,90 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
 import type { Database } from "@haggle/db";
-import { disputeEvidence as disputeEvidenceTable, eq, and, sql } from "@haggle/db";
-import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
+import { and, disputeEvidence as disputeEvidenceTable, eq, sql } from "@haggle/db";
+import type {
+  DisputeCase,
+  DisputeEvidence,
+  DisputeReasonCode,
+  DisputeTier,
+  ResolutionAssessorOutput,
+} from "@haggle/dispute-core";
+import {
+  computeDisputeCost,
+  createDepositRequirement,
+  DisputeService,
+  REASON_CODE_REGISTRY,
+  validateEvidenceForReasonCode,
+} from "@haggle/dispute-core";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { isAddress } from "viem";
+import { z } from "zod";
+import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
+import {
+  ALLOWED_EVIDENCE_TYPES,
+  buildDisputeEvidencePath,
+  DISPUTE_EVIDENCE_BUCKET,
+  DISPUTE_VIEW_URL_TTL_SECONDS,
+  EVIDENCE_LIMITS,
+  isImageType,
+  isVideoType,
+  validateDisputeStoragePath,
+} from "../lib/dispute-storage-paths.js";
+import { INPUT_LIMITS } from "../lib/input-limits.js";
 import { createOwnershipMiddleware } from "../middleware/ownership.js";
-import { DisputeService, validateEvidenceForReasonCode, REASON_CODE_REGISTRY, computeDisputeCost, createDepositRequirement } from "@haggle/dispute-core";
-import type { DisputeCase, DisputeEvidence, DisputeReasonCode, DisputeTier } from "@haggle/dispute-core";
+import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
+import { confirmUsdcDeposit, initiateDepositCollection } from "../payments/deposit-collector.js";
+import { writeAuditLog } from "../services/admin-action-log.service.js";
 import {
-  createDisputeRecord,
-  getDisputeById,
-  getDisputeByOrderId,
-  updateDisputeRecord,
-  addDisputeEvidenceRecord,
-  createDisputeEvidenceUploadRecord,
-  getDisputeEvidenceUploadByPath,
-  getDisputeEvidenceUploadById,
-  getDisputeEvidenceUploadByEvidenceId,
-  hasCommittedCameraEvidenceSha256,
-  findNearestCommittedCameraEvidence,
-  listDisputeEvidenceSimilarityReviews,
-  getDisputeEvidenceSimilarityReviewHealth,
-  decideDisputeEvidenceSimilarityReview,
-  listBlockingDisputeEvidenceUploads,
-  markDisputeEvidenceUploadCommitted,
-  rejectDisputeEvidenceUpload,
-  updateDisputeEvidenceUploadScan,
-  updateDisputeEvidenceUploadSimilarity,
-} from "../services/dispute-record.service.js";
-import { getDisputeSimilarityReviewAlertPolicyStatus } from "../services/dispute-similarity-review-alert.service.js";
+  buildDisputeAiCaseContextFromDispute,
+  createDisputeAiProvider,
+  resolveDisputeAiModel,
+  runResolutionAssessor,
+} from "../services/dispute-ai.service.js";
 import {
-  disputeSimilarityReviewExpiryPolicy,
-  getDisputeSimilarityReviewExpiryEventById,
-  listDisputeSimilarityReviewExpiryEvents,
-} from "../services/dispute-similarity-review-expiry.service.js";
+  appendDisputeAiAssessmentEvent,
+  listDisputeAiAssessmentEvents,
+  verifyDisputeAiAssessmentEventChain,
+} from "../services/dispute-ai-assessment-event.service.js";
 import {
-  createSignedDisputeSimilarityReviewAuditExport,
-  DisputeSimilarityReviewAuditSigningNotConfiguredError,
-} from "../services/dispute-similarity-review-audit-export.service.js";
+  acquireDisputeAiAssessmentLease,
+  releaseDisputeAiAssessmentLease,
+} from "../services/dispute-ai-assessment-lease.service.js";
 import {
-  getDisputeSimilarityReviewAuditArchiveHealth,
-  getDisputeSimilarityReviewAuditArchivePolicyStatus,
-  listDisputeSimilarityReviewAuditArchiveFailures,
-  requeueDisputeSimilarityReviewAuditArchive,
-} from "../services/dispute-similarity-review-audit-archive.service.js";
+  enqueueDisputeAiAuditArchive,
+  getDisputeAiAuditArchiveCoverage,
+  getDisputeAiAuditArchiveHealth,
+  getDisputeAiAuditArchivePolicyStatus,
+  getDisputeAiAuditDiscoveryFailureHealth,
+  getLatestDisputeAiAuditArchive,
+  listDisputeAiAuditArchiveFailures,
+  listDisputeAiAuditDiscoveryFailures,
+  requeueDisputeAiAuditArchive,
+  retryDisputeAiAuditDiscoveryFailure,
+} from "../services/dispute-ai-audit-archive.service.js";
 import {
-  evaluateDisputeSimilarityReviewAuditArchiveAlert,
-  getDisputeSimilarityReviewAuditArchiveAlertDeliveryState,
-  getDisputeSimilarityReviewAuditArchiveAlertPolicyStatus,
-} from "../services/dispute-similarity-review-audit-archive-alert.service.js";
+  evaluateDisputeAiAuditArchiveAlert,
+  getDisputeAiAuditArchiveAlertDeliveryState,
+  getDisputeAiAuditArchiveAlertPolicyStatus,
+} from "../services/dispute-ai-audit-archive-alert.service.js";
 import {
-  createDisputeUploadUrl,
-  downloadDisputeEvidence,
-  disputeEvidenceExists,
-  createDisputeViewUrl,
-} from "../services/dispute-storage.service.js";
-import { scanDisputeEvidence } from "../services/dispute-evidence-scan.service.js";
+  createSignedDisputeAiAuditExport,
+  DisputeAuditSigningNotConfiguredError,
+} from "../services/dispute-ai-audit-export.service.js";
+import {
+  resolveDisputeAuditPublicKeyRegistryFromEnv,
+  verifyTrustedSignedDisputeAiAuditExport,
+} from "../services/dispute-audit-public-key-registry.service.js";
+import {
+  type CameraChallengeVerificationResult,
+  verifyCameraChallenge,
+} from "../services/dispute-camera-challenge.service.js";
+import {
+  createDeposit,
+  getDepositByDisputeId,
+  getPendingExpiredDeposits,
+  updateDepositMetadata,
+  updateDepositStatus,
+} from "../services/dispute-deposit.service.js";
 import { createSignedDisputeEvidenceProvenance } from "../services/dispute-evidence-provenance.service.js";
 import {
   enqueueDisputeEvidenceProvenanceArchive,
@@ -69,119 +98,118 @@ import {
   getDisputeEvidenceProvenanceArchiveAlertPolicyStatus,
 } from "../services/dispute-evidence-provenance-archive-alert.service.js";
 import {
-  verifyCameraChallenge,
-  type CameraChallengeVerificationResult,
-} from "../services/dispute-camera-challenge.service.js";
-import {
-  CAMERA_SIMILARITY_REVIEW_DISTANCE,
-  CAMERA_SIMILARITY_COLOR_DISTANCE,
-  CAMERA_SIMILARITY_COMBINED_HASH_DISTANCE,
-  computeImageSimilarityFingerprint,
-} from "../services/dispute-image-similarity.service.js";
-import {
   evidenceRetentionPolicy,
   getDisputeEvidenceRetentionSummary,
   setDisputeEvidenceLegalHold,
 } from "../services/dispute-evidence-retention.service.js";
-import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
+import { scanDisputeEvidence } from "../services/dispute-evidence-scan.service.js";
 import {
-  ALLOWED_EVIDENCE_TYPES,
-  DISPUTE_EVIDENCE_BUCKET,
-  EVIDENCE_LIMITS,
-  DISPUTE_VIEW_URL_TTL_SECONDS,
-  isImageType,
-  isVideoType,
-  buildDisputeEvidencePath,
-  validateDisputeStoragePath,
-} from "../lib/dispute-storage-paths.js";
-import { applyTrustTriggers } from "../services/trust-ledger.service.js";
-import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
-import {
-  getDepositByDisputeId,
-  createDeposit,
-  getPendingExpiredDeposits,
-  updateDepositStatus,
-  updateDepositMetadata,
-} from "../services/dispute-deposit.service.js";
-import {
-  getCommerceOrderByOrderId,
-  updateCommerceOrderStatus,
-} from "../services/payment-record.service.js";
-import {
-  initiateDepositCollection,
-  confirmUsdcDeposit,
-} from "../payments/deposit-collector.js";
-import { isAddress } from "viem";
-import { assignReviewersToDispute } from "./reviewer.js";
-import { INPUT_LIMITS } from "../lib/input-limits.js";
-import {
-  buildDisputeAiCaseContextFromDispute,
-  createDisputeAiProvider,
-  resolveDisputeAiModel,
-  runResolutionAssessor,
-} from "../services/dispute-ai.service.js";
-import type { ResolutionAssessorOutput } from "@haggle/dispute-core";
-import { writeAuditLog } from "../services/admin-action-log.service.js";
-import {
-  appendDisputeAiAssessmentEvent,
-  listDisputeAiAssessmentEvents,
-  verifyDisputeAiAssessmentEventChain,
-} from "../services/dispute-ai-assessment-event.service.js";
-import {
-  acquireDisputeAiAssessmentLease,
-  releaseDisputeAiAssessmentLease,
-} from "../services/dispute-ai-assessment-lease.service.js";
+  CAMERA_SIMILARITY_COLOR_DISTANCE,
+  CAMERA_SIMILARITY_COMBINED_HASH_DISTANCE,
+  CAMERA_SIMILARITY_REVIEW_DISTANCE,
+  computeImageSimilarityFingerprint,
+} from "../services/dispute-image-similarity.service.js";
+import type { DisputeOperation } from "../services/dispute-operation-lease.service.js";
 import {
   acquireDisputeOperationLease,
   disputeOperationLeaseKey,
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
-import type { DisputeOperation } from "../services/dispute-operation-lease.service.js";
 import {
-  createSignedDisputeAiAuditExport,
-  DisputeAuditSigningNotConfiguredError,
-} from "../services/dispute-ai-audit-export.service.js";
+  addDisputeEvidenceRecord,
+  createDisputeEvidenceUploadRecord,
+  createDisputeRecord,
+  decideDisputeEvidenceSimilarityReview,
+  findNearestCommittedCameraEvidence,
+  getDisputeById,
+  getDisputeByOrderId,
+  getDisputeEvidenceSimilarityReviewHealth,
+  getDisputeEvidenceUploadByEvidenceId,
+  getDisputeEvidenceUploadById,
+  getDisputeEvidenceUploadByPath,
+  hasCommittedCameraEvidenceSha256,
+  listBlockingDisputeEvidenceUploads,
+  listDisputeEvidenceSimilarityReviews,
+  markDisputeEvidenceUploadCommitted,
+  rejectDisputeEvidenceUpload,
+  updateDisputeEvidenceUploadScan,
+  updateDisputeEvidenceUploadSimilarity,
+  updateDisputeRecord,
+} from "../services/dispute-record.service.js";
+import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
+import { getDisputeSimilarityReviewAlertPolicyStatus } from "../services/dispute-similarity-review-alert.service.js";
 import {
-  enqueueDisputeAiAuditArchive,
-  getDisputeAiAuditArchiveCoverage,
-  getDisputeAiAuditArchiveHealth,
-  getDisputeAiAuditArchivePolicyStatus,
-  getDisputeAiAuditDiscoveryFailureHealth,
-  getLatestDisputeAiAuditArchive,
-  listDisputeAiAuditDiscoveryFailures,
-  listDisputeAiAuditArchiveFailures,
-  retryDisputeAiAuditDiscoveryFailure,
-  requeueDisputeAiAuditArchive,
-} from "../services/dispute-ai-audit-archive.service.js";
+  getDisputeSimilarityReviewAuditArchiveHealth,
+  getDisputeSimilarityReviewAuditArchivePolicyStatus,
+  listDisputeSimilarityReviewAuditArchiveFailures,
+  requeueDisputeSimilarityReviewAuditArchive,
+} from "../services/dispute-similarity-review-audit-archive.service.js";
 import {
-  evaluateDisputeAiAuditArchiveAlert, getDisputeAiAuditArchiveAlertDeliveryState,
-  getDisputeAiAuditArchiveAlertPolicyStatus,
-} from "../services/dispute-ai-audit-archive-alert.service.js";
+  evaluateDisputeSimilarityReviewAuditArchiveAlert,
+  getDisputeSimilarityReviewAuditArchiveAlertDeliveryState,
+  getDisputeSimilarityReviewAuditArchiveAlertPolicyStatus,
+} from "../services/dispute-similarity-review-audit-archive-alert.service.js";
 import {
-  resolveDisputeAuditPublicKeyRegistryFromEnv, verifyTrustedSignedDisputeAiAuditExport,
-} from "../services/dispute-audit-public-key-registry.service.js";
+  createSignedDisputeSimilarityReviewAuditExport,
+  DisputeSimilarityReviewAuditSigningNotConfiguredError,
+} from "../services/dispute-similarity-review-audit-export.service.js";
+import {
+  disputeSimilarityReviewExpiryPolicy,
+  getDisputeSimilarityReviewExpiryEventById,
+  listDisputeSimilarityReviewExpiryEvents,
+} from "../services/dispute-similarity-review-expiry.service.js";
+import {
+  createDisputeUploadUrl,
+  createDisputeViewUrl,
+  disputeEvidenceExists,
+  downloadDisputeEvidence,
+} from "../services/dispute-storage.service.js";
+import {
+  getCommerceOrderByOrderId,
+  updateCommerceOrderStatus,
+} from "../services/payment-record.service.js";
+import { applyTrustTriggers } from "../services/trust-ledger.service.js";
+import { assignReviewersToDispute } from "./reviewer.js";
 
 function disputeAiArchiveTrustSummary(payload: Record<string, unknown>) {
   try {
-    const result = verifyTrustedSignedDisputeAiAuditExport(payload as any, resolveDisputeAuditPublicKeyRegistryFromEnv());
-    return { trust_valid: result.valid, trust_reason: result.reason,
-      key_id: typeof (payload as any)?.signature?.key_id === "string" ? (payload as any).signature.key_id : null };
-  } catch { return { trust_valid: false, trust_reason: "KEY_REGISTRY_INVALID", key_id: null }; }
+    const result = verifyTrustedSignedDisputeAiAuditExport(
+      payload as any,
+      resolveDisputeAuditPublicKeyRegistryFromEnv(),
+    );
+    return {
+      trust_valid: result.valid,
+      trust_reason: result.reason,
+      key_id:
+        typeof (payload as any)?.signature?.key_id === "string"
+          ? (payload as any).signature.key_id
+          : null,
+    };
+  } catch {
+    return { trust_valid: false, trust_reason: "KEY_REGISTRY_INVALID", key_id: null };
+  }
 }
 
 function storedImageSimilaritySignals(value: Record<string, unknown> | null | undefined) {
   const rawDistances = value?.distances;
-  const distances = rawDistances && typeof rawDistances === "object" && !Array.isArray(rawDistances)
-    ? rawDistances as Record<string, unknown> : null;
-  const numberOrNull = (input: unknown) => typeof input === "number" && Number.isFinite(input) ? input : null;
+  const distances =
+    rawDistances && typeof rawDistances === "object" && !Array.isArray(rawDistances)
+      ? (rawDistances as Record<string, unknown>)
+      : null;
+  const numberOrNull = (input: unknown) =>
+    typeof input === "number" && Number.isFinite(input) ? input : null;
   return {
-    distances: distances ? {
-      dhash: numberOrNull(distances.dhash) ?? 64,
-      ahash: numberOrNull(distances.ahash),
-      color: numberOrNull(distances.color),
-    } : undefined,
+    distances: distances
+      ? {
+          dhash: numberOrNull(distances.dhash) ?? 64,
+          ahash: numberOrNull(distances.ahash),
+          color: numberOrNull(distances.color),
+        }
+      : undefined,
     matchedSignals: Array.isArray(value?.matched_signals)
-      ? value.matched_signals.filter((item): item is string => typeof item === "string").slice(0, 10)
+      ? value.matched_signals
+          .filter((item): item is string => typeof item === "string")
+          .slice(0, 10)
       : undefined,
   };
 }
@@ -241,7 +269,8 @@ function describeDisputeRemedy(output: ResolutionAssessorOutput): string {
   if (output.recommended_outcome === "partial_refund") {
     return `부분 환불 ${output.refund_amount_minor ?? 0} minor unit을 권고한다.`;
   }
-  if (output.recommended_outcome === "buyer_favor") return "검증된 증거에 근거해 구매자 환불 처리를 권고한다.";
+  if (output.recommended_outcome === "buyer_favor")
+    return "검증된 증거에 근거해 구매자 환불 처리를 권고한다.";
   if (output.recommended_outcome === "seller_favor" || output.recommended_outcome === "no_action") {
     return "구매자 청구가 입증되지 않은 범위에서 판매자 정산 진행을 권고한다.";
   }
@@ -261,7 +290,9 @@ function labelEvidenceWeight(weight: string | undefined): string {
   return "확인되지 않은";
 }
 
-function describeEvidenceFinding(finding: ResolutionAssessorOutput["evidence_findings"][number]): string {
+function describeEvidenceFinding(
+  finding: ResolutionAssessorOutput["evidence_findings"][number],
+): string {
   return `${labelEvidenceSupport(finding.supports)}과 관련된 증거로 ${labelEvidenceWeight(finding.weight)} 증거력으로 반영한다. 이 평가는 증거의 출처, 직접성, 검증 가능성, 계약 조건과의 관련성을 기준으로 한다.`;
 }
 
@@ -302,7 +333,8 @@ function buildReadableDisputeJudgment(output: ResolutionAssessorOutput) {
     remedy: describeDisputeRemedy(output),
     reasons: describeNeutralReasons(output),
     model_rationale: output.rationale,
-    standard_of_review: "양 당사자를 동일한 증거 기준으로 심사한다. 결론은 당사자 선호가 아니라 검증 가능성, 증거의 직접성, 조작 가능성, 계약 조건과의 관련성에 따라 정한다.",
+    standard_of_review:
+      "양 당사자를 동일한 증거 기준으로 심사한다. 결론은 당사자 선호가 아니라 검증 가능성, 증거의 직접성, 조작 가능성, 계약 조건과의 관련성에 따라 정한다.",
     evidence_summary: evidenceSummary,
     next_action: output.escalation_required
       ? "추가 증거 제출 또는 운영자 검토가 필요하다."
@@ -338,7 +370,10 @@ const uploadUrlSchema = z.object({
   file_size_bytes: z.number().int().min(1),
   camera_session_id: z.string().min(1).max(128).optional(),
   camera_capture_token: z.string().min(32).max(128).optional(),
-  capture_sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  capture_sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
 });
 
 const commitEvidenceSchema = z.object({
@@ -391,18 +426,20 @@ function evidenceRetentionPolicyResponse() {
   };
 }
 
-const aiAssessmentSchema = z.object({
-  force: z.boolean().default(false),
-  reassessment_reason: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars).optional(),
-}).superRefine((value, context) => {
-  if (value.force && !value.reassessment_reason) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["reassessment_reason"],
-      message: "reassessment_reason is required when force is true",
-    });
-  }
-});
+const aiAssessmentSchema = z
+  .object({
+    force: z.boolean().default(false),
+    reassessment_reason: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.force && !value.reassessment_reason) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reassessment_reason"],
+        message: "reassessment_reason is required when force is true",
+      });
+    }
+  });
 
 const aiAssessmentHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -507,18 +544,19 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   ]);
 
   function isActiveDispute(status: string): boolean {
-    return !["RESOLVED_BUYER_FAVOR", "RESOLVED_SELLER_FAVOR", "PARTIAL_REFUND", "CLOSED"].includes(status);
+    return !["RESOLVED_BUYER_FAVOR", "RESOLVED_SELLER_FAVOR", "PARTIAL_REFUND", "CLOSED"].includes(
+      status,
+    );
   }
 
   function sameClientRequest(dispute: DisputeCase, clientRequestId?: string): boolean {
     if (!clientRequestId) return false;
-    return (dispute.metadata as Record<string, unknown> | null)?.client_request_id === clientRequestId;
+    return (
+      (dispute.metadata as Record<string, unknown> | null)?.client_request_id === clientRequestId
+    );
   }
 
-  async function writeDisputeOpen(
-    dispute: DisputeCase,
-    orderId: string,
-  ): Promise<void> {
+  async function writeDisputeOpen(dispute: DisputeCase, orderId: string): Promise<void> {
     const persist = async (tx: unknown) => {
       const txDb = tx as Database;
       await createDisputeRecord(txDb, dispute);
@@ -594,7 +632,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   type CameraCaptureSessionMap = Record<string, CameraCaptureSession>;
 
   function disputeMetadata(dispute: DisputeCase): Record<string, unknown> {
-    return dispute.metadata && typeof dispute.metadata === "object" && !Array.isArray(dispute.metadata)
+    return dispute.metadata &&
+      typeof dispute.metadata === "object" &&
+      !Array.isArray(dispute.metadata)
       ? dispute.metadata
       : {};
   }
@@ -624,21 +664,27 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   function appealReviewFor(dispute: DisputeCase): DisputeAppealReview | null {
     const value = disputeMetadata(dispute).appeal_review;
     return value && typeof value === "object" && !Array.isArray(value)
-      ? value as DisputeAppealReview
+      ? (value as DisputeAppealReview)
       : null;
   }
 
   function appealHistoryFor(dispute: DisputeCase): Record<string, unknown>[] {
     const value = disputeMetadata(dispute).appeal_history;
     return Array.isArray(value)
-      ? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+      ? value.filter(
+          (entry): entry is Record<string, unknown> =>
+            Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+        )
       : [];
   }
 
   function aiAssessmentHistoryFor(dispute: DisputeCase): Record<string, unknown>[] {
     const value = disputeMetadata(dispute).ai_resolution_assessment_history;
     return Array.isArray(value)
-      ? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+      ? value.filter(
+          (entry): entry is Record<string, unknown> =>
+            Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
+        )
       : [];
   }
 
@@ -653,10 +699,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         derived_artifacts: evidence.derived_artifacts ?? [],
         created_at: evidence.created_at,
       }))
-      .sort((left, right) => (
-        left.created_at.localeCompare(right.created_at)
-        || left.id.localeCompare(right.id)
-      ));
+      .sort(
+        (left, right) =>
+          left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id),
+      );
     return createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
   }
 
@@ -667,10 +713,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     const metadata = disputeMetadata(dispute);
     const assessment = metadata.ai_resolution_assessor;
     if (
-      !assessment
-      || typeof assessment !== "object"
-      || Array.isArray(assessment)
-      || (assessment as Record<string, unknown>).status !== "COMPLETED"
+      !assessment ||
+      typeof assessment !== "object" ||
+      Array.isArray(assessment) ||
+      (assessment as Record<string, unknown>).status !== "COMPLETED"
     ) {
       return dispute;
     }
@@ -688,9 +734,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         ai_assessment_stale: true,
         ai_assessment_stale_reason: reason,
         ai_assessment_stale_at: new Date().toISOString(),
-        ai_assessment_previous_evidence_snapshot_hash: typeof assessedEvidenceHash === "string"
-          ? assessedEvidenceHash
-          : null,
+        ai_assessment_previous_evidence_snapshot_hash:
+          typeof assessedEvidenceHash === "string" ? assessedEvidenceHash : null,
         ai_assessment_current_evidence_snapshot_hash: currentEvidenceHash,
       },
     };
@@ -702,9 +747,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       stale: metadata.ai_assessment_stale === true,
       stale_reason: metadata.ai_assessment_stale_reason ?? null,
       stale_at: metadata.ai_assessment_stale_at ?? null,
-      previous_evidence_snapshot_hash: metadata.ai_assessment_previous_evidence_snapshot_hash ?? null,
-      current_evidence_snapshot_hash: metadata.ai_assessment_current_evidence_snapshot_hash
-        ?? evidenceSnapshotHash(dispute),
+      previous_evidence_snapshot_hash:
+        metadata.ai_assessment_previous_evidence_snapshot_hash ?? null,
+      current_evidence_snapshot_hash:
+        metadata.ai_assessment_current_evidence_snapshot_hash ?? evidenceSnapshotHash(dispute),
     };
   }
 
@@ -716,7 +762,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   function cameraSessionsFor(dispute: DisputeCase): CameraCaptureSessionMap {
     const sessions = disputeMetadata(dispute).camera_capture_sessions;
     return sessions && typeof sessions === "object" && !Array.isArray(sessions)
-      ? sessions as CameraCaptureSessionMap
+      ? (sessions as CameraCaptureSessionMap)
       : {};
   }
 
@@ -733,9 +779,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       test_only: session.test_only === true,
       used_for_dispute: session.test_only !== true,
       challenge_code: session.challenge_code,
-      status: session.status === "COMMITTED" || !sessionIsExpired(session)
-        ? session.status
-        : "EXPIRED",
+      status:
+        session.status === "COMMITTED" || !sessionIsExpired(session) ? session.status : "EXPIRED",
       expires_at: session.expires_at,
       capture_url: `${session.capture_url}${tokenFragment}`,
       qr_payload: `${session.qr_payload}${tokenFragment}`,
@@ -750,9 +795,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   }
 
   function activeCameraSessions(dispute: DisputeCase): CameraCaptureSession[] {
-    return Object.values(cameraSessionsFor(dispute)).filter((session) => (
-      session.status !== "COMMITTED" && !sessionIsExpired(session)
-    ));
+    return Object.values(cameraSessionsFor(dispute)).filter(
+      (session) => session.status !== "COMMITTED" && !sessionIsExpired(session),
+    );
   }
 
   function createChallengeCode(): string {
@@ -770,7 +815,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     return createHash("sha256").update(token).digest("hex");
   }
 
-  function validCameraCaptureToken(session: CameraCaptureSession, token: string | undefined): boolean {
+  function validCameraCaptureToken(
+    session: CameraCaptureSession,
+    token: string | undefined,
+  ): boolean {
     if (!session.capture_token_hash) return true;
     if (!token) return false;
     const received = Buffer.from(cameraCaptureTokenHash(token), "hex");
@@ -778,7 +826,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     return received.length === expected.length && timingSafeEqual(received, expected);
   }
 
-  function originForRequest(request: { headers: Record<string, string | string[] | undefined> }): string {
+  function originForRequest(request: {
+    headers: Record<string, string | string[] | undefined>;
+  }): string {
     const configuredOrigin = process.env.PUBLIC_API_URL?.trim();
     if (configuredOrigin) {
       try {
@@ -789,12 +839,18 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
     }
 
-    const host = Array.isArray(request.headers.host) ? request.headers.host[0] : request.headers.host;
+    const host = Array.isArray(request.headers.host)
+      ? request.headers.host[0]
+      : request.headers.host;
     const forwardedProto = Array.isArray(request.headers["x-forwarded-proto"])
       ? request.headers["x-forwarded-proto"][0]
       : request.headers["x-forwarded-proto"];
     const protocol = forwardedProto ?? "http";
-    if (!host || !/^[A-Za-z0-9.:[\]-]+$/.test(host) || (protocol !== "http" && protocol !== "https")) {
+    if (
+      !host ||
+      !/^[A-Za-z0-9.:[\]-]+$/.test(host) ||
+      (protocol !== "http" && protocol !== "https")
+    ) {
       return "";
     }
     return `${protocol}://${host}`;
@@ -883,12 +939,15 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           leaseId,
         );
       } catch (error) {
-        options.request.log.error({
-          error,
-          dispute_id: options.disputeId,
-          operation: options.operation,
-          lease_id: leaseId,
-        }, "Failed to release dispute operation lease");
+        options.request.log.error(
+          {
+            error,
+            dispute_id: options.disputeId,
+            operation: options.operation,
+            lease_id: leaseId,
+          },
+          "Failed to release dispute operation lease",
+        );
       }
     };
     options.reply.raw.once("finish", () => void release());
@@ -1086,114 +1145,134 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   }
 
   // POST /orders/:orderId/disputes — production-safe public dispute opening path.
-  app.post<{ Params: { orderId: string } }>("/orders/:orderId/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
-    const { orderId } = request.params;
-    const parsed = publicOpenDisputeSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_DISPUTE_REQUEST", issues: parsed.error.issues });
-    }
-    const hasReservedInitialMarker = containsVerifiedCameraEvidenceMarker(parsed.data.summary)
-      || (parsed.data.evidence ?? []).some((evidence) => containsVerifiedCameraEvidenceMarker(evidence.text));
-    if (hasReservedInitialMarker) {
-      return reply.code(400).send({
-        error: "RESERVED_EVIDENCE_MARKER",
-        message: "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
-      });
-    }
-
-    const order = await getCommerceOrderByOrderId(db, orderId);
-    if (!order) {
-      return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
-    }
-
-    const userId = request.user!.id;
-    let openedBy: "buyer" | "seller";
-    if (userId === order.buyerId) {
-      openedBy = "buyer";
-    } else if (userId === order.sellerId) {
-      openedBy = "seller";
-    } else {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "You are not a party to this order" });
-    }
-
-    const existing = await getDisputeByOrderId(db, orderId);
-    if (existing && isActiveDispute(existing.status)) {
-      if (sameClientRequest(existing, parsed.data.client_request_id)) {
-        return reply.send({
-          dispute: existing,
-          opened_by: existing.opened_by,
-          order_status: "IN_DISPUTE",
-          idempotent: true,
+  app.post<{ Params: { orderId: string } }>(
+    "/orders/:orderId/disputes",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { orderId } = request.params;
+      const parsed = publicOpenDisputeSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_DISPUTE_REQUEST", issues: parsed.error.issues });
+      }
+      const hasReservedInitialMarker =
+        containsVerifiedCameraEvidenceMarker(parsed.data.summary) ||
+        (parsed.data.evidence ?? []).some((evidence) =>
+          containsVerifiedCameraEvidenceMarker(evidence.text),
+        );
+      if (hasReservedInitialMarker) {
+        return reply.code(400).send({
+          error: "RESERVED_EVIDENCE_MARKER",
+          message:
+            "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
         });
       }
-      return reply.code(409).send({
-        error: "ACTIVE_DISPUTE_EXISTS",
-        dispute_id: existing.id,
-        message: "This order already has an active dispute",
-      });
-    }
 
-    if (!disputableOrderStatuses.has(order.status)) {
-      return reply.code(409).send({
-        error: "ORDER_NOT_DISPUTABLE",
-        order_status: order.status,
-        message: "This order is not in a disputable state",
-      });
-    }
+      const order = await getCommerceOrderByOrderId(db, orderId);
+      if (!order) {
+        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      }
 
-    const reasonCode = parsed.data.reason_code as DisputeReasonCode;
-    if (!(reasonCode in REASON_CODE_REGISTRY)) {
-      return reply.code(400).send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
-    }
+      const userId = request.user!.id;
+      let openedBy: "buyer" | "seller";
+      if (userId === order.buyerId) {
+        openedBy = "buyer";
+      } else if (userId === order.sellerId) {
+        openedBy = "seller";
+      } else {
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+      }
 
-    const initialEvidence = [
-      { submitted_by: openedBy, type: "text" as const, text: parsed.data.summary },
-      ...(parsed.data.evidence ?? []).map((e) => ({
-        submitted_by: openedBy,
-        type: e.type,
-        text: e.text,
-      })),
-    ];
-
-    const result = disputeService.openCase({
-      order_id: orderId,
-      reason_code: reasonCode,
-      opened_by: openedBy,
-      initial_evidence: initialEvidence,
-    });
-    result.dispute.metadata = {
-      tier: 1,
-      opened_by_user_id: userId,
-      client_request_id: parsed.data.client_request_id ?? null,
-      source: "public_order_dispute_api",
-      order_status_at_open: order.status,
-    };
-
-    try {
-      await writeDisputeOpen(result.dispute, orderId);
-    } catch (error) {
-      if (error instanceof Error && /dispute_cases_active_order_uidx|unique/i.test(error.message)) {
-        const replay = await getDisputeByOrderId(db, orderId);
-        if (replay && sameClientRequest(replay, parsed.data.client_request_id)) {
+      const existing = await getDisputeByOrderId(db, orderId);
+      if (existing && isActiveDispute(existing.status)) {
+        if (sameClientRequest(existing, parsed.data.client_request_id)) {
           return reply.send({
-            dispute: replay,
-            opened_by: replay.opened_by,
+            dispute: existing,
+            opened_by: existing.opened_by,
             order_status: "IN_DISPUTE",
             idempotent: true,
           });
         }
-        return reply.code(409).send({ error: "ACTIVE_DISPUTE_EXISTS", message: "This order already has an active dispute" });
+        return reply.code(409).send({
+          error: "ACTIVE_DISPUTE_EXISTS",
+          dispute_id: existing.id,
+          message: "This order already has an active dispute",
+        });
       }
-      throw error;
-    }
 
-    return reply.code(201).send({
-      dispute: result.dispute,
-      opened_by: openedBy,
-      order_status: "IN_DISPUTE",
-      idempotent: false,
-    });
-  });
+      if (!disputableOrderStatuses.has(order.status)) {
+        return reply.code(409).send({
+          error: "ORDER_NOT_DISPUTABLE",
+          order_status: order.status,
+          message: "This order is not in a disputable state",
+        });
+      }
+
+      const reasonCode = parsed.data.reason_code as DisputeReasonCode;
+      if (!(reasonCode in REASON_CODE_REGISTRY)) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
+      }
+
+      const initialEvidence = [
+        { submitted_by: openedBy, type: "text" as const, text: parsed.data.summary },
+        ...(parsed.data.evidence ?? []).map((e) => ({
+          submitted_by: openedBy,
+          type: e.type,
+          text: e.text,
+        })),
+      ];
+
+      const result = disputeService.openCase({
+        order_id: orderId,
+        reason_code: reasonCode,
+        opened_by: openedBy,
+        initial_evidence: initialEvidence,
+      });
+      result.dispute.metadata = {
+        tier: 1,
+        opened_by_user_id: userId,
+        client_request_id: parsed.data.client_request_id ?? null,
+        source: "public_order_dispute_api",
+        order_status_at_open: order.status,
+      };
+
+      try {
+        await writeDisputeOpen(result.dispute, orderId);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          /dispute_cases_active_order_uidx|unique/i.test(error.message)
+        ) {
+          const replay = await getDisputeByOrderId(db, orderId);
+          if (replay && sameClientRequest(replay, parsed.data.client_request_id)) {
+            return reply.send({
+              dispute: replay,
+              opened_by: replay.opened_by,
+              order_status: "IN_DISPUTE",
+              idempotent: true,
+            });
+          }
+          return reply.code(409).send({
+            error: "ACTIVE_DISPUTE_EXISTS",
+            message: "This order already has an active dispute",
+          });
+        }
+        throw error;
+      }
+
+      return reply.code(201).send({
+        dispute: result.dispute,
+        opened_by: openedBy,
+        order_status: "IN_DISPUTE",
+        idempotent: false,
+      });
+    },
+  );
 
   // GET /disputes — list authenticated user's disputes
   app.get("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -1226,7 +1305,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       ${roleFilter}
     `);
     const countRows = (countRaw as unknown as { rows?: Record<string, unknown>[] }).rows ?? [];
-    const total = parseInt((countRows[0]?.total as string) ?? "0");
+    const total = parseInt((countRows[0]?.total as string) ?? "0", 10);
 
     // Needs-action ordering: WAITING states first, then OPEN, UNDER_REVIEW, then resolved/closed
     interface DisputeListRow {
@@ -1312,12 +1391,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         null;
 
       const amountMinor = row.final_amount_minor
-        ? parseInt(row.final_amount_minor)
+        ? parseInt(row.final_amount_minor, 10)
         : row.amount_minor
-          ? parseInt(row.amount_minor)
+          ? parseInt(row.amount_minor, 10)
           : null;
 
-      const tier = row.metadata ? (row.metadata as Record<string, unknown>).tier as number | null ?? null : null;
+      const tier = row.metadata
+        ? (((row.metadata as Record<string, unknown>).tier as number | null) ?? null)
+        : null;
 
       return {
         id: row.id,
@@ -1333,7 +1414,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         amount_minor: amountMinor,
         needs_action: needsAction,
         resolution_outcome: row.resolution_outcome ?? null,
-        refund_amount_minor: row.refund_amount_minor ? parseInt(row.refund_amount_minor) : null,
+        refund_amount_minor: row.refund_amount_minor ? parseInt(row.refund_amount_minor, 10) : null,
       };
     });
 
@@ -1344,15 +1425,19 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   app.post("/disputes", { preHandler: [requireAuth] }, async (request, reply) => {
     const parsed = openDisputeSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_DISPUTE_REQUEST", issues: parsed.error.issues });
+      return reply
+        .code(400)
+        .send({ error: "INVALID_DISPUTE_REQUEST", issues: parsed.error.issues });
     }
-    const initialFileEvidence = (parsed.data.evidence ?? []).some((evidence) => (
-      evidence.uri !== undefined || evidence.type === "image" || evidence.type === "video"
-    ));
+    const initialFileEvidence = (parsed.data.evidence ?? []).some(
+      (evidence) =>
+        evidence.uri !== undefined || evidence.type === "image" || evidence.type === "video",
+    );
     if (initialFileEvidence) {
       return reply.code(400).send({
         error: "FILE_EVIDENCE_UPLOAD_REQUIRED",
-        message: "Initial file evidence must use the quarantined upload and commit flow after opening the dispute",
+        message:
+          "Initial file evidence must use the quarantined upload and commit flow after opening the dispute",
       });
     }
 
@@ -1370,20 +1455,26 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     } else if (userId === order.sellerId) {
       derivedOpenedBy = "seller";
     } else {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+      return reply
+        .code(403)
+        .send({ error: "FORBIDDEN", message: "You are not a party to this order" });
     }
-    const hasReservedInitialMarker = (parsed.data.evidence ?? [])
-      .some((evidence) => containsVerifiedCameraEvidenceMarker(evidence.text));
+    const hasReservedInitialMarker = (parsed.data.evidence ?? []).some((evidence) =>
+      containsVerifiedCameraEvidenceMarker(evidence.text),
+    );
     if (request.user?.role !== "admin" && hasReservedInitialMarker) {
       return reply.code(400).send({
         error: "RESERVED_EVIDENCE_MARKER",
-        message: "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
+        message:
+          "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
       });
     }
 
     const reasonCode = parsed.data.reason_code as DisputeReasonCode;
     if (!(reasonCode in REASON_CODE_REGISTRY)) {
-      return reply.code(400).send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
+      return reply
+        .code(400)
+        .send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
     }
 
     const evidence = (parsed.data.evidence ?? []).map((e) => ({
@@ -1421,116 +1512,131 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/escalate — escalate T1→T2→T3 with auto deposit
-  app.post<{ Params: { id: string } }>("/disputes/:id/escalate", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const { id } = request.params;
-    const parsed = escalateSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_ESCALATE_REQUEST", issues: parsed.error.issues });
-    }
-
-    const dispute = await getDisputeById(db, id);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
-
-    // Order already loaded by ownership middleware
-    const order = (request as unknown as Record<string, unknown>).orderResource as
-      { id: string; buyerId: string; sellerId: string; amountMinor?: unknown } | undefined
-      ?? await getCommerceOrderByOrderId(db, dispute.order_id);
-    const escalatedBy = request.user?.role === "admin"
-      ? parsed.data.escalated_by
-      : activePartyForOrder(request.user, order);
-    if (!escalatedBy) {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "Cannot determine party role" });
-    }
-    if (request.user?.role !== "admin" && parsed.data.escalated_by !== escalatedBy) {
-      return reply.code(403).send({
-        error: "ESCALATION_PARTY_MISMATCH",
-        message: "escalated_by must match the authenticated party",
-      });
-    }
-
-    // Determine current tier from metadata or default to T1
-    const currentTier = (dispute.metadata as Record<string, unknown>)?.tier as number ?? 1;
-    if (currentTier >= 3) {
-      return reply.code(400).send({ error: "MAX_TIER_REACHED", message: "Cannot escalate beyond T3" });
-    }
-
-    const nextTier = (currentTier + 1) as DisputeTier;
-
-    // Compute cost for next tier using dispute-core — use order amount as GMV basis
-    const amountCents = order?.amountMinor
-      ? parseInt(String(order.amountMinor))
-      : 0;
-
-    if (amountCents <= 0) {
-      return reply.code(400).send({ error: "INVALID_DISPUTE_AMOUNT", message: "Order must have a positive amount for escalation" });
-    }
-
-    const cost = computeDisputeCost(amountCents, nextTier);
-
-    // Update dispute metadata with new tier
-    await updateDisputeRecord(db, {
-      ...dispute,
-      metadata: {
-        ...(dispute.metadata as Record<string, unknown>),
-        tier: nextTier,
-        escalated_by: escalatedBy,
-        escalated_reason: parsed.data.reason ?? null,
-      },
-    });
-
-    // For T2/T3: create deposit requirement (seller-only deposit)
-    let deposit = null;
-    if (nextTier >= 2) {
-      const depositReq = createDepositRequirement(id, nextTier as 2 | 3, amountCents);
-      deposit = await createDeposit(db, {
-        disputeId: id,
-        tier: nextTier,
-        amountCents: depositReq.amount_cents,
-        deadlineHours: depositReq.deadline_hours,
-        deadlineAt: new Date(Date.now() + depositReq.deadline_hours * 60 * 60 * 1000),
-      });
-    }
-
-    // Auto-assign reviewers for T2/T3 escalation
-    let reviewerAssignment = null;
-    if (nextTier >= 2 && order) {
-      try {
-        reviewerAssignment = await assignReviewersToDispute(
-          db,
-          id,
-          nextTier,
-          amountCents,
-          order.buyerId,
-          order.sellerId,
-        );
-      } catch (assignErr) {
-        console.error(
-          "[disputes] Auto-assign reviewers failed:",
-          assignErr instanceof Error ? assignErr.message : String(assignErr),
-        );
+  app.post<{ Params: { id: string } }>(
+    "/disputes/:id/escalate",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const parsed = escalateSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_ESCALATE_REQUEST", issues: parsed.error.issues });
       }
-    }
 
-    return reply.send({
-      dispute_id: id,
-      previous_tier: currentTier,
-      new_tier: nextTier,
-      cost,
-      deposit,
-      reviewer_assignment: reviewerAssignment,
-    });
-  });
+      const dispute = await getDisputeById(db, id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
+
+      // Order already loaded by ownership middleware
+      const order =
+        ((request as unknown as Record<string, unknown>).orderResource as
+          | { id: string; buyerId: string; sellerId: string; amountMinor?: unknown }
+          | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+      const escalatedBy =
+        request.user?.role === "admin"
+          ? parsed.data.escalated_by
+          : activePartyForOrder(request.user, order);
+      if (!escalatedBy) {
+        return reply.code(403).send({ error: "FORBIDDEN", message: "Cannot determine party role" });
+      }
+      if (request.user?.role !== "admin" && parsed.data.escalated_by !== escalatedBy) {
+        return reply.code(403).send({
+          error: "ESCALATION_PARTY_MISMATCH",
+          message: "escalated_by must match the authenticated party",
+        });
+      }
+
+      // Determine current tier from metadata or default to T1
+      const currentTier = ((dispute.metadata as Record<string, unknown>)?.tier as number) ?? 1;
+      if (currentTier >= 3) {
+        return reply
+          .code(400)
+          .send({ error: "MAX_TIER_REACHED", message: "Cannot escalate beyond T3" });
+      }
+
+      const nextTier = (currentTier + 1) as DisputeTier;
+
+      // Compute cost for next tier using dispute-core — use order amount as GMV basis
+      const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
+
+      if (amountCents <= 0) {
+        return reply.code(400).send({
+          error: "INVALID_DISPUTE_AMOUNT",
+          message: "Order must have a positive amount for escalation",
+        });
+      }
+
+      const cost = computeDisputeCost(amountCents, nextTier);
+
+      // Update dispute metadata with new tier
+      await updateDisputeRecord(db, {
+        ...dispute,
+        metadata: {
+          ...(dispute.metadata as Record<string, unknown>),
+          tier: nextTier,
+          escalated_by: escalatedBy,
+          escalated_reason: parsed.data.reason ?? null,
+        },
+      });
+
+      // For T2/T3: create deposit requirement (seller-only deposit)
+      let deposit = null;
+      if (nextTier >= 2) {
+        const depositReq = createDepositRequirement(id, nextTier as 2 | 3, amountCents);
+        deposit = await createDeposit(db, {
+          disputeId: id,
+          tier: nextTier,
+          amountCents: depositReq.amount_cents,
+          deadlineHours: depositReq.deadline_hours,
+          deadlineAt: new Date(Date.now() + depositReq.deadline_hours * 60 * 60 * 1000),
+        });
+      }
+
+      // Auto-assign reviewers for T2/T3 escalation
+      let reviewerAssignment = null;
+      if (nextTier >= 2 && order) {
+        try {
+          reviewerAssignment = await assignReviewersToDispute(
+            db,
+            id,
+            nextTier,
+            amountCents,
+            order.buyerId,
+            order.sellerId,
+          );
+        } catch (assignErr) {
+          console.error(
+            "[disputes] Auto-assign reviewers failed:",
+            assignErr instanceof Error ? assignErr.message : String(assignErr),
+          );
+        }
+      }
+
+      return reply.send({
+        dispute_id: id,
+        previous_tier: currentTier,
+        new_tier: nextTier,
+        cost,
+        deposit,
+        reviewer_assignment: reviewerAssignment,
+      });
+    },
+  );
 
   // GET /disputes/:id
-  app.get("/disputes/:id", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const dispute = await getDisputeById(db, (request.params as { id: string }).id);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
-    return reply.send({ dispute });
-  });
+  app.get(
+    "/disputes/:id",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const dispute = await getDisputeById(db, (request.params as { id: string }).id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
+      return reply.send({ dispute });
+    },
+  );
 
   // GET /disputes/by-order/:orderId
   app.get("/disputes/by-order/:orderId", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -1548,7 +1654,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
       const userId = request.user!.id;
       if (userId !== order.buyerId && userId !== order.sellerId) {
-        return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
       }
     }
 
@@ -1575,327 +1683,388 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/request-buyer-evidence
-  app.post("/disputes/:id/request-buyer-evidence", { preHandler: [requireAdmin] }, async (request, reply) => {
-    const dispute = await getDisputeById(db, (request.params as { id: string }).id);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
+  app.post(
+    "/disputes/:id/request-buyer-evidence",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const dispute = await getDisputeById(db, (request.params as { id: string }).id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
 
-    try {
-      const result = disputeService.requestBuyerEvidence(dispute);
-      await updateDisputeRecord(db, result.dispute);
-      return reply.send(result);
-    } catch (error) {
-      return reply.code(400).send({
-        error: "REQUEST_EVIDENCE_FAILED",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
+      try {
+        const result = disputeService.requestBuyerEvidence(dispute);
+        await updateDisputeRecord(db, result.dispute);
+        return reply.send(result);
+      } catch (error) {
+        return reply.code(400).send({
+          error: "REQUEST_EVIDENCE_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
 
   // POST /disputes/:id/request-seller-evidence
-  app.post("/disputes/:id/request-seller-evidence", { preHandler: [requireAdmin] }, async (request, reply) => {
-    const dispute = await getDisputeById(db, (request.params as { id: string }).id);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
+  app.post(
+    "/disputes/:id/request-seller-evidence",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const dispute = await getDisputeById(db, (request.params as { id: string }).id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
 
-    try {
-      const result = disputeService.requestSellerEvidence(dispute);
-      await updateDisputeRecord(db, result.dispute);
-      return reply.send(result);
-    } catch (error) {
-      return reply.code(400).send({
-        error: "REQUEST_EVIDENCE_FAILED",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
+      try {
+        const result = disputeService.requestSellerEvidence(dispute);
+        await updateDisputeRecord(db, result.dispute);
+        return reply.send(result);
+      } catch (error) {
+        return reply.code(400).send({
+          error: "REQUEST_EVIDENCE_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
 
   // POST /disputes/:id/evidence — add evidence
-  app.post("/disputes/:id/evidence", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const dispute = await getDisputeById(db, (request.params as { id: string }).id);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
-
-    const parsed = addEvidenceSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_EVIDENCE", issues: parsed.error.issues });
-    }
-    if (parsed.data.uri !== undefined || parsed.data.type === "image" || parsed.data.type === "video") {
-      return reply.code(400).send({
-        error: "FILE_EVIDENCE_UPLOAD_REQUIRED",
-        message: "Image and video evidence must use the quarantined upload and commit flow",
-      });
-    }
-    if (request.user?.role !== "admin" && containsVerifiedCameraEvidenceMarker(parsed.data.text)) {
-      return reply.code(400).send({
-        error: "RESERVED_EVIDENCE_MARKER",
-        message: "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
-      });
-    }
-
-    try {
-      const order =
-        ((request as unknown as Record<string, unknown>).orderResource as {
-          id: string;
-          buyerId: string;
-          sellerId: string;
-        } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
-
-      if (!order) {
-        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+  app.post(
+    "/disputes/:id/evidence",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const dispute = await getDisputeById(db, (request.params as { id: string }).id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
       }
 
-      let submittedBy: "buyer" | "seller" | "system";
-      if (request.user?.role === "admin") {
-        submittedBy = parsed.data.submitted_by;
-      } else if (request.user!.id === order.buyerId) {
-        submittedBy = "buyer";
-      } else if (request.user!.id === order.sellerId) {
-        submittedBy = "seller";
-      } else {
-        return reply.code(403).send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+      const parsed = addEvidenceSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_EVIDENCE", issues: parsed.error.issues });
+      }
+      if (
+        parsed.data.uri !== undefined ||
+        parsed.data.type === "image" ||
+        parsed.data.type === "video"
+      ) {
+        return reply.code(400).send({
+          error: "FILE_EVIDENCE_UPLOAD_REQUIRED",
+          message: "Image and video evidence must use the quarantined upload and commit flow",
+        });
+      }
+      if (
+        request.user?.role !== "admin" &&
+        containsVerifiedCameraEvidenceMarker(parsed.data.text)
+      ) {
+        return reply.code(400).send({
+          error: "RESERVED_EVIDENCE_MARKER",
+          message:
+            "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
+        });
       }
 
-      const result = disputeService.addEvidence(dispute, {
-        ...parsed.data,
-        submitted_by: submittedBy,
-      });
-      const persistedDispute = withStaleAiAssessment(result.dispute, "EVIDENCE_ADDED");
-      const persist = async (tx: unknown) => {
-        const txDb = tx as Database;
-        await updateDisputeRecord(txDb, persistedDispute);
-        if (result.value) {
-          await addDisputeEvidenceRecord(txDb, result.value);
+      try {
+        const order =
+          ((request as unknown as Record<string, unknown>).orderResource as
+            | {
+                id: string;
+                buyerId: string;
+                sellerId: string;
+              }
+            | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+
+        if (!order) {
+          return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
         }
-      };
-      if (typeof db.transaction === "function") {
-        await db.transaction(persist);
-      } else {
-        await persist(db);
+
+        let submittedBy: "buyer" | "seller" | "system";
+        if (request.user?.role === "admin") {
+          submittedBy = parsed.data.submitted_by;
+        } else if (request.user!.id === order.buyerId) {
+          submittedBy = "buyer";
+        } else if (request.user!.id === order.sellerId) {
+          submittedBy = "seller";
+        } else {
+          return reply
+            .code(403)
+            .send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+        }
+
+        const result = disputeService.addEvidence(dispute, {
+          ...parsed.data,
+          submitted_by: submittedBy,
+        });
+        const persistedDispute = withStaleAiAssessment(result.dispute, "EVIDENCE_ADDED");
+        const persist = async (tx: unknown) => {
+          const txDb = tx as Database;
+          await updateDisputeRecord(txDb, persistedDispute);
+          if (result.value) {
+            await addDisputeEvidenceRecord(txDb, result.value);
+          }
+        };
+        if (typeof db.transaction === "function") {
+          await db.transaction(persist);
+        } else {
+          await persist(db);
+        }
+
+        // Validate evidence completeness
+        const validation = validateEvidenceForReasonCode(
+          dispute.reason_code as DisputeReasonCode,
+          result.dispute.evidence,
+        );
+
+        return reply.send({
+          ...result,
+          dispute: persistedDispute,
+          ai_assessment_state: aiAssessmentState(persistedDispute),
+          evidence_validation: validation,
+        });
+      } catch (error) {
+        return reply.code(400).send({
+          error: "ADD_EVIDENCE_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
-
-      // Validate evidence completeness
-      const validation = validateEvidenceForReasonCode(
-        dispute.reason_code as DisputeReasonCode,
-        result.dispute.evidence,
-      );
-
-      return reply.send({
-        ...result,
-        dispute: persistedDispute,
-        ai_assessment_state: aiAssessmentState(persistedDispute),
-        evidence_validation: validation,
-      });
-    } catch (error) {
-      return reply.code(400).send({
-        error: "ADD_EVIDENCE_FAILED",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
+    },
+  );
 
   // POST /disputes/:id/resolve — resolve the dispute
-  app.post("/disputes/:id/appeal", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const disputeId = (request.params as { id: string }).id;
-    if (disputeAppealInFlight.has(disputeId)) {
-      return reply.code(409).send({
-        error: "APPEAL_SUBMISSION_IN_PROGRESS",
-        message: "An appeal submission is already in progress for this dispute",
-      });
-    }
-    if (!await acquireOperationLeaseGuard({
-      request,
-      reply,
-      disputeId,
-      operation: "appeal_submission",
-      conflictError: "APPEAL_SUBMISSION_IN_PROGRESS",
-      conflictMessage: "Another API instance is already submitting an appeal for this dispute",
-      processLock: disputeAppealInFlight,
-    })) return;
+  app.post(
+    "/disputes/:id/appeal",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const disputeId = (request.params as { id: string }).id;
+      if (disputeAppealInFlight.has(disputeId)) {
+        return reply.code(409).send({
+          error: "APPEAL_SUBMISSION_IN_PROGRESS",
+          message: "An appeal submission is already in progress for this dispute",
+        });
+      }
+      if (
+        !(await acquireOperationLeaseGuard({
+          request,
+          reply,
+          disputeId,
+          operation: "appeal_submission",
+          conflictError: "APPEAL_SUBMISSION_IN_PROGRESS",
+          conflictMessage: "Another API instance is already submitting an appeal for this dispute",
+          processLock: disputeAppealInFlight,
+        }))
+      )
+        return;
 
-    const dispute = await getDisputeById(db, disputeId);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
+      const dispute = await getDisputeById(db, disputeId);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
 
-    const parsed = disputeAppealSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_APPEAL", issues: parsed.error.issues });
-    }
+      const parsed = disputeAppealSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "INVALID_APPEAL", issues: parsed.error.issues });
+      }
 
-    const existingAppeal = appealReviewFor(dispute);
-    if (existingAppeal?.client_request_id === parsed.data.client_request_id) {
-      return reply.send({ dispute_id: dispute.id, appeal: existingAppeal, idempotent: true });
-    }
-    if (existingAppeal) {
-      return reply.code(409).send({
-        error: "APPEAL_ALREADY_USED",
-        message: "The MVP permits one appeal per dispute; the existing appeal record is retained for audit",
-        appeal: existingAppeal,
-      });
-    }
-    if (dispute.status !== "UNDER_REVIEW") {
-      return reply.code(409).send({
-        error: "DISPUTE_NOT_APPEALABLE",
-        message: "An appeal can be filed only while the dispute is under review",
-      });
-    }
+      const existingAppeal = appealReviewFor(dispute);
+      if (existingAppeal?.client_request_id === parsed.data.client_request_id) {
+        return reply.send({ dispute_id: dispute.id, appeal: existingAppeal, idempotent: true });
+      }
+      if (existingAppeal) {
+        return reply.code(409).send({
+          error: "APPEAL_ALREADY_USED",
+          message:
+            "The MVP permits one appeal per dispute; the existing appeal record is retained for audit",
+          appeal: existingAppeal,
+        });
+      }
+      if (dispute.status !== "UNDER_REVIEW") {
+        return reply.code(409).send({
+          error: "DISPUTE_NOT_APPEALABLE",
+          message: "An appeal can be filed only while the dispute is under review",
+        });
+      }
 
-    const metadata = disputeMetadata(dispute);
-    const assessment = metadata.ai_resolution_assessor;
-    if (!assessment || typeof assessment !== "object" || Array.isArray(assessment) || (assessment as Record<string, unknown>).status !== "COMPLETED") {
-      return reply.code(409).send({
-        error: "AI_ASSESSMENT_REQUIRED",
-        message: "An appeal requires a completed AI recommendation to challenge",
-      });
-    }
+      const metadata = disputeMetadata(dispute);
+      const assessment = metadata.ai_resolution_assessor;
+      if (
+        !assessment ||
+        typeof assessment !== "object" ||
+        Array.isArray(assessment) ||
+        (assessment as Record<string, unknown>).status !== "COMPLETED"
+      ) {
+        return reply.code(409).send({
+          error: "AI_ASSESSMENT_REQUIRED",
+          message: "An appeal requires a completed AI recommendation to challenge",
+        });
+      }
 
-    const order = await getCommerceOrderByOrderId(db, dispute.order_id);
-    const party = activePartyForOrder(request.user, order);
-    if (party !== "buyer" && party !== "seller") {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "Only the buyer or seller may appeal" });
-    }
-    const disputeEvidenceIds = new Set(dispute.evidence.map((evidence) => evidence.id));
-    const unknownEvidenceIds = parsed.data.evidence_ids.filter((evidenceId) => !disputeEvidenceIds.has(evidenceId));
-    if (unknownEvidenceIds.length > 0) {
-      return reply.code(400).send({
-        error: "INVALID_APPEAL_EVIDENCE",
-        message: "Every cited evidence id must belong to this dispute",
-        unknown_evidence_ids: unknownEvidenceIds,
-      });
-    }
+      const order = await getCommerceOrderByOrderId(db, dispute.order_id);
+      const party = activePartyForOrder(request.user, order);
+      if (party !== "buyer" && party !== "seller") {
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "Only the buyer or seller may appeal" });
+      }
+      const disputeEvidenceIds = new Set(dispute.evidence.map((evidence) => evidence.id));
+      const unknownEvidenceIds = parsed.data.evidence_ids.filter(
+        (evidenceId) => !disputeEvidenceIds.has(evidenceId),
+      );
+      if (unknownEvidenceIds.length > 0) {
+        return reply.code(400).send({
+          error: "INVALID_APPEAL_EVIDENCE",
+          message: "Every cited evidence id must belong to this dispute",
+          unknown_evidence_ids: unknownEvidenceIds,
+        });
+      }
 
-    const now = new Date().toISOString();
-    const appeal: DisputeAppealReview = {
-      id: createUuid(),
-      status: "OPEN",
-      appealed_by: party,
-      appealed_by_user_id: request.user!.id,
-      reason: parsed.data.reason,
-      evidence_ids: parsed.data.evidence_ids,
-      client_request_id: parsed.data.client_request_id,
-      created_at: now,
-      priority: "normal",
-      sla_due_at: hoursFromNowIso(APPEAL_DEFAULT_SLA_HOURS),
-    };
-    await updateDisputeRecord(db, {
-      ...dispute,
-      metadata: {
-        ...metadata,
-        appeal_review: appeal,
-        appeal_history: [...appealHistoryFor(dispute), {
-          event: "APPEAL_SUBMITTED",
-          at: now,
-          actor_id: request.user!.id,
-          party,
-          appeal_id: appeal.id,
-          client_request_id: appeal.client_request_id,
-          reason: appeal.reason,
-          evidence_ids: appeal.evidence_ids,
-        }],
-      },
-    });
-
-    return reply.code(201).send({ dispute_id: dispute.id, appeal, idempotent: false });
-  });
-
-  app.patch("/disputes/:id/appeal/review", { preHandler: [requireAdmin] }, async (request, reply) => {
-    const disputeId = (request.params as { id: string }).id;
-    if (!await acquireOperationLeaseGuard({
-      request,
-      reply,
-      disputeId,
-      operation: "appeal_review",
-      conflictError: "APPEAL_REVIEW_IN_PROGRESS",
-      conflictMessage: "Another API instance is already reviewing this dispute appeal",
-    })) return;
-    const dispute = await getDisputeById(db, disputeId);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
-    const parsed = disputeAppealReviewSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_APPEAL_REVIEW", issues: parsed.error.issues });
-    }
-
-    const appeal = appealReviewFor(dispute);
-    if (!appeal) {
-      return reply.code(404).send({ error: "APPEAL_NOT_FOUND" });
-    }
-    if (appeal.status !== "OPEN") {
-      return reply.code(409).send({
-        error: "APPEAL_ALREADY_REVIEWED",
-        message: "Only an open appeal can receive an operator decision",
-        appeal,
-      });
-    }
-
-    const now = new Date().toISOString();
-    const nextStatus: AppealStatus = parsed.data.decision === "dismiss" ? "DISMISSED" : "REOPENED";
-    const reviewedAppeal: DisputeAppealReview = {
-      ...appeal,
-      status: nextStatus,
-      reviewed_by: request.user!.id,
-      reviewed_at: now,
-      review_notes: parsed.data.notes,
-      ...(nextStatus === "REOPENED" ? {
-        assigned_to: appeal.assigned_to ?? request.user!.id,
-        assigned_by: appeal.assigned_by ?? request.user!.id,
-        assigned_at: appeal.assigned_at ?? now,
-        priority: appeal.priority === "urgent" ? "urgent" : "high",
-        sla_due_at: hoursFromNowIso(APPEAL_REOPENED_SLA_HOURS),
-      } : {}),
-    };
-    const metadata = disputeMetadata(dispute);
-    const persistReview = async (tx: unknown) => {
-      const txDb = tx as Database;
-      await updateDisputeRecord(txDb, {
+      const now = new Date().toISOString();
+      const appeal: DisputeAppealReview = {
+        id: createUuid(),
+        status: "OPEN",
+        appealed_by: party,
+        appealed_by_user_id: request.user!.id,
+        reason: parsed.data.reason,
+        evidence_ids: parsed.data.evidence_ids,
+        client_request_id: parsed.data.client_request_id,
+        created_at: now,
+        priority: "normal",
+        sla_due_at: hoursFromNowIso(APPEAL_DEFAULT_SLA_HOURS),
+      };
+      await updateDisputeRecord(db, {
         ...dispute,
         metadata: {
           ...metadata,
-          appeal_review: reviewedAppeal,
-          ai_assessment_stale: nextStatus === "REOPENED",
-          appeal_history: [...appealHistoryFor(dispute), {
-            event: nextStatus === "DISMISSED" ? "APPEAL_DISMISSED" : "APPEAL_REOPENED",
-            at: now,
-            actor_id: request.user!.id,
-            appeal_id: appeal.id,
-            notes: parsed.data.notes,
-          }],
+          appeal_review: appeal,
+          appeal_history: [
+            ...appealHistoryFor(dispute),
+            {
+              event: "APPEAL_SUBMITTED",
+              at: now,
+              actor_id: request.user!.id,
+              party,
+              appeal_id: appeal.id,
+              client_request_id: appeal.client_request_id,
+              reason: appeal.reason,
+              evidence_ids: appeal.evidence_ids,
+            },
+          ],
         },
       });
-      await writeAuditLog(txDb, {
-        actorId: request.user!.id,
-        actionType: "dispute.appeal_review",
-        targetType: "dispute",
-        targetId: dispute.id,
-        payload: {
-          appeal_id: appeal.id,
-          decision: parsed.data.decision,
-          notes: parsed.data.notes,
-        },
-      });
-    };
-    if (typeof db.transaction === "function") {
-      await db.transaction(persistReview);
-    } else {
-      await persistReview(db);
-    }
 
-    return reply.send({
-      dispute_id: dispute.id,
-      appeal: reviewedAppeal,
-      requires_new_ai_assessment: nextStatus === "REOPENED",
-    });
-  });
+      return reply.code(201).send({ dispute_id: dispute.id, appeal, idempotent: false });
+    },
+  );
+
+  app.patch(
+    "/disputes/:id/appeal/review",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const disputeId = (request.params as { id: string }).id;
+      if (
+        !(await acquireOperationLeaseGuard({
+          request,
+          reply,
+          disputeId,
+          operation: "appeal_review",
+          conflictError: "APPEAL_REVIEW_IN_PROGRESS",
+          conflictMessage: "Another API instance is already reviewing this dispute appeal",
+        }))
+      )
+        return;
+      const dispute = await getDisputeById(db, disputeId);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
+      const parsed = disputeAppealReviewSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_APPEAL_REVIEW", issues: parsed.error.issues });
+      }
+
+      const appeal = appealReviewFor(dispute);
+      if (!appeal) {
+        return reply.code(404).send({ error: "APPEAL_NOT_FOUND" });
+      }
+      if (appeal.status !== "OPEN") {
+        return reply.code(409).send({
+          error: "APPEAL_ALREADY_REVIEWED",
+          message: "Only an open appeal can receive an operator decision",
+          appeal,
+        });
+      }
+
+      const now = new Date().toISOString();
+      const nextStatus: AppealStatus =
+        parsed.data.decision === "dismiss" ? "DISMISSED" : "REOPENED";
+      const reviewedAppeal: DisputeAppealReview = {
+        ...appeal,
+        status: nextStatus,
+        reviewed_by: request.user!.id,
+        reviewed_at: now,
+        review_notes: parsed.data.notes,
+        ...(nextStatus === "REOPENED"
+          ? {
+              assigned_to: appeal.assigned_to ?? request.user!.id,
+              assigned_by: appeal.assigned_by ?? request.user!.id,
+              assigned_at: appeal.assigned_at ?? now,
+              priority: appeal.priority === "urgent" ? "urgent" : "high",
+              sla_due_at: hoursFromNowIso(APPEAL_REOPENED_SLA_HOURS),
+            }
+          : {}),
+      };
+      const metadata = disputeMetadata(dispute);
+      const persistReview = async (tx: unknown) => {
+        const txDb = tx as Database;
+        await updateDisputeRecord(txDb, {
+          ...dispute,
+          metadata: {
+            ...metadata,
+            appeal_review: reviewedAppeal,
+            ai_assessment_stale: nextStatus === "REOPENED",
+            appeal_history: [
+              ...appealHistoryFor(dispute),
+              {
+                event: nextStatus === "DISMISSED" ? "APPEAL_DISMISSED" : "APPEAL_REOPENED",
+                at: now,
+                actor_id: request.user!.id,
+                appeal_id: appeal.id,
+                notes: parsed.data.notes,
+              },
+            ],
+          },
+        });
+        await writeAuditLog(txDb, {
+          actorId: request.user!.id,
+          actionType: "dispute.appeal_review",
+          targetType: "dispute",
+          targetId: dispute.id,
+          payload: {
+            appeal_id: appeal.id,
+            decision: parsed.data.decision,
+            notes: parsed.data.notes,
+          },
+        });
+      };
+      if (typeof db.transaction === "function") {
+        await db.transaction(persistReview);
+      } else {
+        await persistReview(db);
+      }
+
+      return reply.send({
+        dispute_id: dispute.id,
+        appeal: reviewedAppeal,
+        requires_new_ai_assessment: nextStatus === "REOPENED",
+      });
+    },
+  );
 
   app.get("/admin/disputes/appeals", { preHandler: [requireAdmin] }, async (request, reply) => {
     const parsed = disputeAppealQueueQuerySchema.safeParse(request.query);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_APPEAL_QUEUE_QUERY", issues: parsed.error.issues });
+      return reply
+        .code(400)
+        .send({ error: "INVALID_APPEAL_QUEUE_QUERY", issues: parsed.error.issues });
     }
 
     interface AppealQueueRow {
@@ -1930,39 +2099,41 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!appealValue || typeof appealValue !== "object" || Array.isArray(appealValue)) return [];
       const appeal = appealValue as DisputeAppealReview;
       const slaState = deriveAppealSlaState(appeal, nowMs);
-      return [{
-        dispute_id: row.id,
-        order_id: row.order_id,
-        dispute_status: row.status,
-        reason_code: row.reason_code,
-        opened_at: row.opened_at,
-        amount_minor: row.amount_minor ? parseInt(row.amount_minor) : null,
-        appeal,
-        assignment: {
-          operator_user_id: appeal.assigned_to ?? null,
-          assigned_at: appeal.assigned_at ?? null,
-          priority: appeal.priority ?? "normal",
+      return [
+        {
+          dispute_id: row.id,
+          order_id: row.order_id,
+          dispute_status: row.status,
+          reason_code: row.reason_code,
+          opened_at: row.opened_at,
+          amount_minor: row.amount_minor ? parseInt(row.amount_minor, 10) : null,
+          appeal,
+          assignment: {
+            operator_user_id: appeal.assigned_to ?? null,
+            assigned_at: appeal.assigned_at ?? null,
+            priority: appeal.priority ?? "normal",
+          },
+          sla: {
+            state: slaState,
+            due_at: appeal.sla_due_at ?? null,
+            remaining_seconds: appeal.sla_due_at
+              ? Math.floor((Date.parse(appeal.sla_due_at) - nowMs) / 1000)
+              : null,
+          },
         },
-        sla: {
-          state: slaState,
-          due_at: appeal.sla_due_at ?? null,
-          remaining_seconds: appeal.sla_due_at
-            ? Math.floor((Date.parse(appeal.sla_due_at) - nowMs) / 1000)
-            : null,
-        },
-      }];
+      ];
     });
 
-    const statusMatches = (item: typeof allItems[number]) => {
+    const statusMatches = (item: (typeof allItems)[number]) => {
       if (parsed.data.status === "all") return true;
       const active = item.appeal.status === "OPEN" || item.appeal.status === "REOPENED";
       if (parsed.data.status === "open") return active;
-      if (parsed.data.status === "assigned") return active && Boolean(item.assignment.operator_user_id);
+      if (parsed.data.status === "assigned")
+        return active && Boolean(item.assignment.operator_user_id);
       return !active;
     };
-    const slaMatches = (item: typeof allItems[number]) => (
-      parsed.data.sla === "all" || item.sla.state.toLowerCase() === parsed.data.sla
-    );
+    const slaMatches = (item: (typeof allItems)[number]) =>
+      parsed.data.sla === "all" || item.sla.state.toLowerCase() === parsed.data.sla;
     const priorityRank = { urgent: 0, high: 1, normal: 2 };
     const items = allItems
       .filter((item) => statusMatches(item) && slaMatches(item))
@@ -1970,7 +2141,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         const leftOverdue = left.sla.state === "OVERDUE" ? 0 : 1;
         const rightOverdue = right.sla.state === "OVERDUE" ? 0 : 1;
         if (leftOverdue !== rightOverdue) return leftOverdue - rightOverdue;
-        const priorityDifference = priorityRank[left.assignment.priority] - priorityRank[right.assignment.priority];
+        const priorityDifference =
+          priorityRank[left.assignment.priority] - priorityRank[right.assignment.priority];
         if (priorityDifference !== 0) return priorityDifference;
         return (left.sla.due_at ?? "").localeCompare(right.sla.due_at ?? "");
       })
@@ -1981,7 +2153,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       items,
       summary: {
         total: allItems.length,
-        open: allItems.filter((item) => item.appeal.status === "OPEN" || item.appeal.status === "REOPENED").length,
+        open: allItems.filter(
+          (item) => item.appeal.status === "OPEN" || item.appeal.status === "REOPENED",
+        ).length,
         unassigned: allItems.filter((item) => item.sla.state === "UNASSIGNED").length,
         due_soon: allItems.filter((item) => item.sla.state === "DUE_SOON").length,
         overdue: allItems.filter((item) => item.sla.state === "OVERDUE").length,
@@ -1989,132 +2163,152 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     });
   });
 
-  app.patch("/disputes/:id/appeal/assignment", { preHandler: [requireAdmin] }, async (request, reply) => {
-    const disputeId = (request.params as { id: string }).id;
-    if (disputeAppealAssignmentInFlight.has(disputeId)) {
-      return reply.code(409).send({
-        error: "APPEAL_ASSIGNMENT_IN_PROGRESS",
-        message: "Another operator assignment is already in progress for this dispute",
-      });
-    }
-    if (!await acquireOperationLeaseGuard({
-      request,
-      reply,
-      disputeId,
-      operation: "appeal_assignment",
-      conflictError: "APPEAL_ASSIGNMENT_IN_PROGRESS",
-      conflictMessage: "Another API instance is already assigning this dispute appeal",
-      processLock: disputeAppealAssignmentInFlight,
-    })) return;
+  app.patch(
+    "/disputes/:id/appeal/assignment",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const disputeId = (request.params as { id: string }).id;
+      if (disputeAppealAssignmentInFlight.has(disputeId)) {
+        return reply.code(409).send({
+          error: "APPEAL_ASSIGNMENT_IN_PROGRESS",
+          message: "Another operator assignment is already in progress for this dispute",
+        });
+      }
+      if (
+        !(await acquireOperationLeaseGuard({
+          request,
+          reply,
+          disputeId,
+          operation: "appeal_assignment",
+          conflictError: "APPEAL_ASSIGNMENT_IN_PROGRESS",
+          conflictMessage: "Another API instance is already assigning this dispute appeal",
+          processLock: disputeAppealAssignmentInFlight,
+        }))
+      )
+        return;
 
-    const dispute = await getDisputeById(db, disputeId);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
-    const parsed = disputeAppealAssignmentSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_APPEAL_ASSIGNMENT", issues: parsed.error.issues });
-    }
-    const appeal = appealReviewFor(dispute);
-    if (!appeal) {
-      return reply.code(404).send({ error: "APPEAL_NOT_FOUND" });
-    }
-    if (appeal.id !== parsed.data.expected_appeal_id) {
-      return reply.code(409).send({
-        error: "STALE_APPEAL_ASSIGNMENT",
-        message: "The appeal changed after the queue item was loaded",
-        current_appeal_id: appeal.id,
-      });
-    }
-    if (appeal.status !== "OPEN" && appeal.status !== "REOPENED") {
-      return reply.code(409).send({
-        error: "APPEAL_NOT_ASSIGNABLE",
-        message: "Only an active appeal can be assigned",
-        appeal,
-      });
-    }
+      const dispute = await getDisputeById(db, disputeId);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
+      const parsed = disputeAppealAssignmentSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_APPEAL_ASSIGNMENT", issues: parsed.error.issues });
+      }
+      const appeal = appealReviewFor(dispute);
+      if (!appeal) {
+        return reply.code(404).send({ error: "APPEAL_NOT_FOUND" });
+      }
+      if (appeal.id !== parsed.data.expected_appeal_id) {
+        return reply.code(409).send({
+          error: "STALE_APPEAL_ASSIGNMENT",
+          message: "The appeal changed after the queue item was loaded",
+          current_appeal_id: appeal.id,
+        });
+      }
+      if (appeal.status !== "OPEN" && appeal.status !== "REOPENED") {
+        return reply.code(409).send({
+          error: "APPEAL_NOT_ASSIGNABLE",
+          message: "Only an active appeal can be assigned",
+          appeal,
+        });
+      }
 
-    const operatorUserId = request.user!.id;
-    if (
-      appeal.assigned_to === operatorUserId
-      && appeal.priority === parsed.data.priority
-      && parsed.data.sla_hours === undefined
-    ) {
-      return reply.send({
-        dispute_id: dispute.id,
-        appeal,
-        sla_state: deriveAppealSlaState(appeal),
-        idempotent: true,
-      });
-    }
+      const operatorUserId = request.user!.id;
+      if (
+        appeal.assigned_to === operatorUserId &&
+        appeal.priority === parsed.data.priority &&
+        parsed.data.sla_hours === undefined
+      ) {
+        return reply.send({
+          dispute_id: dispute.id,
+          appeal,
+          sla_state: deriveAppealSlaState(appeal),
+          idempotent: true,
+        });
+      }
 
-    const slaHours = parsed.data.sla_hours
-      ?? (parsed.data.priority === "urgent" ? 4 : parsed.data.priority === "high" ? 8 : APPEAL_DEFAULT_SLA_HOURS);
-    const now = new Date().toISOString();
-    const assignedAppeal: DisputeAppealReview = {
-      ...appeal,
-      assigned_to: operatorUserId,
-      assigned_by: request.user!.id,
-      assigned_at: now,
-      priority: parsed.data.priority,
-      sla_due_at: hoursFromNowIso(slaHours),
-    };
-    const metadata = disputeMetadata(dispute);
-    const persistAssignment = async (tx: unknown) => {
-      const txDb = tx as Database;
-      await updateDisputeRecord(txDb, {
-        ...dispute,
-        metadata: {
-          ...metadata,
-          appeal_review: assignedAppeal,
-          appeal_history: [...appealHistoryFor(dispute), {
-            event: "APPEAL_ASSIGNED",
-            at: now,
-            actor_id: request.user!.id,
-            operator_user_id: operatorUserId,
+      const slaHours =
+        parsed.data.sla_hours ??
+        (parsed.data.priority === "urgent"
+          ? 4
+          : parsed.data.priority === "high"
+            ? 8
+            : APPEAL_DEFAULT_SLA_HOURS);
+      const now = new Date().toISOString();
+      const assignedAppeal: DisputeAppealReview = {
+        ...appeal,
+        assigned_to: operatorUserId,
+        assigned_by: request.user!.id,
+        assigned_at: now,
+        priority: parsed.data.priority,
+        sla_due_at: hoursFromNowIso(slaHours),
+      };
+      const metadata = disputeMetadata(dispute);
+      const persistAssignment = async (tx: unknown) => {
+        const txDb = tx as Database;
+        await updateDisputeRecord(txDb, {
+          ...dispute,
+          metadata: {
+            ...metadata,
+            appeal_review: assignedAppeal,
+            appeal_history: [
+              ...appealHistoryFor(dispute),
+              {
+                event: "APPEAL_ASSIGNED",
+                at: now,
+                actor_id: request.user!.id,
+                operator_user_id: operatorUserId,
+                appeal_id: appeal.id,
+                priority: parsed.data.priority,
+                sla_due_at: assignedAppeal.sla_due_at,
+              },
+            ],
+          },
+        });
+        await writeAuditLog(txDb, {
+          actorId: request.user!.id,
+          actionType: "dispute.appeal_assign",
+          targetType: "dispute",
+          targetId: dispute.id,
+          payload: {
             appeal_id: appeal.id,
+            operator_user_id: operatorUserId,
             priority: parsed.data.priority,
             sla_due_at: assignedAppeal.sla_due_at,
-          }],
-        },
-      });
-      await writeAuditLog(txDb, {
-        actorId: request.user!.id,
-        actionType: "dispute.appeal_assign",
-        targetType: "dispute",
-        targetId: dispute.id,
-        payload: {
-          appeal_id: appeal.id,
-          operator_user_id: operatorUserId,
-          priority: parsed.data.priority,
-          sla_due_at: assignedAppeal.sla_due_at,
-        },
-      });
-    };
-    if (typeof db.transaction === "function") {
-      await db.transaction(persistAssignment);
-    } else {
-      await persistAssignment(db);
-    }
+          },
+        });
+      };
+      if (typeof db.transaction === "function") {
+        await db.transaction(persistAssignment);
+      } else {
+        await persistAssignment(db);
+      }
 
-    return reply.send({
-      dispute_id: dispute.id,
-      appeal: assignedAppeal,
-      sla_state: deriveAppealSlaState(assignedAppeal),
-      idempotent: false,
-    });
-  });
+      return reply.send({
+        dispute_id: dispute.id,
+        appeal: assignedAppeal,
+        sla_state: deriveAppealSlaState(assignedAppeal),
+        idempotent: false,
+      });
+    },
+  );
 
   app.post("/disputes/:id/resolve", { preHandler: [requireAdmin] }, async (request, reply) => {
     const disputeId = (request.params as { id: string }).id;
-    if (!await acquireOperationLeaseGuard({
-      request,
-      reply,
-      disputeId,
-      operation: "dispute_resolution",
-      conflictError: "DISPUTE_RESOLUTION_IN_PROGRESS",
-      conflictMessage: "Another API instance is already resolving this dispute",
-    })) return;
+    if (
+      !(await acquireOperationLeaseGuard({
+        request,
+        reply,
+        disputeId,
+        operation: "dispute_resolution",
+        conflictError: "DISPUTE_RESOLUTION_IN_PROGRESS",
+        conflictMessage: "Another API instance is already resolving this dispute",
+      }))
+    )
+      return;
     const dispute = await getDisputeById(db, disputeId);
     if (!dispute) {
       return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
@@ -2128,7 +2322,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     if (appealBlocksResolution(dispute)) {
       return reply.code(409).send({
         error: "APPEAL_REVIEW_REQUIRED",
-        message: "Resolve is blocked until the open appeal is dismissed or a reopened case is reassessed",
+        message:
+          "Resolve is blocked until the open appeal is dismissed or a reopened case is reassessed",
         appeal: appealReviewFor(dispute),
       });
     }
@@ -2136,10 +2331,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     try {
       const result = disputeService.resolve(dispute, parsed.data);
       if (!result.value) {
-        return reply.code(400).send({ error: "RESOLUTION_FAILED", message: "Resolution result missing" });
+        return reply
+          .code(400)
+          .send({ error: "RESOLUTION_FAILED", message: "Resolution result missing" });
       }
 
-      const finalization = await finalizeDisputeResolution(db, dispute, result.value, result.dispute);
+      const finalization = await finalizeDisputeResolution(
+        db,
+        dispute,
+        result.value,
+        result.dispute,
+      );
 
       // Resolve buyer/seller from the commerce order
       const order = await getCommerceOrderByOrderId(db, dispute.order_id);
@@ -2168,201 +2370,250 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   });
 
   // POST /disputes/:id/close — close the dispute
-  app.post("/disputes/:id/close", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const dispute = await getDisputeById(db, (request.params as { id: string }).id);
-    if (!dispute) {
-      return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-    }
-    if ((process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && request.user?.role !== "admin") {
-      const order = await getCommerceOrderByOrderId(db, dispute.order_id);
-      const openerUserId = dispute.opened_by === "buyer" ? order?.buyerId : order?.sellerId;
-      if (!openerUserId || request.user?.id !== openerUserId) {
-        return reply.code(403).send({
-          error: "FORBIDDEN",
-          message: "Only the party who opened the dispute can close it in production",
+  app.post(
+    "/disputes/:id/close",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const dispute = await getDisputeById(db, (request.params as { id: string }).id);
+      if (!dispute) {
+        return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
+      }
+      if (
+        (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") &&
+        request.user?.role !== "admin"
+      ) {
+        const order = await getCommerceOrderByOrderId(db, dispute.order_id);
+        const openerUserId = dispute.opened_by === "buyer" ? order?.buyerId : order?.sellerId;
+        if (!openerUserId || request.user?.id !== openerUserId) {
+          return reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Only the party who opened the dispute can close it in production",
+          });
+        }
+      }
+
+      try {
+        const result = disputeService.closeCase(dispute);
+        await updateDisputeRecord(db, result.dispute);
+        return reply.send(result);
+      } catch (error) {
+        return reply.code(400).send({
+          error: "CLOSE_FAILED",
+          message: error instanceof Error ? error.message : String(error),
         });
       }
-    }
-
-    try {
-      const result = disputeService.closeCase(dispute);
-      await updateDisputeRecord(db, result.dispute);
-      return reply.send(result);
-    } catch (error) {
-      return reply.code(400).send({
-        error: "CLOSE_FAILED",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
+    },
+  );
 
   // POST /disputes/:id/deposit — initiate deposit payment collection
-  app.post<{ Params: { id: string } }>("/disputes/:id/deposit", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const { id } = request.params;
-    const parsed = depositSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_DEPOSIT_REQUEST", issues: parsed.error.issues });
-    }
+  app.post<{ Params: { id: string } }>(
+    "/disputes/:id/deposit",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const parsed = depositSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_DEPOSIT_REQUEST", issues: parsed.error.issues });
+      }
 
-    // 1. Validate deposit exists and is PENDING
-    const deposit = await getDepositByDisputeId(db, id);
-    if (!deposit) {
-      return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
-    }
+      // 1. Validate deposit exists and is PENDING
+      const deposit = await getDepositByDisputeId(db, id);
+      if (!deposit) {
+        return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
+      }
 
-    if (deposit.status !== "PENDING") {
-      return reply.code(400).send({ error: "DEPOSIT_ALREADY_PROCESSED", message: `Deposit status is ${deposit.status}` });
-    }
+      if (deposit.status !== "PENDING") {
+        return reply.code(400).send({
+          error: "DEPOSIT_ALREADY_PROCESSED",
+          message: `Deposit status is ${deposit.status}`,
+        });
+      }
 
-    // 2. Validate caller is the seller (deposits are seller-only)
-    const order = (request as unknown as Record<string, unknown>).orderResource as
-      { id: string; buyerId: string; sellerId: string; amountMinor?: unknown } | undefined;
-    const userId = request.user!.id;
-    if (order && userId !== order.sellerId) {
-      return reply.code(403).send({ error: "SELLER_ONLY", message: "Only the seller can post a deposit" });
-    }
+      // 2. Validate caller is the seller (deposits are seller-only)
+      const order = (request as unknown as Record<string, unknown>).orderResource as
+        | { id: string; buyerId: string; sellerId: string; amountMinor?: unknown }
+        | undefined;
+      const userId = request.user!.id;
+      if (order && userId !== order.sellerId) {
+        return reply
+          .code(403)
+          .send({ error: "SELLER_ONLY", message: "Only the seller can post a deposit" });
+      }
 
-    // 3. Validate wallet address if provided (for USDC rail)
-    if (parsed.data.wallet_address && !isAddress(parsed.data.wallet_address)) {
-      return reply.code(400).send({ error: "INVALID_WALLET_ADDRESS", message: "wallet_address must be a valid Ethereum address" });
-    }
+      // 3. Validate wallet address if provided (for USDC rail)
+      if (parsed.data.wallet_address && !isAddress(parsed.data.wallet_address)) {
+        return reply.code(400).send({
+          error: "INVALID_WALLET_ADDRESS",
+          message: "wallet_address must be a valid Ethereum address",
+        });
+      }
 
-    // 4. Amount is ALWAYS server-computed — never trust client
-    const amountCents = deposit.amountCents;
+      // 4. Amount is ALWAYS server-computed — never trust client
+      const amountCents = deposit.amountCents;
 
-    // 5. Initiate deposit collection
-    try {
-      const result = await initiateDepositCollection({
-        deposit_id: deposit.id,
-        dispute_id: id,
-        amount_cents: amountCents,
-        seller_wallet_address: parsed.data.wallet_address,
-        seller_user_id: userId,
-        rail: parsed.data.rail,
-      });
+      // 5. Initiate deposit collection
+      try {
+        const result = await initiateDepositCollection({
+          deposit_id: deposit.id,
+          dispute_id: id,
+          amount_cents: amountCents,
+          seller_wallet_address: parsed.data.wallet_address,
+          seller_user_id: userId,
+          rail: parsed.data.rail,
+        });
 
-      const rail = result.rail;
+        const rail = result.rail;
 
-      if (rail === "mock") {
-        // Mock: immediately mark as DEPOSITED
+        if (rail === "mock") {
+          // Mock: immediately mark as DEPOSITED
+          const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
+            depositedAt: new Date(),
+            metadata: {
+              ...(deposit.metadata ?? {}),
+              rail,
+              mock_tx_id: result.mock_tx_id,
+            },
+          });
+          return reply.send({ deposit: updated, collection: result });
+        }
+
+        if (rail === "usdc") {
+          // USDC: update metadata with approval instructions, status stays PENDING
+          await updateDepositMetadata(db, deposit.id, {
+            ...(deposit.metadata ?? {}),
+            rail,
+            wallet_address: parsed.data.wallet_address,
+            usdc_approval: result.usdc_approval,
+          });
+          return reply.send({
+            deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } },
+            collection: result,
+          });
+        }
+
+        if (rail === "stripe") {
+          // Stripe: update metadata with session info, status stays PENDING
+          await updateDepositMetadata(db, deposit.id, {
+            ...(deposit.metadata ?? {}),
+            rail,
+            stripe_payment_intent_id: result.stripe_payment_intent_id,
+          });
+          return reply.send({
+            deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } },
+            collection: result,
+          });
+        }
+
+        // Should not reach here
+        return reply.send({ deposit, collection: result });
+      } catch (error) {
+        return reply.code(500).send({
+          error: "DEPOSIT_COLLECTION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+  );
+
+  // POST /disputes/:id/deposit/confirm-usdc — confirm USDC deposit after seller approved spend
+  app.post<{ Params: { id: string } }>(
+    "/disputes/:id/deposit/confirm-usdc",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const parsed = confirmUsdcSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_CONFIRM_REQUEST", issues: parsed.error.issues });
+      }
+
+      // 1. Validate wallet address
+      if (!isAddress(parsed.data.wallet_address)) {
+        return reply.code(400).send({
+          error: "INVALID_WALLET_ADDRESS",
+          message: "wallet_address must be a valid Ethereum address",
+        });
+      }
+
+      // 2. Validate deposit exists and is PENDING
+      const deposit = await getDepositByDisputeId(db, id);
+      if (!deposit) {
+        return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
+      }
+
+      if (deposit.status !== "PENDING") {
+        return reply.code(400).send({
+          error: "DEPOSIT_ALREADY_PROCESSED",
+          message: `Deposit status is ${deposit.status}`,
+        });
+      }
+
+      // 3. Validate the deposit was initiated with USDC rail
+      const depositMeta = deposit.metadata as Record<string, unknown> | null;
+      if (depositMeta?.rail !== "usdc") {
+        return reply
+          .code(400)
+          .send({ error: "WRONG_RAIL", message: "This deposit was not initiated with USDC rail" });
+      }
+
+      // 4. Validate caller is the seller
+      const order = (request as unknown as Record<string, unknown>).orderResource as
+        | { id: string; buyerId: string; sellerId: string; amountMinor?: unknown }
+        | undefined;
+      const userId = request.user!.id;
+      if (order && userId !== order.sellerId) {
+        return reply
+          .code(403)
+          .send({ error: "SELLER_ONLY", message: "Only the seller can confirm a deposit" });
+      }
+
+      // 5. Amount is server-computed — use the stored deposit amount
+      const amountCents = deposit.amountCents;
+
+      try {
+        // 6. Execute transferFrom via gas relayer (verifies allowance on-chain)
+        const { tx_hash } = await confirmUsdcDeposit({
+          deposit_id: deposit.id,
+          seller_wallet_address: parsed.data.wallet_address,
+          amount_cents: amountCents,
+        });
+
+        // 7. Mark deposit as DEPOSITED
         const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
           depositedAt: new Date(),
           metadata: {
-            ...(deposit.metadata ?? {}),
-            rail,
-            mock_tx_id: result.mock_tx_id,
+            ...(depositMeta ?? {}),
+            tx_hash,
+            confirmed_at: new Date().toISOString(),
           },
         });
-        return reply.send({ deposit: updated, collection: result });
-      }
 
-      if (rail === "usdc") {
-        // USDC: update metadata with approval instructions, status stays PENDING
-        await updateDepositMetadata(db, deposit.id, {
-          ...(deposit.metadata ?? {}),
-          rail,
-          wallet_address: parsed.data.wallet_address,
-          usdc_approval: result.usdc_approval,
+        return reply.send({ deposit: updated, tx_hash });
+      } catch (error) {
+        return reply.code(500).send({
+          error: "USDC_DEPOSIT_FAILED",
+          message: error instanceof Error ? error.message : String(error),
         });
-        return reply.send({ deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } }, collection: result });
       }
-
-      if (rail === "stripe") {
-        // Stripe: update metadata with session info, status stays PENDING
-        await updateDepositMetadata(db, deposit.id, {
-          ...(deposit.metadata ?? {}),
-          rail,
-          stripe_payment_intent_id: result.stripe_payment_intent_id,
-        });
-        return reply.send({ deposit: { ...deposit, metadata: { ...(deposit.metadata ?? {}), rail } }, collection: result });
-      }
-
-      // Should not reach here
-      return reply.send({ deposit, collection: result });
-    } catch (error) {
-      return reply.code(500).send({
-        error: "DEPOSIT_COLLECTION_FAILED",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-  // POST /disputes/:id/deposit/confirm-usdc — confirm USDC deposit after seller approved spend
-  app.post<{ Params: { id: string } }>("/disputes/:id/deposit/confirm-usdc", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const { id } = request.params;
-    const parsed = confirmUsdcSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_CONFIRM_REQUEST", issues: parsed.error.issues });
-    }
-
-    // 1. Validate wallet address
-    if (!isAddress(parsed.data.wallet_address)) {
-      return reply.code(400).send({ error: "INVALID_WALLET_ADDRESS", message: "wallet_address must be a valid Ethereum address" });
-    }
-
-    // 2. Validate deposit exists and is PENDING
-    const deposit = await getDepositByDisputeId(db, id);
-    if (!deposit) {
-      return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
-    }
-
-    if (deposit.status !== "PENDING") {
-      return reply.code(400).send({ error: "DEPOSIT_ALREADY_PROCESSED", message: `Deposit status is ${deposit.status}` });
-    }
-
-    // 3. Validate the deposit was initiated with USDC rail
-    const depositMeta = deposit.metadata as Record<string, unknown> | null;
-    if (depositMeta?.rail !== "usdc") {
-      return reply.code(400).send({ error: "WRONG_RAIL", message: "This deposit was not initiated with USDC rail" });
-    }
-
-    // 4. Validate caller is the seller
-    const order = (request as unknown as Record<string, unknown>).orderResource as
-      { id: string; buyerId: string; sellerId: string; amountMinor?: unknown } | undefined;
-    const userId = request.user!.id;
-    if (order && userId !== order.sellerId) {
-      return reply.code(403).send({ error: "SELLER_ONLY", message: "Only the seller can confirm a deposit" });
-    }
-
-    // 5. Amount is server-computed — use the stored deposit amount
-    const amountCents = deposit.amountCents;
-
-    try {
-      // 6. Execute transferFrom via gas relayer (verifies allowance on-chain)
-      const { tx_hash } = await confirmUsdcDeposit({
-        deposit_id: deposit.id,
-        seller_wallet_address: parsed.data.wallet_address,
-        amount_cents: amountCents,
-      });
-
-      // 7. Mark deposit as DEPOSITED
-      const updated = await updateDepositStatus(db, deposit.id, "DEPOSITED", {
-        depositedAt: new Date(),
-        metadata: {
-          ...(depositMeta ?? {}),
-          tx_hash,
-          confirmed_at: new Date().toISOString(),
-        },
-      });
-
-      return reply.send({ deposit: updated, tx_hash });
-    } catch (error) {
-      return reply.code(500).send({
-        error: "USDC_DEPOSIT_FAILED",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
+    },
+  );
 
   // GET /disputes/:id/deposit — get deposit for a dispute
-  app.get<{ Params: { id: string } }>("/disputes/:id/deposit", { preHandler: [requireAuth, requireDisputeParty()] }, async (request, reply) => {
-    const { id } = request.params;
-    const deposit = await getDepositByDisputeId(db, id);
-    if (!deposit) {
-      return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
-    }
-    return reply.send({ deposit });
-  });
+  app.get<{ Params: { id: string } }>(
+    "/disputes/:id/deposit",
+    { preHandler: [requireAuth, requireDisputeParty()] },
+    async (request, reply) => {
+      const { id } = request.params;
+      const deposit = await getDepositByDisputeId(db, id);
+      if (!deposit) {
+        return reply.code(404).send({ error: "DEPOSIT_NOT_FOUND" });
+      }
+      return reply.send({ deposit });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // Evidence file upload endpoints
@@ -2399,10 +2650,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     disputeId: string,
   ): Promise<{ imageCount: number; videoCount: number }> {
     const rows = await db.query.disputeEvidenceUploads.findMany({
-      where: (fields, ops) => ops.and(
-        ops.eq(fields.disputeId, disputeId),
-        ops.eq(fields.status, "PENDING"),
-      ),
+      where: (fields, ops) =>
+        ops.and(ops.eq(fields.disputeId, disputeId), ops.eq(fields.status, "PENDING")),
     });
 
     let imageCount = 0;
@@ -2424,8 +2673,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     videoCount: number,
     orderAmountCents: number,
   ) {
-    const isHighValue =
-      orderAmountCents >= EVIDENCE_LIMITS.high_value_threshold_cents;
+    const isHighValue = orderAmountCents >= EVIDENCE_LIMITS.high_value_threshold_cents;
     const videoLimits = isHighValue
       ? EVIDENCE_LIMITS.video_high_value
       : EVIDENCE_LIMITS.video_standard;
@@ -2461,7 +2709,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       return reply
         .header("Cache-Control", "no-store")
-        .header("Content-Security-Policy", "default-src 'self'; connect-src 'self' https:; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        .header(
+          "Content-Security-Policy",
+          "default-src 'self'; connect-src 'self' https:; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        )
         .header("Referrer-Policy", "no-referrer")
         .header("X-Frame-Options", "DENY")
         .header("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
@@ -2502,12 +2753,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
 
       const order =
-        ((request as unknown as Record<string, unknown>).orderResource as {
-          id: string;
-          buyerId: string;
-          sellerId: string;
-          amountMinor?: unknown;
-        } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+        ((request as unknown as Record<string, unknown>).orderResource as
+          | {
+              id: string;
+              buyerId: string;
+              sellerId: string;
+              amountMinor?: unknown;
+            }
+          | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
       const party = activePartyForOrder(request.user, order);
       if (!party) {
         return reply.code(403).send({
@@ -2570,7 +2823,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      const { filename, content_type, file_size_bytes, camera_session_id, camera_capture_token, capture_sha256 } = parsed.data;
+      const {
+        filename,
+        content_type,
+        file_size_bytes,
+        camera_session_id,
+        camera_capture_token,
+        capture_sha256,
+      } = parsed.data;
 
       // 1. Validate dispute exists and is in an evidence-accepting state
       const dispute = await getDisputeById(db, id);
@@ -2585,9 +2845,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
 
       // 2. Validate content_type
-      if (
-        !(ALLOWED_EVIDENCE_TYPES as readonly string[]).includes(content_type)
-      ) {
+      if (!(ALLOWED_EVIDENCE_TYPES as readonly string[]).includes(content_type)) {
         return reply.code(400).send({
           error: "UNSUPPORTED_CONTENT_TYPE",
           message: `Allowed: ${ALLOWED_EVIDENCE_TYPES.join(", ")}`,
@@ -2638,12 +2896,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       // 4. Get order amount for video tier determination
       const order =
-        ((request as unknown as Record<string, unknown>).orderResource as {
-          id: string;
-          buyerId: string;
-          sellerId: string;
-          amountMinor?: unknown;
-        } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+        ((request as unknown as Record<string, unknown>).orderResource as
+          | {
+              id: string;
+              buyerId: string;
+              sellerId: string;
+              amountMinor?: unknown;
+            }
+          | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
       const uploadedBy = activePartyForOrder(request.user, order);
       if (!uploadedBy) {
         return reply.code(403).send({
@@ -2651,16 +2911,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           message: "Cannot determine party role",
         });
       }
-      if (cameraSession && (cameraSession.party !== uploadedBy || cameraSession.user_id !== request.user!.id)) {
+      if (
+        cameraSession &&
+        (cameraSession.party !== uploadedBy || cameraSession.user_id !== request.user!.id)
+      ) {
         return reply.code(403).send({
           error: "CAMERA_SESSION_PARTY_MISMATCH",
           message: "Only the party that opened the camera session can use it",
         });
       }
 
-      const orderAmountCents = order?.amountMinor
-        ? parseInt(String(order.amountMinor))
-        : 0;
+      const orderAmountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
 
       // 5. Count existing evidence and check limits
       const { imageCount, videoCount } = await countEvidenceByType(id);
@@ -2688,8 +2949,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       if (isVideo) {
         if (limits.remaining_videos <= 0) {
-          const isHighValue =
-            orderAmountCents >= EVIDENCE_LIMITS.high_value_threshold_cents;
+          const isHighValue = orderAmountCents >= EVIDENCE_LIMITS.high_value_threshold_cents;
           const maxCount = isHighValue
             ? EVIDENCE_LIMITS.video_high_value.maxCount
             : EVIDENCE_LIMITS.video_standard.maxCount;
@@ -2709,10 +2969,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       // 6. Generate presigned upload URL
       const uploadId = createUuid();
 
-      const objectPath = buildDisputeEvidencePath(
-        id,
-        `${uploadId}_${filename}`,
-      );
+      const objectPath = buildDisputeEvidencePath(id, `${uploadId}_${filename}`);
       const result = await createDisputeUploadUrl(objectPath);
       await createDisputeEvidenceUploadRecord(db, {
         id: uploadId,
@@ -2825,7 +3082,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!cameraSession && containsVerifiedCameraEvidenceMarker(description)) {
         return reply.code(400).send({
           error: "RESERVED_EVIDENCE_MARKER",
-          message: "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
+          message:
+            "Verified camera evidence markers can only be created by the Haggle camera capture flow.",
         });
       }
 
@@ -2896,12 +3154,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       // 5. Determine submitted_by from user's role on the order
       const order =
-        ((request as unknown as Record<string, unknown>).orderResource as {
-          id: string;
-          buyerId: string;
-          sellerId: string;
-          amountMinor?: unknown;
-        } | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
+        ((request as unknown as Record<string, unknown>).orderResource as
+          | {
+              id: string;
+              buyerId: string;
+              sellerId: string;
+              amountMinor?: unknown;
+            }
+          | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
 
       const submittedBy = activePartyForOrder(request.user, order);
       if (!submittedBy) {
@@ -2932,19 +3192,21 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
 
       let evidenceBytes: Buffer | undefined;
-      let scanResult: Awaited<ReturnType<typeof scanDisputeEvidence>> | {
-        status: "SKIPPED";
-        sha256?: string;
-        provider: string;
-        detail: string;
-      };
+      let scanResult:
+        | Awaited<ReturnType<typeof scanDisputeEvidence>>
+        | {
+            status: "SKIPPED";
+            sha256?: string;
+            provider: string;
+            detail: string;
+          };
       if (cameraSession?.test_only) {
-        scanResult = { status: "SKIPPED", provider: "haggle-test-only", detail: "NOT_USED_FOR_DISPUTE" };
-      } else if (
-        upload.scanStatus === "CLEAN"
-        && upload.contentSha256
-        && upload.scanProvider
-      ) {
+        scanResult = {
+          status: "SKIPPED",
+          provider: "haggle-test-only",
+          detail: "NOT_USED_FOR_DISPUTE",
+        };
+      } else if (upload.scanStatus === "CLEAN" && upload.contentSha256 && upload.scanProvider) {
         scanResult = {
           status: "CLEAN",
           sha256: upload.contentSha256,
@@ -2953,10 +3215,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         };
         if (cameraSession) {
           try {
-            evidenceBytes = await downloadDisputeEvidence(
-              normalizedPath,
-              upload.fileSizeBytes,
-            );
+            evidenceBytes = await downloadDisputeEvidence(normalizedPath, upload.fileSizeBytes);
           } catch {
             return reply.code(202).send({
               status: "EVIDENCE_QUARANTINED",
@@ -2967,9 +3226,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
               retryable: true,
             });
           }
-          const currentSha256 = createHash("sha256")
-            .update(evidenceBytes)
-            .digest("hex");
+          const currentSha256 = createHash("sha256").update(evidenceBytes).digest("hex");
           if (currentSha256 !== upload.contentSha256) {
             await rejectDisputeEvidenceUpload(
               db,
@@ -2988,19 +3245,23 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       } else {
         try {
           evidenceBytes = await downloadDisputeEvidence(normalizedPath, upload.fileSizeBytes);
-          scanResult = await scanDisputeEvidence({
-            bytes: evidenceBytes,
-            contentType: upload.contentType,
-            expectedSizeBytes: upload.fileSizeBytes,
-            filename: normalizedPath.split("/").at(-1) ?? "evidence",
-          }, { db });
+          scanResult = await scanDisputeEvidence(
+            {
+              bytes: evidenceBytes,
+              contentType: upload.contentType,
+              expectedSizeBytes: upload.fileSizeBytes,
+              filename: normalizedPath.split("/").at(-1) ?? "evidence",
+            },
+            { db },
+          );
         } catch (error) {
           scanResult = {
             status: "FAILED",
             provider: "haggle-storage",
-            detail: error instanceof Error && error.message.includes("download")
-              ? "STORAGE_DOWNLOAD_FAILED"
-              : "EVIDENCE_SCAN_FAILED",
+            detail:
+              error instanceof Error && error.message.includes("download")
+                ? "STORAGE_DOWNLOAD_FAILED"
+                : "EVIDENCE_SCAN_FAILED",
             sha256: undefined,
           };
         }
@@ -3027,11 +3288,16 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
       if (
-        cameraSession
-        && !cameraSession.test_only
-        && (!upload.captureDeclaredSha256 || scanResult.sha256 !== upload.captureDeclaredSha256)
+        cameraSession &&
+        !cameraSession.test_only &&
+        (!upload.captureDeclaredSha256 || scanResult.sha256 !== upload.captureDeclaredSha256)
       ) {
-        await rejectDisputeEvidenceUpload(db, upload.id, "haggle-capture-binding", "CAMERA_CAPTURE_HASH_MISMATCH");
+        await rejectDisputeEvidenceUpload(
+          db,
+          upload.id,
+          "haggle-capture-binding",
+          "CAMERA_CAPTURE_HASH_MISMATCH",
+        );
         return reply.code(422).send({
           error: "CAMERA_CAPTURE_HASH_MISMATCH",
           message: "The uploaded image does not match the bytes bound by the camera capture page",
@@ -3062,7 +3328,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         cameraSession = { ...cameraSession, challenge_verification: challengeVerification };
         await saveCameraSession(dispute, cameraSession);
         if (challengeVerification.status === "REJECTED") {
-          await rejectDisputeEvidenceUpload(db, upload.id, challengeVerification.provider, challengeVerification.detail);
+          await rejectDisputeEvidenceUpload(
+            db,
+            upload.id,
+            challengeVerification.provider,
+            challengeVerification.detail,
+          );
           return reply.code(422).send({
             error: "CAMERA_CHALLENGE_REJECTED",
             message: "The session challenge was not verified in the uploaded image",
@@ -3080,27 +3351,34 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
 
       if (
-        cameraSession
-        && !cameraSession.test_only
-        && scanResult.sha256
-        && await hasCommittedCameraEvidenceSha256(db, scanResult.sha256)
+        cameraSession &&
+        !cameraSession.test_only &&
+        scanResult.sha256 &&
+        (await hasCommittedCameraEvidenceSha256(db, scanResult.sha256))
       ) {
-        await rejectDisputeEvidenceUpload(db, upload.id, "haggle-exact-reuse", "CAMERA_EVIDENCE_REUSED");
+        await rejectDisputeEvidenceUpload(
+          db,
+          upload.id,
+          "haggle-exact-reuse",
+          "CAMERA_EVIDENCE_REUSED",
+        );
         return reply.code(409).send({
           error: "CAMERA_EVIDENCE_REUSED",
           message: "This exact camera image was already committed and cannot be reused",
         });
       }
 
-      let similarity: {
-        status: "CLEAR" | "REVIEW_REQUIRED" | "APPROVED" | "SKIPPED";
-        perceptual_hash?: string;
-        distance?: number;
-        threshold: number;
-        distances?: { dhash: number; ahash: number | null; color: number | null };
-        matched_signals?: string[];
-        thresholds?: { near_hash: number; combined_hash: number; color: number };
-      } | undefined;
+      let similarity:
+        | {
+            status: "CLEAR" | "REVIEW_REQUIRED" | "APPROVED" | "SKIPPED";
+            perceptual_hash?: string;
+            distance?: number;
+            threshold: number;
+            distances?: { dhash: number; ahash: number | null; color: number | null };
+            matched_signals?: string[];
+            thresholds?: { near_hash: number; combined_hash: number; color: number };
+          }
+        | undefined;
       if (cameraSession?.test_only) {
         similarity = { status: "SKIPPED", threshold: CAMERA_SIMILARITY_REVIEW_DISTANCE };
         await updateDisputeEvidenceUploadSimilarity(db, upload.id, { status: "SKIPPED" });
@@ -3145,22 +3423,25 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             await updateDisputeEvidenceUploadSimilarity(db, upload.id, { status: "FAILED" });
             return reply.code(202).send({
               status: "CAMERA_SIMILARITY_CHECK_PENDING",
-              message: "Camera evidence remains quarantined until image similarity processing succeeds",
+              message:
+                "Camera evidence remains quarantined until image similarity processing succeeds",
               upload_id: upload.id,
               retryable: true,
             });
           }
           const nearest = await findNearestCommittedCameraEvidence(db, fingerprint);
-          const signals = nearest ? {
-            candidate_upload_id: nearest.uploadId,
-            distances: {
-              dhash: nearest.assessment.dHashDistance,
-              ahash: nearest.assessment.aHashDistance,
-              color: nearest.assessment.colorDistance,
-            },
-            matched_signals: nearest.assessment.matchedSignals,
-            score: nearest.assessment.score,
-          } : { distances: null, matched_signals: [], score: null };
+          const signals = nearest
+            ? {
+                candidate_upload_id: nearest.uploadId,
+                distances: {
+                  dhash: nearest.assessment.dHashDistance,
+                  ahash: nearest.assessment.aHashDistance,
+                  color: nearest.assessment.colorDistance,
+                },
+                matched_signals: nearest.assessment.matchedSignals,
+                score: nearest.assessment.score,
+              }
+            : { distances: null, matched_signals: [], score: null };
           if (nearest?.assessment.reviewRequired) {
             await updateDisputeEvidenceUploadSimilarity(db, upload.id, {
               perceptualHash: fingerprint.dHash,
@@ -3216,24 +3497,28 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       // 6. Create evidence record and mark upload as committed
       const evidenceId = createUuid();
       const evidenceCreatedAt = new Date();
-      const unsignedDerivedArtifacts = cameraSession && challengeVerification?.status === "VERIFIED"
-        ? (challengeVerification.visualObservations ?? []).map((observation, index) => ({
-          id: `${evidenceId}:visual:${index + 1}`,
-          kind: "image_visual_observation" as const,
-          source_evidence_id: evidenceId,
-          text: observation.observation,
-          metadata: {
-            category: observation.category,
-            confidence: observation.confidence,
-            provider: challengeVerification.provider,
-            source: "camera_challenge_verifier",
-          },
-          created_at: evidenceCreatedAt.toISOString(),
-        }))
-        : [];
-      let derivedArtifacts = unsignedDerivedArtifacts.length > 0 ? unsignedDerivedArtifacts : undefined;
+      const unsignedDerivedArtifacts =
+        cameraSession && challengeVerification?.status === "VERIFIED"
+          ? (challengeVerification.visualObservations ?? []).map((observation, index) => ({
+              id: `${evidenceId}:visual:${index + 1}`,
+              kind: "image_visual_observation" as const,
+              source_evidence_id: evidenceId,
+              text: observation.observation,
+              metadata: {
+                category: observation.category,
+                confidence: observation.confidence,
+                provider: challengeVerification.provider,
+                source: "camera_challenge_verifier",
+              },
+              created_at: evidenceCreatedAt.toISOString(),
+            }))
+          : [];
+      let derivedArtifacts =
+        unsignedDerivedArtifacts.length > 0 ? unsignedDerivedArtifacts : undefined;
       let derivedArtifactsProvenance: DisputeEvidence["derived_artifacts_provenance"];
-      let visualObservationStatus: "SIGNED" | "SKIPPED_UNSIGNED" | "NONE" = derivedArtifacts ? "SIGNED" : "NONE";
+      let visualObservationStatus: "SIGNED" | "SKIPPED_UNSIGNED" | "NONE" = derivedArtifacts
+        ? "SIGNED"
+        : "NONE";
       if (derivedArtifacts) {
         try {
           derivedArtifactsProvenance = createSignedDisputeEvidenceProvenance({
@@ -3259,11 +3544,11 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         uri: qualifiedStoragePath,
         text: cameraSession
           ? verifiedCameraEvidenceText({
-            description,
-            session: cameraSession,
-            capturedAt: captured_at,
-            challengeVerification: challengeVerification!,
-          })
+              description,
+              session: cameraSession,
+              capturedAt: captured_at,
+              challengeVerification: challengeVerification!,
+            })
           : description,
         derived_artifacts: derivedArtifacts,
         source_content_sha256: derivedArtifacts ? scanResult.sha256 : undefined,
@@ -3279,7 +3564,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         if (!cameraSession?.test_only) {
           await addDisputeEvidenceRecord(txDb, evidence);
           if (evidence.derived_artifacts_provenance) {
-            const archive = await enqueueDisputeEvidenceProvenanceArchive(txDb, { evidence, now: evidenceCreatedAt });
+            const archive = await enqueueDisputeEvidenceProvenanceArchive(txDb, {
+              evidence,
+              now: evidenceCreatedAt,
+            });
             provenanceArchiveOutcome = archive.outcome;
           }
         }
@@ -3300,11 +3588,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       } catch (error) {
         const candidate = error as { code?: unknown; constraint?: unknown; cause?: unknown };
         const cause = candidate.cause as { code?: unknown; constraint?: unknown } | undefined;
-        const duplicateCameraHash = (candidate.code === "23505" || cause?.code === "23505")
-          && (candidate.constraint === "dispute_evidence_uploads_committed_camera_sha256_unique"
-            || cause?.constraint === "dispute_evidence_uploads_committed_camera_sha256_unique");
+        const duplicateCameraHash =
+          (candidate.code === "23505" || cause?.code === "23505") &&
+          (candidate.constraint === "dispute_evidence_uploads_committed_camera_sha256_unique" ||
+            cause?.constraint === "dispute_evidence_uploads_committed_camera_sha256_unique");
         if (duplicateCameraHash) {
-          await rejectDisputeEvidenceUpload(db, upload.id, "haggle-exact-reuse", "CAMERA_EVIDENCE_REUSED");
+          await rejectDisputeEvidenceUpload(
+            db,
+            upload.id,
+            "haggle-exact-reuse",
+            "CAMERA_EVIDENCE_REUSED",
+          );
           return reply.code(409).send({
             error: "CAMERA_EVIDENCE_REUSED",
             message: "This exact camera image was already committed and cannot be reused",
@@ -3321,9 +3615,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const disputeAfterCommit = cameraSession?.test_only
         ? dispute
         : withStaleAiAssessment(
-          { ...dispute, evidence: [...dispute.evidence, evidence] },
-          cameraSession ? "CAMERA_EVIDENCE_COMMITTED" : "EVIDENCE_ADDED",
-        );
+            { ...dispute, evidence: [...dispute.evidence, evidence] },
+            cameraSession ? "CAMERA_EVIDENCE_COMMITTED" : "EVIDENCE_ADDED",
+          );
       if (cameraSession) {
         cameraSession = {
           ...cameraSession,
@@ -3348,15 +3642,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       );
 
       // 8. Compute remaining limits
-      const orderAmountCents = order?.amountMinor
-        ? parseInt(String(order.amountMinor))
-        : 0;
+      const orderAmountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
       const { imageCount, videoCount } = await countEvidenceByType(id);
-      const limits = computeRemainingLimits(
-        imageCount,
-        videoCount,
-        orderAmountCents,
-      );
+      const limits = computeRemainingLimits(imageCount, videoCount, orderAmountCents);
 
       return reply.code(201).send({
         evidence: cameraSession?.test_only ? null : evidence,
@@ -3401,12 +3689,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
   app.get(
     "/admin/disputes/evidence-provenance-archives/health",
     { preHandler: [requireAdmin] },
-    async (_request, reply) => reply.send({
-      provenance_archive_health: await getDisputeEvidenceProvenanceArchiveHealth(db),
-      provenance_archive_policy: getDisputeEvidenceProvenanceArchivePolicyStatus(),
-      provenance_archive_alert_policy: getDisputeEvidenceProvenanceArchiveAlertPolicyStatus(),
-      provenance_archive_alert_state: await getDisputeEvidenceProvenanceArchiveAlertDeliveryState(db),
-    }),
+    async (_request, reply) =>
+      reply.send({
+        provenance_archive_health: await getDisputeEvidenceProvenanceArchiveHealth(db),
+        provenance_archive_policy: getDisputeEvidenceProvenanceArchivePolicyStatus(),
+        provenance_archive_alert_policy: getDisputeEvidenceProvenanceArchiveAlertPolicyStatus(),
+        provenance_archive_alert_state:
+          await getDisputeEvidenceProvenanceArchiveAlertDeliveryState(db),
+      }),
   );
 
   app.get(
@@ -3414,20 +3704,33 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityReviewQueueQuerySchema.safeParse(request.query ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_FAILURE_QUERY" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_FAILURE_QUERY" });
       try {
         const queue = await listDisputeEvidenceProvenanceArchiveFailures(db, parsed.data);
-        return reply.send({ provenance_archive_failures: {
-          items: queue.items.map((item) => ({
-            archive_id: item.archiveId, evidence_id: item.evidenceId, dispute_id: item.disputeId,
-            payload_sha256: item.payloadSha256, status: item.status, attempt_count: item.attemptCount,
-            next_attempt_at: item.nextAttemptAt, last_error: item.lastError, http_status: item.httpStatus,
-            failure_age_seconds: item.failureAgeSeconds,
-          })),
-          next_cursor: queue.nextCursor, recorded_at: queue.recordedAt,
-        } });
+        return reply.send({
+          provenance_archive_failures: {
+            items: queue.items.map((item) => ({
+              archive_id: item.archiveId,
+              evidence_id: item.evidenceId,
+              dispute_id: item.disputeId,
+              payload_sha256: item.payloadSha256,
+              status: item.status,
+              attempt_count: item.attemptCount,
+              next_attempt_at: item.nextAttemptAt,
+              last_error: item.lastError,
+              http_status: item.httpStatus,
+              failure_age_seconds: item.failureAgeSeconds,
+            })),
+            next_cursor: queue.nextCursor,
+            recorded_at: queue.recordedAt,
+          },
+        });
       } catch (error) {
-        if (error instanceof Error && error.message === "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_FAILURE_CURSOR") {
+        if (
+          error instanceof Error &&
+          error.message === "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_FAILURE_CURSOR"
+        ) {
           return reply.code(400).send({ error: error.message });
         }
         throw error;
@@ -3440,16 +3743,27 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const archiveId = z.string().uuid().safeParse(request.params.archiveId);
-      if (!archiveId.success) return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_ID" });
+      if (!archiveId.success)
+        return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_ID" });
       const parsed = similarityArchiveRequeueSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_REQUEUE" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_REQUEUE" });
       const result = await requeueDisputeEvidenceProvenanceArchive(db, {
-        archiveId: archiveId.data, actorId: request.user!.id, reason: parsed.data.reason,
+        archiveId: archiveId.data,
+        actorId: request.user!.id,
+        reason: parsed.data.reason,
       });
-      if (result.outcome === "not_found") return reply.code(404).send({ error: "EVIDENCE_PROVENANCE_ARCHIVE_NOT_FOUND" });
-      if (result.outcome === "already_delivered") return reply.code(409).send({ error: "EVIDENCE_PROVENANCE_ARCHIVE_ALREADY_DELIVERED" });
-      if (result.outcome === "invalid_reason") return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_REQUEUE" });
-      return reply.send({ archive_id: archiveId.data, outcome: result.outcome, status: result.archive.status });
+      if (result.outcome === "not_found")
+        return reply.code(404).send({ error: "EVIDENCE_PROVENANCE_ARCHIVE_NOT_FOUND" });
+      if (result.outcome === "already_delivered")
+        return reply.code(409).send({ error: "EVIDENCE_PROVENANCE_ARCHIVE_ALREADY_DELIVERED" });
+      if (result.outcome === "invalid_reason")
+        return reply.code(400).send({ error: "INVALID_EVIDENCE_PROVENANCE_ARCHIVE_REQUEUE" });
+      return reply.send({
+        archive_id: archiveId.data,
+        outcome: result.outcome,
+        status: result.archive.status,
+      });
     },
   );
 
@@ -3458,40 +3772,55 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityReviewQueueQuerySchema.safeParse(request.query ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_QUEUE_QUERY" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_QUEUE_QUERY" });
       try {
         const queue = await listDisputeEvidenceSimilarityReviews(db, parsed.data);
-        const items = await Promise.all(queue.items.map(async (item) => {
-          let previewUrl: string | null = null;
-          let previewStatus: "ready" | "unavailable" = "ready";
-          try { previewUrl = await createDisputeViewUrl(item.storagePath); }
-          catch { previewStatus = "unavailable"; }
-          let referencePreviewUrl: string | null = null;
-          let referencePreviewStatus: "ready" | "unavailable" | "not_available" = item.matchedStoragePath
-            ? "ready" : "not_available";
-          if (item.matchedStoragePath) {
-            try { referencePreviewUrl = await createDisputeViewUrl(item.matchedStoragePath); }
-            catch { referencePreviewStatus = "unavailable"; }
-          }
-          const signals = storedImageSimilaritySignals(item.similaritySignals);
-          return {
-            upload_id: item.uploadId,
-            dispute_id: item.disputeId,
-            uploaded_by: item.uploadedBy,
-            content_type: item.contentType,
-            file_size_bytes: item.fileSizeBytes,
-            distance: item.similarityDistance,
-            distances: signals.distances,
-            matched_signals: signals.matchedSignals,
-            waiting_age_seconds: item.waitingAgeSeconds,
-            due_in_seconds: item.dueInSeconds,
-            preview_url: previewUrl,
-            preview_status: previewStatus,
-            reference_preview_url: referencePreviewUrl,
-            reference_preview_status: referencePreviewStatus,
-          };
-        }));
-        return reply.send({ similarity_review_queue: { items, next_cursor: queue.nextCursor, recorded_at: queue.recordedAt } });
+        const items = await Promise.all(
+          queue.items.map(async (item) => {
+            let previewUrl: string | null = null;
+            let previewStatus: "ready" | "unavailable" = "ready";
+            try {
+              previewUrl = await createDisputeViewUrl(item.storagePath);
+            } catch {
+              previewStatus = "unavailable";
+            }
+            let referencePreviewUrl: string | null = null;
+            let referencePreviewStatus: "ready" | "unavailable" | "not_available" =
+              item.matchedStoragePath ? "ready" : "not_available";
+            if (item.matchedStoragePath) {
+              try {
+                referencePreviewUrl = await createDisputeViewUrl(item.matchedStoragePath);
+              } catch {
+                referencePreviewStatus = "unavailable";
+              }
+            }
+            const signals = storedImageSimilaritySignals(item.similaritySignals);
+            return {
+              upload_id: item.uploadId,
+              dispute_id: item.disputeId,
+              uploaded_by: item.uploadedBy,
+              content_type: item.contentType,
+              file_size_bytes: item.fileSizeBytes,
+              distance: item.similarityDistance,
+              distances: signals.distances,
+              matched_signals: signals.matchedSignals,
+              waiting_age_seconds: item.waitingAgeSeconds,
+              due_in_seconds: item.dueInSeconds,
+              preview_url: previewUrl,
+              preview_status: previewStatus,
+              reference_preview_url: referencePreviewUrl,
+              reference_preview_status: referencePreviewStatus,
+            };
+          }),
+        );
+        return reply.send({
+          similarity_review_queue: {
+            items,
+            next_cursor: queue.nextCursor,
+            recorded_at: queue.recordedAt,
+          },
+        });
       } catch (error) {
         if (error instanceof Error && error.message === "INVALID_SIMILARITY_REVIEW_CURSOR") {
           return reply.code(400).send({ error: error.message });
@@ -3515,10 +3844,11 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         alert_policy: policy,
         expiry_policy: {
           ...disputeSimilarityReviewExpiryPolicy(),
-          archive_job_enabled: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB === "true",
+          archive_job_enabled:
+            process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB === "true",
           archive_configured: Boolean(
-            process.env.HAGGLE_AUDIT_ARCHIVE_URL?.trim()
-            && process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64?.trim()
+            process.env.HAGGLE_AUDIT_ARCHIVE_URL?.trim() &&
+              process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64?.trim(),
           ),
         },
       });
@@ -3530,7 +3860,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityReviewQueueQuerySchema.safeParse(request.query ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_EXPIRY_QUERY" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_EXPIRY_QUERY" });
       try {
         const history = await listDisputeSimilarityReviewExpiryEvents(db, parsed.data);
         return reply.send({
@@ -3564,9 +3895,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const event = await getDisputeSimilarityReviewExpiryEventById(db, request.params.eventId);
-      if (!event) return reply.code(404).send({ error: "SIMILARITY_REVIEW_EXPIRY_EVENT_NOT_FOUND" });
+      if (!event)
+        return reply.code(404).send({ error: "SIMILARITY_REVIEW_EXPIRY_EVENT_NOT_FOUND" });
       if (event.integrity !== "valid" || !event.eventHash) {
-        return reply.code(409).send({ error: "SIMILARITY_REVIEW_AUDIT_INTEGRITY_INVALID", integrity: event.integrity });
+        return reply
+          .code(409)
+          .send({ error: "SIMILARITY_REVIEW_AUDIT_INTEGRITY_INVALID", integrity: event.integrity });
       }
       try {
         return reply.send({
@@ -3580,7 +3914,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         if (error instanceof DisputeSimilarityReviewAuditSigningNotConfiguredError) {
           return reply.code(503).send({ error: "SIMILARITY_REVIEW_AUDIT_SIGNING_NOT_CONFIGURED" });
         }
-        if (error instanceof Error && error.message === "SIMILARITY_REVIEW_AUDIT_INTEGRITY_INVALID") {
+        if (
+          error instanceof Error &&
+          error.message === "SIMILARITY_REVIEW_AUDIT_INTEGRITY_INVALID"
+        ) {
           return reply.code(409).send({ error: error.message });
         }
         throw error;
@@ -3611,20 +3948,33 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityReviewQueueQuerySchema.safeParse(request.query ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_FAILURE_QUERY" });
+      if (!parsed.success)
+        return reply
+          .code(400)
+          .send({ error: "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_FAILURE_QUERY" });
       try {
         const queue = await listDisputeSimilarityReviewAuditArchiveFailures(db, parsed.data);
-        return reply.send({ similarity_review_audit_archive_failures: {
-          items: queue.items.map((item) => ({
-            event_id: item.eventId, status: item.status, payload_sha256: item.payloadSha256,
-            attempt_count: item.attemptCount, next_attempt_at: item.nextAttemptAt,
-            last_error: item.lastError, http_status: item.httpStatus,
-            failure_age_seconds: item.failureAgeSeconds,
-          })),
-          next_cursor: queue.nextCursor, recorded_at: queue.recordedAt,
-        } });
+        return reply.send({
+          similarity_review_audit_archive_failures: {
+            items: queue.items.map((item) => ({
+              event_id: item.eventId,
+              status: item.status,
+              payload_sha256: item.payloadSha256,
+              attempt_count: item.attemptCount,
+              next_attempt_at: item.nextAttemptAt,
+              last_error: item.lastError,
+              http_status: item.httpStatus,
+              failure_age_seconds: item.failureAgeSeconds,
+            })),
+            next_cursor: queue.nextCursor,
+            recorded_at: queue.recordedAt,
+          },
+        });
       } catch (error) {
-        if (error instanceof Error && error.message === "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_FAILURE_CURSOR") {
+        if (
+          error instanceof Error &&
+          error.message === "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_FAILURE_CURSOR"
+        ) {
           return reply.code(400).send({ error: error.message });
         }
         throw error;
@@ -3637,14 +3987,24 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityArchiveRequeueSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_REQUEUE" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_REQUEUE" });
       const result = await requeueDisputeSimilarityReviewAuditArchive(db, {
-        eventId: request.params.eventId, actorId: request.user!.id, reason: parsed.data.reason,
+        eventId: request.params.eventId,
+        actorId: request.user!.id,
+        reason: parsed.data.reason,
       });
-      if (result.outcome === "not_found") return reply.code(404).send({ error: "SIMILARITY_REVIEW_AUDIT_ARCHIVE_NOT_FOUND" });
-      if (result.outcome === "already_delivered") return reply.code(409).send({ error: "SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALREADY_DELIVERED" });
-      if (result.outcome === "invalid_reason") return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_REQUEUE" });
-      return reply.send({ event_id: request.params.eventId, outcome: result.outcome, status: result.archive.status });
+      if (result.outcome === "not_found")
+        return reply.code(404).send({ error: "SIMILARITY_REVIEW_AUDIT_ARCHIVE_NOT_FOUND" });
+      if (result.outcome === "already_delivered")
+        return reply.code(409).send({ error: "SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALREADY_DELIVERED" });
+      if (result.outcome === "invalid_reason")
+        return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW_AUDIT_ARCHIVE_REQUEUE" });
+      return reply.send({
+        event_id: request.params.eventId,
+        outcome: result.outcome,
+        status: result.archive.status,
+      });
     },
   );
 
@@ -3654,11 +4014,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     async (request, reply) => {
       const parsed = similarityReviewSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_SIMILARITY_REVIEW", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_SIMILARITY_REVIEW", issues: parsed.error.issues });
       }
       const dispute = await getDisputeById(db, request.params.id);
       if (!dispute) return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
-      const upload = await getDisputeEvidenceUploadById(db, request.params.id, request.params.uploadId);
+      const upload = await getDisputeEvidenceUploadById(
+        db,
+        request.params.id,
+        request.params.uploadId,
+      );
       if (!upload) return reply.code(404).send({ error: "EVIDENCE_UPLOAD_NOT_FOUND" });
       if (upload.status !== "QUARANTINED" || upload.similarityStatus !== "REVIEW_REQUIRED") {
         return reply.code(409).send({
@@ -3674,7 +4040,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         decision: parsed.data.decision,
         note: parsed.data.note,
       });
-      if (result.outcome === "not_pending") return reply.code(409).send({ error: "SIMILARITY_REVIEW_NOT_PENDING" });
+      if (result.outcome === "not_pending")
+        return reply.code(409).send({ error: "SIMILARITY_REVIEW_NOT_PENDING" });
       const approved = result.outcome === "approved";
       return reply.send({
         upload_id: upload.id,
@@ -3703,7 +4070,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = evidenceLegalHoldSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_EVIDENCE_LEGAL_HOLD", issues: parsed.error.issues });
+      if (!parsed.success)
+        return reply
+          .code(400)
+          .send({ error: "INVALID_EVIDENCE_LEGAL_HOLD", issues: parsed.error.issues });
       const dispute = await getDisputeById(db, request.params.id);
       if (!dispute) return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
       const updated = await setDisputeEvidenceLegalHold(db, {
@@ -3725,7 +4095,11 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         targetId: dispute.id,
         payload: { active: parsed.data.active, reason: parsed.data.reason },
       });
-      return reply.send({ dispute_id: dispute.id, legal_hold: parsed.data.active, reason: parsed.data.reason });
+      return reply.send({
+        dispute_id: dispute.id,
+        legal_hold: parsed.data.active,
+        reason: parsed.data.reason,
+      });
     },
   );
 
@@ -3734,7 +4108,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = evidenceRetentionRunSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_EVIDENCE_RETENTION_RUN", issues: parsed.error.issues });
+      if (!parsed.success)
+        return reply
+          .code(400)
+          .send({ error: "INVALID_EVIDENCE_RETENTION_RUN", issues: parsed.error.issues });
       const result = await runDisputeEvidenceRetention(db, { dryRun: parsed.data.dry_run });
       await writeAuditLog(db, {
         actorId: request.user!.id,
@@ -3755,7 +4132,11 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!dispute) return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
 
       const maxExportEvents = 10_000;
-      const newestFirst = await listDisputeAiAssessmentEvents(db, request.params.id, maxExportEvents + 1);
+      const newestFirst = await listDisputeAiAssessmentEvents(
+        db,
+        request.params.id,
+        maxExportEvents + 1,
+      );
       if (newestFirst.length > maxExportEvents) {
         return reply.code(409).send({
           error: "AI_AUDIT_EXPORT_TOO_LARGE",
@@ -3764,9 +4145,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
       const events = [...newestFirst].reverse();
       const chain = verifyDisputeAiAssessmentEventChain(events);
-      const genesisVerified = events.length === 0
-        || !events[0]?.eventHash
-        || events[0].previousEventHash === null;
+      const genesisVerified =
+        events.length === 0 || !events[0]?.eventHash || events[0].previousEventHash === null;
       if (!chain.valid || !genesisVerified) {
         return reply.code(409).send({
           error: "AI_AUDIT_CHAIN_INVALID",
@@ -3787,7 +4167,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             legacyUnsealedEvents: chain.legacy_unsealed_events,
           },
         });
-        reply.header("Content-Disposition", `attachment; filename="haggle-dispute-${request.params.id}-ai-audit.json"`);
+        reply.header(
+          "Content-Disposition",
+          `attachment; filename="haggle-dispute-${request.params.id}-ai-audit.json"`,
+        );
         return reply.send(auditExport);
       } catch (error) {
         if (error instanceof DisputeAuditSigningNotConfiguredError) {
@@ -3796,7 +4179,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             message: error.message,
           });
         }
-        request.log.error({ error, dispute_id: request.params.id }, "Failed to sign dispute AI audit export");
+        request.log.error(
+          { error, dispute_id: request.params.id },
+          "Failed to sign dispute AI audit export",
+        );
         return reply.code(500).send({
           error: "AI_AUDIT_SIGNING_FAILED",
           message: "The audit export could not be signed",
@@ -3816,23 +4202,34 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         return reply.code(result.outcome === "enqueued" ? 202 : 200).send({
           outcome: result.outcome,
           ai_audit_archive: {
-            status: result.archive.status, event_count: result.archive.eventCount,
+            status: result.archive.status,
+            event_count: result.archive.eventCount,
             events_sha256: result.archive.eventsSha256,
             chain_head_event_hash: result.archive.chainHeadEventHash,
             payload_sha256: result.archive.payloadSha256,
             attempt_count: result.archive.attemptCount,
             receipt_id: result.archive.receiptId,
             receipt_sha256: result.archive.receiptSha256,
-            receipt_matches: result.archive.receiptSha256 !== null && result.archive.receiptSha256 === result.archive.payloadSha256,
+            receipt_matches:
+              result.archive.receiptSha256 !== null &&
+              result.archive.receiptSha256 === result.archive.payloadSha256,
             delivered_at: result.archive.deliveredAt,
             ...disputeAiArchiveTrustSummary(result.archive.payload),
           },
           archive_policy: getDisputeAiAuditArchivePolicyStatus(),
         });
       } catch (error) {
-        if (error instanceof DisputeAuditSigningNotConfiguredError) return reply.code(503).send({ error: "AI_AUDIT_SIGNING_NOT_CONFIGURED" });
+        if (error instanceof DisputeAuditSigningNotConfiguredError)
+          return reply.code(503).send({ error: "AI_AUDIT_SIGNING_NOT_CONFIGURED" });
         const code = error instanceof Error ? error.message : "AI_AUDIT_ARCHIVE_FAILED";
-        if (["AI_AUDIT_ARCHIVE_NO_EVENTS", "AI_AUDIT_ARCHIVE_TOO_LARGE", "AI_AUDIT_CHAIN_INVALID", "AI_AUDIT_CHAIN_UNSEALED"].includes(code)) {
+        if (
+          [
+            "AI_AUDIT_ARCHIVE_NO_EVENTS",
+            "AI_AUDIT_ARCHIVE_TOO_LARGE",
+            "AI_AUDIT_CHAIN_INVALID",
+            "AI_AUDIT_CHAIN_UNSEALED",
+          ].includes(code)
+        ) {
           return reply.code(409).send({ error: code });
         }
         throw error;
@@ -3848,11 +4245,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const coverage = await getDisputeAiAuditArchiveCoverage(db);
       const discoveryFailures = await getDisputeAiAuditDiscoveryFailureHealth(db);
       const alertPolicy = getDisputeAiAuditArchiveAlertPolicyStatus();
-      return reply.send({ ai_audit_archive_health: health, ai_audit_archive_coverage: coverage,
+      return reply.send({
+        ai_audit_archive_health: health,
+        ai_audit_archive_coverage: coverage,
         ai_audit_discovery_failure_health: discoveryFailures,
         archive_policy: getDisputeAiAuditArchivePolicyStatus(),
-        alerting: { ...alertPolicy, ...evaluateDisputeAiAuditArchiveAlert(health, alertPolicy, discoveryFailures),
-          deliveryState: await getDisputeAiAuditArchiveAlertDeliveryState(db) } });
+        alerting: {
+          ...alertPolicy,
+          ...evaluateDisputeAiAuditArchiveAlert(health, alertPolicy, discoveryFailures),
+          deliveryState: await getDisputeAiAuditArchiveAlertDeliveryState(db),
+        },
+      });
     },
   );
 
@@ -3861,16 +4264,31 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityReviewQueueQuerySchema.safeParse(request.query ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_AI_AUDIT_DISCOVERY_FAILURE_QUERY" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_AI_AUDIT_DISCOVERY_FAILURE_QUERY" });
       try {
         const queue = await listDisputeAiAuditDiscoveryFailures(db, parsed.data);
-        return reply.send({ ai_audit_discovery_failures: { items: queue.items.map((item) => ({
-          dispute_id: item.disputeId, event_count: item.eventCount, failure_code: item.failureCode, status: item.status,
-          attempt_count: item.attemptCount, first_failed_at: item.firstFailedAt,
-          last_failed_at: item.lastFailedAt, age_seconds: item.ageSeconds,
-        })), next_cursor: queue.nextCursor, recorded_at: queue.recordedAt } });
+        return reply.send({
+          ai_audit_discovery_failures: {
+            items: queue.items.map((item) => ({
+              dispute_id: item.disputeId,
+              event_count: item.eventCount,
+              failure_code: item.failureCode,
+              status: item.status,
+              attempt_count: item.attemptCount,
+              first_failed_at: item.firstFailedAt,
+              last_failed_at: item.lastFailedAt,
+              age_seconds: item.ageSeconds,
+            })),
+            next_cursor: queue.nextCursor,
+            recorded_at: queue.recordedAt,
+          },
+        });
       } catch (error) {
-        if (error instanceof Error && error.message === "INVALID_AI_AUDIT_DISCOVERY_FAILURE_CURSOR") {
+        if (
+          error instanceof Error &&
+          error.message === "INVALID_AI_AUDIT_DISCOVERY_FAILURE_CURSOR"
+        ) {
           return reply.code(400).send({ error: error.message });
         }
         throw error;
@@ -3885,14 +4303,27 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const disputeId = z.string().uuid().safeParse(request.params.disputeId);
       if (!disputeId.success) return reply.code(400).send({ error: "INVALID_DISPUTE_ID" });
       const parsed = aiAuditDiscoveryRetrySchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_AI_AUDIT_DISCOVERY_RETRY" });
-      const result = await retryDisputeAiAuditDiscoveryFailure(db, { disputeId: disputeId.data,
-        eventCount: parsed.data.event_count, actorId: request.user!.id, reason: parsed.data.reason });
-      if (result.outcome === "not_found") return reply.code(404).send({ error: "AI_AUDIT_DISCOVERY_FAILURE_NOT_FOUND" });
-      if (result.outcome === "already_resolved") return reply.code(409).send({ error: "AI_AUDIT_DISCOVERY_FAILURE_ALREADY_RESOLVED" });
-      if (result.outcome === "retry_already_requested") return reply.code(409).send({ error: "AI_AUDIT_DISCOVERY_RETRY_ALREADY_REQUESTED" });
-      if (result.outcome === "invalid_reason") return reply.code(400).send({ error: "INVALID_AI_AUDIT_DISCOVERY_RETRY" });
-      return reply.send({ dispute_id: disputeId.data, event_count: parsed.data.event_count, outcome: result.outcome });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_AI_AUDIT_DISCOVERY_RETRY" });
+      const result = await retryDisputeAiAuditDiscoveryFailure(db, {
+        disputeId: disputeId.data,
+        eventCount: parsed.data.event_count,
+        actorId: request.user!.id,
+        reason: parsed.data.reason,
+      });
+      if (result.outcome === "not_found")
+        return reply.code(404).send({ error: "AI_AUDIT_DISCOVERY_FAILURE_NOT_FOUND" });
+      if (result.outcome === "already_resolved")
+        return reply.code(409).send({ error: "AI_AUDIT_DISCOVERY_FAILURE_ALREADY_RESOLVED" });
+      if (result.outcome === "retry_already_requested")
+        return reply.code(409).send({ error: "AI_AUDIT_DISCOVERY_RETRY_ALREADY_REQUESTED" });
+      if (result.outcome === "invalid_reason")
+        return reply.code(400).send({ error: "INVALID_AI_AUDIT_DISCOVERY_RETRY" });
+      return reply.send({
+        dispute_id: disputeId.data,
+        event_count: parsed.data.event_count,
+        outcome: result.outcome,
+      });
     },
   );
 
@@ -3901,18 +4332,27 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     { preHandler: [requireAdmin] },
     async (request, reply) => {
       const parsed = similarityReviewQueueQuerySchema.safeParse(request.query ?? {});
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_FAILURE_QUERY" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_FAILURE_QUERY" });
       try {
         const queue = await listDisputeAiAuditArchiveFailures(db, parsed.data);
         return reply.send({
           ai_audit_archive_failures: {
             items: queue.items.map((item) => ({
-              archive_id: item.id, dispute_id: item.disputeId, event_count: item.eventCount,
-              events_sha256: item.eventsSha256, payload_sha256: item.payloadSha256,
-              status: item.status, attempt_count: item.attemptCount, next_attempt_at: item.nextAttemptAt,
-              last_error: item.lastError, http_status: item.httpStatus, failure_age_seconds: item.failureAgeSeconds,
+              archive_id: item.id,
+              dispute_id: item.disputeId,
+              event_count: item.eventCount,
+              events_sha256: item.eventsSha256,
+              payload_sha256: item.payloadSha256,
+              status: item.status,
+              attempt_count: item.attemptCount,
+              next_attempt_at: item.nextAttemptAt,
+              last_error: item.lastError,
+              http_status: item.httpStatus,
+              failure_age_seconds: item.failureAgeSeconds,
             })),
-            next_cursor: queue.nextCursor, recorded_at: queue.recordedAt,
+            next_cursor: queue.nextCursor,
+            recorded_at: queue.recordedAt,
           },
         });
       } catch (error) {
@@ -3931,14 +4371,24 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const archiveId = z.string().uuid().safeParse(request.params.archiveId);
       if (!archiveId.success) return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_ID" });
       const parsed = similarityArchiveRequeueSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_REQUEUE" });
+      if (!parsed.success)
+        return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_REQUEUE" });
       const result = await requeueDisputeAiAuditArchive(db, {
-        archiveId: archiveId.data, actorId: request.user!.id, reason: parsed.data.reason,
+        archiveId: archiveId.data,
+        actorId: request.user!.id,
+        reason: parsed.data.reason,
       });
-      if (result.outcome === "not_found") return reply.code(404).send({ error: "AI_AUDIT_ARCHIVE_NOT_FOUND" });
-      if (result.outcome === "already_delivered") return reply.code(409).send({ error: "AI_AUDIT_ARCHIVE_ALREADY_DELIVERED" });
-      if (result.outcome === "invalid_reason") return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_REQUEUE" });
-      return reply.send({ archive_id: archiveId.data, outcome: result.outcome, status: result.archive.status });
+      if (result.outcome === "not_found")
+        return reply.code(404).send({ error: "AI_AUDIT_ARCHIVE_NOT_FOUND" });
+      if (result.outcome === "already_delivered")
+        return reply.code(409).send({ error: "AI_AUDIT_ARCHIVE_ALREADY_DELIVERED" });
+      if (result.outcome === "invalid_reason")
+        return reply.code(400).send({ error: "INVALID_AI_AUDIT_ARCHIVE_REQUEUE" });
+      return reply.send({
+        archive_id: archiveId.data,
+        outcome: result.outcome,
+        status: result.archive.status,
+      });
     },
   );
 
@@ -3952,12 +4402,21 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!archive) return reply.code(404).send({ error: "AI_AUDIT_ARCHIVE_NOT_FOUND" });
       return reply.send({
         ai_audit_archive: {
-          status: archive.status, event_count: archive.eventCount, events_sha256: archive.eventsSha256,
-          chain_head_event_hash: archive.chainHeadEventHash, payload_sha256: archive.payloadSha256,
-          attempt_count: archive.attemptCount, last_error: archive.lastError, http_status: archive.httpStatus,
-          receipt_id: archive.receiptId, receipt_sha256: archive.receiptSha256,
-          receipt_matches: archive.receiptSha256 !== null && archive.receiptSha256 === archive.payloadSha256,
-          delivered_at: archive.deliveredAt, created_at: archive.createdAt, updated_at: archive.updatedAt,
+          status: archive.status,
+          event_count: archive.eventCount,
+          events_sha256: archive.eventsSha256,
+          chain_head_event_hash: archive.chainHeadEventHash,
+          payload_sha256: archive.payloadSha256,
+          attempt_count: archive.attemptCount,
+          last_error: archive.lastError,
+          http_status: archive.httpStatus,
+          receipt_id: archive.receiptId,
+          receipt_sha256: archive.receiptSha256,
+          receipt_matches:
+            archive.receiptSha256 !== null && archive.receiptSha256 === archive.payloadSha256,
+          delivered_at: archive.deliveredAt,
+          created_at: archive.createdAt,
+          updated_at: archive.updatedAt,
           ...disputeAiArchiveTrustSummary(archive.payload),
         },
         archive_policy: getDisputeAiAuditArchivePolicyStatus(),
@@ -3980,14 +4439,19 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!dispute) {
         return reply.code(404).send({ error: "DISPUTE_NOT_FOUND" });
       }
-      const newestFirst = await listDisputeAiAssessmentEvents(db, request.params.id, parsed.data.limit + 1);
+      const newestFirst = await listDisputeAiAssessmentEvents(
+        db,
+        request.params.id,
+        parsed.data.limit + 1,
+      );
       const hasMore = newestFirst.length > parsed.data.limit;
       const events = [...newestFirst.slice(0, parsed.data.limit)].reverse();
       const chain = verifyDisputeAiAssessmentEventChain(events);
-      const genesisVerified = hasMore
-        || events.length === 0
-        || !events[0]?.eventHash
-        || events[0].previousEventHash === null;
+      const genesisVerified =
+        hasMore ||
+        events.length === 0 ||
+        !events[0]?.eventHash ||
+        events[0].previousEventHash === null;
       return reply.send({
         dispute_id: request.params.id,
         events,
@@ -4042,7 +4506,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (!parsed.data.force && openSessions.length > 0) {
         return reply.code(409).send({
           error: "EVIDENCE_COLLECTION_STILL_OPEN",
-          message: "AI assessment can run after active camera evidence sessions are committed or expired",
+          message:
+            "AI assessment can run after active camera evidence sessions are committed or expired",
           active_camera_sessions: openSessions.map((session) => cameraSessionResponse(session)),
         });
       }
@@ -4063,15 +4528,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
       const previousAssessment = metadata.ai_resolution_assessor;
       if (
-        !parsed.data.force
-        && metadata.ai_assessment_stale !== true
-        && previousAssessment
-        && typeof previousAssessment === "object"
-        && !Array.isArray(previousAssessment)
-        && (previousAssessment as Record<string, unknown>).status === "COMPLETED"
-        && (previousAssessment as Record<string, unknown>).evidence_snapshot_hash === currentEvidenceHash
-        && (previousAssessment as Record<string, unknown>).policy_version === DISPUTE_AI_POLICY_VERSION
-        && (previousAssessment as Record<string, unknown>).model === currentAssessmentModel
+        !parsed.data.force &&
+        metadata.ai_assessment_stale !== true &&
+        previousAssessment &&
+        typeof previousAssessment === "object" &&
+        !Array.isArray(previousAssessment) &&
+        (previousAssessment as Record<string, unknown>).status === "COMPLETED" &&
+        (previousAssessment as Record<string, unknown>).evidence_snapshot_hash ===
+          currentEvidenceHash &&
+        (previousAssessment as Record<string, unknown>).policy_version ===
+          DISPUTE_AI_POLICY_VERSION &&
+        (previousAssessment as Record<string, unknown>).model === currentAssessmentModel
       ) {
         return reply.send({
           dispute_id: id,
@@ -4087,7 +4554,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       }
 
       const order = await getCommerceOrderByOrderId(db, dispute.order_id);
-      const orderAmountMinor = order?.amountMinor ? parseInt(String(order.amountMinor)) : 0;
+      const orderAmountMinor = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
       const tier = (disputeMetadata(dispute).tier as DisputeTier | undefined) ?? 1;
       const context = buildDisputeAiCaseContextFromDispute(dispute, {
         tier,
@@ -4098,7 +4565,13 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         },
         policy: {
           refund_cap_minor: orderAmountMinor > 0 ? orderAmountMinor : undefined,
-          allowed_outcomes: ["buyer_favor", "seller_favor", "partial_refund", "no_action", "escalate"],
+          allowed_outcomes: [
+            "buyer_favor",
+            "seller_favor",
+            "partial_refund",
+            "no_action",
+            "escalate",
+          ],
           platform_rules: [
             "Verified Haggle Camera Evidence carries more weight than generic uploads.",
             "For the operator dashboard L1 seeded scenarios, evidence text beginning with [Verified Haggle Camera Evidence] represents a completed Haggle camera capture session.",
@@ -4111,29 +4584,36 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         },
       });
       const evidenceHash = currentEvidenceHash;
-      const previousAssessmentRecord = previousAssessment && typeof previousAssessment === "object" && !Array.isArray(previousAssessment)
-        ? previousAssessment as Record<string, unknown>
-        : null;
-      const evidenceSnapshotChanged = previousAssessmentRecord?.status === "COMPLETED"
-        && previousAssessmentRecord.evidence_snapshot_hash !== currentEvidenceHash;
-      const policyVersionChanged = previousAssessmentRecord?.status === "COMPLETED"
-        && previousAssessmentRecord.policy_version !== DISPUTE_AI_POLICY_VERSION;
-      const assessmentModelChanged = previousAssessmentRecord?.status === "COMPLETED"
-        && previousAssessmentRecord.model !== currentAssessmentModel;
+      const previousAssessmentRecord =
+        previousAssessment &&
+        typeof previousAssessment === "object" &&
+        !Array.isArray(previousAssessment)
+          ? (previousAssessment as Record<string, unknown>)
+          : null;
+      const evidenceSnapshotChanged =
+        previousAssessmentRecord?.status === "COMPLETED" &&
+        previousAssessmentRecord.evidence_snapshot_hash !== currentEvidenceHash;
+      const policyVersionChanged =
+        previousAssessmentRecord?.status === "COMPLETED" &&
+        previousAssessmentRecord.policy_version !== DISPUTE_AI_POLICY_VERSION;
+      const assessmentModelChanged =
+        previousAssessmentRecord?.status === "COMPLETED" &&
+        previousAssessmentRecord.model !== currentAssessmentModel;
       let assessmentHistory = aiAssessmentHistoryFor(dispute);
       let previousAssessmentId = previousAssessmentRecord?.assessment_id;
       if (previousAssessmentRecord?.status === "COMPLETED") {
-        previousAssessmentId = previousAssessmentId ?? `legacy_${createHash("sha256")
-          .update(JSON.stringify(previousAssessmentRecord))
-          .digest("hex")
-          .slice(0, 24)}`;
-        const alreadyRecorded = assessmentHistory.some((entry) => (
-          entry.assessment_id === previousAssessmentId
-          || (
-            entry.context_hash === previousAssessmentRecord.context_hash
-            && entry.assessed_at === previousAssessmentRecord.assessed_at
-          )
-        ));
+        previousAssessmentId =
+          previousAssessmentId ??
+          `legacy_${createHash("sha256")
+            .update(JSON.stringify(previousAssessmentRecord))
+            .digest("hex")
+            .slice(0, 24)}`;
+        const alreadyRecorded = assessmentHistory.some(
+          (entry) =>
+            entry.assessment_id === previousAssessmentId ||
+            (entry.context_hash === previousAssessmentRecord.context_hash &&
+              entry.assessed_at === previousAssessmentRecord.assessed_at),
+        );
         if (!alreadyRecorded) {
           assessmentHistory = [
             ...assessmentHistory,
@@ -4199,9 +4679,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             ...dispute,
             metadata: {
               ...currentAssessmentMetadata,
-              ai_resolution_assessor: previousAssessmentRecord?.status === "COMPLETED"
-                ? previousAssessmentRecord
-                : failedAttempt,
+              ai_resolution_assessor:
+                previousAssessmentRecord?.status === "COMPLETED"
+                  ? previousAssessmentRecord
+                  : failedAttempt,
               ai_resolution_assessor_last_failure: failedAttempt,
             },
           };
@@ -4238,28 +4719,32 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
         const assessmentId = createUuid();
         const versionId = createHash("sha256")
-          .update([
-            id,
-            evidenceHash,
-            DISPUTE_AI_POLICY_VERSION,
-            result.model ?? "unknown-model",
-            result.contextHash,
-          ].join(":"))
+          .update(
+            [
+              id,
+              evidenceHash,
+              DISPUTE_AI_POLICY_VERSION,
+              result.model ?? "unknown-model",
+              result.contextHash,
+            ].join(":"),
+          )
           .digest("hex");
         const aiAssessment = {
           assessment_id: assessmentId,
           version_id: versionId,
-          revision: typeof previousAssessmentRecord?.revision === "number"
-            ? previousAssessmentRecord.revision + 1
-            : assessmentHistory.length + 1,
+          revision:
+            typeof previousAssessmentRecord?.revision === "number"
+              ? previousAssessmentRecord.revision + 1
+              : assessmentHistory.length + 1,
           status: "COMPLETED",
           assessed_at: assessedAt,
           requested_by: request.user!.id,
           force: parsed.data.force,
           reassessment_reason: reassessmentReason,
-          supersedes_assessment_id: previousAssessmentRecord?.status === "COMPLETED"
-            ? previousAssessmentId ?? null
-            : null,
+          supersedes_assessment_id:
+            previousAssessmentRecord?.status === "COMPLETED"
+              ? (previousAssessmentId ?? null)
+              : null,
           evidence_snapshot_hash: evidenceHash,
           policy_version: DISPUTE_AI_POLICY_VERSION,
           context_hash: result.contextHash,
@@ -4272,9 +4757,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           output: result.output,
           auto_applied: false,
         };
-        const reassessedAppeal = appeal?.status === "REOPENED"
-          ? { ...appeal, status: "REASSESSED" as const, reassessed_at: assessedAt }
-          : appeal;
+        const reassessedAppeal =
+          appeal?.status === "REOPENED"
+            ? { ...appeal, status: "REASSESSED" as const, reassessed_at: assessedAt }
+            : appeal;
         const assessedDispute = {
           ...dispute,
           metadata: {
@@ -4285,16 +4771,21 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             ai_assessment_stale_at: null,
             ai_assessment_previous_evidence_snapshot_hash: null,
             ai_assessment_current_evidence_snapshot_hash: evidenceHash,
-            ...(reassessedAppeal ? {
-              appeal_review: reassessedAppeal,
-              appeal_history: [...appealHistoryFor(dispute), {
-                event: "APPEAL_REASSESSED",
-                at: assessedAt,
-                actor_id: request.user!.id,
-                appeal_id: reassessedAppeal.id,
-                context_hash: result.contextHash,
-              }],
-            } : {}),
+            ...(reassessedAppeal
+              ? {
+                  appeal_review: reassessedAppeal,
+                  appeal_history: [
+                    ...appealHistoryFor(dispute),
+                    {
+                      event: "APPEAL_REASSESSED",
+                      at: assessedAt,
+                      actor_id: request.user!.id,
+                      appeal_id: reassessedAppeal.id,
+                      context_hash: result.contextHash,
+                    },
+                  ],
+                }
+              : {}),
           },
         };
         const persistAssessment = async (tx: unknown) => {
@@ -4305,9 +4796,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             eventType: "COMPLETED",
             revision: aiAssessment.revision,
             versionId,
-            supersedesAssessmentId: typeof aiAssessment.supersedes_assessment_id === "string"
-              ? aiAssessment.supersedes_assessment_id
-              : undefined,
+            supersedesAssessmentId:
+              typeof aiAssessment.supersedes_assessment_id === "string"
+                ? aiAssessment.supersedes_assessment_id
+                : undefined,
             evidenceSnapshotHash: evidenceHash,
             policyVersion: DISPUTE_AI_POLICY_VERSION,
             model: result.model,
@@ -4336,7 +4828,10 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         try {
           await releaseDisputeAiAssessmentLease(db, id, leaseId);
         } catch (error) {
-          request.log.error({ error, dispute_id: id, lease_id: leaseId }, "Failed to release AI assessment lease");
+          request.log.error(
+            { error, dispute_id: id, lease_id: leaseId },
+            "Failed to release AI assessment lease",
+          );
         }
       }
     },
@@ -4354,10 +4849,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         .select()
         .from(disputeEvidenceTable)
         .where(
-          and(
-            eq(disputeEvidenceTable.id, evidenceId),
-            eq(disputeEvidenceTable.disputeId, id),
-          ),
+          and(eq(disputeEvidenceTable.id, evidenceId), eq(disputeEvidenceTable.disputeId, id)),
         );
 
       if (rows.length === 0) {
@@ -4376,7 +4868,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       if (upload?.retentionStatus === "DELETED") {
         return reply.code(410).send({
           error: "EVIDENCE_RETAINED_RECORD_FILE_DELETED",
-          message: "The evidence audit record remains, but its retained file has been deleted under policy",
+          message:
+            "The evidence audit record remains, but its retained file has been deleted under policy",
           deleted_at: upload.deletedAt,
         });
       }

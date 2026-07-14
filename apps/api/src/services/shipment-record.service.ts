@@ -1,20 +1,20 @@
-import {
-  shipments,
-  shipmentEvents,
-  shipmentOperationIdempotency,
-  and,
-  eq,
-  isNull,
-  sql,
-  type Database,
-} from "@haggle/db";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  resolveCarrierEventOrdering,
+  and,
+  type Database,
+  eq,
+  isNull,
+  shipmentEvents,
+  shipmentOperationIdempotency,
+  shipments,
+  sql,
+} from "@haggle/db";
+import {
   type CarrierEventDisposition,
+  resolveCarrierEventOrdering,
   type Shipment,
-  type ShipmentStatus,
   type ShipmentEvent,
+  type ShipmentStatus,
 } from "@haggle/shipping-core";
 
 type ShipmentType = "outbound" | "return";
@@ -35,7 +35,10 @@ export interface ShipmentRow extends Shipment {
   shipment_type: string;
 }
 
-function getStringMetadataValue(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
+function getStringMetadataValue(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+): string | undefined {
   const value = metadata?.[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -81,10 +84,8 @@ async function findShipmentByOrderIdAndType(
   shipmentType: ShipmentType,
 ): Promise<ShipmentRow | null> {
   const row = await db.query.shipments.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.orderId, orderId),
-      ops.eq(fields.shipmentType, shipmentType),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.orderId, orderId), ops.eq(fields.shipmentType, shipmentType)),
   });
   return row ? mapShipment(row) : null;
 }
@@ -144,9 +145,14 @@ export async function getShipmentById(db: Database, id: string): Promise<Shipmen
     status: e.canonicalStatus as ShipmentStatus,
     occurred_at: e.occurredAt.toISOString(),
     carrier_raw_status: e.rawStatus ?? undefined,
-    state_changed: typeof e.payload?.state_changed === "boolean" ? e.payload.state_changed : undefined,
-    ordering_disposition: typeof e.payload?.ordering_disposition === "string" ? e.payload.ordering_disposition : undefined,
-    provider_event_key: typeof e.payload?.provider_event_key === "string" ? e.payload.provider_event_key : undefined,
+    state_changed:
+      typeof e.payload?.state_changed === "boolean" ? e.payload.state_changed : undefined,
+    ordering_disposition:
+      typeof e.payload?.ordering_disposition === "string"
+        ? e.payload.ordering_disposition
+        : undefined,
+    provider_event_key:
+      typeof e.payload?.provider_event_key === "string" ? e.payload.provider_event_key : undefined,
     message: typeof e.payload?.message === "string" ? e.payload.message : undefined,
     location: typeof e.payload?.location === "string" ? e.payload.location : undefined,
   }));
@@ -159,10 +165,8 @@ export async function getShipmentByOrderId(
   shipmentType: ShipmentType = "outbound",
 ): Promise<ShipmentRow | null> {
   const row = await db.query.shipments.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.orderId, orderId),
-      ops.eq(fields.shipmentType, shipmentType),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.orderId, orderId), ops.eq(fields.shipmentType, shipmentType)),
   });
   if (!row) return null;
   return getShipmentById(db, row.id);
@@ -178,10 +182,7 @@ export async function getShipmentByTrackingNumber(
   return row ? getShipmentById(db, row.id) : null;
 }
 
-export async function updateShipmentRecord(
-  db: Database,
-  shipment: Shipment,
-): Promise<void> {
+export async function updateShipmentRecord(db: Database, shipment: Shipment): Promise<void> {
   await db
     .update(shipments)
     .set({
@@ -194,10 +195,7 @@ export async function updateShipmentRecord(
     .where(eq(shipments.id, shipment.id));
 }
 
-export async function insertShipmentEvent(
-  db: Database,
-  event: ShipmentEvent,
-): Promise<void> {
+export async function insertShipmentEvent(db: Database, event: ShipmentEvent): Promise<void> {
   const insertResult = db.insert(shipmentEvents).values({
     shipmentId: event.shipment_id,
     eventType: event.status,
@@ -213,10 +211,10 @@ export async function insertShipmentEvent(
     occurredAt: new Date(event.occurred_at),
   });
   if (
-    insertResult
-    && typeof insertResult === "object"
-    && "onConflictDoNothing" in insertResult
-    && typeof insertResult.onConflictDoNothing === "function"
+    insertResult &&
+    typeof insertResult === "object" &&
+    "onConflictDoNothing" in insertResult &&
+    typeof insertResult.onConflictDoNothing === "function"
   ) {
     await insertResult.onConflictDoNothing();
     return;
@@ -256,21 +254,22 @@ export async function applyCarrierShipmentEvent(
     });
     if (!row) return null;
 
-    const decision = row.labelRefundStatus === "REFUNDED"
-      ? {
-          disposition: "label_refunded" as const,
-          nextStatus: row.status as ShipmentStatus,
-          advanceWatermark: false,
-          stateChanged: false,
-        }
-      : resolveCarrierEventOrdering({
-          currentStatus: row.status as ShipmentStatus,
-          incomingStatus: input.incomingStatus,
-          incomingOccurredAt: input.occurredAt,
-          incomingEventKey: input.eventKey,
-          lastCarrierEventAt: row.lastCarrierEventAt,
-          lastCarrierEventKey: row.lastCarrierEventKey,
-        });
+    const decision =
+      row.labelRefundStatus === "REFUNDED"
+        ? {
+            disposition: "label_refunded" as const,
+            nextStatus: row.status as ShipmentStatus,
+            advanceWatermark: false,
+            stateChanged: false,
+          }
+        : resolveCarrierEventOrdering({
+            currentStatus: row.status as ShipmentStatus,
+            incomingStatus: input.incomingStatus,
+            incomingOccurredAt: input.occurredAt,
+            incomingEventKey: input.eventKey,
+            lastCarrierEventAt: row.lastCarrierEventAt,
+            lastCarrierEventKey: row.lastCarrierEventKey,
+          });
     const event: ShipmentEvent = {
       id: deterministicCarrierEventId(input.shipmentId, input.eventKey),
       shipment_id: input.shipmentId,
@@ -287,13 +286,29 @@ export async function applyCarrierShipmentEvent(
     if (decision.disposition === "replay_applied") {
       await insertShipmentEvent(db, event);
       const shipment = await getShipmentById(db, input.shipmentId);
-      return shipment ? { shipment, event, disposition: decision.disposition, stateChanged: false, effectsRequired: true } : null;
+      return shipment
+        ? {
+            shipment,
+            event,
+            disposition: decision.disposition,
+            stateChanged: false,
+            effectsRequired: true,
+          }
+        : null;
     }
 
     if (!decision.advanceWatermark) {
       await insertShipmentEvent(db, event);
       const shipment = await getShipmentById(db, input.shipmentId);
-      return shipment ? { shipment, event, disposition: decision.disposition, stateChanged: false, effectsRequired: false } : null;
+      return shipment
+        ? {
+            shipment,
+            event,
+            disposition: decision.disposition,
+            stateChanged: false,
+            effectsRequired: false,
+          }
+        : null;
     }
 
     const watermarkGuard = row.lastCarrierEventAt
@@ -304,58 +319,88 @@ export async function applyCarrierShipmentEvent(
             : isNull(shipments.lastCarrierEventKey),
         )
       : and(isNull(shipments.lastCarrierEventAt), isNull(shipments.lastCarrierEventKey));
-    const updated = await db.update(shipments).set({
-      status: decision.nextStatus,
-      deliveredAt: decision.stateChanged && decision.nextStatus === "DELIVERED"
-        ? input.occurredAt
-        : row.deliveredAt,
-      lastCarrierEventAt: input.occurredAt,
-      lastCarrierEventKey: input.eventKey,
-      metadata: {
-        ...(row.metadata ?? {}),
-        last_carrier_timestamp_source: input.timestampSource,
-        last_carrier_event_disposition: decision.disposition,
-      },
-      updatedAt: new Date(),
-    }).where(and(
-      eq(shipments.id, input.shipmentId),
-      eq(shipments.status, row.status),
-      watermarkGuard,
-    )).returning({ id: shipments.id });
+    const updated = await db
+      .update(shipments)
+      .set({
+        status: decision.nextStatus,
+        deliveredAt:
+          decision.stateChanged && decision.nextStatus === "DELIVERED"
+            ? input.occurredAt
+            : row.deliveredAt,
+        lastCarrierEventAt: input.occurredAt,
+        lastCarrierEventKey: input.eventKey,
+        metadata: {
+          ...(row.metadata ?? {}),
+          last_carrier_timestamp_source: input.timestampSource,
+          last_carrier_event_disposition: decision.disposition,
+        },
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(shipments.id, input.shipmentId), eq(shipments.status, row.status), watermarkGuard),
+      )
+      .returning({ id: shipments.id });
     if (!updated.length) continue;
 
     await insertShipmentEvent(db, event);
     const shipment = await getShipmentById(db, input.shipmentId);
-    return shipment ? {
-      shipment,
-      event,
-      disposition: decision.disposition,
-      stateChanged: decision.stateChanged,
-      effectsRequired: decision.stateChanged,
-    } : null;
+    return shipment
+      ? {
+          shipment,
+          event,
+          disposition: decision.disposition,
+          stateChanged: decision.stateChanged,
+          effectsRequired: decision.stateChanged,
+        }
+      : null;
   }
   throw new Error("SHIPMENT_CARRIER_EVENT_CONCURRENCY_RETRY_EXHAUSTED");
 }
 
-export type ShipmentLabelRefundStatus = "NONE" | "REQUESTING" | "SUBMITTED" | "REFUNDED" | "REJECTED" | "NOT_APPLICABLE" | "FAILED";
+export type ShipmentLabelRefundStatus =
+  | "NONE"
+  | "REQUESTING"
+  | "SUBMITTED"
+  | "REFUNDED"
+  | "REJECTED"
+  | "NOT_APPLICABLE"
+  | "FAILED";
 
 export type ShipmentLabelRefundClaim =
   | { outcome: "acquired"; shipmentId: string; claimId: string; attemptCount: number }
-  | { outcome: "in_progress" | "already_submitted" | "already_refunded" | "not_applicable" | "invalid_status"; shipmentId: string };
+  | {
+      outcome:
+        | "in_progress"
+        | "already_submitted"
+        | "already_refunded"
+        | "not_applicable"
+        | "invalid_status";
+      shipmentId: string;
+    };
 
-export function normalizeProviderLabelRefundStatus(value: unknown): Exclude<ShipmentLabelRefundStatus, "NONE" | "REQUESTING" | "FAILED"> | null {
+export function normalizeProviderLabelRefundStatus(
+  value: unknown,
+): Exclude<ShipmentLabelRefundStatus, "NONE" | "REQUESTING" | "FAILED"> | null {
   switch (typeof value === "string" ? value.toLowerCase() : "") {
-    case "submitted": return "SUBMITTED";
-    case "refunded": return "REFUNDED";
-    case "rejected": return "REJECTED";
-    case "not_applicable": return "NOT_APPLICABLE";
-    default: return null;
+    case "submitted":
+      return "SUBMITTED";
+    case "refunded":
+      return "REFUNDED";
+    case "rejected":
+      return "REJECTED";
+    case "not_applicable":
+      return "NOT_APPLICABLE";
+    default:
+      return null;
   }
 }
 
-export async function claimShipmentLabelRefund(db: Database, shipmentId: string): Promise<ShipmentLabelRefundClaim> {
+export async function claimShipmentLabelRefund(
+  db: Database,
+  shipmentId: string,
+): Promise<ShipmentLabelRefundClaim> {
   const claimId = randomUUID();
-  const acquired = await db.execute(sql`
+  const acquired = (await db.execute(sql`
     UPDATE shipments
        SET label_refund_status = 'REQUESTING',
            label_refund_claim_id = ${claimId},
@@ -371,7 +416,7 @@ export async function claimShipmentLabelRefund(db: Database, shipmentId: string)
          OR (label_refund_status = 'REQUESTING' AND label_refund_lease_expires_at <= now())
        )
      RETURNING label_refund_claim_id AS "claimId", label_refund_attempt_count AS "attemptCount"
-  `) as unknown as Array<{ claimId: string; attemptCount: number | string }>;
+  `)) as unknown as Array<{ claimId: string; attemptCount: number | string }>;
   if (acquired[0]) {
     return {
       outcome: "acquired",
@@ -380,14 +425,14 @@ export async function claimShipmentLabelRefund(db: Database, shipmentId: string)
       attemptCount: Number(acquired[0].attemptCount),
     };
   }
-  const existing = await db.execute(sql`
+  const existing = (await db.execute(sql`
     SELECT status, label_refund_status AS "refundStatus"
       FROM shipments
      WHERE id = ${shipmentId}
      LIMIT 1
-  `) as unknown as Array<{ status: string; refundStatus: ShipmentLabelRefundStatus }>;
+  `)) as unknown as Array<{ status: string; refundStatus: ShipmentLabelRefundStatus }>;
   const current = existing[0];
-  if (!current || current.status !== "LABEL_CREATED") return { outcome: "invalid_status", shipmentId };
+  if (current?.status !== "LABEL_CREATED") return { outcome: "invalid_status", shipmentId };
   if (current.refundStatus === "REQUESTING") return { outcome: "in_progress", shipmentId };
   if (current.refundStatus === "SUBMITTED") return { outcome: "already_submitted", shipmentId };
   if (current.refundStatus === "REFUNDED") return { outcome: "already_refunded", shipmentId };
@@ -406,7 +451,7 @@ export async function completeShipmentLabelRefund(
     label_refund_provider_shipment_id: providerShipmentId,
     label_refund_provider_status: providerStatus.toLowerCase(),
   });
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE shipments
        SET label_refund_status = ${providerStatus},
            label_refund_claim_id = NULL,
@@ -426,7 +471,7 @@ export async function completeShipmentLabelRefund(
        AND label_refund_status = 'REQUESTING'
        AND label_refund_claim_id = ${claim.claimId}
      RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return rows.length === 1;
 }
 
@@ -458,7 +503,7 @@ export async function syncSubmittedShipmentLabelRefund(
     label_refund_provider_shipment_id: providerShipmentId,
     label_refund_provider_status: providerStatus.toLowerCase(),
   });
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE shipments
        SET label_refund_status = ${providerStatus},
            label_refund_updated_at = now(),
@@ -475,7 +520,7 @@ export async function syncSubmittedShipmentLabelRefund(
      WHERE id = ${shipmentId}
        AND label_refund_status IN ('SUBMITTED', 'REJECTED', 'NOT_APPLICABLE', 'REFUNDED')
      RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return rows.length === 1;
 }
 
@@ -485,10 +530,8 @@ export async function getShipmentOperationIdempotencyRecord(
   idempotencyKey: string,
 ): Promise<typeof shipmentOperationIdempotency.$inferSelect | null> {
   const row = await db.query.shipmentOperationIdempotency.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.operation, operation),
-      ops.eq(fields.idempotencyKey, idempotencyKey),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.operation, operation), ops.eq(fields.idempotencyKey, idempotencyKey)),
   });
   return row ?? null;
 }
@@ -537,8 +580,10 @@ export async function completeShipmentOperationIdempotency(
       responseBody: input.responseBody,
       updatedAt: new Date(),
     })
-    .where(and(
-      eq(shipmentOperationIdempotency.operation, operation),
-      eq(shipmentOperationIdempotency.idempotencyKey, idempotencyKey),
-    ));
+    .where(
+      and(
+        eq(shipmentOperationIdempotency.operation, operation),
+        eq(shipmentOperationIdempotency.idempotencyKey, idempotencyKey),
+      ),
+    );
 }

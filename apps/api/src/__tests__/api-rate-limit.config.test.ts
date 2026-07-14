@@ -35,33 +35,36 @@ describe("API rate-limit configuration", () => {
       storage: "process_memory",
       containsSecret: false,
       containsIdentifiers: false,
-      retention: { scheduled: false, intervalSeconds: 3600,
-        retentionHours: 24, batchSize: 1000, runOnStart: true },
+      retention: {
+        scheduled: false,
+        intervalSeconds: 3600,
+        retentionHours: 24,
+        batchSize: 1000,
+        runOnStart: true,
+      },
     });
   });
 
-  it.each(["staging", "production"])(
-    "requires PostgreSQL mode and a strong secret in %s",
-    (haggleEnv) => {
-      process.env.NODE_ENV = "production";
-      process.env.HAGGLE_ENV = haggleEnv;
-      process.env.HAGGLE_API_RATE_LIMIT_MODE = "local";
-      delete process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET;
-      expect(() => resolveApiRateLimitConfigFromEnv())
-        .toThrow(/postgres is required/);
+  it.each([
+    "staging",
+    "production",
+  ])("requires PostgreSQL mode and a strong secret in %s", (haggleEnv) => {
+    process.env.NODE_ENV = "production";
+    process.env.HAGGLE_ENV = haggleEnv;
+    process.env.HAGGLE_API_RATE_LIMIT_MODE = "local";
+    delete process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET;
+    expect(() => resolveApiRateLimitConfigFromEnv()).toThrow(/postgres is required/);
 
-      process.env.HAGGLE_API_RATE_LIMIT_MODE = "postgres";
-      process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET = "short";
-      expect(() => resolveApiRateLimitConfigFromEnv())
-        .toThrow(/32 to 512 bytes/);
+    process.env.HAGGLE_API_RATE_LIMIT_MODE = "postgres";
+    process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET = "short";
+    expect(() => resolveApiRateLimitConfigFromEnv()).toThrow(/32 to 512 bytes/);
 
-      process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET = "s".repeat(32);
-      expect(resolveApiRateLimitConfigFromEnv()).toEqual({
-        mode: "postgres",
-        hmacSecret: "s".repeat(32),
-      });
-    },
-  );
+    process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET = "s".repeat(32);
+    expect(resolveApiRateLimitConfigFromEnv()).toEqual({
+      mode: "postgres",
+      hmacSecret: "s".repeat(32),
+    });
+  });
 
   it("creates stable scoped hashes without retaining the identity", () => {
     const input = {
@@ -73,8 +76,7 @@ describe("API rate-limit configuration", () => {
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     expect(first).not.toContain(input.identity);
     expect(hashApiRateLimitIdentity(input)).toBe(first);
-    expect(hashApiRateLimitIdentity({ ...input, scope: "payments" }))
-      .not.toBe(first);
+    expect(hashApiRateLimitIdentity({ ...input, scope: "payments" })).not.toBe(first);
   });
 
   it("rejects invalid modes, scopes, identities, and oversized secrets", () => {
@@ -82,19 +84,22 @@ describe("API rate-limit configuration", () => {
     process.env.HAGGLE_ENV = "local";
     process.env.HAGGLE_API_RATE_LIMIT_MODE = "redis";
     expect(() => resolveApiRateLimitConfigFromEnv()).toThrow(/local or postgres/);
-    expect(() => hashApiRateLimitIdentity({
-      scope: "contains space",
-      identity: "127.0.0.1",
-      hmacSecret: "h".repeat(32),
-    })).toThrow("INVALID_API_RATE_LIMIT_SCOPE");
-    expect(() => hashApiRateLimitIdentity({
-      scope: "global_ip",
-      identity: "x".repeat(513),
-      hmacSecret: "h".repeat(32),
-    })).toThrow("INVALID_API_RATE_LIMIT_IDENTITY");
+    expect(() =>
+      hashApiRateLimitIdentity({
+        scope: "contains space",
+        identity: "127.0.0.1",
+        hmacSecret: "h".repeat(32),
+      }),
+    ).toThrow("INVALID_API_RATE_LIMIT_SCOPE");
+    expect(() =>
+      hashApiRateLimitIdentity({
+        scope: "global_ip",
+        identity: "x".repeat(513),
+        hmacSecret: "h".repeat(32),
+      }),
+    ).toThrow("INVALID_API_RATE_LIMIT_IDENTITY");
     process.env.HAGGLE_API_RATE_LIMIT_MODE = "postgres";
     process.env.HAGGLE_API_RATE_LIMIT_HMAC_SECRET = "h".repeat(513);
-    expect(() => resolveApiRateLimitConfigFromEnv())
-      .toThrow(/32 to 512 bytes/);
+    expect(() => resolveApiRateLimitConfigFromEnv()).toThrow(/32 to 512 bytes/);
   });
 });

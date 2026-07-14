@@ -1,7 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import type { WebhookClaimHealth } from "./webhook-event-claim.service.js";
+import { type Database, sql } from "@haggle/db";
 import { assertDisputeModuleOutboundUrl } from "./dispute-module-outbound-url.service.js";
+import type { WebhookClaimHealth } from "./webhook-event-claim.service.js";
 
 export interface WebhookClaimAlertConfig {
   url: string;
@@ -38,7 +38,12 @@ export interface WebhookClaimAlertResult {
   error?: string;
 }
 
-function boundedInteger(raw: string | undefined, fallback: number, minimum: number, maximum: number): number {
+function boundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
   const value = Number(raw);
   return Number.isInteger(value) && value >= minimum && value <= maximum ? value : fallback;
 }
@@ -46,14 +51,24 @@ function boundedInteger(raw: string | undefined, fallback: number, minimum: numb
 export function getWebhookClaimAlertPolicyStatus(): WebhookClaimAlertPolicyStatus {
   return {
     configured: Boolean(
-      process.env.WEBHOOK_CLAIM_ALERT_URL
-      && (process.env.WEBHOOK_CLAIM_ALERT_SECRET?.length ?? 0) >= 16
+      process.env.WEBHOOK_CLAIM_ALERT_URL &&
+        (process.env.WEBHOOK_CLAIM_ALERT_SECRET?.length ?? 0) >= 16,
     ),
     jobEnabled: process.env.ENABLE_WEBHOOK_CLAIM_HEALTH_ALERT_JOB === "true",
     cooldownMinutes: boundedInteger(process.env.WEBHOOK_CLAIM_ALERT_COOLDOWN_MINUTES, 15, 1, 1440),
-    failedThreshold: boundedInteger(process.env.WEBHOOK_CLAIM_ALERT_FAILED_THRESHOLD, 1, 1, 100_000),
+    failedThreshold: boundedInteger(
+      process.env.WEBHOOK_CLAIM_ALERT_FAILED_THRESHOLD,
+      1,
+      1,
+      100_000,
+    ),
     staleThreshold: boundedInteger(process.env.WEBHOOK_CLAIM_ALERT_STALE_THRESHOLD, 1, 1, 100_000),
-    retryReadyThreshold: boundedInteger(process.env.WEBHOOK_CLAIM_ALERT_RETRY_READY_THRESHOLD, 1, 1, 100_000),
+    retryReadyThreshold: boundedInteger(
+      process.env.WEBHOOK_CLAIM_ALERT_RETRY_READY_THRESHOLD,
+      1,
+      1,
+      100_000,
+    ),
   };
 }
 
@@ -61,7 +76,8 @@ export function resolveWebhookClaimAlertConfigFromEnv(): WebhookClaimAlertConfig
   const url = process.env.WEBHOOK_CLAIM_ALERT_URL;
   if (!url) return null;
   const secret = process.env.WEBHOOK_CLAIM_ALERT_SECRET ?? "";
-  if (secret.length < 16) throw new Error("webhook claim alert secret must be at least 16 characters");
+  if (secret.length < 16)
+    throw new Error("webhook claim alert secret must be at least 16 characters");
   const policy = getWebhookClaimAlertPolicyStatus();
   const config = {
     url,
@@ -84,7 +100,10 @@ export function resolveWebhookClaimAlertConfigFromEnv(): WebhookClaimAlertConfig
 
 export function evaluateWebhookClaimAlert(
   health: WebhookClaimHealth,
-  thresholds: Pick<WebhookClaimAlertConfig, "failedThreshold" | "staleThreshold" | "retryReadyThreshold">,
+  thresholds: Pick<
+    WebhookClaimAlertConfig,
+    "failedThreshold" | "staleThreshold" | "retryReadyThreshold"
+  >,
 ): WebhookClaimAlertAssessment {
   const reasons: string[] = [];
   if (health.totals.staleProcessing >= thresholds.staleThreshold) reasons.push("stale_processing");
@@ -104,7 +123,7 @@ export function buildWebhookClaimAlertPayload(
 ) {
   return {
     type: "webhook_claim.health" as const,
-    state: assessment.severity === "recovery" ? "recovered" as const : "firing" as const,
+    state: assessment.severity === "recovery" ? ("recovered" as const) : ("firing" as const),
     created_at: now.toISOString(),
     severity: assessment.severity,
     reasons: assessment.reasons,
@@ -121,26 +140,48 @@ export function buildWebhookClaimAlertPayload(
   };
 }
 
-export async function getWebhookClaimAlertDeliveryState(db: Database, source = WEBHOOK_CLAIM_ALERT_SOURCE) {
-  const rows = await db.execute(sql`SELECT
+export async function getWebhookClaimAlertDeliveryState(
+  db: Database,
+  source = WEBHOOK_CLAIM_ALERT_SOURCE,
+) {
+  const rows = (await db.execute(sql`SELECT
     max(completed_at) FILTER (WHERE left(idempotency_key, 7) = 'health_') AS last_incident_at,
     max(completed_at) FILTER (WHERE left(idempotency_key, 9) = 'recovery_') AS last_recovery_at
-    FROM webhook_idempotency WHERE source = ${source} AND status = 'COMPLETED'`) as unknown as Array<Record<string, Date | string | null>>;
+    FROM webhook_idempotency WHERE source = ${source} AND status = 'COMPLETED'`)) as unknown as Array<
+    Record<string, Date | string | null>
+  >;
   const incident = rows[0]?.last_incident_at ? new Date(rows[0].last_incident_at) : null;
   const recovery = rows[0]?.last_recovery_at ? new Date(rows[0].last_recovery_at) : null;
-  return { incidentOpen: Boolean(incident && (!recovery || recovery < incident)),
-    lastIncidentAlertAt: incident?.toISOString() ?? null, lastRecoveryAlertAt: recovery?.toISOString() ?? null };
+  return {
+    incidentOpen: Boolean(incident && (!recovery || recovery < incident)),
+    lastIncidentAlertAt: incident?.toISOString() ?? null,
+    lastRecoveryAlertAt: recovery?.toISOString() ?? null,
+  };
 }
 
-export async function findLatestDeliveredWebhookClaimIncident(db: Database, source = WEBHOOK_CLAIM_ALERT_SOURCE) {
-  const rows = await db.execute(sql`SELECT idempotency_key AS event_id, completed_at FROM webhook_idempotency
+export async function findLatestDeliveredWebhookClaimIncident(
+  db: Database,
+  source = WEBHOOK_CLAIM_ALERT_SOURCE,
+) {
+  const rows =
+    (await db.execute(sql`SELECT idempotency_key AS event_id, completed_at FROM webhook_idempotency
     WHERE source = ${source} AND status = 'COMPLETED' AND left(idempotency_key, 7) = 'health_'
-    ORDER BY completed_at DESC, id DESC LIMIT 1`) as unknown as Array<{ event_id: string; completed_at: Date | string }>;
-  return rows[0] ? { eventId: rows[0].event_id, completedAt: new Date(rows[0].completed_at).toISOString() } : null;
+    ORDER BY completed_at DESC, id DESC LIMIT 1`)) as unknown as Array<{
+      event_id: string;
+      completed_at: Date | string;
+    }>;
+  return rows[0]
+    ? { eventId: rows[0].event_id, completedAt: new Date(rows[0].completed_at).toISOString() }
+    : null;
 }
 
-export function signWebhookClaimAlertPayload(secret: string, timestamp: string, rawBody: string): string {
-  if (secret.length < 16) throw new Error("webhook claim alert secret must be at least 16 characters");
+export function signWebhookClaimAlertPayload(
+  secret: string,
+  timestamp: string,
+  rawBody: string,
+): string {
+  if (secret.length < 16)
+    throw new Error("webhook claim alert secret must be at least 16 characters");
   const bodyHash = createHash("sha256").update(rawBody).digest("hex");
   return `sha256=${createHmac("sha256", secret).update(`${timestamp}.${bodyHash}`).digest("hex")}`;
 }
@@ -148,7 +189,12 @@ export function signWebhookClaimAlertPayload(secret: string, timestamp: string, 
 export async function sendWebhookClaimAlert(
   health: WebhookClaimHealth,
   assessment: WebhookClaimAlertAssessment,
-  options: { config: WebhookClaimAlertConfig; deliveryId?: string; fetchImpl?: typeof fetch; now?: Date },
+  options: {
+    config: WebhookClaimAlertConfig;
+    deliveryId?: string;
+    fetchImpl?: typeof fetch;
+    now?: Date;
+  },
 ): Promise<WebhookClaimAlertResult> {
   assertDisputeModuleOutboundUrl(options.config.url, {
     label: "webhook claim alert",
@@ -157,9 +203,12 @@ export async function sendWebhookClaimAlert(
   });
   const now = options.now ?? new Date();
   const timestamp = now.toISOString();
-  if (options.deliveryId && !/^(?:health|recovery)_[0-9a-f]{64}$/.test(options.deliveryId)) throw new Error("invalid webhook claim alert delivery id");
-  const rawBody = JSON.stringify({ ...buildWebhookClaimAlertPayload(health, assessment, now),
-    ...(options.deliveryId ? { delivery_id: options.deliveryId } : {}) });
+  if (options.deliveryId && !/^(?:health|recovery)_[0-9a-f]{64}$/.test(options.deliveryId))
+    throw new Error("invalid webhook claim alert delivery id");
+  const rawBody = JSON.stringify({
+    ...buildWebhookClaimAlertPayload(health, assessment, now),
+    ...(options.deliveryId ? { delivery_id: options.deliveryId } : {}),
+  });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.config.timeoutMs);
   try {
@@ -172,7 +221,11 @@ export async function sendWebhookClaimAlert(
         "x-haggle-alert-type": "webhook_claim.health",
         "x-haggle-alert-timestamp": timestamp,
         ...(options.deliveryId ? { "x-haggle-alert-delivery-id": options.deliveryId } : {}),
-        "x-haggle-alert-signature": signWebhookClaimAlertPayload(options.config.secret, timestamp, rawBody),
+        "x-haggle-alert-signature": signWebhookClaimAlertPayload(
+          options.config.secret,
+          timestamp,
+          rawBody,
+        ),
       },
       body: rawBody,
     });

@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PresetTuningDraft } from "@/lib/intelligence-demo-api";
 import {
-  analyzeAdvisorTurn,
-  getAdvisorDemoListings,
-  getDemoMemoryCards,
-  saveAdvisorMemory,
   type AdvisorCandidatePlan,
   type AdvisorDemoListingsResponse,
-  type AdvisorTurnCost,
+  getAdvisorDemoListings,
+  getDemoMemoryCards,
+  type NegotiationAgentBuilderTurnCost,
+  processNegotiationAgentBuilderTurn,
   type StoredMemoryCard,
+  saveNegotiationAgentBuilderMemory,
 } from "@/lib/intelligence-demo-api";
-import type { AdvisorListing, AdvisorMemory } from "@/lib/advisor-demo-types";
-import type { PresetTuningDraft } from "@/lib/intelligence-demo-api";
+import type {
+  AdvisorListing,
+  NegotiationAgentBuilderMemory,
+} from "@/lib/negotiation-agent-builder-types";
 import { ANCIENT_BEINGS, type AncientBeingId } from "./negotiation-avatar-coach";
 import { PresetTuningPanel } from "./preset-tuning-panel";
 
@@ -22,7 +25,7 @@ type ChatMessage = {
   text: string;
 };
 
-type AdvisorCostTurn = AdvisorTurnCost & {
+type AdvisorCostTurn = NegotiationAgentBuilderTurnCost & {
   turn: number;
 };
 
@@ -95,7 +98,7 @@ type PendingBudgetChange = {
   to: number;
   previousBudgetMax?: number;
   previousTargetPrice?: number;
-  proposedMemory: AdvisorMemory;
+  proposedMemory: NegotiationAgentBuilderMemory;
 };
 
 type MissingInfoSlot = {
@@ -127,9 +130,12 @@ const AGENT_OPENING_LINES: Record<AncientBeingId, string> = {
   judge: "저지입니다. 먼저 요청의 범위를 잡겠습니다. 찾는 제품이나 사용 상황을 편하게 말해 주세요.",
   hark: "하크입니다. 시작 규칙은 단순하다. 무엇을 찾는지, 어떤 상황인지부터 대세요.",
   mia: "미아예요. 괜찮아요, 천천히. 필요한 물건이나 쓰려는 상황부터 말해 주세요.",
-  vault: "...볼트입니다. 안전해. 먼저 찾는 물건과 이유를 말해 주세요. 중요한 조건은 그다음 잠가두겠습니다.",
-  dealer_kai: "Wait, wait- 신호부터 잡아볼게요. 제품명이든 쓰려는 상황이든 먼저 던져주세요. 그니까, 보드 전원부터 켜는 느낌으로요.",
-  dealer_hana: "헐, 좋아요. 일단 뭐 찾는지부터 잡아볼게요. 제품명이나 쓰려는 상황을 편하게 말해 주세요!",
+  vault:
+    "...볼트입니다. 안전해. 먼저 찾는 물건과 이유를 말해 주세요. 중요한 조건은 그다음 잠가두겠습니다.",
+  dealer_kai:
+    "Wait, wait- 신호부터 잡아볼게요. 제품명이든 쓰려는 상황이든 먼저 던져주세요. 그니까, 보드 전원부터 켜는 느낌으로요.",
+  dealer_hana:
+    "헐, 좋아요. 일단 뭐 찾는지부터 잡아볼게요. 제품명이나 쓰려는 상황을 편하게 말해 주세요!",
   dealer_ethan: "에단입니다. 먼저 구매 의도부터 보겠습니다. 찾는 제품이나 사용 목적을 알려주세요.",
   dealer_claire: "클레어예요. 무리 없이 시작해볼게요. 필요한 물건이나 쓰려는 상황부터 알려주세요.",
   buddy_fizz: "잠깐! 신호 잡아볼게요. 제품명이든 상황이든 먼저 짧게 말해 주세요.",
@@ -146,7 +152,7 @@ function createInitialMessages(agentId: AncientBeingId): ChatMessage[] {
   ];
 }
 
-function createBaseMemory(): AdvisorMemory {
+function createBaseMemory(): NegotiationAgentBuilderMemory {
   return {
     categoryInterest: "탐색 중",
     mustHave: [],
@@ -175,34 +181,38 @@ function formatMinor(value: number): string {
   }).format(value / 100);
 }
 
-function scoreListing(listing: AdvisorListing, memory: AdvisorMemory): number {
+function scoreListing(listing: AdvisorListing, memory: NegotiationAgentBuilderMemory): number {
   let score = 0;
-  const listingText = [
-    listing.title,
-    listing.category,
-    listing.condition,
-    ...listing.tags,
-  ].filter(Boolean).join(" ").toLowerCase();
+  const listingText = [listing.title, listing.category, listing.condition, ...listing.tags]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   const searchTerms = getListingSearchTerms(memory);
 
   for (const term of searchTerms) {
     if (listingText.includes(term)) score += term.length > 4 ? 12 : 8;
   }
 
-  if (memory.budgetMax && listing.askPriceMinor <= dollarsToMinor(memory.budgetMax + 30)) score += 24;
+  if (memory.budgetMax && listing.askPriceMinor <= dollarsToMinor(memory.budgetMax + 30))
+    score += 24;
   if (memory.budgetMax && listing.floorPriceMinor <= dollarsToMinor(memory.budgetMax)) score += 12;
-  if (memory.mustHave.includes("battery >= 90%") && listing.tags.includes("battery_90_plus")) score += 18;
+  if (memory.mustHave.includes("battery >= 90%") && listing.tags.includes("battery_90_plus"))
+    score += 18;
   if (memory.mustHave.includes("unlocked") && listing.tags.includes("unlocked")) score += 18;
   if (memory.mustHave.includes("clean IMEI") && listing.tags.includes("clean_imei")) score += 10;
-  if (memory.mustHave.includes("original box included") && listing.tags.includes("box_included")) score += 14;
-  if (memory.riskStyle === "safe_first" && listing.tags.some((tag) => ["clean_imei", "box_included", "screen_mint"].includes(tag))) {
+  if (memory.mustHave.includes("original box included") && listing.tags.includes("box_included"))
+    score += 14;
+  if (
+    memory.riskStyle === "safe_first" &&
+    listing.tags.some((tag) => ["clean_imei", "box_included", "screen_mint"].includes(tag))
+  ) {
     score += 10;
   }
   if (listing.tags.includes("visible_wear")) score -= 8;
   return score;
 }
 
-function getListingSearchTerms(memory: AdvisorMemory): string[] {
+function getListingSearchTerms(memory: NegotiationAgentBuilderMemory): string[] {
   const raw = [
     memory.categoryInterest,
     ...memory.mustHave,
@@ -210,14 +220,16 @@ function getListingSearchTerms(memory: AdvisorMemory): string[] {
     ...memory.source.slice(-3),
   ].join(" ");
 
-  return Array.from(new Set(
-    raw
-      .toLowerCase()
-      .replace(/탐색 중|not specified|unknown/g, " ")
-      .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
-      .map((term) => term.trim())
-      .filter((term) => term.length >= 2 && !STOP_TERMS.has(term)),
-  )).slice(0, 12);
+  return Array.from(
+    new Set(
+      raw
+        .toLowerCase()
+        .replace(/탐색 중|not specified|unknown/g, " ")
+        .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 2 && !STOP_TERMS.has(term)),
+    ),
+  ).slice(0, 12);
 }
 
 const STOP_TERMS = new Set([
@@ -236,28 +248,34 @@ const STOP_TERMS = new Set([
   "용도",
 ]);
 
-function buildListingSearchQuery(memory: AdvisorMemory, latestMessage: string): string {
-  const raw = [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    latestMessage,
-  ]
+function buildListingSearchQuery(
+  memory: NegotiationAgentBuilderMemory,
+  latestMessage: string,
+): string {
+  const raw = [memory.categoryInterest, ...memory.mustHave, ...memory.avoid, latestMessage]
     .join(" ")
     .replace(/탐색 중|not specified|unknown/gi, " ")
     .trim();
 
-  return Array.from(new Set(
-    raw
-      .toLowerCase()
-      .replace(/\$?\d+(?:\.\d+)?/g, " ")
-      .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
-      .map((term) => term.trim())
-      .filter((term) => term.length >= 2 && !STOP_TERMS.has(term)),
-  )).slice(0, 12).join(" ").slice(0, 240);
+  return Array.from(
+    new Set(
+      raw
+        .toLowerCase()
+        .replace(/\$?\d+(?:\.\d+)?/g, " ")
+        .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=]+/)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 2 && !STOP_TERMS.has(term)),
+    ),
+  )
+    .slice(0, 12)
+    .join(" ")
+    .slice(0, 240);
 }
 
-function buildNegotiationBrief(memory: AdvisorMemory, listing: AdvisorListing): string[] {
+function buildNegotiationBrief(
+  memory: NegotiationAgentBuilderMemory,
+  listing: AdvisorListing,
+): string[] {
   return [
     `target_price: $${memory.targetPrice ?? Math.max(minorToDollars(listing.floorPriceMinor), minorToDollars(listing.askPriceMinor) - 40)}`,
     `max_budget: $${memory.budgetMax ?? minorToDollars(listing.askPriceMinor)}`,
@@ -281,11 +299,16 @@ function formatMemoryStrength(value: string): string {
   return `${Math.round(parsed * 100)}%`;
 }
 
-function mergeStoredMemoryCards(existing: StoredMemoryCard[], incoming: StoredMemoryCard[]): StoredMemoryCard[] {
+function mergeStoredMemoryCards(
+  existing: StoredMemoryCard[],
+  incoming: StoredMemoryCard[],
+): StoredMemoryCard[] {
   const merged = new Map<string, StoredMemoryCard>();
   for (const card of existing) merged.set(card.id, card);
   for (const card of incoming) merged.set(card.id, card);
-  return Array.from(merged.values()).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+  return Array.from(merged.values()).sort((a, b) =>
+    String(b.updated_at).localeCompare(String(a.updated_at)),
+  );
 }
 
 function formatRetrievalMode(meta: AdvisorRetrievalMeta | null): string {
@@ -326,37 +349,28 @@ function normalizeForIntent(value: string): string {
     .trim();
 }
 
-function memoryIntentText(memory: AdvisorMemory): string {
-  return [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-    ...memory.source,
-  ].join(" ");
+function _memoryIntentText(memory: NegotiationAgentBuilderMemory): string {
+  return [memory.categoryInterest, ...memory.mustHave, ...memory.avoid, ...memory.source].join(" ");
 }
 
-function activeMemoryIntentText(memory: AdvisorMemory): string {
-  return [
-    memory.categoryInterest,
-    ...memory.mustHave,
-    ...memory.avoid,
-  ].join(" ");
+function activeMemoryIntentText(memory: NegotiationAgentBuilderMemory): string {
+  return [memory.categoryInterest, ...memory.mustHave, ...memory.avoid].join(" ");
 }
 
 function listingIntentText(listing: AdvisorListing): string {
-  return [
-    listing.title,
-    listing.category,
-    listing.condition,
-    ...listing.tags,
-    listing.sellerNote,
-  ].filter(Boolean).join(" ");
+  return [listing.title, listing.category, listing.condition, ...listing.tags, listing.sellerNote]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function extractIphoneModel(value: string): string | null {
   const normalized = normalizeForIntent(value);
-  const match = normalized.match(/\biphone\s*(1[1-9]|[2-9][0-9]?)(?:\s*(pro\s*max|pro|max|plus|mini))?\b/);
-  return match ? ["iphone", match[1], match[2]?.replace(/\s+/g, " ")].filter(Boolean).join(" ") : null;
+  const match = normalized.match(
+    /\biphone\s*(1[1-9]|[2-9][0-9]?)(?:\s*(pro\s*max|pro|max|plus|mini))?\b/,
+  );
+  return match
+    ? ["iphone", match[1], match[2]?.replace(/\s+/g, " ")].filter(Boolean).join(" ")
+    : null;
 }
 
 function extractProductFamily(value: string): string | null {
@@ -405,7 +419,9 @@ function extractStorageGb(value: string): number | null {
 
 function extractBatteryMin(value: string): number | null {
   const normalized = normalizeForIntent(value);
-  const match = normalized.match(/battery\s*(?:>=|over|above|at least)?\s*(\d{2,3})|배터리\s*(\d{2,3})/);
+  const match = normalized.match(
+    /battery\s*(?:>=|over|above|at least)?\s*(\d{2,3})|배터리\s*(\d{2,3})/,
+  );
   const parsed = Number(match?.[1] ?? match?.[2]);
   if (!Number.isFinite(parsed)) return null;
   return Math.max(1, Math.min(100, parsed));
@@ -456,14 +472,16 @@ function inputIntentLabel(value: string): string | null {
 
 function isPhoneSpecificConstraint(value: string): boolean {
   const normalized = normalizeForIntent(value);
-  return /\biphone\b|battery|배터리|imei|unlocked|언락|자급제|\b(?:64|128|256|512|1024)\s*(?:gb|g|tb)\b/.test(normalized);
+  return /\biphone\b|battery|배터리|imei|unlocked|언락|자급제|\b(?:64|128|256|512|1024)\s*(?:gb|g|tb)\b/.test(
+    normalized,
+  );
 }
 
 function applyActiveIntentSwitchOverride(
   text: string,
-  previousMemory: AdvisorMemory,
-  nextMemory: AdvisorMemory,
-): AdvisorMemory {
+  previousMemory: NegotiationAgentBuilderMemory,
+  nextMemory: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   const nextIntent = activeIntentKey(text);
   const previousIntent = activeIntentKey(activeMemoryIntentText(previousMemory));
   if (!nextIntent || !previousIntent || nextIntent === previousIntent) return nextMemory;
@@ -485,7 +503,9 @@ function applyActiveIntentSwitchOverride(
       ...nextMemory.source.filter((item) => activeIntentKey(item) === nextIntent),
       `Active intent switched from ${previousIntent} to ${nextIntent}`,
     ],
-    questions: nextMemory.questions.filter((question) => activeIntentKey(question) !== previousIntent),
+    questions: nextMemory.questions.filter(
+      (question) => activeIntentKey(question) !== previousIntent,
+    ),
   };
 }
 
@@ -587,9 +607,9 @@ function memoryTargetRank(alignment: ListingAlignment): number {
   if (alignment.status === "match") return 0;
   if (alignment.issue === "condition_missing" || alignment.issue === "budget_warning") return 1;
   if (
-    alignment.memoryIntent
-    && alignment.listingIntent
-    && alignment.memoryIntent === alignment.listingIntent
+    alignment.memoryIntent &&
+    alignment.listingIntent &&
+    alignment.memoryIntent === alignment.listingIntent
   ) {
     return 2;
   }
@@ -616,11 +636,11 @@ function alignmentIntervention(alignment: ListingAlignment): AlignmentInterventi
   }
 
   if (
-    alignment.issue === "condition_missing"
-    || alignment.issue === "variant_mismatch"
-    || alignment.issue === "storage_mismatch"
-    || alignment.issue === "budget_warning"
-    || alignment.issue === "model_mismatch"
+    alignment.issue === "condition_missing" ||
+    alignment.issue === "variant_mismatch" ||
+    alignment.issue === "storage_mismatch" ||
+    alignment.issue === "budget_warning" ||
+    alignment.issue === "model_mismatch"
   ) {
     return {
       mode: "inline_confirm",
@@ -647,8 +667,13 @@ function alignmentIntervention(alignment: ListingAlignment): AlignmentInterventi
   };
 }
 
-function evaluateListingAlignment(memory: AdvisorMemory, listing?: AdvisorListing | null): ListingAlignment {
-  const emptyAlignment = (listingIntent: string | null = listing?.title ?? null): ListingAlignment => ({
+function evaluateListingAlignment(
+  memory: NegotiationAgentBuilderMemory,
+  listing?: AdvisorListing | null,
+): ListingAlignment {
+  const emptyAlignment = (
+    listingIntent: string | null = listing?.title ?? null,
+  ): ListingAlignment => ({
     status: "unknown",
     issue: "generic",
     reason: null,
@@ -677,105 +702,136 @@ function evaluateListingAlignment(memory: AdvisorMemory, listing?: AdvisorListin
   const listingIntent = listingModel ?? listingFamily ?? listing.title;
   const checks: AttributeCheck[] = [];
 
-  checks.push(makeCheck(
-    "category",
-    "category",
-    memoryAttrs.category,
-    listingAttrs.category,
-    20,
-    memoryAttrs.category && listingAttrs.category
-      ? memoryAttrs.category === listingAttrs.category ? "pass" : "fail"
-      : "neutral",
-    "상품군이 다르면 기억을 그대로 적용하기 어렵습니다.",
-  ));
-  checks.push(makeCheck(
-    "brand",
-    "brand",
-    memoryAttrs.brand,
-    listingAttrs.brand,
-    15,
-    memoryAttrs.brand && listingAttrs.brand
-      ? memoryAttrs.brand === listingAttrs.brand ? "pass" : "fail"
-      : "neutral",
-    "브랜드는 제품 정체성의 강한 기준입니다.",
-  ));
-  checks.push(makeCheck(
-    "model",
-    "model family",
-    memoryModel ?? memoryFamily,
-    listingModel ?? listingFamily,
-    25,
-    memoryModel && listingModel
-      ? memoryModel === listingModel ? "pass" : "warn"
-      : memoryFamily && listingFamily
-        ? memoryFamily === listingFamily ? "pass" : "fail"
+  checks.push(
+    makeCheck(
+      "category",
+      "category",
+      memoryAttrs.category,
+      listingAttrs.category,
+      20,
+      memoryAttrs.category && listingAttrs.category
+        ? memoryAttrs.category === listingAttrs.category
+          ? "pass"
+          : "fail"
         : "neutral",
-    "모델 번호가 다르면 같은 계열이어도 확인이 필요합니다.",
-  ));
-  checks.push(makeCheck(
-    "variant",
-    "variant",
-    memoryAttrs.variant,
-    listingAttrs.variant,
-    15,
-    memoryAttrs.variant && listingAttrs.variant
-      ? memoryAttrs.variant === listingAttrs.variant ? "pass" : "warn"
-      : "neutral",
-    "Pro, Plus 같은 변형은 가격과 성능 차이가 큽니다.",
-  ));
-  checks.push(makeCheck(
-    "storage",
-    "storage",
-    memoryAttrs.storageGb ? `${memoryAttrs.storageGb}GB` : null,
-    listingAttrs.storageGb ? `${listingAttrs.storageGb}GB` : null,
-    10,
-    memoryAttrs.storageGb && listingAttrs.storageGb
-      ? memoryAttrs.storageGb === listingAttrs.storageGb ? "pass" : "warn"
-      : "neutral",
-    "저장용량이 다르면 확인이 필요합니다.",
-  ));
-  checks.push(makeCheck(
-    "battery",
-    "battery",
-    memoryAttrs.batteryMin ? `>=${memoryAttrs.batteryMin}%` : null,
-    listingAttrs.batteryMin ? `>=${listingAttrs.batteryMin}%` : null,
-    10,
-    memoryAttrs.batteryMin
-      ? listingAttrs.batteryMin
-        ? listingAttrs.batteryMin >= memoryAttrs.batteryMin ? "pass" : "fail"
-        : "warn"
-      : "neutral",
-    "배터리 조건은 구매자가 말한 경우 hard constraint로 봅니다.",
-  ));
-  checks.push(makeCheck(
-    "damage",
-    "damage",
-    memoryAttrs.avoidDamage ? "avoid" : null,
-    listingAttrs.hasVisibleWear ? "visible wear" : "not signaled",
-    10,
-    memoryAttrs.avoidDamage
-      ? listingAttrs.hasVisibleWear ? "fail" : "pass"
-      : "neutral",
-    "피하고 싶은 손상 조건은 가격보다 먼저 확인합니다.",
-  ));
-  checks.push(makeCheck(
-    "budget",
-    "budget vs ask",
-    memory.budgetMax ? `$${memory.budgetMax}` : null,
-    formatMinor(listing.askPriceMinor),
-    12,
-    memory.budgetMax
-      ? listing.floorPriceMinor <= dollarsToMinor(memory.budgetMax)
-        ? "pass"
-        : listing.askPriceMinor <= dollarsToMinor(memory.budgetMax)
+      "상품군이 다르면 기억을 그대로 적용하기 어렵습니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "brand",
+      "brand",
+      memoryAttrs.brand,
+      listingAttrs.brand,
+      15,
+      memoryAttrs.brand && listingAttrs.brand
+        ? memoryAttrs.brand === listingAttrs.brand
+          ? "pass"
+          : "fail"
+        : "neutral",
+      "브랜드는 제품 정체성의 강한 기준입니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "model",
+      "model family",
+      memoryModel ?? memoryFamily,
+      listingModel ?? listingFamily,
+      25,
+      memoryModel && listingModel
+        ? memoryModel === listingModel
           ? "pass"
           : "warn"
-      : "neutral",
-    "판매가가 예산보다 높아도 floor가 예산 안이면 협상 여지가 있습니다.",
-  ));
+        : memoryFamily && listingFamily
+          ? memoryFamily === listingFamily
+            ? "pass"
+            : "fail"
+          : "neutral",
+      "모델 번호가 다르면 같은 계열이어도 확인이 필요합니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "variant",
+      "variant",
+      memoryAttrs.variant,
+      listingAttrs.variant,
+      15,
+      memoryAttrs.variant && listingAttrs.variant
+        ? memoryAttrs.variant === listingAttrs.variant
+          ? "pass"
+          : "warn"
+        : "neutral",
+      "Pro, Plus 같은 변형은 가격과 성능 차이가 큽니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "storage",
+      "storage",
+      memoryAttrs.storageGb ? `${memoryAttrs.storageGb}GB` : null,
+      listingAttrs.storageGb ? `${listingAttrs.storageGb}GB` : null,
+      10,
+      memoryAttrs.storageGb && listingAttrs.storageGb
+        ? memoryAttrs.storageGb === listingAttrs.storageGb
+          ? "pass"
+          : "warn"
+        : "neutral",
+      "저장용량이 다르면 확인이 필요합니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "battery",
+      "battery",
+      memoryAttrs.batteryMin ? `>=${memoryAttrs.batteryMin}%` : null,
+      listingAttrs.batteryMin ? `>=${listingAttrs.batteryMin}%` : null,
+      10,
+      memoryAttrs.batteryMin
+        ? listingAttrs.batteryMin
+          ? listingAttrs.batteryMin >= memoryAttrs.batteryMin
+            ? "pass"
+            : "fail"
+          : "warn"
+        : "neutral",
+      "배터리 조건은 구매자가 말한 경우 hard constraint로 봅니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "damage",
+      "damage",
+      memoryAttrs.avoidDamage ? "avoid" : null,
+      listingAttrs.hasVisibleWear ? "visible wear" : "not signaled",
+      10,
+      memoryAttrs.avoidDamage ? (listingAttrs.hasVisibleWear ? "fail" : "pass") : "neutral",
+      "피하고 싶은 손상 조건은 가격보다 먼저 확인합니다.",
+    ),
+  );
+  checks.push(
+    makeCheck(
+      "budget",
+      "budget vs ask",
+      memory.budgetMax ? `$${memory.budgetMax}` : null,
+      formatMinor(listing.askPriceMinor),
+      12,
+      memory.budgetMax
+        ? listing.floorPriceMinor <= dollarsToMinor(memory.budgetMax)
+          ? "pass"
+          : listing.askPriceMinor <= dollarsToMinor(memory.budgetMax)
+            ? "pass"
+            : "warn"
+        : "neutral",
+      "판매가가 예산보다 높아도 floor가 예산 안이면 협상 여지가 있습니다.",
+    ),
+  );
 
   const score = scoreChecks(checks);
-  const failedHard = checks.some((check) => check.status === "fail" && ["category", "brand", "battery", "damage"].includes(check.key));
+  const failedHard = checks.some(
+    (check) =>
+      check.status === "fail" && ["category", "brand", "battery", "damage"].includes(check.key),
+  );
   const hasWarning = checks.some((check) => check.status === "warn");
   const issue = deriveAlignmentIssue(checks);
   const status: ListingAlignment["status"] = failedHard
@@ -789,12 +845,14 @@ function evaluateListingAlignment(memory: AdvisorMemory, listing?: AdvisorListin
   return {
     status,
     issue: status === "match" ? "none" : issue,
-    reason: status === "match"
-      ? null
-      : `memory/listing alignment score ${Math.round(score * 100)}%; issue=${issue}.`,
-    question: status === "match"
-      ? null
-      : `기억은 ${formatIntentLabel(memoryIntent)}, 선택은 ${formatIntentLabel(listingIntent)}입니다. 이 상품으로 진행할까요?`,
+    reason:
+      status === "match"
+        ? null
+        : `memory/listing alignment score ${Math.round(score * 100)}%; issue=${issue}.`,
+    question:
+      status === "match"
+        ? null
+        : `기억은 ${formatIntentLabel(memoryIntent)}, 선택은 ${formatIntentLabel(listingIntent)}입니다. 이 상품으로 진행할까요?`,
     memoryIntent,
     listingIntent,
     score,
@@ -804,10 +862,7 @@ function evaluateListingAlignment(memory: AdvisorMemory, listing?: AdvisorListin
   };
 }
 
-function buildAgentAlignmentQuestion(
-  agentId: AncientBeingId,
-  alignment: ListingAlignment,
-): string {
+function buildAgentAlignmentQuestion(agentId: AncientBeingId, alignment: ListingAlignment): string {
   const remembered = formatIntentLabel(alignment.memoryIntent);
   const selected = formatIntentLabel(alignment.listingIntent);
   const labels = issueLabels(alignment);
@@ -908,7 +963,11 @@ function buildAgentAlignmentQuestion(
     }
   })();
 
-  return base[agentId] ?? alignment.question ?? `기억은 ${remembered}, 선택은 ${selected}입니다. 이 상품으로 진행할까요?`;
+  return (
+    base[agentId] ??
+    alignment.question ??
+    `기억은 ${remembered}, 선택은 ${selected}입니다. 이 상품으로 진행할까요?`
+  );
 }
 
 function quickActionLabels(
@@ -972,20 +1031,22 @@ function quickActionLabels(
 }
 
 function buildPendingBudgetChange(
-  previousMemory: AdvisorMemory,
-  nextMemory: AdvisorMemory,
+  previousMemory: NegotiationAgentBuilderMemory,
+  nextMemory: NegotiationAgentBuilderMemory,
 ): PendingBudgetChange | null {
   const previousBudget = previousMemory.budgetMax ?? previousMemory.targetPrice;
   const nextBudget = nextMemory.budgetMax ?? nextMemory.targetPrice;
   if (previousBudget === undefined || nextBudget === undefined) return null;
   if (Math.abs(previousBudget - nextBudget) < 5) return null;
 
-  const previousIntent = extractIphoneModel(activeMemoryIntentText(previousMemory))
-    ?? extractProductFamily(activeMemoryIntentText(previousMemory))
-    ?? previousMemory.categoryInterest;
-  const nextIntent = extractIphoneModel(activeMemoryIntentText(nextMemory))
-    ?? extractProductFamily(activeMemoryIntentText(nextMemory))
-    ?? nextMemory.categoryInterest;
+  const previousIntent =
+    extractIphoneModel(activeMemoryIntentText(previousMemory)) ??
+    extractProductFamily(activeMemoryIntentText(previousMemory)) ??
+    previousMemory.categoryInterest;
+  const nextIntent =
+    extractIphoneModel(activeMemoryIntentText(nextMemory)) ??
+    extractProductFamily(activeMemoryIntentText(nextMemory)) ??
+    nextMemory.categoryInterest;
 
   if (isKnownEmptyIntent(previousIntent) || isKnownEmptyIntent(nextIntent)) return null;
   if (previousIntent !== nextIntent) return null;
@@ -1001,7 +1062,9 @@ function buildPendingBudgetChange(
 }
 
 function isBudgetConfirmation(text: string): boolean {
-  return /^(맞아|응|네|ㅇㅇ|그래|확인|좋아|yes|yep|correct|right)(요|요\.|\.|!)?$/i.test(text.trim());
+  return /^(맞아|응|네|ㅇㅇ|그래|확인|좋아|yes|yep|correct|right)(요|요\.|\.|!)?$/i.test(
+    text.trim(),
+  );
 }
 
 function isBudgetQuestion(text: string): boolean {
@@ -1013,12 +1076,20 @@ function hasPercentNumber(text: string): boolean {
 }
 
 function hasProductModelNumber(text: string): boolean {
-  return /(?:iphone|아이폰|model|모델)\s*\d{1,2}\b/i.test(text)
-    || /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text);
+  return (
+    /(?:iphone|아이폰|model|모델)\s*\d{1,2}\b/i.test(text) ||
+    /\b\d{1,2}\s*(?:pro\s*max|pro|max|plus|mini)\b/i.test(text)
+  );
 }
 
-function isShortModelAnswerToPendingQuestion(text: string, previousMemory?: AdvisorMemory): boolean {
-  if (!previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))) return false;
+function isShortModelAnswerToPendingQuestion(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): boolean {
+  if (
+    !previousMemory?.questions.some((question) => /(?:모델|iphone|아이폰|쪽|우선)/i.test(question))
+  )
+    return false;
   return /^\s*(?:1[1-9]|[2-9])\s*(?:은|는|로|요|\?)*\s*$/i.test(text.trim());
 }
 
@@ -1026,38 +1097,59 @@ function hasExplicitMoneyUnit(text: string): boolean {
   return /[$]|(?:usd|dollars?|bucks?|달러|불)\b/i.test(text);
 }
 
-function extractExplicitBudgetDollars(text: string, previousMemory?: AdvisorMemory): number | null {
+function extractExplicitBudgetDollars(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): number | null {
   const raw = text.toLowerCase().replace(/,/g, " ");
-  if (hasPercentNumber(raw) || hasProductModelNumber(raw) || isShortModelAnswerToPendingQuestion(raw, previousMemory)) return null;
-  const hasBudgetContext = isBudgetQuestion(raw)
-    || previousMemory?.questions.some((question) => isBudgetQuestion(question));
+  if (
+    hasPercentNumber(raw) ||
+    hasProductModelNumber(raw) ||
+    isShortModelAnswerToPendingQuestion(raw, previousMemory)
+  )
+    return null;
+  const hasBudgetContext =
+    isBudgetQuestion(raw) ||
+    previousMemory?.questions.some((question) => isBudgetQuestion(question));
   if (!hasBudgetContext) return null;
 
-  const keywordAfter = raw.match(/(?:예산|budget|max|최대|목표|target|가격)[^\d$]{0,24}\$?\s*(\d{2,6})/i);
-  const keywordBefore = raw.match(/\$?\s*(\d{2,6})\s*(?:달러|usd|dollars?|bucks?)?[^\n]{0,16}(?:예산|budget|max|최대|목표|target|가격)/i);
-  const contextNumber = hasBudgetContext && !keywordAfter && !keywordBefore
-    ? raw.match(/(?:^|[^\d])\$?\s*(\d{2,6})(?:\s*(?:달러|usd|dollars?|bucks?))?(?:$|[^\d])/i)
-    : null;
+  const keywordAfter = raw.match(
+    /(?:예산|budget|max|최대|목표|target|가격)[^\d$]{0,24}\$?\s*(\d{2,6})/i,
+  );
+  const keywordBefore = raw.match(
+    /\$?\s*(\d{2,6})\s*(?:달러|usd|dollars?|bucks?)?[^\n]{0,16}(?:예산|budget|max|최대|목표|target|가격)/i,
+  );
+  const contextNumber =
+    hasBudgetContext && !keywordAfter && !keywordBefore
+      ? raw.match(/(?:^|[^\d])\$?\s*(\d{2,6})(?:\s*(?:달러|usd|dollars?|bucks?))?(?:$|[^\d])/i)
+      : null;
   const parsed = Number(keywordAfter?.[1] ?? keywordBefore?.[1] ?? contextNumber?.[1]);
 
   if (!Number.isFinite(parsed)) return null;
-  if (parsed < 100 && !hasExplicitMoneyUnit(raw) && !/(?:예산|budget|max|최대|목표|target)[^\d$]{0,24}\d{2}/i.test(raw)) return null;
+  if (
+    parsed < 100 &&
+    !hasExplicitMoneyUnit(raw) &&
+    !/(?:예산|budget|max|최대|목표|target)[^\d$]{0,24}\d{2}/i.test(raw)
+  )
+    return null;
   if (parsed < 20 || parsed > 100000) return null;
   return parsed;
 }
 
 function applyExplicitBudgetOverride(
   text: string,
-  memory: AdvisorMemory,
-  previousMemory?: AdvisorMemory,
-): AdvisorMemory {
+  memory: NegotiationAgentBuilderMemory,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): NegotiationAgentBuilderMemory {
   const explicitBudget = extractExplicitBudgetDollars(text, previousMemory);
   if (!explicitBudget) return memory;
 
-  const targetPrice = memory.targetPrice && memory.targetPrice <= explicitBudget
-    ? memory.targetPrice
-    : Math.max(1, Math.round(explicitBudget * 0.96));
-  const hadPreviousBudget = previousMemory?.budgetMax !== undefined || previousMemory?.targetPrice !== undefined;
+  const targetPrice =
+    memory.targetPrice && memory.targetPrice <= explicitBudget
+      ? memory.targetPrice
+      : Math.max(1, Math.round(explicitBudget * 0.96));
+  const hadPreviousBudget =
+    previousMemory?.budgetMax !== undefined || previousMemory?.targetPrice !== undefined;
 
   return {
     ...memory,
@@ -1065,14 +1157,18 @@ function applyExplicitBudgetOverride(
     targetPrice,
     questions: memory.questions.filter((question) => !isBudgetQuestion(question)),
     source: [
-      ...memory.source.filter((item) => !/^Budget changed to/i.test(item) && !/^Budget change requested/i.test(item)),
-      hadPreviousBudget ? `Budget change requested to $${explicitBudget}` : `budgetMax: ${explicitBudget}`,
+      ...memory.source.filter(
+        (item) => !/^Budget changed to/i.test(item) && !/^Budget change requested/i.test(item),
+      ),
+      hadPreviousBudget
+        ? `Budget change requested to $${explicitBudget}`
+        : `budgetMax: ${explicitBudget}`,
     ],
   };
 }
 
 function getNegotiationReadiness(
-  memory: AdvisorMemory,
+  memory: NegotiationAgentBuilderMemory,
   hasStoredMemory: boolean,
   options: {
     listing?: AdvisorListing | null;
@@ -1135,7 +1231,12 @@ function getNegotiationReadiness(
   return { ready: true, reason: null, question: null };
 }
 
-function emptyCostLedger(): { turns: AdvisorCostTurn[]; prompt: number; completion: number; usd: number } {
+function emptyCostLedger(): {
+  turns: AdvisorCostTurn[];
+  prompt: number;
+  completion: number;
+  usd: number;
+} {
   return {
     turns: [],
     prompt: 0,
@@ -1145,17 +1246,18 @@ function emptyCostLedger(): { turns: AdvisorCostTurn[]; prompt: number; completi
 }
 
 function statusTone(status: "idle" | "active" | "done" | "blocked") {
-  if (status === "done") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-100";
-  if (status === "active") return "border-cyan-400/40 bg-cyan-500/10 text-cyan-100";
-  if (status === "blocked") return "border-amber-500/30 bg-amber-500/10 text-amber-100";
-  return "border-slate-700 bg-slate-950/70 text-slate-400";
+  if (status === "done") return "border-success/30 bg-success-soft text-success";
+  if (status === "active")
+    return "border-action-primary/40 bg-action-primary/10 text-action-primary";
+  if (status === "blocked") return "border-warning/30 bg-warning-soft text-warning";
+  return "border-line bg-surface-sunken text-ink-muted";
 }
 
 function checkTone(status: AttributeCheck["status"]) {
-  if (status === "pass") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
-  if (status === "warn") return "border-amber-500/20 bg-amber-500/10 text-amber-100";
-  if (status === "fail") return "border-red-500/25 bg-red-500/10 text-red-100";
-  return "border-slate-700 bg-slate-950/70 text-slate-400";
+  if (status === "pass") return "border-success/20 bg-success-soft text-success";
+  if (status === "warn") return "border-warning/20 bg-warning-soft text-warning";
+  if (status === "fail") return "border-error/25 bg-error-soft text-error";
+  return "border-line bg-surface-sunken text-ink-muted";
 }
 
 function formatAlignmentStatus(status: ListingAlignment["status"]) {
@@ -1198,16 +1300,18 @@ function EngineFlowPanel({
     {
       key: "gate",
       label: "Alignment Gate",
-      value: alignment.status === "unknown"
-        ? "not evaluated"
-        : `${formatAlignmentStatus(alignment.status)} · ${Math.round(alignment.score * 100)}%`,
-      status: pendingBudgetChange || (alignmentBlocked && !alignmentConfirmed)
-        ? "blocked"
-        : alignment.status === "match" || alignmentConfirmed
-          ? "done"
-          : activeListing
-            ? "active"
-            : "idle",
+      value:
+        alignment.status === "unknown"
+          ? "not evaluated"
+          : `${formatAlignmentStatus(alignment.status)} · ${Math.round(alignment.score * 100)}%`,
+      status:
+        pendingBudgetChange || (alignmentBlocked && !alignmentConfirmed)
+          ? "blocked"
+          : alignment.status === "match" || alignmentConfirmed
+            ? "done"
+            : activeListing
+              ? "active"
+              : "idle",
     },
     {
       key: "hil",
@@ -1217,9 +1321,7 @@ function EngineFlowPanel({
         : alignmentBlocked && !alignmentConfirmed
           ? intervention.label
           : "no intervention",
-      status: pendingBudgetChange || (alignmentBlocked && !alignmentConfirmed)
-        ? "active"
-        : "done",
+      status: pendingBudgetChange || (alignmentBlocked && !alignmentConfirmed) ? "active" : "done",
     },
     {
       key: "start",
@@ -1227,48 +1329,69 @@ function EngineFlowPanel({
       value: readiness.ready ? "enabled" : "blocked",
       status: readiness.ready ? "done" : "blocked",
     },
-  ] satisfies Array<{ key: string; label: string; value: string; status: "idle" | "active" | "done" | "blocked" }>;
+  ] satisfies Array<{
+    key: string;
+    label: string;
+    value: string;
+    status: "idle" | "active" | "done" | "blocked";
+  }>;
   const activeIndex = steps.findIndex((step) => step.status === "active");
   const blockedIndex = steps.findIndex((step) => step.status === "blocked");
-  const currentIndex = activeIndex >= 0 ? activeIndex : blockedIndex >= 0 ? blockedIndex : steps.length - 1;
+  const currentIndex =
+    activeIndex >= 0 ? activeIndex : blockedIndex >= 0 ? blockedIndex : steps.length - 1;
   const currentStep = steps[currentIndex] ?? steps[0];
-  const currentStateLabel = currentStep.status === "blocked"
-    ? "BLOCKED"
-    : currentStep.status === "done"
-      ? "DONE"
-      : currentStep.status === "active"
-        ? "ACTIVE"
-        : "WAITING";
+  const currentStateLabel =
+    currentStep.status === "blocked"
+      ? "BLOCKED"
+      : currentStep.status === "done"
+        ? "DONE"
+        : currentStep.status === "active"
+          ? "ACTIVE"
+          : "WAITING";
 
   return (
-    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+    <div className="rounded-xl border border-action-primary/20 bg-action-primary/5 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-200">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-action-primary">
           Engine Flow
         </p>
-        <span className="font-mono text-[10px] text-slate-500">
-          live gate
-        </span>
+        <span className="font-mono text-[10px] text-ink-muted">live gate</span>
       </div>
-      <div className="mb-2 rounded-lg border border-slate-700 bg-slate-950/60 p-2 text-[10px] leading-5 text-slate-400">
-        현재 위치는 <span className="text-cyan-200">{currentStep.label}</span> 단계이며 상태는 <span className="text-cyan-200">{currentStateLabel}</span>입니다. 점수는 데모용 휴리스틱이며 실제 최적 가중치는 거래 데이터로 보정해야 합니다.
+      <div className="mb-2 rounded-lg border border-line bg-surface-sunken p-2 text-[10px] leading-5 text-ink-secondary">
+        현재 위치는 <span className="text-action-primary">{currentStep.label}</span> 단계이며 상태는{" "}
+        <span className="text-action-primary">{currentStateLabel}</span>입니다. 점수는 데모용
+        휴리스틱이며 실제 최적 가중치는 거래 데이터로 보정해야 합니다.
       </div>
       <div>
         {steps.map((step, index) => (
           <div key={step.key}>
-            <div className={`rounded-lg border p-2 text-xs ${statusTone(step.status)} ${
-              index === currentIndex ? "ring-1 ring-cyan-300/60" : ""
-            }`}>
+            <div
+              className={`rounded-lg border p-2 text-xs ${statusTone(step.status)} ${
+                index === currentIndex ? "ring-1 ring-action-primary/60" : ""
+              }`}
+            >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold">{index + 1}. {step.label}</span>
-                <span className="font-mono uppercase">{index === currentIndex ? "YOU ARE HERE" : step.status}</span>
+                <span className="font-semibold">
+                  {index + 1}. {step.label}
+                </span>
+                <span className="font-mono uppercase">
+                  {index === currentIndex ? "YOU ARE HERE" : step.status}
+                </span>
               </div>
               <p className="mt-1 truncate text-[11px] opacity-80">{step.value}</p>
             </div>
             {index < steps.length - 1 && (
-              <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-slate-500">
-                <span className={`h-4 w-px ${steps[index + 1].status === "idle" ? "bg-slate-700" : "bg-cyan-400/40"}`} />
-                <span className={steps[index + 1].status === "idle" ? "text-slate-600" : "text-cyan-300"}>↓</span>
+              <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-ink-muted">
+                <span
+                  className={`h-4 w-px ${steps[index + 1].status === "idle" ? "bg-line" : "bg-action-primary/40"}`}
+                />
+                <span
+                  className={
+                    steps[index + 1].status === "idle" ? "text-ink-muted" : "text-action-primary"
+                  }
+                >
+                  ↓
+                </span>
                 <span>{step.status === "blocked" ? "blocked before next step" : "next"}</span>
               </div>
             )}
@@ -1283,11 +1406,11 @@ function AttributeGatePanel({ alignment }: { alignment: ListingAlignment }) {
   const visibleChecks = alignment.checks.filter((check) => check.status !== "neutral");
   if (visibleChecks.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+      <div className="rounded-xl border border-line bg-surface-sunken p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
           Product Gate
         </p>
-        <p className="mt-2 text-xs leading-5 text-slate-500">
+        <p className="mt-2 text-xs leading-5 text-ink-muted">
           상품을 선택하고 메모리가 로드되면 속성별 판단이 표시됩니다.
         </p>
       </div>
@@ -1295,24 +1418,30 @@ function AttributeGatePanel({ alignment }: { alignment: ListingAlignment }) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3">
+    <div className="rounded-xl border border-line bg-surface-sunken p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
           Product Gate
         </p>
-        <span className="font-mono text-[10px] text-slate-500">
+        <span className="font-mono text-[10px] text-ink-muted">
           score {Math.round(alignment.score * 100)}%
         </span>
       </div>
-      <p className="mb-2 rounded-lg border border-amber-500/15 bg-amber-500/10 p-2 text-[11px] leading-5 text-amber-100">
-        기준값은 아직 학습된 최적값이 아니라 rule-based heuristic입니다. 지금은 차단, 협상 전 확인, 참고 표시를 분리하고 추후 실제 성공/실패 협상 데이터로 가중치를 보정해야 합니다.
+      <p className="mb-2 rounded-lg border border-warning/15 bg-warning-soft p-2 text-[11px] leading-5 text-warning">
+        기준값은 아직 학습된 최적값이 아니라 rule-based heuristic입니다. 지금은 차단, 협상 전 확인,
+        참고 표시를 분리하고 추후 실제 성공/실패 협상 데이터로 가중치를 보정해야 합니다.
       </p>
       <div className="space-y-1.5">
         {visibleChecks.map((check) => (
-          <div key={check.key} className={`rounded-lg border px-2 py-1.5 text-xs ${checkTone(check.status)}`}>
+          <div
+            key={check.key}
+            className={`rounded-lg border px-2 py-1.5 text-xs ${checkTone(check.status)}`}
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold">{check.label}</span>
-              <span className="font-mono uppercase">{check.status} · w{check.weight}</span>
+              <span className="font-mono uppercase">
+                {check.status} · w{check.weight}
+              </span>
             </div>
             <p className="mt-0.5 text-[11px] opacity-80">
               memory {check.memory} → listing {check.listing}
@@ -1329,13 +1458,15 @@ function MissingInfoBoard({
   disabled,
   onApply,
 }: {
-  memory: AdvisorMemory;
+  memory: NegotiationAgentBuilderMemory;
   disabled: boolean;
   onApply: (slot: MissingInfoSlot, value: SlotControlValue) => void;
 }) {
   const slots = collectMissingInfoSlots(memory);
   const [budgetInput, setBudgetInput] = useState(memory.budgetMax ? String(memory.budgetMax) : "");
-  const [batteryThreshold, setBatteryThreshold] = useState(extractBatteryMin(activeMemoryIntentText(memory)) ?? 90);
+  const [batteryThreshold, setBatteryThreshold] = useState(
+    extractBatteryMin(activeMemoryIntentText(memory)) ?? 90,
+  );
   const [textValues, setTextValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1345,14 +1476,14 @@ function MissingInfoBoard({
 
   if (slots.length === 0) {
     return (
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+      <div className="rounded-xl border border-success/20 bg-success-soft p-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-success">
             Missing Info Board
           </p>
-          <span className="font-mono text-[10px] text-emerald-200">CLEAR</span>
+          <span className="font-mono text-[10px] text-success">CLEAR</span>
         </div>
-        <p className="mt-2 text-xs leading-5 text-emerald-100">
+        <p className="mt-2 text-xs leading-5 text-success">
           필수 조건은 채워졌습니다. 협상 전에는 상품 게이트와 예산 확인만 남습니다.
         </p>
       </div>
@@ -1360,33 +1491,36 @@ function MissingInfoBoard({
   }
 
   return (
-    <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+    <div className="rounded-xl border border-warning/25 bg-warning-soft p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-warning">
           Missing Info Board
         </p>
-        <span className="font-mono text-[10px] text-amber-100">
+        <span className="font-mono text-[10px] text-warning">
           {slots.filter((slot) => slot.enforcement === "hard").length} hard / {slots.length} total
         </span>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-amber-100/80">
-        부족한 조건을 한 번에 보고 채울 수 있습니다. 숫자 답변은 이 보드의 슬롯 안에서만 저장되므로 배터리 90%가 예산으로 바뀌지 않습니다.
+      <p className="mb-3 text-[11px] leading-5 text-warning/80">
+        부족한 조건을 한 번에 보고 채울 수 있습니다. 숫자 답변은 이 보드의 슬롯 안에서만 저장되므로
+        배터리 90%가 예산으로 바뀌지 않습니다.
       </p>
       <div className="space-y-2">
         {slots.map((slot) => {
           const key = slotKey(slot);
           return (
-            <div key={key} className="rounded-lg border border-slate-700 bg-slate-950/70 p-2">
+            <div key={key} className="rounded-lg border border-line bg-surface-sunken p-2">
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-semibold text-white">{slotTitle(slot.slotId)}</p>
-                  <p className="mt-0.5 text-[11px] leading-5 text-slate-400">{slot.question}</p>
+                  <p className="text-xs font-semibold text-ink">{slotTitle(slot.slotId)}</p>
+                  <p className="mt-0.5 text-[11px] leading-5 text-ink-secondary">{slot.question}</p>
                 </div>
-                <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase ${
-                  slot.enforcement === "hard"
-                    ? "border-red-400/30 text-red-200"
-                    : "border-slate-600 text-slate-400"
-                }`}>
+                <span
+                  className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase ${
+                    slot.enforcement === "hard"
+                      ? "border-error/30 text-error"
+                      : "border-line text-ink-secondary"
+                  }`}
+                >
                   {slot.enforcement}
                 </span>
               </div>
@@ -1399,13 +1533,17 @@ function MissingInfoBoard({
                     value={budgetInput}
                     onChange={(event) => setBudgetInput(event.target.value)}
                     placeholder="최대 예산"
-                    className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+                    className="min-w-0 flex-1 rounded-md border border-line bg-surface-overlay px-2 py-1.5 text-xs text-ink outline-none focus:border-focus"
                   />
                   <button
                     type="button"
-                    disabled={disabled || !Number.isFinite(Number(budgetInput)) || Number(budgetInput) <= 0}
-                    onClick={() => onApply(slot, { kind: "budget", budgetMax: Number(budgetInput) })}
-                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={
+                      disabled || !Number.isFinite(Number(budgetInput)) || Number(budgetInput) <= 0
+                    }
+                    onClick={() =>
+                      onApply(slot, { kind: "budget", budgetMax: Number(budgetInput) })
+                    }
+                    className="rounded-md bg-cta px-3 py-1.5 text-xs font-semibold text-on-cta disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     저장
                   </button>
@@ -1424,7 +1562,9 @@ function MissingInfoBoard({
                       onChange={(event) => setBatteryThreshold(Number(event.target.value))}
                       className="min-w-0 flex-1"
                     />
-                    <span className="w-12 text-right font-mono text-xs text-cyan-100">{batteryThreshold}%</span>
+                    <span className="w-12 text-right font-mono text-xs text-action-primary">
+                      {batteryThreshold}%
+                    </span>
                   </div>
                   <div className="mt-2 grid grid-cols-4 gap-1.5">
                     {[90, 85, 80].map((value) => (
@@ -1433,7 +1573,7 @@ function MissingInfoBoard({
                         type="button"
                         disabled={disabled}
                         onClick={() => onApply(slot, { kind: "battery", threshold: value })}
-                        className="rounded-md border border-cyan-500/30 px-2 py-1.5 text-[11px] font-semibold text-cyan-100 disabled:opacity-50"
+                        className="rounded-md border border-action-primary/30 px-2 py-1.5 text-[11px] font-semibold text-action-primary disabled:opacity-50"
                       >
                         {value}%+
                       </button>
@@ -1441,8 +1581,10 @@ function MissingInfoBoard({
                     <button
                       type="button"
                       disabled={disabled}
-                      onClick={() => onApply(slot, { kind: "battery", threshold: batteryThreshold })}
-                      className="rounded-md bg-cyan-500 px-2 py-1.5 text-[11px] font-semibold text-slate-950 disabled:opacity-50"
+                      onClick={() =>
+                        onApply(slot, { kind: "battery", threshold: batteryThreshold })
+                      }
+                      className="rounded-md bg-cta px-2 py-1.5 text-[11px] font-semibold text-on-cta disabled:opacity-50"
                     >
                       적용
                     </button>
@@ -1451,7 +1593,7 @@ function MissingInfoBoard({
                     type="button"
                     disabled={disabled}
                     onClick={() => onApply(slot, { kind: "battery", noPreference: true })}
-                    className="mt-1.5 w-full rounded-md border border-slate-600 px-2 py-1.5 text-[11px] font-semibold text-slate-300 disabled:opacity-50"
+                    className="mt-1.5 w-full rounded-md border border-line px-2 py-1.5 text-[11px] font-semibold text-ink-secondary disabled:opacity-50"
                   >
                     배터리 기준 없음
                   </button>
@@ -1464,7 +1606,7 @@ function MissingInfoBoard({
                     type="button"
                     disabled={disabled}
                     onClick={() => onApply(slot, { kind: "carrier", unlockedRequired: true })}
-                    className="rounded-md bg-cyan-500 px-2 py-1.5 text-xs font-semibold text-slate-950 disabled:opacity-50"
+                    className="rounded-md bg-cta px-2 py-1.5 text-xs font-semibold text-on-cta disabled:opacity-50"
                   >
                     언락 필수
                   </button>
@@ -1472,7 +1614,7 @@ function MissingInfoBoard({
                     type="button"
                     disabled={disabled}
                     onClick={() => onApply(slot, { kind: "carrier", unlockedRequired: null })}
-                    className="rounded-md border border-slate-600 px-2 py-1.5 text-xs font-semibold text-slate-300 disabled:opacity-50"
+                    className="rounded-md border border-line px-2 py-1.5 text-xs font-semibold text-ink-secondary disabled:opacity-50"
                   >
                     상관없음
                   </button>
@@ -1483,15 +1625,19 @@ function MissingInfoBoard({
                 <div className="flex gap-2">
                   <input
                     value={textValues[key] ?? ""}
-                    onChange={(event) => setTextValues((prev) => ({ ...prev, [key]: event.target.value }))}
-                    placeholder={slot.slotId === "shopping_intent" ? "예: iPhone 15 Pro" : "직접 입력"}
-                    className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+                    onChange={(event) =>
+                      setTextValues((prev) => ({ ...prev, [key]: event.target.value }))
+                    }
+                    placeholder={
+                      slot.slotId === "shopping_intent" ? "예: iPhone 15 Pro" : "직접 입력"
+                    }
+                    className="min-w-0 flex-1 rounded-md border border-line bg-surface-overlay px-2 py-1.5 text-xs text-ink outline-none focus:border-focus"
                   />
                   <button
                     type="button"
                     disabled={disabled || !(textValues[key] ?? "").trim()}
                     onClick={() => onApply(slot, { kind: "text", text: textValues[key] ?? "" })}
-                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-md bg-cta px-3 py-1.5 text-xs font-semibold text-on-cta disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     저장
                   </button>
@@ -1502,8 +1648,14 @@ function MissingInfoBoard({
                 <button
                   type="button"
                   disabled={disabled}
-                  onClick={() => onApply(slot, { kind: "text", text: "no additional requirements", noPreference: true })}
-                  className="mt-1.5 w-full rounded-md border border-slate-600 px-2 py-1.5 text-[11px] font-semibold text-slate-300 disabled:opacity-50"
+                  onClick={() =>
+                    onApply(slot, {
+                      kind: "text",
+                      text: "no additional requirements",
+                      noPreference: true,
+                    })
+                  }
+                  className="mt-1.5 w-full rounded-md border border-line px-2 py-1.5 text-[11px] font-semibold text-ink-secondary disabled:opacity-50"
                 >
                   추가 조건 없음
                 </button>
@@ -1516,7 +1668,7 @@ function MissingInfoBoard({
   );
 }
 
-function collectMissingInfoSlots(memory: AdvisorMemory): MissingInfoSlot[] {
+function collectMissingInfoSlots(memory: NegotiationAgentBuilderMemory): MissingInfoSlot[] {
   const slots: MissingInfoSlot[] = [];
   const add = (slot: MissingInfoSlot) => {
     const key = slotKey(slot);
@@ -1608,12 +1760,18 @@ function inferSlotIdFromQuestion(question: string): string {
   return "buyer_priority";
 }
 
-function applySlotControlValue(memory: AdvisorMemory, slot: MissingInfoSlot, value: SlotControlValue): AdvisorMemory {
-  let next: AdvisorMemory = {
+function applySlotControlValue(
+  memory: NegotiationAgentBuilderMemory,
+  slot: MissingInfoSlot,
+  value: SlotControlValue,
+): NegotiationAgentBuilderMemory {
+  let next: NegotiationAgentBuilderMemory = {
     ...memory,
     mustHave: [...memory.mustHave],
     avoid: [...memory.avoid],
-    questions: memory.questions.filter((question) => inferSlotIdFromQuestion(question) !== slot.slotId),
+    questions: memory.questions.filter(
+      (question) => inferSlotIdFromQuestion(question) !== slot.slotId,
+    ),
     source: [...memory.source],
   };
   const sourcePrefix = slot.productScope ? `${slot.productScope} ` : "";
@@ -1623,11 +1781,14 @@ function applySlotControlValue(memory: AdvisorMemory, slot: MissingInfoSlot, val
     next = {
       ...next,
       budgetMax,
-      targetPrice: value.targetPrice && value.targetPrice <= budgetMax
-        ? Math.round(value.targetPrice)
-        : Math.max(1, Math.round(budgetMax * 0.96)),
+      targetPrice:
+        value.targetPrice && value.targetPrice <= budgetMax
+          ? Math.round(value.targetPrice)
+          : Math.max(1, Math.round(budgetMax * 0.96)),
       source: uniqueStrings([
-        ...next.source.filter((item) => !/^budgetMax:|^Budget changed to|^Budget change requested/i.test(item)),
+        ...next.source.filter(
+          (item) => !/^budgetMax:|^Budget changed to|^Budget change requested/i.test(item),
+        ),
         `budgetMax: ${budgetMax}`,
       ]),
     };
@@ -1643,14 +1804,16 @@ function applySlotControlValue(memory: AdvisorMemory, slot: MissingInfoSlot, val
       source: replaceSourceSlot(next.source, "battery_health", fact),
     };
   } else if (value.kind === "carrier") {
-    const fact = value.unlockedRequired === true
-      ? `${sourcePrefix}unlocked`.trim()
-      : `${sourcePrefix}carrier no preference`.trim();
+    const fact =
+      value.unlockedRequired === true
+        ? `${sourcePrefix}unlocked`.trim()
+        : `${sourcePrefix}carrier no preference`.trim();
     next = {
       ...next,
-      mustHave: value.unlockedRequired === true
-        ? replaceSlotFacts(next.mustHave, "carrier_lock", "unlocked")
-        : next.mustHave.filter((item) => !/unlocked|locked|carrier|언락|잠금|통신사/i.test(item)),
+      mustHave:
+        value.unlockedRequired === true
+          ? replaceSlotFacts(next.mustHave, "carrier_lock", "unlocked")
+          : next.mustHave.filter((item) => !/unlocked|locked|carrier|언락|잠금|통신사/i.test(item)),
       source: replaceSourceSlot(next.source, "carrier_lock", fact),
     };
   } else if (value.kind === "text") {
@@ -1678,7 +1841,10 @@ function applySlotControlValue(memory: AdvisorMemory, slot: MissingInfoSlot, val
   return markSlotAnswered(next, slot);
 }
 
-function markSlotAnswered(memory: AdvisorMemory, slot: MissingInfoSlot): AdvisorMemory {
+function markSlotAnswered(
+  memory: NegotiationAgentBuilderMemory,
+  slot: MissingInfoSlot,
+): NegotiationAgentBuilderMemory {
   if (!memory.structured) return memory;
   const activeScope = slot.productScope ?? memory.structured.activeIntent?.productScope;
   const productRequirements = { ...memory.structured.productRequirements };
@@ -1702,30 +1868,30 @@ function markSlotAnswered(memory: AdvisorMemory, slot: MissingInfoSlot): Advisor
     structured: {
       ...memory.structured,
       productRequirements,
-      pendingSlots: memory.structured.pendingSlots.filter((item) => slotKey(item) !== slotKey(slot)),
+      pendingSlots: memory.structured.pendingSlots.filter(
+        (item) => slotKey(item) !== slotKey(slot),
+      ),
       questionPlan: memory.structured.questionPlan
         ? {
-          ...memory.structured.questionPlan,
-          askedThisTurn: { kind: "none" },
-          deferred: memory.structured.questionPlan.deferred.filter((item) => slotKey(item) !== slotKey(slot)),
-        }
+            ...memory.structured.questionPlan,
+            askedThisTurn: { kind: "none" },
+            deferred: memory.structured.questionPlan.deferred.filter(
+              (item) => slotKey(item) !== slotKey(slot),
+            ),
+          }
         : memory.structured.questionPlan,
     },
   };
 }
 
 function replaceSlotFacts(values: string[], slotId: string, fact: string): string[] {
-  return uniqueStrings([
-    ...values.filter((item) => !factMatchesSlot(item, slotId)),
-    fact,
-  ]);
+  return uniqueStrings([...values.filter((item) => !factMatchesSlot(item, slotId)), fact]);
 }
 
 function replaceSourceSlot(values: string[], slotId: string, fact: string): string[] {
-  return uniqueStrings([
-    ...values.filter((item) => !factMatchesSlot(item, slotId)),
-    fact,
-  ]).slice(-8);
+  return uniqueStrings([...values.filter((item) => !factMatchesSlot(item, slotId)), fact]).slice(
+    -8,
+  );
 }
 
 function factMatchesSlot(value: string, slotId: string): boolean {
@@ -1752,7 +1918,11 @@ export function AgentProductAdvisor({
   userId: string;
   selectedAgentId: AncientBeingId;
   selectedListingId?: string;
-  onStartNegotiation: (listing: AdvisorListing, memory: AdvisorMemory, readiness: NegotiationReadiness) => void;
+  onStartNegotiation: (
+    listing: AdvisorListing,
+    memory: NegotiationAgentBuilderMemory,
+    readiness: NegotiationReadiness,
+  ) => void;
   onPresetDraftChange?: (draft: PresetTuningDraft | null) => void;
   presetFeedbackUpdate?: {
     id: string;
@@ -1762,9 +1932,11 @@ export function AgentProductAdvisor({
   onEndDemo: () => void;
   endingDemo: boolean;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages(selectedAgentId));
-  const [memory, setMemory] = useState<AdvisorMemory>(() => createBaseMemory());
-  const memoryRef = useRef<AdvisorMemory>(memory);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    createInitialMessages(selectedAgentId),
+  );
+  const [memory, setMemory] = useState<NegotiationAgentBuilderMemory>(() => createBaseMemory());
+  const memoryRef = useRef<NegotiationAgentBuilderMemory>(memory);
   const inputRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
   const [backendState, setBackendState] = useState<{
@@ -1782,7 +1954,9 @@ export function AgentProductAdvisor({
   });
   const [costLedger, setCostLedger] = useState(() => emptyCostLedger());
   const [listings, setListings] = useState<AdvisorListing[]>([]);
-  const [listingStatus, setListingStatus] = useState<"loading" | "db" | "empty" | "error">("loading");
+  const [listingStatus, setListingStatus] = useState<"loading" | "db" | "empty" | "error">(
+    "loading",
+  );
   const [listingMatchedCount, setListingMatchedCount] = useState(0);
   const [candidatePlan, setCandidatePlan] = useState<AdvisorCandidatePlan | null>(null);
   const [retrievalMeta, setRetrievalMeta] = useState<AdvisorRetrievalMeta | null>(null);
@@ -1800,13 +1974,16 @@ export function AgentProductAdvisor({
     [availableListings, memory],
   );
   const visibleScoredListings = scoredListings.slice(0, 8);
-  const activeListing = availableListings.find((listing) => listing.id === activeListingId) ?? scoredListings[0]?.listing;
+  const activeListing =
+    availableListings.find((listing) => listing.id === activeListingId) ??
+    scoredListings[0]?.listing;
   const hasStoredMemory = backendState.status === "saved" && backendState.cards.length > 0;
-  const memoryOriginLabel = backendState.origin === "loaded"
-    ? "loaded from backend"
-    : backendState.origin === "saved_this_session"
-      ? "saved this session"
-      : "session draft";
+  const memoryOriginLabel =
+    backendState.origin === "loaded"
+      ? "loaded from backend"
+      : backendState.origin === "saved_this_session"
+        ? "saved this session"
+        : "session draft";
   const latestStoredCardAt = backendState.cards
     .map((card) => card.updated_at)
     .filter(Boolean)
@@ -1816,9 +1993,12 @@ export function AgentProductAdvisor({
   const activeIntervention = alignmentIntervention(activeAlignment);
   const alignmentConfirmed = Boolean(activeListing && confirmedListingId === activeListing.id);
   const activeNeedsAlignmentConfirmation = !alignmentConfirmed && activeIntervention.blocksStart;
-  const activeNeedsChatConfirmation = activeNeedsAlignmentConfirmation && activeIntervention.showsChatPrompt;
-  const activeNeedsInlineConfirmation = activeNeedsAlignmentConfirmation && !activeIntervention.showsChatPrompt;
-  const activeAlignmentCleared = activeAlignment.status === "match" || alignmentConfirmed || !activeIntervention.blocksStart;
+  const activeNeedsChatConfirmation =
+    activeNeedsAlignmentConfirmation && activeIntervention.showsChatPrompt;
+  const activeNeedsInlineConfirmation =
+    activeNeedsAlignmentConfirmation && !activeIntervention.showsChatPrompt;
+  const activeAlignmentCleared =
+    activeAlignment.status === "match" || alignmentConfirmed || !activeIntervention.blocksStart;
   const negotiationReadiness = getNegotiationReadiness(memory, hasStoredMemory, {
     listing: activeListing,
     pendingBudgetChange,
@@ -1831,7 +2011,7 @@ export function AgentProductAdvisor({
       ? alignmentBadgeText(activeAlignment)
       : negotiationReadiness.ready
         ? "상품을 선택했습니다. 오른쪽 협상 시작 버튼을 누르면 저장된 메모리로 진행합니다."
-        : negotiationReadiness.reason ?? "상담에서 조건을 조금 더 확인해야 합니다.";
+        : (negotiationReadiness.reason ?? "상담에서 조건을 조금 더 확인해야 합니다.");
 
   useEffect(() => {
     let cancelled = false;
@@ -1846,11 +2026,11 @@ export function AgentProductAdvisor({
           setListingMatchedCount(response.count);
           setCandidatePlan(response.advisor_plan ?? null);
           setRetrievalMeta(response.retrieval ?? null);
-          setActiveListingId((prev) => (
+          setActiveListingId((prev) =>
             response.listings.some((listing) => listing.id === prev)
               ? prev
-              : response.listings[0].id
-          ));
+              : response.listings[0].id,
+          );
         } else {
           setListings([]);
           setListingStatus("empty");
@@ -1892,7 +2072,8 @@ export function AgentProductAdvisor({
             origin: "none",
             cards: [],
             extracted: 0,
-            message: "저장된 상담 메모리가 없습니다. 대화로 조건을 남기면 새로고침 후에도 복원됩니다.",
+            message:
+              "저장된 상담 메모리가 없습니다. 대화로 조건을 남기면 새로고침 후에도 복원됩니다.",
           }));
           return;
         }
@@ -1935,7 +2116,8 @@ export function AgentProductAdvisor({
           setBackendState((prev) => ({
             ...prev,
             status: "error",
-            message: error instanceof Error ? error.message : "저장된 메모리를 불러오지 못했습니다.",
+            message:
+              error instanceof Error ? error.message : "저장된 메모리를 불러오지 못했습니다.",
           }));
         }
       }
@@ -1993,7 +2175,10 @@ export function AgentProductAdvisor({
     });
   }, [selectedAgentId]);
 
-  async function persistMemory(text: string, nextMemory: AdvisorMemory): Promise<boolean> {
+  async function persistMemory(
+    text: string,
+    nextMemory: NegotiationAgentBuilderMemory,
+  ): Promise<boolean> {
     setBackendState((prev) => ({
       ...prev,
       status: "saving",
@@ -2001,7 +2186,7 @@ export function AgentProductAdvisor({
     }));
 
     try {
-      const response = await saveAdvisorMemory({
+      const response = await saveNegotiationAgentBuilderMemory({
         userId,
         agentId: selectedAgentId,
         message: text,
@@ -2054,7 +2239,11 @@ export function AgentProductAdvisor({
 
     if (normalizedQuestion && normalizedRecent.includes(normalizedQuestion)) return true;
     if (/(?:모델|iphone13|iphone15|13|15)/i.test(normalizedQuestion)) {
-      return /(?:모델|쪽|우선)/.test(normalizedRecent) && /13/.test(normalizedRecent) && /15/.test(normalizedRecent);
+      return (
+        /(?:모델|쪽|우선)/.test(normalizedRecent) &&
+        /13/.test(normalizedRecent) &&
+        /15/.test(normalizedRecent)
+      );
     }
     if (/(?:예산|목표|가격|budget|target)/i.test(question)) {
       return /(?:예산|목표|가격|budget|target)/i.test(recentAgentText);
@@ -2081,9 +2270,8 @@ export function AgentProductAdvisor({
     if (!selectedListingConfirmed) setConfirmedListingId(null);
     onStartNegotiation(listing, memoryRef.current, readiness);
     const alignment = evaluateListingAlignment(memoryRef.current, listing);
-    const shouldUseQuickAction = pendingBudgetChange
-      || alignment.status === "near_match"
-      || alignment.status === "mismatch";
+    const shouldUseQuickAction =
+      pendingBudgetChange || alignment.status === "near_match" || alignment.status === "mismatch";
     if (!readiness.ready && !shouldUseQuickAction) {
       askForMissingNegotiationInfo(readiness.question);
     }
@@ -2182,7 +2370,8 @@ export function AgentProductAdvisor({
       origin: "none",
       cards: [],
       extracted: 0,
-      message: "백엔드 저장값은 삭제하지 않고, 현재 화면만 새 상담 초안으로 전환했습니다. 새로고침하면 저장된 메모리를 다시 불러올 수 있습니다.",
+      message:
+        "백엔드 저장값은 삭제하지 않고, 현재 화면만 새 상담 초안으로 전환했습니다. 새로고침하면 저장된 메모리를 다시 불러올 수 있습니다.",
     });
   }
 
@@ -2243,21 +2432,26 @@ export function AgentProductAdvisor({
     try {
       const previousMemory = memoryRef.current;
       const selectedListingBeforeTurn = activeListing;
-      const inputListings = (availableListings.length > 0
-        ? availableListings
-        : activeListing
-          ? [activeListing]
-          : []
+      const inputListings = (
+        availableListings.length > 0 ? availableListings : activeListing ? [activeListing] : []
       ).slice(0, 8);
-      const analyzed = await analyzeAdvisorTurn({
+      const analyzed = await processNegotiationAgentBuilderTurn({
         userId,
         agentId: selectedAgentId,
         message: trimmed,
         previousMemory,
         listings: inputListings,
       });
-      const intentSwitchedMemory = applyActiveIntentSwitchOverride(trimmed, previousMemory, analyzed.memory);
-      const proposedMemory = applyExplicitBudgetOverride(trimmed, intentSwitchedMemory, previousMemory);
+      const intentSwitchedMemory = applyActiveIntentSwitchOverride(
+        trimmed,
+        previousMemory,
+        analyzed.memory,
+      );
+      const proposedMemory = applyExplicitBudgetOverride(
+        trimmed,
+        intentSwitchedMemory,
+        previousMemory,
+      );
       const budgetChange = buildPendingBudgetChange(previousMemory, proposedMemory);
       const nextMemory = budgetChange ? previousMemory : proposedMemory;
       const planningMemory = budgetChange ? proposedMemory : nextMemory;
@@ -2319,10 +2513,11 @@ export function AgentProductAdvisor({
       const nextBestListing = nextListings
         .map((listing) => ({ listing, score: scoreListing(listing, planningMemory) }))
         .sort((a, b) => b.score - a.score)[0]?.listing;
-      const retainedListing = selectedListingBeforeTurn
-        && nextListings.some((listing) => listing.id === selectedListingBeforeTurn.id)
-        ? selectedListingBeforeTurn
-        : nextBestListing;
+      const retainedListing =
+        selectedListingBeforeTurn &&
+        nextListings.some((listing) => listing.id === selectedListingBeforeTurn.id)
+          ? selectedListingBeforeTurn
+          : nextBestListing;
 
       if (nextListings.length > 0) {
         setListings(nextListings);
@@ -2373,32 +2568,36 @@ export function AgentProductAdvisor({
   }
 
   return (
-    <section className="mt-5 rounded-2xl border border-slate-700 bg-slate-900/60 p-4 shadow-xl shadow-slate-950/30 sm:p-5">
+    <section className="mt-5 rounded-2xl border border-line bg-surface-raised p-4 shadow-xl shadow-black/30 sm:p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="mb-1 inline-flex rounded-full border border-violet-400/25 bg-violet-400/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-200">
+          <div className="mb-1 inline-flex rounded-full border border-info/25 bg-info-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-info">
             Agent Product Advisor
           </div>
-          <h2 className="text-xl font-bold text-white">상담 → 메모리 → 상품 추천 → 협상 시작</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            구매자 에이전트가 넓은 요청에서 선호를 기억하고, DB의 등록 상품 중 협상할 대상을 고릅니다.
+          <h2 className="text-xl font-bold text-ink">상담 → 메모리 → 상품 추천 → 협상 시작</h2>
+          <p className="mt-1 text-sm text-ink-secondary">
+            구매자 에이전트가 넓은 요청에서 선호를 기억하고, DB의 등록 상품 중 협상할 대상을
+            고릅니다.
           </p>
         </div>
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+        <div className="rounded-lg border border-warning/20 bg-warning-soft px-3 py-2 text-xs text-warning">
           판매자는 기본 에이전트 하나로 고정
         </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3">
-          <div className="mb-3 flex items-center gap-3 border-b border-slate-800 pb-3">
-            <div className="h-14 w-14 overflow-hidden rounded-lg border border-white/10 bg-slate-950">
+        <div className="rounded-xl border border-line bg-surface-sunken p-3">
+          <div className="mb-3 flex items-center gap-3 border-b border-line pb-3">
+            <div className="h-14 w-14 overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken">
+              {/* biome-ignore lint/performance/noImgElement: decorative agent avatar, optimization not needed in demo */}
               <img src={agentImage} alt="" className="h-full w-full object-cover object-top" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-cyan-200">내 소유 에이전트</p>
-              <p className="font-bold text-white">{agent.name}</p>
-              <p className="text-xs text-slate-400">{agent.kind} · {agent.role}</p>
+              <p className="text-xs text-action-primary">내 소유 에이전트</p>
+              <p className="font-bold text-ink">{agent.name}</p>
+              <p className="text-xs text-ink-secondary">
+                {agent.kind} · {agent.role}
+              </p>
             </div>
           </div>
 
@@ -2411,8 +2610,8 @@ export function AgentProductAdvisor({
                 <div
                   className={`max-w-[86%] rounded-xl border px-3 py-2 text-sm leading-6 ${
                     message.role === "user"
-                      ? "border-cyan-400/25 bg-cyan-500/10 text-cyan-50"
-                      : "border-slate-700 bg-slate-900 text-slate-200"
+                      ? "border-action-primary/25 bg-action-primary/10 text-action-primary"
+                      : "border-line bg-surface-sunken text-ink-secondary"
                   }`}
                 >
                   {message.text}
@@ -2421,7 +2620,7 @@ export function AgentProductAdvisor({
             ))}
             {(pendingBudgetChange || activeNeedsChatConfirmation) && (
               <div className="flex justify-start">
-                <div className="max-w-[86%] rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm leading-6 text-amber-50">
+                <div className="max-w-[86%] rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-sm leading-6 text-warning">
                   <p>
                     {pendingBudgetChange
                       ? `${pendingBudgetChange.intent} 예산을 $${pendingBudgetChange.from}에서 $${pendingBudgetChange.to}로 바꿀까요?`
@@ -2431,21 +2630,25 @@ export function AgentProductAdvisor({
                     <button
                       type="button"
                       onClick={pendingBudgetChange ? confirmBudgetChange : confirmSelectedListing}
-                      className="rounded-md bg-amber-300 px-2 py-1.5 text-xs font-semibold text-slate-950 transition-colors hover:bg-amber-200"
+                      className="rounded-md bg-warning px-2 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:opacity-90"
                     >
                       {quickActions.primary}
                     </button>
                     <button
                       type="button"
-                      onClick={pendingBudgetChange ? () => void rejectBudgetChange() : selectBestMemoryMatchedListing}
-                      className="rounded-md border border-amber-300/30 px-2 py-1.5 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/10"
+                      onClick={
+                        pendingBudgetChange
+                          ? () => void rejectBudgetChange()
+                          : selectBestMemoryMatchedListing
+                      }
+                      className="rounded-md border border-warning/30 px-2 py-1.5 text-xs font-semibold text-warning transition-colors hover:bg-warning-soft"
                     >
                       {quickActions.secondary}
                     </button>
                     <button
                       type="button"
                       onClick={focusChatInput}
-                      className="rounded-md border border-slate-600 px-2 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:border-slate-400"
+                      className="rounded-md border border-line px-2 py-1.5 text-xs font-semibold text-ink-secondary transition-colors hover:border-line-strong"
                     >
                       {quickActions.tertiary}
                     </button>
@@ -2467,22 +2670,22 @@ export function AgentProductAdvisor({
               onKeyDown={(event) => {
                 const nativeEvent = event.nativeEvent as KeyboardEvent;
                 if (
-                  event.key === "Enter"
-                  && !composingRef.current
-                  && !nativeEvent.isComposing
-                  && nativeEvent.keyCode !== 229
+                  event.key === "Enter" &&
+                  !composingRef.current &&
+                  !nativeEvent.isComposing &&
+                  nativeEvent.keyCode !== 229
                 ) {
                   event.preventDefault();
                   void send(event.currentTarget.value);
                 }
               }}
               placeholder="예: 대학원에서 쓸 가벼운 노트북 찾고 있어"
-              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-surface-overlay px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-focus"
             />
             <button
               type="button"
               onClick={() => void send(inputRef.current?.value ?? "")}
-              className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-400"
+              className="rounded-lg bg-cta px-4 py-2 text-sm font-semibold text-on-cta transition-colors hover:bg-cta-hover"
             >
               전송
             </button>
@@ -2507,45 +2710,49 @@ export function AgentProductAdvisor({
 
           <AttributeGatePanel alignment={activeAlignment} />
 
-          <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-200">
+          <div className="rounded-xl border border-info/20 bg-info-soft p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-info">
               Memory Overview
             </p>
-            <div className="grid gap-2 text-xs text-slate-300">
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">category_interest</span>
-                <p className="font-medium text-white">{memory.categoryInterest}</p>
+            <div className="grid gap-2 text-xs text-ink-secondary">
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">category_interest</span>
+                <p className="font-medium text-ink">{memory.categoryInterest}</p>
               </div>
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">budget_model</span>
-                <p className="font-medium text-white">
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">budget_model</span>
+                <p className="font-medium text-ink">
                   target ${memory.targetPrice ?? "?"} / max ${memory.budgetMax ?? "?"}
                 </p>
               </div>
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">must_have</span>
-                <p className="font-medium text-white">{memory.mustHave.join(", ") || "not confirmed"}</p>
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">must_have</span>
+                <p className="font-medium text-ink">
+                  {memory.mustHave.join(", ") || "not confirmed"}
+                </p>
               </div>
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">avoid</span>
-                <p className="font-medium text-white">{memory.avoid.join(", ") || "none"}</p>
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">avoid</span>
+                <p className="font-medium text-ink">{memory.avoid.join(", ") || "none"}</p>
               </div>
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">risk_and_tactic</span>
-                <p className="font-medium text-white">
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">risk_and_tactic</span>
+                <p className="font-medium text-ink">
                   {memory.riskStyle} · {memory.negotiationStyle} · {memory.openingTactic}
                 </p>
               </div>
             </div>
             {memory.source.length > 0 && (
-              <div className="mt-3 rounded-lg border border-violet-500/15 bg-slate-950/60 p-2">
+              <div className="mt-3 rounded-lg border border-info/15 bg-surface-sunken p-2">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-200">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-info">
                     Source Summary
                   </span>
-                  <span className="font-mono text-[10px] text-slate-500">{memory.source.length} facts</span>
+                  <span className="font-mono text-[10px] text-ink-muted">
+                    {memory.source.length} facts
+                  </span>
                 </div>
-                <ul className="space-y-1 text-xs text-slate-300">
+                <ul className="space-y-1 text-xs text-ink-secondary">
                   {memory.source.map((item) => (
                     <li key={item}>• {item}</li>
                   ))}
@@ -2553,66 +2760,80 @@ export function AgentProductAdvisor({
               </div>
             )}
             {memory.structured && (
-              <div className="mt-3 rounded-lg border border-sky-500/15 bg-slate-950/60 p-2">
+              <div className="mt-3 rounded-lg border border-info/15 bg-surface-sunken p-2">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-200">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-info">
                     Structured Memory
                   </span>
-                  <span className="font-mono text-[10px] text-slate-500">
+                  <span className="font-mono text-[10px] text-ink-muted">
                     {Object.keys(memory.structured.productRequirements).length} scopes
                   </span>
                 </div>
-                <div className="space-y-1 text-xs text-slate-300">
+                <div className="space-y-1 text-xs text-ink-secondary">
                   <p>
                     active:{" "}
-                    <span className="text-white">
+                    <span className="text-ink">
                       {memory.structured.activeIntent?.productScope ?? "not scoped"}
                     </span>
                   </p>
-                  {Object.entries(memory.structured.productRequirements).slice(0, 3).map(([scope, requirements]) => (
-                    <p key={scope}>
-                      {scope}:{" "}
-                      <span className="text-white">
-                        {[...requirements.mustHave, ...requirements.avoid].join(", ") || "no scoped facts"}
-                      </span>
-                    </p>
-                  ))}
+                  {Object.entries(memory.structured.productRequirements)
+                    .slice(0, 3)
+                    .map(([scope, requirements]) => (
+                      <p key={scope}>
+                        {scope}:{" "}
+                        <span className="text-ink">
+                          {[...requirements.mustHave, ...requirements.avoid].join(", ") ||
+                            "no scoped facts"}
+                        </span>
+                      </p>
+                    ))}
                   {memory.structured.pendingSlots.length > 0 && (
                     <p>
                       pending:{" "}
-                      <span className="text-amber-100">
-                        {memory.structured.pendingSlots.map((slot) => `${slot.slotId}:${slot.status}`).join(", ")}
+                      <span className="text-warning">
+                        {memory.structured.pendingSlots
+                          .map((slot) => `${slot.slotId}:${slot.status}`)
+                          .join(", ")}
                       </span>
                     </p>
                   )}
                   {memory.structured.discardedSignals.length > 0 && (
                     <p>
                       discarded:{" "}
-                      <span className="text-slate-400">
-                        {memory.structured.discardedSignals.slice(-2).map((signal) => signal.reason).join(", ")}
+                      <span className="text-ink-secondary">
+                        {memory.structured.discardedSignals
+                          .slice(-2)
+                          .map((signal) => signal.reason)
+                          .join(", ")}
                       </span>
                     </p>
                   )}
                   {memory.structured.memoryConflicts.length > 0 && (
                     <p>
                       conflicts:{" "}
-                      <span className="text-rose-100">
-                        {memory.structured.memoryConflicts.slice(-3).map((item) => `${item.slotId}:${item.status}`).join(", ")}
+                      <span className="text-error">
+                        {memory.structured.memoryConflicts
+                          .slice(-3)
+                          .map((item) => `${item.slotId}:${item.status}`)
+                          .join(", ")}
                       </span>
                     </p>
                   )}
                   {(memory.structured.scopedConditionDecisions ?? []).length > 0 && (
                     <p>
                       scope decisions:{" "}
-                      <span className="text-amber-100">
-                        {(memory.structured.scopedConditionDecisions ?? []).slice(-2).map((item) => `${item.slotId}:${item.decision}`).join(", ")}
+                      <span className="text-warning">
+                        {(memory.structured.scopedConditionDecisions ?? [])
+                          .slice(-2)
+                          .map((item) => `${item.slotId}:${item.decision}`)
+                          .join(", ")}
                       </span>
                     </p>
                   )}
                   {memory.structured.longTermMemory && (
                     <p>
                       long-term:{" "}
-                      <span className="text-emerald-100">
+                      <span className="text-success">
                         {memory.structured.longTermMemory.facts.slice(-3).join(", ") || "none"}
                       </span>
                     </p>
@@ -2620,7 +2841,7 @@ export function AgentProductAdvisor({
                   {memory.structured.sessionMemory && (
                     <p>
                       session-only:{" "}
-                      <span className="text-cyan-100">
+                      <span className="text-action-primary">
                         {memory.structured.sessionMemory.facts.slice(-2).join(", ") || "none"}
                       </span>
                     </p>
@@ -2628,22 +2849,29 @@ export function AgentProductAdvisor({
                   {memory.structured.promotionDecisions.length > 0 && (
                     <p>
                       promotion:{" "}
-                      <span className="text-slate-400">
-                        {memory.structured.promotionDecisions.slice(-3).map((item) => `${item.decision}:${item.reason}`).join(", ")}
+                      <span className="text-ink-secondary">
+                        {memory.structured.promotionDecisions
+                          .slice(-3)
+                          .map((item) => `${item.decision}:${item.reason}`)
+                          .join(", ")}
                       </span>
                     </p>
                   )}
                   {memory.structured.compression && (
                     <p>
                       compression:{" "}
-                      <span className="text-slate-400">{memory.structured.compression.summary}</span>
+                      <span className="text-ink-secondary">
+                        {memory.structured.compression.summary}
+                      </span>
                     </p>
                   )}
                   {memory.structured.questionPlan && (
                     <p>
                       question:{" "}
-                      <span className="text-slate-400">
-                        {memory.structured.questionPlan.askedThisTurn.kind} {memory.structured.questionPlan.budget.used}/{memory.structured.questionPlan.budget.maxQuestionsPerTurn}
+                      <span className="text-ink-secondary">
+                        {memory.structured.questionPlan.askedThisTurn.kind}{" "}
+                        {memory.structured.questionPlan.budget.used}/
+                        {memory.structured.questionPlan.budget.maxQuestionsPerTurn}
                         {memory.structured.questionPlan.deferred.length > 0
                           ? ` · deferred ${memory.structured.questionPlan.deferred.map((item) => `${item.slotId}:${item.reason}`).join(", ")}`
                           : ""}
@@ -2654,22 +2882,23 @@ export function AgentProductAdvisor({
               </div>
             )}
             {memory.questions.length > 0 && (
-              <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-100">
+              <div className="mt-3 rounded-lg border border-warning/20 bg-warning-soft p-2 text-xs text-warning">
                 부족한 정보: {memory.questions[0]}
               </div>
             )}
             {memory.questions.length > 0 && !hasStoredMemory && (
-              <div className="mt-3 rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-2 text-xs text-cyan-100">
-                상담을 한 번 전송하고 백엔드 저장이 완료되면 새로고침 후에도 이 조건을 다시 불러옵니다.
+              <div className="mt-3 rounded-lg border border-action-primary/20 bg-action-primary/10 p-2 text-xs text-action-primary">
+                상담을 한 번 전송하고 백엔드 저장이 완료되면 새로고침 후에도 이 조건을 다시
+                불러옵니다.
               </div>
             )}
             <div
               className={`mt-3 rounded-lg border p-2 text-xs ${
                 backendState.status === "saved"
-                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
+                  ? "border-success/20 bg-success-soft text-success"
                   : backendState.status === "error"
-                    ? "border-red-500/20 bg-red-500/10 text-red-100"
-                    : "border-slate-700 bg-slate-950/60 text-slate-400"
+                    ? "border-error/20 bg-error-soft text-error"
+                    : "border-line bg-surface-sunken text-ink-secondary"
               }`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -2677,41 +2906,43 @@ export function AgentProductAdvisor({
                 <span className="font-mono">{backendState.status}</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-slate-700 bg-slate-950/70 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-slate-300">
+                <span className="rounded-full border border-line bg-surface-sunken px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-secondary">
                   {memoryOriginLabel}
                 </span>
                 {latestStoredCardAt && (
-                  <span className="rounded-full border border-slate-700 bg-slate-950/70 px-2 py-0.5 font-mono text-[10px] text-slate-400">
+                  <span className="rounded-full border border-line bg-surface-sunken px-2 py-0.5 font-mono text-[10px] text-ink-secondary">
                     updated {new Date(latestStoredCardAt).toLocaleString()}
                   </span>
                 )}
               </div>
               <p className="mt-1">{backendState.message}</p>
               {backendState.origin === "loaded" && (
-                <p className="mt-2 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-amber-100">
-                  이 화면의 조건은 이전에 저장된 백엔드 메모리에서 복원된 값입니다. 새 메시지를 보내면 현재 대화 기준으로 다시 분석하고 저장합니다.
+                <p className="mt-2 rounded border border-warning/20 bg-warning-soft px-2 py-1.5 text-warning">
+                  이 화면의 조건은 이전에 저장된 백엔드 메모리에서 복원된 값입니다. 새 메시지를
+                  보내면 현재 대화 기준으로 다시 분석하고 저장합니다.
                 </p>
               )}
-              <p className="mt-1 font-mono text-[10px] text-slate-500">
-                user_id: {userId}
-              </p>
+              <p className="mt-1 font-mono text-[10px] text-ink-muted">user_id: {userId}</p>
               {backendState.cards.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.12em] text-emerald-200">
+                  <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.12em] text-success">
                     <span>Stored HIL Cards</span>
                     <span>{backendState.cards.length} cards</span>
                   </div>
                   {backendState.cards.map((card) => (
-                    <div key={card.id} className="rounded bg-slate-950/60 px-2 py-1.5 text-slate-300">
+                    <div
+                      key={card.id}
+                      className="rounded bg-surface-sunken px-2 py-1.5 text-ink-secondary"
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-[10px] text-emerald-200">
+                        <span className="font-mono text-[10px] text-success">
                           {card.card_type}:{card.memory_key.replace("advisor:", "")}
                         </span>
-                        <span className="font-mono text-[10px] text-slate-500">
+                        <span className="font-mono text-[10px] text-ink-muted">
                           {formatMemoryStrength(card.strength)}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-xs leading-5 text-slate-200">{card.summary}</p>
+                      <p className="mt-0.5 text-xs leading-5 text-ink-secondary">{card.summary}</p>
                     </div>
                   ))}
                 </div>
@@ -2721,7 +2952,7 @@ export function AgentProductAdvisor({
                   type="button"
                   onClick={startFreshDraft}
                   disabled={endingDemo}
-                  className="mt-3 w-full rounded-lg border border-cyan-500/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-400 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-3 w-full rounded-lg border border-action-primary/30 px-3 py-2 text-xs font-semibold text-action-primary transition-colors hover:border-focus hover:bg-action-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   화면만 새 상담 초안으로 전환
                 </button>
@@ -2733,45 +2964,55 @@ export function AgentProductAdvisor({
                   onEndDemo();
                 }}
                 disabled={endingDemo}
-                className="mt-3 w-full rounded-lg border border-red-500/30 px-3 py-2 text-xs font-semibold text-red-100 transition-colors hover:border-red-400 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-3 w-full rounded-lg border border-error/30 px-3 py-2 text-xs font-semibold text-error transition-colors hover:border-error hover:bg-error-soft disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {endingDemo ? "데모 데이터 삭제 중" : "데모 종료 및 메모리 삭제"}
               </button>
             </div>
           </div>
 
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+          <div className="rounded-xl border border-action-primary/20 bg-action-primary/5 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-200">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-action-primary">
                 Advisor LLM Cost
               </p>
-              <span className="font-mono text-[10px] text-slate-500">
+              <span className="font-mono text-[10px] text-ink-muted">
                 {costLedger.turns.length} calls
               </span>
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">prompt</span>
-                <p className="font-mono font-semibold text-white">{costLedger.prompt.toLocaleString()}</p>
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">prompt</span>
+                <p className="font-mono font-semibold text-ink">
+                  {costLedger.prompt.toLocaleString()}
+                </p>
               </div>
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">completion</span>
-                <p className="font-mono font-semibold text-white">{costLedger.completion.toLocaleString()}</p>
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">completion</span>
+                <p className="font-mono font-semibold text-ink">
+                  {costLedger.completion.toLocaleString()}
+                </p>
               </div>
-              <div className="rounded-lg bg-slate-950/70 p-2">
-                <span className="text-slate-500">est.</span>
-                <p className="font-mono font-semibold text-white">{formatUsd(costLedger.usd)}</p>
+              <div className="rounded-lg bg-surface-sunken p-2">
+                <span className="text-ink-muted">est.</span>
+                <p className="font-mono font-semibold text-ink">{formatUsd(costLedger.usd)}</p>
               </div>
             </div>
-            <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+            <div className="mt-2 space-y-1 text-[11px] text-ink-secondary">
               {costLedger.turns.length === 0 ? (
                 <p>상담 메시지를 보내면 턴별 토큰과 예상 비용이 기록됩니다.</p>
               ) : (
                 costLedger.turns.slice(-3).map((turn) => (
-                  <div key={turn.turn} className="flex items-center justify-between gap-2 rounded bg-slate-950/60 px-2 py-1">
-                    <span>turn {turn.turn} · {turn.model}</span>
-                    <span className="font-mono text-slate-300">
-                      {turn.tokens.prompt.toLocaleString()}+{turn.tokens.completion.toLocaleString()} · {formatUsd(turn.estimated_usd)}
+                  <div
+                    key={turn.turn}
+                    className="flex items-center justify-between gap-2 rounded bg-surface-sunken px-2 py-1"
+                  >
+                    <span>
+                      turn {turn.turn} · {turn.model}
+                    </span>
+                    <span className="font-mono text-ink-secondary">
+                      {turn.tokens.prompt.toLocaleString()}+
+                      {turn.tokens.completion.toLocaleString()} · {formatUsd(turn.estimated_usd)}
                     </span>
                   </div>
                 ))
@@ -2779,29 +3020,33 @@ export function AgentProductAdvisor({
             </div>
           </div>
 
-          <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
+          <div className="rounded-xl border border-info/20 bg-info-soft p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-indigo-200">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-info">
                 Candidate Planner
               </p>
-              <span className="font-mono text-[10px] text-slate-500">
+              <span className="font-mono text-[10px] text-ink-muted">
                 {listingMatchedCount} matched
               </span>
             </div>
             {candidatePlan ? (
               <div className="space-y-2 text-xs">
-                <div className="rounded-lg bg-slate-950/70 p-2">
-                  <span className="text-slate-500">next action</span>
-                  <p className="font-medium text-white">
-                    {candidatePlan.nextAction.action} · {formatPlannerSlot(candidatePlan.nextAction.slot)}
+                <div className="rounded-lg bg-surface-sunken p-2">
+                  <span className="text-ink-muted">next action</span>
+                  <p className="font-medium text-ink">
+                    {candidatePlan.nextAction.action} ·{" "}
+                    {formatPlannerSlot(candidatePlan.nextAction.slot)}
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-500">{candidatePlan.nextAction.reasonCode}</p>
+                  <p className="mt-1 text-[11px] text-ink-muted">
+                    {candidatePlan.nextAction.reasonCode}
+                  </p>
                 </div>
                 {candidatePlan.dominantCluster && (
-                  <div className="rounded-lg bg-slate-950/70 p-2">
-                    <span className="text-slate-500">dominant cluster</span>
-                    <p className="font-medium text-white">
-                      {candidatePlan.dominantCluster.label} · {formatShare(candidatePlan.dominantCluster.share)}
+                  <div className="rounded-lg bg-surface-sunken p-2">
+                    <span className="text-ink-muted">dominant cluster</span>
+                    <p className="font-medium text-ink">
+                      {candidatePlan.dominantCluster.label} ·{" "}
+                      {formatShare(candidatePlan.dominantCluster.share)}
                     </p>
                   </div>
                 )}
@@ -2810,153 +3055,164 @@ export function AgentProductAdvisor({
                     .filter((facet) => facet.values.length > 1)
                     .slice(0, 3)
                     .map((facet) => (
-                      <div key={facet.slot} className="rounded-lg bg-slate-950/70 p-2">
+                      <div key={facet.slot} className="rounded-lg bg-surface-sunken p-2">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-slate-500">{formatPlannerSlot(facet.slot)}</span>
-                          <span className="font-mono text-[10px] text-slate-600">H {facet.entropy}</span>
+                          <span className="text-ink-muted">{formatPlannerSlot(facet.slot)}</span>
+                          <span className="font-mono text-[10px] text-ink-muted">
+                            H {facet.entropy}
+                          </span>
                         </div>
-                        <p className="mt-1 text-[11px] leading-5 text-slate-300">
-                          {facet.values.slice(0, 3).map((value) => `${value.label} ${value.count}`).join(" · ")}
+                        <p className="mt-1 text-[11px] leading-5 text-ink-secondary">
+                          {facet.values
+                            .slice(0, 3)
+                            .map((value) => `${value.label} ${value.count}`)
+                            .join(" · ")}
                         </p>
                       </div>
                     ))}
                 </div>
               </div>
             ) : (
-              <p className="text-xs leading-5 text-slate-500">
+              <p className="text-xs leading-5 text-ink-muted">
                 상담 메시지를 보내면 후보군 분포와 다음 질문 근거가 표시됩니다.
               </p>
             )}
           </div>
 
-          <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-3">
+          <div className="rounded-xl border border-line bg-surface-sunken p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
                 등록된 DB 상품
               </p>
-            <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[10px] text-slate-500">
+              <span className="rounded-full border border-line px-2 py-0.5 text-[10px] text-ink-muted">
                 {listingStatus === "db"
                   ? `${availableListings.length}/${listingMatchedCount} from DB · ${formatRetrievalMode(retrievalMeta)}`
                   : listingStatus}
               </span>
             </div>
             {visibleScoredListings.length === 0 ? (
-              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-xs leading-5 text-slate-400">
-                실제 등록 상품을 불러오지 못했습니다. DB에 published listing이 있어야 이 데모에서 협상할 물건을 선택할 수 있습니다.
+              <div className="rounded-lg border border-line bg-surface-raised p-3 text-xs leading-5 text-ink-secondary">
+                실제 등록 상품을 불러오지 못했습니다. DB에 published listing이 있어야 이 데모에서
+                협상할 물건을 선택할 수 있습니다.
               </div>
             ) : (
-            <div className="space-y-2">
-              {visibleScoredListings.map(({ listing, score }) => {
-                const selected = listing.id === activeListing?.id;
-                const alignment = evaluateListingAlignment(memory, listing);
-                const intervention = alignmentIntervention(alignment);
-                const needsGateCheck = intervention.mode !== "none";
+              <div className="space-y-2">
+                {visibleScoredListings.map(({ listing, score }) => {
+                  const selected = listing.id === activeListing?.id;
+                  const alignment = evaluateListingAlignment(memory, listing);
+                  const intervention = alignmentIntervention(alignment);
+                  const needsGateCheck = intervention.mode !== "none";
 
-                return (
-                  <button
-                    key={listing.id}
-                    type="button"
-	                    onClick={() => selectListingForNegotiation(listing)}
-                    className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                      selected
-                        ? "border-cyan-400/50 bg-cyan-500/10"
-                        : "border-slate-800 bg-slate-900/70 hover:border-slate-600"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{listing.title}</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-400">
-                          {listing.category ? `${listing.category} · ` : ""}{listing.condition}
+                  return (
+                    <button
+                      key={listing.id}
+                      type="button"
+                      onClick={() => selectListingForNegotiation(listing)}
+                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                        selected
+                          ? "border-action-primary/50 bg-action-primary/10"
+                          : "border-line bg-surface-raised hover:border-line-strong"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-ink">{listing.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-ink-secondary">
+                            {listing.category ? `${listing.category} · ` : ""}
+                            {listing.condition}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-sm font-bold text-action-primary">
+                            {formatMinor(listing.askPriceMinor)}
+                          </p>
+                          <p className="text-[10px] text-ink-muted">fit {score}</p>
+                        </div>
+                      </div>
+                      {needsGateCheck && (
+                        <p
+                          className={`mt-2 rounded-md border px-2 py-1 text-[11px] leading-5 ${
+                            intervention.mode === "observe"
+                              ? "border-line bg-surface-sunken text-ink-secondary"
+                              : "border-warning/20 bg-warning-soft text-warning"
+                          }`}
+                        >
+                          {intervention.label}: {alignmentBadgeText(alignment)}
                         </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono text-sm font-bold text-cyan-200">{formatMinor(listing.askPriceMinor)}</p>
-                        <p className="text-[10px] text-slate-500">fit {score}</p>
-                      </div>
-                    </div>
-                    {needsGateCheck && (
-                      <p className={`mt-2 rounded-md border px-2 py-1 text-[11px] leading-5 ${
-                        intervention.mode === "observe"
-                          ? "border-slate-700 bg-slate-950/60 text-slate-400"
-                          : "border-amber-500/20 bg-amber-500/10 text-amber-100"
-                      }`}>
-                        {intervention.label}: {alignmentBadgeText(alignment)}
-                      </p>
-                    )}
-                    <p className="mt-2 text-[11px] text-slate-500">{listing.sellerNote}</p>
-                  </button>
-                );
-              })}
-            </div>
+                      )}
+                      <p className="mt-2 text-[11px] text-ink-muted">{listing.sellerNote}</p>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 
           {activeListing && (
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
-              Negotiation Brief
-            </p>
-            <ul className="space-y-1 text-xs text-slate-300">
-              {buildNegotiationBrief(memory, activeListing).map((item) => (
-                <li key={item}>• {item}</li>
-              ))}
-            </ul>
-            <p className="mt-3 rounded-lg border border-slate-700 bg-slate-950/60 p-2 text-xs text-slate-400">
-              {briefStatusText}
-            </p>
-            {activeAlignment.status !== "unknown" && (
-              <p
-                className={`mt-2 rounded-lg border p-2 text-xs ${
-                  activeAlignmentCleared
-                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
-                    : "border-amber-500/20 bg-amber-500/10 text-amber-100"
-                }`}
-              >
-                intent alignment: {activeAlignment.memoryIntent} → {activeAlignment.listingIntent}
-                {activeAlignment.status === "match" || alignmentConfirmed
-                  ? " · matched"
-                  : activeIntervention.mode === "observe"
-                    ? " · observed"
-                    : " · needs confirmation"}
+            <div className="rounded-xl border border-success/20 bg-success-soft p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-success">
+                Negotiation Brief
               </p>
-            )}
-            {pendingBudgetChange && (
-              <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-100">
-                예산 변경은 왼쪽 상담창에서 확인합니다.
+              <ul className="space-y-1 text-xs text-ink-secondary">
+                {buildNegotiationBrief(memory, activeListing).map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+              </ul>
+              <p className="mt-3 rounded-lg border border-line bg-surface-sunken p-2 text-xs text-ink-secondary">
+                {briefStatusText}
               </p>
-            )}
-            {activeNeedsInlineConfirmation && (
-              <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2">
-                <p className="text-xs leading-5 text-amber-100">
-                  {buildAgentAlignmentQuestion(selectedAgentId, activeAlignment)}
+              {activeAlignment.status !== "unknown" && (
+                <p
+                  className={`mt-2 rounded-lg border p-2 text-xs ${
+                    activeAlignmentCleared
+                      ? "border-success/20 bg-success-soft text-success"
+                      : "border-warning/20 bg-warning-soft text-warning"
+                  }`}
+                >
+                  intent alignment: {activeAlignment.memoryIntent} → {activeAlignment.listingIntent}
+                  {activeAlignment.status === "match" || alignmentConfirmed
+                    ? " · matched"
+                    : activeIntervention.mode === "observe"
+                      ? " · observed"
+                      : " · needs confirmation"}
                 </p>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={confirmSelectedListing}
-                    className="rounded-md bg-amber-300 px-2 py-1.5 text-xs font-semibold text-slate-950 transition-colors hover:bg-amber-200"
-                  >
-                    {quickActions.primary}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={selectBestMemoryMatchedListing}
-                    className="rounded-md border border-amber-300/30 px-2 py-1.5 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/10"
-                  >
-                    {quickActions.secondary}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={focusChatInput}
-                    className="rounded-md border border-slate-600 px-2 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:border-slate-400"
-                  >
-                    {quickActions.tertiary}
-                  </button>
+              )}
+              {pendingBudgetChange && (
+                <p className="mt-2 rounded-lg border border-warning/20 bg-warning-soft p-2 text-xs text-warning">
+                  예산 변경은 왼쪽 상담창에서 확인합니다.
+                </p>
+              )}
+              {activeNeedsInlineConfirmation && (
+                <div className="mt-2 rounded-lg border border-warning/20 bg-warning-soft p-2">
+                  <p className="text-xs leading-5 text-warning">
+                    {buildAgentAlignmentQuestion(selectedAgentId, activeAlignment)}
+                  </p>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={confirmSelectedListing}
+                      className="rounded-md bg-warning px-2 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:opacity-90"
+                    >
+                      {quickActions.primary}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={selectBestMemoryMatchedListing}
+                      className="rounded-md border border-warning/30 px-2 py-1.5 text-xs font-semibold text-warning transition-colors hover:bg-warning-soft"
+                    >
+                      {quickActions.secondary}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={focusChatInput}
+                      className="rounded-md border border-line px-2 py-1.5 text-xs font-semibold text-ink-secondary transition-colors hover:border-line-strong"
+                    >
+                      {quickActions.tertiary}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           )}
 
           <PresetTuningPanel

@@ -1,6 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
-import type { DisputeModuleWebhookOutboxDispatchResult } from "./dispute-module-webhook.service.js";
 import { assertDisputeModuleOutboundUrl } from "./dispute-module-outbound-url.service.js";
+import type { DisputeModuleWebhookOutboxDispatchResult } from "./dispute-module-webhook.service.js";
 
 export interface DisputeModuleWebhookDeadLetterAlertConfig {
   url: string;
@@ -26,19 +26,21 @@ export interface DisputeModuleWebhookDeadLetterAlertPayload {
   events: DisputeModuleWebhookOutboxDispatchResult["deadLetterEvents"];
 }
 
-export function resolveDisputeModuleWebhookDeadLetterAlertConfigFromEnv():
-  | DisputeModuleWebhookDeadLetterAlertConfig
-  | null {
+export function resolveDisputeModuleWebhookDeadLetterAlertConfigFromEnv(): DisputeModuleWebhookDeadLetterAlertConfig | null {
   const url = process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_URL;
   if (!url) return null;
   return {
     url,
     secret: process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_SECRET,
-    timeoutMs: Number.isFinite(Number(process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS))
+    timeoutMs: Number.isFinite(
+      Number(process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS),
+    )
       ? Number(process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS)
       : undefined,
-    allowInsecureHttp: process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP === "true",
-    allowPrivateNetwork: process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK === "true",
+    allowInsecureHttp:
+      process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP === "true",
+    allowPrivateNetwork:
+      process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK === "true",
   };
 }
 
@@ -84,9 +86,10 @@ export async function sendDisputeModuleWebhookDeadLetterAlert(
   if (result.deadLettered <= 0) {
     return { status: "skipped" };
   }
-  const config = options.config === undefined
-    ? resolveDisputeModuleWebhookDeadLetterAlertConfigFromEnv()
-    : options.config;
+  const config =
+    options.config === undefined
+      ? resolveDisputeModuleWebhookDeadLetterAlertConfigFromEnv()
+      : options.config;
   if (!config) {
     return { status: "skipped" };
   }

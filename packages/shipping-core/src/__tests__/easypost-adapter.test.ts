@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import type { ShipmentStatus } from "../types.js";
-import type { Shipment } from "../types.js";
+import { describe, expect, it, vi } from "vitest";
 import type { LabelRequest } from "../provider.js";
+import type { Shipment, ShipmentStatus } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Mock the @easypost/api module — we never want real API calls in tests
@@ -52,16 +51,12 @@ vi.mock("@easypost/api", () => {
           },
         }),
       };
-      constructor(_apiKey: string) {}
     },
   };
 });
 
-import { mapEasyPostStatus, EasyPostCarrierAdapter } from "../easypost-adapter.js";
-import {
-  parseEasyPostWebhookPayload,
-  verifyEasyPostWebhook,
-} from "../easypost-webhook.js";
+import { EasyPostCarrierAdapter, mapEasyPostStatus } from "../easypost-adapter.js";
+import { parseEasyPostWebhookPayload, verifyEasyPostWebhook } from "../easypost-webhook.js";
 
 // ===========================================================================
 // 1. mapEasyPostStatus
@@ -80,12 +75,9 @@ describe("mapEasyPostStatus", () => {
     ["error", "DELIVERY_EXCEPTION"],
   ];
 
-  it.each(cases)(
-    'maps EasyPost status "%s" → "%s"',
-    (easypostStatus, expectedCanonical) => {
-      expect(mapEasyPostStatus(easypostStatus)).toBe(expectedCanonical);
-    },
-  );
+  it.each(cases)('maps EasyPost status "%s" → "%s"', (easypostStatus, expectedCanonical) => {
+    expect(mapEasyPostStatus(easypostStatus)).toBe(expectedCanonical);
+  });
 
   it('falls back to "IN_TRANSIT" for an unrecognised status string', () => {
     expect(mapEasyPostStatus("some_future_status")).toBe("IN_TRANSIT");
@@ -408,12 +400,8 @@ describe("EasyPostCarrierAdapter label generation", () => {
   it("creates label with tracking number and label URL", async () => {
     const result = await adapter.createLabel(mockShipment, mockRequest);
     expect(result.tracking_number).toBe("EZMOCK123456");
-    expect(result.label_url).toBe(
-      "https://labels.example.com/EZMOCK123456.pdf",
-    );
-    expect(result.tracking_url).toBe(
-      "https://track.example.com/EZMOCK123456",
-    );
+    expect(result.label_url).toBe("https://labels.example.com/EZMOCK123456.pdf");
+    expect(result.tracking_url).toBe("https://track.example.com/EZMOCK123456");
   });
 
   it("selects cheapest rate by default", async () => {
@@ -439,8 +427,6 @@ describe("EasyPostCarrierAdapter label generation", () => {
   });
 
   it("throws when no request and no tracking number", async () => {
-    await expect(adapter.createLabel(mockShipment)).rejects.toThrow(
-      /no tracking_number/,
-    );
+    await expect(adapter.createLabel(mockShipment)).rejects.toThrow(/no tracking_number/);
   });
 });

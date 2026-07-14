@@ -19,17 +19,32 @@ export function getShipmentApvInvoiceRestorationStagingMaintenanceJobStatus() {
   };
 }
 
-export async function runShipmentApvInvoiceRestorationStagingMaintenance(db: Database, options: {
-  actorId?: string; limit?: number; storageRoot?: string; now?: Date;
-} = {}) {
-  const actorId = options.actorId ?? process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID ?? "";
+export async function runShipmentApvInvoiceRestorationStagingMaintenance(
+  db: Database,
+  options: {
+    actorId?: string;
+    limit?: number;
+    storageRoot?: string;
+    now?: Date;
+  } = {},
+) {
+  const actorId =
+    options.actorId ?? process.env.SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_ACTOR_ID ?? "";
   const status = getShipmentApvInvoiceRestorationStagingMaintenanceJobStatus();
-  if (!UUID_PATTERN.test(actorId)) return { status: "skipped" as const, reason: "not_configured" as const };
+  if (!UUID_PATTERN.test(actorId))
+    return { status: "skipped" as const, reason: "not_configured" as const };
   const maintenance = await maintainShipmentApvInvoiceRestorationStaging(db, {
-    mode: "apply", actorId, limit: options.limit ?? status.limit,
-    storageRoot: options.storageRoot, now: options.now,
+    mode: "apply",
+    actorId,
+    limit: options.limit ?? status.limit,
+    storageRoot: options.storageRoot,
+    now: options.now,
   });
-  if ("outcome" in maintenance) throw new Error("APV_INVOICE_RESTORATION_MAINTENANCE_INVALID_CONFIG");
-  return { status: maintenance.eligible === 0 ? "skipped" as const : "completed" as const,
-    reason: maintenance.eligible === 0 ? "healthy" as const : undefined, maintenance };
+  if ("outcome" in maintenance)
+    throw new Error("APV_INVOICE_RESTORATION_MAINTENANCE_INVALID_CONFIG");
+  return {
+    status: maintenance.eligible === 0 ? ("skipped" as const) : ("completed" as const),
+    reason: maintenance.eligible === 0 ? ("healthy" as const) : undefined,
+    maintenance,
+  };
 }

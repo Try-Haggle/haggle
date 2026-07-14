@@ -1,6 +1,5 @@
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvChaosFailureAlertPreview } from
-  "./shipment-apv-chaos-failure-alert-preview.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvChaosFailureAlertPreview } from "./shipment-apv-chaos-failure-alert-preview.service.js";
 
 export const SHIPMENT_APV_FAILURE_ALERT_APPROVAL_WINDOW_MINUTES = 15;
 
@@ -35,7 +34,10 @@ function publicRequest(row: ApprovalRequestRow, now: Date) {
     action: String(row.preview_action),
     severity: String(row.preview_severity),
     reasons: asReasons(row.preview_reasons),
-    status: expiresAt && Date.parse(expiresAt) > now.getTime() ? "PENDING" as const : "EXPIRED" as const,
+    status:
+      expiresAt && Date.parse(expiresAt) > now.getTime()
+        ? ("PENDING" as const)
+        : ("EXPIRED" as const),
     requestedAt: iso(row.created_at),
     expiresAt,
     replayed: row.inserted === false,
@@ -43,30 +45,40 @@ function publicRequest(row: ApprovalRequestRow, now: Date) {
   };
 }
 
-function requestMatches(row: ApprovalRequestRow, input: {
-  clientRequestId: string;
-  stateFingerprint: string;
-  requestedBy: string;
-  action: string;
-  severity: string;
-  reasons: string[];
-}) {
-  return String(row.client_request_id) === input.clientRequestId
-    && String(row.state_fingerprint) === input.stateFingerprint
-    && String(row.requested_by) === input.requestedBy
-    && String(row.preview_action) === input.action
-    && String(row.preview_severity) === input.severity
-    && JSON.stringify(asReasons(row.preview_reasons)) === JSON.stringify(input.reasons);
+function requestMatches(
+  row: ApprovalRequestRow,
+  input: {
+    clientRequestId: string;
+    stateFingerprint: string;
+    requestedBy: string;
+    action: string;
+    severity: string;
+    reasons: string[];
+  },
+) {
+  return (
+    String(row.client_request_id) === input.clientRequestId &&
+    String(row.state_fingerprint) === input.stateFingerprint &&
+    String(row.requested_by) === input.requestedBy &&
+    String(row.preview_action) === input.action &&
+    String(row.preview_severity) === input.severity &&
+    JSON.stringify(asReasons(row.preview_reasons)) === JSON.stringify(input.reasons)
+  );
 }
 
-function existingBindingMatches(row: ApprovalRequestRow, input: {
-  clientRequestId: string;
-  stateFingerprint: string;
-  requestedBy: string;
-}) {
-  return String(row.client_request_id) === input.clientRequestId
-    && String(row.state_fingerprint) === input.stateFingerprint
-    && String(row.requested_by) === input.requestedBy;
+function existingBindingMatches(
+  row: ApprovalRequestRow,
+  input: {
+    clientRequestId: string;
+    stateFingerprint: string;
+    requestedBy: string;
+  },
+) {
+  return (
+    String(row.client_request_id) === input.clientRequestId &&
+    String(row.state_fingerprint) === input.stateFingerprint &&
+    String(row.requested_by) === input.requestedBy
+  );
 }
 
 export async function createShipmentApvFailureAlertApprovalRequest(
@@ -93,9 +105,13 @@ export async function createShipmentApvFailureAlertApprovalRequest(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_STATE_CHANGED");
   }
   const createdAt = now.toISOString();
-  const expiresAt = new Date(now.getTime()
-    + SHIPMENT_APV_FAILURE_ALERT_APPROVAL_WINDOW_MINUTES * 60_000).toISOString();
-  const reasonParams = sql.join(preview.reasons.map((reason) => sql`${reason}`), sql`, `);
+  const expiresAt = new Date(
+    now.getTime() + SHIPMENT_APV_FAILURE_ALERT_APPROVAL_WINDOW_MINUTES * 60_000,
+  ).toISOString();
+  const reasonParams = sql.join(
+    preview.reasons.map((reason) => sql`${reason}`),
+    sql`, `,
+  );
   const rows = await db.execute(sql`WITH inserted AS (
       INSERT INTO shipment_apv_failure_alert_approval_requests
         (client_request_id, state_fingerprint, preview_action, preview_severity,
@@ -115,8 +131,14 @@ export async function createShipmentApvFailureAlertApprovalRequest(
     LIMIT 1`);
   const row = (rows as unknown as ApprovalRequestRow[])[0];
   if (!row) throw new Error("SHIPMENT_APV_FAILURE_ALERT_APPROVAL_REQUEST_UNAVAILABLE");
-  if (!requestMatches(row, { ...input, action: preview.action,
-    severity: preview.severity, reasons: preview.reasons })) {
+  if (
+    !requestMatches(row, {
+      ...input,
+      action: preview.action,
+      severity: preview.severity,
+      reasons: preview.reasons,
+    })
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_APPROVAL_REPLAY_CONFLICT");
   }
   return publicRequest(row, now);

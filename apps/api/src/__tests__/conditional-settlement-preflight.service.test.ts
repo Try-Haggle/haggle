@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
 import type { Address, Hex } from "viem";
+import { describe, expect, it, vi } from "vitest";
 import {
-  runConditionalSettlementPreflight,
-  validateConditionalSettlementPreflightConfig,
   type ConditionalSettlementPreflightClient,
   type ConditionalSettlementPreflightConfig,
+  runConditionalSettlementPreflight,
+  validateConditionalSettlementPreflightConfig,
 } from "../services/conditional-settlement-preflight.service.js";
 
 const config: ConditionalSettlementPreflightConfig = {
@@ -17,7 +17,9 @@ const config: ConditionalSettlementPreflightConfig = {
 const signer = "0x4444444444444444444444444444444444444444" as Address;
 const now = () => new Date("2026-07-12T17:00:00.000Z");
 
-function client(overrides: Partial<ConditionalSettlementPreflightClient> = {}): ConditionalSettlementPreflightClient {
+function client(
+  overrides: Partial<ConditionalSettlementPreflightClient> = {},
+): ConditionalSettlementPreflightClient {
   return {
     getChainId: vi.fn().mockResolvedValue(84532),
     getBytecode: vi.fn().mockResolvedValue("0x60016000"),
@@ -28,14 +30,19 @@ function client(overrides: Partial<ConditionalSettlementPreflightClient> = {}): 
 
 describe("conditional settlement live preflight", () => {
   it("validates production HTTPS and rejects zero credentials", () => {
-    expect(validateConditionalSettlementPreflightConfig({
-      network: "base-sepolia",
-      rpcUrl: "http://rpc.example.test",
-      settlementAddress: `0x${"00".repeat(20)}`,
-      usdcAddress: config.usdcAddress,
-      relayerPrivateKey: `0x${"00".repeat(32)}`,
-      requireHttps: true,
-    })).toEqual({ ok: false, blockedBy: ["base_rpc", "conditional_settlement_address", "relayer_signer"] });
+    expect(
+      validateConditionalSettlementPreflightConfig({
+        network: "base-sepolia",
+        rpcUrl: "http://rpc.example.test",
+        settlementAddress: `0x${"00".repeat(20)}`,
+        usdcAddress: config.usdcAddress,
+        relayerPrivateKey: `0x${"00".repeat(32)}`,
+        requireHttps: true,
+      }),
+    ).toEqual({
+      ok: false,
+      blockedBy: ["base_rpc", "conditional_settlement_address", "relayer_signer"],
+    });
   });
 
   it("reports ready only when chain, bytecode, signer, and asset allowlist all match", async () => {
@@ -80,7 +87,8 @@ describe("conditional settlement live preflight", () => {
 
   it("separates signer and allowlist mismatches without exposing values", async () => {
     const mismatchClient = client({
-      readContract: vi.fn()
+      readContract: vi
+        .fn()
         .mockResolvedValueOnce("0x5555555555555555555555555555555555555555")
         .mockResolvedValueOnce(false),
     });
@@ -97,11 +105,17 @@ describe("conditional settlement live preflight", () => {
 
   it("returns a bounded unavailable result for RPC failure", async () => {
     const result = await runConditionalSettlementPreflight(config, {
-      client: client({ getChainId: vi.fn().mockRejectedValue(new Error("secret upstream detail")) }),
+      client: client({
+        getChainId: vi.fn().mockRejectedValue(new Error("secret upstream detail")),
+      }),
       expectedSignerAddress: signer,
       now,
     });
-    expect(result).toMatchObject({ status: "unavailable", ready: false, error_code: "RPC_UNAVAILABLE" });
+    expect(result).toMatchObject({
+      status: "unavailable",
+      ready: false,
+      error_code: "RPC_UNAVAILABLE",
+    });
     expect(JSON.stringify(result)).not.toContain("secret upstream detail");
     expect(JSON.stringify(result)).not.toContain(config.rpcUrl);
   });

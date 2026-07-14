@@ -1,12 +1,14 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
+import type { ConditionalSettlementPreflightResult } from "./conditional-settlement-preflight.service.js";
 import { assertDisputeModuleOutboundUrl } from "./dispute-module-outbound-url.service.js";
 import { signWebhookClaimAlertPayload } from "./webhook-claim-alert.service.js";
-import type { ConditionalSettlementPreflightResult } from "./conditional-settlement-preflight.service.js";
 import { getWebhookEventClaimLeaseSeconds } from "./webhook-event-claim.service.js";
 
-export const CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SOURCE = "haggle-conditional-settlement-preflight-alert";
+export const CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SOURCE =
+  "haggle-conditional-settlement-preflight-alert";
 
-export interface ConditionalSettlementPreflightAlertSnapshot extends ConditionalSettlementPreflightResult {
+export interface ConditionalSettlementPreflightAlertSnapshot
+  extends ConditionalSettlementPreflightResult {
   probe_skipped: boolean;
   config_blocked_by: string[];
 }
@@ -28,7 +30,13 @@ export interface ConditionalSettlementPreflightAlertAssessment {
 
 const CLAIM_LEASE_SAFETY_MARGIN_MS = 5000;
 
-function strictBoundedInteger(raw: string | undefined, fallback: number, min: number, max: number, label: string): number {
+function strictBoundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+  label: string,
+): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < min || value > max) {
@@ -39,19 +47,34 @@ function strictBoundedInteger(raw: string | undefined, fallback: number, min: nu
 
 export function getConditionalSettlementPreflightAlertTimingPolicy(timeoutMs: number) {
   const claimLeaseSeconds = getWebhookEventClaimLeaseSeconds();
-  const maxSafeTimeoutMs = Math.min(30_000, claimLeaseSeconds * 1000 - CLAIM_LEASE_SAFETY_MARGIN_MS);
-  return { timeoutMs, claimLeaseSeconds, maxSafeTimeoutMs, safetyMarginMs: CLAIM_LEASE_SAFETY_MARGIN_MS,
-    timingSafe: timeoutMs <= maxSafeTimeoutMs };
+  const maxSafeTimeoutMs = Math.min(
+    30_000,
+    claimLeaseSeconds * 1000 - CLAIM_LEASE_SAFETY_MARGIN_MS,
+  );
+  return {
+    timeoutMs,
+    claimLeaseSeconds,
+    maxSafeTimeoutMs,
+    safetyMarginMs: CLAIM_LEASE_SAFETY_MARGIN_MS,
+    timingSafe: timeoutMs <= maxSafeTimeoutMs,
+  };
 }
 
 export function assertConditionalSettlementPreflightAlertTimingSafe(timeoutMs: number): void {
   const timing = getConditionalSettlementPreflightAlertTimingPolicy(timeoutMs);
   if (!timing.timingSafe) {
-    throw new Error(`conditional settlement preflight alert timeout must be <= ${timing.maxSafeTimeoutMs}ms for the ${timing.claimLeaseSeconds}s claim lease`);
+    throw new Error(
+      `conditional settlement preflight alert timeout must be <= ${timing.maxSafeTimeoutMs}ms for the ${timing.claimLeaseSeconds}s claim lease`,
+    );
   }
 }
 
-function boundedInteger(raw: string | undefined, fallback: number, min: number, max: number): number {
+function boundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const value = Number(raw);
   return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
 }
@@ -59,19 +82,30 @@ function boundedInteger(raw: string | undefined, fallback: number, min: number, 
 export function getConditionalSettlementPreflightAlertPolicyStatus() {
   const url = process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL?.trim();
   const secret = process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SECRET ?? "";
-  let configurationState: "not_configured" | "partial" | "valid" | "invalid" = !url && !secret
-    ? "not_configured"
-    : !url || secret.length < 16 ? "partial" : "valid";
-  const allowInsecureHttp = process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP === "true";
-  const allowPrivateNetwork = process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK === "true";
+  let configurationState: "not_configured" | "partial" | "valid" | "invalid" =
+    !url && !secret ? "not_configured" : !url || secret.length < 16 ? "partial" : "valid";
+  const allowInsecureHttp =
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP === "true";
+  const allowPrivateNetwork =
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK === "true";
   let timeoutInputValid = true;
   let timeoutMs: number;
   try {
-    timeoutMs = strictBoundedInteger(process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS, 5000, 250, 30_000,
-      "conditional settlement preflight alert timeout");
+    timeoutMs = strictBoundedInteger(
+      process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS,
+      5000,
+      250,
+      30_000,
+      "conditional settlement preflight alert timeout",
+    );
   } catch {
     timeoutInputValid = false;
-    timeoutMs = boundedInteger(process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS, 5000, 250, 30_000);
+    timeoutMs = boundedInteger(
+      process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS,
+      5000,
+      250,
+      30_000,
+    );
   }
   const timing = getConditionalSettlementPreflightAlertTimingPolicy(timeoutMs);
   const timingSafe = timeoutInputValid && timing.timingSafe;
@@ -91,7 +125,12 @@ export function getConditionalSettlementPreflightAlertPolicyStatus() {
     configured: configurationState === "valid",
     configurationState,
     jobEnabled: process.env.ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB === "true",
-    cooldownMinutes: boundedInteger(process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_COOLDOWN_MINUTES, 15, 1, 1440),
+    cooldownMinutes: boundedInteger(
+      process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_COOLDOWN_MINUTES,
+      15,
+      1,
+      1440,
+    ),
     ...timing,
     timingSafe,
   };
@@ -101,17 +140,30 @@ export function resolveConditionalSettlementPreflightAlertConfigFromEnv(): Condi
   const url = process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_URL?.trim();
   if (!url) return null;
   const secret = process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SECRET ?? "";
-  if (secret.length < 16) throw new Error("conditional settlement preflight alert secret must be at least 16 characters");
-  const timeoutMs = strictBoundedInteger(process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS, 5000, 250, 30_000,
-    "conditional settlement preflight alert timeout");
+  if (secret.length < 16)
+    throw new Error("conditional settlement preflight alert secret must be at least 16 characters");
+  const timeoutMs = strictBoundedInteger(
+    process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_TIMEOUT_MS,
+    5000,
+    250,
+    30_000,
+    "conditional settlement preflight alert timeout",
+  );
   assertConditionalSettlementPreflightAlertTimingSafe(timeoutMs);
   const config = {
     url,
     secret,
     timeoutMs,
-    cooldownMinutes: boundedInteger(process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_COOLDOWN_MINUTES, 15, 1, 1440),
-    allowInsecureHttp: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP === "true",
-    allowPrivateNetwork: process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK === "true",
+    cooldownMinutes: boundedInteger(
+      process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_COOLDOWN_MINUTES,
+      15,
+      1,
+      1440,
+    ),
+    allowInsecureHttp:
+      process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_INSECURE_HTTP === "true",
+    allowPrivateNetwork:
+      process.env.CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_ALLOW_PRIVATE_NETWORK === "true",
   };
   assertDisputeModuleOutboundUrl(config.url, {
     label: "conditional settlement preflight alert",
@@ -130,11 +182,19 @@ export function evaluateConditionalSettlementPreflightAlert(
     ...(snapshot.error_code === "RPC_TIMEOUT" ? ["rpc_timeout"] : []),
     ...(snapshot.error_code === "RPC_UNAVAILABLE" ? ["rpc_unavailable"] : []),
     ...(evaluateLiveChecks && !snapshot.checks.rpc_reachable ? ["rpc_unreachable"] : []),
-    ...(evaluateLiveChecks && snapshot.checks.rpc_reachable && !snapshot.checks.chain_id_match ? ["chain_id_mismatch"] : []),
-    ...(evaluateLiveChecks && !snapshot.checks.settlement_bytecode ? ["settlement_bytecode_missing"] : []),
+    ...(evaluateLiveChecks && snapshot.checks.rpc_reachable && !snapshot.checks.chain_id_match
+      ? ["chain_id_mismatch"]
+      : []),
+    ...(evaluateLiveChecks && !snapshot.checks.settlement_bytecode
+      ? ["settlement_bytecode_missing"]
+      : []),
     ...(evaluateLiveChecks && !snapshot.checks.usdc_bytecode ? ["usdc_bytecode_missing"] : []),
-    ...(evaluateLiveChecks && snapshot.checks.settlement_bytecode && !snapshot.checks.signer_matches ? ["signer_mismatch"] : []),
-    ...(evaluateLiveChecks && snapshot.checks.settlement_bytecode && !snapshot.checks.usdc_allowed ? ["usdc_not_allowed"] : []),
+    ...(evaluateLiveChecks && snapshot.checks.settlement_bytecode && !snapshot.checks.signer_matches
+      ? ["signer_mismatch"]
+      : []),
+    ...(evaluateLiveChecks && snapshot.checks.settlement_bytecode && !snapshot.checks.usdc_allowed
+      ? ["usdc_not_allowed"]
+      : []),
   ];
   const uniqueReasons = [...new Set(reasons)].sort();
   return {
@@ -148,13 +208,15 @@ export async function findLatestDeliveredConditionalSettlementPreflightIncident(
   db: Database,
   source = CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_SOURCE,
 ) {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT idempotency_key AS event_id, completed_at
       FROM webhook_idempotency
      WHERE source = ${source} AND status = 'COMPLETED' AND left(idempotency_key, 7) = 'health_'
      ORDER BY completed_at DESC, id DESC LIMIT 1
-  `) as unknown as Array<{ event_id: string; completed_at: Date | string }>;
-  return rows[0] ? { eventId: rows[0].event_id, completedAt: new Date(rows[0].completed_at).toISOString() } : null;
+  `)) as unknown as Array<{ event_id: string; completed_at: Date | string }>;
+  return rows[0]
+    ? { eventId: rows[0].event_id, completedAt: new Date(rows[0].completed_at).toISOString() }
+    : null;
 }
 
 export async function getConditionalSettlementPreflightAlertDeliveryState(
@@ -164,12 +226,15 @@ export async function getConditionalSettlementPreflightAlertDeliveryState(
   if (typeof (db as { execute?: unknown }).execute !== "function") {
     return { incidentOpen: false, lastIncidentAlertAt: null, lastRecoveryAlertAt: null };
   }
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT max(completed_at) FILTER (WHERE left(idempotency_key, 7) = 'health_') AS last_incident_at,
            max(completed_at) FILTER (WHERE left(idempotency_key, 9) = 'recovery_') AS last_recovery_at
       FROM webhook_idempotency
      WHERE source = ${source} AND status = 'COMPLETED'
-  `) as unknown as Array<{ last_incident_at: Date | string | null; last_recovery_at: Date | string | null }>;
+  `)) as unknown as Array<{
+    last_incident_at: Date | string | null;
+    last_recovery_at: Date | string | null;
+  }>;
   const incident = rows[0]?.last_incident_at ? new Date(rows[0].last_incident_at) : null;
   const recovery = rows[0]?.last_recovery_at ? new Date(rows[0].last_recovery_at) : null;
   return {
@@ -220,13 +285,23 @@ export async function sendConditionalSettlementPreflightAlert(
         "x-haggle-alert-type": "conditional_settlement_preflight.health",
         "x-haggle-alert-delivery-id": options.deliveryId,
         "x-haggle-alert-timestamp": timestamp,
-        "x-haggle-alert-signature": signWebhookClaimAlertPayload(options.config.secret, timestamp, rawBody),
+        "x-haggle-alert-signature": signWebhookClaimAlertPayload(
+          options.config.secret,
+          timestamp,
+          rawBody,
+        ),
       },
       body: rawBody,
     });
-    return { status: response.ok ? "delivered" as const : "failed" as const, httpStatus: response.status };
+    return {
+      status: response.ok ? ("delivered" as const) : ("failed" as const),
+      httpStatus: response.status,
+    };
   } catch (error) {
-    return { status: "failed" as const, error: error instanceof Error ? error.message : String(error) };
+    return {
+      status: "failed" as const,
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     clearTimeout(timeout);
   }

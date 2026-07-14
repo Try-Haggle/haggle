@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useCallback, useEffect, useState } from "react";
+import { useAccount } from "wagmi";
+import { Alert, Badge, Button, Checkbox, Select } from "@/components/ui";
 
 interface Wallet {
   id: string;
@@ -99,102 +100,90 @@ export function WalletSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Wallet Settings</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-base font-semibold text-ink">Wallet Settings</h2>
+        <p className="text-sm text-ink-muted mt-1">
           Connect and manage your crypto wallets for USDC payments.
         </p>
       </div>
 
       {/* Connect wallet */}
-      <div className="border border-gray-200 rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-medium text-gray-700">Connect Wallet</h3>
+      <div className="border border-line rounded-lg p-4 space-y-4">
+        <h3 className="text-sm font-medium text-ink-secondary">Connect Wallet</h3>
         <ConnectButton />
 
         {isConnected && address && (
-          <div className="space-y-3 pt-2 border-t border-gray-100">
-            <div className="bg-gray-50 rounded p-3">
-              <p className="text-xs text-gray-500">Connected address</p>
+          <div className="space-y-3 pt-2 border-t border-line-subtle">
+            <div className="bg-surface-sunken rounded p-3">
+              <p className="text-xs text-ink-muted">Connected address</p>
               <p className="font-mono text-sm">{address}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="wallet-network"
+                  className="block text-xs font-medium text-ink-secondary mb-1"
+                >
                   Network
                 </label>
-                <select
+                <Select
+                  id="wallet-network"
                   value={network}
                   onChange={(e) => setNetwork(e.target.value as "base" | "base-sepolia")}
-                  className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white"
                 >
                   <option value="base">Base (Mainnet)</option>
                   <option value="base-sepolia">Base Sepolia (Testnet)</option>
-                </select>
+                </Select>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="wallet-role"
+                  className="block text-xs font-medium text-ink-secondary mb-1"
+                >
                   Role
                 </label>
-                <select
+                <Select
+                  id="wallet-role"
                   value={role}
                   onChange={(e) => setRole(e.target.value as "buyer" | "seller" | "both")}
-                  className="w-full text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-white"
                 >
                   <option value="both">Buyer & Seller</option>
                   <option value="buyer">Buyer only</option>
                   <option value="seller">Seller only</option>
-                </select>
+                </Select>
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={isPrimary}
-                onChange={(e) => setIsPrimary(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              Set as primary wallet
-            </label>
+            <Checkbox
+              checked={isPrimary}
+              onChange={(e) => setIsPrimary(e.target.checked)}
+              label="Set as primary wallet"
+            />
 
-            <button
-              onClick={handleSaveWallet}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
-            >
+            <Button fullWidth onClick={handleSaveWallet} loading={isLoading}>
               {isLoading ? "Saving..." : "Save Wallet"}
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {/* Messages */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-      {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-          <p className="text-sm text-green-600">{success}</p>
-        </div>
-      )}
+      {error && <Alert tone="error">{error}</Alert>}
+      {success && <Alert tone="success">{success}</Alert>}
 
       {/* Saved wallets */}
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-gray-700">
-          Saved Wallets ({wallets.length})
-        </h3>
+        <h3 className="text-sm font-medium text-ink-secondary">Saved Wallets ({wallets.length})</h3>
 
         {wallets.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">No wallets saved yet</p>
+          <p className="text-sm text-ink-muted py-4 text-center">No wallets saved yet</p>
         ) : (
           <div className="space-y-2">
             {wallets.map((wallet) => (
               <div
                 key={wallet.id}
-                className="flex items-center justify-between border border-gray-200 rounded-lg p-3"
+                className="flex items-center justify-between border border-line rounded-lg p-3"
               >
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2">
@@ -202,19 +191,20 @@ export function WalletSettings() {
                       {wallet.wallet_address.slice(0, 6)}...{wallet.wallet_address.slice(-4)}
                     </span>
                     {wallet.is_primary && (
-                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
+                      <Badge tone="info" size="sm">
                         Primary
-                      </span>
+                      </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-ink-muted">
                     {wallet.network} · {wallet.role}
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => handleDeleteWallet(wallet.id)}
                   disabled={isLoading}
-                  className="ml-3 text-xs text-red-500 hover:text-red-700 disabled:opacity-50 shrink-0"
+                  className="ml-3 shrink-0 text-error text-xs hover:text-error/80 disabled:opacity-50"
                 >
                   Remove
                 </button>

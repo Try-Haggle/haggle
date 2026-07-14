@@ -1,5 +1,6 @@
-import type { FastifyInstance } from "fastify";
+// biome-ignore-all lint/suspicious/noImplicitAnyLet: Guarded assignments retain ticket service result types.
 import type { Database } from "@haggle/db";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
 import { issueWebSocketAuthTicket } from "../services/websocket-auth-ticket.service.js";

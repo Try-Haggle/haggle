@@ -1,30 +1,11 @@
-import sharp from "sharp";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { assessImageSimilarity, computeImageSimilarityFingerprint } from "./dispute-image-similarity.service.js";
-import {
-  expireDisputeSimilarityReviews,
-  getDisputeSimilarityReviewExpiryEventById,
-  listDisputeSimilarityReviewExpiryEvents,
-} from "./dispute-similarity-review-expiry.service.js";
-import {
-  createSignedDisputeSimilarityReviewAuditExport,
-  verifySignedDisputeSimilarityReviewAuditExport,
-} from "./dispute-similarity-review-audit-export.service.js";
-import {
-  dispatchDisputeSimilarityReviewAuditArchives,
-  enqueueDisputeSimilarityReviewAuditArchive,
-  getDisputeSimilarityReviewAuditArchiveHealth,
-  listDisputeSimilarityReviewAuditArchiveFailures,
-  requeueDisputeSimilarityReviewAuditArchive,
-} from "./dispute-similarity-review-audit-archive.service.js";
+import { type Database, sql } from "@haggle/db";
+import sharp from "sharp";
 import { runDisputeSimilarityReviewAuditArchiveAlert } from "../jobs/dispute-similarity-review-audit-archive-alert.js";
-import { getDisputeSimilarityReviewAuditArchiveAlertDeliveryState } from "./dispute-similarity-review-audit-archive-alert.service.js";
 import {
-  claimVerifiedDisputeSimilarityArchiveAlert,
-  verifyDisputeSimilarityReviewAuditArchiveAlert,
-} from "./dispute-similarity-review-audit-archive-alert-verifier.service.js";
-import { completeWebhookEvent } from "./webhook-event-claim.service.js";
+  assessImageSimilarity,
+  computeImageSimilarityFingerprint,
+} from "./dispute-image-similarity.service.js";
 import {
   decideDisputeEvidenceSimilarityReview,
   findNearestCommittedCameraEvidence,
@@ -32,6 +13,28 @@ import {
   listDisputeEvidenceSimilarityReviews,
   updateDisputeEvidenceUploadSimilarity,
 } from "./dispute-record.service.js";
+import {
+  dispatchDisputeSimilarityReviewAuditArchives,
+  enqueueDisputeSimilarityReviewAuditArchive,
+  getDisputeSimilarityReviewAuditArchiveHealth,
+  listDisputeSimilarityReviewAuditArchiveFailures,
+  requeueDisputeSimilarityReviewAuditArchive,
+} from "./dispute-similarity-review-audit-archive.service.js";
+import { getDisputeSimilarityReviewAuditArchiveAlertDeliveryState } from "./dispute-similarity-review-audit-archive-alert.service.js";
+import {
+  claimVerifiedDisputeSimilarityArchiveAlert,
+  verifyDisputeSimilarityReviewAuditArchiveAlert,
+} from "./dispute-similarity-review-audit-archive-alert-verifier.service.js";
+import {
+  createSignedDisputeSimilarityReviewAuditExport,
+  verifySignedDisputeSimilarityReviewAuditExport,
+} from "./dispute-similarity-review-audit-export.service.js";
+import {
+  expireDisputeSimilarityReviews,
+  getDisputeSimilarityReviewExpiryEventById,
+  listDisputeSimilarityReviewExpiryEvents,
+} from "./dispute-similarity-review-expiry.service.js";
+import { completeWebhookEvent } from "./webhook-event-claim.service.js";
 
 async function baseFixture(width = 96, height = 64, quality = 95) {
   const channels = 3;
@@ -67,21 +70,45 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
   const original = await computeImageSimilarityFingerprint(originalBytes);
   const variants = [
     { key: "recompressed", expectedReview: true, bytes: await baseFixture(192, 128, 45) },
-    { key: "cropped", expectedReview: true, bytes: await sharp(originalBytes).extract({ left: 6, top: 4, width: 84, height: 56 }).resize(96, 64).jpeg({ quality: 70 }).toBuffer() },
-    { key: "recolored", expectedReview: true, bytes: await sharp(originalBytes).tint({ r: 30, g: 220, b: 180 }).jpeg({ quality: 75 }).toBuffer() },
+    {
+      key: "cropped",
+      expectedReview: true,
+      bytes: await sharp(originalBytes)
+        .extract({ left: 6, top: 4, width: 84, height: 56 })
+        .resize(96, 64)
+        .jpeg({ quality: 70 })
+        .toBuffer(),
+    },
+    {
+      key: "recolored",
+      expectedReview: true,
+      bytes: await sharp(originalBytes)
+        .tint({ r: 30, g: 220, b: 180 })
+        .jpeg({ quality: 75 })
+        .toBuffer(),
+    },
     { key: "different_structure", expectedReview: false, bytes: await distinctFixture() },
   ];
-  const cases = await Promise.all(variants.map(async (variant) => {
-    const assessment = assessImageSimilarity(await computeImageSimilarityFingerprint(variant.bytes), original);
-    return {
-      key: variant.key,
-      expected_review: variant.expectedReview,
-      actual_review: assessment.reviewRequired,
-      pass: assessment.reviewRequired === variant.expectedReview,
-      distances: { dhash: assessment.dHashDistance, ahash: assessment.aHashDistance, color: assessment.colorDistance },
-      matched_signals: assessment.matchedSignals,
-    };
-  }));
+  const cases = await Promise.all(
+    variants.map(async (variant) => {
+      const assessment = assessImageSimilarity(
+        await computeImageSimilarityFingerprint(variant.bytes),
+        original,
+      );
+      return {
+        key: variant.key,
+        expected_review: variant.expectedReview,
+        actual_review: assessment.reviewRequired,
+        pass: assessment.reviewRequired === variant.expectedReview,
+        distances: {
+          dhash: assessment.dHashDistance,
+          ahash: assessment.aHashDistance,
+          color: assessment.colorDistance,
+        },
+        matched_signals: assessment.matchedSignals,
+      };
+    }),
+  );
   let persistence: {
     pass: boolean;
     nearest_review: boolean;
@@ -136,12 +163,23 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
     const alertClaimSource = `haggle-similarity-archive-alert-fixture-${randomUUID()}`;
     const alertReceiverSource = `haggle-similarity-archive-alert-receiver-fixture-${randomUUID()}`;
     const alertSecret = "cycle59-similarity-alert-fixture-secret";
-    const capturedAlerts: Array<{ state: string; severity: string; verified: boolean; replayBlocked: boolean }> = [];
+    const capturedAlerts: Array<{
+      state: string;
+      severity: string;
+      verified: boolean;
+      replayBlocked: boolean;
+    }> = [];
     const alertConfig = {
-      url: "http://127.0.0.1:4177/mock-ops-alert", secret: alertSecret, timeoutMs: 1000,
-      cooldownMinutes: 15, staleThreshold: 1, retryReadyThreshold: 5,
-      deadLetterThreshold: 1, overdueUnfinishedThreshold: 1,
-      allowInsecureHttp: true, allowPrivateNetwork: true,
+      url: "http://127.0.0.1:4177/mock-ops-alert",
+      secret: alertSecret,
+      timeoutMs: 1000,
+      cooldownMinutes: 15,
+      staleThreshold: 1,
+      retryReadyThreshold: 5,
+      deadLetterThreshold: 1,
+      overdueUnfinishedThreshold: 1,
+      allowInsecureHttp: true,
+      allowPrivateNetwork: true,
     };
     const alertFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
@@ -159,14 +197,24 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
       let accepted = false;
       let replayBlocked = false;
       if (verification.ok) {
-        const receiverClaim = await claimVerifiedDisputeSimilarityArchiveAlert(db, verification, alertReceiverSource);
+        const receiverClaim = await claimVerifiedDisputeSimilarityArchiveAlert(
+          db,
+          verification,
+          alertReceiverSource,
+        );
         accepted = receiverClaim.outcome === "accepted";
-        if (receiverClaim.outcome === "accepted") await completeWebhookEvent(db, receiverClaim.claim, 200);
-        const replay = await claimVerifiedDisputeSimilarityArchiveAlert(db, verification, alertReceiverSource);
+        if (receiverClaim.outcome === "accepted")
+          await completeWebhookEvent(db, receiverClaim.claim, 200);
+        const replay = await claimVerifiedDisputeSimilarityArchiveAlert(
+          db,
+          verification,
+          alertReceiverSource,
+        );
         replayBlocked = replay.outcome === "replay_or_in_progress";
       }
       capturedAlerts.push({
-        state: String(parsed.state ?? ""), severity: String(parsed.severity ?? ""),
+        state: String(parsed.state ?? ""),
+        severity: String(parsed.severity ?? ""),
         verified: verification.ok && accepted,
         replayBlocked,
       });
@@ -174,7 +222,10 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
         status: verification.ok && accepted && replayBlocked ? 200 : 401,
       });
     }) as typeof fetch;
-    const healthBaseline = await getDisputeEvidenceSimilarityReviewHealth(db, { slaMinutes: 15, dueSoonMinutes: 60 });
+    const healthBaseline = await getDisputeEvidenceSimilarityReviewHealth(db, {
+      slaMinutes: 15,
+      dueSoonMinutes: 60,
+    });
     let cleanup = 0;
     let archiveRecordId: string | null = null;
     try {
@@ -206,26 +257,44 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
           distance: nearest.assessment.dHashDistance,
           signals: {
             candidate_upload_id: nearest.uploadId,
-            distances: { dhash: nearest.assessment.dHashDistance, ahash: nearest.assessment.aHashDistance, color: nearest.assessment.colorDistance },
+            distances: {
+              dhash: nearest.assessment.dHashDistance,
+              ahash: nearest.assessment.aHashDistance,
+              color: nearest.assessment.colorDistance,
+            },
             matched_signals: nearest.assessment.matchedSignals,
           },
         });
       }
-      const stored = await db.execute(sql`
+      const stored = (await db.execute(sql`
         SELECT average_hash AS "averageHash", color_histogram AS "colorHistogram",
                similarity_signals AS "similaritySignals"
           FROM dispute_evidence_uploads WHERE id = ${targetId}::uuid
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       const reviewQueue = await listDisputeEvidenceSimilarityReviews(db, { limit: 100 });
-      const queueDetected = reviewQueue.items.some((item) => item.uploadId === targetId && item.disputeId === disputeId);
-      const referenceLinked = reviewQueue.items.some((item) => item.uploadId === targetId
-        && item.matchedUploadId === candidateId && item.matchedStoragePath === `cycle48/${candidateId}.jpg`);
-      await db.execute(sql`UPDATE dispute_evidence_uploads SET created_at = now() - interval '16 minutes' WHERE id = ${targetId}::uuid`);
-      const healthBefore = await getDisputeEvidenceSimilarityReviewHealth(db, { slaMinutes: 15, dueSoonMinutes: 60 });
-      const healthAttention = healthBefore.pendingReviews === healthBaseline.pendingReviews + 1
-        && healthBefore.overdueSla === healthBaseline.overdueSla + 1;
+      const queueDetected = reviewQueue.items.some(
+        (item) => item.uploadId === targetId && item.disputeId === disputeId,
+      );
+      const referenceLinked = reviewQueue.items.some(
+        (item) =>
+          item.uploadId === targetId &&
+          item.matchedUploadId === candidateId &&
+          item.matchedStoragePath === `cycle48/${candidateId}.jpg`,
+      );
+      await db.execute(
+        sql`UPDATE dispute_evidence_uploads SET created_at = now() - interval '16 minutes' WHERE id = ${targetId}::uuid`,
+      );
+      const healthBefore = await getDisputeEvidenceSimilarityReviewHealth(db, {
+        slaMinutes: 15,
+        dueSoonMinutes: 60,
+      });
+      const healthAttention =
+        healthBefore.pendingReviews === healthBaseline.pendingReviews + 1 &&
+        healthBefore.overdueSla === healthBaseline.overdueSla + 1;
       const reviewerId = randomUUID();
-      await db.execute(sql`UPDATE dispute_evidence_uploads SET expires_at = now() - interval '1 second' WHERE id = ${targetId}::uuid`);
+      await db.execute(
+        sql`UPDATE dispute_evidence_uploads SET expires_at = now() - interval '1 second' WHERE id = ${targetId}::uuid`,
+      );
       const expiredReview = await decideDisputeEvidenceSimilarityReview(db, {
         disputeId,
         uploadId: targetId,
@@ -234,41 +303,59 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
         note: "Cycle 49 expired evidence guard fixture",
       });
       const expiredReviewBlocked = expiredReview.outcome === "not_pending";
-      await db.execute(sql`UPDATE dispute_evidence_uploads SET expires_at = now() + interval '1 hour' WHERE id = ${targetId}::uuid`);
-      const reviewResults = await Promise.all(Array.from({ length: 10 }, () => decideDisputeEvidenceSimilarityReview(db, {
-        disputeId,
-        uploadId: targetId,
-        reviewerId,
-        decision: "approve",
-        note: "Cycle 49 concurrent similarity review fixture",
-      })));
+      await db.execute(
+        sql`UPDATE dispute_evidence_uploads SET expires_at = now() + interval '1 hour' WHERE id = ${targetId}::uuid`,
+      );
+      const reviewResults = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          decideDisputeEvidenceSimilarityReview(db, {
+            disputeId,
+            uploadId: targetId,
+            reviewerId,
+            decision: "approve",
+            note: "Cycle 49 concurrent similarity review fixture",
+          }),
+        ),
+      );
       const reviewWinners = reviewResults.filter((result) => result.outcome === "approved").length;
-      const reviewBlocked = reviewResults.filter((result) => result.outcome === "not_pending").length;
-      const auditRows = await db.execute(sql`
+      const reviewBlocked = reviewResults.filter(
+        (result) => result.outcome === "not_pending",
+      ).length;
+      const auditRows = (await db.execute(sql`
         SELECT count(*)::int AS count FROM admin_action_log
          WHERE action_type = 'dispute.evidence_similarity_review'
            AND target_type = 'dispute_evidence_upload' AND target_id = ${targetId}
-      `) as unknown as Array<{ count: number }>;
+      `)) as unknown as Array<{ count: number }>;
       const reviewAuditCount = Number(auditRows[0]?.count ?? 0);
       const queueAfterDecision = await listDisputeEvidenceSimilarityReviews(db, { limit: 100 });
       const queueCleared = !queueAfterDecision.items.some((item) => item.uploadId === targetId);
-      const expiryResults = await Promise.all(Array.from({ length: 10 }, () => expireDisputeSimilarityReviews(db, { batchSize: 50 })));
+      const expiryResults = await Promise.all(
+        Array.from({ length: 10 }, () => expireDisputeSimilarityReviews(db, { batchSize: 50 })),
+      );
       const expiryWinners = expiryResults.reduce((sum, result) => sum + result.expired, 0);
-      const expiryEvents = await db.execute(sql`
+      const expiryEvents = (await db.execute(sql`
         SELECT id, actor_id AS "actorId", event_hash AS "eventHash" FROM dispute_evidence_similarity_review_events
          WHERE upload_id = ${expiryTargetId}::uuid AND event_type = 'AUTO_EXPIRED'
-      `) as unknown as Array<{ id: string; actorId: string | null; eventHash: string | null }>;
-      const expiredUpload = await db.execute(sql`
+      `)) as unknown as Array<{ id: string; actorId: string | null; eventHash: string | null }>;
+      const expiredUpload = (await db.execute(sql`
         SELECT status, similarity_status AS "similarityStatus", scan_detail AS "scanDetail"
           FROM dispute_evidence_uploads WHERE id = ${expiryTargetId}::uuid
-      `) as unknown as Array<{ status: string; similarityStatus: string; scanDetail: string }>;
+      `)) as unknown as Array<{ status: string; similarityStatus: string; scanDetail: string }>;
       const expiryEventCount = expiryEvents.length;
       const systemActorNull = expiryEvents.length === 1 && expiryEvents[0]?.actorId === null;
       const expiryHistory = await listDisputeSimilarityReviewExpiryEvents(db, { limit: 100 });
-      const expiryHistoryDetected = expiryHistory.items.some((item) => item.uploadId === expiryTargetId
-        && item.disputeId === disputeId && item.actorKind === "system" && item.reason === "REVIEW_WINDOW_EXPIRED");
-      const expiryHistoryItem = expiryHistory.items.find((item) => item.uploadId === expiryTargetId);
-      const expiryHashValid = expiryHistoryItem?.integrity === "valid" && Boolean(expiryHistoryItem.eventHash);
+      const expiryHistoryDetected = expiryHistory.items.some(
+        (item) =>
+          item.uploadId === expiryTargetId &&
+          item.disputeId === disputeId &&
+          item.actorKind === "system" &&
+          item.reason === "REVIEW_WINDOW_EXPIRED",
+      );
+      const expiryHistoryItem = expiryHistory.items.find(
+        (item) => item.uploadId === expiryTargetId,
+      );
+      const expiryHashValid =
+        expiryHistoryItem?.integrity === "valid" && Boolean(expiryHistoryItem.eventHash);
       let expiryExportValid = false;
       const { privateKey: expiryAuditPrivateKey } = generateKeyPairSync("ed25519");
       if (expiryHistoryItem?.eventHash) {
@@ -286,7 +373,8 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
          WHERE id = ${expiryEvents[0]?.id ?? null}::uuid
       `);
       const tamperedEvent = expiryEvents[0]?.id
-        ? await getDisputeSimilarityReviewExpiryEventById(db, expiryEvents[0].id) : null;
+        ? await getDisputeSimilarityReviewExpiryEventById(db, expiryEvents[0].id)
+        : null;
       const expiryTamperDetected = tamperedEvent?.integrity === "invalid";
       await db.execute(sql`
         UPDATE dispute_evidence_similarity_review_events
@@ -312,146 +400,201 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
       let alertIncidentClosed = false;
       if (expiryEvents[0]?.id) {
         const firstArchive = await enqueueDisputeSimilarityReviewAuditArchive(db, {
-          eventId: expiryEvents[0].id, privateKey: expiryAuditPrivateKey,
+          eventId: expiryEvents[0].id,
+          privateKey: expiryAuditPrivateKey,
         });
         archiveRecordId = firstArchive.archive.id;
         const duplicateArchive = await enqueueDisputeSimilarityReviewAuditArchive(db, {
-          eventId: expiryEvents[0].id, privateKey: expiryAuditPrivateKey,
+          eventId: expiryEvents[0].id,
+          privateKey: expiryAuditPrivateKey,
         });
         archiveEnqueued = firstArchive.outcome === "enqueued";
-        archiveDuplicate = duplicateArchive.outcome === "duplicate"
-          && duplicateArchive.archive.id === firstArchive.archive.id
-          && duplicateArchive.archive.payloadSha256 === firstArchive.archive.payloadSha256;
-        const mismatchFetch = (async () => new Response(JSON.stringify({
-          receipt_id: "cycle56-mismatch", stored_sha256: "0".repeat(64),
-        }), { status: 201, headers: { "content-type": "application/json" } })) as typeof fetch;
+        archiveDuplicate =
+          duplicateArchive.outcome === "duplicate" &&
+          duplicateArchive.archive.id === firstArchive.archive.id &&
+          duplicateArchive.archive.payloadSha256 === firstArchive.archive.payloadSha256;
+        const mismatchFetch = (async () =>
+          new Response(
+            JSON.stringify({
+              receipt_id: "cycle56-mismatch",
+              stored_sha256: "0".repeat(64),
+            }),
+            { status: 201, headers: { "content-type": "application/json" } },
+          )) as typeof fetch;
         await dispatchDisputeSimilarityReviewAuditArchives(db, {
           config: {
-            url: "http://127.0.0.1:4177/mock-worm", timeoutMs: 1000, maxAttempts: 1,
-            allowInsecureHttp: true, allowPrivateNetwork: true,
+            url: "http://127.0.0.1:4177/mock-worm",
+            timeoutMs: 1000,
+            maxAttempts: 1,
+            allowInsecureHttp: true,
+            allowPrivateNetwork: true,
           },
           fetchImpl: mismatchFetch,
         });
         const criticalHealth = await getDisputeSimilarityReviewAuditArchiveHealth(db);
         const failures = await listDisputeSimilarityReviewAuditArchiveFailures(db, { limit: 100 });
         archiveDeadLetter = criticalHealth.status === "critical" && criticalHealth.deadLetter >= 1;
-        archiveFailureQueue = failures.items.some((item) => item.eventId === expiryEvents[0]!.id && item.status === "DEAD_LETTER");
+        archiveFailureQueue = failures.items.some(
+          (item) => item.eventId === expiryEvents[0]!.id && item.status === "DEAD_LETTER",
+        );
         const incidentAlert = await runDisputeSimilarityReviewAuditArchiveAlert(db, {
-          config: alertConfig, claimSource: alertClaimSource, fetchImpl: alertFetch,
+          config: alertConfig,
+          claimSource: alertClaimSource,
+          fetchImpl: alertFetch,
         });
         alertFiringDelivered = incidentAlert.status === "delivered";
-        alertFiringSignatureValid = capturedAlerts[0]?.state === "firing"
-          && capturedAlerts[0]?.severity === "critical" && capturedAlerts[0]?.verified === true;
+        alertFiringSignatureValid =
+          capturedAlerts[0]?.state === "firing" &&
+          capturedAlerts[0]?.severity === "critical" &&
+          capturedAlerts[0]?.verified === true;
         const requeueActorId = randomUUID();
         const requeue = await requeueDisputeSimilarityReviewAuditArchive(db, {
-          eventId: expiryEvents[0].id, actorId: requeueActorId,
+          eventId: expiryEvents[0].id,
+          actorId: requeueActorId,
           reason: "Cycle 56 mock WORM endpoint recovered after receipt verification.",
         });
         const requeueAgain = await requeueDisputeSimilarityReviewAuditArchive(db, {
-          eventId: expiryEvents[0].id, actorId: requeueActorId,
+          eventId: expiryEvents[0].id,
+          actorId: requeueActorId,
           reason: "Cycle 56 duplicate requeue must not create another audit row.",
         });
-        archiveRequeued = requeue.outcome === "requeued"
-          && requeue.archive.payloadSha256 === firstArchive.archive.payloadSha256;
+        archiveRequeued =
+          requeue.outcome === "requeued" &&
+          requeue.archive.payloadSha256 === firstArchive.archive.payloadSha256;
         archiveRequeueIdempotent = requeueAgain.outcome === "already_queued";
-        const requeueAudits = await db.execute(sql`
+        const requeueAudits = (await db.execute(sql`
           SELECT count(*)::int AS count FROM admin_action_log
            WHERE action_type = 'dispute.similarity_review_audit_archive_requeue'
              AND target_id = ${firstArchive.archive.id}
-        `) as unknown as Array<{ count: number }>;
+        `)) as unknown as Array<{ count: number }>;
         archiveRequeueAuditCount = Number(requeueAudits[0]?.count ?? 0);
         const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
           const headers = init?.headers as Record<string, string>;
-          return new Response(JSON.stringify({
-            receipt_id: "cycle55-worm-receipt",
-            stored_sha256: headers["x-haggle-content-sha256"],
-          }), { status: 201, headers: { "content-type": "application/json" } });
+          return new Response(
+            JSON.stringify({
+              receipt_id: "cycle55-worm-receipt",
+              stored_sha256: headers["x-haggle-content-sha256"],
+            }),
+            { status: 201, headers: { "content-type": "application/json" } },
+          );
         }) as typeof fetch;
         const dispatch = await dispatchDisputeSimilarityReviewAuditArchives(db, {
           config: {
-            url: "http://127.0.0.1:4177/mock-worm", timeoutMs: 1000, maxAttempts: 3,
-            allowInsecureHttp: true, allowPrivateNetwork: true,
+            url: "http://127.0.0.1:4177/mock-worm",
+            timeoutMs: 1000,
+            maxAttempts: 3,
+            allowInsecureHttp: true,
+            allowPrivateNetwork: true,
           },
           fetchImpl,
         });
-        const archiveRows = await db.execute(sql`
+        const archiveRows = (await db.execute(sql`
           SELECT status, payload_sha256 AS "payloadSha256", receipt_sha256 AS "receiptSha256"
             FROM dispute_evidence_similarity_review_audit_outbox WHERE event_id = ${expiryEvents[0].id}::uuid
-        `) as unknown as Array<{ status: string; payloadSha256: string; receiptSha256: string | null }>;
+        `)) as unknown as Array<{
+          status: string;
+          payloadSha256: string;
+          receiptSha256: string | null;
+        }>;
         archiveDelivered = dispatch.delivered === 1 && archiveRows[0]?.status === "DELIVERED";
         archiveReceiptMatch = archiveRows[0]?.receiptSha256 === archiveRows[0]?.payloadSha256;
         const recoveredHealth = await getDisputeSimilarityReviewAuditArchiveHealth(db);
-        archiveHealthRecovered = recoveredHealth.status === "healthy" && recoveredHealth.deadLetter === 0
-          && recoveredHealth.failed === 0 && recoveredHealth.processing === 0;
+        archiveHealthRecovered =
+          recoveredHealth.status === "healthy" &&
+          recoveredHealth.deadLetter === 0 &&
+          recoveredHealth.failed === 0 &&
+          recoveredHealth.processing === 0;
         const recoveryAlert = await runDisputeSimilarityReviewAuditArchiveAlert(db, {
-          config: alertConfig, claimSource: alertClaimSource, fetchImpl: alertFetch,
+          config: alertConfig,
+          claimSource: alertClaimSource,
+          fetchImpl: alertFetch,
         });
         const duplicateRecovery = await runDisputeSimilarityReviewAuditArchiveAlert(db, {
-          config: alertConfig, claimSource: alertClaimSource, fetchImpl: alertFetch,
+          config: alertConfig,
+          claimSource: alertClaimSource,
+          fetchImpl: alertFetch,
         });
-        const alertDeliveryState = await getDisputeSimilarityReviewAuditArchiveAlertDeliveryState(db, alertClaimSource);
+        const alertDeliveryState = await getDisputeSimilarityReviewAuditArchiveAlertDeliveryState(
+          db,
+          alertClaimSource,
+        );
         alertRecoveryDelivered = recoveryAlert.status === "recovered";
-        alertRecoverySignatureValid = capturedAlerts[1]?.state === "recovered"
-          && capturedAlerts[1]?.severity === "recovery" && capturedAlerts[1]?.verified === true;
-        alertRecoveryDuplicateSuppressed = duplicateRecovery.status === "skipped"
-          && duplicateRecovery.reason === "recovery_already_sent_or_in_progress" && capturedAlerts.length === 2;
-        alertReceiverReplayBlocked = capturedAlerts.length === 2
-          && capturedAlerts.every((item) => item.replayBlocked);
-        alertIncidentClosed = alertDeliveryState.incidentOpen === false
-          && Boolean(alertDeliveryState.lastIncidentAlertAt) && Boolean(alertDeliveryState.lastRecoveryAlertAt);
+        alertRecoverySignatureValid =
+          capturedAlerts[1]?.state === "recovered" &&
+          capturedAlerts[1]?.severity === "recovery" &&
+          capturedAlerts[1]?.verified === true;
+        alertRecoveryDuplicateSuppressed =
+          duplicateRecovery.status === "skipped" &&
+          duplicateRecovery.reason === "recovery_already_sent_or_in_progress" &&
+          capturedAlerts.length === 2;
+        alertReceiverReplayBlocked =
+          capturedAlerts.length === 2 && capturedAlerts.every((item) => item.replayBlocked);
+        alertIncidentClosed =
+          alertDeliveryState.incidentOpen === false &&
+          Boolean(alertDeliveryState.lastIncidentAlertAt) &&
+          Boolean(alertDeliveryState.lastRecoveryAlertAt);
       }
-      const autoExpired = expiryWinners === 1 && expiredUpload[0]?.status === "EXPIRED"
-        && expiredUpload[0]?.similarityStatus === "REJECTED"
-        && expiredUpload[0]?.scanDetail === "CAMERA_SIMILARITY_REVIEW_EXPIRED";
-      const healthAfter = await getDisputeEvidenceSimilarityReviewHealth(db, { slaMinutes: 15, dueSoonMinutes: 60 });
-      const expiryVisibleInHealth = healthAfter.autoExpiredLast24Hours === healthBaseline.autoExpiredLast24Hours + 1
-        && healthAfter.lastAutoExpiredAt !== null;
-      const healthRecovered = healthAfter.pendingReviews === healthBaseline.pendingReviews
-        && healthAfter.overdueSla === healthBaseline.overdueSla
-        && healthAfter.expiredUnresolved === healthBaseline.expiredUnresolved;
+      const autoExpired =
+        expiryWinners === 1 &&
+        expiredUpload[0]?.status === "EXPIRED" &&
+        expiredUpload[0]?.similarityStatus === "REJECTED" &&
+        expiredUpload[0]?.scanDetail === "CAMERA_SIMILARITY_REVIEW_EXPIRED";
+      const healthAfter = await getDisputeEvidenceSimilarityReviewHealth(db, {
+        slaMinutes: 15,
+        dueSoonMinutes: 60,
+      });
+      const expiryVisibleInHealth =
+        healthAfter.autoExpiredLast24Hours === healthBaseline.autoExpiredLast24Hours + 1 &&
+        healthAfter.lastAutoExpiredAt !== null;
+      const healthRecovered =
+        healthAfter.pendingReviews === healthBaseline.pendingReviews &&
+        healthAfter.overdueSla === healthBaseline.overdueSla &&
+        healthAfter.expiredUnresolved === healthBaseline.expiredUnresolved;
       persistence = {
         pass: Boolean(
-          nearest?.assessment.reviewRequired
-          && stored[0]?.averageHash
-          && stored[0]?.colorHistogram
-          && stored[0]?.similaritySignals
-          && queueDetected
-          && referenceLinked
-          && healthAttention
-          && reviewWinners === 1
-          && reviewBlocked === 9
-          && reviewAuditCount === 1
-          && expiredReviewBlocked
-          && queueCleared
-          && autoExpired
-          && expiryEventCount === 1
-          && systemActorNull
-          && expiryHistoryDetected
-          && expiryHashValid
-          && expiryTamperDetected
-          && expiryExportValid
-          && archiveEnqueued
-          && archiveDuplicate
-          && archiveDelivered
-          && archiveReceiptMatch
-          && archiveDeadLetter
-          && archiveFailureQueue
-          && archiveRequeued
-          && archiveRequeueIdempotent
-          && archiveRequeueAuditCount === 1
-          && archiveHealthRecovered
-          && alertFiringDelivered
-          && alertFiringSignatureValid
-          && alertRecoveryDelivered
-          && alertRecoverySignatureValid
-          && alertRecoveryDuplicateSuppressed
-          && alertReceiverReplayBlocked
-          && alertIncidentClosed
-          && expiryVisibleInHealth
-          && healthRecovered
+          nearest?.assessment.reviewRequired &&
+            stored[0]?.averageHash &&
+            stored[0]?.colorHistogram &&
+            stored[0]?.similaritySignals &&
+            queueDetected &&
+            referenceLinked &&
+            healthAttention &&
+            reviewWinners === 1 &&
+            reviewBlocked === 9 &&
+            reviewAuditCount === 1 &&
+            expiredReviewBlocked &&
+            queueCleared &&
+            autoExpired &&
+            expiryEventCount === 1 &&
+            systemActorNull &&
+            expiryHistoryDetected &&
+            expiryHashValid &&
+            expiryTamperDetected &&
+            expiryExportValid &&
+            archiveEnqueued &&
+            archiveDuplicate &&
+            archiveDelivered &&
+            archiveReceiptMatch &&
+            archiveDeadLetter &&
+            archiveFailureQueue &&
+            archiveRequeued &&
+            archiveRequeueIdempotent &&
+            archiveRequeueAuditCount === 1 &&
+            archiveHealthRecovered &&
+            alertFiringDelivered &&
+            alertFiringSignatureValid &&
+            alertRecoveryDelivered &&
+            alertRecoverySignatureValid &&
+            alertRecoveryDuplicateSuppressed &&
+            alertReceiverReplayBlocked &&
+            alertIncidentClosed &&
+            expiryVisibleInHealth &&
+            healthRecovered,
         ),
         nearest_review: nearest?.assessment.reviewRequired === true,
-        stored: Boolean(stored[0]?.averageHash && stored[0]?.colorHistogram && stored[0]?.similaritySignals),
+        stored: Boolean(
+          stored[0]?.averageHash && stored[0]?.colorHistogram && stored[0]?.similaritySignals,
+        ),
         queue_detected: queueDetected,
         review_winners: reviewWinners,
         review_blocked: reviewBlocked,
@@ -497,40 +640,49 @@ export async function runDisputeImageSimilarityFixtureEvaluation(db?: Database) 
         cleanup: 0,
       };
     } finally {
-      const deletedAlertClaims = await db.execute(sql`
+      const deletedAlertClaims = (await db.execute(sql`
         DELETE FROM webhook_idempotency
          WHERE source IN (${alertClaimSource}, ${alertReceiverSource})
         RETURNING id
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (persistence) persistence.alert_claim_cleanup = deletedAlertClaims.length;
       await db.execute(sql`
         DELETE FROM admin_action_log
          WHERE action_type = 'dispute.evidence_similarity_review'
            AND target_type = 'dispute_evidence_upload' AND target_id = ${targetId}
       `);
-      const deletedArchiveAudits = await db.execute(sql`
+      const deletedArchiveAudits = (await db.execute(sql`
         DELETE FROM admin_action_log
          WHERE action_type = 'dispute.similarity_review_audit_archive_requeue'
            AND target_id = ${archiveRecordId}
         RETURNING id
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (persistence) persistence.archive_audit_cleanup = deletedArchiveAudits.length;
-      const deletedArchives = await db.execute(sql`
+      const deletedArchives = (await db.execute(sql`
         DELETE FROM dispute_evidence_similarity_review_audit_outbox
          WHERE event_id IN (SELECT id FROM dispute_evidence_similarity_review_events WHERE upload_id = ${expiryTargetId}::uuid)
         RETURNING id
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (persistence) persistence.archive_cleanup = deletedArchives.length;
-      await db.execute(sql`DELETE FROM dispute_evidence_similarity_review_events WHERE upload_id = ${expiryTargetId}::uuid`);
-      const deleted = await db.execute(sql`DELETE FROM dispute_evidence_uploads WHERE id IN (${candidateId}::uuid, ${targetId}::uuid, ${expiryTargetId}::uuid) RETURNING id`) as unknown as Array<Record<string, unknown>>;
+      await db.execute(
+        sql`DELETE FROM dispute_evidence_similarity_review_events WHERE upload_id = ${expiryTargetId}::uuid`,
+      );
+      const deleted = (await db.execute(
+        sql`DELETE FROM dispute_evidence_uploads WHERE id IN (${candidateId}::uuid, ${targetId}::uuid, ${expiryTargetId}::uuid) RETURNING id`,
+      )) as unknown as Array<Record<string, unknown>>;
       cleanup = deleted.length;
       if (persistence) persistence.cleanup = cleanup;
     }
   }
-  const passed = cases.filter((item) => item.pass).length
-    + (persistence?.pass && persistence.cleanup === 3
-      && persistence.archive_cleanup === 1 && persistence.archive_audit_cleanup === 1
-      && persistence.alert_claim_cleanup === 4 ? 1 : 0);
+  const passed =
+    cases.filter((item) => item.pass).length +
+    (persistence?.pass &&
+    persistence.cleanup === 3 &&
+    persistence.archive_cleanup === 1 &&
+    persistence.archive_audit_cleanup === 1 &&
+    persistence.alert_claim_cleanup === 4
+      ? 1
+      : 0);
   const total = cases.length + (persistence ? 1 : 0);
   return { pass: passed === total, checks: `${passed}/${total}`, cases, persistence };
 }

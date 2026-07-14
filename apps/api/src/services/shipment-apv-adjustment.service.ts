@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
-export type ShipmentApvStatus = "PROCESSING" | "APPLIED" | "REVIEW_REQUIRED" | "CREDIT_RECORDED" | "FAILED";
+export type ShipmentApvStatus =
+  | "PROCESSING"
+  | "APPLIED"
+  | "REVIEW_REQUIRED"
+  | "CREDIT_RECORDED"
+  | "FAILED";
 
 export interface ShipmentApvInput {
   provider: string;
@@ -24,19 +29,24 @@ export interface ShipmentApvClaim {
   attemptCount: number;
 }
 
-export type ShipmentApvClaimResult = ShipmentApvClaim | {
-  outcome: "duplicate";
-  status?: ShipmentApvStatus;
-  record?: ShipmentApvRecord;
-} | {
-  outcome: "in_progress";
-  status?: ShipmentApvStatus;
-} | {
-  outcome: "payload_conflict";
-  status?: ShipmentApvStatus;
-} | {
-  outcome: "payout_reserved";
-};
+export type ShipmentApvClaimResult =
+  | ShipmentApvClaim
+  | {
+      outcome: "duplicate";
+      status?: ShipmentApvStatus;
+      record?: ShipmentApvRecord;
+    }
+  | {
+      outcome: "in_progress";
+      status?: ShipmentApvStatus;
+    }
+  | {
+      outcome: "payload_conflict";
+      status?: ShipmentApvStatus;
+    }
+  | {
+      outcome: "payout_reserved";
+    };
 
 export interface ShipmentApvRecord {
   id: string;
@@ -72,11 +82,12 @@ export function classifyShipmentApvAllocation(adjustmentMinor: number, bufferApp
   const applied = Math.max(0, Math.min(bufferAppliedMinor, positiveAdjustment));
   const sellerLiabilityMinor = Math.max(0, positiveAdjustment - applied);
   const carrierCreditMinor = Math.max(0, -adjustmentMinor);
-  const status: Exclude<ShipmentApvStatus, "PROCESSING" | "FAILED"> = carrierCreditMinor > 0
-    ? "CREDIT_RECORDED"
-    : sellerLiabilityMinor > 0
-      ? "REVIEW_REQUIRED"
-      : "APPLIED";
+  const status: Exclude<ShipmentApvStatus, "PROCESSING" | "FAILED"> =
+    carrierCreditMinor > 0
+      ? "CREDIT_RECORDED"
+      : sellerLiabilityMinor > 0
+        ? "REVIEW_REQUIRED"
+        : "APPLIED";
   return {
     status,
     bufferAppliedMinor: applied,
@@ -109,50 +120,66 @@ function mapRecord(row: Record<string, unknown>): ShipmentApvRecord {
     carrier_credit_minor: numeric(row.carrier_credit_minor),
     buyer_effect_minor: 0,
     review_status: String(row.review_status ?? "NONE") as ShipmentApvRecord["review_status"],
-    review_request_id: typeof row.review_request_id === "string" ? row.review_request_id : undefined,
-    seller_review_reason: typeof row.seller_review_reason === "string" ? row.seller_review_reason : undefined,
-    seller_review_submitted_at: row.seller_review_submitted_at instanceof Date
-      ? row.seller_review_submitted_at.toISOString()
-      : typeof row.seller_review_submitted_at === "string" ? row.seller_review_submitted_at : undefined,
+    review_request_id:
+      typeof row.review_request_id === "string" ? row.review_request_id : undefined,
+    seller_review_reason:
+      typeof row.seller_review_reason === "string" ? row.seller_review_reason : undefined,
+    seller_review_submitted_at:
+      row.seller_review_submitted_at instanceof Date
+        ? row.seller_review_submitted_at.toISOString()
+        : typeof row.seller_review_submitted_at === "string"
+          ? row.seller_review_submitted_at
+          : undefined,
     reviewed_by: typeof row.reviewed_by === "string" ? row.reviewed_by : undefined,
-    review_decision_reason: typeof row.review_decision_reason === "string" ? row.review_decision_reason : undefined,
-    reviewed_at: row.reviewed_at instanceof Date
-      ? row.reviewed_at.toISOString()
-      : typeof row.reviewed_at === "string" ? row.reviewed_at : undefined,
+    review_decision_reason:
+      typeof row.review_decision_reason === "string" ? row.review_decision_reason : undefined,
+    reviewed_at:
+      row.reviewed_at instanceof Date
+        ? row.reviewed_at.toISOString()
+        : typeof row.reviewed_at === "string"
+          ? row.reviewed_at
+          : undefined,
     review_version: numeric(row.review_version),
     attempt_count: numeric(row.attempt_count),
-    processed_at: row.processed_at instanceof Date
-      ? row.processed_at.toISOString()
-      : typeof row.processed_at === "string" ? row.processed_at : undefined,
+    processed_at:
+      row.processed_at instanceof Date
+        ? row.processed_at.toISOString()
+        : typeof row.processed_at === "string"
+          ? row.processed_at
+          : undefined,
   };
 }
 
 export function shipmentApvPayloadSha256(input: ShipmentApvInput): string {
-  return createHash("sha256").update(JSON.stringify({
-    provider: input.provider,
-    provider_invoice_id: input.providerInvoiceId,
-    shipment_id: input.shipmentId,
-    order_id: input.orderId,
-    settlement_release_id: input.settlementReleaseId,
-    original_rate_minor: input.originalRateMinor,
-    adjusted_rate_minor: input.adjustedRateMinor,
-    adjustment_minor: input.adjustmentMinor,
-  })).digest("hex");
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        provider: input.provider,
+        provider_invoice_id: input.providerInvoiceId,
+        shipment_id: input.shipmentId,
+        order_id: input.orderId,
+        settlement_release_id: input.settlementReleaseId,
+        original_rate_minor: input.originalRateMinor,
+        adjusted_rate_minor: input.adjustedRateMinor,
+        adjustment_minor: input.adjustmentMinor,
+      }),
+    )
+    .digest("hex");
 }
 
 export async function claimShipmentApvAdjustment(
   db: Database,
   input: ShipmentApvInput,
 ): Promise<ShipmentApvClaimResult> {
-  const payoutRows = await db.execute(sql`
+  const payoutRows = (await db.execute(sql`
     SELECT id FROM shipment_apv_payout_offsets
      WHERE settlement_release_id = ${input.settlementReleaseId}
      LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   if (payoutRows[0]) return { outcome: "payout_reserved" };
   const claimId = randomUUID();
   const payloadSha256 = shipmentApvPayloadSha256(input);
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     INSERT INTO shipment_apv_adjustments
       (provider, provider_invoice_id, payload_sha256, shipment_id, order_id,
        settlement_release_id, status, original_rate_minor, adjusted_rate_minor,
@@ -173,7 +200,7 @@ export async function claimShipmentApvAdjustment(
          OR (shipment_apv_adjustments.status = 'PROCESSING' AND shipment_apv_adjustments.lease_expires_at <= now())
        )
     RETURNING claim_id, attempt_count
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const acquired = rows[0];
   if (acquired) {
     return {
@@ -185,11 +212,11 @@ export async function claimShipmentApvAdjustment(
     };
   }
 
-  const existingRows = await db.execute(sql`
+  const existingRows = (await db.execute(sql`
     SELECT * FROM shipment_apv_adjustments
      WHERE provider = ${input.provider} AND provider_invoice_id = ${input.providerInvoiceId}
      LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const existing = existingRows[0];
   if (!existing) return { outcome: "in_progress" };
   if (existing.payload_sha256 !== payloadSha256) return { outcome: "payload_conflict" };
@@ -207,7 +234,7 @@ export async function completeShipmentApvAdjustment(
     const positiveAdjustment = Math.max(0, input.adjustmentMinor);
     let bufferAppliedMinor = 0;
     if (positiveAdjustment > 0) {
-      const releaseRows = await tx.execute(sql`
+      const releaseRows = (await tx.execute(sql`
         WITH current_release AS (
           SELECT id, buffer_amount_minor, apv_adjustment_minor, buffer_release_status
             FROM settlement_releases
@@ -232,22 +259,22 @@ export async function completeShipmentApvAdjustment(
           FROM allocation
          WHERE release.id = allocation.id
         RETURNING allocation.applied_minor
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (!releaseRows[0]) throw new Error("APV_SETTLEMENT_RELEASE_NOT_FOUND");
       bufferAppliedMinor = numeric(releaseRows[0].applied_minor);
     } else {
-      const releaseRows = await tx.execute(sql`
+      const releaseRows = (await tx.execute(sql`
         SELECT id
           FROM settlement_releases
          WHERE id = ${input.settlementReleaseId}
          FOR UPDATE
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (!releaseRows[0]) throw new Error("APV_SETTLEMENT_RELEASE_NOT_FOUND");
     }
 
     const allocation = classifyShipmentApvAllocation(input.adjustmentMinor, bufferAppliedMinor);
     const { status, sellerLiabilityMinor, carrierCreditMinor } = allocation;
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       UPDATE shipment_apv_adjustments
          SET status = ${status}, buffer_applied_minor = ${bufferAppliedMinor},
              assessed_seller_liability_minor = ${sellerLiabilityMinor},
@@ -262,7 +289,7 @@ export async function completeShipmentApvAdjustment(
        WHERE provider = ${claim.provider} AND provider_invoice_id = ${claim.providerInvoiceId}
          AND status = 'PROCESSING' AND claim_id = ${claim.claimId}
       RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     if (!rows[0]) throw new Error("APV_CLAIM_LOST");
     const completed = mapRecord(rows[0]);
     await tx.execute(sql`

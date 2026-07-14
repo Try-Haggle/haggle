@@ -17,16 +17,30 @@ async function fixtureRoot() {
   return root;
 }
 
-function fixtureDb(row: { revision_id: string; storage_key: string; byte_size: number; sha256: string }) {
-  return { execute: vi.fn()
-    .mockResolvedValueOnce([{ count: "1", active_count: "1", missing_count: "0", quarantined_count: "0" }])
-    .mockResolvedValueOnce([row]) } as unknown as Database;
+function fixtureDb(row: {
+  revision_id: string;
+  storage_key: string;
+  byte_size: number;
+  sha256: string;
+}) {
+  return {
+    execute: vi
+      .fn()
+      .mockResolvedValueOnce([
+        { count: "1", active_count: "1", missing_count: "0", quarantined_count: "0" },
+      ])
+      .mockResolvedValueOnce([row]),
+  } as unknown as Database;
 }
 
 function documentFixture(revisionId: string, bytes: Buffer) {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  return { revision_id: revisionId, storage_key: `${revisionId}/${sha256}.json`,
-    byte_size: bytes.length, sha256 };
+  return {
+    revision_id: revisionId,
+    storage_key: `${revisionId}/${sha256}.json`,
+    byte_size: bytes.length,
+    sha256,
+  };
 }
 
 afterEach(async () => {
@@ -36,9 +50,12 @@ afterEach(async () => {
 describe("APV invoice document storage health", () => {
   it("rejects a non-UUID revision scope before touching storage or the database", async () => {
     const execute = vi.fn();
-    await expect(getShipmentApvInvoiceDocumentStorageHealth({ execute } as unknown as Database, {
-      storageRoot: "/tmp", revisionId: "../outside",
-    })).rejects.toThrow("INVALID_APV_INVOICE_DOCUMENT_HEALTH_SCOPE");
+    await expect(
+      getShipmentApvInvoiceDocumentStorageHealth({ execute } as unknown as Database, {
+        storageRoot: "/tmp",
+        revisionId: "../outside",
+      }),
+    ).rejects.toThrow("INVALID_APV_INVOICE_DOCUMENT_HEALTH_SCOPE");
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -50,9 +67,19 @@ describe("APV invoice document storage health", () => {
     await mkdir(join(root, revisionId));
     await writeFile(join(root, row.storage_key), bytes);
 
-    const health = await getShipmentApvInvoiceDocumentStorageHealth(fixtureDb(row), { storageRoot: root, revisionId });
-    expect(health).toMatchObject({ status: "healthy", totalDocuments: 1, checkedDocuments: 1,
-      missingFiles: 0, hashMismatches: 0, orphanFiles: 0, scanTruncated: false });
+    const health = await getShipmentApvInvoiceDocumentStorageHealth(fixtureDb(row), {
+      storageRoot: root,
+      revisionId,
+    });
+    expect(health).toMatchObject({
+      status: "healthy",
+      totalDocuments: 1,
+      checkedDocuments: 1,
+      missingFiles: 0,
+      hashMismatches: 0,
+      orphanFiles: 0,
+      scanTruncated: false,
+    });
   });
 
   it("reports a missing DB-bound file as critical", async () => {
@@ -60,7 +87,10 @@ describe("APV invoice document storage health", () => {
     const revisionId = randomUUID();
     const row = documentFixture(revisionId, Buffer.from('{"invoice":"missing"}'));
 
-    const health = await getShipmentApvInvoiceDocumentStorageHealth(fixtureDb(row), { storageRoot: root, revisionId });
+    const health = await getShipmentApvInvoiceDocumentStorageHealth(fixtureDb(row), {
+      storageRoot: root,
+      revisionId,
+    });
     expect(health).toMatchObject({ status: "critical", missingFiles: 1, hashMismatches: 0 });
   });
 
@@ -72,7 +102,10 @@ describe("APV invoice document storage health", () => {
     await mkdir(join(root, revisionId));
     await writeFile(join(root, row.storage_key), Buffer.from('{"invoice":"tampered"}'));
 
-    const health = await getShipmentApvInvoiceDocumentStorageHealth(fixtureDb(row), { storageRoot: root, revisionId });
+    const health = await getShipmentApvInvoiceDocumentStorageHealth(fixtureDb(row), {
+      storageRoot: root,
+      revisionId,
+    });
     expect(health).toMatchObject({ status: "critical", sizeMismatches: 0, hashMismatches: 1 });
   });
 
@@ -90,13 +123,32 @@ describe("APV invoice document storage health", () => {
     await writeFile(join(root, revisionId, `${orphanHash}.json`), orphanBytes);
     await writeFile(join(root, otherRevisionId, `${orphanHash}.json`), orphanBytes);
 
-    const db = { execute: vi.fn()
-      .mockResolvedValueOnce([{ count: "1", active_count: "1", missing_count: "0", quarantined_count: "0" }]).mockResolvedValueOnce([row])
-      .mockResolvedValueOnce([{ count: "1", active_count: "1", missing_count: "0", quarantined_count: "0" }]).mockResolvedValueOnce([row]) } as unknown as Database;
-    const health = await getShipmentApvInvoiceDocumentStorageHealth(db, { storageRoot: root, revisionId });
-    const reconciliation = await runShipmentApvInvoiceDocumentReconciliationDryRun(db, { storageRoot: root, revisionId });
+    const db = {
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce([
+          { count: "1", active_count: "1", missing_count: "0", quarantined_count: "0" },
+        ])
+        .mockResolvedValueOnce([row])
+        .mockResolvedValueOnce([
+          { count: "1", active_count: "1", missing_count: "0", quarantined_count: "0" },
+        ])
+        .mockResolvedValueOnce([row]),
+    } as unknown as Database;
+    const health = await getShipmentApvInvoiceDocumentStorageHealth(db, {
+      storageRoot: root,
+      revisionId,
+    });
+    const reconciliation = await runShipmentApvInvoiceDocumentReconciliationDryRun(db, {
+      storageRoot: root,
+      revisionId,
+    });
     expect(health).toMatchObject({ status: "warning", orphanFiles: 1, invalidEntries: 0 });
-    expect(reconciliation).toMatchObject({ dryRun: true, mutated: false,
-      wouldMarkMissingOrCorrupt: 0, wouldQuarantineOrphans: 1 });
+    expect(reconciliation).toMatchObject({
+      dryRun: true,
+      mutated: false,
+      wouldMarkMissingOrCorrupt: 0,
+      wouldQuarantineOrphans: 1,
+    });
   });
 });

@@ -21,23 +21,14 @@
  * - No user input in hash computation (server-side only from DB records).
  */
 
-import {
-  keccak256,
-  encodePacked,
-  encodeFunctionData,
-  type Hex,
-} from "viem";
-import type {
-  DisputeEvidence,
-  DisputeResolution,
-} from "@haggle/dispute-core";
 import { HAGGLE_DISPUTE_REGISTRY_ABI } from "@haggle/contracts";
+import type { DisputeEvidence, DisputeResolution } from "@haggle/dispute-core";
+import { encodeFunctionData, encodePacked, type Hex, keccak256 } from "viem";
 import { relayTransaction } from "../payments/gas-relayer.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 
-const ZERO_BYTES32: Hex =
-  "0x0000000000000000000000000000000000000000000000000000000000000000";
+const ZERO_BYTES32: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 // ── Evidence Merkle Root ───────────────────────────────────────────
 
@@ -48,10 +39,7 @@ const ZERO_BYTES32: Hex =
 function computeEvidenceLeaf(evidence: DisputeEvidence): Hex {
   const content = evidence.uri ?? evidence.text ?? "";
   return keccak256(
-    encodePacked(
-      ["string", "string", "string"],
-      [evidence.type, content, evidence.created_at],
-    ),
+    encodePacked(["string", "string", "string"], [evidence.type, content, evidence.created_at]),
   );
 }
 
@@ -63,9 +51,7 @@ function computeEvidenceLeaf(evidence: DisputeEvidence): Hex {
 function hashPair(a: Hex, b: Hex): Hex {
   // Sort to make the tree order-independent for the same set of leaves
   const [left, right] = a <= b ? [a, b] : [b, a];
-  return keccak256(
-    encodePacked(["bytes32", "bytes32"], [left, right]),
-  );
+  return keccak256(encodePacked(["bytes32", "bytes32"], [left, right]));
 }
 
 /**
@@ -131,9 +117,7 @@ export function computeResolutionHash(resolution: DisputeResolution): Hex {
  * Deterministic: same UUID always produces the same bytes32.
  */
 export function uuidToBytes32(uuid: string): Hex {
-  return keccak256(
-    encodePacked(["string"], [uuid]),
-  );
+  return keccak256(encodePacked(["string"], [uuid]));
 }
 
 // ── On-chain Anchoring ─────────────────────────────────────────────
@@ -159,7 +143,8 @@ export async function anchorDisputeOnChain(params: {
   resolution: DisputeResolution;
 }): Promise<AnchorResult | null> {
   // 1. Check env vars
-  const registryAddress = process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS ?? process.env.DISPUTE_REGISTRY_ADDRESS;
+  const registryAddress =
+    process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS ?? process.env.DISPUTE_REGISTRY_ADDRESS;
   const relayerKey = process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY;
 
   if (!registryAddress) {
@@ -212,8 +197,8 @@ export async function anchorDisputeOnChain(params: {
 
     console.log(
       `[dispute-anchoring] Anchored dispute on-chain: orderId=${params.orderId} ` +
-      `disputeCaseId=${params.disputeCaseId} txHash=${relayResult.txHash} ` +
-      `anchorId=${anchorId} gasCost=$${relayResult.gasCostUsd}`,
+        `disputeCaseId=${params.disputeCaseId} txHash=${relayResult.txHash} ` +
+        `anchorId=${anchorId} gasCost=$${relayResult.gasCostUsd}`,
     );
 
     return {

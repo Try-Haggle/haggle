@@ -1,6 +1,5 @@
-import { sql, type Database } from "@haggle/db";
-import { exportShipmentApvFailureAlertReceiverClaimManifest } from
-  "./shipment-apv-chaos-failure-alert-receiver-claim-export.service.js";
+import { type Database, sql } from "@haggle/db";
+import { exportShipmentApvFailureAlertReceiverClaimManifest } from "./shipment-apv-chaos-failure-alert-receiver-claim-export.service.js";
 
 type ReceiptRow = {
   revision: unknown;
@@ -32,17 +31,23 @@ function revision(value: unknown) {
   return parsed;
 }
 
-function rowMatches(row: ReceiptRow, manifest: Awaited<ReturnType<
-  typeof exportShipmentApvFailureAlertReceiverClaimManifest>>) {
-  return String(row.manifest_digest) === manifest.manifestDigest
-    && Number(row.entry_count) === manifest.entryCount
-    && Array.isArray(row.receipt_digests)
-    && row.receipt_digests.length === manifest.receiptDigests.length
-    && row.receipt_digests.every((digest, index) => digest === manifest.receiptDigests[index])
-    && String(row.status) === "PERSISTED_LOCAL_MANIFEST_RECEIPT_DRY_RUN"
-    && String(row.health_status) === "healthy"
-    && row.contains_raw_identifiers === false && row.external_archive === false
-    && row.network_delivered === false && row.production_accepted === false;
+function rowMatches(
+  row: ReceiptRow,
+  manifest: Awaited<ReturnType<typeof exportShipmentApvFailureAlertReceiverClaimManifest>>,
+) {
+  return (
+    String(row.manifest_digest) === manifest.manifestDigest &&
+    Number(row.entry_count) === manifest.entryCount &&
+    Array.isArray(row.receipt_digests) &&
+    row.receipt_digests.length === manifest.receiptDigests.length &&
+    row.receipt_digests.every((digest, index) => digest === manifest.receiptDigests[index]) &&
+    String(row.status) === "PERSISTED_LOCAL_MANIFEST_RECEIPT_DRY_RUN" &&
+    String(row.health_status) === "healthy" &&
+    row.contains_raw_identifiers === false &&
+    row.external_archive === false &&
+    row.network_delivered === false &&
+    row.production_accepted === false
+  );
 }
 
 function publicReceipt(row: ReceiptRow) {
@@ -51,8 +56,8 @@ function publicReceipt(row: ReceiptRow) {
     status: "PERSISTED_LOCAL_MANIFEST_RECEIPT_DRY_RUN" as const,
     revision: revision(row.revision),
     manifestDigest: String(row.manifest_digest),
-    previousManifestDigest: row.previous_manifest_digest === null
-      ? null : String(row.previous_manifest_digest),
+    previousManifestDigest:
+      row.previous_manifest_digest === null ? null : String(row.previous_manifest_digest),
     entryCount: Number(row.entry_count),
     receiptDigests: Array.isArray(row.receipt_digests) ? row.receipt_digests.map(String) : [],
     generatedAt: iso(row.generated_at),
@@ -69,9 +74,7 @@ function publicReceipt(row: ReceiptRow) {
   };
 }
 
-export async function recordShipmentApvFailureAlertReceiverClaimManifestReceipt(
-  db: Database,
-) {
+export async function recordShipmentApvFailureAlertReceiverClaimManifestReceipt(db: Database) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(
       'haggle.shipment-apv-failure-alert.receiver-claim-manifest-receipt.v1', 0))`);
@@ -94,10 +97,13 @@ export async function recordShipmentApvFailureAlertReceiverClaimManifestReceipt(
     const latest = (latestRows as unknown as ReceiptRow[])[0];
     const nextRevision = latest ? revision(latest.revision) + 1 : 1;
     const previousManifestDigest = latest ? String(latest.manifest_digest) : null;
-    const receiptDigestArray = manifest.receiptDigests.length === 0
-      ? sql`ARRAY[]::text[]`
-      : sql`ARRAY[${sql.join(manifest.receiptDigests.map((digest) => sql`${digest}`),
-        sql`, `)}]::text[]`;
+    const receiptDigestArray =
+      manifest.receiptDigests.length === 0
+        ? sql`ARRAY[]::text[]`
+        : sql`ARRAY[${sql.join(
+            manifest.receiptDigests.map((digest) => sql`${digest}`),
+            sql`, `,
+          )}]::text[]`;
     const rows = await tx.execute(sql`INSERT INTO
       shipment_apv_failure_alert_receiver_claim_manifest_receipts
         (revision, manifest_digest, previous_manifest_digest, entry_count,

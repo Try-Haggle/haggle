@@ -9,42 +9,38 @@
  */
 
 import type { Database } from "@haggle/db";
-import { runSettlementAutoRelease } from "./settlement-auto-release.js";
-import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
-import { runShipmentSlaCheck } from "./shipment-sla-check.js";
-import { runDisputeDepositExpiry } from "./dispute-deposit-expiry.js";
+import { resolveApiRateLimitConfigFromEnv } from "../lib/api-rate-limit.js";
+import { runApiRateLimitRetention } from "./api-rate-limit-retention.js";
 import { runChainEventSync } from "./chain-event-sync.js";
-import { runRetryFailedEmails } from "./retry-failed-emails.js";
-import { runDisputeModuleWebhookOutbox } from "./dispute-module-webhook-outbox.js";
-import { runProductionReconciliationReport } from "./production-reconciliation-report.js";
-import { runDisputeEvidenceRetention } from "./dispute-evidence-retention.js";
-import { runDisputeEvidenceScanRetryJob } from
-  "./dispute-evidence-scan-retry.js";
-import { runDisputeEvidenceScanRetryAlertJob } from
-  "./dispute-evidence-scan-retry-alert.js";
-import { runDisputeEvidenceScanRetryAlertSnapshotRetentionJob } from
-  "./dispute-evidence-scan-retry-alert-snapshot-retention.js";
-import { runWebhookClaimHealthAlert } from "./webhook-claim-health-alert.js";
-import { runShipmentApvPayoutAlert } from "./shipment-apv-payout-alert.js";
-import { runShipmentApvCancellationAuditArchive } from "./shipment-apv-cancellation-audit-archive.js";
-import { runShipmentApvCancellationAuditArchiveAlert } from "./shipment-apv-cancellation-audit-archive-alert.js";
-import { runDisputeSimilarityReviewAlert } from "./dispute-similarity-review-alert.js";
-import { runDisputeSimilarityReviewExpiry } from "./dispute-similarity-review-expiry.js";
-import { runDisputeSimilarityReviewAuditArchive } from "./dispute-similarity-review-audit-archive.js";
-import { runDisputeSimilarityReviewAuditArchiveAlert } from "./dispute-similarity-review-audit-archive-alert.js";
+import { runConditionalSettlementFinalityAlert } from "./conditional-settlement-finality-alert.js";
+import { runConditionalSettlementPreflightAlert } from "./conditional-settlement-preflight-alert.js";
 import { runDisputeAiAuditArchive } from "./dispute-ai-audit-archive.js";
 import { runDisputeAiAuditArchiveAlert } from "./dispute-ai-audit-archive-alert.js";
+import { runDisputeDepositExpiry } from "./dispute-deposit-expiry.js";
 import { runDisputeEvidenceProvenanceArchive } from "./dispute-evidence-provenance-archive.js";
 import { runDisputeEvidenceProvenanceArchiveAlert } from "./dispute-evidence-provenance-archive-alert.js";
-import { runConditionalSettlementPreflightAlert } from "./conditional-settlement-preflight-alert.js";
-import { runConditionalSettlementFinalityAlert } from "./conditional-settlement-finality-alert.js";
-import { runShipmentApvInvoiceRestorationStagingMaintenance } from "./shipment-apv-invoice-restoration-staging-maintenance.js";
+import { runDisputeEvidenceRetention } from "./dispute-evidence-retention.js";
+import { runDisputeEvidenceScanRetryJob } from "./dispute-evidence-scan-retry.js";
+import { runDisputeEvidenceScanRetryAlertJob } from "./dispute-evidence-scan-retry-alert.js";
+import { runDisputeEvidenceScanRetryAlertSnapshotRetentionJob } from "./dispute-evidence-scan-retry-alert-snapshot-retention.js";
+import { runDisputeModuleWebhookOutbox } from "./dispute-module-webhook-outbox.js";
+import { runDisputeSimilarityReviewAlert } from "./dispute-similarity-review-alert.js";
+import { runDisputeSimilarityReviewAuditArchive } from "./dispute-similarity-review-audit-archive.js";
+import { runDisputeSimilarityReviewAuditArchiveAlert } from "./dispute-similarity-review-audit-archive-alert.js";
+import { runDisputeSimilarityReviewExpiry } from "./dispute-similarity-review-expiry.js";
+import { runPaymentIntentExpiry } from "./payment-intent-expiry.js";
+import { runProductionReconciliationReport } from "./production-reconciliation-report.js";
+import { runRetryFailedEmails } from "./retry-failed-emails.js";
+import { runSettlementAutoRelease } from "./settlement-auto-release.js";
+import { runShipmentApvCancellationAuditArchive } from "./shipment-apv-cancellation-audit-archive.js";
+import { runShipmentApvCancellationAuditArchiveAlert } from "./shipment-apv-cancellation-audit-archive-alert.js";
 import { runShipmentApvInvoiceRestorationRemediationExpiry } from "./shipment-apv-invoice-restoration-remediation-expiry.js";
+import { runShipmentApvInvoiceRestorationStagingMaintenance } from "./shipment-apv-invoice-restoration-staging-maintenance.js";
+import { runShipmentApvPayoutAlert } from "./shipment-apv-payout-alert.js";
 import { runShipmentApvRemediationCursorRetention } from "./shipment-apv-remediation-cursor-retention.js";
-import { runApiRateLimitRetention } from "./api-rate-limit-retention.js";
-import { resolveApiRateLimitConfigFromEnv } from "../lib/api-rate-limit.js";
-import { runWebSocketAuthTicketRetention } from
-  "./websocket-auth-ticket-retention.js";
+import { runShipmentSlaCheck } from "./shipment-sla-check.js";
+import { runWebhookClaimHealthAlert } from "./webhook-claim-health-alert.js";
+import { runWebSocketAuthTicketRetention } from "./websocket-auth-ticket-retention.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,14 +65,18 @@ export function buildJobRegistry(): CronJob[] {
     {
       name: "websocket-auth-ticket-retention",
       intervalMs: 5 * 60 * 1000,
-      handler: async (db) => { await runWebSocketAuthTicketRetention(db); },
+      handler: async (db) => {
+        await runWebSocketAuthTicketRetention(db);
+      },
       enabled: true,
       runOnStart: true,
     },
     {
       name: "api-rate-limit-retention",
       intervalMs: 60 * 60 * 1000,
-      handler: async (db) => { await runApiRateLimitRetention(db); },
+      handler: async (db) => {
+        await runApiRateLimitRetention(db);
+      },
       enabled: apiRateLimitConfig.mode === "postgres",
       runOnStart: true,
     },
@@ -125,13 +125,17 @@ export function buildJobRegistry(): CronJob[] {
     {
       name: "dispute-evidence-retention",
       intervalMs: 60 * 60 * 1000,
-      handler: async (db) => { await runDisputeEvidenceRetention(db); },
+      handler: async (db) => {
+        await runDisputeEvidenceRetention(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_EVIDENCE_RETENTION_JOB === "true",
     },
     {
       name: "dispute-evidence-scan-retry",
       intervalMs: 30 * 1000,
-      handler: async (db) => { await runDisputeEvidenceScanRetryJob(db); },
+      handler: async (db) => {
+        await runDisputeEvidenceScanRetryJob(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB === "true",
     },
     {
@@ -140,8 +144,7 @@ export function buildJobRegistry(): CronJob[] {
       handler: async (db) => {
         await runDisputeEvidenceScanRetryAlertJob(db);
       },
-      enabled:
-        process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
+      enabled: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
     },
     {
       name: "dispute-evidence-scan-retry-alert-snapshot-retention",
@@ -149,8 +152,7 @@ export function buildJobRegistry(): CronJob[] {
       handler: async (db) => {
         await runDisputeEvidenceScanRetryAlertSnapshotRetentionJob(db);
       },
-      enabled:
-        process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
+      enabled: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
       runOnStart: true,
     },
     {
@@ -162,104 +164,139 @@ export function buildJobRegistry(): CronJob[] {
     {
       name: "webhook-claim-health-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runWebhookClaimHealthAlert(db); },
+      handler: async (db) => {
+        await runWebhookClaimHealthAlert(db);
+      },
       enabled: process.env.ENABLE_WEBHOOK_CLAIM_HEALTH_ALERT_JOB === "true",
     },
     {
       name: "shipment-apv-payout-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runShipmentApvPayoutAlert(db); },
+      handler: async (db) => {
+        await runShipmentApvPayoutAlert(db);
+      },
       enabled: process.env.ENABLE_SHIPMENT_APV_PAYOUT_ALERT_JOB === "true",
     },
     {
       name: "shipment-apv-invoice-restoration-staging-maintenance",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runShipmentApvInvoiceRestorationStagingMaintenance(db); },
+      handler: async (db) => {
+        await runShipmentApvInvoiceRestorationStagingMaintenance(db);
+      },
       enabled: process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_MAINTENANCE_JOB === "true",
     },
     {
       name: "shipment-apv-invoice-restoration-remediation-expiry",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runShipmentApvInvoiceRestorationRemediationExpiry(db); },
-      enabled: process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB === "true",
+      handler: async (db) => {
+        await runShipmentApvInvoiceRestorationRemediationExpiry(db);
+      },
+      enabled:
+        process.env.ENABLE_SHIPMENT_APV_INVOICE_RESTORATION_REMEDIATION_EXPIRY_JOB === "true",
     },
     {
       name: "shipment-apv-remediation-cursor-retention",
       intervalMs: 24 * 60 * 60 * 1000,
-      handler: async (db) => { await runShipmentApvRemediationCursorRetention(db); },
+      handler: async (db) => {
+        await runShipmentApvRemediationCursorRetention(db);
+      },
       enabled: process.env.ENABLE_SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_JOB === "true",
       runOnStart: true,
     },
     {
       name: "shipment-apv-cancellation-audit-archive",
       intervalMs: 30 * 1000,
-      handler: async (db) => { await runShipmentApvCancellationAuditArchive(db); },
+      handler: async (db) => {
+        await runShipmentApvCancellationAuditArchive(db);
+      },
       enabled: process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_JOB === "true",
     },
     {
       name: "shipment-apv-cancellation-audit-archive-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runShipmentApvCancellationAuditArchiveAlert(db); },
+      handler: async (db) => {
+        await runShipmentApvCancellationAuditArchiveAlert(db);
+      },
       enabled: process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_ALERT_JOB === "true",
     },
     {
       name: "dispute-similarity-review-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runDisputeSimilarityReviewAlert(db); },
+      handler: async (db) => {
+        await runDisputeSimilarityReviewAlert(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_ALERT_JOB === "true",
     },
     {
       name: "dispute-similarity-review-expiry",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runDisputeSimilarityReviewExpiry(db); },
+      handler: async (db) => {
+        await runDisputeSimilarityReviewExpiry(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_EXPIRY_JOB === "true",
     },
     {
       name: "dispute-similarity-review-audit-archive",
       intervalMs: 30 * 1000,
-      handler: async (db) => { await runDisputeSimilarityReviewAuditArchive(db); },
+      handler: async (db) => {
+        await runDisputeSimilarityReviewAuditArchive(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_JOB === "true",
     },
     {
       name: "dispute-similarity-review-audit-archive-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runDisputeSimilarityReviewAuditArchiveAlert(db); },
+      handler: async (db) => {
+        await runDisputeSimilarityReviewAuditArchiveAlert(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_JOB === "true",
     },
     {
       name: "dispute-ai-audit-archive",
       intervalMs: 30 * 1000,
-      handler: async (db) => { await runDisputeAiAuditArchive(db); },
+      handler: async (db) => {
+        await runDisputeAiAuditArchive(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_JOB === "true",
     },
     {
       name: "dispute-ai-audit-archive-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runDisputeAiAuditArchiveAlert(db); },
+      handler: async (db) => {
+        await runDisputeAiAuditArchiveAlert(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_AI_AUDIT_ARCHIVE_ALERT_JOB === "true",
     },
     {
       name: "dispute-evidence-provenance-archive",
       intervalMs: 30 * 1000,
-      handler: async (db) => { await runDisputeEvidenceProvenanceArchive(db); },
+      handler: async (db) => {
+        await runDisputeEvidenceProvenanceArchive(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_EVIDENCE_PROVENANCE_ARCHIVE_JOB === "true",
     },
     {
       name: "conditional-settlement-preflight-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runConditionalSettlementPreflightAlert(db); },
+      handler: async (db) => {
+        await runConditionalSettlementPreflightAlert(db);
+      },
       enabled: process.env.ENABLE_CONDITIONAL_SETTLEMENT_PREFLIGHT_ALERT_JOB === "true",
     },
     {
       name: "conditional-settlement-finality-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runConditionalSettlementFinalityAlert(db); },
+      handler: async (db) => {
+        await runConditionalSettlementFinalityAlert(db);
+      },
       enabled: process.env.ENABLE_CONDITIONAL_SETTLEMENT_FINALITY_ALERT_JOB === "true",
     },
     {
       name: "dispute-evidence-provenance-archive-alert",
       intervalMs: 60 * 1000,
-      handler: async (db) => { await runDisputeEvidenceProvenanceArchiveAlert(db); },
+      handler: async (db) => {
+        await runDisputeEvidenceProvenanceArchiveAlert(db);
+      },
       enabled: process.env.ENABLE_DISPUTE_EVIDENCE_PROVENANCE_ARCHIVE_ALERT_JOB === "true",
     },
   ];
@@ -312,7 +349,9 @@ export function initCronJobs(db: Database): void {
 
   for (const job of enabledJobs) {
     if (job.runOnStart) void executeCronJob(job, db);
-    const timer = setInterval(() => { void executeCronJob(job, db); }, job.intervalMs);
+    const timer = setInterval(() => {
+      void executeCronJob(job, db);
+    }, job.intervalMs);
 
     // Allow process to exit even if timers are pending
     timer.unref();

@@ -39,7 +39,8 @@ describe("chain event sync production wiring", () => {
   it("uses HAGGLE_* contract address env vars for payment-stack deployments", () => {
     process.env.HAGGLE_BASE_RPC_URL = "https://base-sepolia.example";
     process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS = "0x1111111111111111111111111111111111111111";
-    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = "0x2222222222222222222222222222222222222222";
+    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS =
+      "0x2222222222222222222222222222222222222222";
     process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS = "0x3333333333333333333333333333333333333333";
     process.env.BASE_CHAIN_ID = "84532";
 
@@ -64,7 +65,8 @@ describe("chain event sync production wiring", () => {
               id: "payment-1",
               providerContext: {
                 conditional_settlement: {
-                  settlement_id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  settlement_id:
+                    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                   status: "FUNDING_SUBMITTED",
                 },
               },
@@ -77,7 +79,9 @@ describe("chain event sync production wiring", () => {
 
     await handleConditionalSettlementEvent(
       db as never,
-      { transactionHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } as never,
+      {
+        transactionHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      } as never,
       {
         eventName: "SettlementFunded",
         args: {
@@ -93,21 +97,25 @@ describe("chain event sync production wiring", () => {
       },
     );
 
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      providerContext: expect.objectContaining({
-        conditional_settlement: expect.objectContaining({
-          settlement_id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          funding_tx_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          status: "FUNDING_CONFIRMED",
-          order_id_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
-          payment_intent_id_hash: "0x2222222222222222222222222222222222222222222222222222222222222222",
-          approval_policy_hash: "0x3333333333333333333333333333333333333333333333333333333333333333",
-          buyer_wallet: "0x4444444444444444444444444444444444444444",
-          seller_wallet: "0x5555555555555555555555555555555555555555",
-          asset: "0x6666666666666666666666666666666666666666",
-          gross_amount_minor: "100000000",
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerContext: expect.objectContaining({
+          conditional_settlement: expect.objectContaining({
+            settlement_id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            funding_tx_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            status: "FUNDING_CONFIRMED",
+            order_id_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+            payment_intent_id_hash:
+              "0x2222222222222222222222222222222222222222222222222222222222222222",
+            approval_policy_hash:
+              "0x3333333333333333333333333333333333333333333333333333333333333333",
+            buyer_wallet: "0x4444444444444444444444444444444444444444",
+            seller_wallet: "0x5555555555555555555555555555555555555555",
+            asset: "0x6666666666666666666666666666666666666666",
+            gross_amount_minor: "100000000",
+          }),
         }),
       }),
-    }));
+    );
   });
 });

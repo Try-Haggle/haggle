@@ -1,25 +1,18 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createHash } from "node:crypto";
-import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp, AUTH_HEADERS, ADMIN_HEADERS } from "./helpers.js";
-import { getCommerceOrderByOrderId, updateCommerceOrderStatus } from "../services/payment-record.service.js";
-import { applyCarrierShipmentEvent, claimShipmentLabelRefund, completeShipmentLabelRefund, createShipmentRecord, failShipmentLabelRefund, getShipmentById, getShipmentByOrderId, getShipmentByTrackingNumber, insertShipmentEvent, syncSubmittedShipmentLabelRefund, updateShipmentRecord, type ShipmentRow } from "../services/shipment-record.service.js";
-import { createDisputeRecord, getDisputeByOrderId } from "../services/dispute-record.service.js";
-import { consumeShippingRateMissBudget } from "../services/shipping-rate-limit.service.js";
 import { parseEasyPostInvoicePayload } from "@haggle/shipping-core";
+import type { FastifyInstance } from "fastify";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createDisputeRecord, getDisputeByOrderId } from "../services/dispute-record.service.js";
+import {
+  getCommerceOrderByOrderId,
+  updateCommerceOrderStatus,
+} from "../services/payment-record.service.js";
 import { getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
 import {
   claimShipmentApvAdjustment,
   completeShipmentApvAdjustment,
   failShipmentApvAdjustment,
 } from "../services/shipment-apv-adjustment.service.js";
-import {
-  decideShipmentApvReview,
-  getShipmentApvReview,
-  submitShipmentApvSellerReview,
-} from "../services/shipment-apv-review.service.js";
-import { listShipmentApvInvoiceRevisions, recordShipmentApvInvoiceRevision } from "../services/shipment-apv-revision.service.js";
-import { applyShipmentApvInvoiceRevision } from "../services/shipment-apv-revision-application.service.js";
 import { bindShipmentApvRevisionEvidence } from "../services/shipment-apv-evidence.service.js";
 import {
   getShipmentApvInvoiceDocumentStorageHealth,
@@ -35,8 +28,8 @@ import {
 } from "../services/shipment-apv-invoice-reconciliation.service.js";
 import {
   decideShipmentApvInvoiceRestoration,
-  getShipmentApvInvoiceRestorationTimeline,
   getShipmentApvInvoiceRestorationStagingHealth,
+  getShipmentApvInvoiceRestorationTimeline,
   listPendingShipmentApvInvoiceRestorations,
   listShipmentApvInvoiceRestorationCandidates,
   maintainShipmentApvInvoiceRestorationStaging,
@@ -48,19 +41,45 @@ import {
   getShipmentApvInvoiceRestorationRemediationRecoveryCursorHealth,
   getShipmentApvInvoiceRestorationRemediationTimeline,
   listPendingShipmentApvInvoiceRestorationRemediations,
+  listShipmentApvInvoiceRestorationRemediationCandidates,
   listStaleShipmentApvInvoiceRestorationRemediationRecoveries,
   maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics,
   recordShipmentApvInvoiceRestorationRemediationAcknowledgment,
   recordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection,
-  listShipmentApvInvoiceRestorationRemediationCandidates,
   requestShipmentApvInvoiceRestorationRemediation,
 } from "../services/shipment-apv-invoice-restoration-remediation.service.js";
 import { listShipmentApvSellerLiabilities } from "../services/shipment-apv-payout-offset.service.js";
+import {
+  decideShipmentApvReview,
+  getShipmentApvReview,
+  submitShipmentApvSellerReview,
+} from "../services/shipment-apv-review.service.js";
+import {
+  listShipmentApvInvoiceRevisions,
+  recordShipmentApvInvoiceRevision,
+} from "../services/shipment-apv-revision.service.js";
+import { applyShipmentApvInvoiceRevision } from "../services/shipment-apv-revision-application.service.js";
+import {
+  applyCarrierShipmentEvent,
+  claimShipmentLabelRefund,
+  completeShipmentLabelRefund,
+  createShipmentRecord,
+  failShipmentLabelRefund,
+  getShipmentById,
+  getShipmentByOrderId,
+  getShipmentByTrackingNumber,
+  insertShipmentEvent,
+  type ShipmentRow,
+  syncSubmittedShipmentLabelRefund,
+  updateShipmentRecord,
+} from "../services/shipment-record.service.js";
+import { consumeShippingRateMissBudget } from "../services/shipping-rate-limit.service.js";
 import {
   claimWebhookEvent,
   completeWebhookEvent,
   failWebhookEvent,
 } from "../services/webhook-event-claim.service.js";
+import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
@@ -98,10 +117,14 @@ vi.mock("../services/shipment-record.service.js", () => ({
   updateShipmentRecord: vi.fn().mockResolvedValue(null),
   insertShipmentEvent: vi.fn().mockResolvedValue(null),
   applyCarrierShipmentEvent: vi.fn().mockResolvedValue(null),
-  claimShipmentLabelRefund: vi.fn().mockResolvedValue({ outcome: "invalid_status", shipmentId: "shipment" }),
+  claimShipmentLabelRefund: vi
+    .fn()
+    .mockResolvedValue({ outcome: "invalid_status", shipmentId: "shipment" }),
   completeShipmentLabelRefund: vi.fn().mockResolvedValue(true),
   failShipmentLabelRefund: vi.fn().mockResolvedValue(undefined),
-  normalizeProviderLabelRefundStatus: vi.fn((value: unknown) => typeof value === "string" ? value.toUpperCase() : null),
+  normalizeProviderLabelRefundStatus: vi.fn((value: unknown) =>
+    typeof value === "string" ? value.toUpperCase() : null,
+  ),
   syncSubmittedShipmentLabelRefund: vi.fn().mockResolvedValue(true),
 }));
 
@@ -294,36 +317,77 @@ const mockListShipmentApvInvoiceRevisions = vi.mocked(listShipmentApvInvoiceRevi
 const mockApplyShipmentApvInvoiceRevision = vi.mocked(applyShipmentApvInvoiceRevision);
 const mockBindShipmentApvRevisionEvidence = vi.mocked(bindShipmentApvRevisionEvidence);
 const mockStoreShipmentApvInvoiceDocument = vi.mocked(storeShipmentApvInvoiceDocument);
-const mockGetShipmentApvInvoiceDocumentStorageHealth = vi.mocked(getShipmentApvInvoiceDocumentStorageHealth);
-const mockRunShipmentApvInvoiceDocumentReconciliationDryRun = vi.mocked(runShipmentApvInvoiceDocumentReconciliationDryRun);
-const mockDecideShipmentApvInvoiceReconciliation = vi.mocked(decideShipmentApvInvoiceReconciliation);
-const mockDiscoverShipmentApvInvoiceReconciliationCandidates = vi.mocked(discoverShipmentApvInvoiceReconciliationCandidates);
-const mockGetShipmentApvInvoiceReconciliationTimeline = vi.mocked(getShipmentApvInvoiceReconciliationTimeline);
-const mockListPendingShipmentApvInvoiceReconciliations = vi.mocked(listPendingShipmentApvInvoiceReconciliations);
-const mockRequestShipmentApvInvoiceReconciliation = vi.mocked(requestShipmentApvInvoiceReconciliation);
+const mockGetShipmentApvInvoiceDocumentStorageHealth = vi.mocked(
+  getShipmentApvInvoiceDocumentStorageHealth,
+);
+const mockRunShipmentApvInvoiceDocumentReconciliationDryRun = vi.mocked(
+  runShipmentApvInvoiceDocumentReconciliationDryRun,
+);
+const mockDecideShipmentApvInvoiceReconciliation = vi.mocked(
+  decideShipmentApvInvoiceReconciliation,
+);
+const mockDiscoverShipmentApvInvoiceReconciliationCandidates = vi.mocked(
+  discoverShipmentApvInvoiceReconciliationCandidates,
+);
+const mockGetShipmentApvInvoiceReconciliationTimeline = vi.mocked(
+  getShipmentApvInvoiceReconciliationTimeline,
+);
+const mockListPendingShipmentApvInvoiceReconciliations = vi.mocked(
+  listPendingShipmentApvInvoiceReconciliations,
+);
+const mockRequestShipmentApvInvoiceReconciliation = vi.mocked(
+  requestShipmentApvInvoiceReconciliation,
+);
 const mockDecideShipmentApvInvoiceRestoration = vi.mocked(decideShipmentApvInvoiceRestoration);
-const mockGetShipmentApvInvoiceRestorationTimeline = vi.mocked(getShipmentApvInvoiceRestorationTimeline);
-const mockGetShipmentApvInvoiceRestorationStagingHealth = vi.mocked(getShipmentApvInvoiceRestorationStagingHealth);
-const mockListPendingShipmentApvInvoiceRestorations = vi.mocked(listPendingShipmentApvInvoiceRestorations);
-const mockListShipmentApvInvoiceRestorationCandidates = vi.mocked(listShipmentApvInvoiceRestorationCandidates);
-const mockMaintainShipmentApvInvoiceRestorationStaging = vi.mocked(maintainShipmentApvInvoiceRestorationStaging);
+const mockGetShipmentApvInvoiceRestorationTimeline = vi.mocked(
+  getShipmentApvInvoiceRestorationTimeline,
+);
+const mockGetShipmentApvInvoiceRestorationStagingHealth = vi.mocked(
+  getShipmentApvInvoiceRestorationStagingHealth,
+);
+const mockListPendingShipmentApvInvoiceRestorations = vi.mocked(
+  listPendingShipmentApvInvoiceRestorations,
+);
+const mockListShipmentApvInvoiceRestorationCandidates = vi.mocked(
+  listShipmentApvInvoiceRestorationCandidates,
+);
+const mockMaintainShipmentApvInvoiceRestorationStaging = vi.mocked(
+  maintainShipmentApvInvoiceRestorationStaging,
+);
 const mockRequestShipmentApvInvoiceRestoration = vi.mocked(requestShipmentApvInvoiceRestoration);
-const mockDecideShipmentApvInvoiceRestorationRemediation = vi.mocked(decideShipmentApvInvoiceRestorationRemediation);
-const mockGetShipmentApvInvoiceRestorationRemediationHealth = vi.mocked(getShipmentApvInvoiceRestorationRemediationHealth);
+const mockDecideShipmentApvInvoiceRestorationRemediation = vi.mocked(
+  decideShipmentApvInvoiceRestorationRemediation,
+);
+const mockGetShipmentApvInvoiceRestorationRemediationHealth = vi.mocked(
+  getShipmentApvInvoiceRestorationRemediationHealth,
+);
 const mockGetShipmentApvInvoiceRestorationRemediationRecoveryCursorHealth = vi.mocked(
-  getShipmentApvInvoiceRestorationRemediationRecoveryCursorHealth);
-const mockGetShipmentApvInvoiceRestorationRemediationTimeline = vi.mocked(getShipmentApvInvoiceRestorationRemediationTimeline);
-const mockListPendingShipmentApvInvoiceRestorationRemediations = vi.mocked(listPendingShipmentApvInvoiceRestorationRemediations);
+  getShipmentApvInvoiceRestorationRemediationRecoveryCursorHealth,
+);
+const mockGetShipmentApvInvoiceRestorationRemediationTimeline = vi.mocked(
+  getShipmentApvInvoiceRestorationRemediationTimeline,
+);
+const mockListPendingShipmentApvInvoiceRestorationRemediations = vi.mocked(
+  listPendingShipmentApvInvoiceRestorationRemediations,
+);
 const mockListStaleShipmentApvInvoiceRestorationRemediationRecoveries = vi.mocked(
-  listStaleShipmentApvInvoiceRestorationRemediationRecoveries);
+  listStaleShipmentApvInvoiceRestorationRemediationRecoveries,
+);
 const mockMaintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics = vi.mocked(
-  maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics);
+  maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics,
+);
 const mockRecordShipmentApvInvoiceRestorationRemediationAcknowledgment = vi.mocked(
-  recordShipmentApvInvoiceRestorationRemediationAcknowledgment);
+  recordShipmentApvInvoiceRestorationRemediationAcknowledgment,
+);
 const mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection = vi.mocked(
-  recordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection);
-const mockListShipmentApvInvoiceRestorationRemediationCandidates = vi.mocked(listShipmentApvInvoiceRestorationRemediationCandidates);
-const mockRequestShipmentApvInvoiceRestorationRemediation = vi.mocked(requestShipmentApvInvoiceRestorationRemediation);
+  recordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection,
+);
+const mockListShipmentApvInvoiceRestorationRemediationCandidates = vi.mocked(
+  listShipmentApvInvoiceRestorationRemediationCandidates,
+);
+const mockRequestShipmentApvInvoiceRestorationRemediation = vi.mocked(
+  requestShipmentApvInvoiceRestorationRemediation,
+);
 const mockListShipmentApvSellerLiabilities = vi.mocked(listShipmentApvSellerLiabilities);
 const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
 const mockClaimWebhookEvent = vi.mocked(claimWebhookEvent);
@@ -352,7 +416,10 @@ describe("Shipment routes", () => {
     mockParseEasyPostInvoicePayload.mockReturnValue(null);
     mockGetSettlementReleaseByOrderId.mockResolvedValue(null);
     mockApplyCarrierShipmentEvent.mockResolvedValue(null);
-    mockClaimShipmentLabelRefund.mockResolvedValue({ outcome: "invalid_status", shipmentId: "shipment" });
+    mockClaimShipmentLabelRefund.mockResolvedValue({
+      outcome: "invalid_status",
+      shipmentId: "shipment",
+    });
     mockCompleteShipmentLabelRefund.mockResolvedValue(true);
     mockFailShipmentLabelRefund.mockResolvedValue(undefined);
     mockSyncSubmittedShipmentLabelRefund.mockResolvedValue(true);
@@ -373,35 +440,68 @@ describe("Shipment routes", () => {
     mockGetShipmentApvInvoiceRestorationTimeline.mockReset();
     mockGetShipmentApvInvoiceRestorationStagingHealth.mockReset();
     mockListPendingShipmentApvInvoiceRestorations.mockResolvedValue([]);
-    mockListShipmentApvInvoiceRestorationCandidates.mockResolvedValue({ candidates: [], truncated: false });
+    mockListShipmentApvInvoiceRestorationCandidates.mockResolvedValue({
+      candidates: [],
+      truncated: false,
+    });
     mockMaintainShipmentApvInvoiceRestorationStaging.mockReset();
     mockRequestShipmentApvInvoiceRestoration.mockReset();
     mockDecideShipmentApvInvoiceRestorationRemediation.mockReset();
-    mockGetShipmentApvInvoiceRestorationRemediationHealth.mockResolvedValue({ status: "healthy",
-      pendingRequests: 0, applyingRequests: 0, expiringSoonRequests: 0, overduePendingRequests: 0,
-      staleApplyingRequests: 0, staleApplyingOver15Minutes: 0, staleApplyingOver60Minutes: 0,
-      unacknowledgedStaleOver60Minutes: 0, incidentUnlinkedStaleOver60Minutes: 0,
-      acknowledgedStillApplyingOver30Minutes: 0, incidentLinkedStillApplyingOver30Minutes: 0,
+    mockGetShipmentApvInvoiceRestorationRemediationHealth.mockResolvedValue({
+      status: "healthy",
+      pendingRequests: 0,
+      applyingRequests: 0,
+      expiringSoonRequests: 0,
+      overduePendingRequests: 0,
+      staleApplyingRequests: 0,
+      staleApplyingOver15Minutes: 0,
+      staleApplyingOver60Minutes: 0,
+      unacknowledgedStaleOver60Minutes: 0,
+      incidentUnlinkedStaleOver60Minutes: 0,
+      acknowledgedStillApplyingOver30Minutes: 0,
+      incidentLinkedStillApplyingOver30Minutes: 0,
       incidentLinkOverdueAfterAcknowledgment: 0,
-      oldestPendingAgeSeconds: null, oldestApplyingAgeSeconds: null, staleApplyingAgeBucket: "none",
-      recordedAt: "2026-07-12T00:00:00.000Z" });
+      oldestPendingAgeSeconds: null,
+      oldestApplyingAgeSeconds: null,
+      staleApplyingAgeBucket: "none",
+      recordedAt: "2026-07-12T00:00:00.000Z",
+    });
     mockGetShipmentApvInvoiceRestorationRemediationRecoveryCursorHealth.mockResolvedValue({
-      windowHours: 24, expired: 0, invalid: 0, total: 0, lastSeenAt: null,
+      windowHours: 24,
+      expired: 0,
+      invalid: 0,
+      total: 0,
+      lastSeenAt: null,
       recordedAt: "2026-07-12T00:00:00.000Z",
     });
     mockGetShipmentApvInvoiceRestorationRemediationTimeline.mockReset();
     mockListPendingShipmentApvInvoiceRestorationRemediations.mockResolvedValue([]);
     mockListStaleShipmentApvInvoiceRestorationRemediationRecoveries.mockResolvedValue({
-      items: [], truncated: false, nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z",
+      items: [],
+      truncated: false,
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:00:00.000Z",
     });
     mockMaintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics.mockResolvedValue({
-      dryRun: true, retentionDays: 30, limit: 1000, eligibleBuckets: 0, deletedBuckets: undefined,
-      expiredBuckets: 0, invalidBuckets: 0, truncated: false,
-      cutoffAt: "2026-06-12T00:00:00.000Z", recordedAt: "2026-07-12T00:00:00.000Z",
+      dryRun: true,
+      retentionDays: 30,
+      limit: 1000,
+      eligibleBuckets: 0,
+      deletedBuckets: undefined,
+      expiredBuckets: 0,
+      invalidBuckets: 0,
+      truncated: false,
+      cutoffAt: "2026-06-12T00:00:00.000Z",
+      recordedAt: "2026-07-12T00:00:00.000Z",
     });
     mockRecordShipmentApvInvoiceRestorationRemediationAcknowledgment.mockReset();
-    mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection.mockResolvedValue(undefined);
-    mockListShipmentApvInvoiceRestorationRemediationCandidates.mockResolvedValue({ candidates: [], truncated: false });
+    mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection.mockResolvedValue(
+      undefined,
+    );
+    mockListShipmentApvInvoiceRestorationRemediationCandidates.mockResolvedValue({
+      candidates: [],
+      truncated: false,
+    });
     mockRequestShipmentApvInvoiceRestorationRemediation.mockReset();
     mockListShipmentApvSellerLiabilities.mockResolvedValue([]);
     mockConsumeShippingRateMissBudget.mockResolvedValue({
@@ -432,22 +532,32 @@ describe("Shipment routes", () => {
       platform_liability_minor: 0,
       buyer_effect_minor: 0 as const,
     };
-    mockSubmitShipmentApvSellerReview.mockResolvedValueOnce({ outcome: "updated", record: adjustment });
+    mockSubmitShipmentApvSellerReview.mockResolvedValueOnce({
+      outcome: "updated",
+      record: adjustment,
+    });
     const res = await app.inject({
       method: "POST",
       url: `/shipments/apv-adjustments/${adjustment.id}/seller-review`,
       headers: AUTH_HEADERS,
       payload: {
         request_id: adjustment.review_request_id,
-        reason: "The carrier correction does not match the address supplied for the purchased label.",
+        reason:
+          "The carrier correction does not match the address supplied for the purchased label.",
       },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ adjustment: { review_status: "PENDING", buyer_effect_minor: 0 }, idempotent: false });
-    expect(mockSubmitShipmentApvSellerReview).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      sellerId: "test-user-001",
-      requestId: adjustment.review_request_id,
-    }));
+    expect(res.json()).toMatchObject({
+      adjustment: { review_status: "PENDING", buyer_effect_minor: 0 },
+      idempotent: false,
+    });
+    expect(mockSubmitShipmentApvSellerReview).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sellerId: "test-user-001",
+        requestId: adjustment.review_request_id,
+      }),
+    );
   });
 
   it("allows only an admin to waive an APV seller liability with optimistic locking", async () => {
@@ -488,7 +598,12 @@ describe("Shipment routes", () => {
     });
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json()).toMatchObject({
-      adjustment: { review_status: "WAIVED", seller_liability_minor: 0, platform_liability_minor: 250, buyer_effect_minor: 0 },
+      adjustment: {
+        review_status: "WAIVED",
+        seller_liability_minor: 0,
+        platform_liability_minor: 250,
+        buyer_effect_minor: 0,
+      },
     });
   });
 
@@ -508,33 +623,37 @@ describe("Shipment routes", () => {
       platform_liability_minor: 0,
       buyer_effect_minor: 0,
     });
-    mockListShipmentApvInvoiceRevisions.mockResolvedValueOnce([{
-      id: "88888888-8888-4888-8888-888888888888",
-      adjustment_id: adjustmentId,
-      provider: "easypost",
-      provider_invoice_id: "shinv_revision_list",
-      revision_number: 2,
-      invoice_event: "updated",
-      payload_sha256: "a".repeat(64),
-      webhook_event_id: "evt_revision_list",
-      prior_adjusted_rate_minor: 1025,
-      adjusted_rate_minor: 1125,
-      delta_minor: 100,
-      status: "PENDING_REVIEW",
-      buyer_effect_minor: 0,
-      buffer_applied_minor: 0,
-      seller_liability_minor: 0,
-      platform_liability_minor: 0,
-      carrier_credit_minor: 0,
-      apply_version: 0,
-    }]);
+    mockListShipmentApvInvoiceRevisions.mockResolvedValueOnce([
+      {
+        id: "88888888-8888-4888-8888-888888888888",
+        adjustment_id: adjustmentId,
+        provider: "easypost",
+        provider_invoice_id: "shinv_revision_list",
+        revision_number: 2,
+        invoice_event: "updated",
+        payload_sha256: "a".repeat(64),
+        webhook_event_id: "evt_revision_list",
+        prior_adjusted_rate_minor: 1025,
+        adjusted_rate_minor: 1125,
+        delta_minor: 100,
+        status: "PENDING_REVIEW",
+        buyer_effect_minor: 0,
+        buffer_applied_minor: 0,
+        seller_liability_minor: 0,
+        platform_liability_minor: 0,
+        carrier_credit_minor: 0,
+        apply_version: 0,
+      },
+    ]);
     const res = await app.inject({
       method: "GET",
       url: `/shipments/apv-adjustments/${adjustmentId}/revisions`,
       headers: AUTH_HEADERS,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ revisions: [{ revision_number: 2, delta_minor: 100, status: "PENDING_REVIEW" }] });
+    expect(res.json()).toMatchObject({
+      revisions: [{ revision_number: 2, delta_minor: 100, status: "PENDING_REVIEW" }],
+    });
   });
 
   it("allows only an admin to apply an APV revision decision", async () => {
@@ -579,7 +698,9 @@ describe("Shipment routes", () => {
       payload,
     });
     expect(allowed.statusCode).toBe(200);
-    expect(allowed.json()).toMatchObject({ revision: { status: "APPLIED", seller_liability_minor: 100, buyer_effect_minor: 0 } });
+    expect(allowed.json()).toMatchObject({
+      revision: { status: "APPLIED", seller_liability_minor: 100, buyer_effect_minor: 0 },
+    });
   });
 
   it("allows only an admin to bind immutable carrier evidence to an APV revision", async () => {
@@ -629,268 +750,551 @@ describe("Shipment routes", () => {
   it("allows only an admin to store invoice bytes already bound to an APV revision", async () => {
     const revisionId = "88888888-8888-4888-8888-888888888888";
     const bytes = Buffer.from(JSON.stringify({ invoice_id: "shinv_001", total: 7.25 }));
-    const payload = { provider_document_id: "shinv_001:revision-2",
-      content_type: "application/json", content_base64: bytes.toString("base64") };
-    const forbidden = await app.inject({ method: "POST",
-      url: `/shipments/apv-revisions/${revisionId}/invoice-document`, headers: AUTH_HEADERS, payload });
+    const payload = {
+      provider_document_id: "shinv_001:revision-2",
+      content_type: "application/json",
+      content_base64: bytes.toString("base64"),
+    };
+    const forbidden = await app.inject({
+      method: "POST",
+      url: `/shipments/apv-revisions/${revisionId}/invoice-document`,
+      headers: AUTH_HEADERS,
+      payload,
+    });
     expect(forbidden.statusCode).toBe(403);
     expect(mockStoreShipmentApvInvoiceDocument).not.toHaveBeenCalled();
 
-    mockStoreShipmentApvInvoiceDocument.mockResolvedValueOnce({ outcome: "stored", document: {
-      id: "77777777-7777-4777-8777-777777777777", revision_id: revisionId,
-      provider_document_id: payload.provider_document_id, content_type: "application/json",
-      byte_size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"),
-    } });
-    const allowed = await app.inject({ method: "POST",
-      url: `/shipments/apv-revisions/${revisionId}/invoice-document`, headers: ADMIN_HEADERS, payload });
+    mockStoreShipmentApvInvoiceDocument.mockResolvedValueOnce({
+      outcome: "stored",
+      document: {
+        id: "77777777-7777-4777-8777-777777777777",
+        revision_id: revisionId,
+        provider_document_id: payload.provider_document_id,
+        content_type: "application/json",
+        byte_size: bytes.length,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      },
+    });
+    const allowed = await app.inject({
+      method: "POST",
+      url: `/shipments/apv-revisions/${revisionId}/invoice-document`,
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(allowed.statusCode).toBe(201);
-    expect(allowed.json()).toMatchObject({ document: { revision_id: revisionId,
-      provider_document_id: payload.provider_document_id, byte_size: bytes.length }, idempotent: false });
-    expect(mockStoreShipmentApvInvoiceDocument).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      revisionId, contentType: "application/json", bytes,
-    }));
+    expect(allowed.json()).toMatchObject({
+      document: {
+        revision_id: revisionId,
+        provider_document_id: payload.provider_document_id,
+        byte_size: bytes.length,
+      },
+      idempotent: false,
+    });
+    expect(mockStoreShipmentApvInvoiceDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        revisionId,
+        contentType: "application/json",
+        bytes,
+      }),
+    );
   });
 
   it("rejects invoice bytes that do not match the bound revision evidence", async () => {
     const revisionId = "88888888-8888-4888-8888-888888888888";
     mockStoreShipmentApvInvoiceDocument.mockResolvedValueOnce({ outcome: "evidence_mismatch" });
-    const response = await app.inject({ method: "POST",
-      url: `/shipments/apv-revisions/${revisionId}/invoice-document`, headers: ADMIN_HEADERS,
-      payload: { provider_document_id: "shinv_001:revision-2", content_type: "application/json",
-        content_base64: Buffer.from('{"different":true}').toString("base64") } });
+    const response = await app.inject({
+      method: "POST",
+      url: `/shipments/apv-revisions/${revisionId}/invoice-document`,
+      headers: ADMIN_HEADERS,
+      payload: {
+        provider_document_id: "shinv_001:revision-2",
+        content_type: "application/json",
+        content_base64: Buffer.from('{"different":true}').toString("base64"),
+      },
+    });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "APV_INVOICE_DOCUMENT_EVIDENCE_MISMATCH" });
   });
 
   it("exposes aggregate-only invoice storage health to admins", async () => {
-    const forbidden = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/health", headers: AUTH_HEADERS });
+    const forbidden = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/health",
+      headers: AUTH_HEADERS,
+    });
     expect(forbidden.statusCode).toBe(403);
     expect(mockGetShipmentApvInvoiceDocumentStorageHealth).not.toHaveBeenCalled();
 
-    const health = { status: "warning" as const, totalDocuments: 3, checkedDocuments: 3,
-      missingFiles: 0, sizeMismatches: 0, hashMismatches: 0, orphanFiles: 1,
-      invalidEntries: 0, scanTruncated: false, checkedBytes: 128,
-      recordedAt: "2026-07-12T00:00:00.000Z" };
+    const health = {
+      status: "warning" as const,
+      totalDocuments: 3,
+      checkedDocuments: 3,
+      missingFiles: 0,
+      sizeMismatches: 0,
+      hashMismatches: 0,
+      orphanFiles: 1,
+      invalidEntries: 0,
+      scanTruncated: false,
+      checkedBytes: 128,
+      recordedAt: "2026-07-12T00:00:00.000Z",
+    };
     mockGetShipmentApvInvoiceDocumentStorageHealth.mockResolvedValueOnce(health);
-    const allowed = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/health", headers: ADMIN_HEADERS });
+    const allowed = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/health",
+      headers: ADMIN_HEADERS,
+    });
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json()).toEqual({ health });
   });
 
   it("requires an admin and explicit dry-run for invoice storage reconciliation", async () => {
-    const forbidden = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/reconcile", headers: AUTH_HEADERS,
-      payload: { dry_run: true } });
+    const forbidden = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/reconcile",
+      headers: AUTH_HEADERS,
+      payload: { dry_run: true },
+    });
     expect(forbidden.statusCode).toBe(403);
 
-    const unsafe = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/reconcile", headers: ADMIN_HEADERS,
-      payload: { dry_run: false } });
+    const unsafe = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/reconcile",
+      headers: ADMIN_HEADERS,
+      payload: { dry_run: false },
+    });
     expect(unsafe.statusCode).toBe(400);
     expect(mockRunShipmentApvInvoiceDocumentReconciliationDryRun).not.toHaveBeenCalled();
 
-    const reconciliation = { dryRun: true as const, mutated: false as const,
-      health: { status: "healthy" as const, totalDocuments: 1, checkedDocuments: 1,
-        missingFiles: 0, sizeMismatches: 0, hashMismatches: 0, orphanFiles: 0,
-        invalidEntries: 0, scanTruncated: false, checkedBytes: 128,
-        recordedAt: "2026-07-12T00:00:00.000Z" },
-      wouldMarkMissingOrCorrupt: 0, wouldQuarantineOrphans: 0 };
+    const reconciliation = {
+      dryRun: true as const,
+      mutated: false as const,
+      health: {
+        status: "healthy" as const,
+        totalDocuments: 1,
+        checkedDocuments: 1,
+        missingFiles: 0,
+        sizeMismatches: 0,
+        hashMismatches: 0,
+        orphanFiles: 0,
+        invalidEntries: 0,
+        scanTruncated: false,
+        checkedBytes: 128,
+        recordedAt: "2026-07-12T00:00:00.000Z",
+      },
+      wouldMarkMissingOrCorrupt: 0,
+      wouldQuarantineOrphans: 0,
+    };
     mockRunShipmentApvInvoiceDocumentReconciliationDryRun.mockResolvedValueOnce(reconciliation);
-    const allowed = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/reconcile", headers: ADMIN_HEADERS,
-      payload: { dry_run: true } });
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/reconcile",
+      headers: ADMIN_HEADERS,
+      payload: { dry_run: true },
+    });
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json()).toEqual({ reconciliation });
   });
 
   it("exposes only opaque invoice reconciliation candidates to admins", async () => {
-    const forbidden = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/reconciliation-candidates", headers: AUTH_HEADERS });
+    const forbidden = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/reconciliation-candidates",
+      headers: AUTH_HEADERS,
+    });
     expect(forbidden.statusCode).toBe(403);
     mockDiscoverShipmentApvInvoiceReconciliationCandidates.mockResolvedValueOnce({
-      candidates: [{ candidateId: "a".repeat(64), anomalyType: "ORPHAN_FILE", documentBound: false }],
-      scanTruncated: false, checkedDocuments: 1, totalDocuments: 1,
+      candidates: [
+        { candidateId: "a".repeat(64), anomalyType: "ORPHAN_FILE", documentBound: false },
+      ],
+      scanTruncated: false,
+      checkedDocuments: 1,
+      totalDocuments: 1,
     });
-    const allowed = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/reconciliation-candidates", headers: ADMIN_HEADERS });
+    const allowed = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/reconciliation-candidates",
+      headers: ADMIN_HEADERS,
+    });
     expect(allowed.statusCode).toBe(200);
-    expect(allowed.json()).toEqual({ reconciliation_candidates: {
-      candidates: [{ candidateId: "a".repeat(64), anomalyType: "ORPHAN_FILE", documentBound: false }],
-      scanTruncated: false, checkedDocuments: 1, totalDocuments: 1,
-    } });
+    expect(allowed.json()).toEqual({
+      reconciliation_candidates: {
+        candidates: [
+          { candidateId: "a".repeat(64), anomalyType: "ORPHAN_FILE", documentBound: false },
+        ],
+        scanTruncated: false,
+        checkedDocuments: 1,
+        totalDocuments: 1,
+      },
+    });
     expect(JSON.stringify(allowed.json())).not.toContain("storage_key");
   });
 
   it("creates an idempotent admin reconciliation request from an opaque candidate", async () => {
     const requestId = "77777777-7777-4777-8777-777777777777";
-    const payload = { client_request_id: "66666666-6666-4666-8666-666666666666",
-      candidate_id: "a".repeat(64), reason: "Quarantine the verified orphan without deleting evidence." };
-    const request = { id: requestId, client_request_id: payload.client_request_id,
-      anomaly_type: "ORPHAN_FILE" as const, target_fingerprint: payload.candidate_id,
-      document_bound: false, requester_id: "99999999-9999-4999-8999-999999999999",
-      reason: payload.reason, status: "PENDING" as const, version: 0,
-      expires_at: "2026-07-12T00:30:00.000Z", created_at: "2026-07-12T00:00:00.000Z" };
-    mockRequestShipmentApvInvoiceReconciliation.mockResolvedValueOnce({ outcome: "requested", request });
-    const response = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/reconciliation-requests", headers: ADMIN_HEADERS, payload });
+    const payload = {
+      client_request_id: "66666666-6666-4666-8666-666666666666",
+      candidate_id: "a".repeat(64),
+      reason: "Quarantine the verified orphan without deleting evidence.",
+    };
+    const request = {
+      id: requestId,
+      client_request_id: payload.client_request_id,
+      anomaly_type: "ORPHAN_FILE" as const,
+      target_fingerprint: payload.candidate_id,
+      document_bound: false,
+      requester_id: "99999999-9999-4999-8999-999999999999",
+      reason: payload.reason,
+      status: "PENDING" as const,
+      version: 0,
+      expires_at: "2026-07-12T00:30:00.000Z",
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
+    mockRequestShipmentApvInvoiceReconciliation.mockResolvedValueOnce({
+      outcome: "requested",
+      request,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/reconciliation-requests",
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(response.statusCode).toBe(201);
-    expect(response.json()).toMatchObject({ reconciliation_request: { id: requestId,
-      anomaly_type: "ORPHAN_FILE", document_bound: false }, idempotent: false });
+    expect(response.json()).toMatchObject({
+      reconciliation_request: { id: requestId, anomaly_type: "ORPHAN_FILE", document_bound: false },
+      idempotent: false,
+    });
   });
 
   it("enforces maker-checker separation on invoice reconciliation decisions", async () => {
     const requestId = "77777777-7777-4777-8777-777777777777";
-    const payload = { decision_request_id: "55555555-5555-4555-8555-555555555555",
-      decision: "APPROVE", reason: "Checker verified that the orphan remains safe to quarantine.", expected_version: 0 };
-    mockDecideShipmentApvInvoiceReconciliation.mockResolvedValueOnce({ outcome: "self_approval_forbidden" });
-    const blocked = await app.inject({ method: "POST",
+    const payload = {
+      decision_request_id: "55555555-5555-4555-8555-555555555555",
+      decision: "APPROVE",
+      reason: "Checker verified that the orphan remains safe to quarantine.",
+      expected_version: 0,
+    };
+    mockDecideShipmentApvInvoiceReconciliation.mockResolvedValueOnce({
+      outcome: "self_approval_forbidden",
+    });
+    const blocked = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/reconciliation-requests/${requestId}/decision`,
-      headers: ADMIN_HEADERS, payload });
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(blocked.statusCode).toBe(403);
     expect(blocked.json()).toEqual({ error: "APV_INVOICE_RECONCILIATION_SELF_APPROVAL_FORBIDDEN" });
   });
 
   it("returns the pending reconciliation queue and immutable timeline", async () => {
     const requestId = "77777777-7777-4777-8777-777777777777";
-    const request = { id: requestId, client_request_id: "66666666-6666-4666-8666-666666666666",
-      anomaly_type: "ORPHAN_FILE" as const, target_fingerprint: "a".repeat(64), document_bound: false,
-      requester_id: "99999999-9999-4999-8999-999999999999", reason: "Quarantine verified orphan evidence.",
-      status: "PENDING" as const, version: 0,
+    const request = {
+      id: requestId,
+      client_request_id: "66666666-6666-4666-8666-666666666666",
+      anomaly_type: "ORPHAN_FILE" as const,
+      target_fingerprint: "a".repeat(64),
+      document_bound: false,
+      requester_id: "99999999-9999-4999-8999-999999999999",
+      reason: "Quarantine verified orphan evidence.",
+      status: "PENDING" as const,
+      version: 0,
       expires_at: "2026-07-12T00:30:00.000Z",
-      created_at: "2026-07-12T00:00:00.000Z" };
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
     mockListPendingShipmentApvInvoiceReconciliations.mockResolvedValueOnce([request]);
-    mockGetShipmentApvInvoiceReconciliationTimeline.mockResolvedValueOnce({ request,
-      events: [{ id: "44444444-4444-4444-8444-444444444444", event_type: "REQUESTED",
-        actor_id: request.requester_id, request_version: 0, metadata: { anomaly_type: "ORPHAN_FILE" },
-        created_at: "2026-07-12T00:00:00.000Z" }] });
-    const queue = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/reconciliation-requests/pending", headers: ADMIN_HEADERS });
-    const timeline = await app.inject({ method: "GET",
-      url: `/admin/shipments/apv-invoice-documents/reconciliation-requests/${requestId}/timeline`, headers: ADMIN_HEADERS });
+    mockGetShipmentApvInvoiceReconciliationTimeline.mockResolvedValueOnce({
+      request,
+      events: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          event_type: "REQUESTED",
+          actor_id: request.requester_id,
+          request_version: 0,
+          metadata: { anomaly_type: "ORPHAN_FILE" },
+          created_at: "2026-07-12T00:00:00.000Z",
+        },
+      ],
+    });
+    const queue = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/reconciliation-requests/pending",
+      headers: ADMIN_HEADERS,
+    });
+    const timeline = await app.inject({
+      method: "GET",
+      url: `/admin/shipments/apv-invoice-documents/reconciliation-requests/${requestId}/timeline`,
+      headers: ADMIN_HEADERS,
+    });
     expect(queue.statusCode).toBe(200);
-    expect(queue.json()).toMatchObject({ reconciliation_requests: [{ id: requestId, status: "PENDING" }] });
+    expect(queue.json()).toMatchObject({
+      reconciliation_requests: [{ id: requestId, status: "PENDING" }],
+    });
     expect(timeline.statusCode).toBe(200);
-    expect(timeline.json()).toMatchObject({ reconciliation_timeline: {
-      events: [{ event_type: "REQUESTED", request_version: 0 }] } });
+    expect(timeline.json()).toMatchObject({
+      reconciliation_timeline: {
+        events: [{ event_type: "REQUESTED", request_version: 0 }],
+      },
+    });
   });
 
   it("lists opaque invoice restoration candidates only for admins", async () => {
-    const forbidden = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/restoration-candidates", headers: AUTH_HEADERS });
+    const forbidden = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/restoration-candidates",
+      headers: AUTH_HEADERS,
+    });
     expect(forbidden.statusCode).toBe(403);
     mockListShipmentApvInvoiceRestorationCandidates.mockResolvedValueOnce({
-      candidates: [{ candidateId: "b".repeat(64), integrityStatus: "QUARANTINED" }], truncated: false,
+      candidates: [{ candidateId: "b".repeat(64), integrityStatus: "QUARANTINED" }],
+      truncated: false,
     });
-    const allowed = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/restoration-candidates", headers: ADMIN_HEADERS });
+    const allowed = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/restoration-candidates",
+      headers: ADMIN_HEADERS,
+    });
     expect(allowed.statusCode).toBe(200);
-    expect(allowed.json()).toEqual({ restoration_candidates: {
-      candidates: [{ candidateId: "b".repeat(64), integrityStatus: "QUARANTINED" }], truncated: false,
-    } });
+    expect(allowed.json()).toEqual({
+      restoration_candidates: {
+        candidates: [{ candidateId: "b".repeat(64), integrityStatus: "QUARANTINED" }],
+        truncated: false,
+      },
+    });
     expect(JSON.stringify(allowed.json())).not.toContain("document_id");
     expect(JSON.stringify(allowed.json())).not.toContain("storage_key");
   });
 
   it("stages only a hash-bound replacement for an admin restoration request", async () => {
     const bytes = Buffer.from('{"invoice":"restored"}');
-    const payload = { client_request_id: "66666666-6666-4666-8666-666666666666",
-      candidate_id: "b".repeat(64), content_type: "application/json",
+    const payload = {
+      client_request_id: "66666666-6666-4666-8666-666666666666",
+      candidate_id: "b".repeat(64),
+      content_type: "application/json",
       content_base64: bytes.toString("base64"),
-      reason: "Stage a re-collected invoice that matches the immutable evidence hash." };
-    mockRequestShipmentApvInvoiceRestoration.mockResolvedValueOnce({ outcome: "replacement_mismatch" });
-    const mismatch = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/restoration-requests", headers: ADMIN_HEADERS, payload });
+      reason: "Stage a re-collected invoice that matches the immutable evidence hash.",
+    };
+    mockRequestShipmentApvInvoiceRestoration.mockResolvedValueOnce({
+      outcome: "replacement_mismatch",
+    });
+    const mismatch = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/restoration-requests",
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(mismatch.statusCode).toBe(409);
     expect(mismatch.json()).toEqual({ error: "APV_INVOICE_RESTORATION_REPLACEMENT_MISMATCH" });
 
-    const request = { id: payload.client_request_id, client_request_id: payload.client_request_id,
-      candidate_fingerprint: payload.candidate_id, source_integrity_status: "QUARANTINED" as const,
-      replacement_sha256: createHash("sha256").update(bytes).digest("hex"), replacement_byte_size: bytes.length,
-      requester_id: "99999999-9999-4999-8999-999999999999", reason: payload.reason,
-      status: "PENDING" as const, version: 0, staging_status: "STAGED" as const,
+    const request = {
+      id: payload.client_request_id,
+      client_request_id: payload.client_request_id,
+      candidate_fingerprint: payload.candidate_id,
+      source_integrity_status: "QUARANTINED" as const,
+      replacement_sha256: createHash("sha256").update(bytes).digest("hex"),
+      replacement_byte_size: bytes.length,
+      requester_id: "99999999-9999-4999-8999-999999999999",
+      reason: payload.reason,
+      status: "PENDING" as const,
+      version: 0,
+      staging_status: "STAGED" as const,
       expires_at: "2026-07-12T00:30:00.000Z",
-      created_at: "2026-07-12T00:00:00.000Z" };
-    mockRequestShipmentApvInvoiceRestoration.mockResolvedValueOnce({ outcome: "requested", request });
-    const created = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/restoration-requests", headers: ADMIN_HEADERS, payload });
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
+    mockRequestShipmentApvInvoiceRestoration.mockResolvedValueOnce({
+      outcome: "requested",
+      request,
+    });
+    const created = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/restoration-requests",
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ restoration_request: { status: "PENDING",
-      source_integrity_status: "QUARANTINED" }, idempotent: false });
-    expect(mockRequestShipmentApvInvoiceRestoration).toHaveBeenLastCalledWith(expect.anything(),
-      expect.objectContaining({ bytes, contentType: "application/json" }));
+    expect(created.json()).toMatchObject({
+      restoration_request: { status: "PENDING", source_integrity_status: "QUARANTINED" },
+      idempotent: false,
+    });
+    expect(mockRequestShipmentApvInvoiceRestoration).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bytes, contentType: "application/json" }),
+    );
   });
 
   it("blocks restoration self-approval before any file restore", async () => {
     const requestId = "66666666-6666-4666-8666-666666666666";
-    mockDecideShipmentApvInvoiceRestoration.mockResolvedValueOnce({ outcome: "self_approval_forbidden" });
-    const response = await app.inject({ method: "POST",
+    mockDecideShipmentApvInvoiceRestoration.mockResolvedValueOnce({
+      outcome: "self_approval_forbidden",
+    });
+    const response = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-requests/${requestId}/decision`,
-      headers: ADMIN_HEADERS, payload: { decision_request_id: "55555555-5555-4555-8555-555555555555",
-        decision: "RESTORE", reason: "The restoration maker cannot approve the same replacement.", expected_version: 0 } });
+      headers: ADMIN_HEADERS,
+      payload: {
+        decision_request_id: "55555555-5555-4555-8555-555555555555",
+        decision: "RESTORE",
+        reason: "The restoration maker cannot approve the same replacement.",
+        expected_version: 0,
+      },
+    });
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "APV_INVOICE_RESTORATION_SELF_APPROVAL_FORBIDDEN" });
   });
 
   it("returns pending restoration work and its version-ordered timeline", async () => {
     const requestId = "66666666-6666-4666-8666-666666666666";
-    const request = { id: requestId, client_request_id: requestId, candidate_fingerprint: "b".repeat(64),
-      source_integrity_status: "QUARANTINED" as const, replacement_sha256: "a".repeat(64),
-      replacement_byte_size: 20, requester_id: "99999999-9999-4999-8999-999999999999",
-      reason: "Stage a matching replacement for checker review.", status: "PENDING" as const, version: 0,
+    const request = {
+      id: requestId,
+      client_request_id: requestId,
+      candidate_fingerprint: "b".repeat(64),
+      source_integrity_status: "QUARANTINED" as const,
+      replacement_sha256: "a".repeat(64),
+      replacement_byte_size: 20,
+      requester_id: "99999999-9999-4999-8999-999999999999",
+      reason: "Stage a matching replacement for checker review.",
+      status: "PENDING" as const,
+      version: 0,
       staging_status: "STAGED" as const,
-      expires_at: "2026-07-12T00:30:00.000Z", created_at: "2026-07-12T00:00:00.000Z" };
+      expires_at: "2026-07-12T00:30:00.000Z",
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
     mockListPendingShipmentApvInvoiceRestorations.mockResolvedValueOnce([request]);
-    mockGetShipmentApvInvoiceRestorationTimeline.mockResolvedValueOnce({ request, events: [
-      { id: "44444444-4444-4444-8444-444444444444", event_type: "REQUESTED", actor_id: request.requester_id,
-        request_version: 0, metadata: {}, created_at: "2026-07-12T00:00:00.000Z" },
-    ] });
-    const queue = await app.inject({ method: "GET",
-      url: "/admin/shipments/apv-invoice-documents/restoration-requests/pending", headers: ADMIN_HEADERS });
-    const timeline = await app.inject({ method: "GET",
-      url: `/admin/shipments/apv-invoice-documents/restoration-requests/${requestId}/timeline`, headers: ADMIN_HEADERS });
+    mockGetShipmentApvInvoiceRestorationTimeline.mockResolvedValueOnce({
+      request,
+      events: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          event_type: "REQUESTED",
+          actor_id: request.requester_id,
+          request_version: 0,
+          metadata: {},
+          created_at: "2026-07-12T00:00:00.000Z",
+        },
+      ],
+    });
+    const queue = await app.inject({
+      method: "GET",
+      url: "/admin/shipments/apv-invoice-documents/restoration-requests/pending",
+      headers: ADMIN_HEADERS,
+    });
+    const timeline = await app.inject({
+      method: "GET",
+      url: `/admin/shipments/apv-invoice-documents/restoration-requests/${requestId}/timeline`,
+      headers: ADMIN_HEADERS,
+    });
     expect(queue.statusCode).toBe(200);
-    expect(queue.json()).toMatchObject({ restoration_requests: [{ id: requestId, status: "PENDING" }] });
+    expect(queue.json()).toMatchObject({
+      restoration_requests: [{ id: requestId, status: "PENDING" }],
+    });
     expect(timeline.statusCode).toBe(200);
-    expect(timeline.json()).toMatchObject({ restoration_timeline: { events: [{ event_type: "REQUESTED" }] } });
+    expect(timeline.json()).toMatchObject({
+      restoration_timeline: { events: [{ event_type: "REQUESTED" }] },
+    });
   });
 
   it("dry-runs and applies terminal restoration staging preservation only for admins", async () => {
     const url = "/admin/shipments/apv-invoice-documents/restoration-staging/maintenance";
-    const forbidden = await app.inject({ method: "POST", url, headers: AUTH_HEADERS,
-      payload: { mode: "dry_run" } });
+    const forbidden = await app.inject({
+      method: "POST",
+      url,
+      headers: AUTH_HEADERS,
+      payload: { mode: "dry_run" },
+    });
     expect(forbidden.statusCode).toBe(403);
-    mockMaintainShipmentApvInvoiceRestorationStaging.mockResolvedValueOnce({ mode: "dry_run", scanned: 2,
-      eligible: 2, expired: 0, preserved: 0, resumed: 0, sourceMissing: 0, conflicts: 0, truncated: false });
-    const dryRun = await app.inject({ method: "POST", url, headers: ADMIN_HEADERS,
-      payload: { mode: "dry_run", limit: 100 } });
+    mockMaintainShipmentApvInvoiceRestorationStaging.mockResolvedValueOnce({
+      mode: "dry_run",
+      scanned: 2,
+      eligible: 2,
+      expired: 0,
+      preserved: 0,
+      resumed: 0,
+      sourceMissing: 0,
+      conflicts: 0,
+      truncated: false,
+    });
+    const dryRun = await app.inject({
+      method: "POST",
+      url,
+      headers: ADMIN_HEADERS,
+      payload: { mode: "dry_run", limit: 100 },
+    });
     expect(dryRun.statusCode).toBe(200);
-    expect(dryRun.json()).toMatchObject({ restoration_staging_maintenance: { mode: "dry_run", eligible: 2 } });
-    mockMaintainShipmentApvInvoiceRestorationStaging.mockResolvedValueOnce({ mode: "apply", scanned: 2,
-      eligible: 2, expired: 1, preserved: 2, resumed: 1, sourceMissing: 0, conflicts: 0, truncated: false });
-    const applied = await app.inject({ method: "POST", url, headers: ADMIN_HEADERS,
-      payload: { mode: "apply" } });
+    expect(dryRun.json()).toMatchObject({
+      restoration_staging_maintenance: { mode: "dry_run", eligible: 2 },
+    });
+    mockMaintainShipmentApvInvoiceRestorationStaging.mockResolvedValueOnce({
+      mode: "apply",
+      scanned: 2,
+      eligible: 2,
+      expired: 1,
+      preserved: 2,
+      resumed: 1,
+      sourceMissing: 0,
+      conflicts: 0,
+      truncated: false,
+    });
+    const applied = await app.inject({
+      method: "POST",
+      url,
+      headers: ADMIN_HEADERS,
+      payload: { mode: "apply" },
+    });
     expect(applied.statusCode).toBe(200);
-    expect(applied.json()).toMatchObject({ restoration_staging_maintenance: {
-      mode: "apply", expired: 1, preserved: 2, sourceMissing: 0, conflicts: 0 } });
+    expect(applied.json()).toMatchObject({
+      restoration_staging_maintenance: {
+        mode: "apply",
+        expired: 1,
+        preserved: 2,
+        sourceMissing: 0,
+        conflicts: 0,
+      },
+    });
   });
 
   it("returns aggregate restoration staging health only for admins", async () => {
     const url = "/admin/shipments/apv-invoice-documents/restoration-staging/health";
     const forbidden = await app.inject({ method: "GET", url, headers: AUTH_HEADERS });
     expect(forbidden.statusCode).toBe(403);
-    mockGetShipmentApvInvoiceRestorationStagingHealth.mockResolvedValueOnce({ status: "warning",
-      trackedStaging: 2, pendingDisposition: 1, staleMoving: 1, missingSources: 0,
-      hashMismatches: 0, invalidEntries: 0, checkedBytes: 256, scanTruncated: false,
-      recordedAt: "2026-07-12T00:00:00.000Z" });
+    mockGetShipmentApvInvoiceRestorationStagingHealth.mockResolvedValueOnce({
+      status: "warning",
+      trackedStaging: 2,
+      pendingDisposition: 1,
+      staleMoving: 1,
+      missingSources: 0,
+      hashMismatches: 0,
+      invalidEntries: 0,
+      checkedBytes: 256,
+      scanTruncated: false,
+      recordedAt: "2026-07-12T00:00:00.000Z",
+    });
     const response = await app.inject({ method: "GET", url, headers: ADMIN_HEADERS });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ restoration_staging_health: {
-      status: "warning", trackedStaging: 2, pendingDisposition: 1, staleMoving: 1 },
-      restoration_staging_maintenance: { jobEnabled: false, intervalSeconds: 60, staleResumeSeconds: 300 },
-      restoration_remediation_health: { status: "healthy", pendingRequests: 0, staleApplyingRequests: 0 },
-      restoration_remediation_expiry: { jobEnabled: false, intervalSeconds: 60, staleApplyingSeconds: 300 } });
+    expect(response.json()).toMatchObject({
+      restoration_staging_health: {
+        status: "warning",
+        trackedStaging: 2,
+        pendingDisposition: 1,
+        staleMoving: 1,
+      },
+      restoration_staging_maintenance: {
+        jobEnabled: false,
+        intervalSeconds: 60,
+        staleResumeSeconds: 300,
+      },
+      restoration_remediation_health: {
+        status: "healthy",
+        pendingRequests: 0,
+        staleApplyingRequests: 0,
+      },
+      restoration_remediation_expiry: {
+        jobEnabled: false,
+        intervalSeconds: 60,
+        staleApplyingSeconds: 300,
+      },
+    });
     expect(JSON.stringify(response.json())).not.toContain("requestId");
     expect(JSON.stringify(response.json())).not.toContain("staging_key");
   });
@@ -900,13 +1304,17 @@ describe("Shipment routes", () => {
     const forbidden = await app.inject({ method: "GET", url, headers: AUTH_HEADERS });
     expect(forbidden.statusCode).toBe(403);
     mockListShipmentApvInvoiceRestorationRemediationCandidates.mockResolvedValueOnce({
-      candidates: [{ candidateId: "c".repeat(64), issueType: "HASH_MISMATCH" }], truncated: false,
+      candidates: [{ candidateId: "c".repeat(64), issueType: "HASH_MISMATCH" }],
+      truncated: false,
     });
     const response = await app.inject({ method: "GET", url, headers: ADMIN_HEADERS });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ restoration_remediation_candidates: {
-      candidates: [{ candidateId: "c".repeat(64), issueType: "HASH_MISMATCH" }], truncated: false,
-    } });
+    expect(response.json()).toEqual({
+      restoration_remediation_candidates: {
+        candidates: [{ candidateId: "c".repeat(64), issueType: "HASH_MISMATCH" }],
+        truncated: false,
+      },
+    });
     expect(JSON.stringify(response.json())).not.toContain("staging_key");
     expect(JSON.stringify(response.json())).not.toContain("sha256");
     expect(JSON.stringify(response.json())).not.toContain("restoration_request_id");
@@ -914,83 +1322,170 @@ describe("Shipment routes", () => {
 
   it("creates an idempotent remediation request and blocks maker self-approval", async () => {
     const requestId = "12121212-1212-4212-8212-121212121212";
-    const payload = { client_request_id: requestId, candidate_id: "c".repeat(64),
-      reason: "Quarantine the verified mismatched staging bytes without deleting evidence." };
-    const remediationRequest = { id: requestId, client_request_id: requestId,
-      candidate_fingerprint: payload.candidate_id, issue_type: "HASH_MISMATCH" as const,
-      requester_id: "99999999-9999-4999-8999-999999999999", reason: payload.reason,
-      status: "PENDING" as const, version: 0, expires_at: "2026-07-12T00:30:00.000Z",
-      created_at: "2026-07-12T00:00:00.000Z" };
+    const payload = {
+      client_request_id: requestId,
+      candidate_id: "c".repeat(64),
+      reason: "Quarantine the verified mismatched staging bytes without deleting evidence.",
+    };
+    const remediationRequest = {
+      id: requestId,
+      client_request_id: requestId,
+      candidate_fingerprint: payload.candidate_id,
+      issue_type: "HASH_MISMATCH" as const,
+      requester_id: "99999999-9999-4999-8999-999999999999",
+      reason: payload.reason,
+      status: "PENDING" as const,
+      version: 0,
+      expires_at: "2026-07-12T00:30:00.000Z",
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
     mockRequestShipmentApvInvoiceRestorationRemediation.mockResolvedValueOnce({
-      outcome: "requested", request: remediationRequest,
+      outcome: "requested",
+      request: remediationRequest,
     });
-    const created = await app.inject({ method: "POST",
+    const created = await app.inject({
+      method: "POST",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-requests",
-      headers: ADMIN_HEADERS, payload });
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ restoration_remediation_request: {
-      id: requestId, status: "PENDING", issue_type: "HASH_MISMATCH" }, idempotent: false });
-    mockDecideShipmentApvInvoiceRestorationRemediation.mockResolvedValueOnce({ outcome: "self_approval_forbidden" });
-    const blocked = await app.inject({ method: "POST",
+    expect(created.json()).toMatchObject({
+      restoration_remediation_request: {
+        id: requestId,
+        status: "PENDING",
+        issue_type: "HASH_MISMATCH",
+      },
+      idempotent: false,
+    });
+    mockDecideShipmentApvInvoiceRestorationRemediation.mockResolvedValueOnce({
+      outcome: "self_approval_forbidden",
+    });
+    const blocked = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/decision`,
-      headers: ADMIN_HEADERS, payload: { decision_request_id: "13131313-1313-4313-8313-131313131313",
-        decision: "APPROVE", reason: "A separate checker must approve evidence quarantine.", expected_version: 0 } });
+      headers: ADMIN_HEADERS,
+      payload: {
+        decision_request_id: "13131313-1313-4313-8313-131313131313",
+        decision: "APPROVE",
+        reason: "A separate checker must approve evidence quarantine.",
+        expected_version: 0,
+      },
+    });
     expect(blocked.statusCode).toBe(403);
-    expect(blocked.json()).toEqual({ error: "APV_INVOICE_RESTORATION_REMEDIATION_SELF_APPROVAL_FORBIDDEN" });
+    expect(blocked.json()).toEqual({
+      error: "APV_INVOICE_RESTORATION_REMEDIATION_SELF_APPROVAL_FORBIDDEN",
+    });
   });
 
   it("returns the remediation queue and immutable lifecycle timeline", async () => {
     const requestId = "12121212-1212-4212-8212-121212121212";
-    const remediationRequest = { id: requestId, client_request_id: requestId,
-      candidate_fingerprint: "c".repeat(64), issue_type: "HASH_MISMATCH" as const,
+    const remediationRequest = {
+      id: requestId,
+      client_request_id: requestId,
+      candidate_fingerprint: "c".repeat(64),
+      issue_type: "HASH_MISMATCH" as const,
       requester_id: "99999999-9999-4999-8999-999999999999",
       reason: "Quarantine the verified mismatched staging bytes without deleting evidence.",
-      status: "PENDING" as const, version: 0, expires_at: "2026-07-12T00:30:00.000Z",
-      created_at: "2026-07-12T00:00:00.000Z" };
-    mockListPendingShipmentApvInvoiceRestorationRemediations.mockResolvedValueOnce([remediationRequest]);
-    mockGetShipmentApvInvoiceRestorationRemediationTimeline.mockResolvedValueOnce({ request: remediationRequest,
-      events: [{ id: "14141414-1414-4414-8414-141414141414", event_type: "REQUESTED",
-        actor_id: remediationRequest.requester_id, request_version: 0,
-        metadata: { issue_type: "HASH_MISMATCH" }, created_at: "2026-07-12T00:00:00.000Z" }] });
-    const queue = await app.inject({ method: "GET",
+      status: "PENDING" as const,
+      version: 0,
+      expires_at: "2026-07-12T00:30:00.000Z",
+      created_at: "2026-07-12T00:00:00.000Z",
+    };
+    mockListPendingShipmentApvInvoiceRestorationRemediations.mockResolvedValueOnce([
+      remediationRequest,
+    ]);
+    mockGetShipmentApvInvoiceRestorationRemediationTimeline.mockResolvedValueOnce({
+      request: remediationRequest,
+      events: [
+        {
+          id: "14141414-1414-4414-8414-141414141414",
+          event_type: "REQUESTED",
+          actor_id: remediationRequest.requester_id,
+          request_version: 0,
+          metadata: { issue_type: "HASH_MISMATCH" },
+          created_at: "2026-07-12T00:00:00.000Z",
+        },
+      ],
+    });
+    const queue = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-requests/pending",
-      headers: ADMIN_HEADERS });
-    const timeline = await app.inject({ method: "GET",
+      headers: ADMIN_HEADERS,
+    });
+    const timeline = await app.inject({
+      method: "GET",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/timeline`,
-      headers: ADMIN_HEADERS });
+      headers: ADMIN_HEADERS,
+    });
     expect(queue.statusCode).toBe(200);
-    expect(queue.json()).toMatchObject({ restoration_remediation_requests: [{ id: requestId, status: "PENDING" }] });
+    expect(queue.json()).toMatchObject({
+      restoration_remediation_requests: [{ id: requestId, status: "PENDING" }],
+    });
     expect(timeline.statusCode).toBe(200);
-    expect(timeline.json()).toMatchObject({ restoration_remediation_timeline: {
-      events: [{ event_type: "REQUESTED", request_version: 0 }] } });
+    expect(timeline.json()).toMatchObject({
+      restoration_remediation_timeline: {
+        events: [{ event_type: "REQUESTED", request_version: 0 }],
+      },
+    });
   });
 
   it("returns only the current checker's opaque stale remediation recovery queue", async () => {
     const requestId = "12121212-1212-4212-8212-121212121212";
     const decisionRequestId = "13131313-1313-4313-8313-131313131313";
     const cursor = "eyJ2IjoxfQ";
-    mockListStaleShipmentApvInvoiceRestorationRemediationRecoveries.mockResolvedValueOnce({ items: [{
-      requestId, decisionRequestId, issueType: "SOURCE_MISSING", version: 1,
-      stalledForSeconds: 360, applyErrorCode: null, updatedAt: "2026-07-12T00:00:00.000Z",
-      acknowledged: false, incidentConnected: false, acknowledgedAt: null, incidentConnectedAt: null,
-    }], truncated: false, nextCursor: null, recordedAt: "2026-07-12T00:06:00.000Z" })
-      .mockRejectedValueOnce(new Error("INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR"))
-      .mockRejectedValueOnce(new Error("INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR_EXPIRED"));
-    const forbidden = await app.inject({ method: "GET",
+    mockListStaleShipmentApvInvoiceRestorationRemediationRecoveries
+      .mockResolvedValueOnce({
+        items: [
+          {
+            requestId,
+            decisionRequestId,
+            issueType: "SOURCE_MISSING",
+            version: 1,
+            stalledForSeconds: 360,
+            applyErrorCode: null,
+            updatedAt: "2026-07-12T00:00:00.000Z",
+            acknowledged: false,
+            incidentConnected: false,
+            acknowledgedAt: null,
+            incidentConnectedAt: null,
+          },
+        ],
+        truncated: false,
+        nextCursor: null,
+        recordedAt: "2026-07-12T00:06:00.000Z",
+      })
+      .mockRejectedValueOnce(
+        new Error("INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR"),
+      )
+      .mockRejectedValueOnce(
+        new Error("INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR_EXPIRED"),
+      );
+    const forbidden = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue",
-      headers: AUTH_HEADERS });
-    const response = await app.inject({ method: "GET",
+      headers: AUTH_HEADERS,
+    });
+    const response = await app.inject({
+      method: "GET",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue?limit=10&cursor=${cursor}`,
-      headers: ADMIN_HEADERS });
-    const invalidLimit = await app.inject({ method: "GET",
+      headers: ADMIN_HEADERS,
+    });
+    const invalidLimit = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue?limit=101",
-      headers: ADMIN_HEADERS });
-    const invalidCursor = await app.inject({ method: "GET",
+      headers: ADMIN_HEADERS,
+    });
+    const invalidCursor = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue?cursor=e30",
-      headers: ADMIN_HEADERS });
-    const expiredCursor = await app.inject({ method: "GET",
+      headers: ADMIN_HEADERS,
+    });
+    const expiredCursor = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue?cursor=ZXhwaXJlZA",
-      headers: ADMIN_HEADERS });
+      headers: ADMIN_HEADERS,
+    });
     expect(forbidden.statusCode).toBe(403);
     expect(response.statusCode).toBe(200);
     expect(invalidLimit.statusCode).toBe(400);
@@ -1002,50 +1497,93 @@ describe("Shipment routes", () => {
     expect(expiredCursor.json()).toEqual({
       error: "INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR_EXPIRED",
     });
-    expect(mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection)
-      .toHaveBeenNthCalledWith(1, expect.anything(), { reason: "INVALID" });
-    expect(mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection)
-      .toHaveBeenNthCalledWith(2, expect.anything(), { reason: "EXPIRED" });
-    expect(invalidLimit.json()).toEqual({ error: "INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_QUERY" });
+    expect(
+      mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection,
+    ).toHaveBeenNthCalledWith(1, expect.anything(), { reason: "INVALID" });
+    expect(
+      mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection,
+    ).toHaveBeenNthCalledWith(2, expect.anything(), { reason: "EXPIRED" });
+    expect(invalidLimit.json()).toEqual({
+      error: "INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_QUERY",
+    });
     expect(mockListStaleShipmentApvInvoiceRestorationRemediationRecoveries).toHaveBeenCalledWith(
-      expect.anything(), { approverId: "test-admin-001", limit: 10, cursor });
-    expect(response.json()).toMatchObject({ restoration_remediation_recovery_queue: { items: [{
-      requestId, decisionRequestId, issueType: "SOURCE_MISSING", version: 1,
-      stalledForSeconds: 360, applyErrorCode: null, updatedAt: "2026-07-12T00:00:00.000Z",
-      acknowledged: false, incidentConnected: false, acknowledgedAt: null, incidentConnectedAt: null,
-    }], truncated: false, nextCursor: null, recordedAt: "2026-07-12T00:06:00.000Z" },
-    restoration_remediation_recovery_cursor_health: {
-      windowHours: 24, expired: 0, invalid: 0, total: 0, lastSeenAt: null,
-      recordedAt: "2026-07-12T00:00:00.000Z",
-    }, restoration_remediation_recovery_cursor_retention_job: {
-      jobEnabled: false, configured: false, retentionDays: 30, limit: 1000,
-      intervalSeconds: 86_400,
-      health: {
-        lastRunStatus: "NEVER", leaseStale: false, lastDeletedBuckets: 0,
-        lastExpiredBuckets: 0, lastInvalidBuckets: 0, lastFailureCode: null,
+      expect.anything(),
+      { approverId: "test-admin-001", limit: 10, cursor },
+    );
+    expect(response.json()).toMatchObject({
+      restoration_remediation_recovery_queue: {
+        items: [
+          {
+            requestId,
+            decisionRequestId,
+            issueType: "SOURCE_MISSING",
+            version: 1,
+            stalledForSeconds: 360,
+            applyErrorCode: null,
+            updatedAt: "2026-07-12T00:00:00.000Z",
+            acknowledged: false,
+            incidentConnected: false,
+            acknowledgedAt: null,
+            incidentConnectedAt: null,
+          },
+        ],
+        truncated: false,
+        nextCursor: null,
+        recordedAt: "2026-07-12T00:06:00.000Z",
       },
-      alertAssessment: { wouldAlert: false, severity: null, reasons: [] },
-    } });
+      restoration_remediation_recovery_cursor_health: {
+        windowHours: 24,
+        expired: 0,
+        invalid: 0,
+        total: 0,
+        lastSeenAt: null,
+        recordedAt: "2026-07-12T00:00:00.000Z",
+      },
+      restoration_remediation_recovery_cursor_retention_job: {
+        jobEnabled: false,
+        configured: false,
+        retentionDays: 30,
+        limit: 1000,
+        intervalSeconds: 86_400,
+        health: {
+          lastRunStatus: "NEVER",
+          leaseStale: false,
+          lastDeletedBuckets: 0,
+          lastExpiredBuckets: 0,
+          lastInvalidBuckets: 0,
+          lastFailureCode: null,
+        },
+        alertAssessment: { wouldAlert: false, severity: null, reasons: [] },
+      },
+    });
     expect(JSON.stringify(response.json())).not.toMatch(
-      /path|sha256|candidate|restorationRequestId|requesterId|remediationReason|decisionReason|claimId|leaseExpires/i);
+      /path|sha256|candidate|restorationRequestId|requesterId|remediationReason|decisionReason|claimId|leaseExpires/i,
+    );
 
     mockGetShipmentApvInvoiceRestorationRemediationRecoveryCursorHealth.mockRejectedValueOnce(
-      new Error("migration not applied"));
-    const queueWithoutMetrics = await app.inject({ method: "GET",
+      new Error("migration not applied"),
+    );
+    const queueWithoutMetrics = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue",
-      headers: ADMIN_HEADERS });
+      headers: ADMIN_HEADERS,
+    });
     expect(queueWithoutMetrics.statusCode).toBe(200);
     expect(queueWithoutMetrics.json()).toMatchObject({
       restoration_remediation_recovery_cursor_health: null,
     });
 
     mockListStaleShipmentApvInvoiceRestorationRemediationRecoveries.mockRejectedValueOnce(
-      new Error("INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR"));
+      new Error("INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR"),
+    );
     mockRecordShipmentApvInvoiceRestorationRemediationRecoveryCursorRejection.mockRejectedValueOnce(
-      new Error("migration not applied"));
-    const invalidWithoutMetrics = await app.inject({ method: "GET",
+      new Error("migration not applied"),
+    );
+    const invalidWithoutMetrics = await app.inject({
+      method: "GET",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-queue?cursor=e30",
-      headers: ADMIN_HEADERS });
+      headers: ADMIN_HEADERS,
+    });
     expect(invalidWithoutMetrics.statusCode).toBe(400);
     expect(invalidWithoutMetrics.json()).toEqual({
       error: "INVALID_APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_CURSOR",
@@ -1053,69 +1591,134 @@ describe("Shipment routes", () => {
   });
 
   it("runs bounded admin-only cursor metric retention maintenance", async () => {
-    mockMaintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics.mockResolvedValueOnce({
-      dryRun: false, retentionDays: 30, limit: 1000, eligibleBuckets: undefined, deletedBuckets: 2,
-      expiredBuckets: 1, invalidBuckets: 1, truncated: false,
-      cutoffAt: "2026-06-12T00:00:00.000Z", recordedAt: "2026-07-12T00:00:00.000Z",
+    mockMaintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics.mockResolvedValueOnce(
+      {
+        dryRun: false,
+        retentionDays: 30,
+        limit: 1000,
+        eligibleBuckets: undefined,
+        deletedBuckets: 2,
+        expiredBuckets: 1,
+        invalidBuckets: 1,
+        truncated: false,
+        cutoffAt: "2026-06-12T00:00:00.000Z",
+        recordedAt: "2026-07-12T00:00:00.000Z",
+      },
+    );
+    const forbidden = await app.inject({
+      method: "POST",
+      url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-cursor-metrics/maintenance",
+      headers: AUTH_HEADERS,
+      payload: { retention_days: 30, limit: 1000, dry_run: false },
     });
-    const forbidden = await app.inject({ method: "POST",
+    const invalid = await app.inject({
+      method: "POST",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-cursor-metrics/maintenance",
-      headers: AUTH_HEADERS, payload: { retention_days: 30, limit: 1000, dry_run: false } });
-    const invalid = await app.inject({ method: "POST",
+      headers: ADMIN_HEADERS,
+      payload: { retention_days: 1, limit: 1001, dry_run: false },
+    });
+    const response = await app.inject({
+      method: "POST",
       url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-cursor-metrics/maintenance",
-      headers: ADMIN_HEADERS, payload: { retention_days: 1, limit: 1001, dry_run: false } });
-    const response = await app.inject({ method: "POST",
-      url: "/admin/shipments/apv-invoice-documents/restoration-remediation-recovery-cursor-metrics/maintenance",
-      headers: ADMIN_HEADERS, payload: { retention_days: 30, limit: 1000, dry_run: false } });
+      headers: ADMIN_HEADERS,
+      payload: { retention_days: 30, limit: 1000, dry_run: false },
+    });
     expect(forbidden.statusCode).toBe(403);
     expect(invalid.statusCode).toBe(400);
     expect(response.statusCode).toBe(200);
-    expect(mockMaintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics)
-      .toHaveBeenCalledWith(expect.anything(), { retentionDays: 30, limit: 1000, dryRun: false });
-    expect(response.json()).toMatchObject({ restoration_remediation_recovery_cursor_maintenance: {
-      dryRun: false, deletedBuckets: 2, expiredBuckets: 1, invalidBuckets: 1,
-    } });
-    expect(JSON.stringify(response.json())).not.toMatch(/user|checker|cursor.*value|requestId|bucket_start/i);
+    expect(
+      mockMaintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics,
+    ).toHaveBeenCalledWith(expect.anything(), { retentionDays: 30, limit: 1000, dryRun: false });
+    expect(response.json()).toMatchObject({
+      restoration_remediation_recovery_cursor_maintenance: {
+        dryRun: false,
+        deletedBuckets: 2,
+        expiredBuckets: 1,
+        invalidBuckets: 1,
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toMatch(
+      /user|checker|cursor.*value|requestId|bucket_start/i,
+    );
   });
 
   it("records only a 60-minute stale recovery action for the bound checker", async () => {
     const requestId = "12121212-1212-4212-8212-121212121212";
-    const payload = { client_request_id: "14141414-1414-4414-8414-141414141414",
+    const payload = {
+      client_request_id: "14141414-1414-4414-8414-141414141414",
       decision_request_id: "13131313-1313-4313-8313-131313131313",
-      action: "ACKNOWLEDGED", expected_version: 1 } as const;
+      action: "ACKNOWLEDGED",
+      expected_version: 1,
+    } as const;
     mockRecordShipmentApvInvoiceRestorationRemediationAcknowledgment.mockResolvedValueOnce({
-      outcome: "recorded", acknowledgment: { id: "15151515-1515-4515-8515-151515151515",
-        action: "ACKNOWLEDGED", requestVersion: 1, incidentReferenceBound: false,
-        createdAt: "2026-07-13T00:00:00.000Z" },
+      outcome: "recorded",
+      acknowledgment: {
+        id: "15151515-1515-4515-8515-151515151515",
+        action: "ACKNOWLEDGED",
+        requestVersion: 1,
+        incidentReferenceBound: false,
+        createdAt: "2026-07-13T00:00:00.000Z",
+      },
     });
-    const forbidden = await app.inject({ method: "POST",
+    const forbidden = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/recovery-actions`,
-      headers: AUTH_HEADERS, payload });
-    const response = await app.inject({ method: "POST",
+      headers: AUTH_HEADERS,
+      payload,
+    });
+    const response = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/recovery-actions`,
-      headers: ADMIN_HEADERS, payload });
+      headers: ADMIN_HEADERS,
+      payload,
+    });
     expect(forbidden.statusCode).toBe(403);
     expect(response.statusCode).toBe(201);
     expect(mockRecordShipmentApvInvoiceRestorationRemediationAcknowledgment).toHaveBeenCalledWith(
-      expect.anything(), { requestId, clientRequestId: payload.client_request_id,
-        decisionRequestId: payload.decision_request_id, checkerId: "test-admin-001",
-        action: "ACKNOWLEDGED", expectedVersion: 1, incidentReference: undefined });
-    expect(response.json()).toEqual({ restoration_remediation_acknowledgment: {
-      id: "15151515-1515-4515-8515-151515151515", action: "ACKNOWLEDGED", requestVersion: 1,
-      incidentReferenceBound: false, createdAt: "2026-07-13T00:00:00.000Z" }, idempotent: false });
-    expect(JSON.stringify(response.json())).not.toMatch(/checker|decisionRequest|incident_reference_hash|path|sha256/i);
-    const invalidIncident = await app.inject({ method: "POST",
+      expect.anything(),
+      {
+        requestId,
+        clientRequestId: payload.client_request_id,
+        decisionRequestId: payload.decision_request_id,
+        checkerId: "test-admin-001",
+        action: "ACKNOWLEDGED",
+        expectedVersion: 1,
+        incidentReference: undefined,
+      },
+    );
+    expect(response.json()).toEqual({
+      restoration_remediation_acknowledgment: {
+        id: "15151515-1515-4515-8515-151515151515",
+        action: "ACKNOWLEDGED",
+        requestVersion: 1,
+        incidentReferenceBound: false,
+        createdAt: "2026-07-13T00:00:00.000Z",
+      },
+      idempotent: false,
+    });
+    expect(JSON.stringify(response.json())).not.toMatch(
+      /checker|decisionRequest|incident_reference_hash|path|sha256/i,
+    );
+    const invalidIncident = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/recovery-actions`,
-      headers: ADMIN_HEADERS, payload: { ...payload, client_request_id: "16161616-1616-4616-8616-161616161616",
-        action: "INCIDENT_LINKED" } });
+      headers: ADMIN_HEADERS,
+      payload: {
+        ...payload,
+        client_request_id: "16161616-1616-4616-8616-161616161616",
+        action: "INCIDENT_LINKED",
+      },
+    });
     expect(invalidIncident.statusCode).toBe(400);
     mockRecordShipmentApvInvoiceRestorationRemediationAcknowledgment.mockResolvedValueOnce({
       outcome: "not_stale_enough",
     });
-    const tooFresh = await app.inject({ method: "POST",
+    const tooFresh = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/recovery-actions`,
-      headers: ADMIN_HEADERS, payload: { ...payload,
-        client_request_id: "17171717-1717-4717-8717-171717171717" } });
+      headers: ADMIN_HEADERS,
+      payload: { ...payload, client_request_id: "17171717-1717-4717-8717-171717171717" },
+    });
     expect(tooFresh.statusCode).toBe(409);
     expect(tooFresh.json()).toEqual({
       error: "APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_NOT_STALE_ENOUGH",
@@ -1123,11 +1726,17 @@ describe("Shipment routes", () => {
     mockRecordShipmentApvInvoiceRestorationRemediationAcknowledgment.mockResolvedValueOnce({
       outcome: "acknowledgment_required",
     });
-    const acknowledgmentRequired = await app.inject({ method: "POST",
+    const acknowledgmentRequired = await app.inject({
+      method: "POST",
       url: `/admin/shipments/apv-invoice-documents/restoration-remediation-requests/${requestId}/recovery-actions`,
-      headers: ADMIN_HEADERS, payload: { ...payload,
+      headers: ADMIN_HEADERS,
+      payload: {
+        ...payload,
         client_request_id: "18181818-1818-4818-8818-181818181818",
-        action: "INCIDENT_LINKED", incident_reference: "INCIDENT-ORDER-TEST" } });
+        action: "INCIDENT_LINKED",
+        incident_reference: "INCIDENT-ORDER-TEST",
+      },
+    });
     expect(acknowledgmentRequired.statusCode).toBe(409);
     expect(acknowledgmentRequired.json()).toEqual({
       error: "APV_INVOICE_RESTORATION_REMEDIATION_RECOVERY_ACKNOWLEDGMENT_REQUIRED",
@@ -1135,18 +1744,20 @@ describe("Shipment routes", () => {
   });
 
   it("lists only the authenticated seller's APV liability queue", async () => {
-    mockListShipmentApvSellerLiabilities.mockResolvedValueOnce([{
-      id: "77777777-7777-4777-8777-777777777777",
-      seller_id: "test-user-001",
-      source_settlement_release_id: "88888888-8888-4888-8888-888888888888",
-      source_order_id: "99999999-9999-4999-8999-999999999999",
-      currency: "USDC",
-      original_amount_minor: 100,
-      remaining_amount_minor: 40,
-      status: "PARTIAL",
-      evidence_manifest_sha256: "a".repeat(64),
-      version: 1,
-    }]);
+    mockListShipmentApvSellerLiabilities.mockResolvedValueOnce([
+      {
+        id: "77777777-7777-4777-8777-777777777777",
+        seller_id: "test-user-001",
+        source_settlement_release_id: "88888888-8888-4888-8888-888888888888",
+        source_order_id: "99999999-9999-4999-8999-999999999999",
+        currency: "USDC",
+        original_amount_minor: 100,
+        remaining_amount_minor: 40,
+        status: "PARTIAL",
+        evidence_manifest_sha256: "a".repeat(64),
+        version: 1,
+      },
+    ]);
     const res = await app.inject({
       method: "GET",
       url: "/shipments/apv-liabilities",
@@ -1157,7 +1768,10 @@ describe("Shipment routes", () => {
       seller_id: "test-user-001",
       liabilities: [{ status: "PARTIAL", original_amount_minor: 100, remaining_amount_minor: 40 }],
     });
-    expect(mockListShipmentApvSellerLiabilities).toHaveBeenCalledWith(expect.anything(), "test-user-001");
+    expect(mockListShipmentApvSellerLiabilities).toHaveBeenCalledWith(
+      expect.anything(),
+      "test-user-001",
+    );
   });
 
   it("allows only admins to inspect another seller's APV liability queue", async () => {
@@ -1338,7 +1952,10 @@ describe("Shipment routes", () => {
         event_id: "carrier_evt_exception_1",
         event_type: "exception",
         raw_status: "delivery_attempted_no_access",
-        payload: { message: "Carrier could not access the building", location: "Redondo Beach, CA" },
+        payload: {
+          message: "Carrier could not access the building",
+          location: "Redondo Beach, CA",
+        },
       },
     });
 
@@ -1347,18 +1964,28 @@ describe("Shipment routes", () => {
       idempotent: false,
       shipment: { status: "DELIVERY_EXCEPTION" },
     });
-    expect(mockInsertShipmentEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      id: expect.stringMatching(/^evt_manual_[a-f0-9]{64}$/),
-      carrier_raw_status: "delivery_attempted_no_access",
-      status: "DELIVERY_EXCEPTION",
-    }));
-    expect(mockCreateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      order_id: "ord_exception",
-      reason_code: "DELIVERY_EXCEPTION",
-      opened_by: "system",
-      metadata: expect.objectContaining({ auto_opened: true, shipment_id: "shp_exception" }),
-    }));
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "ord_exception", "IN_DISPUTE");
+    expect(mockInsertShipmentEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: expect.stringMatching(/^evt_manual_[a-f0-9]{64}$/),
+        carrier_raw_status: "delivery_attempted_no_access",
+        status: "DELIVERY_EXCEPTION",
+      }),
+    );
+    expect(mockCreateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        order_id: "ord_exception",
+        reason_code: "DELIVERY_EXCEPTION",
+        opened_by: "system",
+        metadata: expect.objectContaining({ auto_opened: true, shipment_id: "shp_exception" }),
+      }),
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "ord_exception",
+      "IN_DISPUTE",
+    );
   });
 
   it("replays a manual shipment event with the same event id without another transition", async () => {
@@ -1370,12 +1997,14 @@ describe("Shipment routes", () => {
       buyer_id: "buyer-001",
       carrier: "mock",
       status: "DELIVERY_EXCEPTION",
-      events: [{
-        id: internalEventId,
-        shipment_id: "shp_event_replay",
-        status: "DELIVERY_EXCEPTION",
-        occurred_at: new Date().toISOString(),
-      }],
+      events: [
+        {
+          id: internalEventId,
+          shipment_id: "shp_event_replay",
+          status: "DELIVERY_EXCEPTION",
+          occurred_at: new Date().toISOString(),
+        },
+      ],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     } as unknown as ShipmentRow;
@@ -1465,7 +2094,11 @@ describe("Shipment routes", () => {
       "REFUNDED",
       `mock:${shipment.id}`,
     );
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), shipment.order_id, "FULFILLMENT_PENDING");
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      shipment.order_id,
+      "FULFILLMENT_PENDING",
+    );
   });
 
   it("rejects label refund after the shipment has been scanned", async () => {
@@ -1483,7 +2116,10 @@ describe("Shipment routes", () => {
       updated_at: "2026-07-12T00:00:00.000Z",
     } as unknown as ShipmentRow;
     mockGetShipmentById.mockResolvedValueOnce(shipment).mockResolvedValueOnce(shipment);
-    mockClaimShipmentLabelRefund.mockResolvedValueOnce({ outcome: "invalid_status", shipmentId: shipment.id });
+    mockClaimShipmentLabelRefund.mockResolvedValueOnce({
+      outcome: "invalid_status",
+      shipmentId: shipment.id,
+    });
 
     const res = await app.inject({
       method: "POST",
@@ -1592,15 +2228,22 @@ describe("Shipment routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ accepted: true, skipped: true });
-    expect(mockClaimWebhookEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      source: "easypost",
-      eventId: "evt_easypost_unknown",
-    }));
+    expect(mockClaimWebhookEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        source: "easypost",
+        eventId: "evt_easypost_unknown",
+      }),
+    );
     expect(mockCompleteWebhookEvent).toHaveBeenCalled();
   });
 
   it("returns duplicate for an already completed EasyPost webhook", async () => {
-    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "duplicate", source: "easypost", eventId: "evt_easypost_duplicate" });
+    mockClaimWebhookEvent.mockResolvedValueOnce({
+      outcome: "duplicate",
+      source: "easypost",
+      eventId: "evt_easypost_duplicate",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/shipments/webhooks/easypost",
@@ -1611,7 +2254,11 @@ describe("Shipment routes", () => {
   });
 
   it("asks EasyPost to retry while another server owns the event", async () => {
-    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "in_progress", source: "easypost", eventId: "evt_easypost_busy" });
+    mockClaimWebhookEvent.mockResolvedValueOnce({
+      outcome: "in_progress",
+      source: "easypost",
+      eventId: "evt_easypost_busy",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/shipments/webhooks/easypost",
@@ -1622,11 +2269,19 @@ describe("Shipment routes", () => {
   });
 
   it("rejects a changed EasyPost payload for the same event id", async () => {
-    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "payload_conflict", source: "easypost", eventId: "evt_easypost_changed" });
+    mockClaimWebhookEvent.mockResolvedValueOnce({
+      outcome: "payload_conflict",
+      source: "easypost",
+      eventId: "evt_easypost_changed",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/shipments/webhooks/easypost",
-      payload: { id: "evt_easypost_changed", description: "tracker.updated", result: { status: "delivered" } },
+      payload: {
+        id: "evt_easypost_changed",
+        description: "tracker.updated",
+        result: { status: "delivered" },
+      },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe("WEBHOOK_PAYLOAD_CONFLICT");
@@ -1664,7 +2319,9 @@ describe("Shipment routes", () => {
       adjustment_minor: 400,
     });
     mockGetShipmentByTrackingNumber.mockResolvedValueOnce(shipment);
-    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "66666666-6666-4666-8666-666666666666" } as never);
+    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({
+      id: "66666666-6666-4666-8666-666666666666",
+    } as never);
     mockClaimShipmentApvAdjustment.mockResolvedValueOnce(claim);
     mockCompleteShipmentApvAdjustment.mockResolvedValueOnce({
       id: "77777777-7777-4777-8777-777777777777",
@@ -1706,11 +2363,18 @@ describe("Shipment routes", () => {
       },
       fairness: { buyer_effect_minor: 0, seller_declared_package_responsibility: true },
     });
-    expect(mockClaimShipmentApvAdjustment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      providerInvoiceId: "shinv_apv_1",
-      adjustmentMinor: 400,
-    }));
-    expect(mockCompleteShipmentApvAdjustment).toHaveBeenCalledWith(expect.anything(), claim, expect.anything());
+    expect(mockClaimShipmentApvAdjustment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        providerInvoiceId: "shinv_apv_1",
+        adjustmentMinor: 400,
+      }),
+    );
+    expect(mockCompleteShipmentApvAdjustment).toHaveBeenCalledWith(
+      expect.anything(),
+      claim,
+      expect.anything(),
+    );
     expect(mockFailShipmentApvAdjustment).not.toHaveBeenCalled();
   });
 
@@ -1740,7 +2404,10 @@ describe("Shipment routes", () => {
     });
 
     expect(res.statusCode).toBe(409);
-    expect(res.json()).toMatchObject({ accepted: false, error: "APV_PROVIDER_SHIPMENT_ID_MISSING" });
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      error: "APV_PROVIDER_SHIPMENT_ID_MISSING",
+    });
     expect(mockClaimShipmentApvAdjustment).not.toHaveBeenCalled();
   });
 
@@ -1760,7 +2427,9 @@ describe("Shipment routes", () => {
       adjustment_minor: 500,
     });
     mockGetShipmentByTrackingNumber.mockResolvedValueOnce(shipment);
-    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "66666666-6666-4666-8666-666666666666" } as never);
+    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({
+      id: "66666666-6666-4666-8666-666666666666",
+    } as never);
     mockRecordShipmentApvInvoiceRevision.mockResolvedValueOnce({
       outcome: "recorded",
       revision: {
@@ -1775,13 +2444,13 @@ describe("Shipment routes", () => {
         prior_adjusted_rate_minor: 1025,
         adjusted_rate_minor: 1125,
         delta_minor: 100,
-      status: "PENDING_REVIEW",
-      buyer_effect_minor: 0,
-      buffer_applied_minor: 0,
-      seller_liability_minor: 0,
-      platform_liability_minor: 0,
-      carrier_credit_minor: 0,
-      apply_version: 0,
+        status: "PENDING_REVIEW",
+        buyer_effect_minor: 0,
+        buffer_applied_minor: 0,
+        seller_liability_minor: 0,
+        platform_liability_minor: 0,
+        carrier_credit_minor: 0,
+        apply_version: 0,
       },
     });
 
@@ -1817,7 +2486,9 @@ describe("Shipment routes", () => {
       order_id: "22222222-2222-4222-8222-222222222222",
       metadata: { easypost_shipment_id: "shp_early_update" },
     } as unknown as ShipmentRow);
-    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({ id: "66666666-6666-4666-8666-666666666666" } as never);
+    mockGetSettlementReleaseByOrderId.mockResolvedValueOnce({
+      id: "66666666-6666-4666-8666-666666666666",
+    } as never);
     mockRecordShipmentApvInvoiceRevision.mockResolvedValueOnce({ outcome: "not_found" });
 
     const res = await app.inject({
@@ -1871,11 +2542,13 @@ describe("Shipment routes", () => {
           tracking_code: "EZ_ORDERED_1",
           carrier: "USPS",
           status: "delivered",
-          tracking_details: [{
-            datetime: "2026-07-12T04:00:00.000Z",
-            message: "Delivered at front door",
-            tracking_location: { city: "Denver", state: "CO" },
-          }],
+          tracking_details: [
+            {
+              datetime: "2026-07-12T04:00:00.000Z",
+              message: "Delivered at front door",
+              tracking_location: { city: "Denver", state: "CO" },
+            },
+          ],
         },
       },
     });
@@ -1890,15 +2563,22 @@ describe("Shipment routes", () => {
       occurred_at: "2026-07-12T04:00:00.000Z",
       timestamp_source: "carrier",
     });
-    expect(mockApplyCarrierShipmentEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      eventKey: "evt_ordered_delivery",
-      incomingStatus: "DELIVERED",
-      occurredAt: new Date("2026-07-12T04:00:00.000Z"),
-      carrierRawStatus: "delivered",
-      message: "Delivered at front door",
-      location: "Denver, CO",
-    }));
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), shipment.order_id, "DELIVERED");
+    expect(mockApplyCarrierShipmentEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventKey: "evt_ordered_delivery",
+        incomingStatus: "DELIVERED",
+        occurredAt: new Date("2026-07-12T04:00:00.000Z"),
+        carrierRawStatus: "delivered",
+        message: "Delivered at front door",
+        location: "Denver, CO",
+      }),
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      shipment.order_id,
+      "DELIVERED",
+    );
   });
 
   it("acknowledges a stale EasyPost event without regressing terminal state or order effects", async () => {
@@ -1935,7 +2615,9 @@ describe("Shipment routes", () => {
           tracking_code: "EZ_ORDERED_2",
           carrier: "USPS",
           status: "in_transit",
-          tracking_details: [{ datetime: "2026-07-12T02:00:00.000Z", message: "Departed facility" }],
+          tracking_details: [
+            { datetime: "2026-07-12T02:00:00.000Z", message: "Departed facility" },
+          ],
         },
       },
     });
@@ -2046,8 +2728,18 @@ describe("Shipment routes", () => {
 
     try {
       mockConsumeShippingRateMissBudget
-        .mockResolvedValueOnce({ allowed: true, retryAfterSeconds: 0, requestCount: 1, windowStartedAt: new Date() })
-        .mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 17, requestCount: 2, windowStartedAt: new Date() });
+        .mockResolvedValueOnce({
+          allowed: true,
+          retryAfterSeconds: 0,
+          requestCount: 1,
+          windowStartedAt: new Date(),
+        })
+        .mockResolvedValueOnce({
+          allowed: false,
+          retryAfterSeconds: 17,
+          requestCount: 2,
+          windowStartedAt: new Date(),
+        });
       const first = await app.inject({
         method: "POST",
         url: "/shipments/rates",

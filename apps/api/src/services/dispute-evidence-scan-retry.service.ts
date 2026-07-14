@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import { validateDisputeStoragePath } from "../lib/dispute-storage-paths.js";
-import { downloadDisputeEvidence } from "./dispute-storage.service.js";
 import {
+  type DisputeEvidenceScannerConfig,
+  type DisputeEvidenceScanResult,
   getDisputeEvidenceScannerPolicyStatus,
   resolveDisputeEvidenceScannerConfigFromEnv,
   scanDisputeEvidence,
-  type DisputeEvidenceScanResult,
-  type DisputeEvidenceScannerConfig,
 } from "./dispute-evidence-scan.service.js";
+import { downloadDisputeEvidence } from "./dispute-storage.service.js";
 
 export interface DisputeEvidenceScanRetryConfig {
   batchSize: number;
@@ -52,39 +52,46 @@ function boundedInteger(
   return value;
 }
 
-export function resolveDisputeEvidenceScanRetryConfigFromEnv():
-DisputeEvidenceScanRetryConfig {
+export function resolveDisputeEvidenceScanRetryConfigFromEnv(): DisputeEvidenceScanRetryConfig {
   const config = {
     batchSize: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCAN_RETRY_BATCH_SIZE,
-      DEFAULT_RETRY_CONFIG.batchSize, 1, 100,
+      DEFAULT_RETRY_CONFIG.batchSize,
+      1,
+      100,
       "evidence scan retry batch size",
     ),
     maxAttempts: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCAN_RETRY_MAX_ATTEMPTS,
-      DEFAULT_RETRY_CONFIG.maxAttempts, 1, 20,
+      DEFAULT_RETRY_CONFIG.maxAttempts,
+      1,
+      20,
       "evidence scan retry max attempts",
     ),
     leaseSeconds: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCAN_RETRY_LEASE_SECONDS,
-      DEFAULT_RETRY_CONFIG.leaseSeconds, 30, 300,
+      DEFAULT_RETRY_CONFIG.leaseSeconds,
+      30,
+      300,
       "evidence scan retry lease seconds",
     ),
     baseBackoffSeconds: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCAN_RETRY_BASE_BACKOFF_SECONDS,
-      DEFAULT_RETRY_CONFIG.baseBackoffSeconds, 5, 3_600,
+      DEFAULT_RETRY_CONFIG.baseBackoffSeconds,
+      5,
+      3_600,
       "evidence scan retry base backoff seconds",
     ),
     maxBackoffSeconds: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCAN_RETRY_MAX_BACKOFF_SECONDS,
-      DEFAULT_RETRY_CONFIG.maxBackoffSeconds, 30, 86_400,
+      DEFAULT_RETRY_CONFIG.maxBackoffSeconds,
+      30,
+      86_400,
       "evidence scan retry max backoff seconds",
     ),
   };
   if (config.maxBackoffSeconds < config.baseBackoffSeconds) {
-    throw new Error(
-      "evidence scan retry max backoff must be at least the base backoff",
-    );
+    throw new Error("evidence scan retry max backoff must be at least the base backoff");
   }
   return config;
 }
@@ -94,10 +101,7 @@ export function disputeEvidenceScanRetryDelaySeconds(
   config: DisputeEvidenceScanRetryConfig,
 ): number {
   const exponent = Math.max(0, Math.min(20, attemptCount - 1));
-  return Math.min(
-    config.maxBackoffSeconds,
-    config.baseBackoffSeconds * (2 ** exponent),
-  );
+  return Math.min(config.maxBackoffSeconds, config.baseBackoffSeconds * 2 ** exponent);
 }
 
 function dateValue(value: unknown): Date {
@@ -114,10 +118,9 @@ export async function claimDisputeEvidenceScanRetries(
   const now = input.now ?? new Date();
   const config = input.config ?? resolveDisputeEvidenceScanRetryConfigFromEnv();
   const leaseToken = randomUUID();
-  const leaseExpiresAt = new Date(
-    now.getTime() + config.leaseSeconds * 1_000,
-  );
-  const rows = await db.transaction(async (tx) => tx.execute(sql`
+  const leaseExpiresAt = new Date(now.getTime() + config.leaseSeconds * 1_000);
+  const rows = (await db.transaction(async (tx) =>
+    tx.execute(sql`
     WITH candidates AS (
       SELECT id
         FROM dispute_evidence_uploads
@@ -155,7 +158,8 @@ export async function claimDisputeEvidenceScanRetries(
       upload.scan_attempt_count AS "attemptCount",
       upload.scan_lease_token AS "leaseToken",
       upload.scan_lease_expires_at AS "leaseExpiresAt"
-  `)) as unknown as Array<Record<string, unknown>>;
+  `),
+  )) as unknown as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     uploadId: String(row.uploadId),
     disputeId: String(row.disputeId),
@@ -169,6 +173,7 @@ export async function claimDisputeEvidenceScanRetries(
 }
 
 function boundedDetail(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: Scanner details must strip ASCII controls.
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 200);
 }
 
@@ -185,23 +190,18 @@ export async function finalizeDisputeEvidenceScanRetry(
   const config = input.config ?? resolveDisputeEvidenceScanRetryConfigFromEnv();
   const success = result.status === "CLEAN";
   const infected = result.status === "INFECTED";
-  const circuitDeferred = result.status === "PENDING"
-    && result.provider === "haggle-scanner-circuit";
-  const exhausted = !success && !infected
-    && claim.attemptCount >= config.maxAttempts;
-  const retryAt = success || infected || exhausted
-    ? null
-    : new Date(now.getTime()
-      + disputeEvidenceScanRetryDelaySeconds(
-        claim.attemptCount,
-        config,
-      ) * 1_000);
-  const storedStatus = success ? "CLEAN"
-    : infected ? "INFECTED" : "FAILED";
-  const detail = boundedDetail(
-    exhausted ? `SCAN_RETRY_EXHAUSTED:${result.detail}` : result.detail,
-  );
-  const rows = await db.execute(sql`
+  const circuitDeferred =
+    result.status === "PENDING" && result.provider === "haggle-scanner-circuit";
+  const exhausted = !success && !infected && claim.attemptCount >= config.maxAttempts;
+  const retryAt =
+    success || infected || exhausted
+      ? null
+      : new Date(
+          now.getTime() + disputeEvidenceScanRetryDelaySeconds(claim.attemptCount, config) * 1_000,
+        );
+  const storedStatus = success ? "CLEAN" : infected ? "INFECTED" : "FAILED";
+  const detail = boundedDetail(exhausted ? `SCAN_RETRY_EXHAUSTED:${result.detail}` : result.detail);
+  const rows = (await db.execute(sql`
     UPDATE dispute_evidence_uploads
        SET status = ${infected ? "REJECTED" : "QUARANTINED"},
            scan_status = ${storedStatus},
@@ -222,7 +222,7 @@ export async function finalizeDisputeEvidenceScanRetry(
        AND scan_status = 'SCANNING'
        AND scan_lease_token = ${claim.leaseToken}::uuid
     RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return rows.length === 1;
 }
 
@@ -232,7 +232,7 @@ export async function getDisputeEvidenceScanRetryHealth(
 ) {
   const now = input.now ?? new Date();
   const config = input.config ?? resolveDisputeEvidenceScanRetryConfigFromEnv();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT
       count(*) FILTER (WHERE status = 'QUARANTINED'
         AND retention_status = 'ACTIVE')::int AS "quarantined",
@@ -271,14 +271,15 @@ export async function getDisputeEvidenceScanRetryHealth(
           AND scan_status IN ('PENDING', 'FAILED', 'SCANNING'))))::int
         AS "oldestUnresolvedAgeSeconds"
       FROM dispute_evidence_uploads
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0] ?? {};
   const count = (key: string) => Number(row[key] ?? 0);
   return {
     schemaVersion: "dispute-evidence-scan-retry-health-v1" as const,
-    status: count("staleProcessing") > 0 || count("exhausted") > 0
-      || count("expiredQuarantined") > 0
-      ? "attention" as const : "healthy" as const,
+    status:
+      count("staleProcessing") > 0 || count("exhausted") > 0 || count("expiredQuarantined") > 0
+        ? ("attention" as const)
+        : ("healthy" as const),
     job: {
       enabled: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_JOB === "true",
       cronEnabled: process.env.ENABLE_CRON === "true",
@@ -302,8 +303,7 @@ export async function getDisputeEvidenceScanRetryHealth(
       expiredQuarantined: count("expiredQuarantined"),
     },
     oldestUnresolvedAgeSeconds:
-      row.oldestUnresolvedAgeSeconds === null
-      || row.oldestUnresolvedAgeSeconds === undefined
+      row.oldestUnresolvedAgeSeconds === null || row.oldestUnresolvedAgeSeconds === undefined
         ? null
         : Math.max(0, Number(row.oldestUnresolvedAgeSeconds)),
     containsIdentifiers: false,
@@ -324,46 +324,51 @@ export async function runDisputeEvidenceScanRetry(
   } = {},
 ) {
   const now = options.now ?? new Date();
-  const retryConfig = options.retryConfig
-    ?? resolveDisputeEvidenceScanRetryConfigFromEnv();
-  const scannerConfig = options.scannerConfig === undefined
-    ? resolveDisputeEvidenceScannerConfigFromEnv()
-    : options.scannerConfig;
+  const retryConfig = options.retryConfig ?? resolveDisputeEvidenceScanRetryConfigFromEnv();
+  const scannerConfig =
+    options.scannerConfig === undefined
+      ? resolveDisputeEvidenceScannerConfigFromEnv()
+      : options.scannerConfig;
   if (!scannerConfig) {
     return {
       schemaVersion: "dispute-evidence-scan-retry-run-v1" as const,
       status: "skipped" as const,
       reason: "SCANNER_NOT_CONFIGURED" as const,
-      claimed: 0, clean: 0, infected: 0, retryScheduled: 0,
-      exhausted: 0, staleFinalizersRejected: 0,
+      claimed: 0,
+      clean: 0,
+      infected: 0,
+      retryScheduled: 0,
+      exhausted: 0,
+      staleFinalizersRejected: 0,
       realNetworkCalled: false,
       storageRead: false,
     };
   }
   const claims = await claimDisputeEvidenceScanRetries(db, {
-    now, config: retryConfig,
+    now,
+    config: retryConfig,
   });
   const totals = {
-    clean: 0, infected: 0, retryScheduled: 0,
-    exhausted: 0, staleFinalizersRejected: 0,
+    clean: 0,
+    infected: 0,
+    retryScheduled: 0,
+    exhausted: 0,
+    staleFinalizersRejected: 0,
   };
   for (const claim of claims) {
     let result: DisputeEvidenceScanResult;
     try {
-      const path = validateDisputeStoragePath(
-        claim.disputeId,
-        claim.storagePath,
+      const path = validateDisputeStoragePath(claim.disputeId, claim.storagePath);
+      const bytes = await (options.download ?? downloadDisputeEvidence)(path, claim.fileSizeBytes);
+      result = await (options.scan ?? scanDisputeEvidence)(
+        {
+          bytes,
+          contentType: claim.contentType,
+          expectedSizeBytes: claim.fileSizeBytes,
+          filename: path.split("/").at(-1) ?? "evidence",
+        },
+        { config: scannerConfig, db },
       );
-      const bytes = await (options.download ?? downloadDisputeEvidence)(
-        path,
-        claim.fileSizeBytes,
-      );
-      result = await (options.scan ?? scanDisputeEvidence)({
-        bytes,
-        contentType: claim.contentType,
-        expectedSizeBytes: claim.fileSizeBytes,
-        filename: path.split("/").at(-1) ?? "evidence",
-      }, { config: scannerConfig, db });
     } catch {
       result = {
         status: "FAILED",
@@ -371,9 +376,10 @@ export async function runDisputeEvidenceScanRetry(
         detail: "SCAN_RETRY_EXECUTION_FAILED",
       };
     }
-    const finalized = await finalizeDisputeEvidenceScanRetry(
-      db, claim, result, { now: new Date(), config: retryConfig },
-    );
+    const finalized = await finalizeDisputeEvidenceScanRetry(db, claim, result, {
+      now: new Date(),
+      config: retryConfig,
+    });
     if (!finalized) {
       totals.staleFinalizersRejected += 1;
     } else if (result.status === "CLEAN") {

@@ -50,6 +50,18 @@ port = 54324
 enabled = true
 file_size_limit = "50MiB"
 
+# 코드가 참조하는 버킷들은 `supabase start` 시 자동 생성된다.
+# RLS 정책(INSERT/UPDATE)은 supabase/seed.sql이 추가로 박는다.
+[storage.buckets.listing-photos]
+public = true
+file_size_limit = "10MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
+[storage.buckets.avatars]
+public = true
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
 [auth]
 enabled = true
 # 로컬 web 앱 기준. OAuth/매직링크 리다이렉트의 기준 URL.

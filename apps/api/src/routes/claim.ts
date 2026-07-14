@@ -1,14 +1,14 @@
+import { type Database, sql } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import type { Database } from "@haggle/db";
+import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
 import { claimListing } from "../services/draft.service.js";
 
 /**
- * POST /api/claim
- * Body: { claimToken: string, userId: string }
+ * Claim flow — wire ownership of guest-created entities to a real user account.
  *
- * Verifies the claim token and links the listing to the user.
- * The userId comes from the authenticated Supabase session (verified by the web app).
+ *  • POST /api/claim                — MCP-created listing draft claim (legacy)
+ *  • POST /claim/negotiation-sessions — guest buyer's auto-played sessions
  */
 export function registerClaimRoutes(app: FastifyInstance, db: Database) {
   app.post<{
@@ -38,4 +38,47 @@ export function registerClaimRoutes(app: FastifyInstance, db: Database) {
 
     return reply.send(result);
   });
+
+  // ─── POST /claim/negotiation-sessions ──────────────────────────────────
+  //
+  // Buyer ran negotiations as a guest (`POST /negotiations/start` minted a
+  // random UUID for buyer_id). After sign-up, the web app collects those
+  // guest UUIDs from localStorage and POSTs them here so the new user owns
+  // the resulting sessions.
+  app.post("/claim/negotiation-sessions", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
+    const parsed = claimSessionsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_BODY", issues: parsed.error.issues });
+    }
+    const guestIds = parsed.data.guest_buyer_ids.filter((id) => id !== userId);
+    if (guestIds.length === 0) {
+      return reply.send({ ok: true, claimed_count: 0 });
+    }
+
+    // Direct UPDATE keeps the call cheap. buyer_id is a uuid column so the
+    // parameterised IN list has no injection vector; seller_id check stops
+    // a malicious caller from claiming the wrong side of a session.
+    const placeholders = sql.join(
+      guestIds.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const result = await db.execute(sql`
+        UPDATE negotiation_sessions
+        SET buyer_id = ${userId}::uuid,
+            updated_at = NOW(),
+            version = version + 1
+        WHERE buyer_id IN (${placeholders})
+          AND seller_id <> ${userId}::uuid
+      `);
+
+    const rowCount = (result as unknown as { rowCount?: number }).rowCount;
+    const count =
+      typeof rowCount === "number" ? rowCount : Array.isArray(result) ? result.length : 0;
+    return reply.send({ ok: true, claimed_count: count });
+  });
 }
+
+const claimSessionsSchema = z.object({
+  guest_buyer_ids: z.array(z.string().uuid()).min(1).max(64),
+});

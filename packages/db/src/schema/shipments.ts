@@ -1,5 +1,15 @@
-import { index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const shipments = pgTable("shipments", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -40,7 +50,9 @@ export const shipments = pgTable("shipments", {
   labelUrl: text("label_url"),
   labelRefundStatus: text("label_refund_status", {
     enum: ["NONE", "REQUESTING", "SUBMITTED", "REFUNDED", "REJECTED", "NOT_APPLICABLE", "FAILED"],
-  }).notNull().default("NONE"),
+  })
+    .notNull()
+    .default("NONE"),
   labelRefundClaimId: uuid("label_refund_claim_id"),
   labelRefundLeaseExpiresAt: timestamp("label_refund_lease_expires_at", { withTimezone: true }),
   labelRefundAttemptCount: integer("label_refund_attempt_count").notNull().default(0),
@@ -93,7 +105,9 @@ export const shipmentOperationIdempotency = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     shipmentId: uuid("shipment_id"),
     requestHash: text("request_hash").notNull(),
-    status: text("status", { enum: ["IN_PROGRESS", "SUCCEEDED", "FAILED"] }).notNull().default("IN_PROGRESS"),
+    status: text("status", { enum: ["IN_PROGRESS", "SUCCEEDED", "FAILED"] })
+      .notNull()
+      .default("IN_PROGRESS"),
     responseStatus: integer("response_status"),
     responseBody: jsonb("response_body").$type<Record<string, unknown>>(),
     lockedUntil: timestamp("locked_until", { withTimezone: true })
@@ -106,8 +120,10 @@ export const shipmentOperationIdempotency = pgTable(
       .default(sql`now() + interval '30 days'`),
   },
   (table) => ({
-    operationKeyUnique: uniqueIndex("shipment_operation_idem_operation_key_unique")
-      .on(table.operation, table.idempotencyKey),
+    operationKeyUnique: uniqueIndex("shipment_operation_idem_operation_key_unique").on(
+      table.operation,
+      table.idempotencyKey,
+    ),
     shipmentIdx: index("shipment_operation_idem_shipment_idx").on(table.shipmentId),
     expiresAtIdx: index("shipment_operation_idem_expires_at_idx").on(table.expiresAt),
   }),
@@ -125,19 +141,38 @@ export const shipmentApvAdjustments = pgTable(
     settlementReleaseId: uuid("settlement_release_id").notNull(),
     status: text("status", {
       enum: ["PROCESSING", "APPLIED", "REVIEW_REQUIRED", "CREDIT_RECORDED", "FAILED"],
-    }).notNull().default("PROCESSING"),
+    })
+      .notNull()
+      .default("PROCESSING"),
     originalRateMinor: numeric("original_rate_minor", { precision: 18, scale: 0 }).notNull(),
     adjustedRateMinor: numeric("adjusted_rate_minor", { precision: 18, scale: 0 }).notNull(),
     adjustmentMinor: numeric("adjustment_minor", { precision: 18, scale: 0 }).notNull(),
-    bufferAppliedMinor: numeric("buffer_applied_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    assessedSellerLiabilityMinor: numeric("assessed_seller_liability_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    sellerLiabilityMinor: numeric("seller_liability_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    platformLiabilityMinor: numeric("platform_liability_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    carrierCreditMinor: numeric("carrier_credit_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    buyerEffectMinor: numeric("buyer_effect_minor", { precision: 18, scale: 0 }).notNull().default("0"),
+    bufferAppliedMinor: numeric("buffer_applied_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    assessedSellerLiabilityMinor: numeric("assessed_seller_liability_minor", {
+      precision: 18,
+      scale: 0,
+    })
+      .notNull()
+      .default("0"),
+    sellerLiabilityMinor: numeric("seller_liability_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    platformLiabilityMinor: numeric("platform_liability_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    carrierCreditMinor: numeric("carrier_credit_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    buyerEffectMinor: numeric("buyer_effect_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
     reviewStatus: text("review_status", {
       enum: ["NONE", "PENDING", "UPHELD", "WAIVED"],
-    }).notNull().default("NONE"),
+    })
+      .notNull()
+      .default("NONE"),
     reviewRequestId: text("review_request_id"),
     sellerReviewReason: text("seller_review_reason"),
     sellerReviewSubmittedAt: timestamp("seller_review_submitted_at", { withTimezone: true }),
@@ -156,11 +191,16 @@ export const shipmentApvAdjustments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    providerInvoiceUnique: uniqueIndex("shipment_apv_provider_invoice_unique")
-      .on(table.provider, table.providerInvoiceId),
+    providerInvoiceUnique: uniqueIndex("shipment_apv_provider_invoice_unique").on(
+      table.provider,
+      table.providerInvoiceId,
+    ),
     shipmentIdx: index("shipment_apv_shipment_idx").on(table.shipmentId),
     statusLeaseIdx: index("shipment_apv_status_lease_idx").on(table.status, table.leaseExpiresAt),
-    reviewStatusIdx: index("shipment_apv_review_status_idx").on(table.reviewStatus, table.sellerReviewSubmittedAt),
+    reviewStatusIdx: index("shipment_apv_review_status_idx").on(
+      table.reviewStatus,
+      table.sellerReviewSubmittedAt,
+    ),
   }),
 );
 
@@ -168,7 +208,8 @@ export const shipmentApvAdjustmentRevisions = pgTable(
   "shipment_apv_adjustment_revisions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    adjustmentId: uuid("adjustment_id").notNull()
+    adjustmentId: uuid("adjustment_id")
+      .notNull()
       .references(() => shipmentApvAdjustments.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     providerInvoiceId: text("provider_invoice_id").notNull(),
@@ -176,19 +217,40 @@ export const shipmentApvAdjustmentRevisions = pgTable(
     invoiceEvent: text("invoice_event", { enum: ["created", "updated"] }).notNull(),
     payloadSha256: text("payload_sha256").notNull(),
     webhookEventId: text("webhook_event_id").notNull(),
-    priorAdjustedRateMinor: numeric("prior_adjusted_rate_minor", { precision: 18, scale: 0 }).notNull(),
+    priorAdjustedRateMinor: numeric("prior_adjusted_rate_minor", {
+      precision: 18,
+      scale: 0,
+    }).notNull(),
     adjustedRateMinor: numeric("adjusted_rate_minor", { precision: 18, scale: 0 }).notNull(),
     deltaMinor: numeric("delta_minor", { precision: 18, scale: 0 }).notNull(),
     status: text("status", {
-      enum: ["APPLIED", "REVIEW_REQUIRED", "CREDIT_RECORDED", "PENDING_REVIEW", "WAIVED_TO_PLATFORM", "CREDIT_APPLIED", "ACKNOWLEDGED"],
+      enum: [
+        "APPLIED",
+        "REVIEW_REQUIRED",
+        "CREDIT_RECORDED",
+        "PENDING_REVIEW",
+        "WAIVED_TO_PLATFORM",
+        "CREDIT_APPLIED",
+        "ACKNOWLEDGED",
+      ],
     }).notNull(),
-    buyerEffectMinor: numeric("buyer_effect_minor", { precision: 18, scale: 0 }).notNull().default("0"),
+    buyerEffectMinor: numeric("buyer_effect_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
     decisionRequestId: text("decision_request_id"),
     decision: text("decision", { enum: ["UPHELD", "WAIVED", "APPLY_CREDIT", "ACKNOWLEDGE"] }),
-    bufferAppliedMinor: numeric("buffer_applied_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    sellerLiabilityMinor: numeric("seller_liability_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    platformLiabilityMinor: numeric("platform_liability_minor", { precision: 18, scale: 0 }).notNull().default("0"),
-    carrierCreditMinor: numeric("carrier_credit_minor", { precision: 18, scale: 0 }).notNull().default("0"),
+    bufferAppliedMinor: numeric("buffer_applied_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    sellerLiabilityMinor: numeric("seller_liability_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    platformLiabilityMinor: numeric("platform_liability_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
+    carrierCreditMinor: numeric("carrier_credit_minor", { precision: 18, scale: 0 })
+      .notNull()
+      .default("0"),
     appliedBy: uuid("applied_by"),
     decisionReason: text("decision_reason"),
     appliedAt: timestamp("applied_at", { withTimezone: true }),
@@ -205,14 +267,23 @@ export const shipmentApvAdjustmentRevisions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    revisionUnique: uniqueIndex("shipment_apv_revision_number_unique")
-      .on(table.adjustmentId, table.revisionNumber),
-    payloadUnique: uniqueIndex("shipment_apv_revision_payload_unique")
-      .on(table.provider, table.providerInvoiceId, table.payloadSha256),
-    invoiceIdx: index("shipment_apv_revision_invoice_idx")
-      .on(table.provider, table.providerInvoiceId, table.revisionNumber),
-    decisionRequestUnique: uniqueIndex("shipment_apv_revision_decision_request_unique")
-      .on(table.decisionRequestId),
+    revisionUnique: uniqueIndex("shipment_apv_revision_number_unique").on(
+      table.adjustmentId,
+      table.revisionNumber,
+    ),
+    payloadUnique: uniqueIndex("shipment_apv_revision_payload_unique").on(
+      table.provider,
+      table.providerInvoiceId,
+      table.payloadSha256,
+    ),
+    invoiceIdx: index("shipment_apv_revision_invoice_idx").on(
+      table.provider,
+      table.providerInvoiceId,
+      table.revisionNumber,
+    ),
+    decisionRequestUnique: uniqueIndex("shipment_apv_revision_decision_request_unique").on(
+      table.decisionRequestId,
+    ),
   }),
 );
 
@@ -226,11 +297,16 @@ export const shipmentApvPayoutOffsets = pgTable(
     currency: text("currency").notNull().default("USDC"),
     sellerLiabilityMinor: numeric("seller_liability_minor", { precision: 18, scale: 0 }).notNull(),
     appliedOffsetMinor: numeric("applied_offset_minor", { precision: 18, scale: 0 }).notNull(),
-    unappliedLiabilityMinor: numeric("unapplied_liability_minor", { precision: 18, scale: 0 }).notNull(),
+    unappliedLiabilityMinor: numeric("unapplied_liability_minor", {
+      precision: 18,
+      scale: 0,
+    }).notNull(),
     evidenceManifestSha256: text("evidence_manifest_sha256").notNull(),
     requestId: text("request_id").notNull(),
     allocationVersion: integer("allocation_version").notNull().default(0),
-    status: text("status", { enum: ["RESERVED", "APPLIED", "CANCELLED"] }).notNull().default("RESERVED"),
+    status: text("status", { enum: ["RESERVED", "APPLIED", "CANCELLED"] })
+      .notNull()
+      .default("RESERVED"),
     releaseTxHash: text("release_tx_hash"),
     signatureDeadline: timestamp("signature_deadline", { withTimezone: true }),
     reservationExpiresAt: timestamp("reservation_expires_at", { withTimezone: true }).notNull(),
@@ -261,17 +337,23 @@ export const shipmentApvSellerLiabilities = pgTable(
     originalAmountMinor: numeric("original_amount_minor", { precision: 18, scale: 0 }).notNull(),
     remainingAmountMinor: numeric("remaining_amount_minor", { precision: 18, scale: 0 }).notNull(),
     evidenceManifestSha256: text("evidence_manifest_sha256").notNull(),
-    status: text("status", { enum: ["OPEN", "PARTIAL", "SETTLED"] }).notNull().default("OPEN"),
+    status: text("status", { enum: ["OPEN", "PARTIAL", "SETTLED"] })
+      .notNull()
+      .default("OPEN"),
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     settledAt: timestamp("settled_at", { withTimezone: true }),
   },
   (table) => ({
-    sourceReleaseUnique: uniqueIndex("shipment_apv_seller_liability_source_release_unique")
-      .on(table.sourceSettlementReleaseId),
-    sellerQueueIdx: index("shipment_apv_seller_liability_queue_idx")
-      .on(table.sellerId, table.status, table.createdAt),
+    sourceReleaseUnique: uniqueIndex("shipment_apv_seller_liability_source_release_unique").on(
+      table.sourceSettlementReleaseId,
+    ),
+    sellerQueueIdx: index("shipment_apv_seller_liability_queue_idx").on(
+      table.sellerId,
+      table.status,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -279,21 +361,29 @@ export const shipmentApvPayoutOffsetAllocations = pgTable(
   "shipment_apv_payout_offset_allocations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    payoutOffsetId: uuid("payout_offset_id").notNull()
+    payoutOffsetId: uuid("payout_offset_id")
+      .notNull()
       .references(() => shipmentApvPayoutOffsets.id, { onDelete: "cascade" }),
-    sellerLiabilityId: uuid("seller_liability_id").notNull()
+    sellerLiabilityId: uuid("seller_liability_id")
+      .notNull()
       .references(() => shipmentApvSellerLiabilities.id, { onDelete: "cascade" }),
     amountMinor: numeric("amount_minor", { precision: 18, scale: 0 }).notNull(),
-    status: text("status", { enum: ["RESERVED", "APPLIED", "CANCELLED"] }).notNull().default("RESERVED"),
+    status: text("status", { enum: ["RESERVED", "APPLIED", "CANCELLED"] })
+      .notNull()
+      .default("RESERVED"),
     appliedAt: timestamp("applied_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    offsetLiabilityUnique: uniqueIndex("shipment_apv_payout_allocation_offset_liability_unique")
-      .on(table.payoutOffsetId, table.sellerLiabilityId),
-    liabilityStatusIdx: index("shipment_apv_payout_allocation_liability_status_idx")
-      .on(table.sellerLiabilityId, table.status),
+    offsetLiabilityUnique: uniqueIndex("shipment_apv_payout_allocation_offset_liability_unique").on(
+      table.payoutOffsetId,
+      table.sellerLiabilityId,
+    ),
+    liabilityStatusIdx: index("shipment_apv_payout_allocation_liability_status_idx").on(
+      table.sellerLiabilityId,
+      table.status,
+    ),
   }),
 );
 
@@ -302,12 +392,15 @@ export const shipmentApvPayoutCancellationRequests = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     clientRequestId: uuid("client_request_id").notNull(),
-    payoutOffsetId: uuid("payout_offset_id").notNull()
+    payoutOffsetId: uuid("payout_offset_id")
+      .notNull()
       .references(() => shipmentApvPayoutOffsets.id),
     settlementReleaseId: uuid("settlement_release_id").notNull(),
     requesterId: uuid("requester_id").notNull(),
     reason: text("reason").notNull(),
-    status: text("status", { enum: ["PENDING", "APPROVED", "REJECTED", "EXPIRED"] }).notNull().default("PENDING"),
+    status: text("status", { enum: ["PENDING", "APPROVED", "REJECTED", "EXPIRED"] })
+      .notNull()
+      .default("PENDING"),
     version: integer("version").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     approverId: uuid("approver_id"),
@@ -319,13 +412,20 @@ export const shipmentApvPayoutCancellationRequests = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    clientRequestUnique: uniqueIndex("shipment_apv_payout_cancel_request_client_unique").on(table.clientRequestId),
-    decisionRequestUnique: uniqueIndex("shipment_apv_payout_cancel_request_decision_unique").on(table.decisionRequestId),
+    clientRequestUnique: uniqueIndex("shipment_apv_payout_cancel_request_client_unique").on(
+      table.clientRequestId,
+    ),
+    decisionRequestUnique: uniqueIndex("shipment_apv_payout_cancel_request_decision_unique").on(
+      table.decisionRequestId,
+    ),
     activeOffsetUnique: uniqueIndex("shipment_apv_payout_cancel_request_active_offset_unique")
       .on(table.payoutOffsetId)
       .where(sql`${table.status} = 'PENDING'`),
-    pendingQueueIdx: index("shipment_apv_payout_cancel_request_pending_idx")
-      .on(table.status, table.expiresAt, table.createdAt),
+    pendingQueueIdx: index("shipment_apv_payout_cancel_request_pending_idx").on(
+      table.status,
+      table.expiresAt,
+      table.createdAt,
+    ),
   }),
 );
 
@@ -333,9 +433,12 @@ export const shipmentApvPayoutCancellationEvents = pgTable(
   "shipment_apv_payout_cancellation_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    cancellationRequestId: uuid("cancellation_request_id").notNull()
+    cancellationRequestId: uuid("cancellation_request_id")
+      .notNull()
       .references(() => shipmentApvPayoutCancellationRequests.id, { onDelete: "cascade" }),
-    eventType: text("event_type", { enum: ["REQUESTED", "APPROVED", "REJECTED", "EXPIRED"] }).notNull(),
+    eventType: text("event_type", {
+      enum: ["REQUESTED", "APPROVED", "REJECTED", "EXPIRED"],
+    }).notNull(),
     actorId: uuid("actor_id"),
     requestVersion: integer("request_version").notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
@@ -344,10 +447,16 @@ export const shipmentApvPayoutCancellationEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    transitionUnique: uniqueIndex("shipment_apv_payout_cancel_event_transition_unique")
-      .on(table.cancellationRequestId, table.eventType, table.requestVersion),
-    requestTimelineIdx: index("shipment_apv_payout_cancel_event_timeline_idx")
-      .on(table.cancellationRequestId, table.createdAt, table.id),
+    transitionUnique: uniqueIndex("shipment_apv_payout_cancel_event_transition_unique").on(
+      table.cancellationRequestId,
+      table.eventType,
+      table.requestVersion,
+    ),
+    requestTimelineIdx: index("shipment_apv_payout_cancel_event_timeline_idx").on(
+      table.cancellationRequestId,
+      table.createdAt,
+      table.id,
+    ),
     eventHashIdx: index("shipment_apv_payout_cancel_event_hash_idx")
       .on(table.eventHash)
       .where(sql`${table.eventHash} IS NOT NULL`),
@@ -362,7 +471,11 @@ export const shipmentApvPayoutCancellationAuditOutbox = pgTable(
     cancellationRequestId: uuid("cancellation_request_id").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     payloadSha256: text("payload_sha256").notNull(),
-    status: text("status", { enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"] }).notNull().default("PENDING"),
+    status: text("status", {
+      enum: ["PENDING", "PROCESSING", "DELIVERED", "FAILED", "DEAD_LETTER"],
+    })
+      .notNull()
+      .default("PENDING"),
     attemptCount: integer("attempt_count").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     leaseToken: uuid("lease_token"),
@@ -376,10 +489,13 @@ export const shipmentApvPayoutCancellationAuditOutbox = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    archiveKeyUnique: uniqueIndex("shipment_apv_payout_cancel_audit_archive_key_unique").on(table.archiveKey),
-    requestIdx: index("shipment_apv_payout_cancel_audit_request_idx")
-      .on(table.cancellationRequestId, table.createdAt),
-    dueIdx: index("shipment_apv_payout_cancel_audit_due_idx")
-      .on(table.status, table.nextAttemptAt),
+    archiveKeyUnique: uniqueIndex("shipment_apv_payout_cancel_audit_archive_key_unique").on(
+      table.archiveKey,
+    ),
+    requestIdx: index("shipment_apv_payout_cancel_audit_request_idx").on(
+      table.cancellationRequestId,
+      table.createdAt,
+    ),
+    dueIdx: index("shipment_apv_payout_cancel_audit_due_idx").on(table.status, table.nextAttemptAt),
   }),
 );

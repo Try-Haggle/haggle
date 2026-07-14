@@ -20,46 +20,47 @@
  * 13. Dispatch events
  */
 
-import { sql, type Database } from "@haggle/db";
-import type { RoundExecutionInput, RoundExecutionResult } from "./negotiation-executor.js";
-import { mapRawToDbSession } from "./negotiation-executor.js";
-import { getRoundByIdempotencyKey, createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
-import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
-import { recordRoundConversationSignals } from "../services/conversation-signal-sink.js";
-import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
-import type { DbSession, DbRound } from "./session-reconstructor.js";
-
-// Step 56 imports
-import type {
-  NegotiationPhase,
-  ProtocolDecision,
-  CoreMemory,
-  RoundFact,
-  OpponentPattern,
-  RefereeCoaching,
-  ValidationResult,
-} from "../negotiation/types.js";
-import { RefereeService } from "../negotiation/referee/referee-service.js";
-import { DefaultEngineSkill } from "../negotiation/skills/default-engine-skill.js";
-import { GrokFastAdapter } from "../negotiation/adapters/grok-fast-adapter.js";
-import { screenMessage } from "../negotiation/screening/auto-screening.js";
-import { tryTransition, detectPhaseEvent } from "../negotiation/phase/phase-machine.js";
-import { checkIntervention } from "../negotiation/phase/human-intervention.js";
-import { computeCoaching } from "../negotiation/referee/coach.js";
-
+import { type Database, sql } from "@haggle/db";
+import { DeepSeekAdapter } from "../negotiation/adapters/deepseek-adapter.js";
+// LLM client
+import { callLLM } from "../negotiation/adapters/deepseek-client.js";
+import { DEFAULT_BUDDY_DNA, shouldUseReasoning } from "../negotiation/config.js";
 // Memory + Config
 import {
-  reconstructCoreMemory,
-  reconstructRoundFacts,
-  reconstructOpponentPattern,
+  type DbRoundForMemory,
   inferPhaseFromStatus,
   phaseToDbStatus,
-  type DbRoundForMemory,
+  reconstructCoreMemory,
+  reconstructOpponentPattern,
+  reconstructRoundFacts,
 } from "../negotiation/memory/memory-reconstructor.js";
-import { DEFAULT_BUDDY_DNA, shouldUseReasoning } from "../negotiation/config.js";
-
-// LLM client
-import { callLLM } from "../negotiation/adapters/xai-client.js";
+import { checkIntervention } from "../negotiation/phase/human-intervention.js";
+import { detectPhaseEvent, tryTransition } from "../negotiation/phase/phase-machine.js";
+import { computeCoaching } from "../negotiation/referee/coach.js";
+import { RefereeService } from "../negotiation/referee/referee-service.js";
+import { screenMessage } from "../negotiation/screening/auto-screening.js";
+import { DefaultEngineSkill } from "../negotiation/skills/default-engine-skill.js";
+// Step 56 imports
+import type {
+  CoreMemory,
+  NegotiationPhase,
+  OpponentPattern,
+  ProtocolDecision,
+  RefereeCoaching,
+  RoundFact,
+  ValidationResult,
+} from "../negotiation/types.js";
+import { recordRoundConversationSignals } from "../services/conversation-signal-sink.js";
+import {
+  createRound,
+  getRoundByIdempotencyKey,
+  getRoundsBySessionId,
+} from "../services/negotiation-round.service.js";
+import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
+import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
+import type { RoundExecutionInput, RoundExecutionResult } from "./negotiation-executor.js";
+import { mapRawToDbSession } from "./negotiation-executor.js";
+import type { DbRound, DbSession } from "./session-reconstructor.js";
 
 // ---------------------------------------------------------------------------
 // Singletons (stateless, safe to reuse)
@@ -67,7 +68,7 @@ import { callLLM } from "../negotiation/adapters/xai-client.js";
 
 const refereeService = new RefereeService();
 const skill = new DefaultEngineSkill();
-const adapter = new GrokFastAdapter();
+const adapter = new DeepSeekAdapter();
 
 // ---------------------------------------------------------------------------
 // Terminal statuses
@@ -115,13 +116,20 @@ export async function executeLLMNegotiationRound(
     }
 
     // 3. Double-check idempotency inside TX
-    const existingInTx = await getRoundByIdempotencyKey(tx as unknown as Database, input.sessionId, input.idempotencyKey);
+    const existingInTx = await getRoundByIdempotencyKey(
+      tx as unknown as Database,
+      input.sessionId,
+      input.idempotencyKey,
+    );
     if (existingInTx) {
       return buildIdempotentResultFromRound(existingInTx, dbSession);
     }
 
     // 4. Load rounds + reconstruct memory
-    const dbRounds = await getRoundsBySessionId(tx as unknown as Database, input.sessionId) as DbRound[];
+    const dbRounds = (await getRoundsBySessionId(
+      tx as unknown as Database,
+      input.sessionId,
+    )) as DbRound[];
     const nextRound = dbSession.currentRound + 1;
 
     // Convert DbRound to DbRoundForMemory
@@ -129,11 +137,11 @@ export async function executeLLMNegotiationRound(
       const raw = r as unknown as Record<string, unknown>;
       return {
         roundNo: r.roundNo,
-        senderRole: r.senderRole as 'BUYER' | 'SELLER',
+        senderRole: r.senderRole as "BUYER" | "SELLER",
         priceminor: r.priceminor,
         counterPriceMinor: r.counterPriceMinor,
         decision: r.decision,
-        utility: r.utility as DbRound['utility'],
+        utility: r.utility as DbRound["utility"],
         metadata: r.metadata,
         createdAt: r.createdAt,
         coaching: (raw.coaching as Record<string, unknown> | null) ?? null,
@@ -141,7 +149,7 @@ export async function executeLLMNegotiationRound(
       };
     });
 
-    const role = dbSession.role.toLowerCase() as 'buyer' | 'seller';
+    const role = dbSession.role.toLowerCase() as "buyer" | "seller";
     const facts = reconstructRoundFacts(roundsForMemory, dbSession.role);
     const opponentPattern = reconstructOpponentPattern(facts, role);
 
@@ -150,7 +158,7 @@ export async function executeLLMNegotiationRound(
     const coaching = computeCoaching(dummyMemory, facts, opponentPattern, DEFAULT_BUDDY_DNA);
 
     // Full CoreMemory with actual coaching
-    const memory = reconstructCoreMemory(dbSession, dbSession.strategySnapshot, coaching);
+    const memory = reconstructCoreMemory(dbSession, dbSession.negotiationAgentSnapshot, coaching);
 
     // Update memory with incoming offer
     const updatedMemory: CoreMemory = {
@@ -180,7 +188,7 @@ export async function executeLLMNegotiationRound(
     if (screening.is_spam) {
       // Spam → immediate REJECT
       const spamDecision: ProtocolDecision = {
-        action: 'REJECT',
+        action: "REJECT",
         reasoning: `Screening blocked: ${screening.reason}`,
       };
       return await persistLLMRound(tx as unknown as Database, {
@@ -192,7 +200,7 @@ export async function executeLLMNegotiationRound(
         coaching,
         validation: { passed: true, hardPassed: true, violations: [] },
         phase: updatedMemory.session.phase,
-        message: 'This offer has been automatically declined.',
+        message: "This offer has been automatically declined.",
         llmTokensUsed: 0,
         reasoningUsed: false,
       });
@@ -200,10 +208,13 @@ export async function executeLLMNegotiationRound(
 
     // 6. Phase detection
     let currentPhase = updatedMemory.session.phase;
-    const isNearDeal = updatedMemory.boundaries.gap > 0 &&
-      (updatedMemory.boundaries.gap / Math.abs(updatedMemory.boundaries.my_target - updatedMemory.boundaries.my_floor || 1)) < 0.10;
+    const isNearDeal =
+      updatedMemory.boundaries.gap > 0 &&
+      updatedMemory.boundaries.gap /
+        Math.abs(updatedMemory.boundaries.my_target - updatedMemory.boundaries.my_floor || 1) <
+        0.1;
 
-    const phaseEvent = detectPhaseEvent('COUNTER', currentPhase, isNearDeal, false);
+    const phaseEvent = detectPhaseEvent("COUNTER", currentPhase, isNearDeal, false);
     if (phaseEvent) {
       const transition = tryTransition(currentPhase, phaseEvent);
       if (transition.transitioned) {
@@ -213,15 +224,15 @@ export async function executeLLMNegotiationRound(
 
     // 7. Intervention check
     const intervention = checkIntervention(
-      { action: 'COUNTER', reasoning: 'pending' },
+      { action: "COUNTER", reasoning: "pending" },
       currentPhase,
       updatedMemory.session.intervention_mode,
     );
     if (!intervention.autoApproved) {
       // HOLD — requires human approval
       const holdDecision: ProtocolDecision = {
-        action: 'HOLD',
-        reasoning: intervention.pendingReview?.reason ?? 'Human approval required.',
+        action: "HOLD",
+        reasoning: intervention.pendingReview?.reason ?? "Human approval required.",
       };
       return await persistLLMRound(tx as unknown as Database, {
         dbSession,
@@ -232,7 +243,7 @@ export async function executeLLMNegotiationRound(
         coaching,
         validation: { passed: true, hardPassed: true, violations: [] },
         phase: currentPhase,
-        message: 'Waiting for your approval to proceed.',
+        message: "Waiting for your approval to proceed.",
         llmTokensUsed: 0,
         reasoningUsed: false,
       });
@@ -252,12 +263,13 @@ export async function executeLLMNegotiationRound(
     );
 
     // 8b. BARGAINING + COUNTER → LLM augmentation
-    if (currentPhase === 'BARGAINING' && decision.action === 'COUNTER') {
+    if (currentPhase === "BARGAINING" && decision.action === "COUNTER") {
       try {
         // Determine reasoning mode
         const useReasoning = shouldUseReasoning({
           gap: updatedMemory.boundaries.gap,
-          gapRatio: updatedMemory.boundaries.gap /
+          gapRatio:
+            updatedMemory.boundaries.gap /
             Math.abs(updatedMemory.boundaries.my_target - updatedMemory.boundaries.my_floor || 1),
           coachWarnings: coaching.warnings,
           opponentPattern: coaching.opponent_pattern,
@@ -267,7 +279,10 @@ export async function executeLLMNegotiationRound(
         reasoningUsed = useReasoning;
 
         // Build prompts
-        const systemPrompt = adapter.buildSystemPrompt(skill.getLLMContext(), updatedMemory.session.role);
+        const systemPrompt = adapter.buildSystemPrompt(
+          skill.getLLMContext(),
+          updatedMemory.session.role,
+        );
         const userPrompt = adapter.buildUserPrompt(updatedMemory, facts.slice(-5));
 
         // Call LLM
@@ -282,9 +297,9 @@ export async function executeLLMNegotiationRound(
         const llmDecision = adapter.parseResponse(llmResponse.content);
 
         // Use LLM decision if it looks reasonable (has a price for COUNTER)
-        if (llmDecision.action === 'COUNTER' && llmDecision.price && llmDecision.price > 0) {
+        if (llmDecision.action === "COUNTER" && llmDecision.price && llmDecision.price > 0) {
           decision = llmDecision;
-        } else if (['ACCEPT', 'REJECT', 'HOLD'].includes(llmDecision.action)) {
+        } else if (["ACCEPT", "REJECT", "HOLD"].includes(llmDecision.action)) {
           decision = llmDecision;
         }
         // Otherwise, keep skill decision as fallback
@@ -315,8 +330,8 @@ export async function executeLLMNegotiationRound(
     const postDecisionEvent = detectPhaseEvent(
       decision.action,
       currentPhase,
-      isNearDeal || decision.action === 'ACCEPT',
-      decision.action === 'CONFIRM',
+      isNearDeal || decision.action === "ACCEPT",
+      decision.action === "CONFIRM",
     );
     if (postDecisionEvent) {
       const transition = tryTransition(currentPhase, postDecisionEvent);
@@ -378,11 +393,20 @@ interface PersistParams {
   reasoningUsed: boolean;
 }
 
-async function persistLLMRound(
-  tx: Database,
-  params: PersistParams,
-): Promise<RoundExecutionResult> {
-  const { dbSession, input, nextRound, decision, memory, coaching, validation, phase, message, llmTokensUsed, reasoningUsed } = params;
+async function persistLLMRound(tx: Database, params: PersistParams): Promise<RoundExecutionResult> {
+  const {
+    dbSession,
+    input,
+    nextRound,
+    decision,
+    memory,
+    coaching,
+    validation,
+    phase,
+    message,
+    llmTokensUsed,
+    reasoningUsed,
+  } = params;
 
   // Map ProtocolDecision.action → DB decision
   const dbDecision = mapActionToDbDecision(decision.action);
@@ -398,7 +422,7 @@ async function persistLLMRound(
     senderRole: input.senderRole,
     messageType,
     priceminor: String(input.offerPriceMinor),
-    counterPriceMinor: decision.action === 'COUNTER' ? String(outgoingPrice) : undefined,
+    counterPriceMinor: decision.action === "COUNTER" ? String(outgoingPrice) : undefined,
     utility: memory.coaching.utility_snapshot
       ? {
           u_total: memory.coaching.utility_snapshot.u_total,
@@ -412,7 +436,7 @@ async function persistLLMRound(
     metadata: {
       tactic: decision.tactic_used,
       reasoning: decision.reasoning,
-      engine: 'llm',
+      engine: "llm",
     },
     idempotencyKey: input.idempotencyKey,
     coaching: coaching as unknown as Record<string, unknown>,
@@ -426,34 +450,39 @@ async function persistLLMRound(
   await recordSignalsForCreatedRound(tx, params, createdRound.id, outgoingPrice);
 
   // Track concession
-  const roundsNoConcession = decision.action === 'COUNTER' && decision.price
-    ? (Math.abs(decision.price - (Number(dbSession.lastOfferPriceMinor) || 0)) < 1
+  const roundsNoConcession =
+    decision.action === "COUNTER" && decision.price
+      ? Math.abs(decision.price - (Number(dbSession.lastOfferPriceMinor) || 0)) < 1
         ? dbSession.roundsNoConcession + 1
-        : 0)
-    : dbSession.roundsNoConcession;
+        : 0
+      : dbSession.roundsNoConcession;
 
-  const updated = await updateSessionState(
-    tx,
-    input.sessionId,
-    dbSession.version,
-    {
-      status: dbStatus as "CREATED" | "ACTIVE" | "NEAR_DEAL" | "STALLED" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "SUPERSEDED" | "WAITING",
-      currentRound: nextRound,
-      roundsNoConcession,
-      lastOfferPriceMinor: String(input.offerPriceMinor),
-      lastUtility: memory.coaching.utility_snapshot
-        ? {
-            u_total: memory.coaching.utility_snapshot.u_total,
-            v_p: memory.coaching.utility_snapshot.u_price,
-            v_t: memory.coaching.utility_snapshot.u_time,
-            v_r: memory.coaching.utility_snapshot.u_risk,
-            v_s: memory.coaching.utility_snapshot.u_quality,
-          }
-        : undefined,
-      phase,
-      coachingSnapshot: coaching as unknown as Record<string, unknown>,
-    },
-  );
+  const updated = await updateSessionState(tx, input.sessionId, dbSession.version, {
+    status: dbStatus as
+      | "CREATED"
+      | "ACTIVE"
+      | "NEAR_DEAL"
+      | "STALLED"
+      | "ACCEPTED"
+      | "REJECTED"
+      | "EXPIRED"
+      | "SUPERSEDED"
+      | "WAITING",
+    currentRound: nextRound,
+    roundsNoConcession,
+    lastOfferPriceMinor: String(input.offerPriceMinor),
+    lastUtility: memory.coaching.utility_snapshot
+      ? {
+          u_total: memory.coaching.utility_snapshot.u_total,
+          v_p: memory.coaching.utility_snapshot.u_price,
+          v_t: memory.coaching.utility_snapshot.u_time,
+          v_r: memory.coaching.utility_snapshot.u_risk,
+          v_s: memory.coaching.utility_snapshot.u_quality,
+        }
+      : undefined,
+    phase,
+    coachingSnapshot: coaching as unknown as Record<string, unknown>,
+  });
 
   if (!updated) {
     throw new Error("CONCURRENT_MODIFICATION: session version conflict");
@@ -526,7 +555,11 @@ async function buildIdempotentResult(
     decision: (existingRound.decision as string) ?? "COUNTER",
     outgoingPrice: Number(existingRound.counterPriceMinor ?? existingRound.priceminor),
     utility: (existingRound.utility as RoundExecutionResult["utility"]) ?? {
-      u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0,
+      u_total: 0,
+      v_p: 0,
+      v_t: 0,
+      v_r: 0,
+      v_s: 0,
     },
     sessionStatus: session?.status ?? "ACTIVE",
   };
@@ -543,7 +576,11 @@ function buildIdempotentResultFromRound(
     decision: (existingRound.decision as string) ?? "COUNTER",
     outgoingPrice: Number(existingRound.counterPriceMinor ?? existingRound.priceminor),
     utility: (existingRound.utility as RoundExecutionResult["utility"]) ?? {
-      u_total: 0, v_p: 0, v_t: 0, v_r: 0, v_s: 0,
+      u_total: 0,
+      v_p: 0,
+      v_t: 0,
+      v_r: 0,
+      v_s: 0,
     },
     sessionStatus: dbSession.status,
   };
@@ -558,13 +595,20 @@ function mapActionToDbDecision(
   action: string,
 ): "ACCEPT" | "COUNTER" | "REJECT" | "NEAR_DEAL" | "ESCALATE" {
   switch (action) {
-    case 'COUNTER': return 'COUNTER';
-    case 'ACCEPT': return 'ACCEPT';
-    case 'REJECT': return 'REJECT';
-    case 'HOLD': return 'NEAR_DEAL';
-    case 'CONFIRM': return 'ACCEPT';
-    case 'ESCALATE': return 'ESCALATE';
-    default: return 'COUNTER';
+    case "COUNTER":
+      return "COUNTER";
+    case "ACCEPT":
+      return "ACCEPT";
+    case "REJECT":
+      return "REJECT";
+    case "HOLD":
+      return "NEAR_DEAL";
+    case "CONFIRM":
+      return "ACCEPT";
+    case "ESCALATE":
+      return "ESCALATE";
+    default:
+      return "COUNTER";
   }
 }
 
@@ -574,17 +618,17 @@ function mapActionToMessageType(
   roundNo: number,
 ): "OFFER" | "COUNTER" | "ACCEPT" | "REJECT" | "ESCALATE" {
   switch (action) {
-    case 'ACCEPT':
-    case 'CONFIRM':
-      return 'ACCEPT';
-    case 'REJECT':
-      return 'REJECT';
-    case 'HOLD':
-    case 'DISCOVER':
-    case 'ESCALATE':
-      return 'ESCALATE';
+    case "ACCEPT":
+    case "CONFIRM":
+      return "ACCEPT";
+    case "REJECT":
+      return "REJECT";
+    case "HOLD":
+    case "DISCOVER":
+    case "ESCALATE":
+      return "ESCALATE";
     default:
-      return roundNo === 1 ? 'OFFER' : 'COUNTER';
+      return roundNo === 1 ? "OFFER" : "COUNTER";
   }
 }
 
@@ -593,9 +637,9 @@ function extractPreviousMoves(dbRounds: DbRound[]): ProtocolDecision[] {
   return dbRounds
     .filter((r) => r.decision)
     .map((r) => ({
-      action: r.decision as ProtocolDecision['action'],
+      action: r.decision as ProtocolDecision["action"],
       price: r.counterPriceMinor ? Number(r.counterPriceMinor) : undefined,
-      reasoning: (r.metadata as Record<string, unknown>)?.reasoning as string ?? '',
+      reasoning: ((r.metadata as Record<string, unknown>)?.reasoning as string) ?? "",
       tactic_used: (r.metadata as Record<string, unknown>)?.tactic as string | undefined,
     }));
 }
@@ -609,17 +653,23 @@ function computePriceDeviation(offerPrice: number, targetPrice: number): number 
 /** Build a minimal CoreMemory for initial coaching computation */
 function buildInitialMemory(
   dbSession: DbSession,
-  facts: RoundFact[],
-  opponentPattern: OpponentPattern | null,
+  _facts: RoundFact[],
+  _opponentPattern: OpponentPattern | null,
 ): CoreMemory {
-  const strategy = dbSession.strategySnapshot;
-  const myTarget = extractNum(strategy, 'p_target') ?? extractNum(strategy, 'target_price') ?? 0;
-  const myFloor = extractNum(strategy, 'p_limit') ?? extractNum(strategy, 'floor_price') ?? 0;
-  const maxRounds = extractNum(strategy, 'max_rounds') ?? 15;
-  const currentOffer = dbSession.lastOfferPriceMinor ? Number(dbSession.lastOfferPriceMinor) : myTarget;
-  const role = dbSession.role.toLowerCase() as 'buyer' | 'seller';
+  const strategy = dbSession.negotiationAgentSnapshot;
+  const myTarget = extractNum(strategy, "p_target") ?? extractNum(strategy, "target_price") ?? 0;
+  const myFloor = extractNum(strategy, "p_limit") ?? extractNum(strategy, "floor_price") ?? 0;
+  const maxRounds = extractNum(strategy, "max_rounds") ?? 15;
+  const currentOffer = dbSession.lastOfferPriceMinor
+    ? Number(dbSession.lastOfferPriceMinor)
+    : myTarget;
+  const role = dbSession.role.toLowerCase() as "buyer" | "seller";
 
-  const phase = inferPhaseFromStatus(dbSession.status, dbSession.currentRound, dbSession.roundsNoConcession);
+  const phase = inferPhaseFromStatus(
+    dbSession.status,
+    dbSession.currentRound,
+    dbSession.roundsNoConcession,
+  );
 
   return {
     session: {
@@ -629,7 +679,7 @@ function buildInitialMemory(
       rounds_remaining: Math.max(0, maxRounds - dbSession.currentRound),
       role,
       max_rounds: maxRounds,
-      intervention_mode: 'FULL_AUTO',
+      intervention_mode: "FULL_AUTO",
     },
     boundaries: {
       my_target: myTarget,
@@ -638,13 +688,13 @@ function buildInitialMemory(
       opponent_offer: currentOffer,
       gap: 0,
     },
-    terms: { active: [], resolved_summary: '' },
+    terms: { active: [], resolved_summary: "" },
     coaching: {
       recommended_price: 0,
       acceptable_range: { min: 0, max: 0 },
-      suggested_tactic: '',
-      hint: '',
-      opponent_pattern: 'UNKNOWN',
+      suggested_tactic: "",
+      hint: "",
+      opponent_pattern: "UNKNOWN",
       convergence_rate: 0,
       time_pressure: 0,
       utility_snapshot: { u_price: 0, u_time: 0, u_risk: 0, u_quality: 0, u_total: 0 },
@@ -652,14 +702,14 @@ function buildInitialMemory(
       warnings: [],
     },
     buddy_dna: DEFAULT_BUDDY_DNA,
-    skill_summary: 'electronics-iphone-pro-v1',
+    skill_summary: "electronics-iphone-pro-v1",
   };
 }
 
 function extractNum(obj: Record<string, unknown>, key: string): number | null {
   const val = obj[key];
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') {
+  if (typeof val === "number") return val;
+  if (typeof val === "string") {
     const n = Number(val);
     return Number.isNaN(n) ? null : n;
   }
@@ -674,7 +724,12 @@ function buildTerminalEvent(
   sessionId: string,
   sessionStatus: string,
   decision: string,
-  session?: { buyerId: string; sellerId: string; lastOfferPriceMinor: string | null; intentId: string | null },
+  session?: {
+    buyerId: string;
+    sellerId: string;
+    lastOfferPriceMinor: string | null;
+    intentId: string | null;
+  },
 ): PipelineEvent | null {
   if (sessionStatus === "ACCEPTED") {
     return {

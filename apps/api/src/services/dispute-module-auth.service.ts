@@ -145,7 +145,9 @@ export function verifyDisputeModuleSignature(
       rawBody: input.rawBody,
     });
     const expectedBuf = Buffer.from(expected);
-    matched = (expectedBuf.length === receivedBuf.length && timingSafeEqual(expectedBuf, receivedBuf)) || matched;
+    matched =
+      (expectedBuf.length === receivedBuf.length && timingSafeEqual(expectedBuf, receivedBuf)) ||
+      matched;
   }
   if (!matched) {
     return { ok: false, status: 401, error: "INVALID_MODULE_SIGNATURE" };

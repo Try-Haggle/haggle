@@ -104,6 +104,8 @@ async function main() {
     /canonical UUID subject.*full API 2,406 passed.*Run Auth FIXTURE ONLY/);
   assert.match(document.querySelector("#cycle193Verification").textContent,
     /contiguous cycle IDs.*domain filter contract.*latest readiness evidence/);
+  assert.match(document.querySelector("#cycle194Verification").textContent,
+    /14 conflicts resolved.*migration journal 140\/140.*all-package build 18\/18/);
   assert.equal(readinessDetails.querySelector(
     ".readiness-cycle-summary-action span").textContent, "상세 보기");
   readinessDetails.open = true;
@@ -139,12 +141,12 @@ async function main() {
   assert.equal(document.querySelector("#readinessCycleVisibleCount").textContent,
     `${visibleReadinessCycles().length} / ${readinessCycles.length}개 표시`);
   readinessDomain.value = "all";
-  readinessQuery.value = "Cycle 193";
+  readinessQuery.value = "Cycle 194";
   readinessQuery.dispatchEvent(new dom.window.Event("input"));
   assert.deepEqual(visibleReadinessCycles().map((element) =>
-    element.querySelector(".status-pill").textContent), ["Cycle 193 완료"]);
+    element.querySelector(".status-pill").textContent), ["Cycle 194 완료"]);
   assert.deepEqual(renderedReadinessCycles().map((element) =>
-    element.querySelector(".status-pill").textContent), ["Cycle 193 완료"]);
+    element.querySelector(".status-pill").textContent), ["Cycle 194 완료"]);
   readinessQuery.value = "";
   readinessQuery.dispatchEvent(new dom.window.Event("input"));
   assert.equal(visibleReadinessCycles().length, readinessCycles.length);

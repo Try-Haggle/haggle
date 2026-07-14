@@ -1,6 +1,10 @@
 import { PAYMENT_DISCLOSURE_TEXT_HASH, PAYMENT_DISCLOSURE_VERSION } from "@haggle/shared";
 
-export { PAYMENT_DISCLOSURE_TEXT, PAYMENT_DISCLOSURE_TEXT_HASH, PAYMENT_DISCLOSURE_VERSION } from "@haggle/shared";
+export {
+  PAYMENT_DISCLOSURE_TEXT,
+  PAYMENT_DISCLOSURE_TEXT_HASH,
+  PAYMENT_DISCLOSURE_VERSION,
+} from "@haggle/shared";
 
 export function createPaymentDisclosureAck(options: { stripeFallback?: boolean } = {}) {
   return {

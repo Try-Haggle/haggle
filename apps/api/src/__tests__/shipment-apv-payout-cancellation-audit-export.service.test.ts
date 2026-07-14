@@ -2,8 +2,8 @@ import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildShipmentApvCancellationEventHash,
-  verifyShipmentApvCancellationEventChain,
   type ShipmentApvPayoutCancellationEventRecord,
+  verifyShipmentApvCancellationEventChain,
 } from "../services/shipment-apv-payout-cancellation.service.js";
 import {
   createSignedShipmentApvPayoutCancellationAuditExport,
@@ -29,12 +29,18 @@ function sealedEvents() {
     event_type: "REJECTED",
     actor_id: "66666666-6666-4666-8666-666666666666",
     request_version: 1,
-    metadata: { decision_request_id: "77777777-7777-4777-8777-777777777777", onchain_state: "NONE" },
+    metadata: {
+      decision_request_id: "77777777-7777-4777-8777-777777777777",
+      onchain_state: "NONE",
+    },
     previous_event_hash: requested.event_hash,
     event_hash: null,
     created_at: "2026-07-12T00:01:00.000Z",
   };
-  rejected.event_hash = buildShipmentApvCancellationEventHash(rejected, rejected.previous_event_hash);
+  rejected.event_hash = buildShipmentApvCancellationEventHash(
+    rejected,
+    rejected.previous_event_hash,
+  );
   return [requested, rejected];
 }
 

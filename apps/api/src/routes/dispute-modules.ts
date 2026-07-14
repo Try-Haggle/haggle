@@ -1,24 +1,31 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import type { Database } from "@haggle/db";
 import {
   computeModuleDisputeCost,
   createDepositRequirement,
-  decideModuleDisputeOpen,
-  DisputeService,
-  normalizeDisputeModuleConfig,
   type DisputeModuleConfigInput,
   type DisputeReasonCode,
+  DisputeService,
+  type DisputeTier,
+  decideModuleDisputeOpen,
   type ModuleOpenDisputeRequest,
   type ModuleTransactionSnapshot,
-  type DisputeTier,
+  normalizeDisputeModuleConfig,
 } from "@haggle/dispute-core";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { z } from "zod";
+import { INPUT_LIMITS } from "../lib/input-limits.js";
 import {
   resolveDisputeModuleSecretsFromEnv,
   verifyDisputeModuleSignature,
 } from "../services/dispute-module-auth.service.js";
-import type { Database } from "@haggle/db";
-import { INPUT_LIMITS } from "../lib/input-limits.js";
+import {
+  buildDisputeModuleWebhookEnvelope,
+  createDisputeModuleWebhookOutboxRecord,
+  type DisputeModuleWebhookEnvelope,
+  type DisputeModuleWebhookOutboxRecord,
+  deliverDisputeModuleWebhookOutboxRecord,
+} from "../services/dispute-module-webhook.service.js";
 import {
   createDisputeModuleIdempotencyRecord,
   createDisputeRecord,
@@ -27,79 +34,85 @@ import {
   getDisputeModuleIdempotencyRecord,
   updateDisputeRecord,
 } from "../services/dispute-record.service.js";
-import {
-  buildDisputeModuleWebhookEnvelope,
-  createDisputeModuleWebhookOutboxRecord,
-  deliverDisputeModuleWebhookOutboxRecord,
-  type DisputeModuleWebhookEnvelope,
-  type DisputeModuleWebhookOutboxRecord,
-} from "../services/dispute-module-webhook.service.js";
 
-const moduleTransactionSchema = z.object({
-  platform_id: z.string().min(1).max(128),
-  external_order_id: z.string().min(1).max(256),
-  buyer_actor_id: z.string().min(1).max(256),
-  seller_actor_id: z.string().min(1).max(256),
-  amount_minor: z.number().int().positive(),
-  currency: z.string().min(3).max(8),
-  status: z.enum([
-    "APPROVED",
-    "PAYMENT_PENDING",
-    "PAID",
-    "FULFILLMENT_PENDING",
-    "FULFILLMENT_ACTIVE",
-    "DELIVERED",
-    "IN_DISPUTE",
-    "REFUNDED",
-    "CLOSED",
-    "CANCELED",
-  ]),
-  metadata: z.record(z.unknown()).optional(),
-}).strict();
+const moduleTransactionSchema = z
+  .object({
+    platform_id: z.string().min(1).max(128),
+    external_order_id: z.string().min(1).max(256),
+    buyer_actor_id: z.string().min(1).max(256),
+    seller_actor_id: z.string().min(1).max(256),
+    amount_minor: z.number().int().positive(),
+    currency: z.string().min(3).max(8),
+    status: z.enum([
+      "APPROVED",
+      "PAYMENT_PENDING",
+      "PAID",
+      "FULFILLMENT_PENDING",
+      "FULFILLMENT_ACTIVE",
+      "DELIVERED",
+      "IN_DISPUTE",
+      "REFUNDED",
+      "CLOSED",
+      "CANCELED",
+    ]),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .strict();
 
-const moduleOpenRequestSchema = z.object({
-  requester_actor_id: z.string().min(1).max(256),
-  reason_code: z.string().min(1).max(INPUT_LIMITS.shortTextChars),
-  summary: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars),
-  client_request_id: z.string().min(1).max(128).optional(),
-}).strict();
+const moduleOpenRequestSchema = z
+  .object({
+    requester_actor_id: z.string().min(1).max(256),
+    reason_code: z.string().min(1).max(INPUT_LIMITS.shortTextChars),
+    summary: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars),
+    client_request_id: z.string().min(1).max(128).optional(),
+  })
+  .strict();
 
-const moduleConfigSchema = z.object({
-  tier1_rate: z.number().positive().optional(),
-  tier2_rate: z.number().positive().optional(),
-  tier3_rate: z.number().positive().optional(),
-  tier1_min_cents: z.number().int().positive().optional(),
-  tier2_min_cents: z.number().int().positive().optional(),
-  tier3_min_cents: z.number().int().positive().optional(),
-  reviewer_share: z.number().min(0).max(1).optional(),
-  platform_share: z.number().min(0).max(1).optional(),
-  allowed_open_statuses: z.array(moduleTransactionSchema.shape.status).min(1).optional(),
-  use_shared_pool: z.boolean().optional(),
-  haggle_network_fee_rate: z.number().min(0).optional(),
-  ai_plaintiff_enabled: z.boolean().optional(),
-  ai_defendant_enabled: z.boolean().optional(),
-  ai_expert_witness_enabled: z.boolean().optional(),
-}).strict().optional();
+const moduleConfigSchema = z
+  .object({
+    tier1_rate: z.number().positive().optional(),
+    tier2_rate: z.number().positive().optional(),
+    tier3_rate: z.number().positive().optional(),
+    tier1_min_cents: z.number().int().positive().optional(),
+    tier2_min_cents: z.number().int().positive().optional(),
+    tier3_min_cents: z.number().int().positive().optional(),
+    reviewer_share: z.number().min(0).max(1).optional(),
+    platform_share: z.number().min(0).max(1).optional(),
+    allowed_open_statuses: z.array(moduleTransactionSchema.shape.status).min(1).optional(),
+    use_shared_pool: z.boolean().optional(),
+    haggle_network_fee_rate: z.number().min(0).optional(),
+    ai_plaintiff_enabled: z.boolean().optional(),
+    ai_defendant_enabled: z.boolean().optional(),
+    ai_expert_witness_enabled: z.boolean().optional(),
+  })
+  .strict()
+  .optional();
 
-const previewSchema = z.object({
-  transaction: moduleTransactionSchema,
-  request: moduleOpenRequestSchema,
-  config: z.never().optional(),
-}).strict();
+const previewSchema = z
+  .object({
+    transaction: moduleTransactionSchema,
+    request: moduleOpenRequestSchema,
+    config: z.never().optional(),
+  })
+  .strict();
 
 const createCaseSchema = previewSchema;
 
-const escalationSchema = z.object({
-  external_order_id: z.string().min(1).max(256),
-  requester_actor_id: z.string().min(1).max(256),
-  to_tier: z.union([z.literal(2), z.literal(3)]).optional(),
-  reason: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars).optional(),
-  client_request_id: z.string().min(1).max(128).optional(),
-}).strict();
+const escalationSchema = z
+  .object({
+    external_order_id: z.string().min(1).max(256),
+    requester_actor_id: z.string().min(1).max(256),
+    to_tier: z.union([z.literal(2), z.literal(3)]).optional(),
+    reason: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars).optional(),
+    client_request_id: z.string().min(1).max(128).optional(),
+  })
+  .strict();
 
-const statusSchema = z.object({
-  external_order_id: z.string().min(1).max(256),
-}).strict();
+const statusSchema = z
+  .object({
+    external_order_id: z.string().min(1).max(256),
+  })
+  .strict();
 
 type ModuleCaseInput = z.infer<typeof createCaseSchema>;
 type ModuleEscalationInput = z.infer<typeof escalationSchema>;
@@ -139,8 +152,13 @@ function moduleCreateRequestFingerprint(input: ModuleCaseInput): string {
   return `sha256:${createHash("sha256").update(stableJson(input)).digest("hex")}`;
 }
 
-function moduleEscalationRequestFingerprint(disputeId: string, input: ModuleEscalationInput): string {
-  return `sha256:${createHash("sha256").update(stableJson({ dispute_id: disputeId, ...input })).digest("hex")}`;
+function moduleEscalationRequestFingerprint(
+  disputeId: string,
+  input: ModuleEscalationInput,
+): string {
+  return `sha256:${createHash("sha256")
+    .update(stableJson({ dispute_id: disputeId, ...input }))
+    .digest("hex")}`;
 }
 
 function requestPath(request: FastifyRequest): string {
@@ -192,7 +210,10 @@ function isActiveDispute(status: string): boolean {
   return ACTIVE_DISPUTE_STATUSES.has(status);
 }
 
-function sameModuleIdempotency(dispute: { metadata?: Record<string, unknown> | null }, idempotencyKey: string): boolean {
+function sameModuleIdempotency(
+  dispute: { metadata?: Record<string, unknown> | null },
+  idempotencyKey: string,
+): boolean {
   return dispute.metadata?.idempotency_key === idempotencyKey;
 }
 
@@ -208,7 +229,9 @@ function disputeCosts(
   platformConfig: DisputeModuleConfigInput | undefined,
 ) {
   const tiers = [1, 2, 3] as DisputeTier[];
-  return tiers.map((tier) => computeModuleDisputeCost(transaction.amount_minor, tier, platformConfig));
+  return tiers.map((tier) =>
+    computeModuleDisputeCost(transaction.amount_minor, tier, platformConfig),
+  );
 }
 
 function currentDisputeTier(dispute: { metadata?: Record<string, unknown> | null }): DisputeTier {
@@ -234,7 +257,7 @@ function moduleDisputeTransactionSnapshot(dispute: {
 }): ModuleTransactionSnapshot | null {
   const snapshot = dispute.metadata?.transaction_snapshot;
   const parsed = moduleTransactionSchema.safeParse(snapshot);
-  return parsed.success ? parsed.data as ModuleTransactionSnapshot : null;
+  return parsed.success ? (parsed.data as ModuleTransactionSnapshot) : null;
 }
 
 function buildModuleEscalationPreview(params: {
@@ -251,8 +274,16 @@ function buildModuleEscalationPreview(params: {
   if (newTier !== previousTier + 1) {
     return { ok: false as const, status: 409, error: "TIER_NOT_ADVANCING" };
   }
-  const cost = computeModuleDisputeCost(params.transaction.amount_minor, newTier, params.platformConfig);
-  const depositRequirement = createDepositRequirement(params.dispute.id, newTier, params.transaction.amount_minor);
+  const cost = computeModuleDisputeCost(
+    params.transaction.amount_minor,
+    newTier,
+    params.platformConfig,
+  );
+  const depositRequirement = createDepositRequirement(
+    params.dispute.id,
+    newTier,
+    params.transaction.amount_minor,
+  );
   return {
     ok: true as const,
     previous_tier: previousTier,
@@ -337,11 +368,19 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       platformConfig,
     );
     if (!decision.ok) {
-      const status = decision.error === "FORBIDDEN" ? 403 : decision.error === "ORDER_NOT_DISPUTABLE" ? 409 : 400;
+      const status =
+        decision.error === "FORBIDDEN"
+          ? 403
+          : decision.error === "ORDER_NOT_DISPUTABLE"
+            ? 409
+            : 400;
       return reply.code(status).send({ error: decision.error, message: decision.message });
     }
 
-    const costs = disputeCosts(parsed.data.transaction as ModuleTransactionSnapshot, platformConfig);
+    const costs = disputeCosts(
+      parsed.data.transaction as ModuleTransactionSnapshot,
+      platformConfig,
+    );
 
     return reply.send({
       ok: true,
@@ -418,7 +457,12 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       platformConfig,
     );
     if (!decision.ok) {
-      const status = decision.error === "FORBIDDEN" ? 403 : decision.error === "ORDER_NOT_DISPUTABLE" ? 409 : 400;
+      const status =
+        decision.error === "FORBIDDEN"
+          ? 403
+          : decision.error === "ORDER_NOT_DISPUTABLE"
+            ? 409
+            : 400;
       return reply.code(status).send({ error: decision.error, message: decision.message });
     }
 
@@ -466,9 +510,10 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       platform_id: auth.platformId,
       external_order_id: input.transaction.external_order_id,
       requester_actor_id: input.request.requester_actor_id,
-      opened_by_actor_id: decision.opened_by === "buyer"
-        ? input.transaction.buyer_actor_id
-        : input.transaction.seller_actor_id,
+      opened_by_actor_id:
+        decision.opened_by === "buyer"
+          ? input.transaction.buyer_actor_id
+          : input.transaction.seller_actor_id,
       client_request_id: input.request.client_request_id ?? null,
       idempotency_key: auth.idempotencyKey,
       request_fingerprint: requestFingerprint,
@@ -490,14 +535,22 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
 
     let webhookOutboxRecord: DisputeModuleWebhookOutboxRecord;
     try {
-      webhookOutboxRecord = await writeModuleDisputeOpen(result.dispute, {
-        platformId: auth.platformId,
-        idempotencyKey: auth.idempotencyKey,
-        requestFingerprint,
-      }, webhookEnvelope);
+      webhookOutboxRecord = await writeModuleDisputeOpen(
+        result.dispute,
+        {
+          platformId: auth.platformId,
+          idempotencyKey: auth.idempotencyKey,
+          requestFingerprint,
+        },
+        webhookEnvelope,
+      );
     } catch (error) {
       if (isModuleIdempotencyUniqueError(error)) {
-        const replayRecord = await getDisputeModuleIdempotencyRecord(db, auth.platformId, auth.idempotencyKey);
+        const replayRecord = await getDisputeModuleIdempotencyRecord(
+          db,
+          auth.platformId,
+          auth.idempotencyKey,
+        );
         if (replayRecord?.requestFingerprint === requestFingerprint) {
           const replay = await getDisputeById(db, replayRecord.disputeId);
           if (replay) {
@@ -540,13 +593,15 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       throw error;
     }
 
-    deliverDisputeModuleWebhookOutboxRecord(db, webhookOutboxRecord).then((delivery) => {
-      if (delivery.status === "failed") {
-        request.log.warn({ delivery }, "dispute module webhook delivery failed");
-      }
-    }).catch((error) => {
-      request.log.warn({ err: error }, "dispute module webhook dispatch error");
-    });
+    deliverDisputeModuleWebhookOutboxRecord(db, webhookOutboxRecord)
+      .then((delivery) => {
+        if (delivery.status === "failed") {
+          request.log.warn({ delivery }, "dispute module webhook delivery failed");
+        }
+      })
+      .catch((error) => {
+        request.log.warn({ err: error }, "dispute module webhook dispatch error");
+      });
 
     return reply.code(201).send({
       ok: true,
@@ -568,7 +623,9 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
 
       const parsed = escalationSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_MODULE_ESCALATION_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_MODULE_ESCALATION_REQUEST", issues: parsed.error.issues });
       }
 
       const dispute = await getDisputeById(db, request.params.id);
@@ -589,9 +646,14 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       if (!transaction) {
         return reply.code(409).send({ error: "MODULE_TRANSACTION_SNAPSHOT_MISSING" });
       }
-      const requesterRole = actorRoleInModuleTransaction(transaction, parsed.data.requester_actor_id);
+      const requesterRole = actorRoleInModuleTransaction(
+        transaction,
+        parsed.data.requester_actor_id,
+      );
       if (!requesterRole) {
-        return reply.code(403).send({ error: "FORBIDDEN", message: "requester_actor_id is not a transaction party" });
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "requester_actor_id is not a transaction party" });
       }
 
       const platformConfigResult = resolvePlatformModuleConfig(auth.platformId);
@@ -633,12 +695,18 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
 
       const parsed = escalationSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_MODULE_ESCALATION_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_MODULE_ESCALATION_REQUEST", issues: parsed.error.issues });
       }
       const input = parsed.data;
       const requestFingerprint = moduleEscalationRequestFingerprint(request.params.id, input);
 
-      const idempotencyRecord = await getDisputeModuleIdempotencyRecord(db, auth.platformId, auth.idempotencyKey);
+      const idempotencyRecord = await getDisputeModuleIdempotencyRecord(
+        db,
+        auth.platformId,
+        auth.idempotencyKey,
+      );
       if (idempotencyRecord) {
         if (idempotencyRecord.requestFingerprint !== requestFingerprint) {
           return reply.code(409).send({
@@ -683,7 +751,9 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       }
       const requesterRole = actorRoleInModuleTransaction(transaction, input.requester_actor_id);
       if (!requesterRole) {
-        return reply.code(403).send({ error: "FORBIDDEN", message: "requester_actor_id is not a transaction party" });
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "requester_actor_id is not a transaction party" });
       }
 
       const platformConfigResult = resolvePlatformModuleConfig(auth.platformId);
@@ -714,11 +784,9 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
           current_tier_cost: preview.cost,
           current_seller_deposit_requirement: preview.seller_deposit_requirement,
           escalation_history: [
-            ...(
-              Array.isArray(dispute.metadata?.escalation_history)
-                ? dispute.metadata.escalation_history
-                : []
-            ),
+            ...(Array.isArray(dispute.metadata?.escalation_history)
+              ? dispute.metadata.escalation_history
+              : []),
             {
               from_tier: preview.previous_tier,
               to_tier: preview.new_tier,
@@ -772,7 +840,11 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
         }
       } catch (error) {
         if (isModuleIdempotencyUniqueError(error)) {
-          const replayRecord = await getDisputeModuleIdempotencyRecord(db, auth.platformId, auth.idempotencyKey);
+          const replayRecord = await getDisputeModuleIdempotencyRecord(
+            db,
+            auth.platformId,
+            auth.idempotencyKey,
+          );
           if (replayRecord?.requestFingerprint === requestFingerprint) {
             const replay = await getDisputeById(db, replayRecord.disputeId);
             if (replay) {
@@ -795,13 +867,15 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
       }
 
       if (webhookOutboxRecord) {
-        deliverDisputeModuleWebhookOutboxRecord(db, webhookOutboxRecord).then((delivery) => {
-          if (delivery.status === "failed") {
-            request.log.warn({ delivery }, "dispute module escalation webhook delivery failed");
-          }
-        }).catch((error) => {
-          request.log.warn({ err: error }, "dispute module escalation webhook dispatch error");
-        });
+        deliverDisputeModuleWebhookOutboxRecord(db, webhookOutboxRecord)
+          .then((delivery) => {
+            if (delivery.status === "failed") {
+              request.log.warn({ delivery }, "dispute module escalation webhook delivery failed");
+            }
+          })
+          .catch((error) => {
+            request.log.warn({ err: error }, "dispute module escalation webhook dispatch error");
+          });
       }
 
       return reply.code(201).send({
@@ -829,7 +903,9 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
 
       const parsed = statusSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_MODULE_STATUS_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_MODULE_STATUS_REQUEST", issues: parsed.error.issues });
       }
 
       const dispute = await getDisputeById(db, request.params.id);
@@ -851,7 +927,8 @@ export function registerDisputeModuleRoutes(app: FastifyInstance, db: Database) 
         status: dispute.status,
         tier: currentDisputeTier(dispute),
         current_tier_cost: dispute.metadata?.current_tier_cost ?? null,
-        current_seller_deposit_requirement: dispute.metadata?.current_seller_deposit_requirement ?? null,
+        current_seller_deposit_requirement:
+          dispute.metadata?.current_seller_deposit_requirement ?? null,
         escalation_history: Array.isArray(dispute.metadata?.escalation_history)
           ? dispute.metadata.escalation_history
           : [],

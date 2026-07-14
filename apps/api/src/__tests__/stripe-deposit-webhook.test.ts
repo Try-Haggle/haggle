@@ -1,20 +1,23 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerPaymentRoutes } from "../routes/payments.js";
+import { writeAuditLog } from "../services/admin-action-log.service.js";
 import { getDepositById, updateDepositStatus } from "../services/dispute-deposit.service.js";
 import {
   createPaymentSettlementRecord,
   getCommerceOrderByOrderId,
-  getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
   getPaymentIntentRowById,
+  getPaymentSettlementByPaymentIntentId,
   setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
   updateStoredPaymentIntent,
 } from "../services/payment-record.service.js";
-import { createSettlementReleaseRecord, getSettlementReleaseByOrderId } from "../services/settlement-release.service.js";
+import {
+  createSettlementReleaseRecord,
+  getSettlementReleaseByOrderId,
+} from "../services/settlement-release.service.js";
 import { createShipmentRecord, getShipmentByOrderId } from "../services/shipment-record.service.js";
-import { writeAuditLog } from "../services/admin-action-log.service.js";
 import { completeWebhookEvent } from "../services/webhook-event-claim.service.js";
 
 const stripeEvent = {
@@ -44,11 +47,11 @@ vi.mock("../payments/providers.js", () => ({
 
 vi.mock("../payments/real-stripe-adapter.js", () => ({
   RealStripeAdapter: {
-    isOnrampFulfillmentComplete: vi.fn((event: { type: string }) =>
-      event.type === "crypto.onramp_session.fulfillment_complete",
+    isOnrampFulfillmentComplete: vi.fn(
+      (event: { type: string }) => event.type === "crypto.onramp_session.fulfillment_complete",
     ),
-    extractPaymentIntentId: vi.fn((event: typeof stripeEvent) =>
-      event.data.object.metadata.payment_intent_id,
+    extractPaymentIntentId: vi.fn(
+      (event: typeof stripeEvent) => event.data.object.metadata.payment_intent_id,
     ),
   },
 }));
@@ -101,7 +104,8 @@ vi.mock("../services/admin-action-log.service.js", () => ({
 }));
 
 vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
+  const actual =
+    await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
   return {
     ...actual,
     claimWebhookEvent: vi.fn().mockImplementation(async (_db, input) => ({
@@ -125,11 +129,11 @@ const mockSetPaymentIntentProviderContext = vi.mocked(setPaymentIntentProviderCo
 const mockCreatePaymentSettlementRecord = vi.mocked(createPaymentSettlementRecord);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
-const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
-const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
-const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
+const _mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
+const _mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
+const _mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
-const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
+const _mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 const mockWriteAuditLog = vi.mocked(writeAuditLog);
 const mockCompleteWebhookEvent = vi.mocked(completeWebhookEvent);
@@ -172,14 +176,10 @@ describe("stripe deposit webhook", () => {
     };
     db = buildDb();
     app = Fastify();
-    app.addContentTypeParser(
-      "application/json",
-      { parseAs: "buffer" },
-      (request, body, done) => {
-        (request as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
-        done(null, JSON.parse((body as Buffer).toString()));
-      },
-    );
+    app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, body, done) => {
+      (request as unknown as { rawBody: Buffer }).rawBody = body as Buffer;
+      done(null, JSON.parse((body as Buffer).toString()));
+    });
     registerPaymentRoutes(app, db as never);
     await app.ready();
   });
@@ -210,11 +210,13 @@ describe("stripe deposit webhook", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual(expect.objectContaining({
-      accepted: true,
-      action: "deposit_confirmed",
-      deposit_id: "dep_1",
-    }));
+    expect(res.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        action: "deposit_confirmed",
+        deposit_id: "dep_1",
+      }),
+    );
     expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
       expect.anything(),
       "dep_1",
@@ -283,12 +285,14 @@ describe("stripe deposit webhook", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual(expect.objectContaining({
-      accepted: true,
-      action: "onramp_funded",
-      payment_intent_id: "pi_stripe_retry",
-      next_action: "fund_conditional_settlement",
-    }));
+    expect(res.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        action: "onramp_funded",
+        payment_intent_id: "pi_stripe_retry",
+        next_action: "fund_conditional_settlement",
+      }),
+    );
     expect(mockSetPaymentIntentProviderContext).toHaveBeenCalledWith(
       expect.anything(),
       "pi_stripe_retry",

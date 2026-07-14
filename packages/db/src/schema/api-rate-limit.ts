@@ -5,11 +5,9 @@ export const apiRateLimitWindows = pgTable(
   {
     scope: text("scope").notNull(),
     keyHash: text("key_hash").notNull(),
-    windowStartedAt: timestamp("window_started_at", { withTimezone: true })
-      .notNull(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
     requestCount: integer("request_count").notNull().default(0),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.scope, table.keyHash] })],
 );

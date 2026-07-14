@@ -1,26 +1,27 @@
 "use client";
 
 import {
-  NEGOTIATION_PRESETS,
-  type NegotiationPreset,
-  type NegotiationPresetId,
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
 } from "@haggle/shared";
+import { SelectableOptionCard } from "@/components/ui";
 
 type Role = "buyer" | "seller";
 
 interface PresetGridProps {
   role: Role;
-  selectedId?: NegotiationPresetId | null;
-  onSelect?: (preset: NegotiationPreset) => void;
+  selectedId?: NegotiationAgentPresetId | null;
+  onSelect?: (preset: NegotiationAgentPreset) => void;
   /** Tailwind grid columns. Defaults to 1 / 2 / 4 responsive. */
   columns?: string;
 }
 
 /**
  * Single preset selector grid. Same visual treatment everywhere agents are
- * picked (sell wizard, buyer landing, MCP widget, agents page). Cards mirror
- * the widget baseline (apps/api/widget): rounded-xl, accent-tinted icon,
- * cyan tagline, compact description.
+ * picked (sell wizard, buyer landing, MCP widget, agents page). Cards use the
+ * shared {@link SelectableOptionCard}; the emoji chip keeps each preset's
+ * accent color (per-agent identity).
  */
 export function PresetGrid({
   role,
@@ -30,56 +31,34 @@ export function PresetGrid({
 }: PresetGridProps) {
   return (
     <div className={`grid ${columns} gap-3`}>
-      {NEGOTIATION_PRESETS.map((preset) => {
+      {NEGOTIATION_AGENT_PRESETS.map((preset) => {
         const copy = preset.copy[role];
-        const isSelected = selectedId === preset.id;
         return (
-          <button
+          <SelectableOptionCard
             key={preset.id}
-            type="button"
+            selected={selectedId === preset.id}
             onClick={() => onSelect?.(preset)}
-            className="flex cursor-pointer flex-col rounded-xl border p-4 text-left transition-all"
-            style={{
-              background: isSelected ? "rgba(6,182,212,0.05)" : "#111827",
-              borderColor: isSelected ? "#06b6d4" : "#1e293b",
-              boxShadow: isSelected ? "0 0 0 1px #06b6d4" : "none",
-            }}
-            onMouseEnter={(e) => {
-              if (!isSelected) e.currentTarget.style.borderColor = "#334155";
-            }}
-            onMouseLeave={(e) => {
-              if (!isSelected) e.currentTarget.style.borderColor = "#1e293b";
-            }}
-          >
-            <div className="flex items-start gap-3 mb-2.5">
+            icon={
               <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base"
+                className="flex size-9 items-center justify-center rounded-full text-base"
                 style={{
-                  backgroundColor: `${preset.accentColor}22`,
+                  backgroundColor: `color-mix(in srgb, ${preset.accentColor} 13%, transparent)`,
                   color: preset.accentColor,
                 }}
               >
                 {preset.emoji}
               </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>
-                  {copy.name}
-                </p>
-                <p
-                  className="text-xs font-medium mt-0.5"
-                  style={{ color: "#06b6d4" }}
-                >
+            }
+            title={
+              <>
+                <span className="block font-semibold text-ink text-sm">{copy.name}</span>
+                <span className="mt-0.5 block font-medium text-action-primary text-xs">
                   {copy.tagline}
-                </p>
-              </div>
-            </div>
-            <p
-              className="text-xs leading-relaxed"
-              style={{ color: "#94a3b8" }}
-            >
-              {copy.description}
-            </p>
-          </button>
+                </span>
+              </>
+            }
+            description={copy.description}
+          />
         );
       })}
     </div>

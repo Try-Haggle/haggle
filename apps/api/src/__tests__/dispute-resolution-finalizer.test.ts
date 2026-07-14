@@ -1,5 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DisputeCase, DisputeResolution } from "@haggle/dispute-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { refundDeposit } from "../payments/deposit-refunder.js";
+import { createPaymentServiceFromEnv } from "../payments/providers.js";
+import { executeRefund } from "../payments/refund-executor.js";
+import { getDepositByDisputeId, updateDepositStatus } from "../services/dispute-deposit.service.js";
+import {
+  createDisputeModuleWebhookOutboxRecord,
+  deliverDisputeModuleWebhookOutboxRecord,
+} from "../services/dispute-module-webhook.service.js";
+import {
+  createDisputeResolutionRecord,
+  updateDisputeRecord,
+} from "../services/dispute-record.service.js";
 import { finalizeDisputeResolution } from "../services/dispute-resolution-finalizer.js";
 import {
   createRefundRecord,
@@ -7,21 +19,6 @@ import {
   getPaymentIntentByOrderId,
   updateCommerceOrderStatus,
 } from "../services/payment-record.service.js";
-import {
-  createDisputeResolutionRecord,
-  updateDisputeRecord,
-} from "../services/dispute-record.service.js";
-import {
-  getDepositByDisputeId,
-  updateDepositStatus,
-} from "../services/dispute-deposit.service.js";
-import { createPaymentServiceFromEnv } from "../payments/providers.js";
-import { executeRefund } from "../payments/refund-executor.js";
-import { refundDeposit } from "../payments/deposit-refunder.js";
-import {
-  createDisputeModuleWebhookOutboxRecord,
-  deliverDisputeModuleWebhookOutboxRecord,
-} from "../services/dispute-module-webhook.service.js";
 
 vi.mock("../services/payment-record.service.js", () => ({
   createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
@@ -50,7 +47,8 @@ vi.mock("../services/dispute-deposit.service.js", () => ({
 }));
 
 vi.mock("../services/dispute-module-webhook.service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/dispute-module-webhook.service.js")>();
+  const actual =
+    await importOriginal<typeof import("../services/dispute-module-webhook.service.js")>();
   return {
     ...actual,
     createDisputeModuleWebhookOutboxRecord: vi.fn().mockResolvedValue({
@@ -69,7 +67,9 @@ vi.mock("../services/dispute-module-webhook.service.js", async (importOriginal) 
       createdAt: new Date("2026-05-05T00:00:00.000Z"),
       updatedAt: new Date("2026-05-05T00:00:00.000Z"),
     }),
-    deliverDisputeModuleWebhookOutboxRecord: vi.fn().mockResolvedValue({ status: "skipped", eventId: "evt_settlement" }),
+    deliverDisputeModuleWebhookOutboxRecord: vi
+      .fn()
+      .mockResolvedValue({ status: "skipped", eventId: "evt_settlement" }),
   };
 });
 
@@ -103,8 +103,12 @@ const mockExecuteRefund = vi.mocked(executeRefund);
 const mockGetDepositByDisputeId = vi.mocked(getDepositByDisputeId);
 const mockUpdateDepositStatus = vi.mocked(updateDepositStatus);
 const mockRefundDeposit = vi.mocked(refundDeposit);
-const mockCreateDisputeModuleWebhookOutboxRecord = vi.mocked(createDisputeModuleWebhookOutboxRecord);
-const mockDeliverDisputeModuleWebhookOutboxRecord = vi.mocked(deliverDisputeModuleWebhookOutboxRecord);
+const mockCreateDisputeModuleWebhookOutboxRecord = vi.mocked(
+  createDisputeModuleWebhookOutboxRecord,
+);
+const mockDeliverDisputeModuleWebhookOutboxRecord = vi.mocked(
+  deliverDisputeModuleWebhookOutboxRecord,
+);
 
 function createDbMock() {
   const updateWhere = vi.fn().mockResolvedValue([]);
@@ -192,13 +196,18 @@ describe("finalizeDisputeResolution", () => {
     } as unknown as ReturnType<typeof createPaymentServiceFromEnv>);
     mockExecuteRefund.mockRejectedValue(new Error("relayer down"));
 
-    await expect(finalizeDisputeResolution(db as never, dispute(), resolution()))
-      .rejects.toThrow("relayer down");
+    await expect(finalizeDisputeResolution(db as never, dispute(), resolution())).rejects.toThrow(
+      "relayer down",
+    );
 
     expect(mockCreateRefundRecord).toHaveBeenCalled();
     expect(mockExecuteRefund).toHaveBeenCalled();
     expect(db.__updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: "FAILED" }));
-    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "ord_1", "REFUNDED");
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "ord_1",
+      "REFUNDED",
+    );
     expect(mockUpdateDisputeRecord).not.toHaveBeenCalled();
     expect(mockCreateDisputeResolutionRecord).not.toHaveBeenCalled();
   });
@@ -235,22 +244,35 @@ describe("finalizeDisputeResolution", () => {
 
     await finalizeDisputeResolution(db as never, dispute(), resolution());
 
-    expect(db.__updateSet).toHaveBeenCalledWith(expect.objectContaining({
-      status: "COMPLETED",
-      providerReference: "0xrefunded",
-    }));
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "ord_1", "REFUNDED");
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      status: "PARTIAL_REFUND",
-      metadata: expect.objectContaining({
-        pending_anchor: true,
-        finalized_at: expect.any(String),
-        finalization_attempts: 1,
+    expect(db.__updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "COMPLETED",
+        providerReference: "0xrefunded",
       }),
-    }));
-    expect(mockCreateDisputeResolutionRecord).toHaveBeenCalledWith(expect.anything(), "disp_1", expect.objectContaining({
-      outcome: "partial_refund",
-    }));
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "ord_1",
+      "REFUNDED",
+    );
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "PARTIAL_REFUND",
+        metadata: expect.objectContaining({
+          pending_anchor: true,
+          finalized_at: expect.any(String),
+          finalization_attempts: 1,
+        }),
+      }),
+    );
+    expect(mockCreateDisputeResolutionRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "disp_1",
+      expect.objectContaining({
+        outcome: "partial_refund",
+      }),
+    );
   });
 
   it("does not close seller-favor disputes when deposit refund fails", async () => {
@@ -268,15 +290,21 @@ describe("finalizeDisputeResolution", () => {
     } as unknown as Awaited<ReturnType<typeof getDepositByDisputeId>>);
     mockRefundDeposit.mockRejectedValue(new Error("deposit refund failed"));
 
-    await expect(finalizeDisputeResolution(
-      db as never,
-      dispute(),
-      resolution({ outcome: "seller_favor", refund_amount_minor: 0 }),
-    )).rejects.toThrow("deposit refund failed");
+    await expect(
+      finalizeDisputeResolution(
+        db as never,
+        dispute(),
+        resolution({ outcome: "seller_favor", refund_amount_minor: 0 }),
+      ),
+    ).rejects.toThrow("deposit refund failed");
 
     expect(mockRefundDeposit).toHaveBeenCalled();
     expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
-    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "ord_1", "CLOSED");
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "ord_1",
+      "CLOSED",
+    );
     expect(mockUpdateDisputeRecord).not.toHaveBeenCalled();
     expect(mockCreateDisputeResolutionRecord).not.toHaveBeenCalled();
   });
@@ -308,9 +336,12 @@ describe("finalizeDisputeResolution", () => {
 
     expect(mockGetPaymentIntentByOrderId).not.toHaveBeenCalled();
     expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      status: "PARTIAL_REFUND",
-    }));
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        status: "PARTIAL_REFUND",
+      }),
+    );
     expect(mockCreateDisputeResolutionRecord).toHaveBeenCalled();
     expect(mockCreateDisputeModuleWebhookOutboxRecord).toHaveBeenCalledWith(
       expect.anything(),
@@ -338,16 +369,18 @@ describe("finalizeDisputeResolution", () => {
   it("fails module finalization before persistence when settlement metadata is missing", async () => {
     const db = createDbMock();
 
-    await expect(finalizeDisputeResolution(
-      db as never,
-      dispute({
-        metadata: {
-          source: "dispute_module_api",
-          tier: 2,
-        },
-      }),
-      resolution({ outcome: "seller_favor", refund_amount_minor: 0 }),
-    )).rejects.toThrow("MODULE_SETTLEMENT_METADATA_MISSING");
+    await expect(
+      finalizeDisputeResolution(
+        db as never,
+        dispute({
+          metadata: {
+            source: "dispute_module_api",
+            tier: 2,
+          },
+        }),
+        resolution({ outcome: "seller_favor", refund_amount_minor: 0 }),
+      ),
+    ).rejects.toThrow("MODULE_SETTLEMENT_METADATA_MISSING");
 
     expect(mockUpdateDisputeRecord).not.toHaveBeenCalled();
     expect(mockCreateDisputeResolutionRecord).not.toHaveBeenCalled();
@@ -357,17 +390,19 @@ describe("finalizeDisputeResolution", () => {
   it("rejects already finalized disputes before executing side effects", async () => {
     const db = createDbMock();
 
-    await expect(finalizeDisputeResolution(
-      db as never,
-      dispute({
-        status: "RESOLVED_BUYER_FAVOR",
-        metadata: {
-          finalized_at: "2026-05-12T00:00:00.000Z",
-          finalization_attempts: 1,
-        },
-      }),
-      resolution({ outcome: "buyer_favor", refund_amount_minor: 10_000 }),
-    )).rejects.toThrow("DISPUTE_ALREADY_FINALIZED:disp_1");
+    await expect(
+      finalizeDisputeResolution(
+        db as never,
+        dispute({
+          status: "RESOLVED_BUYER_FAVOR",
+          metadata: {
+            finalized_at: "2026-05-12T00:00:00.000Z",
+            finalization_attempts: 1,
+          },
+        }),
+        resolution({ outcome: "buyer_favor", refund_amount_minor: 10_000 }),
+      ),
+    ).rejects.toThrow("DISPUTE_ALREADY_FINALIZED:disp_1");
 
     expect(mockGetPaymentIntentByOrderId).not.toHaveBeenCalled();
     expect(mockCreateRefundRecord).not.toHaveBeenCalled();

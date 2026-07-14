@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./landing.css";
 
 /* ── Fee Calculator Data ──────────────────── */
-const PLATFORMS: readonly { name: string; dot: string; pct: number; flat: number; highlight?: boolean }[] = [
+const PLATFORMS: readonly {
+  name: string;
+  dot: string;
+  pct: number;
+  flat: number;
+  highlight?: boolean;
+}[] = [
   { name: "Poshmark", dot: "posh", pct: 20, flat: 0 },
   { name: "eBay", dot: "ebay", pct: 15.6, flat: 0 },
   { name: "StockX", dot: "stk", pct: 12, flat: 0 },
@@ -104,7 +110,7 @@ function fmtInt(n: number) {
   return Math.round(n).toLocaleString("en-US");
 }
 function easeInOut(t: number) {
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
 }
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
@@ -158,10 +164,7 @@ export function Landing() {
     let currentStage = -1;
     let currentFeeEls: HTMLElement[] = [];
 
-    function renderReceiptFees(
-      st: (typeof STAGES)[number],
-      animateIn: boolean,
-    ) {
+    function renderReceiptFees(st: (typeof STAGES)[number], animateIn: boolean) {
       if (!feeRowsEl) return;
       feeRowsEl.innerHTML = "";
       currentFeeEls = st.fees.map((f, i) => {
@@ -201,10 +204,13 @@ export function Landing() {
         t.style.transition = "opacity .2s ease, transform .55s cubic-bezier(.2,.7,.2,1)";
         t.style.opacity = "1";
         t.style.transform = `translate(-50%,-50%) translate(${(i - 1) * 30}px, ${-8 + i * 8}px) rotate(${i % 2 ? 4 : -4}deg)`;
-        const tm = setTimeout(() => {
-          t.style.opacity = "0";
-          t.style.transform = FLY_TRANSFORMS[i];
-        }, 140 + i * 50);
+        const tm = setTimeout(
+          () => {
+            t.style.opacity = "0";
+            t.style.transform = FLY_TRANSFORMS[i];
+          },
+          140 + i * 50,
+        );
         (t as any)._tm = tm;
       });
     }
@@ -496,7 +502,8 @@ export function Landing() {
       rows.forEach((r) => {
         const cells = r.querySelectorAll(".num");
         if (cells.length >= 3) {
-          const lost = parseFloat((cells[2] as HTMLElement).textContent?.replace(/[^\d.]/g, "") || "0") || 0;
+          const lost =
+            parseFloat((cells[2] as HTMLElement).textContent?.replace(/[^\d.]/g, "") || "0") || 0;
           const frac = max > 0 ? lost / max : 0;
           (r as HTMLElement).style.setProperty("--bar", frac.toFixed(3));
         }
@@ -522,7 +529,7 @@ export function Landing() {
       return `<tr${cls}>
         <td><div class="plat-cell"><span class="plat-dot ${pl.dot}"></span>${pl.highlight ? "<strong>" + pl.name + "</strong>" : pl.name}</div></td>
         <td class="num">${pl.pct}%</td>
-        <td class="num ${pl.highlight ? "saved" : ""}">\$${fmtDollar(rcv).slice(1)}</td>
+        <td class="num ${pl.highlight ? "saved" : ""}">$${fmtDollar(rcv).slice(1)}</td>
         <td class="num ${pl.highlight ? "" : "lost"}">${pl.highlight ? "$" + fmtDollar(fee).slice(1) : "−$" + fmtDollar(fee).slice(1)}</td>
       </tr>`;
     }).join("");
@@ -558,7 +565,6 @@ export function Landing() {
      ══════════════════════════════════════════════ */
   return (
     <div className="haggle-landing" ref={wrapRef}>
-
       {/* ── NAV ── */}
       <div className="nav-wrap" id="hg-navWrap">
         <nav className="nav">
@@ -584,55 +590,98 @@ export function Landing() {
         <section className="scroll-hero">
           <div className="sh-track" id="hg-shTrack">
             <div className="sh-stage">
-
               <div className="sh-copy">
-                <span className="eyebrow"><span className="dot" /> AI Negotiation · USDC on Base L2</span>
+                <span className="eyebrow">
+                  <span className="dot" /> AI Negotiation · USDC on Base L2
+                </span>
                 <h1 style={{ marginTop: 16 }}>
                   <span className="stack">AI negotiates.</span>
                   <span className="stack accent">You keep more.</span>
                 </h1>
                 <p className="sh-sub">
-                  Haggle is the standard for AI-powered negotiation. Your agent bargains, the smart contract settles — <strong>1.5% total fee</strong>, non-custodial, final in seconds.
+                  Haggle is the standard for AI-powered negotiation. Your agent bargains, the smart
+                  contract settles — <strong>1.5% total fee</strong>, non-custodial, final in
+                  seconds.
                 </p>
                 <div className="sh-ctas">
-                  <Link href="/demo" className="btn btn-primary">Try AI Negotiation →</Link>
-                  <Link href="/demo/developer" className="btn btn-ghost">Try Trade Tutorial</Link>
+                  <Link href="/demo" className="btn btn-primary">
+                    Try AI Negotiation →
+                  </Link>
+                  <Link href="/demo/developer" className="btn btn-ghost">
+                    Try Trade Tutorial
+                  </Link>
                 </div>
                 <div className="sh-caption">
-                  <span className="idx" id="hg-shIdx">01</span>
-                  <span className="txt" id="hg-shTxt">Scroll to watch platform fees peel off →</span>
+                  <span className="idx" id="hg-shIdx">
+                    01
+                  </span>
+                  <span className="txt" id="hg-shTxt">
+                    Scroll to watch platform fees peel off →
+                  </span>
                 </div>
-{/* sh-meta removed per design feedback */}
+                {/* sh-meta removed per design feedback */}
               </div>
 
               <div className="sh-receipt-wrap">
                 <div className="receipt is-bad" id="hg-receipt">
                   <div className="head">
-                    <span className="plat-pill" id="hg-platPill"><span className="pd" /><span id="hg-platName">Poshmark Seller Receipt</span></span>
-                    <div className="sub-r" id="hg-platSub">Order #PM-88217 · payout 3–5 days</div>
+                    <span className="plat-pill" id="hg-platPill">
+                      <span className="pd" />
+                      <span id="hg-platName">Poshmark Seller Receipt</span>
+                    </span>
+                    <div className="sub-r" id="hg-platSub">
+                      Order #PM-88217 · payout 3–5 days
+                    </div>
                   </div>
-                  <div className="row"><span className="k">Item</span><span className="v">iPhone 14 Pro 128GB</span></div>
-                  <div className="row"><span className="k">Sale price</span><span className="v">$500.00</span></div>
+                  <div className="row">
+                    <span className="k">Item</span>
+                    <span className="v">iPhone 14 Pro 128GB</span>
+                  </div>
+                  <div className="row">
+                    <span className="k">Sale price</span>
+                    <span className="v">$500.00</span>
+                  </div>
                   <div className="sep" />
                   <div id="hg-feeRows" />
                   <div className="sep" />
-                  <div className="total"><span>YOU RECEIVE</span><span className="val" id="hg-totalVal">$400.00</span></div>
-                  <div className="foot" id="hg-receiptFoot">Payout in 3–5 business days</div>
+                  <div className="total">
+                    <span>YOU RECEIVE</span>
+                    <span className="val" id="hg-totalVal">
+                      $400.00
+                    </span>
+                  </div>
+                  <div className="foot" id="hg-receiptFoot">
+                    Payout in 3–5 business days
+                  </div>
                 </div>
 
                 {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="torn" id={`hg-torn${i}`}><span className="d" /><span className="x" /></div>
+                  <div key={i} className="torn" id={`hg-torn${i}`}>
+                    <span className="d" />
+                    <span className="x" />
+                  </div>
                 ))}
 
                 <div className="neg-card" id="hg-negCard" aria-hidden="true">
                   <div className="neg-head">
                     <div className="neg-title">Live negotiation</div>
-                    <div className="live"><span className="lp" /> in progress</div>
+                    <div className="live">
+                      <span className="lp" /> in progress
+                    </div>
                   </div>
-                  <div className="bubble b"><div className="who">Buyer AI</div>I&apos;ll offer $430 — battery at 89%.</div>
-                  <div className="bubble s"><div className="who">Seller AI</div>Counter at $465. Screen is mint.</div>
-                  <div className="bubble b"><div className="who">Buyer AI</div>Meet at $450?</div>
-                  <div className="deal-row"><span className="mono">Settled @ $450</span><span className="ok">✓ Both sides agreed</span></div>
+                  <div className="bubble b">
+                    <div className="who">Buyer AI</div>I&apos;ll offer $430 — battery at 89%.
+                  </div>
+                  <div className="bubble s">
+                    <div className="who">Seller AI</div>Counter at $465. Screen is mint.
+                  </div>
+                  <div className="bubble b">
+                    <div className="who">Buyer AI</div>Meet at $450?
+                  </div>
+                  <div className="deal-row">
+                    <span className="mono">Settled @ $450</span>
+                    <span className="ok">✓ Both sides agreed</span>
+                  </div>
                 </div>
 
                 <div className="diff-cap" id="hg-diffCap">
@@ -650,27 +699,85 @@ export function Landing() {
         <section className="trust" style={{ paddingTop: 0 }}>
           <div className="trust-row reveal">
             <div className="trust-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z" /></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z" />
+              </svg>
               Powered by x402 Protocol
             </div>
             <div className="trust-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" /></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
+              </svg>
               Payments on Base L2
             </div>
             <div className="trust-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 6v12M9 9h5a2 2 0 010 4H9a2 2 0 000 4h6" /></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 6v12M9 9h5a2 2 0 010 4H9a2 2 0 000 4h6" />
+              </svg>
               USDC Settlement
             </div>
             <div className="trust-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="10" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
               Non-custodial
             </div>
             <div className="trust-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 21V8l8-5 8 5v13" /><path d="M9 21V12h6v9" /></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 21V8l8-5 8 5v13" />
+                <path d="M9 21V12h6v9" />
+              </svg>
               Delaware LLC
             </div>
             <div className="trust-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7L9 18l-5-5" /></svg>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M20 7L9 18l-5-5" />
+              </svg>
               Linux Foundation
             </div>
           </div>
@@ -679,11 +786,15 @@ export function Landing() {
         {/* ── FEE PROBLEM ── */}
         <section id="pricing">
           <div className="sec-head reveal">
-            <span className="eyebrow"><span className="dot" style={{ background: "var(--red)" }} /> The fee problem</span>
+            <span className="eyebrow">
+              <span className="dot" style={{ background: "var(--red)" }} /> The fee problem
+            </span>
             <h2 className="slash-head">
               <span className="sh-w">Platform fees</span>
               <span className="sh-w sh-accent">are eating</span>
-              <span className="sh-w">your profits<span className="sh-end">.</span></span>
+              <span className="sh-w">
+                your profits<span className="sh-end">.</span>
+              </span>
             </h2>
             <p>Drag the slider — watch every platform bite you. Except one.</p>
           </div>
@@ -737,11 +848,22 @@ export function Landing() {
 
             <div className="stat-line">
               <div className="big">
-                The average seller loses <span className="num" id="hg-avgLoss">$847</span> per year to platform fees.
+                The average seller loses{" "}
+                <span className="num" id="hg-avgLoss">
+                  $847
+                </span>{" "}
+                per year to platform fees.
               </div>
               <div className="sub">
                 Based on 12 sales/year at $500 avg price · Haggle saves you{" "}
-                <span className="mono" id="hg-avgSave" style={{ color: "#86efac", fontWeight: 700 }}>$759</span>.
+                <span
+                  className="mono"
+                  id="hg-avgSave"
+                  style={{ color: "#86efac", fontWeight: 700 }}
+                >
+                  $759
+                </span>
+                .
               </div>
             </div>
           </div>
@@ -750,13 +872,24 @@ export function Landing() {
         {/* ── HOW IT WORKS ── */}
         <section id="how">
           <div className="sec-head reveal">
-            <span className="eyebrow"><span className="dot" /> How it works</span>
+            <span className="eyebrow">
+              <span className="dot" /> How it works
+            </span>
             <h2 className="triptych" aria-label="Three steps. One fair price. Instant settlement.">
-              <span className="tp-col"><span className="tp-count">3</span><span className="tp-lbl">steps</span></span>
+              <span className="tp-col">
+                <span className="tp-count">3</span>
+                <span className="tp-lbl">steps</span>
+              </span>
               <span className="tp-div" />
-              <span className="tp-col"><span className="tp-count">1</span><span className="tp-lbl">fair price</span></span>
+              <span className="tp-col">
+                <span className="tp-count">1</span>
+                <span className="tp-lbl">fair price</span>
+              </span>
               <span className="tp-div" />
-              <span className="tp-col"><span className="tp-count">∞</span><span className="tp-lbl">instant settlement</span></span>
+              <span className="tp-col">
+                <span className="tp-count">∞</span>
+                <span className="tp-lbl">instant settlement</span>
+              </span>
             </h2>
           </div>
 
@@ -764,14 +897,20 @@ export function Landing() {
             <div className="step reveal delay-1">
               <div className="num">STEP 01</div>
               <h3>List in 30 seconds</h3>
-              <p>Take a photo. Set your price. Our AI suggests optimal pricing from live market data — so you don&apos;t undersell.</p>
+              <p>
+                Take a photo. Set your price. Our AI suggests optimal pricing from live market data
+                — so you don&apos;t undersell.
+              </p>
               <div className="step-visual">
                 <div className="phone-shot">
                   <div className="phone-img">[ product shot ]</div>
                   <div className="phone-form">
                     <div className="phone-line w70" />
                     <div className="phone-line w40" />
-                    <div className="phone-price"><span>Suggested</span><span className="v">$520</span></div>
+                    <div className="phone-price">
+                      <span>Suggested</span>
+                      <span className="v">$520</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -780,7 +919,10 @@ export function Landing() {
             <div className="step reveal delay-2">
               <div className="num">STEP 02</div>
               <h3>AI negotiates — fairly</h3>
-              <p>Both buyer and seller get their own agent with equal data. No one-sided advantage. Deals land in seconds.</p>
+              <p>
+                Both buyer and seller get their own agent with equal data. No one-sided advantage.
+                Deals land in seconds.
+              </p>
               <div className="step-visual">
                 <div className="chat">
                   <div className="mini b">Offer $430 — battery 89%</div>
@@ -794,17 +936,42 @@ export function Landing() {
             <div className="step reveal delay-3">
               <div className="num">STEP 03</div>
               <h3>Instant, non-custodial</h3>
-              <p>USDC routes directly from buyer to seller via smart contract. Haggle literally cannot hold your money.</p>
+              <p>
+                USDC routes directly from buyer to seller via smart contract. Haggle literally
+                cannot hold your money.
+              </p>
               <div className="step-visual">
                 <div className="settle">
-                  <div className="wallet"><span className="lab">Buyer</span><span className="am">$450</span></div>
+                  <div className="wallet">
+                    <span className="lab">Buyer</span>
+                    <span className="am">$450</span>
+                  </div>
                   <div className="arrow-r" />
-                  <div className="router">Settlement<br />Router</div>
+                  <div className="router">
+                    Settlement
+                    <br />
+                    Router
+                  </div>
                   <div className="arrow-r" />
-                  <div className="wallet"><span className="lab">Seller</span><span className="am">$443.25</span></div>
+                  <div className="wallet">
+                    <span className="lab">Seller</span>
+                    <span className="am">$443.25</span>
+                  </div>
                 </div>
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--line)", display: "flex", justifyContent: "space-between", fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "var(--mute)" }}>
-                  <span>1 block · 2s</span><span>tx 0x8f2a…b7c1</span>
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: "1px dashed var(--line)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontFamily: "'JetBrains Mono',monospace",
+                    fontSize: 10,
+                    color: "var(--mute)",
+                  }}
+                >
+                  <span>1 block · 2s</span>
+                  <span>tx 0x8f2a…b7c1</span>
                 </div>
               </div>
             </div>
@@ -814,13 +981,24 @@ export function Landing() {
         {/* ── ON-CHAIN ── */}
         <section>
           <div className="sec-head reveal" style={{ marginBottom: 28 }}>
-            <span className="eyebrow"><span className="dot" style={{ background: "var(--violet)" }} /> On-chain settlement</span>
+            <span className="eyebrow">
+              <span className="dot" style={{ background: "var(--violet)" }} /> On-chain settlement
+            </span>
             <h2 className="mega-stack" aria-label="Non-custodial. Transparent. Atomic.">
-              <span className="ms-row ms-1"><span className="ms-word">Non-custodial.</span></span>
-              <span className="ms-row ms-2"><span className="ms-word">Transparent.</span></span>
-              <span className="ms-row ms-3"><span className="ms-word">Atomic.</span></span>
+              <span className="ms-row ms-1">
+                <span className="ms-word">Non-custodial.</span>
+              </span>
+              <span className="ms-row ms-2">
+                <span className="ms-word">Transparent.</span>
+              </span>
+              <span className="ms-row ms-3">
+                <span className="ms-word">Atomic.</span>
+              </span>
             </h2>
-            <p>One signed transaction. One block. Funds split at the contract level — Haggle never touches the principal.</p>
+            <p>
+              One signed transaction. One block. Funds split at the contract level — Haggle never
+              touches the principal.
+            </p>
           </div>
           <div className="chain reveal">
             <div className="chain-diagram">
@@ -828,32 +1006,68 @@ export function Landing() {
                 <div className="node">
                   <div className="lab">Buyer wallet</div>
                   <div className="addr">0x9A1…fE4B</div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--cyan-600)", marginTop: 4 }}>−$450.00</div>
+                  <div
+                    className="mono"
+                    style={{ fontSize: 11, color: "var(--cyan-600)", marginTop: 4 }}
+                  >
+                    −$450.00
+                  </div>
                 </div>
                 <div className="node router">
                   <div className="lab">Settlement Router</div>
                   <div className="addr">HaggleRouter.sol</div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--mute)", marginTop: 4 }}>EIP-712 · verified</div>
+                  <div
+                    className="mono"
+                    style={{ fontSize: 10, color: "var(--mute)", marginTop: 4 }}
+                  >
+                    EIP-712 · verified
+                  </div>
                 </div>
                 <div className="branch">
                   <div className="node split">
                     <div className="lab">Seller wallet · 98.5%</div>
                     <div className="addr">0x2C8…A091</div>
-                    <div className="mono" style={{ fontSize: 11, color: "var(--emerald)", marginTop: 4 }}>+$443.25</div>
+                    <div
+                      className="mono"
+                      style={{ fontSize: 11, color: "var(--emerald)", marginTop: 4 }}
+                    >
+                      +$443.25
+                    </div>
                   </div>
                   <div className="node split">
                     <div className="lab">Haggle fee · 1.5%</div>
                     <div className="addr">0xFee…Haggle</div>
-                    <div className="mono" style={{ fontSize: 11, color: "var(--violet)", marginTop: 4 }}>+$6.75</div>
+                    <div
+                      className="mono"
+                      style={{ fontSize: 11, color: "var(--violet)", marginTop: 4 }}
+                    >
+                      +$6.75
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
             <div className="chain-cards">
-              <div className="chain-card"><span className="tag">SIGNATURE</span><h4>EIP-712 typed</h4><p>Human-readable structured signatures, not blind blobs.</p></div>
-              <div className="chain-card"><span className="tag">ATOMIC</span><h4>One tx, one block</h4><p>Either everyone gets paid, or nothing moves.</p></div>
-              <div className="chain-card"><span className="tag">GAS</span><h4>Sponsored by Haggle</h4><p>Sellers never touch gas. $0.00 on every receipt.</p></div>
-              <div className="chain-card"><span className="tag">OPEN</span><h4>Open-source contracts</h4><p>Audited, verified, reproducible from source.</p></div>
+              <div className="chain-card">
+                <span className="tag">SIGNATURE</span>
+                <h4>EIP-712 typed</h4>
+                <p>Human-readable structured signatures, not blind blobs.</p>
+              </div>
+              <div className="chain-card">
+                <span className="tag">ATOMIC</span>
+                <h4>One tx, one block</h4>
+                <p>Either everyone gets paid, or nothing moves.</p>
+              </div>
+              <div className="chain-card">
+                <span className="tag">GAS</span>
+                <h4>Sponsored by Haggle</h4>
+                <p>Sellers never touch gas. $0.00 on every receipt.</p>
+              </div>
+              <div className="chain-card">
+                <span className="tag">OPEN</span>
+                <h4>Open-source contracts</h4>
+                <p>Audited, verified, reproducible from source.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -861,7 +1075,9 @@ export function Landing() {
         {/* ── PAYMENT RAILS ── */}
         <section>
           <div className="sec-head reveal">
-            <span className="eyebrow"><span className="dot" style={{ background: "var(--emerald)" }} /> Two ways to pay</span>
+            <span className="eyebrow">
+              <span className="dot" style={{ background: "var(--emerald)" }} /> Two ways to pay
+            </span>
             <h2 style={{ marginTop: 12 }}>Crypto-native speed. Card-friendly access.</h2>
           </div>
           <div className="rails">
@@ -869,29 +1085,73 @@ export function Landing() {
               <span className="badge">Recommended</span>
               <div className="rail-head">
                 <div className="rail-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 6v12M9 9h5a2 2 0 010 4H9a2 2 0 000 4h6" /></svg>
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 6v12M9 9h5a2 2 0 010 4H9a2 2 0 000 4h6" />
+                  </svg>
                 </div>
                 <h3>USDC Direct</h3>
               </div>
-              <p className="what">Already have crypto in your wallet? Pay with one signature. No middleman, no reroute.</p>
+              <p className="what">
+                Already have crypto in your wallet? Pay with one signature. No middleman, no
+                reroute.
+              </p>
               <div className="rail-stats">
-                <div className="s"><div className="k">Total fee</div><div className="v g">1.5%</div></div>
-                <div className="s"><div className="k">Speed</div><div className="v">~2s</div></div>
-                <div className="s"><div className="k">Custody</div><div className="v">None</div></div>
+                <div className="s">
+                  <div className="k">Total fee</div>
+                  <div className="v g">1.5%</div>
+                </div>
+                <div className="s">
+                  <div className="k">Speed</div>
+                  <div className="v">~2s</div>
+                </div>
+                <div className="s">
+                  <div className="k">Custody</div>
+                  <div className="v">None</div>
+                </div>
               </div>
             </div>
             <div className="rail card reveal delay-2">
               <div className="rail-head">
                 <div className="rail-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" /></svg>
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="M3 10h18M7 15h3" />
+                  </svg>
                 </div>
                 <h3>Card Payment</h3>
               </div>
-              <p className="what">No wallet? No problem. Pay with any card — we convert to USDC under the hood via Stripe Crypto Onramp.</p>
+              <p className="what">
+                No wallet? No problem. Pay with any card — we convert to USDC under the hood via
+                Stripe Crypto Onramp.
+              </p>
               <div className="rail-stats">
-                <div className="s"><div className="k">Total fee</div><div className="v">3.0%</div></div>
-                <div className="s"><div className="k">Speed</div><div className="v">~30s</div></div>
-                <div className="s"><div className="k">Powered by</div><div className="v">Stripe</div></div>
+                <div className="s">
+                  <div className="k">Total fee</div>
+                  <div className="v">3.0%</div>
+                </div>
+                <div className="s">
+                  <div className="k">Speed</div>
+                  <div className="v">~30s</div>
+                </div>
+                <div className="s">
+                  <div className="k">Powered by</div>
+                  <div className="v">Stripe</div>
+                </div>
               </div>
             </div>
           </div>
@@ -900,39 +1160,130 @@ export function Landing() {
         {/* ── PROTECTION ── */}
         <section>
           <div className="sec-head reveal">
-            <span className="eyebrow"><span className="dot" style={{ background: "var(--emerald)" }} /> Buyer protection</span>
+            <span className="eyebrow">
+              <span className="dot" style={{ background: "var(--emerald)" }} /> Buyer protection
+            </span>
             <h2 style={{ marginTop: 12 }}>Your money is protected at every step.</h2>
-            <p>Funds are held by the smart contract — not Haggle. Released to the seller only after you confirm delivery.</p>
+            <p>
+              Funds are held by the smart contract — not Haggle. Released to the seller only after
+              you confirm delivery.
+            </p>
           </div>
           <div className="timeline reveal delay-1">
             <div className="t-rail" id="hg-tRail">
               <div className="t-fill" id="hg-tFill" />
               <div className="t-step" style={{ left: "0%" }}>
-                <div className="t-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></svg></div>
-                <div className="t-lab">Payment</div><div className="t-sub">t=0s</div>
+                <div className="t-node">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="M3 10h18" />
+                  </svg>
+                </div>
+                <div className="t-lab">Payment</div>
+                <div className="t-sub">t=0s</div>
               </div>
               <div className="t-step" style={{ left: "25%" }}>
-                <div className="t-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></svg></div>
-                <div className="t-lab">Escrow locked</div><div className="t-sub">smart contract</div>
+                <div className="t-node">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <rect x="4" y="10" width="16" height="10" rx="2" />
+                    <path d="M8 10V7a4 4 0 018 0v3" />
+                  </svg>
+                </div>
+                <div className="t-lab">Escrow locked</div>
+                <div className="t-sub">smart contract</div>
               </div>
               <div className="t-step" style={{ left: "50%" }}>
-                <div className="t-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 17l9 4 9-4M3 12l9 4 9-4" /></svg></div>
-                <div className="t-lab">Delivery</div><div className="t-sub">APV verified</div>
+                <div className="t-node">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M3 7l9-4 9 4-9 4-9-4z" />
+                    <path d="M3 17l9 4 9-4M3 12l9 4 9-4" />
+                  </svg>
+                </div>
+                <div className="t-lab">Delivery</div>
+                <div className="t-sub">APV verified</div>
               </div>
               <div className="t-step" style={{ left: "75%" }}>
-                <div className="t-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></div>
-                <div className="t-lab">24h Review</div><div className="t-sub">buyer window</div>
+                <div className="t-node">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v5l3 2" />
+                  </svg>
+                </div>
+                <div className="t-lab">24h Review</div>
+                <div className="t-sub">buyer window</div>
               </div>
               <div className="t-step" style={{ left: "100%" }}>
-                <div className="t-node"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 7L9 18l-5-5" /></svg></div>
-                <div className="t-lab">Release</div><div className="t-sub">or dispute</div>
+                <div className="t-node">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M20 7L9 18l-5-5" />
+                  </svg>
+                </div>
+                <div className="t-lab">Release</div>
+                <div className="t-sub">or dispute</div>
               </div>
             </div>
             <div className="protect-cards">
-              <div className="p-card"><div className="t">01 · Escrow</div><div className="d">Funds locked in the Settlement Router contract — not in Haggle&apos;s bank account.</div></div>
-              <div className="p-card"><div className="t">02 · APV</div><div className="d">Weight-buffer verification confirms the package sent matches what was sold.</div></div>
-              <div className="p-card"><div className="t">03 · Review</div><div className="d">Buyer has 24h to approve. Silence is consent — funds release automatically.</div></div>
-              <div className="p-card"><div className="t">04 · Dispute</div><div className="d">3-tier resolution: auto-arbiter → review panel → binding arbitration, with on-chain evidence.</div></div>
+              <div className="p-card">
+                <div className="t">01 · Escrow</div>
+                <div className="d">
+                  Funds locked in the Settlement Router contract — not in Haggle&apos;s bank
+                  account.
+                </div>
+              </div>
+              <div className="p-card">
+                <div className="t">02 · APV</div>
+                <div className="d">
+                  Weight-buffer verification confirms the package sent matches what was sold.
+                </div>
+              </div>
+              <div className="p-card">
+                <div className="t">03 · Review</div>
+                <div className="d">
+                  Buyer has 24h to approve. Silence is consent — funds release automatically.
+                </div>
+              </div>
+              <div className="p-card">
+                <div className="t">04 · Dispute</div>
+                <div className="d">
+                  3-tier resolution: auto-arbiter → review panel → binding arbitration, with
+                  on-chain evidence.
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -941,33 +1292,74 @@ export function Landing() {
         <section id="docs">
           <div className="dev reveal">
             <div>
-              <span className="eyebrow"><span className="dot" style={{ background: "var(--violet)" }} /> For developers</span>
+              <span className="eyebrow">
+                <span className="dot" style={{ background: "var(--violet)" }} /> For developers
+              </span>
               <h2 style={{ marginTop: 12 }}>Built on open protocols.</h2>
               <ul>
-                <li><span className="bul">✓</span> <strong style={{ color: "var(--ink)" }}>x402&nbsp;</strong>&nbsp;— payment protocol (Linux Foundation)</li>
-                <li><span className="bul">✓</span> <strong style={{ color: "var(--ink)" }}>MCP&nbsp;</strong>&nbsp;— ChatGPT &amp; Claude can list items directly</li>
-                <li><span className="bul">✓</span> <strong style={{ color: "var(--ink)" }}>REST API&nbsp;</strong>&nbsp;— drop-in negotiation for any marketplace</li>
-                <li><span className="bul">✓</span> <strong style={{ color: "var(--ink)" }}>HNP&nbsp;</strong>&nbsp;— open Haggle Negotiation Protocol spec</li>
+                <li>
+                  <span className="bul">✓</span>{" "}
+                  <strong style={{ color: "var(--ink)" }}>x402&nbsp;</strong>&nbsp;— payment
+                  protocol (Linux Foundation)
+                </li>
+                <li>
+                  <span className="bul">✓</span>{" "}
+                  <strong style={{ color: "var(--ink)" }}>MCP&nbsp;</strong>&nbsp;— ChatGPT &amp;
+                  Claude can list items directly
+                </li>
+                <li>
+                  <span className="bul">✓</span>{" "}
+                  <strong style={{ color: "var(--ink)" }}>REST API&nbsp;</strong>&nbsp;— drop-in
+                  negotiation for any marketplace
+                </li>
+                <li>
+                  <span className="bul">✓</span>{" "}
+                  <strong style={{ color: "var(--ink)" }}>HNP&nbsp;</strong>&nbsp;— open Haggle
+                  Negotiation Protocol spec
+                </li>
               </ul>
               <button className="btn btn-ghost">View API Docs →</button>
             </div>
             <div className="code">
-              <div className="bar"><i /><i /><i /></div>
+              <div className="bar">
+                <i />
+                <i />
+                <i />
+              </div>
               <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-                <span className="cm"># Start an AI-negotiated session in one call</span>{"\n"}
-                <span className="kw">POST</span> <span className="st">/v1/negotiations/sessions</span>{"\n"}
-                {"{"}{"\n"}
-                {"  "}<span className="fn">&quot;listing_id&quot;</span>: <span className="st">&quot;lst_iPhone14Pro_8fa2&quot;</span>,{"\n"}
-                {"  "}<span className="fn">&quot;buyer_strategy&quot;</span>: <span className="st">&quot;balanced&quot;</span>,{"\n"}
-                {"  "}<span className="fn">&quot;max_price&quot;</span>: <span className="ev">475</span>,{"\n"}
-                {"  "}<span className="fn">&quot;rail&quot;</span>: <span className="st">&quot;usdc&quot;</span>{"\n"}
-                {"}"}{"\n\n"}
-                <span className="cm">→ AI negotiates. Smart contract settles.</span>{"\n"}
-                <span className="cm">→ Webhook fires when deal is done.</span>{"\n\n"}
-                <span className="kw">event</span> <span className="ev">settlement.completed</span> {"{"}{"\n"}
+                <span className="cm"># Start an AI-negotiated session in one call</span>
+                {"\n"}
+                <span className="kw">POST</span>{" "}
+                <span className="st">/v1/negotiations/sessions</span>
+                {"\n"}
+                {"{"}
+                {"\n"}
+                {"  "}
+                <span className="fn">&quot;listing_id&quot;</span>:{" "}
+                <span className="st">&quot;lst_iPhone14Pro_8fa2&quot;</span>,{"\n"}
+                {"  "}
+                <span className="fn">&quot;buyer_strategy&quot;</span>:{" "}
+                <span className="st">&quot;balanced&quot;</span>,{"\n"}
+                {"  "}
+                <span className="fn">&quot;max_price&quot;</span>: <span className="ev">475</span>,
+                {"\n"}
+                {"  "}
+                <span className="fn">&quot;rail&quot;</span>:{" "}
+                <span className="st">&quot;usdc&quot;</span>
+                {"\n"}
+                {"}"}
+                {"\n\n"}
+                <span className="cm">→ AI negotiates. Smart contract settles.</span>
+                {"\n"}
+                <span className="cm">→ Webhook fires when deal is done.</span>
+                {"\n\n"}
+                <span className="kw">event</span> <span className="ev">settlement.completed</span>{" "}
+                {"{"}
+                {"\n"}
                 {"  "}final_price: <span className="ev">450.00</span>,{"\n"}
                 {"  "}seller_received: <span className="ev">443.25</span>,{"\n"}
-                {"  "}tx: <span className="st">&quot;0x8f2a…b7c1&quot;</span>{"\n"}
+                {"  "}tx: <span className="st">&quot;0x8f2a…b7c1&quot;</span>
+                {"\n"}
                 {"}"}
               </pre>
             </div>
@@ -977,20 +1369,43 @@ export function Landing() {
         {/* ── COMPANY ── */}
         <section>
           <div className="sec-head reveal">
-            <span className="eyebrow"><span className="dot" /> Company</span>
+            <span className="eyebrow">
+              <span className="dot" /> Company
+            </span>
             <h2 style={{ marginTop: 12 }}>Built in Delaware. Backed by protocol.</h2>
           </div>
           <div className="company">
             <div className="co-meta reveal delay-1">
-              <div className="row"><span className="k">Legal entity</span><span className="v">Haggle LLC</span></div>
-              <div className="row"><span className="k">Jurisdiction</span><span className="v">Delaware, USA</span></div>
-              <div className="row"><span className="k">Domain</span><span className="v">tryhaggle.ai</span></div>
-              <div className="row"><span className="k">Contact</span><span className="v">hello@tryhaggle.ai</span></div>
-              <div className="row"><span className="k">Settlement chain</span><span className="v">Base L2 · ChainID 8453</span></div>
-              <div className="row"><span className="k">Protocol</span><span className="v">x402 · HNP v0.3</span></div>
+              <div className="row">
+                <span className="k">Legal entity</span>
+                <span className="v">Haggle LLC</span>
+              </div>
+              <div className="row">
+                <span className="k">Jurisdiction</span>
+                <span className="v">Delaware, USA</span>
+              </div>
+              <div className="row">
+                <span className="k">Domain</span>
+                <span className="v">tryhaggle.ai</span>
+              </div>
+              <div className="row">
+                <span className="k">Contact</span>
+                <span className="v">hello@tryhaggle.ai</span>
+              </div>
+              <div className="row">
+                <span className="k">Settlement chain</span>
+                <span className="v">Base L2 · ChainID 8453</span>
+              </div>
+              <div className="row">
+                <span className="k">Protocol</span>
+                <span className="v">x402 · HNP v0.3</span>
+              </div>
             </div>
             <div className="mission reveal delay-2">
-              <div className="q">&ldquo;Everyone deserves to negotiate fairly — not just the rich, the aggressive, or the experienced.&rdquo;</div>
+              <div className="q">
+                &ldquo;Everyone deserves to negotiate fairly — not just the rich, the aggressive, or
+                the experienced.&rdquo;
+              </div>
               <div className="by">Haggle mission · democratizing negotiation</div>
             </div>
           </div>
@@ -1007,11 +1422,22 @@ export function Landing() {
               <span className="plus">+$82.35</span>
             </div>
             <div className="ctas">
-              <Link href="/demo" className="btn btn-primary">Try AI Negotiation — Free Demo</Link>
-              <Link href="/demo/developer" className="btn btn-ghost">Try Trade Tutorial</Link>
+              <Link href="/demo" className="btn btn-primary">
+                Try AI Negotiation — Free Demo
+              </Link>
+              <Link href="/demo/developer" className="btn btn-ghost">
+                Try Trade Tutorial
+              </Link>
               <button className="btn btn-ghost">Join Waitlist</button>
             </div>
-            <div style={{ marginTop: 18, fontSize: 13, color: "rgba(255,255,255,.7)", position: "relative" }}>
+            <div
+              style={{
+                marginTop: 18,
+                fontSize: 13,
+                color: "rgba(255,255,255,.7)",
+                position: "relative",
+              }}
+            >
               Early members get fee-free trades for life.
             </div>
           </div>
@@ -1023,9 +1449,13 @@ export function Landing() {
         <div style={{ padding: "0 28px", maxWidth: 1200, margin: "0 auto" }}>
           <div className="foot">
             <div>
-              <div className="brand" style={{ marginBottom: 14 }}><span className="brand-mark">H</span><span>Haggle</span></div>
+              <div className="brand" style={{ marginBottom: 14 }}>
+                <span className="brand-mark">H</span>
+                <span>Haggle</span>
+              </div>
               <p style={{ color: "var(--mute)", maxWidth: 320, lineHeight: 1.55 }}>
-                The protocol where AI negotiates so humans don&apos;t have to. A fair deal in seconds — on-chain, non-custodial, transparent.
+                The protocol where AI negotiates so humans don&apos;t have to. A fair deal in
+                seconds — on-chain, non-custodial, transparent.
               </p>
             </div>
             <div>
@@ -1051,7 +1481,9 @@ export function Landing() {
             </div>
           </div>
           <div className="foot-bot">
-            <div>© 2026 Haggle LLC · Delaware · <span className="mono">hello@tryhaggle.ai</span></div>
+            <div>
+              © 2026 Haggle LLC · Delaware · <span className="mono">hello@tryhaggle.ai</span>
+            </div>
             <div className="pill-row">
               <span className="pill">Non-custodial</span>
               <span className="pill">Transparent</span>

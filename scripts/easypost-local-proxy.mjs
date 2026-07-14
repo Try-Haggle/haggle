@@ -1,6 +1,6 @@
-import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 
 const PORT = Number(process.env.EASYPOST_PROXY_PORT ?? 3105);
 const ENV_PATH = process.env.EASYPOST_ENV_FILE ?? ".env.easypost.local";
@@ -60,7 +60,9 @@ async function easypost(path, body, method = body ? "POST" : "GET") {
     data = { raw: text.slice(0, 500) };
   }
   if (!response.ok) {
-    const error = new Error(data?.error?.message ?? data?.message ?? `EasyPost HTTP ${response.status}`);
+    const error = new Error(
+      data?.error?.message ?? data?.message ?? `EasyPost HTTP ${response.status}`,
+    );
     error.status = response.status;
     error.data = data;
     throw error;
@@ -173,7 +175,9 @@ function createRecord(epShipment, body = {}) {
 function getRecord(id) {
   const key = id === "latest" ? lastShipmentId : id;
   if (!key || !shipments.has(key)) {
-    const error = new Error("Shipment not found in local EasyPost proxy state. Run Rates or Create Shipment first.");
+    const error = new Error(
+      "Shipment not found in local EasyPost proxy state. Run Rates or Create Shipment first.",
+    );
     error.status = 404;
     throw error;
   }
@@ -208,7 +212,10 @@ async function handler(req, res) {
       return;
     }
 
-    if (req.method === "POST" && (url.pathname === "/shipments" || url.pathname === "/shipments/rates")) {
+    if (
+      req.method === "POST" &&
+      (url.pathname === "/shipments" || url.pathname === "/shipments/rates")
+    ) {
       const result = await easypost("/shipments", shipmentPayload(body));
       const record = createRecord(result.data, body);
       sendJson(res, result.status, {
@@ -243,7 +250,9 @@ async function handler(req, res) {
 
     const byOrderMatch = url.pathname.match(/^\/shipments\/by-order\/([^/]+)$/);
     if (req.method === "GET" && byOrderMatch) {
-      const record = [...shipments.values()].find((shipment) => shipment.order_id === byOrderMatch[1]) ?? getRecord("latest");
+      const record =
+        [...shipments.values()].find((shipment) => shipment.order_id === byOrderMatch[1]) ??
+        getRecord("latest");
       sendJson(res, 200, { shipment: publicShipment(record), source: "easypost_test_proxy" });
       return;
     }
@@ -251,9 +260,12 @@ async function handler(req, res) {
     const purchaseMatch = url.pathname.match(/^\/shipments\/([^/]+)\/purchase-label$/);
     if (req.method === "POST" && purchaseMatch) {
       const record = getRecord(purchaseMatch[1]);
-      const rate = record.rates.find((candidate) => candidate.id === body.rate_id) ?? record.rates[0];
+      const rate =
+        record.rates.find((candidate) => candidate.id === body.rate_id) ?? record.rates[0];
       if (!rate) throw new Error("No EasyPost rates available for this local shipment");
-      const result = await easypost(`/shipments/${record.easypost_shipment_id}/buy`, { rate: { id: rate.id } });
+      const result = await easypost(`/shipments/${record.easypost_shipment_id}/buy`, {
+        rate: { id: rate.id },
+      });
       record.status = "LABEL_CREATED";
       record.carrier = rate.carrier;
       record.selected_rate_id = rate.id;
@@ -302,14 +314,16 @@ async function handler(req, res) {
       }
       sendJson(res, 200, {
         shipment: publicShipment(record),
-        tracker: tracker ? {
-          id: tracker.id,
-          mode: tracker.mode,
-          status: tracker.status,
-          carrier: tracker.carrier,
-          public_url: tracker.public_url,
-          tracking_details_count: tracker.tracking_details?.length ?? 0,
-        } : null,
+        tracker: tracker
+          ? {
+              id: tracker.id,
+              mode: tracker.mode,
+              status: tracker.status,
+              carrier: tracker.carrier,
+              public_url: tracker.public_url,
+              tracking_details_count: tracker.tracking_details?.length ?? 0,
+            }
+          : null,
         source: "easypost_test_proxy",
       });
       return;
@@ -337,7 +351,10 @@ async function handler(req, res) {
       return;
     }
 
-    sendJson(res, 404, { error: "NOT_FOUND", message: `${req.method} ${url.pathname} is not implemented by the local EasyPost proxy` });
+    sendJson(res, 404, {
+      error: "NOT_FOUND",
+      message: `${req.method} ${url.pathname} is not implemented by the local EasyPost proxy`,
+    });
   } catch (error) {
     sendJson(res, error.status ?? 500, {
       error: error.data?.error?.code ?? "EASYPOST_PROXY_ERROR",

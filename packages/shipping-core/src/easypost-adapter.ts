@@ -95,8 +95,7 @@ export class EasyPostCarrierAdapter implements CarrierProvider {
           },
         };
       } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Unknown EasyPost error";
+        const message = err instanceof Error ? err.message : "Unknown EasyPost error";
         throw new Error(
           `EasyPost tracker creation failed for ${shipment.tracking_number}: ${message}`,
         );
@@ -136,7 +135,8 @@ export class EasyPostCarrierAdapter implements CarrierProvider {
 
       // Pick specific service or cheapest rate
       const rate = request.service_level
-        ? epShipment.rates?.find((r: any) => r.service === request.service_level) ?? epShipment.lowestRate()
+        ? (epShipment.rates?.find((r: any) => r.service === request.service_level) ??
+          epShipment.lowestRate())
         : epShipment.lowestRate();
 
       const purchased = await this.client.Shipment.buy(epShipment.id, rate);
@@ -170,14 +170,10 @@ export class EasyPostCarrierAdapter implements CarrierProvider {
         tracking_code: tracking_number,
       });
 
-      const latestDetail =
-        tracker.tracking_details?.[tracker.tracking_details.length - 1];
+      const latestDetail = tracker.tracking_details?.[tracker.tracking_details.length - 1];
 
       const location = latestDetail?.tracking_location
-        ? [
-            latestDetail.tracking_location.city,
-            latestDetail.tracking_location.state,
-          ]
+        ? [latestDetail.tracking_location.city, latestDetail.tracking_location.state]
             .filter(Boolean)
             .join(", ")
         : undefined;
@@ -189,9 +185,7 @@ export class EasyPostCarrierAdapter implements CarrierProvider {
         message: latestDetail?.message ?? undefined,
         eta: tracker.est_delivery_date ?? undefined,
         delivered_at:
-          tracker.status === "delivered"
-            ? latestDetail?.datetime ?? undefined
-            : undefined,
+          tracker.status === "delivered" ? (latestDetail?.datetime ?? undefined) : undefined,
         metadata: {
           easypost_tracker_id: tracker.id,
           easypost_carrier: tracker.carrier,
@@ -199,11 +193,8 @@ export class EasyPostCarrierAdapter implements CarrierProvider {
         },
       };
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Unknown EasyPost error";
-      throw new Error(
-        `EasyPost tracking failed for ${tracking_number}: ${message}`,
-      );
+      const message = err instanceof Error ? err.message : "Unknown EasyPost error";
+      throw new Error(`EasyPost tracking failed for ${tracking_number}: ${message}`);
     }
   }
 
@@ -232,26 +223,19 @@ export class EasyPostCarrierAdapter implements CarrierProvider {
       const status = result.status as string | undefined;
       if (!trackingCode || !status) return null;
 
-      const trackingDetails = result.tracking_details as
-        | Array<Record<string, unknown>>
-        | undefined;
+      const trackingDetails = result.tracking_details as Array<Record<string, unknown>> | undefined;
       const latest = trackingDetails?.[trackingDetails.length - 1];
 
-      const trackingLocation = latest?.tracking_location as
-        | Record<string, string>
-        | undefined;
+      const trackingLocation = latest?.tracking_location as Record<string, string> | undefined;
       const location = trackingLocation
-        ? [trackingLocation.city, trackingLocation.state]
-            .filter(Boolean)
-            .join(", ")
+        ? [trackingLocation.city, trackingLocation.state].filter(Boolean).join(", ")
         : undefined;
 
       return {
         id: createId("evt"),
         shipment_id: (result.id as string) ?? "",
         status: mapEasyPostStatus(status),
-        occurred_at:
-          (latest?.datetime as string) ?? new Date().toISOString(),
+        occurred_at: (latest?.datetime as string) ?? new Date().toISOString(),
         carrier_raw_status: status,
         message: (latest?.message as string) ?? undefined,
         location: location || undefined,

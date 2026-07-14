@@ -1,10 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { RESOURCE_MIME_TYPE, registerAppResource } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  registerAppResource,
-  RESOURCE_MIME_TYPE,
-} from "@modelcontextprotocol/ext-apps/server";
+import { getRuntimeConfig } from "../config/runtime.js";
 
 export const LISTING_RESOURCE_URI = "ui://haggle/listing.html?v=2";
 
@@ -13,17 +11,24 @@ export const LISTING_RESOURCE_URI = "ui://haggle/listing.html?v=2";
  * The widget HTML is built by Vite (widget/dist/index.html) and read at server startup.
  */
 export function registerResources(server: McpServer) {
-  const htmlPath = path.join(
-    import.meta.dirname,
-    "../../widget/dist/index.html",
-  );
+  const htmlPath = path.join(import.meta.dirname, "../../widget/dist/index.html");
 
   let html: string;
   try {
     html = readFileSync(htmlPath, "utf-8");
   } catch {
-    console.warn(`[mcp/resources] Widget HTML not found at ${htmlPath}. Listing widget will be unavailable. Run 'pnpm --filter widget build' to generate it.`);
+    console.warn(
+      `[mcp/resources] Widget HTML not found at ${htmlPath}. Listing widget will be unavailable. Run 'pnpm --filter widget build' to generate it.`,
+    );
     html = `<!DOCTYPE html><html><body><p>Widget not available. Build the widget first.</p></body></html>`;
+  }
+
+  const { publicAppUrl } = getRuntimeConfig();
+  const runtimeScript = `<script>window.__HAGGLE_APP_URL__=${JSON.stringify(publicAppUrl)};</script>`;
+  if (html.includes("</head>")) {
+    html = html.replace("</head>", `${runtimeScript}</head>`);
+  } else {
+    html = `${runtimeScript}${html}`;
   }
 
   registerAppResource(
@@ -31,8 +36,7 @@ export function registerResources(server: McpServer) {
     "listing-widget",
     LISTING_RESOURCE_URI,
     {
-      description:
-        "Listing draft wizard — Item Details and Pricing steps for sellers",
+      description: "Listing draft wizard — Item Details and Pricing steps for sellers",
       mimeType: RESOURCE_MIME_TYPE,
     },
     async () => ({

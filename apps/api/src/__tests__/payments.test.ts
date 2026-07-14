@@ -1,25 +1,24 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { PAYMENT_DISCLOSURE_TEXT_HASH, PAYMENT_DISCLOSURE_VERSION } from "@haggle/shared";
 import type { FastifyInstance } from "fastify";
 import jwt from "jsonwebtoken";
-import { PAYMENT_DISCLOSURE_TEXT_HASH, PAYMENT_DISCLOSURE_VERSION } from "@haggle/shared";
-import { getTestApp, closeTestApp, ADMIN_HEADERS, AUTH_HEADERS } from "./helpers.js";
 import { createPublicClient, decodeEventLog } from "viem";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  completePaymentOperationIdempotencyRecord,
   createAgentPaymentGrantRecord,
   createPaymentDisclosureRecord,
-  completePaymentOperationIdempotencyRecord,
   createPaymentOperationIdempotencyRecord,
   createRefundRecord,
   createStoredPaymentIntent,
   ensureCommerceOrderForApproval,
-  getAgentPaymentGrantById,
   getActivePaymentIntentByOrderId,
+  getAgentPaymentGrantById,
   getCommerceOrderByOrderId,
   getInProgressPaymentOperationForIntent,
-  getPaymentSettlementByPaymentIntentId,
   getPaymentIntentById,
-  getPaymentOperationIdempotencyRecord,
   getPaymentIntentRowById,
+  getPaymentOperationIdempotencyRecord,
+  getPaymentSettlementByPaymentIntentId,
   getRefundRecordsByPaymentIntentId,
   getSettlementApprovalById,
   updateCommerceOrderStatus,
@@ -32,6 +31,7 @@ import {
   completeWebhookEvent,
   failWebhookEvent,
 } from "../services/webhook-event-claim.service.js";
+import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
@@ -168,7 +168,9 @@ const mockEnsureCommerceOrderForApproval = vi.mocked(ensureCommerceOrderForAppro
 const mockGetAgentPaymentGrantById = vi.mocked(getAgentPaymentGrantById);
 const mockGetActivePaymentIntentByOrderId = vi.mocked(getActivePaymentIntentByOrderId);
 const mockGetCommerceOrderByOrderId = vi.mocked(getCommerceOrderByOrderId);
-const mockGetInProgressPaymentOperationForIntent = vi.mocked(getInProgressPaymentOperationForIntent);
+const mockGetInProgressPaymentOperationForIntent = vi.mocked(
+  getInProgressPaymentOperationForIntent,
+);
 const mockGetPaymentSettlementByPaymentIntentId = vi.mocked(getPaymentSettlementByPaymentIntentId);
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
 const mockGetPaymentOperationIdempotencyRecord = vi.mocked(getPaymentOperationIdempotencyRecord);
@@ -178,8 +180,12 @@ const mockGetSettlementApprovalById = vi.mocked(getSettlementApprovalById);
 const mockUpdateCommerceOrderStatus = vi.mocked(updateCommerceOrderStatus);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockCreateRefundRecord = vi.mocked(createRefundRecord);
-const mockCompletePaymentOperationIdempotencyRecord = vi.mocked(completePaymentOperationIdempotencyRecord);
-const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(createPaymentOperationIdempotencyRecord);
+const mockCompletePaymentOperationIdempotencyRecord = vi.mocked(
+  completePaymentOperationIdempotencyRecord,
+);
+const mockCreatePaymentOperationIdempotencyRecord = vi.mocked(
+  createPaymentOperationIdempotencyRecord,
+);
 const mockCreateSettlementReleaseRecord = vi.mocked(createSettlementReleaseRecord);
 const mockCreateShipmentRecord = vi.mocked(createShipmentRecord);
 const mockCreatePublicClient = vi.mocked(createPublicClient);
@@ -198,7 +204,8 @@ describe("Payment routes", () => {
     originalConditionalSettlementAddress = process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
     originalUsdcAssetAddress = process.env.HAGGLE_X402_USDC_ASSET_ADDRESS;
     originalBaseRpcUrl = process.env.HAGGLE_BASE_RPC_URL;
-    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = "0xcccccccccccccccccccccccccccccccccccccccc";
+    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS =
+      "0xcccccccccccccccccccccccccccccccccccccccc";
     process.env.HAGGLE_X402_USDC_ASSET_ADDRESS = "0x3333333333333333333333333333333333333333";
     process.env.HAGGLE_BASE_RPC_URL = "https://base-rpc.test";
     app = await getTestApp();
@@ -206,7 +213,8 @@ describe("Payment routes", () => {
 
   afterAll(async () => {
     await closeTestApp();
-    if (originalConditionalSettlementAddress === undefined) delete process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
+    if (originalConditionalSettlementAddress === undefined)
+      delete process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS;
     else process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS = originalConditionalSettlementAddress;
     if (originalUsdcAssetAddress === undefined) delete process.env.HAGGLE_X402_USDC_ASSET_ADDRESS;
     else process.env.HAGGLE_X402_USDC_ASSET_ADDRESS = originalUsdcAssetAddress;
@@ -245,7 +253,11 @@ describe("Payment routes", () => {
             seller_policy: {
               mode: "AUTO_WITHIN_POLICY",
               fulfillment_sla: { shipment_input_due_days: 3 },
-              responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+              responsiveness: {
+                median_response_minutes: 30,
+                p95_response_minutes: 120,
+                reliable_fast_responder: true,
+              },
             },
             terms: {
               listing_id: "listing_1",
@@ -287,7 +299,11 @@ describe("Payment routes", () => {
           seller_policy: {
             mode: "AUTO_WITHIN_POLICY",
             fulfillment_sla: { shipment_input_due_days: 3 },
-            responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+            responsiveness: {
+              median_response_minutes: 30,
+              p95_response_minutes: 120,
+              reliable_fast_responder: true,
+            },
           },
           terms: {
             listing_id: "listing_1",
@@ -333,7 +349,11 @@ describe("Payment routes", () => {
           seller_policy: {
             mode: "AUTO_WITHIN_POLICY",
             fulfillment_sla: { shipment_input_due_days: 3 },
-            responsiveness: { median_response_minutes: 30, p95_response_minutes: 120, reliable_fast_responder: true },
+            responsiveness: {
+              median_response_minutes: 30,
+              p95_response_minutes: 120,
+              reliable_fast_responder: true,
+            },
           },
           terms: {
             listing_id: "listing_1",
@@ -541,9 +561,18 @@ describe("Payment routes", () => {
   });
 
   it.each([
-    ["no_custody", { no_custody: false, buyer_approved_rules: true, stablecoin_not_investment: true }],
-    ["buyer_approved_rules", { no_custody: true, buyer_approved_rules: false, stablecoin_not_investment: true }],
-    ["stablecoin_not_investment", { no_custody: true, buyer_approved_rules: true, stablecoin_not_investment: false }],
+    [
+      "no_custody",
+      { no_custody: false, buyer_approved_rules: true, stablecoin_not_investment: true },
+    ],
+    [
+      "buyer_approved_rules",
+      { no_custody: true, buyer_approved_rules: false, stablecoin_not_investment: true },
+    ],
+    [
+      "stablecoin_not_investment",
+      { no_custody: true, buyer_approved_rules: true, stablecoin_not_investment: false },
+    ],
   ])("rejects invalid payment disclosure acknowledgement for %s before persistence lookup", async (field, acknowledgement) => {
     mockGetSettlementApprovalById.mockClear();
     mockEnsureCommerceOrderForApproval.mockClear();
@@ -626,26 +655,42 @@ describe("Payment routes", () => {
     ["POST", "/payments/pi_buyer_action/quote", undefined],
     ["GET", "/payments/pi_buyer_action/x402/requirements", undefined],
     ["POST", "/payments/pi_buyer_action/x402/conditional-settlement-request", {}],
-    ["POST", "/payments/pi_buyer_action/x402/conditional-settlement-funding", {
-      tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
-    }],
-    ["POST", "/payments/pi_buyer_action/x402/conditional-settlement-confirmation", {
-      tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
-    }],
+    [
+      "POST",
+      "/payments/pi_buyer_action/x402/conditional-settlement-funding",
+      {
+        tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      },
+    ],
+    [
+      "POST",
+      "/payments/pi_buyer_action/x402/conditional-settlement-confirmation",
+      {
+        tx_hash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      },
+    ],
     ["POST", "/payments/pi_buyer_action/x402/submit-signature", { payment_payload: {} }],
     ["POST", "/payments/pi_buyer_action/authorize", undefined],
     ["POST", "/payments/pi_buyer_action/settlement-pending", undefined],
     ["POST", "/payments/pi_buyer_action/settle", undefined],
     ["POST", "/payments/pi_buyer_action/fail", undefined],
     ["POST", "/payments/pi_buyer_action/cancel", undefined],
-    ["POST", "/payments/pi_buyer_action/refund", {
-      amount_minor: 100,
-      currency: "USD",
-      reason_code: "buyer_requested",
-    }],
-    ["POST", "/payments/pi_buyer_action/onramp/session", {
-      destination_wallet: "0x1111111111111111111111111111111111111111",
-    }],
+    [
+      "POST",
+      "/payments/pi_buyer_action/refund",
+      {
+        amount_minor: 100,
+        currency: "USD",
+        reason_code: "buyer_requested",
+      },
+    ],
+    [
+      "POST",
+      "/payments/pi_buyer_action/onramp/session",
+      {
+        destination_wallet: "0x1111111111111111111111111111111111111111",
+      },
+    ],
   ])("%s %s rejects sellers before buyer payment mutation logic", async (method, url, payload) => {
     mockGetPaymentIntentById.mockClear();
     mockGetPaymentIntentById.mockResolvedValueOnce({
@@ -1017,9 +1062,22 @@ describe("Payment routes", () => {
     });
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
-    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(expect.anything(), "order_123", "seller_123", "test-user-001");
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "PAID");
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+    expect(mockCreateShipmentRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "seller_123",
+      "test-user-001",
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "PAID",
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "FULFILLMENT_PENDING",
+    );
   });
 
   it("POST /payments/:id/settle finalizes digital fulfillment without creating a shipment", async () => {
@@ -1081,7 +1139,11 @@ describe("Payment routes", () => {
     expect(mockUpdateStoredPaymentIntent).not.toHaveBeenCalled();
     expect(mockCreateSettlementReleaseRecord).toHaveBeenCalledOnce();
     expect(mockCreateShipmentRecord).not.toHaveBeenCalled();
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "FULFILLMENT_PENDING");
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "order_123",
+      "FULFILLMENT_PENDING",
+    );
   });
 
   it("POST /payments/:id/refund maps non-settled refunds to 409", async () => {
@@ -1527,8 +1589,9 @@ describe("Payment routes", () => {
       approval_policy_hash: "sha256:policy",
       nonce: "grant-nonce",
     } as never);
-    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
+    (
+      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
+    ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
 
     try {
       const res = await app.inject({
@@ -1597,8 +1660,9 @@ describe("Payment routes", () => {
       approval_policy_hash: "sha256:policy",
       nonce: "grant-nonce",
     } as never);
-    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
+    (
+      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
+    ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
 
     try {
       const res = await app.inject({
@@ -1656,7 +1720,13 @@ describe("Payment routes", () => {
         status: "success",
         blockNumber: 100n,
         blockHash: `0x${"cc".repeat(32)}`,
-        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+        logs: [
+          {
+            address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+            topics: ["0x1"],
+            data: "0x",
+          },
+        ],
       }),
     } as never);
     mockDecodeEventLog.mockReturnValueOnce({
@@ -1683,7 +1753,11 @@ describe("Payment routes", () => {
         }),
       );
       expect(mockCreateRefundRecord).not.toHaveBeenCalled();
-      expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(expect.anything(), "order_123", "REFUNDED");
+      expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "order_123",
+        "REFUNDED",
+      );
     } finally {
       if (originalRpc === undefined) delete process.env.HAGGLE_BASE_RPC_URL;
       else process.env.HAGGLE_BASE_RPC_URL = originalRpc;
@@ -1727,7 +1801,13 @@ describe("Payment routes", () => {
         status: "success",
         blockNumber: 100n,
         blockHash: `0x${"cc".repeat(32)}`,
-        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+        logs: [
+          {
+            address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+            topics: ["0x1"],
+            data: "0x",
+          },
+        ],
       }),
     } as never);
     mockDecodeEventLog.mockReturnValueOnce({
@@ -1757,7 +1837,11 @@ describe("Payment routes", () => {
         }),
         txHash,
       );
-      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "order_123", "REFUNDED");
+      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "order_123",
+        "REFUNDED",
+      );
       expect(mockUpdateStoredPaymentIntent).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -1796,7 +1880,9 @@ describe("Payment routes", () => {
     };
     mockGetPaymentIntentById.mockResolvedValueOnce(intent as never);
     mockGetPaymentIntentRowById.mockResolvedValueOnce({
-      providerContext: { conditional_settlement: { settlement_id: settlementId, refund_tx_hash: txHash } },
+      providerContext: {
+        conditional_settlement: { settlement_id: settlementId, refund_tx_hash: txHash },
+      },
     } as never);
     mockCreatePublicClient.mockReturnValueOnce({
       getBlockNumber: vi.fn().mockResolvedValue(100n),
@@ -1804,7 +1890,13 @@ describe("Payment routes", () => {
       getTransactionReceipt: vi.fn().mockResolvedValue({
         status: "success",
         blockNumber: 100n,
-        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+        logs: [
+          {
+            address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+            topics: ["0x1"],
+            data: "0x",
+          },
+        ],
       }),
     } as never);
     mockDecodeEventLog.mockClear();
@@ -1819,10 +1911,13 @@ describe("Payment routes", () => {
       });
       expect(res.statusCode).toBe(202);
       expect(res.headers["retry-after"]).toBe("2");
-      expect(res.json()).toMatchObject({ conditional_settlement: {
-        status: "REFUND_CONFIRMATIONS_PENDING",
-        finality: { observed_confirmations: 1, required_confirmations: 2 },
-      }, retry: { after_seconds: 2, reuse_transaction_hash: true, use_new_idempotency_key: true } });
+      expect(res.json()).toMatchObject({
+        conditional_settlement: {
+          status: "REFUND_CONFIRMATIONS_PENDING",
+          finality: { observed_confirmations: 1, required_confirmations: 2 },
+        },
+        retry: { after_seconds: 2, reuse_transaction_hash: true, use_new_idempotency_key: true },
+      });
       expect(mockDecodeEventLog).not.toHaveBeenCalled();
       expect(mockCreateRefundRecord).not.toHaveBeenCalled();
       expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
@@ -1852,7 +1947,9 @@ describe("Payment routes", () => {
     };
     mockGetPaymentIntentById.mockResolvedValueOnce(intent as never);
     mockGetPaymentIntentRowById.mockResolvedValueOnce({
-      providerContext: { conditional_settlement: { settlement_id: settlementId, refund_tx_hash: txHash } },
+      providerContext: {
+        conditional_settlement: { settlement_id: settlementId, refund_tx_hash: txHash },
+      },
     } as never);
     mockCreatePublicClient.mockReturnValueOnce({
       getBlockNumber: vi.fn().mockResolvedValue(101n),
@@ -1861,7 +1958,13 @@ describe("Payment routes", () => {
         status: "success",
         blockNumber: 100n,
         blockHash: receiptBlockHash,
-        logs: [{ address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS, topics: ["0x1"], data: "0x" }],
+        logs: [
+          {
+            address: process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+            topics: ["0x1"],
+            data: "0x",
+          },
+        ],
       }),
     } as never);
     mockDecodeEventLog.mockClear();
@@ -1875,10 +1978,12 @@ describe("Payment routes", () => {
         headers: ADMIN_HEADERS,
       });
       expect(res.statusCode).toBe(503);
-      expect(res.json()).toMatchObject({ conditional_settlement: {
-        status: "REFUND_FINALITY_UNAVAILABLE",
-        finality: { reason: "RECEIPT_BLOCK_NOT_CANONICAL" },
-      } });
+      expect(res.json()).toMatchObject({
+        conditional_settlement: {
+          status: "REFUND_FINALITY_UNAVAILABLE",
+          finality: { reason: "RECEIPT_BLOCK_NOT_CANONICAL" },
+        },
+      });
       expect(res.json()).not.toHaveProperty("retry");
       expect(mockDecodeEventLog).not.toHaveBeenCalled();
       expect(mockCreateRefundRecord).not.toHaveBeenCalled();
@@ -2346,12 +2451,12 @@ describe("Payment routes", () => {
     process.env.STRIPE_PUBLISHABLE_KEY = "pk_test_123";
     process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS = "150";
     process.env.HAGGLE_X402_FEE_BPS = "150";
-	    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-	      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[
-	        { walletAddress: "0x1111111111111111111111111111111111111111" },
-	      ], [
-	        { walletAddress: "0x2222222222222222222222222222222222222222" },
-	      ]];
+    (
+      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
+    ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [
+      [{ walletAddress: "0x1111111111111111111111111111111111111111" }],
+      [{ walletAddress: "0x2222222222222222222222222222222222222222" }],
+    ];
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
@@ -2883,41 +2988,55 @@ describe("Payment routes", () => {
 
     expect(res.statusCode).toBe(201);
     expect(mockGetSettlementApprovalById).toHaveBeenCalledWith(expect.anything(), sessionId);
-    expect(mockEnsureCommerceOrderForApproval).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      id: sessionId,
-      approval_state: "APPROVED",
-    }));
-    expect(mockCreateAgentPaymentGrantRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      order_id: orderId,
-      settlement_approval_id: sessionId,
-      buyer_id: "test-user-001",
-      seller_id: sellerId,
-      listing_id: listingId,
-      max_amount_minor: 50_000,
-      preferred_rail: "x402",
-      legal_acknowledgements: expect.objectContaining({
-        no_custody: true,
-        buyer_approved_rules: true,
-        stripe_fallback: true,
-        stablecoin_not_investment: true,
+    expect(mockEnsureCommerceOrderForApproval).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: sessionId,
+        approval_state: "APPROVED",
       }),
-    }), expect.stringMatching(/^sha256:/));
-    expect(mockCreateStoredPaymentIntent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      order_id: orderId,
-      buyer_id: "test-user-001",
-      seller_id: sellerId,
-      selected_rail: "x402",
-      amount: { currency: "USD", amount_minor: 50_000 },
-    }), expect.objectContaining({
-      settlement_approval_id: sessionId,
-      agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
-    }));
-    expect(mockCreatePaymentDisclosureRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
-      rail: "x402",
-      version: PAYMENT_DISCLOSURE_VERSION,
-      text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
-    }));
+    );
+    expect(mockCreateAgentPaymentGrantRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        order_id: orderId,
+        settlement_approval_id: sessionId,
+        buyer_id: "test-user-001",
+        seller_id: sellerId,
+        listing_id: listingId,
+        max_amount_minor: 50_000,
+        preferred_rail: "x402",
+        legal_acknowledgements: expect.objectContaining({
+          no_custody: true,
+          buyer_approved_rules: true,
+          stripe_fallback: true,
+          stablecoin_not_investment: true,
+        }),
+      }),
+      expect.stringMatching(/^sha256:/),
+    );
+    expect(mockCreateStoredPaymentIntent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        order_id: orderId,
+        buyer_id: "test-user-001",
+        seller_id: sellerId,
+        selected_rail: "x402",
+        amount: { currency: "USD", amount_minor: 50_000 },
+      }),
+      expect.objectContaining({
+        settlement_approval_id: sessionId,
+        agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
+      }),
+    );
+    expect(mockCreatePaymentDisclosureRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
+        rail: "x402",
+        version: PAYMENT_DISCLOSURE_VERSION,
+        text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+      }),
+    );
     expect(mockCreatePaymentOperationIdempotencyRecord).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -3159,10 +3278,14 @@ describe("Payment routes", () => {
       created_at: now,
       updated_at: now,
     });
-    mockCreateStoredPaymentIntent.mockRejectedValueOnce(Object.assign(
-      new Error("duplicate key value violates unique constraint \"uq_active_payment_intents_order_id\""),
-      { code: "23505", constraint: "uq_active_payment_intents_order_id" },
-    ));
+    mockCreateStoredPaymentIntent.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'duplicate key value violates unique constraint "uq_active_payment_intents_order_id"',
+        ),
+        { code: "23505", constraint: "uq_active_payment_intents_order_id" },
+      ),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -3184,8 +3307,16 @@ describe("Payment routes", () => {
 
     expect(res.statusCode).toBe(200);
     expect(mockGetActivePaymentIntentByOrderId).toHaveBeenCalledTimes(2);
-    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenNthCalledWith(1, expect.anything(), orderId);
-    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenNthCalledWith(2, expect.anything(), orderId);
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      orderId,
+    );
+    expect(mockGetActivePaymentIntentByOrderId).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      orderId,
+    );
     expect(mockCreateStoredPaymentIntent).toHaveBeenCalledOnce();
     expect(mockCreatePaymentDisclosureRecord).not.toHaveBeenCalled();
     expect(res.json()).toMatchObject({
@@ -3282,10 +3413,12 @@ describe("Payment routes", () => {
       created_at: now,
       updated_at: now,
     });
-    mockCreateStoredPaymentIntent.mockRejectedValueOnce(Object.assign(
-      new Error("duplicate key value violates unique constraint \"payment_intents_pkey\""),
-      { code: "23505", constraint: "payment_intents_pkey" },
-    ));
+    mockCreateStoredPaymentIntent.mockRejectedValueOnce(
+      Object.assign(
+        new Error('duplicate key value violates unique constraint "payment_intents_pkey"'),
+        { code: "23505", constraint: "payment_intents_pkey" },
+      ),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -3365,12 +3498,20 @@ describe("Payment routes", () => {
   });
 
   it("POST /payments/webhooks/x402 returns duplicate without applying the event twice", async () => {
-    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "duplicate", source: "x402", eventId: "evt_duplicate" });
+    mockClaimWebhookEvent.mockResolvedValueOnce({
+      outcome: "duplicate",
+      source: "x402",
+      eventId: "evt_duplicate",
+    });
     mockGetPaymentIntentById.mockClear();
     const res = await app.inject({
       method: "POST",
       url: "/payments/webhooks/x402",
-      payload: { event_id: "evt_duplicate", event_type: "settlement.confirmed", payment_intent_id: "pi_123" },
+      payload: {
+        event_id: "evt_duplicate",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ accepted: true, action: "duplicate" });
@@ -3378,26 +3519,45 @@ describe("Payment routes", () => {
   });
 
   it("POST /payments/webhooks/x402 asks the provider to retry while another server owns the claim", async () => {
-    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "in_progress", source: "x402", eventId: "evt_busy" });
+    mockClaimWebhookEvent.mockResolvedValueOnce({
+      outcome: "in_progress",
+      source: "x402",
+      eventId: "evt_busy",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/payments/webhooks/x402",
-      payload: { event_id: "evt_busy", event_type: "settlement.confirmed", payment_intent_id: "pi_123" },
+      payload: {
+        event_id: "evt_busy",
+        event_type: "settlement.confirmed",
+        payment_intent_id: "pi_123",
+      },
     });
     expect(res.statusCode).toBe(503);
     expect(res.json().error).toBe("WEBHOOK_PROCESSING_IN_PROGRESS");
   });
 
   it("POST /payments/webhooks/x402 rejects a changed payload for the same provider event id", async () => {
-    mockClaimWebhookEvent.mockResolvedValueOnce({ outcome: "payload_conflict", source: "x402", eventId: "evt_changed" });
+    mockClaimWebhookEvent.mockResolvedValueOnce({
+      outcome: "payload_conflict",
+      source: "x402",
+      eventId: "evt_changed",
+    });
     const res = await app.inject({
       method: "POST",
       url: "/payments/webhooks/x402",
-      payload: { event_id: "evt_changed", event_type: "settlement.failed", payment_intent_id: "pi_other" },
+      payload: {
+        event_id: "evt_changed",
+        event_type: "settlement.failed",
+        payment_intent_id: "pi_other",
+      },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe("WEBHOOK_PAYLOAD_CONFLICT");
-    expect(mockFailWebhookEvent).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventId: "evt_changed" }));
+    expect(mockFailWebhookEvent).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventId: "evt_changed" }),
+    );
   });
 
   // Stripe webhook - missing stripe-signature header returns 401

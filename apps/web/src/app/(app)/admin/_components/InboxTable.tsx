@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   adminApi,
   type InboxItemByType,
@@ -44,12 +44,11 @@ export function InboxTable<K extends InboxType>({
   const [error, setError] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch on the listed deps only
   useEffect(() => {
     let cancelled = false;
     const load =
-      fetchList ??
-      ((t: K, p: { limit: number; offset: number }) =>
-        adminApi.inbox.list(t, p));
+      fetchList ?? ((t: K, p: { limit: number; offset: number }) => adminApi.inbox.list(t, p));
 
     setLoading(true);
     load(type, { limit: pageSize, offset })
@@ -75,6 +74,7 @@ export function InboxTable<K extends InboxType>({
   }, [type, offset, pageSize, fetchList, retryTick, refreshKey]);
 
   // Reset offset when tab (type) changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset pagination when type changes
   useEffect(() => {
     setOffset(0);
   }, [type]);
@@ -84,9 +84,9 @@ export function InboxTable<K extends InboxType>({
   const colSpan = columns.length;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-      <table className="min-w-full divide-y divide-neutral-200 text-sm">
-        <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
+    <div className="overflow-hidden rounded-lg border border-line bg-surface-raised">
+      <table className="min-w-full divide-y divide-line text-sm">
+        <thead className="bg-surface-sunken text-left text-xs uppercase tracking-wide text-ink-muted">
           <tr>
             {columns.map((col) => (
               <th key={col.key} className="px-4 py-2">
@@ -95,24 +95,24 @@ export function InboxTable<K extends InboxType>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-neutral-100">
+        <tbody className="divide-y divide-line">
           {loading && (
             <tr>
-              <td colSpan={colSpan} className="px-4 py-6 text-center text-neutral-500">
+              <td colSpan={colSpan} className="px-4 py-6 text-center text-ink-muted">
                 Loading…
               </td>
             </tr>
           )}
           {!loading && error && (
             <tr>
-              <td colSpan={colSpan} className="px-4 py-6 text-center text-red-600">
+              <td colSpan={colSpan} className="px-4 py-6 text-center text-error">
                 <div className="flex flex-col items-center gap-2">
                   <span>{error}</span>
                   <button
                     type="button"
                     data-testid="inbox-retry"
                     onClick={() => setRetryTick((t) => t + 1)}
-                    className="rounded border border-red-300 bg-white px-3 py-1 text-xs text-red-700 hover:bg-red-50"
+                    className="rounded border border-error/30 bg-surface-raised px-3 py-1 text-xs text-error hover:bg-error-soft"
                   >
                     Retry
                   </button>
@@ -122,7 +122,7 @@ export function InboxTable<K extends InboxType>({
           )}
           {!loading && !error && items.length === 0 && (
             <tr>
-              <td colSpan={colSpan} className="px-4 py-6 text-center text-neutral-500">
+              <td colSpan={colSpan} className="px-4 py-6 text-center text-ink-muted">
                 Nothing to review.
               </td>
             </tr>
@@ -134,13 +134,10 @@ export function InboxTable<K extends InboxType>({
                 key={item.id}
                 data-testid={`inbox-row-${item.id}`}
                 onClick={() => onSelect?.(item)}
-                className="cursor-pointer hover:bg-neutral-50"
+                className="cursor-pointer hover:bg-surface-sunken"
               >
                 {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className="px-4 py-2 text-neutral-800 align-top"
-                  >
+                  <td key={col.key} className="px-4 py-2 text-ink align-top">
                     {col.render(item)}
                   </td>
                 ))}
@@ -149,7 +146,7 @@ export function InboxTable<K extends InboxType>({
         </tbody>
       </table>
 
-      <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50 px-4 py-2 text-xs text-neutral-600">
+      <div className="flex items-center justify-between border-t border-line bg-surface-sunken px-4 py-2 text-xs text-ink-secondary">
         <span>
           Showing {items.length === 0 ? 0 : offset + 1}–{offset + items.length}
         </span>
@@ -158,7 +155,7 @@ export function InboxTable<K extends InboxType>({
             type="button"
             onClick={() => setOffset((o) => Math.max(0, o - pageSize))}
             disabled={!canPrev}
-            className="rounded border border-neutral-300 bg-white px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded border border-line bg-surface-raised px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Prev
           </button>
@@ -166,7 +163,7 @@ export function InboxTable<K extends InboxType>({
             type="button"
             onClick={() => setOffset((o) => o + pageSize)}
             disabled={!canNext}
-            className="rounded border border-neutral-300 bg-white px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded border border-line bg-surface-raised px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Next
           </button>

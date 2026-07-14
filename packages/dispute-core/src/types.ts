@@ -14,7 +14,13 @@ export type DisputeStatus =
 
 export interface DisputeEvidenceDerivedArtifact {
   id: string;
-  kind: "image_visual_observation" | "image_metadata" | "video_keyframe" | "video_metadata" | "video_transcript" | "video_ocr";
+  kind:
+    | "image_visual_observation"
+    | "image_metadata"
+    | "video_keyframe"
+    | "video_metadata"
+    | "video_transcript"
+    | "video_ocr";
   source_evidence_id: string;
   uri?: string;
   text?: string;
@@ -58,11 +64,7 @@ export interface DisputeEvidence {
 }
 
 export interface DisputeResolution {
-  outcome:
-    | "buyer_favor"
-    | "seller_favor"
-    | "partial_refund"
-    | "no_action";
+  outcome: "buyer_favor" | "seller_favor" | "partial_refund" | "no_action";
   summary: string;
   refund_amount_minor?: number;
   resolved_at?: string;
@@ -113,30 +115,30 @@ export interface Tier3DiscountResult {
 export type DSTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM" | "DIAMOND";
 
 export const DS_TIER_BOUNDARIES: Record<DSTier, { min: number; max: number }> = {
-  BRONZE:   { min:  0, max: 30 },
-  SILVER:   { min: 31, max: 50 },
-  GOLD:     { min: 51, max: 70 },
+  BRONZE: { min: 0, max: 30 },
+  SILVER: { min: 31, max: 50 },
+  GOLD: { min: 51, max: 70 },
   PLATINUM: { min: 71, max: 85 },
-  DIAMOND:  { min: 86, max: 100 },
+  DIAMOND: { min: 86, max: 100 },
 };
 
 export const DS_VOTE_WEIGHTS: Record<DSTier, number> = {
-  BRONZE:   0.63,
-  SILVER:   0.85,
-  GOLD:     1.10,
+  BRONZE: 0.63,
+  SILVER: 0.85,
+  GOLD: 1.1,
   PLATINUM: 1.45,
-  DIAMOND:  2.0,
+  DIAMOND: 2.0,
 };
 
 export interface DSInput {
-  zone_hit_rate: number;        // 0-1
-  result_proximity: number;     // 0-1
-  participation_rate: number;   // 0-1
-  response_hours: number;       // hours taken to respond
-  cumulative_cases: number;     // total cases judged
-  unique_categories: number;    // unique dispute categories
-  total_categories: number;     // total categories available
-  high_value_cases: number;     // cases with high-value disputes
+  zone_hit_rate: number; // 0-1
+  result_proximity: number; // 0-1
+  participation_rate: number; // 0-1
+  response_hours: number; // hours taken to respond
+  cumulative_cases: number; // total cases judged
+  unique_categories: number; // unique dispute categories
+  total_categories: number; // total categories available
+  high_value_cases: number; // cases with high-value disputes
 }
 
 export interface DSResult {
@@ -174,8 +176,8 @@ export interface TagSpecialization {
 
 export interface ReviewerVote {
   reviewer_id: string;
-  vote: number;   // 0-100 (percentage for buyer)
-  weight: number;  // from DS tier
+  vote: number; // 0-100 (percentage for buyer)
+  weight: number; // from DS tier
 }
 
 export interface AgreementZone {
@@ -252,13 +254,13 @@ export interface SettlementResolution {
   hold: SettlementHold;
   buyer_receives_cents: number;
   seller_receives_cents: number;
-  dispute_cost_cents: number;         // total dispute cost (from loser)
-  reviewer_receives_cents: number;    // 70% of dispute cost
-  platform_receives_cents: number;    // 30% of dispute cost + forfeited deposit
-  deposit_refund_cents: number;       // seller deposit returned (if seller won)
+  dispute_cost_cents: number; // total dispute cost (from loser)
+  reviewer_receives_cents: number; // 70% of dispute cost
+  platform_receives_cents: number; // 30% of dispute cost + forfeited deposit
+  deposit_refund_cents: number; // seller deposit returned (if seller won)
 }
 
 /** Reviewer compensation share of dispute cost */
-export const REVIEWER_SHARE = 0.70;
+export const REVIEWER_SHARE = 0.7;
 /** Platform share of dispute cost */
-export const PLATFORM_SHARE = 0.30;
+export const PLATFORM_SHARE = 0.3;

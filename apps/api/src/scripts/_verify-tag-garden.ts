@@ -1,9 +1,6 @@
-import { config } from "dotenv";
-import { resolve } from "node:path";
-config({ path: resolve(import.meta.dirname, "../../../../.env") });
-config({ path: resolve(import.meta.dirname, "../../.env"), override: false });
-
+import "../config/load-env.js";
 import { createDb, sql } from "@haggle/db";
+
 const db = createDb(process.env.DATABASE_URL!);
 
 async function main() {
@@ -27,7 +24,9 @@ async function main() {
   `);
   console.log("\n=== Top 10 IDF (most distinctive) ===");
   for (const r of topIdf as any[]) {
-    console.log(`  ${r.name.padEnd(25)} ${r.status.padEnd(10)} uses=${r.use_count}  idf=${Number(r.idf).toFixed(2)}  [${r.category}]`);
+    console.log(
+      `  ${r.name.padEnd(25)} ${r.status.padEnd(10)} uses=${r.use_count}  idf=${Number(r.idf).toFixed(2)}  [${r.category}]`,
+    );
   }
 
   // OFFICIAL tags
@@ -36,7 +35,9 @@ async function main() {
   `);
   console.log("\n=== OFFICIAL Tags (3+ uses) ===");
   for (const r of officials as any[]) {
-    console.log(`  ${r.name.padEnd(20)} uses=${String(r.use_count).padEnd(3)} idf=${Number(r.idf).toFixed(2)}  [${r.category}]`);
+    console.log(
+      `  ${r.name.padEnd(20)} uses=${String(r.use_count).padEnd(3)} idf=${Number(r.idf).toFixed(2)}  [${r.category}]`,
+    );
   }
 
   // DAG edges
@@ -57,4 +58,7 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

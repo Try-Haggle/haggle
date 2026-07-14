@@ -34,63 +34,85 @@ describe("carrier event ordering", () => {
   });
 
   it("ignores an event older than the applied carrier watermark", () => {
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      incomingOccurredAt: new Date("2026-07-12T10:00:00.000Z"),
-    })).toMatchObject({ disposition: "stale", nextStatus: "IN_TRANSIT" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        incomingOccurredAt: new Date("2026-07-12T10:00:00.000Z"),
+      }),
+    ).toMatchObject({ disposition: "stale", nextStatus: "IN_TRANSIT" });
   });
 
   it("never regresses delivered or returned terminal states", () => {
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      currentStatus: "DELIVERED",
-      incomingStatus: "IN_TRANSIT",
-    })).toMatchObject({ disposition: "terminal", nextStatus: "DELIVERED" });
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      currentStatus: "RETURNED",
-      incomingStatus: "DELIVERED",
-    })).toMatchObject({ disposition: "terminal", nextStatus: "RETURNED" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        currentStatus: "DELIVERED",
+        incomingStatus: "IN_TRANSIT",
+      }),
+    ).toMatchObject({ disposition: "terminal", nextStatus: "DELIVERED" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        currentStatus: "RETURNED",
+        incomingStatus: "DELIVERED",
+      }),
+    ).toMatchObject({ disposition: "terminal", nextStatus: "RETURNED" });
   });
 
   it("allows carrier forward jumps when intermediate scans are missing", () => {
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      currentStatus: "LABEL_CREATED",
-      incomingStatus: "DELIVERED",
-    })).toMatchObject({ disposition: "applied", nextStatus: "DELIVERED" });
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      currentStatus: "DELIVERY_EXCEPTION",
-      incomingStatus: "OUT_FOR_DELIVERY",
-    })).toMatchObject({ disposition: "applied", nextStatus: "OUT_FOR_DELIVERY" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        currentStatus: "LABEL_CREATED",
+        incomingStatus: "DELIVERED",
+      }),
+    ).toMatchObject({ disposition: "applied", nextStatus: "DELIVERED" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        currentStatus: "DELIVERY_EXCEPTION",
+        incomingStatus: "OUT_FOR_DELIVERY",
+      }),
+    ).toMatchObject({ disposition: "applied", nextStatus: "OUT_FOR_DELIVERY" });
   });
 
   it("does not leave the return branch for a late delivery scan", () => {
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      currentStatus: "RETURN_IN_TRANSIT",
-      incomingStatus: "DELIVERED",
-    })).toMatchObject({ disposition: "invalid_transition", nextStatus: "RETURN_IN_TRANSIT" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        currentStatus: "RETURN_IN_TRANSIT",
+        incomingStatus: "DELIVERED",
+      }),
+    ).toMatchObject({ disposition: "invalid_transition", nextStatus: "RETURN_IN_TRANSIT" });
   });
 
   it("uses the event key as a deterministic tie breaker", () => {
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      incomingOccurredAt: base.lastCarrierEventAt,
-      incomingEventKey: "evt_0",
-    })).toMatchObject({ disposition: "stale" });
-    expect(resolveCarrierEventOrdering({
-      ...base,
-      incomingOccurredAt: base.lastCarrierEventAt,
-      incomingEventKey: "evt_9",
-    })).toMatchObject({ disposition: "applied" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        incomingOccurredAt: base.lastCarrierEventAt,
+        incomingEventKey: "evt_0",
+      }),
+    ).toMatchObject({ disposition: "stale" });
+    expect(
+      resolveCarrierEventOrdering({
+        ...base,
+        incomingOccurredAt: base.lastCarrierEventAt,
+        incomingEventKey: "evt_9",
+      }),
+    ).toMatchObject({ disposition: "applied" });
   });
 
   it("falls back to receive time for invalid or excessively future timestamps", () => {
     const receivedAt = new Date("2026-07-12T12:00:00.000Z");
-    expect(normalizeCarrierEventTime("invalid", receivedAt)).toEqual({ occurredAt: receivedAt, source: "received_at" });
-    expect(normalizeCarrierEventTime("2026-07-12T13:00:00.000Z", receivedAt)).toEqual({ occurredAt: receivedAt, source: "received_at" });
+    expect(normalizeCarrierEventTime("invalid", receivedAt)).toEqual({
+      occurredAt: receivedAt,
+      source: "received_at",
+    });
+    expect(normalizeCarrierEventTime("2026-07-12T13:00:00.000Z", receivedAt)).toEqual({
+      occurredAt: receivedAt,
+      source: "received_at",
+    });
     expect(normalizeCarrierEventTime("2026-07-12T12:05:00.000Z", receivedAt)).toEqual({
       occurredAt: new Date("2026-07-12T12:05:00.000Z"),
       source: "carrier",
@@ -105,7 +127,12 @@ describe("carrier event ordering", () => {
         status: "delivered",
         carrier: "USPS",
         tracking_details: [
-          { message: "Delivered", status: "delivered", datetime: "2026-07-12T12:00:00.000Z", tracking_location: { city: "Denver", state: "CO" } },
+          {
+            message: "Delivered",
+            status: "delivered",
+            datetime: "2026-07-12T12:00:00.000Z",
+            tracking_location: { city: "Denver", state: "CO" },
+          },
           { message: "In transit", status: "in_transit", datetime: "2026-07-12T10:00:00.000Z" },
         ],
       },

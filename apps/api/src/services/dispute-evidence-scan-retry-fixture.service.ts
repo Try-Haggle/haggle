@@ -1,21 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import type { DisputeEvidenceScannerConfig } from
-  "./dispute-evidence-scan.service.js";
-import { scanDisputeEvidence } from "./dispute-evidence-scan.service.js";
+import { type Database, sql } from "@haggle/db";
+import type {
+  DisputeEvidenceScannerConfig,
+  scanDisputeEvidence,
+} from "./dispute-evidence-scan.service.js";
 import {
+  type DisputeEvidenceScanRetryClaim,
+  type DisputeEvidenceScanRetryConfig,
   finalizeDisputeEvidenceScanRetry,
   getDisputeEvidenceScanRetryHealth,
   runDisputeEvidenceScanRetry,
-  type DisputeEvidenceScanRetryClaim,
-  type DisputeEvidenceScanRetryConfig,
 } from "./dispute-evidence-scan-retry.service.js";
-import { runDisputeEvidenceScannerCircuitFixture } from
-  "./dispute-evidence-scanner-circuit-fixture.service.js";
+import { runDisputeEvidenceScannerCircuitFixture } from "./dispute-evidence-scanner-circuit-fixture.service.js";
 
-const PNG = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
-]);
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
 const RETRY_CONFIG: DisputeEvidenceScanRetryConfig = {
   batchSize: 10,
@@ -90,29 +88,38 @@ export async function runDisputeEvidenceScanRetryFixture(db: Database) {
       const sha256 = createHash("sha256").update(input.bytes).digest("hex");
       if (input.filename.startsWith(infectedId)) {
         return {
-          status: "INFECTED", sha256,
-          provider: "fixture-scanner", detail: "FIXTURE_MALWARE_DETECTED",
+          status: "INFECTED",
+          sha256,
+          provider: "fixture-scanner",
+          detail: "FIXTURE_MALWARE_DETECTED",
         };
       }
       if (input.filename.startsWith(exhaustedId)) {
         return {
-          status: "FAILED", sha256,
-          provider: "fixture-scanner", detail: "FIXTURE_SCANNER_TIMEOUT",
+          status: "FAILED",
+          sha256,
+          provider: "fixture-scanner",
+          detail: "FIXTURE_SCANNER_TIMEOUT",
         };
       }
       return {
-        status: "CLEAN", sha256,
-        provider: "fixture-scanner", detail: "CLEAN",
+        status: "CLEAN",
+        sha256,
+        provider: "fixture-scanner",
+        detail: "CLEAN",
       };
     };
     const download = async () => Buffer.from(PNG);
-    const runs = await Promise.all(Array.from({ length: 20 }, () =>
-      runDisputeEvidenceScanRetry(db, {
-        retryConfig: RETRY_CONFIG,
-        scannerConfig: SCANNER_CONFIG,
-        download,
-        scan,
-      })));
+    const runs = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        runDisputeEvidenceScanRetry(db, {
+          retryConfig: RETRY_CONFIG,
+          scannerConfig: SCANNER_CONFIG,
+          download,
+          scan,
+        }),
+      ),
+    );
     const claimed = runs.reduce((sum, run) => sum + run.claimed, 0);
     const clean = runs.reduce((sum, run) => sum + run.clean, 0);
     const infected = runs.reduce((sum, run) => sum + run.infected, 0);
@@ -120,7 +127,7 @@ export async function runDisputeEvidenceScanRetryFixture(db: Database) {
     const realNetworkCalled = runs.some((run) => run.realNetworkCalled);
     const realStorageRead = runs.some((run) => run.storageRead);
 
-    const stored = await db.execute(sql`
+    const stored = (await db.execute(sql`
       SELECT id::text, status, scan_status AS "scanStatus",
         scan_attempt_count AS "attemptCount",
         scan_next_attempt_at AS "nextAttemptAt",
@@ -129,7 +136,7 @@ export async function runDisputeEvidenceScanRetryFixture(db: Database) {
        FROM dispute_evidence_uploads
        WHERE id IN (${cleanId}::uuid, ${infectedId}::uuid,
          ${exhaustedId}::uuid, ${staleId}::uuid)
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     const byId = new Map(stored.map((row) => [String(row.id), row]));
     const staleClaim: DisputeEvidenceScanRetryClaim = {
       uploadId: cleanId,
@@ -166,37 +173,36 @@ export async function runDisputeEvidenceScanRetryFixture(db: Database) {
     const exhaustedRow = byId.get(exhaustedId);
     const checks = {
       distributedClaimExactlyOnce: claimed === 4,
-      cleanRowsRecovered: clean === 2
-        && cleanRow?.scanStatus === "CLEAN"
-        && staleRow?.scanStatus === "CLEAN",
+      cleanRowsRecovered:
+        clean === 2 && cleanRow?.scanStatus === "CLEAN" && staleRow?.scanStatus === "CLEAN",
       staleLeaseReclaimed: Number(staleRow?.attemptCount) === 2,
-      infectedRejected: infected === 1
-        && infectedRow?.status === "REJECTED"
-        && infectedRow?.scanStatus === "INFECTED",
-      maxAttemptsEnforced: exhausted === 1
-        && exhaustedRow?.scanStatus === "FAILED"
-        && exhaustedRow?.nextAttemptAt === null
-        && String(exhaustedRow?.scanDetail).startsWith("SCAN_RETRY_EXHAUSTED:"),
-      leasesCleared: stored.every((row) => row.leaseToken === null
-        && row.leaseExpiresAt === null),
+      infectedRejected:
+        infected === 1 &&
+        infectedRow?.status === "REJECTED" &&
+        infectedRow?.scanStatus === "INFECTED",
+      maxAttemptsEnforced:
+        exhausted === 1 &&
+        exhaustedRow?.scanStatus === "FAILED" &&
+        exhaustedRow?.nextAttemptAt === null &&
+        String(exhaustedRow?.scanDetail).startsWith("SCAN_RETRY_EXHAUSTED:"),
+      leasesCleared: stored.every((row) => row.leaseToken === null && row.leaseExpiresAt === null),
       staleFinalizerRejected: staleFinalizerAccepted === false,
       databaseGuardRejectedInvalidLease: guardRejected,
       healthDetectedExhausted: countDelta(health, baseline, "exhausted") === 1,
-      healthNoStaleProcessing:
-        countDelta(health, baseline, "staleProcessing") === 0,
+      healthNoStaleProcessing: countDelta(health, baseline, "staleProcessing") === 0,
       noRealNetwork: realNetworkCalled === false,
       noRealStorageRead: realStorageRead === false,
-      identifiersExcluded: health.containsIdentifiers === false
-        && health.containsStoragePaths === false
-        && health.containsLeaseTokens === false,
-      scannerCircuitProtected: circuit.status === "pass"
-        && circuit.totals.passed === circuit.totals.total,
+      identifiersExcluded:
+        health.containsIdentifiers === false &&
+        health.containsStoragePaths === false &&
+        health.containsLeaseTokens === false,
+      scannerCircuitProtected:
+        circuit.status === "pass" && circuit.totals.passed === circuit.totals.total,
     };
     const passed = Object.values(checks).filter(Boolean).length;
     const result = {
       schemaVersion: "dispute-evidence-scan-retry-fixture-v1" as const,
-      status: passed === Object.keys(checks).length
-        ? "pass" as const : "fail" as const,
+      status: passed === Object.keys(checks).length ? ("pass" as const) : ("fail" as const),
       totals: { passed, total: Object.keys(checks).length },
       checks,
       execution: {
@@ -216,20 +222,20 @@ export async function runDisputeEvidenceScanRetryFixture(db: Database) {
       containsLeaseTokens: false,
     };
     const serialized = JSON.stringify(result);
-    if (ids.some((id) => serialized.includes(id))
-      || serialized.includes(SCANNER_CONFIG.token)) {
+    if (ids.some((id) => serialized.includes(id)) || serialized.includes(SCANNER_CONFIG.token)) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_FIXTURE_DATA_EXPOSED");
     }
     fixtureResult = result;
   } finally {
-    const deleted = await db.execute(sql`
+    const deleted = (await db.execute(sql`
       DELETE FROM dispute_evidence_uploads
        WHERE id IN (${cleanId}::uuid, ${infectedId}::uuid,
          ${exhaustedId}::uuid, ${staleId}::uuid)
       RETURNING id
-    `) as unknown as Array<{ id: string }>;
+    `)) as unknown as Array<{ id: string }>;
     cleanupRows = deleted.length;
     if (cleanupRows !== ids.length) {
+      // biome-ignore lint/correctness/noUnsafeFinally: Fixture cleanup failure must override a pass result.
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_FIXTURE_CLEANUP_FAILED");
     }
   }

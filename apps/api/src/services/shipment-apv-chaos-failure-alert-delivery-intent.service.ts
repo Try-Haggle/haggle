@@ -1,6 +1,5 @@
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvChaosFailureAlertPreview } from
-  "./shipment-apv-chaos-failure-alert-preview.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvChaosFailureAlertPreview } from "./shipment-apv-chaos-failure-alert-preview.service.js";
 
 const BLOCKING_REASONS = [
   "independent_trust_anchor_missing",
@@ -58,8 +57,7 @@ function publicIntent(row: IntentRow) {
     payloadSha256: String(row.payload_sha256),
     keyId: String(row.key_id),
     status: "BLOCKED_CONFIGURATION_DRY_RUN" as const,
-    blockingReasons: Array.isArray(row.blocking_reasons)
-      ? row.blocking_reasons.map(String) : [],
+    blockingReasons: Array.isArray(row.blocking_reasons) ? row.blocking_reasons.map(String) : [],
     createdAt: iso(row.created_at),
     replayed: row.inserted === false,
     persistent: true,
@@ -69,12 +67,19 @@ function publicIntent(row: IntentRow) {
   };
 }
 
-function intentMatches(row: IntentRow, input: {
-  payloadSignatureId: string; clientDeliveryIntentId: string; requestedBy: string;
-}) {
-  return String(row.payload_signature_id) === input.payloadSignatureId
-    && String(row.client_delivery_intent_id) === input.clientDeliveryIntentId
-    && String(row.requested_by) === input.requestedBy;
+function intentMatches(
+  row: IntentRow,
+  input: {
+    payloadSignatureId: string;
+    clientDeliveryIntentId: string;
+    requestedBy: string;
+  },
+) {
+  return (
+    String(row.payload_signature_id) === input.payloadSignatureId &&
+    String(row.client_delivery_intent_id) === input.clientDeliveryIntentId &&
+    String(row.requested_by) === input.requestedBy
+  );
 }
 
 function intentFromBinding(row: BindingRow): IntentRow | null {
@@ -98,8 +103,12 @@ function intentFromBinding(row: BindingRow): IntentRow | null {
 
 export async function createShipmentApvFailureAlertDeliveryIntent(
   db: Pick<Database, "execute">,
-  input: { payloadSignatureId: string; clientDeliveryIntentId: string;
-    requestedBy: string; now?: Date },
+  input: {
+    payloadSignatureId: string;
+    clientDeliveryIntentId: string;
+    requestedBy: string;
+    now?: Date;
+  },
 ) {
   const now = input.now ?? new Date();
   const existingRows = await db.execute(sql`SELECT *, false AS inserted
@@ -152,8 +161,11 @@ export async function createShipmentApvFailureAlertDeliveryIntent(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_SIGNING_KEY_NOT_ACTIVE");
   }
   const preview = await getShipmentApvChaosFailureAlertPreview(db, now);
-  if (preview.action === "none" || !preview.approval.required
-    || preview.stateFingerprint !== String(binding.state_fingerprint)) {
+  if (
+    preview.action === "none" ||
+    !preview.approval.required ||
+    preview.stateFingerprint !== String(binding.state_fingerprint)
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_STATE_CHANGED");
   }
 

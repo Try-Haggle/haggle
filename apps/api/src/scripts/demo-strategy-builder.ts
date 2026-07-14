@@ -2,7 +2,7 @@
  * Haggle 대화형 전략 빌더 + 자동 협상 데모
  *
  * 기존 인프라를 재사용:
- *  - callLLM (negotiation/adapters/xai-client) — Grok 4 Fast 호출
+ *  - callLLM (negotiation/adapters/deepseek-client) — DeepSeek V4 Pro 호출
  *  - executeRound (@haggle/engine-session) — 엔진 라운드 실행
  *  - TemplateMessageRenderer — 메시지 렌더링
  *  - negotiation-simulate 패턴 — 인메모리 시뮬레이션
@@ -14,40 +14,40 @@
  *  4) 라운드별 결과 + 메시지 표시
  *
  * Usage:
- *   source apps/api/.env && XAI_API_KEY=$XAI_API_KEY npx tsx apps/api/src/scripts/demo-strategy-builder.ts
+ *   source apps/api/.env && DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY npx tsx apps/api/src/scripts/demo-strategy-builder.ts
  *   -> http://localhost:3099
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   executeRound,
-  type MasterStrategy,
-  type RoundData,
-  type NegotiationSession,
   type HnpMessage,
-} from '@haggle/engine-session';
+  type MasterStrategy,
+  type NegotiationSession,
+  type RoundData,
+} from "@haggle/engine-session";
 
-// Reuse existing xAI client
-import { callLLM, type XAICallOptions } from '../negotiation/adapters/xai-client.js';
+// Reuse existing DeepSeek client
+import { callLLM } from "../negotiation/adapters/deepseek-client.js";
 // Reuse existing message renderer
-import { TemplateMessageRenderer } from '../negotiation/rendering/message-renderer.js';
+import { TemplateMessageRenderer } from "../negotiation/rendering/message-renderer.js";
 
 const PORT = 3099;
-const ITEM = 'iPhone 15 Pro 256GB Space Black (미개봉)';
+const ITEM = "iPhone 15 Pro 256GB Space Black (미개봉)";
 const MARKET_PRICE = 1_050;
 const MAX_ROUNDS = 10;
 
-const renderer = new TemplateMessageRenderer();
+const _renderer = new TemplateMessageRenderer();
 
 // ─── Simulate helpers (from negotiation-simulate.ts) ─────────
 
-function emptySession(role: 'BUYER' | 'SELLER', nowMs: number): NegotiationSession {
+function emptySession(role: "BUYER" | "SELLER", nowMs: number): NegotiationSession {
   return {
     session_id: `sim-${role.toLowerCase()}-${nowMs}`,
     strategy_id: `strat-${role.toLowerCase()}`,
     role,
-    status: 'ACTIVE',
-    counterparty_id: role === 'BUYER' ? 'seller' : 'buyer',
+    status: "ACTIVE",
+    counterparty_id: role === "BUYER" ? "seller" : "buyer",
     rounds: [],
     current_round: 0,
     rounds_no_concession: 0,
@@ -59,9 +59,20 @@ function emptySession(role: 'BUYER' | 'SELLER', nowMs: number): NegotiationSessi
 }
 
 function buildMsg(
-  sessionId: string, price: number, from: 'BUYER' | 'SELLER', roundNo: number, nowMs: number,
+  sessionId: string,
+  price: number,
+  from: "BUYER" | "SELLER",
+  roundNo: number,
+  nowMs: number,
 ): HnpMessage {
-  return { session_id: sessionId, round: roundNo, type: roundNo === 1 ? 'OFFER' : 'COUNTER', price, sender_role: from, timestamp: nowMs };
+  return {
+    session_id: sessionId,
+    round: roundNo,
+    type: roundNo === 1 ? "OFFER" : "COUNTER",
+    price,
+    sender_role: from,
+    timestamp: nowMs,
+  };
 }
 
 // ─── Strategy Chat (LLM conversation → parameters) ──────────
@@ -146,35 +157,51 @@ const STRATEGY_SYSTEM = `당신은 Haggle의 AI 협상 전략 컨설턴트입니
 - w_info: 신뢰 점수에서 정보 완결성 비중 (1 - w_rep)
   - w_rep + w_info = 1.0 이어야 함`;
 
-interface ChatMessage { role: 'user' | 'assistant'; content: string }
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
 interface StrategyParams {
-  p_target: number; p_limit: number; beta: number;
+  p_target: number;
+  p_limit: number;
+  beta: number;
   t_deadline: number;
-  alpha: number; v_t_floor: number; n_threshold: number;
-  v_s_base: number; w_rep: number; w_info: number;
-  u_threshold: number; u_aspiration: number;
-  w_p: number; w_t: number; w_r: number; w_s: number;
+  alpha: number;
+  v_t_floor: number;
+  n_threshold: number;
+  v_s_base: number;
+  w_rep: number;
+  w_info: number;
+  u_threshold: number;
+  u_aspiration: number;
+  w_p: number;
+  w_t: number;
+  w_r: number;
+  w_s: number;
   persona_desc: string;
 }
 
 // In-memory chat sessions
 const sessions = new Map<string, { messages: ChatMessage[]; strategy: StrategyParams | null }>();
 
-async function chatForStrategy(sessionId: string, userMessage: string): Promise<{ reply: string; ready: boolean; strategy: StrategyParams | null }> {
+async function chatForStrategy(
+  sessionId: string,
+  userMessage: string,
+): Promise<{ reply: string; ready: boolean; strategy: StrategyParams | null }> {
   let session = sessions.get(sessionId);
   if (!session) {
     session = { messages: [], strategy: null };
     sessions.set(sessionId, session);
   }
 
-  session.messages.push({ role: 'user', content: userMessage });
+  session.messages.push({ role: "user", content: userMessage });
 
-  const historyStr = session.messages.map(m =>
-    m.role === 'user' ? `사용자: ${m.content}` : `컨설턴트: ${m.content}`
-  ).join('\n');
+  const historyStr = session.messages
+    .map((m) => (m.role === "user" ? `사용자: ${m.content}` : `컨설턴트: ${m.content}`))
+    .join("\n");
 
-  // Use existing callLLM from xai-client
+  // Use existing callLLM from deepseek-client
   const result = await callLLM(STRATEGY_SYSTEM, historyStr, { correlationId: sessionId });
 
   let parsed: { message: string; ready: boolean; strategy: StrategyParams | null };
@@ -184,7 +211,7 @@ async function chatForStrategy(sessionId: string, userMessage: string): Promise<
     parsed = { message: result.content, ready: false, strategy: null };
   }
 
-  session.messages.push({ role: 'assistant', content: parsed.message });
+  session.messages.push({ role: "assistant", content: parsed.message });
 
   if (parsed.ready && parsed.strategy) {
     session.strategy = parsed.strategy;
@@ -201,71 +228,111 @@ async function chatForStrategy(sessionId: string, userMessage: string): Promise<
 
 function buildBuyerStrategy(params: StrategyParams): MasterStrategy {
   return {
-    id: 'buyer-alice-001', user_id: 'alice',
+    id: "buyer-alice-001",
+    user_id: "alice",
     weights: { w_p: params.w_p, w_t: params.w_t, w_r: params.w_r, w_s: params.w_s },
-    p_target: params.p_target, p_limit: params.p_limit,
-    alpha: params.alpha ?? 0.1, beta: params.beta, t_deadline: params.t_deadline ?? 1800, v_t_floor: params.v_t_floor ?? 0.05,
-    n_threshold: params.n_threshold ?? 3, v_s_base: params.v_s_base ?? 0.5, w_rep: params.w_rep ?? 0.6, w_info: params.w_info ?? 0.4,
-    u_threshold: params.u_threshold, u_aspiration: params.u_aspiration,
-    persona: 'chat-strategy-buyer',
-    created_at: Date.now(), expires_at: Date.now() + 86400000,
+    p_target: params.p_target,
+    p_limit: params.p_limit,
+    alpha: params.alpha ?? 0.1,
+    beta: params.beta,
+    t_deadline: params.t_deadline ?? 1800,
+    v_t_floor: params.v_t_floor ?? 0.05,
+    n_threshold: params.n_threshold ?? 3,
+    v_s_base: params.v_s_base ?? 0.5,
+    w_rep: params.w_rep ?? 0.6,
+    w_info: params.w_info ?? 0.4,
+    u_threshold: params.u_threshold,
+    u_aspiration: params.u_aspiration,
+    persona: "chat-strategy-buyer",
+    created_at: Date.now(),
+    expires_at: Date.now() + 86400000,
   };
 }
 
 function createSellerStrategy(): MasterStrategy {
   return {
-    id: 'seller-bob-001', user_id: 'bob',
-    weights: { w_p: 0.50, w_t: 0.15, w_r: 0.15, w_s: 0.20 },
-    p_target: 1120, p_limit: 920,
-    alpha: 0.1, beta: 1.0, t_deadline: 1800, v_t_floor: 0.05,
-    n_threshold: 3, v_s_base: 0.5, w_rep: 0.6, w_info: 0.4,
-    u_threshold: 0.50, u_aspiration: 0.80,
-    persona: 'firm-but-fair-seller',
-    created_at: Date.now(), expires_at: Date.now() + 86400000,
+    id: "seller-bob-001",
+    user_id: "bob",
+    weights: { w_p: 0.5, w_t: 0.15, w_r: 0.15, w_s: 0.2 },
+    p_target: 1120,
+    p_limit: 920,
+    alpha: 0.1,
+    beta: 1.0,
+    t_deadline: 1800,
+    v_t_floor: 0.05,
+    n_threshold: 3,
+    v_s_base: 0.5,
+    w_rep: 0.6,
+    w_info: 0.4,
+    u_threshold: 0.5,
+    u_aspiration: 0.8,
+    persona: "firm-but-fair-seller",
+    created_at: Date.now(),
+    expires_at: Date.now() + 86400000,
   };
 }
 
 /** Quick template message (no LLM, instant) */
-function templateMessage(role: string, decision: string, price: number): string {
-  const name = role === 'BUYER' ? 'Alice' : 'Bob';
+function _templateMessage(role: string, decision: string, price: number): string {
+  const _name = role === "BUYER" ? "Alice" : "Bob";
   switch (decision) {
-    case 'ACCEPT': return `$${price}에 동의합니다!`;
-    case 'REJECT': return `$${price}는 수용 불가입니다.`;
-    case 'ESCALATE': return `$${price} — 검토가 필요합니다.`;
-    case 'NEAR_DEAL': return `$${price}로 거의 다 왔네요.`;
-    case 'COUNTER': return `$${price}에 제안합니다.`;
-    default: return `$${price}`;
+    case "ACCEPT":
+      return `$${price}에 동의합니다!`;
+    case "REJECT":
+      return `$${price}는 수용 불가입니다.`;
+    case "ESCALATE":
+      return `$${price} — 검토가 필요합니다.`;
+    case "NEAR_DEAL":
+      return `$${price}로 거의 다 왔네요.`;
+    case "COUNTER":
+      return `$${price}에 제안합니다.`;
+    default:
+      return `$${price}`;
   }
 }
 
 /** Generate Korean message via existing callLLM */
 async function generateKoreanMessage(
-  role: string, decision: string, price: number, round: number,
+  role: string,
+  decision: string,
+  price: number,
+  round: number,
   history: Array<{ round: number; buyer: number; seller: number }>,
 ): Promise<{ message: string; usage: { prompt_tokens: number; completion_tokens: number } }> {
-  const sys = `You are ${role === 'BUYER' ? 'Alice (구매자)' : 'Bob (판매자)'} negotiating for ${ITEM}. Market: $${MARKET_PRICE}.
+  const sys = `You are ${role === "BUYER" ? "Alice (구매자)" : "Bob (판매자)"} negotiating for ${ITEM}. Market: $${MARKET_PRICE}.
 Write ONE short Korean message (under 50 chars). Be natural. Decision: ${decision} $${price}. Round ${round}/${MAX_ROUNDS}.
 Respond JSON: {"message":"한국어 메시지"}`;
-  const usr = history.length > 0
-    ? history.map(h => `R${h.round}: B$${h.buyer}/S$${h.seller}`).join('; ') + `\n${decision} $${price}`
-    : `${decision} $${price}`;
+  const usr =
+    history.length > 0
+      ? history.map((h) => `R${h.round}: B$${h.buyer}/S$${h.seller}`).join("; ") +
+        `\n${decision} $${price}`
+      : `${decision} $${price}`;
 
   try {
     const result = await callLLM(sys, usr, { maxTokens: 100 });
     const msg = JSON.parse(result.content).message ?? `$${price}`;
     return { message: msg, usage: result.usage };
   } catch {
-    return { message: `$${price}에 ${decision === 'ACCEPT' ? '좋습니다!' : '제안합니다.'}`, usage: { prompt_tokens: 0, completion_tokens: 0 } };
+    return {
+      message: `$${price}에 ${decision === "ACCEPT" ? "좋습니다!" : "제안합니다."}`,
+      usage: { prompt_tokens: 0, completion_tokens: 0 },
+    };
   }
 }
 
 interface RoundRecord {
-  round: number; buyerPrice: number; sellerPrice: number; gap: number;
-  buyerDecision: string; sellerDecision: string;
+  round: number;
+  buyerPrice: number;
+  sellerPrice: number;
+  gap: number;
+  buyerDecision: string;
+  sellerDecision: string;
   buyerUtility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number };
   sellerUtility: { u_total: number; v_p: number; v_t: number; v_r: number; v_s: number };
-  buyerMessage?: string; sellerMessage?: string;
-  tokens: number; cost: number;
+  buyerMessage?: string;
+  sellerMessage?: string;
+  tokens: number;
+  cost: number;
 }
 
 /**
@@ -274,10 +341,10 @@ interface RoundRecord {
  */
 async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
   res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": "*",
   });
 
   const send = (event: string, data: unknown) => {
@@ -288,22 +355,39 @@ async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
   const sellerStrategy = createSellerStrategy();
   const startedAt = Date.now();
 
-  let buyerSession = emptySession('BUYER', startedAt);
-  let sellerSession = emptySession('SELLER', startedAt);
+  let buyerSession = emptySession("BUYER", startedAt);
+  let sellerSession = emptySession("SELLER", startedAt);
 
   // Pre-initialize last_offer_price to target (Faratin anchoring fix)
   buyerSession.last_offer_price = buyerStrategy.p_target;
   sellerSession.last_offer_price = sellerStrategy.p_target;
 
   const DEFAULT_RD: RoundData = {
-    p_effective: 0, r_score: 0.8, i_completeness: 0.9,
-    t_elapsed: 0, n_success: 0, n_dispute_losses: 0,
+    p_effective: 0,
+    r_score: 0.8,
+    i_completeness: 0.9,
+    t_elapsed: 0,
+    n_success: 0,
+    n_dispute_losses: 0,
   };
 
   // Send strategy info
-  send('init', {
-    buyerStrategy: { p_target: buyerStrategy.p_target, p_limit: buyerStrategy.p_limit, beta: buyerStrategy.beta, u_threshold: buyerStrategy.u_threshold, u_aspiration: buyerStrategy.u_aspiration, weights: buyerStrategy.weights },
-    sellerStrategy: { p_target: sellerStrategy.p_target, p_limit: sellerStrategy.p_limit, beta: sellerStrategy.beta, u_threshold: sellerStrategy.u_threshold, u_aspiration: sellerStrategy.u_aspiration },
+  send("init", {
+    buyerStrategy: {
+      p_target: buyerStrategy.p_target,
+      p_limit: buyerStrategy.p_limit,
+      beta: buyerStrategy.beta,
+      u_threshold: buyerStrategy.u_threshold,
+      u_aspiration: buyerStrategy.u_aspiration,
+      weights: buyerStrategy.weights,
+    },
+    sellerStrategy: {
+      p_target: sellerStrategy.p_target,
+      p_limit: sellerStrategy.p_limit,
+      beta: sellerStrategy.beta,
+      u_threshold: sellerStrategy.u_threshold,
+      u_aspiration: sellerStrategy.u_aspiration,
+    },
   });
 
   const rounds: RoundRecord[] = [];
@@ -312,23 +396,29 @@ async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
   let finalPrice: number | null = null;
   let acceptedBy: string | null = null;
 
-  let nextFrom: 'BUYER' | 'SELLER' = 'SELLER';
+  let nextFrom: "BUYER" | "SELLER" = "SELLER";
   let nextPrice = sellerStrategy.p_target;
 
   for (let round = 1; round <= MAX_ROUNDS && !deal; round++) {
     const elapsed = round * 120 + Math.floor(Math.random() * 60); // seconds
 
-    const evalSide: 'BUYER' | 'SELLER' = nextFrom === 'SELLER' ? 'BUYER' : 'SELLER';
-    const evalSession = evalSide === 'BUYER' ? buyerSession : sellerSession;
-    const evalStrategy = evalSide === 'BUYER' ? buyerStrategy : sellerStrategy;
+    const evalSide: "BUYER" | "SELLER" = nextFrom === "SELLER" ? "BUYER" : "SELLER";
+    const evalSession = evalSide === "BUYER" ? buyerSession : sellerSession;
+    const evalStrategy = evalSide === "BUYER" ? buyerStrategy : sellerStrategy;
 
-    const incoming = buildMsg(evalSession.session_id, nextPrice, nextFrom, evalSession.current_round + 1, Date.now());
+    const incoming = buildMsg(
+      evalSession.session_id,
+      nextPrice,
+      nextFrom,
+      evalSession.current_round + 1,
+      Date.now(),
+    );
     const rd: RoundData = { ...DEFAULT_RD, p_effective: nextPrice, t_elapsed: elapsed };
     const evalResult = executeRound(evalSession, evalStrategy, incoming, rd);
     let evalPrice = Math.round(evalResult.message.price);
 
     // Clamp eval price to role's limit (BUYER can't exceed p_limit, SELLER can't go below p_limit)
-    if (evalSide === 'BUYER') {
+    if (evalSide === "BUYER") {
       evalPrice = Math.min(evalPrice, buyerStrategy.p_limit);
       buyerSession = evalResult.session;
     } else {
@@ -336,22 +426,29 @@ async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
       sellerSession = evalResult.session;
     }
 
-    if (evalResult.decision === 'ACCEPT') {
-      deal = true; finalPrice = nextPrice;
-      acceptedBy = evalSide === 'BUYER' ? 'BUYER (Alice)' : 'SELLER (Bob)';
+    if (evalResult.decision === "ACCEPT") {
+      deal = true;
+      finalPrice = nextPrice;
+      acceptedBy = evalSide === "BUYER" ? "BUYER (Alice)" : "SELLER (Bob)";
     }
 
-    const respSide: 'BUYER' | 'SELLER' = evalSide === 'BUYER' ? 'SELLER' : 'BUYER';
-    const respSession = respSide === 'BUYER' ? buyerSession : sellerSession;
-    const respStrategy = respSide === 'BUYER' ? buyerStrategy : sellerStrategy;
+    const respSide: "BUYER" | "SELLER" = evalSide === "BUYER" ? "SELLER" : "BUYER";
+    const respSession = respSide === "BUYER" ? buyerSession : sellerSession;
+    const respStrategy = respSide === "BUYER" ? buyerStrategy : sellerStrategy;
 
-    const respIncoming = buildMsg(respSession.session_id, evalPrice, evalSide, respSession.current_round + 1, Date.now());
+    const respIncoming = buildMsg(
+      respSession.session_id,
+      evalPrice,
+      evalSide,
+      respSession.current_round + 1,
+      Date.now(),
+    );
     const respRd: RoundData = { ...DEFAULT_RD, p_effective: evalPrice, t_elapsed: elapsed + 30 };
     const respResult = executeRound(respSession, respStrategy, respIncoming, respRd);
     let respPrice = Math.round(respResult.message.price);
 
     // Clamp response price too
-    if (respSide === 'BUYER') {
+    if (respSide === "BUYER") {
       respPrice = Math.min(respPrice, buyerStrategy.p_limit);
       buyerSession = respResult.session;
     } else {
@@ -359,63 +456,86 @@ async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
       sellerSession = respResult.session;
     }
 
-    if (!deal && respResult.decision === 'ACCEPT') {
-      deal = true; finalPrice = evalPrice;
-      acceptedBy = respSide === 'BUYER' ? 'BUYER (Alice)' : 'SELLER (Bob)';
+    if (!deal && respResult.decision === "ACCEPT") {
+      deal = true;
+      finalPrice = evalPrice;
+      acceptedBy = respSide === "BUYER" ? "BUYER (Alice)" : "SELLER (Bob)";
     }
 
-    const buyerPrice = evalSide === 'BUYER' ? evalPrice : respPrice;
-    const sellerPrice = evalSide === 'SELLER' ? evalPrice : respPrice;
+    const buyerPrice = evalSide === "BUYER" ? evalPrice : respPrice;
+    const sellerPrice = evalSide === "SELLER" ? evalPrice : respPrice;
     const gap = Math.abs(sellerPrice - buyerPrice);
     history.push({ round, buyer: buyerPrice, seller: sellerPrice });
 
     if (!deal && buyerPrice >= sellerPrice) {
       deal = true;
       finalPrice = Math.round((buyerPrice + sellerPrice) / 2);
-      acceptedBy = '교차 (중간가)';
+      acceptedBy = "교차 (중간가)";
     }
 
-    const buyerU = evalSide === 'BUYER' ? evalResult.utility : respResult.utility;
-    const sellerU = evalSide === 'SELLER' ? evalResult.utility : respResult.utility;
-    const buyerDec = evalSide === 'BUYER' ? evalResult.decision : respResult.decision;
-    const sellerDec = evalSide === 'SELLER' ? evalResult.decision : respResult.decision;
+    const buyerU = evalSide === "BUYER" ? evalResult.utility : respResult.utility;
+    const sellerU = evalSide === "SELLER" ? evalResult.utility : respResult.utility;
+    const buyerDec = evalSide === "BUYER" ? evalResult.decision : respResult.decision;
+    const sellerDec = evalSide === "SELLER" ? evalResult.decision : respResult.decision;
 
     // 1) Send engine result immediately (prices, decisions, utility)
-    send('round', {
-      round, buyerPrice, sellerPrice, gap,
-      buyerDecision: buyerDec, sellerDecision: sellerDec,
-      buyerUtility: buyerU, sellerUtility: sellerU,
+    send("round", {
+      round,
+      buyerPrice,
+      sellerPrice,
+      gap,
+      buyerDecision: buyerDec,
+      sellerDecision: sellerDec,
+      buyerUtility: buyerU,
+      sellerUtility: sellerU,
     });
 
     // 2) Generate LLM messages (parallel) — streamed as they arrive
     const [bMsg, sMsg] = await Promise.all([
-      generateKoreanMessage('BUYER', buyerDec, buyerPrice, round, history),
-      generateKoreanMessage('SELLER', sellerDec, sellerPrice, round, history),
+      generateKoreanMessage("BUYER", buyerDec, buyerPrice, round, history),
+      generateKoreanMessage("SELLER", sellerDec, sellerPrice, round, history),
     ]);
 
-    const PRICE_INPUT = 0.20;
-    const PRICE_OUTPUT = 0.50;
-    const totalUsage = bMsg.usage.prompt_tokens + bMsg.usage.completion_tokens + sMsg.usage.prompt_tokens + sMsg.usage.completion_tokens;
-    const totalCost = (
-      (bMsg.usage.prompt_tokens + sMsg.usage.prompt_tokens) * PRICE_INPUT +
-      (bMsg.usage.completion_tokens + sMsg.usage.completion_tokens) * PRICE_OUTPUT
-    ) / 1e6;
+    const PRICE_INPUT = 0.2;
+    const PRICE_OUTPUT = 0.5;
+    const totalUsage =
+      bMsg.usage.prompt_tokens +
+      bMsg.usage.completion_tokens +
+      sMsg.usage.prompt_tokens +
+      sMsg.usage.completion_tokens;
+    const totalCost =
+      ((bMsg.usage.prompt_tokens + sMsg.usage.prompt_tokens) * PRICE_INPUT +
+        (bMsg.usage.completion_tokens + sMsg.usage.completion_tokens) * PRICE_OUTPUT) /
+      1e6;
 
     // 3) Send messages as update event
-    send('messages', { round, buyerMessage: bMsg.message, sellerMessage: sMsg.message, tokens: totalUsage, cost: totalCost });
+    send("messages", {
+      round,
+      buyerMessage: bMsg.message,
+      sellerMessage: sMsg.message,
+      tokens: totalUsage,
+      cost: totalCost,
+    });
 
     const roundRecord: RoundRecord = {
-      round, buyerPrice, sellerPrice, gap,
-      buyerDecision: buyerDec, sellerDecision: sellerDec,
-      buyerUtility: buyerU, sellerUtility: sellerU,
-      buyerMessage: bMsg.message, sellerMessage: sMsg.message,
-      tokens: totalUsage, cost: totalCost,
+      round,
+      buyerPrice,
+      sellerPrice,
+      gap,
+      buyerDecision: buyerDec,
+      sellerDecision: sellerDec,
+      buyerUtility: buyerU,
+      sellerUtility: sellerU,
+      buyerMessage: bMsg.message,
+      sellerMessage: sMsg.message,
+      tokens: totalUsage,
+      cost: totalCost,
     };
 
     rounds.push(roundRecord);
 
-    if (evalResult.decision === 'REJECT' || evalResult.decision === 'ESCALATE') break;
-    if (respResult.decision === 'REJECT' || respResult.decision === 'ESCALATE') break;
+    if (evalResult.decision === "REJECT" || evalResult.decision === "ESCALATE") break;
+    if (respResult.decision === "REJECT" || respResult.decision === "ESCALATE") break;
 
     nextFrom = respSide;
     nextPrice = respPrice;
@@ -431,9 +551,14 @@ async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
     noMatchReason = `구매 한계($${buyerStrategy.p_limit}) < 판매 한계($${sellerStrategy.p_limit}) — 가격대가 겹치지 않아 합의 불가. 한계가를 $${sellerStrategy.p_limit} 이상으로 올려보세요.`;
   }
 
-  send('done', {
-    deal, finalPrice, acceptedBy, totalTokens, totalCost, savings,
-    savingsPercent: finalPrice ? ((savings / MARKET_PRICE) * 100).toFixed(1) : '0',
+  send("done", {
+    deal,
+    finalPrice,
+    acceptedBy,
+    totalTokens,
+    totalCost,
+    savings,
+    savingsPercent: finalPrice ? ((savings / MARKET_PRICE) * 100).toFixed(1) : "0",
     roundCount: rounds.length,
     durationMs: Date.now() - startedAt,
     noMatchReason,
@@ -446,32 +571,38 @@ async function streamNegotiation(params: StrategyParams, res: ServerResponse) {
 
 function parseBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
-    let body = '';
-    req.on('data', (c: Buffer) => { body += c.toString(); });
-    req.on('end', () => resolve(body));
+    let body = "";
+    req.on("data", (c: Buffer) => {
+      body += c.toString();
+    });
+    req.on("end", () => resolve(body));
   });
 }
 
 function json(res: ServerResponse, status: number, data: unknown) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
 
 const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-  const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
+  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
-  if (url.pathname === '/' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  if (url.pathname === "/" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(getHtml());
     return;
   }
 
-  if (url.pathname === '/api/chat' && req.method === 'POST') {
+  if (url.pathname === "/api/chat" && req.method === "POST") {
     try {
       const body = JSON.parse(await parseBody(req)) as { sessionId: string; message: string };
       const result = await chatForStrategy(body.sessionId, body.message);
@@ -482,19 +613,22 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     return;
   }
 
-  if (url.pathname === '/api/negotiate' && req.method === 'POST') {
+  if (url.pathname === "/api/negotiate" && req.method === "POST") {
     try {
       const body = JSON.parse(await parseBody(req)) as { strategy: StrategyParams };
       await streamNegotiation(body.strategy, res);
     } catch (err) {
       // If headers already sent (streaming started), just end
-      if (res.headersSent) { res.end(); }
-      else { json(res, 500, { error: String(err) }); }
+      if (res.headersSent) {
+        res.end();
+      } else {
+        json(res, 500, { error: String(err) });
+      }
     }
     return;
   }
 
-  if (url.pathname === '/api/reset' && req.method === 'POST') {
+  if (url.pathname === "/api/reset" && req.method === "POST") {
     try {
       const body = JSON.parse(await parseBody(req)) as { sessionId: string };
       sessions.delete(body.sessionId);
@@ -506,7 +640,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   }
 
   res.writeHead(404);
-  res.end('Not found');
+  res.end("Not found");
 });
 
 server.listen(PORT, () => {
@@ -515,9 +649,9 @@ server.listen(PORT, () => {
   Haggle 대화형 전략 빌더 + 자동 협상
   ========================================
   ${ITEM}
-  Model: ${process.env.XAI_MODEL ?? 'grok-4-fast'}
-  API Key: ${process.env.XAI_API_KEY ? 'loaded' : 'MISSING'}
-  Using: callLLM (xai-client), executeRound (engine-session)
+  Model: ${process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro"}
+  API Key: ${process.env.DEEPSEEK_API_KEY ? "loaded" : "MISSING"}
+  Using: callLLM (deepseek-client), executeRound (engine-session)
   http://localhost:${PORT}
   `);
 });

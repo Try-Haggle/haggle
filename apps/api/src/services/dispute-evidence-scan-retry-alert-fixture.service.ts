@@ -1,31 +1,27 @@
 import { createHash, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { runDisputeEvidenceScanRetryAlert } from
-  "../jobs/dispute-evidence-scan-retry-alert.js";
+import { type Database, sql } from "@haggle/db";
+import { runDisputeEvidenceScanRetryAlert } from "../jobs/dispute-evidence-scan-retry-alert.js";
+import { getDisputeEvidenceScanRetryHealth } from "./dispute-evidence-scan-retry.service.js";
 import {
-  evaluateDisputeEvidenceScanRetryAlert,
-  getDisputeEvidenceScanRetryAlertSenderHealth,
-  sendDisputeEvidenceScanRetryAlert,
   type DisputeEvidenceScanRetryAlertConfig,
   type DisputeEvidenceScanRetryAlertSnapshotRetentionHealth,
   type DisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth,
+  evaluateDisputeEvidenceScanRetryAlert,
+  getDisputeEvidenceScanRetryAlertSenderHealth,
+  sendDisputeEvidenceScanRetryAlert,
 } from "./dispute-evidence-scan-retry-alert.service.js";
-import { getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth } from
-  "./dispute-evidence-scan-retry-alert-snapshot-retention.service.js";
+import { getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth } from "./dispute-evidence-scan-retry-alert-snapshot-retention.service.js";
 import {
   claimVerifiedDisputeEvidenceScanRetryAlert,
   verifyDisputeEvidenceScanRetryAlert,
 } from "./dispute-evidence-scan-retry-alert-verifier.service.js";
-import { getDisputeEvidenceScanRetryHealth } from
-  "./dispute-evidence-scan-retry.service.js";
 import {
   acquireDisputeEvidenceScannerPermit,
+  type DisputeEvidenceScannerCircuitConfig,
   finalizeDisputeEvidenceScannerPermit,
   getDisputeEvidenceScannerCircuitHealth,
-  type DisputeEvidenceScannerCircuitConfig,
 } from "./dispute-evidence-scanner-circuit.service.js";
-import { signWebhookClaimAlertPayload } from
-  "./webhook-claim-alert.service.js";
+import { signWebhookClaimAlertPayload } from "./webhook-claim-alert.service.js";
 import {
   claimWebhookEvent,
   completeWebhookEvent,
@@ -55,11 +51,13 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     getDisputeEvidenceScanRetryHealth(db),
     getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth(db),
   ]);
-  if (baseline.totals.retryReady >= 99_999
-    || baseline.totals.staleProcessing >= 99_999
-    || baseline.totals.exhausted >= 99_999
-    || baseline.totals.expiredQuarantined >= 99_999
-    || baselineRetention.blockedExpired >= 99_999) {
+  if (
+    baseline.totals.retryReady >= 99_999 ||
+    baseline.totals.staleProcessing >= 99_999 ||
+    baseline.totals.exhausted >= 99_999 ||
+    baseline.totals.expiredQuarantined >= 99_999 ||
+    baselineRetention.blockedExpired >= 99_999
+  ) {
     throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_FIXTURE_BASELINE_TOO_LARGE");
   }
   const config: DisputeEvidenceScanRetryAlertConfig = {
@@ -88,10 +86,7 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     captured.push(item);
     return item;
   };
-  const failingFetch = async (
-    _input: string | URL | Request,
-    init?: RequestInit,
-  ) => {
+  const failingFetch = async (_input: string | URL | Request, init?: RequestInit) => {
     const item = captureRequest(init);
     const verification = verifyDisputeEvidenceScanRetryAlert({
       ...item,
@@ -100,7 +95,9 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     });
     if (verification.ok) {
       const claim = await claimVerifiedDisputeEvidenceScanRetryAlert(
-        db, verification, receiverSource,
+        db,
+        verification,
+        receiverSource,
       );
       lostResponseReceiverAccepted = claim.outcome === "acquired" ? 1 : 0;
     }
@@ -119,15 +116,18 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     const now = new Date("2026-07-14T08:30:00.000Z");
     for (let index = 0; index < circuitConfig.failureThreshold; index += 1) {
       const permit = await acquireDisputeEvidenceScannerPermit(db, {
-        now, circuitKey, config: circuitConfig,
+        now,
+        circuitKey,
+        config: circuitConfig,
       });
       if (!permit.acquired) {
         throw new Error("DISPUTE_EVIDENCE_SCANNER_ALERT_FIXTURE_PERMIT_FAILED");
       }
-      const finalized = await finalizeDisputeEvidenceScannerPermit(
-        db, permit,
-        { scannerOperational: false, now, config: circuitConfig },
-      );
+      const finalized = await finalizeDisputeEvidenceScannerPermit(db, permit, {
+        scannerOperational: false,
+        now,
+        config: circuitConfig,
+      });
       if (!finalized) {
         throw new Error("DISPUTE_EVIDENCE_SCANNER_ALERT_FIXTURE_OPEN_FAILED");
       }
@@ -143,8 +143,7 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     if (!failedAlert) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_FAILED_ALERT_NOT_CAPTURED");
     }
-    const senderAfterFailure =
-      await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
+    const senderAfterFailure = await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
     const backoffRun = await runDisputeEvidenceScanRetryAlert(db, {
       now,
       config,
@@ -152,7 +151,7 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       circuitKey,
       fetchImpl: fetchImpl as typeof fetch,
     });
-    const releasedRows = await db.execute(sql`
+    const releasedRows = (await db.execute(sql`
       UPDATE webhook_idempotency
          SET next_attempt_at = now() - interval '1 second'
        WHERE source = ${source}
@@ -160,26 +159,28 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
          AND status = 'FAILED'
          AND claim_id IS NULL
       RETURNING id
-    `) as unknown as Array<{ id: string }>;
-    const senderRetryReady =
-      await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
+    `)) as unknown as Array<{ id: string }>;
+    const senderRetryReady = await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
     const retryNow = new Date("2026-07-14T08:46:01.000Z");
-    const incidentRuns = await Promise.all(Array.from({ length: 20 }, () =>
-      runDisputeEvidenceScanRetryAlert(db, {
-        now: retryNow,
-        config,
-        claimSource: source,
-        circuitKey,
-        fetchImpl: fetchImpl as typeof fetch,
-      })));
-    const delivered = incidentRuns.filter((item) =>
-      item.status === "retried").length;
-    const suppressed = incidentRuns.filter((item) =>
-      item.status === "skipped"
-      && (item.reason === "snapshot_already_sent_or_in_progress"
-        || item.reason === "recent_incident_cooldown")).length;
-    const senderAfterIncident =
-      await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
+    const incidentRuns = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        runDisputeEvidenceScanRetryAlert(db, {
+          now: retryNow,
+          config,
+          claimSource: source,
+          circuitKey,
+          fetchImpl: fetchImpl as typeof fetch,
+        }),
+      ),
+    );
+    const delivered = incidentRuns.filter((item) => item.status === "retried").length;
+    const suppressed = incidentRuns.filter(
+      (item) =>
+        item.status === "skipped" &&
+        (item.reason === "snapshot_already_sent_or_in_progress" ||
+          item.reason === "recent_incident_cooldown"),
+    ).length;
+    const senderAfterIncident = await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
     const incidentAlert = captured[1];
     if (!incidentAlert) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_FIXTURE_NOT_CAPTURED");
@@ -192,15 +193,17 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     if (!incidentVerification.ok) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_FIXTURE_VERIFY_FAILED");
     }
-    const receiverClaims = await Promise.all(Array.from({ length: 20 }, () =>
-      claimVerifiedDisputeEvidenceScanRetryAlert(
-        db, incidentVerification, receiverSource,
-      )));
-    const receiverWinners = receiverClaims.filter((claim) =>
-      claim.outcome === "acquired").length
-      + lostResponseReceiverAccepted;
-    const receiverReplayBlocked = receiverClaims.filter((claim) =>
-      claim.outcome === "duplicate" || claim.outcome === "in_progress").length;
+    const receiverClaims = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        claimVerifiedDisputeEvidenceScanRetryAlert(db, incidentVerification, receiverSource),
+      ),
+    );
+    const receiverWinners =
+      receiverClaims.filter((claim) => claim.outcome === "acquired").length +
+      lostResponseReceiverAccepted;
+    const receiverReplayBlocked = receiverClaims.filter(
+      (claim) => claim.outcome === "duplicate" || claim.outcome === "in_progress",
+    ).length;
 
     const failedVerification = verifyDisputeEvidenceScanRetryAlert({
       ...failedAlert,
@@ -209,13 +212,14 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     });
 
     const tampered = JSON.parse(incidentAlert.rawBody) as Record<string, unknown>;
-    (tampered.health as { circuit: { state: string } })
-      .circuit.state = "CLOSED";
+    (tampered.health as { circuit: { state: string } }).circuit.state = "CLOSED";
     const tamperRejected = !verifyDisputeEvidenceScanRetryAlert({
       ...incidentAlert,
       rawBody: JSON.stringify(tampered),
       signature: signWebhookClaimAlertPayload(
-        secret, incidentAlert.timestamp, JSON.stringify(tampered),
+        secret,
+        incidentAlert.timestamp,
+        JSON.stringify(tampered),
       ),
       secret,
       nowMs: now.getTime(),
@@ -223,13 +227,17 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
 
     const recoveryNow = new Date("2026-07-14T08:46:02.000Z");
     const probe = await acquireDisputeEvidenceScannerPermit(db, {
-      now: recoveryNow, circuitKey, config: circuitConfig,
+      now: recoveryNow,
+      circuitKey,
+      config: circuitConfig,
     });
     if (!probe.acquired || probe.kind !== "PROBE") {
       throw new Error("DISPUTE_EVIDENCE_SCANNER_ALERT_FIXTURE_PROBE_FAILED");
     }
     const recovered = await finalizeDisputeEvidenceScannerPermit(db, probe, {
-      scannerOperational: true, now: recoveryNow, config: circuitConfig,
+      scannerOperational: true,
+      now: recoveryNow,
+      config: circuitConfig,
     });
     if (!recovered) {
       throw new Error("DISPUTE_EVIDENCE_SCANNER_ALERT_FIXTURE_RECOVERY_FAILED");
@@ -248,8 +256,7 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       circuitKey,
       fetchImpl: fetchImpl as typeof fetch,
     });
-    const senderAfterRecovery =
-      await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
+    const senderAfterRecovery = await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
     const recoveryAlert = captured[2];
     if (!recoveryAlert) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_RECOVERY_NOT_CAPTURED");
@@ -263,16 +270,21 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_RECOVERY_VERIFY_FAILED");
     }
     const recoveryReceiverFirst = await claimVerifiedDisputeEvidenceScanRetryAlert(
-      db, recoveryVerification, receiverSource,
+      db,
+      recoveryVerification,
+      receiverSource,
     );
     const recoveryReceiverReplay = await claimVerifiedDisputeEvidenceScanRetryAlert(
-      db, recoveryVerification, receiverSource,
+      db,
+      recoveryVerification,
+      receiverSource,
     );
     const retentionNow = new Date("2026-07-14T08:46:03.000Z");
     const [healthyRetry, closedCircuit] = await Promise.all([
       getDisputeEvidenceScanRetryHealth(db, { now: retentionNow }),
       getDisputeEvidenceScannerCircuitHealth(db, {
-        now: retentionNow, circuitKey,
+        now: retentionNow,
+        circuitKey,
       }),
     ]);
     const retentionState: DisputeEvidenceScanRetryAlertSnapshotRetentionHealth = {
@@ -280,13 +292,11 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       eligibleExpired: 0,
       blockedExpired: config.retentionBlockedThreshold,
       oldestBlockedExpiredAgeSeconds: 60,
-      policy: { retentionDays: 30, batchSize: 100,
-        jobEnabled: true, cronEnabled: true },
+      policy: { retentionDays: 30, batchSize: 100, jobEnabled: true, cronEnabled: true },
       containsIdentifiers: false,
       recordedAt: retentionNow.toISOString(),
     };
-    const retentionJobState:
-    DisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth = {
+    const retentionJobState: DisputeEvidenceScanRetryAlertSnapshotRetentionJobHealth = {
       status: "attention",
       lastRunStatus: "FAILED",
       overdue: false,
@@ -297,19 +307,31 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       lastFailedAt: "2026-07-14T08:46:02.000Z",
       lastDeletedSnapshots: 0,
       lastFailureCode: "RETENTION_EXECUTION_FAILED",
-      policy: { jobEnabled: true, cronEnabled: true,
-        intervalSeconds: 86_400, leaseSeconds: 900,
-        maxStartDelaySeconds: 93_600 },
+      policy: {
+        jobEnabled: true,
+        cronEnabled: true,
+        intervalSeconds: 86_400,
+        leaseSeconds: 900,
+        maxStartDelaySeconds: 93_600,
+      },
       containsIdentifiers: false,
       recordedAt: retentionNow.toISOString(),
     };
     const retentionAssessment = evaluateDisputeEvidenceScanRetryAlert(
-      healthyRetry, closedCircuit, config, retentionState, retentionJobState,
+      healthyRetry,
+      closedCircuit,
+      config,
+      retentionState,
+      retentionJobState,
     );
     const retentionDeliveryId = `health_${createHash("sha256")
-      .update(`retention:${fixtureId}`).digest("hex")}`;
+      .update(`retention:${fixtureId}`)
+      .digest("hex")}`;
     const retentionDelivery = await sendDisputeEvidenceScanRetryAlert(
-      healthyRetry, closedCircuit, retentionAssessment, {
+      healthyRetry,
+      closedCircuit,
+      retentionAssessment,
+      {
         config,
         deliveryId: retentionDeliveryId,
         retention: retentionState,
@@ -331,29 +353,39 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_RETENTION_VERIFY_FAILED");
     }
     const retentionReceiver = await claimVerifiedDisputeEvidenceScanRetryAlert(
-      db, retentionVerification, receiverSource,
+      db,
+      retentionVerification,
+      receiverSource,
     );
     const retentionTampered = JSON.parse(retentionAlert.rawBody) as {
-      health: { retention: { blocked_expired: number; job: {
-        status: string; last_run_status: string;
-      } } };
+      health: {
+        retention: {
+          blocked_expired: number;
+          job: {
+            status: string;
+            last_run_status: string;
+          };
+        };
+      };
     };
     retentionTampered.health.retention.blocked_expired = 0;
     retentionTampered.health.retention.job.status = "healthy";
     retentionTampered.health.retention.job.last_run_status = "SUCCEEDED";
     const retentionTamperedBody = JSON.stringify(retentionTampered);
-    const retentionSemanticTamperRejected =
-      !verifyDisputeEvidenceScanRetryAlert({
-        ...retentionAlert,
-        rawBody: retentionTamperedBody,
-        signature: signWebhookClaimAlertPayload(
-          secret, retentionAlert.timestamp, retentionTamperedBody,
-        ),
+    const retentionSemanticTamperRejected = !verifyDisputeEvidenceScanRetryAlert({
+      ...retentionAlert,
+      rawBody: retentionTamperedBody,
+      signature: signWebhookClaimAlertPayload(
         secret,
-        nowMs: retentionNow.getTime(),
-      }).ok;
+        retentionAlert.timestamp,
+        retentionTamperedBody,
+      ),
+      secret,
+      nowMs: retentionNow.getTime(),
+    }).ok;
     const staleEventId = `stale_${createHash("sha256")
-      .update("scan-retry-alert-sender-stale-fixture").digest("hex")}`;
+      .update("scan-retry-alert-sender-stale-fixture")
+      .digest("hex")}`;
     const staleOwner = await claimWebhookEvent(db, {
       source,
       eventId: staleEventId,
@@ -370,8 +402,7 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
          AND status = 'PROCESSING'
          AND claim_id = ${staleOwner.claimId ?? null}
     `);
-    const senderWithStale =
-      await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
+    const senderWithStale = await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
     const staleTakeover = await claimWebhookEvent(db, {
       source,
       eventId: staleEventId,
@@ -381,13 +412,13 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     try {
       await completeWebhookEvent(db, staleOwner, 204);
     } catch (error) {
-      staleOwnerFenced = error instanceof Error
-        && error.message === "WEBHOOK_CLAIM_LOST";
+      staleOwnerFenced = error instanceof Error && error.message === "WEBHOOK_CLAIM_LOST";
     }
-    const staleTakeoverCompleted = staleTakeover.outcome === "acquired"
-      ? await completeWebhookEvent(db, staleTakeover, 204) : false;
-    const senderAfterStaleRecovery =
-      await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
+    const staleTakeoverCompleted =
+      staleTakeover.outcome === "acquired"
+        ? await completeWebhookEvent(db, staleTakeover, 204)
+        : false;
+    const senderAfterStaleRecovery = await getDisputeEvidenceScanRetryAlertSenderHealth(db, source);
     let snapshotMutationRejected = false;
     try {
       await db.execute(sql`
@@ -409,124 +440,139 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
     }
     const serializedPayloads = captured.map((item) => item.rawBody).join("\n");
     const incidentPayload = JSON.parse(incidentAlert.rawBody) as {
-      health: { circuit: Record<string, unknown>; totals: Record<string, number>;
-        retention: Record<string, unknown> };
+      health: {
+        circuit: Record<string, unknown>;
+        totals: Record<string, number>;
+        retention: Record<string, unknown>;
+      };
     };
     const retentionPayload = JSON.parse(retentionAlert.rawBody) as {
       schema_version: string;
       severity: string;
       reasons: string[];
       thresholds: { retention_blocked_expired: number };
-      health: { retention: { blocked_expired: number; job: {
-        active: boolean; status: string; last_run_status: string;
-      } } };
+      health: {
+        retention: {
+          blocked_expired: number;
+          job: {
+            active: boolean;
+            status: string;
+            last_run_status: string;
+          };
+        };
+      };
     };
     const checks = {
-      circuitAloneDetectedCritical: incidentRuns.some((item) =>
-        item.assessment?.severity === "critical"
-        && item.assessment.reasons.length === 1
-        && item.assessment.reasons[0] === "scanner_circuit_open"),
-      retryQueueBelowThreshold: incidentPayload.health.totals.retry_ready
-          < config.retryReadyThreshold
-        && incidentPayload.health.totals.stale_processing
-          < config.staleThreshold
-        && incidentPayload.health.totals.exhausted
-          < config.exhaustedThreshold
-        && incidentPayload.health.totals.expired_quarantined
-          < config.expiredThreshold,
+      circuitAloneDetectedCritical: incidentRuns.some(
+        (item) =>
+          item.assessment?.severity === "critical" &&
+          item.assessment.reasons.length === 1 &&
+          item.assessment.reasons[0] === "scanner_circuit_open",
+      ),
+      retryQueueBelowThreshold:
+        incidentPayload.health.totals.retry_ready < config.retryReadyThreshold &&
+        incidentPayload.health.totals.stale_processing < config.staleThreshold &&
+        incidentPayload.health.totals.exhausted < config.exhaustedThreshold &&
+        incidentPayload.health.totals.expired_quarantined < config.expiredThreshold,
       circuitAggregateIncluded:
-        incidentPayload.health.circuit.state === "OPEN"
-        && incidentPayload.health.circuit.consecutive_failures === 3
-        && incidentPayload.health.circuit.active_permits === 0
-        && incidentPayload.health.circuit.max_concurrent === 4
-        && incidentPayload.health.circuit.failure_threshold === 3,
-      retentionStateSignedCritical: retentionDelivery.status === "delivered"
-        && retentionVerification.ok
-        && retentionReceiver.outcome === "acquired"
-        && retentionPayload.schema_version
-          === "dispute-evidence-scan-retry-alert-v3"
-        && retentionPayload.severity === "critical"
-        && retentionPayload.reasons.join("|")
-          === "alert_snapshot_retention_blocked|alert_snapshot_retention_job_failed"
-        && retentionPayload.thresholds.retention_blocked_expired
-          === config.retentionBlockedThreshold
-        && retentionPayload.health.retention.blocked_expired
-          === config.retentionBlockedThreshold
-        && retentionPayload.health.retention.job.active
-        && retentionPayload.health.retention.job.status === "attention"
-        && retentionPayload.health.retention.job.last_run_status === "FAILED",
+        incidentPayload.health.circuit.state === "OPEN" &&
+        incidentPayload.health.circuit.consecutive_failures === 3 &&
+        incidentPayload.health.circuit.active_permits === 0 &&
+        incidentPayload.health.circuit.max_concurrent === 4 &&
+        incidentPayload.health.circuit.failure_threshold === 3,
+      retentionStateSignedCritical:
+        retentionDelivery.status === "delivered" &&
+        retentionVerification.ok &&
+        retentionReceiver.outcome === "acquired" &&
+        retentionPayload.schema_version === "dispute-evidence-scan-retry-alert-v3" &&
+        retentionPayload.severity === "critical" &&
+        retentionPayload.reasons.join("|") ===
+          "alert_snapshot_retention_blocked|alert_snapshot_retention_job_failed" &&
+        retentionPayload.thresholds.retention_blocked_expired ===
+          config.retentionBlockedThreshold &&
+        retentionPayload.health.retention.blocked_expired === config.retentionBlockedThreshold &&
+        retentionPayload.health.retention.job.active &&
+        retentionPayload.health.retention.job.status === "attention" &&
+        retentionPayload.health.retention.job.last_run_status === "FAILED",
       retentionSemanticTamperRejected,
-      senderFailureRecorded: failedIncident.status === "failed"
-        && senderAfterFailure.status === "warning"
-        && senderAfterFailure.failed === 1
-        && senderAfterFailure.retryReady === 0
-        && senderAfterFailure.maxAttemptCount === 1
-        && senderAfterFailure.snapshotCount === 1,
-      senderBackoffBlocked: backoffRun.status === "skipped"
-        && backoffRun.reason === "snapshot_retry_backoff",
-      senderRetryReadyObserved: releasedRows.length === 1
-        && senderRetryReady.failed === 1
-        && senderRetryReady.retryReady === 1
-        && senderRetryReady.retryableSnapshots === 1,
-      senderRetryExactlyOnce: failedAlert.deliveryId === incidentAlert.deliveryId
-        && senderAfterIncident.status === "healthy"
-        && senderAfterIncident.completed === 1
-        && senderAfterIncident.failed === 0
-        && senderAfterIncident.maxAttemptCount === 2
-        && senderAfterIncident.snapshotCount === 1
-        && senderAfterIncident.bindingViolations === 0,
+      senderFailureRecorded:
+        failedIncident.status === "failed" &&
+        senderAfterFailure.status === "warning" &&
+        senderAfterFailure.failed === 1 &&
+        senderAfterFailure.retryReady === 0 &&
+        senderAfterFailure.maxAttemptCount === 1 &&
+        senderAfterFailure.snapshotCount === 1,
+      senderBackoffBlocked:
+        backoffRun.status === "skipped" && backoffRun.reason === "snapshot_retry_backoff",
+      senderRetryReadyObserved:
+        releasedRows.length === 1 &&
+        senderRetryReady.failed === 1 &&
+        senderRetryReady.retryReady === 1 &&
+        senderRetryReady.retryableSnapshots === 1,
+      senderRetryExactlyOnce:
+        failedAlert.deliveryId === incidentAlert.deliveryId &&
+        senderAfterIncident.status === "healthy" &&
+        senderAfterIncident.completed === 1 &&
+        senderAfterIncident.failed === 0 &&
+        senderAfterIncident.maxAttemptCount === 2 &&
+        senderAfterIncident.snapshotCount === 1 &&
+        senderAfterIncident.bindingViolations === 0,
       distributedSenderExactlyOnce: delivered === 1 && suppressed === 19,
       retryCrossedCooldownBucket:
-        Math.floor(now.getTime() / (config.cooldownMinutes * 60_000))
-          !== Math.floor(retryNow.getTime()
-            / (config.cooldownMinutes * 60_000)),
-      semanticSnapshotStableAcrossRetry: failedVerification.ok
-        && incidentVerification.ok
-        && failedVerification.payloadSha256 === incidentVerification.payloadSha256
-        && failedAlert.timestamp !== incidentAlert.timestamp,
+        Math.floor(now.getTime() / (config.cooldownMinutes * 60_000)) !==
+        Math.floor(retryNow.getTime() / (config.cooldownMinutes * 60_000)),
+      semanticSnapshotStableAcrossRetry:
+        failedVerification.ok &&
+        incidentVerification.ok &&
+        failedVerification.payloadSha256 === incidentVerification.payloadSha256 &&
+        failedAlert.timestamp !== incidentAlert.timestamp,
       lostResponseReceiverReplaySafe:
-        lostResponseReceiverAccepted === 1
-        && receiverClaims.every((claim) => claim.outcome === "duplicate"),
+        lostResponseReceiverAccepted === 1 &&
+        receiverClaims.every((claim) => claim.outcome === "duplicate"),
       snapshotMutationRejected,
       snapshotDeleteRejected,
-      signedAggregateDelivered: incidentVerification.ok
-        && incidentVerification.state === "firing",
-      receiverExactlyOnce: receiverWinners === 1
-        && receiverReplayBlocked === 20,
+      signedAggregateDelivered: incidentVerification.ok && incidentVerification.state === "firing",
+      receiverExactlyOnce: receiverWinners === 1 && receiverReplayBlocked === 20,
       tamperRejected,
-      recoveryDelivered: recovery.status === "recovered"
-        && recoveryVerification.state === "recovered",
-      duplicateRecoverySuppressed: recoveryReplay.status === "skipped"
-        && recoveryReplay.reason === "recovery_already_sent_or_in_progress",
-      recoveryReceiverReplayBlocked: recoveryReceiverFirst.outcome === "acquired"
-        && recoveryReceiverReplay.outcome === "duplicate",
-      senderHealthRecovered: senderAfterRecovery.status === "healthy"
-        && senderAfterRecovery.completed === 2
-        && senderAfterRecovery.failed === 0
-        && senderAfterRecovery.staleProcessing === 0
-        && senderAfterRecovery.retryReady === 0
-        && senderAfterRecovery.snapshotCount === 2
-        && senderAfterRecovery.missingRetrySnapshots === 0
-        && senderAfterRecovery.bindingViolations === 0
-        && senderAfterRecovery.containsIdentifiers === false,
-      senderStaleDetectedCritical: senderWithStale.status === "critical"
-        && senderWithStale.processing === 1
-        && senderWithStale.staleProcessing === 1,
-      senderStaleReclaimed: staleTakeover.outcome === "acquired"
-        && staleTakeover.attemptCount === 2
-        && staleTakeoverCompleted
-        && senderAfterStaleRecovery.status === "healthy"
-        && senderAfterStaleRecovery.processing === 0
-        && senderAfterStaleRecovery.staleProcessing === 0
-        && senderAfterStaleRecovery.completed === 3,
+      recoveryDelivered:
+        recovery.status === "recovered" && recoveryVerification.state === "recovered",
+      duplicateRecoverySuppressed:
+        recoveryReplay.status === "skipped" &&
+        recoveryReplay.reason === "recovery_already_sent_or_in_progress",
+      recoveryReceiverReplayBlocked:
+        recoveryReceiverFirst.outcome === "acquired" &&
+        recoveryReceiverReplay.outcome === "duplicate",
+      senderHealthRecovered:
+        senderAfterRecovery.status === "healthy" &&
+        senderAfterRecovery.completed === 2 &&
+        senderAfterRecovery.failed === 0 &&
+        senderAfterRecovery.staleProcessing === 0 &&
+        senderAfterRecovery.retryReady === 0 &&
+        senderAfterRecovery.snapshotCount === 2 &&
+        senderAfterRecovery.missingRetrySnapshots === 0 &&
+        senderAfterRecovery.bindingViolations === 0 &&
+        senderAfterRecovery.containsIdentifiers === false,
+      senderStaleDetectedCritical:
+        senderWithStale.status === "critical" &&
+        senderWithStale.processing === 1 &&
+        senderWithStale.staleProcessing === 1,
+      senderStaleReclaimed:
+        staleTakeover.outcome === "acquired" &&
+        staleTakeover.attemptCount === 2 &&
+        staleTakeoverCompleted &&
+        senderAfterStaleRecovery.status === "healthy" &&
+        senderAfterStaleRecovery.processing === 0 &&
+        senderAfterStaleRecovery.staleProcessing === 0 &&
+        senderAfterStaleRecovery.completed === 3,
       staleSenderOwnerFenced: staleOwnerFenced,
       exactFourOutboundAttempts: captured.length === 4,
-      identifiersExcluded: !serializedPayloads.includes(fixtureId)
-        && !serializedPayloads.includes(circuitKey),
+      identifiersExcluded:
+        !serializedPayloads.includes(fixtureId) && !serializedPayloads.includes(circuitKey),
       storagePathsExcluded: !serializedPayloads.includes("dispute-evidence/"),
-      leaseTokensExcluded: !serializedPayloads.includes("lease_token")
-        && !serializedPayloads.includes("lease_expires_at")
-        && !serializedPayloads.includes("claim_id"),
+      leaseTokensExcluded:
+        !serializedPayloads.includes("lease_token") &&
+        !serializedPayloads.includes("lease_expires_at") &&
+        !serializedPayloads.includes("claim_id"),
       secretsExcluded: !serializedPayloads.includes(secret),
       realNetworkNotCalled: true,
     };
@@ -566,39 +612,41 @@ export async function runDisputeEvidenceScanRetryAlertFixture(db: Database) {
       containsSecrets: false,
     };
   } finally {
-    const circuitRows = await db.execute(sql`
+    const circuitRows = (await db.execute(sql`
       DELETE FROM dispute_evidence_scanner_circuits
        WHERE circuit_key = ${circuitKey}
       RETURNING circuit_key
-    `) as unknown as Array<{ circuit_key: string }>;
+    `)) as unknown as Array<{ circuit_key: string }>;
     circuitCleanup = circuitRows.length;
     snapshotCleanup = await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL haggle.allow_test_fixture_cleanup = 'on'`);
-      const rows = await tx.execute(sql`
+      const rows = (await tx.execute(sql`
         DELETE FROM dispute_evidence_scan_retry_alert_snapshots
          WHERE source = ${source}
         RETURNING id
-      `) as unknown as Array<{ id: string }>;
+      `)) as unknown as Array<{ id: string }>;
       return rows.length;
     });
-    const senderRows = await db.execute(sql`
+    const senderRows = (await db.execute(sql`
       DELETE FROM webhook_idempotency WHERE source = ${source} RETURNING id
-    `) as unknown as Array<{ id: string }>;
+    `)) as unknown as Array<{ id: string }>;
     senderClaimCleanup = senderRows.length;
-    const receiverRows = await db.execute(sql`
+    const receiverRows = (await db.execute(sql`
       DELETE FROM webhook_idempotency WHERE source = ${receiverSource}
       RETURNING id
-    `) as unknown as Array<{ id: string }>;
+    `)) as unknown as Array<{ id: string }>;
     receiverClaimCleanup = receiverRows.length;
   }
   if (!result) {
     throw new Error("DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_FIXTURE_RESULT_MISSING");
   }
-  if (circuitCleanup !== 1 || senderClaimCleanup !== 3
-    || receiverClaimCleanup !== 3 || snapshotCleanup !== 2) {
-    throw Object.assign(new Error(
-      "DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_FIXTURE_CLEANUP_FAILED",
-    ), {
+  if (
+    circuitCleanup !== 1 ||
+    senderClaimCleanup !== 3 ||
+    receiverClaimCleanup !== 3 ||
+    snapshotCleanup !== 2
+  ) {
+    throw Object.assign(new Error("DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_FIXTURE_CLEANUP_FAILED"), {
       diagnostics: {
         circuitCleanup,
         senderClaimCleanup,

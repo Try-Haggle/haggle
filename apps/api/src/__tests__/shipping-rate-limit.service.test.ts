@@ -12,10 +12,12 @@ describe("shipping rate miss budget", () => {
           onConflictDoUpdate: vi.fn((config) => {
             conflictConfig = config;
             return {
-              returning: vi.fn().mockResolvedValue([{
-                requestCount: 1,
-                windowStartedAt: new Date("2026-07-12T00:00:00.000Z"),
-              }]),
+              returning: vi.fn().mockResolvedValue([
+                {
+                  requestCount: 1,
+                  windowStartedAt: new Date("2026-07-12T00:00:00.000Z"),
+                },
+              ]),
             };
           }),
         })),

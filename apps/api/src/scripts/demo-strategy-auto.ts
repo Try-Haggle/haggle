@@ -4,32 +4,32 @@
  * 1) 판매자(Bob) 리스팅 + 전략 미리 생성
  * 2) 구매자(Alice) 전략 생성
  * 3) 엔진(executeRound)이 양쪽 자동 협상 — 라운드별 결정
- * 4) Grok 4 Fast가 양쪽 자연어 메시지 생성
+ * 4) DeepSeek V4 Pro가 양쪽 자연어 메시지 생성
  * 5) HTML 대시보드 출력 (전략 시각화 + 라운드별 프로토콜)
  *
  * Usage:
- *   source apps/api/.env && XAI_API_KEY=$XAI_API_KEY npx tsx apps/api/src/scripts/demo-strategy-auto.ts
+ *   source apps/api/.env && DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY npx tsx apps/api/src/scripts/demo-strategy-auto.ts
  *   → docs/demo-strategy-auto.html
  */
 
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   executeRound,
   type MasterStrategy,
-  type RoundData,
   type NegotiationSession,
+  type RoundData,
   type RoundResult,
-} from '@haggle/engine-session';
+} from "@haggle/engine-session";
 
 // ─── Config ──────────────────────────────────────────────────
 
-const XAI_API_BASE = 'https://api.x.ai/v1';
-const MODEL = process.env.XAI_MODEL ?? 'grok-4-fast';
-const PRICE_INPUT_PER_M = 0.20;
-const PRICE_OUTPUT_PER_M = 0.50;
+const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
+const MODEL = process.env.DEEPSEEK_MODEL ?? "deepseek-v4-pro";
+const PRICE_INPUT_PER_M = 0.2;
+const PRICE_OUTPUT_PER_M = 0.5;
 
-const ITEM = 'iPhone 15 Pro 256GB Space Black (미개봉)';
+const ITEM = "iPhone 15 Pro 256GB Space Black (미개봉)";
 const MARKET_PRICE = 1_050;
 const MAX_ROUNDS = 10;
 
@@ -43,8 +43,20 @@ interface RoundLog {
   // LLM messages
   buyer_message?: string;
   seller_message?: string;
-  buyer_llm?: { tokens: { input: number; output: number }; cost: number; latency_ms: number; prompt: string; raw: string };
-  seller_llm?: { tokens: { input: number; output: number }; cost: number; latency_ms: number; prompt: string; raw: string };
+  buyer_llm?: {
+    tokens: { input: number; output: number };
+    cost: number;
+    latency_ms: number;
+    prompt: string;
+    raw: string;
+  };
+  seller_llm?: {
+    tokens: { input: number; output: number };
+    cost: number;
+    latency_ms: number;
+    prompt: string;
+    raw: string;
+  };
   // State
   buyer_offer: number;
   seller_offer: number;
@@ -57,23 +69,23 @@ interface RoundLog {
 
 function createBuyerStrategy(): MasterStrategy {
   return {
-    id: 'buyer-alice-001',
-    user_id: 'alice',
-    weights: { w_p: 0.45, w_t: 0.20, w_r: 0.15, w_s: 0.20 },
-    p_target: 880,    // 목표가: $880 (시장가 대비 -16%)
-    p_limit: 1000,    // 한계가: $1,000 (이 이상 절대 지불 안 함)
+    id: "buyer-alice-001",
+    user_id: "alice",
+    weights: { w_p: 0.45, w_t: 0.2, w_r: 0.15, w_s: 0.2 },
+    p_target: 880, // 목표가: $880 (시장가 대비 -16%)
+    p_limit: 1000, // 한계가: $1,000 (이 이상 절대 지불 안 함)
     alpha: 0.1,
-    beta: 1.0,        // 선형 양보
-    t_deadline: 1800,  // 30분
+    beta: 1.0, // 선형 양보
+    t_deadline: 1800, // 30분
     v_t_floor: 0.05,
     n_threshold: 3,
     v_s_base: 0.5,
     w_rep: 0.6,
     w_info: 0.4,
     // makeDecision 로직: u >= u_aspiration → ACCEPT, u >= u_threshold → NEAR_DEAL
-    u_threshold: 0.55,  // NEAR_DEAL 기준
+    u_threshold: 0.55, // NEAR_DEAL 기준
     u_aspiration: 0.78, // ACCEPT 기준 (높을수록 까다로움)
-    persona: 'price-sensitive-buyer',
+    persona: "price-sensitive-buyer",
     created_at: Date.now(),
     expires_at: Date.now() + 86400000,
   };
@@ -81,13 +93,13 @@ function createBuyerStrategy(): MasterStrategy {
 
 function createSellerStrategy(): MasterStrategy {
   return {
-    id: 'seller-bob-001',
-    user_id: 'bob',
-    weights: { w_p: 0.50, w_t: 0.15, w_r: 0.15, w_s: 0.20 },
-    p_target: 1120,   // 목표가: $1,120 (프리미엄 가격)
-    p_limit: 920,     // 한계가: $920 (이 이하 절대 안 팔음)
+    id: "seller-bob-001",
+    user_id: "bob",
+    weights: { w_p: 0.5, w_t: 0.15, w_r: 0.15, w_s: 0.2 },
+    p_target: 1120, // 목표가: $1,120 (프리미엄 가격)
+    p_limit: 920, // 한계가: $920 (이 이하 절대 안 팔음)
     alpha: 0.1,
-    beta: 1.0,        // 선형 양보
+    beta: 1.0, // 선형 양보
     t_deadline: 1800,
     v_t_floor: 0.05,
     n_threshold: 3,
@@ -95,9 +107,9 @@ function createSellerStrategy(): MasterStrategy {
     w_rep: 0.6,
     w_info: 0.4,
     // makeDecision 로직: u >= u_aspiration → ACCEPT, u >= u_threshold → NEAR_DEAL
-    u_threshold: 0.50,
-    u_aspiration: 0.80, // ACCEPT 기준
-    persona: 'firm-but-fair-seller',
+    u_threshold: 0.5,
+    u_aspiration: 0.8, // ACCEPT 기준
+    persona: "firm-but-fair-seller",
     created_at: Date.now(),
     expires_at: Date.now() + 86400000,
   };
@@ -105,13 +117,13 @@ function createSellerStrategy(): MasterStrategy {
 
 // ─── Sessions ────────────────────────────────────────────────
 
-function createSession(role: 'BUYER' | 'SELLER', strategyId: string): NegotiationSession {
+function createSession(role: "BUYER" | "SELLER", strategyId: string): NegotiationSession {
   return {
     session_id: `sess-${role.toLowerCase()}-001`,
     strategy_id: strategyId,
     role,
-    status: 'CREATED',
-    counterparty_id: role === 'BUYER' ? 'bob' : 'alice',
+    status: "CREATED",
+    counterparty_id: role === "BUYER" ? "bob" : "alice",
     rounds: [],
     current_round: 0,
     rounds_no_concession: 0,
@@ -125,24 +137,31 @@ function createSession(role: 'BUYER' | 'SELLER', strategyId: string): Negotiatio
 // ─── LLM Message Generation ─────────────────────────────────
 
 function getApiKey(): string {
-  const key = process.env.XAI_API_KEY;
+  const key = process.env.DEEPSEEK_API_KEY;
   if (!key) {
-    console.error('❌ XAI_API_KEY 환경변수를 설정해주세요.');
+    console.error("❌ DEEPSEEK_API_KEY 환경변수를 설정해주세요.");
     process.exit(1);
   }
   return key;
 }
 
 async function generateMessage(
-  role: 'BUYER' | 'SELLER',
+  role: "BUYER" | "SELLER",
   decision: string,
   price: number,
   round: number,
   history: Array<{ round: number; buyer: number; seller: number; gap: number }>,
   reasoning: string,
-): Promise<{ message: string; tokens: { input: number; output: number }; cost: number; latency_ms: number; prompt: string; raw: string }> {
-  const roleName = role === 'BUYER' ? 'Alice (구매자)' : 'Bob (판매자)';
-  const opponent = role === 'BUYER' ? '판매자 Bob' : '구매자 Alice';
+): Promise<{
+  message: string;
+  tokens: { input: number; output: number };
+  cost: number;
+  latency_ms: number;
+  prompt: string;
+  raw: string;
+}> {
+  const roleName = role === "BUYER" ? "Alice (구매자)" : "Bob (판매자)";
+  const _opponent = role === "BUYER" ? "판매자 Bob" : "구매자 Alice";
 
   const systemPrompt = `You are ${roleName}, negotiating for: ${ITEM}.
 Market price: $${MARKET_PRICE}. You are a real person having a casual conversation.
@@ -157,42 +176,44 @@ RULES:
 
 Respond ONLY with JSON: {"message":"your Korean message"}`;
 
-  const historyStr = history.length > 0
-    ? 'History:\n' + history.map(h => `R${h.round}: B$${h.buyer} / S$${h.seller} (gap $${h.gap})`).join('\n')
-    : '(첫 라운드)';
+  const historyStr =
+    history.length > 0
+      ? "History:\n" +
+        history.map((h) => `R${h.round}: B$${h.buyer} / S$${h.seller} (gap $${h.gap})`).join("\n")
+      : "(첫 라운드)";
 
   const userPrompt = `${historyStr}\n\nWrite your message for: ${decision} at $${price}`;
 
   const start = Date.now();
-  const response = await fetch(`${XAI_API_BASE}/chat/completions`, {
-    method: 'POST',
+  const response = await fetch(`${DEEPSEEK_API_BASE}/chat/completions`, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       Authorization: `Bearer ${getApiKey()}`,
     },
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
-      response_format: { type: 'json_object' },
+      response_format: { type: "json_object" },
       temperature: 0.6,
       max_tokens: 150,
     }),
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     throw new Error(`xAI API error ${response.status}: ${text}`);
   }
 
-  const data = await response.json() as {
+  const data = (await response.json()) as {
     choices: Array<{ message: { content: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 
-  const raw = data.choices?.[0]?.message?.content ?? '{}';
+  const raw = data.choices?.[0]?.message?.content ?? "{}";
   const latency = Date.now() - start;
   const tokens = {
     input: data.usage?.prompt_tokens ?? 0,
@@ -202,12 +223,21 @@ Respond ONLY with JSON: {"message":"your Korean message"}`;
 
   let message: string;
   try {
-    message = JSON.parse(raw).message ?? `$${price}에 ${decision === 'ACCEPT' ? '좋습니다!' : '제안합니다.'}`;
+    message =
+      JSON.parse(raw).message ??
+      `$${price}에 ${decision === "ACCEPT" ? "좋습니다!" : "제안합니다."}`;
   } catch {
-    message = `$${price}에 ${decision === 'ACCEPT' ? '좋습니다!' : '제안합니다.'}`;
+    message = `$${price}에 ${decision === "ACCEPT" ? "좋습니다!" : "제안합니다."}`;
   }
 
-  return { message, tokens, cost, latency_ms: latency, prompt: systemPrompt + '\n---\n' + userPrompt, raw };
+  return {
+    message,
+    tokens,
+    cost,
+    latency_ms: latency,
+    prompt: systemPrompt + "\n---\n" + userPrompt,
+    raw,
+  };
 }
 
 // ─── Main Loop ───────────────────────────────────────────────
@@ -230,13 +260,13 @@ async function main() {
 ╚══════════════════════════════════════════════════════════════════╝
   `);
 
-  let buyerSession = createSession('BUYER', buyerStrategy.id);
-  let sellerSession = createSession('SELLER', sellerStrategy.id);
+  let buyerSession = createSession("BUYER", buyerStrategy.id);
+  let sellerSession = createSession("SELLER", sellerStrategy.id);
 
   // Initialize Faratin anchor to target prices (not floor/limit)
   // Without this, seller starts from p_limit (floor) due to executor.ts:81
-  buyerSession.last_offer_price = buyerStrategy.p_target;   // $880 — buyer starts low
-  sellerSession.last_offer_price = sellerStrategy.p_target;  // $1120 — seller starts high
+  buyerSession.last_offer_price = buyerStrategy.p_target; // $880 — buyer starts low
+  sellerSession.last_offer_price = sellerStrategy.p_target; // $1120 — seller starts high
 
   const roundLogs: RoundLog[] = [];
   const history: Array<{ round: number; buyer: number; seller: number; gap: number }> = [];
@@ -248,7 +278,7 @@ async function main() {
 
   // Seller opening price
   let sellerCurrentOffer = sellerStrategy.p_target; // $1120
-  let buyerCurrentOffer = 0;
+  let _buyerCurrentOffer = 0;
 
   // Time simulation
   const timePerRound = 120; // seconds per round
@@ -273,9 +303,9 @@ async function main() {
     const buyerOffer = {
       session_id: buyerSession.session_id,
       round,
-      type: 'OFFER' as const,
+      type: "OFFER" as const,
       price: sellerCurrentOffer,
-      sender_role: 'SELLER' as const,
+      sender_role: "SELLER" as const,
       timestamp: Date.now(),
     };
 
@@ -284,30 +314,45 @@ async function main() {
     // Override last_offer_price to buyer's own counter (not seller's)
     const buyerCounterPrice = Math.round(buyerResult.message.price);
     buyerSession = { ...buyerResult.session, last_offer_price: buyerCounterPrice };
-    buyerCurrentOffer = buyerCounterPrice;
+    _buyerCurrentOffer = buyerCounterPrice;
 
     const buyerDecision = buyerResult.decision;
     const buyerUtility = buyerResult.utility.u_total;
 
     console.log(`  🛒 Alice (구매자): ${buyerDecision} @ $${buyerCounterPrice}`);
-    console.log(`     U=${buyerUtility.toFixed(3)} | V_p=${buyerResult.utility.v_p.toFixed(3)} V_t=${buyerResult.utility.v_t.toFixed(3)}`);
+    console.log(
+      `     U=${buyerUtility.toFixed(3)} | V_p=${buyerResult.utility.v_p.toFixed(3)} V_t=${buyerResult.utility.v_t.toFixed(3)}`,
+    );
     console.log(`     상태: ${buyerSession.status}`);
 
-    if (buyerDecision === 'ACCEPT') {
+    if (buyerDecision === "ACCEPT") {
       deal = true;
       finalPrice = sellerCurrentOffer;
-      acceptedBy = 'BUYER';
+      acceptedBy = "BUYER";
     }
 
-    if (buyerDecision === 'REJECT' || buyerDecision === 'ESCALATE') {
+    if (buyerDecision === "REJECT" || buyerDecision === "ESCALATE") {
       console.log(`  ❌ 구매자 ${buyerDecision} — 협상 종료`);
       // Still log this round
-      const buyerLlm = await generateMessage('BUYER', buyerDecision, buyerCounterPrice, round, history, buyerResult.escalation?.context ?? 'rejected');
+      const buyerLlm = await generateMessage(
+        "BUYER",
+        buyerDecision,
+        buyerCounterPrice,
+        round,
+        history,
+        buyerResult.escalation?.context ?? "rejected",
+      );
       roundLogs.push({
-        round, buyer_result: buyerResult, seller_result: buyerResult, // placeholder
-        buyer_message: buyerLlm.message, buyer_offer: buyerCounterPrice,
-        seller_offer: sellerCurrentOffer, gap: Math.abs(sellerCurrentOffer - buyerCounterPrice),
-        buyer_utility: buyerUtility, seller_utility: 0, buyer_llm: buyerLlm,
+        round,
+        buyer_result: buyerResult,
+        seller_result: buyerResult, // placeholder
+        buyer_message: buyerLlm.message,
+        buyer_offer: buyerCounterPrice,
+        seller_offer: sellerCurrentOffer,
+        gap: Math.abs(sellerCurrentOffer - buyerCounterPrice),
+        buyer_utility: buyerUtility,
+        seller_utility: 0,
+        buyer_llm: buyerLlm,
       });
       break;
     }
@@ -325,9 +370,9 @@ async function main() {
     const sellerOffer = {
       session_id: sellerSession.session_id,
       round,
-      type: 'COUNTER' as const,
+      type: "COUNTER" as const,
       price: buyerCounterPrice,
-      sender_role: 'BUYER' as const,
+      sender_role: "BUYER" as const,
       timestamp: Date.now(),
     };
 
@@ -341,13 +386,15 @@ async function main() {
     const sellerUtility = sellerResult.utility.u_total;
 
     console.log(`  📦 Bob   (판매자): ${sellerDecision} @ $${sellerCounterPrice}`);
-    console.log(`     U=${sellerUtility.toFixed(3)} | V_p=${sellerResult.utility.v_p.toFixed(3)} V_t=${sellerResult.utility.v_t.toFixed(3)}`);
+    console.log(
+      `     U=${sellerUtility.toFixed(3)} | V_p=${sellerResult.utility.v_p.toFixed(3)} V_t=${sellerResult.utility.v_t.toFixed(3)}`,
+    );
     console.log(`     상태: ${sellerSession.status}`);
 
-    if (sellerDecision === 'ACCEPT') {
+    if (sellerDecision === "ACCEPT") {
       deal = true;
       finalPrice = buyerCounterPrice;
-      acceptedBy = 'SELLER';
+      acceptedBy = "SELLER";
     }
 
     const gap = Math.abs(sellerCounterPrice - buyerCounterPrice);
@@ -357,22 +404,42 @@ async function main() {
     if (!deal && buyerCounterPrice >= sellerCounterPrice) {
       deal = true;
       finalPrice = Math.round((buyerCounterPrice + sellerCounterPrice) / 2);
-      acceptedBy = 'CROSSED';
-      console.log(`  🤝 교차 감지! Buyer $${buyerCounterPrice} ≥ Seller $${sellerCounterPrice} → 중간가 $${finalPrice}`);
+      acceptedBy = "CROSSED";
+      console.log(
+        `  🤝 교차 감지! Buyer $${buyerCounterPrice} ≥ Seller $${sellerCounterPrice} → 중간가 $${finalPrice}`,
+      );
     }
 
     history.push({ round, buyer: buyerCounterPrice, seller: sellerCounterPrice, gap });
 
     // ─── LLM Messages (parallel) ───
     const [buyerLlm, sellerLlm] = await Promise.all([
-      generateMessage('BUYER', buyerDecision, buyerCounterPrice, round, history, buyerResult.utility.u_total.toFixed(2) + ' utility'),
-      generateMessage('SELLER', sellerDecision, sellerCounterPrice, round, history, sellerResult.utility.u_total.toFixed(2) + ' utility'),
+      generateMessage(
+        "BUYER",
+        buyerDecision,
+        buyerCounterPrice,
+        round,
+        history,
+        buyerResult.utility.u_total.toFixed(2) + " utility",
+      ),
+      generateMessage(
+        "SELLER",
+        sellerDecision,
+        sellerCounterPrice,
+        round,
+        history,
+        sellerResult.utility.u_total.toFixed(2) + " utility",
+      ),
     ]);
 
     console.log(`  💬 Alice: "${buyerLlm.message}"`);
     console.log(`  💬 Bob:   "${sellerLlm.message}"`);
 
-    const roundTokens = buyerLlm.tokens.input + buyerLlm.tokens.output + sellerLlm.tokens.input + sellerLlm.tokens.output;
+    const roundTokens =
+      buyerLlm.tokens.input +
+      buyerLlm.tokens.output +
+      sellerLlm.tokens.input +
+      sellerLlm.tokens.output;
     const roundCost = buyerLlm.cost + sellerLlm.cost;
     console.log(`  💰 토큰: ${roundTokens} | 비용: $${roundCost.toFixed(4)}`);
 
@@ -391,7 +458,7 @@ async function main() {
       seller_utility: sellerUtility,
     });
 
-    if (sellerDecision === 'REJECT' || sellerDecision === 'ESCALATE') {
+    if (sellerDecision === "REJECT" || sellerDecision === "ESCALATE") {
       console.log(`  ❌ 판매자 ${sellerDecision} — 협상 종료`);
       break;
     }
@@ -399,10 +466,18 @@ async function main() {
 
   const totalDuration = Date.now() - startTime;
   const totalTokens = roundLogs.reduce((sum, r) => {
-    return sum + (r.buyer_llm?.tokens.input ?? 0) + (r.buyer_llm?.tokens.output ?? 0)
-              + (r.seller_llm?.tokens.input ?? 0) + (r.seller_llm?.tokens.output ?? 0);
+    return (
+      sum +
+      (r.buyer_llm?.tokens.input ?? 0) +
+      (r.buyer_llm?.tokens.output ?? 0) +
+      (r.seller_llm?.tokens.input ?? 0) +
+      (r.seller_llm?.tokens.output ?? 0)
+    );
   }, 0);
-  const totalCost = roundLogs.reduce((sum, r) => sum + (r.buyer_llm?.cost ?? 0) + (r.seller_llm?.cost ?? 0), 0);
+  const totalCost = roundLogs.reduce(
+    (sum, r) => sum + (r.buyer_llm?.cost ?? 0) + (r.seller_llm?.cost ?? 0),
+    0,
+  );
 
   console.log(`\n  ═══════════════════════════════════════════════════════`);
   if (deal) {
@@ -410,15 +485,22 @@ async function main() {
     const savings = MARKET_PRICE - (finalPrice ?? 0);
     console.log(`  💰 구매자 절약: $${savings} (${((savings / MARKET_PRICE) * 100).toFixed(1)}%)`);
   } else {
-    console.log('  ❌ 거래 불성립');
+    console.log("  ❌ 거래 불성립");
   }
-  console.log(`  📊 ${roundLogs.length}라운드 | ${totalTokens} 토큰 | $${totalCost.toFixed(4)} | ${(totalDuration / 1000).toFixed(1)}초`);
+  console.log(
+    `  📊 ${roundLogs.length}라운드 | ${totalTokens} 토큰 | $${totalCost.toFixed(4)} | ${(totalDuration / 1000).toFixed(1)}초`,
+  );
 
   // ─── Generate HTML Dashboard ─────────────────────────────────
   const html = generateDashboard(buyerStrategy, sellerStrategy, roundLogs, {
-    deal, finalPrice, acceptedBy, totalTokens, totalCost, totalDuration,
+    deal,
+    finalPrice,
+    acceptedBy,
+    totalTokens,
+    totalCost,
+    totalDuration,
   });
-  const outPath = resolve('docs/demo-strategy-auto.html');
+  const outPath = resolve("docs/demo-strategy-auto.html");
   writeFileSync(outPath, html);
   console.log(`  📄 대시보드: ${outPath}`);
   console.log(`     open docs/demo-strategy-auto.html`);
@@ -430,7 +512,14 @@ function generateDashboard(
   buyerStrategy: MasterStrategy,
   sellerStrategy: MasterStrategy,
   rounds: RoundLog[],
-  summary: { deal: boolean; finalPrice: number | null; acceptedBy: string | null; totalTokens: number; totalCost: number; totalDuration: number },
+  summary: {
+    deal: boolean;
+    finalPrice: number | null;
+    acceptedBy: string | null;
+    totalTokens: number;
+    totalCost: number;
+    totalDuration: number;
+  },
 ): string {
   const strategyCardHtml = (label: string, s: MasterStrategy, color: string) => {
     return `<div class="strategy-card" style="border-left:4px solid ${color}">
@@ -450,11 +539,12 @@ function generateDashboard(
     </div>`;
   };
 
-  const roundCardsHtml = rounds.map(r => {
-    const buyerU = r.buyer_result.utility;
-    const sellerU = r.seller_result.utility;
-    const barWidth = (v: number) => Math.max(2, Math.min(100, v * 100));
-    return `<div class="round-card">
+  const roundCardsHtml = rounds
+    .map((r) => {
+      const buyerU = r.buyer_result.utility;
+      const sellerU = r.seller_result.utility;
+      const barWidth = (v: number) => Math.max(2, Math.min(100, v * 100));
+      return `<div class="round-card">
       <div class="round-header">
         <span class="round-num">Round ${r.round}</span>
         <span class="round-gap">Gap $${r.gap}</span>
@@ -468,7 +558,7 @@ function generateDashboard(
             <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:${barWidth(buyerU.v_p)}%;background:#2ecc71"></div></div><span class="u-val">${buyerU.v_p.toFixed(3)}</span></div>
             <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:${barWidth(buyerU.v_t)}%;background:#f39c12"></div></div><span class="u-val">${buyerU.v_t.toFixed(3)}</span></div>
           </div>
-          ${r.buyer_message ? `<div class="msg-bubble buyer-msg">"${r.buyer_message}"</div>` : ''}
+          ${r.buyer_message ? `<div class="msg-bubble buyer-msg">"${r.buyer_message}"</div>` : ""}
         </div>
         <div class="vs-divider">VS</div>
         <div class="party seller-side">
@@ -479,36 +569,57 @@ function generateDashboard(
             <div class="u-row"><span class="u-label">V_p</span><div class="u-bar"><div style="width:${barWidth(sellerU.v_p)}%;background:#2ecc71"></div></div><span class="u-val">${sellerU.v_p.toFixed(3)}</span></div>
             <div class="u-row"><span class="u-label">V_t</span><div class="u-bar"><div style="width:${barWidth(sellerU.v_t)}%;background:#f39c12"></div></div><span class="u-val">${sellerU.v_t.toFixed(3)}</span></div>
           </div>
-          ${r.seller_message ? `<div class="msg-bubble seller-msg">"${r.seller_message}"</div>` : ''}
+          ${r.seller_message ? `<div class="msg-bubble seller-msg">"${r.seller_message}"</div>` : ""}
         </div>
       </div>
       <div class="round-tokens">
-        ${r.buyer_llm ? `Alice: ${r.buyer_llm.tokens.input}+${r.buyer_llm.tokens.output}tok $${r.buyer_llm.cost.toFixed(4)}` : ''}
-        ${r.seller_llm ? ` | Bob: ${r.seller_llm.tokens.input}+${r.seller_llm.tokens.output}tok $${r.seller_llm.cost.toFixed(4)}` : ''}
+        ${r.buyer_llm ? `Alice: ${r.buyer_llm.tokens.input}+${r.buyer_llm.tokens.output}tok $${r.buyer_llm.cost.toFixed(4)}` : ""}
+        ${r.seller_llm ? ` | Bob: ${r.seller_llm.tokens.input}+${r.seller_llm.tokens.output}tok $${r.seller_llm.cost.toFixed(4)}` : ""}
       </div>
     </div>`;
-  }).join('\n');
+    })
+    .join("\n");
 
   // Price chart data
-  const chartData = rounds.map(r => ({ round: r.round, buyer: r.buyer_offer, seller: r.seller_offer }));
-  const allPrices = chartData.flatMap(d => [d.buyer, d.seller]);
+  const chartData = rounds.map((r) => ({
+    round: r.round,
+    buyer: r.buyer_offer,
+    seller: r.seller_offer,
+  }));
+  const allPrices = chartData.flatMap((d) => [d.buyer, d.seller]);
   const priceMin = Math.min(...allPrices) - 30;
   const priceMax = Math.max(...allPrices) + 30;
   const chartHeight = 200;
   const chartWidth = 600;
 
-  const toY = (price: number) => chartHeight - ((price - priceMin) / (priceMax - priceMin)) * chartHeight;
+  const toY = (price: number) =>
+    chartHeight - ((price - priceMin) / (priceMax - priceMin)) * chartHeight;
   const toX = (i: number) => (i / Math.max(1, chartData.length - 1)) * chartWidth;
 
-  const buyerPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(0)},${toY(d.buyer).toFixed(0)}`).join(' ');
-  const sellerPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(0)},${toY(d.seller).toFixed(0)}`).join(' ');
+  const buyerPath = chartData
+    .map((d, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(0)},${toY(d.buyer).toFixed(0)}`)
+    .join(" ");
+  const sellerPath = chartData
+    .map((d, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(0)},${toY(d.seller).toFixed(0)}`)
+    .join(" ");
 
-  const buyerDots = chartData.map((d, i) => `<circle cx="${toX(i).toFixed(0)}" cy="${toY(d.buyer).toFixed(0)}" r="4" fill="#3498db"/><text x="${toX(i).toFixed(0)}" y="${(toY(d.buyer) - 10).toFixed(0)}" fill="#3498db" text-anchor="middle" font-size="11">$${d.buyer}</text>`).join('');
-  const sellerDots = chartData.map((d, i) => `<circle cx="${toX(i).toFixed(0)}" cy="${toY(d.seller).toFixed(0)}" r="4" fill="#e74c3c"/><text x="${toX(i).toFixed(0)}" y="${(toY(d.seller) + 18).toFixed(0)}" fill="#e74c3c" text-anchor="middle" font-size="11">$${d.seller}</text>`).join('');
+  const buyerDots = chartData
+    .map(
+      (d, i) =>
+        `<circle cx="${toX(i).toFixed(0)}" cy="${toY(d.buyer).toFixed(0)}" r="4" fill="#3498db"/><text x="${toX(i).toFixed(0)}" y="${(toY(d.buyer) - 10).toFixed(0)}" fill="#3498db" text-anchor="middle" font-size="11">$${d.buyer}</text>`,
+    )
+    .join("");
+  const sellerDots = chartData
+    .map(
+      (d, i) =>
+        `<circle cx="${toX(i).toFixed(0)}" cy="${toY(d.seller).toFixed(0)}" r="4" fill="#e74c3c"/><text x="${toX(i).toFixed(0)}" y="${(toY(d.seller) + 18).toFixed(0)}" fill="#e74c3c" text-anchor="middle" font-size="11">$${d.seller}</text>`,
+    )
+    .join("");
 
-  const dealLine = summary.deal && summary.finalPrice
-    ? `<line x1="0" y1="${toY(summary.finalPrice).toFixed(0)}" x2="${chartWidth}" y2="${toY(summary.finalPrice).toFixed(0)}" stroke="#2ecc71" stroke-width="2" stroke-dasharray="8,4"/><text x="${chartWidth + 5}" y="${(toY(summary.finalPrice) + 4).toFixed(0)}" fill="#2ecc71" font-size="12">Deal $${summary.finalPrice}</text>`
-    : '';
+  const dealLine =
+    summary.deal && summary.finalPrice
+      ? `<line x1="0" y1="${toY(summary.finalPrice).toFixed(0)}" x2="${chartWidth}" y2="${toY(summary.finalPrice).toFixed(0)}" stroke="#2ecc71" stroke-width="2" stroke-dasharray="8,4"/><text x="${chartWidth + 5}" y="${(toY(summary.finalPrice) + 4).toFixed(0)}" fill="#2ecc71" font-size="12">Deal $${summary.finalPrice}</text>`
+      : "";
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -579,21 +690,21 @@ body { background:#0a0b0d; color:#e0e0e0; font-family:-apple-system,'Pretendard'
 </div>
 
 <div class="summary-cards">
-  <div class="s-card"><div class="s-title">결과</div><div class="s-value ${summary.deal ? 'deal' : 'nodeal'}">${summary.deal ? 'DEAL' : 'NO DEAL'}</div></div>
-  <div class="s-card"><div class="s-title">최종 가격</div><div class="s-value">${summary.finalPrice ? '$' + summary.finalPrice : '—'}</div></div>
-  <div class="s-card"><div class="s-title">절약</div><div class="s-value">${summary.finalPrice ? '$' + (MARKET_PRICE - summary.finalPrice) + ' (' + ((MARKET_PRICE - summary.finalPrice) / MARKET_PRICE * 100).toFixed(1) + '%)' : '—'}</div></div>
+  <div class="s-card"><div class="s-title">결과</div><div class="s-value ${summary.deal ? "deal" : "nodeal"}">${summary.deal ? "DEAL" : "NO DEAL"}</div></div>
+  <div class="s-card"><div class="s-title">최종 가격</div><div class="s-value">${summary.finalPrice ? "$" + summary.finalPrice : "—"}</div></div>
+  <div class="s-card"><div class="s-title">절약</div><div class="s-value">${summary.finalPrice ? "$" + (MARKET_PRICE - summary.finalPrice) + " (" + (((MARKET_PRICE - summary.finalPrice) / MARKET_PRICE) * 100).toFixed(1) + "%)" : "—"}</div></div>
   <div class="s-card"><div class="s-title">라운드</div><div class="s-value">${rounds.length}</div></div>
   <div class="s-card"><div class="s-title">토큰</div><div class="s-value">${summary.totalTokens.toLocaleString()}</div></div>
   <div class="s-card"><div class="s-title">LLM 비용</div><div class="s-value">$${summary.totalCost.toFixed(4)}</div></div>
   <div class="s-card"><div class="s-title">소요 시간</div><div class="s-value">${(summary.totalDuration / 1000).toFixed(1)}s</div></div>
-  <div class="s-card"><div class="s-title">수락자</div><div class="s-value">${summary.acceptedBy ?? '—'}</div></div>
+  <div class="s-card"><div class="s-title">수락자</div><div class="s-value">${summary.acceptedBy ?? "—"}</div></div>
 </div>
 
 <div class="section">
   <h2>전략 비교</h2>
   <div class="strategies">
-    ${strategyCardHtml('Alice (구매자)', buyerStrategy, '#3498db')}
-    ${strategyCardHtml('Bob (판매자)', sellerStrategy, '#e74c3c')}
+    ${strategyCardHtml("Alice (구매자)", buyerStrategy, "#3498db")}
+    ${strategyCardHtml("Bob (판매자)", sellerStrategy, "#e74c3c")}
   </div>
 </div>
 
@@ -610,7 +721,7 @@ body { background:#0a0b0d; color:#e0e0e0; font-family:-apple-system,'Pretendard'
     <div class="chart-legend">
       <span><span class="legend-dot" style="background:#3498db"></span> Alice (구매자)</span>
       <span><span class="legend-dot" style="background:#e74c3c"></span> Bob (판매자)</span>
-      ${summary.deal ? '<span><span class="legend-dot" style="background:#2ecc71"></span> 최종 거래가</span>' : ''}
+      ${summary.deal ? '<span><span class="legend-dot" style="background:#2ecc71"></span> 최종 거래가</span>' : ""}
     </div>
   </div>
 </div>
@@ -625,14 +736,16 @@ body { background:#0a0b0d; color:#e0e0e0; font-family:-apple-system,'Pretendard'
   <table class="cost-table">
     <thead><tr><th>Round</th><th>Alice 입력</th><th>Alice 출력</th><th>Bob 입력</th><th>Bob 출력</th><th>비용</th></tr></thead>
     <tbody>
-    ${rounds.map(r => {
-      const bi = r.buyer_llm?.tokens.input ?? 0;
-      const bo = r.buyer_llm?.tokens.output ?? 0;
-      const si = r.seller_llm?.tokens.input ?? 0;
-      const so = r.seller_llm?.tokens.output ?? 0;
-      const cost = (r.buyer_llm?.cost ?? 0) + (r.seller_llm?.cost ?? 0);
-      return `<tr><td>R${r.round}</td><td>${bi}</td><td>${bo}</td><td>${si}</td><td>${so}</td><td>$${cost.toFixed(4)}</td></tr>`;
-    }).join('\n')}
+    ${rounds
+      .map((r) => {
+        const bi = r.buyer_llm?.tokens.input ?? 0;
+        const bo = r.buyer_llm?.tokens.output ?? 0;
+        const si = r.seller_llm?.tokens.input ?? 0;
+        const so = r.seller_llm?.tokens.output ?? 0;
+        const cost = (r.buyer_llm?.cost ?? 0) + (r.seller_llm?.cost ?? 0);
+        return `<tr><td>R${r.round}</td><td>${bi}</td><td>${bo}</td><td>${si}</td><td>${so}</td><td>$${cost.toFixed(4)}</td></tr>`;
+      })
+      .join("\n")}
     <tr style="font-weight:700;border-top:2px solid #333"><td>합계</td><td colspan="4">${summary.totalTokens.toLocaleString()} 토큰</td><td>$${summary.totalCost.toFixed(4)}</td></tr>
     </tbody>
   </table>
@@ -647,7 +760,7 @@ body { background:#0a0b0d; color:#e0e0e0; font-family:-apple-system,'Pretendard'
 
 // ─── Run ─────────────────────────────────────────────────────
 
-main().catch(err => {
-  console.error('Fatal error:', err);
+main().catch((err) => {
+  console.error("Fatal error:", err);
   process.exit(1);
 });

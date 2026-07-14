@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildDisputeAiAssessmentEventHash,
   disputeAiAuditAdvisoryLockKey,
+  type HashableDisputeAiAssessmentEvent,
   legacyDisputeAiAssessmentEventAnchor,
   verifyDisputeAiAssessmentEventChain,
-  type HashableDisputeAiAssessmentEvent,
 } from "../services/dispute-ai-assessment-event.service.js";
 
-function event(overrides: Partial<HashableDisputeAiAssessmentEvent> = {}): HashableDisputeAiAssessmentEvent {
+function event(
+  overrides: Partial<HashableDisputeAiAssessmentEvent> = {},
+): HashableDisputeAiAssessmentEvent {
   return {
     id: "event-1",
     disputeId: "11111111-1111-4111-8111-111111111111",
@@ -28,8 +30,9 @@ function event(overrides: Partial<HashableDisputeAiAssessmentEvent> = {}): Hasha
 
 describe("dispute AI assessment event hash chain", () => {
   it("scopes the transaction lock to one dispute audit chain", () => {
-    expect(disputeAiAuditAdvisoryLockKey("11111111-1111-4111-8111-111111111111"))
-      .toBe("dispute-ai-audit:11111111-1111-4111-8111-111111111111");
+    expect(disputeAiAuditAdvisoryLockKey("11111111-1111-4111-8111-111111111111")).toBe(
+      "dispute-ai-audit:11111111-1111-4111-8111-111111111111",
+    );
   });
   it("builds and verifies a sealed two-event chain", () => {
     const first = event();

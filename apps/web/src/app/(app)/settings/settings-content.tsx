@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { Alert, Avatar, Button, Field, Input } from "@/components/ui";
+import { ApiError, api } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
-import { notificationApi, type NotificationPreferences } from "@/lib/api-client";
-import { api, ApiError } from "@/lib/api-client";
 
 interface SettingsContentProps {
   email: string;
@@ -13,19 +13,13 @@ interface SettingsContentProps {
   provider: string;
 }
 
-export function SettingsContent({
-  email,
-  displayName,
-  avatarUrl,
-  provider,
-}: SettingsContentProps) {
+export function SettingsContent({ email, displayName, avatarUrl, provider }: SettingsContentProps) {
   const router = useRouter();
   const supabase = createClient();
 
   // Profile state
   const [name, setName] = useState(displayName);
   const [avatarPreview, setAvatarPreview] = useState(avatarUrl);
-  const [avatarError, setAvatarError] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{
@@ -63,7 +57,6 @@ export function SettingsContent({
     }
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
-    setAvatarError(false);
     setProfileMsg(null);
   };
 
@@ -182,317 +175,184 @@ export function SettingsContent({
       <div className="mb-8">
         {/* Mobile only: back button */}
         <button
+          type="button"
           onClick={() => router.back()}
-          className="mb-4 flex md:hidden items-center gap-1 text-sm text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+          className="mb-4 flex md:hidden items-center gap-1 text-sm text-ink-muted hover:text-ink-secondary transition-colors cursor-pointer"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <polyline points="15 18 9 12 15 6" />
           </svg>
           Back
         </button>
-        <h1 className="text-2xl font-bold text-white">Account Settings</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Manage your profile and account
-        </p>
+        <h1 className="text-2xl font-bold text-ink">Account Settings</h1>
+        <p className="mt-1 text-sm text-ink-muted">Manage your profile and account</p>
       </div>
 
       {/* ── Profile Section ────────────────────────────── */}
-      <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-4">
-          Profile
-        </h2>
+      <section className="rounded-xl border border-line bg-surface-raised p-4 sm:p-6 mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-ink mb-4">Profile</h2>
 
         {/* Avatar */}
         <div className="mb-5">
-          <label className="block text-sm text-slate-400 mb-2">Avatar</label>
+          <span className="block text-sm text-ink-secondary mb-2">Avatar</span>
           <div className="flex items-center gap-4">
-            <div className="relative">
-              {avatarPreview && !avatarError ? (
-                <img
-                  src={avatarPreview}
-                  alt=""
-                  className="h-16 w-16 rounded-full object-cover border border-slate-700"
-                  referrerPolicy="no-referrer"
-                  onError={() => setAvatarError(true)}
-                />
-              ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/20 text-xl font-medium text-emerald-400 border border-slate-700">
-                  {(name || email).charAt(0).toUpperCase()}
-                </div>
-              )}
-            </div>
+            <Avatar
+              src={avatarPreview || undefined}
+              name={name || email}
+              size="lg"
+              className="border border-line"
+            />
             <div>
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer"
-              >
+              <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
                 Change
-              </button>
+              </Button>
               <input
+                id="avatar-upload"
                 ref={fileRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={handleAvatarSelect}
               />
-              <p className="mt-1 text-xs text-slate-600">
-                JPG, PNG or WebP. Max 2 MB.
-              </p>
+              <p className="mt-1 text-xs text-ink-muted">JPG, PNG or WebP. Max 2 MB.</p>
             </div>
           </div>
         </div>
 
         {/* Name */}
-        <div className="mb-5">
-          <label className="block text-sm text-slate-400 mb-1.5">
-            Display name
-          </label>
-          <input
+        <Field label="Display name" htmlFor="display-name">
+          <Input
+            id="display-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500 transition-colors"
           />
-        </div>
+        </Field>
 
         {/* Email (read-only) */}
-        <div className="mb-5">
-          <label className="block text-sm text-slate-400 mb-1.5">Email</label>
-          <input
-            type="email"
-            value={email}
-            disabled
-            className="w-full rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 text-sm text-slate-500 cursor-not-allowed"
-          />
-          <p className="mt-1 text-xs text-slate-600">
-            Email cannot be changed.
-          </p>
-        </div>
+        <Field label="Email" htmlFor="email" hint="Email cannot be changed.">
+          <Input id="email" type="email" value={email} disabled />
+        </Field>
 
         {profileMsg && (
-          <p
-            className={`mb-3 text-sm ${
-              profileMsg.type === "success"
-                ? "text-emerald-400"
-                : "text-red-400"
-            }`}
-          >
+          <Alert tone={profileMsg.type} className="mb-3">
             {profileMsg.text}
-          </p>
+          </Alert>
         )}
 
-        <button
-          onClick={handleProfileSave}
-          disabled={profileSaving}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
+        <Button onClick={handleProfileSave} loading={profileSaving}>
           {profileSaving ? "Saving…" : "Save Profile"}
-        </button>
+        </Button>
       </section>
 
       {/* ── Password Section ───────────────────────────── */}
-      <section className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6 mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-1">
-          Password
-        </h2>
-        <p className="text-sm text-slate-500 mb-4">
+      <section className="rounded-xl border border-line bg-surface-raised p-4 sm:p-6 mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-ink mb-1">Password</h2>
+        <p className="text-sm text-ink-muted mb-4">
           {isOAuth
             ? "You signed in with Google. Set a password to also sign in with email."
             : "Update your password."}
         </p>
 
-        <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-1.5">
-            New password
-          </label>
-          <input
+        <Field label="New password" htmlFor="new-password">
+          <Input
+            id="new-password"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500 transition-colors"
           />
-        </div>
+        </Field>
 
-        <div className="mb-4">
-          <label className="block text-sm text-slate-400 mb-1.5">
-            Confirm password
-          </label>
-          <input
+        <Field label="Confirm password" htmlFor="confirm-password">
+          <Input
+            id="confirm-password"
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Repeat password"
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500 transition-colors"
           />
-        </div>
+        </Field>
 
         {passwordMsg && (
-          <p
-            className={`mb-3 text-sm ${
-              passwordMsg.type === "success"
-                ? "text-emerald-400"
-                : "text-red-400"
-            }`}
-          >
+          <Alert tone={passwordMsg.type} className="mb-3">
             {passwordMsg.text}
-          </p>
+          </Alert>
         )}
 
-        <button
+        <Button
           onClick={handlePasswordSave}
-          disabled={passwordSaving || !newPassword || !confirmPassword}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+          loading={passwordSaving}
+          disabled={!newPassword || !confirmPassword}
         >
-          {passwordSaving
-            ? "Saving…"
-            : isOAuth
-              ? "Set Password"
-              : "Update Password"}
-        </button>
+          {passwordSaving ? "Saving…" : isOAuth ? "Set Password" : "Update Password"}
+        </Button>
       </section>
 
       {/* ── Delete Account Section ─────────────────────── */}
-      <section className="rounded-xl border border-red-900/50 bg-bg-card p-4 sm:p-6">
-        <h2 className="text-base sm:text-lg font-semibold text-red-400 mb-1">
-          Delete Account
-        </h2>
-        <p className="text-sm text-slate-500 mb-4">
-          Permanently delete your account and all associated data. This action
-          cannot be undone.
+      <section className="rounded-xl border border-error/30 bg-surface-raised p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-semibold text-error mb-1">Delete Account</h2>
+        <p className="text-sm text-ink-muted mb-4">
+          Permanently delete your account and all associated data. This action cannot be undone.
         </p>
 
         {!deleteOpen ? (
-          <button
-            onClick={() => setDeleteOpen(true)}
-            className="rounded-lg border border-red-800 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-900/30 transition-colors cursor-pointer"
-          >
+          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
             Delete my account
-          </button>
+          </Button>
         ) : (
-          <div className="rounded-lg border border-red-800/50 bg-red-950/20 p-4">
-            <p className="text-sm text-slate-300 mb-3">
-              Type <span className="font-mono text-red-400">{email}</span> to
-              confirm:
+          <div className="rounded-lg border border-error/30 bg-error-soft p-4">
+            <p className="text-sm text-ink-secondary mb-3">
+              Type <span className="font-mono text-error">{email}</span> to confirm:
             </p>
-            <input
+            <Input
               type="text"
               value={deleteConfirm}
               onChange={(e) => setDeleteConfirm(e.target.value)}
               placeholder={email}
-              className="w-full rounded-lg border border-red-800/50 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-red-500 transition-colors mb-3"
+              className="mb-3"
             />
 
             {deleteMsg && (
-              <p className="mb-3 text-sm text-red-400">{deleteMsg.text}</p>
+              <Alert tone="error" className="mb-3">
+                {deleteMsg.text}
+              </Alert>
             )}
 
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={handleDelete}
                 disabled={deleteConfirm !== email || deleting}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                className="rounded-lg bg-error px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-error/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deleting ? "Deleting…" : "Permanently Delete"}
               </button>
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setDeleteOpen(false);
                   setDeleteConfirm("");
                   setDeleteMsg(null);
                 }}
-                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
       </section>
-
-    </div>
-  );
-}
-
-// ─── Notification Settings ─────────────────────────────────────────────────────
-
-const CATEGORIES = ["negotiation", "account", "listing"] as const;
-const CHANNELS = ["in_app", "email"] as const;
-const CATEGORY_LABELS: Record<string, string> = {
-  negotiation: "Negotiation",
-  account: "Account",
-  listing: "Listing",
-};
-const CHANNEL_LABELS: Record<string, string> = {
-  in_app: "In-App",
-  email: "Email",
-};
-
-function NotificationSettings() {
-  const [prefs, setPrefs] = useState<NotificationPreferences>({});
-  const [saving, setSaving] = useState<string | null>(null);
-
-  const loadPrefs = useCallback(async () => {
-    const { preferences } = await notificationApi.getPreferences().catch(() => ({ preferences: {} }));
-    setPrefs(preferences);
-  }, []);
-
-  useEffect(() => { loadPrefs(); }, [loadPrefs]);
-
-  async function handleToggle(category: string, channel: string, current: boolean) {
-    const key = `${category}.${channel}`;
-    setSaving(key);
-    const newValue = !current;
-    setPrefs((prev) => ({
-      ...prev,
-      [category]: { ...prev[category], [channel]: newValue },
-    }));
-    await notificationApi.updatePreference(category, channel, newValue).catch(() => {
-      // revert on error
-      setPrefs((prev) => ({
-        ...prev,
-        [category]: { ...prev[category], [channel]: current },
-      }));
-    });
-    setSaving(null);
-  }
-
-  return (
-    <div className="rounded-xl border border-slate-800 bg-bg-card p-4 sm:p-6">
-      <h2 className="mb-4 text-sm font-semibold text-slate-200">Notifications</h2>
-      <div className="space-y-4">
-        {CATEGORIES.map((category) => (
-          <div key={category}>
-            <p className="mb-2 text-xs font-medium text-slate-500 uppercase tracking-wider">
-              {CATEGORY_LABELS[category]}
-            </p>
-            <div className="space-y-2">
-              {CHANNELS.map((channel) => {
-                const enabled = prefs[category]?.[channel] ?? true;
-                const key = `${category}.${channel}`;
-                return (
-                  <div key={channel} className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">{CHANNEL_LABELS[channel]}</span>
-                    <button
-                      onClick={() => handleToggle(category, channel, enabled)}
-                      disabled={saving === key}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
-                        ${enabled ? "bg-cyan-500" : "bg-slate-700"}
-                        ${saving === key ? "opacity-50" : ""}`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transform transition duration-200 ease-in-out
-                          ${enabled ? "translate-x-4" : "translate-x-0"}`}
-                      />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

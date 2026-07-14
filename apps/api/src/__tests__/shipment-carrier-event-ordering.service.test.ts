@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@haggle/db";
+import { describe, expect, it, vi } from "vitest";
 import { applyCarrierShipmentEvent } from "../services/shipment-record.service.js";
 
 function baseRow(overrides: Record<string, unknown> = {}) {
@@ -95,7 +95,11 @@ describe("shipment carrier event DB ordering", () => {
   it("atomically advances the watermark and stores ordering audit metadata", async () => {
     const { db, state } = statefulDb(baseRow());
     const result = await applyCarrierShipmentEvent(db, input);
-    expect(result).toMatchObject({ disposition: "applied", stateChanged: true, effectsRequired: true });
+    expect(result).toMatchObject({
+      disposition: "applied",
+      stateChanged: true,
+      effectsRequired: true,
+    });
     expect(result?.shipment.events[0]).toMatchObject({
       message: "Out for delivery",
       location: "Denver, CO",
@@ -119,7 +123,11 @@ describe("shipment carrier event DB ordering", () => {
       ...input,
       occurredAt: new Date("2026-07-12T09:00:00.000Z"),
     });
-    expect(result).toMatchObject({ disposition: "stale", stateChanged: false, effectsRequired: false });
+    expect(result).toMatchObject({
+      disposition: "stale",
+      stateChanged: false,
+      effectsRequired: false,
+    });
     expect(state.row.status).toBe("IN_TRANSIT");
     expect(state.updateCalls).toBe(0);
     expect(state.events[0]?.payload).toMatchObject({ ordering_disposition: "stale" });
@@ -142,25 +150,33 @@ describe("shipment carrier event DB ordering", () => {
   });
 
   it("recognizes a retried applied event so downstream effects can resume", async () => {
-    const { db, state } = statefulDb(baseRow({
-      status: "OUT_FOR_DELIVERY",
-      lastCarrierEventAt: input.occurredAt,
-      lastCarrierEventKey: input.eventKey,
-    }));
+    const { db, state } = statefulDb(
+      baseRow({
+        status: "OUT_FOR_DELIVERY",
+        lastCarrierEventAt: input.occurredAt,
+        lastCarrierEventKey: input.eventKey,
+      }),
+    );
     const result = await applyCarrierShipmentEvent(db, input);
-    expect(result).toMatchObject({ disposition: "replay_applied", stateChanged: false, effectsRequired: true });
+    expect(result).toMatchObject({
+      disposition: "replay_applied",
+      stateChanged: false,
+      effectsRequired: true,
+    });
     expect(state.updateCalls).toBe(0);
     expect(state.events).toHaveLength(1);
   });
 
   it("advances a repeated delivered observation without moving the original delivery time", async () => {
     const originalDeliveredAt = new Date("2026-07-12T11:00:00.000Z");
-    const { db, state } = statefulDb(baseRow({
-      status: "DELIVERED",
-      deliveredAt: originalDeliveredAt,
-      lastCarrierEventAt: originalDeliveredAt,
-      lastCarrierEventKey: "evt_delivered_1",
-    }));
+    const { db, state } = statefulDb(
+      baseRow({
+        status: "DELIVERED",
+        deliveredAt: originalDeliveredAt,
+        lastCarrierEventAt: originalDeliveredAt,
+        lastCarrierEventKey: "evt_delivered_1",
+      }),
+    );
     const result = await applyCarrierShipmentEvent(db, {
       ...input,
       eventKey: "evt_delivered_2",
@@ -168,24 +184,34 @@ describe("shipment carrier event DB ordering", () => {
       occurredAt: new Date("2026-07-12T12:00:00.000Z"),
       carrierRawStatus: "delivered",
     });
-    expect(result).toMatchObject({ disposition: "observed", stateChanged: false, effectsRequired: false });
+    expect(result).toMatchObject({
+      disposition: "observed",
+      stateChanged: false,
+      effectsRequired: false,
+    });
     expect(state.row.deliveredAt).toEqual(originalDeliveredAt);
     expect(state.row.lastCarrierEventAt).toEqual(new Date("2026-07-12T12:00:00.000Z"));
   });
 
   it("audits but never applies carrier events after a label refund is confirmed", async () => {
-    const { db, state } = statefulDb(baseRow({
-      status: "LABEL_PENDING",
-      labelRefundStatus: "REFUNDED",
-      lastCarrierEventAt: null,
-      lastCarrierEventKey: null,
-    }));
+    const { db, state } = statefulDb(
+      baseRow({
+        status: "LABEL_PENDING",
+        labelRefundStatus: "REFUNDED",
+        lastCarrierEventAt: null,
+        lastCarrierEventKey: null,
+      }),
+    );
     const result = await applyCarrierShipmentEvent(db, {
       ...input,
       incomingStatus: "LABEL_CREATED",
       carrierRawStatus: "pre_transit",
     });
-    expect(result).toMatchObject({ disposition: "label_refunded", stateChanged: false, effectsRequired: false });
+    expect(result).toMatchObject({
+      disposition: "label_refunded",
+      stateChanged: false,
+      effectsRequired: false,
+    });
     expect(state.row.status).toBe("LABEL_PENDING");
     expect(state.updateCalls).toBe(0);
     expect(state.events[0]?.payload).toMatchObject({ ordering_disposition: "label_refunded" });

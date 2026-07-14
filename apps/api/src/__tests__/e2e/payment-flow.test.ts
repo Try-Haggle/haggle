@@ -6,9 +6,10 @@
  *
  * Uses Fastify inject() — no real server, DB, or chain required.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "../helpers.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "../helpers.js";
 
 // ─── Service mocks ────────────────────────────────────────────────────
 
@@ -55,7 +56,8 @@ vi.mock("../../services/admin-action-log.service.js", () => ({
 }));
 
 vi.mock("../../services/webhook-event-claim.service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../services/webhook-event-claim.service.js")>();
+  const actual =
+    await importOriginal<typeof import("../../services/webhook-event-claim.service.js")>();
   return {
     ...actual,
     claimWebhookEvent: vi.fn().mockResolvedValue({
@@ -218,7 +220,7 @@ const BUYER_AUTH = {
 };
 
 const PAYMENT_ID = "pay-e2e-001";
-const ORDER_ID = "order-e2e-001";
+const _ORDER_ID = "order-e2e-001";
 const SETTLEMENT_APPROVAL_ID = "sa-e2e-001";
 
 // ─── Tests ────────────────────────────────────────────────────────────

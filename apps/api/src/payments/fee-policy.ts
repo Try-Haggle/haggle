@@ -2,10 +2,7 @@ export const HAGGLE_X402_FEE_BPS_ENV = "HAGGLE_X402_FEE_BPS";
 export const DEFAULT_HAGGLE_FEE_BPS = 150;
 export const MAX_HAGGLE_FEE_BPS = 1000;
 
-export function readFeeBpsFromEnv(
-  envName: string,
-  fallbackBps: number,
-): number {
+export function readFeeBpsFromEnv(envName: string, fallbackBps: number): number {
   const raw = process.env[envName];
   const bps = raw === undefined ? fallbackBps : Number(raw);
   if (!Number.isInteger(bps) || bps < 0 || bps > MAX_HAGGLE_FEE_BPS) {

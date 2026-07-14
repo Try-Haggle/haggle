@@ -7,7 +7,8 @@ vi.mock("../services/admin-action-log.service.js", () => ({
 }));
 
 vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
+  const actual =
+    await importOriginal<typeof import("../services/webhook-event-claim.service.js")>();
   return {
     ...actual,
     claimWebhookEvent: vi.fn().mockResolvedValue({
@@ -138,15 +139,19 @@ describe("shipment EasyPost webhook sync", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual(expect.objectContaining({
-      accepted: true,
-      tracking_code: "TRACK123",
-      new_status: "DELIVERED",
-    }));
-    expect(db.updates).toEqual(expect.arrayContaining([
-      expect.objectContaining({ status: "DELIVERED" }),
-      expect.objectContaining({ productReleaseStatus: "BUYER_REVIEW" }),
-    ]));
+    expect(res.json()).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        tracking_code: "TRACK123",
+        new_status: "DELIVERED",
+      }),
+    );
+    expect(db.updates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "DELIVERED" }),
+        expect.objectContaining({ productReleaseStatus: "BUYER_REVIEW" }),
+      ]),
+    );
 
     await app.close();
   });

@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 type HealthRow = {
   total_claims: unknown;
@@ -11,8 +11,7 @@ type HealthRow = {
   observed_at: unknown;
 };
 
-const INVALID =
-  "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_HEALTH_INVALID";
+const INVALID = "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_HEALTH_INVALID";
 
 function count(value: unknown) {
   const parsed = Number(value);
@@ -26,8 +25,7 @@ function iso(value: unknown) {
   return parsed.toISOString();
 }
 
-export async function
-getShipmentApvReceiverManifestArchiveAlertReceiverClaimHealth(
+export async function getShipmentApvReceiverManifestArchiveAlertReceiverClaimHealth(
   db: Pick<Database, "execute">,
 ) {
   const rows = await db.execute(sql`WITH diagnostics AS (
@@ -170,13 +168,12 @@ getShipmentApvReceiverManifestArchiveAlertReceiverClaimHealth(
     freshness: count(row.freshness_violation_count),
     unsafeSideEffect: count(row.unsafe_side_effect_count),
   };
-  const criticalCount = Object.values(violations)
-    .reduce((sum, value) => sum + value, 0);
+  const criticalCount = Object.values(violations).reduce((sum, value) => sum + value, 0);
 
   return {
     schemaVersion:
       "shipment-apv-failure-alert-receiver-manifest-archive-alert-receiver-claim-health-v1",
-    status: criticalCount === 0 ? "healthy" as const : "critical" as const,
+    status: criticalCount === 0 ? ("healthy" as const) : ("critical" as const),
     totals,
     violations,
     criticalCount,

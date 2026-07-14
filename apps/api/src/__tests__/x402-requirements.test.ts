@@ -1,6 +1,6 @@
+import type { PaymentIntent } from "@haggle/payment-core";
 import { describe, expect, it } from "vitest";
 import { createX402PaymentRequirement } from "../payments/x402-requirements.js";
-import type { PaymentIntent } from "@haggle/payment-core";
 
 function makeIntent(overrides: Partial<PaymentIntent> = {}): PaymentIntent {
   return {
@@ -68,16 +68,21 @@ describe("createX402PaymentRequirement", () => {
   });
 
   it("rejects unsupported source currencies instead of treating them as USD cents", () => {
-    expect(() => createX402PaymentRequirement(makeIntent({
-      amount: {
-        currency: "EUR",
-        amount_minor: 90_000,
-      },
-    }), {
-      resource: "https://api.haggle.test/payments/payment_1/x402/submit-signature",
-      sellerWallet: "0x1111111111111111111111111111111111111111",
-      network: "eip155:8453",
-      assetAddress: "USDC",
-    })).toThrow("unsupported source currency for USDC settlement: EUR");
+    expect(() =>
+      createX402PaymentRequirement(
+        makeIntent({
+          amount: {
+            currency: "EUR",
+            amount_minor: 90_000,
+          },
+        }),
+        {
+          resource: "https://api.haggle.test/payments/payment_1/x402/submit-signature",
+          sellerWallet: "0x1111111111111111111111111111111111111111",
+          network: "eip155:8453",
+          assetAddress: "USDC",
+        },
+      ),
+    ).toThrow("unsupported source currency for USDC settlement: EUR");
   });
 });

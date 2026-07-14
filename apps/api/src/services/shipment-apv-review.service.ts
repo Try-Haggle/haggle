@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export type ShipmentApvReviewStatus = "NONE" | "PENDING" | "UPHELD" | "WAIVED";
 
@@ -26,7 +26,14 @@ export interface ShipmentApvReviewRecord {
 
 type ReviewOutcome =
   | { outcome: "updated" | "duplicate"; record: ShipmentApvReviewRecord }
-  | { outcome: "not_found" | "forbidden" | "invalid_state" | "request_conflict" | "version_conflict" };
+  | {
+      outcome:
+        | "not_found"
+        | "forbidden"
+        | "invalid_state"
+        | "request_conflict"
+        | "version_conflict";
+    };
 
 function numberValue(value: unknown): number {
   return Number(value ?? 0);
@@ -52,11 +59,17 @@ function mapReviewRecord(row: Record<string, unknown>): ShipmentApvReviewRecord 
     buyer_id: String(row.buyer_id),
     status: String(row.status),
     review_status: String(row.review_status) as ShipmentApvReviewStatus,
-    review_request_id: typeof row.review_request_id === "string" ? row.review_request_id : undefined,
-    seller_review_reason: typeof row.seller_review_reason === "string" ? row.seller_review_reason : undefined,
+    review_request_id:
+      typeof row.review_request_id === "string" ? row.review_request_id : undefined,
+    seller_review_reason:
+      typeof row.seller_review_reason === "string" ? row.seller_review_reason : undefined,
     reviewed_by: typeof row.reviewed_by === "string" ? row.reviewed_by : undefined,
-    review_decision_request_id: typeof row.review_decision_request_id === "string" ? row.review_decision_request_id : undefined,
-    review_decision_reason: typeof row.review_decision_reason === "string" ? row.review_decision_reason : undefined,
+    review_decision_request_id:
+      typeof row.review_decision_request_id === "string"
+        ? row.review_decision_request_id
+        : undefined,
+    review_decision_reason:
+      typeof row.review_decision_reason === "string" ? row.review_decision_reason : undefined,
     review_version: numberValue(row.review_version),
     assessed_seller_liability_minor: numberValue(row.assessed_seller_liability_minor),
     seller_liability_minor: numberValue(row.seller_liability_minor),
@@ -71,13 +84,13 @@ export async function getShipmentApvReview(
   db: Database,
   adjustmentId: string,
 ): Promise<ShipmentApvReviewRecord | null> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT adjustment.*, shipment.seller_id, shipment.buyer_id
       FROM shipment_apv_adjustments AS adjustment
       JOIN shipments AS shipment ON shipment.id = adjustment.shipment_id
      WHERE adjustment.id = ${adjustmentId}
      LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   return rows[0] ? mapReviewRecord(rows[0]) : null;
 }
 
@@ -97,7 +110,7 @@ export async function submitShipmentApvSellerReview(
 
   let rows: Array<Record<string, unknown>>;
   try {
-    rows = await db.execute(sql`
+    rows = (await db.execute(sql`
       UPDATE shipment_apv_adjustments
          SET review_status = 'PENDING', review_request_id = ${input.requestId},
              seller_review_reason = ${input.reason}, seller_review_submitted_at = now(),
@@ -106,7 +119,7 @@ export async function submitShipmentApvSellerReview(
          AND status = 'REVIEW_REQUIRED' AND review_status = 'NONE'
          AND review_version = ${current.review_version}
       RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
   } catch (error) {
     if (isUniqueViolation(error)) return { outcome: "request_conflict" };
     throw error;
@@ -114,7 +127,11 @@ export async function submitShipmentApvSellerReview(
   if (!rows[0]) return { outcome: "version_conflict" };
   return {
     outcome: "updated",
-    record: mapReviewRecord({ ...rows[0], seller_id: current.seller_id, buyer_id: current.buyer_id }),
+    record: mapReviewRecord({
+      ...rows[0],
+      seller_id: current.seller_id,
+      buyer_id: current.buyer_id,
+    }),
   };
 }
 
@@ -132,17 +149,19 @@ export async function decideShipmentApvReview(
   const current = await getShipmentApvReview(db, input.adjustmentId);
   if (!current) return { outcome: "not_found" };
   if (current.review_status !== "PENDING") {
-    return current.review_decision_request_id === input.requestId && current.review_status === input.decision
+    return current.review_decision_request_id === input.requestId &&
+      current.review_status === input.decision
       ? { outcome: "duplicate", record: current }
       : { outcome: "invalid_state" };
   }
   if (current.review_version !== input.expectedVersion) return { outcome: "version_conflict" };
 
   const sellerLiability = input.decision === "UPHELD" ? current.assessed_seller_liability_minor : 0;
-  const platformLiability = input.decision === "WAIVED" ? current.assessed_seller_liability_minor : 0;
+  const platformLiability =
+    input.decision === "WAIVED" ? current.assessed_seller_liability_minor : 0;
   let rows: Array<Record<string, unknown>>;
   try {
-    rows = await db.execute(sql`
+    rows = (await db.execute(sql`
       UPDATE shipment_apv_adjustments
          SET review_status = ${input.decision}, reviewed_by = ${input.reviewerId},
              review_decision_request_id = ${input.requestId},
@@ -152,7 +171,7 @@ export async function decideShipmentApvReview(
        WHERE id = ${input.adjustmentId}
          AND review_status = 'PENDING' AND review_version = ${input.expectedVersion}
       RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
   } catch (error) {
     if (isUniqueViolation(error)) return { outcome: "request_conflict" };
     throw error;
@@ -160,6 +179,10 @@ export async function decideShipmentApvReview(
   if (!rows[0]) return { outcome: "version_conflict" };
   return {
     outcome: "updated",
-    record: mapReviewRecord({ ...rows[0], seller_id: current.seller_id, buyer_id: current.buyer_id }),
+    record: mapReviewRecord({
+      ...rows[0],
+      seller_id: current.seller_id,
+      buyer_id: current.buyer_id,
+    }),
   };
 }

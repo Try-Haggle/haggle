@@ -13,7 +13,11 @@
 #   - Node 22 (.nvmrc):  nvm use
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev migrate migrate-new seed seed-full reset stop status db-url
+.PHONY: help setup dev dev-all landing kill-dev migrate migrate-new seed seed-full reset stop status db-url
+
+# Dev server ports (web · api · landing). Freed before `make dev` so a stale
+# run in another terminal doesn't cause EADDRINUSE.
+DEV_PORTS ?= 3000 3001 3002
 
 # Local DB URL exposed by `supabase start` (config.toml db.port = 54322).
 LOCAL_DB_URL ?= postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -32,9 +36,27 @@ setup: ## 신규 개발자 1회 셋업: 의존성 → Supabase 기동 → 마이
 	@echo "✅ 셋업 완료. 'make dev'로 개발 서버를 시작하세요."
 	@echo "   Supabase Studio: http://127.0.0.1:54323"
 
-dev: ## 일상 개발: Supabase 기동(미기동 시) + api·web 동시 실행
+dev: ## 일상 개발: web + api (landing 제외 — 파일워처 줄여 macOS fd 한도 회피)
 	@supabase status >/dev/null 2>&1 || supabase start
+	@$(MAKE) migrate
+	@$(MAKE) kill-dev
+	pnpm exec turbo dev --filter=@haggle/web --filter=@haggle/api
+
+dev-all: ## 전체(web+landing+api) 실행. 파일워처 3개 → macOS면 fd 한도 상향 필요할 수 있음
+	@supabase status >/dev/null 2>&1 || supabase start
+	@$(MAKE) migrate
+	@$(MAKE) kill-dev
 	pnpm dev
+
+landing: ## landing(마케팅 사이트)만 단독 실행 (port 3002)
+	@$(MAKE) kill-dev
+	pnpm --filter @haggle/landing dev
+
+kill-dev: ## dev 포트($(DEV_PORTS)) 점유 프로세스 정리 (이미 켜진 dev 끄기)
+	@for p in $(DEV_PORTS); do \
+		pids=$$(lsof -ti tcp:$$p 2>/dev/null); \
+		if [ -n "$$pids" ]; then kill $$pids 2>/dev/null && echo "  freed port $$p ($$pids)"; fi; \
+	done; true
 
 migrate: ## 로컬 DB에 마이그레이션 적용 (pgvector 확장 보장 후 drizzle migrate)
 	psql "$(LOCAL_DB_URL)" -f supabase/init-extensions.sql

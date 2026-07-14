@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
 
 export const SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_VERSION =
   "shipment-apv-failure-alert-receiver-manifest-archive-alert-payload-v1";
@@ -54,8 +53,7 @@ type BindingRow = {
 };
 
 function invalid() {
-  throw new Error(
-    "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_INVALID");
+  throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_INVALID");
 }
 
 function iso(value: unknown) {
@@ -88,10 +86,8 @@ function payloadHash(payload: Payload) {
 
 function expectedPayload(row: BindingRow): Payload {
   return {
-    schema_version:
-      SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_VERSION,
-    event_type:
-      "shipment_apv_failure_alert_receiver_manifest_archive_alert",
+    schema_version: SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_VERSION,
+    event_type: "shipment_apv_failure_alert_receiver_manifest_archive_alert",
     action: String(row.preview_action),
     severity: String(row.preview_severity),
     reasons: reasons(row.preview_reasons),
@@ -121,34 +117,44 @@ function fullGrantBindingValid(row: BindingRow) {
   const grantExpiresAt = Date.parse(iso(row.grant_cooldown_expires_at));
   const cooldownClaimedAt = Date.parse(iso(row.cooldown_claimed_at));
   const cooldownExpiresAt = Date.parse(iso(row.cooldown_expires_at));
-  return String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && /^[0-9a-f]{64}$/.test(String(row.grant_state_fingerprint))
-    && String(row.grant_status) === "GRANTED_DRY_RUN"
-    && String(row.decision) === "APPROVED"
-    && String(row.decision_reason) === "checker_approved_snapshot"
-    && String(row.decided_by) === String(row.granted_by)
-    && String(row.requested_by) !== String(row.granted_by)
-    && String(row.cooldown_grant_id) === String(row.grant_id)
-    && values.length >= 1 && values.length <= 7
-    && indexes.every((index) => index >= 0)
-    && indexes.every((index, position) => position === 0
-      || index > indexes[position - 1]!)
-    && (action === "review_warning"
+  return (
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    /^[0-9a-f]{64}$/.test(String(row.grant_state_fingerprint)) &&
+    String(row.grant_status) === "GRANTED_DRY_RUN" &&
+    String(row.decision) === "APPROVED" &&
+    String(row.decision_reason) === "checker_approved_snapshot" &&
+    String(row.decided_by) === String(row.granted_by) &&
+    String(row.requested_by) !== String(row.granted_by) &&
+    String(row.cooldown_grant_id) === String(row.grant_id) &&
+    values.length >= 1 &&
+    values.length <= 7 &&
+    indexes.every((index) => index >= 0) &&
+    indexes.every((index, position) => position === 0 || index > indexes[position - 1]!) &&
+    (action === "review_warning"
       ? severity === "warning" && !critical
-      : action === "escalate_critical" && severity === "critical" && critical)
-    && decidedAt >= requestedAt && decidedAt < requestExpiresAt
-    && grantedAt >= decidedAt && grantedAt < requestExpiresAt
-    && cooldownClaimedAt === grantedAt
-    && cooldownExpiresAt === grantExpiresAt
-    && grantExpiresAt === grantedAt + 15 * 60_000;
+      : action === "escalate_critical" && severity === "critical" && critical) &&
+    decidedAt >= requestedAt &&
+    decidedAt < requestExpiresAt &&
+    grantedAt >= decidedAt &&
+    grantedAt < requestExpiresAt &&
+    cooldownClaimedAt === grantedAt &&
+    cooldownExpiresAt === grantExpiresAt &&
+    grantExpiresAt === grantedAt + 15 * 60_000
+  );
 }
 
 function payloadObject(value: unknown): Payload {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid();
   const keys = Object.keys(value as object).sort();
-  const expectedKeys = ["action", "event_type", "reasons", "schema_version",
-    "severity", "state_fingerprint"];
+  const expectedKeys = [
+    "action",
+    "event_type",
+    "reasons",
+    "schema_version",
+    "severity",
+    "state_fingerprint",
+  ];
   if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) invalid();
   return value as Payload;
 }
@@ -160,15 +166,17 @@ function outboxBindingValid(row: BindingRow) {
   const createdAt = Date.parse(iso(row.outbox_created_at));
   const grantedAt = Date.parse(iso(row.granted_at));
   const expiresAt = Date.parse(iso(row.grant_cooldown_expires_at));
-  return String(row.outbox_delivery_grant_id) === String(row.grant_id)
-    && String(row.outbox_state_fingerprint)
-      === String(row.grant_state_fingerprint)
-    && String(row.outbox_status) === "UNSIGNED_DRY_RUN"
-    && String(row.created_by) === String(row.granted_by)
-    && createdAt >= grantedAt && createdAt < expiresAt
-    && canonicalPayload(payload) === canonicalPayload(expected)
-    && String(row.canonical_payload) === canonicalPayload(expected)
-    && String(row.payload_sha256) === payloadHash(expected);
+  return (
+    String(row.outbox_delivery_grant_id) === String(row.grant_id) &&
+    String(row.outbox_state_fingerprint) === String(row.grant_state_fingerprint) &&
+    String(row.outbox_status) === "UNSIGNED_DRY_RUN" &&
+    String(row.created_by) === String(row.granted_by) &&
+    createdAt >= grantedAt &&
+    createdAt < expiresAt &&
+    canonicalPayload(payload) === canonicalPayload(expected) &&
+    String(row.canonical_payload) === canonicalPayload(expected) &&
+    String(row.payload_sha256) === payloadHash(expected)
+  );
 }
 
 function safelyValidGrantBinding(row: BindingRow) {
@@ -187,19 +195,25 @@ function safelyValidOutboxBinding(row: BindingRow) {
   }
 }
 
-function exactReplayMatches(row: BindingRow, input: {
-  deliveryGrantId: string; clientOutboxId: string; createdBy: string;
-}) {
-  return String(row.client_outbox_id) === input.clientOutboxId
-    && String(row.outbox_delivery_grant_id) === input.deliveryGrantId
-    && String(row.created_by) === input.createdBy;
+function exactReplayMatches(
+  row: BindingRow,
+  input: {
+    deliveryGrantId: string;
+    clientOutboxId: string;
+    createdBy: string;
+  },
+) {
+  return (
+    String(row.client_outbox_id) === input.clientOutboxId &&
+    String(row.outbox_delivery_grant_id) === input.deliveryGrantId &&
+    String(row.created_by) === input.createdBy
+  );
 }
 
 function publicOutbox(row: BindingRow, replayed: boolean) {
   if (!outboxBindingValid(row)) invalid();
   return {
-    schemaVersion:
-      "shipment-apv-failure-alert-receiver-manifest-archive-alert-payload-outbox-v1",
+    schemaVersion: "shipment-apv-failure-alert-receiver-manifest-archive-alert-payload-outbox-v1",
     payloadOutboxId: String(row.outbox_id),
     clientOutboxId: String(row.client_outbox_id),
     deliveryGrantId: String(row.outbox_delivery_grant_id),
@@ -221,15 +235,20 @@ function publicOutbox(row: BindingRow, replayed: boolean) {
   };
 }
 
-function previewMatches(row: BindingRow, preview: Awaited<ReturnType<
-  typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>>) {
-  return String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && String(row.grant_state_fingerprint) === preview.stateFingerprint
-    && String(row.preview_action) === preview.action
-    && String(row.preview_severity) === preview.severity
-    && JSON.stringify(reasons(row.preview_reasons))
-      === JSON.stringify(preview.reasons);
+function previewMatches(
+  row: BindingRow,
+  preview: Awaited<
+    ReturnType<typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>
+  >,
+) {
+  return (
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    String(row.grant_state_fingerprint) === preview.stateFingerprint &&
+    String(row.preview_action) === preview.action &&
+    String(row.preview_severity) === preview.severity &&
+    JSON.stringify(reasons(row.preview_reasons)) === JSON.stringify(preview.reasons)
+  );
 }
 
 const outboxBindingSql = sql`SELECT outbox.id AS outbox_id,
@@ -323,10 +342,8 @@ export async function createShipmentApvReceiverManifestArchiveAlertPayloadOutbox
       LIMIT 1`);
     const existing = (existingRows as unknown as BindingRow[])[0];
     if (existing) {
-      if (!exactReplayMatches(existing, input)
-        || !safelyValidOutboxBinding(existing)) {
-        throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_REPLAY_CONFLICT");
+      if (!exactReplayMatches(existing, input) || !safelyValidOutboxBinding(existing)) {
+        throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_REPLAY_CONFLICT");
       }
       return publicOutbox(existing, true);
     }
@@ -334,46 +351,49 @@ export async function createShipmentApvReceiverManifestArchiveAlertPayloadOutbox
     const bindingRows = await transaction.execute(sql`${grantBindingSql}
       WHERE delivery_grant.id = ${input.deliveryGrantId}::uuid
       LIMIT 1`);
-    const binding = (bindingRows as unknown as Array<BindingRow & {
-      prior_outbox_id: unknown; prior_client_outbox_id: unknown;
-      prior_created_by: unknown;
-    }>)[0];
+    const binding = (
+      bindingRows as unknown as Array<
+        BindingRow & {
+          prior_outbox_id: unknown;
+          prior_client_outbox_id: unknown;
+          prior_created_by: unknown;
+        }
+      >
+    )[0];
     if (!binding) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_GRANT_NOT_FOUND");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_GRANT_NOT_FOUND");
     }
     if (!safelyValidGrantBinding(binding)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_GRANT_INVALID");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_GRANT_INVALID");
     }
     if (String(binding.granted_by) !== input.createdBy) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_ACTOR_MISMATCH");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_ACTOR_MISMATCH");
     }
     if (binding.prior_outbox_id) {
-      if (String(binding.prior_client_outbox_id) === input.clientOutboxId
-        && String(binding.prior_created_by) === input.createdBy) {
+      if (
+        String(binding.prior_client_outbox_id) === input.clientOutboxId &&
+        String(binding.prior_created_by) === input.createdBy
+      ) {
         const replayRows = await transaction.execute(sql`${outboxBindingSql}
           WHERE outbox.id = ${String(binding.prior_outbox_id)}::uuid LIMIT 1`);
         const replay = (replayRows as unknown as BindingRow[])[0];
-        if (replay && exactReplayMatches(replay, input)
-          && safelyValidOutboxBinding(replay)) return publicOutbox(replay, true);
+        if (replay && exactReplayMatches(replay, input) && safelyValidOutboxBinding(replay))
+          return publicOutbox(replay, true);
       }
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_ALREADY_CREATED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_ALREADY_CREATED");
     }
     if (Date.parse(String(binding.grant_cooldown_expires_at)) <= now.getTime()) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_COOLDOWN_EXPIRED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_COOLDOWN_EXPIRED");
     }
 
     const preview =
-      await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(
-        transaction);
-    if (preview.action === "none" || !preview.approval.required
-      || !previewMatches(binding, preview)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
+      await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(transaction);
+    if (
+      preview.action === "none" ||
+      !preview.approval.required ||
+      !previewMatches(binding, preview)
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
     }
 
     const payload = expectedPayload(binding);
@@ -396,17 +416,13 @@ export async function createShipmentApvReceiverManifestArchiveAlertPayloadOutbox
       LIMIT 1`);
     const winner = (winnerRows as unknown as BindingRow[])[0];
     if (!winner) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_UNAVAILABLE");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_UNAVAILABLE");
     }
-    if (!exactReplayMatches(winner, input)
-      || !safelyValidOutboxBinding(winner)) {
+    if (!exactReplayMatches(winner, input) || !safelyValidOutboxBinding(winner)) {
       if (String(winner.outbox_delivery_grant_id) === input.deliveryGrantId) {
-        throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_ALREADY_CREATED");
+        throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_ALREADY_CREATED");
       }
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_REPLAY_CONFLICT");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_PAYLOAD_REPLAY_CONFLICT");
     }
     return publicOutbox(winner, !inserted);
   });

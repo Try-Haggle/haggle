@@ -153,14 +153,18 @@ export const PAYMENT_LEGAL_TERM_RULES: LegalTermRule[] = [
   },
 ];
 
-export function createAgentPaymentPolicyEnvelope(grant: AgentPaymentGrant): AgentPaymentPolicyEnvelope {
+export function createAgentPaymentPolicyEnvelope(
+  grant: AgentPaymentGrant,
+): AgentPaymentPolicyEnvelope {
   return {
     version: "haggle.agent_payment_policy.v1",
     grant: agentPaymentGrantSchema.parse(grant),
   };
 }
 
-export function createAgentPaymentPolicyBinding(grant: AgentPaymentGrant): AgentPaymentPolicyBinding {
+export function createAgentPaymentPolicyBinding(
+  grant: AgentPaymentGrant,
+): AgentPaymentPolicyBinding {
   const parsed = agentPaymentGrantSchema.parse(grant);
   return {
     version: "haggle.agent_payment_binding.v1",

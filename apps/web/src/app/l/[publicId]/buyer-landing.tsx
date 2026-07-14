@@ -1,18 +1,28 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
 import {
-  StrategyChat,
-  loadSelectedAgentId,
-  type AdvisorMemory,
-} from "./strategy-chat";
-import {
-  AgentBuilder,
-  type AgentBuilderValue,
-} from "@/app/(app)/sell/agents/_components/AgentBuilder";
+  type AgentBuilderState,
+  applyChatStrategyToState,
+  engineParamsFromPreset,
+  isBuilderCustomized,
+  resolveEffectivePreset,
+} from "@haggle/shared";
+import { ArrowRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AgentBuilder } from "@/app/(app)/sell/agents/_components/AgentBuilder";
 import { Nav } from "@/components/nav";
+import { Alert } from "@/components/ui/alert";
+import { BackLink } from "@/components/ui/back-link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Price } from "@/components/ui/price";
+import { ApiError, api } from "@/lib/api-client";
+import { formatPriceStr } from "@/lib/format";
 import { useAmplitude } from "@/providers/amplitude-provider";
-import { api, ApiError } from "@/lib/api-client";
+import {
+  NegotiationAgentBuilderChat,
+  type NegotiationAgentBuilderMemory,
+} from "./negotiation-agent-builder-chat";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -49,17 +59,6 @@ function formatAttrValue(key: string, value: unknown): string {
   return v;
 }
 
-function formatPrice(price: string | null): string {
-  if (!price) return "$0";
-  const n = parseFloat(price);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
 function getSellerAgentName(presetId: string | null): string {
   const map: Record<string, string> = {
     gatekeeper: "The Gatekeeper",
@@ -67,7 +66,7 @@ function getSellerAgentName(presetId: string | null): string {
     storyteller: "The Storyteller",
     dealmaker: "The Dealmaker",
   };
-  return presetId ? map[presetId] ?? "Custom Agent" : "Default Agent";
+  return presetId ? (map[presetId] ?? "Custom Agent") : "Default Agent";
 }
 
 function timeRemaining(deadline: string | null): string | null {
@@ -111,20 +110,33 @@ const ORIGIN_HREF: Record<Origin, string> = {
   "sell-dashboard": "/sell/dashboard",
 };
 
-export function BuyerLanding({ listing, user, isOwner = false, from = null }: { listing: Listing; user: UserInfo | null; isOwner?: boolean; from?: Origin | null }) {
+export function BuyerLanding({
+  listing,
+  user,
+  isOwner = false,
+  from = null,
+}: {
+  listing: Listing;
+  user: UserInfo | null;
+  isOwner?: boolean;
+  from?: Origin | null;
+}) {
   const { track } = useAmplitude();
-  const [agentValue, setAgentValue] = useState<AgentBuilderValue | null>(null);
-  const [advisorMemory, setAdvisorMemory] = useState<AdvisorMemory | null>(null);
-  const [negotiationState, setNegotiationState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [agentValue, setAgentValue] = useState<AgentBuilderState | null>(null);
+  const [negotiationAgentBuilderMemory, setNegotiationAgentBuilderMemory] =
+    useState<NegotiationAgentBuilderMemory | null>(null);
+  const [negotiationState, setNegotiationState] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
   const [negotiationMessage, setNegotiationMessage] = useState("");
   const [hfmiData, setHfmiData] = useState<HfmiData | null>(null);
 
-  const selectedAgent = agentValue?.effectivePreset ?? null;
-  const selectedCopy = selectedAgent?.copy.buyer ?? null;
+  const selectedAgent = agentValue ? resolveEffectivePreset(agentValue) : null;
   const deadline = timeRemaining(listing.sellingDeadline);
 
   // Public Listing Viewed (1회)
   const viewTracked = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: track once on mount
   useEffect(() => {
     if (viewTracked.current) return;
     viewTracked.current = true;
@@ -138,7 +150,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
 
   // Fetch HFMI fair market price (non-blocking)
   useEffect(() => {
-    if (!listing.category || !listing.category.includes("iphone")) return;
+    if (!listing.category?.includes("iphone")) return;
     const model = listing.category.toLowerCase().replace(/\s+/g, "_");
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
     fetch(`${apiBase}/hfmi/${encodeURIComponent(model)}/median`)
@@ -152,17 +164,17 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
   }, [listing.category]);
 
   return (
-    <main className="min-h-screen bg-bg-primary">
+    <main className="min-h-screen bg-surface">
       {/* Header: shared Nav for logged-in users, minimal header for guests */}
       {user ? (
         <Nav userEmail={user.email} userName={user.name} userAvatarUrl={user.avatarUrl} />
       ) : (
-        <nav className="fixed top-0 inset-x-0 z-50 h-14 border-b border-slate-800 bg-bg-primary/80 backdrop-blur-md">
+        <nav className="fixed inset-x-0 top-0 z-50 h-14 border-line border-b bg-surface/80 backdrop-blur-md">
           <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
-            <span className="text-lg font-bold text-white">Haggle</span>
+            <span className="text-lg font-bold text-ink">Haggle</span>
             <a
               href="/sign-in"
-              className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
+              className="text-sm font-medium text-ink-secondary hover:text-ink transition-colors"
             >
               Sign in
             </a>
@@ -173,43 +185,29 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
       <div className={`mx-auto max-w-6xl px-4 pb-8 ${user ? "pt-8 md:pt-24" : "pt-[88px]"}`}>
         {/* ── Back link (if originated from a known surface) ── */}
         {from && (
-          <a
-            href={ORIGIN_HREF[from]}
-            className="mb-6 inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+          <BackLink href={ORIGIN_HREF[from]} className="mb-6">
             {ORIGIN_LABEL[from]}
-          </a>
+          </BackLink>
         )}
 
         {/* ── Item Overview (top, prominent) ──────────────── */}
         <section className="mb-10">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-muted">
             Item for Sale
           </p>
-          <div className="overflow-hidden rounded-2xl border border-border-default bg-bg-card">
+          <div className="overflow-hidden rounded-2xl border border-line bg-surface-raised">
             <div className="grid gap-0 md:grid-cols-2">
               {/* Photo */}
-              <div className="relative aspect-square bg-black/30 md:aspect-auto md:min-h-[400px] md:max-h-[520px]">
+              <div className="relative aspect-square bg-surface-sunken md:aspect-auto md:min-h-[400px] md:max-h-[520px]">
                 {listing.photoUrl ? (
+                  // biome-ignore lint/performance/noImgElement: remote listing photo
                   <img
                     src={listing.photoUrl}
                     alt={listing.title ?? ""}
                     className="h-full w-full object-cover object-center"
                   />
                 ) : (
-                  <div className="flex h-full min-h-[300px] items-center justify-center text-slate-600">
+                  <div className="flex h-full min-h-[300px] items-center justify-center text-ink-muted">
                     <svg
                       width="64"
                       height="64"
@@ -217,6 +215,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="1"
+                      aria-hidden="true"
                     >
                       <rect x="3" y="3" width="18" height="18" rx="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
@@ -229,43 +228,35 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
               {/* Details */}
               <div className="flex flex-col justify-between p-6 md:p-8">
                 <div>
-                  <h1 className="text-2xl font-bold text-white md:text-3xl">
-                    {listing.title}
-                  </h1>
+                  <h1 className="text-2xl font-bold text-ink md:text-3xl">{listing.title}</h1>
 
-                  <p className="mt-3 text-3xl font-bold text-emerald-400 md:text-4xl">
-                    {formatPrice(listing.targetPrice)}
-                  </p>
+                  <Price
+                    amount={Number(listing.targetPrice ?? 0)}
+                    size="xl"
+                    tone="accent"
+                    className="mt-3 block md:text-4xl"
+                  />
 
                   {hfmiData && (
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-1 text-sm text-ink-secondary">
                       Fair Market Price:{" "}
-                      <span className="font-medium text-slate-300">
-                        {formatPrice(hfmiData.median.toString())}
+                      <span className="font-medium text-ink-secondary">
+                        {formatPriceStr(hfmiData.median.toString())}
                       </span>{" "}
-                      <span className="text-xs text-slate-500">(HFMI, {hfmiData.sample_count} obs)</span>
+                      <span className="text-xs text-ink-muted">
+                        (HFMI, {hfmiData.sample_count} obs)
+                      </span>
                     </p>
                   )}
 
                   {/* Tags */}
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {listing.condition && (
-                      <span className="rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-medium text-slate-300">
-                        {listing.condition}
-                      </span>
-                    )}
-                    {listing.category && (
-                      <span className="rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-medium text-slate-300">
-                        {listing.category}
-                      </span>
-                    )}
+                    {listing.condition && <Badge tone="neutral">{listing.condition}</Badge>}
+                    {listing.category && <Badge tone="neutral">{listing.category}</Badge>}
                     {listing.tags?.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-medium text-slate-300"
-                      >
+                      <Badge key={tag} tone="neutral">
                         {tag}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
 
@@ -275,11 +266,14 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                       {Object.entries(listing.attributes)
                         .filter(([k]) => k in PHONE_ATTR_LABELS)
                         .map(([k, v]) => (
-                          <div key={k} className="rounded-lg border border-slate-700 bg-slate-800/40 px-3 py-2">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                          <div
+                            key={k}
+                            className="rounded-lg border border-line bg-surface-sunken px-3 py-2"
+                          >
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
                               {PHONE_ATTR_LABELS[k]}
                             </p>
-                            <p className="mt-0.5 text-sm font-medium text-slate-200">
+                            <p className="mt-0.5 text-sm font-medium text-ink">
                               {formatAttrValue(k, v)}
                             </p>
                           </div>
@@ -289,7 +283,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
 
                   {/* Description */}
                   {listing.description && (
-                    <p className="mt-5 text-sm leading-relaxed text-slate-400">
+                    <p className="mt-5 text-sm leading-relaxed text-ink-secondary">
                       {listing.description}
                     </p>
                   )}
@@ -298,7 +292,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                 {/* Seller Agent + Deadline */}
                 <div className="mt-6 space-y-3">
                   {deadline && (
-                    <div className="flex items-center gap-2 text-sm text-amber-400">
+                    <div className="flex items-center gap-2 text-sm text-warning">
                       <svg
                         width="14"
                         height="14"
@@ -307,6 +301,7 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                         stroke="currentColor"
                         strokeWidth="2"
                         strokeLinecap="round"
+                        aria-hidden="true"
                       >
                         <circle cx="12" cy="12" r="10" />
                         <polyline points="12 6 12 12 16 14" />
@@ -314,22 +309,12 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                       {deadline}
                     </div>
                   )}
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/20 text-xs">
-                        🤖
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium text-emerald-400">
-                          Seller&apos;s AI Agent is ready
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {getSellerAgentName(listing.sellerAgentPreset)} is
-                          handling negotiations for this seller.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <Alert tone="success" title="Seller's AI Agent is ready">
+                    <p className="text-ink-muted text-xs">
+                      {getSellerAgentName(listing.sellerAgentPreset)} is handling negotiations for
+                      this seller.
+                    </p>
+                  </Alert>
                 </div>
               </div>
             </div>
@@ -338,46 +323,75 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
 
         {/* ── Choose Your Buyer Agent ─────────────────────── */}
         <section>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-muted">
             Choose Your Buyer Agent
           </p>
-          <p className="mb-6 text-sm text-slate-400">
-            Pick an AI negotiator to represent you. It will negotiate with the
-            seller&apos;s agent to get you the best price.
+          <p className="mb-6 text-sm text-ink-secondary">
+            Pick an AI negotiator to represent you. It will negotiate with the seller&apos;s agent
+            to get you the best price.
           </p>
 
           <div className="grid gap-6">
+            {/* biome-ignore lint/a11y/useValidAriaRole: "role" is an AgentBuilder prop (buyer/seller), not an ARIA role */}
             <AgentBuilder
               role="buyer"
               embedded
               value={agentValue}
               onChange={setAgentValue}
               chatSlot={
-                <StrategyChat
+                // biome-ignore lint/a11y/useValidAriaRole: "role" is a NegotiationAgentBuilderChat prop (buyer/seller), not an ARIA role
+                <NegotiationAgentBuilderChat
                   agent={selectedAgent}
                   listingPublicId={listing.publicId}
                   listingTitle={listing.title}
                   listingCategory={listing.category}
                   listingPrice={listing.targetPrice}
-                  onMemoryUpdate={setAdvisorMemory}
+                  listingCondition={listing.condition}
+                  listingTags={listing.tags ?? undefined}
+                  listingDescription={listing.description}
+                  role="buyer"
+                  onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
+                  onStrategyUpdate={(s) =>
+                    setAgentValue((prev) => (prev ? applyChatStrategyToState(prev, s) : prev))
+                  }
                 />
               }
             />
 
             {/* CTA below the builder */}
             <div>
-              <div className="flex items-center gap-2 text-[12px] mb-3" style={{ color: "#64748b" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <div className="mb-3 flex items-center gap-2 text-[12px] text-ink-muted">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 16v-4" />
                   <path d="M12 8h.01" />
                 </svg>
-                No account needed. Create an account to save your agent and track negotiation history.
+                No account needed. Create an account to save your agent and track negotiation
+                history.
               </div>
 
               {isOwner ? (
-                <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-3 text-[14px] font-medium text-slate-400">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface-sunken px-4 py-3 text-[14px] font-medium text-ink-secondary">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
                     <circle cx="12" cy="12" r="10" />
                     <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
                   </svg>
@@ -385,9 +399,11 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                 </div>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    disabled={!selectedAgent || negotiationState === "loading"}
+                  <Button
+                    fullWidth
+                    loading={negotiationState === "loading"}
+                    disabled={!selectedAgent}
+                    aria-busy={negotiationState === "loading"}
                     onClick={async () => {
                       if (!selectedAgent) return;
 
@@ -395,69 +411,75 @@ export function BuyerLanding({ listing, user, isOwner = false, from = null }: { 
                       setNegotiationMessage("Briefing your agent…");
 
                       try {
-                        const res = await api.post<{ session_id: string }>(
-                          "/negotiations/start",
-                          {
-                            listing_public_id: listing.publicId,
-                            agent_preset_id: selectedAgent.id,
-                            agent_weights: agentValue?.effectivePreset.weights,
-                            agent_overrides: agentValue?.overrides ?? undefined,
-                            advisor_memory: advisorMemory ?? undefined,
-                          },
-                        );
+                        const res = await api.post<{
+                          session_id: string;
+                          guest_buyer_id?: string;
+                        }>("/negotiations/start", {
+                          listing_public_id: listing.publicId,
+                          negotiation_agent_preset_id: selectedAgent.id,
+                          agent_weights: { ...selectedAgent.weights },
+                          agent_overrides:
+                            agentValue && isBuilderCustomized(agentValue)
+                              ? {
+                                  weights: { ...selectedAgent.weights },
+                                  ...engineParamsFromPreset(selectedAgent),
+                                }
+                              : undefined,
+                          // Prefer memory captured in this session's builder
+                          // chat; otherwise fall back to the durable memory
+                          // saved on the reused agent so a picked "My Agent"
+                          // still carries its deal-breakers/must-haves/urgency.
+                          negotiation_agent_builder_memory:
+                            negotiationAgentBuilderMemory ??
+                            (agentValue?.agent.builderChatMemory as
+                              | NegotiationAgentBuilderMemory
+                              | undefined) ??
+                            undefined,
+                        });
+                        // Stash guest buyer id for the post-signup claim step.
+                        // Logged-in callers never receive guest_buyer_id back,
+                        // so the localStorage write is a no-op for them.
+                        if (res.guest_buyer_id) {
+                          try {
+                            const KEY = "haggle:guest-buyer-ids";
+                            const raw = window.localStorage.getItem(KEY);
+                            const list: string[] = raw ? JSON.parse(raw) : [];
+                            if (!list.includes(res.guest_buyer_id)) {
+                              list.push(res.guest_buyer_id);
+                              window.localStorage.setItem(KEY, JSON.stringify(list));
+                            }
+                          } catch {
+                            // localStorage full or disabled — fall through.
+                          }
+                        }
                         track("Negotiation Started", {
                           public_id: listing.publicId,
                           agent_preset: selectedAgent.id,
-                          has_advisor_memory: !!advisorMemory,
+                          has_negotiation_agent_builder_memory: !!negotiationAgentBuilderMemory,
                         });
                         window.location.href = `/buy/negotiations/${res.session_id}`;
                       } catch (err) {
                         const apiErr = err instanceof ApiError ? err : null;
                         setNegotiationState("error");
                         setNegotiationMessage(
-                          apiErr?.message
-                            ?? apiErr?.code
-                            ?? "Couldn't start the negotiation. Please try again.",
+                          apiErr?.message ??
+                            apiErr?.code ??
+                            "Couldn't start the negotiation. Please try again.",
                         );
                       }
                     }}
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-white transition-colors ${negotiationState === "loading"
-                        ? "cursor-wait bg-emerald-500 opacity-90"
-                        : !selectedAgent
-                          ? "cursor-not-allowed bg-emerald-500 opacity-40"
-                          : "cursor-pointer bg-emerald-500 hover:bg-emerald-600"
-                      }`}
-                    aria-busy={negotiationState === "loading"}
                   >
                     {negotiationState === "loading" ? (
-                      <>
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          className="animate-spin"
-                          aria-hidden="true"
-                        >
-                          <path d="M21 12a9 9 0 1 1-6.22-8.56" opacity="0.9" />
-                        </svg>
-                        Briefing your agent…
-                      </>
+                      "Briefing your agent…"
                     ) : (
                       <>
                         Start Negotiation
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14" />
-                          <path d="m12 5 7 7-7 7" />
-                        </svg>
+                        <ArrowRight className="size-4" aria-hidden="true" />
                       </>
                     )}
-                  </button>
+                  </Button>
                   {negotiationState === "error" && (
-                    <div className="text-center text-sm text-red-400 mt-3">{negotiationMessage}</div>
+                    <div className="mt-3 text-center text-error text-sm">{negotiationMessage}</div>
                   )}
                 </>
               )}

@@ -1,25 +1,25 @@
+import type {
+  AgentPaymentGrant,
+  AgentPaymentGrantStatus,
+  FulfillmentType,
+  PaymentLegalAcknowledgement,
+  PaymentTermTag,
+  SettlementApproval,
+} from "@haggle/commerce-core";
 import {
   agentPaymentGrants,
   and,
   commerceOrders,
+  type Database,
   eq,
-  paymentDisclosures,
   paymentAuthorizations,
+  paymentDisclosures,
   paymentIntents,
   paymentOperationIdempotency,
   paymentSettlements,
   refunds,
-  settlementApprovals,
-  type Database,
+  type settlementApprovals,
 } from "@haggle/db";
-import type { SettlementApproval } from "@haggle/commerce-core";
-import type {
-  AgentPaymentGrant,
-  FulfillmentType,
-  AgentPaymentGrantStatus,
-  PaymentLegalAcknowledgement,
-  PaymentTermTag,
-} from "@haggle/commerce-core";
 import type {
   BuyerAuthorizationMode,
   PaymentAuthorization,
@@ -28,9 +28,9 @@ import type {
   Refund,
 } from "@haggle/payment-core";
 import {
+  type LegacyPaymentIntentStatus,
   mapLegacyStatusToProductionState,
   normalizeProductionPaymentState,
-  type LegacyPaymentIntentStatus,
 } from "@haggle/payment-core";
 
 function parseMinor(value: string | number): number {
@@ -56,12 +56,12 @@ function asOptionalNumber(value: unknown): number | undefined {
 function asOptionalFulfillmentType(value: unknown): FulfillmentType | undefined {
   if (typeof value !== "string") return undefined;
   if (
-    value === "physical_shipping"
-    || value === "shipped"
-    || value === "local_pickup"
-    || value === "digital_delivery"
-    || value === "external_platform_transfer"
-    || value === "onchain_transfer"
+    value === "physical_shipping" ||
+    value === "shipped" ||
+    value === "local_pickup" ||
+    value === "digital_delivery" ||
+    value === "external_platform_transfer" ||
+    value === "onchain_transfer"
   ) {
     return value;
   }
@@ -77,12 +77,21 @@ function mapSettlementApproval(row: typeof settlementApprovals.$inferSelect): Se
       mode: row.sellerApprovalMode,
       fulfillment_sla: {
         shipment_input_due_days:
-          Number((termsSnapshot.seller_policy_shipment_input_due_days as number | string | undefined) ?? 0) ||
-          0,
+          Number(
+            (termsSnapshot.seller_policy_shipment_input_due_days as number | string | undefined) ??
+              0,
+          ) || 0,
       },
       responsiveness: {
-        median_response_minutes: Number((termsSnapshot.seller_policy_median_response_minutes as number | string | undefined) ?? 0) || 0,
-        p95_response_minutes: Number((termsSnapshot.seller_policy_p95_response_minutes as number | string | undefined) ?? 0) || 0,
+        median_response_minutes:
+          Number(
+            (termsSnapshot.seller_policy_median_response_minutes as number | string | undefined) ??
+              0,
+          ) || 0,
+        p95_response_minutes:
+          Number(
+            (termsSnapshot.seller_policy_p95_response_minutes as number | string | undefined) ?? 0,
+          ) || 0,
         reliable_fast_responder: Boolean(termsSnapshot.seller_policy_reliable_fast_responder),
       },
       auto_approval_price_guard_minor:
@@ -100,21 +109,28 @@ function mapSettlementApproval(row: typeof settlementApprovals.$inferSelect): Se
       shipment_input_due_at: toIso(row.shipmentInputDueAt),
       shipping_cost_minor: asOptionalNumber(termsSnapshot.shipping_cost_minor),
       shipping_cost_bearer:
-        termsSnapshot.shipping_cost_bearer === "buyer"
-        || termsSnapshot.shipping_cost_bearer === "seller"
-        || termsSnapshot.shipping_cost_bearer === "split"
+        termsSnapshot.shipping_cost_bearer === "buyer" ||
+        termsSnapshot.shipping_cost_bearer === "seller" ||
+        termsSnapshot.shipping_cost_bearer === "split"
           ? termsSnapshot.shipping_cost_bearer
           : undefined,
-      shipping_cost_buyer_share_minor: asOptionalNumber(termsSnapshot.shipping_cost_buyer_share_minor),
-      shipping_cost_seller_share_minor: asOptionalNumber(termsSnapshot.shipping_cost_seller_share_minor),
+      shipping_cost_buyer_share_minor: asOptionalNumber(
+        termsSnapshot.shipping_cost_buyer_share_minor,
+      ),
+      shipping_cost_seller_share_minor: asOptionalNumber(
+        termsSnapshot.shipping_cost_seller_share_minor,
+      ),
       weight_buffer_minor: asOptionalNumber(termsSnapshot.weight_buffer_minor),
       fulfillment_type: asOptionalFulfillmentType(termsSnapshot.fulfillment_type),
     },
     hold_snapshot: row.holdKind
       ? {
           kind: row.holdKind,
-          held_snapshot_price_minor: row.heldSnapshotPriceMinor ? parseMinor(row.heldSnapshotPriceMinor) : 0,
-          held_snapshot_utility: row.heldSnapshotUtility == null ? undefined : Number(row.heldSnapshotUtility),
+          held_snapshot_price_minor: row.heldSnapshotPriceMinor
+            ? parseMinor(row.heldSnapshotPriceMinor)
+            : 0,
+          held_snapshot_utility:
+            row.heldSnapshotUtility == null ? undefined : Number(row.heldSnapshotUtility),
           held_at: toIso(row.heldAt) ?? row.createdAt.toISOString(),
           hold_reason: row.holdReason ?? undefined,
           resume_reprice_required: row.resumeRepriceRequired,
@@ -169,7 +185,9 @@ function mapPaymentSettlement(row: typeof paymentSettlements.$inferSelect): Paym
   };
 }
 
-export function mapAgentPaymentGrant(row: typeof agentPaymentGrants.$inferSelect): AgentPaymentGrant & {
+export function mapAgentPaymentGrant(
+  row: typeof agentPaymentGrants.$inferSelect,
+): AgentPaymentGrant & {
   approval_policy_hash: string;
   status: AgentPaymentGrantStatus;
   created_at: string;
@@ -201,14 +219,20 @@ export function mapAgentPaymentGrant(row: typeof agentPaymentGrants.$inferSelect
   };
 }
 
-export async function getSettlementApprovalById(db: Database, id: string): Promise<SettlementApproval | null> {
+export async function getSettlementApprovalById(
+  db: Database,
+  id: string,
+): Promise<SettlementApproval | null> {
   const row = await db.query.settlementApprovals.findFirst({
     where: (fields, ops) => ops.eq(fields.id, id),
   });
   return row ? mapSettlementApproval(row) : null;
 }
 
-export async function getAgentPaymentGrantById(db: Database, id: string): Promise<ReturnType<typeof mapAgentPaymentGrant> | null> {
+export async function getAgentPaymentGrantById(
+  db: Database,
+  id: string,
+): Promise<ReturnType<typeof mapAgentPaymentGrant> | null> {
   const row = await db.query.agentPaymentGrants.findFirst({
     where: (fields, ops) => ops.eq(fields.id, id),
   });
@@ -255,7 +279,8 @@ export async function createStoredPaymentIntent(
   intent: PaymentIntent,
   providerContext?: Record<string, unknown>,
 ) {
-  const canonicalStatus = intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
+  const canonicalStatus =
+    intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
   const [row] = await db
     .insert(paymentIntents)
     .values({
@@ -354,7 +379,10 @@ export async function createPaymentDisclosureRecord(
   return row;
 }
 
-export async function getPaymentIntentById(db: Database, id: string): Promise<PaymentIntent | null> {
+export async function getPaymentIntentById(
+  db: Database,
+  id: string,
+): Promise<PaymentIntent | null> {
   const row = await db.query.paymentIntents.findFirst({
     where: (fields, ops) => ops.eq(fields.id, id),
   });
@@ -395,7 +423,8 @@ export async function updateStoredPaymentIntent(
   intent: PaymentIntent,
   providerContext?: Record<string, unknown>,
 ) {
-  const canonicalStatus = intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
+  const canonicalStatus =
+    intent.production_status ?? mapLegacyStatusToProductionState(intent.status);
   const [row] = await db
     .update(paymentIntents)
     .set({
@@ -531,16 +560,33 @@ export async function getActivePaymentIntentByOrderId(
   orderId: string,
 ): Promise<PaymentIntent | null> {
   const row = await db.query.paymentIntents.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.orderId, orderId),
-      ops.inArray(fields.status, ["CREATED", "QUOTED", "AUTHORIZED", "SETTLEMENT_PENDING", "SETTLED"]),
-      ops.inArray(fields.canonicalStatus, ["pending", "authorized", "captured", "partially_refunded", "disputed"]),
-    ),
+    where: (fields, ops) =>
+      ops.and(
+        ops.eq(fields.orderId, orderId),
+        ops.inArray(fields.status, [
+          "CREATED",
+          "QUOTED",
+          "AUTHORIZED",
+          "SETTLEMENT_PENDING",
+          "SETTLED",
+        ]),
+        ops.inArray(fields.canonicalStatus, [
+          "pending",
+          "authorized",
+          "captured",
+          "partially_refunded",
+          "disputed",
+        ]),
+      ),
   });
   return row ? mapPaymentIntent(row) : null;
 }
 
-export async function createRefundRecord(db: Database, refund: Refund, providerReference?: string | null) {
+export async function createRefundRecord(
+  db: Database,
+  refund: Refund,
+  providerReference?: string | null,
+) {
   const [row] = await db
     .insert(refunds)
     .values({
@@ -574,10 +620,8 @@ export async function getPaymentOperationIdempotencyRecord(
   idempotencyKey: string,
 ): Promise<typeof paymentOperationIdempotency.$inferSelect | null> {
   const row = await db.query.paymentOperationIdempotency.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.operation, operation),
-      ops.eq(fields.idempotencyKey, idempotencyKey),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.operation, operation), ops.eq(fields.idempotencyKey, idempotencyKey)),
   });
   return row ?? null;
 }
@@ -588,10 +632,8 @@ export async function getInProgressPaymentOperationForIntent(
   excludeIdempotencyKey?: string,
 ): Promise<typeof paymentOperationIdempotency.$inferSelect | null> {
   const row = await db.query.paymentOperationIdempotency.findFirst({
-    where: (fields, ops) => ops.and(
-      ops.eq(fields.paymentIntentId, paymentIntentId),
-      ops.eq(fields.responseStatus, 409),
-    ),
+    where: (fields, ops) =>
+      ops.and(ops.eq(fields.paymentIntentId, paymentIntentId), ops.eq(fields.responseStatus, 409)),
   });
   if (!row || row.idempotencyKey === excludeIdempotencyKey) {
     return null;
@@ -642,8 +684,10 @@ export async function completePaymentOperationIdempotencyRecord(
       responseStatus: input.responseStatus,
       responseBody: input.responseBody,
     })
-    .where(and(
-      eq(paymentOperationIdempotency.operation, operation),
-      eq(paymentOperationIdempotency.idempotencyKey, idempotencyKey),
-    ));
+    .where(
+      and(
+        eq(paymentOperationIdempotency.operation, operation),
+        eq(paymentOperationIdempotency.idempotencyKey, idempotencyKey),
+      ),
+    );
 }

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount, useBalance, useWriteContract } from "wagmi";
+import { formatMoney } from "@haggle/shared";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { type Address, type Hex } from "viem";
+import { useState } from "react";
+import type { Address, Hex } from "viem";
+import { useAccount, useBalance, useWriteContract } from "wagmi";
 import { api } from "@/lib/api-client";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
-import { formatMoney } from "@haggle/shared";
 
 // USDC contract ABI (minimal: approve)
 const USDC_ABI = [
@@ -167,11 +167,11 @@ function formatMinor(money: Money): string {
 
 function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   return Boolean(
-    money
-    && money.currency.toUpperCase() === "USDC"
-    && money.decimals === 6
-    && Number.isInteger(money.amount_minor)
-    && money.amount_minor > 0,
+    money &&
+      money.currency.toUpperCase() === "USDC" &&
+      money.decimals === 6 &&
+      Number.isInteger(money.amount_minor) &&
+      money.amount_minor > 0,
   );
 }
 
@@ -185,8 +185,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const [error, setError] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [onrampClientSecret, setOnrampClientSecret] = useState<string | null>(null);
-  const [conditionalSettlement, setConditionalSettlement] = useState<ConditionalSettlementRequest | null>(null);
+  const [_onrampClientSecret, setOnrampClientSecret] = useState<string | null>(null);
+  const [conditionalSettlement, setConditionalSettlement] =
+    useState<ConditionalSettlementRequest | null>(null);
   const [quoteConfirmation, setQuoteConfirmation] = useState<QuoteConfirmation | null>(null);
 
   const fallbackAmount: Money = { currency, amount_minor: amountMinor };
@@ -203,12 +204,15 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const sellerReceivesDisplay = confirmedAmounts?.seller_receives ?? sellerReceives;
   const buyerFeeDisplay = confirmedAmounts?.buyer_fee ?? buyerFee;
   const sellerFeeDisplay = confirmedAmounts?.seller_fee ?? sellerFee;
-  const railLabel = quoteConfirmation?.display?.rail_label
-    ?? (quoteConfirmation?.rail === "stripe" ? "Card via Stripe" : "USDC Direct");
+  const railLabel =
+    quoteConfirmation?.display?.rail_label ??
+    (quoteConfirmation?.rail === "stripe" ? "Card via Stripe" : "USDC Direct");
   const buyerTotalLabel = quoteConfirmation?.display?.buyer_total_label ?? "Buyer pays";
-  const sellerReceivesLabel = quoteConfirmation?.display?.seller_receives_label ?? "Seller receives";
-  const feeSummaryLabel = quoteConfirmation?.display?.fee_summary_label
-    ?? (quoteConfirmation?.rail === "stripe"
+  const sellerReceivesLabel =
+    quoteConfirmation?.display?.seller_receives_label ?? "Seller receives";
+  const feeSummaryLabel =
+    quoteConfirmation?.display?.fee_summary_label ??
+    (quoteConfirmation?.rail === "stripe"
       ? "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds."
       : "No buyer fee. Haggle fee is deducted from seller proceeds.");
 
@@ -249,7 +253,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
     setIsLoading(true);
     setError(null);
     try {
-      const quote = await api.post<{ quote_confirmation?: QuoteConfirmation }>(`/payments/${paymentIntentId}/quote`);
+      const quote = await api.post<{ quote_confirmation?: QuoteConfirmation }>(
+        `/payments/${paymentIntentId}/quote`,
+      );
       const confirmation = quote.quote_confirmation;
       if (!isConfirmedSettlementAmount(confirmation?.amount_confirmation?.settlement_amount)) {
         throw new Error("USDC Direct quote did not include a confirmed settlement amount.");
@@ -326,34 +332,48 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
         destination_wallet: address,
       });
       setOnrampClientSecret(data.client_secret ?? null);
-      setQuoteConfirmation(data.quote_confirmation ?? (data.buyer_payable
-        ? {
-            rail: "stripe",
-            display: {
-              rail_label: "Card via Stripe",
-              payment_method_label: "Pay by card; Stripe converts to USDC on Base",
-              settlement_asset: "USDC",
-              settlement_network: "Base",
-              buyer_total_label: "Buyer pays",
-              seller_receives_label: "Seller receives",
-              fee_summary_label: "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds.",
-            },
-            amount: fallbackAmount,
-            buyer_total: data.buyer_payable,
-            seller_receives: data.seller_receives ?? fallbackAmount,
-            fees: {
-              buyer_fee_total: { currency: data.buyer_payable.currency, amount_minor: data.buyer_payable.amount_minor - amountMinor },
-              seller_fee_total: { currency, amount_minor: 0 },
-              items: [],
-            },
-          }
-        : null));
+      setQuoteConfirmation(
+        data.quote_confirmation ??
+          (data.buyer_payable
+            ? {
+                rail: "stripe",
+                display: {
+                  rail_label: "Card via Stripe",
+                  payment_method_label: "Pay by card; Stripe converts to USDC on Base",
+                  settlement_asset: "USDC",
+                  settlement_network: "Base",
+                  buyer_total_label: "Buyer pays",
+                  seller_receives_label: "Seller receives",
+                  fee_summary_label:
+                    "Buyer pays the Stripe onramp fee. Haggle fee is deducted from seller proceeds.",
+                },
+                amount: fallbackAmount,
+                buyer_total: data.buyer_payable,
+                seller_receives: data.seller_receives ?? fallbackAmount,
+                fees: {
+                  buyer_fee_total: {
+                    currency: data.buyer_payable.currency,
+                    amount_minor: data.buyer_payable.amount_minor - amountMinor,
+                  },
+                  seller_fee_total: { currency, amount_minor: 0 },
+                  items: [],
+                },
+              }
+            : null),
+      );
       setStep("onramp_active");
 
       // Load Stripe onramp widget
       if (typeof window !== "undefined" && data.client_secret) {
         // @ts-expect-error — @stripe/crypto loaded dynamically, types installed separately
-        const { loadStripeOnramp } = await import("@stripe/crypto") as { loadStripeOnramp: (key: string) => Promise<{ createSession: (opts: { clientSecret: string }) => { mount: (el: string) => void; addEventListener: (event: string, cb: (e: unknown) => void) => void } } | null> };
+        const { loadStripeOnramp } = (await import("@stripe/crypto")) as {
+          loadStripeOnramp: (key: string) => Promise<{
+            createSession: (opts: { clientSecret: string }) => {
+              mount: (el: string) => void;
+              addEventListener: (event: string, cb: (e: unknown) => void) => void;
+            };
+          } | null>;
+        };
         const stripeOnramp = await loadStripeOnramp(data.stripe_publishable_key);
         if (stripeOnramp) {
           const session = stripeOnramp.createSession({ clientSecret: data.client_secret });
@@ -398,11 +418,13 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                   settlement_id: conditionalSettlement.settlement_id,
                   contract_address: conditionalSettlement.contract.address,
                 });
-                await api.post(`/payments/${paymentIntentId}/x402/conditional-settlement-confirmation`, {
-                  tx_hash: txHash,
-                }).catch(() => {
-                  // Receipt may not be indexed yet; server keeps FUNDING_SUBMITTED for retry.
-                });
+                await api
+                  .post(`/payments/${paymentIntentId}/x402/conditional-settlement-confirmation`, {
+                    tx_hash: txHash,
+                  })
+                  .catch(() => {
+                    // Receipt may not be indexed yet; server keeps FUNDING_SUBMITTED for retry.
+                  });
                 setStep("complete");
               } catch (err) {
                 setError(err instanceof Error ? err.message : String(err));
@@ -435,7 +457,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
         paymentRequirements: requirements,
       };
 
-      await api.post(`/payments/${paymentIntentId}/x402/submit-signature`, { payment_payload: paymentPayload });
+      await api.post(`/payments/${paymentIntentId}/x402/submit-signature`, {
+        payment_payload: paymentPayload,
+      });
 
       setStep("complete");
     } catch (err) {
@@ -477,7 +501,11 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
         <div className="space-y-3">
           <p className="text-sm text-gray-600">Choose how to pay:</p>
           <button
-            onClick={() => { setMethod("card"); setStep("connect_wallet"); }}
+            type="button"
+            onClick={() => {
+              setMethod("card");
+              setStep("connect_wallet");
+            }}
             className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
           >
             <span className="text-2xl">💳</span>
@@ -489,13 +517,20 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
             </div>
           </button>
           <button
-            onClick={() => { setMethod("crypto"); setStep("connect_wallet"); }}
+            type="button"
+            onClick={() => {
+              setMethod("crypto");
+              setStep("connect_wallet");
+            }}
             className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
           >
             <span className="text-2xl">🔗</span>
             <div>
               <div className="font-medium">USDC Direct ({formatMinor(fallbackAmount)})</div>
-              <div className="text-xs text-gray-500">Pay from your wallet with USDC on Base. Seller fee is shown in the quote. Gas paid by Haggle.</div>
+              <div className="text-xs text-gray-500">
+                Pay from your wallet with USDC on Base. Seller fee is shown in the quote. Gas paid
+                by Haggle.
+              </div>
               <div className="text-xs text-blue-600 mt-1">
                 Don&apos;t have a wallet? Create one instantly with Coinbase &mdash; just your email
               </div>
@@ -570,6 +605,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 <ConnectButton />
                 {isConnected && (
                   <button
+                    type="button"
                     onClick={handlePrepare}
                     disabled={isLoading}
                     className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
@@ -587,7 +623,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
             <div className="bg-gray-50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Your address</span>
-                <span className="font-mono text-xs">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+                <span className="font-mono text-xs">
+                  {address?.slice(0, 6)}...{address?.slice(-4)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">ETH balance</span>
@@ -613,11 +651,16 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               )}
             </div>
             <button
+              type="button"
               onClick={handleQuote}
               disabled={isLoading}
               className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
             >
-              {isLoading ? "Loading..." : method === "crypto" ? "Get USDC Direct Quote" : "Get Quote"}
+              {isLoading
+                ? "Loading..."
+                : method === "crypto"
+                  ? "Get USDC Direct Quote"
+                  : "Get Quote"}
             </button>
           </div>
         )}
@@ -627,7 +670,9 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
             <p className="text-sm text-gray-600">
               Approve USDC Direct to spend{" "}
               <strong>
-                {settlementAmountDisplay ? formatMinor(settlementAmountDisplay) : "the confirmed USDC amount"}
+                {settlementAmountDisplay
+                  ? formatMinor(settlementAmountDisplay)
+                  : "the confirmed USDC amount"}
               </strong>{" "}
               on your behalf.
             </p>
@@ -668,14 +713,15 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               </p>
             )}
             <button
+              type="button"
               onClick={() =>
                 handleApproveUsdc(
-                  (conditionalSettlement?.contract.address
-                    ?? process.env.NEXT_PUBLIC_SETTLEMENT_ROUTER_ADDRESS
-                    ?? "0x0") as `0x${string}`,
-                  (conditionalSettlement?.contract.asset_address
-                    ?? process.env.NEXT_PUBLIC_USDC_ADDRESS
-                    ?? "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
+                  (conditionalSettlement?.contract.address ??
+                    process.env.NEXT_PUBLIC_SETTLEMENT_ROUTER_ADDRESS ??
+                    "0x0") as `0x${string}`,
+                  (conditionalSettlement?.contract.asset_address ??
+                    process.env.NEXT_PUBLIC_USDC_ADDRESS ??
+                    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
                 )
               }
               disabled={isLoading || isWriting || !settlementAmountDisplay}
@@ -694,6 +740,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 : "Sign the USDC Direct payment authorization to complete the transaction."}
             </p>
             <button
+              type="button"
               onClick={handleSubmitX402}
               disabled={isLoading}
               className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
@@ -727,6 +774,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               <p className="text-sm text-red-600">{error}</p>
             </div>
             <button
+              type="button"
               onClick={() => {
                 setError(null);
                 setStep(isConnected ? "check_balance" : "connect_wallet");

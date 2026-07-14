@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import sharp from "sharp";
+import { describe, expect, it } from "vitest";
 import {
   assessImageSimilarity,
   colorHistogramDistance,
@@ -58,7 +58,11 @@ describe("camera image similarity", () => {
     expect(fingerprint.dHash).toMatch(/^[01]{64}$/);
     expect(fingerprint.aHash).toMatch(/^[01]{64}$/);
     expect(fingerprint.colorHistogram).toHaveLength(12);
-    expect(fingerprint.colorHistogram.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)).toBe(true);
+    expect(
+      fingerprint.colorHistogram.every(
+        (value) => Number.isInteger(value) && value >= 0 && value <= 255,
+      ),
+    ).toBe(true);
   });
 
   it("routes resized and recompressed copies to review using multiple signals", async () => {
@@ -73,7 +77,11 @@ describe("camera image similarity", () => {
 
   it("routes a modest crop of the same photo to review", async () => {
     const originalBytes = await fixture(96, 64, 95);
-    const croppedBytes = await sharp(originalBytes).extract({ left: 6, top: 4, width: 84, height: 56 }).resize(96, 64).jpeg({ quality: 70 }).toBuffer();
+    const croppedBytes = await sharp(originalBytes)
+      .extract({ left: 6, top: 4, width: 84, height: 56 })
+      .resize(96, 64)
+      .jpeg({ quality: 70 })
+      .toBuffer();
     const assessment = assessImageSimilarity(
       await computeImageSimilarityFingerprint(croppedBytes),
       await computeImageSimilarityFingerprint(originalBytes),
@@ -84,13 +92,20 @@ describe("camera image similarity", () => {
 
   it("keeps strong recoloring reviewable through structural hashes", async () => {
     const originalBytes = await fixture(96, 64, 95);
-    const recoloredBytes = await sharp(originalBytes).tint({ r: 30, g: 220, b: 180 }).jpeg({ quality: 75 }).toBuffer();
+    const recoloredBytes = await sharp(originalBytes)
+      .tint({ r: 30, g: 220, b: 180 })
+      .jpeg({ quality: 75 })
+      .toBuffer();
     const assessment = assessImageSimilarity(
       await computeImageSimilarityFingerprint(recoloredBytes),
       await computeImageSimilarityFingerprint(originalBytes),
     );
     expect(assessment.reviewRequired).toBe(true);
-    expect(assessment.matchedSignals.some((signal) => signal === "dhash_near" || signal === "ahash_near")).toBe(true);
+    expect(
+      assessment.matchedSignals.some(
+        (signal) => signal === "dhash_near" || signal === "ahash_near",
+      ),
+    ).toBe(true);
   });
 
   it("keeps structurally different image pixels clear", async () => {
@@ -103,14 +118,34 @@ describe("camera image similarity", () => {
   });
 
   it("does not flag color similarity alone without structural agreement", () => {
-    const current = { dHash: "0".repeat(64), aHash: "0".repeat(64), colorHistogram: Array(12).fill(64) };
-    const candidate = { dHash: "1".repeat(64), aHash: "1".repeat(64), colorHistogram: Array(12).fill(64) };
-    expect(assessImageSimilarity(current, candidate)).toMatchObject({ reviewRequired: false, colorDistance: 0, matchedSignals: [] });
+    const current = {
+      dHash: "0".repeat(64),
+      aHash: "0".repeat(64),
+      colorHistogram: Array(12).fill(64),
+    };
+    const candidate = {
+      dHash: "1".repeat(64),
+      aHash: "1".repeat(64),
+      colorHistogram: Array(12).fill(64),
+    };
+    expect(assessImageSimilarity(current, candidate)).toMatchObject({
+      reviewRequired: false,
+      colorDistance: 0,
+      matchedSignals: [],
+    });
   });
 
   it("does not use aHash as a standalone review trigger", () => {
-    const current = { dHash: "0".repeat(64), aHash: "1".repeat(64), colorHistogram: Array(12).fill(0) };
-    const candidate = { dHash: "1".repeat(64), aHash: "1".repeat(64), colorHistogram: Array(12).fill(255) };
+    const current = {
+      dHash: "0".repeat(64),
+      aHash: "1".repeat(64),
+      colorHistogram: Array(12).fill(0),
+    };
+    const candidate = {
+      dHash: "1".repeat(64),
+      aHash: "1".repeat(64),
+      colorHistogram: Array(12).fill(255),
+    };
     const assessment = assessImageSimilarity(current, candidate);
     expect(assessment).toMatchObject({ reviewRequired: false, aHashDistance: 0 });
     expect(assessment.matchedSignals).toContain("ahash_near");

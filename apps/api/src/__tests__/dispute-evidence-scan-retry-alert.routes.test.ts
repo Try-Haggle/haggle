@@ -1,9 +1,8 @@
+import type { Database } from "@haggle/db";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Database } from "@haggle/db";
 import { registerOpsAlertRoutes } from "../routes/ops-alerts.js";
-import { signWebhookClaimAlertPayload } from
-  "../services/webhook-claim-alert.service.js";
+import { signWebhookClaimAlertPayload } from "../services/webhook-claim-alert.service.js";
 import {
   claimWebhookEvent,
   completeWebhookEvent,
@@ -80,9 +79,7 @@ function headers(raw: string, timestamp: string, signingSecret = secret) {
     "content-type": "application/json",
     "x-haggle-alert-timestamp": timestamp,
     "x-haggle-alert-delivery-id": deliveryId,
-    "x-haggle-alert-signature": signWebhookClaimAlertPayload(
-      signingSecret, timestamp, raw,
-    ),
+    "x-haggle-alert-signature": signWebhookClaimAlertPayload(signingSecret, timestamp, raw),
   };
 }
 
@@ -91,18 +88,14 @@ async function makeApp(
   rows: Array<Record<string, unknown>> | Error = [],
 ) {
   const app = Fastify();
-  app.addContentTypeParser(
-    "application/json",
-    { parseAs: "buffer" },
-    (request, raw, done) => {
-      (request as unknown as { rawBody: Buffer }).rawBody = raw as Buffer;
-      try {
-        done(null, JSON.parse((raw as Buffer).toString("utf8")));
-      } catch (error) {
-        done(error as Error, undefined);
-      }
-    },
-  );
+  app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, raw, done) => {
+    (request as unknown as { rawBody: Buffer }).rawBody = raw as Buffer;
+    try {
+      done(null, JSON.parse((raw as Buffer).toString("utf8")));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
   if (role) {
     app.addHook("preHandler", async (request) => {
       request.user = {
@@ -113,9 +106,8 @@ async function makeApp(
     });
   }
   registerOpsAlertRoutes(app, {
-    execute: rows instanceof Error
-      ? vi.fn().mockRejectedValue(rows)
-      : vi.fn().mockResolvedValue(rows),
+    execute:
+      rows instanceof Error ? vi.fn().mockRejectedValue(rows) : vi.fn().mockResolvedValue(rows),
   } as unknown as Database);
   await app.ready();
   return app;
@@ -131,8 +123,11 @@ describe("dispute evidence scan retry alert receiver routes", () => {
   it("accepts and completes a valid aggregate-only delivery", async () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
     vi.mocked(claimWebhookEvent).mockResolvedValue({
-      outcome: "acquired", source: "receiver", eventId: deliveryId,
-      claimId: "claim", attemptCount: 1,
+      outcome: "acquired",
+      source: "receiver",
+      eventId: deliveryId,
+      claimId: "claim",
+      attemptCount: 1,
     });
     vi.mocked(completeWebhookEvent).mockResolvedValue(true);
     const app = await makeApp();
@@ -147,7 +142,10 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     expect(response.statusCode).toBe(202);
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.json()).toMatchObject({
-      accepted: true, replayed: false, state: "firing", severity: "critical",
+      accepted: true,
+      replayed: false,
+      state: "firing",
+      severity: "critical",
     });
     expect(claimWebhookEvent).toHaveBeenCalledWith(expect.anything(), {
       source: "haggle-dispute-evidence-scan-retry-alert-receiver",
@@ -160,11 +158,13 @@ describe("dispute evidence scan retry alert receiver routes", () => {
 
   it("accepts one previous rotation secret", async () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
-    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_PREVIOUS_SECRETS =
-      previousSecret;
+    process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_PREVIOUS_SECRETS = previousSecret;
     vi.mocked(claimWebhookEvent).mockResolvedValue({
-      outcome: "acquired", source: "receiver", eventId: deliveryId,
-      claimId: "claim", attemptCount: 1,
+      outcome: "acquired",
+      source: "receiver",
+      eventId: deliveryId,
+      claimId: "claim",
+      attemptCount: 1,
     });
     vi.mocked(completeWebhookEvent).mockResolvedValue(true);
     const app = await makeApp();
@@ -184,17 +184,23 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     const app = await makeApp();
     const timestamp = new Date().toISOString();
     const raw = body(timestamp);
-    expect((await app.inject({
-      method: "POST",
-      url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
-    })).statusCode).toBe(503);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/internal/ops/alerts/dispute-evidence-scan-retry",
+          headers: headers(raw, timestamp),
+          payload: raw,
+        })
+      ).statusCode,
+    ).toBe(503);
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_PREVIOUS_SECRETS = "short";
     const invalid = await app.inject({
       method: "POST",
       url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
+      headers: headers(raw, timestamp),
+      payload: raw,
     });
     expect(invalid.statusCode).toBe(503);
     expect(invalid.json()).toEqual({
@@ -237,10 +243,14 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
     vi.mocked(claimWebhookEvent)
       .mockResolvedValueOnce({
-        outcome: "duplicate", source: "receiver", eventId: deliveryId,
+        outcome: "duplicate",
+        source: "receiver",
+        eventId: deliveryId,
       })
       .mockResolvedValueOnce({
-        outcome: "payload_conflict", source: "receiver", eventId: deliveryId,
+        outcome: "payload_conflict",
+        source: "receiver",
+        eventId: deliveryId,
       });
     const app = await makeApp();
     const timestamp = new Date().toISOString();
@@ -248,7 +258,8 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     const request = {
       method: "POST" as const,
       url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
+      headers: headers(raw, timestamp),
+      payload: raw,
     };
     expect((await app.inject(request)).statusCode).toBe(200);
     expect((await app.inject(request)).statusCode).toBe(409);
@@ -260,10 +271,14 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
     vi.mocked(claimWebhookEvent)
       .mockResolvedValueOnce({
-        outcome: "in_progress", source: "receiver", eventId: deliveryId,
+        outcome: "in_progress",
+        source: "receiver",
+        eventId: deliveryId,
       })
       .mockResolvedValueOnce({
-        outcome: "retry_later", source: "receiver", eventId: deliveryId,
+        outcome: "retry_later",
+        source: "receiver",
+        eventId: deliveryId,
         retryAfterSeconds: 7,
       });
     const app = await makeApp();
@@ -272,7 +287,8 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     const request = {
       method: "POST" as const,
       url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
+      headers: headers(raw, timestamp),
+      payload: raw,
     };
     const processing = await app.inject(request);
     expect(processing.statusCode).toBe(503);
@@ -288,29 +304,43 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     const app = await makeApp();
     const staleTimestamp = new Date(Date.now() - 301_000).toISOString();
     const staleRaw = body(staleTimestamp);
-    expect((await app.inject({
-      method: "POST",
-      url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(staleRaw, staleTimestamp), payload: staleRaw,
-    })).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/internal/ops/alerts/dispute-evidence-scan-retry",
+          headers: headers(staleRaw, staleTimestamp),
+          payload: staleRaw,
+        })
+      ).statusCode,
+    ).toBe(401);
     const timestamp = new Date().toISOString();
     const raw = body(timestamp, { evidence_id: "hidden" });
-    expect((await app.inject({
-      method: "POST",
-      url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
-    })).statusCode).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/internal/ops/alerts/dispute-evidence-scan-retry",
+          headers: headers(raw, timestamp),
+          payload: raw,
+        })
+      ).statusCode,
+    ).toBe(400);
     const contradictory = JSON.parse(body(timestamp)) as {
       health: { retention: { blocked_expired: number } };
     };
     contradictory.health.retention.blocked_expired = 0;
     const contradictoryRaw = JSON.stringify(contradictory);
-    expect((await app.inject({
-      method: "POST",
-      url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(contradictoryRaw, timestamp),
-      payload: contradictoryRaw,
-    })).statusCode).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/internal/ops/alerts/dispute-evidence-scan-retry",
+          headers: headers(contradictoryRaw, timestamp),
+          payload: contradictoryRaw,
+        })
+      ).statusCode,
+    ).toBe(400);
     expect(claimWebhookEvent).not.toHaveBeenCalled();
     await app.close();
   });
@@ -318,12 +348,13 @@ describe("dispute evidence scan retry alert receiver routes", () => {
   it("records completion failure for bounded retry", async () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
     vi.mocked(claimWebhookEvent).mockResolvedValue({
-      outcome: "acquired", source: "receiver", eventId: deliveryId,
-      claimId: "claim", attemptCount: 1,
+      outcome: "acquired",
+      source: "receiver",
+      eventId: deliveryId,
+      claimId: "claim",
+      attemptCount: 1,
     });
-    vi.mocked(completeWebhookEvent).mockRejectedValue(
-      new Error("WEBHOOK_CLAIM_LOST"),
-    );
+    vi.mocked(completeWebhookEvent).mockRejectedValue(new Error("WEBHOOK_CLAIM_LOST"));
     vi.mocked(failWebhookEvent).mockResolvedValue(undefined);
     const app = await makeApp();
     const timestamp = new Date().toISOString();
@@ -331,7 +362,8 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
+      headers: headers(raw, timestamp),
+      payload: raw,
     });
     expect(response.statusCode).toBe(503);
     expect(response.headers["retry-after"]).toBe("2");
@@ -350,12 +382,14 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/internal/ops/alerts/dispute-evidence-scan-retry",
-      headers: headers(raw, timestamp), payload: raw,
+      headers: headers(raw, timestamp),
+      payload: raw,
     });
     expect(response.statusCode).toBe(503);
     expect(response.headers["retry-after"]).toBe("2");
     expect(response.json()).toEqual({
-      error: "ALERT_RECEIVER_UNAVAILABLE", retry_after_seconds: 2,
+      error: "ALERT_RECEIVER_UNAVAILABLE",
+      retry_after_seconds: 2,
     });
     expect(response.body).not.toMatch(/private|postgres|internal/);
     await app.close();
@@ -363,12 +397,18 @@ describe("dispute evidence scan retry alert receiver routes", () => {
 
   it("returns identifier-free receiver health only to admins", async () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
-    const rows = [{
-      processing: 0, completed: 2, failed: 0, staleProcessing: 0,
-      retryReady: 0, maxAttemptCount: 2,
-      oldestUnfinishedAgeSeconds: null,
-      lastCompletedAt: "2026-07-14T08:30:00.000Z",
-    }];
+    const rows = [
+      {
+        processing: 0,
+        completed: 2,
+        failed: 0,
+        staleProcessing: 0,
+        retryReady: 0,
+        maxAttemptCount: 2,
+        oldestUnfinishedAgeSeconds: null,
+        lastCompletedAt: "2026-07-14T08:30:00.000Z",
+      },
+    ];
     const admin = await makeApp("admin", rows);
     const response = await admin.inject({
       method: "GET",
@@ -379,28 +419,33 @@ describe("dispute evidence scan retry alert receiver routes", () => {
     expect(response.json()).toMatchObject({
       receiver_kind: "dispute_evidence_scan_retry",
       receiver_health: {
-        status: "healthy", completed: 2, containsIdentifiers: false,
+        status: "healthy",
+        completed: 2,
+        containsIdentifiers: false,
       },
       receiver_policy: {
-        configured: true, acceptedSecretCount: 1,
+        configured: true,
+        acceptedSecretCount: 1,
         timestampToleranceSeconds: 300,
       },
     });
     expect(response.body).not.toMatch(/delivery_id|claim_id|source|secret/);
     await admin.close();
     const nonAdmin = await makeApp("authenticated", rows);
-    expect((await nonAdmin.inject({
-      method: "GET",
-      url: "/admin/ops/alerts/dispute-evidence-scan-retry/health",
-    })).statusCode).toBe(403);
+    expect(
+      (
+        await nonAdmin.inject({
+          method: "GET",
+          url: "/admin/ops/alerts/dispute-evidence-scan-retry/health",
+        })
+      ).statusCode,
+    ).toBe(403);
     await nonAdmin.close();
   });
 
   it("redacts receiver health storage failures", async () => {
     process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SECRET = secret;
-    const app = await makeApp(
-      "admin", new Error("postgres://private-user@db.internal"),
-    );
+    const app = await makeApp("admin", new Error("postgres://private-user@db.internal"));
     const response = await app.inject({
       method: "GET",
       url: "/admin/ops/alerts/dispute-evidence-scan-retry/health",

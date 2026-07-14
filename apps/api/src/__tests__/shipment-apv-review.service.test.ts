@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@haggle/db";
+import { describe, expect, it, vi } from "vitest";
 import {
   decideShipmentApvReview,
   submitShipmentApvSellerReview,
@@ -26,20 +26,23 @@ function uniqueViolation() {
 
 describe("shipment APV review request conflicts", () => {
   it("maps a seller request ID reused on another adjustment to a conflict", async () => {
-    const execute = vi.fn()
+    const execute = vi
+      .fn()
       .mockResolvedValueOnce([CURRENT])
       .mockRejectedValueOnce(uniqueViolation());
     const result = await submitShipmentApvSellerReview({ execute } as unknown as Database, {
       adjustmentId: CURRENT.id,
       sellerId: CURRENT.seller_id,
       requestId: "88888888-8888-4888-8888-888888888888",
-      reason: "The carrier correction does not match the address used to purchase this shipping label.",
+      reason:
+        "The carrier correction does not match the address used to purchase this shipping label.",
     });
     expect(result).toEqual({ outcome: "request_conflict" });
   });
 
   it("maps an admin decision request ID reused on another adjustment to a conflict", async () => {
-    const execute = vi.fn()
+    const execute = vi
+      .fn()
       .mockResolvedValueOnce([{ ...CURRENT, review_status: "PENDING", review_version: 1 }])
       .mockRejectedValueOnce(uniqueViolation());
     const result = await decideShipmentApvReview({ execute } as unknown as Database, {
@@ -47,7 +50,8 @@ describe("shipment APV review request conflicts", () => {
       reviewerId: "99999999-9999-4999-8999-999999999999",
       requestId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       decision: "WAIVED",
-      reason: "The available carrier evidence is insufficient to assign this correction to the seller.",
+      reason:
+        "The available carrier evidence is insufficient to assign this correction to the seller.",
       expectedVersion: 1,
     });
     expect(result).toEqual({ outcome: "request_conflict" });

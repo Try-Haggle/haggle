@@ -94,7 +94,9 @@ export type LegacyPaymentIntentStatus =
   | "FAILED"
   | "CANCELED";
 
-export function mapLegacyStatusToProductionState(status: LegacyPaymentIntentStatus): ProductionPaymentState {
+export function mapLegacyStatusToProductionState(
+  status: LegacyPaymentIntentStatus,
+): ProductionPaymentState {
   switch (status) {
     case "CREATED":
     case "QUOTED":
@@ -112,7 +114,9 @@ export function mapLegacyStatusToProductionState(status: LegacyPaymentIntentStat
 }
 
 export function isProductionPaymentState(value: unknown): value is ProductionPaymentState {
-  return typeof value === "string" && PRODUCTION_PAYMENT_STATES.includes(value as ProductionPaymentState);
+  return (
+    typeof value === "string" && PRODUCTION_PAYMENT_STATES.includes(value as ProductionPaymentState)
+  );
 }
 
 export function isProductionStateCompatibleWithLegacyStatus(
@@ -127,10 +131,12 @@ export function isProductionStateCompatibleWithLegacyStatus(
     case "SETTLEMENT_PENDING":
       return productionState === "authorized" || productionState === "expired";
     case "SETTLED":
-      return productionState === "captured"
-        || productionState === "partially_refunded"
-        || productionState === "refunded"
-        || productionState === "disputed";
+      return (
+        productionState === "captured" ||
+        productionState === "partially_refunded" ||
+        productionState === "refunded" ||
+        productionState === "disputed"
+      );
     case "FAILED":
       return productionState === "failed";
     case "CANCELED":
@@ -143,7 +149,9 @@ export function assertProductionStateCompatibleWithLegacyStatus(
   productionState: ProductionPaymentState,
 ): void {
   if (!isProductionStateCompatibleWithLegacyStatus(legacyStatus, productionState)) {
-    throw new Error(`incompatible payment statuses: legacy=${legacyStatus} production=${productionState}`);
+    throw new Error(
+      `incompatible payment statuses: legacy=${legacyStatus} production=${productionState}`,
+    );
   }
 }
 
@@ -170,7 +178,9 @@ export function productionStateAfterRefund(input: {
     throw new Error("refund amount must be positive");
   }
   if (input.refundAmountMinor > input.paymentAmountMinor) {
-    throw new Error(`refund amount ${input.refundAmountMinor} exceeds payment amount ${input.paymentAmountMinor}`);
+    throw new Error(
+      `refund amount ${input.refundAmountMinor} exceeds payment amount ${input.paymentAmountMinor}`,
+    );
   }
   return input.refundAmountMinor === input.paymentAmountMinor ? "refunded" : "partially_refunded";
 }
@@ -263,7 +273,9 @@ function redactPaymentSensitiveDataInner(value: unknown, seen: WeakSet<object>):
 
   const redacted: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    redacted[key] = isSensitivePaymentKey(key) ? "[REDACTED]" : redactPaymentSensitiveDataInner(entry, seen);
+    redacted[key] = isSensitivePaymentKey(key)
+      ? "[REDACTED]"
+      : redactPaymentSensitiveDataInner(entry, seen);
   }
   return redacted;
 }
@@ -324,11 +336,13 @@ export function classifyProviderError(error: unknown): ProviderErrorClassificati
 
   const status = errorStatus(error);
   if (status !== null) {
-    if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return "retryable";
+    if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500)
+      return "retryable";
     if (status >= 400 && status < 500) return "non_retryable";
   }
 
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
   if (/\b(timeout|timed out|econnreset|connection reset|temporarily unavailable)\b/.test(message)) {
     return "retryable";
   }
@@ -385,7 +399,12 @@ export interface ReconciliationFinding {
 }
 
 function isCapturedLike(state: ProductionPaymentState): boolean {
-  return state === "captured" || state === "partially_refunded" || state === "refunded" || state === "disputed";
+  return (
+    state === "captured" ||
+    state === "partially_refunded" ||
+    state === "refunded" ||
+    state === "disputed"
+  );
 }
 
 export function detectPaymentReconciliationFindings(
@@ -405,7 +424,9 @@ export function detectPaymentReconciliationFindings(
 
   for (const local of localPayments) {
     const provider = local.provider_reference
-      ? providerPayments.find((candidate) => candidate.provider_reference === local.provider_reference)
+      ? providerPayments.find(
+          (candidate) => candidate.provider_reference === local.provider_reference,
+        )
       : undefined;
 
     if (isCapturedLike(local.state) && (!provider || !isCapturedLike(provider.state))) {
@@ -444,8 +465,10 @@ export function detectPaymentReconciliationFindings(
 
   for (const provider of providerPayments) {
     const local =
-      localByProviderRef.get(provider.provider_reference)
-      ?? (provider.local_payment_intent_id ? localByIntentId.get(provider.local_payment_intent_id) : undefined);
+      localByProviderRef.get(provider.provider_reference) ??
+      (provider.local_payment_intent_id
+        ? localByIntentId.get(provider.local_payment_intent_id)
+        : undefined);
 
     if (!local) {
       findings.push({
@@ -496,10 +519,14 @@ export interface PaymentAuditEventInput {
   timestamp?: string;
 }
 
-export function createPaymentAuditEvent(input: PaymentAuditEventInput): PaymentAuditEventInput & { timestamp: string } {
+export function createPaymentAuditEvent(
+  input: PaymentAuditEventInput,
+): PaymentAuditEventInput & { timestamp: string } {
   return {
     ...input,
     timestamp: input.timestamp ?? new Date().toISOString(),
-    metadata: input.metadata ? redactPaymentSensitiveData(input.metadata) as Record<string, unknown> : undefined,
+    metadata: input.metadata
+      ? (redactPaymentSensitiveData(input.metadata) as Record<string, unknown>)
+      : undefined,
   };
 }

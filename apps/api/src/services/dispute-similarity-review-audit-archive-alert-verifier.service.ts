@@ -1,26 +1,38 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import { signWebhookClaimAlertPayload } from "./webhook-claim-alert.service.js";
 import { claimWebhookEvent, type WebhookEventClaim } from "./webhook-event-claim.service.js";
 
 const DELIVERY_ID_RE = /^(?:health|recovery)_[0-9a-f]{64}$/;
-export const DISPUTE_SIMILARITY_ARCHIVE_ALERT_RECEIVER_SOURCE = "haggle-dispute-similarity-review-audit-archive-alert-receiver";
+export const DISPUTE_SIMILARITY_ARCHIVE_ALERT_RECEIVER_SOURCE =
+  "haggle-dispute-similarity-review-audit-archive-alert-receiver";
 
 export function resolveDisputeSimilarityArchiveAlertReceiverSecretsFromEnv() {
   const candidates = [
     process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_SECRET,
-    ...(process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_PREVIOUS_SECRETS?.split(",") ?? []),
+    ...(process.env.DISPUTE_SIMILARITY_REVIEW_AUDIT_ARCHIVE_ALERT_PREVIOUS_SECRETS?.split(",") ??
+      []),
   ];
-  return [...new Set(candidates.map((item) => item?.trim()).filter((item): item is string => Boolean(item && item.length >= 16)))];
+  return [
+    ...new Set(
+      candidates
+        .map((item) => item?.trim())
+        .filter((item): item is string => Boolean(item && item.length >= 16)),
+    ),
+  ];
 }
 
 export function getDisputeSimilarityArchiveAlertReceiverPolicyStatus() {
   const secrets = resolveDisputeSimilarityArchiveAlertReceiverSecretsFromEnv();
-  return { configured: secrets.length > 0, acceptedSecretCount: secrets.length, timestampToleranceSeconds: 300 };
+  return {
+    configured: secrets.length > 0,
+    acceptedSecretCount: secrets.length,
+    timestampToleranceSeconds: 300,
+  };
 }
 
 export async function getDisputeSimilarityArchiveAlertReceiverHealth(db: Database) {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT count(*) FILTER (WHERE status = 'PROCESSING')::int AS processing,
            count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed,
            count(*) FILTER (WHERE status = 'FAILED')::int AS failed,
@@ -29,13 +41,18 @@ export async function getDisputeSimilarityArchiveAlertReceiverHealth(db: Databas
            max(completed_at) FILTER (WHERE status = 'COMPLETED') AS last_completed_at
       FROM webhook_idempotency
      WHERE source = ${DISPUTE_SIMILARITY_ARCHIVE_ALERT_RECEIVER_SOURCE}
-  `) as unknown as Array<Record<string, string | number | Date | null>>;
+  `)) as unknown as Array<Record<string, string | number | Date | null>>;
   const row = rows[0] ?? {};
   const processing = Number(row.processing ?? 0);
   const failed = Number(row.failed ?? 0);
   const staleProcessing = Number(row.stale_processing ?? 0);
   return {
-    status: staleProcessing > 0 ? "critical" as const : failed > 0 ? "warning" as const : "healthy" as const,
+    status:
+      staleProcessing > 0
+        ? ("critical" as const)
+        : failed > 0
+          ? ("warning" as const)
+          : ("healthy" as const),
     processing,
     completed: Number(row.completed ?? 0),
     failed,
@@ -47,8 +64,24 @@ export async function getDisputeSimilarityArchiveAlertReceiverHealth(db: Databas
 }
 
 export type DisputeSimilarityArchiveAlertVerification =
-  | { ok: true; deliveryId: string; payloadSha256: string; state: "firing" | "recovered"; severity: "critical" | "warning" | "recovery" }
-  | { ok: false; error: "MISSING_ALERT_AUTH" | "INVALID_DELIVERY_ID" | "INVALID_ALERT_TIMESTAMP" | "ALERT_TIMESTAMP_OUT_OF_RANGE" | "INVALID_ALERT_BODY" | "ALERT_DELIVERY_ID_MISMATCH" | "INVALID_ALERT_SIGNATURE" };
+  | {
+      ok: true;
+      deliveryId: string;
+      payloadSha256: string;
+      state: "firing" | "recovered";
+      severity: "critical" | "warning" | "recovery";
+    }
+  | {
+      ok: false;
+      error:
+        | "MISSING_ALERT_AUTH"
+        | "INVALID_DELIVERY_ID"
+        | "INVALID_ALERT_TIMESTAMP"
+        | "ALERT_TIMESTAMP_OUT_OF_RANGE"
+        | "INVALID_ALERT_BODY"
+        | "ALERT_DELIVERY_ID_MISMATCH"
+        | "INVALID_ALERT_SIGNATURE";
+    };
 
 function single(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -75,25 +108,40 @@ export function verifyDisputeSimilarityReviewAuditArchiveAlert(input: {
   }
   let body: Record<string, unknown>;
   try {
-    body = JSON.parse(Buffer.isBuffer(input.rawBody) ? input.rawBody.toString("utf8") : input.rawBody) as Record<string, unknown>;
-  } catch { return { ok: false, error: "INVALID_ALERT_BODY" }; }
+    body = JSON.parse(
+      Buffer.isBuffer(input.rawBody) ? input.rawBody.toString("utf8") : input.rawBody,
+    ) as Record<string, unknown>;
+  } catch {
+    return { ok: false, error: "INVALID_ALERT_BODY" };
+  }
   const state = body.state;
   const severity = body.severity;
-  if (body.type !== "dispute_similarity_review_audit_archive.health"
-    || body.created_at !== timestamp
-    || (state !== "firing" && state !== "recovered")
-    || (severity !== "critical" && severity !== "warning" && severity !== "recovery")
-    || (state === "recovered" && severity !== "recovery")
-    || (state === "firing" && severity === "recovery")) {
+  if (
+    body.type !== "dispute_similarity_review_audit_archive.health" ||
+    body.created_at !== timestamp ||
+    (state !== "firing" && state !== "recovered") ||
+    (severity !== "critical" && severity !== "warning" && severity !== "recovery") ||
+    (state === "recovered" && severity !== "recovery") ||
+    (state === "firing" && severity === "recovery")
+  ) {
     return { ok: false, error: "INVALID_ALERT_BODY" };
   }
   if (body.delivery_id !== deliveryId) return { ok: false, error: "ALERT_DELIVERY_ID_MISMATCH" };
   const received = Buffer.from(signature.startsWith("sha256=") ? signature : `sha256=${signature}`);
-  const secrets = (Array.isArray(input.secret) ? input.secret : [input.secret]).filter((item) => item.length >= 16);
+  const secrets = (Array.isArray(input.secret) ? input.secret : [input.secret]).filter(
+    (item) => item.length >= 16,
+  );
   let matched = false;
   for (const secret of secrets) {
-    const expected = Buffer.from(signWebhookClaimAlertPayload(secret, timestamp, Buffer.isBuffer(input.rawBody) ? input.rawBody.toString("utf8") : input.rawBody));
-    matched = (received.length === expected.length && timingSafeEqual(received, expected)) || matched;
+    const expected = Buffer.from(
+      signWebhookClaimAlertPayload(
+        secret,
+        timestamp,
+        Buffer.isBuffer(input.rawBody) ? input.rawBody.toString("utf8") : input.rawBody,
+      ),
+    );
+    matched =
+      (received.length === expected.length && timingSafeEqual(received, expected)) || matched;
   }
   if (!matched) return { ok: false, error: "INVALID_ALERT_SIGNATURE" };
   return {
@@ -110,7 +158,7 @@ export async function claimVerifiedDisputeSimilarityArchiveAlert(
   verification: Extract<DisputeSimilarityArchiveAlertVerification, { ok: true }>,
   source = DISPUTE_SIMILARITY_ARCHIVE_ALERT_RECEIVER_SOURCE,
 ): Promise<
-  { outcome: "accepted"; claim: WebhookEventClaim }
+  | { outcome: "accepted"; claim: WebhookEventClaim }
   | { outcome: "replay_or_in_progress" }
   | { outcome: "payload_conflict" }
 > {

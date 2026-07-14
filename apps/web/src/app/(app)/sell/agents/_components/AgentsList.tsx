@@ -1,79 +1,85 @@
 "use client";
 
+import {
+  NEGOTIATION_AGENT_PRESETS,
+  type NegotiationAgent,
+  type NegotiationAgentPreset,
+  type NegotiationAgentPresetId,
+} from "@haggle/shared";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  NEGOTIATION_PRESETS,
-  type AgentProfile,
-  type NegotiationPreset,
-  type NegotiationPresetId,
-} from "@haggle/shared";
-import { localAgents, LOCAL_AGENTS_UPDATED_EVENT } from "@/lib/local-agents";
 import { WeightRadar } from "@/components/agents/WeightRadar";
+import { buttonVariants, EmptyState, PageHeader, SectionHeader } from "@/components/ui";
+import { cn } from "@/lib/cn";
+import {
+  deleteNegotiationAgent,
+  listNegotiationAgents,
+  rowToNegotiationAgent,
+} from "@/lib/negotiation-agents-api";
 
 type Role = "buyer" | "seller";
 
 /** Optional selection mode — used when this list is embedded in a wizard or
  *  modal where a card click should pick the agent instead of navigating. */
 export interface AgentsListSelectMode {
-  selectedPresetId?: NegotiationPresetId | null;
+  selectedPresetId?: NegotiationAgentPresetId | null;
   selectedCustomId?: string | null;
-  onSelectPreset: (preset: NegotiationPreset) => void;
-  onSelectCustom: (agent: AgentProfile) => void;
+  onSelectPreset: (preset: NegotiationAgentPreset) => void;
+  onSelectCustom: (agent: NegotiationAgent) => void;
 }
 
 interface AgentsListProps {
   role: Role;
-  /** Hide the page-level header (title + Create button). The "+ Create new agent"
-   *  link inside the My Agents section stays. */
+  /** Hide the page-level header (title + Create button). Used when the list is
+   *  embedded as a preset picker inside the agent builder / wizard. */
   embedded?: boolean;
   selectMode?: AgentsListSelectMode;
 }
 
-export function AgentsList({
-  role,
-  embedded = false,
-  selectMode,
-}: AgentsListProps) {
-  const [customs, setCustoms] = useState<AgentProfile[]>([]);
+export function AgentsList({ role, embedded = false, selectMode }: AgentsListProps) {
+  const [customs, setCustoms] = useState<NegotiationAgent[]>([]);
   const newHref = role === "buyer" ? "/buy/agents/new" : "/sell/agents/new";
   const inSelectMode = !!selectMode;
 
   useEffect(() => {
-    const reload = () => {
-      const all = localAgents.list();
-      setCustoms(
-        all.filter((a) => !a.role || a.role === role || a.role === "both"),
-      );
-    };
-    reload();
-    if (typeof window === "undefined") return;
-    window.addEventListener(LOCAL_AGENTS_UPDATED_EVENT, reload);
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await listNegotiationAgents(role);
+        if (cancelled) return;
+        setCustoms(rows.filter((r) => !r.isSystem).map(rowToNegotiationAgent));
+      } catch {
+        if (!cancelled) setCustoms([]);
+      }
+    })();
     return () => {
-      window.removeEventListener(LOCAL_AGENTS_UPDATED_EVENT, reload);
+      cancelled = true;
     };
   }, [role]);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Delete this agent? This cannot be undone.")) return;
-    localAgents.delete(id);
-    setCustoms((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await deleteNegotiationAgent(id);
+      setCustoms((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete agent");
+    }
   };
 
-  const handlePresetClick = (preset: NegotiationPreset, e: React.MouseEvent) => {
+  const handlePresetClick = (preset: NegotiationAgentPreset, e: React.MouseEvent) => {
     if (selectMode) {
       e.preventDefault();
       selectMode.onSelectPreset(preset);
     }
   };
 
-  const containerClass = embedded
-    ? "w-full"
-    : "max-w-[1100px] mx-auto px-4 sm:px-6 py-8 sm:py-10";
+  const containerClass = embedded ? "w-full" : "max-w-[1100px] mx-auto px-4 sm:px-6 py-8 sm:py-10";
 
   // Page-mode rules: presets only show on empty state (or always when embedded).
   // My Agents only shows when there are some (or always when embedded so the
-  // wizard/buyer-landing can use its "Create new agent" link).
+  // picker can list previously-saved agents).
   const isPageEmpty = !embedded && customs.length === 0;
   const showPresets = embedded || customs.length === 0;
   const showMyAgents = embedded || customs.length > 0;
@@ -81,206 +87,165 @@ export function AgentsList({
   return (
     <div className={containerClass}>
       {!embedded && (
-        <div className="flex items-center justify-between mb-8 gap-3">
-          <div>
-            <h1 className="text-[22px] font-bold text-text-primary mb-1">
-              Negotiation Agents
-            </h1>
-            <p className="text-[13px] text-slate-400">
-              {isPageEmpty
-                ? "No agents yet — start with a preset."
-                : "Manage your saved agents."}
-            </p>
-          </div>
-          {customs.length > 0 && (
-            <Link
-              href={newHref}
-              className="px-4 py-2.5 text-sm font-bold rounded-md bg-emerald-500 text-white hover:bg-emerald-600 transition-colors whitespace-nowrap"
-            >
-              + Create Agent
-            </Link>
-          )}
-        </div>
+        <PageHeader
+          className="mb-8"
+          title="Negotiation Agents"
+          subtitle={
+            isPageEmpty ? "No agents yet — start with a preset." : "Manage your saved agents."
+          }
+          actions={
+            customs.length > 0 ? (
+              <Link href={newHref} className={buttonVariants({ variant: "primary" })}>
+                <Plus className="size-4" />
+                Create Agent
+              </Link>
+            ) : undefined
+          }
+        />
       )}
 
       {/* Presets */}
       {showPresets && (
-      <section className="mb-10">
-        <h2 className="text-[12px] font-bold tracking-wider uppercase text-slate-300 mb-3">
-          {isPageEmpty ? "Start with a preset" : "Presets"}
-        </h2>
-        <div
-          className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${embedded ? "" : "lg:grid-cols-4"}`}
-        >
-          {NEGOTIATION_PRESETS.map((preset) => {
-            const copy = preset.copy[role];
-            const isSelected =
-              selectMode?.selectedPresetId === preset.id &&
-              !selectMode.selectedCustomId;
-            return (
-              <Link
-                key={preset.id}
-                href={`${newHref}?preset=${preset.id}`}
-                onClick={(e) => handlePresetClick(preset, e)}
-                className="bg-bg-card border border-border-default rounded-xl p-4 flex items-start gap-3 hover:border-cyan-500/40 transition-colors cursor-pointer"
-                style={{
-                  borderLeftWidth: 3,
-                  borderLeftStyle: "solid",
-                  borderLeftColor: isSelected ? "#06b6d4" : preset.accentColor,
-                  ...(isSelected
-                    ? {
-                        borderTopColor: "#06b6d4",
-                        borderRightColor: "#06b6d4",
-                        borderBottomColor: "#06b6d4",
-                        boxShadow: "0 0 0 1px #06b6d4",
-                      }
-                    : {}),
-                }}
-              >
-                <span
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl"
-                  style={{ backgroundColor: `${preset.accentColor}22` }}
+        <section className="mb-10">
+          <SectionHeader
+            variant="eyebrow"
+            className="mb-3"
+            title={isPageEmpty ? "Start with a preset" : "Presets"}
+          />
+          <div
+            className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", !embedded && "lg:grid-cols-4")}
+          >
+            {NEGOTIATION_AGENT_PRESETS.map((preset) => {
+              const copy = preset.copy[role];
+              const isSelected =
+                selectMode?.selectedPresetId === preset.id && !selectMode.selectedCustomId;
+              return (
+                <Link
+                  key={preset.id}
+                  href={`${newHref}?preset=${preset.id}`}
+                  onClick={(e) => handlePresetClick(preset, e)}
+                  className={cn(
+                    "flex items-start gap-3 rounded-xl border border-l-[3px] bg-surface-raised p-4 transition-colors",
+                    isSelected
+                      ? "border-action-primary ring-1 ring-action-primary"
+                      : "border-line hover:border-action-primary/40",
+                  )}
+                  style={{ borderLeftColor: isSelected ? undefined : preset.accentColor }}
                 >
-                  {preset.emoji}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-text-primary mb-0.5">
-                    {copy.name}
-                  </h3>
-                  <p className="text-[12px] text-cyan-400 mb-1.5 truncate">
-                    {copy.tagline}
-                  </p>
-                  <p className="text-[11.5px] text-slate-400 leading-snug line-clamp-3">
-                    {copy.description}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
+                  <span
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-2xl"
+                    style={{ backgroundColor: `${preset.accentColor}22` }}
+                  >
+                    {preset.emoji}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="mb-0.5 font-bold text-ink text-sm">{copy.name}</h3>
+                    <p className="mb-1.5 truncate text-[12px] text-action-primary">
+                      {copy.tagline}
+                    </p>
+                    <p className="line-clamp-3 text-[11.5px] text-ink-muted leading-snug">
+                      {copy.description}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* Custom agents */}
       {showMyAgents && (
-      <section>
-        <div className="flex items-center justify-between mb-3 gap-3">
-          <h2 className="text-[12px] font-bold tracking-wider uppercase text-slate-300">
-            My Agents{" "}
-            <span className="text-slate-500 font-normal normal-case">
-              ({customs.length})
-            </span>
-          </h2>
-          {embedded && (
-            <Link
-              href={newHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[12px] text-cyan-400 hover:text-cyan-300"
+        <section>
+          <SectionHeader
+            variant="eyebrow"
+            className="mb-3"
+            title="My Agents"
+            count={customs.length}
+          />
+          {customs.length === 0 ? (
+            <EmptyState
+              dashed
+              padding="sm"
+              className="bg-surface-raised"
+              title="No custom agents yet"
+              description="Customize a preset to make one."
+            />
+          ) : (
+            <div
+              className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", !embedded && "lg:grid-cols-3")}
             >
-              + Create new agent ↗
-            </Link>
-          )}
-        </div>
-        {customs.length === 0 ? (
-          <div className="bg-bg-card border border-dashed border-border-default rounded-xl px-6 py-10 text-center">
-            <p className="text-[13px] text-slate-400 mb-3">
-              No custom agents yet. Customize a preset to make one.
-            </p>
-            <Link
-              href={newHref}
-              {...(embedded
-                ? { target: "_blank", rel: "noopener noreferrer" }
-                : {})}
-              className="inline-block text-[13px] text-cyan-400 hover:text-cyan-300"
-            >
-              + Create your first agent
-            </Link>
-          </div>
-        ) : (
-          <div
-            className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${embedded ? "" : "lg:grid-cols-3"}`}
-          >
-            {customs.map((agent) => {
-              const isSelected = selectMode?.selectedCustomId === agent.id;
-              const cardClasses =
-                "bg-bg-card border border-border-default rounded-xl p-4 flex gap-3 transition-colors" +
-                (inSelectMode ? " cursor-pointer hover:border-cyan-500/40" : "");
+              {customs.map((agent) => {
+                const isSelected = selectMode?.selectedCustomId === agent.id;
 
-              const body = (
-                <>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-lg">{agent.emoji ?? "✦"}</span>
-                      <h3 className="text-sm font-bold text-text-primary truncate">
-                        {agent.name}
-                      </h3>
+                const body = (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-baseline gap-2">
+                        <span className="text-lg">{agent.emoji ?? "✦"}</span>
+                        <h3 className="truncate font-bold text-ink text-sm">{agent.name}</h3>
+                      </div>
+                      {agent.description && (
+                        <p className="mb-3 line-clamp-2 text-[11.5px] text-ink-muted leading-snug">
+                          {agent.description}
+                        </p>
+                      )}
+                      {!inSelectMode && (
+                        <div className="flex gap-3 text-[12px]">
+                          <Link
+                            href={`/${role === "buyer" ? "buy" : "sell"}/agents/${agent.id}/edit`}
+                            className="font-medium text-action-primary hover:text-ink"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(agent.id)}
+                            className="font-medium text-error hover:opacity-80"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {agent.description && (
-                      <p className="text-[11.5px] text-slate-400 leading-snug line-clamp-2 mb-3">
-                        {agent.description}
-                      </p>
-                    )}
-                    {!inSelectMode && (
-                      <div className="flex gap-3 text-[12px]">
-                        <Link
-                          href={`/sell/agents/${agent.id}/edit`}
-                          className="text-cyan-400 hover:text-cyan-300"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(agent.id)}
-                          className="text-rose-400 hover:text-rose-300"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="w-[88px] h-[88px] flex-shrink-0 opacity-90">
-                    {agent.weights ? (
-                      <WeightRadar
-                        weights={agent.weights}
-                        size={88}
-                        labels={false}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-3xl">
-                        {agent.emoji ?? "✦"}
-                      </div>
-                    )}
-                  </div>
-                </>
-              );
+                    <div className="size-[88px] shrink-0 opacity-90">
+                      {agent.weights ? (
+                        <WeightRadar weights={agent.weights} size={88} labels={false} />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-3xl">
+                          {agent.emoji ?? "✦"}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
 
-              return inSelectMode ? (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => selectMode!.onSelectCustom(agent)}
-                  className={cardClasses + " text-left"}
-                  style={
-                    isSelected
-                      ? {
-                          borderColor: "#06b6d4",
-                          boxShadow: "0 0 0 1px #06b6d4",
-                        }
-                      : {}
-                  }
-                >
-                  {body}
-                </button>
-              ) : (
-                <article key={agent.id} className={cardClasses}>
-                  {body}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                return inSelectMode ? (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => selectMode?.onSelectCustom(agent)}
+                    className={cn(
+                      "flex gap-3 rounded-xl border bg-surface-raised p-4 text-left transition-colors",
+                      isSelected
+                        ? "border-action-primary ring-1 ring-action-primary"
+                        : "border-line hover:border-action-primary/40",
+                    )}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <article
+                    key={agent.id}
+                    className="flex gap-3 rounded-xl border border-line bg-surface-raised p-4"
+                  >
+                    {body}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

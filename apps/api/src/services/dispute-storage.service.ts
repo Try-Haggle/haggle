@@ -26,9 +26,7 @@ function getClient(): SupabaseClient {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    throw new Error(
-      "dispute-storage: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set",
-    );
+    throw new Error("dispute-storage: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set");
   }
   _client = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -40,9 +38,7 @@ function getClient(): SupabaseClient {
  * Test-only hook — allows tests to inject a mock Supabase client without
  * touching the real env vars. Reset to `null` in afterEach if used.
  */
-export function _setDisputeStorageClientForTest(
-  client: SupabaseClient | null,
-): void {
+export function _setDisputeStorageClientForTest(client: SupabaseClient | null): void {
   _client = client;
 }
 
@@ -58,9 +54,7 @@ export interface PresignedUploadResult {
  * `storagePath` is the fully-qualified `bucket/path` form that the client
  * echoes back to the commit endpoint.
  */
-export async function createDisputeUploadUrl(
-  objectPath: string,
-): Promise<PresignedUploadResult> {
+export async function createDisputeUploadUrl(objectPath: string): Promise<PresignedUploadResult> {
   const client = getClient();
   const { data, error } = await client.storage
     .from(DISPUTE_EVIDENCE_BUCKET)
@@ -83,9 +77,7 @@ export async function createDisputeUploadUrl(
  * `false` otherwise. Supabase JS does not expose a native `head()` — we use
  * a prefix `list()` on the parent folder filtered by the exact basename.
  */
-export async function disputeEvidenceExists(
-  objectPath: string,
-): Promise<boolean> {
+export async function disputeEvidenceExists(objectPath: string): Promise<boolean> {
   const client = getClient();
   const slash = objectPath.lastIndexOf("/");
   if (slash < 0) return false;
@@ -101,11 +93,12 @@ export async function disputeEvidenceExists(
   return data.some((entry) => entry?.name === filename);
 }
 
-export async function downloadDisputeEvidence(objectPath: string, maxBytes: number): Promise<Buffer> {
+export async function downloadDisputeEvidence(
+  objectPath: string,
+  maxBytes: number,
+): Promise<Buffer> {
   const client = getClient();
-  const { data, error } = await client.storage
-    .from(DISPUTE_EVIDENCE_BUCKET)
-    .download(objectPath);
+  const { data, error } = await client.storage.from(DISPUTE_EVIDENCE_BUCKET).download(objectPath);
   if (error || !data) {
     throw new Error(`dispute-storage: download failed: ${error?.message ?? "unknown"}`);
   }
@@ -126,9 +119,7 @@ export async function deleteDisputeEvidence(objectPath: string): Promise<void> {
  * GET /disputes/:id/evidence/:evidenceId/view endpoint so dispute parties
  * and reviewers can view committed evidence.
  */
-export async function createDisputeViewUrl(
-  objectPath: string,
-): Promise<string> {
+export async function createDisputeViewUrl(objectPath: string): Promise<string> {
   const client = getClient();
   const { data, error } = await client.storage
     .from(DISPUTE_EVIDENCE_BUCKET)

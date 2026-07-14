@@ -18,27 +18,22 @@
 
 import {
   HAGGLE_CONDITIONAL_SETTLEMENT_ABI,
-  HAGGLE_SETTLEMENT_ROUTER_ABI,
   HAGGLE_DISPUTE_REGISTRY_ABI,
+  HAGGLE_SETTLEMENT_ROUTER_ABI,
 } from "@haggle/contracts";
+import { chainSyncCursors, type Database, eq } from "@haggle/db";
 import {
-  type Database,
-  chainSyncCursors,
-  eq,
-} from "@haggle/db";
-import {
-  createPublicClient,
-  http,
-  decodeEventLog,
-  type PublicClient,
-  type Log,
   type Address,
+  createPublicClient,
+  decodeEventLog,
+  http,
+  type Log,
+  type PublicClient,
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
-
-import { handleSettlementEvent } from "./handlers/settlement-handler.js";
-import { handleDisputeEvent } from "./handlers/dispute-handler.js";
 import { handleConditionalSettlementEvent } from "./handlers/conditional-settlement-handler.js";
+import { handleDisputeEvent } from "./handlers/dispute-handler.js";
+import { handleSettlementEvent } from "./handlers/settlement-handler.js";
 
 // ── Config ──────────────────────────────────────────────────────
 
@@ -70,18 +65,12 @@ export function createChainListenerConfig(): ChainListenerConfig | null {
     return null;
   }
 
-  const settlementRouterAddress = (
-    process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS
-    ?? process.env.SETTLEMENT_ROUTER_ADDRESS
-  ) as Address | undefined;
-  const conditionalSettlementAddress = (
-    process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS
-    ?? process.env.CONDITIONAL_SETTLEMENT_ADDRESS
-  ) as Address | undefined;
-  const disputeRegistryAddress = (
-    process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS
-    ?? process.env.DISPUTE_REGISTRY_ADDRESS
-  ) as Address | undefined;
+  const settlementRouterAddress = (process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS ??
+    process.env.SETTLEMENT_ROUTER_ADDRESS) as Address | undefined;
+  const conditionalSettlementAddress = (process.env.HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS ??
+    process.env.CONDITIONAL_SETTLEMENT_ADDRESS) as Address | undefined;
+  const disputeRegistryAddress = (process.env.HAGGLE_DISPUTE_REGISTRY_ADDRESS ??
+    process.env.DISPUTE_REGISTRY_ADDRESS) as Address | undefined;
 
   if (!settlementRouterAddress && !conditionalSettlementAddress && !disputeRegistryAddress) {
     if (!configLoggedOnce) {
@@ -160,7 +149,11 @@ async function syncContractEvents(params: {
   cursorId: string;
   address: Address | undefined;
   abi: readonly unknown[];
-  handleEvent: (db: Database, log: Log, event: { eventName: string; args: Record<string, unknown> }) => Promise<void>;
+  handleEvent: (
+    db: Database,
+    log: Log,
+    event: { eventName: string; args: Record<string, unknown> },
+  ) => Promise<void>;
   logLabel: string;
 }): Promise<{ processed: number; toBlock: bigint }> {
   if (!params.address) {
@@ -177,9 +170,10 @@ async function syncContractEvents(params: {
   }
 
   const fromBlock = lastBlock + 1n;
-  const toBlock = safeBlock < fromBlock + BigInt(params.config.maxBlockRange)
-    ? safeBlock
-    : fromBlock + BigInt(params.config.maxBlockRange) - 1n;
+  const toBlock =
+    safeBlock < fromBlock + BigInt(params.config.maxBlockRange)
+      ? safeBlock
+      : fromBlock + BigInt(params.config.maxBlockRange) - 1n;
 
   const logs = await client.getLogs({
     address: params.address,
@@ -220,9 +214,7 @@ async function syncContractEvents(params: {
 
 // ── Settlement Event Sync ───────────────────────────────────────
 
-const SETTLEMENT_EVENTS = HAGGLE_SETTLEMENT_ROUTER_ABI.filter(
-  (item) => item.type === "event",
-);
+const SETTLEMENT_EVENTS = HAGGLE_SETTLEMENT_ROUTER_ABI.filter((item) => item.type === "event");
 
 export async function syncSettlementEvents(
   db: Database,
@@ -262,9 +254,7 @@ export async function syncConditionalSettlementEvents(
 
 // ── Dispute Event Sync ──────────────────────────────────────────
 
-const DISPUTE_EVENTS = HAGGLE_DISPUTE_REGISTRY_ABI.filter(
-  (item) => item.type === "event",
-);
+const DISPUTE_EVENTS = HAGGLE_DISPUTE_REGISTRY_ABI.filter((item) => item.type === "event");
 
 export async function syncDisputeEvents(
   db: Database,

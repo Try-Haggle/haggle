@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 const DEFAULT_BATCH_SIZE = 1_000;
 const RETENTION_INTERVAL_SECONDS = 5 * 60;
@@ -7,7 +7,7 @@ const ADVISORY_LOCK_KEY = "haggle:websocket-auth-ticket-retention:v1";
 function rowsOf<T>(result: unknown): T[] {
   if (Array.isArray(result)) return result as T[];
   const rows = (result as { rows?: unknown[] } | null)?.rows;
-  return Array.isArray(rows) ? rows as T[] : [];
+  return Array.isArray(rows) ? (rows as T[]) : [];
 }
 
 export interface WebSocketTicketRetentionResult {
@@ -24,22 +24,29 @@ export async function runWebSocketAuthTicketRetention(
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 10_000) {
     throw new Error("INVALID_WEBSOCKET_TICKET_RETENTION_BATCH_SIZE");
   }
-  if (options.fixtureUserId !== undefined
-    && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(options.fixtureUserId)) {
+  if (
+    options.fixtureUserId !== undefined &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      options.fixtureUserId,
+    )
+  ) {
     throw new Error("INVALID_WEBSOCKET_TICKET_RETENTION_FIXTURE_USER");
   }
 
   return db.transaction(async (tx) => {
-    const lock = rowsOf<{ acquired: boolean }>(await tx.execute(sql`
+    const lock = rowsOf<{ acquired: boolean }>(
+      await tx.execute(sql`
       SELECT pg_try_advisory_xact_lock(
         hashtextextended(${ADVISORY_LOCK_KEY}, 0)
       ) AS acquired
-    `));
+    `),
+    );
     if (lock[0]?.acquired !== true) {
       return { acquired: false, deleted: 0, batchSize };
     }
 
-    const deleted = rowsOf(await tx.execute(sql`
+    const deleted = rowsOf(
+      await tx.execute(sql`
       WITH expired AS (
         SELECT id
         FROM websocket_auth_tickets
@@ -54,7 +61,8 @@ export async function runWebSocketAuthTicketRetention(
       USING expired
       WHERE ticket.id = expired.id
       RETURNING 1 AS deleted
-    `));
+    `),
+    );
     return { acquired: true, deleted: deleted.length, batchSize };
   });
 }
@@ -64,7 +72,8 @@ export async function getWebSocketAuthTicketRetentionHealth(db: Database) {
     active_count: string | number;
     expired_count: string | number;
     oldest_expired_age_seconds: string | number | null;
-  }>(await db.execute(sql`
+  }>(
+    await db.execute(sql`
     SELECT
       count(*) FILTER (WHERE expires_at > clock_timestamp())::text AS active_count,
       count(*) FILTER (WHERE expires_at <= clock_timestamp())::text AS expired_count,
@@ -77,15 +86,17 @@ export async function getWebSocketAuthTicketRetentionHealth(db: Database) {
         )))::text
       END AS oldest_expired_age_seconds
     FROM websocket_auth_tickets
-  `));
+  `),
+  );
   const row = rows[0];
   return {
     status: Number(row?.expired_count ?? 0) === 0 ? "healthy" : "backlog",
     activeCount: Number(row?.active_count ?? 0),
     expiredCount: Number(row?.expired_count ?? 0),
-    oldestExpiredAgeSeconds: row?.oldest_expired_age_seconds === null
-      || row?.oldest_expired_age_seconds === undefined
-      ? null : Number(row.oldest_expired_age_seconds),
+    oldestExpiredAgeSeconds:
+      row?.oldest_expired_age_seconds === null || row?.oldest_expired_age_seconds === undefined
+        ? null
+        : Number(row.oldest_expired_age_seconds),
     recordedAt: new Date().toISOString(),
   } as const;
 }

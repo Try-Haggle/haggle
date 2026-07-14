@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import { runApiRateLimitRetention } from "../jobs/api-rate-limit-retention.js";
 import { hashApiRateLimitIdentity } from "../lib/api-rate-limit.js";
 import { consumeApiRateLimit } from "./api-rate-limit.service.js";
@@ -9,11 +9,11 @@ interface CountRow {
 }
 
 async function countScope(db: Database, scope: string): Promise<number> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT count(*)::integer AS count
     FROM api_rate_limit_windows
     WHERE scope = ${scope}
-  `) as unknown as CountRow[];
+  `)) as unknown as CountRow[];
   return Number(rows[0]?.count ?? 0);
 }
 
@@ -32,13 +32,15 @@ export async function runApiRateLimitFixture(db: Database) {
         scope: rateScope,
         identity: sharedIdentity,
         hmacSecret,
-      }));
+      }),
+    );
     const instanceB = Array.from({ length: 60 }, () =>
       consumeApiRateLimit(db, {
         scope: rateScope,
         identity: sharedIdentity,
         hmacSecret,
-      }));
+      }),
+    );
     const sharedResults = await Promise.all([...instanceA, ...instanceB]);
     const independent = await consumeApiRateLimit(db, {
       scope: rateScope,
@@ -46,13 +48,13 @@ export async function runApiRateLimitFixture(db: Database) {
       hmacSecret,
     });
 
-    const storedRows = await db.execute(sql`
+    const storedRows = (await db.execute(sql`
       SELECT count(*)::integer AS count,
         bool_and(length(key_hash) = 64
           AND key_hash ~ '^[0-9a-f]{64}$') AS "hashesValid"
       FROM api_rate_limit_windows
       WHERE scope = ${rateScope}
-    `) as unknown as Array<{
+    `)) as unknown as Array<{
       count: number | string;
       hashesValid: boolean;
     }>;
@@ -71,16 +73,16 @@ export async function runApiRateLimitFixture(db: Database) {
           1, ${oldTimestamp.toISOString()}::timestamptz)
       `);
     }
-    const retentionRuns = await Promise.all(Array.from({ length: 20 }, () =>
-      runApiRateLimitRetention(db, {
-        retentionHours: 24,
-        batchSize: 2,
-        scope: retentionScope,
-      })));
-    const retentionDeleted = retentionRuns.reduce(
-      (sum, run) => sum + run.deleted,
-      0,
+    const retentionRuns = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        runApiRateLimitRetention(db, {
+          retentionHours: 24,
+          batchSize: 2,
+          scope: retentionScope,
+        }),
+      ),
     );
+    const retentionDeleted = retentionRuns.reduce((sum, run) => sum + run.deleted, 0);
     const retentionRemaining = await countScope(db, retentionScope);
     const row = storedRows[0];
     const sharedAllowed = sharedResults.filter((entry) => entry.allowed).length;
@@ -116,7 +118,6 @@ export async function runApiRateLimitFixture(db: Database) {
 
   return {
     ...result,
-    cleanupRows: await countScope(db, rateScope)
-      + await countScope(db, retentionScope),
+    cleanupRows: (await countScope(db, rateScope)) + (await countScope(db, retentionScope)),
   };
 }

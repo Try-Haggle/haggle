@@ -1,17 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DisputeCase } from "@haggle/dispute-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDisputeModuleWebhookEnvelope,
   claimDueDisputeModuleWebhookOutboxRecords,
   createDisputeModuleWebhookOutboxRecord,
-  deliverDisputeModuleWebhook,
-  deliverDisputeModuleWebhookOutboxRecord,
-  dispatchDueDisputeModuleWebhookOutbox,
-  dispatchDisputeModuleCaseCreatedWebhook,
-  listDeadLetterDisputeModuleWebhookOutboxRecords,
-  resetDisputeModuleWebhookOutboxRecordForReplay,
   type DisputeModuleWebhookEnvelope,
   type DisputeModuleWebhookOutboxRecord,
+  deliverDisputeModuleWebhook,
+  deliverDisputeModuleWebhookOutboxRecord,
+  dispatchDisputeModuleCaseCreatedWebhook,
+  dispatchDueDisputeModuleWebhookOutbox,
+  listDeadLetterDisputeModuleWebhookOutboxRecords,
+  resetDisputeModuleWebhookOutboxRecordForReplay,
   resolveDisputeModuleWebhookConfigFromEnv,
   signDisputeModuleWebhookPayload,
 } from "../services/dispute-module-webhook.service.js";
@@ -249,13 +249,17 @@ describe("dispute module webhook service", () => {
       now: new Date("2026-05-05T00:00:00.000Z"),
     });
 
-    const result = await deliverDisputeModuleWebhook(envelope, {
-      url: "https://platform.example/webhooks/haggle",
-      secret: "webhook-secret-with-length",
-    }, {
-      fetchImpl: fetchMock,
-      now: new Date("2026-05-05T00:00:00.000Z"),
-    });
+    const result = await deliverDisputeModuleWebhook(
+      envelope,
+      {
+        url: "https://platform.example/webhooks/haggle",
+        secret: "webhook-secret-with-length",
+      },
+      {
+        fetchImpl: fetchMock,
+        now: new Date("2026-05-05T00:00:00.000Z"),
+      },
+    );
 
     expect(result).toMatchObject({ status: "delivered", httpStatus: 200 });
     expect(fetchMock).toHaveBeenCalledWith(
@@ -283,8 +287,10 @@ describe("dispute module webhook service", () => {
       dispute,
     });
 
-    await expect(deliverDisputeModuleWebhook(envelope, null))
-      .resolves.toMatchObject({ status: "skipped", eventId: envelope.id });
+    await expect(deliverDisputeModuleWebhook(envelope, null)).resolves.toMatchObject({
+      status: "skipped",
+      eventId: envelope.id,
+    });
   });
 
   it("persists case-created webhooks in an outbox record", async () => {
@@ -305,15 +311,17 @@ describe("dispute module webhook service", () => {
       externalOrderId: "order_123",
       payload: envelope,
     });
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: envelope.id,
-      platformId: "platform_1",
-      externalOrderId: "order_123",
-      disputeId: dispute.id,
-      eventType: "dispute.case.created",
-      payload: envelope,
-      status: "PENDING",
-    }));
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: envelope.id,
+        platformId: "platform_1",
+        externalOrderId: "order_123",
+        disputeId: dispute.id,
+        eventType: "dispute.case.created",
+        payload: envelope,
+        status: "PENDING",
+      }),
+    );
   });
 
   it("rejects insecure webhook URLs unless explicitly allowed", async () => {
@@ -324,10 +332,12 @@ describe("dispute module webhook service", () => {
       dispute,
     });
 
-    await expect(deliverDisputeModuleWebhook(envelope, {
-      url: "http://platform.example/webhooks/haggle",
-      secret: "webhook-secret-with-length",
-    })).rejects.toThrow("webhook url must use HTTPS unless allow_insecure_http is true");
+    await expect(
+      deliverDisputeModuleWebhook(envelope, {
+        url: "http://platform.example/webhooks/haggle",
+        secret: "webhook-secret-with-length",
+      }),
+    ).rejects.toThrow("webhook url must use HTTPS unless allow_insecure_http is true");
   });
 
   it("rejects localhost and private network webhook URLs by default", async () => {
@@ -338,15 +348,19 @@ describe("dispute module webhook service", () => {
       dispute,
     });
 
-    await expect(deliverDisputeModuleWebhook(envelope, {
-      url: "https://169.254.169.254/latest/meta-data",
-      secret: "webhook-secret-with-length",
-    })).rejects.toThrow("webhook url must not target localhost or private network hosts");
+    await expect(
+      deliverDisputeModuleWebhook(envelope, {
+        url: "https://169.254.169.254/latest/meta-data",
+        secret: "webhook-secret-with-length",
+      }),
+    ).rejects.toThrow("webhook url must not target localhost or private network hosts");
 
-    await expect(deliverDisputeModuleWebhook(envelope, {
-      url: "https://[::1]/webhooks/haggle",
-      secret: "webhook-secret-with-length",
-    })).rejects.toThrow("webhook url must not target localhost or private network hosts");
+    await expect(
+      deliverDisputeModuleWebhook(envelope, {
+        url: "https://[::1]/webhooks/haggle",
+        secret: "webhook-secret-with-length",
+      }),
+    ).rejects.toThrow("webhook url must not target localhost or private network hosts");
   });
 
   it("allows private network webhook URLs only when explicitly configured", async () => {
@@ -358,13 +372,19 @@ describe("dispute module webhook service", () => {
       dispute,
     });
 
-    await expect(deliverDisputeModuleWebhook(envelope, {
-      url: "https://10.0.0.10/webhooks/haggle",
-      secret: "webhook-secret-with-length",
-      allowPrivateNetwork: true,
-    }, {
-      fetchImpl: fetchMock,
-    })).resolves.toMatchObject({ status: "delivered", httpStatus: 200 });
+    await expect(
+      deliverDisputeModuleWebhook(
+        envelope,
+        {
+          url: "https://10.0.0.10/webhooks/haggle",
+          secret: "webhook-secret-with-length",
+          allowPrivateNetwork: true,
+        },
+        {
+          fetchImpl: fetchMock,
+        },
+      ),
+    ).resolves.toMatchObject({ status: "delivered", httpStatus: 200 });
   });
 
   it("dispatches case-created webhooks from env config", async () => {
@@ -411,13 +431,15 @@ describe("dispute module webhook service", () => {
 
     expect(result).toMatchObject({ status: "delivered", httpStatus: 202 });
     expect(result.outboxStatus).toBe("DELIVERED");
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      status: "DELIVERED",
-      attemptCount: 1,
-      lastError: null,
-      deliveredAt: expect.any(Date),
-      updatedAt: expect.any(Date),
-    }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "DELIVERED",
+        attemptCount: 1,
+        lastError: null,
+        deliveredAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    );
   });
 
   it("marks outbox records failed with retry metadata after an unsuccessful delivery", async () => {
@@ -444,13 +466,15 @@ describe("dispute module webhook service", () => {
 
     expect(result).toMatchObject({ status: "failed", httpStatus: 503 });
     expect(result.outboxStatus).toBe("FAILED");
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      status: "FAILED",
-      attemptCount: 2,
-      lastError: "HTTP 503",
-      nextAttemptAt: expect.any(Date),
-      updatedAt: expect.any(Date),
-    }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "FAILED",
+        attemptCount: 2,
+        lastError: "HTTP 503",
+        nextAttemptAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    );
   });
 
   it("moves failed outbox records to dead letter after the retry budget is exhausted", async () => {
@@ -478,11 +502,13 @@ describe("dispute module webhook service", () => {
 
     expect(result).toMatchObject({ status: "failed", httpStatus: 503 });
     expect(result.outboxStatus).toBe("DEAD_LETTER");
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      status: "DEAD_LETTER",
-      attemptCount: 2,
-      lastError: "HTTP 503",
-    }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "DEAD_LETTER",
+        attemptCount: 2,
+        lastError: "HTTP 503",
+      }),
+    );
   });
 
   it("claims due outbox records with a processing lease", async () => {
@@ -492,10 +518,12 @@ describe("dispute module webhook service", () => {
       externalOrderId: "order_123",
       dispute,
     });
-    const row = outboxDbRow(outboxRecord(envelope, {
-      status: "PROCESSING",
-      nextAttemptAt: new Date("2026-05-05T00:02:00.000Z"),
-    }));
+    const row = outboxDbRow(
+      outboxRecord(envelope, {
+        status: "PROCESSING",
+        nextAttemptAt: new Date("2026-05-05T00:02:00.000Z"),
+      }),
+    );
     const { db, execute } = dbWithExecuteRowsAndUpdate([row]);
 
     const records = await claimDueDisputeModuleWebhookOutboxRecords(db as never, {
@@ -544,10 +572,12 @@ describe("dispute module webhook service", () => {
       deadLettered: 0,
       deadLetterEvents: [],
     });
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      status: "DELIVERED",
-      attemptCount: 1,
-    }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "DELIVERED",
+        attemptCount: 1,
+      }),
+    );
   });
 
   it("counts dead-lettered records during outbox dispatch", async () => {
@@ -592,10 +622,12 @@ describe("dispute module webhook service", () => {
         },
       ],
     });
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      status: "DEAD_LETTER",
-      attemptCount: 2,
-    }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "DEAD_LETTER",
+        attemptCount: 2,
+      }),
+    );
   });
 
   it("marks claimed outbox records failed when platform config is missing", async () => {
@@ -614,11 +646,13 @@ describe("dispute module webhook service", () => {
 
     expect(result).toMatchObject({ status: "skipped", eventId: envelope.id });
     expect(result.outboxStatus).toBe("FAILED");
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({
-      status: "FAILED",
-      attemptCount: 3,
-      lastError: "Missing webhook config for platform platform_1",
-    }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "FAILED",
+        attemptCount: 3,
+        lastError: "Missing webhook config for platform platform_1",
+      }),
+    );
   });
 
   it("lists dead-letter outbox records for admin review", async () => {
@@ -663,11 +697,9 @@ describe("dispute module webhook service", () => {
     });
     const { db, execute } = dbWithExecuteRowsAndUpdate([outboxDbRow(record)]);
 
-    const replay = await resetDisputeModuleWebhookOutboxRecordForReplay(
-      db as never,
-      envelope.id,
-      { now: new Date("2026-05-05T00:00:00.000Z") },
-    );
+    const replay = await resetDisputeModuleWebhookOutboxRecordForReplay(db as never, envelope.id, {
+      now: new Date("2026-05-05T00:00:00.000Z"),
+    });
 
     expect(replay).toMatchObject({
       eventId: envelope.id,

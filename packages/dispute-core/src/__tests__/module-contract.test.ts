@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeModuleDisputeCost,
   decideModuleDisputeOpen,
-  normalizeDisputeModuleConfig,
   type ModuleTransactionSnapshot,
+  normalizeDisputeModuleConfig,
 } from "../module-contract.js";
 
 const transaction: ModuleTransactionSnapshot = {
@@ -20,7 +20,7 @@ describe("normalizeDisputeModuleConfig", () => {
   it("keeps Haggle native defaults", () => {
     const config = normalizeDisputeModuleConfig();
     expect(config.tier2_rate).toBe(0.02);
-    expect(config.platform_share).toBe(0.30);
+    expect(config.platform_share).toBe(0.3);
     expect(config.use_shared_pool).toBe(true);
   });
 
@@ -28,8 +28,8 @@ describe("normalizeDisputeModuleConfig", () => {
     const config = normalizeDisputeModuleConfig({
       tier2_rate: 0.008,
       tier2_min_cents: 5_000,
-      reviewer_share: 0.60,
-      platform_share: 0.40,
+      reviewer_share: 0.6,
+      platform_share: 0.4,
       use_shared_pool: false,
     });
     expect(config.tier2_rate).toBe(0.008);
@@ -38,16 +38,20 @@ describe("normalizeDisputeModuleConfig", () => {
   });
 
   it("rejects invalid revenue splits", () => {
-    expect(() => normalizeDisputeModuleConfig({
-      reviewer_share: 0.70,
-      platform_share: 0.20,
-    })).toThrow("reviewer_share + platform_share must equal 1");
+    expect(() =>
+      normalizeDisputeModuleConfig({
+        reviewer_share: 0.7,
+        platform_share: 0.2,
+      }),
+    ).toThrow("reviewer_share + platform_share must equal 1");
   });
 
   it("rejects invalid allowed statuses at runtime", () => {
-    expect(() => normalizeDisputeModuleConfig({
-      allowed_open_statuses: ["NOT_A_STATUS" as never],
-    })).toThrow("invalid allowed_open_status");
+    expect(() =>
+      normalizeDisputeModuleConfig({
+        allowed_open_statuses: ["NOT_A_STATUS" as never],
+      }),
+    ).toThrow("invalid allowed_open_status");
   });
 });
 

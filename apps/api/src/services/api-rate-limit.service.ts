@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   API_GLOBAL_RATE_LIMIT,
   API_GLOBAL_RATE_LIMIT_WINDOW_SECONDS,
@@ -27,14 +27,11 @@ export async function consumeApiRateLimit(
   },
 ): Promise<ApiRateLimitResult> {
   const limit = input.limit ?? API_GLOBAL_RATE_LIMIT;
-  const windowSeconds = input.windowSeconds
-    ?? API_GLOBAL_RATE_LIMIT_WINDOW_SECONDS;
+  const windowSeconds = input.windowSeconds ?? API_GLOBAL_RATE_LIMIT_WINDOW_SECONDS;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10_000) {
     throw new Error("INVALID_API_RATE_LIMIT_MAX_REQUESTS");
   }
-  if (!Number.isSafeInteger(windowSeconds)
-    || windowSeconds < 1
-    || windowSeconds > 3_600) {
+  if (!Number.isSafeInteger(windowSeconds) || windowSeconds < 1 || windowSeconds > 3_600) {
     throw new Error("INVALID_API_RATE_LIMIT_WINDOW_SECONDS");
   }
   const keyHash = hashApiRateLimitIdentity({
@@ -44,7 +41,7 @@ export async function consumeApiRateLimit(
   });
   const cappedCount = limit + 1;
 
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     WITH observed_clock AS (
       SELECT clock_timestamp() AS observed_at
     ), current_window AS (
@@ -81,16 +78,19 @@ export async function consumeApiRateLimit(
         - (SELECT observed_at FROM current_window)
       ))))::integer AS "retryAfterSeconds"
     FROM consumed
-  `) as unknown as ApiRateLimitRow[];
+  `)) as unknown as ApiRateLimitRow[];
 
   const row = rows[0];
   if (!row) throw new Error("API_RATE_LIMIT_COUNTER_NOT_RETURNED");
   const requestCount = Number(row.requestCount);
   const retryAfterSeconds = Number(row.retryAfterSeconds);
-  if (!Number.isSafeInteger(requestCount) || requestCount < 1
-    || !Number.isSafeInteger(retryAfterSeconds)
-    || retryAfterSeconds < 1
-    || retryAfterSeconds > windowSeconds) {
+  if (
+    !Number.isSafeInteger(requestCount) ||
+    requestCount < 1 ||
+    !Number.isSafeInteger(retryAfterSeconds) ||
+    retryAfterSeconds < 1 ||
+    retryAfterSeconds > windowSeconds
+  ) {
     throw new Error("API_RATE_LIMIT_COUNTER_INVALID");
   }
   return {

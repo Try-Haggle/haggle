@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics } from
-  "../services/shipment-apv-invoice-restoration-remediation.service.js";
-import { SHIPMENT_APV_CHAOS_FIXTURE_LEASE_KEY } from
-  "../services/payment-test-operation-lease.service.js";
+import { type Database, sql } from "@haggle/db";
+import { SHIPMENT_APV_CHAOS_FIXTURE_LEASE_KEY } from "../services/payment-test-operation-lease.service.js";
+import { maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics } from "../services/shipment-apv-invoice-restoration-remediation.service.js";
 
-function boundedInteger(raw: string | undefined, minimum: number, maximum: number, fallback: number) {
+function boundedInteger(
+  raw: string | undefined,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+) {
   const value = Number(raw ?? String(fallback));
   return Number.isInteger(value) && value >= minimum && value <= maximum ? value : fallback;
 }
@@ -53,12 +56,22 @@ async function claimRetentionRun(db: Database, now: Date, fixtureLeaseId?: strin
            AND (${fixtureLeaseId ?? null}::uuid IS NULL OR lease_id <> ${fixtureLeaseId ?? null}::uuid)
       )
     RETURNING claim_id`);
-  return rows[0] ? { acquired: true as const, claimId } : { acquired: false as const, claimId: null };
+  return rows[0]
+    ? { acquired: true as const, claimId }
+    : { acquired: false as const, claimId: null };
 }
 
-async function completeRetentionRun(db: Database, claimId: string, now: Date, maintenance: {
-  deletedBuckets?: number; expiredBuckets: number; invalidBuckets: number; truncated: boolean;
-}) {
+async function completeRetentionRun(
+  db: Database,
+  claimId: string,
+  now: Date,
+  maintenance: {
+    deletedBuckets?: number;
+    expiredBuckets: number;
+    invalidBuckets: number;
+    truncated: boolean;
+  },
+) {
   const rows = await db.execute(sql`UPDATE shipment_apv_remediation_cursor_retention_state
     SET status='SUCCEEDED',claim_id=NULL,lease_expires_at=NULL,
         last_succeeded_at=${now.toISOString()}::timestamptz,
@@ -80,25 +93,46 @@ async function failRetentionRun(db: Database, claimId: string, now: Date) {
 }
 
 export async function getShipmentApvRemediationCursorRetentionJobHealth(
-  db: Database, now = new Date(),
+  db: Database,
+  now = new Date(),
 ): Promise<ShipmentApvRemediationCursorRetentionJobHealth> {
-  const rows = await db.execute(sql`SELECT status,lease_expires_at,first_observed_at,last_started_at,last_succeeded_at,
+  const rows =
+    await db.execute(sql`SELECT status,lease_expires_at,first_observed_at,last_started_at,last_succeeded_at,
       last_failed_at,last_deleted_buckets,last_expired_buckets,last_invalid_buckets,last_truncated,
       last_failure_code
     FROM shipment_apv_remediation_cursor_retention_state WHERE job_key=${JOB_KEY} LIMIT 1`);
   const row = rows[0] as Record<string, unknown> | undefined;
-  if (!row) return { lastRunStatus: "NEVER" as const, leaseStale: false, firstObservedAt: null, lastStartedAt: null,
-    lastSucceededAt: null, lastFailedAt: null, lastDeletedBuckets: 0, lastExpiredBuckets: 0,
-    lastInvalidBuckets: 0, lastTruncated: false, lastFailureCode: null, recordedAt: now.toISOString() };
-  const leaseStale = row.status === "RUNNING" && row.lease_expires_at != null
-    && new Date(String(row.lease_expires_at)).getTime() <= now.getTime();
+  if (!row)
+    return {
+      lastRunStatus: "NEVER" as const,
+      leaseStale: false,
+      firstObservedAt: null,
+      lastStartedAt: null,
+      lastSucceededAt: null,
+      lastFailedAt: null,
+      lastDeletedBuckets: 0,
+      lastExpiredBuckets: 0,
+      lastInvalidBuckets: 0,
+      lastTruncated: false,
+      lastFailureCode: null,
+      recordedAt: now.toISOString(),
+    };
+  const leaseStale =
+    row.status === "RUNNING" &&
+    row.lease_expires_at != null &&
+    new Date(String(row.lease_expires_at)).getTime() <= now.getTime();
   return {
-    lastRunStatus: leaseStale ? "STALE_RUNNING" as const
-      : String(row.status) as "NEVER" | "RUNNING" | "SUCCEEDED" | "FAILED",
+    lastRunStatus: leaseStale
+      ? ("STALE_RUNNING" as const)
+      : (String(row.status) as "NEVER" | "RUNNING" | "SUCCEEDED" | "FAILED"),
     leaseStale,
-    firstObservedAt: row.first_observed_at ? new Date(String(row.first_observed_at)).toISOString() : null,
+    firstObservedAt: row.first_observed_at
+      ? new Date(String(row.first_observed_at)).toISOString()
+      : null,
     lastStartedAt: row.last_started_at ? new Date(String(row.last_started_at)).toISOString() : null,
-    lastSucceededAt: row.last_succeeded_at ? new Date(String(row.last_succeeded_at)).toISOString() : null,
+    lastSucceededAt: row.last_succeeded_at
+      ? new Date(String(row.last_succeeded_at)).toISOString()
+      : null,
     lastFailedAt: row.last_failed_at ? new Date(String(row.last_failed_at)).toISOString() : null,
     lastDeletedBuckets: Number(row.last_deleted_buckets ?? 0),
     lastExpiredBuckets: Number(row.last_expired_buckets ?? 0),
@@ -114,35 +148,55 @@ export function getShipmentApvRemediationCursorRetentionJobStatus() {
     jobEnabled: process.env.ENABLE_SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_JOB === "true",
     configured: process.env.ENABLE_CRON === "true",
     retentionDays: boundedInteger(
-      process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS, 7, 365, 30),
-    limit: boundedInteger(process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT, 1, 1000, 1000),
+      process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_DAYS,
+      7,
+      365,
+      30,
+    ),
+    limit: boundedInteger(
+      process.env.SHIPMENT_APV_REMEDIATION_CURSOR_RETENTION_LIMIT,
+      1,
+      1000,
+      1000,
+    ),
     intervalSeconds: 24 * 60 * 60,
   };
 }
 
-export async function runShipmentApvRemediationCursorRetention(db: Database, options: {
-  now?: Date; finishedAt?: Date; retentionDays?: number; limit?: number;
-  fixtureLeaseId?: string;
-} = {}) {
+export async function runShipmentApvRemediationCursorRetention(
+  db: Database,
+  options: {
+    now?: Date;
+    finishedAt?: Date;
+    retentionDays?: number;
+    limit?: number;
+    fixtureLeaseId?: string;
+  } = {},
+) {
   const status = getShipmentApvRemediationCursorRetentionJobStatus();
   const now = options.now ?? new Date();
   const claim = await claimRetentionRun(db, now, options.fixtureLeaseId);
   if (!claim.acquired) return { status: "skipped" as const, reason: "in_progress" as const };
   try {
-    const maintenance = await maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics(db, {
-      retentionDays: options.retentionDays ?? status.retentionDays,
-      limit: options.limit ?? status.limit,
-      dryRun: false,
-      now,
-    });
+    const maintenance = await maintainShipmentApvInvoiceRestorationRemediationRecoveryCursorMetrics(
+      db,
+      {
+        retentionDays: options.retentionDays ?? status.retentionDays,
+        limit: options.limit ?? status.limit,
+        dryRun: false,
+        now,
+      },
+    );
     await completeRetentionRun(db, claim.claimId, options.finishedAt ?? new Date(), maintenance);
     return {
-      status: maintenance.deletedBuckets ? "completed" as const : "skipped" as const,
-      reason: maintenance.deletedBuckets ? undefined : "healthy" as const,
+      status: maintenance.deletedBuckets ? ("completed" as const) : ("skipped" as const),
+      reason: maintenance.deletedBuckets ? undefined : ("healthy" as const),
       maintenance,
     };
   } catch (error) {
-    await failRetentionRun(db, claim.claimId, options.finishedAt ?? new Date()).catch(() => undefined);
+    await failRetentionRun(db, claim.claimId, options.finishedAt ?? new Date()).catch(
+      () => undefined,
+    );
     throw error;
   }
 }

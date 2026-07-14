@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvChaosFailureAlertPreview } from
-  "./shipment-apv-chaos-failure-alert-preview.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvChaosFailureAlertPreview } from "./shipment-apv-chaos-failure-alert-preview.service.js";
 
 export const SHIPMENT_APV_FAILURE_ALERT_COOLDOWN_MINUTES = 15;
 
@@ -55,14 +54,19 @@ function publicGrant(row: GrantRow) {
   };
 }
 
-function grantMatches(row: GrantRow, input: {
-  clientGrantId: string;
-  approvalDecisionId: string;
-  grantedBy: string;
-}) {
-  return String(row.client_grant_id) === input.clientGrantId
-    && String(row.approval_decision_id) === input.approvalDecisionId
-    && String(row.granted_by) === input.grantedBy;
+function grantMatches(
+  row: GrantRow,
+  input: {
+    clientGrantId: string;
+    approvalDecisionId: string;
+    grantedBy: string;
+  },
+) {
+  return (
+    String(row.client_grant_id) === input.clientGrantId &&
+    String(row.approval_decision_id) === input.approvalDecisionId &&
+    String(row.granted_by) === input.grantedBy
+  );
 }
 
 function grantFromBinding(row: BindingRow): GrantRow | null {
@@ -122,8 +126,10 @@ export async function createShipmentApvFailureAlertDeliveryGrant(
   if (String(binding.decision) !== "APPROVED") {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_DECISION_NOT_APPROVED");
   }
-  if (String(binding.decided_by) !== input.grantedBy
-    || String(binding.requested_by) === input.grantedBy) {
+  if (
+    String(binding.decided_by) !== input.grantedBy ||
+    String(binding.requested_by) === input.grantedBy
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_GRANT_ACTOR_MISMATCH");
   }
   const priorGrant = grantFromBinding(binding);
@@ -135,15 +141,19 @@ export async function createShipmentApvFailureAlertDeliveryGrant(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_APPROVAL_REQUEST_EXPIRED");
   }
   const preview = await getShipmentApvChaosFailureAlertPreview(db, now);
-  if (preview.action === "none" || !preview.approval.required
-    || preview.stateFingerprint !== String(binding.state_fingerprint)) {
+  if (
+    preview.action === "none" ||
+    !preview.approval.required ||
+    preview.stateFingerprint !== String(binding.state_fingerprint)
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_STATE_CHANGED");
   }
 
   const grantId = input.grantId ?? randomUUID();
   const grantedAt = now.toISOString();
-  const cooldownExpiresAt = new Date(now.getTime()
-    + SHIPMENT_APV_FAILURE_ALERT_COOLDOWN_MINUTES * 60_000).toISOString();
+  const cooldownExpiresAt = new Date(
+    now.getTime() + SHIPMENT_APV_FAILURE_ALERT_COOLDOWN_MINUTES * 60_000,
+  ).toISOString();
   let rows: unknown;
   try {
     rows = await db.execute(sql`WITH claimed AS (

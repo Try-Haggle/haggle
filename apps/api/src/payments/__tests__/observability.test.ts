@@ -5,9 +5,9 @@ import {
   emitPaymentMetricSafely,
   normalizePaymentMetricEventType,
   normalizePaymentMetricFailureType,
+  type PaymentMetricEvent,
   setPaymentMetricSink,
   toPaymentMetricOperation,
-  type PaymentMetricEvent,
 } from "../observability.js";
 
 let restoreSink: (() => void) | null = null;
@@ -45,31 +45,39 @@ describe("payment observability", () => {
   });
 
   it("rejects dimensions that do not belong to a metric", () => {
-    expect(() => createPaymentMetricEvent("payment.webhook.rejected", {
-      provider: "stripe",
-      event_type: "crypto.onramp_session.fulfillment_complete",
-      environment: "live",
-    })).toThrow('Unsafe payment metric dimension "event_type"');
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.rejected", {
+        provider: "stripe",
+        event_type: "crypto.onramp_session.fulfillment_complete",
+        environment: "live",
+      }),
+    ).toThrow('Unsafe payment metric dimension "event_type"');
   });
 
   it("rejects sensitive or high-cardinality metric values", () => {
-    expect(() => createPaymentMetricEvent("payment.webhook.received", {
-      provider: "stripe",
-      event_type: "evt_123456789abcdef",
-      environment: "live",
-    })).toThrow("Unsafe payment metric value");
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "evt_123456789abcdef",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
 
-    expect(() => createPaymentMetricEvent("payment.webhook.received", {
-      provider: "stripe",
-      event_type: "buyer@example.com",
-      environment: "live",
-    })).toThrow("Unsafe payment metric value");
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "buyer@example.com",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
 
-    expect(() => createPaymentMetricEvent("payment.webhook.received", {
-      provider: "stripe",
-      event_type: "4242424242424242",
-      environment: "live",
-    })).toThrow("Unsafe payment metric value");
+    expect(() =>
+      createPaymentMetricEvent("payment.webhook.received", {
+        provider: "stripe",
+        event_type: "4242424242424242",
+        environment: "live",
+      }),
+    ).toThrow("Unsafe payment metric value");
   });
 
   it("drops unsafe metric events without logging the unsafe value", async () => {
@@ -89,9 +97,15 @@ describe("payment observability", () => {
     expect(toPaymentMetricOperation("payment.stripe_onramp_session")).toBe("prepare");
     expect(toPaymentMetricOperation("payment.x402_settle")).toBe("capture");
     expect(toPaymentMetricOperation("unknown_operation")).toBeNull();
-    expect(normalizePaymentMetricFailureType("signature_verification_failed")).toBe("signature_invalid");
-    expect(normalizePaymentMetricFailureType("webhook_secret_not_configured")).toBe("config_missing");
-    expect(normalizePaymentMetricEventType("crypto.onramp_session.fulfillment_complete")).toBe("crypto.onramp_session.fulfillment_complete");
+    expect(normalizePaymentMetricFailureType("signature_verification_failed")).toBe(
+      "signature_invalid",
+    );
+    expect(normalizePaymentMetricFailureType("webhook_secret_not_configured")).toBe(
+      "config_missing",
+    );
+    expect(normalizePaymentMetricEventType("crypto.onramp_session.fulfillment_complete")).toBe(
+      "crypto.onramp_session.fulfillment_complete",
+    );
     expect(normalizePaymentMetricEventType("evt_123456789abcdef")).toBe("unknown");
   });
 });

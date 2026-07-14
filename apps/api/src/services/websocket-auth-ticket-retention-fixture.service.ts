@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   getWebSocketAuthTicketRetentionHealth,
   runWebSocketAuthTicketRetention,
@@ -8,13 +8,14 @@ import {
 function rowsOf<T>(result: unknown): T[] {
   if (Array.isArray(result)) return result as T[];
   const rows = (result as { rows?: unknown[] } | null)?.rows;
-  return Array.isArray(rows) ? rows as T[] : [];
+  return Array.isArray(rows) ? (rows as T[]) : [];
 }
 
 export async function runWebSocketAuthTicketRetentionFixture(db: Database) {
   const userId = randomUUID();
   const hashes = Array.from({ length: 4 }, () =>
-    createHash("sha256").update(randomBytes(32)).digest("hex"));
+    createHash("sha256").update(randomBytes(32)).digest("hex"),
+  );
   try {
     await db.execute(sql`
       INSERT INTO websocket_auth_tickets
@@ -30,22 +31,31 @@ export async function runWebSocketAuthTicketRetentionFixture(db: Database) {
           now(), now() + interval '30 seconds')
     `);
     const before = await getWebSocketAuthTicketRetentionHealth(db);
-    const workers = await Promise.all(Array.from({ length: 20 }, () =>
-      runWebSocketAuthTicketRetention(db, {
-        batchSize: 1_000,
-        fixtureUserId: userId,
-      })));
-    const remaining = rowsOf<{ token_hash: string; expired: boolean }>(await db.execute(sql`
+    const workers = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        runWebSocketAuthTicketRetention(db, {
+          batchSize: 1_000,
+          fixtureUserId: userId,
+        }),
+      ),
+    );
+    const remaining = rowsOf<{ token_hash: string; expired: boolean }>(
+      await db.execute(sql`
       SELECT token_hash, expires_at <= clock_timestamp() AS expired
       FROM websocket_auth_tickets WHERE user_id = ${userId}::uuid
-    `));
-    const cleanup = rowsOf(await db.execute(sql`
+    `),
+    );
+    const cleanup = rowsOf(
+      await db.execute(sql`
       DELETE FROM websocket_auth_tickets WHERE user_id = ${userId}::uuid
       RETURNING id
-    `));
-    const cleanupRows = rowsOf(await db.execute(sql`
+    `),
+    );
+    const cleanupRows = rowsOf(
+      await db.execute(sql`
       SELECT id FROM websocket_auth_tickets WHERE user_id = ${userId}::uuid
-    `)).length;
+    `),
+    ).length;
     return {
       schemaVersion: "websocket-auth-ticket-retention-fixture-v1",
       retentionWorkers: 20,

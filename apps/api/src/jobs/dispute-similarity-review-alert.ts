@@ -6,7 +6,12 @@ import {
   resolveDisputeSimilarityReviewAlertConfigFromEnv,
   sendDisputeSimilarityReviewAlert,
 } from "../services/dispute-similarity-review-alert.service.js";
-import { claimWebhookEvent, completeWebhookEvent, failWebhookEvent, webhookPayloadSha256 } from "../services/webhook-event-claim.service.js";
+import {
+  claimWebhookEvent,
+  completeWebhookEvent,
+  failWebhookEvent,
+  webhookPayloadSha256,
+} from "../services/webhook-event-claim.service.js";
 
 const ALERT_SOURCE = "haggle-dispute-similarity-review-alert";
 
@@ -23,16 +28,30 @@ export async function runDisputeSimilarityReviewAlert(
     dueSoonMinutes: config.dueSoonMinutes,
   });
   const assessment = evaluateDisputeSimilarityReviewAlert(health, config);
-  if (!assessment.wouldAlert) return { status: "skipped" as const, reason: "healthy" as const, health, assessment };
+  if (!assessment.wouldAlert)
+    return { status: "skipped" as const, reason: "healthy" as const, health, assessment };
   const bucket = Math.floor(now.getTime() / (config.cooldownMinutes * 60_000));
   const cooldownKey = `${assessment.severity}:${[...assessment.reasons].sort().join(",")}:${bucket}`;
   const eventId = `health_${createHash("sha256").update(cooldownKey).digest("hex")}`;
-  const claim = await claimWebhookEvent(db, { source: ALERT_SOURCE, eventId, payloadSha256: webhookPayloadSha256(cooldownKey) });
+  const claim = await claimWebhookEvent(db, {
+    source: ALERT_SOURCE,
+    eventId,
+    payloadSha256: webhookPayloadSha256(cooldownKey),
+  });
   if (claim.outcome !== "acquired") {
-    return { status: "skipped" as const, reason: "cooldown_or_in_progress" as const, health, assessment };
+    return {
+      status: "skipped" as const,
+      reason: "cooldown_or_in_progress" as const,
+      health,
+      assessment,
+    };
   }
   try {
-    const alert = await sendDisputeSimilarityReviewAlert(health, assessment, { config, fetchImpl: options.fetchImpl, now });
+    const alert = await sendDisputeSimilarityReviewAlert(health, assessment, {
+      config,
+      fetchImpl: options.fetchImpl,
+      now,
+    });
     if (alert.status === "delivered") {
       await completeWebhookEvent(db, claim, alert.httpStatus ?? 200);
       return { status: "delivered" as const, health, assessment, alert };

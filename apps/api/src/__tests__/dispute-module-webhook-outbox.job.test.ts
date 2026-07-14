@@ -34,7 +34,9 @@ describe("dispute module webhook outbox job", () => {
       ],
     };
     vi.mocked(dispatchDueDisputeModuleWebhookOutbox).mockResolvedValueOnce(result);
-    vi.mocked(sendDisputeModuleWebhookDeadLetterAlert).mockResolvedValueOnce({ status: "delivered" });
+    vi.mocked(sendDisputeModuleWebhookDeadLetterAlert).mockResolvedValueOnce({
+      status: "delivered",
+    });
 
     await runDisputeModuleWebhookOutbox({} as never);
 
@@ -72,7 +74,9 @@ describe("dispute module webhook outbox job", () => {
         },
       ],
     });
-    vi.mocked(sendDisputeModuleWebhookDeadLetterAlert).mockRejectedValueOnce(new Error("invalid alert config"));
+    vi.mocked(sendDisputeModuleWebhookDeadLetterAlert).mockRejectedValueOnce(
+      new Error("invalid alert config"),
+    );
 
     await expect(runDisputeModuleWebhookOutbox({} as never)).resolves.toBeUndefined();
   });

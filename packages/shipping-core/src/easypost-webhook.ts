@@ -12,7 +12,10 @@ export interface VerifyEasyPostWebhookOptions {
   now?: Date;
 }
 
-function getHeader(headers: Record<string, string | string[] | undefined>, name: string): string | undefined {
+function getHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | undefined {
   const direct = headers[name];
   const lower = headers[name.toLowerCase()];
   const upper = headers[name.toUpperCase()];
@@ -23,9 +26,7 @@ function getHeader(headers: Record<string, string | string[] | undefined>, name:
 
 function stripHmacPrefix(signature: string): string {
   const prefix = "hmac-sha256-hex=";
-  return signature.toLowerCase().startsWith(prefix)
-    ? signature.slice(prefix.length)
-    : signature;
+  return signature.toLowerCase().startsWith(prefix) ? signature.slice(prefix.length) : signature;
 }
 
 function timingSafeHexEqual(received: string, expected: string): boolean {
@@ -39,7 +40,11 @@ function timingSafeHexEqual(received: string, expected: string): boolean {
   return timingSafeEqual(sigBuf, expBuf);
 }
 
-function isTimestampWithinTolerance(timestamp: string, toleranceMinutes: number, now: Date): boolean {
+function isTimestampWithinTolerance(
+  timestamp: string,
+  toleranceMinutes: number,
+  now: Date,
+): boolean {
   const timestampMs = Date.parse(timestamp);
   if (!Number.isFinite(timestampMs)) return false;
 
@@ -96,9 +101,7 @@ export function verifyEasyPostWebhook(
     const signature = getHeader(headers, "x-hmac-signature");
     if (!signature) return false;
 
-    const expected = createHmac("sha256", webhookSecret)
-      .update(rawBody)
-      .digest("hex");
+    const expected = createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
 
     return timingSafeHexEqual(signature, expected);
   } catch {
@@ -164,9 +167,7 @@ export interface EasyPostInvoiceAdjustment {
  *
  * @returns Parsed adjustment or `null` if the body is not a shipment_invoice event.
  */
-export function parseEasyPostInvoicePayload(
-  body: unknown,
-): EasyPostInvoiceAdjustment | null {
+export function parseEasyPostInvoicePayload(body: unknown): EasyPostInvoiceAdjustment | null {
   try {
     if (!body || typeof body !== "object") return null;
 
@@ -175,11 +176,12 @@ export function parseEasyPostInvoicePayload(
 
     // EasyPost documents dotted event names. Keep the legacy underscore form
     // for already-recorded fixtures while normalizing both to one event type.
-    const invoiceEvent = description === "shipment.invoice.created" || description === "shipment_invoice.created"
-      ? "created"
-      : description === "shipment.invoice.updated" || description === "shipment_invoice.updated"
-        ? "updated"
-        : null;
+    const invoiceEvent =
+      description === "shipment.invoice.created" || description === "shipment_invoice.created"
+        ? "created"
+        : description === "shipment.invoice.updated" || description === "shipment_invoice.updated"
+          ? "updated"
+          : null;
     if (!invoiceEvent) return null;
 
     const result = event.result as Record<string, unknown> | undefined;
@@ -191,10 +193,12 @@ export function parseEasyPostInvoicePayload(
     const original_rate_str = result.original_rate as string | undefined;
 
     if (!invoice_id || !shipment_id || !tracking_code || !original_rate_str) return null;
-    if (invoice_id.length > 128 || shipment_id.length > 128 || tracking_code.length > 128) return null;
+    if (invoice_id.length > 128 || shipment_id.length > 128 || tracking_code.length > 128)
+      return null;
 
     const original_rate = parseFloat(original_rate_str);
-    if (!Number.isFinite(original_rate) || original_rate < 0 || original_rate > 100_000) return null;
+    if (!Number.isFinite(original_rate) || original_rate < 0 || original_rate > 100_000)
+      return null;
 
     // Sum all shipping charges to get the adjusted total
     const charges = result.charges as Array<Record<string, unknown>> | undefined;
@@ -210,7 +214,8 @@ export function parseEasyPostInvoicePayload(
         shippingChargeCount += 1;
       }
     }
-    if (shippingChargeCount === 0 || !Number.isFinite(adjusted_total) || adjusted_total > 100_000) return null;
+    if (shippingChargeCount === 0 || !Number.isFinite(adjusted_total) || adjusted_total > 100_000)
+      return null;
 
     const original_rate_minor = Math.round(original_rate * 100);
     const adjusted_rate_minor = Math.round(adjusted_total * 100);
@@ -260,9 +265,7 @@ export function parseEasyPostInvoicePayload(
  *
  * @returns Parsed payload or `null` if the body is not a valid tracker event.
  */
-export function parseEasyPostWebhookPayload(
-  body: unknown,
-): EasyPostWebhookPayload | null {
+export function parseEasyPostWebhookPayload(body: unknown): EasyPostWebhookPayload | null {
   try {
     if (!body || typeof body !== "object") return null;
 
@@ -276,16 +279,10 @@ export function parseEasyPostWebhookPayload(
 
     if (!trackingCode || !rawStatus || !carrier) return null;
 
-    const rawDetails = result.tracking_details as
-      | Array<Record<string, unknown>>
-      | undefined;
+    const rawDetails = result.tracking_details as Array<Record<string, unknown>> | undefined;
 
-    const trackingDetails: EasyPostWebhookTrackingDetail[] = (
-      rawDetails ?? []
-    ).map((detail) => {
-      const loc = detail.tracking_location as
-        | Record<string, string>
-        | undefined;
+    const trackingDetails: EasyPostWebhookTrackingDetail[] = (rawDetails ?? []).map((detail) => {
+      const loc = detail.tracking_location as Record<string, string> | undefined;
       return {
         message: (detail.message as string) ?? "",
         status: (detail.status as string) ?? "",
@@ -295,12 +292,15 @@ export function parseEasyPostWebhookPayload(
       };
     });
 
-    const latestDetail = trackingDetails.reduce<EasyPostWebhookTrackingDetail | undefined>((latest, detail) => {
-      const detailTime = new Date(detail.datetime).getTime();
-      if (!Number.isFinite(detailTime)) return latest;
-      if (!latest) return detail;
-      return detailTime > new Date(latest.datetime).getTime() ? detail : latest;
-    }, undefined);
+    const latestDetail = trackingDetails.reduce<EasyPostWebhookTrackingDetail | undefined>(
+      (latest, detail) => {
+        const detailTime = new Date(detail.datetime).getTime();
+        if (!Number.isFinite(detailTime)) return latest;
+        if (!latest) return detail;
+        return detailTime > new Date(latest.datetime).getTime() ? detail : latest;
+      },
+      undefined,
+    );
     const location = latestDetail
       ? [latestDetail.city, latestDetail.state].filter(Boolean).join(", ")
       : undefined;
@@ -309,8 +309,7 @@ export function parseEasyPostWebhookPayload(
       tracking_code: trackingCode,
       status: mapEasyPostStatus(rawStatus),
       carrier,
-      est_delivery_date:
-        (result.est_delivery_date as string) ?? undefined,
+      est_delivery_date: (result.est_delivery_date as string) ?? undefined,
       tracking_details: trackingDetails,
       occurred_at: latestDetail?.datetime || undefined,
       carrier_raw_status: rawStatus,

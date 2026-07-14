@@ -11,9 +11,9 @@
  */
 
 import type { Database } from "@haggle/db";
+import { executeStagedNegotiationRound } from "../negotiation/pipeline/executor.js";
 import type { EventDispatcher } from "./event-dispatcher.js";
 import type { RoundExecutionInput, RoundExecutionResult } from "./negotiation-executor.js";
-import { executeStagedNegotiationRound } from "../negotiation/pipeline/executor.js";
 
 export type RoundExecutor = (
   db: Database,
@@ -24,7 +24,7 @@ export type RoundExecutor = (
 // Type kept as a union for backwards compatibility with the
 // /negotiations/stages route guard and its tests. At runtime
 // getPipelineMode() only ever returns 'staged'.
-export type PipelineMode = 'staged' | 'legacy';
+export type PipelineMode = "staged" | "legacy";
 
 /**
  * Pipeline mode is fixed at 'staged' for real negotiation flows.
@@ -32,13 +32,13 @@ export type PipelineMode = 'staged' | 'legacy';
  * route guards.
  */
 export function getPipelineMode(): PipelineMode {
-  return 'staged';
+  return "staged";
 }
 
 /**
  * Returns the staged LLM executor. There is no rule-based fallback for real
  * negotiation — the only knob is whether the staged pipeline is healthy
- * (XAI_API_KEY set, etc.), and failures should surface as errors rather than
+ * (DEEPSEEK_API_KEY set, etc.), and failures should surface as errors rather than
  * silently downgrading.
  */
 export function getExecutor(): RoundExecutor {

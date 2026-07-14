@@ -1,7 +1,6 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
-const RETENTION_LOCK_KEY =
-  "haggle:dispute-evidence-scan-retry-alert-snapshot-retention";
+const RETENTION_LOCK_KEY = "haggle:dispute-evidence-scan-retry-alert-snapshot-retention";
 const RETENTION_DAYS = 30;
 
 function boundedBatchSize(raw: string | undefined): number {
@@ -20,8 +19,7 @@ export function getDisputeEvidenceScanRetryAlertSnapshotRetentionPolicy() {
     batchSize: boundedBatchSize(
       process.env.DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_SNAPSHOT_RETENTION_BATCH_SIZE,
     ),
-    jobEnabled:
-      process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
+    jobEnabled: process.env.ENABLE_DISPUTE_EVIDENCE_SCAN_RETRY_ALERT_JOB === "true",
     cronEnabled: process.env.ENABLE_CRON === "true",
   };
 }
@@ -31,7 +29,7 @@ export async function getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth(
   source?: string,
 ) {
   const sourceFilter = source ? sql`AND s.source = ${source}` : sql``;
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT count(*) FILTER (
              WHERE s.expires_at <= now() AND w.status = 'COMPLETED'
            )::int AS "eligibleExpired",
@@ -47,19 +45,20 @@ export async function getDisputeEvidenceScanRetryAlertSnapshotRetentionHealth(
       LEFT JOIN webhook_idempotency w
         ON w.source = s.source AND w.idempotency_key = s.delivery_id
      WHERE true ${sourceFilter}
-  `) as unknown as Array<Record<string, number | string | null>>;
+  `)) as unknown as Array<Record<string, number | string | null>>;
   const row = rows[0] ?? {};
   const eligibleExpired = Number(row.eligibleExpired ?? 0);
   const blockedExpired = Number(row.blockedExpired ?? 0);
   const policy = getDisputeEvidenceScanRetryAlertSnapshotRetentionPolicy();
   return {
-    status: blockedExpired > 0 ? "attention" as const : "healthy" as const,
+    status: blockedExpired > 0 ? ("attention" as const) : ("healthy" as const),
     eligibleExpired,
     blockedExpired,
     oldestBlockedExpiredAgeSeconds:
-      row.oldestBlockedExpiredAgeSeconds === null
-        || row.oldestBlockedExpiredAgeSeconds === undefined
-        ? null : Math.max(0, Number(row.oldestBlockedExpiredAgeSeconds)),
+      row.oldestBlockedExpiredAgeSeconds === null ||
+      row.oldestBlockedExpiredAgeSeconds === undefined
+        ? null
+        : Math.max(0, Number(row.oldestBlockedExpiredAgeSeconds)),
     policy,
     containsIdentifiers: false,
     recordedAt: new Date().toISOString(),
@@ -73,17 +72,17 @@ export async function runDisputeEvidenceScanRetryAlertSnapshotRetention(
     onLockAcquired?: () => Promise<void>;
   } = {},
 ) {
-  const batchSize = options.batchSize ??
-    getDisputeEvidenceScanRetryAlertSnapshotRetentionPolicy().batchSize;
+  const batchSize =
+    options.batchSize ?? getDisputeEvidenceScanRetryAlertSnapshotRetentionPolicy().batchSize;
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 1_000) {
     throw new Error("invalid scan retry alert snapshot retention batch size");
   }
   return db.transaction(async (tx) => {
-    const lockRows = await tx.execute(sql`
+    const lockRows = (await tx.execute(sql`
       SELECT pg_try_advisory_xact_lock(
         hashtextextended(${RETENTION_LOCK_KEY}, 0)
       ) AS acquired
-    `) as unknown as Array<{ acquired: boolean }>;
+    `)) as unknown as Array<{ acquired: boolean }>;
     if (lockRows[0]?.acquired !== true) {
       return {
         status: "skipped" as const,
@@ -95,7 +94,7 @@ export async function runDisputeEvidenceScanRetryAlertSnapshotRetention(
     await tx.execute(sql`
       SET LOCAL haggle.allow_scan_retry_alert_snapshot_retention = 'on'
     `);
-    const deleted = await tx.execute(sql`
+    const deleted = (await tx.execute(sql`
       WITH candidates AS (
         SELECT s.id
           FROM dispute_evidence_scan_retry_alert_snapshots s
@@ -110,7 +109,7 @@ export async function runDisputeEvidenceScanRetryAlertSnapshotRetention(
        USING candidates c
        WHERE s.id = c.id
       RETURNING s.id
-    `) as unknown as Array<{ id: string }>;
+    `)) as unknown as Array<{ id: string }>;
     return {
       status: "executed" as const,
       deleted: deleted.length,

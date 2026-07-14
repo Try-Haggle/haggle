@@ -12,10 +12,7 @@ export const LISTING_CATEGORIES = [
   "other",
 ] as const;
 
-export const LISTING_CATEGORY_LABELS: Record<
-  (typeof LISTING_CATEGORIES)[number],
-  string
-> = {
+export const LISTING_CATEGORY_LABELS: Record<(typeof LISTING_CATEGORIES)[number], string> = {
   electronics: "Electronics",
   clothing: "Clothing",
   furniture: "Furniture",

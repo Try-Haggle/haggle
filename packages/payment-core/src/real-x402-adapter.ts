@@ -1,12 +1,6 @@
-import { createId } from "./id.js";
-import type { Hex } from "viem";
 import { toSettlementAssetMoney } from "@haggle/shared";
-import type {
-  PaymentIntent,
-  Refund,
-  PaymentPartyWallet,
-  BuyerAuthorizationMode,
-} from "./types.js";
+import type { Hex } from "viem";
+import { createId } from "./id.js";
 import type {
   AuthorizePaymentResult,
   PaymentProvider,
@@ -14,6 +8,7 @@ import type {
   RefundPaymentResult,
   SettlePaymentResult,
 } from "./provider.js";
+import type { BuyerAuthorizationMode, PaymentIntent, PaymentPartyWallet, Refund } from "./types.js";
 import type {
   ConditionalSettlementContract,
   DisputeRegistryContract,
@@ -66,7 +61,10 @@ function nowIso(): string {
 
 const MAX_X402_FEE_BPS = 1000;
 
-function splitAmount(amountMinor: number, feeBps: number): { seller_amount_minor: number; haggle_fee_minor: number } {
+function splitAmount(
+  amountMinor: number,
+  feeBps: number,
+): { seller_amount_minor: number; haggle_fee_minor: number } {
   if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
     throw new Error(`amount_minor must be positive, got ${amountMinor}`);
   }

@@ -47,7 +47,10 @@ export interface OnrampSessionResult {
 }
 
 export interface OnrampWebhookEvent {
-  type: "crypto.onramp_session.fulfillment_complete" | "crypto.onramp_session.fulfillment_processing" | string;
+  type:
+    | "crypto.onramp_session.fulfillment_complete"
+    | "crypto.onramp_session.fulfillment_processing"
+    | string;
   data: {
     object: {
       id: string;
@@ -82,10 +85,15 @@ async function withStripeRetries<T>(operation: () => Promise<T>): Promise<T> {
       if (classifyProviderError(error) !== "retryable" || attempt === maxAttempts - 1) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, calculateRetryDelayMs(attempt, {
-        baseDelayMs: 150,
-        maxDelayMs: 750,
-      })));
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          calculateRetryDelayMs(attempt, {
+            baseDelayMs: 150,
+            maxDelayMs: 750,
+          }),
+        ),
+      );
     }
   }
   throw lastError;
@@ -135,15 +143,21 @@ export async function createOnrampSession(
       body: body.toString(),
     });
     if (!candidate.ok && classifyProviderError({ status: candidate.status }) === "retryable") {
-      throw Object.assign(new Error(`STRIPE_ONRAMP_RETRYABLE_STATUS:${candidate.status}`), { status: candidate.status });
+      throw Object.assign(new Error(`STRIPE_ONRAMP_RETRYABLE_STATUS:${candidate.status}`), {
+        status: candidate.status,
+      });
     }
     return candidate;
   });
 
   if (!response.ok) {
-    const errBody = await response.json().catch(() => ({ error: {} })) as { error?: { message?: string } };
+    const errBody = (await response.json().catch(() => ({ error: {} }))) as {
+      error?: { message?: string };
+    };
     throw Object.assign(
-      new Error(`STRIPE_ONRAMP_ERROR: ${response.status} ${errBody.error?.message ?? response.statusText}`),
+      new Error(
+        `STRIPE_ONRAMP_ERROR: ${response.status} ${errBody.error?.message ?? response.statusText}`,
+      ),
       { status: response.status },
     );
   }
@@ -168,17 +182,18 @@ export function verifyStripeWebhook(
   payload: string | Buffer,
   signature: string,
   secret: string,
-  options: number | {
-    timestampToleranceSeconds?: number;
-    nowMs?: number;
-  } = 300,
+  options:
+    | number
+    | {
+        timestampToleranceSeconds?: number;
+        nowMs?: number;
+      } = 300,
 ): boolean {
   if (!secret || !signature) return false;
 
-  const timestampToleranceSeconds = typeof options === "number"
-    ? options
-    : options.timestampToleranceSeconds ?? 300;
-  const nowMs = typeof options === "number" ? Date.now() : options.nowMs ?? Date.now();
+  const timestampToleranceSeconds =
+    typeof options === "number" ? options : (options.timestampToleranceSeconds ?? 300);
+  const nowMs = typeof options === "number" ? Date.now() : (options.nowMs ?? Date.now());
 
   // Parse Stripe-Signature header: t=timestamp,v1=signature
   const parts = signature.split(",").map((part: string) => part.trim());
@@ -198,9 +213,7 @@ export function verifyStripeWebhook(
 
   // Compute expected signature
   const signedPayload = `${timestamp}.${typeof payload === "string" ? payload : payload.toString("utf8")}`;
-  const computedSig = createHmac("sha256", secret)
-    .update(signedPayload)
-    .digest("hex");
+  const computedSig = createHmac("sha256", secret).update(signedPayload).digest("hex");
 
   // Timing-safe comparison
   const a = Buffer.from(computedSig);

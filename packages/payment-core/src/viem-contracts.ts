@@ -3,7 +3,7 @@ import {
   HAGGLE_DISPUTE_REGISTRY_ABI,
   HAGGLE_SETTLEMENT_ROUTER_ABI,
 } from "@haggle/contracts";
-import { keccak256, padHex, stringToHex, type Address, type Hex } from "viem";
+import { type Address, type Hex, keccak256, padHex, stringToHex } from "viem";
 import type {
   ConditionalSettlementContract,
   ConditionalSettlementCreateRequest,
@@ -54,7 +54,12 @@ export class ViemSettlementRouterContract implements SettlementRouterContract {
     private readonly assetAddress: Address,
   ) {}
 
-  async quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote> {
+  async quote(
+    request: Omit<
+      SettlementRouterExecutionRequest,
+      "quote_id" | "signature" | "deadline" | "signer_nonce"
+    >,
+  ): Promise<SettlementRouterQuote> {
     return {
       quote_id: `router_quote_${request.payment_intent_id}`,
       network: this.network,
@@ -97,7 +102,9 @@ export class ViemSettlementRouterContract implements SettlementRouterContract {
     };
   }
 
-  async execute(request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult> {
+  async execute(
+    request: SettlementRouterExecutionRequest,
+  ): Promise<SettlementRouterExecutionResult> {
     // Build the SettlementParams tuple matching the Solidity struct exactly.
     const params = {
       orderId: toBytes32(request.order_id),
@@ -152,7 +159,9 @@ export class ViemConditionalSettlementContract implements ConditionalSettlementC
     private readonly walletClient: any,
   ) {}
 
-  async createAndFund(request: ConditionalSettlementCreateRequest): Promise<ConditionalSettlementResult> {
+  async createAndFund(
+    request: ConditionalSettlementCreateRequest,
+  ): Promise<ConditionalSettlementResult> {
     const params = {
       orderId: toPolicyBytes32(request.order_id),
       paymentIntentId: toPolicyBytes32(request.payment_intent_id),
@@ -168,12 +177,18 @@ export class ViemConditionalSettlementContract implements ConditionalSettlementC
       signerNonce: request.signer_nonce,
     };
 
-    const settlementId = await this.publicClient.readContract({
-      address: this.address,
-      abi: HAGGLE_CONDITIONAL_SETTLEMENT_ABI,
-      functionName: "computeSettlementId",
-      args: [params],
-    }).catch(() => toPolicyBytes32(`${request.order_id}:${request.payment_intent_id}:${request.approval_policy_hash}`));
+    const settlementId = await this.publicClient
+      .readContract({
+        address: this.address,
+        abi: HAGGLE_CONDITIONAL_SETTLEMENT_ABI,
+        functionName: "computeSettlementId",
+        args: [params],
+      })
+      .catch(() =>
+        toPolicyBytes32(
+          `${request.order_id}:${request.payment_intent_id}:${request.approval_policy_hash}`,
+        ),
+      );
 
     const { request: prepared } = await this.publicClient.simulateContract({
       address: this.address,
@@ -195,7 +210,9 @@ export class ViemConditionalSettlementContract implements ConditionalSettlementC
     };
   }
 
-  async release(request: ConditionalSettlementReleaseRequest): Promise<ConditionalSettlementResult> {
+  async release(
+    request: ConditionalSettlementReleaseRequest,
+  ): Promise<ConditionalSettlementResult> {
     const params = {
       settlementId: toPolicyBytes32(request.settlement_id),
       sellerWallet: request.seller_wallet.wallet_address as Address,
@@ -244,8 +261,14 @@ export class ViemConditionalSettlementContract implements ConditionalSettlementC
     };
   }
 
-  async raiseDispute(settlementId: string, evidenceHash: string): Promise<ConditionalSettlementResult> {
-    const receipt = await this.write("raiseDispute", [toPolicyBytes32(settlementId), toPolicyBytes32(evidenceHash)]);
+  async raiseDispute(
+    settlementId: string,
+    evidenceHash: string,
+  ): Promise<ConditionalSettlementResult> {
+    const receipt = await this.write("raiseDispute", [
+      toPolicyBytes32(settlementId),
+      toPolicyBytes32(evidenceHash),
+    ]);
     return {
       settlement_id: settlementId,
       contract_reference: receipt.transactionHash,
@@ -277,12 +300,12 @@ export class ViemDisputeRegistryContract implements DisputeRegistryContract {
   ) {}
 
   async anchor(record: DisputeAnchorRecord): Promise<DisputeAnchorRecord> {
-    const evidence = record.evidence_root_hash && record.evidence_root_hash.startsWith("0x")
+    const evidence = record.evidence_root_hash?.startsWith("0x")
       ? (record.evidence_root_hash as Hex)
       : record.evidence_root_hash
         ? toBytes32(record.evidence_root_hash)
         : zeroBytes32();
-    const resolution = record.resolution_hash && record.resolution_hash.startsWith("0x")
+    const resolution = record.resolution_hash?.startsWith("0x")
       ? (record.resolution_hash as Hex)
       : record.resolution_hash
         ? toBytes32(record.resolution_hash)
@@ -293,12 +316,7 @@ export class ViemDisputeRegistryContract implements DisputeRegistryContract {
       abi: HAGGLE_DISPUTE_REGISTRY_ABI,
       functionName: "anchorDispute",
       account: this.walletClient.account,
-      args: [
-        toBytes32(record.order_id),
-        toBytes32(record.dispute_case_id),
-        evidence,
-        resolution,
-      ],
+      args: [toBytes32(record.order_id), toBytes32(record.dispute_case_id), evidence, resolution],
     });
 
     const txHash = await this.walletClient.writeContract(request);

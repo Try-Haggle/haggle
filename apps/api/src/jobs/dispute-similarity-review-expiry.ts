@@ -3,6 +3,7 @@ import { expireDisputeSimilarityReviews } from "../services/dispute-similarity-r
 
 export async function runDisputeSimilarityReviewExpiry(db: Database) {
   const result = await expireDisputeSimilarityReviews(db);
-  if (result.expired > 0) console.log(`[dispute-similarity-review-expiry] expired=${result.expired}`);
+  if (result.expired > 0)
+    console.log(`[dispute-similarity-review-expiry] expired=${result.expired}`);
   return result;
 }

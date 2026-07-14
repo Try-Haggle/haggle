@@ -67,6 +67,6 @@ export function toSettlementAssetMoney(
 
 export function formatMoney(money: MoneyLike & { decimals?: number }): string {
   const decimals = money.decimals ?? getMoneyDecimals(money.currency);
-  const major = money.amount_minor / (10 ** decimals);
+  const major = money.amount_minor / 10 ** decimals;
   return `${major.toFixed(2)} ${money.currency}`;
 }

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   consumeWebSocketAuthTicket,
   extractWebSocketTicketProtocol,
@@ -9,7 +9,7 @@ import {
 function rowsOf<T>(result: unknown): T[] {
   if (Array.isArray(result)) return result as T[];
   const rows = (result as { rows?: unknown[] } | null)?.rows;
-  return Array.isArray(rows) ? rows as T[] : [];
+  return Array.isArray(rows) ? (rows as T[]) : [];
 }
 
 export async function runWebSocketAuthTicketFixture(db: Database) {
@@ -19,11 +19,16 @@ export async function runWebSocketAuthTicketFixture(db: Database) {
     const first = await issueWebSocketAuthTicket(db, { userId, channel: "notification" });
     const firstTicket = first && extractWebSocketTicketProtocol(first.protocol);
     if (!firstTicket) throw new Error("fixture ticket was not issued");
-    const stored = rowsOf<{ token_hash: string }>(await db.execute(sql`
+    const stored = rowsOf<{ token_hash: string }>(
+      await db.execute(sql`
       SELECT token_hash FROM websocket_auth_tickets WHERE user_id = ${userId}::uuid
-    `));
-    const consumers = await Promise.all(Array.from({ length: 20 }, () =>
-      consumeWebSocketAuthTicket(db, { ticket: firstTicket, channel: "notification" })));
+    `),
+    );
+    const consumers = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        consumeWebSocketAuthTicket(db, { ticket: firstTicket, channel: "notification" }),
+      ),
+    );
     const consumed = consumers.filter(Boolean).length;
     const replay = await consumeWebSocketAuthTicket(db, {
       ticket: firstTicket,
@@ -43,24 +48,34 @@ export async function runWebSocketAuthTicketFixture(db: Database) {
       channel: "notification",
     });
 
-    const parallelIssued = await Promise.all(Array.from({ length: 20 }, () =>
-      issueWebSocketAuthTicket(db, { userId, channel: "notification" })));
-    const parallelTickets = parallelIssued.map((issued) =>
-      issued && extractWebSocketTicketProtocol(issued.protocol));
+    const parallelIssued = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        issueWebSocketAuthTicket(db, { userId, channel: "notification" }),
+      ),
+    );
+    const parallelTickets = parallelIssued.map(
+      (issued) => issued && extractWebSocketTicketProtocol(issued.protocol),
+    );
     if (parallelTickets.some((ticket) => !ticket)) {
       throw new Error("fixture concurrent ticket was not issued");
     }
-    const activeScopeRows = rowsOf<{ count: string }>(await db.execute(sql`
+    const activeScopeRows = rowsOf<{ count: string }>(
+      await db.execute(sql`
       SELECT count(*)::text AS count FROM websocket_auth_tickets
       WHERE user_id = ${userId}::uuid
         AND channel = 'notification'
         AND resource_id IS NULL
         AND expires_at > now()
-    `));
-    const parallelConsumes = await Promise.all(parallelTickets.map((ticket) =>
-      consumeWebSocketAuthTicket(db, {
-        ticket: ticket!, channel: "notification",
-      })));
+    `),
+    );
+    const parallelConsumes = await Promise.all(
+      parallelTickets.map((ticket) =>
+        consumeWebSocketAuthTicket(db, {
+          ticket: ticket!,
+          channel: "notification",
+        }),
+      ),
+    );
     const acceptedSupersessionTickets = parallelConsumes.filter(Boolean).length;
 
     const expiredRaw = randomBytes(32).toString("base64url");
@@ -76,15 +91,19 @@ export async function runWebSocketAuthTicketFixture(db: Database) {
     const third = await issueWebSocketAuthTicket(db, { userId, channel: "notification" });
     const thirdTicket = third && extractWebSocketTicketProtocol(third.protocol);
     if (!thirdTicket) throw new Error("fixture cleanup ticket was not issued");
-    const expiredRemaining = rowsOf<{ count: string }>(await db.execute(sql`
+    const expiredRemaining = rowsOf<{ count: string }>(
+      await db.execute(sql`
       SELECT count(*)::text AS count FROM websocket_auth_tickets
       WHERE token_hash = ${expiredHash}
-    `));
+    `),
+    );
     await consumeWebSocketAuthTicket(db, { ticket: thirdTicket, channel: "notification" });
-    const finalRows = rowsOf<{ count: string }>(await db.execute(sql`
+    const finalRows = rowsOf<{ count: string }>(
+      await db.execute(sql`
       SELECT count(*)::text AS count FROM websocket_auth_tickets
       WHERE user_id = ${userId}::uuid
-    `));
+    `),
+    );
     cleanupRows = Number(finalRows[0]?.count ?? -1);
 
     return {

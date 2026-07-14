@@ -7,12 +7,7 @@
  * FULFILLED    - shipped before deadline
  * CANCELLED    - auto-cancelled at hard deadline
  */
-export type SlaStatus =
-  | "ACTIVE"
-  | "GRACE_PERIOD"
-  | "VIOLATED"
-  | "FULFILLED"
-  | "CANCELLED";
+export type SlaStatus = "ACTIVE" | "GRACE_PERIOD" | "VIOLATED" | "FULFILLED" | "CANCELLED";
 
 /** Configuration for an SLA attached to a transaction. */
 export interface SlaConfig {
@@ -97,7 +92,14 @@ export interface Shipment {
   label_url?: string;
   label_qr_code_url?: string;
   label_qr_code_available?: boolean;
-  label_refund_status?: "NONE" | "REQUESTING" | "SUBMITTED" | "REFUNDED" | "REJECTED" | "NOT_APPLICABLE" | "FAILED";
+  label_refund_status?:
+    | "NONE"
+    | "REQUESTING"
+    | "SUBMITTED"
+    | "REFUNDED"
+    | "REJECTED"
+    | "NOT_APPLICABLE"
+    | "FAILED";
   label_refund_requested_at?: string;
   label_refund_updated_at?: string;
   metadata?: Record<string, unknown>;

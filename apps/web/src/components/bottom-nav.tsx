@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNotificationContext } from "@/app/(app)/_components/notification-provider";
+import { NavTab } from "@/components/ui";
 
 type Mode = "selling" | "buying";
 
@@ -11,8 +11,18 @@ const SELL_TABS = [
   {
     label: "Dashboard",
     href: "/sell/dashboard",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <rect x="3" y="3" width="6" height="18" rx="1" />
         <rect x="9" y="9" width="6" height="12" rx="1" />
         <rect x="15" y="6" width="6" height="15" rx="1" />
@@ -22,8 +32,18 @@ const SELL_TABS = [
   {
     label: "Agents",
     href: "/sell/agents",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <path d="M12 8V4H8" />
         <rect width="16" height="12" x="4" y="8" rx="2" />
         <path d="M2 14h2" />
@@ -36,8 +56,18 @@ const SELL_TABS = [
   {
     label: "Inbox",
     href: "/notifications",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
         <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
       </svg>
@@ -46,8 +76,18 @@ const SELL_TABS = [
   {
     label: "Profile",
     href: "/profile",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
         <circle cx="12" cy="7" r="4" />
       </svg>
@@ -59,8 +99,18 @@ const BUY_TABS = [
   {
     label: "Dashboard",
     href: "/buy/dashboard",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <circle cx="8" cy="21" r="1" />
         <circle cx="19" cy="21" r="1" />
         <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
@@ -70,8 +120,18 @@ const BUY_TABS = [
   {
     label: "Browse",
     href: "/browse",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
@@ -80,8 +140,18 @@ const BUY_TABS = [
   {
     label: "Agents",
     href: "/buy/agents",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <path d="M12 8V4H8" />
         <rect width="16" height="12" x="4" y="8" rx="2" />
         <path d="M2 14h2" />
@@ -94,8 +164,18 @@ const BUY_TABS = [
   {
     label: "Inbox",
     href: "/notifications",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
         <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
       </svg>
@@ -104,8 +184,18 @@ const BUY_TABS = [
   {
     label: "Profile",
     href: "/profile",
-    icon: (active: boolean) => (
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={active ? "#06b6d4" : "#94a3b8"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
         <circle cx="12" cy="7" r="4" />
       </svg>
@@ -137,29 +227,24 @@ export function BottomNav() {
   const tabs = mode === "buying" ? BUY_TABS : SELL_TABS;
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 border-t border-slate-800 bg-bg-primary/95 backdrop-blur-md md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-line border-t bg-surface/95 backdrop-blur-md md:hidden">
       <div className="flex h-14 items-center justify-around">
         {tabs.map((tab) => {
-          const isActive = tab.href === "/profile"
-            ? pathname.startsWith("/profile") || pathname.startsWith("/settings")
-            : pathname.startsWith(tab.href);
+          const isActive =
+            tab.href === "/profile"
+              ? pathname.startsWith("/profile") || pathname.startsWith("/settings")
+              : pathname.startsWith(tab.href);
 
           return (
-            <Link
+            <NavTab
               key={tab.href}
               href={tab.href}
-              className="flex flex-col items-center gap-0.5"
-            >
-              <div className="relative">
-                {tab.icon(isActive)}
-                {tab.label === "Inbox" && unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-                )}
-              </div>
-              <span className={`text-[10px] font-medium ${isActive ? "text-cyan-400" : "text-slate-500"}`}>
-                {tab.label}
-              </span>
-            </Link>
+              label={tab.label}
+              variant="stacked"
+              icon={tab.icon}
+              active={isActive}
+              badge={tab.label === "Inbox" && unreadCount > 0}
+            />
           );
         })}
       </div>

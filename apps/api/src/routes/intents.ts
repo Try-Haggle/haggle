@@ -1,19 +1,19 @@
-import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 import type { Database } from "@haggle/db";
 import type { NegotiationContext } from "@haggle/engine-core";
-import { requireAuth } from "../middleware/require-auth.js";
 import type { WaitingIntent } from "@haggle/engine-session";
-import { transitionIntent, evaluateIntents } from "@haggle/engine-session";
+import { evaluateIntents, transitionIntent } from "@haggle/engine-session";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { requireAuth } from "../middleware/require-auth.js";
 import {
-  getIntentById,
-  getActiveIntentsByCategory,
-  getIntentsByUserId,
   createIntent,
-  updateIntentStatus,
-  getActiveIntentCount,
   createMatch,
   expireStaleIntents,
+  getActiveIntentCount,
+  getActiveIntentsByCategory,
+  getIntentById,
+  getIntentsByUserId,
+  updateIntentStatus,
 } from "../services/intent.service.js";
 
 const createIntentSchema = z.object({
@@ -85,7 +85,7 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
       role,
       category,
       keywords,
-      strategySnapshot: strategy,
+      negotiationAgentSnapshot: strategy,
       minUtotal: min_u_total != null ? String(min_u_total) : undefined,
       maxActiveSessions: max_active_sessions,
       expiresAt,
@@ -98,7 +98,12 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
   app.get<{ Querystring: { user_id?: string; category?: string; status?: string; role?: string } }>(
     "/intents",
     async (request, reply) => {
-      const query = request.query as { user_id?: string; category?: string; status?: string; role?: string };
+      const query = request.query as {
+        user_id?: string;
+        category?: string;
+        status?: string;
+        role?: string;
+      };
 
       if (query.user_id) {
         const rows = await getIntentsByUserId(db, query.user_id, query.status);
@@ -116,17 +121,14 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
   );
 
   // GET /intents/:id
-  app.get<{ Params: { id: string } }>(
-    "/intents/:id",
-    async (request, reply) => {
-      const { id } = request.params;
-      const intent = await getIntentById(db, id);
-      if (!intent) {
-        return reply.code(404).send({ error: "INTENT_NOT_FOUND" });
-      }
-      return reply.send({ intent });
-    },
-  );
+  app.get<{ Params: { id: string } }>("/intents/:id", async (request, reply) => {
+    const { id } = request.params;
+    const intent = await getIntentById(db, id);
+    if (!intent) {
+      return reply.code(404).send({ error: "INTENT_NOT_FOUND" });
+    }
+    return reply.send({ intent });
+  });
 
   // PATCH /intents/:id/cancel
   app.patch<{ Params: { id: string } }>(
@@ -153,49 +155,49 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
   );
 
   // POST /intents/:id/match
-  app.post<{ Params: { id: string } }>(
-    "/intents/:id/match",
-    async (request, reply) => {
-      const { id } = request.params;
-      const parsed = matchIntentSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_MATCH_REQUEST", issues: parsed.error.issues });
-      }
+  app.post<{ Params: { id: string } }>("/intents/:id/match", async (request, reply) => {
+    const { id } = request.params;
+    const parsed = matchIntentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_MATCH_REQUEST", issues: parsed.error.issues });
+    }
 
-      const intent = await getIntentById(db, id);
-      if (!intent) {
-        return reply.code(404).send({ error: "INTENT_NOT_FOUND" });
-      }
+    const intent = await getIntentById(db, id);
+    if (!intent) {
+      return reply.code(404).send({ error: "INTENT_NOT_FOUND" });
+    }
 
-      if (intent.status !== "ACTIVE") {
-        return reply.code(400).send({ error: "INTENT_NOT_ACTIVE", current_status: intent.status });
-      }
+    if (intent.status !== "ACTIVE") {
+      return reply.code(400).send({ error: "INTENT_NOT_ACTIVE", current_status: intent.status });
+    }
 
-      const nextStatus = transitionIntent(intent.status, "MATCH");
-      if (nextStatus === null) {
-        return reply.code(400).send({ error: "INVALID_TRANSITION", current_status: intent.status });
-      }
+    const nextStatus = transitionIntent(intent.status, "MATCH");
+    if (nextStatus === null) {
+      return reply.code(400).send({ error: "INVALID_TRANSITION", current_status: intent.status });
+    }
 
-      const updated = await updateIntentStatus(db, id, nextStatus, { matchedAt: new Date() });
+    const updated = await updateIntentStatus(db, id, nextStatus, { matchedAt: new Date() });
 
-      const match = await createMatch(db, {
-        intentId: id,
-        counterpartyIntentId: parsed.data.counter_intent_id,
-        listingId: parsed.data.listing_id,
-        sessionId: parsed.data.session_id,
-        buyerUtotal: String(parsed.data.buyer_u_total),
-        sellerUtotal: parsed.data.seller_u_total != null ? String(parsed.data.seller_u_total) : undefined,
-      });
+    const match = await createMatch(db, {
+      intentId: id,
+      counterpartyIntentId: parsed.data.counter_intent_id,
+      listingId: parsed.data.listing_id,
+      sessionId: parsed.data.session_id,
+      buyerUtotal: String(parsed.data.buyer_u_total),
+      sellerUtotal:
+        parsed.data.seller_u_total != null ? String(parsed.data.seller_u_total) : undefined,
+    });
 
-      return reply.send({ intent: updated, match });
-    },
-  );
+    return reply.send({ intent: updated, match });
+  });
 
   // POST /intents/trigger-match — MUST be before /:id routes but Fastify handles this via method+path
   app.post("/intents/trigger-match", async (request, reply) => {
     const parsed = triggerMatchSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "INVALID_TRIGGER_REQUEST", issues: parsed.error.issues });
+      return reply
+        .code(400)
+        .send({ error: "INVALID_TRIGGER_REQUEST", issues: parsed.error.issues });
     }
 
     const { category, context_template } = parsed.data;
@@ -212,7 +214,7 @@ export function registerIntentRoutes(app: FastifyInstance, db: Database) {
       role: row.role as "BUYER" | "SELLER",
       category: row.category,
       keywords: row.keywords as string[],
-      strategy: row.strategySnapshot as unknown as WaitingIntent["strategy"],
+      strategy: row.negotiationAgentSnapshot as unknown as WaitingIntent["strategy"],
       minUtotal: Number(row.minUtotal),
       maxActiveSessions: row.maxActiveSessions,
       currentActiveSessions: 0, // Caller would provide real count; MVP simplification

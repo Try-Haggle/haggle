@@ -1,6 +1,6 @@
-import { REASON_CODE_REGISTRY, type DisputeReasonCode } from "./reason-codes.js";
-import type { DisputeCostResult, DisputeTier } from "./types.js";
 import { getEscalationPeriod, getReviewerCount } from "./dispute-cost.js";
+import { type DisputeReasonCode, REASON_CODE_REGISTRY } from "./reason-codes.js";
+import type { DisputeCostResult, DisputeTier } from "./types.js";
 
 export type ModuleActorRole = "buyer" | "seller";
 
@@ -55,8 +55,8 @@ export const DEFAULT_DISPUTE_MODULE_CONFIG: DisputeModuleConfig = {
   tier1_min_cents: 300,
   tier2_min_cents: 1_200,
   tier3_min_cents: 3_000,
-  reviewer_share: 0.70,
-  platform_share: 0.30,
+  reviewer_share: 0.7,
+  platform_share: 0.3,
   allowed_open_statuses: [
     "PAID",
     "FULFILLMENT_PENDING",
@@ -98,11 +98,7 @@ export type ModuleOpenDisputeDecision =
     }
   | {
       ok: false;
-      error:
-        | "INVALID_CONFIG"
-        | "INVALID_TRANSACTION"
-        | "FORBIDDEN"
-        | "ORDER_NOT_DISPUTABLE";
+      error: "INVALID_CONFIG" | "INVALID_TRANSACTION" | "FORBIDDEN" | "ORDER_NOT_DISPUTABLE";
       message: string;
     };
 
@@ -119,7 +115,9 @@ function nonEmptyString(value: unknown): value is string {
 }
 
 function isModuleTransactionStatus(value: unknown): value is ModuleTransactionStatus {
-  return typeof value === "string" && (MODULE_TRANSACTION_STATUSES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" && (MODULE_TRANSACTION_STATUSES as readonly string[]).includes(value)
+  );
 }
 
 function isDisputeReasonCode(value: unknown): value is DisputeReasonCode {
@@ -137,15 +135,17 @@ export function normalizeDisputeModuleConfig(
       : [...DEFAULT_DISPUTE_MODULE_CONFIG.allowed_open_statuses],
   };
 
-  const positiveFields: Array<keyof Pick<
-    DisputeModuleConfig,
-    | "tier1_rate"
-    | "tier2_rate"
-    | "tier3_rate"
-    | "tier1_min_cents"
-    | "tier2_min_cents"
-    | "tier3_min_cents"
-  >> = [
+  const positiveFields: Array<
+    keyof Pick<
+      DisputeModuleConfig,
+      | "tier1_rate"
+      | "tier2_rate"
+      | "tier3_rate"
+      | "tier1_min_cents"
+      | "tier2_min_cents"
+      | "tier3_min_cents"
+    >
+  > = [
     "tier1_rate",
     "tier2_rate",
     "tier3_rate",

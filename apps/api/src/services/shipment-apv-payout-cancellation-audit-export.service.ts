@@ -1,8 +1,15 @@
-import { createHash, createPrivateKey, createPublicKey, sign, verify, type KeyObject } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  type KeyObject,
+  sign,
+  verify,
+} from "node:crypto";
 import {
   canonicalShipmentApvCancellationAuditJson,
-  verifyShipmentApvCancellationEventChain,
   type ShipmentApvPayoutCancellationEventRecord,
+  verifyShipmentApvCancellationEventChain,
 } from "./shipment-apv-payout-cancellation.service.js";
 
 export interface ShipmentApvPayoutCancellationAuditManifest {
@@ -27,7 +34,11 @@ export class ShipmentApvCancellationAuditSigningNotConfiguredError extends Error
 
 function privateKeyFromBase64(value: string | undefined): KeyObject {
   if (!value?.trim()) throw new ShipmentApvCancellationAuditSigningNotConfiguredError();
-  return createPrivateKey({ key: Buffer.from(value.trim(), "base64"), format: "der", type: "pkcs8" });
+  return createPrivateKey({
+    key: Buffer.from(value.trim(), "base64"),
+    format: "der",
+    type: "pkcs8",
+  });
 }
 
 export function createSignedShipmentApvPayoutCancellationAuditExport(input: {
@@ -51,11 +62,13 @@ export function createSignedShipmentApvPayoutCancellationAuditExport(input: {
     sealed_events: chain.sealedEvents,
     legacy_unsealed_events: chain.legacyUnsealedEvents,
   };
-  const privateKey = input.privateKey ?? privateKeyFromBase64(
-    input.privateKeyBase64
-      ?? process.env.HAGGLE_AUDIT_SIGNING_PRIVATE_KEY_BASE64
-      ?? process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64,
-  );
+  const privateKey =
+    input.privateKey ??
+    privateKeyFromBase64(
+      input.privateKeyBase64 ??
+        process.env.HAGGLE_AUDIT_SIGNING_PRIVATE_KEY_BASE64 ??
+        process.env.DISPUTE_AUDIT_SIGNING_PRIVATE_KEY_BASE64,
+    );
   const publicKey = createPublicKey(privateKey);
   const publicKeyDer = publicKey.export({ format: "der", type: "spki" });
   const manifestBytes = Buffer.from(canonicalShipmentApvCancellationAuditJson(manifest));
@@ -75,15 +88,20 @@ export function verifySignedShipmentApvPayoutCancellationAuditExport(
   value: ReturnType<typeof createSignedShipmentApvPayoutCancellationAuditExport>,
 ) {
   const chain = verifyShipmentApvCancellationEventChain(value.events);
-  if (!chain.valid
-    || value.manifest.chain_valid !== chain.valid
-    || value.manifest.chain_complete !== chain.complete
-    || value.manifest.sealed_events !== chain.sealedEvents
-    || value.manifest.legacy_unsealed_events !== chain.legacyUnsealedEvents
-    || value.manifest.chain_head_event_hash !== chain.headEventHash
-    || value.manifest.event_count !== value.events.length
-    || value.events.some((event) => event.cancellation_request_id !== value.manifest.cancellation_request_id)
-    || value.signature.algorithm !== "Ed25519") return false;
+  if (
+    !chain.valid ||
+    value.manifest.chain_valid !== chain.valid ||
+    value.manifest.chain_complete !== chain.complete ||
+    value.manifest.sealed_events !== chain.sealedEvents ||
+    value.manifest.legacy_unsealed_events !== chain.legacyUnsealedEvents ||
+    value.manifest.chain_head_event_hash !== chain.headEventHash ||
+    value.manifest.event_count !== value.events.length ||
+    value.events.some(
+      (event) => event.cancellation_request_id !== value.manifest.cancellation_request_id,
+    ) ||
+    value.signature.algorithm !== "Ed25519"
+  )
+    return false;
   const eventsDigest = createHash("sha256")
     .update(canonicalShipmentApvCancellationAuditJson(value.events))
     .digest("hex");
@@ -94,7 +112,10 @@ export function verifySignedShipmentApvPayoutCancellationAuditExport(
     type: "spki",
   });
   const publicKeyDer = publicKey.export({ format: "der", type: "spki" });
-  if (createHash("sha256").update(publicKeyDer).digest("hex").slice(0, 24) !== value.signature.key_id) return false;
+  if (
+    createHash("sha256").update(publicKeyDer).digest("hex").slice(0, 24) !== value.signature.key_id
+  )
+    return false;
   return verify(
     null,
     Buffer.from(canonicalShipmentApvCancellationAuditJson(value.manifest)),

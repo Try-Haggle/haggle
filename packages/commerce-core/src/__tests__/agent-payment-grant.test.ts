@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  type AgentPaymentGrant,
   canonicalizeAgentPaymentPolicy,
   findPaymentLegalTermIssues,
-  type AgentPaymentGrant,
 } from "../agent-payment-grant.js";
 
 function makeGrant(overrides: Partial<AgentPaymentGrant> = {}): AgentPaymentGrant {
@@ -61,8 +61,12 @@ describe("agent payment grants", () => {
   });
 
   it("does not include random grant identifiers in the policy hash input", () => {
-    const first = canonicalizeAgentPaymentPolicy(makeGrant({ grant_id: "grant_1", nonce: "nonce_1" }));
-    const second = canonicalizeAgentPaymentPolicy(makeGrant({ grant_id: "grant_2", nonce: "nonce_2" }));
+    const first = canonicalizeAgentPaymentPolicy(
+      makeGrant({ grant_id: "grant_1", nonce: "nonce_1" }),
+    );
+    const second = canonicalizeAgentPaymentPolicy(
+      makeGrant({ grant_id: "grant_2", nonce: "nonce_2" }),
+    );
 
     expect(second).toBe(first);
     expect(first).not.toContain("grant_1");
@@ -77,7 +81,9 @@ describe("agent payment grants", () => {
   });
 
   it("flags legally sensitive payment terms", () => {
-    const issues = findPaymentLegalTermIssues("We provide escrow custody with guaranteed safe settlement.");
+    const issues = findPaymentLegalTermIssues(
+      "We provide escrow custody with guaranteed safe settlement.",
+    );
 
     expect(issues.map((issue) => issue.term)).toEqual(
       expect.arrayContaining(["escrow", "custody", "guaranteed safe"]),

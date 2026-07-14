@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
 
 export const SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES = 15;
 
@@ -34,8 +33,7 @@ type GrantRow = {
 };
 
 function invalid() {
-  throw new Error(
-    "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_GRANT_INVALID");
+  throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_GRANT_INVALID");
 }
 
 function iso(value: unknown) {
@@ -71,42 +69,52 @@ function fullBindingValid(row: GrantRow) {
   const decidedAt = Date.parse(iso(row.decided_at));
   const requestedAt = Date.parse(iso(row.request_created_at));
   const requestExpiresAt = Date.parse(iso(row.request_expires_at));
-  return String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && /^[0-9a-f]{64}$/.test(String(row.state_fingerprint))
-    && String(row.state_fingerprint) === String(row.approval_state_fingerprint)
-    && String(row.status) === "GRANTED_DRY_RUN"
-    && String(row.decision) === "APPROVED"
-    && String(row.decision_reason) === "checker_approved_snapshot"
-    && String(row.decided_by) === String(row.granted_by)
-    && String(row.requested_by) !== String(row.granted_by)
-    && values.length >= 1 && values.length <= 7
-    && indexes.every((index) => index >= 0)
-    && indexes.every((index, position) => position === 0
-      || index > indexes[position - 1]!)
-    && (action === "review_warning"
+  return (
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    /^[0-9a-f]{64}$/.test(String(row.state_fingerprint)) &&
+    String(row.state_fingerprint) === String(row.approval_state_fingerprint) &&
+    String(row.status) === "GRANTED_DRY_RUN" &&
+    String(row.decision) === "APPROVED" &&
+    String(row.decision_reason) === "checker_approved_snapshot" &&
+    String(row.decided_by) === String(row.granted_by) &&
+    String(row.requested_by) !== String(row.granted_by) &&
+    values.length >= 1 &&
+    values.length <= 7 &&
+    indexes.every((index) => index >= 0) &&
+    indexes.every((index, position) => position === 0 || index > indexes[position - 1]!) &&
+    (action === "review_warning"
       ? severity === "warning" && !critical
-      : action === "escalate_critical" && severity === "critical" && critical)
-    && decidedAt >= requestedAt && decidedAt < requestExpiresAt
-    && grantedAt >= decidedAt && grantedAt < requestExpiresAt
-    && cooldownExpiresAt === grantedAt
-      + SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES * 60_000;
+      : action === "escalate_critical" && severity === "critical" && critical) &&
+    decidedAt >= requestedAt &&
+    decidedAt < requestExpiresAt &&
+    grantedAt >= decidedAt &&
+    grantedAt < requestExpiresAt &&
+    cooldownExpiresAt ===
+      grantedAt + SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES * 60_000
+  );
 }
 
-function exactReplayMatches(row: GrantRow, input: {
-  approvalDecisionId: string; clientGrantId: string; grantedBy: string;
-}) {
-  return String(row.client_grant_id) === input.clientGrantId
-    && String(row.approval_decision_id) === input.approvalDecisionId
-    && String(row.granted_by) === input.grantedBy;
+function exactReplayMatches(
+  row: GrantRow,
+  input: {
+    approvalDecisionId: string;
+    clientGrantId: string;
+    grantedBy: string;
+  },
+) {
+  return (
+    String(row.client_grant_id) === input.clientGrantId &&
+    String(row.approval_decision_id) === input.approvalDecisionId &&
+    String(row.granted_by) === input.grantedBy
+  );
 }
 
 function publicGrant(row: GrantRow, now: Date) {
   if (!fullBindingValid(row)) invalid();
   const cooldownExpiresAt = iso(row.cooldown_expires_at);
   return {
-    schemaVersion:
-      "shipment-apv-failure-alert-receiver-manifest-archive-alert-delivery-grant-v1",
+    schemaVersion: "shipment-apv-failure-alert-receiver-manifest-archive-alert-delivery-grant-v1",
     deliveryGrantId: String(row.id),
     clientGrantId: String(row.client_grant_id),
     approvalDecisionId: String(row.approval_decision_id),
@@ -116,8 +124,7 @@ function publicGrant(row: GrantRow, now: Date) {
     cooldownExpiresAt,
     cooldown: {
       scope: "state_fingerprint" as const,
-      windowMinutes:
-        SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES,
+      windowMinutes: SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES,
       active: Date.parse(cooldownExpiresAt) > now.getTime(),
     },
     replayed: row.inserted === false,
@@ -135,15 +142,20 @@ function publicGrant(row: GrantRow, now: Date) {
   };
 }
 
-function previewMatches(row: GrantRow, preview: Awaited<ReturnType<
-  typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>>) {
-  return String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && String(row.state_fingerprint) === preview.stateFingerprint
-    && String(row.preview_action) === preview.action
-    && String(row.preview_severity) === preview.severity
-    && JSON.stringify(reasons(row.preview_reasons))
-      === JSON.stringify(preview.reasons);
+function previewMatches(
+  row: GrantRow,
+  preview: Awaited<
+    ReturnType<typeof getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview>
+  >,
+) {
+  return (
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    String(row.state_fingerprint) === preview.stateFingerprint &&
+    String(row.preview_action) === preview.action &&
+    String(row.preview_severity) === preview.severity &&
+    JSON.stringify(reasons(row.preview_reasons)) === JSON.stringify(preview.reasons)
+  );
 }
 
 const grantBindingSql = sql`SELECT delivery_grant.*, decision.decision,
@@ -188,8 +200,7 @@ export async function createShipmentApvReceiverManifestArchiveAlertDeliveryGrant
     const existing = (existingRows as unknown as GrantRow[])[0];
     if (existing) {
       if (!exactReplayMatches(existing, input) || !fullBindingValid(existing)) {
-        throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_REPLAY_CONFLICT");
+        throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_REPLAY_CONFLICT");
       }
       return publicGrant({ ...existing, inserted: false }, now);
     }
@@ -219,60 +230,64 @@ export async function createShipmentApvReceiverManifestArchiveAlertDeliveryGrant
         ON delivery_grant.approval_decision_id = decision.id
       WHERE decision.id = ${input.approvalDecisionId}::uuid
       LIMIT 1`);
-    const decision = (decisionRows as unknown as Array<GrantRow & {
-      prior_grant_id: unknown; prior_client_grant_id: unknown;
-      prior_granted_by: unknown;
-    }>)[0];
+    const decision = (
+      decisionRows as unknown as Array<
+        GrantRow & {
+          prior_grant_id: unknown;
+          prior_client_grant_id: unknown;
+          prior_granted_by: unknown;
+        }
+      >
+    )[0];
     if (!decision) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_NOT_FOUND");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_NOT_FOUND");
     }
     if (String(decision.decision) !== "APPROVED") {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_NOT_APPROVED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_NOT_APPROVED");
     }
-    if (String(decision.decided_by) !== input.grantedBy
-      || String(decision.requested_by) === input.grantedBy) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_ACTOR_MISMATCH");
+    if (
+      String(decision.decided_by) !== input.grantedBy ||
+      String(decision.requested_by) === input.grantedBy
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_ACTOR_MISMATCH");
     }
     if (decision.prior_grant_id) {
-      if (String(decision.prior_client_grant_id) === input.clientGrantId
-        && String(decision.prior_granted_by) === input.grantedBy) {
+      if (
+        String(decision.prior_client_grant_id) === input.clientGrantId &&
+        String(decision.prior_granted_by) === input.grantedBy
+      ) {
         const replayRows = await transaction.execute(sql`${grantBindingSql}
           WHERE delivery_grant.id = ${String(decision.prior_grant_id)}::uuid
           LIMIT 1`);
         const replay = (replayRows as unknown as GrantRow[])[0];
-        if (replay && exactReplayMatches(replay, input)
-          && fullBindingValid(replay)) {
+        if (replay && exactReplayMatches(replay, input) && fullBindingValid(replay)) {
           return publicGrant({ ...replay, inserted: false }, now);
         }
       }
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_ALREADY_GRANTED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_ALREADY_GRANTED");
     }
     if (!fullBindingValid(decision)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DECISION_INVALID");
     }
     if (Date.parse(String(decision.request_expires_at)) <= now.getTime()) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REQUEST_EXPIRED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REQUEST_EXPIRED");
     }
 
     const preview =
       await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(transaction);
-    if (preview.action === "none" || !preview.approval.required
-      || !previewMatches(decision, preview)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
+    if (
+      preview.action === "none" ||
+      !preview.approval.required ||
+      !previewMatches(decision, preview)
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
     }
 
     const grantId = input.grantId ?? randomUUID();
     const grantedAt = now.toISOString();
-    const cooldownExpiresAt = new Date(now.getTime()
-      + SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES * 60_000)
-      .toISOString();
+    const cooldownExpiresAt = new Date(
+      now.getTime() + SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_MINUTES * 60_000,
+    ).toISOString();
     const rows = await transaction.execute(sql`WITH claimed AS (
         INSERT INTO shipment_apv_manifest_archive_alert_cooldown_claims
           (state_fingerprint, grant_id, claimed_at, expires_at)
@@ -310,12 +325,10 @@ export async function createShipmentApvReceiverManifestArchiveAlertDeliveryGrant
         ON request.id = decision.approval_request_id`);
     const row = (rows as unknown as GrantRow[])[0];
     if (!row) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_COOLDOWN_ACTIVE");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_COOLDOWN_ACTIVE");
     }
     if (!exactReplayMatches(row, input) || !fullBindingValid(row)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_REPLAY_CONFLICT");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_GRANT_REPLAY_CONFLICT");
     }
     return publicGrant(row, now);
   });

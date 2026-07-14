@@ -9,20 +9,20 @@
  * normal unit tests. Hitting the running API keeps this test honest.
  */
 
-import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
 
 dotenv.config({ path: resolve(import.meta.dirname, "../../../../.env") });
 dotenv.config({ path: resolve(import.meta.dirname, "../../.env"), override: false });
 
 const API_BASE = process.env.LIVE_API_BASE ?? "http://127.0.0.1:3001";
-const shouldRunLive = process.env.RUN_LIVE_LLM_E2E_TESTS === "1" && !!process.env.XAI_API_KEY;
+const shouldRunLive = process.env.RUN_LIVE_LLM_E2E_TESTS === "1" && !!process.env.DEEPSEEK_API_KEY;
 const describeLive = shouldRunLive ? describe : describe.skip;
 const MAX_E2E_USD = Number(process.env.LIVE_LLM_E2E_MAX_USD ?? "0.08");
 
-type AdvisorMemory = {
+type NegotiationAgentBuilderMemory = {
   categoryInterest: string;
   budgetMax?: number;
   targetPrice?: number;
@@ -35,8 +35,8 @@ type AdvisorMemory = {
   source: string[];
 };
 
-type AdvisorTurnResponse = {
-  memory: AdvisorMemory;
+type NegotiationAgentBuilderTurnResponse = {
+  memory: NegotiationAgentBuilderMemory;
   reply: string;
   turn_cost: {
     tokens: { prompt: number; completion: number; total: number };
@@ -112,43 +112,55 @@ describeLive("Live LLM memory E2E over HTTP", () => {
       const advisorMessage =
         "아이폰 15 프로 256GB 찾고 있어. 예산은 최대 500달러고, 배터리 90% 이상이고 언락 모델이면 좋아. 너무 끌지 말고 괜찮으면 빠르게 거래하고 싶어.";
 
-      const advisorTurn = await postJson<AdvisorTurnResponse>("/intelligence/demo/advisor-turn", {
-        user_id: userId,
-        agent_id: agentId,
-        message: advisorMessage,
-        previous_memory: emptyAdvisorMemory(),
-        listings: [
-          {
-            id: "live-e2e-iphone-15-pro",
-            title: "iPhone 15 Pro 256GB Black",
-            category: "electronics",
-            condition: "battery 91%, unlocked, clean IMEI, light wear",
-            askPriceMinor: 50_000,
-            floorPriceMinor: 43_000,
-            marketMedianMinor: 52_000,
-            tags: ["electronics/phones/iphone", "electronics/phones/iphone/pro"],
-            sellerNote: "Seller can close today if the buyer is decisive.",
-          },
-        ],
-      });
-      totalEstimatedUsd += advisorTurn.turn_cost.estimated_usd;
-
-      expect(advisorTurn.reply.length).toBeGreaterThan(0);
-      expect(advisorTurn.memory.categoryInterest.length).toBeGreaterThan(0);
-      expect([advisorTurn.memory.categoryInterest, ...advisorTurn.memory.source].join(" ").toLowerCase()).toMatch(
-        /iphone|아이폰/,
+      const negotiationAgentBuilderTurn = await postJson<NegotiationAgentBuilderTurnResponse>(
+        "/intelligence/demo/advisor-turn",
+        {
+          user_id: userId,
+          agent_id: agentId,
+          message: advisorMessage,
+          previous_memory: emptyNegotiationAgentBuilderMemory(),
+          listings: [
+            {
+              id: "live-e2e-iphone-15-pro",
+              title: "iPhone 15 Pro 256GB Black",
+              category: "electronics",
+              condition: "battery 91%, unlocked, clean IMEI, light wear",
+              askPriceMinor: 50_000,
+              floorPriceMinor: 43_000,
+              marketMedianMinor: 52_000,
+              tags: ["electronics/phones/iphone", "electronics/phones/iphone/pro"],
+              sellerNote: "Seller can close today if the buyer is decisive.",
+            },
+          ],
+        },
       );
-      expect(advisorTurn.memory.budgetMax).toBe(500);
-      expect(advisorTurn.memory.mustHave.join(" ").toLowerCase()).toMatch(/battery|배터리|unlock|언락/);
+      totalEstimatedUsd += negotiationAgentBuilderTurn.turn_cost.estimated_usd;
+
+      expect(negotiationAgentBuilderTurn.reply.length).toBeGreaterThan(0);
+      expect(negotiationAgentBuilderTurn.memory.categoryInterest.length).toBeGreaterThan(0);
+      expect(
+        [
+          negotiationAgentBuilderTurn.memory.categoryInterest,
+          ...negotiationAgentBuilderTurn.memory.source,
+        ]
+          .join(" ")
+          .toLowerCase(),
+      ).toMatch(/iphone|아이폰/);
+      expect(negotiationAgentBuilderTurn.memory.budgetMax).toBe(500);
+      expect(negotiationAgentBuilderTurn.memory.mustHave.join(" ").toLowerCase()).toMatch(
+        /battery|배터리|unlock|언락/,
+      );
 
       await postJson("/intelligence/demo/advisor-memory", {
         user_id: userId,
         agent_id: agentId,
         message: advisorMessage,
-        memory: advisorTurn.memory,
+        memory: negotiationAgentBuilderTurn.memory,
       });
 
-      const storedMemory = await getJson<MemoryResponse>(`/intelligence/demo/memory?user_id=${userId}`);
+      const storedMemory = await getJson<MemoryResponse>(
+        `/intelligence/demo/memory?user_id=${userId}`,
+      );
       const memoryKeys = storedMemory.cards.map((card) => card.memory_key);
       expect(memoryKeys).toContain("advisor:category_interest");
       expect(memoryKeys).toContain("advisor:risk_and_tactic");
@@ -187,19 +199,25 @@ describeLive("Live LLM memory E2E over HTTP", () => {
       expect(init.pipeline[0]?.user_prompt).toContain("Stored HIL Memory");
       expect(init.cost.total_tokens.prompt + init.cost.total_tokens.completion).toBeGreaterThan(0);
 
-      const round = await postJson<NegotiationRoundResponse>(`/negotiations/demo/${init.demo_id}/round`, {
-        seller_price_minor: 48_000,
-        seller_message:
-          "I can do $480 if we close today. Battery health is 91%, it is unlocked, and the IMEI is clean.",
-      });
-      totalEstimatedUsd = advisorTurn.turn_cost.estimated_usd + round.cost.total_usd;
+      const round = await postJson<NegotiationRoundResponse>(
+        `/negotiations/demo/${init.demo_id}/round`,
+        {
+          seller_price_minor: 48_000,
+          seller_message:
+            "I can do $480 if we close today. Battery health is 91%, it is unlocked, and the IMEI is clean.",
+        },
+      );
+      totalEstimatedUsd =
+        negotiationAgentBuilderTurn.turn_cost.estimated_usd + round.cost.total_usd;
 
       expect(round.round).toBe(1);
       expect(round.final.rendered_message.length).toBeGreaterThan(0);
       expect(round.final.validation.hard_passed).toBe(true);
       expect(round.final.hil_memory.applied).toBe(true);
       expect(round.final.decision.action).toMatch(/ACCEPT|COUNTER|CONFIRM|REJECT|HOLD/);
-      expect(round.cost.round_tokens.prompt + round.cost.round_tokens.completion).toBeGreaterThan(0);
+      expect(round.cost.round_tokens.prompt + round.cost.round_tokens.completion).toBeGreaterThan(
+        0,
+      );
 
       console.info(
         "[live-llm-memory-e2e]",
@@ -209,7 +227,8 @@ describeLive("Live LLM memory E2E over HTTP", () => {
             key: card.memory_key,
             summary: card.summary,
           })),
-          advisor_turn_cost_usd: advisorTurn.turn_cost.estimated_usd,
+          negotiation_agent_builder_turn_cost_usd:
+            negotiationAgentBuilderTurn.turn_cost.estimated_usd,
           negotiation_total_cost_usd: round.cost.total_usd,
           estimated_total_usd: Number(totalEstimatedUsd.toFixed(8)),
           init_strategy: init.strategy,
@@ -221,13 +240,15 @@ describeLive("Live LLM memory E2E over HTTP", () => {
       expect(totalEstimatedUsd).toBeLessThanOrEqual(MAX_E2E_USD);
     } finally {
       await deleteMemory(userId);
-      const remaining = await getJson<MemoryResponse>(`/intelligence/demo/memory?user_id=${userId}`);
+      const remaining = await getJson<MemoryResponse>(
+        `/intelligence/demo/memory?user_id=${userId}`,
+      );
       expect(remaining.cards).toHaveLength(0);
     }
   }, 180_000);
 });
 
-function emptyAdvisorMemory(): AdvisorMemory {
+function emptyNegotiationAgentBuilderMemory(): NegotiationAgentBuilderMemory {
   return {
     categoryInterest: "electronics",
     mustHave: [],
@@ -266,7 +287,9 @@ async function fetchJson<T = unknown>(path: string, init: RequestInit): Promise<
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status} ${init.method ?? "GET"} ${path}: ${text.slice(0, 2000)}`);
+    throw new Error(
+      `HTTP ${response.status} ${init.method ?? "GET"} ${path}: ${text.slice(0, 2000)}`,
+    );
   }
 
   return text ? (JSON.parse(text) as T) : (undefined as T);

@@ -1,4 +1,8 @@
-import type { PaymentIntent, X402PaymentRequiredEnvelope, X402PaymentRequirement } from "@haggle/payment-core";
+import type {
+  PaymentIntent,
+  X402PaymentRequiredEnvelope,
+  X402PaymentRequirement,
+} from "@haggle/payment-core";
 import { toSettlementAssetMoney } from "@haggle/shared";
 
 export interface X402RequirementContext {
@@ -40,7 +44,8 @@ export function createX402PaymentRequirement(
       settlement_amount_minor: String(usdcAmount.amount_minor),
       settlement_amount_decimals: usdcAmount.decimals,
       seller_wallet: context.sellerWallet,
-      pay_to_role: context.receiverRole ?? (context.paymentReceiver ? "payment_receiver" : "seller_wallet"),
+      pay_to_role:
+        context.receiverRole ?? (context.paymentReceiver ? "payment_receiver" : "seller_wallet"),
     },
   };
 

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 
@@ -15,41 +15,41 @@ interface CheckoutFlowProps {
 
 /* ===== color tokens (light theme) ===== */
 const C = {
-  ink: "#14141a",
-  dim: "#3d3d45",
-  mute: "#6b6b75",
-  faint: "#a29b8d",
-  bg: "#f6f4ee",
-  card: "#ffffff",
-  card2: "#f7f4eb",
-  line: "#e3ddcf",
-  line2: "#cdc6b5",
-  cyan: "#0891b2",
-  cyanFg: "#0e7490",
-  cyanBg: "rgba(8,145,178,0.08)",
-  cyanBd: "rgba(8,145,178,0.25)",
-  violet: "#7c3aed",
-  violetFg: "#6d28d9",
-  violetBg: "rgba(124,58,237,0.07)",
-  violetBd: "rgba(124,58,237,0.25)",
-  em: "#059669",
-  emFg: "#047857",
-  emBg: "rgba(5,150,105,0.08)",
-  emBd: "rgba(5,150,105,0.25)",
-  redFg: "#b91c1c",
-  redBg: "rgba(220,38,38,0.07)",
-  redBd: "rgba(220,38,38,0.25)",
-  amberFg: "#b45309",
-  amberBg: "rgba(217,119,6,0.08)",
-  amberBd: "rgba(217,119,6,0.25)",
+  ink: "var(--text-primary)",
+  dim: "var(--text-secondary)",
+  mute: "var(--text-muted)",
+  faint: "var(--text-muted)",
+  bg: "var(--bg-primary)",
+  card: "var(--bg-raised)",
+  card2: "var(--bg-sunken)",
+  line: "var(--border-subtle)",
+  line2: "var(--border-default)",
+  cyan: "var(--action-primary)",
+  cyanFg: "var(--action-primary-pressed)",
+  cyanBg: "color-mix(in srgb, var(--action-primary) 8%, transparent)",
+  cyanBd: "color-mix(in srgb, var(--action-primary) 25%, transparent)",
+  violet: "var(--fb-info-fg)",
+  violetFg: "var(--fb-info-fg)",
+  violetBg: "color-mix(in srgb, var(--fb-info-fg) 7%, transparent)",
+  violetBd: "color-mix(in srgb, var(--fb-info-fg) 25%, transparent)",
+  em: "var(--fb-success-fg)",
+  emFg: "var(--fb-success-fg)",
+  emBg: "color-mix(in srgb, var(--fb-success-fg) 8%, transparent)",
+  emBd: "color-mix(in srgb, var(--fb-success-fg) 25%, transparent)",
+  redFg: "var(--fb-error-fg)",
+  redBg: "color-mix(in srgb, var(--fb-error-fg) 7%, transparent)",
+  redBd: "color-mix(in srgb, var(--fb-error-fg) 25%, transparent)",
+  amberFg: "var(--fb-warning-fg)",
+  amberBg: "color-mix(in srgb, var(--fb-warning-fg) 8%, transparent)",
+  amberBd: "color-mix(in srgb, var(--fb-warning-fg) 25%, transparent)",
 };
 
 /* ===== keyframe styles (injected once) ===== */
 const KEYFRAMES = `
 @keyframes haggle-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(8,145,178,0.4); }
-  70%  { box-shadow: 0 0 0 10px rgba(8,145,178,0); }
-  100% { box-shadow: 0 0 0 0 rgba(8,145,178,0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--action-primary) 40%, transparent); }
+  70%  { box-shadow: 0 0 0 10px color-mix(in srgb, var(--action-primary) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--action-primary) 0%, transparent); }
 }
 @keyframes haggle-spin-slow { to { transform: rotate(360deg); } }
 @keyframes haggle-spin-rev  { to { transform: rotate(-360deg); } }
@@ -83,6 +83,7 @@ const I =
   (d: React.ReactNode) =>
   ({ size = 16, color = "currentColor", sw = 1.5, style }: IconProps) => (
     <svg
+      aria-hidden="true"
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -106,33 +107,29 @@ const Ic = {
       <rect x="3" y="6" width="18" height="13" rx="2" />
       <path d="M16 13h3" />
       <path d="M3 9h18" />
-    </g>
+    </g>,
   ),
   card: I(
     <g>
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <path d="M3 10h18" />
       <path d="M7 15h3" />
-    </g>
+    </g>,
   ),
-  shield: I(
-    <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" />
-  ),
+  shield: I(<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" />),
   lock: I(
     <g>
       <rect x="4" y="11" width="16" height="10" rx="2" />
       <path d="M8 11V8a4 4 0 118 0v3" />
-    </g>
+    </g>,
   ),
-  flame: I(
-    <path d="M12 3s5 4 5 9a5 5 0 01-10 0c0-2 1-3 2-4-.5 2 .5 3 1.5 3 0-3 1.5-5 1.5-8z" />
-  ),
+  flame: I(<path d="M12 3s5 4 5 9a5 5 0 01-10 0c0-2 1-3 2-4-.5 2 .5 3 1.5 3 0-3 1.5-5 1.5-8z" />),
   pkg: I(
     <g>
       <path d="M21 16V8l-9-5-9 5v8l9 5 9-5z" />
       <path d="M3.3 7L12 12l8.7-5" />
       <path d="M12 22V12" />
-    </g>
+    </g>,
   ),
   truck: I(
     <g>
@@ -140,58 +137,58 @@ const Ic = {
       <path d="M14 10h4l3 3v4h-7" />
       <circle cx="7" cy="18" r="2" />
       <circle cx="17" cy="18" r="2" />
-    </g>
+    </g>,
   ),
   file: I(
     <g>
       <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
       <path d="M14 3v5h5" />
-    </g>
+    </g>,
   ),
   sig: I(
     <g>
       <path d="M3 17s3-2 6-2 4 2 7 2 5-2 5-2" />
       <path d="M7 13c3-6 6-6 9 0" />
-    </g>
+    </g>,
   ),
   alert: I(
     <g>
       <path d="M12 3l10 18H2L12 3z" />
       <path d="M12 10v4M12 17v.01" />
-    </g>
+    </g>,
   ),
   play: I(<path d="M6 4l14 8-14 8V4z" />),
   pause: I(
     <g>
       <rect x="6" y="4" width="4" height="16" />
       <rect x="14" y="4" width="4" height="16" />
-    </g>
+    </g>,
   ),
   restart: I(
     <g>
       <path d="M3 12a9 9 0 1015-6.7L21 8" />
       <path d="M21 3v5h-5" />
-    </g>
+    </g>,
   ),
   info: I(
     <g>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 11v5M12 8v.01" />
-    </g>
+    </g>,
   ),
   ext: I(
     <g>
       <path d="M14 4h6v6" />
       <path d="M20 4L10 14" />
       <path d="M19 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h5" />
-    </g>
+    </g>,
   ),
   coin: I(
     <g>
       <circle cx="12" cy="12" r="9" />
       <path d="M9 10c0-1 1-2 3-2s3 1 3 2c0 2-6 2-6 4 0 1 1 2 3 2s3-1 3-2" />
       <path d="M12 6v2M12 16v2" />
-    </g>
+    </g>,
   ),
 };
 
@@ -221,26 +218,38 @@ const Card = ({
               : C.line;
   const bg =
     accent === "cyan"
-      ? `linear-gradient(180deg, ${C.cyanBg}, #fff)`
+      ? `linear-gradient(180deg, ${C.cyanBg}, var(--bg-raised))`
       : accent === "violet"
-        ? `linear-gradient(180deg, ${C.violetBg}, #fff)`
+        ? `linear-gradient(180deg, ${C.violetBg}, var(--bg-raised))`
         : accent === "em"
-          ? `linear-gradient(180deg, ${C.emBg}, #fff)`
+          ? `linear-gradient(180deg, ${C.emBg}, var(--bg-raised))`
           : C.card;
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        borderRadius: 16,
-        border: `1px solid ${bd}`,
-        background: bg,
-        padding: 20,
-        ...style,
-      }}
-    >
-      {children}
-    </div>
-  );
+  const cardStyle: React.CSSProperties = {
+    borderRadius: 16,
+    border: `1px solid ${bd}`,
+    background: bg,
+    padding: 20,
+    ...style,
+  };
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          appearance: "none",
+          font: "inherit",
+          textAlign: "left",
+          width: "100%",
+          cursor: "pointer",
+          ...cardStyle,
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+  return <div style={cardStyle}>{children}</div>;
 };
 
 const Btn = ({
@@ -277,22 +286,17 @@ const Btn = ({
     transition: "all 0.18s",
     opacity: disabled ? 0.45 : 1,
     width: full ? "100%" : "auto",
-    padding:
-      size === "sm"
-        ? "8px 14px"
-        : size === "lg"
-          ? "14px 22px"
-          : "11px 18px",
+    padding: size === "sm" ? "8px 14px" : size === "lg" ? "14px 22px" : "11px 18px",
     fontSize: size === "sm" ? 12.5 : size === "lg" ? 15 : 13.5,
   };
   const vs: Record<string, React.CSSProperties> = {
     primary: {
       background: C.cyan,
-      color: "#fff",
-      boxShadow: "0 4px 14px -6px rgba(8,145,178,0.4)",
+      color: "var(--text-on-accent)",
+      boxShadow: "0 4px 14px -6px color-mix(in srgb, var(--action-primary) 40%, transparent)",
     },
     secondary: {
-      background: "#fff",
+      background: "var(--bg-raised)",
       color: C.dim,
       borderColor: C.line2,
     },
@@ -304,12 +308,13 @@ const Btn = ({
     },
     violet: {
       background: C.violet,
-      color: "#fff",
-      boxShadow: "0 4px 14px -6px rgba(124,58,237,0.4)",
+      color: "var(--text-on-accent)",
+      boxShadow: "0 4px 14px -6px color-mix(in srgb, var(--fb-info-fg) 40%, transparent)",
     },
   };
   return (
     <button
+      type="button"
       onClick={disabled ? undefined : onClick}
       style={{ ...base, ...vs[v], ...style }}
     >
@@ -337,8 +342,8 @@ const Badge = ({
     em: { f: C.emFg, b: C.emBg, d: C.emBd },
     slate: {
       f: C.dim,
-      b: "rgba(20,20,26,0.04)",
-      d: "rgba(20,20,26,0.12)",
+      b: "color-mix(in srgb, var(--text-primary) 4%, transparent)",
+      d: "color-mix(in srgb, var(--text-primary) 12%, transparent)",
     },
     amber: { f: C.amberFg, b: C.amberBg, d: C.amberBd },
     red: { f: C.redFg, b: C.redBg, d: C.redBd },
@@ -444,21 +449,8 @@ const Row = ({
   </div>
 );
 
-const KV = ({
-  k,
-  v,
-  mono,
-  dim,
-}: {
-  k: string;
-  v: string;
-  mono?: boolean;
-  dim?: boolean;
-}) => (
-  <Row
-    justify="space-between"
-    style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}` }}
-  >
+const KV = ({ k, v, mono, dim }: { k: string; v: string; mono?: boolean; dim?: boolean }) => (
+  <Row justify="space-between" style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}` }}>
     <span style={{ color: C.mute, fontSize: 12 }}>{k}</span>
     <span
       style={{
@@ -474,13 +466,7 @@ const KV = ({
   </Row>
 );
 
-const SL = ({
-  children,
-  right,
-}: {
-  children: React.ReactNode;
-  right?: React.ReactNode;
-}) => (
+const SL = ({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) => (
   <Row justify="space-between" style={{ marginBottom: 12 }}>
     <span
       style={{
@@ -514,20 +500,14 @@ const Api = ({ method = "POST", ep }: { method?: string; ep: string }) => (
   </div>
 );
 
-const PS = ({
-  label = "PRODUCT SHOT",
-  size = 64,
-}: {
-  label?: string;
-  size?: number;
-}) => (
+const PS = ({ label = "PRODUCT SHOT", size = 64 }: { label?: string; size?: number }) => (
   <div
     style={{
       width: size,
       height: size,
       borderRadius: 12,
       background:
-        "repeating-linear-gradient(135deg, rgba(20,20,26,0.05) 0 6px, rgba(20,20,26,0.02) 6px 12px)",
+        "repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-primary) 5%, transparent) 0 6px, color-mix(in srgb, var(--text-primary) 2%, transparent) 6px 12px)",
       border: `1px solid ${C.line}`,
       display: "flex",
       alignItems: "center",
@@ -569,10 +549,18 @@ const Timeline = ({
       const dn = done.includes(i);
       const on = i === cur;
       return (
-        <div
+        <button
+          type="button"
           key={s.k}
+          disabled={!(dn || on)}
           onClick={() => (dn || on) && onJump && onJump(i)}
           style={{
+            appearance: "none",
+            background: "none",
+            border: "none",
+            padding: 0,
+            font: "inherit",
+            textAlign: "inherit",
             position: "relative",
             display: "flex",
             flexDirection: "column",
@@ -588,7 +576,9 @@ const Timeline = ({
                 left: "50%",
                 right: "-50%",
                 height: 2,
-                background: dn ? "rgba(5,150,105,0.4)" : C.line,
+                background: dn
+                  ? "color-mix(in srgb, var(--fb-success-fg) 40%, transparent)"
+                  : C.line,
                 zIndex: 0,
               }}
             />
@@ -603,13 +593,12 @@ const Timeline = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: dn || on ? "#fff" : C.faint,
+              color: dn || on ? "var(--text-on-accent)" : C.faint,
               zIndex: 1,
               position: "relative",
               ...(on
                 ? {
-                    animation:
-                      "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
+                    animation: "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
                   }
                 : {}),
             }}
@@ -621,8 +610,7 @@ const Timeline = ({
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {i + 1}
@@ -645,29 +633,20 @@ const Timeline = ({
                 color: C.faint,
                 marginTop: 2,
                 letterSpacing: "0.04em",
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               STEP {String(i + 1).padStart(2, "0")}
             </div>
           </div>
-        </div>
+        </button>
       );
     })}
   </div>
 );
 
 /* ===== step header ===== */
-const SH = ({
-  eb,
-  title,
-  sub,
-}: {
-  eb: string;
-  title: string;
-  sub?: string;
-}) => (
+const SH = ({ eb, title, sub }: { eb: string; title: string; sub?: string }) => (
   <div style={{ marginBottom: 22 }}>
     <div
       style={{
@@ -675,8 +654,7 @@ const SH = ({
         color: C.cyanFg,
         letterSpacing: "0.16em",
         marginBottom: 8,
-        fontFamily:
-          "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
       }}
     >
       {eb}
@@ -735,21 +713,26 @@ const RailOption = ({
       ? {
           fg: C.cyanFg,
           bd: C.cyanBd,
-          accentBd: "rgba(8,145,178,0.55)",
-          bg: `linear-gradient(180deg, ${C.cyanBg}, #fff)`,
+          accentBd: "color-mix(in srgb, var(--action-primary) 55%, transparent)",
+          bg: `linear-gradient(180deg, ${C.cyanBg}, var(--bg-raised))`,
         }
       : {
           fg: C.violetFg,
           bd: C.violetBd,
-          accentBd: "rgba(124,58,237,0.55)",
-          bg: `linear-gradient(180deg, ${C.violetBg}, #fff)`,
+          accentBd: "color-mix(in srgb, var(--fb-info-fg) 55%, transparent)",
+          bg: `linear-gradient(180deg, ${C.violetBg}, var(--bg-raised))`,
         };
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={{
+        appearance: "none",
+        font: "inherit",
+        textAlign: "left",
+        width: "100%",
         position: "relative",
         cursor: "pointer",
         borderRadius: 16,
@@ -758,7 +741,7 @@ const RailOption = ({
         background: selected ? col.bg : C.card,
         transition: "all 0.2s",
         boxShadow: selected
-          ? `0 6px 24px -10px ${tone === "cyan" ? "rgba(8,145,178,0.3)" : "rgba(124,58,237,0.3)"}`
+          ? `0 6px 24px -10px ${tone === "cyan" ? "color-mix(in srgb, var(--action-primary) 30%, transparent)" : "color-mix(in srgb, var(--fb-info-fg) 30%, transparent)"}`
           : "none",
       }}
     >
@@ -771,7 +754,7 @@ const RailOption = ({
           height: 18,
           borderRadius: "50%",
           border: `2px solid ${selected ? col.fg : C.line2}`,
-          background: "#fff",
+          background: "var(--bg-raised)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -840,8 +823,7 @@ const RailOption = ({
             style={{
               fontSize: 11,
               color: C.mute,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               textTransform: "uppercase",
               letterSpacing: "0.08em",
             }}
@@ -853,8 +835,7 @@ const RailOption = ({
               fontSize: 18,
               fontWeight: 600,
               color: col.fg,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
@@ -866,14 +847,13 @@ const RailOption = ({
             fontSize: 11,
             color: C.faint,
             marginTop: 4,
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           {feeDetail}
         </div>
       </div>
-    </div>
+    </button>
   );
 };
 
@@ -902,7 +882,7 @@ const FeeTable = ({ amt, rail }: { amt: number; rail: string }) => {
           display: "grid",
           gridTemplateColumns: "1.4fr 1fr 1fr",
           padding: "10px 16px",
-          background: "rgba(20,20,26,0.02)",
+          background: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
           borderBottom: `1px solid ${C.line}`,
         }}
       >
@@ -912,8 +892,7 @@ const FeeTable = ({ amt, rail }: { amt: number; rail: string }) => {
             color: C.mute,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           Breakdown
@@ -925,8 +904,7 @@ const FeeTable = ({ amt, rail }: { amt: number; rail: string }) => {
             letterSpacing: "0.1em",
             textTransform: "uppercase",
             textAlign: "right",
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           USDC Direct
@@ -938,8 +916,7 @@ const FeeTable = ({ amt, rail }: { amt: number; rail: string }) => {
             letterSpacing: "0.1em",
             textTransform: "uppercase",
             textAlign: "right",
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           Card
@@ -970,8 +947,7 @@ const FeeTable = ({ amt, rail }: { amt: number; rail: string }) => {
               fontSize: 12.5,
               textAlign: "right",
               color: rail === "x402" ? C.ink : C.mute,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
@@ -982,8 +958,7 @@ const FeeTable = ({ amt, rail }: { amt: number; rail: string }) => {
               fontSize: 12.5,
               textAlign: "right",
               color: rail === "stripe" ? C.ink : C.mute,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
@@ -1064,11 +1039,7 @@ const Step2 = ({ s, next }: { s: SessionState; next: () => void }) => (
       <KV k="Negotiated price" v={`$${s.amount.toFixed(2)} USD`} mono />
       <KV
         k="Payment rail"
-        v={
-          s.rail === "x402"
-            ? "x402 · USDC Direct"
-            : "stripe · Card Onramp"
-        }
+        v={s.rail === "x402" ? "x402 · USDC Direct" : "stripe · Card Onramp"}
         mono
       />
       <KV k="Settlement asset" v="USDC on Base L2" mono />
@@ -1077,19 +1048,14 @@ const Step2 = ({ s, next }: { s: SessionState; next: () => void }) => (
     {s.rail === "stripe" && (
       <Card accent="violet" style={{ marginBottom: 16 }}>
         <Row gap={10} align="flex-start">
-          <Ic.info
-            size={16}
-            color={C.violetFg}
-            style={{ marginTop: 2, flexShrink: 0 }}
-          />
+          <Ic.info size={16} color={C.violetFg} style={{ marginTop: 2, flexShrink: 0 }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
               Stripe Onramp session will be provisioned
             </div>
             <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
-              Haggle will create a hosted Stripe Crypto Onramp session at the
-              authorize step. Stripe handles KYC, card authorization, and
-              converts fiat into USDC delivered to Base L2.
+              Haggle will create a hosted Stripe Crypto Onramp session at the authorize step. Stripe
+              handles KYC, card authorization, and converts fiat into USDC delivered to Base L2.
             </div>
           </div>
         </Row>
@@ -1128,20 +1094,14 @@ const QC = ({
           color: C.mute,
           textTransform: "uppercase",
           letterSpacing: "0.1em",
-          fontFamily:
-            "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+          fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
         }}
       >
         {lbl}
       </span>
       <div
         style={{
-          color:
-            tone === "cyan"
-              ? C.cyanFg
-              : tone === "violet"
-                ? C.violetFg
-                : C.mute,
+          color: tone === "cyan" ? C.cyanFg : tone === "violet" ? C.violetFg : C.mute,
         }}
       >
         {icon}
@@ -1155,8 +1115,7 @@ const QC = ({
           textTransform: "uppercase",
           letterSpacing: "0.06em",
           fontSize: 9.5,
-          fontFamily:
-            "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+          fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
         }}
       >
         {addrLbl}
@@ -1164,8 +1123,7 @@ const QC = ({
       <span
         style={{
           color: C.dim,
-          fontFamily:
-            "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+          fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
         }}
       >
         {addr}
@@ -1196,8 +1154,7 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
               style={{
                 fontSize: 10,
                 color: C.faint,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               share of buyer payment
@@ -1222,15 +1179,14 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
               display: "flex",
               alignItems: "center",
               paddingLeft: 12,
-              color: "#fff",
+              color: "var(--text-on-accent)",
               fontSize: 11,
               fontWeight: 600,
             }}
           >
             <span
               style={{
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 fontVariantNumeric: "tabular-nums",
               }}
             >
@@ -1240,11 +1196,11 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
           <div
             style={{
               width: `${hp}%`,
-              background: `linear-gradient(180deg, ${C.cyan}, rgba(8,145,178,0.75))`,
+              background: `linear-gradient(180deg, ${C.cyan}, color-mix(in srgb, var(--action-primary) 75%, transparent))`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#fff",
+              color: "var(--text-on-accent)",
               fontSize: 11,
               fontWeight: 600,
               minWidth: 50,
@@ -1252,8 +1208,7 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
           >
             <span
               style={{
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 fontVariantNumeric: "tabular-nums",
               }}
             >
@@ -1264,11 +1219,11 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
             <div
               style={{
                 width: `${stp}%`,
-                background: `linear-gradient(180deg, ${C.violet}, rgba(124,58,237,0.75))`,
+                background: `linear-gradient(180deg, ${C.violet}, color-mix(in srgb, var(--fb-info-fg) 75%, transparent))`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#fff",
+                color: "var(--text-on-accent)",
                 fontSize: 11,
                 fontWeight: 600,
                 minWidth: 50,
@@ -1276,8 +1231,7 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
             >
               <span
                 style={{
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
@@ -1327,8 +1281,7 @@ const Step3 = ({ s, next }: { s: SessionState; next: () => void }) => {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns:
-            s.rail === "stripe" ? "1fr 1fr 1fr" : "1fr 1fr",
+          gridTemplateColumns: s.rail === "stripe" ? "1fr 1fr 1fr" : "1fr 1fr",
           gap: 12,
           marginBottom: 16,
         }}
@@ -1382,12 +1335,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
         sub="Backend signs settlement params via EIP-712. Buyer calls HaggleSettlementRouter on Base L2 — the contract atomically splits USDC."
       />
       <Card accent="violet" style={{ marginBottom: 14 }}>
-        <Row
-          justify="space-between"
-          style={{ marginBottom: 14 }}
-          wrap
-          gap={8}
-        >
+        <Row justify="space-between" style={{ marginBottom: 14 }} wrap gap={8}>
           <Row gap={10}>
             <div
               style={{
@@ -1405,16 +1353,13 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
               <Ic.shield size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>
-                HaggleSettlementRouter
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>HaggleSettlementRouter</div>
               <div
                 style={{
                   fontSize: 11,
                   color: C.mute,
                   marginTop: 2,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 0x4E3A…B7c1 · Base L2
@@ -1445,7 +1390,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
               style={{
                 padding: 10,
                 borderRadius: 8,
-                background: "rgba(124,58,237,0.03)",
+                background: "color-mix(in srgb, var(--fb-info-fg) 3%, transparent)",
                 border: `1px solid ${C.violetBd}`,
               }}
             >
@@ -1455,8 +1400,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
                   color: C.mute,
                   textTransform: "uppercase",
                   letterSpacing: "0.1em",
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {k}
@@ -1466,8 +1410,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
                   fontSize: 12,
                   color: C.violetFg,
                   marginTop: 4,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {v}
@@ -1476,6 +1419,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
           ))}
         </div>
         <button
+          type="button"
           onClick={() => setOpen(!open)}
           style={{
             marginTop: 14,
@@ -1497,8 +1441,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
             <span
               style={{
                 fontSize: 12,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               Settlement(...)
@@ -1520,8 +1463,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
               background: C.card2,
               border: `1px solid ${C.line}`,
               borderRadius: 8,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               fontSize: 12,
               color: C.dim,
               lineHeight: 1.7,
@@ -1552,10 +1494,7 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
         >
           {(
             [
-              [
-                "Duplicate prevention",
-                "settledOrders — each orderId settles once",
-              ],
+              ["Duplicate prevention", "settledOrders — each orderId settles once"],
               ["Fee cap", "MAX_FEE_BPS = 1000 (10%) ceiling"],
               ["Signer rotation", "48h delay before new signer active"],
               ["Guardian pause", "Emergency halt, separate from owner"],
@@ -1564,18 +1503,9 @@ const Step4x = ({ s, next }: { s: SessionState; next: () => void }) => {
             ] as const
           ).map(([k, v]) => (
             <Row key={k} gap={10} align="flex-start">
-              <Ic.check
-                size={14}
-                color={C.emFg}
-                sw={2.5}
-                style={{ marginTop: 3, flexShrink: 0 }}
-              />
+              <Ic.check size={14} color={C.emFg} sw={2.5} style={{ marginTop: 3, flexShrink: 0 }} />
               <div>
-                <div
-                  style={{ fontSize: 12.5, fontWeight: 600, color: C.dim }}
-                >
-                  {k}
-                </div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: C.dim }}>{k}</div>
                 <div
                   style={{
                     fontSize: 11.5,
@@ -1630,19 +1560,16 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#fff",
+                  color: "var(--text-on-accent)",
                   fontWeight: 700,
                   fontSize: 13,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 S
               </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  Stripe hosted form
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Stripe hosted form</div>
                 <div
                   style={{
                     fontSize: 10.5,
@@ -1681,8 +1608,7 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
                 style={{
                   fontSize: 10,
                   color: C.mute,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   marginBottom: 4,
@@ -1732,11 +1658,7 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
             }}
           >
             <Row gap={8} align="flex-start">
-              <Ic.info
-                size={14}
-                color={C.violetFg}
-                style={{ marginTop: 2, flexShrink: 0 }}
-              />
+              <Ic.info size={14} color={C.violetFg} style={{ marginTop: 2, flexShrink: 0 }} />
               <div>
                 Stripe converts{" "}
                 <span
@@ -1778,11 +1700,7 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
           <KV k="Mode" v="Stripe Crypto Onramp" />
           <KV k="Source" v="USD (card)" mono />
           <KV k="Destination" v="USDC on Base L2" mono />
-          <KV
-            k="Buyer charge"
-            v={`$${(s.amount + s.amount * 0.015).toFixed(2)}`}
-            mono
-          />
+          <KV k="Buyer charge" v={`$${(s.amount + s.amount * 0.015).toFixed(2)}`} mono />
           <KV k="Settles via" v="Webhook fulfillment" dim />
           <div
             style={{
@@ -1792,17 +1710,13 @@ const Step4s = ({ s, next }: { s: SessionState; next: () => void }) => {
               lineHeight: 1.55,
             }}
           >
-            On successful card authorization, Stripe fires a webhook to
-            Haggle, which then proceeds with on-chain settlement.
+            On successful card authorization, Stripe fires a webhook to Haggle, which then proceeds
+            with on-chain settlement.
           </div>
         </Card>
       </div>
       <Row justify="flex-end" style={{ marginTop: 18 }}>
-        <Btn
-          onClick={next}
-          v="violet"
-          icon={<Ic.card size={16} />}
-        >
+        <Btn onClick={next} v="violet" icon={<Ic.card size={16} />}>
           Pay ${(s.amount + s.amount * 0.015).toFixed(2)} with card
         </Btn>
       </Row>
@@ -1831,8 +1745,7 @@ const FC = ({
       <div style={{ fontSize: 11, color: C.mute }}>
         <span
           style={{
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           {from}
@@ -1841,8 +1754,7 @@ const FC = ({
         <span
           style={{
             color: col,
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           {to}
@@ -1854,7 +1766,7 @@ const FC = ({
           marginTop: 10,
           height: 3,
           borderRadius: 2,
-          background: "rgba(20,20,26,0.08)",
+          background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
           position: "relative",
           overflow: "hidden",
         }}
@@ -1877,8 +1789,7 @@ const FC = ({
             fontSize: 10,
             color: C.faint,
             marginTop: 6,
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           {note}
@@ -1888,15 +1799,7 @@ const FC = ({
   );
 };
 
-const RS = ({
-  lbl,
-  amt,
-  tone,
-}: {
-  lbl: string;
-  amt: number;
-  tone?: "em" | "cyan" | "violet";
-}) => (
+const RS = ({ lbl, amt, tone }: { lbl: string; amt: number; tone?: "em" | "cyan" | "violet" }) => (
   <div
     style={{
       padding: 12,
@@ -1912,8 +1815,7 @@ const RS = ({
         textTransform: "uppercase",
         letterSpacing: "0.1em",
         marginBottom: 6,
-        fontFamily:
-          "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
       }}
     >
       {lbl}
@@ -1922,15 +1824,7 @@ const RS = ({
   </div>
 );
 
-const Step5 = ({
-  s,
-  settling,
-  cont,
-}: {
-  s: SessionState;
-  settling: boolean;
-  cont: () => void;
-}) => {
+const Step5 = ({ s, settling, cont }: { s: SessionState; settling: boolean; cont: () => void }) => {
   const hf = s.amount * 0.015;
   const sf = s.rail === "stripe" ? s.amount * 0.015 : 0;
   const sel = s.amount - hf;
@@ -1969,7 +1863,7 @@ const Step5 = ({
                 inset: 0,
                 border: "2px solid transparent",
                 borderTopColor: C.cyan,
-                borderRightColor: "rgba(8,145,178,0.25)",
+                borderRightColor: "color-mix(in srgb, var(--action-primary) 25%, transparent)",
                 borderRadius: "50%",
                 animation: "haggle-spin-slow 1.2s linear infinite",
               }}
@@ -1980,7 +1874,7 @@ const Step5 = ({
                 inset: 14,
                 border: "2px solid transparent",
                 borderTopColor: C.violet,
-                borderLeftColor: "rgba(124,58,237,0.25)",
+                borderLeftColor: "color-mix(in srgb, var(--fb-info-fg) 25%, transparent)",
                 borderRadius: "50%",
                 animation: "haggle-spin-rev 1.6s linear infinite",
               }}
@@ -1993,8 +1887,7 @@ const Step5 = ({
                 alignItems: "center",
                 justifyContent: "center",
                 color: C.cyanFg,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 fontSize: 10,
                 letterSpacing: "0.1em",
               }}
@@ -2009,8 +1902,7 @@ const Step5 = ({
             style={{
               fontSize: 12,
               color: C.mute,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             block confirm · signer verify · atomic transfer
@@ -2019,8 +1911,7 @@ const Step5 = ({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              s.rail === "stripe" ? "1fr 1fr 1fr" : "1fr 1fr",
+            gridTemplateColumns: s.rail === "stripe" ? "1fr 1fr 1fr" : "1fr 1fr",
             gap: 10,
           }}
         >
@@ -2057,16 +1948,13 @@ const Step5 = ({
             <Ic.check size={22} sw={2.5} />
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              Settlement receipt
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Settlement receipt</div>
             <div
               style={{
                 fontSize: 11,
                 color: C.mute,
                 marginTop: 2,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               tx 0x8f2a…b7c1 · block 12,483,917 · Base L2
@@ -2118,8 +2006,7 @@ const Step5 = ({
                   color: C.mute,
                   textTransform: "uppercase",
                   letterSpacing: "0.1em",
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 Haggle fee wallet
@@ -2129,8 +2016,7 @@ const Step5 = ({
                   fontSize: 11,
                   color: C.dim,
                   marginTop: 2,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 0xHagg…F33E
@@ -2144,9 +2030,7 @@ const Step5 = ({
         </Card>
         <Card>
           <SL>Auto-created resources</SL>
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: 10 }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <Row justify="space-between">
               <Row gap={10}>
                 <Ic.shield size={14} color={C.mute} />
@@ -2160,9 +2044,7 @@ const Step5 = ({
                   >
                     Settlement Release
                   </div>
-                  <div style={{ fontSize: 11, color: C.mute }}>
-                    Phase 1 + 2
-                  </div>
+                  <div style={{ fontSize: 11, color: C.mute }}>Phase 1 + 2</div>
                 </div>
               </Row>
               <Badge tone="slate" subtle>
@@ -2182,9 +2064,7 @@ const Step5 = ({
                   >
                     Shipment Record
                   </div>
-                  <div style={{ fontSize: 11, color: C.mute }}>
-                    LABEL_PENDING
-                  </div>
+                  <div style={{ fontSize: 11, color: C.mute }}>LABEL_PENDING</div>
                 </div>
               </Row>
               <Badge tone="slate" subtle>
@@ -2204,9 +2084,7 @@ const Step5 = ({
                   >
                     Order status
                   </div>
-                  <div style={{ fontSize: 11, color: C.mute }}>
-                    → FULFILLMENT_PENDING
-                  </div>
+                  <div style={{ fontSize: 11, color: C.mute }}>→ FULFILLMENT_PENDING</div>
                 </div>
               </Row>
               <Badge tone="em" subtle>
@@ -2272,28 +2150,20 @@ const SHIP_EVENTS = [
   },
 ];
 
-const PHASE_ORDER = [
-  "labelPending",
-  "labelCreated",
-  "inTransit",
-  "outForDelivery",
-  "delivered",
-];
+const PHASE_ORDER = ["labelPending", "labelCreated", "inTransit", "outForDelivery", "delivered"];
 
 // Weight tiers based on USPS Ground Advantage rates (matching shipping-core)
 // Buffer = next tier rate - current tier rate (NOT a % of item price)
 const WEIGHT_TIERS = [
-  { tier: "T1", range: "0 – 1.0 lb", rate: 6.00, nextRate: 7.50, buffer: 1.50 },
-  { tier: "T2", range: "1.0 – 2.0 lb", rate: 7.50, nextRate: 9.00, buffer: 1.50 },
-  { tier: "T3", range: "2.0 – 3.0 lb", rate: 9.00, nextRate: 11.00, buffer: 2.00 },
-  { tier: "T4", range: "3.0 – 5.0 lb", rate: 11.00, nextRate: 14.00, buffer: 3.00 },
+  { tier: "T1", range: "0 – 1.0 lb", rate: 6.0, nextRate: 7.5, buffer: 1.5 },
+  { tier: "T2", range: "1.0 – 2.0 lb", rate: 7.5, nextRate: 9.0, buffer: 1.5 },
+  { tier: "T3", range: "2.0 – 3.0 lb", rate: 9.0, nextRate: 11.0, buffer: 2.0 },
+  { tier: "T4", range: "3.0 – 5.0 lb", rate: 11.0, nextRate: 14.0, buffer: 3.0 },
 ];
 
 const visibleEvents = (sub: string) => {
   const maxIdx = PHASE_ORDER.indexOf(sub);
-  return SHIP_EVENTS.filter(
-    (e) => PHASE_ORDER.indexOf(e.phase) <= maxIdx
-  );
+  return SHIP_EVENTS.filter((e) => PHASE_ORDER.indexOf(e.phase) <= maxIdx);
 };
 
 const SLABadge = ({ status }: { status: "ok" | "warn" | "bad" | "fulfilled" }) => {
@@ -2306,15 +2176,7 @@ const SLABadge = ({ status }: { status: "ok" | "warn" | "bad" | "fulfilled" }) =
   return <Badge tone={m.tone}>{m.lbl}</Badge>;
 };
 
-const Step6 = ({
-  s,
-  sub,
-  act,
-}: {
-  s: SessionState;
-  sub: string;
-  act: () => void;
-}) => {
+const Step6 = ({ sub, act }: { s: SessionState; sub: string; act: () => void }) => {
   const declaredWeight = 0.82;
   const tier = WEIGHT_TIERS[0];
   const baseRate = tier.rate;
@@ -2343,15 +2205,8 @@ const Step6 = ({
   ];
   const transitDaysTotal = 3;
   const transitDaysElapsed =
-    sub === "inTransit"
-      ? 2
-      : sub === "outForDelivery" || sub === "delivered"
-        ? 3
-        : 0;
-  const progressPct = Math.min(
-    100,
-    (transitDaysElapsed / transitDaysTotal) * 100
-  );
+    sub === "inTransit" ? 2 : sub === "outForDelivery" || sub === "delivered" ? 3 : 0;
+  const progressPct = Math.min(100, (transitDaysElapsed / transitDaysTotal) * 100);
   const events = visibleEvents(sub);
 
   return (
@@ -2382,16 +2237,13 @@ const Step6 = ({
               <Ic.pkg size={18} />
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>
-                Shipment shp_2c9a7e
-              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Shipment shp_2c9a7e</div>
               <div
                 style={{
                   fontSize: 11,
                   color: C.mute,
                   marginTop: 2,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 USPS Priority · via EasyPost · rate_R7p3f
@@ -2507,22 +2359,10 @@ const Step6 = ({
                   [
                     ["Declared weight", "0.82 lb", "weight tier T1"],
                     ["Dimensions", "7 × 5 × 3 in", "LWH inches"],
-                    [
-                      "Category",
-                      "Electronics · phone",
-                      "restricted list OK",
-                    ],
-                    [
-                      "Contents",
-                      "iPhone 14 Pro 128GB",
-                      "$1,200 declared value",
-                    ],
+                    ["Category", "Electronics · phone", "restricted list OK"],
+                    ["Contents", "iPhone 14 Pro 128GB", "$1,200 declared value"],
                     ["Origin", "Austin, TX 78701", "seller verified"],
-                    [
-                      "Destination",
-                      "Brooklyn, NY 11201",
-                      "buyer confirmed",
-                    ],
+                    ["Destination", "Brooklyn, NY 11201", "buyer confirmed"],
                   ] as const
                 ).map(([k, v, note]) => (
                   <div
@@ -2576,7 +2416,7 @@ const Step6 = ({
               <div style={{ padding: "8px 0" }}>
                 {routeStops.map((r, i) => (
                   <div
-                    key={i}
+                    key={r.city}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "20px 1fr auto",
@@ -2598,11 +2438,7 @@ const Step6 = ({
                           height: 8,
                           borderRadius: "50%",
                           background:
-                            i === 0
-                              ? C.cyanFg
-                              : i === routeStops.length - 1
-                                ? C.emFg
-                                : C.faint,
+                            i === 0 ? C.cyanFg : i === routeStops.length - 1 ? C.emFg : C.faint,
                         }}
                       />
                       {i < routeStops.length - 1 && (
@@ -2652,21 +2488,14 @@ const Step6 = ({
                 }}
               >
                 Estimated transit{" "}
-                <span style={{ color: C.dim, fontWeight: 600 }}>
-                  2–3 business days
-                </span>
+                <span style={{ color: C.dim, fontWeight: 600 }}>2–3 business days</span>
               </div>
             </Card>
           </div>
 
           {/* SLA countdown */}
           <Card accent="amber" style={{ marginBottom: 14 }}>
-            <Row
-              justify="space-between"
-              style={{ marginBottom: 12 }}
-              wrap
-              gap={10}
-            >
+            <Row justify="space-between" style={{ marginBottom: 12 }} wrap gap={10}>
               <Row gap={10}>
                 <Ic.alert size={16} color={C.amberFg} />
                 <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>
@@ -2687,7 +2516,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(180,83,9,0.04)",
+                  background: "color-mix(in srgb, var(--fb-warning-fg) 4%, transparent)",
                   border: `1px solid ${C.amberBd}`,
                 }}
               >
@@ -2729,7 +2558,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(180,83,9,0.04)",
+                  background: "color-mix(in srgb, var(--fb-warning-fg) 4%, transparent)",
                   border: `1px solid ${C.amberBd}`,
                 }}
               >
@@ -2771,7 +2600,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(180,83,9,0.04)",
+                  background: "color-mix(in srgb, var(--fb-warning-fg) 4%, transparent)",
                   border: `1px solid ${C.amberBd}`,
                 }}
               >
@@ -2817,10 +2646,9 @@ const Step6 = ({
                 lineHeight: 1.55,
               }}
             >
-              Seller must produce a scanned label within 72 hours of payment
-              settlement. After the deadline, a 2% daily penalty is deducted
-              from the seller payout and the order is flagged for dispute
-              review.
+              Seller must produce a scanned label within 72 hours of payment settlement. After the
+              deadline, a 2% daily penalty is deducted from the seller payout and the order is
+              flagged for dispute review.
             </div>
           </Card>
         </>
@@ -2828,172 +2656,163 @@ const Step6 = ({
 
       {/* LABEL CREATED: shipping cost breakdown */}
       {sub === "labelCreated" && (
-        <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
-              gap: 14,
-              marginBottom: 14,
-            }}
-          >
-            <Card>
-              <SL>Shipping cost breakdown</SL>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+            gap: 14,
+            marginBottom: 14,
+          }}
+        >
+          <Card>
+            <SL>Shipping cost breakdown</SL>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 0,
+              }}
+            >
+              <KV k="USPS Priority rate" v={`$${baseRate.toFixed(2)}`} mono />
+              <KV k="Declared weight" v={`${declaredWeight} lb`} mono />
+              <KV k="Weight tier" v={`${tier.tier} · ${tier.range}`} mono />
+              <KV k="Weight buffer (next tier diff)" v={`$${bufferAmt.toFixed(2)}`} mono />
+              <KV k="EasyPost fee" v="$0.05" mono />
               <div
                 style={{
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 0,
+                  justifyContent: "space-between",
+                  padding: "10px 0 4px",
+                  borderTop: `1px solid ${C.line}`,
+                  marginTop: 4,
                 }}
               >
-                <KV
-                  k="USPS Priority rate"
-                  v={`$${baseRate.toFixed(2)}`}
-                  mono
-                />
-                <KV
-                  k="Declared weight"
-                  v={`${declaredWeight} lb`}
-                  mono
-                />
-                <KV
-                  k="Weight tier"
-                  v={`${tier.tier} · ${tier.range}`}
-                  mono
-                />
-                <KV
-                  k="Weight buffer (next tier diff)"
-                  v={`$${bufferAmt.toFixed(2)}`}
-                  mono
-                />
-                <KV k="EasyPost fee" v="$0.05" mono />
-                <div
+                <span
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "10px 0 4px",
-                    borderTop: `1px solid ${C.line}`,
-                    marginTop: 4,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: C.ink,
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      color: C.ink,
-                    }}
-                  >
-                    Seller pays (label)
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      color: C.ink,
-                      fontFamily:
-                        "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    ${(baseRate + 0.05).toFixed(2)}
-                  </span>
-                </div>
-                <div
+                  Seller pays (label)
+                </span>
+                <span
                   style={{
-                    fontSize: 11,
-                    color: C.mute,
-                    marginTop: 6,
-                    lineHeight: 1.55,
-                  }}
-                >
-                  The{" "}
-                  <span style={{ color: C.violetFg, fontWeight: 500 }}>
-                    ${bufferAmt.toFixed(2)} buffer
-                  </span>{" "}
-                  is held from seller payout. Released after 14-day APV window
-                  if declared weight matches carrier scan.
-                </div>
-              </div>
-            </Card>
-            <Card>
-              <SL>Label document</SL>
-              <div
-                style={{
-                  border: `1px dashed ${C.line2}`,
-                  borderRadius: 10,
-                  background: C.card2,
-                  padding: 18,
-                  textAlign: "center",
-                }}
-              >
-                <div
-                  style={{
-                    width: "80%",
-                    margin: "0 auto 14px",
-                    padding: 14,
-                    background: "#fff",
-                    border: `1px solid ${C.line2}`,
-                    borderRadius: 6,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: C.ink,
                     fontFamily:
                       "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
-                    fontSize: 10,
-                    textAlign: "left",
-                    lineHeight: 1.6,
-                    color: C.dim,
+                    fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                    USPS PRIORITY MAIL ®
-                  </div>
-                  <div style={{ fontSize: 8, color: C.mute }}>FROM:</div>
-                  <div>Seller · 78701</div>
-                  <div style={{ fontSize: 8, color: C.mute, marginTop: 4 }}>
-                    TO:
-                  </div>
-                  <div>Buyer · 11201</div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      padding: "8px 4px",
-                      borderTop: `1px dashed ${C.line}`,
-                      borderBottom: `1px dashed ${C.line}`,
-                    }}
-                  >
-                    {/* CSS barcode — Code 128 style */}
-                    <svg viewBox="0 0 200 40" style={{ width: "100%", height: 36 }}>
-                      {(() => {
-                        const pattern = "110100100001101001000011010010011101001001110110100100011010011100101100100011011001001110100110010011010011001001101001100111010010011011011001001";
-                        let x = 10;
-                        return pattern.split("").map((bit, i) => {
-                          const bar = <rect key={i} x={x} y={2} width={1} height={36} fill={bit === "1" ? C.ink : "transparent"} />;
-                          x += 1;
-                          return bar;
-                        });
-                      })()}
-                    </svg>
-                  </div>
-                  <div
-                    style={{
-                      textAlign: "center",
-                      marginTop: 4,
-                      fontSize: 9,
-                    }}
-                  >
-                    9400 1118 9922 4127 5543 21
-                  </div>
-                </div>
-                <Row gap={8} justify="center">
-                  <Btn v="secondary" size="sm" icon={<Ic.file size={12} />}>
-                    Download PDF
-                  </Btn>
-                  <Btn v="ghost" size="sm" icon={<Ic.ext size={12} />}>
-                    Print
-                  </Btn>
-                </Row>
+                  ${(baseRate + 0.05).toFixed(2)}
+                </span>
               </div>
-            </Card>
-          </div>
-        </>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: C.mute,
+                  marginTop: 6,
+                  lineHeight: 1.55,
+                }}
+              >
+                The{" "}
+                <span style={{ color: C.violetFg, fontWeight: 500 }}>
+                  ${bufferAmt.toFixed(2)} buffer
+                </span>{" "}
+                is held from seller payout. Released after 14-day APV window if declared weight
+                matches carrier scan.
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <SL>Label document</SL>
+            <div
+              style={{
+                border: `1px dashed ${C.line2}`,
+                borderRadius: 10,
+                background: C.card2,
+                padding: 18,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: "80%",
+                  margin: "0 auto 14px",
+                  padding: 14,
+                  background: "var(--bg-raised)",
+                  border: `1px solid ${C.line2}`,
+                  borderRadius: 6,
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontSize: 10,
+                  textAlign: "left",
+                  lineHeight: 1.6,
+                  color: C.dim,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>USPS PRIORITY MAIL ®</div>
+                <div style={{ fontSize: 8, color: C.mute }}>FROM:</div>
+                <div>Seller · 78701</div>
+                <div style={{ fontSize: 8, color: C.mute, marginTop: 4 }}>TO:</div>
+                <div>Buyer · 11201</div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 4px",
+                    borderTop: `1px dashed ${C.line}`,
+                    borderBottom: `1px dashed ${C.line}`,
+                  }}
+                >
+                  {/* CSS barcode — Code 128 style */}
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 200 40"
+                    style={{ width: "100%", height: 36 }}
+                  >
+                    {(() => {
+                      const pattern =
+                        "110100100001101001000011010010011101001001110110100100011010011100101100100011011001001110100110010011010011001001101001100111010010011011011001001";
+                      let x = 10;
+                      return pattern.split("").map((bit) => {
+                        const bar = (
+                          <rect
+                            key={x}
+                            x={x}
+                            y={2}
+                            width={1}
+                            height={36}
+                            fill={bit === "1" ? C.ink : "transparent"}
+                          />
+                        );
+                        x += 1;
+                        return bar;
+                      });
+                    })()}
+                  </svg>
+                </div>
+                <div
+                  style={{
+                    textAlign: "center",
+                    marginTop: 4,
+                    fontSize: 9,
+                  }}
+                >
+                  9400 1118 9922 4127 5543 21
+                </div>
+              </div>
+              <Row gap={8} justify="center">
+                <Btn v="secondary" size="sm" icon={<Ic.file size={12} />}>
+                  Download PDF
+                </Btn>
+                <Btn v="ghost" size="sm" icon={<Ic.ext size={12} />}>
+                  Print
+                </Btn>
+              </Row>
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* IN TRANSIT: progress + weight buffer status */}
@@ -3021,7 +2840,7 @@ const Step6 = ({
                 position: "relative",
                 height: 6,
                 borderRadius: 999,
-                background: "rgba(20,20,26,0.06)",
+                background: "color-mix(in srgb, var(--text-primary) 6%, transparent)",
                 overflow: "hidden",
                 marginBottom: 16,
               }}
@@ -3069,9 +2888,9 @@ const Step6 = ({
                   zIndex: 1,
                 }}
               />
-              {routeStops.map((r, i) => (
+              {routeStops.map((r) => (
                 <div
-                  key={i}
+                  key={r.city}
                   style={{
                     display: "flex",
                     flexDirection: "column",
@@ -3090,7 +2909,7 @@ const Step6 = ({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "#fff",
+                      color: "var(--text-on-accent)",
                     }}
                   >
                     {r.done && <Ic.check size={11} sw={3} />}
@@ -3126,12 +2945,7 @@ const Step6 = ({
 
           {/* Weight buffer status */}
           <Card accent="violet" style={{ marginBottom: 14 }}>
-            <Row
-              justify="space-between"
-              style={{ marginBottom: 12 }}
-              wrap
-              gap={10}
-            >
+            <Row justify="space-between" style={{ marginBottom: 12 }} wrap gap={10}>
               <Row gap={10}>
                 <div
                   style={{
@@ -3186,7 +3000,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(124,58,237,0.04)",
+                  background: "color-mix(in srgb, var(--fb-info-fg) 4%, transparent)",
                   border: `1px solid ${C.violetBd}`,
                 }}
               >
@@ -3220,7 +3034,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(124,58,237,0.04)",
+                  background: "color-mix(in srgb, var(--fb-info-fg) 4%, transparent)",
                   border: `1px solid ${C.violetBd}`,
                 }}
               >
@@ -3253,7 +3067,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(124,58,237,0.04)",
+                  background: "color-mix(in srgb, var(--fb-info-fg) 4%, transparent)",
                   border: `1px solid ${C.violetBd}`,
                 }}
               >
@@ -3281,7 +3095,7 @@ const Step6 = ({
                 style={{
                   padding: 10,
                   borderRadius: 8,
-                  background: "rgba(124,58,237,0.04)",
+                  background: "color-mix(in srgb, var(--fb-info-fg) 4%, transparent)",
                   border: `1px solid ${C.violetBd}`,
                 }}
               >
@@ -3322,8 +3136,7 @@ const Step6 = ({
                 style={{
                   fontSize: 10,
                   color: C.faint,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {events.length} events
@@ -3336,17 +3149,14 @@ const Step6 = ({
             const isLast = i === events.length - 1;
             return (
               <div
-                key={i}
+                key={e.t}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "110px 18px 1fr auto",
                   gap: 12,
                   alignItems: "start",
                   padding: "10px 0",
-                  borderBottom:
-                    i < events.length - 1
-                      ? `1px dashed ${C.line}`
-                      : "none",
+                  borderBottom: i < events.length - 1 ? `1px dashed ${C.line}` : "none",
                 }}
               >
                 <span
@@ -3376,8 +3186,7 @@ const Step6 = ({
                       background: isLast ? C.cyan : C.em,
                       ...(isLast
                         ? {
-                            animation:
-                              "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
+                            animation: "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
                           }
                         : {}),
                     }}
@@ -3439,11 +3248,7 @@ const Step6 = ({
         )}
       </Row>
       <Api
-        ep={
-          sub === "labelPending"
-            ? "/shipments/shp_2c9a7e/label"
-            : "/shipments/shp_2c9a7e/event"
-        }
+        ep={sub === "labelPending" ? "/shipments/shp_2c9a7e/label" : "/shipments/shp_2c9a7e/event"}
       />
     </div>
   );
@@ -3492,7 +3297,7 @@ const PhaseBig = ({
               width: 26,
               height: 26,
               borderRadius: 7,
-              background: "#fff",
+              background: "var(--bg-raised)",
               border: `1px solid ${bd}`,
               color: col,
               display: "flex",
@@ -3500,8 +3305,7 @@ const PhaseBig = ({
               justifyContent: "center",
               fontSize: 12,
               fontWeight: 700,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             {n}
@@ -3513,8 +3317,7 @@ const PhaseBig = ({
               textTransform: "uppercase",
               letterSpacing: "0.12em",
               fontWeight: 600,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             PHASE {n}
@@ -3540,8 +3343,7 @@ const PhaseBig = ({
           style={{
             fontSize: 11,
             color: C.faint,
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           {pct}%
@@ -3561,7 +3363,7 @@ const PhaseBig = ({
         style={{
           padding: "8px 10px",
           borderRadius: 8,
-          background: "rgba(255,255,255,0.6)",
+          background: "color-mix(in srgb, var(--bg-raised) 60%, transparent)",
           border: `1px dashed ${bd}`,
         }}
       >
@@ -3570,8 +3372,7 @@ const PhaseBig = ({
             fontSize: 10,
             color: col,
             fontWeight: 600,
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           {countdown}
@@ -3581,8 +3382,7 @@ const PhaseBig = ({
             fontSize: 10,
             color: C.mute,
             marginTop: 2,
-            fontFamily:
-              "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
           }}
         >
           target: {deadline}
@@ -3609,26 +3409,55 @@ const BUDDY_RARITIES = [
   { id: "UNCOMMON", label: "Uncommon", color: "#22c55e", weight: 28, glow: "rgba(34,197,94,0.3)" },
   { id: "RARE", label: "Rare", color: "#3b82f6", weight: 13, glow: "rgba(59,130,246,0.4)" },
   { id: "EPIC", label: "Epic", color: "#a855f7", weight: 3.9, glow: "rgba(168,85,247,0.5)" },
-  { id: "LEGENDARY", label: "Legendary", color: "#f97316", weight: 0.097, glow: "rgba(249,115,22,0.6)" },
+  {
+    id: "LEGENDARY",
+    label: "Legendary",
+    color: "#f97316",
+    weight: 0.097,
+    glow: "rgba(249,115,22,0.6)",
+  },
   { id: "MYTHIC", label: "Mythic", color: "#ef4444", weight: 0.003, glow: "rgba(239,68,68,0.7)" },
 ];
 
 function rollBuddy() {
   // Electronics → FOX as primary, but add some randomness
-  const species = Math.random() < 0.6 ? BUDDY_SPECIES[0] : BUDDY_SPECIES[Math.floor(Math.random() * BUDDY_SPECIES.length)];
+  const species =
+    Math.random() < 0.6
+      ? BUDDY_SPECIES[0]
+      : BUDDY_SPECIES[Math.floor(Math.random() * BUDDY_SPECIES.length)];
   // Weighted rarity roll
   const totalWeight = BUDDY_RARITIES.reduce((a, r) => a + r.weight, 0);
   let roll = Math.random() * totalWeight;
   let rarity = BUDDY_RARITIES[0];
   for (const r of BUDDY_RARITIES) {
     roll -= r.weight;
-    if (roll <= 0) { rarity = r; break; }
+    if (roll <= 0) {
+      rarity = r;
+      break;
+    }
   }
   return { species, rarity };
 }
 
-type DisputeMode = false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller";
-type DeliveredPhase = "delivered" | "confirming" | "confirmed" | "egg_offer" | "egg_crack" | "egg_hatch" | "buddy_reveal" | "complete" | "done" | "dispute";
+type DisputeMode =
+  | false
+  | "open"
+  | "t1"
+  | "t2"
+  | "resolved_buyer"
+  | "resolved_partial"
+  | "resolved_seller";
+type DeliveredPhase =
+  | "delivered"
+  | "confirming"
+  | "confirmed"
+  | "egg_offer"
+  | "egg_crack"
+  | "egg_hatch"
+  | "buddy_reveal"
+  | "complete"
+  | "done"
+  | "dispute";
 
 const Step7 = ({
   s,
@@ -3648,7 +3477,10 @@ const Step7 = ({
   const phase1Amt = sel - phase2Amt;
 
   const [phase, setPhase] = useState<DeliveredPhase>("delivered");
-  const [buddy, setBuddy] = useState<{ species: typeof BUDDY_SPECIES[0]; rarity: typeof BUDDY_RARITIES[0] } | null>(null);
+  const [buddy, setBuddy] = useState<{
+    species: (typeof BUDDY_SPECIES)[0];
+    rarity: (typeof BUDDY_RARITIES)[0];
+  } | null>(null);
 
   function handleConfirm() {
     setPhase("confirming");
@@ -3746,8 +3578,7 @@ const Step7 = ({
               style={{
                 fontSize: 10,
                 color: C.faint,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               seller payout
@@ -3805,46 +3636,152 @@ const Step7 = ({
               textTransform: "uppercase",
               letterSpacing: "0.12em",
               marginBottom: 10,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             Release timeline (from delivery)
           </div>
           <div style={{ position: "relative", height: 52 }}>
             {/* track background */}
-            <div style={{ position: "absolute", top: 24, left: 0, right: 0, height: 3, background: "rgba(20,20,26,0.06)", borderRadius: 999 }} />
+            <div
+              style={{
+                position: "absolute",
+                top: 24,
+                left: 0,
+                right: 0,
+                height: 3,
+                background: "color-mix(in srgb, var(--text-primary) 6%, transparent)",
+                borderRadius: 999,
+              }}
+            />
             {/* phase 1 fill */}
-            <div style={{ position: "absolute", top: 24, left: 0, width: "7.1%", height: 3, background: C.cyanFg, borderRadius: 999 }} />
+            <div
+              style={{
+                position: "absolute",
+                top: 24,
+                left: 0,
+                width: "7.1%",
+                height: 3,
+                background: C.cyanFg,
+                borderRadius: 999,
+              }}
+            />
             {/* dots */}
             <div style={{ position: "absolute", top: 0, left: 0, textAlign: "left" }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.cyanFg, margin: "0 auto 4px" }} />
-              <span style={{ fontSize: 9, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: C.cyanFg, fontWeight: 600 }}>D+0</span>
+              <div
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: C.cyanFg,
+                  margin: "0 auto 4px",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 9,
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                  color: C.cyanFg,
+                  fontWeight: 600,
+                }}
+              >
+                D+0
+              </span>
             </div>
-            <div style={{ position: "absolute", top: 0, left: "7.1%", textAlign: "center", transform: "translateX(-50%)" }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.cyan, margin: "0 auto 4px" }} />
-              <span style={{ fontSize: 9, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: C.cyanFg, fontWeight: 600 }}>D+1</span>
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: "7.1%",
+                textAlign: "center",
+                transform: "translateX(-50%)",
+              }}
+            >
+              <div
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: C.cyan,
+                  margin: "0 auto 4px",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 9,
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                  color: C.cyanFg,
+                  fontWeight: 600,
+                }}
+              >
+                D+1
+              </span>
             </div>
             <div style={{ position: "absolute", top: 0, right: 0, textAlign: "right" }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.violet, margin: "0 0 4px auto" }} />
-              <span style={{ fontSize: 9, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: C.violetFg, fontWeight: 600 }}>D+14</span>
+              <div
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: C.violet,
+                  margin: "0 0 4px auto",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 9,
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                  color: C.violetFg,
+                  fontWeight: 600,
+                }}
+              >
+                D+14
+              </span>
             </div>
             {/* labels below track */}
-            <div style={{ position: "absolute", top: 32, left: 0, fontSize: 10, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: C.mute }}>Delivered</div>
-            <div style={{ position: "absolute", top: 32, left: "7.1%", fontSize: 10, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: C.mute }}>Product release</div>
-            <div style={{ position: "absolute", top: 32, right: 0, fontSize: 10, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: C.mute }}>Buffer release</div>
+            <div
+              style={{
+                position: "absolute",
+                top: 32,
+                left: 0,
+                fontSize: 10,
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                color: C.mute,
+              }}
+            >
+              Delivered
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                top: 32,
+                left: "7.1%",
+                fontSize: 10,
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                color: C.mute,
+              }}
+            >
+              Product release
+            </div>
+            <div
+              style={{
+                position: "absolute",
+                top: 32,
+                right: 0,
+                fontSize: 10,
+                fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                color: C.mute,
+              }}
+            >
+              Buffer release
+            </div>
           </div>
         </div>
       </Card>
 
       {/* APV scenarios table */}
       <Card accent="violet" style={{ marginBottom: 14 }}>
-        <Row
-          justify="space-between"
-          style={{ marginBottom: 12 }}
-          wrap
-          gap={10}
-        >
+        <Row justify="space-between" style={{ marginBottom: 12 }} wrap gap={10}>
           <Row gap={10}>
             <div
               style={{
@@ -3874,8 +3811,7 @@ const Step7 = ({
             style={{
               fontSize: 10,
               color: C.mute,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             declared: 0.82 lb · tier T1
@@ -3893,27 +3829,24 @@ const Step7 = ({
               display: "grid",
               gridTemplateColumns: "1.4fr 1fr 1fr 1fr",
               padding: "10px 14px",
-              background: "rgba(20,20,26,0.02)",
+              background: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
               borderBottom: `1px solid ${C.line}`,
             }}
           >
-            {["Actual weight", "Tier shift", "Adjustment", "Seller impact"].map(
-              (h) => (
-                <span
-                  key={h}
-                  style={{
-                    fontSize: 10,
-                    color: C.mute,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    fontFamily:
-                      "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
-                  }}
-                >
-                  {h}
-                </span>
-              )
-            )}
+            {["Actual weight", "Tier shift", "Adjustment", "Seller impact"].map((h) => (
+              <span
+                key={h}
+                style={{
+                  fontSize: 10,
+                  color: C.mute,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                }}
+              >
+                {h}
+              </span>
+            ))}
           </div>
           {apvScenarios.map((row, i) => {
             const neg = row.adjustment < 0;
@@ -3936,15 +3869,14 @@ const Step7 = ({
                     : "Buffer exhausted";
             return (
               <div
-                key={i}
+                key={row.status}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1.4fr 1fr 1fr 1fr",
                   padding: "11px 14px",
                   borderTop: i === 0 ? "none" : `1px solid ${C.line}`,
                   alignItems: "center",
-                  background:
-                    i === 0 ? C.emBg : isFull ? C.redBg : "transparent",
+                  background: i === 0 ? C.emBg : isFull ? C.redBg : "transparent",
                 }}
               >
                 <span
@@ -3978,9 +3910,7 @@ const Step7 = ({
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {row.adjustment === 0
-                    ? "±$0.00"
-                    : `-$${Math.abs(row.adjustment).toFixed(2)}`}
+                  {row.adjustment === 0 ? "±$0.00" : `-$${Math.abs(row.adjustment).toFixed(2)}`}
                 </span>
                 <span
                   style={{
@@ -4004,27 +3934,18 @@ const Step7 = ({
           }}
         >
           Adjustments are deducted from the{" "}
-          <span style={{ color: C.violetFg }}>
-            ${phase2Amt.toFixed(2)} weight buffer
-          </span>{" "}
-          before Phase 2 release. If a clawback exceeds the buffer, additional
-          amounts are deducted from seller&apos;s future payouts.
+          <span style={{ color: C.violetFg }}>${phase2Amt.toFixed(2)} weight buffer</span> before
+          Phase 2 release. If a clawback exceeds the buffer, additional amounts are deducted from
+          seller&apos;s future payouts.
         </div>
       </Card>
 
       {/* SLA result card */}
       <Card accent="em" style={{ marginBottom: 14 }}>
-        <Row
-          justify="space-between"
-          style={{ marginBottom: 14 }}
-          wrap
-          gap={10}
-        >
+        <Row justify="space-between" style={{ marginBottom: 14 }} wrap gap={10}>
           <Row gap={10}>
             <Ic.shield size={16} color={C.emFg} />
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-              Shipping SLA · result
-            </div>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>Shipping SLA · result</div>
           </Row>
           <SLABadge status="fulfilled" />
         </Row>
@@ -4048,7 +3969,7 @@ const Step7 = ({
               style={{
                 padding: 10,
                 borderRadius: 8,
-                background: "rgba(5,150,105,0.04)",
+                background: "color-mix(in srgb, var(--fb-success-fg) 4%, transparent)",
                 border: `1px solid ${C.emBd}`,
               }}
             >
@@ -4058,8 +3979,7 @@ const Step7 = ({
                   color: C.mute,
                   textTransform: "uppercase",
                   letterSpacing: "0.1em",
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {k}
@@ -4079,8 +3999,7 @@ const Step7 = ({
                   fontSize: 10,
                   color: C.faint,
                   marginTop: 2,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {note}
@@ -4098,8 +4017,7 @@ const Step7 = ({
               style={{
                 fontSize: 10,
                 color: C.faint,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               {SHIP_EVENTS.length} events · Apr 18 – Apr 20
@@ -4112,17 +4030,14 @@ const Step7 = ({
           const isLast = i === SHIP_EVENTS.length - 1;
           return (
             <div
-              key={i}
+              key={e.code}
               style={{
                 display: "grid",
                 gridTemplateColumns: "120px 18px 1fr auto",
                 gap: 12,
                 alignItems: "start",
                 padding: "10px 0",
-                borderBottom:
-                  i < SHIP_EVENTS.length - 1
-                    ? `1px dashed ${C.line}`
-                    : "none",
+                borderBottom: i < SHIP_EVENTS.length - 1 ? `1px dashed ${C.line}` : "none",
               }}
             >
               <span
@@ -4130,8 +4045,7 @@ const Step7 = ({
                   fontSize: 10.5,
                   color: C.faint,
                   paddingTop: 3,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {e.t}
@@ -4192,14 +4106,30 @@ const Step7 = ({
           <Card accent="cyan" style={{ marginBottom: 14 }}>
             <Row justify="space-between" wrap gap={10}>
               <Row gap={12}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: C.cyanBg, border: `1px solid ${C.cyanBd}`, color: C.cyanFg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: C.cyanBg,
+                    border: `1px solid ${C.cyanBd}`,
+                    color: C.cyanFg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Ic.check size={20} sw={2.5} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Confirm receipt & release payment</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>
+                    Confirm receipt & release payment
+                  </div>
                   <div style={{ fontSize: 12, color: C.mute, marginTop: 3, lineHeight: 1.5 }}>
-                    Item matches description? Confirm to release <Money value={phase1Amt} size={12} tone="cyan" bold /> to seller immediately.
-                    <br />Auto-confirms in 23h 57m if no action taken.
+                    Item matches description? Confirm to release{" "}
+                    <Money value={phase1Amt} size={12} tone="cyan" bold /> to seller immediately.
+                    <br />
+                    Auto-confirms in 23h 57m if no action taken.
                   </div>
                 </div>
               </Row>
@@ -4213,14 +4143,25 @@ const Step7 = ({
               <Row gap={12}>
                 <Ic.alert size={16} color={C.redFg} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.dim }}>Not what you expected?</div>
-                  <div style={{ fontSize: 11.5, color: C.mute, marginTop: 2 }}>Open a dispute before the review window closes.</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.dim }}>
+                    Not what you expected?
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.mute, marginTop: 2 }}>
+                    Open a dispute before the review window closes.
+                  </div>
                 </div>
               </Row>
-              <Btn v="danger" size="sm" icon={<Ic.alert size={13} />} onClick={() => {
-                setPhase("dispute");
-                onDispute("open");
-              }}>Report an issue</Btn>
+              <Btn
+                v="danger"
+                size="sm"
+                icon={<Ic.alert size={13} />}
+                onClick={() => {
+                  setPhase("dispute");
+                  onDispute("open");
+                }}
+              >
+                Report an issue
+              </Btn>
             </Row>
           </Card>
         </>
@@ -4230,11 +4171,21 @@ const Step7 = ({
       {phase === "confirming" && (
         <Card style={{ marginBottom: 14, padding: 36, textAlign: "center" }}>
           <div style={{ position: "relative", width: 56, height: 56, margin: "0 auto 16px" }}>
-            <div style={{ position: "absolute", inset: 0, border: "2px solid transparent", borderTopColor: C.cyan, borderRadius: "50%", animation: "haggle-spin-slow 1.2s linear infinite" }} />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                border: "2px solid transparent",
+                borderTopColor: C.cyan,
+                borderRadius: "50%",
+                animation: "haggle-spin-slow 1.2s linear infinite",
+              }}
+            />
           </div>
           <div style={{ fontSize: 14, fontWeight: 600 }}>Releasing payment to seller...</div>
           <div style={{ fontSize: 12, color: C.mute, marginTop: 4 }}>
-            Settlement Release Phase 1 → <Money value={phase1Amt} size={12} tone="cyan" bold /> to seller wallet
+            Settlement Release Phase 1 → <Money value={phase1Amt} size={12} tone="cyan" bold /> to
+            seller wallet
           </div>
         </Card>
       )}
@@ -4242,12 +4193,26 @@ const Step7 = ({
       {/* ── Confirmed ── */}
       {phase === "confirmed" && (
         <Card accent="em" style={{ marginBottom: 14, padding: 28, textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, margin: "0 auto 12px", borderRadius: "50%", background: C.emBg, border: `2px solid ${C.emBd}`, color: C.emFg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              margin: "0 auto 12px",
+              borderRadius: "50%",
+              background: C.emBg,
+              border: `2px solid ${C.emBd}`,
+              color: C.emFg,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <Ic.check size={24} sw={2.5} />
           </div>
           <div style={{ fontSize: 16, fontWeight: 600 }}>Payment released!</div>
           <div style={{ fontSize: 12, color: C.mute, marginTop: 6 }}>
-            <Money value={phase1Amt} size={13} tone="em" bold /> sent to seller wallet. Trade complete.
+            <Money value={phase1Amt} size={13} tone="em" bold /> sent to seller wallet. Trade
+            complete.
           </div>
         </Card>
       )}
@@ -4277,8 +4242,8 @@ const Step7 = ({
                   축하해요, 에그가 떨어졌어요
                 </div>
                 <div style={{ fontSize: 12, color: C.mute, marginTop: 5, lineHeight: 1.55 }}>
-                  거래는 이미 완료됐습니다. 에그와 버디는 선택형 보상이라 지금 열어도 되고,
-                  관심 없으면 다음 거래로 넘어가도 됩니다.
+                  거래는 이미 완료됐습니다. 에그와 버디는 선택형 보상이라 지금 열어도 되고, 관심
+                  없으면 다음 거래로 넘어가도 됩니다.
                 </div>
               </div>
             </Row>
@@ -4286,9 +4251,7 @@ const Step7 = ({
               <Btn v="secondary" onClick={() => setPhase("done")}>
                 나중에 보기
               </Btn>
-              <Btn onClick={handleOpenEgg}>
-                에그 열기
-              </Btn>
+              <Btn onClick={handleOpenEgg}>에그 열기</Btn>
             </Row>
           </Row>
         </Card>
@@ -4297,7 +4260,19 @@ const Step7 = ({
       {phase === "done" && (
         <Card accent="em" style={{ marginBottom: 14, padding: 22 }}>
           <Row gap={12} align="center">
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: C.emBg, border: `1px solid ${C.emBd}`, color: C.emFg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: C.emBg,
+                border: `1px solid ${C.emBd}`,
+                color: C.emFg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
               <Ic.check size={20} sw={2.5} />
             </div>
             <div>
@@ -4313,16 +4288,32 @@ const Step7 = ({
       {/* ── Egg open ── */}
       {(phase === "egg_crack" || phase === "egg_hatch") && (
         <Card style={{ marginBottom: 14, padding: 40, textAlign: "center" }}>
-          <div style={{ fontSize: 12, color: C.mute, marginBottom: 16, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", textTransform: "uppercase", letterSpacing: "0.14em" }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: C.mute,
+              marginBottom: 16,
+              fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+            }}
+          >
             Optional reward layer
           </div>
-          <div style={{
-            fontSize: phase === "egg_crack" ? 72 : phase === "egg_hatch" ? 84 : 64,
-            transition: "all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            transform: phase === "egg_crack" ? "rotate(8deg) scale(1.1)" : phase === "egg_hatch" ? "scale(1.3)" : "scale(1)",
-            filter: phase === "egg_hatch" ? "brightness(1.5)" : "none",
-            animation: phase === "egg_crack" ? "haggle-shake 0.3s ease infinite" : "none",
-          }}>
+          <div
+            style={{
+              fontSize: phase === "egg_crack" ? 72 : phase === "egg_hatch" ? 84 : 64,
+              transition: "all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              transform:
+                phase === "egg_crack"
+                  ? "rotate(8deg) scale(1.1)"
+                  : phase === "egg_hatch"
+                    ? "scale(1.3)"
+                    : "scale(1)",
+              filter: phase === "egg_hatch" ? "brightness(1.5)" : "none",
+              animation: phase === "egg_crack" ? "haggle-shake 0.3s ease infinite" : "none",
+            }}
+          >
             🥚
           </div>
           <div style={{ fontSize: 13, color: C.dim, marginTop: 12, fontWeight: 500 }}>
@@ -4334,35 +4325,42 @@ const Step7 = ({
 
       {/* ── Buddy Reveal ── */}
       {(phase === "buddy_reveal" || phase === "complete") && buddy && (
-        <Card style={{
-          marginBottom: 14,
-          padding: 36,
-          textAlign: "center",
-          background: `radial-gradient(circle at center, ${buddy.rarity.glow} 0%, transparent 70%), ${C.card}`,
-          border: `2px solid ${buddy.rarity.color}40`,
-        }}>
-          <div style={{
-            fontSize: phase === "complete" ? 72 : 80,
-            transition: "all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            transform: phase === "buddy_reveal" ? "scale(0) rotate(-180deg)" : "scale(1) rotate(0deg)",
-            marginBottom: 16,
-          }}>
+        <Card
+          style={{
+            marginBottom: 14,
+            padding: 36,
+            textAlign: "center",
+            background: `radial-gradient(circle at center, ${buddy.rarity.glow} 0%, transparent 70%), ${C.card}`,
+            border: `2px solid ${buddy.rarity.color}40`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: phase === "complete" ? 72 : 80,
+              transition: "all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              transform:
+                phase === "buddy_reveal" ? "scale(0) rotate(-180deg)" : "scale(1) rotate(0deg)",
+              marginBottom: 16,
+            }}
+          >
             {buddy.species.emoji}
           </div>
-          <div style={{
-            display: "inline-block",
-            padding: "4px 16px",
-            borderRadius: 999,
-            background: `${buddy.rarity.color}18`,
-            border: `1px solid ${buddy.rarity.color}40`,
-            color: buddy.rarity.color,
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            marginBottom: 12,
-            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-          }}>
+          <div
+            style={{
+              display: "inline-block",
+              padding: "4px 16px",
+              borderRadius: 999,
+              background: `${buddy.rarity.color}18`,
+              border: `1px solid ${buddy.rarity.color}40`,
+              color: buddy.rarity.color,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              marginBottom: 12,
+              fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+            }}
+          >
             {buddy.rarity.label}
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, marginBottom: 4 }}>
@@ -4374,17 +4372,81 @@ const Step7 = ({
 
           {/* Buddy details */}
           {phase === "complete" && (
-            <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <div style={{ padding: 10, borderRadius: 8, background: C.card2, border: `1px solid ${C.line}` }}>
-                <div style={{ fontSize: 9, color: C.mute, fontFamily: "var(--font-mono, monospace)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Species</div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>{buddy.species.emoji} {buddy.species.name}</div>
+            <div
+              style={{
+                marginTop: 20,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  background: C.card2,
+                  border: `1px solid ${C.line}`,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: C.mute,
+                    fontFamily: "var(--font-mono, monospace)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  Species
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+                  {buddy.species.emoji} {buddy.species.name}
+                </div>
               </div>
-              <div style={{ padding: 10, borderRadius: 8, background: C.card2, border: `1px solid ${C.line}` }}>
-                <div style={{ fontSize: 9, color: C.mute, fontFamily: "var(--font-mono, monospace)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Rarity</div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4, color: buddy.rarity.color }}>{buddy.rarity.label}</div>
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  background: C.card2,
+                  border: `1px solid ${C.line}`,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: C.mute,
+                    fontFamily: "var(--font-mono, monospace)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  Rarity
+                </div>
+                <div
+                  style={{ fontSize: 13, fontWeight: 600, marginTop: 4, color: buddy.rarity.color }}
+                >
+                  {buddy.rarity.label}
+                </div>
               </div>
-              <div style={{ padding: 10, borderRadius: 8, background: C.card2, border: `1px solid ${C.line}` }}>
-                <div style={{ fontSize: 9, color: C.mute, fontFamily: "var(--font-mono, monospace)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Level</div>
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  background: C.card2,
+                  border: `1px solid ${C.line}`,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: C.mute,
+                    fontFamily: "var(--font-mono, monospace)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  Level
+                </div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginTop: 4 }}>Lv. 1</div>
               </div>
             </div>
@@ -4399,25 +4461,87 @@ const Step7 = ({
           {disputeMode === "open" && (
             <Card accent="red" style={{ marginBottom: 14 }}>
               <Row gap={12} style={{ marginBottom: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: C.redBg, border: `1px solid ${C.redBd}`, color: C.redFg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: C.redBg,
+                    border: `1px solid ${C.redBd}`,
+                    color: C.redFg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                   <Ic.alert size={22} />
                 </div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 600 }}>Dispute opened · funds frozen</div>
-                  <div style={{ fontSize: 12, color: C.mute, marginTop: 2 }}>All releases are paused. T1 automatic review starting...</div>
+                  <div style={{ fontSize: 12, color: C.mute, marginTop: 2 }}>
+                    All releases are paused. T1 automatic review starting...
+                  </div>
                 </div>
               </Row>
-              <div style={{ padding: 12, borderRadius: 8, background: C.redBg, border: `1px dashed ${C.redBd}`, marginBottom: 14, fontSize: 12, color: C.dim, lineHeight: 1.6 }}>
-                <strong style={{ color: C.redFg }}>Reason:</strong> Item not as described — battery health 72% vs listed 92%.
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  background: C.redBg,
+                  border: `1px dashed ${C.redBd}`,
+                  marginBottom: 14,
+                  fontSize: 12,
+                  color: C.dim,
+                  lineHeight: 1.6,
+                }}
+              >
+                <strong style={{ color: C.redFg }}>Reason:</strong> Item not as described — battery
+                health 72% vs listed 92%.
               </div>
               <Btn full onClick={() => onDispute("t1")} icon={<Ic.arrow size={14} />}>
                 Start T1 auto-review
               </Btn>
               <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                <Link href="/demo/dispute/buyer" target="_blank" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 8, background: C.cyanBg, border: `1px solid ${C.cyanBd}`, fontSize: 11, fontWeight: 600, color: C.cyanFg, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute/buyer"
+                  target="_blank"
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: C.cyanBg,
+                    border: `1px solid ${C.cyanBd}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.cyanFg,
+                    textDecoration: "none",
+                  }}
+                >
                   🛡 Buyer view →
                 </Link>
-                <Link href="/demo/dispute/seller" target="_blank" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 8, background: C.violetBg, border: `1px solid ${C.violetBd}`, fontSize: 11, fontWeight: 600, color: C.violetFg, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute/seller"
+                  target="_blank"
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: C.violetBg,
+                    border: `1px solid ${C.violetBd}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.violetFg,
+                    textDecoration: "none",
+                  }}
+                >
                   🛡 Seller view →
                 </Link>
               </div>
@@ -4431,53 +4555,186 @@ const Step7 = ({
               <Row justify="space-between" style={{ marginBottom: 14 }} wrap gap={8}>
                 <div>
                   <Badge tone="amber">TIER 1 · AUTO-RESOLUTION</Badge>
-                  <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>System ruling: partial refund</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>
+                    System ruling: partial refund
+                  </div>
                   <div style={{ fontSize: 12, color: C.mute, marginTop: 4, lineHeight: 1.5 }}>
-                    Based on trust scores (buyer: 78, seller: 65) and evidence analysis,
-                    the system recommends a <strong style={{ color: C.amberFg }}>$50.00 partial refund</strong> for the battery discrepancy.
+                    Based on trust scores (buyer: 78, seller: 65) and evidence analysis, the system
+                    recommends a <strong style={{ color: C.amberFg }}>$50.00 partial refund</strong>{" "}
+                    for the battery discrepancy.
                   </div>
                 </div>
               </Row>
-              <div style={{ padding: 12, borderRadius: 8, background: C.card2, border: `1px solid ${C.line}`, marginBottom: 14 }}>
-                <div style={{ fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: C.mute, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>T1 RULING · BREAKDOWN</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                  <div style={{ padding: 10, borderRadius: 6, background: C.amberBg, border: `1px solid ${C.amberBd}` }}>
-                    <div style={{ fontSize: 9, color: C.mute, fontFamily: "var(--font-mono, monospace)" }}>BUYER RECEIVES</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: C.amberFg, marginTop: 2 }}>$50.00</div>
-                    <div style={{ fontSize: 10, color: C.mute, marginTop: 3 }}>Refund for battery discrepancy</div>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 8,
+                  background: C.card2,
+                  border: `1px solid ${C.line}`,
+                  marginBottom: 14,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: C.mute,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    marginBottom: 8,
+                  }}
+                >
+                  T1 RULING · BREAKDOWN
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: 10,
+                      borderRadius: 6,
+                      background: C.amberBg,
+                      border: `1px solid ${C.amberBd}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: C.mute,
+                        fontFamily: "var(--font-mono, monospace)",
+                      }}
+                    >
+                      BUYER RECEIVES
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: C.amberFg, marginTop: 2 }}>
+                      $50.00
+                    </div>
+                    <div style={{ fontSize: 10, color: C.mute, marginTop: 3 }}>
+                      Refund for battery discrepancy
+                    </div>
                     <div style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>+ keeps the item</div>
                   </div>
-                  <div style={{ padding: 10, borderRadius: 6, background: C.card2, border: `1px solid ${C.line}` }}>
-                    <div style={{ fontSize: 9, color: C.mute, fontFamily: "var(--font-mono, monospace)" }}>SELLER RECEIVES</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: C.dim, marginTop: 2 }}>${(sel - 50).toFixed(2)}</div>
-                    <div style={{ fontSize: 10, color: C.mute, marginTop: 3 }}>Original ${sel.toFixed(2)} − $50 refund</div>
-                    <div style={{ fontSize: 10, color: C.mute, marginTop: 1 }}>Item stays with buyer</div>
+                  <div
+                    style={{
+                      padding: 10,
+                      borderRadius: 6,
+                      background: C.card2,
+                      border: `1px solid ${C.line}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: C.mute,
+                        fontFamily: "var(--font-mono, monospace)",
+                      }}
+                    >
+                      SELLER RECEIVES
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: C.dim, marginTop: 2 }}>
+                      ${(sel - 50).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.mute, marginTop: 3 }}>
+                      Original ${sel.toFixed(2)} − $50 refund
+                    </div>
+                    <div style={{ fontSize: 10, color: C.mute, marginTop: 1 }}>
+                      Item stays with buyer
+                    </div>
                   </div>
                 </div>
-                <div style={{ padding: 8, borderRadius: 6, background: C.card2, border: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div
+                  style={{
+                    padding: 8,
+                    borderRadius: 6,
+                    background: C.card2,
+                    border: `1px solid ${C.line}`,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
                   <span style={{ fontSize: 10, color: C.mute }}>Haggle fee (unchanged)</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: C.cyanFg }}>${hf.toFixed(2)}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.cyanFg }}>
+                    ${hf.toFixed(2)}
+                  </span>
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <Btn v="ghost" style={{ border: `1px solid ${C.emBd}`, background: C.emBg }} onClick={() => onDispute("resolved_partial")} full>
+                <Btn
+                  v="ghost"
+                  style={{ border: `1px solid ${C.emBd}`, background: C.emBg }}
+                  onClick={() => onDispute("resolved_partial")}
+                  full
+                >
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.emFg }}>Accept ruling</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.emFg }}>
+                      Accept ruling
+                    </div>
                     <div style={{ fontSize: 10, color: C.mute }}>$50 refund · case closed</div>
                   </div>
                 </Btn>
-                <Btn v="ghost" style={{ border: `1px solid ${C.violetBd}`, background: C.violetBg }} onClick={() => onDispute("t2")} full>
+                <Btn
+                  v="ghost"
+                  style={{ border: `1px solid ${C.violetBd}`, background: C.violetBg }}
+                  onClick={() => onDispute("t2")}
+                  full
+                >
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>Escalate to T2</div>
-                    <div style={{ fontSize: 10, color: C.mute }}>DS panel review · deposit req.</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>
+                      Escalate to T2
+                    </div>
+                    <div style={{ fontSize: 10, color: C.mute }}>
+                      DS panel review · deposit req.
+                    </div>
                   </div>
                 </Btn>
               </div>
               <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                <Link href="/demo/dispute/buyer" target="_blank" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 8, background: C.cyanBg, border: `1px solid ${C.cyanBd}`, fontSize: 11, fontWeight: 600, color: C.cyanFg, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute/buyer"
+                  target="_blank"
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: C.cyanBg,
+                    border: `1px solid ${C.cyanBd}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.cyanFg,
+                    textDecoration: "none",
+                  }}
+                >
                   🛡 Buyer full view →
                 </Link>
-                <Link href="/demo/dispute/seller" target="_blank" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 8, background: C.violetBg, border: `1px solid ${C.violetBd}`, fontSize: 11, fontWeight: 600, color: C.violetFg, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute/seller"
+                  target="_blank"
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: C.violetBg,
+                    border: `1px solid ${C.violetBd}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.violetFg,
+                    textDecoration: "none",
+                  }}
+                >
                   🛡 Seller full view →
                 </Link>
               </div>
@@ -4491,33 +4748,117 @@ const Step7 = ({
               <Row justify="space-between" style={{ marginBottom: 14 }} wrap gap={8}>
                 <div>
                   <Badge tone="violet">TIER 2 · DS PANEL REVIEW</Badge>
-                  <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>Panel ruling: buyer wins</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>
+                    Panel ruling: buyer wins
+                  </div>
                   <div style={{ fontSize: 12, color: C.mute, marginTop: 4, lineHeight: 1.5 }}>
-                    DS panel reviewed photos + IMEI check. Battery at 72% confirmed — seller misrepresented condition.
+                    DS panel reviewed photos + IMEI check. Battery at 72% confirmed — seller
+                    misrepresented condition.
                     <strong style={{ color: C.emFg }}> Full refund ordered.</strong>
                   </div>
                 </div>
               </Row>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <div style={{ padding: 10, borderRadius: 8, background: C.violetBg, border: `1px solid ${C.violetBd}` }}>
-                  <div style={{ fontSize: 10, color: C.mute, fontFamily: "var(--font-mono, monospace)" }}>ESCALATION DEPOSIT</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.violetFg, marginTop: 4 }}>${(s.amount * 0.05).toFixed(2)}</div>
-                  <div style={{ fontSize: 10, color: C.emFg, marginTop: 2 }}>✓ Refunded (you won)</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                  marginBottom: 14,
+                }}
+              >
+                <div
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    background: C.violetBg,
+                    border: `1px solid ${C.violetBd}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: C.mute,
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  >
+                    ESCALATION DEPOSIT
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.violetFg, marginTop: 4 }}>
+                    ${(s.amount * 0.05).toFixed(2)}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.emFg, marginTop: 2 }}>
+                    ✓ Refunded (you won)
+                  </div>
                 </div>
-                <div style={{ padding: 10, borderRadius: 8, background: C.emBg, border: `1px solid ${C.emBd}` }}>
-                  <div style={{ fontSize: 10, color: C.mute, fontFamily: "var(--font-mono, monospace)" }}>RULING</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.emFg, marginTop: 4 }}>Buyer wins</div>
-                  <div style={{ fontSize: 10, color: C.mute, marginTop: 2 }}>Full refund · seller trust −15</div>
+                <div
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    background: C.emBg,
+                    border: `1px solid ${C.emBd}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: C.mute,
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  >
+                    RULING
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.emFg, marginTop: 4 }}>
+                    Buyer wins
+                  </div>
+                  <div style={{ fontSize: 10, color: C.mute, marginTop: 2 }}>
+                    Full refund · seller trust −15
+                  </div>
                 </div>
               </div>
               <Btn full onClick={() => onDispute("resolved_buyer")} icon={<Ic.check size={14} />}>
                 Accept T2 ruling · receive refund
               </Btn>
               <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                <Link href="/demo/dispute/panel" target="_blank" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 8, background: C.amberBg, border: `1px solid ${C.amberBd}`, fontSize: 11, fontWeight: 600, color: C.amberFg, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute/panel"
+                  target="_blank"
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: C.amberBg,
+                    border: `1px solid ${C.amberBd}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.amberFg,
+                    textDecoration: "none",
+                  }}
+                >
                   ⚖️ Panel view →
                 </Link>
-                <Link href="/demo/dispute/reviewer" target="_blank" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 10px", borderRadius: 8, background: C.emBg, border: `1px solid ${C.emBd}`, fontSize: 11, fontWeight: 600, color: C.emFg, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute/reviewer"
+                  target="_blank"
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: C.emBg,
+                    border: `1px solid ${C.emBd}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.emFg,
+                    textDecoration: "none",
+                  }}
+                >
                   👤 Reviewer view →
                 </Link>
               </div>
@@ -4526,15 +4867,43 @@ const Step7 = ({
           )}
 
           {/* Step 4: Resolution result */}
-          {(disputeMode === "resolved_buyer" || disputeMode === "resolved_partial" || disputeMode === "resolved_seller") && (
-            <Card accent={disputeMode === "resolved_buyer" ? "em" : disputeMode === "resolved_partial" ? "amber" : undefined} style={{ marginBottom: 14, textAlign: "center", padding: 28 }}>
-              <div style={{
-                width: 52, height: 52, margin: "0 auto 14px", borderRadius: "50%",
-                background: disputeMode === "resolved_buyer" ? C.emBg : disputeMode === "resolved_partial" ? C.amberBg : C.card2,
-                border: `2px solid ${disputeMode === "resolved_buyer" ? C.emBd : disputeMode === "resolved_partial" ? C.amberBd : C.line}`,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24,
-              }}>
-                {disputeMode === "resolved_buyer" ? "↩️" : disputeMode === "resolved_partial" ? "⚖️" : "✅"}
+          {(disputeMode === "resolved_buyer" ||
+            disputeMode === "resolved_partial" ||
+            disputeMode === "resolved_seller") && (
+            <Card
+              accent={
+                disputeMode === "resolved_buyer"
+                  ? "em"
+                  : disputeMode === "resolved_partial"
+                    ? "amber"
+                    : undefined
+              }
+              style={{ marginBottom: 14, textAlign: "center", padding: 28 }}
+            >
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  margin: "0 auto 14px",
+                  borderRadius: "50%",
+                  background:
+                    disputeMode === "resolved_buyer"
+                      ? C.emBg
+                      : disputeMode === "resolved_partial"
+                        ? C.amberBg
+                        : C.card2,
+                  border: `2px solid ${disputeMode === "resolved_buyer" ? C.emBd : disputeMode === "resolved_partial" ? C.amberBd : C.line}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 24,
+                }}
+              >
+                {disputeMode === "resolved_buyer"
+                  ? "↩️"
+                  : disputeMode === "resolved_partial"
+                    ? "⚖️"
+                    : "✅"}
               </div>
               <div style={{ fontSize: 18, fontWeight: 600 }}>
                 {disputeMode === "resolved_buyer" && "Buyer wins · full refund"}
@@ -4542,15 +4911,41 @@ const Step7 = ({
                 {disputeMode === "resolved_seller" && "Seller wins · funds released"}
               </div>
               <div style={{ fontSize: 12, color: C.mute, marginTop: 6, lineHeight: 1.5 }}>
-                {disputeMode === "resolved_buyer" && `$${s.amount.toFixed(2)} returned to buyer wallet. Seller trust score decreased.`}
-                {disputeMode === "resolved_partial" && `Buyer keeps the item + receives $50.00 refund. Seller receives $${(sel - 50).toFixed(2)} (original $${sel.toFixed(2)} − $50). Haggle fee $${hf.toFixed(2)} unchanged.`}
-                {disputeMode === "resolved_seller" && `$${sel.toFixed(2)} released to seller wallet. Dispute deposit returned.`}
+                {disputeMode === "resolved_buyer" &&
+                  `$${s.amount.toFixed(2)} returned to buyer wallet. Seller trust score decreased.`}
+                {disputeMode === "resolved_partial" &&
+                  `Buyer keeps the item + receives $50.00 refund. Seller receives $${(sel - 50).toFixed(2)} (original $${sel.toFixed(2)} − $50). Haggle fee $${hf.toFixed(2)} unchanged.`}
+                {disputeMode === "resolved_seller" &&
+                  `$${sel.toFixed(2)} released to seller wallet. Dispute deposit returned.`}
               </div>
-              <div style={{ fontSize: 11, color: C.violetFg, marginTop: 8, fontFamily: "var(--font-mono, monospace)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: C.violetFg,
+                  marginTop: 8,
+                  fontFamily: "var(--font-mono, monospace)",
+                }}
+              >
                 Evidence anchored on-chain · HaggleDisputeRegistry
               </div>
               <div style={{ marginTop: 14, display: "flex", gap: 6, justifyContent: "center" }}>
-                <Link href="/demo/dispute" target="_blank" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: C.card2, border: `1px solid ${C.line}`, fontSize: 11, fontWeight: 600, color: C.dim, textDecoration: "none" }}>
+                <Link
+                  href="/demo/dispute"
+                  target="_blank"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    background: C.card2,
+                    border: `1px solid ${C.line}`,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: C.dim,
+                    textDecoration: "none",
+                  }}
+                >
                   View all dispute perspectives →
                 </Link>
               </div>
@@ -4561,7 +4956,12 @@ const Step7 = ({
       )}
 
       {/* ── Final actions ── */}
-      {((phase === "complete" || phase === "done") || (phase === "dispute" && (disputeMode === "resolved_buyer" || disputeMode === "resolved_partial" || disputeMode === "resolved_seller"))) && (
+      {(phase === "complete" ||
+        phase === "done" ||
+        (phase === "dispute" &&
+          (disputeMode === "resolved_buyer" ||
+            disputeMode === "resolved_partial" ||
+            disputeMode === "resolved_seller"))) && (
         <Row justify="flex-end" gap={10}>
           <Btn v="secondary" onClick={reset} icon={<Ic.restart size={14} />}>
             Run demo again
@@ -4599,8 +4999,8 @@ const DN = ({
   const cs = {
     slate: {
       f: C.dim,
-      b: "rgba(20,20,26,0.04)",
-      d: "rgba(20,20,26,0.15)",
+      b: "color-mix(in srgb, var(--text-primary) 4%, transparent)",
+      d: "color-mix(in srgb, var(--text-primary) 15%, transparent)",
     },
     cyan: { f: C.cyanFg, b: C.cyanBg, d: C.cyanBd },
     violet: { f: C.violetFg, b: C.violetBg, d: C.violetBd },
@@ -4608,8 +5008,7 @@ const DN = ({
   }[tone];
   const ps: Record<string, string> = {
     wallet: "M3 6h18v13H3zM3 10h18M16 14h3",
-    shield:
-      "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z",
+    shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z",
     card: "M3 6h18v12H3zM3 10h18",
     flame: "M12 3s5 4 5 9a5 5 0 01-10 0c0-2 1-3 2-4",
   };
@@ -4661,7 +5060,8 @@ const DN = ({
       <text
         x={x + 46}
         y={y + 40}
-        fill="rgba(61,61,69,0.78)"
+        fill="currentColor"
+        style={{ color: "color-mix(in srgb, var(--text-secondary) 78%, transparent)" }}
         fontSize={11}
         fontFamily="JetBrains Mono, monospace"
       >
@@ -4746,7 +5146,10 @@ const OnChain = ({
   const sel = s.amount - hf;
   const buyerT = s.amount + sf;
   const inDispute = !!disputeMode;
-  const isResolved = disputeMode === "resolved_buyer" || disputeMode === "resolved_partial" || disputeMode === "resolved_seller";
+  const isResolved =
+    disputeMode === "resolved_buyer" ||
+    disputeMode === "resolved_partial" ||
+    disputeMode === "resolved_seller";
   // Flow animation: stop when disputed (frozen), resume when resolved
   const flow = (settling || curStep >= 4) && (!inDispute || isResolved);
   return (
@@ -4754,7 +5157,7 @@ const OnChain = ({
       style={{
         borderRadius: 16,
         border: `1px solid ${C.line}`,
-        background: `linear-gradient(180deg, rgba(8,145,178,0.02), rgba(124,58,237,0.02) 50%, #fff)`,
+        background: `linear-gradient(180deg, color-mix(in srgb, var(--action-primary) 2%, transparent), color-mix(in srgb, var(--fb-info-fg) 2%, transparent) 50%, var(--bg-raised))`,
         padding: 22,
       }}
     >
@@ -4766,8 +5169,7 @@ const OnChain = ({
               color: C.mute,
               letterSpacing: "0.16em",
               marginBottom: 4,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             ON-CHAIN SETTLEMENT
@@ -4785,8 +5187,7 @@ const OnChain = ({
               style={{
                 color: C.dim,
                 fontSize: 10,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               0x4E3A…B7c1
@@ -4798,6 +5199,7 @@ const OnChain = ({
         </Row>
       </Row>
       <svg
+        aria-hidden="true"
         viewBox="0 0 900 240"
         style={{ width: "100%", height: "auto", maxHeight: 260 }}
       >
@@ -4998,58 +5400,194 @@ const OnChain = ({
         const prodAmt = sel - buf;
 
         // Resolved states
-        const isResolved = disputeMode === "resolved_buyer" || disputeMode === "resolved_partial" || disputeMode === "resolved_seller";
+        const isResolved =
+          disputeMode === "resolved_buyer" ||
+          disputeMode === "resolved_partial" ||
+          disputeMode === "resolved_seller";
 
         // Define all lifecycle nodes — changes in dispute
-        const nodes = inDispute ? [
-          { id: "buyer", icon: "💰", label: "Buyer", sub: `$${(s.amount + sf).toFixed(2)}`, col: C.dim },
-          { id: "lock", icon: "🔒", label: "Locked", sub: "Router", col: C.violetFg },
-          { id: "split", icon: "⚡", label: "Split", sub: "Atomic", col: C.cyanFg },
-          { id: "freeze", icon: "🛑", label: "Frozen", sub: "Disputed", col: C.redFg },
-          { id: "resolve", icon: "⚖️", label: "Resolve", sub: isResolved ? "Done" : "Pending", col: isResolved ? C.emFg : C.amberFg },
-          { id: "result", icon: isResolved ? (disputeMode === "resolved_buyer" ? "↩️" : disputeMode === "resolved_partial" ? "⚖️" : "✅") : "❓", label: isResolved ? (disputeMode === "resolved_buyer" ? "Refunded" : disputeMode === "resolved_partial" ? "Split" : "Released") : "Pending", sub: isResolved ? "Complete" : "—", col: isResolved ? C.emFg : C.faint },
-        ] : [
-          { id: "buyer", icon: "💰", label: "Buyer", sub: `$${(s.amount + sf).toFixed(2)}`, col: C.dim },
-          { id: "lock", icon: "🔒", label: "Locked", sub: "Router", col: C.violetFg },
-          { id: "split", icon: "⚡", label: "Split", sub: "Atomic", col: C.cyanFg },
-          { id: "ship", icon: "📦", label: "Shipping", sub: "In transit", col: C.dim },
-          { id: "review", icon: "⏳", label: "Review", sub: "24h", col: C.emFg },
-          { id: "done", icon: "✅", label: "Released", sub: "Seller paid", col: C.emFg },
-        ];
+        const nodes = inDispute
+          ? [
+              {
+                id: "buyer",
+                icon: "💰",
+                label: "Buyer",
+                sub: `$${(s.amount + sf).toFixed(2)}`,
+                col: C.dim,
+              },
+              { id: "lock", icon: "🔒", label: "Locked", sub: "Router", col: C.violetFg },
+              { id: "split", icon: "⚡", label: "Split", sub: "Atomic", col: C.cyanFg },
+              { id: "freeze", icon: "🛑", label: "Frozen", sub: "Disputed", col: C.redFg },
+              {
+                id: "resolve",
+                icon: "⚖️",
+                label: "Resolve",
+                sub: isResolved ? "Done" : "Pending",
+                col: isResolved ? C.emFg : C.amberFg,
+              },
+              {
+                id: "result",
+                icon: isResolved
+                  ? disputeMode === "resolved_buyer"
+                    ? "↩️"
+                    : disputeMode === "resolved_partial"
+                      ? "⚖️"
+                      : "✅"
+                  : "❓",
+                label: isResolved
+                  ? disputeMode === "resolved_buyer"
+                    ? "Refunded"
+                    : disputeMode === "resolved_partial"
+                      ? "Split"
+                      : "Released"
+                  : "Pending",
+                sub: isResolved ? "Complete" : "—",
+                col: isResolved ? C.emFg : C.faint,
+              },
+            ]
+          : [
+              {
+                id: "buyer",
+                icon: "💰",
+                label: "Buyer",
+                sub: `$${(s.amount + sf).toFixed(2)}`,
+                col: C.dim,
+              },
+              { id: "lock", icon: "🔒", label: "Locked", sub: "Router", col: C.violetFg },
+              { id: "split", icon: "⚡", label: "Split", sub: "Atomic", col: C.cyanFg },
+              { id: "ship", icon: "📦", label: "Shipping", sub: "In transit", col: C.dim },
+              { id: "review", icon: "⏳", label: "Review", sub: "24h", col: C.emFg },
+              { id: "done", icon: "✅", label: "Released", sub: "Seller paid", col: C.emFg },
+            ];
 
         // Map curStep to active node index
         const activeIdx = inDispute
-          ? (isResolved ? 5 : disputeMode === "t1" || disputeMode === "t2" ? 4 : 3)
-          : curStep <= 2 ? 0 : curStep === 3 ? 0 : curStep === 4 ? (settling ? 1 : 2) : curStep === 5 ? 3 : curStep >= 6 ? 4 : 0;
+          ? isResolved
+            ? 5
+            : disputeMode === "t1" || disputeMode === "t2"
+              ? 4
+              : 3
+          : curStep <= 2
+            ? 0
+            : curStep === 3
+              ? 0
+              : curStep === 4
+                ? settling
+                  ? 1
+                  : 2
+                : curStep === 5
+                  ? 3
+                  : curStep >= 6
+                    ? 4
+                    : 0;
         const doneIdx = inDispute
-          ? (isResolved ? 4 : disputeMode === "t1" || disputeMode === "t2" ? 3 : 2)
-          : curStep <= 2 ? -1 : curStep === 3 ? -1 : curStep === 4 ? (settling ? 0 : 1) : curStep === 5 ? 2 : curStep >= 6 ? 3 : -1;
+          ? isResolved
+            ? 4
+            : disputeMode === "t1" || disputeMode === "t2"
+              ? 3
+              : 2
+          : curStep <= 2
+            ? -1
+            : curStep === 3
+              ? -1
+              : curStep === 4
+                ? settling
+                  ? 0
+                  : 1
+                : curStep === 5
+                  ? 2
+                  : curStep >= 6
+                    ? 3
+                    : -1;
 
         return (
           <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px dashed ${C.line}` }}>
-
             {/* Always-visible lifecycle bar */}
-            <div style={{ position: "relative", display: "grid", gridTemplateColumns: `repeat(${nodes.length}, 1fr)`, gap: 0, marginBottom: 16 }}>
+            <div
+              style={{
+                position: "relative",
+                display: "grid",
+                gridTemplateColumns: `repeat(${nodes.length}, 1fr)`,
+                gap: 0,
+                marginBottom: 16,
+              }}
+            >
               {/* connector */}
-              <div style={{ position: "absolute", top: 18, left: "8%", right: "8%", height: 2, background: C.line, zIndex: 0 }} />
-              <div style={{ position: "absolute", top: 18, left: "8%", height: 2, zIndex: 1, background: inDispute ? `linear-gradient(90deg, ${C.cyanFg}, ${C.redFg})` : `linear-gradient(90deg, ${C.cyanFg}, ${C.em})`, width: `${Math.max(0, (doneIdx / (nodes.length - 1)) * 100)}%`, transition: "width 0.6s" }} />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 18,
+                  left: "8%",
+                  right: "8%",
+                  height: 2,
+                  background: C.line,
+                  zIndex: 0,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 18,
+                  left: "8%",
+                  height: 2,
+                  zIndex: 1,
+                  background: inDispute
+                    ? `linear-gradient(90deg, ${C.cyanFg}, ${C.redFg})`
+                    : `linear-gradient(90deg, ${C.cyanFg}, ${C.em})`,
+                  width: `${Math.max(0, (doneIdx / (nodes.length - 1)) * 100)}%`,
+                  transition: "width 0.6s",
+                }}
+              />
 
               {nodes.map((n, i) => {
                 const done = i <= doneIdx;
                 const active = i === activeIdx;
                 return (
-                  <div key={n.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", zIndex: 2 }}>
-                    <div className={active ? "pulse-ring" : ""} style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      background: done ? C.emBg : active ? C.cyanBg : C.card,
-                      border: `2px solid ${done ? C.emBd : active ? C.cyanBd : C.line}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: done ? 14 : 16, transition: "all 0.3s",
-                    }}>
+                  <div
+                    key={n.id}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      zIndex: 2,
+                    }}
+                  >
+                    <div
+                      className={active ? "pulse-ring" : ""}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: done ? C.emBg : active ? C.cyanBg : C.card,
+                        border: `2px solid ${done ? C.emBd : active ? C.cyanBd : C.line}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: done ? 14 : 16,
+                        transition: "all 0.3s",
+                      }}
+                    >
                       {done ? <Ic.check size={14} color={C.emFg} sw={2.5} /> : n.icon}
                     </div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: done ? C.emFg : active ? C.cyanFg : C.mute, marginTop: 6 }}>{n.label}</div>
-                    <div style={{ fontSize: 9, color: C.faint, fontFamily: "var(--font-mono, monospace)" }}>{n.sub}</div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: done ? C.emFg : active ? C.cyanFg : C.mute,
+                        marginTop: 6,
+                      }}
+                    >
+                      {n.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: C.faint,
+                        fontFamily: "var(--font-mono, monospace)",
+                      }}
+                    >
+                      {n.sub}
+                    </div>
                   </div>
                 );
               })}
@@ -5057,82 +5595,265 @@ const OnChain = ({
 
             {/* Current state detail card */}
             <div style={{ borderRadius: 10, border: `1px solid ${C.line}`, overflow: "hidden" }}>
-              <div style={{ padding: "8px 14px", background: C.card2, borderBottom: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: C.mute, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                  {inDispute ? (isResolved ? "Dispute resolved" : "Funds frozen · dispute active") : curStep < 4 ? "Awaiting payment" : curStep === 4 ? "Settlement executing" : curStep === 5 ? "Awaiting delivery" : "Buyer review period"}
+              <div
+                style={{
+                  padding: "8px 14px",
+                  background: C.card2,
+                  borderBottom: `1px solid ${C.line}`,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: C.mute,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  {inDispute
+                    ? isResolved
+                      ? "Dispute resolved"
+                      : "Funds frozen · dispute active"
+                    : curStep < 4
+                      ? "Awaiting payment"
+                      : curStep === 4
+                        ? "Settlement executing"
+                        : curStep === 5
+                          ? "Awaiting delivery"
+                          : "Buyer review period"}
                 </span>
                 <div style={{ display: "flex", gap: 6 }}>
                   {(["EIP-712", "Non-custodial", "Atomic"] as const).map((t) => (
-                    <span key={t} style={{ padding: "2px 6px", borderRadius: 4, background: C.card2, border: `1px solid ${C.line}`, fontSize: 9, color: C.mute, fontFamily: "var(--font-mono, monospace)" }}>{t}</span>
+                    <span
+                      key={t}
+                      style={{
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background: C.card2,
+                        border: `1px solid ${C.line}`,
+                        fontSize: 9,
+                        color: C.mute,
+                        fontFamily: "var(--font-mono, monospace)",
+                      }}
+                    >
+                      {t}
+                    </span>
                   ))}
                 </div>
               </div>
               <div style={{ padding: 14 }}>
-
                 {/* Amount distribution bar — always visible, changes per step */}
-                <div style={{ display: "flex", height: 36, borderRadius: 8, overflow: "hidden", border: `1px solid ${inDispute && !isResolved ? C.redBd : C.line}`, marginBottom: 12 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    height: 36,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    border: `1px solid ${inDispute && !isResolved ? C.redBd : C.line}`,
+                    marginBottom: 12,
+                  }}
+                >
                   {/* Dispute: frozen bar */}
                   {inDispute && !isResolved && (
-                    <div style={{ width: "100%", background: `repeating-linear-gradient(45deg, ${C.redBg}, ${C.redBg} 6px, rgba(220,38,38,0.14) 6px, rgba(220,38,38,0.14) 12px)`, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: C.redFg }}>🛑 ${sel.toFixed(2)} FROZEN · dispute in progress</span>
+                    <div
+                      style={{
+                        width: "100%",
+                        background: `repeating-linear-gradient(45deg, ${C.redBg}, ${C.redBg} 6px, color-mix(in srgb, var(--fb-error-fg) 14%, transparent) 6px, color-mix(in srgb, var(--fb-error-fg) 14%, transparent) 12px)`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.redFg }}>
+                        🛑 ${sel.toFixed(2)} FROZEN · dispute in progress
+                      </span>
                     </div>
                   )}
                   {/* Dispute resolved: buyer refund */}
                   {disputeMode === "resolved_buyer" && (
-                    <>
-                      <div style={{ flex: 1, background: C.emBg, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: C.emFg }}>↩️ ${s.amount.toFixed(2)} → buyer refund</span>
-                      </div>
-                    </>
+                    <div
+                      style={{
+                        flex: 1,
+                        background: C.emBg,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 600, color: C.emFg }}>
+                        ↩️ ${s.amount.toFixed(2)} → buyer refund
+                      </span>
+                    </div>
                   )}
                   {/* Dispute resolved: partial — buyer keeps item + gets refund from seller portion */}
                   {disputeMode === "resolved_partial" && (
                     <>
-                      <div style={{ width: "12%", background: C.amberBg, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                        <span style={{ fontSize: 9, fontWeight: 600, color: C.amberFg }}>↩️ $50</span>
+                      <div
+                        style={{
+                          width: "12%",
+                          background: C.amberBg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 3,
+                        }}
+                      >
+                        <span style={{ fontSize: 9, fontWeight: 600, color: C.amberFg }}>
+                          ↩️ $50
+                        </span>
                       </div>
-                      <div style={{ flex: 1, background: C.emBg, display: "flex", alignItems: "center", paddingLeft: 10, gap: 4, borderLeft: `1px solid ${C.line}` }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>${(sel - 50).toFixed(2)} → seller</span>
+                      <div
+                        style={{
+                          flex: 1,
+                          background: C.emBg,
+                          display: "flex",
+                          alignItems: "center",
+                          paddingLeft: 10,
+                          gap: 4,
+                          borderLeft: `1px solid ${C.line}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
+                          ${(sel - 50).toFixed(2)} → seller
+                        </span>
                       </div>
-                      <div style={{ width: 60, background: C.cyanBg, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: `1px solid ${C.line}` }}>
-                        <span style={{ fontSize: 9, fontWeight: 600, color: C.cyanFg }}>${hf.toFixed(2)}</span>
+                      <div
+                        style={{
+                          width: 60,
+                          background: C.cyanBg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderLeft: `1px solid ${C.line}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 9, fontWeight: 600, color: C.cyanFg }}>
+                          ${hf.toFixed(2)}
+                        </span>
                       </div>
                     </>
                   )}
                   {/* Dispute resolved: seller wins */}
                   {disputeMode === "resolved_seller" && (
                     <>
-                      <div style={{ flex: 1, background: C.emBg, display: "flex", alignItems: "center", paddingLeft: 10, gap: 4 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>✅ ${sel.toFixed(2)} → seller released</span>
+                      <div
+                        style={{
+                          flex: 1,
+                          background: C.emBg,
+                          display: "flex",
+                          alignItems: "center",
+                          paddingLeft: 10,
+                          gap: 4,
+                        }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
+                          ✅ ${sel.toFixed(2)} → seller released
+                        </span>
                       </div>
-                      <div style={{ width: 60, background: C.cyanBg, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: `1px solid ${C.line}` }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: C.cyanFg }}>${hf.toFixed(2)}</span>
+                      <div
+                        style={{
+                          width: 60,
+                          background: C.cyanBg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderLeft: `1px solid ${C.line}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.cyanFg }}>
+                          ${hf.toFixed(2)}
+                        </span>
                       </div>
                     </>
                   )}
                   {/* Normal flow (no dispute) */}
                   {!inDispute && curStep < 4 && (
-                    <div style={{ width: "100%", background: C.card2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: C.dim }}>💰 <strong>${s.amount.toFixed(2)}</strong> in buyer wallet</span>
+                    <div
+                      style={{
+                        width: "100%",
+                        background: C.card2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: C.dim }}>
+                        💰 <strong>${s.amount.toFixed(2)}</strong> in buyer wallet
+                      </span>
                     </div>
                   )}
                   {!inDispute && curStep === 4 && (
-                    <div style={{ width: "100%", background: `repeating-linear-gradient(45deg, ${C.violetBg}, ${C.violetBg} 6px, rgba(124,58,237,0.14) 6px, rgba(124,58,237,0.14) 12px)`, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>🔒 ${s.amount.toFixed(2)} in Settlement Router</span>
+                    <div
+                      style={{
+                        width: "100%",
+                        background: `repeating-linear-gradient(45deg, ${C.violetBg}, ${C.violetBg} 6px, color-mix(in srgb, var(--fb-info-fg) 14%, transparent) 6px, color-mix(in srgb, var(--fb-info-fg) 14%, transparent) 12px)`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.violetFg }}>
+                        🔒 ${s.amount.toFixed(2)} in Settlement Router
+                      </span>
                     </div>
                   )}
                   {!inDispute && curStep >= 5 && (
                     <>
-                      <div style={{ flex: 1, background: curStep >= 6 ? C.emBg : `repeating-linear-gradient(45deg, ${C.emBg}, ${C.emBg} 6px, rgba(5,150,105,0.14) 6px, rgba(5,150,105,0.14) 12px)`, display: "flex", alignItems: "center", paddingLeft: 10, gap: 4 }}>
+                      <div
+                        style={{
+                          flex: 1,
+                          background:
+                            curStep >= 6
+                              ? C.emBg
+                              : `repeating-linear-gradient(45deg, ${C.emBg}, ${C.emBg} 6px, color-mix(in srgb, var(--fb-success-fg) 14%, transparent) 6px, color-mix(in srgb, var(--fb-success-fg) 14%, transparent) 12px)`,
+                          display: "flex",
+                          alignItems: "center",
+                          paddingLeft: 10,
+                          gap: 4,
+                        }}
+                      >
                         <span style={{ fontSize: 10 }}>{curStep >= 6 ? "⏳" : "🔒"}</span>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>${prodAmt.toFixed(2)}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.emFg }}>
+                          ${prodAmt.toFixed(2)}
+                        </span>
                       </div>
-                      <div style={{ width: 70, background: C.violetBg, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: `1px solid ${C.line}`, gap: 3 }}>
+                      <div
+                        style={{
+                          width: 70,
+                          background: C.violetBg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderLeft: `1px solid ${C.line}`,
+                          gap: 3,
+                        }}
+                      >
                         <span style={{ fontSize: 9 }}>🔒</span>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: C.violetFg }}>${buf.toFixed(2)}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.violetFg }}>
+                          ${buf.toFixed(2)}
+                        </span>
                       </div>
-                      <div style={{ width: 60, background: C.cyanBg, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: `1px solid ${C.line}` }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: C.cyanFg }}>${hf.toFixed(2)}</span>
+                      <div
+                        style={{
+                          width: 60,
+                          background: C.cyanBg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderLeft: `1px solid ${C.line}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.cyanFg }}>
+                          ${hf.toFixed(2)}
+                        </span>
                       </div>
                     </>
                   )}
@@ -5140,47 +5861,159 @@ const OnChain = ({
 
                 {/* Release schedule — after delivery, normal path only */}
                 {!inDispute && curStep >= 6 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-                    <div style={{ padding: 10, borderRadius: 8, background: C.emBg, border: `1px solid ${C.emBd}` }}>
-                      <div style={{ fontSize: 9, fontFamily: "var(--font-mono, monospace)", color: C.emFg, fontWeight: 600, marginBottom: 4 }}>PHASE 1 · 24H</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.emFg }}>${prodAmt.toFixed(2)}</div>
-                      <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>Buyer confirm or auto → seller</div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gap: 8,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        background: C.emBg,
+                        border: `1px solid ${C.emBd}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontFamily: "var(--font-mono, monospace)",
+                          color: C.emFg,
+                          fontWeight: 600,
+                          marginBottom: 4,
+                        }}
+                      >
+                        PHASE 1 · 24H
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.emFg }}>
+                        ${prodAmt.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>
+                        Buyer confirm or auto → seller
+                      </div>
                     </div>
-                    <div style={{ padding: 10, borderRadius: 8, background: C.violetBg, border: `1px solid ${C.violetBd}` }}>
-                      <div style={{ fontSize: 9, fontFamily: "var(--font-mono, monospace)", color: C.violetFg, fontWeight: 600, marginBottom: 4 }}>PHASE 2 · 14D</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.violetFg }}>${buf.toFixed(2)}</div>
-                      <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>Weight APV check → seller (adj.)</div>
+                    <div
+                      style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        background: C.violetBg,
+                        border: `1px solid ${C.violetBd}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontFamily: "var(--font-mono, monospace)",
+                          color: C.violetFg,
+                          fontWeight: 600,
+                          marginBottom: 4,
+                        }}
+                      >
+                        PHASE 2 · 14D
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.violetFg }}>
+                        ${buf.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>
+                        Weight APV check → seller (adj.)
+                      </div>
                     </div>
-                    <div style={{ padding: 10, borderRadius: 8, background: C.cyanBg, border: `1px solid ${C.cyanBd}` }}>
-                      <div style={{ fontSize: 9, fontFamily: "var(--font-mono, monospace)", color: C.cyanFg, fontWeight: 600, marginBottom: 4 }}>FEE · COLLECTED</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.cyanFg }}>${hf.toFixed(2)}</div>
-                      <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>1.5% → Haggle treasury</div>
+                    <div
+                      style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        background: C.cyanBg,
+                        border: `1px solid ${C.cyanBd}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontFamily: "var(--font-mono, monospace)",
+                          color: C.cyanFg,
+                          fontWeight: 600,
+                          marginBottom: 4,
+                        }}
+                      >
+                        FEE · COLLECTED
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: C.cyanFg }}>
+                        ${hf.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: C.mute, marginTop: 3 }}>
+                        1.5% → Haggle treasury
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* ── Dispute path — what happens to money if disputed ── */}
                 {curStep >= 6 && (
-                  <div style={{ borderRadius: 8, border: `1px solid ${C.redBd}`, overflow: "hidden" }}>
-                    <div style={{ padding: "8px 12px", background: C.redBg, display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    style={{ borderRadius: 8, border: `1px solid ${C.redBd}`, overflow: "hidden" }}
+                  >
+                    <div
+                      style={{
+                        padding: "8px 12px",
+                        background: C.redBg,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
                       <Ic.alert size={13} color={C.redFg} />
-                      <span style={{ fontSize: 10, fontWeight: 600, color: C.redFg, fontFamily: "var(--font-mono, monospace)", textTransform: "uppercase", letterSpacing: "0.08em" }}>If disputed</span>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: C.redFg,
+                          fontFamily: "var(--font-mono, monospace)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                        }}
+                      >
+                        If disputed
+                      </span>
                     </div>
                     <div style={{ padding: "10px 12px" }}>
                       {/* Dispute flow as horizontal steps */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 0, flexWrap: "wrap" }}>
-                        {([
-                          { icon: "🛑", label: "Freeze", sub: "All funds held", col: C.redFg },
-                          { icon: "📋", label: "T1 Auto", sub: "Trust-based", col: C.amberFg },
-                          { icon: "👥", label: "T2 Panel", sub: "DS review", col: C.violetFg },
-                          { icon: "⚖️", label: "T3 Arbitration", sub: "Final ruling", col: C.dim },
-                        ] as const).map((d, i) => (
+                      <div
+                        style={{ display: "flex", alignItems: "center", gap: 0, flexWrap: "wrap" }}
+                      >
+                        {(
+                          [
+                            { icon: "🛑", label: "Freeze", sub: "All funds held", col: C.redFg },
+                            { icon: "📋", label: "T1 Auto", sub: "Trust-based", col: C.amberFg },
+                            { icon: "👥", label: "T2 Panel", sub: "DS review", col: C.violetFg },
+                            { icon: "⚖️", label: "T3 Arbitration", sub: "Final ruling", col: C.dim },
+                          ] as const
+                        ).map((d, i) => (
                           <React.Fragment key={d.label}>
-                            {i > 0 && <div style={{ width: 20, height: 1, background: C.line2, flexShrink: 0 }} />}
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 6, background: C.card2, border: `1px solid ${C.line}`, flexShrink: 0 }}>
+                            {i > 0 && (
+                              <div
+                                style={{ width: 20, height: 1, background: C.line2, flexShrink: 0 }}
+                              />
+                            )}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                background: C.card2,
+                                border: `1px solid ${C.line}`,
+                                flexShrink: 0,
+                              }}
+                            >
                               <span style={{ fontSize: 13 }}>{d.icon}</span>
                               <div>
-                                <div style={{ fontSize: 10, fontWeight: 600, color: d.col }}>{d.label}</div>
+                                <div style={{ fontSize: 10, fontWeight: 600, color: d.col }}>
+                                  {d.label}
+                                </div>
                                 <div style={{ fontSize: 8.5, color: C.mute }}>{d.sub}</div>
                               </div>
                             </div>
@@ -5188,18 +6021,82 @@ const OnChain = ({
                         ))}
                       </div>
                       {/* Resolution outcomes */}
-                      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-                        <div style={{ padding: "6px 8px", borderRadius: 6, background: C.emBg, border: `1px solid ${C.emBd}`, textAlign: "center" }}>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: C.emFg, fontFamily: "var(--font-mono, monospace)" }}>BUYER WINS</div>
-                          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>${s.amount.toFixed(2)} → buyer refund</div>
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr 1fr",
+                          gap: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            background: C.emBg,
+                            border: `1px solid ${C.emBd}`,
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 600,
+                              color: C.emFg,
+                              fontFamily: "var(--font-mono, monospace)",
+                            }}
+                          >
+                            BUYER WINS
+                          </div>
+                          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
+                            ${s.amount.toFixed(2)} → buyer refund
+                          </div>
                         </div>
-                        <div style={{ padding: "6px 8px", borderRadius: 6, background: C.amberBg, border: `1px solid ${C.amberBd}`, textAlign: "center" }}>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: C.amberFg, fontFamily: "var(--font-mono, monospace)" }}>PARTIAL</div>
-                          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>Split by ruling amount</div>
+                        <div
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            background: C.amberBg,
+                            border: `1px solid ${C.amberBd}`,
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 600,
+                              color: C.amberFg,
+                              fontFamily: "var(--font-mono, monospace)",
+                            }}
+                          >
+                            PARTIAL
+                          </div>
+                          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
+                            Split by ruling amount
+                          </div>
                         </div>
-                        <div style={{ padding: "6px 8px", borderRadius: 6, background: C.card2, border: `1px solid ${C.line}`, textAlign: "center" }}>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: C.dim, fontFamily: "var(--font-mono, monospace)" }}>SELLER WINS</div>
-                          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>${sel.toFixed(2)} → seller release</div>
+                        <div
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            background: C.card2,
+                            border: `1px solid ${C.line}`,
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 600,
+                              color: C.dim,
+                              fontFamily: "var(--font-mono, monospace)",
+                            }}
+                          >
+                            SELLER WINS
+                          </div>
+                          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
+                            ${sel.toFixed(2)} → seller release
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -5208,11 +6105,29 @@ const OnChain = ({
 
                 {/* tx info */}
                 {curStep >= 5 && (
-                  <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: C.mute }}>
-                    <span>tx <span style={{ color: C.dim }}>0x8f2a…b7c1</span></span>
-                    <span>block <span style={{ color: C.dim }}>12,483,917</span></span>
-                    <span>gas <span style={{ color: C.emFg }}>$0.00</span></span>
-                    <span>chain <span style={{ color: C.violetFg }}>Base L2</span></span>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 10,
+                      fontSize: 10,
+                      fontFamily: "var(--font-mono, monospace)",
+                      color: C.mute,
+                    }}
+                  >
+                    <span>
+                      tx <span style={{ color: C.dim }}>0x8f2a…b7c1</span>
+                    </span>
+                    <span>
+                      block <span style={{ color: C.dim }}>12,483,917</span>
+                    </span>
+                    <span>
+                      gas <span style={{ color: C.emFg }}>$0.00</span>
+                    </span>
+                    <span>
+                      chain <span style={{ color: C.violetFg }}>Base L2</span>
+                    </span>
                   </div>
                 )}
               </div>
@@ -5223,17 +6138,46 @@ const OnChain = ({
 
       {/* ── DisputeRegistry — compact (appears after delivery) ── */}
       {curStep >= 6 && (
-        <div style={{ marginTop: 14, padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: "12px 16px",
+            borderRadius: 10,
+            border: `1px solid ${C.line}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
           <Row gap={10}>
             <Ic.shield size={16} color={C.mute} />
             <div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: C.dim }}>HaggleDisputeRegistry</span>
-              <span style={{ fontSize: 11, color: C.mute, marginLeft: 8 }}>On-chain evidence anchoring · standby</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.dim }}>
+                HaggleDisputeRegistry
+              </span>
+              <span style={{ fontSize: 11, color: C.mute, marginLeft: 8 }}>
+                On-chain evidence anchoring · standby
+              </span>
             </div>
           </Row>
           <div style={{ display: "flex", gap: 6 }}>
             {(["anchorDispute", "supersede", "revoke"] as const).map((fn) => (
-              <span key={fn} style={{ padding: "3px 8px", borderRadius: 5, background: C.card2, border: `1px solid ${C.line}`, fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: C.mute }}>{fn}()</span>
+              <span
+                key={fn}
+                style={{
+                  padding: "3px 8px",
+                  borderRadius: 5,
+                  background: C.card2,
+                  border: `1px solid ${C.line}`,
+                  fontSize: 10,
+                  fontFamily: "var(--font-mono, monospace)",
+                  color: C.mute,
+                }}
+              >
+                {fn}()
+              </span>
             ))}
           </div>
         </div>
@@ -5267,13 +6211,7 @@ const STEPS = [
   { k: "delivered", lbl: "Delivered", ep: "/shipments/:id/event" },
 ];
 
-const SHIP_SEQ = [
-  "labelPending",
-  "labelCreated",
-  "inTransit",
-  "outForDelivery",
-  "delivered",
-];
+const SHIP_SEQ = ["labelPending", "labelCreated", "inTransit", "outForDelivery", "delivered"];
 
 /* ===== main component ===== */
 export default function CheckoutFlow({
@@ -5287,7 +6225,9 @@ export default function CheckoutFlow({
   const [done, setDone] = useState<number[]>([]);
   const [settling, setSettling] = useState(false);
   const [shipSub, setShipSub] = useState("labelPending");
-  const [disputeMode, setDisputeMode] = useState<false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller">(false);
+  const [disputeMode, setDisputeMode] = useState<
+    false | "open" | "t1" | "t2" | "resolved_buyer" | "resolved_partial" | "resolved_seller"
+  >(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [logOpen, setLogOpen] = useState(true);
   const [auto, setAuto] = useState(false);
@@ -5324,15 +6264,12 @@ export default function CheckoutFlow({
             id: Math.random().toString(36).slice(2, 8),
           },
           ...l,
-        ].slice(0, 30)
+        ].slice(0, 30),
       ),
-    []
+    [],
   );
 
-  const md = useCallback(
-    (i: number) => setDone((d) => (d.includes(i) ? d : [...d, i])),
-    []
-  );
+  const md = useCallback((i: number) => setDone((d) => (d.includes(i) ? d : [...d, i])), []);
 
   const next = useCallback(() => {
     const c = STEPS[idx];
@@ -5346,7 +6283,9 @@ export default function CheckoutFlow({
           orderId: "ord_8f2ab7c1e4",
           amount: s.amount,
           rail: s.rail,
-          payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: s.rail === "stripe" }),
+          payment_disclosure_ack: createPaymentDisclosureAck({
+            stripeFallback: s.rail === "stripe",
+          }),
         })
         .catch(() => {
           /* demo mode: silent fallback */
@@ -5367,14 +6306,11 @@ export default function CheckoutFlow({
           /* demo mode */
         });
 
-      setTimeout(
-        () => {
-          setSettling(false);
-          addLog("Settle executed", "/payments/:id/settle");
-          md(4);
-        },
-        3200 / autoSpeed
-      );
+      setTimeout(() => {
+        setSettling(false);
+        addLog("Settle executed", "/payments/:id/settle");
+        md(4);
+      }, 3200 / autoSpeed);
       return;
     }
     if (idx < 6) setIdx(idx + 1);
@@ -5427,23 +6363,18 @@ export default function CheckoutFlow({
           onComplete();
         }
       },
-      settling ? 3400 / autoSpeed : 1200 / autoSpeed
+      settling ? 3400 / autoSpeed : 1200 / autoSpeed,
     );
     return () => clearTimeout(to);
-  }, [auto, idx, settling, shipSub, done, next, shipAct, autoSpeed, onComplete]);
+  }, [auto, idx, settling, done, next, shipAct, autoSpeed, onComplete]);
 
   const renderStep = () => {
     const k = STEPS[idx].k;
-    if (k === "rail")
-      return <Step1 s={s} setRail={setRail} next={next} />;
+    if (k === "rail") return <Step1 s={s} setRail={setRail} next={next} />;
     if (k === "prepare") return <Step2 s={s} next={next} />;
     if (k === "quote") return <Step3 s={s} next={next} />;
     if (k === "authorize")
-      return s.rail === "x402" ? (
-        <Step4x s={s} next={next} />
-      ) : (
-        <Step4s s={s} next={next} />
-      );
+      return s.rail === "x402" ? <Step4x s={s} next={next} /> : <Step4s s={s} next={next} />;
     if (k === "settle")
       return (
         <Step5
@@ -5455,9 +6386,9 @@ export default function CheckoutFlow({
           }}
         />
       );
-    if (k === "ship")
-      return <Step6 s={s} sub={shipSub} act={shipAct} />;
-    if (k === "delivered") return <Step7 s={s} reset={reset} disputeMode={disputeMode} onDispute={setDisputeMode} />;
+    if (k === "ship") return <Step6 s={s} sub={shipSub} act={shipAct} />;
+    if (k === "delivered")
+      return <Step7 s={s} reset={reset} disputeMode={disputeMode} onDispute={setDisputeMode} />;
     return null;
   };
 
@@ -5473,8 +6404,7 @@ export default function CheckoutFlow({
         minHeight: "100vh",
         padding: "22px clamp(16px, 3vw, 36px) 40px",
         color: C.ink,
-        fontFamily:
-          "var(--font-sans, 'Inter', system-ui, -apple-system, sans-serif)",
+        fontFamily: "var(--font-sans, 'Inter', system-ui, -apple-system, sans-serif)",
       }}
     >
       {/* grid background */}
@@ -5485,12 +6415,10 @@ export default function CheckoutFlow({
           zIndex: 0,
           pointerEvents: "none",
           backgroundImage:
-            "linear-gradient(to right, rgba(20,20,26,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(20,20,26,0.03) 1px, transparent 1px)",
+            "linear-gradient(to right, color-mix(in srgb, var(--text-primary) 3%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--text-primary) 3%, transparent) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
-          maskImage:
-            "radial-gradient(ellipse at top, black 40%, transparent 90%)",
-          WebkitMaskImage:
-            "radial-gradient(ellipse at top, black 40%, transparent 90%)",
+          maskImage: "radial-gradient(ellipse at top, black 40%, transparent 90%)",
+          WebkitMaskImage: "radial-gradient(ellipse at top, black 40%, transparent 90%)",
         }}
       />
 
@@ -5506,21 +6434,17 @@ export default function CheckoutFlow({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#fff",
+              color: "var(--text-on-accent)",
               fontWeight: 800,
               fontSize: 15,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             H
           </div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600 }}>
-              Haggle{" "}
-              <span style={{ color: C.mute, fontWeight: 400 }}>
-                · checkout
-              </span>
+              Haggle <span style={{ color: C.mute, fontWeight: 400 }}>· checkout</span>
             </div>
             <div
               style={{
@@ -5528,8 +6452,7 @@ export default function CheckoutFlow({
                 color: C.faint,
                 marginTop: 1,
                 letterSpacing: "0.04em",
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               ord_8f2ab7c1e4 · pi_8f2ab7c1 · Base L2
@@ -5541,18 +6464,11 @@ export default function CheckoutFlow({
             v="ghost"
             size="sm"
             onClick={() => setAuto(!auto)}
-            icon={
-              auto ? <Ic.pause size={13} /> : <Ic.play size={13} />
-            }
+            icon={auto ? <Ic.pause size={13} /> : <Ic.play size={13} />}
           >
             {auto ? "Pause demo" : "Auto-play demo"}
           </Btn>
-          <Btn
-            v="secondary"
-            size="sm"
-            onClick={reset}
-            icon={<Ic.restart size={13} />}
-          >
+          <Btn v="secondary" size="sm" onClick={reset} icon={<Ic.restart size={13} />}>
             Reset
           </Btn>
         </Row>
@@ -5614,8 +6530,7 @@ export default function CheckoutFlow({
                 color: C.mute,
                 textTransform: "uppercase",
                 letterSpacing: "0.1em",
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               Agreed price
@@ -5626,8 +6541,7 @@ export default function CheckoutFlow({
                 fontSize: 10.5,
                 color: C.faint,
                 marginTop: 2,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               USD · settled in USDC
@@ -5645,8 +6559,7 @@ export default function CheckoutFlow({
                 color: C.mute,
                 textTransform: "uppercase",
                 letterSpacing: "0.1em",
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               Current step
@@ -5658,19 +6571,15 @@ export default function CheckoutFlow({
                   height: 10,
                   borderRadius: "50%",
                   background: C.cyan,
-                  animation:
-                    "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
+                  animation: "haggle-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite",
                 }}
               />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>
-                {cur.lbl}
-              </span>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{cur.lbl}</span>
               <span
                 style={{
                   fontSize: 11,
                   color: C.faint,
-                  fontFamily:
-                    "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                  fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
                 }}
               >
                 {idx + 1}/{STEPS.length}
@@ -5681,8 +6590,7 @@ export default function CheckoutFlow({
                 fontSize: 10.5,
                 color: C.faint,
                 marginTop: 6,
-                fontFamily:
-                  "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+                fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
               }}
             >
               {cur.ep !== "—" ? `next: ${cur.ep}` : "rail selection"}
@@ -5704,9 +6612,7 @@ export default function CheckoutFlow({
           <Card style={{ marginBottom: 18, padding: "18px 24px 14px" }}>
             <Timeline steps={STEPS} cur={idx} done={done} onJump={jump} />
           </Card>
-          <Card style={{ padding: 28, minHeight: 540 }}>
-            {renderStep()}
-          </Card>
+          <Card style={{ padding: 28, minHeight: 540 }}>{renderStep()}</Card>
         </div>
 
         {/* activity log sidebar */}
@@ -5720,6 +6626,7 @@ export default function CheckoutFlow({
             }}
           >
             <button
+              type="button"
               onClick={() => setLogOpen(!logOpen)}
               style={{
                 width: "100%",
@@ -5758,9 +6665,7 @@ export default function CheckoutFlow({
                   />
                 </div>
                 <div style={{ textAlign: "left" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>
-                    Activity log
-                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>Activity log</div>
                   <div
                     style={{
                       fontSize: 10,
@@ -5838,8 +6743,7 @@ export default function CheckoutFlow({
                         <div
                           style={{
                             color: C.dim,
-                            fontFamily:
-                              "var(--font-sans, 'Inter', system-ui, sans-serif)",
+                            fontFamily: "var(--font-sans, 'Inter', system-ui, sans-serif)",
                             fontSize: 12,
                             fontWeight: 500,
                           }}
@@ -5880,8 +6784,7 @@ export default function CheckoutFlow({
         <Row gap={16}>
           <span
             style={{
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             Haggle Protocol v0.9.2
@@ -5891,8 +6794,7 @@ export default function CheckoutFlow({
         <Row gap={10}>
           <span
             style={{
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             Base L2 · ⛽ gas $0.00
@@ -5900,8 +6802,7 @@ export default function CheckoutFlow({
           <span
             style={{
               color: C.emFg,
-              fontFamily:
-                "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
+              fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, Menlo, monospace)",
             }}
           >
             ● mainnet healthy

@@ -1,6 +1,5 @@
-import { sql, type Database } from "@haggle/db";
-import type { ShipmentApvFailureAlertPayloadSigner } from
-  "./shipment-apv-chaos-failure-alert-signature.service.js";
+import { type Database, sql } from "@haggle/db";
+import type { ShipmentApvFailureAlertPayloadSigner } from "./shipment-apv-chaos-failure-alert-signature.service.js";
 
 type KeyEventType = "REGISTERED" | "RETIRED" | "REVOKED";
 
@@ -47,14 +46,21 @@ function publicRegistry(row: RegistryRow) {
   };
 }
 
-function registrationMatches(row: RegistryRow, input: {
-  clientEventId: string; registeredBy: string; signer: ShipmentApvFailureAlertPayloadSigner;
-}) {
-  return String(row.client_event_id) === input.clientEventId
-    && String(row.changed_by) === input.registeredBy
-    && String(row.key_id) === input.signer.keyId
-    && String(row.public_key_spki_base64) === input.signer.publicKeySpkiBase64
-    && String(row.event_type) === "REGISTERED";
+function registrationMatches(
+  row: RegistryRow,
+  input: {
+    clientEventId: string;
+    registeredBy: string;
+    signer: ShipmentApvFailureAlertPayloadSigner;
+  },
+) {
+  return (
+    String(row.client_event_id) === input.clientEventId &&
+    String(row.changed_by) === input.registeredBy &&
+    String(row.key_id) === input.signer.keyId &&
+    String(row.public_key_spki_base64) === input.signer.publicKeySpkiBase64 &&
+    String(row.event_type) === "REGISTERED"
+  );
 }
 
 async function loadRegistryEvent(db: Pick<Database, "execute">, clientEventId: string) {
@@ -93,8 +99,12 @@ async function loadCurrentRegistryKey(db: Pick<Database, "execute">, keyId: stri
 
 export async function registerShipmentApvFailureAlertTestKey(
   db: Pick<Database, "execute">,
-  input: { clientEventId: string; registeredBy: string;
-    signer: ShipmentApvFailureAlertPayloadSigner; now?: Date },
+  input: {
+    clientEventId: string;
+    registeredBy: string;
+    signer: ShipmentApvFailureAlertPayloadSigner;
+    now?: Date;
+  },
 ) {
   const now = input.now ?? new Date();
   const existing = await loadRegistryEvent(db, input.clientEventId);
@@ -107,8 +117,10 @@ export async function registerShipmentApvFailureAlertTestKey(
 
   const current = await loadCurrentRegistryKey(db, input.signer.keyId);
   if (current) {
-    if (String(current.public_key_spki_base64) !== input.signer.publicKeySpkiBase64
-      || String(current.registered_by) !== input.registeredBy) {
+    if (
+      String(current.public_key_spki_base64) !== input.signer.publicKeySpkiBase64 ||
+      String(current.registered_by) !== input.registeredBy
+    ) {
       throw new Error("SHIPMENT_APV_FAILURE_ALERT_KEY_REGISTRY_BINDING_CONFLICT");
     }
     if (String(current.event_type) === "REGISTERED") return publicRegistry(current);
@@ -142,28 +154,46 @@ export async function registerShipmentApvFailureAlertTestKey(
       throw new Error("SHIPMENT_APV_FAILURE_ALERT_KEY_EVENT_REPLAY_CONFLICT");
     }
     const winner = await loadCurrentRegistryKey(db, input.signer.keyId);
-    if (winner && String(winner.public_key_spki_base64) === input.signer.publicKeySpkiBase64
-      && String(winner.registered_by) === input.registeredBy
-      && String(winner.event_type) === "REGISTERED") return publicRegistry(winner);
+    if (
+      winner &&
+      String(winner.public_key_spki_base64) === input.signer.publicKeySpkiBase64 &&
+      String(winner.registered_by) === input.registeredBy &&
+      String(winner.event_type) === "REGISTERED"
+    )
+      return publicRegistry(winner);
     if (winner) throw new Error("SHIPMENT_APV_FAILURE_ALERT_KEY_REGISTRY_BINDING_CONFLICT");
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_KEY_REGISTRY_UNAVAILABLE");
   }
   return publicRegistry(row);
 }
 
-function transitionMatches(row: RegistryRow, input: {
-  keyId: string; clientEventId: string; action: "RETIRE" | "REVOKE"; changedBy: string;
-}) {
+function transitionMatches(
+  row: RegistryRow,
+  input: {
+    keyId: string;
+    clientEventId: string;
+    action: "RETIRE" | "REVOKE";
+    changedBy: string;
+  },
+) {
   const expected = input.action === "RETIRE" ? "RETIRED" : "REVOKED";
-  return String(row.client_event_id) === input.clientEventId
-    && String(row.key_id) === input.keyId && String(row.changed_by) === input.changedBy
-    && String(row.event_type) === expected;
+  return (
+    String(row.client_event_id) === input.clientEventId &&
+    String(row.key_id) === input.keyId &&
+    String(row.changed_by) === input.changedBy &&
+    String(row.event_type) === expected
+  );
 }
 
 export async function transitionShipmentApvFailureAlertTestKey(
   db: Pick<Database, "execute">,
-  input: { keyId: string; clientEventId: string; action: "RETIRE" | "REVOKE";
-    changedBy: string; now?: Date },
+  input: {
+    keyId: string;
+    clientEventId: string;
+    action: "RETIRE" | "REVOKE";
+    changedBy: string;
+    now?: Date;
+  },
 ) {
   const now = input.now ?? new Date();
   const existing = await loadRegistryEvent(db, input.clientEventId);
@@ -194,8 +224,8 @@ export async function transitionShipmentApvFailureAlertTestKey(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_SIGNING_KEY_TERMINAL");
   }
   const eventType = input.action === "RETIRE" ? "RETIRED" : "REVOKED";
-  const reason = input.action === "RETIRE"
-    ? "ephemeral_test_key_retired" : "ephemeral_test_key_revoked";
+  const reason =
+    input.action === "RETIRE" ? "ephemeral_test_key_retired" : "ephemeral_test_key_revoked";
   const rows = await db.execute(sql`WITH inserted_event AS (
       INSERT INTO shipment_apv_failure_alert_signing_key_events
         (client_event_id, key_id, event_type, reason, changed_by, created_at)

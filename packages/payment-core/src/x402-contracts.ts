@@ -113,7 +113,12 @@ export interface SettlementRouterContract {
   readonly network: string;
   readonly asset: "USDC";
   readonly capabilities: SettlementRouterCapabilities;
-  quote(request: Omit<SettlementRouterExecutionRequest, "quote_id" | "signature" | "deadline" | "signer_nonce">): Promise<SettlementRouterQuote>;
+  quote(
+    request: Omit<
+      SettlementRouterExecutionRequest,
+      "quote_id" | "signature" | "deadline" | "signer_nonce"
+    >,
+  ): Promise<SettlementRouterQuote>;
   execute(request: SettlementRouterExecutionRequest): Promise<SettlementRouterExecutionResult>;
 }
 

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DisputeModuleWebhookOutboxDispatchResult } from "../services/dispute-module-webhook.service.js";
 import {
   buildDisputeModuleWebhookDeadLetterAlertPayload,
+  type DisputeModuleWebhookDeadLetterAlertPayload,
   resolveDisputeModuleWebhookDeadLetterAlertConfigFromEnv,
   sendDisputeModuleWebhookDeadLetterAlert,
   signDisputeModuleWebhookDeadLetterAlertPayload,
-  type DisputeModuleWebhookDeadLetterAlertPayload,
 } from "../services/dispute-module-webhook-alert.service.js";
-import type { DisputeModuleWebhookOutboxDispatchResult } from "../services/dispute-module-webhook.service.js";
 
 const dispatchResult: DisputeModuleWebhookOutboxDispatchResult = {
   claimed: 2,
@@ -28,20 +28,29 @@ describe("dispute module webhook dead-letter alerts", () => {
   const originalUrl = process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_URL;
   const originalSecret = process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_SECRET;
   const originalTimeout = process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS;
-  const originalAllowHttp = process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP;
-  const originalAllowPrivate = process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK;
+  const originalAllowHttp =
+    process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP;
+  const originalAllowPrivate =
+    process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK;
 
   afterEach(() => {
     if (originalUrl === undefined) delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_URL;
     else process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_URL = originalUrl;
-    if (originalSecret === undefined) delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_SECRET;
+    if (originalSecret === undefined)
+      delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_SECRET;
     else process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_SECRET = originalSecret;
-    if (originalTimeout === undefined) delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS;
+    if (originalTimeout === undefined)
+      delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS;
     else process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_TIMEOUT_MS = originalTimeout;
-    if (originalAllowHttp === undefined) delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP;
-    else process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP = originalAllowHttp;
-    if (originalAllowPrivate === undefined) delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK;
-    else process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK = originalAllowPrivate;
+    if (originalAllowHttp === undefined)
+      delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP;
+    else
+      process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_INSECURE_HTTP = originalAllowHttp;
+    if (originalAllowPrivate === undefined)
+      delete process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK;
+    else
+      process.env.DISPUTE_MODULE_WEBHOOK_DEAD_LETTER_ALERT_ALLOW_PRIVATE_NETWORK =
+        originalAllowPrivate;
   });
 
   it("builds a minimal dead-letter alert payload without webhook bodies or secrets", () => {
@@ -121,38 +130,47 @@ describe("dispute module webhook dead-letter alerts", () => {
   });
 
   it("skips when there are no new dead-letter rows", async () => {
-    const result = await sendDisputeModuleWebhookDeadLetterAlert({
-      ...dispatchResult,
-      deadLettered: 0,
-      deadLetterEvents: [],
-    }, {
-      config: {
-        url: "https://ops.example/alerts",
+    const result = await sendDisputeModuleWebhookDeadLetterAlert(
+      {
+        ...dispatchResult,
+        deadLettered: 0,
+        deadLetterEvents: [],
       },
-    });
+      {
+        config: {
+          url: "https://ops.example/alerts",
+        },
+      },
+    );
 
     expect(result).toEqual({ status: "skipped" });
   });
 
   it("rejects insecure alert URLs unless explicitly allowed", async () => {
-    await expect(sendDisputeModuleWebhookDeadLetterAlert(dispatchResult, {
-      config: {
-        url: "http://ops.example/alerts",
-      },
-    })).rejects.toThrow("alert url must use HTTPS unless allow_insecure_http is true");
+    await expect(
+      sendDisputeModuleWebhookDeadLetterAlert(dispatchResult, {
+        config: {
+          url: "http://ops.example/alerts",
+        },
+      }),
+    ).rejects.toThrow("alert url must use HTTPS unless allow_insecure_http is true");
   });
 
   it("rejects localhost and private network alert URLs by default", async () => {
-    await expect(sendDisputeModuleWebhookDeadLetterAlert(dispatchResult, {
-      config: {
-        url: "https://127.0.0.1/alerts",
-      },
-    })).rejects.toThrow("alert url must not target localhost or private network hosts");
+    await expect(
+      sendDisputeModuleWebhookDeadLetterAlert(dispatchResult, {
+        config: {
+          url: "https://127.0.0.1/alerts",
+        },
+      }),
+    ).rejects.toThrow("alert url must not target localhost or private network hosts");
 
-    await expect(sendDisputeModuleWebhookDeadLetterAlert(dispatchResult, {
-      config: {
-        url: "https://localhost/alerts",
-      },
-    })).rejects.toThrow("alert url must not target localhost or private network hosts");
+    await expect(
+      sendDisputeModuleWebhookDeadLetterAlert(dispatchResult, {
+        config: {
+          url: "https://localhost/alerts",
+        },
+      }),
+    ).rejects.toThrow("alert url must not target localhost or private network hosts");
   });
 });

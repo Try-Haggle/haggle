@@ -6,11 +6,7 @@
  * through payment APIs so release/refund policy checks remain centralized.
  */
 
-import {
-  type Database,
-  eq,
-  paymentIntents,
-} from "@haggle/db";
+import { type Database, eq, paymentIntents } from "@haggle/db";
 import type { Log } from "viem";
 
 interface DecodedEvent {
@@ -113,7 +109,7 @@ export async function handleConditionalSettlementEvent(
   if (!row) {
     console.warn(
       `[chain-listener] WARNING: ${event.eventName} for conditional settlement without matching payment intent. ` +
-      `settlementId=${settlementId} txHash=${txHash}`,
+        `settlementId=${settlementId} txHash=${txHash}`,
     );
     return;
   }

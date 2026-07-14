@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  configuredTrustedProxyCidrs,
-  getTrustedProxyPolicyStatus,
-} from "../lib/trusted-proxy.js";
+import { configuredTrustedProxyCidrs, getTrustedProxyPolicyStatus } from "../lib/trusted-proxy.js";
 
 describe("trusted proxy configuration", () => {
   const original = process.env.HAGGLE_TRUSTED_PROXY_CIDRS;
@@ -24,10 +21,11 @@ describe("trusted proxy configuration", () => {
   });
 
   it("accepts an explicit unique IP and CIDR allowlist", () => {
-    process.env.HAGGLE_TRUSTED_PROXY_CIDRS =
-      "127.0.0.1, 10.20.0.0/16, 2001:db8:abcd::/48";
+    process.env.HAGGLE_TRUSTED_PROXY_CIDRS = "127.0.0.1, 10.20.0.0/16, 2001:db8:abcd::/48";
     expect(configuredTrustedProxyCidrs()).toEqual([
-      "127.0.0.1", "10.20.0.0/16", "2001:db8:abcd::/48",
+      "127.0.0.1",
+      "10.20.0.0/16",
+      "2001:db8:abcd::/48",
     ]);
     expect(getTrustedProxyPolicyStatus()).toMatchObject({
       configured: true,
@@ -44,8 +42,6 @@ describe("trusted proxy configuration", () => {
     "10.0.0.0/33",
   ])("rejects unsafe or malformed allowlists: %s", (value) => {
     process.env.HAGGLE_TRUSTED_PROXY_CIDRS = value;
-    expect(() => configuredTrustedProxyCidrs()).toThrow(
-      "HAGGLE_TRUSTED_PROXY_CIDRS",
-    );
+    expect(() => configuredTrustedProxyCidrs()).toThrow("HAGGLE_TRUSTED_PROXY_CIDRS");
   });
 });

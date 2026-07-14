@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runDisputeEvidenceScannerSecurityFixture } from
-  "../services/dispute-evidence-scanner-fixture.service.js";
+import { runDisputeEvidenceScannerSecurityFixture } from "../services/dispute-evidence-scanner-fixture.service.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();

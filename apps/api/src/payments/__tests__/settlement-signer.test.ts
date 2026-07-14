@@ -4,15 +4,13 @@
  * These tests use real viem crypto operations (not mocks) to verify that
  * signatures are valid and recoverable.
  */
-import { vi, describe, it, expect, afterEach } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Unmock viem — we need real crypto for signature verification.
 vi.unmock("viem");
 vi.unmock("viem/accounts");
 vi.unmock("viem/chains");
 
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { recoverTypedDataAddress, type Address } from "viem";
 import {
   CONDITIONAL_SETTLEMENT_EIP712_DOMAIN,
   CONDITIONAL_SETTLEMENT_EIP712_TYPES,
@@ -20,19 +18,21 @@ import {
   SETTLEMENT_EIP712_TYPES,
 } from "@haggle/contracts";
 import type { PaymentIntent } from "@haggle/payment-core";
+import { type Address, recoverTypedDataAddress } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
-  buildSettlementMessage,
-  buildConditionalSettlementMessage,
-  buildConditionalReleaseMessage,
   buildConditionalRefundMessage,
-  signSettlement,
-  signConditionalSettlement,
-  signConditionalRelease,
-  signConditionalRefund,
-  createSettlementSigner,
-  createConditionalSettlementSigner,
+  buildConditionalReleaseMessage,
+  buildConditionalSettlementMessage,
+  buildSettlementMessage,
   type ConditionalSettlementSignerConfig,
+  createConditionalSettlementSigner,
+  createSettlementSigner,
   type SettlementSignerConfig,
+  signConditionalRefund,
+  signConditionalRelease,
+  signConditionalSettlement,
+  signSettlement,
 } from "../settlement-signer.js";
 
 // ── Test fixtures ────────────────────────────────────────────
@@ -244,8 +244,16 @@ describe("settlement-signer", () => {
 
     it("produces different signatures for different intents", async () => {
       const config = makeTestConfig();
-      const message1 = buildSettlementMessage(makeTestIntent({ id: "pi_a" }), config, TEST_SIGNER_NONCE);
-      const message2 = buildSettlementMessage(makeTestIntent({ id: "pi_b" }), config, TEST_SIGNER_NONCE);
+      const message1 = buildSettlementMessage(
+        makeTestIntent({ id: "pi_a" }),
+        config,
+        TEST_SIGNER_NONCE,
+      );
+      const message2 = buildSettlementMessage(
+        makeTestIntent({ id: "pi_b" }),
+        config,
+        TEST_SIGNER_NONCE,
+      );
 
       const sig1 = await signSettlement(message1, config);
       const sig2 = await signSettlement(message2, config);
@@ -356,12 +364,9 @@ describe("settlement-signer", () => {
     it("throws when policy hash fields are missing", () => {
       const intent = makeTestIntent();
       expect(() =>
-        buildConditionalSettlementMessage(
-          intent,
-          makeConditionalTestConfig(),
-          TEST_SIGNER_NONCE,
-          { grantNonce: "grant_nonce_001" },
-        ),
+        buildConditionalSettlementMessage(intent, makeConditionalTestConfig(), TEST_SIGNER_NONCE, {
+          grantNonce: "grant_nonce_001",
+        }),
       ).toThrow("approval_policy_hash is required");
     });
 
@@ -419,31 +424,35 @@ describe("settlement-signer", () => {
     });
 
     it("rejects an APV offset larger than the seller payout", () => {
-      expect(() => buildConditionalReleaseMessage(
-        {
-          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-          sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
-          feeWallet: TEST_FEE_WALLET,
-          grossAmountMinor: 100,
-          feeBps: 150,
-          sellerOffsetMinor: 100,
-        },
-        TEST_SIGNER_NONCE,
-      )).toThrow("sellerOffsetMinor");
+      expect(() =>
+        buildConditionalReleaseMessage(
+          {
+            settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
+            feeWallet: TEST_FEE_WALLET,
+            grossAmountMinor: 100,
+            feeBps: 150,
+            sellerOffsetMinor: 100,
+          },
+          TEST_SIGNER_NONCE,
+        ),
+      ).toThrow("sellerOffsetMinor");
     });
 
     it("rejects an APV offset that would exceed the onchain 10% fee cap", () => {
-      expect(() => buildConditionalReleaseMessage(
-        {
-          settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-          sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
-          feeWallet: TEST_FEE_WALLET,
-          grossAmountMinor: 10_000,
-          feeBps: 150,
-          sellerOffsetMinor: 851,
-        },
-        TEST_SIGNER_NONCE,
-      )).toThrow("fee cap");
+      expect(() =>
+        buildConditionalReleaseMessage(
+          {
+            settlementId: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            sellerWallet: "0x2222222222222222222222222222222222222222" as Address,
+            feeWallet: TEST_FEE_WALLET,
+            grossAmountMinor: 10_000,
+            feeBps: 150,
+            sellerOffsetMinor: 851,
+          },
+          TEST_SIGNER_NONCE,
+        ),
+      ).toThrow("fee cap");
     });
 
     it("produces a recoverable Refund EIP-712 signature", async () => {
@@ -512,13 +521,17 @@ describe("settlement-signer", () => {
     it("throws when HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is missing", () => {
       setAllEnv();
       delete process.env.HAGGLE_ROUTER_RELAYER_PRIVATE_KEY;
-      expect(() => createSettlementSigner()).toThrow("HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required");
+      expect(() => createSettlementSigner()).toThrow(
+        "HAGGLE_ROUTER_RELAYER_PRIVATE_KEY is required",
+      );
     });
 
     it("throws when HAGGLE_SETTLEMENT_ROUTER_ADDRESS is missing", () => {
       setAllEnv();
       delete process.env.HAGGLE_SETTLEMENT_ROUTER_ADDRESS;
-      expect(() => createSettlementSigner()).toThrow("HAGGLE_SETTLEMENT_ROUTER_ADDRESS is required");
+      expect(() => createSettlementSigner()).toThrow(
+        "HAGGLE_SETTLEMENT_ROUTER_ADDRESS is required",
+      );
     });
 
     it("throws when HAGGLE_X402_USDC_ASSET_ADDRESS is missing", () => {

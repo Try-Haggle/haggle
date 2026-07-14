@@ -43,7 +43,9 @@ function redactShippingSensitiveDataInner(value: unknown, seen: WeakSet<object>)
 
   const redacted: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    redacted[key] = isSensitiveShippingKey(key) ? "[REDACTED]" : redactShippingSensitiveDataInner(entry, seen);
+    redacted[key] = isSensitiveShippingKey(key)
+      ? "[REDACTED]"
+      : redactShippingSensitiveDataInner(entry, seen);
   }
   return redacted;
 }
@@ -55,26 +57,35 @@ export type CarrierErrorClassification =
 
 export function classifyCarrierError(error: unknown): CarrierErrorClassification {
   if (error && typeof error === "object") {
-    const candidate = error as { status?: unknown; statusCode?: unknown; code?: unknown; type?: unknown };
-    const status = typeof candidate.status === "number"
-      ? candidate.status
-      : typeof candidate.statusCode === "number"
-        ? candidate.statusCode
-        : null;
+    const candidate = error as {
+      status?: unknown;
+      statusCode?: unknown;
+      code?: unknown;
+      type?: unknown;
+    };
+    const status =
+      typeof candidate.status === "number"
+        ? candidate.status
+        : typeof candidate.statusCode === "number"
+          ? candidate.statusCode
+          : null;
     if (status !== null) {
-      if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return "retryable";
+      if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500)
+        return "retryable";
       if (status >= 400 && status < 500) return "non_retryable";
     }
-    const code = typeof candidate.code === "string"
-      ? candidate.code.toLowerCase()
-      : typeof candidate.type === "string"
-        ? candidate.type.toLowerCase()
-        : "";
+    const code =
+      typeof candidate.code === "string"
+        ? candidate.code.toLowerCase()
+        : typeof candidate.type === "string"
+          ? candidate.type.toLowerCase()
+          : "";
     if (/timeout|rate_limit|api_error|connection|econnreset/.test(code)) return "retryable";
     if (/auth|invalid|not_found|permission|address_verification/.test(code)) return "non_retryable";
   }
 
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
   if (/\b(timeout|timed out|econnreset|temporarily unavailable|rate limit)\b/.test(message)) {
     return "retryable";
   }
@@ -156,21 +167,26 @@ function isReturnState(state: ProductionShipmentState): boolean {
 }
 
 function isFulfillableOrderStatus(status?: string): boolean {
-  return !status || [
-    "PAID",
-    "FULFILLMENT_PENDING",
-    "FULFILLMENT_ACTIVE",
-    "DELIVERED",
-    "IN_DISPUTE",
-    "CLOSED",
-  ].includes(status);
+  return (
+    !status ||
+    [
+      "PAID",
+      "FULFILLMENT_PENDING",
+      "FULFILLMENT_ACTIVE",
+      "DELIVERED",
+      "IN_DISPUTE",
+      "CLOSED",
+    ].includes(status)
+  );
 }
 
-function providerKey(snapshot: ProviderShipmentSnapshot): string | null {
-  return snapshot.provider_shipment_id
-    ?? snapshot.provider_tracker_id
-    ?? snapshot.tracking_number
-    ?? null;
+function _providerKey(snapshot: ProviderShipmentSnapshot): string | null {
+  return (
+    snapshot.provider_shipment_id ??
+    snapshot.provider_tracker_id ??
+    snapshot.tracking_number ??
+    null
+  );
 }
 
 export function detectShipmentReconciliationFindings(
@@ -185,17 +201,21 @@ export function detectShipmentReconciliationFindings(
 
   for (const local of localShipments) {
     localByShipmentId.set(local.shipment_id, local);
-    if (local.provider_shipment_id) localByProviderShipmentId.set(local.provider_shipment_id, local);
+    if (local.provider_shipment_id)
+      localByProviderShipmentId.set(local.provider_shipment_id, local);
     if (local.provider_tracker_id) localByProviderTrackerId.set(local.provider_tracker_id, local);
     if (local.tracking_number) localByTrackingNumber.set(local.tracking_number, local);
   }
 
   for (const local of localShipments) {
-    const provider = providerShipments.find((candidate) =>
-      (local.provider_shipment_id && candidate.provider_shipment_id === local.provider_shipment_id)
-      || (local.provider_tracker_id && candidate.provider_tracker_id === local.provider_tracker_id)
-      || (local.tracking_number && candidate.tracking_number === local.tracking_number)
-      || (candidate.local_shipment_id && candidate.local_shipment_id === local.shipment_id)
+    const provider = providerShipments.find(
+      (candidate) =>
+        (local.provider_shipment_id &&
+          candidate.provider_shipment_id === local.provider_shipment_id) ||
+        (local.provider_tracker_id &&
+          candidate.provider_tracker_id === local.provider_tracker_id) ||
+        (local.tracking_number && candidate.tracking_number === local.tracking_number) ||
+        (candidate.local_shipment_id && candidate.local_shipment_id === local.shipment_id),
     );
 
     if (local.state !== "label_pending" && !isFulfillableOrderStatus(local.order_status)) {
@@ -208,7 +228,8 @@ export function detectShipmentReconciliationFindings(
         provider_tracker_id: local.provider_tracker_id,
         tracking_number: local.tracking_number,
         message: "Shipment has moved past label pending for a non-fulfillable order.",
-        recommended_action: "Pause fulfillment, verify payment/order status, and void or hold the label if possible.",
+        recommended_action:
+          "Pause fulfillment, verify payment/order status, and void or hold the label if possible.",
       });
     }
 
@@ -221,7 +242,8 @@ export function detectShipmentReconciliationFindings(
         provider_shipment_id: local.provider_shipment_id,
         provider_tracker_id: local.provider_tracker_id,
         message: "Shipment label exists locally without a tracking number.",
-        recommended_action: "Fetch provider shipment/tracker state and update the local tracking fields.",
+        recommended_action:
+          "Fetch provider shipment/tracker state and update the local tracking fields.",
       });
     }
 
@@ -235,7 +257,8 @@ export function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number,
         message: "Provider reports a purchased label but no local label or QR URL is available.",
-        recommended_action: "Re-fetch the purchased label assets and block seller print/QR flow until recovered.",
+        recommended_action:
+          "Re-fetch the purchased label assets and block seller print/QR flow until recovered.",
       });
     }
 
@@ -249,7 +272,8 @@ export function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number ?? local.tracking_number,
         message: "Local shipment is terminal but provider shipment is not terminal.",
-        recommended_action: "Reconcile against carrier tracking before releasing funds or closing the order.",
+        recommended_action:
+          "Reconcile against carrier tracking before releasing funds or closing the order.",
       });
     }
 
@@ -269,10 +293,13 @@ export function detectShipmentReconciliationFindings(
   }
 
   for (const provider of providerShipments) {
-    const local = (provider.provider_shipment_id && localByProviderShipmentId.get(provider.provider_shipment_id))
-      || (provider.provider_tracker_id && localByProviderTrackerId.get(provider.provider_tracker_id))
-      || (provider.tracking_number && localByTrackingNumber.get(provider.tracking_number))
-      || (provider.local_shipment_id && localByShipmentId.get(provider.local_shipment_id));
+    const local =
+      (provider.provider_shipment_id &&
+        localByProviderShipmentId.get(provider.provider_shipment_id)) ||
+      (provider.provider_tracker_id &&
+        localByProviderTrackerId.get(provider.provider_tracker_id)) ||
+      (provider.tracking_number && localByTrackingNumber.get(provider.tracking_number)) ||
+      (provider.local_shipment_id && localByShipmentId.get(provider.local_shipment_id));
 
     if (!local) {
       findings.push({
@@ -282,7 +309,8 @@ export function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number,
         message: "Provider shipment has no matching local shipment record.",
-        recommended_action: "Find the owning order before exposing tracking, billing shipment fees, or closing fulfillment.",
+        recommended_action:
+          "Find the owning order before exposing tracking, billing shipment fees, or closing fulfillment.",
       });
       continue;
     }
@@ -297,7 +325,8 @@ export function detectShipmentReconciliationFindings(
         provider_tracker_id: provider.provider_tracker_id,
         tracking_number: provider.tracking_number ?? local.tracking_number,
         message: "Provider shipment is terminal but local shipment is not terminal.",
-        recommended_action: "Refresh local shipment/order state and check whether funds can be released.",
+        recommended_action:
+          "Refresh local shipment/order state and check whether funds can be released.",
       });
     }
   }

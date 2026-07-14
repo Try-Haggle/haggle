@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
-export type DisputeEvidenceScannerCircuitState =
-  "CLOSED" | "OPEN" | "HALF_OPEN";
+export type DisputeEvidenceScannerCircuitState = "CLOSED" | "OPEN" | "HALF_OPEN";
 export type DisputeEvidenceScannerPermitKind = "REGULAR" | "PROBE";
 
 export interface DisputeEvidenceScannerCircuitConfig {
@@ -27,7 +26,8 @@ export interface DisputeEvidenceScannerPermitBlocked {
 }
 
 export type DisputeEvidenceScannerPermitResult =
-  DisputeEvidenceScannerPermit | DisputeEvidenceScannerPermitBlocked;
+  | DisputeEvidenceScannerPermit
+  | DisputeEvidenceScannerPermitBlocked;
 
 export const DISPUTE_EVIDENCE_SCANNER_CIRCUIT_KEY = "malware-scanner";
 
@@ -53,24 +53,35 @@ function boundedInteger(
   return value;
 }
 
-export function resolveDisputeEvidenceScannerCircuitConfigFromEnv():
-DisputeEvidenceScannerCircuitConfig {
+export function resolveDisputeEvidenceScannerCircuitConfigFromEnv(): DisputeEvidenceScannerCircuitConfig {
   return {
     failureThreshold: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCANNER_CIRCUIT_FAILURE_THRESHOLD,
-      DEFAULT_CONFIG.failureThreshold, 1, 20, "scanner circuit threshold",
+      DEFAULT_CONFIG.failureThreshold,
+      1,
+      20,
+      "scanner circuit threshold",
     ),
     openSeconds: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCANNER_CIRCUIT_OPEN_SECONDS,
-      DEFAULT_CONFIG.openSeconds, 5, 3_600, "scanner circuit open seconds",
+      DEFAULT_CONFIG.openSeconds,
+      5,
+      3_600,
+      "scanner circuit open seconds",
     ),
     permitLeaseSeconds: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCANNER_PERMIT_LEASE_SECONDS,
-      DEFAULT_CONFIG.permitLeaseSeconds, 5, 300, "scanner permit lease seconds",
+      DEFAULT_CONFIG.permitLeaseSeconds,
+      5,
+      300,
+      "scanner permit lease seconds",
     ),
     maxConcurrent: boundedInteger(
       process.env.DISPUTE_EVIDENCE_SCANNER_MAX_CONCURRENT,
-      DEFAULT_CONFIG.maxConcurrent, 1, 100, "scanner max concurrency",
+      DEFAULT_CONFIG.maxConcurrent,
+      1,
+      100,
+      "scanner max concurrency",
     ),
   };
 }
@@ -79,10 +90,8 @@ function asDate(value: unknown): Date {
   return value instanceof Date ? value : new Date(String(value));
 }
 
-function rowState(row: Record<string, unknown>):
-DisputeEvidenceScannerCircuitState {
-  if (row.state === "CLOSED" || row.state === "OPEN"
-    || row.state === "HALF_OPEN") return row.state;
+function rowState(row: Record<string, unknown>): DisputeEvidenceScannerCircuitState {
+  if (row.state === "CLOSED" || row.state === "OPEN" || row.state === "HALF_OPEN") return row.state;
   throw new Error("invalid scanner circuit state");
 }
 
@@ -95,23 +104,21 @@ export async function acquireDisputeEvidenceScannerPermit(
   } = {},
 ): Promise<DisputeEvidenceScannerPermitResult> {
   const now = input.now ?? new Date();
-  const circuitKey = input.circuitKey
-    ?? DISPUTE_EVIDENCE_SCANNER_CIRCUIT_KEY;
-  const config = input.config
-    ?? resolveDisputeEvidenceScannerCircuitConfigFromEnv();
+  const circuitKey = input.circuitKey ?? DISPUTE_EVIDENCE_SCANNER_CIRCUIT_KEY;
+  const config = input.config ?? resolveDisputeEvidenceScannerCircuitConfigFromEnv();
   return db.transaction(async (tx) => {
     await tx.execute(sql`
       INSERT INTO dispute_evidence_scanner_circuits (circuit_key)
       VALUES (${circuitKey})
       ON CONFLICT (circuit_key) DO NOTHING
     `);
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       SELECT state, consecutive_failures AS "consecutiveFailures",
         next_probe_at AS "nextProbeAt", probe_expires_at AS "probeExpiresAt"
         FROM dispute_evidence_scanner_circuits
        WHERE circuit_key = ${circuitKey}
        FOR UPDATE
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     const row = rows[0];
     if (!row) throw new Error("scanner circuit state unavailable");
 
@@ -122,14 +129,12 @@ export async function acquireDisputeEvidenceScannerPermit(
     `);
 
     const state = rowState(row);
-    const nextProbeAt = row.nextProbeAt == null
-      ? null : asDate(row.nextProbeAt);
-    const probeExpiresAt = row.probeExpiresAt == null
-      ? null : asDate(row.probeExpiresAt);
-    const canProbe = state === "OPEN"
-      ? nextProbeAt !== null && nextProbeAt <= now
-      : state === "HALF_OPEN"
-        && probeExpiresAt !== null && probeExpiresAt <= now;
+    const nextProbeAt = row.nextProbeAt == null ? null : asDate(row.nextProbeAt);
+    const probeExpiresAt = row.probeExpiresAt == null ? null : asDate(row.probeExpiresAt);
+    const canProbe =
+      state === "OPEN"
+        ? nextProbeAt !== null && nextProbeAt <= now
+        : state === "HALF_OPEN" && probeExpiresAt !== null && probeExpiresAt <= now;
 
     if (!canProbe && state === "OPEN") {
       return { acquired: false, reason: "CIRCUIT_OPEN", retryAt: nextProbeAt };
@@ -143,9 +148,7 @@ export async function acquireDisputeEvidenceScannerPermit(
     }
 
     const permitId = randomUUID();
-    const expiresAt = new Date(
-      now.getTime() + config.permitLeaseSeconds * 1_000,
-    );
+    const expiresAt = new Date(now.getTime() + config.permitLeaseSeconds * 1_000);
     if (canProbe) {
       await tx.execute(sql`
         UPDATE dispute_evidence_scanner_circuits
@@ -163,16 +166,20 @@ export async function acquireDisputeEvidenceScannerPermit(
           ${expiresAt.toISOString()}::timestamptz)
       `);
       return {
-        acquired: true, permitId, circuitKey, kind: "PROBE", expiresAt,
+        acquired: true,
+        permitId,
+        circuitKey,
+        kind: "PROBE",
+        expiresAt,
       };
     }
 
-    const countRows = await tx.execute(sql`
+    const countRows = (await tx.execute(sql`
       SELECT count(*)::int AS count
         FROM dispute_evidence_scanner_permits
        WHERE circuit_key = ${circuitKey}
          AND expires_at > ${now.toISOString()}::timestamptz
-    `) as unknown as Array<{ count: number }>;
+    `)) as unknown as Array<{ count: number }>;
     if (Number(countRows[0]?.count ?? 0) >= config.maxConcurrent) {
       return { acquired: false, reason: "CAPACITY_BUSY", retryAt: null };
     }
@@ -184,7 +191,11 @@ export async function acquireDisputeEvidenceScannerPermit(
         ${expiresAt.toISOString()}::timestamptz)
     `);
     return {
-      acquired: true, permitId, circuitKey, kind: "REGULAR", expiresAt,
+      acquired: true,
+      permitId,
+      circuitKey,
+      kind: "REGULAR",
+      expiresAt,
     };
   });
 }
@@ -199,28 +210,26 @@ export async function finalizeDisputeEvidenceScannerPermit(
   },
 ): Promise<boolean> {
   const now = input.now ?? new Date();
-  const config = input.config
-    ?? resolveDisputeEvidenceScannerCircuitConfigFromEnv();
+  const config = input.config ?? resolveDisputeEvidenceScannerCircuitConfigFromEnv();
   return db.transaction(async (tx) => {
-    const stateRows = await tx.execute(sql`
+    const stateRows = (await tx.execute(sql`
       SELECT state, consecutive_failures AS "consecutiveFailures",
         probe_token AS "probeToken"
         FROM dispute_evidence_scanner_circuits
        WHERE circuit_key = ${permit.circuitKey}
        FOR UPDATE
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     const state = stateRows[0];
     if (!state) return false;
-    const permitRows = await tx.execute(sql`
+    const permitRows = (await tx.execute(sql`
       DELETE FROM dispute_evidence_scanner_permits
        WHERE permit_id = ${permit.permitId}::uuid
          AND circuit_key = ${permit.circuitKey}
       RETURNING permit_kind AS "permitKind"
-    `) as unknown as Array<{ permitKind: string }>;
+    `)) as unknown as Array<{ permitKind: string }>;
     if (permitRows.length !== 1) return false;
 
-    const probeOwner = permit.kind === "PROBE"
-      && state.probeToken === permit.permitId;
+    const probeOwner = permit.kind === "PROBE" && state.probeToken === permit.permitId;
     if (input.scannerOperational) {
       await tx.execute(sql`
         UPDATE dispute_evidence_scanner_circuits
@@ -235,9 +244,7 @@ export async function finalizeDisputeEvidenceScannerPermit(
       return true;
     }
 
-    const failures = Math.min(
-      1000, Number(state.consecutiveFailures ?? 0) + 1,
-    );
+    const failures = Math.min(1000, Number(state.consecutiveFailures ?? 0) + 1);
     const shouldOpen = probeOwner || failures >= config.failureThreshold;
     if (shouldOpen) {
       const nextProbeAt = new Date(now.getTime() + config.openSeconds * 1_000);
@@ -266,15 +273,12 @@ export async function finalizeDisputeEvidenceScannerPermit(
 
 export async function getDisputeEvidenceScannerCircuitHealth(
   db: Database,
-  input: { now?: Date; circuitKey?: string;
-    config?: DisputeEvidenceScannerCircuitConfig } = {},
+  input: { now?: Date; circuitKey?: string; config?: DisputeEvidenceScannerCircuitConfig } = {},
 ) {
   const now = input.now ?? new Date();
-  const circuitKey = input.circuitKey
-    ?? DISPUTE_EVIDENCE_SCANNER_CIRCUIT_KEY;
-  const config = input.config
-    ?? resolveDisputeEvidenceScannerCircuitConfigFromEnv();
-  const rows = await db.execute(sql`
+  const circuitKey = input.circuitKey ?? DISPUTE_EVIDENCE_SCANNER_CIRCUIT_KEY;
+  const config = input.config ?? resolveDisputeEvidenceScannerCircuitConfigFromEnv();
+  const rows = (await db.execute(sql`
     SELECT circuit.state,
       circuit.consecutive_failures AS "consecutiveFailures",
       circuit.next_probe_at AS "nextProbeAt",
@@ -289,14 +293,13 @@ export async function getDisputeEvidenceScannerCircuitHealth(
         ON permit.circuit_key = circuit.circuit_key
      WHERE circuit.circuit_key = ${circuitKey}
      GROUP BY circuit.circuit_key
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0];
   const state = row ? rowState(row) : "CLOSED";
-  const timestamp = (value: unknown) => value == null
-    ? null : asDate(value).toISOString();
+  const timestamp = (value: unknown) => (value == null ? null : asDate(value).toISOString());
   return {
     schemaVersion: "dispute-evidence-scanner-circuit-health-v1" as const,
-    status: state === "CLOSED" ? "healthy" as const : "attention" as const,
+    status: state === "CLOSED" ? ("healthy" as const) : ("attention" as const),
     state,
     consecutiveFailures: Number(row?.consecutiveFailures ?? 0),
     activePermits: Number(row?.activePermits ?? 0),

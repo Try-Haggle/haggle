@@ -1,6 +1,6 @@
 import { createClient } from "./supabase/client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.tryhaggle.ai";
 
 interface ApiOptions extends RequestInit {
   skipAuth?: boolean;
@@ -17,10 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiClient<T = unknown>(
-  path: string,
-  options: ApiOptions = {},
-): Promise<T> {
+export async function apiClient<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { skipAuth, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {
@@ -36,7 +33,7 @@ export async function apiClient<T = unknown>(
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.access_token) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
+        headers.Authorization = `Bearer ${session.access_token}`;
       }
     } catch {
       // Auth not available — continue without token
@@ -54,7 +51,10 @@ export async function apiClient<T = unknown>(
     throw new ApiError(res.status, body.error || "UNKNOWN_ERROR", body.message);
   }
 
-  return res.json() as Promise<T>;
+  // Empty body (e.g. 204 No Content from DELETE) — nothing to parse. Reading
+  // text first avoids `res.json()` throwing "Unexpected end of JSON input".
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // Convenience methods
@@ -112,14 +112,11 @@ export const notificationApi = {
       `/api/notifications${cursor ? `?cursor=${cursor}` : ""}`,
     ),
 
-  count: () =>
-    api.get<{ count: number }>("/api/notifications/count"),
+  count: () => api.get<{ count: number }>("/api/notifications/count"),
 
-  markRead: (id: string) =>
-    api.patch(`/api/notifications/${id}/read`),
+  markRead: (id: string) => api.patch(`/api/notifications/${id}/read`),
 
-  markAllRead: () =>
-    api.patch("/api/notifications/read-all"),
+  markAllRead: () => api.patch("/api/notifications/read-all"),
 
   getPreferences: () =>
     api.get<{ preferences: NotificationPreferences }>("/api/notifications/preferences"),

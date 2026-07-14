@@ -1,6 +1,6 @@
 import { createClient } from "./supabase/server";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://haggle-production-7dee.up.railway.app";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.tryhaggle.ai";
 
 interface ApiServerOptions {
   skipAuth?: boolean;
@@ -8,9 +8,7 @@ interface ApiServerOptions {
   body?: string;
 }
 
-async function getAuthHeaders(
-  skipAuth?: boolean,
-): Promise<Record<string, string>> {
+async function getAuthHeaders(skipAuth?: boolean): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -21,7 +19,7 @@ async function getAuthHeaders(
       data: { session },
     } = await supabase.auth.getSession();
     if (session?.access_token) {
-      headers["Authorization"] = `Bearer ${session.access_token}`;
+      headers.Authorization = `Bearer ${session.access_token}`;
     }
   }
 
@@ -51,14 +49,9 @@ export async function apiServer<T = unknown>(
 
 // Convenience methods for server components
 export const serverApi = {
-  get: <T = unknown>(path: string, opts?: { skipAuth?: boolean }) =>
-    apiServer<T>(path, opts),
+  get: <T = unknown>(path: string, opts?: { skipAuth?: boolean }) => apiServer<T>(path, opts),
 
-  post: <T = unknown>(
-    path: string,
-    body?: unknown,
-    opts?: { skipAuth?: boolean },
-  ) =>
+  post: <T = unknown>(path: string, body?: unknown, opts?: { skipAuth?: boolean }) =>
     apiServer<T>(path, {
       ...opts,
       method: "POST",

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export interface EvidenceRetentionPolicy {
   committedDays: number;
@@ -16,7 +16,12 @@ export interface EvidenceRetentionClaim {
   retentionUntil: Date;
 }
 
-function boundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
+function boundedInteger(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
@@ -33,7 +38,7 @@ export async function countEligibleEvidenceRetention(
   db: Database,
   policy = evidenceRetentionPolicy(),
 ): Promise<number> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT count(*)::int AS count
       FROM dispute_evidence_uploads u
       JOIN dispute_cases d ON d.id = u.dispute_id
@@ -48,7 +53,7 @@ export async function countEligibleEvidenceRetention(
          (u.status <> 'COMMITTED'
            AND u.expires_at + (${policy.orphanDays} * interval '1 day') <= now())
        )
-  `) as unknown as Array<{ count: number | string }>;
+  `)) as unknown as Array<{ count: number | string }>;
   return Number(rows[0]?.count ?? 0);
 }
 
@@ -57,7 +62,7 @@ export async function claimEvidenceRetentionBatch(
   policy = evidenceRetentionPolicy(),
 ): Promise<EvidenceRetentionClaim[]> {
   const claimId = randomUUID();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     WITH candidates AS (
       SELECT u.id,
              CASE
@@ -95,7 +100,7 @@ export async function claimEvidenceRetentionBatch(
     RETURNING u.id AS "uploadId", u.dispute_id AS "disputeId", u.storage_path AS "storagePath",
               u.deletion_claim_id AS "claimId", u.deletion_attempts AS "deletionAttempts",
               u.retention_until AS "retentionUntil"
-  `) as unknown as Array<{
+  `)) as unknown as Array<{
     uploadId: string;
     disputeId: string;
     storagePath: string;
@@ -106,7 +111,8 @@ export async function claimEvidenceRetentionBatch(
   return rows.map((row) => ({
     ...row,
     deletionAttempts: Number(row.deletionAttempts),
-    retentionUntil: row.retentionUntil instanceof Date ? row.retentionUntil : new Date(row.retentionUntil),
+    retentionUntil:
+      row.retentionUntil instanceof Date ? row.retentionUntil : new Date(row.retentionUntil),
   }));
 }
 
@@ -114,7 +120,7 @@ export async function retentionClaimStillAuthorized(
   db: Database,
   claim: EvidenceRetentionClaim,
 ): Promise<boolean> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT u.id
       FROM dispute_evidence_uploads u
       JOIN dispute_cases d ON d.id = u.dispute_id
@@ -123,7 +129,7 @@ export async function retentionClaimStillAuthorized(
        AND u.retention_status = 'DELETING'
        AND d.evidence_legal_hold = false
      LIMIT 1
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return rows.length === 1;
 }
 
@@ -142,26 +148,26 @@ export async function completeEvidenceRetentionDeletion(
   db: Database,
   claim: EvidenceRetentionClaim,
 ): Promise<boolean> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE dispute_evidence_uploads
        SET retention_status = 'DELETED', deleted_at = now(), deletion_claim_id = NULL,
            deletion_claimed_at = NULL, deletion_next_attempt_at = NULL, deletion_last_error = NULL, updated_at = now()
      WHERE id = ${claim.uploadId} AND deletion_claim_id = ${claim.claimId} AND retention_status = 'DELETING'
      RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   if (rows.length === 1) return true;
-  const reconciled = await db.execute(sql`
+  const reconciled = (await db.execute(sql`
     UPDATE dispute_evidence_uploads
        SET retention_status = 'DELETED', deleted_at = COALESCE(deleted_at, now()),
            deletion_claim_id = NULL, deletion_claimed_at = NULL, deletion_next_attempt_at = NULL,
            deletion_last_error = 'CLAIM_RECONCILED_AFTER_STORAGE_DELETE', updated_at = now()
      WHERE id = ${claim.uploadId} AND retention_status <> 'DELETED'
      RETURNING id
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   if (reconciled.length === 1) return true;
-  const existing = await db.execute(sql`
+  const existing = (await db.execute(sql`
     SELECT id FROM dispute_evidence_uploads WHERE id = ${claim.uploadId} AND retention_status = 'DELETED'
-  `) as unknown as Array<{ id: string }>;
+  `)) as unknown as Array<{ id: string }>;
   return existing.length === 1;
 }
 
@@ -211,7 +217,7 @@ export async function setDisputeEvidenceLegalHold(
 
 export async function getDisputeEvidenceRetentionSummary(db: Database, disputeId: string) {
   const policy = evidenceRetentionPolicy();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT d.evidence_legal_hold AS "legalHold", d.evidence_legal_hold_reason AS "legalHoldReason",
            d.evidence_legal_hold_set_by AS "legalHoldSetBy", d.evidence_legal_hold_set_at AS "legalHoldSetAt",
            count(u.id)::int AS total,
@@ -232,6 +238,6 @@ export async function getDisputeEvidenceRetentionSummary(db: Database, disputeId
       LEFT JOIN dispute_evidence_uploads u ON u.dispute_id = d.id
      WHERE d.id = ${disputeId}
      GROUP BY d.id
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   return rows[0] ?? null;
 }

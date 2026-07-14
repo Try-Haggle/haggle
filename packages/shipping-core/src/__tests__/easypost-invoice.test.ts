@@ -29,16 +29,22 @@ describe("parseEasyPostInvoicePayload", () => {
   });
 
   it("accepts the official dotted EasyPost invoice event name", () => {
-    expect(parseEasyPostInvoicePayload({
-      ...invoice(),
-      description: "shipment.invoice.updated",
-    })?.invoice_event).toBe("updated");
+    expect(
+      parseEasyPostInvoicePayload({
+        ...invoice(),
+        description: "shipment.invoice.updated",
+      })?.invoice_event,
+    ).toBe("updated");
   });
 
   it("preserves a carrier credit as a negative adjustment", () => {
-    expect(parseEasyPostInvoicePayload(invoice({
-      charges: [{ type: "shipping", amount: "5.25" }],
-    }))?.adjustment_minor).toBe(-100);
+    expect(
+      parseEasyPostInvoicePayload(
+        invoice({
+          charges: [{ type: "shipping", amount: "5.25" }],
+        }),
+      )?.adjustment_minor,
+    ).toBe(-100);
   });
 
   it("rejects an invoice without a stable provider invoice id", () => {
@@ -46,14 +52,22 @@ describe("parseEasyPostInvoicePayload", () => {
   });
 
   it.each(["-1", "Infinity", "100000.01"])("rejects unsafe charge amount %s", (amount) => {
-    expect(parseEasyPostInvoicePayload(invoice({
-      charges: [{ type: "shipping", amount }],
-    }))).toBeNull();
+    expect(
+      parseEasyPostInvoicePayload(
+        invoice({
+          charges: [{ type: "shipping", amount }],
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("rejects invoice payloads without a shipping charge", () => {
-    expect(parseEasyPostInvoicePayload(invoice({
-      charges: [{ type: "insurance", amount: "2.00" }],
-    }))).toBeNull();
+    expect(
+      parseEasyPostInvoicePayload(
+        invoice({
+          charges: [{ type: "insurance", amount: "2.00" }],
+        }),
+      ),
+    ).toBeNull();
   });
 });

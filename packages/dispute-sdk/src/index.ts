@@ -152,7 +152,8 @@ export interface ModuleDisputeEscalationPreviewResponse {
   seller_deposit_requirement: SellerDepositRequirement;
 }
 
-export interface ModuleDisputeEscalationCreateResponse extends ModuleDisputeEscalationPreviewResponse {
+export interface ModuleDisputeEscalationCreateResponse
+  extends ModuleDisputeEscalationPreviewResponse {
   dispute: ModuleDisputeCase;
   idempotency_key: string;
   idempotent: boolean;
@@ -280,7 +281,9 @@ export class HaggleDisputeValidationError extends Error {
   readonly issues: HaggleDisputeValidationIssue[];
 
   constructor(issues: HaggleDisputeValidationIssue[]) {
-    super(`Haggle dispute validation failed: ${issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
+    super(
+      `Haggle dispute validation failed: ${issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`,
+    );
     this.name = "HaggleDisputeValidationError";
     this.issues = issues;
   }
@@ -292,7 +295,9 @@ export class HaggleDisputeResponseValidationError extends Error {
   readonly body: unknown;
 
   constructor(issues: HaggleDisputeValidationIssue[], body: unknown) {
-    super(`Haggle dispute response validation failed: ${issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
+    super(
+      `Haggle dispute response validation failed: ${issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`,
+    );
     this.name = "HaggleDisputeResponseValidationError";
     this.issues = issues;
     this.body = body;
@@ -342,7 +347,10 @@ function assertClientOptions(options: HaggleDisputeClientOptions): void {
   if (options.secret.length < 16) {
     throw new Error("secret must be at least 16 characters");
   }
-  if (options.timeoutMs !== undefined && (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)) {
+  if (
+    options.timeoutMs !== undefined &&
+    (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)
+  ) {
     throw new Error("timeoutMs must be a positive number");
   }
 }
@@ -421,15 +429,32 @@ export function validateModuleDisputeCaseInput(
   }
   if (!isRecord(transaction) || !isRecord(request)) return issues;
 
-  const platformIdOk = pushStringIssue(issues, "transaction.platform_id", transaction.platform_id, { max: 128 });
+  const platformIdOk = pushStringIssue(issues, "transaction.platform_id", transaction.platform_id, {
+    max: 128,
+  });
   if (platformIdOk && options.platformId && transaction.platform_id !== options.platformId) {
     issues.push({ path: "transaction.platform_id", message: "must match the client platformId" });
   }
-  pushStringIssue(issues, "transaction.external_order_id", transaction.external_order_id, { max: 256 });
-  const buyerOk = pushStringIssue(issues, "transaction.buyer_actor_id", transaction.buyer_actor_id, { max: 256 });
-  const sellerOk = pushStringIssue(issues, "transaction.seller_actor_id", transaction.seller_actor_id, { max: 256 });
+  pushStringIssue(issues, "transaction.external_order_id", transaction.external_order_id, {
+    max: 256,
+  });
+  const buyerOk = pushStringIssue(
+    issues,
+    "transaction.buyer_actor_id",
+    transaction.buyer_actor_id,
+    { max: 256 },
+  );
+  const sellerOk = pushStringIssue(
+    issues,
+    "transaction.seller_actor_id",
+    transaction.seller_actor_id,
+    { max: 256 },
+  );
   if (buyerOk && sellerOk && transaction.buyer_actor_id === transaction.seller_actor_id) {
-    issues.push({ path: "transaction.seller_actor_id", message: "must be different from buyer_actor_id" });
+    issues.push({
+      path: "transaction.seller_actor_id",
+      message: "must be different from buyer_actor_id",
+    });
   }
   const amountMinor = transaction.amount_minor;
   if (typeof amountMinor !== "number" || !Number.isInteger(amountMinor) || amountMinor <= 0) {
@@ -440,14 +465,25 @@ export function validateModuleDisputeCaseInput(
   if (currencyOk && !/^[A-Z][A-Z0-9_]{2,7}$/.test(currency)) {
     issues.push({ path: "transaction.currency", message: "must be an uppercase currency code" });
   }
-  if (typeof transaction.status !== "string" || !MODULE_TRANSACTION_STATUSES.includes(transaction.status as ModuleTransactionStatus)) {
-    issues.push({ path: "transaction.status", message: "must be a supported module transaction status" });
+  if (
+    typeof transaction.status !== "string" ||
+    !MODULE_TRANSACTION_STATUSES.includes(transaction.status as ModuleTransactionStatus)
+  ) {
+    issues.push({
+      path: "transaction.status",
+      message: "must be a supported module transaction status",
+    });
   }
   if (transaction.metadata !== undefined && !isRecord(transaction.metadata)) {
     issues.push({ path: "transaction.metadata", message: "must be an object when provided" });
   }
 
-  const requesterOk = pushStringIssue(issues, "request.requester_actor_id", request.requester_actor_id, { max: 256 });
+  const requesterOk = pushStringIssue(
+    issues,
+    "request.requester_actor_id",
+    request.requester_actor_id,
+    { max: 256 },
+  );
   if (
     requesterOk &&
     buyerOk &&
@@ -455,10 +491,19 @@ export function validateModuleDisputeCaseInput(
     request.requester_actor_id !== transaction.buyer_actor_id &&
     request.requester_actor_id !== transaction.seller_actor_id
   ) {
-    issues.push({ path: "request.requester_actor_id", message: "must match buyer_actor_id or seller_actor_id" });
+    issues.push({
+      path: "request.requester_actor_id",
+      message: "must match buyer_actor_id or seller_actor_id",
+    });
   }
-  if (typeof request.reason_code !== "string" || !DISPUTE_REASON_CODES.includes(request.reason_code as DisputeReasonCode)) {
-    issues.push({ path: "request.reason_code", message: "must be a supported dispute reason code" });
+  if (
+    typeof request.reason_code !== "string" ||
+    !DISPUTE_REASON_CODES.includes(request.reason_code as DisputeReasonCode)
+  ) {
+    issues.push({
+      path: "request.reason_code",
+      message: "must be a supported dispute reason code",
+    });
   }
   pushStringIssue(issues, "request.summary", request.summary, { max: 5_000 });
   if (request.client_request_id !== undefined) {
@@ -605,9 +650,15 @@ function validateCostPreview(
   }
   pushNumberIssue(issues, `${path}.cost_cents`, value.cost_cents, { integer: true, min: 0 });
   if (value.reviewer_count !== null) {
-    pushNumberIssue(issues, `${path}.reviewer_count`, value.reviewer_count, { integer: true, min: 1 });
+    pushNumberIssue(issues, `${path}.reviewer_count`, value.reviewer_count, {
+      integer: true,
+      min: 1,
+    });
   }
-  pushNumberIssue(issues, `${path}.escalation_period_hours`, value.escalation_period_hours, { integer: true, min: 0 });
+  pushNumberIssue(issues, `${path}.escalation_period_hours`, value.escalation_period_hours, {
+    integer: true,
+    min: 0,
+  });
 }
 
 function validateSellerDepositRequirement(
@@ -620,14 +671,14 @@ function validateSellerDepositRequirement(
     return;
   }
   pushNumberIssue(issues, `${path}.amount_cents`, value.amount_cents, { integer: true, min: 0 });
-  pushNumberIssue(issues, `${path}.deadline_hours`, value.deadline_hours, { integer: true, min: 1 });
+  pushNumberIssue(issues, `${path}.deadline_hours`, value.deadline_hours, {
+    integer: true,
+    min: 1,
+  });
   pushStringIssue(issues, `${path}.status`, value.status);
 }
 
-function validateConfigSummary(
-  issues: HaggleDisputeValidationIssue[],
-  value: unknown,
-): void {
+function validateConfigSummary(issues: HaggleDisputeValidationIssue[], value: unknown): void {
   if (!isRecord(value)) {
     issues.push({ path: "config", message: "must be an object" });
     return;
@@ -645,8 +696,18 @@ export function validateModuleDisputePreviewResponse(
   if (!isRecord(response)) return [{ path: "response", message: "must be an object" }];
   if (response.ok !== true) issues.push({ path: "ok", message: "must be true" });
   validateExpectedString(issues, "platform_id", response.platform_id, expected.platformId);
-  validateExpectedString(issues, "external_order_id", response.external_order_id, expected.externalOrderId);
-  validateExpectedString(issues, "idempotency_key", response.idempotency_key, expected.idempotencyKey);
+  validateExpectedString(
+    issues,
+    "external_order_id",
+    response.external_order_id,
+    expected.externalOrderId,
+  );
+  validateExpectedString(
+    issues,
+    "idempotency_key",
+    response.idempotency_key,
+    expected.idempotencyKey,
+  );
   if (response.opened_by !== "buyer" && response.opened_by !== "seller") {
     issues.push({ path: "opened_by", message: "must be buyer or seller" });
   }
@@ -656,22 +717,21 @@ export function validateModuleDisputePreviewResponse(
     if (response.costs.length !== 3) {
       issues.push({ path: "costs", message: "must include exactly three tier previews" });
     }
-    const tiers = new Set(response.costs.map((cost) => isRecord(cost) ? cost.tier : undefined));
+    const tiers = new Set(response.costs.map((cost) => (isRecord(cost) ? cost.tier : undefined)));
     for (const tier of [1, 2, 3]) {
       if (!tiers.has(tier)) {
         issues.push({ path: "costs", message: `must include tier ${tier}` });
       }
     }
-    response.costs.forEach((cost, index) => validateCostPreview(issues, `costs.${index}`, cost));
+    response.costs.forEach((cost, index) => {
+      validateCostPreview(issues, `costs.${index}`, cost);
+    });
   }
   validateConfigSummary(issues, response.config);
   return issues;
 }
 
-function validateModuleDisputeCase(
-  issues: HaggleDisputeValidationIssue[],
-  value: unknown,
-): void {
+function validateModuleDisputeCase(issues: HaggleDisputeValidationIssue[], value: unknown): void {
   if (!isRecord(value)) {
     issues.push({ path: "dispute", message: "must be an object" });
     return;
@@ -697,8 +757,18 @@ export function validateModuleDisputeCreateResponse(
   if (!isRecord(response)) return [{ path: "response", message: "must be an object" }];
   if (response.ok !== true) issues.push({ path: "ok", message: "must be true" });
   validateExpectedString(issues, "platform_id", response.platform_id, expected.platformId);
-  validateExpectedString(issues, "external_order_id", response.external_order_id, expected.externalOrderId);
-  validateExpectedString(issues, "idempotency_key", response.idempotency_key, expected.idempotencyKey);
+  validateExpectedString(
+    issues,
+    "external_order_id",
+    response.external_order_id,
+    expected.externalOrderId,
+  );
+  validateExpectedString(
+    issues,
+    "idempotency_key",
+    response.idempotency_key,
+    expected.idempotencyKey,
+  );
   pushBooleanIssue(issues, "idempotent", response.idempotent);
   validateModuleDisputeCase(issues, response.dispute);
   return issues;
@@ -712,7 +782,12 @@ export function validateModuleDisputeEscalationPreviewResponse(
   if (!isRecord(response)) return [{ path: "response", message: "must be an object" }];
   if (response.ok !== true) issues.push({ path: "ok", message: "must be true" });
   validateExpectedString(issues, "platform_id", response.platform_id, expected.platformId);
-  validateExpectedString(issues, "external_order_id", response.external_order_id, expected.externalOrderId);
+  validateExpectedString(
+    issues,
+    "external_order_id",
+    response.external_order_id,
+    expected.externalOrderId,
+  );
   validateExpectedString(issues, "dispute_id", response.dispute_id, expected.disputeId);
   if (response.requested_by !== "buyer" && response.requested_by !== "seller") {
     issues.push({ path: "requested_by", message: "must be buyer or seller" });
@@ -731,17 +806,31 @@ export function validateModuleDisputeEscalationPreviewResponse(
     issues.push({ path: "new_tier", message: "must advance by exactly one tier" });
   }
   validateCostPreview(issues, "cost", response.cost);
-  validateSellerDepositRequirement(issues, "seller_deposit_requirement", response.seller_deposit_requirement);
+  validateSellerDepositRequirement(
+    issues,
+    "seller_deposit_requirement",
+    response.seller_deposit_requirement,
+  );
   return issues;
 }
 
 export function validateModuleDisputeEscalationCreateResponse(
   response: unknown,
-  expected: { platformId: string; externalOrderId: string; disputeId: string; idempotencyKey: string },
+  expected: {
+    platformId: string;
+    externalOrderId: string;
+    disputeId: string;
+    idempotencyKey: string;
+  },
 ): HaggleDisputeValidationIssue[] {
   const issues = validateModuleDisputeEscalationPreviewResponse(response, expected);
   if (!isRecord(response)) return issues;
-  validateExpectedString(issues, "idempotency_key", response.idempotency_key, expected.idempotencyKey);
+  validateExpectedString(
+    issues,
+    "idempotency_key",
+    response.idempotency_key,
+    expected.idempotencyKey,
+  );
   pushBooleanIssue(issues, "idempotent", response.idempotent);
   validateModuleDisputeCase(issues, response.dispute);
   return issues;
@@ -755,7 +844,12 @@ export function validateModuleDisputeStatusResponse(
   if (!isRecord(response)) return [{ path: "response", message: "must be an object" }];
   if (response.ok !== true) issues.push({ path: "ok", message: "must be true" });
   validateExpectedString(issues, "platform_id", response.platform_id, expected.platformId);
-  validateExpectedString(issues, "external_order_id", response.external_order_id, expected.externalOrderId);
+  validateExpectedString(
+    issues,
+    "external_order_id",
+    response.external_order_id,
+    expected.externalOrderId,
+  );
   validateExpectedString(issues, "dispute_id", response.dispute_id, expected.disputeId);
   pushStringIssue(issues, "status", response.status);
   if (response.tier !== 1 && response.tier !== 2 && response.tier !== 3) {
@@ -809,7 +903,12 @@ function assertValidModuleDisputeEscalationPreviewResponse(
 
 function assertValidModuleDisputeEscalationCreateResponse(
   response: unknown,
-  expected: { platformId: string; externalOrderId: string; disputeId: string; idempotencyKey: string },
+  expected: {
+    platformId: string;
+    externalOrderId: string;
+    disputeId: string;
+    idempotencyKey: string;
+  },
 ): asserts response is ModuleDisputeEscalationCreateResponse {
   const issues = validateModuleDisputeEscalationCreateResponse(response, expected);
   if (issues.length > 0) {
@@ -873,13 +972,15 @@ export function signDisputeWebhookPayload(params: {
   return `sha256=${createHmac("sha256", params.secret).update(buildWebhookSigningPayload(params)).digest("hex")}`;
 }
 
-function assertWebhookSignature(input: Required<Pick<VerifyDisputeWebhookInput, "rawBody" | "secret">> & {
-  timestamp: string;
-  signature: string;
-  eventId: string;
-  nowMs?: number;
-  toleranceMs?: number;
-}): void {
+function assertWebhookSignature(
+  input: Required<Pick<VerifyDisputeWebhookInput, "rawBody" | "secret">> & {
+    timestamp: string;
+    signature: string;
+    eventId: string;
+    nowMs?: number;
+    toleranceMs?: number;
+  },
+): void {
   if (input.secret.length < 16) {
     throw new Error("secret must be at least 16 characters");
   }
@@ -905,10 +1006,15 @@ function assertWebhookSignature(input: Required<Pick<VerifyDisputeWebhookInput, 
     eventId: input.eventId,
     rawBody: input.rawBody,
   });
-  const received = input.signature.startsWith("sha256=") ? input.signature : `sha256=${input.signature}`;
+  const received = input.signature.startsWith("sha256=")
+    ? input.signature
+    : `sha256=${input.signature}`;
   const expectedBuffer = Buffer.from(expected);
   const receivedBuffer = Buffer.from(received);
-  if (expectedBuffer.length !== receivedBuffer.length || !timingSafeEqual(expectedBuffer, receivedBuffer)) {
+  if (
+    expectedBuffer.length !== receivedBuffer.length ||
+    !timingSafeEqual(expectedBuffer, receivedBuffer)
+  ) {
     throw new HaggleDisputeWebhookVerificationError({
       code: "HAGGLE_WEBHOOK_INVALID_SIGNATURE",
       message: "Webhook signature is invalid",
@@ -923,12 +1029,14 @@ export function validateDisputeWebhookEnvelope(
   const issues: HaggleDisputeValidationIssue[] = [];
   if (!isRecord(envelope)) return [{ path: "webhook", message: "must be an object" }];
   validateExpectedString(issues, "id", envelope.id, options.eventId ?? String(envelope.id ?? ""));
-  if (![
-    "dispute.case.created",
-    "dispute.case.escalated",
-    "dispute.case.updated",
-    "dispute.settlement.instruction",
-  ].includes(String(envelope.type))) {
+  if (
+    ![
+      "dispute.case.created",
+      "dispute.case.escalated",
+      "dispute.case.updated",
+      "dispute.settlement.instruction",
+    ].includes(String(envelope.type))
+  ) {
     issues.push({ path: "type", message: "must be a supported dispute webhook event type" });
   }
   pushStringIssue(issues, "created_at", envelope.created_at);
@@ -951,13 +1059,21 @@ export function validateSettlementInstruction(
   const issues: HaggleDisputeValidationIssue[] = [];
   if (!isRecord(value)) return [{ path: "settlement", message: "must be an object" }];
   if (value.action !== "refund_buyer" && value.action !== "release_to_seller") {
-    issues.push({ path: "settlement.action", message: "must be refund_buyer or release_to_seller" });
+    issues.push({
+      path: "settlement.action",
+      message: "must be refund_buyer or release_to_seller",
+    });
   }
-  if (!["buyer_favor", "seller_favor", "partial_refund", "no_action"].includes(String(value.outcome))) {
+  if (
+    !["buyer_favor", "seller_favor", "partial_refund", "no_action"].includes(String(value.outcome))
+  ) {
     issues.push({ path: "settlement.outcome", message: "must be a supported settlement outcome" });
   }
   if (value.amount_minor !== undefined) {
-    pushNumberIssue(issues, "settlement.amount_minor", value.amount_minor, { integer: true, min: 0 });
+    pushNumberIssue(issues, "settlement.amount_minor", value.amount_minor, {
+      integer: true,
+      min: 0,
+    });
   }
   if (value.currency !== undefined) {
     pushStringIssue(issues, "settlement.currency", value.currency, { min: 3, max: 8 });
@@ -980,17 +1096,26 @@ export function validateSettlementInstructionWebhookData(
   if (value.tier !== 1 && value.tier !== 2 && value.tier !== 3) {
     issues.push({ path: "data.tier", message: "must be 1, 2, or 3" });
   }
-  if (!["buyer_favor", "seller_favor", "partial_refund", "no_action"].includes(String(value.outcome))) {
+  if (
+    !["buyer_favor", "seller_favor", "partial_refund", "no_action"].includes(String(value.outcome))
+  ) {
     issues.push({ path: "data.outcome", message: "must be a supported settlement outcome" });
   }
   if (value.refund_amount_minor !== null) {
-    pushNumberIssue(issues, "data.refund_amount_minor", value.refund_amount_minor, { integer: true, min: 0 });
+    pushNumberIssue(issues, "data.refund_amount_minor", value.refund_amount_minor, {
+      integer: true,
+      min: 0,
+    });
   }
   if (value.resolved_at !== null) {
     pushStringIssue(issues, "data.resolved_at", value.resolved_at);
   }
-  issues.push(...validateSettlementInstruction(value.settlement_instruction)
-    .map((issue) => ({ ...issue, path: issue.path.replace(/^settlement/, "data.settlement_instruction") })));
+  issues.push(
+    ...validateSettlementInstruction(value.settlement_instruction).map((issue) => ({
+      ...issue,
+      path: issue.path.replace(/^settlement/, "data.settlement_instruction"),
+    })),
+  );
   void expected.externalOrderId;
   return issues;
 }
@@ -1019,7 +1144,9 @@ export function verifyDisputeWebhook<TData = unknown>(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.isBuffer(input.rawBody) ? input.rawBody.toString("utf8") : input.rawBody);
+    parsed = JSON.parse(
+      Buffer.isBuffer(input.rawBody) ? input.rawBody.toString("utf8") : input.rawBody,
+    );
   } catch {
     throw new HaggleDisputeWebhookVerificationError({
       code: "HAGGLE_WEBHOOK_INVALID_BODY",
@@ -1294,9 +1421,10 @@ export class HaggleDisputeClient {
 
     const responseBody = await readJson(response);
     if (!response.ok) {
-      const code = responseBody && typeof responseBody === "object" && "error" in responseBody
-        ? String((responseBody as { error: unknown }).error)
-        : "HAGGLE_DISPUTE_API_ERROR";
+      const code =
+        responseBody && typeof responseBody === "object" && "error" in responseBody
+          ? String((responseBody as { error: unknown }).error)
+          : "HAGGLE_DISPUTE_API_ERROR";
       throw new HaggleDisputeApiError({
         status: response.status,
         code,

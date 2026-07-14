@@ -42,8 +42,9 @@ function createMockInsert() {
 
 function createMockSelect() {
   return vi.fn().mockImplementation(() => {
-    const selectQueue = (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-      .__HAGGLE_TEST_DB_SELECT_ROWS__;
+    const selectQueue = (
+      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
+    ).__HAGGLE_TEST_DB_SELECT_ROWS__;
     const rows: unknown[] = selectQueue?.shift() ?? [];
     const result = Promise.resolve(rows);
     const query = {
@@ -52,6 +53,7 @@ function createMockSelect() {
       orderBy: vi.fn(() => query),
       limit: vi.fn(() => query),
       offset: vi.fn(() => query),
+      // biome-ignore lint/suspicious/noThenProperty: Drizzle query mocks must remain awaitable.
       then: result.then.bind(result),
       catch: result.catch.bind(result),
       finally: result.finally.bind(result),
@@ -65,16 +67,22 @@ vi.mock("@haggle/db", () => ({
     query: createMockQueryProxy(),
     select: createMockSelect(),
     insert: createMockInsert(),
-    update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    update: vi
+      .fn()
+      .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
     execute: vi.fn().mockResolvedValue([]),
-    transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => fn({
-      execute: vi.fn().mockResolvedValue([]),
-      query: createMockQueryProxy(),
-      select: createMockSelect(),
-      insert: createMockInsert(),
-      update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
-    })),
+    transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        execute: vi.fn().mockResolvedValue([]),
+        query: createMockQueryProxy(),
+        select: createMockSelect(),
+        insert: createMockInsert(),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+        }),
+      }),
+    ),
   })),
   sql: vi.fn().mockReturnValue(""),
   eq: vi.fn(),
@@ -98,7 +106,12 @@ vi.mock("@haggle/db", () => ({
   hfmiModelCoefficients: {},
   sellerAttestationCommits: {},
   // Table references used directly in route handlers (not via services)
-  webhookIdempotency: { id: "id", idempotencyKey: "idempotencyKey", source: "source", responseStatus: "responseStatus" },
+  webhookIdempotency: {
+    id: "id",
+    idempotencyKey: "idempotencyKey",
+    source: "source",
+    responseStatus: "responseStatus",
+  },
   refunds: {
     id: "id",
     paymentIntentId: "paymentIntentId",
@@ -203,7 +216,12 @@ vi.mock("@haggle/db", () => ({
     productReleaseStatus: "productReleaseStatus",
     updatedAt: "updatedAt",
   },
-  userWallets: { walletAddress: "walletAddress", userId: "userId", network: "network", isPrimary: "isPrimary" },
+  userWallets: {
+    walletAddress: "walletAddress",
+    userId: "userId",
+    network: "network",
+    isPrimary: "isPrimary",
+  },
 }));
 
 // ─── Mock MCP SDK ────────────────────────────────────────────────────
@@ -241,7 +259,9 @@ vi.mock("viem", () => ({
   createWalletClient: vi.fn(),
   decodeEventLog: vi.fn(),
   http: vi.fn(),
-  isAddress: vi.fn((value: unknown) => typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value)),
+  isAddress: vi.fn(
+    (value: unknown) => typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value),
+  ),
 }));
 
 vi.mock("viem/accounts", () => ({
@@ -263,12 +283,15 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
   return {
     ...real,
     MockCarrierAdapter: class MockCarrierAdapter {
-      createLabel = vi.fn().mockResolvedValue({ tracking_number: "MOCK123", label_url: "https://mock" });
+      createLabel = vi
+        .fn()
+        .mockResolvedValue({ tracking_number: "MOCK123", label_url: "https://mock" });
       getTrackingInfo = vi.fn().mockResolvedValue({ status: "IN_TRANSIT" });
     },
     EasyPostCarrierAdapter: class EasyPostCarrierAdapter {
-      constructor(_opts: unknown) {}
-      createLabel = vi.fn().mockResolvedValue({ tracking_number: "EP123", label_url: "https://ep" });
+      createLabel = vi
+        .fn()
+        .mockResolvedValue({ tracking_number: "EP123", label_url: "https://ep" });
       getTrackingInfo = vi.fn().mockResolvedValue({ status: "IN_TRANSIT" });
     },
     computeWeightBuffer: (weightOz: number) => ({
@@ -290,7 +313,7 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
         returned: "RETURNED",
       };
       const details = Array.isArray(result.tracking_details)
-        ? result.tracking_details as Array<Record<string, unknown>>
+        ? (result.tracking_details as Array<Record<string, unknown>>)
         : [];
       const latest = details.at(-1);
       const location = latest?.tracking_location as Record<string, unknown> | undefined;

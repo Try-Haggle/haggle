@@ -8,9 +8,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   classifyLLMError,
+  setTelemetryDb,
   usageExtractors,
   withLLMTelemetry,
-  setTelemetryDb,
 } from "../lib/llm-telemetry.js";
 
 const META = {
@@ -35,7 +35,10 @@ describe("withLLMTelemetry", () => {
   it("returns the inner result unchanged on success", async () => {
     vi.stubEnv("LLM_TELEMETRY", "1");
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
-    const payload = { answer: 42, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } };
+    const payload = {
+      answer: 42,
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    };
 
     const result = await withLLMTelemetry(META, async () => payload);
 
@@ -150,21 +153,11 @@ describe("usageExtractors.openaiEmbedding", () => {
 
 describe("classifyLLMError", () => {
   it("maps error shapes into the coarse taxonomy", () => {
-    expect(classifyLLMError(new Error("request timed out")).errorType).toBe(
-      "timeout",
-    );
-    expect(
-      classifyLLMError({ status: 429, message: "slow down" }).errorType,
-    ).toBe("rate_limit");
-    expect(
-      classifyLLMError({ status: 401, message: "nope" }).errorType,
-    ).toBe("auth");
-    expect(
-      classifyLLMError({ status: 500, message: "oops" }).errorType,
-    ).toBe("server_error");
-    expect(classifyLLMError(new Error("something weird")).errorType).toBe(
-      "unknown",
-    );
+    expect(classifyLLMError(new Error("request timed out")).errorType).toBe("timeout");
+    expect(classifyLLMError({ status: 429, message: "slow down" }).errorType).toBe("rate_limit");
+    expect(classifyLLMError({ status: 401, message: "nope" }).errorType).toBe("auth");
+    expect(classifyLLMError({ status: 500, message: "oops" }).errorType).toBe("server_error");
+    expect(classifyLLMError(new Error("something weird")).errorType).toBe("unknown");
   });
 });
 
@@ -185,17 +178,26 @@ describe("withLLMTelemetry - DB mode", () => {
     const mockDb = { insert: mockInsert } as unknown as import("@haggle/db").Database;
     setTelemetryDb(mockDb);
 
-    const payload = { answer: 42, usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } };
+    const payload = {
+      answer: 42,
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+    };
     await withLLMTelemetry({ ...META, sessionId: "sess-1", roundNo: 2 }, async () => payload, {
-      extractUsage: (r) => ({ promptTokens: r.usage.prompt_tokens, completionTokens: r.usage.completion_tokens, totalTokens: r.usage.total_tokens }),
+      extractUsage: (r) => ({
+        promptTokens: r.usage.prompt_tokens,
+        completionTokens: r.usage.completion_tokens,
+        totalTokens: r.usage.total_tokens,
+      }),
     });
 
     // Give the void promise a chance to settle
     await new Promise((r) => setTimeout(r, 10));
     expect(mockInsert).toHaveBeenCalledTimes(1);
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({
-      costMinor: 0,
-    }));
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        costMinor: 0,
+      }),
+    );
   });
 
   it("does not insert into DB when LLM_TELEMETRY=1 (console only)", async () => {

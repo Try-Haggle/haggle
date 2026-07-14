@@ -1,12 +1,10 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { verifyShipmentApvReceiverManifestArchiveAlertReceiverContract } from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-receiver-contract.service.js";
+import { type Database, sql } from "@haggle/db";
+import { verifyShipmentApvReceiverManifestArchiveAlertReceiverContract } from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-receiver-contract.service.js";
 
 const DELIVERY_DOMAIN =
   "haggle.shipment-apv-failure-alert.receiver-manifest-archive-alert.receiver-delivery.v1";
-const CLAIM_STATUS =
-  "VERIFIED_LOCAL_ARCHIVE_ALERT_RECEIVER_CLAIM_DRY_RUN";
+const CLAIM_STATUS = "VERIFIED_LOCAL_ARCHIVE_ALERT_RECEIVER_CLAIM_DRY_RUN";
 
 type ClaimRow = {
   id: unknown;
@@ -58,34 +56,33 @@ function bindingFromExisting(row: ClaimRow): BindingRow {
   };
 }
 
-function claimMatches(row: ClaimRow, binding: BindingRow,
-  expectedDeliveryId: string) {
-  return /^[0-9a-f]{64}$/.test(String(row.delivery_id))
-    && /^[0-9a-f]{64}$/.test(String(row.payload_sha256))
-    && /^[0-9a-f]{24}$/.test(String(row.key_id))
-    && String(row.delivery_id) === expectedDeliveryId
-    && String(row.delivery_intent_id) === String(binding.delivery_intent_id)
-    && String(row.payload_signature_id) === String(binding.payload_signature_id)
-    && String(row.payload_outbox_id) === String(binding.payload_outbox_id)
-    && String(row.payload_sha256) === String(binding.payload_sha256)
-    && String(row.key_id) === String(binding.key_id)
-    && String(row.status) === CLAIM_STATUS
-    && row.network_received === false
-    && row.external_receipt_verified === false
-    && row.production_accepted === false
-    && row.delivery_attempted === false
-    && iso(row.received_at) !== null;
+function claimMatches(row: ClaimRow, binding: BindingRow, expectedDeliveryId: string) {
+  return (
+    /^[0-9a-f]{64}$/.test(String(row.delivery_id)) &&
+    /^[0-9a-f]{64}$/.test(String(row.payload_sha256)) &&
+    /^[0-9a-f]{24}$/.test(String(row.key_id)) &&
+    String(row.delivery_id) === expectedDeliveryId &&
+    String(row.delivery_intent_id) === String(binding.delivery_intent_id) &&
+    String(row.payload_signature_id) === String(binding.payload_signature_id) &&
+    String(row.payload_outbox_id) === String(binding.payload_outbox_id) &&
+    String(row.payload_sha256) === String(binding.payload_sha256) &&
+    String(row.key_id) === String(binding.key_id) &&
+    String(row.status) === CLAIM_STATUS &&
+    row.network_received === false &&
+    row.external_receipt_verified === false &&
+    row.production_accepted === false &&
+    row.delivery_attempted === false &&
+    iso(row.received_at) !== null
+  );
 }
 
 function publicClaim(row: ClaimRow) {
   const receivedAt = iso(row.received_at);
   if (!receivedAt) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_CONFLICT");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_CONFLICT");
   }
   return {
-    schemaVersion:
-      "shipment-apv-failure-alert-receiver-manifest-archive-alert-receiver-claim-v1",
+    schemaVersion: "shipment-apv-failure-alert-receiver-manifest-archive-alert-receiver-claim-v1",
     receiverClaimId: String(row.id),
     deliveryId: String(row.delivery_id),
     deliveryIntentId: String(row.delivery_intent_id),
@@ -128,11 +125,12 @@ export async function createShipmentApvReceiverManifestArchiveAlertReceiverClaim
   const existing = (existingRows as unknown as ClaimRow[])[0];
   if (existing) {
     const binding = bindingFromExisting(existing);
-    const expectedDeliveryId = deliveryId(String(binding.delivery_intent_id),
-      String(binding.payload_sha256));
+    const expectedDeliveryId = deliveryId(
+      String(binding.delivery_intent_id),
+      String(binding.payload_sha256),
+    );
     if (!claimMatches(existing, binding, expectedDeliveryId)) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_CONFLICT");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_CONFLICT");
     }
     return publicClaim(existing);
   }
@@ -145,11 +143,12 @@ export async function createShipmentApvReceiverManifestArchiveAlertReceiverClaim
     WHERE intent.id = ${input.deliveryIntentId}::uuid LIMIT 1`);
   const binding = (bindingRows as unknown as BindingRow[])[0];
   if (!binding) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_NOT_FOUND");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_DELIVERY_INTENT_NOT_FOUND");
   }
-  const expectedDeliveryId = deliveryId(String(binding.delivery_intent_id),
-    String(binding.payload_sha256));
+  const expectedDeliveryId = deliveryId(
+    String(binding.delivery_intent_id),
+    String(binding.payload_sha256),
+  );
   const receivedAt = (input.now ?? new Date()).toISOString();
 
   const rows = await db.execute(sql`WITH inserted AS (
@@ -180,12 +179,10 @@ export async function createShipmentApvReceiverManifestArchiveAlertReceiverClaim
     row = (winnerRows as unknown as ClaimRow[])[0];
   }
   if (!row) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_UNAVAILABLE");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_UNAVAILABLE");
   }
   if (!claimMatches(row, binding, expectedDeliveryId)) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_CONFLICT");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_RECEIVER_CLAIM_CONFLICT");
   }
   return publicClaim(row);
 }

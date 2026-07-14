@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@haggle/db";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../services/dispute-evidence-retention.service.js", () => ({
   evidenceRetentionPolicy: vi.fn(() => ({ committedDays: 90, orphanDays: 7, batchSize: 50 })),
@@ -16,7 +16,6 @@ vi.mock("../services/dispute-storage.service.js", () => ({
 }));
 
 import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
-import { deleteDisputeEvidence } from "../services/dispute-storage.service.js";
 import {
   claimEvidenceRetentionBatch,
   completeEvidenceRetentionDeletion,
@@ -25,6 +24,7 @@ import {
   releaseRetentionClaimForHold,
   retentionClaimStillAuthorized,
 } from "../services/dispute-evidence-retention.service.js";
+import { deleteDisputeEvidence } from "../services/dispute-storage.service.js";
 
 const db = {} as Database;
 const claim = {
@@ -48,14 +48,23 @@ describe("dispute evidence retention job", () => {
 
   it("supports a deletion-free dry run", async () => {
     const result = await runDisputeEvidenceRetention(db, { dryRun: true });
-    expect(result).toEqual({ dry_run: true, eligible: 1, claimed: 0, deleted: 0, failed: 0, held: 0 });
+    expect(result).toEqual({
+      dry_run: true,
+      eligible: 1,
+      claimed: 0,
+      deleted: 0,
+      failed: 0,
+      held: 0,
+    });
     expect(claimEvidenceRetentionBatch).not.toHaveBeenCalled();
     expect(deleteDisputeEvidence).not.toHaveBeenCalled();
   });
 
   it("deletes an authorized storage object and seals the DB state", async () => {
     const result = await runDisputeEvidenceRetention(db);
-    expect(deleteDisputeEvidence).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222/evidence.jpg");
+    expect(deleteDisputeEvidence).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222/evidence.jpg",
+    );
     expect(completeEvidenceRetentionDeletion).toHaveBeenCalledWith(db, claim);
     expect(result).toMatchObject({ claimed: 1, deleted: 1, failed: 0, held: 0 });
   });

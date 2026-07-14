@@ -49,10 +49,12 @@ export interface DisputeFinalizationFinding {
 }
 
 function isResolved(status: ProductionDisputeStatus): boolean {
-  return status === "resolved_buyer_favor"
-    || status === "resolved_seller_favor"
-    || status === "partial_refund"
-    || status === "closed";
+  return (
+    status === "resolved_buyer_favor" ||
+    status === "resolved_seller_favor" ||
+    status === "partial_refund" ||
+    status === "closed"
+  );
 }
 
 function isTerminalOrderStatus(status?: string): boolean {
@@ -64,7 +66,9 @@ function refundCompleted(status?: string): boolean {
 }
 
 function releaseCompleted(status?: string): boolean {
-  return status === "RELEASED" || status === "SETTLED" || status === "released" || status === "settled";
+  return (
+    status === "RELEASED" || status === "SETTLED" || status === "released" || status === "settled"
+  );
 }
 
 function returnCompletedOrNotRequired(status?: string): boolean {
@@ -86,7 +90,8 @@ export function detectDisputeFinalizationFindings(
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Resolved dispute does not have a finalization marker.",
-        recommended_action: "Verify the finalizer ran once and write an audited finalization timestamp.",
+        recommended_action:
+          "Verify the finalizer ran once and write an audited finalization timestamp.",
       });
     }
 
@@ -97,7 +102,8 @@ export function detectDisputeFinalizationFindings(
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Resolved dispute is attached to a non-terminal order.",
-        recommended_action: "Block order closure side effects until refund, release, and return state are reconciled.",
+        recommended_action:
+          "Block order closure side effects until refund, release, and return state are reconciled.",
       });
     }
 
@@ -108,7 +114,8 @@ export function detectDisputeFinalizationFindings(
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Dispute finalization has been attempted more than once.",
-        recommended_action: "Check idempotency keys and audit log before retrying financial side effects.",
+        recommended_action:
+          "Check idempotency keys and audit log before retrying financial side effects.",
       });
     }
 
@@ -131,7 +138,8 @@ export function detectDisputeFinalizationFindings(
           dispute_id: dispute.dispute_id,
           order_id: dispute.order_id,
           message: "Buyer-favor dispute is resolved without a completed refund.",
-          recommended_action: "Run refund reconciliation and complete or manually review the refund.",
+          recommended_action:
+            "Run refund reconciliation and complete or manually review the refund.",
         });
       }
     }
@@ -146,20 +154,24 @@ export function detectDisputeFinalizationFindings(
           dispute_id: dispute.dispute_id,
           order_id: dispute.order_id,
           message: "Partial-refund dispute does not match the expected completed refund amount.",
-          recommended_action: "Compare provider refund amount with the dispute resolution before closing the case.",
+          recommended_action:
+            "Compare provider refund amount with the dispute resolution before closing the case.",
         });
       }
     }
 
-    if ((dispute.outcome === "seller_favor" || dispute.outcome === "no_action")
-      && !releaseCompleted(dispute.settlement_release_status)) {
+    if (
+      (dispute.outcome === "seller_favor" || dispute.outcome === "no_action") &&
+      !releaseCompleted(dispute.settlement_release_status)
+    ) {
       findings.push({
         type: "resolved_seller_favor_without_release",
         severity: "critical",
         dispute_id: dispute.dispute_id,
         order_id: dispute.order_id,
         message: "Seller-favor/no-action dispute is resolved without settlement release.",
-        recommended_action: "Run settlement release reconciliation and complete or manually review the release.",
+        recommended_action:
+          "Run settlement release reconciliation and complete or manually review the release.",
       });
     }
   }

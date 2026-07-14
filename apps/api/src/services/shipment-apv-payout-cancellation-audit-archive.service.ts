@@ -1,5 +1,5 @@
-import { createHash, randomUUID, type KeyObject } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
+import { createHash, type KeyObject, randomUUID } from "node:crypto";
+import { type Database, sql } from "@haggle/db";
 import { assertDisputeModuleOutboundUrl } from "./dispute-module-outbound-url.service.js";
 import {
   canonicalShipmentApvCancellationAuditJson,
@@ -65,13 +65,20 @@ export function getShipmentApvCancellationAuditArchiveDeliveryPolicyStatus() {
         allowInsecureHttp: process.env.HAGGLE_AUDIT_ARCHIVE_ALLOW_INSECURE_HTTP === "true",
         allowPrivateNetwork: process.env.HAGGLE_AUDIT_ARCHIVE_ALLOW_PRIVATE_NETWORK === "true",
       });
-    } catch { configurationState = "invalid"; }
+    } catch {
+      configurationState = "invalid";
+    }
   }
   return {
     configured: configurationState === "valid",
     configurationState,
     jobEnabled: process.env.ENABLE_SHIPMENT_APV_CANCELLATION_AUDIT_ARCHIVE_JOB === "true",
-    unfinishedMaxAgeMinutes: boundedInteger(process.env.HAGGLE_AUDIT_ARCHIVE_UNFINISHED_MAX_AGE_MINUTES, 15, 1, 1440),
+    unfinishedMaxAgeMinutes: boundedInteger(
+      process.env.HAGGLE_AUDIT_ARCHIVE_UNFINISHED_MAX_AGE_MINUTES,
+      15,
+      1,
+      1440,
+    ),
   };
 }
 
@@ -105,9 +112,12 @@ function mapArchiveRow(row: Record<string, unknown>): ShipmentApvCancellationAud
     attemptCount: Number(row.attempt_count),
     nextAttemptAt: new Date(String(row.next_attempt_at)).toISOString(),
     leaseToken: row.lease_token ? String(row.lease_token) : null,
-    leaseExpiresAt: row.lease_expires_at ? new Date(String(row.lease_expires_at)).toISOString() : null,
+    leaseExpiresAt: row.lease_expires_at
+      ? new Date(String(row.lease_expires_at)).toISOString()
+      : null,
     lastError: row.last_error ? String(row.last_error) : null,
-    httpStatus: row.http_status === null || row.http_status === undefined ? null : Number(row.http_status),
+    httpStatus:
+      row.http_status === null || row.http_status === undefined ? null : Number(row.http_status),
     receiptId: row.receipt_id ? String(row.receipt_id) : null,
     receiptSha256: row.receipt_sha256 ? String(row.receipt_sha256) : null,
     deliveredAt: row.delivered_at ? new Date(String(row.delivered_at)).toISOString() : null,
@@ -136,7 +146,8 @@ export async function enqueueShipmentApvCancellationAuditArchive(
     generatedAt: now,
     privateKey: input.privateKey,
   });
-  if (!auditExport.manifest.chain_valid) throw new Error("APV_PAYOUT_CANCELLATION_AUDIT_CHAIN_INVALID");
+  if (!auditExport.manifest.chain_valid)
+    throw new Error("APV_PAYOUT_CANCELLATION_AUDIT_CHAIN_INVALID");
   const payload = auditExport as unknown as Record<string, unknown>;
   const payloadSha256 = createHash("sha256")
     .update(canonicalShipmentApvCancellationAuditJson(payload))
@@ -144,7 +155,7 @@ export async function enqueueShipmentApvCancellationAuditArchive(
   const archiveKey = `apvca_${createHash("sha256")
     .update(`${input.cancellationRequestId}:${auditExport.manifest.events_sha256}`)
     .digest("hex")}`;
-  const inserted = await db.execute(sql`
+  const inserted = (await db.execute(sql`
     INSERT INTO shipment_apv_payout_cancellation_audit_outbox
       (archive_key, cancellation_request_id, payload, payload_sha256, status,
        attempt_count, next_attempt_at, created_at, updated_at)
@@ -153,22 +164,25 @@ export async function enqueueShipmentApvCancellationAuditArchive(
             ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz)
     ON CONFLICT (archive_key) DO NOTHING
     RETURNING *
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   if (inserted[0]) return { outcome: "enqueued" as const, archive: mapArchiveRow(inserted[0]) };
-  const existing = await db.execute(sql`
+  const existing = (await db.execute(sql`
     SELECT * FROM shipment_apv_payout_cancellation_audit_outbox WHERE archive_key = ${archiveKey}
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   if (!existing[0]) throw new Error("APV_AUDIT_ARCHIVE_IDEMPOTENCY_LOOKUP_FAILED");
   return { outcome: "duplicate" as const, archive: mapArchiveRow(existing[0]) };
 }
 
-export async function getShipmentApvCancellationAuditArchiveStatus(db: Database, cancellationRequestId: string) {
-  const rows = await db.execute(sql`
+export async function getShipmentApvCancellationAuditArchiveStatus(
+  db: Database,
+  cancellationRequestId: string,
+) {
+  const rows = (await db.execute(sql`
     SELECT * FROM shipment_apv_payout_cancellation_audit_outbox
      WHERE cancellation_request_id = ${cancellationRequestId}::uuid
      ORDER BY created_at DESC, id DESC
      LIMIT 1
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   return rows[0] ? mapArchiveRow(rows[0]) : null;
 }
 
@@ -176,7 +190,7 @@ export async function getShipmentApvCancellationAuditArchiveHealth(
   db: Database,
   now = new Date(),
 ): Promise<ShipmentApvCancellationAuditArchiveHealth> {
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending,
       COUNT(*) FILTER (WHERE status = 'PROCESSING')::int AS processing,
@@ -188,15 +202,21 @@ export async function getShipmentApvCancellationAuditArchiveHealth(
       EXTRACT(EPOCH FROM (${now.toISOString()}::timestamptz - MIN(created_at) FILTER (WHERE status <> 'DELIVERED')))::int
         AS oldest_unfinished_age_seconds
     FROM shipment_apv_payout_cancellation_audit_outbox
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0] ?? {};
   const deadLetter = Number(row.dead_letter ?? 0);
   const staleProcessing = Number(row.stale_processing ?? 0);
   const failed = Number(row.failed ?? 0);
   const overdueUnfinished = Number(row.overdue_unfinished ?? 0);
-  const unfinishedMaxAgeMinutes = getShipmentApvCancellationAuditArchiveDeliveryPolicyStatus().unfinishedMaxAgeMinutes;
+  const unfinishedMaxAgeMinutes =
+    getShipmentApvCancellationAuditArchiveDeliveryPolicyStatus().unfinishedMaxAgeMinutes;
   return {
-    status: deadLetter > 0 ? "critical" : staleProcessing > 0 || failed > 0 || overdueUnfinished > 0 ? "attention" : "healthy",
+    status:
+      deadLetter > 0
+        ? "critical"
+        : staleProcessing > 0 || failed > 0 || overdueUnfinished > 0
+          ? "attention"
+          : "healthy",
     pending: Number(row.pending ?? 0),
     processing: Number(row.processing ?? 0),
     failed,
@@ -205,23 +225,36 @@ export async function getShipmentApvCancellationAuditArchiveHealth(
     retryReady: Number(row.retry_ready ?? 0),
     overdueUnfinished,
     unfinishedMaxAgeMinutes,
-    oldestUnfinishedAgeSeconds: row.oldest_unfinished_age_seconds === null || row.oldest_unfinished_age_seconds === undefined
-      ? null : Math.max(0, Number(row.oldest_unfinished_age_seconds)),
+    oldestUnfinishedAgeSeconds:
+      row.oldest_unfinished_age_seconds === null || row.oldest_unfinished_age_seconds === undefined
+        ? null
+        : Math.max(0, Number(row.oldest_unfinished_age_seconds)),
     recordedAt: now.toISOString(),
   };
 }
 
-interface AuditArchiveFailureCursor { createdAt: string; id: string }
+interface AuditArchiveFailureCursor {
+  createdAt: string;
+  id: string;
+}
 
 function decodeAuditArchiveFailureCursor(value: string): AuditArchiveFailureCursor {
   try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<AuditArchiveFailureCursor>;
-    if (typeof parsed.createdAt !== "string" || !Number.isFinite(Date.parse(parsed.createdAt))
-      || typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)) {
+    const parsed = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    ) as Partial<AuditArchiveFailureCursor>;
+    if (
+      typeof parsed.createdAt !== "string" ||
+      !Number.isFinite(Date.parse(parsed.createdAt)) ||
+      typeof parsed.id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)
+    ) {
       throw new Error("invalid cursor payload");
     }
     return { createdAt: new Date(parsed.createdAt).toISOString(), id: parsed.id };
-  } catch { throw new Error("INVALID_APV_AUDIT_ARCHIVE_FAILURE_CURSOR"); }
+  } catch {
+    throw new Error("INVALID_APV_AUDIT_ARCHIVE_FAILURE_CURSOR");
+  }
 }
 
 function encodeAuditArchiveFailureCursor(cursor: AuditArchiveFailureCursor) {
@@ -233,16 +266,17 @@ export async function listShipmentApvCancellationAuditArchiveFailures(
   input: { limit?: number; cursor?: string; now?: Date } = {},
 ) {
   const limit = input.limit ?? 20;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("INVALID_APV_AUDIT_ARCHIVE_FAILURE_LIMIT");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("INVALID_APV_AUDIT_ARCHIVE_FAILURE_LIMIT");
   const cursor = input.cursor ? decodeAuditArchiveFailureCursor(input.cursor) : null;
   const now = input.now ?? new Date();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT * FROM shipment_apv_payout_cancellation_audit_outbox
      WHERE status IN ('FAILED', 'DEAD_LETTER')
        ${cursor ? sql`AND (created_at, id) > (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)` : sql``}
      ORDER BY created_at ASC, id ASC
      LIMIT ${limit + 1}
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   const hasMore = rows.length > limit;
   const archives = (hasMore ? rows.slice(0, limit) : rows).map(mapArchiveRow);
   const items = archives.map((archive) => ({
@@ -256,12 +290,18 @@ export async function listShipmentApvCancellationAuditArchiveFailures(
     httpStatus: archive.httpStatus,
     createdAt: archive.createdAt,
     updatedAt: archive.updatedAt,
-    failureAgeSeconds: Math.max(0, Math.floor((now.getTime() - new Date(archive.updatedAt).getTime()) / 1000)),
+    failureAgeSeconds: Math.max(
+      0,
+      Math.floor((now.getTime() - new Date(archive.updatedAt).getTime()) / 1000),
+    ),
   }));
   const last = items.at(-1);
   return {
     items,
-    nextCursor: hasMore && last ? encodeAuditArchiveFailureCursor({ createdAt: last.createdAt, id: last.id }) : null,
+    nextCursor:
+      hasMore && last
+        ? encodeAuditArchiveFailureCursor({ createdAt: last.createdAt, id: last.id })
+        : null,
     recordedAt: now.toISOString(),
   };
 }
@@ -274,18 +314,19 @@ export async function requeueShipmentApvCancellationAuditArchive(
   if (reason.length < 12 || reason.length > 500) return { outcome: "invalid_reason" as const };
   const now = input.now ?? new Date();
   return db.transaction(async (tx) => {
-    const rows = await tx.execute(sql`
+    const rows = (await tx.execute(sql`
       SELECT * FROM shipment_apv_payout_cancellation_audit_outbox
        WHERE cancellation_request_id = ${input.cancellationRequestId}::uuid
        ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     if (!rows[0]) return { outcome: "not_found" as const };
     const current = mapArchiveRow(rows[0]);
     if (current.status === "PENDING" || current.status === "PROCESSING") {
       return { outcome: "already_queued" as const, archive: current };
     }
-    if (current.status === "DELIVERED") return { outcome: "already_delivered" as const, archive: current };
-    const updatedRows = await tx.execute(sql`
+    if (current.status === "DELIVERED")
+      return { outcome: "already_delivered" as const, archive: current };
+    const updatedRows = (await tx.execute(sql`
       UPDATE shipment_apv_payout_cancellation_audit_outbox
          SET status = 'PENDING', attempt_count = 0, next_attempt_at = ${now.toISOString()}::timestamptz,
              lease_token = NULL, lease_expires_at = NULL, last_error = NULL, http_status = NULL,
@@ -293,7 +334,7 @@ export async function requeueShipmentApvCancellationAuditArchive(
              updated_at = ${now.toISOString()}::timestamptz
        WHERE id = ${current.id}::uuid AND status IN ('FAILED', 'DEAD_LETTER')
        RETURNING *
-    `) as unknown as Array<Record<string, unknown>>;
+    `)) as unknown as Array<Record<string, unknown>>;
     if (!updatedRows[0]) throw new Error("APV_AUDIT_ARCHIVE_REQUEUE_CONFLICT");
     await tx.execute(sql`
       INSERT INTO admin_action_log (actor_id, action_type, target_type, target_id, payload, created_at)
@@ -316,7 +357,7 @@ export async function claimShipmentApvCancellationAuditArchives(
   const now = input.now ?? new Date();
   const leaseToken = randomUUID();
   const leaseExpiresAt = new Date(now.getTime() + (input.leaseMs ?? 120_000));
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     WITH candidates AS (
       SELECT id
         FROM shipment_apv_payout_cancellation_audit_outbox
@@ -336,7 +377,7 @@ export async function claimShipmentApvCancellationAuditArchives(
       FROM candidates
      WHERE archive.id = candidates.id
     RETURNING archive.*
-  `) as unknown as Array<Record<string, unknown>>;
+  `)) as unknown as Array<Record<string, unknown>>;
   return rows.map(mapArchiveRow);
 }
 
@@ -368,11 +409,19 @@ export async function deliverShipmentApvCancellationAuditArchive(
     });
     const declaredLength = Number(response.headers.get("content-length") ?? 0);
     if (Number.isFinite(declaredLength) && declaredLength > 16_384) {
-      return { status: "failed" as const, httpStatus: response.status, error: "ARCHIVE_RECEIPT_TOO_LARGE" };
+      return {
+        status: "failed" as const,
+        httpStatus: response.status,
+        error: "ARCHIVE_RECEIPT_TOO_LARGE",
+      };
     }
     const responseText = await response.text();
     if (Buffer.byteLength(responseText, "utf8") > 16_384) {
-      return { status: "failed" as const, httpStatus: response.status, error: "ARCHIVE_RECEIPT_TOO_LARGE" };
+      return {
+        status: "failed" as const,
+        httpStatus: response.status,
+        error: "ARCHIVE_RECEIPT_TOO_LARGE",
+      };
     }
     let body: Record<string, unknown> = {};
     try {
@@ -380,15 +429,28 @@ export async function deliverShipmentApvCancellationAuditArchive(
     } catch {
       body = {};
     }
-    if (!response.ok) return { status: "failed" as const, httpStatus: response.status, error: `HTTP ${response.status}` };
+    if (!response.ok)
+      return {
+        status: "failed" as const,
+        httpStatus: response.status,
+        error: `HTTP ${response.status}`,
+      };
     const receiptId = typeof body.receipt_id === "string" ? body.receipt_id.trim() : "";
-    const receiptSha256 = typeof body.stored_sha256 === "string" ? body.stored_sha256.toLowerCase() : "";
+    const receiptSha256 =
+      typeof body.stored_sha256 === "string" ? body.stored_sha256.toLowerCase() : "";
     if (!receiptId || receiptSha256 !== archive.payloadSha256) {
-      return { status: "failed" as const, httpStatus: response.status, error: "ARCHIVE_RECEIPT_HASH_MISMATCH" };
+      return {
+        status: "failed" as const,
+        httpStatus: response.status,
+        error: "ARCHIVE_RECEIPT_HASH_MISMATCH",
+      };
     }
     return { status: "delivered" as const, httpStatus: response.status, receiptId, receiptSha256 };
   } catch (error) {
-    return { status: "failed" as const, error: error instanceof Error ? error.message : String(error) };
+    return {
+      status: "failed" as const,
+      error: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -403,17 +465,31 @@ export async function dispatchShipmentApvCancellationAuditArchives(
     limit?: number;
   } = {},
 ) {
-  const config = input.config === undefined ? resolveShipmentApvCancellationAuditArchiveConfigFromEnv() : input.config;
-  if (!config) return { status: "skipped" as const, reason: "not_configured" as const, claimed: 0, delivered: 0, failed: 0, deadLettered: 0 };
+  const config =
+    input.config === undefined
+      ? resolveShipmentApvCancellationAuditArchiveConfigFromEnv()
+      : input.config;
+  if (!config)
+    return {
+      status: "skipped" as const,
+      reason: "not_configured" as const,
+      claimed: 0,
+      delivered: 0,
+      failed: 0,
+      deadLettered: 0,
+    };
   const now = input.now ?? new Date();
   const claimed = await claimShipmentApvCancellationAuditArchives(db, { limit: input.limit, now });
   let delivered = 0;
   let failed = 0;
   let deadLettered = 0;
   for (const archive of claimed) {
-    const result = await deliverShipmentApvCancellationAuditArchive(archive, config, { fetchImpl: input.fetchImpl, now });
+    const result = await deliverShipmentApvCancellationAuditArchive(archive, config, {
+      fetchImpl: input.fetchImpl,
+      now,
+    });
     if (result.status === "delivered") {
-      const updated = await db.execute(sql`
+      const updated = (await db.execute(sql`
         UPDATE shipment_apv_payout_cancellation_audit_outbox
            SET status = 'DELIVERED', lease_token = NULL, lease_expires_at = NULL,
                last_error = NULL, http_status = ${result.httpStatus}, receipt_id = ${result.receiptId},
@@ -421,13 +497,15 @@ export async function dispatchShipmentApvCancellationAuditArchives(
                updated_at = ${now.toISOString()}::timestamptz
          WHERE id = ${archive.id}::uuid AND status = 'PROCESSING' AND lease_token = ${archive.leaseToken}::uuid
         RETURNING id
-      `) as unknown as Array<Record<string, unknown>>;
+      `)) as unknown as Array<Record<string, unknown>>;
       if (updated.length === 1) delivered += 1;
       else failed += 1;
       continue;
     }
     const nextStatus = archive.attemptCount >= config.maxAttempts ? "DEAD_LETTER" : "FAILED";
-    const retryAt = new Date(now.getTime() + Math.min(3_600_000, 2 ** Math.min(archive.attemptCount, 10) * 1_000));
+    const retryAt = new Date(
+      now.getTime() + Math.min(3_600_000, 2 ** Math.min(archive.attemptCount, 10) * 1_000),
+    );
     await db.execute(sql`
       UPDATE shipment_apv_payout_cancellation_audit_outbox
          SET status = ${nextStatus}, lease_token = NULL, lease_expires_at = NULL,

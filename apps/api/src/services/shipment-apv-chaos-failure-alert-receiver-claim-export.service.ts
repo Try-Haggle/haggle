@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { sql, type Database } from "@haggle/db";
-import { getShipmentApvFailureAlertReceiverClaimHealth } from
-  "./shipment-apv-chaos-failure-alert-receiver-claim-health.service.js";
+import { type Database, sql } from "@haggle/db";
+import { getShipmentApvFailureAlertReceiverClaimHealth } from "./shipment-apv-chaos-failure-alert-receiver-claim-health.service.js";
 
 const MANIFEST_DOMAIN = "haggle.shipment-apv-failure-alert.receiver-claim-manifest.v1";
 const MAX_ENTRIES = 1_000;
@@ -59,10 +58,11 @@ export async function exportShipmentApvFailureAlertReceiverClaimManifest(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_CLAIM_EXPORT_LIMIT_EXCEEDED");
   }
   const rawDigests = row.receipt_digests;
-  if (!Array.isArray(rawDigests)
-    || rawDigests.length !== observedCount
-    || !rawDigests.every((digest) => typeof digest === "string"
-      && /^[0-9a-f]{64}$/.test(digest))) {
+  if (
+    !Array.isArray(rawDigests) ||
+    rawDigests.length !== observedCount ||
+    !rawDigests.every((digest) => typeof digest === "string" && /^[0-9a-f]{64}$/.test(digest))
+  ) {
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_CLAIM_EXPORT_INVALID");
   }
   const receiptDigests = [...rawDigests].sort();
@@ -70,7 +70,8 @@ export async function exportShipmentApvFailureAlertReceiverClaimManifest(
     throw new Error("SHIPMENT_APV_FAILURE_ALERT_RECEIVER_CLAIM_EXPORT_INVALID");
   }
   const manifestDigest = createHash("sha256")
-    .update(manifestText(receiptDigests), "utf8").digest("hex");
+    .update(manifestText(receiptDigests), "utf8")
+    .digest("hex");
 
   return {
     schemaVersion: "shipment-apv-failure-alert-receiver-claim-manifest-v1",

@@ -17,7 +17,9 @@ export interface CarrierEventOrderingDecision {
   stateChanged: boolean;
 }
 
-const EVENT_FOR_STATUS: Partial<Record<ShipmentStatus, Parameters<typeof transitionShipmentStatus>[1]>> = {
+const EVENT_FOR_STATUS: Partial<
+  Record<ShipmentStatus, Parameters<typeof transitionShipmentStatus>[1]>
+> = {
   LABEL_CREATED: "label_create",
   IN_TRANSIT: "ship",
   OUT_FOR_DELIVERY: "out_for_delivery",
@@ -63,12 +65,14 @@ export function resolveCarrierEventOrdering(input: {
     };
   }
 
-  if (compareWatermark(
-    input.incomingOccurredAt,
-    input.incomingEventKey,
-    input.lastCarrierEventAt,
-    input.lastCarrierEventKey,
-  ) <= 0) {
+  if (
+    compareWatermark(
+      input.incomingOccurredAt,
+      input.incomingEventKey,
+      input.lastCarrierEventAt,
+      input.lastCarrierEventKey,
+    ) <= 0
+  ) {
     return {
       disposition: "stale",
       nextStatus: input.currentStatus,
@@ -96,10 +100,11 @@ export function resolveCarrierEventOrdering(input: {
   }
 
   const eventType = EVENT_FOR_STATUS[input.incomingStatus];
-  const transitioned = eventType
-    ? transitionShipmentStatus(input.currentStatus, eventType)
-    : null;
-  if (transitioned === input.incomingStatus || DIRECT_FORWARD_JUMPS.has(`${input.currentStatus}:${input.incomingStatus}`)) {
+  const transitioned = eventType ? transitionShipmentStatus(input.currentStatus, eventType) : null;
+  if (
+    transitioned === input.incomingStatus ||
+    DIRECT_FORWARD_JUMPS.has(`${input.currentStatus}:${input.incomingStatus}`)
+  ) {
     return {
       disposition: "applied",
       nextStatus: input.incomingStatus,
@@ -123,7 +128,10 @@ export function normalizeCarrierEventTime(
 ): { occurredAt: Date; source: "carrier" | "received_at" } {
   if (!rawOccurredAt) return { occurredAt: receivedAt, source: "received_at" };
   const parsed = new Date(rawOccurredAt);
-  if (!Number.isFinite(parsed.getTime()) || parsed.getTime() > receivedAt.getTime() + maximumFutureSkewMs) {
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.getTime() > receivedAt.getTime() + maximumFutureSkewMs
+  ) {
     return { occurredAt: receivedAt, source: "received_at" };
   }
   return { occurredAt: parsed, source: "carrier" };

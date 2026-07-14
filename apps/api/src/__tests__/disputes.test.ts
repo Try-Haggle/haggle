@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createHash } from "node:crypto";
-import Fastify, { type FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
-import { getTestApp, closeTestApp, AUTH_HEADERS, ADMIN_HEADERS } from "./helpers.js";
-import { deriveAppealSlaState, registerDisputeRoutes } from "../routes/disputes.js";
+import Fastify, { type FastifyInstance } from "fastify";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetRateLimitsForTests } from "../middleware/rate-limit.js";
+import { deriveAppealSlaState, registerDisputeRoutes } from "../routes/disputes.js";
+import { ADMIN_HEADERS, AUTH_HEADERS, closeTestApp, getTestApp } from "./helpers.js";
 
 // --- Mock service layers ---
 vi.mock("../services/payment-record.service.js", () => ({
@@ -59,11 +59,19 @@ vi.mock("../services/dispute-record.service.js", () => ({
   getDisputeEvidenceUploadByEvidenceId: vi.fn().mockResolvedValue(null),
   hasCommittedCameraEvidenceSha256: vi.fn().mockResolvedValue(false),
   findNearestCommittedCameraEvidence: vi.fn().mockResolvedValue(null),
-  listDisputeEvidenceSimilarityReviews: vi.fn().mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
+  listDisputeEvidenceSimilarityReviews: vi
+    .fn()
+    .mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
   getDisputeEvidenceSimilarityReviewHealth: vi.fn().mockResolvedValue({
-    status: "healthy", pendingReviews: 0, overdueSla: 0, dueSoon: 0,
-    expiredUnresolved: 0, oldestPendingAgeSeconds: null, recordedAt: "2026-07-12T00:00:00.000Z",
-    autoExpiredLast24Hours: 0, lastAutoExpiredAt: null,
+    status: "healthy",
+    pendingReviews: 0,
+    overdueSla: 0,
+    dueSoon: 0,
+    expiredUnresolved: 0,
+    oldestPendingAgeSeconds: null,
+    recordedAt: "2026-07-12T00:00:00.000Z",
+    autoExpiredLast24Hours: 0,
+    lastAutoExpiredAt: null,
   }),
   decideDisputeEvidenceSimilarityReview: vi.fn().mockResolvedValue({ outcome: "approved" }),
   listBlockingDisputeEvidenceUploads: vi.fn().mockResolvedValue([]),
@@ -75,39 +83,72 @@ vi.mock("../services/dispute-record.service.js", () => ({
 }));
 
 vi.mock("../services/dispute-similarity-review-expiry.service.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../services/dispute-similarity-review-expiry.service.js")>();
+  const original =
+    await importOriginal<
+      typeof import("../services/dispute-similarity-review-expiry.service.js")
+    >();
   return {
     ...original,
-    listDisputeSimilarityReviewExpiryEvents: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    listDisputeSimilarityReviewExpiryEvents: vi
+      .fn()
+      .mockResolvedValue({ items: [], nextCursor: null }),
     getDisputeSimilarityReviewExpiryEventById: vi.fn().mockResolvedValue(null),
   };
 });
 
 vi.mock("../services/dispute-similarity-review-audit-export.service.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../services/dispute-similarity-review-audit-export.service.js")>();
+  const original =
+    await importOriginal<
+      typeof import("../services/dispute-similarity-review-audit-export.service.js")
+    >();
   return { ...original, createSignedDisputeSimilarityReviewAuditExport: vi.fn() };
 });
 
-vi.mock("../services/dispute-similarity-review-audit-archive.service.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../services/dispute-similarity-review-audit-archive.service.js")>();
-  return {
-    ...original,
-    getDisputeSimilarityReviewAuditArchiveHealth: vi.fn().mockResolvedValue({
-      status: "healthy", pending: 0, processing: 0, failed: 0, deadLetter: 0,
-      staleProcessing: 0, retryReady: 0, overdueUnfinished: 0, unfinishedMaxAgeMinutes: 15,
-      oldestUnfinishedAgeSeconds: null, recordedAt: "2026-07-12T00:00:00.000Z",
-    }),
-    listDisputeSimilarityReviewAuditArchiveFailures: vi.fn().mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
-    requeueDisputeSimilarityReviewAuditArchive: vi.fn().mockResolvedValue({ outcome: "not_found" }),
-  };
-});
+vi.mock(
+  "../services/dispute-similarity-review-audit-archive.service.js",
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import("../services/dispute-similarity-review-audit-archive.service.js")
+      >();
+    return {
+      ...original,
+      getDisputeSimilarityReviewAuditArchiveHealth: vi.fn().mockResolvedValue({
+        status: "healthy",
+        pending: 0,
+        processing: 0,
+        failed: 0,
+        deadLetter: 0,
+        staleProcessing: 0,
+        retryReady: 0,
+        overdueUnfinished: 0,
+        unfinishedMaxAgeMinutes: 15,
+        oldestUnfinishedAgeSeconds: null,
+        recordedAt: "2026-07-12T00:00:00.000Z",
+      }),
+      listDisputeSimilarityReviewAuditArchiveFailures: vi
+        .fn()
+        .mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
+      requeueDisputeSimilarityReviewAuditArchive: vi
+        .fn()
+        .mockResolvedValue({ outcome: "not_found" }),
+    };
+  },
+);
 
-vi.mock("../services/dispute-similarity-review-audit-archive-alert.service.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../services/dispute-similarity-review-audit-archive-alert.service.js")>()),
-  getDisputeSimilarityReviewAuditArchiveAlertDeliveryState: vi.fn().mockResolvedValue({
-    incidentOpen: false, lastIncidentAlertAt: null, lastRecoveryAlertAt: null,
+vi.mock(
+  "../services/dispute-similarity-review-audit-archive-alert.service.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../services/dispute-similarity-review-audit-archive-alert.service.js")
+    >()),
+    getDisputeSimilarityReviewAuditArchiveAlertDeliveryState: vi.fn().mockResolvedValue({
+      incidentOpen: false,
+      lastIncidentAlertAt: null,
+      lastRecoveryAlertAt: null,
+    }),
   }),
-}));
+);
 
 vi.mock("../services/dispute-storage.service.js", () => ({
   createDisputeUploadUrl: vi.fn().mockImplementation(async (objectPath: string) => ({
@@ -132,46 +173,71 @@ vi.mock("../services/dispute-evidence-scan.service.js", () => ({
 }));
 
 vi.mock("../services/dispute-evidence-provenance.service.js", () => ({
-  createSignedDisputeEvidenceProvenance: vi.fn().mockImplementation(({ disputeId, evidenceId, sourceContentSha256, artifacts, generatedAt }) => ({
-    manifest: {
-      schema: "haggle.dispute-evidence-derived-artifacts.v1",
-      dispute_id: disputeId,
-      evidence_id: evidenceId,
-      source_content_sha256: sourceContentSha256,
-      verifier_provider: "test-vision",
-      generated_at: generatedAt.toISOString(),
-      artifact_count: artifacts.length,
-      artifacts_sha256: "b".repeat(64),
-    },
-    signature: {
-      algorithm: "Ed25519",
-      key_id: "test-key",
-      public_key_spki_base64: "test-public-key",
-      value_base64: "test-signature",
-    },
-  })),
+  createSignedDisputeEvidenceProvenance: vi
+    .fn()
+    .mockImplementation(
+      ({ disputeId, evidenceId, sourceContentSha256, artifacts, generatedAt }) => ({
+        manifest: {
+          schema: "haggle.dispute-evidence-derived-artifacts.v1",
+          dispute_id: disputeId,
+          evidence_id: evidenceId,
+          source_content_sha256: sourceContentSha256,
+          verifier_provider: "test-vision",
+          generated_at: generatedAt.toISOString(),
+          artifact_count: artifacts.length,
+          artifacts_sha256: "b".repeat(64),
+        },
+        signature: {
+          algorithm: "Ed25519",
+          key_id: "test-key",
+          public_key_spki_base64: "test-public-key",
+          value_base64: "test-signature",
+        },
+      }),
+    ),
 }));
 
 vi.mock("../services/dispute-evidence-provenance-archive.service.js", () => ({
-  enqueueDisputeEvidenceProvenanceArchive: vi.fn().mockResolvedValue({ outcome: "enqueued", archive: { id: "archive-1" } }),
+  enqueueDisputeEvidenceProvenanceArchive: vi
+    .fn()
+    .mockResolvedValue({ outcome: "enqueued", archive: { id: "archive-1" } }),
   getDisputeEvidenceProvenanceArchiveHealth: vi.fn().mockResolvedValue({
-    status: "healthy", pending: 0, processing: 0, failed: 0, deadLetter: 0, delivered: 1,
-    staleProcessing: 0, eligibleEvidence: 1, archivedEvidence: 1, coverageGap: 0, coveragePercent: 100,
+    status: "healthy",
+    pending: 0,
+    processing: 0,
+    failed: 0,
+    deadLetter: 0,
+    delivered: 1,
+    staleProcessing: 0,
+    eligibleEvidence: 1,
+    archivedEvidence: 1,
+    coverageGap: 0,
+    coveragePercent: 100,
     recordedAt: "2026-07-12T00:00:00.000Z",
   }),
   getDisputeEvidenceProvenanceArchivePolicyStatus: vi.fn(() => ({
-    configured: false, configurationState: "not_configured", jobEnabled: false,
+    configured: false,
+    configurationState: "not_configured",
+    jobEnabled: false,
   })),
-  listDisputeEvidenceProvenanceArchiveFailures: vi.fn().mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
-  requeueDisputeEvidenceProvenanceArchive: vi.fn().mockResolvedValue({ outcome: "already_queued", archive: { status: "PENDING" } }),
+  listDisputeEvidenceProvenanceArchiveFailures: vi
+    .fn()
+    .mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
+  requeueDisputeEvidenceProvenanceArchive: vi
+    .fn()
+    .mockResolvedValue({ outcome: "already_queued", archive: { status: "PENDING" } }),
 }));
 
 vi.mock("../services/dispute-evidence-provenance-archive-alert.service.js", () => ({
   getDisputeEvidenceProvenanceArchiveAlertPolicyStatus: vi.fn(() => ({
-    configured: false, configurationState: "not_configured", jobEnabled: false,
+    configured: false,
+    configurationState: "not_configured",
+    jobEnabled: false,
   })),
   getDisputeEvidenceProvenanceArchiveAlertDeliveryState: vi.fn().mockResolvedValue({
-    incidentOpen: false, lastIncidentAlertAt: null, lastRecoveryAlertAt: null,
+    incidentOpen: false,
+    lastIncidentAlertAt: null,
+    lastRecoveryAlertAt: null,
   }),
 }));
 
@@ -182,7 +248,9 @@ vi.mock("../services/dispute-camera-challenge.service.js", () => ({
     detail: "CHALLENGE_VERIFIED",
     confidence: 0.99,
     detectedText: "HAGGLE-VERIFY-123",
-    visualObservations: [{ category: "visible_damage", observation: "Scratch on the camera body", confidence: 0.88 }],
+    visualObservations: [
+      { category: "visible_damage", observation: "Scratch on the camera body", confidence: 0.88 },
+    ],
   }),
 }));
 
@@ -190,7 +258,11 @@ vi.mock("../services/dispute-image-similarity.service.js", () => ({
   CAMERA_SIMILARITY_REVIEW_DISTANCE: 6,
   CAMERA_SIMILARITY_COMBINED_HASH_DISTANCE: 14,
   CAMERA_SIMILARITY_COLOR_DISTANCE: 20,
-  computeImageSimilarityFingerprint: vi.fn().mockResolvedValue({ dHash: "01".repeat(32), aHash: "10".repeat(32), colorHistogram: Array(12).fill(64) }),
+  computeImageSimilarityFingerprint: vi.fn().mockResolvedValue({
+    dHash: "01".repeat(32),
+    aHash: "10".repeat(32),
+    colorHistogram: Array(12).fill(64),
+  }),
 }));
 
 vi.mock("../services/dispute-evidence-retention.service.js", () => ({
@@ -235,8 +307,11 @@ vi.mock("../services/dispute-ai-assessment-event.service.js", () => ({
   listDisputeAiAssessmentEvents: vi.fn().mockResolvedValue([]),
   verifyDisputeAiAssessmentEventChain: vi.fn((events) => ({
     valid: true,
-    sealed_events: events.filter((event: { eventHash?: string | null }) => Boolean(event.eventHash)).length,
-    legacy_unsealed_events: events.filter((event: { eventHash?: string | null }) => !event.eventHash).length,
+    sealed_events: events.filter((event: { eventHash?: string | null }) => Boolean(event.eventHash))
+      .length,
+    legacy_unsealed_events: events.filter(
+      (event: { eventHash?: string | null }) => !event.eventHash,
+    ).length,
     head_event_hash: events.at(-1)?.eventHash ?? null,
   })),
 }));
@@ -278,30 +353,66 @@ vi.mock("../services/dispute-ai-audit-archive.service.js", () => ({
   enqueueDisputeAiAuditArchive: vi.fn(),
   getLatestDisputeAiAuditArchive: vi.fn(),
   getDisputeAiAuditArchiveHealth: vi.fn().mockResolvedValue({
-    status: "healthy", pending: 0, processing: 0, failed: 0, deadLetter: 0,
-    staleProcessing: 0, retryReady: 0, overdueUnfinished: 0, unfinishedMaxAgeMinutes: 15,
-    oldestUnfinishedAgeSeconds: null, recordedAt: "2026-07-12T00:00:00.000Z",
+    status: "healthy",
+    pending: 0,
+    processing: 0,
+    failed: 0,
+    deadLetter: 0,
+    staleProcessing: 0,
+    retryReady: 0,
+    overdueUnfinished: 0,
+    unfinishedMaxAgeMinutes: 15,
+    oldestUnfinishedAgeSeconds: null,
+    recordedAt: "2026-07-12T00:00:00.000Z",
   }),
   getDisputeAiAuditArchiveCoverage: vi.fn().mockResolvedValue({
-    status: "healthy", totalChains: 0, eligibleChains: 0, archivedCurrent: 0, eligibleUnarchived: 0,
-    overdueEligibleUnarchived: 0, blockedUnsealed: 0, blockedOversized: 0, coveragePercent: 100,
-    oldestUnarchivedAgeSeconds: null, coverageMaxAgeMinutes: 15, maxExportEvents: 10_000,
+    status: "healthy",
+    totalChains: 0,
+    eligibleChains: 0,
+    archivedCurrent: 0,
+    eligibleUnarchived: 0,
+    overdueEligibleUnarchived: 0,
+    blockedUnsealed: 0,
+    blockedOversized: 0,
+    coveragePercent: 100,
+    oldestUnarchivedAgeSeconds: null,
+    coverageMaxAgeMinutes: 15,
+    maxExportEvents: 10_000,
     recordedAt: "2026-07-12T00:00:00.000Z",
   }),
   getDisputeAiAuditDiscoveryFailureHealth: vi.fn().mockResolvedValue({
-    status: "healthy", open: 0, invalidChain: 0, tooLarge: 0, unsealed: 0,
-    resolvedLast24h: 0, oldestOpenAgeSeconds: null, recordedAt: "2026-07-12T00:00:00.000Z",
+    status: "healthy",
+    open: 0,
+    invalidChain: 0,
+    tooLarge: 0,
+    unsealed: 0,
+    resolvedLast24h: 0,
+    oldestOpenAgeSeconds: null,
+    recordedAt: "2026-07-12T00:00:00.000Z",
   }),
-  listDisputeAiAuditDiscoveryFailures: vi.fn().mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
+  listDisputeAiAuditDiscoveryFailures: vi
+    .fn()
+    .mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
   retryDisputeAiAuditDiscoveryFailure: vi.fn().mockResolvedValue({ outcome: "not_found" }),
-  listDisputeAiAuditArchiveFailures: vi.fn().mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
+  listDisputeAiAuditArchiveFailures: vi
+    .fn()
+    .mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" }),
   requeueDisputeAiAuditArchive: vi.fn().mockResolvedValue({ outcome: "not_found" }),
-  getDisputeAiAuditArchivePolicyStatus: vi.fn(() => ({ configured: false, configurationState: "partial", jobEnabled: false, maxExportEvents: 10_000 })),
+  getDisputeAiAuditArchivePolicyStatus: vi.fn(() => ({
+    configured: false,
+    configurationState: "partial",
+    jobEnabled: false,
+    maxExportEvents: 10_000,
+  })),
 }));
 vi.mock("../services/dispute-ai-audit-archive-alert.service.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../services/dispute-ai-audit-archive-alert.service.js")>()),
+  ...(await importOriginal<
+    typeof import("../services/dispute-ai-audit-archive-alert.service.js")
+  >()),
   getDisputeAiAuditArchiveAlertDeliveryState: vi.fn().mockResolvedValue({
-    incidentOpen: false, lastIncidentAlertAt: null, lastRecoveryAlertAt: null,
+    incidentOpen: false,
+    lastIncidentAlertAt: null,
+    lastRecoveryAlertAt: null,
   }),
 }));
 
@@ -360,56 +471,6 @@ vi.mock("../services/draft.service.js", () => ({
   publishDraft: vi.fn().mockResolvedValue(null),
 }));
 
-// Import mocked service functions for per-test overrides
-import {
-  getCommerceOrderByOrderId,
-  updateCommerceOrderStatus,
-} from "../services/payment-record.service.js";
-import {
-  createDisputeRecord,
-  createDisputeEvidenceUploadRecord,
-  getDisputeEvidenceUploadByPath,
-  getDisputeEvidenceUploadById,
-  getDisputeEvidenceUploadByEvidenceId,
-  hasCommittedCameraEvidenceSha256,
-  findNearestCommittedCameraEvidence,
-  listDisputeEvidenceSimilarityReviews,
-  getDisputeEvidenceSimilarityReviewHealth,
-  decideDisputeEvidenceSimilarityReview,
-  listBlockingDisputeEvidenceUploads,
-  getDisputeById,
-  getDisputeByOrderId,
-  markDisputeEvidenceUploadCommitted,
-  updateDisputeEvidenceUploadScan,
-  updateDisputeEvidenceUploadSimilarity,
-  rejectDisputeEvidenceUpload,
-  addDisputeEvidenceRecord,
-  updateDisputeRecord,
-} from "../services/dispute-record.service.js";
-import { createDeposit } from "../services/dispute-deposit.service.js";
-import {
-  createDisputeUploadUrl,
-  createDisputeViewUrl,
-  downloadDisputeEvidence,
-  disputeEvidenceExists,
-} from "../services/dispute-storage.service.js";
-import { scanDisputeEvidence } from "../services/dispute-evidence-scan.service.js";
-import { verifyCameraChallenge } from "../services/dispute-camera-challenge.service.js";
-import { computeImageSimilarityFingerprint } from "../services/dispute-image-similarity.service.js";
-import {
-  getDisputeSimilarityReviewExpiryEventById,
-  listDisputeSimilarityReviewExpiryEvents,
-} from "../services/dispute-similarity-review-expiry.service.js";
-import { createSignedDisputeSimilarityReviewAuditExport } from "../services/dispute-similarity-review-audit-export.service.js";
-import {
-  getDisputeSimilarityReviewAuditArchiveHealth,
-  listDisputeSimilarityReviewAuditArchiveFailures,
-  requeueDisputeSimilarityReviewAuditArchive,
-} from "../services/dispute-similarity-review-audit-archive.service.js";
-import {
-  getDisputeEvidenceRetentionSummary,
-  setDisputeEvidenceLegalHold,
-} from "../services/dispute-evidence-retention.service.js";
 import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
 import { runResolutionAssessor } from "../services/dispute-ai.service.js";
 import {
@@ -421,34 +482,111 @@ import {
   releaseDisputeAiAssessmentLease,
 } from "../services/dispute-ai-assessment-lease.service.js";
 import {
+  enqueueDisputeAiAuditArchive,
+  getDisputeAiAuditArchiveCoverage,
+  getDisputeAiAuditArchiveHealth,
+  getDisputeAiAuditDiscoveryFailureHealth,
+  getLatestDisputeAiAuditArchive,
+  listDisputeAiAuditArchiveFailures,
+  listDisputeAiAuditDiscoveryFailures,
+  requeueDisputeAiAuditArchive,
+  retryDisputeAiAuditDiscoveryFailure,
+} from "../services/dispute-ai-audit-archive.service.js";
+import { createSignedDisputeAiAuditExport } from "../services/dispute-ai-audit-export.service.js";
+import { verifyCameraChallenge } from "../services/dispute-camera-challenge.service.js";
+import { createDeposit } from "../services/dispute-deposit.service.js";
+import {
+  getDisputeEvidenceRetentionSummary,
+  setDisputeEvidenceLegalHold,
+} from "../services/dispute-evidence-retention.service.js";
+import { scanDisputeEvidence } from "../services/dispute-evidence-scan.service.js";
+import { computeImageSimilarityFingerprint } from "../services/dispute-image-similarity.service.js";
+import {
   acquireDisputeOperationLease,
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
-import { createSignedDisputeAiAuditExport } from "../services/dispute-ai-audit-export.service.js";
 import {
-  enqueueDisputeAiAuditArchive, getDisputeAiAuditArchiveCoverage, getDisputeAiAuditArchiveHealth, getLatestDisputeAiAuditArchive,
-  getDisputeAiAuditDiscoveryFailureHealth, listDisputeAiAuditArchiveFailures, listDisputeAiAuditDiscoveryFailures,
-  requeueDisputeAiAuditArchive, retryDisputeAiAuditDiscoveryFailure,
-} from "../services/dispute-ai-audit-archive.service.js";
+  addDisputeEvidenceRecord,
+  createDisputeEvidenceUploadRecord,
+  createDisputeRecord,
+  decideDisputeEvidenceSimilarityReview,
+  findNearestCommittedCameraEvidence,
+  getDisputeById,
+  getDisputeByOrderId,
+  getDisputeEvidenceSimilarityReviewHealth,
+  getDisputeEvidenceUploadByEvidenceId,
+  getDisputeEvidenceUploadById,
+  getDisputeEvidenceUploadByPath,
+  hasCommittedCameraEvidenceSha256,
+  listBlockingDisputeEvidenceUploads,
+  listDisputeEvidenceSimilarityReviews,
+  markDisputeEvidenceUploadCommitted,
+  rejectDisputeEvidenceUpload,
+  updateDisputeEvidenceUploadScan,
+  updateDisputeEvidenceUploadSimilarity,
+  updateDisputeRecord,
+} from "../services/dispute-record.service.js";
+import {
+  getDisputeSimilarityReviewAuditArchiveHealth,
+  listDisputeSimilarityReviewAuditArchiveFailures,
+  requeueDisputeSimilarityReviewAuditArchive,
+} from "../services/dispute-similarity-review-audit-archive.service.js";
+import { createSignedDisputeSimilarityReviewAuditExport } from "../services/dispute-similarity-review-audit-export.service.js";
+import {
+  getDisputeSimilarityReviewExpiryEventById,
+  listDisputeSimilarityReviewExpiryEvents,
+} from "../services/dispute-similarity-review-expiry.service.js";
+import {
+  createDisputeUploadUrl,
+  createDisputeViewUrl,
+  disputeEvidenceExists,
+  downloadDisputeEvidence,
+} from "../services/dispute-storage.service.js";
+// Import mocked service functions for per-test overrides
+import {
+  getCommerceOrderByOrderId,
+  updateCommerceOrderStatus,
+} from "../services/payment-record.service.js";
 
 const mockGetCommerceOrderByOrderId = getCommerceOrderByOrderId as ReturnType<typeof vi.fn>;
 const mockUpdateCommerceOrderStatus = updateCommerceOrderStatus as ReturnType<typeof vi.fn>;
 const mockCreateDisputeRecord = createDisputeRecord as ReturnType<typeof vi.fn>;
-const mockCreateDisputeEvidenceUploadRecord = createDisputeEvidenceUploadRecord as ReturnType<typeof vi.fn>;
-const mockGetDisputeEvidenceUploadByPath = getDisputeEvidenceUploadByPath as ReturnType<typeof vi.fn>;
+const mockCreateDisputeEvidenceUploadRecord = createDisputeEvidenceUploadRecord as ReturnType<
+  typeof vi.fn
+>;
+const mockGetDisputeEvidenceUploadByPath = getDisputeEvidenceUploadByPath as ReturnType<
+  typeof vi.fn
+>;
 const mockGetDisputeEvidenceUploadById = getDisputeEvidenceUploadById as ReturnType<typeof vi.fn>;
-const mockGetDisputeEvidenceUploadByEvidenceId = getDisputeEvidenceUploadByEvidenceId as ReturnType<typeof vi.fn>;
-const mockHasCommittedCameraEvidenceSha256 = hasCommittedCameraEvidenceSha256 as ReturnType<typeof vi.fn>;
-const mockFindNearestCommittedCameraEvidence = findNearestCommittedCameraEvidence as ReturnType<typeof vi.fn>;
-const mockListDisputeEvidenceSimilarityReviews = listDisputeEvidenceSimilarityReviews as ReturnType<typeof vi.fn>;
-const mockGetDisputeEvidenceSimilarityReviewHealth = getDisputeEvidenceSimilarityReviewHealth as ReturnType<typeof vi.fn>;
-const mockDecideDisputeEvidenceSimilarityReview = decideDisputeEvidenceSimilarityReview as ReturnType<typeof vi.fn>;
-const mockListBlockingDisputeEvidenceUploads = listBlockingDisputeEvidenceUploads as ReturnType<typeof vi.fn>;
+const mockGetDisputeEvidenceUploadByEvidenceId = getDisputeEvidenceUploadByEvidenceId as ReturnType<
+  typeof vi.fn
+>;
+const mockHasCommittedCameraEvidenceSha256 = hasCommittedCameraEvidenceSha256 as ReturnType<
+  typeof vi.fn
+>;
+const mockFindNearestCommittedCameraEvidence = findNearestCommittedCameraEvidence as ReturnType<
+  typeof vi.fn
+>;
+const mockListDisputeEvidenceSimilarityReviews = listDisputeEvidenceSimilarityReviews as ReturnType<
+  typeof vi.fn
+>;
+const mockGetDisputeEvidenceSimilarityReviewHealth =
+  getDisputeEvidenceSimilarityReviewHealth as ReturnType<typeof vi.fn>;
+const mockDecideDisputeEvidenceSimilarityReview =
+  decideDisputeEvidenceSimilarityReview as ReturnType<typeof vi.fn>;
+const mockListBlockingDisputeEvidenceUploads = listBlockingDisputeEvidenceUploads as ReturnType<
+  typeof vi.fn
+>;
 const mockGetDisputeById = getDisputeById as ReturnType<typeof vi.fn>;
 const mockGetDisputeByOrderId = getDisputeByOrderId as ReturnType<typeof vi.fn>;
-const mockMarkDisputeEvidenceUploadCommitted = markDisputeEvidenceUploadCommitted as ReturnType<typeof vi.fn>;
-const mockUpdateDisputeEvidenceUploadScan = updateDisputeEvidenceUploadScan as ReturnType<typeof vi.fn>;
-const mockUpdateDisputeEvidenceUploadSimilarity = updateDisputeEvidenceUploadSimilarity as ReturnType<typeof vi.fn>;
+const mockMarkDisputeEvidenceUploadCommitted = markDisputeEvidenceUploadCommitted as ReturnType<
+  typeof vi.fn
+>;
+const mockUpdateDisputeEvidenceUploadScan = updateDisputeEvidenceUploadScan as ReturnType<
+  typeof vi.fn
+>;
+const mockUpdateDisputeEvidenceUploadSimilarity =
+  updateDisputeEvidenceUploadSimilarity as ReturnType<typeof vi.fn>;
 const mockRejectDisputeEvidenceUpload = rejectDisputeEvidenceUpload as ReturnType<typeof vi.fn>;
 const mockAddDisputeEvidenceRecord = addDisputeEvidenceRecord as ReturnType<typeof vi.fn>;
 const mockUpdateDisputeRecord = updateDisputeRecord as ReturnType<typeof vi.fn>;
@@ -459,32 +597,63 @@ const mockDisputeEvidenceExists = disputeEvidenceExists as ReturnType<typeof vi.
 const mockDownloadDisputeEvidence = downloadDisputeEvidence as ReturnType<typeof vi.fn>;
 const mockScanDisputeEvidence = scanDisputeEvidence as ReturnType<typeof vi.fn>;
 const mockVerifyCameraChallenge = verifyCameraChallenge as ReturnType<typeof vi.fn>;
-const mockComputeImageSimilarityFingerprint = computeImageSimilarityFingerprint as ReturnType<typeof vi.fn>;
-const mockListDisputeSimilarityReviewExpiryEvents = listDisputeSimilarityReviewExpiryEvents as ReturnType<typeof vi.fn>;
-const mockGetDisputeSimilarityReviewExpiryEventById = getDisputeSimilarityReviewExpiryEventById as ReturnType<typeof vi.fn>;
-const mockCreateSignedDisputeSimilarityReviewAuditExport = createSignedDisputeSimilarityReviewAuditExport as ReturnType<typeof vi.fn>;
-const mockGetDisputeSimilarityReviewAuditArchiveHealth = getDisputeSimilarityReviewAuditArchiveHealth as ReturnType<typeof vi.fn>;
-const mockListDisputeSimilarityReviewAuditArchiveFailures = listDisputeSimilarityReviewAuditArchiveFailures as ReturnType<typeof vi.fn>;
-const mockRequeueDisputeSimilarityReviewAuditArchive = requeueDisputeSimilarityReviewAuditArchive as ReturnType<typeof vi.fn>;
-const mockGetDisputeEvidenceRetentionSummary = getDisputeEvidenceRetentionSummary as ReturnType<typeof vi.fn>;
+const mockComputeImageSimilarityFingerprint = computeImageSimilarityFingerprint as ReturnType<
+  typeof vi.fn
+>;
+const mockListDisputeSimilarityReviewExpiryEvents =
+  listDisputeSimilarityReviewExpiryEvents as ReturnType<typeof vi.fn>;
+const mockGetDisputeSimilarityReviewExpiryEventById =
+  getDisputeSimilarityReviewExpiryEventById as ReturnType<typeof vi.fn>;
+const mockCreateSignedDisputeSimilarityReviewAuditExport =
+  createSignedDisputeSimilarityReviewAuditExport as ReturnType<typeof vi.fn>;
+const mockGetDisputeSimilarityReviewAuditArchiveHealth =
+  getDisputeSimilarityReviewAuditArchiveHealth as ReturnType<typeof vi.fn>;
+const mockListDisputeSimilarityReviewAuditArchiveFailures =
+  listDisputeSimilarityReviewAuditArchiveFailures as ReturnType<typeof vi.fn>;
+const mockRequeueDisputeSimilarityReviewAuditArchive =
+  requeueDisputeSimilarityReviewAuditArchive as ReturnType<typeof vi.fn>;
+const mockGetDisputeEvidenceRetentionSummary = getDisputeEvidenceRetentionSummary as ReturnType<
+  typeof vi.fn
+>;
 const mockSetDisputeEvidenceLegalHold = setDisputeEvidenceLegalHold as ReturnType<typeof vi.fn>;
 const mockRunDisputeEvidenceRetention = runDisputeEvidenceRetention as ReturnType<typeof vi.fn>;
 const mockRunResolutionAssessor = runResolutionAssessor as ReturnType<typeof vi.fn>;
-const mockAppendDisputeAiAssessmentEvent = appendDisputeAiAssessmentEvent as ReturnType<typeof vi.fn>;
+const mockAppendDisputeAiAssessmentEvent = appendDisputeAiAssessmentEvent as ReturnType<
+  typeof vi.fn
+>;
 const mockListDisputeAiAssessmentEvents = listDisputeAiAssessmentEvents as ReturnType<typeof vi.fn>;
-const mockAcquireDisputeAiAssessmentLease = acquireDisputeAiAssessmentLease as ReturnType<typeof vi.fn>;
-const mockReleaseDisputeAiAssessmentLease = releaseDisputeAiAssessmentLease as ReturnType<typeof vi.fn>;
+const mockAcquireDisputeAiAssessmentLease = acquireDisputeAiAssessmentLease as ReturnType<
+  typeof vi.fn
+>;
+const mockReleaseDisputeAiAssessmentLease = releaseDisputeAiAssessmentLease as ReturnType<
+  typeof vi.fn
+>;
 const mockAcquireDisputeOperationLease = acquireDisputeOperationLease as ReturnType<typeof vi.fn>;
 const mockReleaseDisputeOperationLease = releaseDisputeOperationLease as ReturnType<typeof vi.fn>;
-const mockCreateSignedDisputeAiAuditExport = createSignedDisputeAiAuditExport as ReturnType<typeof vi.fn>;
+const mockCreateSignedDisputeAiAuditExport = createSignedDisputeAiAuditExport as ReturnType<
+  typeof vi.fn
+>;
 const mockEnqueueDisputeAiAuditArchive = enqueueDisputeAiAuditArchive as ReturnType<typeof vi.fn>;
-const mockGetLatestDisputeAiAuditArchive = getLatestDisputeAiAuditArchive as ReturnType<typeof vi.fn>;
-const mockGetDisputeAiAuditArchiveHealth = getDisputeAiAuditArchiveHealth as ReturnType<typeof vi.fn>;
-const mockGetDisputeAiAuditArchiveCoverage = getDisputeAiAuditArchiveCoverage as ReturnType<typeof vi.fn>;
-const mockGetDisputeAiAuditDiscoveryFailureHealth = getDisputeAiAuditDiscoveryFailureHealth as ReturnType<typeof vi.fn>;
-const mockListDisputeAiAuditDiscoveryFailures = listDisputeAiAuditDiscoveryFailures as ReturnType<typeof vi.fn>;
-const mockRetryDisputeAiAuditDiscoveryFailure = retryDisputeAiAuditDiscoveryFailure as ReturnType<typeof vi.fn>;
-const mockListDisputeAiAuditArchiveFailures = listDisputeAiAuditArchiveFailures as ReturnType<typeof vi.fn>;
+const mockGetLatestDisputeAiAuditArchive = getLatestDisputeAiAuditArchive as ReturnType<
+  typeof vi.fn
+>;
+const mockGetDisputeAiAuditArchiveHealth = getDisputeAiAuditArchiveHealth as ReturnType<
+  typeof vi.fn
+>;
+const _mockGetDisputeAiAuditArchiveCoverage = getDisputeAiAuditArchiveCoverage as ReturnType<
+  typeof vi.fn
+>;
+const _mockGetDisputeAiAuditDiscoveryFailureHealth =
+  getDisputeAiAuditDiscoveryFailureHealth as ReturnType<typeof vi.fn>;
+const mockListDisputeAiAuditDiscoveryFailures = listDisputeAiAuditDiscoveryFailures as ReturnType<
+  typeof vi.fn
+>;
+const mockRetryDisputeAiAuditDiscoveryFailure = retryDisputeAiAuditDiscoveryFailure as ReturnType<
+  typeof vi.fn
+>;
+const mockListDisputeAiAuditArchiveFailures = listDisputeAiAuditArchiveFailures as ReturnType<
+  typeof vi.fn
+>;
 const mockRequeueDisputeAiAuditArchive = requeueDisputeAiAuditArchive as ReturnType<typeof vi.fn>;
 
 /** Fake order that satisfies the ownership middleware. */
@@ -555,7 +724,11 @@ function fakeEvidenceUpload(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function fakeCameraSession(id: string, storagePath: string, overrides: Record<string, unknown> = {}) {
+function fakeCameraSession(
+  id: string,
+  storagePath: string,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     id,
     dispute_id: "some-id",
@@ -583,7 +756,8 @@ describe("Dispute routes", () => {
   beforeEach(() => {
     resetRateLimitsForTests();
     vi.clearAllMocks();
-    delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }).__HAGGLE_TEST_DB_SELECT_ROWS__;
+    delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
+      .__HAGGLE_TEST_DB_SELECT_ROWS__;
     mockGetCommerceOrderByOrderId.mockResolvedValue(null);
     mockGetDisputeById.mockResolvedValue(null);
     mockGetDisputeByOrderId.mockResolvedValue(null);
@@ -595,11 +769,23 @@ describe("Dispute routes", () => {
     mockDecideDisputeEvidenceSimilarityReview.mockResolvedValue({ outcome: "approved" });
     mockGetDisputeSimilarityReviewExpiryEventById.mockResolvedValue(null);
     mockGetDisputeSimilarityReviewAuditArchiveHealth.mockResolvedValue({
-      status: "healthy", pending: 0, processing: 0, failed: 0, deadLetter: 0,
-      staleProcessing: 0, retryReady: 0, overdueUnfinished: 0, unfinishedMaxAgeMinutes: 15,
-      oldestUnfinishedAgeSeconds: null, recordedAt: "2026-07-12T00:00:00.000Z",
+      status: "healthy",
+      pending: 0,
+      processing: 0,
+      failed: 0,
+      deadLetter: 0,
+      staleProcessing: 0,
+      retryReady: 0,
+      overdueUnfinished: 0,
+      unfinishedMaxAgeMinutes: 15,
+      oldestUnfinishedAgeSeconds: null,
+      recordedAt: "2026-07-12T00:00:00.000Z",
     });
-    mockListDisputeSimilarityReviewAuditArchiveFailures.mockResolvedValue({ items: [], nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z" });
+    mockListDisputeSimilarityReviewAuditArchiveFailures.mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:00:00.000Z",
+    });
     mockRequeueDisputeSimilarityReviewAuditArchive.mockResolvedValue({ outcome: "not_found" });
     mockGetDisputeEvidenceUploadByEvidenceId.mockResolvedValue(null);
     mockHasCommittedCameraEvidenceSha256.mockResolvedValue(false);
@@ -632,7 +818,9 @@ describe("Dispute routes", () => {
       detail: "CHALLENGE_VERIFIED",
       confidence: 0.99,
       detectedText: "HAGGLE-VERIFY-123",
-      visualObservations: [{ category: "visible_damage", observation: "Scratch on the camera body", confidence: 0.88 }],
+      visualObservations: [
+        { category: "visible_damage", observation: "Scratch on the camera body", confidence: 0.88 },
+      ],
     });
     mockComputeImageSimilarityFingerprint.mockResolvedValue({
       dHash: "01".repeat(32),
@@ -714,18 +902,27 @@ describe("Dispute routes", () => {
     expect(body.idempotent).toBe(false);
     expect(body.dispute.opened_by).toBe("buyer");
     expect(body.dispute.metadata.client_request_id).toBe("open-001");
-    expect(mockCreateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      order_id: "ord_123",
-      opened_by: "buyer",
-    }));
-    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(expect.anything(), "ord_123", "IN_DISPUTE");
+    expect(mockCreateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        order_id: "ord_123",
+        opened_by: "buyer",
+      }),
+    );
+    expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "ord_123",
+      "IN_DISPUTE",
+    );
   });
 
   it("POST /orders/:orderId/disputes rejects users who are not order parties", async () => {
-    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder({
-      buyerId: "someone-else",
-      sellerId: "another-user",
-    }));
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(
+      fakeOrder({
+        buyerId: "someone-else",
+        sellerId: "another-user",
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -788,10 +985,12 @@ describe("Dispute routes", () => {
 
   it("POST /orders/:orderId/disputes blocks a second active dispute", async () => {
     mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder({ status: "IN_DISPUTE" }));
-    mockGetDisputeByOrderId.mockResolvedValueOnce(fakeDispute({
-      id: "dsp_existing",
-      metadata: { client_request_id: "open-001", tier: 1 },
-    }));
+    mockGetDisputeByOrderId.mockResolvedValueOnce(
+      fakeDispute({
+        id: "dsp_existing",
+        metadata: { client_request_id: "open-001", tier: 1 },
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -876,11 +1075,13 @@ describe("Dispute routes", () => {
         order_id: "ord_123",
         reason_code: "ITEM_NOT_AS_DESCRIBED",
         opened_by: "buyer",
-        evidence: [{
-          submitted_by: "buyer",
-          type: "image",
-          uri: "https://example.test/unscanned.png",
-        }],
+        evidence: [
+          {
+            submitted_by: "buyer",
+            type: "image",
+            uri: "https://example.test/unscanned.png",
+          },
+        ],
       },
     });
     expect(res.statusCode).toBe(400);
@@ -946,28 +1147,33 @@ describe("Dispute routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().evidence_type).toBe("image");
     expect(res.json().storage_path).toContain("dispute-evidence/some-id/");
-    expect(mockCreateDisputeEvidenceUploadRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      disputeId: "some-id",
-      uploadedBy: "buyer",
-      evidenceType: "image",
-      contentType: "image/png",
-      fileSizeBytes: 1234,
-    }));
+    expect(mockCreateDisputeEvidenceUploadRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        disputeId: "some-id",
+        uploadedBy: "buyer",
+        evidenceType: "image",
+        contentType: "image/png",
+        fileSizeBytes: 1234,
+      }),
+    );
   });
 
   it("POST /disputes/:id/evidence marks a completed AI assessment stale", async () => {
     const assessedEvidenceHash = createHash("sha256").update(JSON.stringify([])).digest("hex");
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: {
-          status: "COMPLETED",
-          assessment_id: "asm_before_text",
-          evidence_snapshot_hash: assessedEvidenceHash,
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: {
+            status: "COMPLETED",
+            assessment_id: "asm_before_text",
+            evidence_snapshot_hash: assessedEvidenceHash,
+          },
         },
-      },
-    }));
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -987,10 +1193,12 @@ describe("Dispute routes", () => {
       ai_assessment_stale_reason: "EVIDENCE_ADDED",
       ai_assessment_previous_evidence_snapshot_hash: assessedEvidenceHash,
     });
-    expect(res.json().dispute.metadata.ai_assessment_current_evidence_snapshot_hash)
-      .toMatch(/^[a-f0-9]{64}$/);
-    expect(res.json().dispute.metadata.ai_assessment_current_evidence_snapshot_hash)
-      .not.toBe(assessedEvidenceHash);
+    expect(res.json().dispute.metadata.ai_assessment_current_evidence_snapshot_hash).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
+    expect(res.json().dispute.metadata.ai_assessment_current_evidence_snapshot_hash).not.toBe(
+      assessedEvidenceHash,
+    );
   });
 
   it("POST /disputes/:id/evidence rejects file URI evidence outside the quarantined upload flow", async () => {
@@ -1040,16 +1248,23 @@ describe("Dispute routes", () => {
       .map((entry) => entry.split("="))
       .find(([key]) => key === "capture_token")?.[1];
     expect(captureToken).toBeTruthy();
-    const persistedPayload = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as { metadata?: { camera_capture_sessions?: Record<string, { capture_token_hash?: string }> } };
-    const persistedSession = Object.values(persistedPayload.metadata?.camera_capture_sessions ?? {})[0];
+    const persistedPayload = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: { camera_capture_sessions?: Record<string, { capture_token_hash?: string }> };
+    };
+    const persistedSession = Object.values(
+      persistedPayload.metadata?.camera_capture_sessions ?? {},
+    )[0];
     expect(persistedSession?.capture_token_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(persistedPayload)).not.toContain(String(captureToken));
     expect(body.policy.accepted_evidence_source).toBe("haggle_camera_only");
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        camera_capture_sessions: expect.any(Object),
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          camera_capture_sessions: expect.any(Object),
+        }),
       }),
-    }));
+    );
   });
 
   it("POST /disputes/:id/evidence/camera-session uses the configured public API origin", async () => {
@@ -1078,26 +1293,28 @@ describe("Dispute routes", () => {
   });
 
   it("GET /disputes/:id/camera-capture renders the mobile capture page for an active session", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: {
-          cam_123: {
-            id: "cam_123",
-            dispute_id: "some-id",
-            party: "buyer",
-            user_id: "test-user-001",
-            device_mode: "qr",
-            challenge_code: "HAGGLE-VERIFY-123",
-            status: "PENDING",
-            created_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + 60_000).toISOString(),
-            capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
-            qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: {
+            cam_123: {
+              id: "cam_123",
+              dispute_id: "some-id",
+              party: "buyer",
+              user_id: "test-user-001",
+              device_mode: "qr",
+              challenge_code: "HAGGLE-VERIFY-123",
+              status: "PENDING",
+              created_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 60_000).toISOString(),
+              capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+              qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+            },
           },
         },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "GET",
@@ -1133,12 +1350,14 @@ describe("Dispute routes", () => {
       capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: { cam_123: session },
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: { cam_123: session },
+        },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -1158,22 +1377,28 @@ describe("Dispute routes", () => {
     expect(res.json().camera_session.status).toBe("UPLOAD_URL_ISSUED");
     expect(res.json().camera_session.storage_path).toContain("dispute-evidence/some-id/");
     expect(res.json().camera_commit_token).toMatch(/^[A-Za-z0-9_-]{32,}$/);
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        camera_capture_sessions: expect.objectContaining({
-          cam_123: expect.objectContaining({
-            status: "UPLOAD_URL_ISSUED",
-            content_type: "image/jpeg",
-            capture_declared_sha256: "a".repeat(64),
-            capture_token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          camera_capture_sessions: expect.objectContaining({
+            cam_123: expect.objectContaining({
+              status: "UPLOAD_URL_ISSUED",
+              content_type: "image/jpeg",
+              capture_declared_sha256: "a".repeat(64),
+              capture_token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+            }),
           }),
         }),
       }),
-    }));
-    expect(mockCreateDisputeEvidenceUploadRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      cameraSessionId: "cam_123",
-      captureDeclaredSha256: "a".repeat(64),
-    }));
+    );
+    expect(mockCreateDisputeEvidenceUploadRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        cameraSessionId: "cam_123",
+        captureDeclaredSha256: "a".repeat(64),
+      }),
+    );
   });
 
   it("POST /disputes/:id/evidence/upload-url rejects an invalid scoped camera token", async () => {
@@ -1192,9 +1417,11 @@ describe("Dispute routes", () => {
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_scoped_token",
       capture_token_hash: createHash("sha256").update(validToken).digest("hex"),
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_scoped_token: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_scoped_token: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -1217,9 +1444,11 @@ describe("Dispute routes", () => {
 
   it("POST /disputes/:id/evidence/upload-url requires a capture hash for real camera evidence", async () => {
     const session = fakeCameraSession("cam_hash_required", "", { status: "PENDING" });
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_hash_required: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_hash_required: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -1253,12 +1482,14 @@ describe("Dispute routes", () => {
       capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: { cam_123: session },
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: { cam_123: session },
+        },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -1373,12 +1604,15 @@ describe("Dispute routes", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json().evidence.uri).toBe("dispute-evidence/some-id/uploaded.png");
     expect(mockDisputeEvidenceExists).toHaveBeenCalledWith("some-id/uploaded.png");
-    expect(mockAddDisputeEvidenceRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      dispute_id: "some-id",
-      submitted_by: "buyer",
-      type: "image",
-      uri: "dispute-evidence/some-id/uploaded.png",
-    }));
+    expect(mockAddDisputeEvidenceRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dispute_id: "some-id",
+        submitted_by: "buyer",
+        type: "image",
+        uri: "dispute-evidence/some-id/uploaded.png",
+      }),
+    );
     expect(mockMarkDisputeEvidenceUploadCommitted).toHaveBeenCalledWith(
       expect.anything(),
       "11111111-1111-4111-8111-111111111111",
@@ -1415,10 +1649,14 @@ describe("Dispute routes", () => {
       scan_status: "PENDING",
       retryable: true,
     });
-    expect(mockUpdateDisputeEvidenceUploadScan).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.objectContaining({
-      status: "PENDING",
-      sha256: "b".repeat(64),
-    }));
+    expect(mockUpdateDisputeEvidenceUploadScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({
+        status: "PENDING",
+        sha256: "b".repeat(64),
+      }),
+    );
     expect(mockAddDisputeEvidenceRecord).not.toHaveBeenCalled();
     expect(mockMarkDisputeEvidenceUploadCommitted).not.toHaveBeenCalled();
   });
@@ -1525,17 +1763,19 @@ describe("Dispute routes", () => {
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
       storage_path: "dispute-evidence/some-id/uploaded.png",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: { cam_123: session },
-        ai_resolution_assessor: {
-          status: "COMPLETED",
-          assessment_id: "asm_before_camera",
-          evidence_snapshot_hash: createHash("sha256").update(JSON.stringify([])).digest("hex"),
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: { cam_123: session },
+          ai_resolution_assessor: {
+            status: "COMPLETED",
+            assessment_id: "asm_before_camera",
+            evidence_snapshot_hash: createHash("sha256").update(JSON.stringify([])).digest("hex"),
+          },
         },
-      },
-    }));
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
     mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce({
       id: "11111111-1111-4111-8111-111111111111",
@@ -1584,35 +1824,52 @@ describe("Dispute routes", () => {
       stale: true,
       stale_reason: "CAMERA_EVIDENCE_COMMITTED",
     });
-    expect(mockAddDisputeEvidenceRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      text: expect.stringContaining("[Verified Haggle Camera Evidence]"),
-      derived_artifacts: [expect.objectContaining({
-        kind: "image_visual_observation",
-        source_evidence_id: expect.any(String),
-        text: "Scratch on the camera body",
-        metadata: expect.objectContaining({ category: "visible_damage", confidence: 0.88, provider: "test-vision" }),
-      })],
-    }));
-    expect(mockVerifyCameraChallenge).toHaveBeenCalledWith(expect.objectContaining({
-      challengeCode: "HAGGLE-VERIFY-123",
-    }));
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        ai_assessment_stale: true,
-        ai_assessment_stale_reason: "CAMERA_EVIDENCE_COMMITTED",
-        camera_capture_sessions: expect.objectContaining({
-          cam_123: expect.objectContaining({
-            status: "COMMITTED",
-            challenge_verification: expect.objectContaining({
-              status: "VERIFIED",
+    expect(mockAddDisputeEvidenceRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        text: expect.stringContaining("[Verified Haggle Camera Evidence]"),
+        derived_artifacts: [
+          expect.objectContaining({
+            kind: "image_visual_observation",
+            source_evidence_id: expect.any(String),
+            text: "Scratch on the camera body",
+            metadata: expect.objectContaining({
+              category: "visible_damage",
+              confidence: 0.88,
               provider: "test-vision",
             }),
-            committed_evidence_id: expect.any(String),
+          }),
+        ],
+      }),
+    );
+    expect(mockVerifyCameraChallenge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        challengeCode: "HAGGLE-VERIFY-123",
+      }),
+    );
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ai_assessment_stale: true,
+          ai_assessment_stale_reason: "CAMERA_EVIDENCE_COMMITTED",
+          camera_capture_sessions: expect.objectContaining({
+            cam_123: expect.objectContaining({
+              status: "COMMITTED",
+              challenge_verification: expect.objectContaining({
+                status: "VERIFIED",
+                provider: "test-vision",
+              }),
+              committed_evidence_id: expect.any(String),
+            }),
           }),
         }),
       }),
-    }));
-    expect(mockHasCommittedCameraEvidenceSha256).toHaveBeenCalledWith(expect.anything(), "a".repeat(64));
+    );
+    expect(mockHasCommittedCameraEvidenceSha256).toHaveBeenCalledWith(
+      expect.anything(),
+      "a".repeat(64),
+    );
     expect(res.json().capture_binding).toMatchObject({
       status: "VERIFIED",
       declared_sha256: "a".repeat(64),
@@ -1624,15 +1881,19 @@ describe("Dispute routes", () => {
   it("rejects camera bytes that differ from the capture-page hash binding", async () => {
     const path = "dispute-evidence/some-id/hash-mismatch.png";
     const session = fakeCameraSession("cam_hash_mismatch", path);
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_hash_mismatch: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_hash_mismatch: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(fakeEvidenceUpload({
-      storagePath: path,
-      cameraSessionId: "cam_hash_mismatch",
-      captureDeclaredSha256: "b".repeat(64),
-    }));
+    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        storagePath: path,
+        cameraSessionId: "cam_hash_mismatch",
+        captureDeclaredSha256: "b".repeat(64),
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -1656,15 +1917,19 @@ describe("Dispute routes", () => {
   it("rejects exact reuse of previously committed camera bytes", async () => {
     const path = "dispute-evidence/some-id/reused-camera.png";
     const session = fakeCameraSession("cam_reused", path);
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_reused: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_reused: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(fakeEvidenceUpload({
-      storagePath: path,
-      cameraSessionId: "cam_reused",
-      captureDeclaredSha256: "a".repeat(64),
-    }));
+    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        storagePath: path,
+        cameraSessionId: "cam_reused",
+        captureDeclaredSha256: "a".repeat(64),
+      }),
+    );
     mockHasCommittedCameraEvidenceSha256.mockResolvedValueOnce(true);
 
     const res = await app.inject({
@@ -1689,19 +1954,25 @@ describe("Dispute routes", () => {
   it("maps the committed camera hash unique constraint race to a reuse response", async () => {
     const path = "dispute-evidence/some-id/reuse-race.png";
     const session = fakeCameraSession("cam_reuse_race", path);
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_reuse_race: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_reuse_race: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(fakeEvidenceUpload({
-      storagePath: path,
-      cameraSessionId: "cam_reuse_race",
-      captureDeclaredSha256: "a".repeat(64),
-    }));
-    mockMarkDisputeEvidenceUploadCommitted.mockRejectedValueOnce(Object.assign(new Error("duplicate"), {
-      code: "23505",
-      constraint: "dispute_evidence_uploads_committed_camera_sha256_unique",
-    }));
+    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        storagePath: path,
+        cameraSessionId: "cam_reuse_race",
+        captureDeclaredSha256: "a".repeat(64),
+      }),
+    );
+    mockMarkDisputeEvidenceUploadCommitted.mockRejectedValueOnce(
+      Object.assign(new Error("duplicate"), {
+        code: "23505",
+        constraint: "dispute_evidence_uploads_committed_camera_sha256_unique",
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -1717,15 +1988,19 @@ describe("Dispute routes", () => {
   it("quarantines a perceptually similar camera image for operator review", async () => {
     const path = "dispute-evidence/some-id/similar-camera.png";
     const session = fakeCameraSession("cam_similar", path);
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_similar: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_similar: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(fakeEvidenceUpload({
-      storagePath: path,
-      cameraSessionId: "cam_similar",
-      captureDeclaredSha256: "a".repeat(64),
-    }));
+    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        storagePath: path,
+        cameraSessionId: "cam_similar",
+        captureDeclaredSha256: "a".repeat(64),
+      }),
+    );
     mockFindNearestCommittedCameraEvidence.mockResolvedValueOnce({
       uploadId: "prior-upload",
       distance: 3,
@@ -1750,7 +2025,9 @@ describe("Dispute routes", () => {
     expect(res.json()).toMatchObject({
       status: "CAMERA_SIMILARITY_REVIEW_REQUIRED",
       similarity: {
-        status: "REVIEW_REQUIRED", distance: 3, threshold: 6,
+        status: "REVIEW_REQUIRED",
+        distance: 3,
+        threshold: 6,
         distances: { dhash: 3, ahash: 5, color: 8.5 },
         matched_signals: ["dhash_near", "ahash_near", "structure_color_combined"],
       },
@@ -1760,9 +2037,13 @@ describe("Dispute routes", () => {
       expect.anything(),
       expect.any(String),
       expect.objectContaining({
-        status: "REVIEW_REQUIRED", distance: 3,
-        averageHash: "10".repeat(32), colorHistogram: Array(12).fill(64),
-        signals: expect.objectContaining({ matched_signals: expect.arrayContaining(["dhash_near", "ahash_near"]) }),
+        status: "REVIEW_REQUIRED",
+        distance: 3,
+        averageHash: "10".repeat(32),
+        colorHistogram: Array(12).fill(64),
+        signals: expect.objectContaining({
+          matched_signals: expect.arrayContaining(["dhash_near", "ahash_near"]),
+        }),
       }),
     );
     expect(mockMarkDisputeEvidenceUploadCommitted).not.toHaveBeenCalled();
@@ -1770,14 +2051,16 @@ describe("Dispute routes", () => {
 
   it("allows an admin to approve a pending camera similarity review", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute());
-    mockGetDisputeEvidenceUploadById.mockResolvedValue(fakeEvidenceUpload({
-      id: "11111111-1111-4111-8111-111111111111",
-      status: "QUARANTINED",
-      cameraSessionId: "cam_review",
-      perceptualHash: "01".repeat(32),
-      similarityStatus: "REVIEW_REQUIRED",
-      similarityDistance: 4,
-    }));
+    mockGetDisputeEvidenceUploadById.mockResolvedValue(
+      fakeEvidenceUpload({
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "QUARANTINED",
+        cameraSessionId: "cam_review",
+        perceptualHash: "01".repeat(32),
+        similarityStatus: "REVIEW_REQUIRED",
+        similarityDistance: 4,
+      }),
+    );
 
     const res = await app.inject({
       method: "PATCH",
@@ -1806,15 +2089,27 @@ describe("Dispute routes", () => {
     mockListDisputeEvidenceSimilarityReviews.mockResolvedValueOnce({
       items: [
         {
-          uploadId: "11111111-1111-4111-8111-111111111111", disputeId: "33333333-3333-4333-8333-333333333333",
-          uploadedBy: "buyer", contentType: "image/jpeg", fileSizeBytes: 1234, storagePath: "private/review.jpg",
-          matchedUploadId: "44444444-4444-4444-8444-444444444444", matchedStoragePath: "private/reference.jpg",
-          similarityDistance: 4, similaritySignals: { distances: { dhash: 4, ahash: 2, color: 5 }, matched_signals: ["dhash_near"] },
-          expiresAt: "2026-07-13T00:00:00.000Z", createdAt: "2026-07-12T00:00:00.000Z",
-          waitingAgeSeconds: 3600, dueInSeconds: 82_800,
+          uploadId: "11111111-1111-4111-8111-111111111111",
+          disputeId: "33333333-3333-4333-8333-333333333333",
+          uploadedBy: "buyer",
+          contentType: "image/jpeg",
+          fileSizeBytes: 1234,
+          storagePath: "private/review.jpg",
+          matchedUploadId: "44444444-4444-4444-8444-444444444444",
+          matchedStoragePath: "private/reference.jpg",
+          similarityDistance: 4,
+          similaritySignals: {
+            distances: { dhash: 4, ahash: 2, color: 5 },
+            matched_signals: ["dhash_near"],
+          },
+          expiresAt: "2026-07-13T00:00:00.000Z",
+          createdAt: "2026-07-12T00:00:00.000Z",
+          waitingAgeSeconds: 3600,
+          dueInSeconds: 82_800,
         },
       ],
-      nextCursor: null, recordedAt: "2026-07-12T01:00:00.000Z",
+      nextCursor: null,
+      recordedAt: "2026-07-12T01:00:00.000Z",
     });
     mockCreateDisputeViewUrl
       .mockResolvedValueOnce("https://view.example/signed-review")
@@ -1827,12 +2122,17 @@ describe("Dispute routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       similarity_review_queue: {
-        items: [{
-          upload_id: "11111111-1111-4111-8111-111111111111",
-          preview_url: "https://view.example/signed-review", preview_status: "ready",
-          reference_preview_url: "https://view.example/signed-reference", reference_preview_status: "ready",
-          distances: { dhash: 4, ahash: 2, color: 5 }, matched_signals: ["dhash_near"],
-        }],
+        items: [
+          {
+            upload_id: "11111111-1111-4111-8111-111111111111",
+            preview_url: "https://view.example/signed-review",
+            preview_status: "ready",
+            reference_preview_url: "https://view.example/signed-reference",
+            reference_preview_status: "ready",
+            distances: { dhash: 4, ahash: 2, color: 5 },
+            matched_signals: ["dhash_near"],
+          },
+        ],
       },
     });
     expect(res.body).not.toContain("private/review.jpg");
@@ -1843,116 +2143,215 @@ describe("Dispute routes", () => {
 
   it("marks a failed preview URL unavailable without failing the review queue", async () => {
     mockListDisputeEvidenceSimilarityReviews.mockResolvedValueOnce({
-      items: [{
-        uploadId: "11111111-1111-4111-8111-111111111111", disputeId: "33333333-3333-4333-8333-333333333333",
-        uploadedBy: "buyer", contentType: "image/jpeg", fileSizeBytes: 1234, storagePath: "private/missing.jpg",
-        similarityDistance: 4, similaritySignals: null, expiresAt: "2026-07-13T00:00:00.000Z",
-        createdAt: "2026-07-12T00:00:00.000Z", waitingAgeSeconds: 1, dueInSeconds: 10,
-      }], nextCursor: null, recordedAt: "2026-07-12T00:00:01.000Z",
+      items: [
+        {
+          uploadId: "11111111-1111-4111-8111-111111111111",
+          disputeId: "33333333-3333-4333-8333-333333333333",
+          uploadedBy: "buyer",
+          contentType: "image/jpeg",
+          fileSizeBytes: 1234,
+          storagePath: "private/missing.jpg",
+          similarityDistance: 4,
+          similaritySignals: null,
+          expiresAt: "2026-07-13T00:00:00.000Z",
+          createdAt: "2026-07-12T00:00:00.000Z",
+          waitingAgeSeconds: 1,
+          dueInSeconds: 10,
+        },
+      ],
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:00:01.000Z",
     });
     mockCreateDisputeViewUrl.mockRejectedValueOnce(new Error("storage unavailable"));
-    const res = await app.inject({ method: "GET", url: "/admin/disputes/evidence-similarity-reviews", headers: ADMIN_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-reviews",
+      headers: ADMIN_HEADERS,
+    });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ similarity_review_queue: { items: [{ preview_url: null, preview_status: "unavailable" }] } });
+    expect(res.json()).toMatchObject({
+      similarity_review_queue: { items: [{ preview_url: null, preview_status: "unavailable" }] },
+    });
   });
 
   it("keeps the submitted preview available when only the reference preview fails", async () => {
     mockListDisputeEvidenceSimilarityReviews.mockResolvedValueOnce({
-      items: [{
-        uploadId: "11111111-1111-4111-8111-111111111111", disputeId: "33333333-3333-4333-8333-333333333333",
-        uploadedBy: "buyer", contentType: "image/jpeg", fileSizeBytes: 1234, storagePath: "private/review.jpg",
-        matchedUploadId: "44444444-4444-4444-8444-444444444444", matchedStoragePath: "private/missing-reference.jpg",
-        similarityDistance: 4, similaritySignals: null, expiresAt: "2026-07-13T00:00:00.000Z",
-        createdAt: "2026-07-12T00:00:00.000Z", waitingAgeSeconds: 1, dueInSeconds: 10,
-      }], nextCursor: null, recordedAt: "2026-07-12T00:00:01.000Z",
+      items: [
+        {
+          uploadId: "11111111-1111-4111-8111-111111111111",
+          disputeId: "33333333-3333-4333-8333-333333333333",
+          uploadedBy: "buyer",
+          contentType: "image/jpeg",
+          fileSizeBytes: 1234,
+          storagePath: "private/review.jpg",
+          matchedUploadId: "44444444-4444-4444-8444-444444444444",
+          matchedStoragePath: "private/missing-reference.jpg",
+          similarityDistance: 4,
+          similaritySignals: null,
+          expiresAt: "2026-07-13T00:00:00.000Z",
+          createdAt: "2026-07-12T00:00:00.000Z",
+          waitingAgeSeconds: 1,
+          dueInSeconds: 10,
+        },
+      ],
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:00:01.000Z",
     });
     mockCreateDisputeViewUrl
       .mockResolvedValueOnce("https://view.example/submitted")
       .mockRejectedValueOnce(new Error("reference storage unavailable"));
 
-    const res = await app.inject({ method: "GET", url: "/admin/disputes/evidence-similarity-reviews", headers: ADMIN_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-reviews",
+      headers: ADMIN_HEADERS,
+    });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ similarity_review_queue: { items: [{
-      preview_url: "https://view.example/submitted", preview_status: "ready",
-      reference_preview_url: null, reference_preview_status: "unavailable",
-    }] } });
+    expect(res.json()).toMatchObject({
+      similarity_review_queue: {
+        items: [
+          {
+            preview_url: "https://view.example/submitted",
+            preview_status: "ready",
+            reference_preview_url: null,
+            reference_preview_status: "unavailable",
+          },
+        ],
+      },
+    });
   });
 
   it("blocks non-admin users from the image similarity review queue", async () => {
-    const res = await app.inject({ method: "GET", url: "/admin/disputes/evidence-similarity-reviews", headers: AUTH_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-reviews",
+      headers: AUTH_HEADERS,
+    });
     expect(res.statusCode).toBe(403);
     expect(mockListDisputeEvidenceSimilarityReviews).not.toHaveBeenCalled();
   });
 
   it("returns aggregate similarity review SLA health only to admins", async () => {
     mockGetDisputeEvidenceSimilarityReviewHealth.mockResolvedValueOnce({
-      status: "attention", pendingReviews: 3, overdueSla: 2, dueSoon: 1,
-      expiredUnresolved: 0, oldestPendingAgeSeconds: 1200, recordedAt: "2026-07-12T01:00:00.000Z",
-      autoExpiredLast24Hours: 4, lastAutoExpiredAt: "2026-07-12T00:30:00.000Z",
+      status: "attention",
+      pendingReviews: 3,
+      overdueSla: 2,
+      dueSoon: 1,
+      expiredUnresolved: 0,
+      oldestPendingAgeSeconds: 1200,
+      recordedAt: "2026-07-12T01:00:00.000Z",
+      autoExpiredLast24Hours: 4,
+      lastAutoExpiredAt: "2026-07-12T00:30:00.000Z",
     });
     const res = await app.inject({
-      method: "GET", url: "/admin/disputes/evidence-similarity-reviews/health", headers: ADMIN_HEADERS,
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-reviews/health",
+      headers: ADMIN_HEADERS,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ similarity_review_health: {
-      status: "attention", pendingReviews: 3, overdueSla: 2, dueSoon: 1,
-      expiredUnresolved: 0, oldestPendingAgeSeconds: 1200,
-      autoExpiredLast24Hours: 4, lastAutoExpiredAt: "2026-07-12T00:30:00.000Z",
-    } });
+    expect(res.json()).toMatchObject({
+      similarity_review_health: {
+        status: "attention",
+        pendingReviews: 3,
+        overdueSla: 2,
+        dueSoon: 1,
+        expiredUnresolved: 0,
+        oldestPendingAgeSeconds: 1200,
+        autoExpiredLast24Hours: 4,
+        lastAutoExpiredAt: "2026-07-12T00:30:00.000Z",
+      },
+    });
     expect(res.body).not.toContain("upload_id");
     expect(res.body).not.toContain("storage");
 
     const denied = await app.inject({
-      method: "GET", url: "/admin/disputes/evidence-similarity-reviews/health", headers: AUTH_HEADERS,
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-reviews/health",
+      headers: AUTH_HEADERS,
     });
     expect(denied.statusCode).toBe(403);
   });
 
   it("lists safe automatic expiry history only to admins", async () => {
     mockListDisputeSimilarityReviewExpiryEvents.mockResolvedValueOnce({
-      items: [{
-        eventId: "11111111-1111-4111-8111-111111111111",
-        uploadId: "22222222-2222-4222-8222-222222222222",
-        disputeId: "33333333-3333-4333-8333-333333333333",
-        eventType: "AUTO_EXPIRED", actorKind: "system", reason: "REVIEW_WINDOW_EXPIRED",
-        reviewExpiresAt: "2026-07-12T00:00:00.000Z", createdAt: "2026-07-12T00:01:00.000Z",
-      }],
+      items: [
+        {
+          eventId: "11111111-1111-4111-8111-111111111111",
+          uploadId: "22222222-2222-4222-8222-222222222222",
+          disputeId: "33333333-3333-4333-8333-333333333333",
+          eventType: "AUTO_EXPIRED",
+          actorKind: "system",
+          reason: "REVIEW_WINDOW_EXPIRED",
+          reviewExpiresAt: "2026-07-12T00:00:00.000Z",
+          createdAt: "2026-07-12T00:01:00.000Z",
+        },
+      ],
       nextCursor: "opaque-next",
     });
     const res = await app.inject({
-      method: "GET", url: "/admin/disputes/evidence-similarity-review-events?limit=20", headers: ADMIN_HEADERS,
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-review-events?limit=20",
+      headers: ADMIN_HEADERS,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ similarity_review_expiry_events: {
-      items: [{ event_type: "AUTO_EXPIRED", actor_kind: "system", reason: "REVIEW_WINDOW_EXPIRED" }],
-      next_cursor: "opaque-next",
-    } });
+    expect(res.json()).toMatchObject({
+      similarity_review_expiry_events: {
+        items: [
+          { event_type: "AUTO_EXPIRED", actor_kind: "system", reason: "REVIEW_WINDOW_EXPIRED" },
+        ],
+        next_cursor: "opaque-next",
+      },
+    });
     expect(res.body).not.toContain("storage_path");
     expect(res.body).not.toContain("metadata");
 
     const denied = await app.inject({
-      method: "GET", url: "/admin/disputes/evidence-similarity-review-events", headers: AUTH_HEADERS,
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-review-events",
+      headers: AUTH_HEADERS,
     });
     expect(denied.statusCode).toBe(403);
   });
 
   it("exports only a valid sealed automatic expiry event", async () => {
     const hashable = {
-      schema: "haggle.dispute-similarity-review-event.v1", event_id: "11111111-1111-4111-8111-111111111111",
-      upload_id: "22222222-2222-4222-8222-222222222222", dispute_id: "33333333-3333-4333-8333-333333333333",
-      event_type: "AUTO_EXPIRED", actor_id: null, reason: "REVIEW_WINDOW_EXPIRED",
-      review_expires_at: "2026-07-12T00:00:00.000Z", created_at: "2026-07-12T00:01:00.000Z",
+      schema: "haggle.dispute-similarity-review-event.v1",
+      event_id: "11111111-1111-4111-8111-111111111111",
+      upload_id: "22222222-2222-4222-8222-222222222222",
+      dispute_id: "33333333-3333-4333-8333-333333333333",
+      event_type: "AUTO_EXPIRED",
+      actor_id: null,
+      reason: "REVIEW_WINDOW_EXPIRED",
+      review_expires_at: "2026-07-12T00:00:00.000Z",
+      created_at: "2026-07-12T00:01:00.000Z",
     };
     mockGetDisputeSimilarityReviewExpiryEventById.mockResolvedValueOnce({
-      eventId: hashable.event_id, uploadId: hashable.upload_id, disputeId: hashable.dispute_id,
-      eventType: "AUTO_EXPIRED", actorKind: "system", reason: "REVIEW_WINDOW_EXPIRED",
-      reviewExpiresAt: hashable.review_expires_at, createdAt: hashable.created_at,
-      eventHash: "a".repeat(64), integrity: "valid", hashable,
+      eventId: hashable.event_id,
+      uploadId: hashable.upload_id,
+      disputeId: hashable.dispute_id,
+      eventType: "AUTO_EXPIRED",
+      actorKind: "system",
+      reason: "REVIEW_WINDOW_EXPIRED",
+      reviewExpiresAt: hashable.review_expires_at,
+      createdAt: hashable.created_at,
+      eventHash: "a".repeat(64),
+      integrity: "valid",
+      hashable,
     });
     mockCreateSignedDisputeSimilarityReviewAuditExport.mockReturnValueOnce({
-      manifest: { schema: "haggle.dispute-similarity-review-audit.v1", event_id: hashable.event_id, integrity_valid: true },
-      event: hashable, signature: { algorithm: "Ed25519", key_id: "key-1", public_key_spki_base64: "public", value_base64: "signed" },
+      manifest: {
+        schema: "haggle.dispute-similarity-review-audit.v1",
+        event_id: hashable.event_id,
+        integrity_valid: true,
+      },
+      event: hashable,
+      signature: {
+        algorithm: "Ed25519",
+        key_id: "key-1",
+        public_key_spki_base64: "public",
+        value_base64: "signed",
+      },
     });
     const res = await app.inject({
       method: "GET",
@@ -1960,12 +2359,17 @@ describe("Dispute routes", () => {
       headers: ADMIN_HEADERS,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ similarity_review_audit_export: {
-      manifest: { event_id: hashable.event_id, integrity_valid: true }, signature: { algorithm: "Ed25519" },
-    } });
+    expect(res.json()).toMatchObject({
+      similarity_review_audit_export: {
+        manifest: { event_id: hashable.event_id, integrity_valid: true },
+        signature: { algorithm: "Ed25519" },
+      },
+    });
 
     mockGetDisputeSimilarityReviewExpiryEventById.mockResolvedValueOnce({
-      eventHash: "a".repeat(64), integrity: "invalid", hashable,
+      eventHash: "a".repeat(64),
+      integrity: "invalid",
+      hashable,
     });
     const invalid = await app.inject({
       method: "GET",
@@ -1973,64 +2377,116 @@ describe("Dispute routes", () => {
       headers: ADMIN_HEADERS,
     });
     expect(invalid.statusCode).toBe(409);
-    expect(invalid.json()).toEqual({ error: "SIMILARITY_REVIEW_AUDIT_INTEGRITY_INVALID", integrity: "invalid" });
+    expect(invalid.json()).toEqual({
+      error: "SIMILARITY_REVIEW_AUDIT_INTEGRITY_INVALID",
+      integrity: "invalid",
+    });
   });
 
   it("returns aggregate archive health and a payload-free failure queue to admins", async () => {
     mockGetDisputeSimilarityReviewAuditArchiveHealth.mockResolvedValueOnce({
-      status: "critical", pending: 0, processing: 0, failed: 0, deadLetter: 1,
-      staleProcessing: 0, retryReady: 0, overdueUnfinished: 1, unfinishedMaxAgeMinutes: 15,
-      oldestUnfinishedAgeSeconds: 1200, recordedAt: "2026-07-12T01:00:00.000Z",
+      status: "critical",
+      pending: 0,
+      processing: 0,
+      failed: 0,
+      deadLetter: 1,
+      staleProcessing: 0,
+      retryReady: 0,
+      overdueUnfinished: 1,
+      unfinishedMaxAgeMinutes: 15,
+      oldestUnfinishedAgeSeconds: 1200,
+      recordedAt: "2026-07-12T01:00:00.000Z",
     });
     mockListDisputeSimilarityReviewAuditArchiveFailures.mockResolvedValueOnce({
-      items: [{
-        id: "11111111-1111-4111-8111-111111111111", eventId: "22222222-2222-4222-8222-222222222222",
-        payloadSha256: "a".repeat(64), status: "DEAD_LETTER", attemptCount: 3,
-        nextAttemptAt: "2026-07-12T01:00:00.000Z", lastError: "ARCHIVE_RECEIPT_HASH_MISMATCH",
-        httpStatus: 201, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: "2026-07-12T00:30:00.000Z",
-        failureAgeSeconds: 1800,
-      }], nextCursor: null, recordedAt: "2026-07-12T01:00:00.000Z",
+      items: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          eventId: "22222222-2222-4222-8222-222222222222",
+          payloadSha256: "a".repeat(64),
+          status: "DEAD_LETTER",
+          attemptCount: 3,
+          nextAttemptAt: "2026-07-12T01:00:00.000Z",
+          lastError: "ARCHIVE_RECEIPT_HASH_MISMATCH",
+          httpStatus: 201,
+          createdAt: "2026-07-12T00:00:00.000Z",
+          updatedAt: "2026-07-12T00:30:00.000Z",
+          failureAgeSeconds: 1800,
+        },
+      ],
+      nextCursor: null,
+      recordedAt: "2026-07-12T01:00:00.000Z",
     });
-    const health = await app.inject({ method: "GET", url: "/admin/disputes/evidence-similarity-review-audit-archives/health", headers: ADMIN_HEADERS });
+    const health = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-review-audit-archives/health",
+      headers: ADMIN_HEADERS,
+    });
     expect(health.statusCode).toBe(200);
     expect(health.json()).toMatchObject({
       similarity_review_audit_archive_health: { status: "critical", deadLetter: 1 },
-      alerting: { wouldAlert: true, severity: "critical", reasons: expect.arrayContaining(["similarity_audit_archive_dead_letter"]) },
+      alerting: {
+        wouldAlert: true,
+        severity: "critical",
+        reasons: expect.arrayContaining(["similarity_audit_archive_dead_letter"]),
+      },
     });
-    const failures = await app.inject({ method: "GET", url: "/admin/disputes/evidence-similarity-review-audit-archives/failures", headers: ADMIN_HEADERS });
+    const failures = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-review-audit-archives/failures",
+      headers: ADMIN_HEADERS,
+    });
     expect(failures.statusCode).toBe(200);
-    expect(failures.json()).toMatchObject({ similarity_review_audit_archive_failures: { items: [{ status: "DEAD_LETTER", attempt_count: 3 }] } });
-    expect(failures.body).not.toContain("payload\"");
+    expect(failures.json()).toMatchObject({
+      similarity_review_audit_archive_failures: {
+        items: [{ status: "DEAD_LETTER", attempt_count: 3 }],
+      },
+    });
+    expect(failures.body).not.toContain('payload"');
     expect(failures.body).not.toContain("archive_key");
-    const denied = await app.inject({ method: "GET", url: "/admin/disputes/evidence-similarity-review-audit-archives/health", headers: AUTH_HEADERS });
+    const denied = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/evidence-similarity-review-audit-archives/health",
+      headers: AUTH_HEADERS,
+    });
     expect(denied.statusCode).toBe(403);
   });
 
   it("requeues a failed archive with an operator reason", async () => {
-    mockRequeueDisputeSimilarityReviewAuditArchive.mockResolvedValueOnce({ outcome: "requeued", archive: { status: "PENDING" } });
+    mockRequeueDisputeSimilarityReviewAuditArchive.mockResolvedValueOnce({
+      outcome: "requeued",
+      archive: { status: "PENDING" },
+    });
     const eventId = "22222222-2222-4222-8222-222222222222";
     const res = await app.inject({
-      method: "POST", url: `/admin/disputes/evidence-similarity-review-audit-archives/${eventId}/requeue`,
-      headers: ADMIN_HEADERS, payload: { reason: "The WORM endpoint recovered after operator verification." },
+      method: "POST",
+      url: `/admin/disputes/evidence-similarity-review-audit-archives/${eventId}/requeue`,
+      headers: ADMIN_HEADERS,
+      payload: { reason: "The WORM endpoint recovered after operator verification." },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ event_id: eventId, outcome: "requeued", status: "PENDING" });
-    expect(mockRequeueDisputeSimilarityReviewAuditArchive).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      eventId, actorId: "test-admin-001",
-    }));
+    expect(mockRequeueDisputeSimilarityReviewAuditArchive).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventId,
+        actorId: "test-admin-001",
+      }),
+    );
   });
 
   it("lets an admin reject a reused-looking camera image", async () => {
     mockDecideDisputeEvidenceSimilarityReview.mockResolvedValueOnce({ outcome: "rejected" });
     mockGetDisputeById.mockResolvedValue(fakeDispute());
-    mockGetDisputeEvidenceUploadById.mockResolvedValue(fakeEvidenceUpload({
-      id: "22222222-2222-4222-8222-222222222222",
-      status: "QUARANTINED",
-      cameraSessionId: "cam_review_reject",
-      perceptualHash: "10".repeat(32),
-      similarityStatus: "REVIEW_REQUIRED",
-      similarityDistance: 1,
-    }));
+    mockGetDisputeEvidenceUploadById.mockResolvedValue(
+      fakeEvidenceUpload({
+        id: "22222222-2222-4222-8222-222222222222",
+        status: "QUARANTINED",
+        cameraSessionId: "cam_review_reject",
+        perceptualHash: "10".repeat(32),
+        similarityStatus: "REVIEW_REQUIRED",
+        similarityDistance: 1,
+      }),
+    );
 
     const res = await app.inject({
       method: "PATCH",
@@ -2057,10 +2513,12 @@ describe("Dispute routes", () => {
 
   it("returns conflict when another admin wins the similarity review race", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute());
-    mockGetDisputeEvidenceUploadById.mockResolvedValue(fakeEvidenceUpload({
-      status: "QUARANTINED",
-      similarityStatus: "REVIEW_REQUIRED",
-    }));
+    mockGetDisputeEvidenceUploadById.mockResolvedValue(
+      fakeEvidenceUpload({
+        status: "QUARANTINED",
+        similarityStatus: "REVIEW_REQUIRED",
+      }),
+    );
     mockDecideDisputeEvidenceSimilarityReview.mockResolvedValueOnce({ outcome: "not_pending" });
 
     const res = await app.inject({
@@ -2107,11 +2565,14 @@ describe("Dispute routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ legal_hold: true });
-    expect(mockSetDisputeEvidenceLegalHold).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      disputeId: "some-id",
-      active: true,
-      actorId: "test-admin-001",
-    }));
+    expect(mockSetDisputeEvidenceLegalHold).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        disputeId: "some-id",
+        active: true,
+        actorId: "test-admin-001",
+      }),
+    );
   });
 
   it("refuses a legal hold that races after deletion claim", async () => {
@@ -2144,22 +2605,31 @@ describe("Dispute routes", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ result: { dry_run: true, eligible: 4, deleted: 0 } });
-    expect(mockRunDisputeEvidenceRetention).toHaveBeenCalledWith(expect.anything(), { dryRun: true });
+    expect(mockRunDisputeEvidenceRetention).toHaveBeenCalledWith(expect.anything(), {
+      dryRun: true,
+    });
   });
 
   it("returns 410 instead of signing a URL after retained evidence bytes are deleted", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute());
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByEvidenceId.mockResolvedValueOnce(fakeEvidenceUpload({
-      retentionStatus: "DELETED",
-      deletedAt: new Date("2026-07-11T12:00:00.000Z"),
-    }));
-    (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-      .__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{
-        id: "44444444-4444-4444-8444-444444444444",
-        disputeId: "some-id",
-        uri: "dispute-evidence/some-id/deleted.jpg",
-      }]];
+    mockGetDisputeEvidenceUploadByEvidenceId.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        retentionStatus: "DELETED",
+        deletedAt: new Date("2026-07-11T12:00:00.000Z"),
+      }),
+    );
+    (
+      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
+    ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [
+      [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          disputeId: "some-id",
+          uri: "dispute-evidence/some-id/deleted.jpg",
+        },
+      ],
+    ];
 
     const res = await app.inject({
       method: "GET",
@@ -2187,15 +2657,19 @@ describe("Dispute routes", () => {
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_pending_vision",
       storage_path: "dispute-evidence/some-id/pending-vision.png",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_pending_vision: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_pending_vision: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(fakeEvidenceUpload({
-      storagePath: "dispute-evidence/some-id/pending-vision.png",
-      cameraSessionId: "cam_pending_vision",
-      captureDeclaredSha256: "a".repeat(64),
-    }));
+    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        storagePath: "dispute-evidence/some-id/pending-vision.png",
+        cameraSessionId: "cam_pending_vision",
+        captureDeclaredSha256: "a".repeat(64),
+      }),
+    );
     mockVerifyCameraChallenge.mockResolvedValueOnce({
       status: "PENDING",
       provider: "not-configured",
@@ -2221,15 +2695,18 @@ describe("Dispute routes", () => {
     });
     expect(mockAddDisputeEvidenceRecord).not.toHaveBeenCalled();
     expect(mockMarkDisputeEvidenceUploadCommitted).not.toHaveBeenCalled();
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        camera_capture_sessions: expect.objectContaining({
-          cam_pending_vision: expect.objectContaining({
-            challenge_verification: expect.objectContaining({ status: "PENDING" }),
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          camera_capture_sessions: expect.objectContaining({
+            cam_pending_vision: expect.objectContaining({
+              challenge_verification: expect.objectContaining({ status: "PENDING" }),
+            }),
           }),
         }),
       }),
-    }));
+    );
   });
 
   it("rejects camera evidence when the server verifier cannot find the session challenge", async () => {
@@ -2243,19 +2720,24 @@ describe("Dispute routes", () => {
       status: "UPLOAD_URL_ISSUED" as const,
       created_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + 60_000).toISOString(),
-      capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_rejected_vision",
+      capture_url:
+        "https://api.test/disputes/some-id/camera-capture?session_id=cam_rejected_vision",
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_rejected_vision",
       storage_path: "dispute-evidence/some-id/rejected-vision.png",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: { tier: 1, camera_capture_sessions: { cam_rejected_vision: session } },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: { tier: 1, camera_capture_sessions: { cam_rejected_vision: session } },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
-    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(fakeEvidenceUpload({
-      storagePath: "dispute-evidence/some-id/rejected-vision.png",
-      cameraSessionId: "cam_rejected_vision",
-      captureDeclaredSha256: "a".repeat(64),
-    }));
+    mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce(
+      fakeEvidenceUpload({
+        storagePath: "dispute-evidence/some-id/rejected-vision.png",
+        cameraSessionId: "cam_rejected_vision",
+        captureDeclaredSha256: "a".repeat(64),
+      }),
+    );
     mockVerifyCameraChallenge.mockResolvedValueOnce({
       status: "REJECTED",
       provider: "test-vision",
@@ -2298,17 +2780,19 @@ describe("Dispute routes", () => {
       qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_test_only",
       storage_path: "dispute-evidence/some-id/test-only.png",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: { cam_test_only: session },
-        ai_resolution_assessor: {
-          status: "COMPLETED",
-          assessment_id: "asm_unchanged_by_test_capture",
-          evidence_snapshot_hash: createHash("sha256").update(JSON.stringify([])).digest("hex"),
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: { cam_test_only: session },
+          ai_resolution_assessor: {
+            status: "COMPLETED",
+            assessment_id: "asm_unchanged_by_test_capture",
+            evidence_snapshot_hash: createHash("sha256").update(JSON.stringify([])).digest("hex"),
+          },
         },
-      },
-    }));
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
     mockGetDisputeEvidenceUploadByPath.mockResolvedValueOnce({
       id: "22222222-2222-4222-8222-222222222222",
@@ -2341,41 +2825,49 @@ describe("Dispute routes", () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.json().evidence).toBeNull();
-    expect(res.json().test_capture).toEqual(expect.objectContaining({
-      used_for_dispute: false,
-    }));
-    expect(res.json().camera_session).toEqual(expect.objectContaining({
-      status: "COMMITTED",
-      test_only: true,
-      used_for_dispute: false,
-    }));
+    expect(res.json().test_capture).toEqual(
+      expect.objectContaining({
+        used_for_dispute: false,
+      }),
+    );
+    expect(res.json().camera_session).toEqual(
+      expect.objectContaining({
+        status: "COMMITTED",
+        test_only: true,
+        used_for_dispute: false,
+      }),
+    );
     expect(mockAddDisputeEvidenceRecord).not.toHaveBeenCalled();
     expect(mockVerifyCameraChallenge).not.toHaveBeenCalled();
-    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as { metadata?: Record<string, unknown> };
+    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: Record<string, unknown>;
+    };
     expect(persisted.metadata?.ai_assessment_stale).toBeUndefined();
   });
 
   it("POST /disputes/:id/ai/assess waits for active camera collection unless forced", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: {
-          cam_123: {
-            id: "cam_123",
-            dispute_id: "some-id",
-            party: "buyer",
-            user_id: "test-user-001",
-            device_mode: "mobile",
-            challenge_code: "HAGGLE-VERIFY-123",
-            status: "PENDING",
-            created_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + 60_000).toISOString(),
-            capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
-            qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: {
+            cam_123: {
+              id: "cam_123",
+              dispute_id: "some-id",
+              party: "buyer",
+              user_id: "test-user-001",
+              device_mode: "mobile",
+              challenge_code: "HAGGLE-VERIFY-123",
+              status: "PENDING",
+              created_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 60_000).toISOString(),
+              capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+              qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+            },
           },
         },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -2409,38 +2901,40 @@ describe("Dispute routes", () => {
   });
 
   it("POST /disputes/:id/ai/assess stores the AI judge conclusion after collection closes", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      evidence: [
-        {
-          id: "ev_1",
-          dispute_id: "some-id",
-          submitted_by: "buyer",
-          type: "image",
-          uri: "dispute-evidence/some-id/uploaded.png",
-          text: "[Verified Haggle Camera Evidence]\nChallenge confirmed: yes",
-          created_at: "2026-07-02T12:00:00.000Z",
-        },
-      ],
-      metadata: {
-        tier: 1,
-        camera_capture_sessions: {
-          cam_123: {
-            id: "cam_123",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        evidence: [
+          {
+            id: "ev_1",
             dispute_id: "some-id",
-            party: "buyer",
-            user_id: "test-user-001",
-            device_mode: "mobile",
-            challenge_code: "HAGGLE-VERIFY-123",
-            status: "COMMITTED",
-            created_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + 60_000).toISOString(),
-            capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
-            qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
-            committed_evidence_id: "ev_1",
+            submitted_by: "buyer",
+            type: "image",
+            uri: "dispute-evidence/some-id/uploaded.png",
+            text: "[Verified Haggle Camera Evidence]\nChallenge confirmed: yes",
+            created_at: "2026-07-02T12:00:00.000Z",
+          },
+        ],
+        metadata: {
+          tier: 1,
+          camera_capture_sessions: {
+            cam_123: {
+              id: "cam_123",
+              dispute_id: "some-id",
+              party: "buyer",
+              user_id: "test-user-001",
+              device_mode: "mobile",
+              challenge_code: "HAGGLE-VERIFY-123",
+              status: "COMMITTED",
+              created_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 60_000).toISOString(),
+              capture_url: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+              qr_payload: "https://api.test/disputes/some-id/camera-capture?session_id=cam_123",
+              committed_evidence_id: "ev_1",
+            },
           },
         },
-      },
-    }));
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -2458,22 +2952,28 @@ describe("Dispute routes", () => {
       "some-id",
       expect.any(String),
     );
-    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      disputeId: "some-id",
-      eventType: "COMPLETED",
-      revision: 1,
-      evidenceSnapshotHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      payload: expect.objectContaining({ status: "COMPLETED" }),
-    }));
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        ai_resolution_assessor: expect.objectContaining({
-          status: "COMPLETED",
-          conclusion: "buyer_favor",
-          auto_applied: false,
+    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        disputeId: "some-id",
+        eventType: "COMPLETED",
+        revision: 1,
+        evidenceSnapshotHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        payload: expect.objectContaining({ status: "COMPLETED" }),
+      }),
+    );
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ai_resolution_assessor: expect.objectContaining({
+            status: "COMPLETED",
+            conclusion: "buyer_favor",
+            auto_applied: false,
+          }),
         }),
       }),
-    }));
+    );
   });
 
   it("GET /disputes/:id/ai/assessments returns append-only events in chronological order", async () => {
@@ -2517,7 +3017,11 @@ describe("Dispute routes", () => {
       legacy_unsealed_events: 2,
       head_event_hash: null,
     });
-    expect(mockListDisputeAiAssessmentEvents).toHaveBeenCalledWith(expect.anything(), "some-id", 21);
+    expect(mockListDisputeAiAssessmentEvents).toHaveBeenCalledWith(
+      expect.anything(),
+      "some-id",
+      21,
+    );
   });
 
   it("GET /disputes/:id/ai/assessments/export returns a signed complete audit manifest", async () => {
@@ -2536,85 +3040,170 @@ describe("Dispute routes", () => {
       manifest: { schema: "haggle.dispute-ai-audit.v1", dispute_id: "some-id" },
       signature: { algorithm: "Ed25519" },
     });
-    expect(mockListDisputeAiAssessmentEvents).toHaveBeenCalledWith(expect.anything(), "some-id", 10_001);
-    expect(mockCreateSignedDisputeAiAuditExport).toHaveBeenCalledWith(expect.objectContaining({
-      disputeId: "some-id",
-      events: [],
-      chain: expect.objectContaining({ valid: true, complete: true }),
-    }));
+    expect(mockListDisputeAiAssessmentEvents).toHaveBeenCalledWith(
+      expect.anything(),
+      "some-id",
+      10_001,
+    );
+    expect(mockCreateSignedDisputeAiAuditExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disputeId: "some-id",
+        events: [],
+        chain: expect.objectContaining({ valid: true, complete: true }),
+      }),
+    );
   });
 
   it("queues and reads an AI audit archive without returning its signed payload", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute({ status: "UNDER_REVIEW" }));
     const archive = {
-      id: "22222222-2222-4222-8222-222222222222", status: "PENDING", eventCount: 2,
-      eventsSha256: "a".repeat(64), chainHeadEventHash: "b".repeat(64), payloadSha256: "c".repeat(64),
-      attemptCount: 0, receiptId: null, receiptSha256: null, deliveredAt: null,
-      lastError: null, httpStatus: null, createdAt: "2026-07-12T15:00:00.000Z", updatedAt: "2026-07-12T15:00:00.000Z",
+      id: "22222222-2222-4222-8222-222222222222",
+      status: "PENDING",
+      eventCount: 2,
+      eventsSha256: "a".repeat(64),
+      chainHeadEventHash: "b".repeat(64),
+      payloadSha256: "c".repeat(64),
+      attemptCount: 0,
+      receiptId: null,
+      receiptSha256: null,
+      deliveredAt: null,
+      lastError: null,
+      httpStatus: null,
+      createdAt: "2026-07-12T15:00:00.000Z",
+      updatedAt: "2026-07-12T15:00:00.000Z",
       payload: { secret: "must-not-leak" },
     };
     mockEnqueueDisputeAiAuditArchive.mockResolvedValueOnce({ outcome: "enqueued", archive });
     const queued = await app.inject({
-      method: "POST", url: "/admin/disputes/some-id/ai/assessments/archive", headers: ADMIN_HEADERS,
+      method: "POST",
+      url: "/admin/disputes/some-id/ai/assessments/archive",
+      headers: ADMIN_HEADERS,
     });
     expect(queued.statusCode).toBe(202);
-    expect(queued.json()).toMatchObject({ outcome: "enqueued", ai_audit_archive: { status: "PENDING", event_count: 2, receipt_matches: false } });
+    expect(queued.json()).toMatchObject({
+      outcome: "enqueued",
+      ai_audit_archive: { status: "PENDING", event_count: 2, receipt_matches: false },
+    });
     expect(queued.body).not.toContain("must-not-leak");
 
-    mockGetLatestDisputeAiAuditArchive.mockResolvedValueOnce({ ...archive, status: "DELIVERED", receiptId: "receipt-1", receiptSha256: archive.payloadSha256, deliveredAt: archive.updatedAt });
+    mockGetLatestDisputeAiAuditArchive.mockResolvedValueOnce({
+      ...archive,
+      status: "DELIVERED",
+      receiptId: "receipt-1",
+      receiptSha256: archive.payloadSha256,
+      deliveredAt: archive.updatedAt,
+    });
     const loaded = await app.inject({
-      method: "GET", url: "/admin/disputes/some-id/ai/assessments/archive", headers: ADMIN_HEADERS,
+      method: "GET",
+      url: "/admin/disputes/some-id/ai/assessments/archive",
+      headers: ADMIN_HEADERS,
     });
     expect(loaded.statusCode).toBe(200);
-    expect(loaded.json()).toMatchObject({ ai_audit_archive: { status: "DELIVERED", receipt_matches: true } });
+    expect(loaded.json()).toMatchObject({
+      ai_audit_archive: { status: "DELIVERED", receipt_matches: true },
+    });
     expect(loaded.body).not.toContain("must-not-leak");
   });
 
   it("restricts AI audit archive operations to admins and valid chains", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute({ status: "UNDER_REVIEW" }));
     mockEnqueueDisputeAiAuditArchive.mockRejectedValueOnce(new Error("AI_AUDIT_CHAIN_INVALID"));
-    const invalid = await app.inject({ method: "POST", url: "/admin/disputes/some-id/ai/assessments/archive", headers: ADMIN_HEADERS });
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/admin/disputes/some-id/ai/assessments/archive",
+      headers: ADMIN_HEADERS,
+    });
     expect(invalid.statusCode).toBe(409);
     expect(invalid.json()).toEqual({ error: "AI_AUDIT_CHAIN_INVALID" });
-    const denied = await app.inject({ method: "POST", url: "/admin/disputes/some-id/ai/assessments/archive", headers: AUTH_HEADERS });
+    const denied = await app.inject({
+      method: "POST",
+      url: "/admin/disputes/some-id/ai/assessments/archive",
+      headers: AUTH_HEADERS,
+    });
     expect(denied.statusCode).toBe(403);
   });
 
   it("returns aggregate AI archive health and payload-free failures to admins", async () => {
     mockGetDisputeAiAuditArchiveHealth.mockResolvedValueOnce({
-      status: "critical", pending: 0, processing: 0, failed: 0, deadLetter: 1,
-      staleProcessing: 0, retryReady: 0, overdueUnfinished: 1, unfinishedMaxAgeMinutes: 15,
-      oldestUnfinishedAgeSeconds: 1200, recordedAt: "2026-07-12T00:00:00.000Z",
+      status: "critical",
+      pending: 0,
+      processing: 0,
+      failed: 0,
+      deadLetter: 1,
+      staleProcessing: 0,
+      retryReady: 0,
+      overdueUnfinished: 1,
+      unfinishedMaxAgeMinutes: 15,
+      oldestUnfinishedAgeSeconds: 1200,
+      recordedAt: "2026-07-12T00:00:00.000Z",
     });
     mockListDisputeAiAuditArchiveFailures.mockResolvedValueOnce({
-      items: [{ id: "22222222-2222-4222-8222-222222222222", disputeId: "some-id", eventCount: 2,
-        eventsSha256: "a".repeat(64), payloadSha256: "b".repeat(64), status: "DEAD_LETTER", attemptCount: 3,
-        nextAttemptAt: "2026-07-12T00:00:00.000Z", lastError: "receipt mismatch", httpStatus: 201,
-        failureAgeSeconds: 60, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: "2026-07-12T00:00:00.000Z" }],
-      nextCursor: null, recordedAt: "2026-07-12T00:00:00.000Z",
+      items: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          disputeId: "some-id",
+          eventCount: 2,
+          eventsSha256: "a".repeat(64),
+          payloadSha256: "b".repeat(64),
+          status: "DEAD_LETTER",
+          attemptCount: 3,
+          nextAttemptAt: "2026-07-12T00:00:00.000Z",
+          lastError: "receipt mismatch",
+          httpStatus: 201,
+          failureAgeSeconds: 60,
+          createdAt: "2026-07-12T00:00:00.000Z",
+          updatedAt: "2026-07-12T00:00:00.000Z",
+        },
+      ],
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:00:00.000Z",
     });
-    const health = await app.inject({ method: "GET", url: "/admin/disputes/ai-assessment-audit-archives/health", headers: ADMIN_HEADERS });
+    const health = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/ai-assessment-audit-archives/health",
+      headers: ADMIN_HEADERS,
+    });
     expect(health.statusCode).toBe(200);
-    expect(health.json().ai_audit_archive_health).toMatchObject({ status: "critical", deadLetter: 1 });
-    const failures = await app.inject({ method: "GET", url: "/admin/disputes/ai-assessment-audit-archives/failures", headers: ADMIN_HEADERS });
+    expect(health.json().ai_audit_archive_health).toMatchObject({
+      status: "critical",
+      deadLetter: 1,
+    });
+    const failures = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/ai-assessment-audit-archives/failures",
+      headers: ADMIN_HEADERS,
+    });
     expect(failures.statusCode).toBe(200);
-    expect(failures.json().ai_audit_archive_failures.items[0]).toMatchObject({ status: "DEAD_LETTER", event_count: 2 });
+    expect(failures.json().ai_audit_archive_failures.items[0]).toMatchObject({
+      status: "DEAD_LETTER",
+      event_count: 2,
+    });
     expect(failures.body).not.toContain("manifest");
     expect(failures.body).not.toContain("archive_key");
   });
 
   it("requeues an exact failed AI archive with an operator reason", async () => {
-    mockRequeueDisputeAiAuditArchive.mockResolvedValueOnce({ outcome: "requeued", archive: { status: "PENDING" } });
+    mockRequeueDisputeAiAuditArchive.mockResolvedValueOnce({
+      outcome: "requeued",
+      archive: { status: "PENDING" },
+    });
     const archiveId = "22222222-2222-4222-8222-222222222222";
     const res = await app.inject({
-      method: "POST", url: `/admin/disputes/ai-assessment-audit-archives/${archiveId}/requeue`, headers: ADMIN_HEADERS,
+      method: "POST",
+      url: `/admin/disputes/ai-assessment-audit-archives/${archiveId}/requeue`,
+      headers: ADMIN_HEADERS,
       payload: { reason: "The WORM receipt endpoint recovered and was verified." },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ archive_id: archiveId, outcome: "requeued", status: "PENDING" });
-    expect(mockRequeueDisputeAiAuditArchive).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ archiveId, actorId: expect.any(String) }));
+    expect(mockRequeueDisputeAiAuditArchive).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ archiveId, actorId: expect.any(String) }),
+    );
     const invalid = await app.inject({
-      method: "POST", url: "/admin/disputes/ai-assessment-audit-archives/not-a-uuid/requeue", headers: ADMIN_HEADERS,
+      method: "POST",
+      url: "/admin/disputes/ai-assessment-audit-archives/not-a-uuid/requeue",
+      headers: ADMIN_HEADERS,
       payload: { reason: "The WORM receipt endpoint recovered and was verified." },
     });
     expect(invalid.statusCode).toBe(400);
@@ -2622,36 +3211,74 @@ describe("Dispute routes", () => {
   });
 
   it("lists payload-free discovery failures and enables one audited retry", async () => {
-    mockListDisputeAiAuditDiscoveryFailures.mockResolvedValueOnce({ items: [{
-      id: "22222222-2222-4222-8222-222222222222", disputeId: "11111111-1111-4111-8111-111111111111",
-      eventCount: 3, failureCode: "AI_AUDIT_CHAIN_INVALID", status: "OPEN", attemptCount: 1,
-      firstFailedAt: "2026-07-12T00:00:00.000Z", lastFailedAt: "2026-07-12T00:00:00.000Z", ageSeconds: 60,
-    }], nextCursor: null, recordedAt: "2026-07-12T00:01:00.000Z" });
-    const listed = await app.inject({ method: "GET",
-      url: "/admin/disputes/ai-assessment-audit-archives/discovery-failures", headers: ADMIN_HEADERS });
+    mockListDisputeAiAuditDiscoveryFailures.mockResolvedValueOnce({
+      items: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          disputeId: "11111111-1111-4111-8111-111111111111",
+          eventCount: 3,
+          failureCode: "AI_AUDIT_CHAIN_INVALID",
+          status: "OPEN",
+          attemptCount: 1,
+          firstFailedAt: "2026-07-12T00:00:00.000Z",
+          lastFailedAt: "2026-07-12T00:00:00.000Z",
+          ageSeconds: 60,
+        },
+      ],
+      nextCursor: null,
+      recordedAt: "2026-07-12T00:01:00.000Z",
+    });
+    const listed = await app.inject({
+      method: "GET",
+      url: "/admin/disputes/ai-assessment-audit-archives/discovery-failures",
+      headers: ADMIN_HEADERS,
+    });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().ai_audit_discovery_failures.items[0]).toMatchObject({
-      event_count: 3, failure_code: "AI_AUDIT_CHAIN_INVALID", status: "OPEN", attempt_count: 1,
+      event_count: 3,
+      failure_code: "AI_AUDIT_CHAIN_INVALID",
+      status: "OPEN",
+      attempt_count: 1,
     });
     expect(listed.body).not.toContain("payload");
     mockRetryDisputeAiAuditDiscoveryFailure.mockResolvedValueOnce({ outcome: "retry_enabled" });
-    const retried = await app.inject({ method: "POST",
+    const retried = await app.inject({
+      method: "POST",
       url: "/admin/disputes/ai-assessment-audit-archives/discovery-failures/11111111-1111-4111-8111-111111111111/retry",
-      headers: ADMIN_HEADERS, payload: { event_count: 3, reason: "The chain repair was independently verified before retry." } });
+      headers: ADMIN_HEADERS,
+      payload: {
+        event_count: 3,
+        reason: "The chain repair was independently verified before retry.",
+      },
+    });
     expect(retried.statusCode).toBe(200);
     expect(retried.json()).toMatchObject({ event_count: 3, outcome: "retry_enabled" });
-    mockRetryDisputeAiAuditDiscoveryFailure.mockResolvedValueOnce({ outcome: "retry_already_requested" });
-    const duplicateRetry = await app.inject({ method: "POST",
+    mockRetryDisputeAiAuditDiscoveryFailure.mockResolvedValueOnce({
+      outcome: "retry_already_requested",
+    });
+    const duplicateRetry = await app.inject({
+      method: "POST",
       url: "/admin/disputes/ai-assessment-audit-archives/discovery-failures/11111111-1111-4111-8111-111111111111/retry",
-      headers: ADMIN_HEADERS, payload: { event_count: 3, reason: "The chain repair was independently verified before retry." } });
+      headers: ADMIN_HEADERS,
+      payload: {
+        event_count: 3,
+        reason: "The chain repair was independently verified before retry.",
+      },
+    });
     expect(duplicateRetry.statusCode).toBe(409);
     expect(duplicateRetry.json()).toEqual({ error: "AI_AUDIT_DISCOVERY_RETRY_ALREADY_REQUESTED" });
   });
 
   it("rejects malformed discovery retry identifiers before DB access", async () => {
-    const response = await app.inject({ method: "POST",
+    const response = await app.inject({
+      method: "POST",
       url: "/admin/disputes/ai-assessment-audit-archives/discovery-failures/not-a-uuid/retry",
-      headers: ADMIN_HEADERS, payload: { event_count: 1, reason: "The chain repair was independently verified before retry." } });
+      headers: ADMIN_HEADERS,
+      payload: {
+        event_count: 1,
+        reason: "The chain repair was independently verified before retry.",
+      },
+    });
     expect(response.statusCode).toBe(400);
     expect(mockRetryDisputeAiAuditDiscoveryFailure).not.toHaveBeenCalled();
   });
@@ -2668,12 +3295,14 @@ describe("Dispute routes", () => {
       evidence_snapshot_hash: emptyEvidenceHash,
       policy_version: "l1-resolution-policy-v1",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: completedAssessment,
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: completedAssessment,
+        },
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -2704,22 +3333,26 @@ describe("Dispute routes", () => {
       confidence: "high",
       evidence_snapshot_hash: createHash("sha256").update(JSON.stringify([])).digest("hex"),
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      evidence: [{
-        id: "ev_new",
-        dispute_id: "some-id",
-        submitted_by: "buyer",
-        type: "text",
-        text: "New evidence submitted after the first assessment.",
-        created_at: "2026-07-11T00:00:00.000Z",
-      }],
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: previousAssessment,
-        ai_resolution_assessment_history: [previousAssessment],
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        evidence: [
+          {
+            id: "ev_new",
+            dispute_id: "some-id",
+            submitted_by: "buyer",
+            type: "text",
+            text: "New evidence submitted after the first assessment.",
+            created_at: "2026-07-11T00:00:00.000Z",
+          },
+        ],
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: previousAssessment,
+          ai_resolution_assessment_history: [previousAssessment],
+        },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -2742,45 +3375,54 @@ describe("Dispute routes", () => {
   });
 
   it.each([
-    ["policy", "legacy-policy-v0", "deepseek-v4-pro", "AI assessment policy changed after the previous assessment"],
-    ["model", "l1-resolution-policy-v1", "deepseek-v4-flash", "AI assessment model changed after the previous assessment"],
-  ])(
-    "POST /disputes/:id/ai/assess reruns automatically when the %s changed",
-    async (_dimension, policyVersion, model, expectedReason) => {
-      const emptyEvidenceHash = createHash("sha256").update(JSON.stringify([])).digest("hex");
-      const previousAssessment = {
-        assessment_id: `asm_previous_${_dimension}`,
-        revision: 1,
-        status: "COMPLETED",
-        assessed_at: "2026-07-10T00:00:00.000Z",
-        context_hash: `ctx_previous_${_dimension}`,
-        model,
-        policy_version: policyVersion,
-        evidence_snapshot_hash: emptyEvidenceHash,
-      };
-      mockGetDisputeById.mockResolvedValue(fakeDispute({
+    [
+      "policy",
+      "legacy-policy-v0",
+      "deepseek-v4-pro",
+      "AI assessment policy changed after the previous assessment",
+    ],
+    [
+      "model",
+      "l1-resolution-policy-v1",
+      "deepseek-v4-flash",
+      "AI assessment model changed after the previous assessment",
+    ],
+  ])("POST /disputes/:id/ai/assess reruns automatically when the %s changed", async (_dimension, policyVersion, model, expectedReason) => {
+    const emptyEvidenceHash = createHash("sha256").update(JSON.stringify([])).digest("hex");
+    const previousAssessment = {
+      assessment_id: `asm_previous_${_dimension}`,
+      revision: 1,
+      status: "COMPLETED",
+      assessed_at: "2026-07-10T00:00:00.000Z",
+      context_hash: `ctx_previous_${_dimension}`,
+      model,
+      policy_version: policyVersion,
+      evidence_snapshot_hash: emptyEvidenceHash,
+    };
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
         status: "UNDER_REVIEW",
         metadata: {
           tier: 1,
           ai_resolution_assessor: previousAssessment,
           ai_resolution_assessment_history: [previousAssessment],
         },
-      }));
-      mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+      }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
-      const res = await app.inject({
-        method: "POST",
-        url: "/disputes/some-id/ai/assess",
-        headers: ADMIN_HEADERS,
-        payload: {},
-      });
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/ai/assess",
+      headers: ADMIN_HEADERS,
+      payload: {},
+    });
 
-      expect(res.statusCode).toBe(200);
-      expect(res.json().idempotent).toBe(false);
-      expect(res.json().ai_assessment.reassessment_reason).toBe(expectedReason);
-      expect(mockRunResolutionAssessor).toHaveBeenCalledOnce();
-    },
-  );
+    expect(res.statusCode).toBe(200);
+    expect(res.json().idempotent).toBe(false);
+    expect(res.json().ai_assessment.reassessment_reason).toBe(expectedReason);
+    expect(mockRunResolutionAssessor).toHaveBeenCalledOnce();
+  });
 
   it("POST /disputes/:id/ai/assess requires a reason for forced reassessment", async () => {
     const res = await app.inject({
@@ -2825,22 +3467,26 @@ describe("Dispute routes", () => {
       conclusion: "seller_favor",
       confidence: "medium",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      evidence: [{
-        id: "ev_1",
-        dispute_id: "some-id",
-        submitted_by: "buyer",
-        type: "image",
-        text: "New evidence snapshot",
-        created_at: "2026-07-12T00:00:00.000Z",
-      }],
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: previousAssessment,
-        ai_resolution_assessment_history: [previousAssessment],
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        evidence: [
+          {
+            id: "ev_1",
+            dispute_id: "some-id",
+            submitted_by: "buyer",
+            type: "image",
+            text: "New evidence snapshot",
+            created_at: "2026-07-12T00:00:00.000Z",
+          },
+        ],
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: previousAssessment,
+          ai_resolution_assessment_history: [previousAssessment],
+        },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -2864,17 +3510,24 @@ describe("Dispute routes", () => {
     expect(res.json().ai_assessment.assessment_id).toBeTruthy();
     expect(res.json().ai_assessment.version_id).toMatch(/^[a-f0-9]{64}$/);
     expect(res.json().ai_assessment.evidence_snapshot_hash).toMatch(/^[a-f0-9]{64}$/);
-    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as { metadata?: Record<string, unknown> };
-    expect(persisted.metadata?.ai_resolution_assessor).toEqual(expect.objectContaining({
-      revision: 2,
-      supersedes_assessment_id: "asm_previous",
-    }));
+    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(persisted.metadata?.ai_resolution_assessor).toEqual(
+      expect.objectContaining({
+        revision: 2,
+        supersedes_assessment_id: "asm_previous",
+      }),
+    );
     expect(persisted.metadata).not.toHaveProperty("ai_resolution_assessment_history");
-    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      eventType: "COMPLETED",
-      revision: 2,
-      supersedesAssessmentId: "asm_previous",
-    }));
+    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: "COMPLETED",
+        revision: 2,
+        supersedesAssessmentId: "asm_previous",
+      }),
+    );
   });
 
   it("POST /disputes/:id/ai/assess preserves the last completed judgment when reassessment fails", async () => {
@@ -2889,14 +3542,16 @@ describe("Dispute routes", () => {
       conclusion: "buyer_favor",
       confidence: "high",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: previousAssessment,
-        ai_resolution_assessment_history: [previousAssessment],
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: previousAssessment,
+          ai_resolution_assessment_history: [previousAssessment],
+        },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
     mockRunResolutionAssessor.mockResolvedValueOnce({
       ok: false,
@@ -2920,18 +3575,25 @@ describe("Dispute routes", () => {
     });
 
     expect(res.statusCode).toBe(502);
-    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as { metadata?: Record<string, unknown> };
+    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: Record<string, unknown>;
+    };
     expect(persisted.metadata?.ai_resolution_assessor).toEqual(previousAssessment);
-    expect(persisted.metadata?.ai_resolution_assessor_last_failure).toEqual(expect.objectContaining({
-      status: "FAILED",
-      reassessment_reason: "Operator requested a consistency check.",
-    }));
+    expect(persisted.metadata?.ai_resolution_assessor_last_failure).toEqual(
+      expect.objectContaining({
+        status: "FAILED",
+        reassessment_reason: "Operator requested a consistency check.",
+      }),
+    );
     expect(persisted.metadata).not.toHaveProperty("ai_resolution_assessment_attempt_history");
-    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      disputeId: "some-id",
-      eventType: "FAILED",
-      payload: expect.objectContaining({ status: "FAILED" }),
-    }));
+    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        disputeId: "some-id",
+        eventType: "FAILED",
+        payload: expect.objectContaining({ status: "FAILED" }),
+      }),
+    );
   });
 
   it("POST /disputes/:id/ai/assess backfills a legacy current judgment before appending", async () => {
@@ -2943,13 +3605,15 @@ describe("Dispute routes", () => {
       conclusion: "seller_favor",
       confidence: "medium",
     };
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: legacyAssessment,
-      },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: legacyAssessment,
+        },
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -2965,14 +3629,21 @@ describe("Dispute routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().ai_assessment.revision).toBe(2);
     expect(res.json().ai_assessment.supersedes_assessment_id).toMatch(/^legacy_[a-f0-9]{24}$/);
-    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as { metadata?: Record<string, unknown> };
-    expect(persisted.metadata?.ai_resolution_assessor).toEqual(expect.objectContaining({ revision: 2 }));
+    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(persisted.metadata?.ai_resolution_assessor).toEqual(
+      expect.objectContaining({ revision: 2 }),
+    );
     expect(persisted.metadata).not.toHaveProperty("ai_resolution_assessment_history");
-    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      eventType: "COMPLETED",
-      revision: 2,
-      supersedesAssessmentId: expect.stringMatching(/^legacy_[a-f0-9]{24}$/),
-    }));
+    expect(mockAppendDisputeAiAssessmentEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: "COMPLETED",
+        revision: 2,
+        supersedesAssessmentId: expect.stringMatching(/^legacy_[a-f0-9]{24}$/),
+      }),
+    );
   });
 
   it("POST /disputes/:id/appeal rejects a submission lease held by another API instance", async () => {
@@ -2999,13 +3670,15 @@ describe("Dispute routes", () => {
   it("POST /disputes/:id/appeal records a party appeal and makes retries idempotent", async () => {
     const assessedDispute = fakeDispute({
       status: "UNDER_REVIEW",
-      evidence: [{
-        id: "ev_battery_report",
-        dispute_id: "some-id",
-        submitted_by: "buyer",
-        type: "image",
-        created_at: "2026-07-11T00:00:00.000Z",
-      }],
+      evidence: [
+        {
+          id: "ev_battery_report",
+          dispute_id: "some-id",
+          submitted_by: "buyer",
+          type: "image",
+          created_at: "2026-07-11T00:00:00.000Z",
+        },
+      ],
       metadata: {
         tier: 1,
         ai_resolution_assessor: { status: "COMPLETED", conclusion: "seller_favor" },
@@ -3031,17 +3704,21 @@ describe("Dispute routes", () => {
       idempotent: false,
       appeal: { status: "OPEN", appealed_by: "buyer", client_request_id: "appeal-001" },
     });
-    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as { metadata?: Record<string, unknown> };
+    const persisted = mockUpdateDisputeRecord.mock.calls.at(-1)?.[1] as {
+      metadata?: Record<string, unknown>;
+    };
     expect(persisted.metadata).toMatchObject({
       appeal_review: { status: "OPEN", appealed_by: "buyer" },
       appeal_history: [expect.objectContaining({ event: "APPEAL_SUBMITTED" })],
     });
 
     const appeal = (persisted.metadata?.appeal_review ?? {}) as Record<string, unknown>;
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: { ...assessedDispute.metadata, appeal_review: appeal },
-    }));
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: { ...assessedDispute.metadata, appeal_review: appeal },
+      }),
+    );
     const retry = await app.inject({
       method: "POST",
       url: "/disputes/some-id/appeal",
@@ -3075,22 +3752,24 @@ describe("Dispute routes", () => {
   });
 
   it("POST /disputes/:id/resolve blocks money finalization while an appeal is open", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        appeal_review: {
-          id: "apl_1",
-          status: "OPEN",
-          appealed_by: "buyer",
-          appealed_by_user_id: "test-user-001",
-          reason: "Relevant evidence was missed.",
-          evidence_ids: [],
-          client_request_id: "appeal-001",
-          created_at: "2026-07-11T00:00:00.000Z",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          appeal_review: {
+            id: "apl_1",
+            status: "OPEN",
+            appealed_by: "buyer",
+            appealed_by_user_id: "test-user-001",
+            reason: "Relevant evidence was missed.",
+            evidence_ids: [],
+            client_request_id: "appeal-001",
+            created_at: "2026-07-11T00:00:00.000Z",
+          },
         },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "POST",
@@ -3119,29 +3798,34 @@ describe("Dispute routes", () => {
   });
 
   it("PATCH /disputes/:id/appeal/review reopens a case and marks the assessment stale", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        ai_resolution_assessor: { status: "COMPLETED", conclusion: "seller_favor" },
-        appeal_review: {
-          id: "apl_1",
-          status: "OPEN",
-          appealed_by: "buyer",
-          appealed_by_user_id: "test-user-001",
-          reason: "Relevant evidence was missed.",
-          evidence_ids: ["ev_1"],
-          client_request_id: "appeal-001",
-          created_at: "2026-07-11T00:00:00.000Z",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: { status: "COMPLETED", conclusion: "seller_favor" },
+          appeal_review: {
+            id: "apl_1",
+            status: "OPEN",
+            appealed_by: "buyer",
+            appealed_by_user_id: "test-user-001",
+            reason: "Relevant evidence was missed.",
+            evidence_ids: ["ev_1"],
+            client_request_id: "appeal-001",
+            created_at: "2026-07-11T00:00:00.000Z",
+          },
         },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "PATCH",
       url: "/disputes/some-id/appeal/review",
       headers: ADMIN_HEADERS,
-      payload: { decision: "reopen_review", notes: "The cited evidence warrants a fresh assessment." },
+      payload: {
+        decision: "reopen_review",
+        notes: "The cited evidence warrants a fresh assessment.",
+      },
     });
 
     expect(res.statusCode).toBe(200);
@@ -3149,34 +3833,39 @@ describe("Dispute routes", () => {
       requires_new_ai_assessment: true,
       appeal: { status: "REOPENED" },
     });
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        ai_assessment_stale: true,
-        appeal_review: expect.objectContaining({ status: "REOPENED" }),
-        appeal_history: [expect.objectContaining({ event: "APPEAL_REOPENED" })],
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ai_assessment_stale: true,
+          appeal_review: expect.objectContaining({ status: "REOPENED" }),
+          appeal_history: [expect.objectContaining({ event: "APPEAL_REOPENED" })],
+        }),
       }),
-    }));
+    );
   });
 
   it("POST /disputes/:id/ai/assess refreshes a reopened appeal before resolution", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        ai_assessment_stale: true,
-        ai_resolution_assessor: { status: "COMPLETED", conclusion: "seller_favor" },
-        appeal_review: {
-          id: "apl_1",
-          status: "REOPENED",
-          appealed_by: "buyer",
-          appealed_by_user_id: "test-user-001",
-          reason: "Relevant evidence was missed.",
-          evidence_ids: ["ev_1"],
-          client_request_id: "appeal-001",
-          created_at: "2026-07-11T00:00:00.000Z",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_assessment_stale: true,
+          ai_resolution_assessor: { status: "COMPLETED", conclusion: "seller_favor" },
+          appeal_review: {
+            id: "apl_1",
+            status: "REOPENED",
+            appealed_by: "buyer",
+            appealed_by_user_id: "test-user-001",
+            reason: "Relevant evidence was missed.",
+            evidence_ids: ["ev_1"],
+            client_request_id: "appeal-001",
+            created_at: "2026-07-11T00:00:00.000Z",
+          },
         },
-      },
-    }));
+      }),
+    );
     mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
 
     const res = await app.inject({
@@ -3188,34 +3877,56 @@ describe("Dispute routes", () => {
 
     expect(res.statusCode).toBe(200);
     expect(mockRunResolutionAssessor).toHaveBeenCalledOnce();
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        ai_assessment_stale: false,
-        appeal_review: expect.objectContaining({ status: "REASSESSED" }),
-        appeal_history: [expect.objectContaining({ event: "APPEAL_REASSESSED" })],
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ai_assessment_stale: false,
+          appeal_review: expect.objectContaining({ status: "REASSESSED" }),
+          appeal_history: [expect.objectContaining({ event: "APPEAL_REASSESSED" })],
+        }),
       }),
-    }));
+    );
   });
 
   it("derives appeal SLA states at assignment and deadline boundaries", () => {
     const now = Date.parse("2026-07-12T00:00:00.000Z");
-    expect(deriveAppealSlaState({ status: "OPEN", sla_due_at: "2026-07-13T00:00:00.000Z" }, now)).toBe("UNASSIGNED");
-    expect(deriveAppealSlaState({ status: "OPEN", sla_due_at: "2026-07-11T23:59:59.000Z" }, now)).toBe("OVERDUE");
-    expect(deriveAppealSlaState({
-      status: "OPEN",
-      assigned_to: "99999999-9999-4999-8999-999999999999",
-      sla_due_at: "2026-07-12T12:00:00.000Z",
-    }, now)).toBe("ON_TRACK");
-    expect(deriveAppealSlaState({
-      status: "OPEN",
-      assigned_to: "99999999-9999-4999-8999-999999999999",
-      sla_due_at: "2026-07-12T03:00:00.000Z",
-    }, now)).toBe("DUE_SOON");
-    expect(deriveAppealSlaState({
-      status: "REOPENED",
-      assigned_to: "99999999-9999-4999-8999-999999999999",
-      sla_due_at: "2026-07-11T23:59:59.000Z",
-    }, now)).toBe("OVERDUE");
+    expect(
+      deriveAppealSlaState({ status: "OPEN", sla_due_at: "2026-07-13T00:00:00.000Z" }, now),
+    ).toBe("UNASSIGNED");
+    expect(
+      deriveAppealSlaState({ status: "OPEN", sla_due_at: "2026-07-11T23:59:59.000Z" }, now),
+    ).toBe("OVERDUE");
+    expect(
+      deriveAppealSlaState(
+        {
+          status: "OPEN",
+          assigned_to: "99999999-9999-4999-8999-999999999999",
+          sla_due_at: "2026-07-12T12:00:00.000Z",
+        },
+        now,
+      ),
+    ).toBe("ON_TRACK");
+    expect(
+      deriveAppealSlaState(
+        {
+          status: "OPEN",
+          assigned_to: "99999999-9999-4999-8999-999999999999",
+          sla_due_at: "2026-07-12T03:00:00.000Z",
+        },
+        now,
+      ),
+    ).toBe("DUE_SOON");
+    expect(
+      deriveAppealSlaState(
+        {
+          status: "REOPENED",
+          assigned_to: "99999999-9999-4999-8999-999999999999",
+          sla_due_at: "2026-07-11T23:59:59.000Z",
+        },
+        now,
+      ),
+    ).toBe("OVERDUE");
     expect(deriveAppealSlaState({ status: "DISMISSED" }, now)).toBe("COMPLETED");
   });
 
@@ -3239,24 +3950,26 @@ describe("Dispute routes", () => {
   });
 
   it("PATCH /disputes/:id/appeal/assignment assigns an active appeal with a priority SLA", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        appeal_review: {
-          id: "apl_queue_1",
-          status: "OPEN",
-          appealed_by: "buyer",
-          appealed_by_user_id: "test-user-001",
-          reason: "Relevant evidence was missed.",
-          evidence_ids: [],
-          client_request_id: "appeal-queue-001",
-          created_at: "2026-07-12T00:00:00.000Z",
-          priority: "normal",
-          sla_due_at: "2026-07-13T00:00:00.000Z",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          appeal_review: {
+            id: "apl_queue_1",
+            status: "OPEN",
+            appealed_by: "buyer",
+            appealed_by_user_id: "test-user-001",
+            reason: "Relevant evidence was missed.",
+            evidence_ids: [],
+            client_request_id: "appeal-queue-001",
+            created_at: "2026-07-12T00:00:00.000Z",
+            priority: "normal",
+            sla_due_at: "2026-07-13T00:00:00.000Z",
+          },
         },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "PATCH",
@@ -3281,34 +3994,39 @@ describe("Dispute routes", () => {
         priority: "urgent",
       },
     });
-    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      metadata: expect.objectContaining({
-        appeal_review: expect.objectContaining({
-          assigned_to: "test-admin-001",
-          priority: "urgent",
+    expect(mockUpdateDisputeRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          appeal_review: expect.objectContaining({
+            assigned_to: "test-admin-001",
+            priority: "urgent",
+          }),
+          appeal_history: [expect.objectContaining({ event: "APPEAL_ASSIGNED" })],
         }),
-        appeal_history: [expect.objectContaining({ event: "APPEAL_ASSIGNED" })],
       }),
-    }));
+    );
   });
 
   it("PATCH /disputes/:id/appeal/assignment rejects a stale appeal queue item", async () => {
-    mockGetDisputeById.mockResolvedValue(fakeDispute({
-      status: "UNDER_REVIEW",
-      metadata: {
-        tier: 1,
-        appeal_review: {
-          id: "apl_current",
-          status: "OPEN",
-          appealed_by: "buyer",
-          appealed_by_user_id: "test-user-001",
-          reason: "Relevant evidence was missed.",
-          evidence_ids: [],
-          client_request_id: "appeal-current",
-          created_at: "2026-07-12T00:00:00.000Z",
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          appeal_review: {
+            id: "apl_current",
+            status: "OPEN",
+            appealed_by: "buyer",
+            appealed_by_user_id: "test-user-001",
+            reason: "Relevant evidence was missed.",
+            evidence_ids: [],
+            client_request_id: "appeal-current",
+            created_at: "2026-07-12T00:00:00.000Z",
+          },
         },
-      },
-    }));
+      }),
+    );
 
     const res = await app.inject({
       method: "PATCH",

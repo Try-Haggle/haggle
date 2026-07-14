@@ -1,20 +1,18 @@
 import { createHash } from "node:crypto";
 import type { Database } from "@haggle/db";
 import {
-  DISPUTE_MODULE_MAX_RESOLVED_ADDRESSES,
-  assertDisputeModuleOutboundUrl,
-  postDisputeModulePinnedBytes,
-  type DisputeModuleDnsLookup,
-} from
-  "./dispute-module-outbound-url.service.js";
-import {
   acquireDisputeEvidenceScannerPermit,
-  finalizeDisputeEvidenceScannerPermit,
   type DisputeEvidenceScannerCircuitConfig,
+  finalizeDisputeEvidenceScannerPermit,
 } from "./dispute-evidence-scanner-circuit.service.js";
+import {
+  assertDisputeModuleOutboundUrl,
+  DISPUTE_MODULE_MAX_RESOLVED_ADDRESSES,
+  type DisputeModuleDnsLookup,
+  postDisputeModulePinnedBytes,
+} from "./dispute-module-outbound-url.service.js";
 
-export type DisputeEvidenceScanStatus =
-  "CLEAN" | "INFECTED" | "PENDING" | "FAILED";
+export type DisputeEvidenceScanStatus = "CLEAN" | "INFECTED" | "PENDING" | "FAILED";
 
 export interface DisputeEvidenceScanResult {
   status: DisputeEvidenceScanStatus;
@@ -33,7 +31,10 @@ export interface DisputeEvidenceScannerConfig {
 }
 
 export type DisputeEvidenceScannerConfigurationState =
-  "not_configured" | "partial" | "invalid" | "valid";
+  | "not_configured"
+  | "partial"
+  | "invalid"
+  | "valid";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_RESPONSE_BYTES = 16_384;
@@ -54,16 +55,18 @@ function boundedInteger(
 }
 
 function isProductionEnvironment(): boolean {
-  return process.env.NODE_ENV === "production"
-    || process.env.VERCEL_ENV === "production";
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 }
 
 function validateScannerToken(token: string): void {
-  if (token.length < 16 || token.length > 512
-    || token !== token.trim() || /[\u0000-\u001f\u007f]/.test(token)) {
-    throw new Error(
-      "evidence scanner token must be 16 to 512 non-control characters",
-    );
+  if (
+    token.length < 16 ||
+    token.length > 512 ||
+    token !== token.trim() ||
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: Scanner tokens reject ASCII controls.
+    /[\u0000-\u001f\u007f]/.test(token)
+  ) {
+    throw new Error("evidence scanner token must be 16 to 512 non-control characters");
   }
 }
 
@@ -72,21 +75,19 @@ export function assertDisputeEvidenceScannerConfig(
   options: { production?: boolean } = {},
 ): URL {
   validateScannerToken(config.token);
-  if (!Number.isInteger(config.timeoutMs)
-    || config.timeoutMs < 250 || config.timeoutMs > 30_000) {
+  if (!Number.isInteger(config.timeoutMs) || config.timeoutMs < 250 || config.timeoutMs > 30_000) {
     throw new Error("evidence scanner timeout must be from 250 to 30000 ms");
   }
-  if (!Number.isInteger(config.maxResponseBytes)
-    || config.maxResponseBytes < 1_024
-    || config.maxResponseBytes > MAX_RESPONSE_BYTES) {
+  if (
+    !Number.isInteger(config.maxResponseBytes) ||
+    config.maxResponseBytes < 1_024 ||
+    config.maxResponseBytes > MAX_RESPONSE_BYTES
+  ) {
     throw new Error("evidence scanner response limit is invalid");
   }
   const production = options.production ?? isProductionEnvironment();
-  if (production
-    && (config.allowInsecureHttp || config.allowPrivateNetwork)) {
-    throw new Error(
-      "evidence scanner network safety overrides are forbidden in production",
-    );
+  if (production && (config.allowInsecureHttp || config.allowPrivateNetwork)) {
+    throw new Error("evidence scanner network safety overrides are forbidden in production");
   }
   return assertDisputeModuleOutboundUrl(config.url, {
     label: "dispute evidence scanner",
@@ -95,19 +96,14 @@ export function assertDisputeEvidenceScannerConfig(
   });
 }
 
-export function resolveDisputeEvidenceScannerConfigFromEnv():
-DisputeEvidenceScannerConfig | null {
+export function resolveDisputeEvidenceScannerConfigFromEnv(): DisputeEvidenceScannerConfig | null {
   const url = process.env.DISPUTE_EVIDENCE_SCANNER_URL?.trim() ?? "";
   const token = process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN ?? "";
-  const allowInsecureHttp =
-    process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP === "true";
-  const allowPrivateNetwork =
-    process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK === "true";
+  const allowInsecureHttp = process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP === "true";
+  const allowPrivateNetwork = process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK === "true";
   if (!url && !token) {
     if (allowInsecureHttp || allowPrivateNetwork) {
-      throw new Error(
-        "evidence scanner network overrides require a configured scanner",
-      );
+      throw new Error("evidence scanner network overrides require a configured scanner");
     }
     return null;
   }
@@ -135,11 +131,13 @@ export function getDisputeEvidenceScannerPolicyStatus() {
   const hasUrl = Boolean(process.env.DISPUTE_EVIDENCE_SCANNER_URL?.trim());
   const hasToken = Boolean(process.env.DISPUTE_EVIDENCE_SCANNER_TOKEN);
   const hasNetworkOverride =
-    process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP === "true"
-    || process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK === "true";
+    process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP === "true" ||
+    process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK === "true";
   let configurationState: DisputeEvidenceScannerConfigurationState =
     !hasUrl && !hasToken
-      ? hasNetworkOverride ? "invalid" : "not_configured"
+      ? hasNetworkOverride
+        ? "invalid"
+        : "not_configured"
       : hasUrl !== hasToken
         ? "partial"
         : "valid";
@@ -159,9 +157,7 @@ export function getDisputeEvidenceScannerPolicyStatus() {
       30_000,
     );
   } catch {
-    configurationState = configurationState === "not_configured"
-      ? "not_configured"
-      : "invalid";
+    configurationState = configurationState === "not_configured" ? "not_configured" : "invalid";
   }
   return {
     schemaVersion: "dispute-evidence-scanner-readiness-v1" as const,
@@ -170,12 +166,10 @@ export function getDisputeEvidenceScannerPolicyStatus() {
     authenticated: configurationState === "valid" && hasToken,
     transport: {
       httpsRequired: true,
-      insecureHttpOverride:
-        process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP === "true",
+      insecureHttpOverride: process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_INSECURE_HTTP === "true",
     },
     network: {
-      privateNetworkBlocked:
-        process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK !== "true",
+      privateNetworkBlocked: process.env.DISPUTE_EVIDENCE_SCANNER_ALLOW_PRIVATE_NETWORK !== "true",
       redirectsBlocked: true,
       dnsResolutionValidated: true,
       dnsConnectionPinned: true,
@@ -224,29 +218,32 @@ async function cancelScannerResponse(response: Response): Promise<void> {
   await response.body?.cancel().catch(() => undefined);
 }
 
-export function contentMatchesClaimedType(
-  bytes: Buffer,
-  contentType: string,
-): boolean {
+export function contentMatchesClaimedType(bytes: Buffer, contentType: string): boolean {
   if (contentType === "image/jpeg") return hasPrefix(bytes, [0xff, 0xd8, 0xff]);
   if (contentType === "image/png") {
     return hasPrefix(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   }
   if (contentType === "image/webp") {
-    return bytes.subarray(0, 4).toString("ascii") === "RIFF"
-      && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+    return (
+      bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+      bytes.subarray(8, 12).toString("ascii") === "WEBP"
+    );
   }
   if (contentType === "image/heic") {
     const brand = bytes.subarray(8, 12).toString("ascii");
-    return bytes.subarray(4, 8).toString("ascii") === "ftyp"
-      && ["heic", "heix", "hevc", "hevx", "mif1", "msf1"].includes(brand);
+    return (
+      bytes.subarray(4, 8).toString("ascii") === "ftyp" &&
+      ["heic", "heix", "hevc", "hevx", "mif1", "msf1"].includes(brand)
+    );
   }
   if (contentType === "video/mp4") {
     return bytes.subarray(4, 8).toString("ascii") === "ftyp";
   }
   if (contentType === "video/quicktime") {
-    return bytes.subarray(4, 8).toString("ascii") === "ftyp"
-      && bytes.subarray(8, 12).toString("ascii") === "qt  ";
+    return (
+      bytes.subarray(4, 8).toString("ascii") === "ftyp" &&
+      bytes.subarray(8, 12).toString("ascii") === "qt  "
+    );
   }
   if (contentType === "video/webm") {
     return hasPrefix(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
@@ -254,18 +251,21 @@ export function contentMatchesClaimedType(
   return false;
 }
 
-export async function scanDisputeEvidence(input: {
-  bytes: Buffer;
-  contentType: string;
-  expectedSizeBytes: number;
-  filename: string;
-}, options: {
-  config?: DisputeEvidenceScannerConfig | null;
-  fetchImpl?: typeof fetch;
-  dnsLookupImpl?: DisputeModuleDnsLookup;
-  db?: Database;
-  circuitConfig?: DisputeEvidenceScannerCircuitConfig;
-} = {}): Promise<DisputeEvidenceScanResult> {
+export async function scanDisputeEvidence(
+  input: {
+    bytes: Buffer;
+    contentType: string;
+    expectedSizeBytes: number;
+    filename: string;
+  },
+  options: {
+    config?: DisputeEvidenceScannerConfig | null;
+    fetchImpl?: typeof fetch;
+    dnsLookupImpl?: DisputeModuleDnsLookup;
+    db?: Database;
+    circuitConfig?: DisputeEvidenceScannerCircuitConfig;
+  } = {},
+): Promise<DisputeEvidenceScanResult> {
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");
   if (input.bytes.length !== input.expectedSizeBytes) {
     return {
@@ -284,9 +284,8 @@ export async function scanDisputeEvidence(input: {
     };
   }
 
-  const config = options.config === undefined
-    ? resolveDisputeEvidenceScannerConfigFromEnv()
-    : options.config;
+  const config =
+    options.config === undefined ? resolveDisputeEvidenceScannerConfigFromEnv() : options.config;
   if (!config) {
     return {
       status: "PENDING",
@@ -298,8 +297,8 @@ export async function scanDisputeEvidence(input: {
   const scanner = assertDisputeEvidenceScannerConfig(config);
   const permit = options.db
     ? await acquireDisputeEvidenceScannerPermit(options.db, {
-      config: options.circuitConfig,
-    }).catch(() => null)
+        config: options.circuitConfig,
+      }).catch(() => null)
     : null;
   if (options.db && permit === null) {
     return {
@@ -314,9 +313,7 @@ export async function scanDisputeEvidence(input: {
       status: "PENDING",
       sha256,
       provider: "haggle-scanner-circuit",
-      detail: permit.reason === "CAPACITY_BUSY"
-        ? "SCANNER_CAPACITY_BUSY"
-        : "SCANNER_CIRCUIT_OPEN",
+      detail: permit.reason === "CAPACITY_BUSY" ? "SCANNER_CAPACITY_BUSY" : "SCANNER_CIRCUIT_OPEN",
     };
   }
   const provider = scanner.hostname;
@@ -327,28 +324,31 @@ export async function scanDisputeEvidence(input: {
     const headers = {
       "content-type": input.contentType,
       "x-haggle-content-sha256": sha256,
-      "x-haggle-filename": encodeURIComponent(
-        input.filename.slice(0, MAX_FILENAME_CHARS),
-      ),
+      "x-haggle-filename": encodeURIComponent(input.filename.slice(0, MAX_FILENAME_CHARS)),
       authorization: `Bearer ${config.token}`,
     };
     const response = options.fetchImpl
       ? await options.fetchImpl(scanner, {
-        method: "POST",
-        redirect: "error",
-        headers,
-        body: input.bytes,
-        signal: controller.signal,
-      })
-      : await postDisputeModulePinnedBytes(scanner, {
-        headers,
-        body: input.bytes,
-        signal: controller.signal,
-      }, {
-        label: "dispute evidence scanner",
-        allowInsecureHttp: config.allowInsecureHttp,
-        allowPrivateNetwork: config.allowPrivateNetwork,
-      }, { lookupImpl: options.dnsLookupImpl });
+          method: "POST",
+          redirect: "error",
+          headers,
+          body: input.bytes,
+          signal: controller.signal,
+        })
+      : await postDisputeModulePinnedBytes(
+          scanner,
+          {
+            headers,
+            body: input.bytes,
+            signal: controller.signal,
+          },
+          {
+            label: "dispute evidence scanner",
+            allowInsecureHttp: config.allowInsecureHttp,
+            allowPrivateNetwork: config.allowPrivateNetwork,
+          },
+          { lookupImpl: options.dnsLookupImpl },
+        );
     if (!response.ok) {
       await cancelScannerResponse(response);
       result = {
@@ -359,8 +359,11 @@ export async function scanDisputeEvidence(input: {
       };
       return result;
     }
-    const responseContentType = response.headers.get("content-type")
-      ?.split(";", 1)[0]?.trim().toLowerCase();
+    const responseContentType = response.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
     if (responseContentType !== "application/json") {
       await cancelScannerResponse(response);
       result = {
@@ -372,8 +375,7 @@ export async function scanDisputeEvidence(input: {
       return result;
     }
     const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength)
-      && contentLength > config.maxResponseBytes) {
+    if (Number.isFinite(contentLength) && contentLength > config.maxResponseBytes) {
       await cancelScannerResponse(response);
       result = {
         status: "FAILED",
@@ -383,10 +385,7 @@ export async function scanDisputeEvidence(input: {
       };
       return result;
     }
-    const responseText = await readBoundedResponseText(
-      response,
-      config.maxResponseBytes,
-    );
+    const responseText = await readBoundedResponseText(response, config.maxResponseBytes);
     if (responseText === null) {
       result = {
         status: "FAILED",
@@ -420,9 +419,8 @@ export async function scanDisputeEvidence(input: {
         status: "INFECTED",
         sha256,
         provider,
-        detail: typeof payload.detail === "string"
-          ? payload.detail.slice(0, 200)
-          : "MALWARE_DETECTED",
+        detail:
+          typeof payload.detail === "string" ? payload.detail.slice(0, 200) : "MALWARE_DETECTED",
       };
       return result;
     }
@@ -438,23 +436,21 @@ export async function scanDisputeEvidence(input: {
       status: "FAILED",
       sha256,
       provider,
-      detail: error instanceof Error && error.name === "AbortError"
-        ? "SCANNER_TIMEOUT"
-        : "SCANNER_UNAVAILABLE",
+      detail:
+        error instanceof Error && error.name === "AbortError"
+          ? "SCANNER_TIMEOUT"
+          : "SCANNER_UNAVAILABLE",
     };
     return result;
   } finally {
     clearTimeout(timer);
     if (permit?.acquired) {
-      const finalized = await finalizeDisputeEvidenceScannerPermit(
-        options.db!, permit,
-        {
-          scannerOperational: result?.status === "CLEAN"
-            || result?.status === "INFECTED",
-          config: options.circuitConfig,
-        },
-      ).catch(() => false);
+      const finalized = await finalizeDisputeEvidenceScannerPermit(options.db!, permit, {
+        scannerOperational: result?.status === "CLEAN" || result?.status === "INFECTED",
+        config: options.circuitConfig,
+      }).catch(() => false);
       if (!finalized) {
+        // biome-ignore lint/correctness/noUnsafeFinally: Fail closed if circuit state cannot be finalized.
         throw new Error("SCANNER_CIRCUIT_FINALIZE_FAILED");
       }
     }

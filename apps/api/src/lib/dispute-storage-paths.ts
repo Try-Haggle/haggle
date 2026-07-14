@@ -19,23 +19,11 @@ export const DISPUTE_VIEW_URL_TTL_SECONDS = 3600;
 // MIME type allowlists
 // ---------------------------------------------------------------------------
 
-export const ALLOWED_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-] as const;
+export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"] as const;
 
-export const ALLOWED_VIDEO_TYPES = [
-  "video/mp4",
-  "video/quicktime",
-  "video/webm",
-] as const;
+export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"] as const;
 
-export const ALLOWED_EVIDENCE_TYPES = [
-  ...ALLOWED_IMAGE_TYPES,
-  ...ALLOWED_VIDEO_TYPES,
-] as const;
+export const ALLOWED_EVIDENCE_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES] as const;
 
 export type AllowedEvidenceType = (typeof ALLOWED_EVIDENCE_TYPES)[number];
 
@@ -109,9 +97,7 @@ function sanitizeDisputeIdSegment(raw: string): string {
     throw new Error("dispute-evidence: disputeId segment invalid");
   }
   if (!/^[A-Za-z0-9-]+$/.test(raw)) {
-    throw new Error(
-      "dispute-evidence: disputeId segment contains disallowed characters",
-    );
+    throw new Error("dispute-evidence: disputeId segment contains disallowed characters");
   }
   return raw;
 }
@@ -121,10 +107,7 @@ function sanitizeDisputeIdSegment(raw: string): string {
  * Format: `{disputeId}/{filename}`. Bucket name is NOT included — Supabase
  * SDK takes bucket separately.
  */
-export function buildDisputeEvidencePath(
-  disputeId: string,
-  filename: string,
-): string {
+export function buildDisputeEvidencePath(disputeId: string, filename: string): string {
   const did = sanitizeDisputeIdSegment(disputeId);
   const fname = sanitizeDisputeFilename(filename);
   return `${did}/${fname}`;
@@ -136,10 +119,7 @@ export function buildDisputeEvidencePath(
  * (without bucket prefix). Accepts either `{disputeId}/{filename}` or the
  * fully-qualified `dispute-evidence/{disputeId}/{filename}` shape.
  */
-export function validateDisputeStoragePath(
-  disputeId: string,
-  submitted: string,
-): string {
+export function validateDisputeStoragePath(disputeId: string, submitted: string): string {
   if (typeof submitted !== "string" || submitted.length === 0) {
     throw new Error("dispute-evidence: storage path required");
   }
@@ -151,9 +131,7 @@ export function validateDisputeStoragePath(
     : submitted;
   const parts = stripped.split("/");
   if (parts.length !== 2) {
-    throw new Error(
-      "dispute-evidence: storage path must be `{disputeId}/{filename}`",
-    );
+    throw new Error("dispute-evidence: storage path must be `{disputeId}/{filename}`");
   }
   const [pathDisputeId, filename] = parts;
   if (pathDisputeId !== disputeId) {
@@ -190,8 +168,6 @@ export function isVideoType(
   return (ALLOWED_VIDEO_TYPES as readonly string[]).includes(contentType);
 }
 
-export function isAllowedEvidenceType(
-  contentType: string,
-): contentType is AllowedEvidenceType {
+export function isAllowedEvidenceType(contentType: string): contentType is AllowedEvidenceType {
   return (ALLOWED_EVIDENCE_TYPES as readonly string[]).includes(contentType);
 }

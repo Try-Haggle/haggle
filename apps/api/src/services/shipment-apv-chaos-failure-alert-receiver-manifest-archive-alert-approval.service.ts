@@ -1,9 +1,8 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview,
   SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION,
-} from
-  "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
+} from "./shipment-apv-chaos-failure-alert-receiver-manifest-archive-alert-preview.service.js";
 
 export const SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_WINDOW_MINUTES = 15;
 
@@ -24,16 +23,14 @@ type ApprovalRow = {
 function iso(value: unknown) {
   const parsed = new Date(String(value));
   if (!Number.isFinite(parsed.getTime())) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_INVALID");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_INVALID");
   }
   return parsed.toISOString();
 }
 
 function reasons(value: unknown) {
   if (!Array.isArray(value) || value.some((reason) => typeof reason !== "string")) {
-    throw new Error(
-      "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_INVALID");
+    throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_INVALID");
   }
   return value as string[];
 }
@@ -42,8 +39,7 @@ function publicRequest(row: ApprovalRow, now: Date) {
   const requestedAt = iso(row.created_at);
   const expiresAt = iso(row.expires_at);
   return {
-    schemaVersion:
-      "shipment-apv-failure-alert-receiver-manifest-archive-alert-approval-request-v1",
+    schemaVersion: "shipment-apv-failure-alert-receiver-manifest-archive-alert-approval-request-v1",
     approvalRequestId: String(row.id),
     clientRequestId: String(row.client_request_id),
     preview: {
@@ -53,8 +49,7 @@ function publicRequest(row: ApprovalRow, now: Date) {
       severity: String(row.preview_severity),
       reasons: reasons(row.preview_reasons),
     },
-    status: Date.parse(expiresAt) > now.getTime()
-      ? "PENDING" as const : "EXPIRED" as const,
+    status: Date.parse(expiresAt) > now.getTime() ? ("PENDING" as const) : ("EXPIRED" as const),
     requestedAt,
     expiresAt,
     replayed: row.inserted === false,
@@ -71,30 +66,45 @@ function publicRequest(row: ApprovalRow, now: Date) {
   };
 }
 
-function exactReplayMatches(row: ApprovalRow, input: {
-  clientRequestId: string; stateFingerprint: string; requestedBy: string;
-}) {
-  return String(row.client_request_id) === input.clientRequestId
-    && String(row.state_fingerprint) === input.stateFingerprint
-    && String(row.requested_by) === input.requestedBy;
+function exactReplayMatches(
+  row: ApprovalRow,
+  input: {
+    clientRequestId: string;
+    stateFingerprint: string;
+    requestedBy: string;
+  },
+) {
+  return (
+    String(row.client_request_id) === input.clientRequestId &&
+    String(row.state_fingerprint) === input.stateFingerprint &&
+    String(row.requested_by) === input.requestedBy
+  );
 }
 
-function fullBindingMatches(row: ApprovalRow, input: {
-  clientRequestId: string; stateFingerprint: string; requestedBy: string;
-  action: string; severity: string; reasons: string[];
-}) {
-  return exactReplayMatches(row, input)
-    && String(row.preview_schema_version)
-      === SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION
-    && String(row.preview_action) === input.action
-    && String(row.preview_severity) === input.severity
-    && JSON.stringify(reasons(row.preview_reasons)) === JSON.stringify(input.reasons);
+function fullBindingMatches(
+  row: ApprovalRow,
+  input: {
+    clientRequestId: string;
+    stateFingerprint: string;
+    requestedBy: string;
+    action: string;
+    severity: string;
+    reasons: string[];
+  },
+) {
+  return (
+    exactReplayMatches(row, input) &&
+    String(row.preview_schema_version) ===
+      SHIPMENT_APV_FAILURE_ALERT_RECEIVER_MANIFEST_ARCHIVE_ALERT_PREVIEW_VERSION &&
+    String(row.preview_action) === input.action &&
+    String(row.preview_severity) === input.severity &&
+    JSON.stringify(reasons(row.preview_reasons)) === JSON.stringify(input.reasons)
+  );
 }
 
 export async function createShipmentApvReceiverManifestArchiveAlertApprovalRequest(
   db: Pick<Database, "transaction">,
-  input: { clientRequestId: string; stateFingerprint: string;
-    requestedBy: string; now?: Date },
+  input: { clientRequestId: string; stateFingerprint: string; requestedBy: string; now?: Date },
 ) {
   const now = input.now ?? new Date();
   return db.transaction(async (transaction) => {
@@ -109,8 +119,7 @@ export async function createShipmentApvReceiverManifestArchiveAlertApprovalReque
     const existing = (existingRows as unknown as ApprovalRow[])[0];
     if (existing) {
       if (!exactReplayMatches(existing, input)) {
-        throw new Error(
-          "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REPLAY_CONFLICT");
+        throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REPLAY_CONFLICT");
       }
       return publicRequest(existing, now);
     }
@@ -118,19 +127,20 @@ export async function createShipmentApvReceiverManifestArchiveAlertApprovalReque
     const preview =
       await getShipmentApvFailureAlertReceiverManifestArchiveAlertPreview(transaction);
     if (preview.action === "none" || !preview.approval.required) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_NOT_ACTIONABLE");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_NOT_ACTIONABLE");
     }
     if (preview.stateFingerprint !== input.stateFingerprint) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_STATE_CHANGED");
     }
 
     const createdAt = now.toISOString();
-    const expiresAt = new Date(now.getTime()
-      + SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_WINDOW_MINUTES
-        * 60_000).toISOString();
-    const reasonParams = sql.join(preview.reasons.map((reason) => sql`${reason}`), sql`, `);
+    const expiresAt = new Date(
+      now.getTime() + SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_WINDOW_MINUTES * 60_000,
+    ).toISOString();
+    const reasonParams = sql.join(
+      preview.reasons.map((reason) => sql`${reason}`),
+      sql`, `,
+    );
     const rows = await transaction.execute(sql`INSERT INTO
         shipment_apv_manifest_archive_alert_approval_requests
         (client_request_id, preview_schema_version, state_fingerprint,
@@ -144,13 +154,17 @@ export async function createShipmentApvReceiverManifestArchiveAlertApprovalReque
       RETURNING *, true AS inserted`);
     const row = (rows as unknown as ApprovalRow[])[0];
     if (!row) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_UNAVAILABLE");
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_UNAVAILABLE");
     }
-    if (!fullBindingMatches(row, { ...input, action: preview.action,
-      severity: preview.severity, reasons: preview.reasons })) {
-      throw new Error(
-        "SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REPLAY_CONFLICT");
+    if (
+      !fullBindingMatches(row, {
+        ...input,
+        action: preview.action,
+        severity: preview.severity,
+        reasons: preview.reasons,
+      })
+    ) {
+      throw new Error("SHIPMENT_APV_RECEIVER_MANIFEST_ARCHIVE_ALERT_APPROVAL_REPLAY_CONFLICT");
     }
     return publicRequest(row, now);
   });

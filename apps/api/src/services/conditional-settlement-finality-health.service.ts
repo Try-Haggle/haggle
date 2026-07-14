@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export interface ConditionalSettlementFinalityHealth {
   status: "healthy" | "attention" | "critical";
@@ -14,7 +14,9 @@ export interface ConditionalSettlementFinalityHealth {
   recordedAt: string;
 }
 
-export function getConditionalSettlementPendingSlaSeconds(env: NodeJS.ProcessEnv = process.env): number {
+export function getConditionalSettlementPendingSlaSeconds(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
   const value = Number(env.HAGGLE_CONDITIONAL_SETTLEMENT_PENDING_SLA_SECONDS);
   return Number.isInteger(value) && value >= 30 && value <= 3600 ? value : 120;
 }
@@ -25,7 +27,7 @@ export async function getConditionalSettlementFinalityHealth(
 ): Promise<ConditionalSettlementFinalityHealth> {
   const slaSeconds = getConditionalSettlementPendingSlaSeconds();
   const nowIso = now.toISOString();
-  const rows = await db.execute(sql`
+  const rows = (await db.execute(sql`
     SELECT
       count(*) AS total,
       count(*) FILTER (WHERE right(provider_context->'conditional_settlement'->>'status', 22) = '_CONFIRMATIONS_PENDING') AS pending,
@@ -43,7 +45,7 @@ export async function getConditionalSettlementFinalityHealth(
     FROM payment_intents
     WHERE right(provider_context->'conditional_settlement'->>'status', 22) = '_CONFIRMATIONS_PENDING'
        OR right(provider_context->'conditional_settlement'->>'status', 21) = '_FINALITY_UNAVAILABLE'
-  `) as unknown as Array<Record<string, string | number | null>>;
+  `)) as unknown as Array<Record<string, string | number | null>>;
   const row = rows[0] ?? {};
   const health = {
     total: Number(row.total ?? 0),
@@ -53,12 +55,18 @@ export async function getConditionalSettlementFinalityHealth(
     rpcUnavailable: Number(row.rpc_unavailable ?? 0),
     configurationBlocked: Number(row.configuration_blocked ?? 0),
     overduePending: Number(row.overdue_pending ?? 0),
-    oldestPendingAgeSeconds: row.oldest_pending_age_seconds === null || row.oldest_pending_age_seconds === undefined
-      ? null : Math.max(0, Math.round(Number(row.oldest_pending_age_seconds))),
+    oldestPendingAgeSeconds:
+      row.oldest_pending_age_seconds === null || row.oldest_pending_age_seconds === undefined
+        ? null
+        : Math.max(0, Math.round(Number(row.oldest_pending_age_seconds))),
   };
   return {
-    status: health.orphanedReceipts > 0 ? "critical"
-      : health.unavailable > 0 || health.overduePending > 0 ? "attention" : "healthy",
+    status:
+      health.orphanedReceipts > 0
+        ? "critical"
+        : health.unavailable > 0 || health.overduePending > 0
+          ? "attention"
+          : "healthy",
     ...health,
     pendingSlaSeconds: slaSeconds,
     recordedAt: now.toISOString(),

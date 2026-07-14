@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, shipmentEvents, shipments, type Database } from "@haggle/db";
+import { type Database, eq, shipmentEvents, shipments } from "@haggle/db";
 import { applyCarrierShipmentEvent, getShipmentById } from "./shipment-record.service.js";
 
 export async function runShipmentOrderingChaos(db: Database) {
@@ -78,11 +78,13 @@ export async function runShipmentOrderingChaos(db: Database) {
     const checks = {
       initial_transition_applied: inTransit?.disposition === "applied",
       concurrent_updates_end_delivered: finalShipment?.status === "DELIVERED",
-      delivered_event_applied: delivered?.disposition === "applied" || delivered?.disposition === "replay_applied",
+      delivered_event_applied:
+        delivered?.disposition === "applied" || delivered?.disposition === "replay_applied",
       older_scan_not_applied: stale?.disposition === "stale" || stale?.disposition === "terminal",
       terminal_regression_blocked: terminal?.disposition === "terminal",
       ignored_events_audited: dispositions.includes("stale") && dispositions.includes("terminal"),
-      carrier_delivery_time_preserved: finalShipment?.delivered_at === at(-2 * 60_000).toISOString(),
+      carrier_delivery_time_preserved:
+        finalShipment?.delivered_at === at(-2 * 60_000).toISOString(),
     };
     report = {
       pass: Object.values(checks).every(Boolean),
@@ -101,10 +103,12 @@ export async function runShipmentOrderingChaos(db: Database) {
       recordedAt: new Date().toISOString(),
     };
   } finally {
-    const deletedEvents = await db.delete(shipmentEvents)
+    const deletedEvents = await db
+      .delete(shipmentEvents)
       .where(eq(shipmentEvents.shipmentId, shipmentId))
       .returning({ id: shipmentEvents.id });
-    const deletedShipments = await db.delete(shipments)
+    const deletedShipments = await db
+      .delete(shipments)
       .where(eq(shipments.id, shipmentId))
       .returning({ id: shipments.id });
     cleanup = {
