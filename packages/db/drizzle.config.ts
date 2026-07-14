@@ -22,6 +22,7 @@ export default defineConfig({
     "./dist/schema/chain-sync.js",
     "./dist/schema/commerce-orders.js",
     "./dist/schema/dispute-deposits.js",
+    "./dist/schema/dispute-evidence-operations.js",
     "./dist/schema/dispute-evidence-scan-retry-alert-snapshots.js",
     "./dist/schema/disputes.js",
     "./dist/schema/ds-ratings.js",

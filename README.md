@@ -98,6 +98,7 @@ Supabase CLI는 로컬 인프라를 띄우는 용도로만 쓰며, CLI 자체 �
 
 - 스키마를 바꾸려면: 스키마 파일 수정 → `make migrate-new` → `make migrate`
 - `db:generate`는 먼저 `@haggle/db`를 빌드하고 전체 compiled schema를 읽는다. 생성 전후 `pnpm verify:db-schema`로 migration, Drizzle, raw SQL 소유권을 대조한다.
+- `pnpm db:audit:relations`는 `DATABASE_URL`의 정산·결제 위임·배송 APV 관계 16개에 대해 FK 존재 여부, orphan 수, validation 상태를 점검한다. 실제 운영 DB에서는 URL을 파일이나 Git에 저장하지 말고 배포 환경의 secret으로 주입한다.
 - pgvector 확장은 `supabase/init-extensions.sql`이 마이그레이션 직전에 보장한다.
 
 #### ⚠️ 마이그레이션 황금률 (반드시 지킬 것)
@@ -122,7 +123,7 @@ Supabase CLI는 로컬 인프라를 띄우는 용도로만 쓰며, CLI 자체 �
 
 4. **새 테이블은 기본적으로 Drizzle schema와 migration 양쪽에 둔다.**
    고급 trigger/운영 복구처럼 raw SQL이 필요한 경우에도 테이블 모델은 Drizzle에 선언한다.
-   기존 raw SQL 전용 테이블 27개는 `packages/db/schema-ownership.json`에 소유자를 고정하며,
+   기존 raw SQL 전용 테이블 23개는 `packages/db/schema-ownership.json`에 소유자를 고정하며,
    새 예외는 아키텍처 리뷰 없이 추가할 수 없다.
 
 DB 전체 흐름과 변경 승인 기준: [Database Structure and Governance](docs/mvp/database-structure-and-governance.md)

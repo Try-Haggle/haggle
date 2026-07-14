@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -10,6 +11,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { commerceOrders } from "./commerce-orders.js";
+import { settlementReleases } from "./settlement-releases.js";
 
 export const shipments = pgTable("shipments", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -191,11 +194,30 @@ export const shipmentApvAdjustments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    shipmentFk: foreignKey({
+      name: "shipment_apv_adjustments_shipment_id_fkey",
+      columns: [table.shipmentId],
+      foreignColumns: [shipments.id],
+    }),
+    orderFk: foreignKey({
+      name: "shipment_apv_adjustments_order_id_fkey",
+      columns: [table.orderId],
+      foreignColumns: [commerceOrders.id],
+    }),
+    settlementReleaseFk: foreignKey({
+      name: "shipment_apv_adjustments_settlement_release_id_fkey",
+      columns: [table.settlementReleaseId],
+      foreignColumns: [settlementReleases.id],
+    }),
     providerInvoiceUnique: uniqueIndex("shipment_apv_provider_invoice_unique").on(
       table.provider,
       table.providerInvoiceId,
     ),
     shipmentIdx: index("shipment_apv_shipment_idx").on(table.shipmentId),
+    orderIdx: index("shipment_apv_adjustments_order_id_idx").on(table.orderId),
+    settlementReleaseIdx: index("shipment_apv_adjustments_settlement_release_id_idx").on(
+      table.settlementReleaseId,
+    ),
     statusLeaseIdx: index("shipment_apv_status_lease_idx").on(table.status, table.leaseExpiresAt),
     reviewStatusIdx: index("shipment_apv_review_status_idx").on(
       table.reviewStatus,
@@ -318,6 +340,16 @@ export const shipmentApvPayoutOffsets = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    settlementReleaseFk: foreignKey({
+      name: "shipment_apv_payout_offsets_settlement_release_id_fkey",
+      columns: [table.settlementReleaseId],
+      foreignColumns: [settlementReleases.id],
+    }),
+    orderFk: foreignKey({
+      name: "shipment_apv_payout_offsets_order_id_fkey",
+      columns: [table.orderId],
+      foreignColumns: [commerceOrders.id],
+    }),
     activeReleaseUnique: uniqueIndex("shipment_apv_payout_offset_active_release_unique")
       .on(table.settlementReleaseId)
       .where(sql`${table.status} IN ('RESERVED', 'APPLIED')`),
@@ -346,6 +378,16 @@ export const shipmentApvSellerLiabilities = pgTable(
     settledAt: timestamp("settled_at", { withTimezone: true }),
   },
   (table) => ({
+    sourceSettlementReleaseFk: foreignKey({
+      name: "shipment_apv_seller_liabilities_source_release_id_fkey",
+      columns: [table.sourceSettlementReleaseId],
+      foreignColumns: [settlementReleases.id],
+    }),
+    sourceOrderFk: foreignKey({
+      name: "shipment_apv_seller_liabilities_source_order_id_fkey",
+      columns: [table.sourceOrderId],
+      foreignColumns: [commerceOrders.id],
+    }),
     sourceReleaseUnique: uniqueIndex("shipment_apv_seller_liability_source_release_unique").on(
       table.sourceSettlementReleaseId,
     ),
@@ -353,6 +395,9 @@ export const shipmentApvSellerLiabilities = pgTable(
       table.sellerId,
       table.status,
       table.createdAt,
+    ),
+    sourceOrderIdx: index("shipment_apv_seller_liabilities_source_order_id_idx").on(
+      table.sourceOrderId,
     ),
   }),
 );
@@ -412,6 +457,11 @@ export const shipmentApvPayoutCancellationRequests = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    settlementReleaseFk: foreignKey({
+      name: "shipment_apv_cancel_requests_settlement_release_id_fkey",
+      columns: [table.settlementReleaseId],
+      foreignColumns: [settlementReleases.id],
+    }),
     clientRequestUnique: uniqueIndex("shipment_apv_payout_cancel_request_client_unique").on(
       table.clientRequestId,
     ),
@@ -425,6 +475,9 @@ export const shipmentApvPayoutCancellationRequests = pgTable(
       table.status,
       table.expiresAt,
       table.createdAt,
+    ),
+    settlementReleaseIdx: index("shipment_apv_cancel_requests_settlement_release_id_idx").on(
+      table.settlementReleaseId,
     ),
   }),
 );
@@ -489,6 +542,11 @@ export const shipmentApvPayoutCancellationAuditOutbox = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    cancellationRequestFk: foreignKey({
+      name: "shipment_apv_cancel_audit_outbox_request_id_fkey",
+      columns: [table.cancellationRequestId],
+      foreignColumns: [shipmentApvPayoutCancellationRequests.id],
+    }),
     archiveKeyUnique: uniqueIndex("shipment_apv_payout_cancel_audit_archive_key_unique").on(
       table.archiveKey,
     ),

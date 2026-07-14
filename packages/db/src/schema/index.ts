@@ -13,6 +13,12 @@ export { categoryRelatedness } from "./category-relatedness.js";
 export { chainSyncCursors } from "./chain-sync.js";
 export { commerceOrders, settlementApprovals } from "./commerce-orders.js";
 export { disputeDeposits } from "./dispute-deposits.js";
+export {
+  disputeEvidenceProvenanceArchiveOutbox,
+  disputeEvidenceScannerCircuits,
+  disputeEvidenceScannerPermits,
+  disputeEvidenceScanRetryAlertSnapshotRetentionState,
+} from "./dispute-evidence-operations.js";
 export { disputeEvidenceScanRetryAlertSnapshots } from "./dispute-evidence-scan-retry-alert-snapshots.js";
 export {
   disputeAiAssessmentEvents,

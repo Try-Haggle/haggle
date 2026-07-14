@@ -2,16 +2,6 @@
   "version": 1,
   "rawSqlOwnedDomains": [
     {
-      "domain": "dispute-evidence-operations",
-      "owner": "apps/api/src/services/dispute-evidence-*",
-      "tables": [
-        "dispute_evidence_provenance_archive_outbox",
-        "dispute_evidence_scan_retry_alert_snapshot_retention_state",
-        "dispute_evidence_scanner_circuits",
-        "dispute_evidence_scanner_permits"
-      ]
-    },
-    {
       "domain": "shipment-apv-operations",
       "owner": "apps/api/src/services/shipment-apv-*",
       "tables": [

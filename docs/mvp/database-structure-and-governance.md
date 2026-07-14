@@ -43,9 +43,9 @@ flowchart LR
 
 ### 기존 staging과 이 PR의 차이
 
-2026-07-14 빈 DB replay 기준 기존 `staging`은 migration 31개와 public table 80개다. 이 PR은 migration 141개와 public table 145개로 확장한다. 추가된 65개는 결제·배송 APV·분쟁 증거/감사·운영 보안 테이블이다.
+2026-07-14 빈 DB replay 기준 기존 `staging`은 migration 31개와 public table 80개다. 이 PR은 migration 142개와 public table 145개로 확장한다. 추가된 65개는 결제·배송 APV·분쟁 증거/감사·운영 보안 테이블이다.
 
-현재 145개 중 118개는 TypeScript `pgTable`로 관리하고, 배송 APV 복구/경보와 분쟁 scanner 운영 테이블 27개는 raw SQL로 관리한다. raw SQL 예외의 영역과 소유자는 `packages/db/schema-ownership.json`이 단일 목록이다. `pnpm verify:db-schema`는 다음을 CI에서 검사한다.
+현재 145개 중 122개는 TypeScript `pgTable`로 관리하고, 배송 APV 복구/경보 운영 테이블 23개는 raw SQL로 관리한다. 분쟁 증거 provenance, scanner circuit/permit, retention 상태 테이블 4개는 기존 이름과 SQL 서비스를 유지한 채 ORM에 편입했다. raw SQL 예외의 영역과 소유자는 `packages/db/schema-ownership.json`이 단일 목록이다. `pnpm verify:db-schema`는 다음을 CI에서 검사한다.
 
 - 동일 테이블의 Drizzle 중복 선언 금지
 - Drizzle 선언은 migration과 schema barrel, `drizzle.config.ts`에 모두 존재
@@ -76,15 +76,25 @@ flowchart LR
 
 ## 구조 검토 결과와 개선 순서
 
-### P1: 핵심 거래 연결의 DB 강제력이 약함
+### 핵심 거래 연결 강화 상태
 
-`settlement_approval_id`, `order_id`, `payment_intent_id`, `shipment_id`, `dispute_id` 연결 다수는 애플리케이션 검증에 의존하고 Drizzle `.references()`가 없다. 지금 외래키를 한 번에 추가하면 기존 데이터와 배포를 깨뜨릴 수 있다.
+빈 DB replay로 확인한 기존 FK는 57개다. 주문→결제, 주문→배송, 주문→분쟁, 분쟁→증거/판정의 핵심 연결은 이미 DB가 강제한다. 이전 문서의 "연결 다수가 FK 없이 애플리케이션에만 의존한다"는 설명은 실제 constraint보다 과도했다.
 
-개선 순서: orphan 진단 쿼리와 지표 추가 → 기존 데이터 보정 → `NOT VALID` 외래키 추가 → 운영 중 검증 → `VALIDATE CONSTRAINT`. 서비스 경계를 이유로 외래키를 두지 않는 관계는 예외 이유와 소유자를 이 문서에 기록한다.
+이번 변경은 정산 release, agent payment grant/disclosure, 배송 APV 장부의 실제 누락 관계 16개를 추가한다. 기존 데이터 때문에 배포가 중단되지 않도록 `NOT VALID`로 추가하지만 신규 쓰기에는 즉시 적용된다. 관계 목록과 소유자는 `packages/db/transaction-relations.json`이 관리한다.
+
+운영 순서:
+
+1. migration `0141_transaction_relation_integrity`를 staging에 적용한다.
+2. staging의 `DATABASE_URL`을 안전한 환경 변수로 주입하고 `pnpm db:audit:relations`를 실행한다.
+3. orphan이 있으면 삭제하지 말고 해당 `owner`의 서비스 흐름과 원본 장부를 확인해 backfill하거나 명시적인 예외 처리한다.
+4. 16개 관계가 모두 `orphans=0`이면 후속 migration에서 `VALIDATE CONSTRAINT`를 실행한다.
+5. `pnpm db:audit:relations -- --require-validated`가 통과한 뒤 main에 적용한다.
+
+`--json` 옵션은 배포 증빙 저장용 구조화 결과를 출력한다. 명령은 DB URL이나 행의 실제 식별자를 출력하지 않는다.
 
 ### P1: Raw SQL 운영 테이블의 점진적 ORM 편입
 
-기존 27개 운영 테이블은 raw SQL 소유권을 명시해 더 이상 숨은 상태는 아니다. 다만 rename, 타입 변경, 조회 영향이 TypeScript에서 보이지 않으므로 자주 쓰는 테이블부터 `packages/db/src/schema`에 선언한다. 실제 테이블 이름은 유지하고, 편입할 때 `schema-ownership.json`의 예외를 같은 변경에서 제거한다.
+기존 27개 운영 테이블 중 분쟁 증거 영역 4개를 먼저 편입해 23개가 남았다. 남은 배송 APV 경보/복구 테이블도 실제 테이블 이름과 raw SQL 서비스를 유지하면서 자주 조회되는 장부부터 `packages/db/src/schema`에 선언한다. 편입할 때 `schema-ownership.json`의 예외를 같은 변경에서 제거한다.
 
 ### P1: 큰 스키마 파일과 큰 배포 단위
 
