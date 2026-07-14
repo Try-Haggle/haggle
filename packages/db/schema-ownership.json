@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "rawSqlOwnedDomains": [
+    {
+      "domain": "dispute-evidence-operations",
+      "owner": "apps/api/src/services/dispute-evidence-*",
+      "tables": [
+        "dispute_evidence_provenance_archive_outbox",
+        "dispute_evidence_scan_retry_alert_snapshot_retention_state",
+        "dispute_evidence_scanner_circuits",
+        "dispute_evidence_scanner_permits"
+      ]
+    },
+    {
+      "domain": "shipment-apv-operations",
+      "owner": "apps/api/src/services/shipment-apv-*",
+      "tables": [
+        "shipment_apv_chaos_failure_metrics",
+        "shipment_apv_failure_alert_approval_decisions",
+        "shipment_apv_failure_alert_approval_requests",
+        "shipment_apv_failure_alert_cooldown_claims",
+        "shipment_apv_failure_alert_delivery_grants",
+        "shipment_apv_failure_alert_delivery_intents",
+        "shipment_apv_failure_alert_payload_outbox",
+        "shipment_apv_failure_alert_payload_signatures",
+        "shipment_apv_failure_alert_receiver_claim_manifest_receipts",
+        "shipment_apv_failure_alert_receiver_claims",
+        "shipment_apv_failure_alert_receiver_manifest_archive_intents",
+        "shipment_apv_failure_alert_signing_key_events",
+        "shipment_apv_failure_alert_signing_keys",
+        "shipment_apv_manifest_archive_alert_approval_decisions",
+        "shipment_apv_manifest_archive_alert_approval_requests",
+        "shipment_apv_manifest_archive_alert_cooldown_claims",
+        "shipment_apv_manifest_archive_alert_delivery_grants",
+        "shipment_apv_manifest_archive_alert_delivery_intents",
+        "shipment_apv_manifest_archive_alert_payload_outbox",
+        "shipment_apv_manifest_archive_alert_payload_signatures",
+        "shipment_apv_manifest_archive_alert_receiver_claims",
+        "shipment_apv_remediation_cursor_retention_state",
+        "shipment_apv_remediation_recovery_cursor_metrics"
+      ]
+    }
+  ],
+  "expectedRenames": {
+    "skill_presets": "negotiation_agents"
+  },
+  "allowedRepeatedCreates": {
+    "dispute_cases": ["0013_payment_shipping_commerce", "0025_dispute_active_order_unique"],
+    "dispute_evidence": ["0013_payment_shipping_commerce", "0025_dispute_active_order_unique"],
+    "dispute_resolutions": ["0013_payment_shipping_commerce", "0025_dispute_active_order_unique"],
+    "shipment_events": ["0013_payment_shipping_commerce", "0030_shipment_operation_idempotency"],
+    "shipments": ["0013_payment_shipping_commerce", "0030_shipment_operation_idempotency"]
+  }
+}

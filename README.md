@@ -97,6 +97,7 @@ Supabase CLI는 로컬 인프라를 띄우는 용도로만 쓰며, CLI 자체 �
 비활성(`supabase/config.toml`의 `db.migrations.enabled = false`)이다.
 
 - 스키마를 바꾸려면: 스키마 파일 수정 → `make migrate-new` → `make migrate`
+- `db:generate`는 먼저 `@haggle/db`를 빌드하고 전체 compiled schema를 읽는다. 생성 전후 `pnpm verify:db-schema`로 migration, Drizzle, raw SQL 소유권을 대조한다.
 - pgvector 확장은 `supabase/init-extensions.sql`이 마이그레이션 직전에 보장한다.
 
 #### ⚠️ 마이그레이션 황금률 (반드시 지킬 것)
@@ -114,6 +115,17 @@ Supabase CLI는 로컬 인프라를 띄우는 용도로만 쓰며, CLI 자체 �
    그러면 새 환경에서 `db:migrate` 시 그 테이블이 누락된다.
    → 항상 `db:generate`(파일 생성) → 커밋 → `db:migrate` 순서로만 바꾼다.
 
+3. **migration 숫자 prefix를 중복 생성하지 않는다.**
+   브랜치를 최신 `staging`과 맞춘 뒤 생성하고 `pnpm verify:migrations`를 실행한다.
+   검증기는 과거 이력의 중복 7개만 허용하며 새 `00xx_*.sql` 충돌은 CI에서 차단한다.
+   이미 커밋되거나 적용된 파일은 번호를 고치지 말고, 새 변경은 Drizzle이 생성한 다음 고유 prefix로 만든다.
+
+4. **새 테이블은 기본적으로 Drizzle schema와 migration 양쪽에 둔다.**
+   고급 trigger/운영 복구처럼 raw SQL이 필요한 경우에도 테이블 모델은 Drizzle에 선언한다.
+   기존 raw SQL 전용 테이블 27개는 `packages/db/schema-ownership.json`에 소유자를 고정하며,
+   새 예외는 아키텍처 리뷰 없이 추가할 수 없다.
+
+DB 전체 흐름과 변경 승인 기준: [Database Structure and Governance](docs/mvp/database-structure-and-governance.md)
 상세 + 사고 진단 쿼리: [Environment Separation Playbook §6.4](docs/wip/Environment_Separation_Playbook.md)
 
 ### Google OAuth (선택)

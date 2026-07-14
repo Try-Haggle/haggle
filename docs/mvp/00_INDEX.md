@@ -8,3 +8,4 @@ MVP 출시 관련 계획, 기술 부채, 운영 정책.
 | [MVP_TECH_DEBT.md](./MVP_TECH_DEBT.md) | MVP 의도적 단순화 추적 (TD-001~) |
 | [Main_Branch_Release_Policy.md](./Main_Branch_Release_Policy.md) | main 브랜치 운영 원칙 |
 | [payment-shipping-dispute-security-controls.md](./payment-shipping-dispute-security-controls.md) | 결제·배송·분쟁의 구현된 보안 통제, 운영 설정, 남은 위험 |
+| [database-structure-and-governance.md](./database-structure-and-governance.md) | 거래 DB의 쉬운 구조 설명, 실제 사용 관계, 안전한 변경 규칙과 개선 백로그 |
