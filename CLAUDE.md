@@ -81,11 +81,11 @@ haggle/
 ```
 shared ← db
        ← contracts
-engine-core ← engine-session
+engine-core ← engine-session ← apps/api
 ```
 
-> `engine-core`와 `engine-session`은 `shared`/`db`와 의존 관계 없음.
-> 추후 apps/api에서 engine-session을 import하여 협상 라운드를 실행.
+> `engine-core`와 `engine-session` 자체는 `shared`/`db`와 의존 관계가 없다. `apps/api`가 두 패키지를 사용하면서 DB, LLM, HTTP 경계를 연결한다.
+> 현재 프로덕션 라운드는 `apps/api/src/negotiation/pipeline`이 실행하며 DeepSeek V4 Pro가 최종 가격과 메시지를 결정한다. `engine-core`의 Faratin 계산은 코칭에 사용되지만, `engine-session.executeRound`와 `engine-core.makeDecision`은 현재 프로덕션 최종 결정 경로가 아니다. 정확한 현황은 [docs/engine/SOT.md](./docs/engine/SOT.md)를 따른다.
 
 ### `shared`와 `db` 보호 규칙
 

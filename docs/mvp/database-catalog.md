@@ -51,6 +51,27 @@ flowchart LR
 | 운영·감사 | webhook 중복 방지, API rate limit, chain cursor, 관리자 감사 | `webhook_idempotency`, `api_rate_limit_windows`, `chain_sync_cursors`, `admin_action_log` | middleware, webhook workers, admin/jobs |
 | 테스트 조정 | 테스트 콘솔의 긴 작업 lease와 충돌 방지 | `payment_test_operation_leases` | payment test tools only |
 
+## 현재 협상 엔진과 DB의 연결
+
+협상 엔진의 순수 계산과 실제 제품 실행 경로는 분리되어 있다.
+
+| 계층 | 현재 역할 | DB/외부 연결 |
+|---|---|---|
+| `packages/engine-core` | 효용, 의사결정 규칙, Faratin 역제안 가격 등 순수 계산 | 없음 |
+| `packages/engine-session` | 전략 조립, 상태 전이, 라운드·그룹 오케스트레이션 타입과 순수 함수 | 없음 |
+| `apps/api/src/negotiation/pipeline` | 프로덕션 6-stage 라운드 실행 | 협상 테이블, DeepSeek V4 Pro, Skill/referee 연결 |
+| `apps/api/src/routes/negotiations.ts` | 시작, 제안, 재개 등 HTTP 진입점 | 트랜잭션과 권한 경계 |
+
+현재 프로덕션에서는 DeepSeek V4 Pro가 최종 가격과 메시지를 만들고, `engine-core`의 Faratin 계산이 추천 가격 코칭에 사용된다. `engine-session.executeRound`와 `engine-core.makeDecision`은 시뮬레이션·데모·테스트에서는 사용되지만 프로덕션 최종 결정 경로는 아니다. 이 역할 차이와 known issue의 기준은 [협상 엔진 SOT](../engine/SOT.md)다.
+
+영속화는 다음처럼 나뉜다.
+
+- 현재 세션 상태와 전략 스냅샷: `negotiation_sessions`
+- 라운드별 append-only 결과와 LLM token 사용량: `negotiation_rounds`
+- 그룹 단위 1:N 오케스트레이션: `negotiation_groups`
+- 복구 checkpoint, 검증, escalation, 사실 체인: `negotiation_checkpoints`, `negotiation_verifications`, `negotiation_escalations`, `negotiation_round_facts`
+- 모델, latency, token, 비용 계측: `llm_telemetry`
+
 ## 핵심 거래 테이블 사전
 
 | 테이블 | 한 줄 설명 | 주요 연결 키 | 상태 변경 소유자 |
