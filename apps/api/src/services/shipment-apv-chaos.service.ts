@@ -6,6 +6,7 @@ import {
   commerceOrders,
   type Database,
   eq,
+  paymentIntents,
   settlementApprovals,
   settlementReleases,
   shipmentApvAdjustments,
@@ -102,12 +103,18 @@ export async function runShipmentApvChaos(db: Database) {
   const buyerId = randomUUID();
   const shipmentId = randomUUID();
   const releaseId = randomUUID();
+  const paymentIntentId = randomUUID();
   const carryApprovalId = randomUUID();
   const carryOrderId = randomUUID();
   const carryReleaseId = randomUUID();
+  const carryPaymentIntentId = randomUUID();
   const carryListingId = randomUUID();
   const carryBuyerId = randomUUID();
+  const paginationApprovalId = randomUUID();
+  const paginationListingId = randomUUID();
+  const paginationBuyerId = randomUUID();
   const paginationReleaseId = randomUUID();
+  const paginationPaymentIntentId = randomUUID();
   const paginationOffsetId = randomUUID();
   const paginationOrderId = randomUUID();
   const invoiceId = `shinv_chaos_${randomUUID()}`;
@@ -138,6 +145,7 @@ export async function runShipmentApvChaos(db: Database) {
     adjustments: 0,
     shipments: 0,
     releases: 0,
+    paymentIntents: 0,
     orders: 0,
     approvals: 0,
     invoiceDocument: false,
@@ -187,9 +195,20 @@ export async function runShipmentApvChaos(db: Database) {
       amountMinor: "10000",
       orderSnapshot: { fixture: "shipment_apv_chaos" },
     });
+    await db.insert(paymentIntents).values({
+      id: paymentIntentId,
+      orderId,
+      sellerId,
+      buyerId,
+      selectedRail: "x402",
+      currency: "USDC",
+      amountMinor: "10000",
+      status: "SETTLED",
+      canonicalStatus: "captured",
+    });
     await db.insert(settlementReleases).values({
       id: releaseId,
-      paymentIntentId: randomUUID(),
+      paymentIntentId,
       orderId,
       productAmountMinor: "10000",
       productCurrency: "USDC",
@@ -1385,9 +1404,20 @@ export async function runShipmentApvChaos(db: Database) {
       amountMinor: "10000",
       orderSnapshot: { fixture: "shipment_apv_carry_forward" },
     });
+    await db.insert(paymentIntents).values({
+      id: carryPaymentIntentId,
+      orderId: carryOrderId,
+      sellerId,
+      buyerId: carryBuyerId,
+      selectedRail: "x402",
+      currency: "USDC",
+      amountMinor: "10000",
+      status: "SETTLED",
+      canonicalStatus: "captured",
+    });
     await db.insert(settlementReleases).values({
       id: carryReleaseId,
-      paymentIntentId: randomUUID(),
+      paymentIntentId: carryPaymentIntentId,
       orderId: carryOrderId,
       productAmountMinor: "10000",
       productCurrency: "USDC",
@@ -1458,6 +1488,52 @@ export async function runShipmentApvChaos(db: Database) {
       throw new Error(`APV_CANCEL_REQUEST_${cancellationRequest.outcome}`);
     const cancellationRequestRecord = cancellationRequest.request;
     if (!cancellationRequestRecord) throw new Error("APV_CANCEL_REQUEST_RECORD_MISSING");
+    await db.insert(settlementApprovals).values({
+      id: paginationApprovalId,
+      listingId: paginationListingId,
+      sellerId,
+      buyerId: paginationBuyerId,
+      approvalState: "APPROVED",
+      sellerApprovalMode: "AUTO_WITHIN_POLICY",
+      selectedPaymentRail: "x402",
+      currency: "USDC",
+      finalAmountMinor: "10000",
+      termsSnapshot: { fixture: "shipment_apv_pagination" },
+    });
+    await db.insert(commerceOrders).values({
+      id: paginationOrderId,
+      settlementApprovalId: paginationApprovalId,
+      listingId: paginationListingId,
+      sellerId,
+      buyerId: paginationBuyerId,
+      status: "DELIVERED",
+      currency: "USDC",
+      amountMinor: "10000",
+      orderSnapshot: { fixture: "shipment_apv_pagination" },
+    });
+    await db.insert(paymentIntents).values({
+      id: paginationPaymentIntentId,
+      orderId: paginationOrderId,
+      sellerId,
+      buyerId: paginationBuyerId,
+      selectedRail: "x402",
+      currency: "USDC",
+      amountMinor: "10000",
+      status: "SETTLED",
+      canonicalStatus: "captured",
+    });
+    await db.insert(settlementReleases).values({
+      id: paginationReleaseId,
+      paymentIntentId: paginationPaymentIntentId,
+      orderId: paginationOrderId,
+      productAmountMinor: "10000",
+      productCurrency: "USDC",
+      productReleaseStatus: "RELEASED",
+      bufferAmountMinor: "0",
+      bufferCurrency: "USDC",
+      bufferReleaseStatus: "RELEASED",
+      apvAdjustmentMinor: "0",
+    });
     await db.execute(sql`
       INSERT INTO shipment_apv_payout_offsets
         (id, settlement_release_id, order_id, seller_id, currency,
@@ -2744,13 +2820,20 @@ export async function runShipmentApvChaos(db: Database) {
       .where(eq(shipments.id, shipmentId))
       .returning({ id: shipments.id });
     const deletedReleases = (await db.execute(sql`
-      DELETE FROM settlement_releases WHERE id IN (${releaseId}, ${carryReleaseId}) RETURNING id
+      DELETE FROM settlement_releases
+       WHERE id IN (${releaseId}, ${carryReleaseId}, ${paginationReleaseId}) RETURNING id
+    `)) as unknown as Array<Record<string, unknown>>;
+    const deletedPaymentIntents = (await db.execute(sql`
+      DELETE FROM payment_intents
+       WHERE id IN (${paymentIntentId}, ${carryPaymentIntentId}, ${paginationPaymentIntentId}) RETURNING id
     `)) as unknown as Array<Record<string, unknown>>;
     const deletedOrders = (await db.execute(sql`
-      DELETE FROM commerce_orders WHERE id IN (${orderId}, ${carryOrderId}) RETURNING id
+      DELETE FROM commerce_orders
+       WHERE id IN (${orderId}, ${carryOrderId}, ${paginationOrderId}) RETURNING id
     `)) as unknown as Array<Record<string, unknown>>;
     const deletedApprovals = (await db.execute(sql`
-      DELETE FROM settlement_approvals WHERE id IN (${approvalId}, ${carryApprovalId}) RETURNING id
+      DELETE FROM settlement_approvals
+       WHERE id IN (${approvalId}, ${carryApprovalId}, ${paginationApprovalId}) RETURNING id
     `)) as unknown as Array<Record<string, unknown>>;
     Object.assign(cleanup, {
       offsets: deletedOffsets.length,
@@ -2762,6 +2845,7 @@ export async function runShipmentApvChaos(db: Database) {
       adjustments: deletedAdjustments.length,
       shipments: deletedShipments.length,
       releases: deletedReleases.length,
+      paymentIntents: deletedPaymentIntents.length,
       orders: deletedOrders.length,
       approvals: deletedApprovals.length,
       invoiceDocument: deletedInvoiceDocument,
@@ -2781,9 +2865,10 @@ export async function runShipmentApvChaos(db: Database) {
         deletedAuditArchives.length === 2 &&
         deletedLiabilities.length === 1 &&
         deletedShipments.length === 1 &&
-        deletedReleases.length === 2 &&
-        deletedOrders.length === 2 &&
-        deletedApprovals.length === 2 &&
+        deletedReleases.length === 3 &&
+        deletedPaymentIntents.length === 3 &&
+        deletedOrders.length === 3 &&
+        deletedApprovals.length === 3 &&
         deletedInvoiceDocument &&
         deletedInvoiceReconciliation.requests === 2 &&
         deletedInvoiceReconciliation.events === 6 &&

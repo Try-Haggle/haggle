@@ -1491,10 +1491,17 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       initial_evidence: evidence,
     });
 
-    await createDisputeRecord(db, result.dispute);
-
-    // Transition order to IN_DISPUTE
-    await updateCommerceOrderStatus(db, parsed.data.order_id, "IN_DISPUTE");
+    try {
+      await writeDisputeOpen(result.dispute, parsed.data.order_id);
+    } catch (error) {
+      if (error instanceof Error && /dispute_cases_active_order_uidx|unique/i.test(error.message)) {
+        return reply.code(409).send({
+          error: "ACTIVE_DISPUTE_EXISTS",
+          message: "This order already has an active dispute",
+        });
+      }
+      throw error;
+    }
 
     return reply.code(201).send(result);
   });

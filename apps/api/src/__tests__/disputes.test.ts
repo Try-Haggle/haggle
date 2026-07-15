@@ -1107,6 +1107,28 @@ describe("Dispute routes", () => {
     expect(res.json().error).toBe("INVALID_REASON_CODE");
   });
 
+  it("POST /disputes maps a concurrent active-dispute conflict to 409", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(fakeOrder());
+    mockCreateDisputeRecord.mockRejectedValueOnce(
+      new Error('duplicate key value violates unique constraint "dispute_cases_active_order_uidx"'),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes",
+      headers: AUTH_HEADERS,
+      payload: {
+        order_id: "ord_123",
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        opened_by: "buyer",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("ACTIVE_DISPUTE_EXISTS");
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+  });
+
   // GET /disputes/:id
   it("GET /disputes/:id returns 404 for nonexistent dispute", async () => {
     const res = await app.inject({

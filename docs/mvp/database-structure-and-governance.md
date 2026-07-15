@@ -53,6 +53,23 @@ flowchart LR
 - 과거 self-healing migration의 반복 `CREATE TABLE` 5개 외에는 중복 생성 금지
 - migration rename과 Drizzle snapshot chain 일치
 
+### 기존 80개 테이블 중 실제로 바뀌는 8개
+
+`origin/staging`을 이 PR 끝까지 순서대로 적용해 비교하면 기존 테이블 삭제나 기존 컬럼 삭제는 없다. 아래 8개만 확장된다.
+
+| 기존 테이블 | 변경 | 기존 소비자 호환성 |
+|---|---|---|
+| `payment_intents` | canonical status와 계약 hash/grant 컬럼, 상태 호환 CHECK/FK/index 추가 | payment service는 두 status를 함께 기록한다. expiry job도 `CANCELED/expired`를 함께 기록한다. |
+| `settlement_releases` | payment intent/order FK와 payment intent index 추가 | 실제 정산 서비스는 기존 주문·결제를 참조한다. APV fixture도 부모 장부를 먼저 만들도록 검증했다. |
+| `shipments` | carrier event watermark와 label refund 상태/lease 컬럼 및 CHECK/index 추가 | shipment service가 watermark CAS와 refund claim lease를 소유한다. 기존 행은 기본값/backfill로 유지한다. |
+| `shipment_events` | `(shipment_id,event_type,occurred_at)` unique index 추가 | 이벤트 insert는 충돌 무시로 재전송에 안전하다. 기존 중복은 migration 전 사전검사에서 차단한다. |
+| `dispute_cases` | evidence legal hold 컬럼과 주문당 active dispute unique index 추가 | route/job의 동시 생성은 unique 충돌을 처리한다. 기존 active 중복은 사전검사에서 차단한다. |
+| `dispute_evidence` | 파생 산출물 hash/provenance CHECK와 UPDATE 금지 trigger 추가 | 운영 흐름은 append-only insert를 사용한다. 서명 없는 기존 파생 산출물이 감지되면 삭제 전 사전검사가 중단한다. |
+| `dispute_resolutions` | dispute별 unique index 추가 | resolution write는 `dispute_id` conflict를 idempotent하게 처리한다. |
+| `webhook_idempotency` | source별 claim lease/retry 상태 컬럼과 `(source,idempotency_key)` unique 추가 | claim service의 조회·갱신·conflict target은 모두 source와 event key를 함께 사용한다. |
+
+`pnpm db:preflight:compat`는 DB를 수정하지 않고 active dispute 중복, shipment event 중복, 서명 없는 파생 증거, 새 거래 관계의 orphan을 검사한다. 배포 workflow가 호출하는 `db:migrate`는 이 검사가 통과해야 migration을 시작하며, 적용 후에는 `db:audit:relations`로 16개 관계를 다시 검사한다.
+
 ## 보호 경계: 임의 변경 금지
 
 기존 `DO NOT TOUCH`는 변경 자체를 금지하는 말이 아니다. 아래 확인 없이 공유 계약을 바꾸지 말라는 뜻이다.

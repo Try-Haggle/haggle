@@ -9,14 +9,7 @@
  * Batch limit: 100 records per run
  */
 
-import {
-  type Database,
-  paymentIntents,
-  eq,
-  and,
-  lt,
-  inArray,
-} from "@haggle/db";
+import { and, type Database, eq, inArray, lt, paymentIntents } from "@haggle/db";
 
 const BATCH_LIMIT = 100;
 const EXPIRY_MS = 60 * 60 * 1000; // 1 hour
@@ -45,7 +38,7 @@ export async function runPaymentIntentExpiry(db: Database): Promise<void> {
     try {
       await db
         .update(paymentIntents)
-        .set({ status: "CANCELED", updatedAt: now })
+        .set({ status: "CANCELED", canonicalStatus: "expired", updatedAt: now })
         .where(
           and(
             eq(paymentIntents.id, row.id),
