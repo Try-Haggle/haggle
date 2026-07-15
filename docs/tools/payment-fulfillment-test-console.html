@@ -8441,6 +8441,18 @@ function localTestToken(userId, email) {
 }
 
 function localRoleToken(userId, email, role = "authenticated") {
+  const configuredToken = $("#authToken")?.value.trim();
+  const configuredPayload = decodeJwtPayload(configuredToken);
+  let apiHostname = "";
+  try {
+    apiHostname = new URL($("#apiBase")?.value.trim(), window.location.href).hostname;
+  } catch {
+    apiHostname = "";
+  }
+  const remoteApi = apiHostname && !["localhost", "127.0.0.1", "::1"].includes(apiHostname);
+  if (remoteApi && configuredPayload?.app_metadata?.role === "admin") {
+    return configuredToken;
+  }
   return [
     base64UrlEncode({ alg: "HS256", typ: "JWT" }),
     base64UrlEncode({ sub: userId, email, role }),
