@@ -210,7 +210,7 @@ cd ../../packages/contracts
 forge test
 ```
 
-운영자 통합 검증은 `docs/tools/payment-fulfillment-test-console.html`에서 physical shipping을 선택하고 `Run AI + Resolve`를 실행한다. 성공 기준은 27/27 API 단계 통과, active dispute 중 release 차단, DeepSeek 판정 저장, API resolution과 test contract money effect 일치다. 자동 E2E의 증거는 seed이므로 실제 카메라 증거 검증을 대체하지 않는다.
+운영자 통합 검증은 `docs/tools/payment-fulfillment-test-console.html`에서 physical shipping을 선택하고 `Run AI + Resolve`를 실행한다. 성공 기준은 27/27 API 단계 통과, active dispute 중 release 차단, DeepSeek 판정 저장, API resolution과 test contract money effect 일치다. 자동 E2E의 준비 증거는 `staging + admin + payment test tools`에서만 검증된 합성 시나리오 사실로 취급하며, 실제 카메라 증거라고 표시하지 않고 운영 환경의 증거 검증을 대체하지 않는다.
 
 2026-07-10 검증 snapshot: API 보안 회귀 168개, 결제·배송·분쟁 core 514개, Solidity 158개 통과. 대시보드 27/27단계 통과.
 
