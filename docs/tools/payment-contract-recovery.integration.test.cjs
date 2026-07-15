@@ -62,6 +62,14 @@ async function main() {
 
   const document = dom.window.document;
   assert.equal(scriptErrors.length, 0);
+  assert.equal(dom.window.isAiAssessmentInProgressResult({
+    status: 409,
+    response: { error: "AI_ASSESSMENT_IN_PROGRESS" },
+  }), true);
+  assert.equal(dom.window.isAiAssessmentInProgressResult({
+    status: 409,
+    response: { error: "APPEAL_REVIEW_REQUIRED" },
+  }), false);
   const readinessDomains = [...document.querySelectorAll(
     ".readiness-summary-card[data-readiness-domain]")]
     .map((element) => element.dataset.readinessDomain);
