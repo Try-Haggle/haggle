@@ -94,7 +94,7 @@ engine-core ← engine-session
 - `packages/shared`: API, Web, DB, core package가 함께 소비한다. 공개 타입이나 금액/status 계약을 바꾸기 전에 `rg`로 소비자를 찾고 전체 typecheck/test를 실행한다.
 - `packages/db`: 이미 적용된 migration은 수정·이름 변경하지 않는다. 스키마 변경은 additive migration으로만 하고 `pnpm verify:migrations`, `pnpm verify:db-schema`, `pnpm verify:db-invariants`, 빈 DB replay를 확인한다.
 - 삭제·rename·타입 축소는 호환 migration과 단계적 consumer 전환 없이 한 번에 진행하지 않는다.
-- 사람이 읽는 DB 구조와 변경 절차의 기준은 [docs/mvp/database-structure-and-governance.md](./docs/mvp/database-structure-and-governance.md)다.
+- DB 영역과 테이블 의미를 처음 찾을 때는 [docs/mvp/database-catalog.md](./docs/mvp/database-catalog.md), 변경 절차와 호환성 기준은 [docs/mvp/database-structure-and-governance.md](./docs/mvp/database-structure-and-governance.md)를 읽는다.
 
 ---
 
@@ -218,6 +218,7 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 |------|----------------|------|
 | 전체 루프 | [docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md](./docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md) | 결제 → fulfillment → release/dispute를 slice 단위로 실행하는 기준 |
 | 보안 기준 | [docs/mvp/payment-shipping-dispute-security-controls.md](./docs/mvp/payment-shipping-dispute-security-controls.md) | 구현된 결제·배송·분쟁 보호장치, 운영 설정, 남은 P0/P1 위험 |
+| DB 한눈에 보기 | [docs/mvp/database-catalog.md](./docs/mvp/database-catalog.md) | 환경별 DB, 논리 장부, 핵심 테이블, writer, 민감도와 에이전트 라우팅 |
 | DB 구조·변경 규칙 | [docs/mvp/database-structure-and-governance.md](./docs/mvp/database-structure-and-governance.md) | 거래 데이터 연결, 실제 사용처, 보호 경계, migration 충돌 방지 기준 |
 | 결제 | [docs/wip/payment-production-observability.md](./docs/wip/payment-production-observability.md) | 결제 운영 지표, webhook, reconciliation, safe logging 기준 |
 | 배송/fulfillment | [docs/wip/digital-fulfillment-settlement-design.md](./docs/wip/digital-fulfillment-settlement-design.md) | physical shipping과 no-shipping fulfillment를 같은 상위 모델로 묶는 기준 |

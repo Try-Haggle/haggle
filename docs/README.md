@@ -28,6 +28,7 @@
 | MVP 기술 부채 | [mvp/MVP_TECH_DEBT.md](./mvp/MVP_TECH_DEBT.md) |
 | 스마트 컨트랙트 보안 | [contracts/smart-contract-security-report.md](./contracts/smart-contract-security-report.md) |
 | 결제·배송·분쟁 보안 통제 | [mvp/payment-shipping-dispute-security-controls.md](./mvp/payment-shipping-dispute-security-controls.md) |
+| DB 영역·테이블 한눈에 보기 | [mvp/database-catalog.md](./mvp/database-catalog.md) |
 | 거래 DB 구조·변경 규칙 | [mvp/database-structure-and-governance.md](./mvp/database-structure-and-governance.md) |
 | 해자 전략 | [strategy/Haggle_Moat_Strategy.md](./strategy/Haggle_Moat_Strategy.md) |
 | 태그 시스템 설계 | [features/tag-system-design.md](./features/tag-system-design.md) |
@@ -47,4 +48,4 @@
 4. **INDEX 업데이트**: 문서 추가/이동 시 해당 폴더의 `00_INDEX.md`와 이 README 둘 다 업데이트
 5. **단일 파일 → 폴더 승격**: 같은 주제에 2개 이상 문서 쌓이면 전용 폴더 생성
 
-*Last Updated: 2026-07-14*
+*Last Updated: 2026-07-15*
