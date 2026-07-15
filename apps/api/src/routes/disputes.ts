@@ -85,7 +85,10 @@ import {
   updateDepositMetadata,
   updateDepositStatus,
 } from "../services/dispute-deposit.service.js";
-import { resolveStagingDisputeFixtureParty } from "../services/dispute-evidence-fixture-policy.service.js";
+import {
+  resolveStagingDisputeFixtureParty,
+  stagingDisputeFixturePlatformRules,
+} from "../services/dispute-evidence-fixture-policy.service.js";
 import { createSignedDisputeEvidenceProvenance } from "../services/dispute-evidence-provenance.service.js";
 import {
   enqueueDisputeEvidenceProvenanceArchive,
@@ -4611,8 +4614,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             "escalate",
           ],
           platform_rules: [
+            ...stagingDisputeFixturePlatformRules(),
             "Verified Haggle Camera Evidence carries more weight than generic uploads.",
-            "For the operator dashboard L1 seeded scenarios, evidence text beginning with [Verified Haggle Camera Evidence] represents a completed Haggle camera capture session.",
             "When one side has verified camera evidence for the central factual claim and the other side has only unverified text, prefer a direct L1 outcome over escalation.",
             "Do not recommend no_action for a central item-condition claim when one party has one-sided verified Haggle camera evidence.",
             "Cite every verified Haggle camera evidence item in evidence_findings with high weight for the submitting party when it supports the central factual claim.",
