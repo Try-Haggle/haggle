@@ -130,6 +130,10 @@ export function createOwnershipMiddleware(db: Database) {
    */
   function requirePaymentOwner(opts?: PaymentOwnerOpts): PreHandler {
     return async (request: FastifyRequest, reply: FastifyReply) => {
+      // Payment handlers load the intent after production admin guards run.
+      // Preserve that ordering so a missing reason cannot probe payment existence.
+      if (isAdmin(request)) return;
+
       const userId = request.user!.id;
       const { id } = request.params as { id: string };
 
@@ -142,7 +146,7 @@ export function createOwnershipMiddleware(db: Database) {
         return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });
       }
 
-      if (!isAdmin(request) && !isOwner(userId, intent.buyer_id, intent.seller_id, opts?.role)) {
+      if (!isOwner(userId, intent.buyer_id, intent.seller_id, opts?.role)) {
         return reply.code(403).send(FORBIDDEN_RESPONSE);
       }
 

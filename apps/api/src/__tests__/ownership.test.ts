@@ -30,4 +30,20 @@ describe("ownership middleware", () => {
     expect((request as unknown as Record<string, unknown>).orderResource).toBe(order);
     expect(reply.code).not.toHaveBeenCalled();
   });
+
+  it("lets payment handlers run admin guards before loading the payment", async () => {
+    const request = {
+      user: { id: "00000000-0000-4000-a000-000000000104", role: "admin" },
+      params: { id: "00000000-0000-4000-a000-000000000105" },
+    } as unknown as FastifyRequest;
+    const reply = {
+      code: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+    } as unknown as FastifyReply;
+
+    await createOwnershipMiddleware({} as never).requirePaymentOwner()(request, reply);
+
+    expect((request as unknown as Record<string, unknown>).paymentResource).toBeUndefined();
+    expect(reply.code).not.toHaveBeenCalled();
+  });
 });
