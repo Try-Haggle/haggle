@@ -70,8 +70,6 @@ export function createOwnershipMiddleware(db: Database) {
    */
   function requireOrderOwner(opts?: OrderOwnerOpts): PreHandler {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-      if (isAdmin(request)) return;
-
       const userId = request.user!.id;
       const { orderId } = request.params as { orderId: string };
 
@@ -84,7 +82,7 @@ export function createOwnershipMiddleware(db: Database) {
         return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
       }
 
-      if (!isOwner(userId, order.buyerId, order.sellerId, opts?.role)) {
+      if (!isAdmin(request) && !isOwner(userId, order.buyerId, order.sellerId, opts?.role)) {
         return reply.code(403).send(FORBIDDEN_RESPONSE);
       }
 
@@ -100,8 +98,6 @@ export function createOwnershipMiddleware(db: Database) {
    */
   function requireDisputeParty(): PreHandler {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-      if (isAdmin(request)) return;
-
       const userId = request.user!.id;
       const { id } = request.params as { id: string };
 
@@ -119,7 +115,7 @@ export function createOwnershipMiddleware(db: Database) {
         return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
       }
 
-      if (!isOwner(userId, order.buyerId, order.sellerId)) {
+      if (!isAdmin(request) && !isOwner(userId, order.buyerId, order.sellerId)) {
         return reply.code(403).send(FORBIDDEN_RESPONSE);
       }
 
@@ -134,8 +130,6 @@ export function createOwnershipMiddleware(db: Database) {
    */
   function requirePaymentOwner(opts?: PaymentOwnerOpts): PreHandler {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-      if (isAdmin(request)) return;
-
       const userId = request.user!.id;
       const { id } = request.params as { id: string };
 
@@ -148,7 +142,7 @@ export function createOwnershipMiddleware(db: Database) {
         return reply.code(404).send({ error: "PAYMENT_NOT_FOUND" });
       }
 
-      if (!isOwner(userId, intent.buyer_id, intent.seller_id, opts?.role)) {
+      if (!isAdmin(request) && !isOwner(userId, intent.buyer_id, intent.seller_id, opts?.role)) {
         return reply.code(403).send(FORBIDDEN_RESPONSE);
       }
 
@@ -163,8 +157,6 @@ export function createOwnershipMiddleware(db: Database) {
    */
   function requireShipmentOwner(opts?: ShipmentOwnerOpts): PreHandler {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-      if (isAdmin(request)) return;
-
       const userId = request.user!.id;
       const { id } = request.params as { id: string };
 
@@ -177,7 +169,10 @@ export function createOwnershipMiddleware(db: Database) {
         return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
       }
 
-      if (!isOwner(userId, shipment.buyer_id, shipment.seller_id, opts?.role)) {
+      if (
+        !isAdmin(request) &&
+        !isOwner(userId, shipment.buyer_id, shipment.seller_id, opts?.role)
+      ) {
         return reply.code(403).send(FORBIDDEN_RESPONSE);
       }
 
