@@ -5296,15 +5296,15 @@ const FULL_INTEGRATION_CAMERA_FLOW = [
 ];
 const FAKE_E2E_DISPUTE_AI_FLOW = [
   ...FAKE_E2E_DISPUTE_FLOW,
-  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", label: "Buyer Evidence", detail: "scenario claim", body: () => disputeScenarioEvidencePayload("buyer") },
-  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", label: "Seller Evidence", detail: "scenario response", body: () => disputeScenarioEvidencePayload("seller") },
+  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", action: "upload_fixture_evidence", fixtureParty: "buyer", label: "Buyer Evidence", detail: "prepared image/text fixture", body: () => disputeScenarioEvidencePayload("buyer") },
+  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", action: "upload_fixture_evidence", fixtureParty: "seller", label: "Seller Evidence", detail: "prepared image/text fixture", body: () => disputeScenarioEvidencePayload("seller") },
   { endpoint: "/disputes/{disputeId}/review", actor: "admin", label: "Start Review", detail: "UNDER_REVIEW" },
   { endpoint: "/disputes/{disputeId}/ai/assess", actor: "admin", label: "AI Judge", detail: "resolution assessor", body: { force: true, reassessment_reason: "Dashboard integration flow requested a fresh assessment for this newly seeded case." }, retries: 2 },
 ];
 const FIXTURE_RESOLUTION_CONTINUATION_FLOW = [
   { endpoint: "/disputes/{disputeId}", actor: "buyer", label: "Verify Camera", detail: "test-only capture committed" },
-  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", label: "Buyer Fixture", detail: "prepared image evidence", body: () => disputeScenarioEvidencePayload("buyer") },
-  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", label: "Seller Fixture", detail: "prepared image/text evidence", body: () => disputeScenarioEvidencePayload("seller") },
+  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", action: "upload_fixture_evidence", fixtureParty: "buyer", label: "Buyer Fixture", detail: "prepared image evidence", body: () => disputeScenarioEvidencePayload("buyer") },
+  { endpoint: "/disputes/{disputeId}/evidence", actor: "admin", action: "upload_fixture_evidence", fixtureParty: "seller", label: "Seller Fixture", detail: "prepared image/text evidence", body: () => disputeScenarioEvidencePayload("seller") },
   { endpoint: "/disputes/{disputeId}/review", actor: "admin", label: "Start Review", detail: "UNDER_REVIEW" },
   { endpoint: "/disputes/{disputeId}/ai/assess", actor: "admin", label: "AI Judge", detail: "fixture evidence only", body: { force: false }, retries: 2 },
   { endpoint: "/disputes/{disputeId}/resolve", actor: "admin", label: "Apply Resolution", detail: "finalize dispute", body: () => disputeResolutionPayloadFromLatest() },
@@ -5347,8 +5347,8 @@ const GUIDED_DISPUTE_STEPS = [
   { key: "camera_session", phase: "evidence", endpoint: "/disputes/{disputeId}/evidence/camera-session", actor: "buyer", label: "카메라 세션", detail: "촬영 기능만 검증", source: "HAGGLE CAMERA", tone: "local", requires: "contract_lock", body: { device_mode: "qr", expires_in_seconds: 600, test_only: true } },
   { key: "open_camera", phase: "evidence", action: "open_camera", label: "촬영 페이지 열기", detail: "사진은 판정에서 제외", source: "DEVICE CAMERA", tone: "local", requires: "camera_session" },
   { key: "verify_camera", phase: "evidence", endpoint: "/disputes/{disputeId}", actor: "buyer", label: "촬영 완료 확인", detail: "test-only COMMITTED 확인", source: "HAGGLE API", tone: "", requires: "open_camera", requireCameraCommitted: true },
-  { key: "buyer_fixture", phase: "evidence", endpoint: "/disputes/{disputeId}/evidence", actor: "admin", label: "구매자 준비 사진", detail: "판정용 fixture 제출", source: "FIXTURE", tone: "local", requires: "verify_camera", body: () => disputeScenarioEvidencePayload("buyer") },
-  { key: "seller_fixture", phase: "evidence", endpoint: "/disputes/{disputeId}/evidence", actor: "admin", label: "판매자 준비 사진", detail: "반대 fixture 제출", source: "FIXTURE", tone: "local", requires: "buyer_fixture", body: () => disputeScenarioEvidencePayload("seller") },
+  { key: "buyer_fixture", phase: "evidence", endpoint: "/disputes/{disputeId}/evidence", actor: "admin", action: "upload_fixture_evidence", fixtureParty: "buyer", label: "구매자 준비 사진", detail: "판정용 fixture 제출", source: "FIXTURE", tone: "local", requires: "verify_camera", body: () => disputeScenarioEvidencePayload("buyer") },
+  { key: "seller_fixture", phase: "evidence", endpoint: "/disputes/{disputeId}/evidence", actor: "admin", action: "upload_fixture_evidence", fixtureParty: "seller", label: "판매자 준비 사진", detail: "반대 fixture 제출", source: "FIXTURE", tone: "local", requires: "buyer_fixture", body: () => disputeScenarioEvidencePayload("seller") },
   { key: "review", phase: "decision", endpoint: "/disputes/{disputeId}/review", actor: "admin", label: "심사 시작", detail: "증거 제출 종료", source: "HAGGLE API", tone: "", requires: "seller_fixture" },
   { key: "ai_judge", phase: "decision", endpoint: "/disputes/{disputeId}/ai/assess", actor: "admin", label: "AI 판정", detail: "DeepSeek 실제 호출", source: "DEEPSEEK", tone: "webhook", requires: "review", body: { force: false }, retries: 2 },
   { key: "apply_resolution", phase: "decision", endpoint: "/disputes/{disputeId}/resolve", actor: "admin", label: "판정 적용", detail: "환불·정산 결과 확정", source: "HAGGLE API", tone: "", requires: "ai_judge", body: () => disputeResolutionPayloadFromLatest() },
@@ -5526,6 +5526,103 @@ function disputeScenarioEvidencePayload(party) {
     text: party === "seller" ? scenario.sellerEvidence : scenario.buyerEvidence,
     uri: image ? disputeFixtureUrl(image) : undefined,
   };
+}
+
+async function uploadDisputeFixtureEvidence(party) {
+  const scenario = selectedDisputeScenario();
+  const image = party === "seller" ? scenario.sellerImage : scenario.buyerImage;
+  const description = party === "seller" ? scenario.sellerEvidence : scenario.buyerEvidence;
+  const disputeId = $("#disputeId").value.trim();
+  const authToken = $("#authToken").value.trim();
+  if (!disputeId) {
+    return { ok: false, status: "SKIP", response: { error: "MISSING_DISPUTE_ID" } };
+  }
+
+  const postJson = async (path, body, label) => {
+    const response = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": crypto.randomUUID(),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await response.json().catch(() => ({}));
+    addLog({ method: "POST", path, endpoint: path, ok: response.ok, status: response.status,
+      message: json.error || label });
+    return { response, json };
+  };
+
+  try {
+    if (!image) {
+      const path = `/disputes/${encodeURIComponent(disputeId)}/evidence`;
+      const result = await postJson(path, {
+        submitted_by: party,
+        type: "text",
+        text: description,
+      }, `${party} prepared text fixture committed`);
+      setResponse(result.json);
+      updateSummary(result.response.status, result.json, 0);
+      return { ok: result.response.ok, status: result.response.status, response: result.json,
+        method: "POST", path };
+    }
+
+    const fixtureResponse = await fetch(disputeFixtureUrl(image), { cache: "no-store" });
+    if (!fixtureResponse.ok) throw new Error(`Prepared fixture unavailable: ${image}`);
+    const fixtureBlob = await fixtureResponse.blob();
+    const contentType = fixtureBlob.type || "image/png";
+    const uploadPath = `/disputes/${encodeURIComponent(disputeId)}/evidence/upload-url`;
+    const upload = await postJson(uploadPath, {
+      filename: image,
+      content_type: contentType,
+      file_size_bytes: fixtureBlob.size,
+      fixture_party: party,
+    }, `${party} fixture upload URL issued`);
+    if (!upload.response.ok) {
+      setResponse(upload.json);
+      updateSummary(upload.response.status, upload.json, 0);
+      return { ok: false, status: upload.response.status, response: upload.json,
+        method: "POST", path: uploadPath };
+    }
+
+    const objectUpload = await fetch(upload.json.upload_url, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: fixtureBlob,
+    });
+    addLog({ method: "PUT", path: "Supabase signed evidence upload", ok: objectUpload.ok,
+      status: objectUpload.status, message: objectUpload.ok ? `${party} fixture bytes uploaded` : "fixture upload failed" });
+    if (!objectUpload.ok) {
+      const response = { error: "FIXTURE_STORAGE_UPLOAD_FAILED", status: objectUpload.status };
+      setResponse(response);
+      updateSummary(objectUpload.status, response, 0);
+      return { ok: false, status: objectUpload.status, response, method: "PUT",
+        path: "Supabase signed evidence upload" };
+    }
+
+    const commitPath = `/disputes/${encodeURIComponent(disputeId)}/evidence/commit`;
+    const commit = await postJson(commitPath, {
+      storage_path: upload.json.storage_path,
+      type: "image",
+      description,
+      fixture_party: party,
+    }, `${party} prepared image fixture committed`);
+    setResponse(commit.json);
+    updateSummary(commit.response.status, commit.json, 0);
+    if (commit.response.ok) autoFillFromResponse(commit.json);
+    return { ok: commit.response.ok, status: commit.response.status, response: commit.json,
+      method: "POST", path: commitPath };
+  } catch (error) {
+    const response = { error: "FIXTURE_EVIDENCE_UPLOAD_FAILED", message: error.message };
+    setResponse(response);
+    updateSummary(null, response);
+    addLog({ method: "POST", path: "/disputes/{disputeId}/evidence/fixture", ok: false,
+      status: "ERR", message: error.message });
+    return { ok: false, status: "ERR", response, method: "POST",
+      path: "/disputes/{disputeId}/evidence/fixture" };
+  }
 }
 
 function testContractFundPayload() {
@@ -15828,6 +15925,9 @@ function runEndpoint(endpoint, event) {
 function runEndpointStep(step, event) {
   event?.preventDefault();
   syncActorFromToken();
+  if (step.action === "upload_fixture_evidence") {
+    return uploadDisputeFixtureEvidence(step.fixtureParty);
+  }
   $("#endpoint").value = step.endpoint;
   syncEndpointDefaults();
   if (typeof step.body === "function") {
