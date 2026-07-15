@@ -1,18 +1,19 @@
 import type { TrustTriggerEvent } from "@haggle/commerce-core";
 import { createId } from "./id.js";
+import { mapLegacyStatusToProductionState } from "./production-readiness.js";
+import type { PaymentProvider, PaymentQuote, RefundPaymentResult } from "./provider.js";
 import { transitionPaymentIntent } from "./state-machine.js";
 import { trustTriggersForPaymentTransition } from "./trust-events.js";
 import type {
+  BuyerAuthorizationMode,
   Money,
   PaymentAuthorization,
-  BuyerAuthorizationMode,
   PaymentIntent,
   PaymentIntentStatus,
   PaymentRail,
   PaymentSettlement,
   Refund,
 } from "./types.js";
-import type { PaymentProvider, PaymentQuote, RefundPaymentResult } from "./provider.js";
 
 export interface CreatePaymentIntentInput {
   order_id: string;
@@ -22,6 +23,10 @@ export interface CreatePaymentIntentInput {
   allowed_rails?: PaymentRail[];
   buyer_authorization_mode?: BuyerAuthorizationMode;
   amount: Money;
+  agent_payment_grant_id?: string;
+  approval_policy_hash?: string;
+  agreement_hash?: string;
+  listing_hash?: string;
   now?: string;
 }
 
@@ -36,7 +41,10 @@ function nowIso(now?: string): string {
   return now ?? new Date().toISOString();
 }
 
-function transitionOrThrow(status: PaymentIntentStatus, event: Parameters<typeof transitionPaymentIntent>[1]): PaymentIntentStatus {
+function transitionOrThrow(
+  status: PaymentIntentStatus,
+  event: Parameters<typeof transitionPaymentIntent>[1],
+): PaymentIntentStatus {
   const next = transitionPaymentIntent(status, event);
   if (!next) {
     throw new Error(`invalid payment transition: ${status} -> ${event}`);
@@ -59,12 +67,19 @@ export class PaymentService {
       buyer_authorization_mode: input.buyer_authorization_mode,
       amount: input.amount,
       status: "CREATED",
+      agent_payment_grant_id: input.agent_payment_grant_id,
+      approval_policy_hash: input.approval_policy_hash,
+      agreement_hash: input.agreement_hash,
+      listing_hash: input.listing_hash,
       created_at: createdAt,
       updated_at: createdAt,
     };
   }
 
-  async quoteIntent(intent: PaymentIntent, now?: string): Promise<PaymentServiceResult<PaymentQuote>> {
+  async quoteIntent(
+    intent: PaymentIntent,
+    now?: string,
+  ): Promise<PaymentServiceResult<PaymentQuote>> {
     const provider = this.resolveProvider(intent.selected_rail);
     const quote = await provider.quote(intent);
     const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "quote"), now);
@@ -76,7 +91,10 @@ export class PaymentService {
     };
   }
 
-  async authorizeIntent(intent: PaymentIntent, now?: string): Promise<PaymentServiceResult<PaymentAuthorization>> {
+  async authorizeIntent(
+    intent: PaymentIntent,
+    now?: string,
+  ): Promise<PaymentServiceResult<PaymentAuthorization>> {
     const provider = this.resolveProvider(intent.selected_rail);
     const result = await provider.authorize(intent);
     const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "authorize"), now);
@@ -89,14 +107,21 @@ export class PaymentService {
   }
 
   markSettlementPending(intent: PaymentIntent, now?: string): PaymentServiceResult<undefined> {
-    const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "mark_settlement_pending"), now);
+    const nextIntent = this.withStatus(
+      intent,
+      transitionOrThrow(intent.status, "mark_settlement_pending"),
+      now,
+    );
     return {
       intent: nextIntent,
       trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
     };
   }
 
-  async settleIntent(intent: PaymentIntent, now?: string): Promise<PaymentServiceResult<PaymentSettlement>> {
+  async settleIntent(
+    intent: PaymentIntent,
+    now?: string,
+  ): Promise<PaymentServiceResult<PaymentSettlement>> {
     const provider = this.resolveProvider(intent.selected_rail);
     const result = await provider.settle(intent);
     const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "settle"), now);
@@ -104,6 +129,23 @@ export class PaymentService {
       intent: nextIntent,
       value: result.settlement,
       metadata: result.metadata,
+      trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
+    };
+  }
+
+  recordExternalSettlement(
+    intent: PaymentIntent,
+    settlement: PaymentSettlement,
+    now?: string,
+  ): PaymentServiceResult<PaymentSettlement> {
+    const nextIntent = this.withStatus(intent, transitionOrThrow(intent.status, "settle"), now);
+    return {
+      intent: nextIntent,
+      value: settlement,
+      metadata: {
+        provider_reference: settlement.provider_reference,
+        external_settlement_status: settlement.status,
+      },
       trust_triggers: trustTriggersForPaymentTransition(intent.status, nextIntent.status),
     };
   }
@@ -129,7 +171,9 @@ export class PaymentService {
       throw new Error(`refund requires SETTLED intent, got ${intent.status}`);
     }
     if (refund.amount.amount_minor > intent.amount.amount_minor) {
-      throw new Error(`refund amount ${refund.amount.amount_minor} exceeds payment amount ${intent.amount.amount_minor}`);
+      throw new Error(
+        `refund amount ${refund.amount.amount_minor} exceeds payment amount ${intent.amount.amount_minor}`,
+      );
     }
     const provider = this.resolveProvider(intent.selected_rail);
     return provider.refund(intent, refund);
@@ -143,10 +187,15 @@ export class PaymentService {
     return provider;
   }
 
-  private withStatus(intent: PaymentIntent, status: PaymentIntentStatus, now?: string): PaymentIntent {
+  private withStatus(
+    intent: PaymentIntent,
+    status: PaymentIntentStatus,
+    now?: string,
+  ): PaymentIntent {
     return {
       ...intent,
       status,
+      production_status: mapLegacyStatusToProductionState(status),
       updated_at: nowIso(now),
     };
   }

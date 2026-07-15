@@ -37,16 +37,14 @@ function transitionOrThrow(
 export class DisputeService {
   openCase(input: OpenDisputeInput): DisputeServiceResult {
     const ts = nowIso(input.now);
-    const disputeId = createId("dsp");
+    const disputeId = createId();
 
-    const evidence: DisputeEvidence[] = (input.initial_evidence ?? []).map(
-      (e) => ({
-        ...e,
-        id: createId("evi"),
-        dispute_id: disputeId,
-        created_at: ts,
-      }),
-    );
+    const evidence: DisputeEvidence[] = (input.initial_evidence ?? []).map((e) => ({
+      ...e,
+      id: createId(),
+      dispute_id: disputeId,
+      created_at: ts,
+    }));
 
     const dispute: DisputeCase = {
       id: disputeId,
@@ -61,10 +59,7 @@ export class DisputeService {
     return { dispute, trust_triggers: [] };
   }
 
-  startReview(
-    dispute: DisputeCase,
-    now?: string,
-  ): DisputeServiceResult {
+  startReview(dispute: DisputeCase, _now?: string): DisputeServiceResult {
     const nextStatus = transitionOrThrow(dispute.status, "review");
     return {
       dispute: this.withStatus(dispute, nextStatus),
@@ -72,10 +67,7 @@ export class DisputeService {
     };
   }
 
-  requestBuyerEvidence(
-    dispute: DisputeCase,
-    now?: string,
-  ): DisputeServiceResult {
+  requestBuyerEvidence(dispute: DisputeCase, _now?: string): DisputeServiceResult {
     const nextStatus = transitionOrThrow(dispute.status, "request_buyer_evidence");
     return {
       dispute: this.withStatus(dispute, nextStatus),
@@ -83,10 +75,7 @@ export class DisputeService {
     };
   }
 
-  requestSellerEvidence(
-    dispute: DisputeCase,
-    now?: string,
-  ): DisputeServiceResult {
+  requestSellerEvidence(dispute: DisputeCase, _now?: string): DisputeServiceResult {
     const nextStatus = transitionOrThrow(dispute.status, "request_seller_evidence");
     return {
       dispute: this.withStatus(dispute, nextStatus),
@@ -102,7 +91,7 @@ export class DisputeService {
     const ts = nowIso(now);
     const newEvidence: DisputeEvidence = {
       ...evidence,
-      id: createId("evi"),
+      id: createId(),
       dispute_id: dispute.id,
       created_at: ts,
     };
@@ -138,9 +127,8 @@ export class DisputeService {
 
     // no_action resolutions should not generate trust triggers —
     // they are semantically different from ruling in seller's favor.
-    const triggers = resolution.outcome === "no_action"
-      ? []
-      : trustTriggersForDisputeResolution(nextStatus);
+    const triggers =
+      resolution.outcome === "no_action" ? [] : trustTriggersForDisputeResolution(nextStatus);
 
     return {
       dispute: updatedDispute,
@@ -149,10 +137,7 @@ export class DisputeService {
     };
   }
 
-  closeCase(
-    dispute: DisputeCase,
-    now?: string,
-  ): DisputeServiceResult {
+  closeCase(dispute: DisputeCase, _now?: string): DisputeServiceResult {
     const nextStatus = transitionOrThrow(dispute.status, "close");
     return {
       dispute: this.withStatus(dispute, nextStatus),
@@ -175,11 +160,7 @@ export class DisputeService {
     }
   }
 
-  private withStatus(
-    dispute: DisputeCase,
-    status: DisputeStatus,
-    _now?: string,
-  ): DisputeCase {
+  private withStatus(dispute: DisputeCase, status: DisputeStatus, _now?: string): DisputeCase {
     return { ...dispute, status };
   }
 }

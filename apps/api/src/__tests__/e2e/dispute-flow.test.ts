@@ -5,20 +5,26 @@
  *
  * Uses Fastify inject() — no real server, DB, or chain required.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "../helpers.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "../helpers.js";
 
 // ─── Service mocks ────────────────────────────────────────────────────
 
-const { mockCreateDisputeRecord, mockGetDisputeById, mockUpdateDisputeRecord, mockAddEvidence, mockGetCommerceOrderByOrderId } =
-  vi.hoisted(() => ({
-    mockCreateDisputeRecord: vi.fn(),
-    mockGetDisputeById: vi.fn(),
-    mockUpdateDisputeRecord: vi.fn(),
-    mockAddEvidence: vi.fn(),
-    mockGetCommerceOrderByOrderId: vi.fn(),
-  }));
+const {
+  mockCreateDisputeRecord,
+  mockGetDisputeById,
+  mockUpdateDisputeRecord,
+  mockAddEvidence,
+  mockGetCommerceOrderByOrderId,
+} = vi.hoisted(() => ({
+  mockCreateDisputeRecord: vi.fn(),
+  mockGetDisputeById: vi.fn(),
+  mockUpdateDisputeRecord: vi.fn(),
+  mockAddEvidence: vi.fn(),
+  mockGetCommerceOrderByOrderId: vi.fn(),
+}));
 
 vi.mock("../../services/dispute-record.service.js", () => ({
   createDisputeRecord: (...args: unknown[]) => mockCreateDisputeRecord(...args),
@@ -37,6 +43,9 @@ vi.mock("../../services/dispute-deposit.service.js", () => ({
 }));
 
 vi.mock("../../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
@@ -70,6 +79,20 @@ vi.mock("../../services/shipment-record.service.js", () => ({
 vi.mock("../../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn().mockResolvedValue(null),
 }));
+
+vi.mock("../../services/dispute-operation-lease.service.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../services/dispute-operation-lease.service.js")>();
+  return {
+    ...actual,
+    acquireDisputeOperationLease: vi.fn().mockImplementation(async (_db, input) => ({
+      key: `${input.disputeId}:${input.operation}`,
+      ...input,
+      expiresAt: new Date(Date.now() + 60_000),
+    })),
+    releaseDisputeOperationLease: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 vi.mock("../../services/authentication-record.service.js", () => ({
   getAuthenticationByOrderId: vi.fn().mockResolvedValue(null),

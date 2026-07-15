@@ -4,11 +4,13 @@
 
 export interface ContractAddresses {
   settlementRouter: `0x${string}` | null;
+  conditionalSettlement: `0x${string}` | null;
   disputeRegistry: `0x${string}` | null;
 }
 
 export const CONTRACT_ADDRESSES: ContractAddresses = {
   settlementRouter: null,
+  conditionalSettlement: null,
   disputeRegistry: null,
 };
 
@@ -323,9 +325,7 @@ export const HAGGLE_SETTLEMENT_ROUTER_ABI = [
   {
     type: "event",
     name: "SignerRotationCancelled",
-    inputs: [
-      { indexed: true, name: "cancelledSigner", type: "address" },
-    ],
+    inputs: [{ indexed: true, name: "cancelledSigner", type: "address" }],
     anonymous: false,
   },
   {
@@ -342,6 +342,228 @@ export const HAGGLE_SETTLEMENT_ROUTER_ABI = [
       { indexed: false, name: "reason", type: "string" },
     ],
     anonymous: false,
+  },
+] as const;
+
+export const HAGGLE_CONDITIONAL_SETTLEMENT_ABI = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "initialOwner", type: "address" },
+      { name: "initialSigner", type: "address" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "SettlementFunded",
+    inputs: [
+      { indexed: true, name: "settlementId", type: "bytes32" },
+      { indexed: true, name: "orderId", type: "bytes32" },
+      { indexed: false, name: "paymentIntentId", type: "bytes32" },
+      { indexed: false, name: "approvalPolicyHash", type: "bytes32" },
+      { indexed: false, name: "buyer", type: "address" },
+      { indexed: false, name: "seller", type: "address" },
+      { indexed: false, name: "asset", type: "address" },
+      { indexed: false, name: "grossAmount", type: "uint256" },
+      { indexed: false, name: "expiresAt", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SettlementReleased",
+    inputs: [
+      { indexed: true, name: "settlementId", type: "bytes32" },
+      { indexed: false, name: "sellerWallet", type: "address" },
+      { indexed: false, name: "feeWallet", type: "address" },
+      { indexed: false, name: "sellerAmount", type: "uint256" },
+      { indexed: false, name: "feeAmount", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SettlementRefunded",
+    inputs: [
+      { indexed: true, name: "settlementId", type: "bytes32" },
+      { indexed: false, name: "buyer", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SettlementDisputed",
+    inputs: [
+      { indexed: true, name: "settlementId", type: "bytes32" },
+      { indexed: false, name: "evidenceHash", type: "bytes32" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "AssetAllowed",
+    inputs: [{ indexed: true, name: "asset", type: "address" }],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "AssetDisallowed",
+    inputs: [{ indexed: true, name: "asset", type: "address" }],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SignerUpdated",
+    inputs: [
+      { indexed: true, name: "oldSigner", type: "address" },
+      { indexed: true, name: "newSigner", type: "address" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "error",
+    name: "SellerWalletMismatch",
+    inputs: [],
+  },
+  {
+    type: "function",
+    name: "createAndFund",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "p",
+        type: "tuple",
+        components: [
+          { name: "orderId", type: "bytes32" },
+          { name: "paymentIntentId", type: "bytes32" },
+          { name: "approvalPolicyHash", type: "bytes32" },
+          { name: "agreementHash", type: "bytes32" },
+          { name: "listingHash", type: "bytes32" },
+          { name: "grantNonce", type: "bytes32" },
+          { name: "buyer", type: "address" },
+          { name: "seller", type: "address" },
+          { name: "asset", type: "address" },
+          { name: "grossAmount", type: "uint256" },
+          { name: "expiresAt", type: "uint256" },
+          { name: "signerNonce", type: "uint256" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "settlementId", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "release",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "p",
+        type: "tuple",
+        components: [
+          { name: "settlementId", type: "bytes32" },
+          { name: "sellerWallet", type: "address" },
+          { name: "feeWallet", type: "address" },
+          { name: "sellerAmount", type: "uint256" },
+          { name: "feeAmount", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "signerNonce", type: "uint256" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "refund",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "p",
+        type: "tuple",
+        components: [
+          { name: "settlementId", type: "bytes32" },
+          { name: "deadline", type: "uint256" },
+          { name: "signerNonce", type: "uint256" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "settlementState",
+    stateMutability: "view",
+    inputs: [{ name: "settlementId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "function",
+    name: "expire",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "settlementId", type: "bytes32" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "raiseDispute",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "settlementId", type: "bytes32" },
+      { name: "evidenceHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "computeSettlementId",
+    stateMutability: "view",
+    inputs: [
+      {
+        name: "p",
+        type: "tuple",
+        components: [
+          { name: "orderId", type: "bytes32" },
+          { name: "paymentIntentId", type: "bytes32" },
+          { name: "approvalPolicyHash", type: "bytes32" },
+          { name: "agreementHash", type: "bytes32" },
+          { name: "listingHash", type: "bytes32" },
+          { name: "grantNonce", type: "bytes32" },
+          { name: "buyer", type: "address" },
+          { name: "seller", type: "address" },
+          { name: "asset", type: "address" },
+          { name: "grossAmount", type: "uint256" },
+          { name: "expiresAt", type: "uint256" },
+          { name: "signerNonce", type: "uint256" },
+        ],
+      },
+    ],
+    outputs: [{ name: "settlementId", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "allowAsset",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "disallowAsset",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "signerNonce",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
 
@@ -513,6 +735,42 @@ export const SETTLEMENT_EIP712_TYPES = {
     { name: "grossAmount", type: "uint256" },
     { name: "sellerAmount", type: "uint256" },
     { name: "feeAmount", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "signerNonce", type: "uint256" },
+  ],
+} as const;
+
+export const CONDITIONAL_SETTLEMENT_EIP712_DOMAIN = {
+  name: "HaggleConditionalSettlement",
+  version: "1",
+} as const;
+
+export const CONDITIONAL_SETTLEMENT_EIP712_TYPES = {
+  ConditionalSettlement: [
+    { name: "orderId", type: "bytes32" },
+    { name: "paymentIntentId", type: "bytes32" },
+    { name: "approvalPolicyHash", type: "bytes32" },
+    { name: "agreementHash", type: "bytes32" },
+    { name: "listingHash", type: "bytes32" },
+    { name: "grantNonce", type: "bytes32" },
+    { name: "buyer", type: "address" },
+    { name: "seller", type: "address" },
+    { name: "asset", type: "address" },
+    { name: "grossAmount", type: "uint256" },
+    { name: "expiresAt", type: "uint256" },
+    { name: "signerNonce", type: "uint256" },
+  ],
+  Release: [
+    { name: "settlementId", type: "bytes32" },
+    { name: "sellerWallet", type: "address" },
+    { name: "feeWallet", type: "address" },
+    { name: "sellerAmount", type: "uint256" },
+    { name: "feeAmount", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "signerNonce", type: "uint256" },
+  ],
+  Refund: [
+    { name: "settlementId", type: "bytes32" },
     { name: "deadline", type: "uint256" },
     { name: "signerNonce", type: "uint256" },
   ],

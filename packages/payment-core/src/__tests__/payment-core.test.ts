@@ -1,20 +1,21 @@
-import { describe, it, expect } from "vitest";
+import type { SettlementApproval } from "@haggle/commerce-core";
+import { describe, expect, it } from "vitest";
+import { assertActorInSettlementApproval, assertPaymentReadyForExecution } from "../execution.js";
+import { FacilitatorError, MockFacilitatorClient } from "../facilitator-client.js";
+import { createId } from "../id.js";
+import { MockStripeAdapter } from "../mock-stripe-adapter.js";
+import { MockX402Adapter } from "../mock-x402-adapter.js";
+import type { X402AdapterConfig } from "../real-x402-adapter.js";
+import { RealX402Adapter } from "../real-x402-adapter.js";
+import {
+  ScaffoldConditionalSettlementContract,
+  ScaffoldDisputeRegistryContract,
+  ScaffoldSettlementRouterContract,
+} from "../scaffold-contracts.js";
+import { PaymentService } from "../service.js";
 import { transitionPaymentIntent } from "../state-machine.js";
 import { trustTriggersForPaymentTransition } from "../trust-events.js";
-import {
-  assertPaymentReadyForExecution,
-  assertActorInSettlementApproval,
-} from "../execution.js";
-import { createId } from "../id.js";
-import { PaymentService } from "../service.js";
-import { MockX402Adapter } from "../mock-x402-adapter.js";
-import { MockStripeAdapter } from "../mock-stripe-adapter.js";
-import { RealX402Adapter } from "../real-x402-adapter.js";
-import type { X402AdapterConfig } from "../real-x402-adapter.js";
-import { ScaffoldSettlementRouterContract, ScaffoldDisputeRegistryContract } from "../scaffold-contracts.js";
-import { MockFacilitatorClient, FacilitatorError } from "../facilitator-client.js";
 import type { PaymentIntent, PaymentIntentStatus } from "../types.js";
-import type { SettlementApproval } from "@haggle/commerce-core";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,12 +92,9 @@ describe("transitionPaymentIntent", () => {
       ["SETTLEMENT_PENDING", "fail", "FAILED"],
     ];
 
-    it.each(validCases)(
-      "%s + %s -> %s",
-      (from, event, expected) => {
-        expect(transitionPaymentIntent(from, event as any)).toBe(expected);
-      },
-    );
+    it.each(validCases)("%s + %s -> %s", (from, event, expected) => {
+      expect(transitionPaymentIntent(from, event as any)).toBe(expected);
+    });
   });
 
   describe("invalid transitions return null", () => {
@@ -123,12 +121,9 @@ describe("transitionPaymentIntent", () => {
       ["SETTLEMENT_PENDING", "authorize"],
     ];
 
-    it.each(invalidCases)(
-      "%s + %s -> null",
-      (from, event) => {
-        expect(transitionPaymentIntent(from, event as any)).toBeNull();
-      },
-    );
+    it.each(invalidCases)("%s + %s -> null", (from, event) => {
+      expect(transitionPaymentIntent(from, event as any)).toBeNull();
+    });
   });
 
   it("full happy path CREATED -> QUOTED -> AUTHORIZED -> SETTLEMENT_PENDING -> SETTLED", () => {
@@ -469,6 +464,7 @@ describe("PaymentService", () => {
       const quoteResult = await svc.quoteIntent(intent, NOW);
       intent = quoteResult.intent;
       expect(intent.status).toBe("QUOTED");
+      expect(intent.production_status).toBe("pending");
       expect(quoteResult.value).toBeDefined();
       expect(quoteResult.value!.rail).toBe("x402");
       expect(quoteResult.value!.provider_reference).toContain("x402_quote");
@@ -478,6 +474,7 @@ describe("PaymentService", () => {
       const authResult = await svc.authorizeIntent(intent, NOW);
       intent = authResult.intent;
       expect(intent.status).toBe("AUTHORIZED");
+      expect(intent.production_status).toBe("authorized");
       expect(authResult.value).toBeDefined();
       expect(authResult.value!.rail).toBe("x402");
       expect(authResult.trust_triggers).toEqual([]);
@@ -486,17 +483,42 @@ describe("PaymentService", () => {
       const pendingResult = svc.markSettlementPending(intent, NOW);
       intent = pendingResult.intent;
       expect(intent.status).toBe("SETTLEMENT_PENDING");
+      expect(intent.production_status).toBe("authorized");
       expect(pendingResult.trust_triggers).toEqual([]);
 
       // Settle
       const settleResult = await svc.settleIntent(intent, NOW);
       intent = settleResult.intent;
       expect(intent.status).toBe("SETTLED");
+      expect(intent.production_status).toBe("captured");
       expect(settleResult.value).toBeDefined();
       expect(settleResult.value!.status).toBe("SETTLED");
       expect(settleResult.trust_triggers).toHaveLength(2);
       expect(settleResult.trust_triggers[0].type).toBe("successful_settlement");
       expect(settleResult.trust_triggers[1].type).toBe("successful_settlement");
+    });
+
+    it("records an externally confirmed settlement without calling the provider", () => {
+      const svc = new PaymentService({ x402: new MockX402Adapter() });
+      const intent = makeIntent({ status: "SETTLEMENT_PENDING" });
+
+      const result = svc.recordExternalSettlement(
+        intent,
+        {
+          id: "settlement_external_1",
+          payment_intent_id: intent.id,
+          rail: "x402",
+          provider_reference: "conditional_release_tx_0xabc",
+          settled_amount: intent.amount,
+          settled_at: NOW,
+          status: "SETTLED",
+        },
+        NOW,
+      );
+
+      expect(result.intent.status).toBe("SETTLED");
+      expect(result.value?.provider_reference).toBe("conditional_release_tx_0xabc");
+      expect(result.trust_triggers).toHaveLength(2);
     });
   });
 
@@ -624,7 +646,10 @@ describe("PaymentService", () => {
 
     it("throws when refund amount exceeds payment amount", async () => {
       const svc = new PaymentService({ x402: new MockX402Adapter() });
-      const intent = makeIntent({ status: "SETTLED", amount: { currency: "USDC", amount_minor: 100_00 } });
+      const intent = makeIntent({
+        status: "SETTLED",
+        amount: { currency: "USDC", amount_minor: 100_00 },
+      });
       const refund = {
         id: "ref_guard_002",
         payment_intent_id: intent.id,
@@ -642,7 +667,10 @@ describe("PaymentService", () => {
 
     it("allows valid refund when SETTLED and amount within limit", async () => {
       const svc = new PaymentService({ x402: new MockX402Adapter() });
-      const intent = makeIntent({ status: "SETTLED", amount: { currency: "USDC", amount_minor: 100_00 } });
+      const intent = makeIntent({
+        status: "SETTLED",
+        amount: { currency: "USDC", amount_minor: 100_00 },
+      });
       const refund = {
         id: "ref_guard_003",
         payment_intent_id: intent.id,
@@ -909,9 +937,24 @@ describe("MockStripeAdapter", () => {
 // RealX402Adapter (with ScaffoldContracts)
 // ---------------------------------------------------------------------------
 describe("RealX402Adapter", () => {
-  const feeWallet = { actor_id: "haggle", wallet_address: "0xHaggleFee", network: "eip155:8453", custody: "merchant_managed" as const };
-  const buyerWallet = { actor_id: "buyer-1", wallet_address: "0xBuyer", network: "eip155:8453", custody: "external" as const };
-  const sellerWallet = { actor_id: "seller-1", wallet_address: "0xSeller", network: "eip155:8453", custody: "external" as const };
+  const feeWallet = {
+    actor_id: "haggle",
+    wallet_address: "0xHaggleFee",
+    network: "eip155:8453",
+    custody: "merchant_managed" as const,
+  };
+  const buyerWallet = {
+    actor_id: "buyer-1",
+    wallet_address: "0xBuyer",
+    network: "eip155:8453",
+    custody: "external" as const,
+  };
+  const sellerWallet = {
+    actor_id: "seller-1",
+    wallet_address: "0xSeller",
+    network: "eip155:8453",
+    custody: "external" as const,
+  };
 
   function makeConfig(overrides?: Partial<X402AdapterConfig>): X402AdapterConfig {
     return {
@@ -956,6 +999,27 @@ describe("RealX402Adapter", () => {
     expect(quote.metadata?.buyer_authorization_mode).toBe("human_wallet");
   });
 
+  it("quote exposes conditional settlement metadata when configured", async () => {
+    const conditionalSettlement = new ScaffoldConditionalSettlementContract(
+      "base-sepolia",
+      "USDC",
+      "0xConditionalSettlement",
+    );
+    const adapter = new RealX402Adapter(
+      makeConfig({ conditional_settlement: conditionalSettlement }),
+    );
+    const quote = await adapter.quote(makeIntent());
+
+    expect(quote.metadata?.conditional_settlement_address).toBe("0xConditionalSettlement");
+    expect(quote.metadata?.conditional_settlement_capabilities).toEqual({
+      supports_policy_hash_binding: true,
+      supports_expiry_refund: true,
+      supports_signed_release: true,
+      supports_signed_refund: true,
+      supports_dispute_lock: true,
+    });
+  });
+
   it("quote splits fee correctly (150 bps = 1.5%)", async () => {
     const adapter = new RealX402Adapter(makeConfig());
     const intent = makeIntent({ amount: { currency: "USDC", amount_minor: 10000 } });
@@ -963,6 +1027,88 @@ describe("RealX402Adapter", () => {
     // 10000 * 150 / 10000 = 150
     expect(quote.metadata?.haggle_fee_minor).toBe(150);
     expect(quote.metadata?.seller_amount_minor).toBe(9850);
+  });
+
+  it("uses USDC atomic units for router quote and settlement when intent amount is USD cents", async () => {
+    const quoteRequests: Array<Parameters<X402AdapterConfig["settlement_router"]["quote"]>[0]> = [];
+    const executeRequests: Array<Parameters<X402AdapterConfig["settlement_router"]["execute"]>[0]> =
+      [];
+    const settlementRouter: X402AdapterConfig["settlement_router"] = {
+      network: "base-sepolia",
+      asset: "USDC",
+      capabilities: {
+        supports_fee_split: true,
+        supports_dispute_anchor: true,
+        supports_reservation_binding: true,
+      },
+      async quote(request) {
+        quoteRequests.push(request);
+        return {
+          quote_id: "quote_usd",
+          network: "base-sepolia",
+          asset: "USDC",
+          gross_amount: request.gross_amount,
+          seller_amount: request.seller_amount,
+          haggle_fee_amount: request.haggle_fee_amount,
+          expires_at: "2030-01-01T00:00:00.000Z",
+        };
+      },
+      async execute(request) {
+        executeRequests.push(request);
+        return {
+          execution_id: "exec_usd",
+          router_reference: "router_usd",
+          tx_hash: "0xabc",
+          status: "PENDING",
+        };
+      },
+    };
+    const signedAmounts: PaymentIntent["amount"][] = [];
+    const adapter = new RealX402Adapter(
+      makeConfig({
+        settlement_router: settlementRouter,
+        resolve_settlement_signature: async (intent) => {
+          signedAmounts.push(intent.amount);
+          return {
+            signature: "0xdeadbeef" as `0x${string}`,
+            deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+            signer_nonce: BigInt(0),
+          };
+        },
+      }),
+    );
+    const intent = makeIntent({ amount: { currency: "USD", amount_minor: 50_000 } });
+
+    const quote = await adapter.quote(intent);
+    await adapter.settle(intent);
+
+    expect(quote.amount).toEqual({ currency: "USD", amount_minor: 50_000 });
+    expect(quote.metadata?.seller_amount_minor).toBe(49_250);
+    expect(quote.metadata?.haggle_fee_minor).toBe(750);
+    expect(quote.metadata?.settlement_amount_minor).toBe(500_000_000);
+    expect(quoteRequests[0]?.gross_amount).toEqual({ currency: "USDC", amount_minor: 500_000_000 });
+    expect(quoteRequests[0]?.seller_amount).toEqual({
+      currency: "USDC",
+      amount_minor: 492_500_000,
+    });
+    expect(quoteRequests[0]?.haggle_fee_amount).toEqual({
+      currency: "USDC",
+      amount_minor: 7_500_000,
+    });
+    expect(signedAmounts[0]).toEqual({ currency: "USDC", amount_minor: 500_000_000 });
+    expect(executeRequests[0]?.gross_amount).toEqual({
+      currency: "USDC",
+      amount_minor: 500_000_000,
+    });
+  });
+
+  it("rejects unsupported source currencies before router quote", async () => {
+    const adapter = new RealX402Adapter(makeConfig());
+    const intent = makeIntent({ amount: { currency: "EUR", amount_minor: 50_000 } });
+
+    await expect(adapter.quote(intent)).rejects.toThrow(
+      "unsupported source currency for USDC settlement: EUR",
+    );
   });
 
   it("authorize returns buyer wallet info", async () => {
@@ -1038,7 +1184,19 @@ describe("RealX402Adapter", () => {
     expect(quote.metadata?.haggle_fee_minor).toBe(4);
     expect(quote.metadata?.seller_amount_minor).toBe(329);
     // verify no loss: 329 + 4 = 333
-    expect((quote.metadata?.seller_amount_minor as number) + (quote.metadata?.haggle_fee_minor as number)).toBe(333);
+    expect(
+      (quote.metadata?.seller_amount_minor as number) +
+        (quote.metadata?.haggle_fee_minor as number),
+    ).toBe(333);
+  });
+
+  it("rejects non-integer x402 fee basis points", async () => {
+    const adapter = new RealX402Adapter(
+      makeConfig({
+        fee_policy: { fee_bps: 1.5, wallet: feeWallet },
+      }),
+    );
+    await expect(adapter.quote(makeIntent())).rejects.toThrow("fee_bps must be 0-1000");
   });
 });
 

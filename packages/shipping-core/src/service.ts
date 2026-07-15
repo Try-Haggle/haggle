@@ -32,9 +32,7 @@ function transitionOrThrow(
 }
 
 export class ShippingService {
-  constructor(
-    private readonly carriers: Partial<Record<string, CarrierProvider>>,
-  ) {}
+  constructor(private readonly carriers: Partial<Record<string, CarrierProvider>>) {}
 
   createShipment(input: CreateShipmentInput): Shipment {
     const ts = nowIso(input.now);
@@ -49,10 +47,7 @@ export class ShippingService {
     };
   }
 
-  async createLabel(
-    shipment: Shipment,
-    now?: string,
-  ): Promise<ShippingServiceResult> {
+  async createLabel(shipment: Shipment, now?: string): Promise<ShippingServiceResult> {
     const carrier = this.resolveCarrier(shipment.carrier);
     const result = await carrier.createLabel(shipment);
     const nextStatus = transitionOrThrow(shipment.status, "label_create");
@@ -83,9 +78,7 @@ export class ShippingService {
   recordEvent(
     shipment: Shipment,
     eventType: Parameters<typeof transitionShipmentStatus>[1],
-    eventData?: Partial<
-      Pick<ShipmentEvent, "carrier_raw_status" | "message" | "location">
-    >,
+    eventData?: Partial<Pick<ShipmentEvent, "carrier_raw_status" | "message" | "location">>,
     now?: string,
   ): ShippingServiceResult {
     const nextStatus = transitionOrThrow(shipment.status, eventType);
@@ -117,10 +110,7 @@ export class ShippingService {
     };
   }
 
-  async trackShipment(
-    shipment: Shipment,
-    now?: string,
-  ): Promise<ShippingServiceResult> {
+  async trackShipment(shipment: Shipment, now?: string): Promise<ShippingServiceResult> {
     if (!shipment.tracking_number) {
       throw new Error("cannot track shipment without tracking number");
     }
@@ -150,10 +140,7 @@ export class ShippingService {
     );
   }
 
-  processWebhook(
-    shipment: Shipment,
-    raw: Record<string, unknown>,
-  ): ShippingServiceResult | null {
+  processWebhook(shipment: Shipment, raw: Record<string, unknown>): ShippingServiceResult | null {
     const carrier = this.resolveCarrier(shipment.carrier);
     const event = carrier.parseWebhookEvent(raw);
     if (!event) return null;
@@ -169,7 +156,7 @@ export class ShippingService {
   }
 
   private resolveCarrier(name: string): CarrierProvider {
-    const carrier = this.carriers[name];
+    const carrier = this.carriers[name] ?? this.carriers[name.toLowerCase()];
     if (!carrier) {
       throw new Error(`no carrier provider registered: ${name}`);
     }
@@ -179,9 +166,7 @@ export class ShippingService {
   private statusToEvent(
     status: ShipmentStatus,
   ): Parameters<typeof transitionShipmentStatus>[1] | null {
-    const map: Partial<
-      Record<ShipmentStatus, Parameters<typeof transitionShipmentStatus>[1]>
-    > = {
+    const map: Partial<Record<ShipmentStatus, Parameters<typeof transitionShipmentStatus>[1]>> = {
       LABEL_CREATED: "label_create",
       IN_TRANSIT: "ship",
       OUT_FOR_DELIVERY: "out_for_delivery",

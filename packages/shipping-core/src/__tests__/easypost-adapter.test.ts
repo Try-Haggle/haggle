@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import type { ShipmentStatus } from "../types.js";
-import type { Shipment } from "../types.js";
+import { describe, expect, it, vi } from "vitest";
 import type { LabelRequest } from "../provider.js";
+import type { Shipment, ShipmentStatus } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Mock the @easypost/api module — we never want real API calls in tests
@@ -52,16 +51,12 @@ vi.mock("@easypost/api", () => {
           },
         }),
       };
-      constructor(_apiKey: string) {}
     },
   };
 });
 
-import { mapEasyPostStatus, EasyPostCarrierAdapter } from "../easypost-adapter.js";
-import {
-  parseEasyPostWebhookPayload,
-  verifyEasyPostWebhook,
-} from "../easypost-webhook.js";
+import { EasyPostCarrierAdapter, mapEasyPostStatus } from "../easypost-adapter.js";
+import { parseEasyPostWebhookPayload, verifyEasyPostWebhook } from "../easypost-webhook.js";
 
 // ===========================================================================
 // 1. mapEasyPostStatus
@@ -80,12 +75,9 @@ describe("mapEasyPostStatus", () => {
     ["error", "DELIVERY_EXCEPTION"],
   ];
 
-  it.each(cases)(
-    'maps EasyPost status "%s" → "%s"',
-    (easypostStatus, expectedCanonical) => {
-      expect(mapEasyPostStatus(easypostStatus)).toBe(expectedCanonical);
-    },
-  );
+  it.each(cases)('maps EasyPost status "%s" → "%s"', (easypostStatus, expectedCanonical) => {
+    expect(mapEasyPostStatus(easypostStatus)).toBe(expectedCanonical);
+  });
 
   it('falls back to "IN_TRANSIT" for an unrecognised status string', () => {
     expect(mapEasyPostStatus("some_future_status")).toBe("IN_TRANSIT");
@@ -265,6 +257,76 @@ describe("verifyEasyPostWebhook", () => {
     expect(verifyEasyPostWebhook(body, headers, webhookSecret)).toBe(true);
   });
 
+  it("returns true for a valid v2 signature with timestamp and path", async () => {
+    const body = JSON.stringify({ description: "tracker.updated", result: {} });
+    const timestamp = "Tue, 19 Aug 2025 20:37:09 -0000";
+    const path = "/shipments/webhooks/easypost";
+    const method = "POST";
+
+    const crypto = await import("node:crypto");
+    const hmac = crypto.createHmac("sha256", webhookSecret);
+    hmac.update(`${timestamp}${method}${path}${body}`, "utf8");
+    const signature = `hmac-sha256-hex=${hmac.digest("hex")}`;
+
+    const headers = {
+      "x-timestamp": timestamp,
+      "x-path": path,
+      "x-hmac-signature-v2": signature,
+    };
+
+    expect(
+      verifyEasyPostWebhook(body, headers, webhookSecret, {
+        method,
+        now: new Date("2025-08-19T20:37:30Z"),
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false for an expired v2 signature", async () => {
+    const body = JSON.stringify({ description: "tracker.updated", result: {} });
+    const timestamp = "Tue, 19 Aug 2025 20:37:09 -0000";
+    const path = "/shipments/webhooks/easypost";
+
+    const crypto = await import("node:crypto");
+    const hmac = crypto.createHmac("sha256", webhookSecret);
+    hmac.update(`${timestamp}POST${path}${body}`, "utf8");
+
+    const headers = {
+      "x-timestamp": timestamp,
+      "x-path": path,
+      "x-hmac-signature-v2": `hmac-sha256-hex=${hmac.digest("hex")}`,
+    };
+
+    expect(
+      verifyEasyPostWebhook(body, headers, webhookSecret, {
+        method: "POST",
+        now: new Date("2025-08-19T20:39:30Z"),
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for a v2 signature with the wrong path", async () => {
+    const body = JSON.stringify({ description: "tracker.updated", result: {} });
+    const timestamp = "Tue, 19 Aug 2025 20:37:09 -0000";
+
+    const crypto = await import("node:crypto");
+    const hmac = crypto.createHmac("sha256", webhookSecret);
+    hmac.update(`${timestamp}POST/other-path${body}`, "utf8");
+
+    const headers = {
+      "x-timestamp": timestamp,
+      "x-path": "/shipments/webhooks/easypost",
+      "x-hmac-signature-v2": `hmac-sha256-hex=${hmac.digest("hex")}`,
+    };
+
+    expect(
+      verifyEasyPostWebhook(body, headers, webhookSecret, {
+        method: "POST",
+        now: new Date("2025-08-19T20:37:30Z"),
+      }),
+    ).toBe(false);
+  });
+
   it("returns false for an invalid signature", () => {
     const body = JSON.stringify({ description: "tracker.updated", result: {} });
     const headers = {
@@ -288,6 +350,18 @@ describe("verifyEasyPostWebhook", () => {
 // ===========================================================================
 // 4. EasyPostCarrierAdapter — label generation
 // ===========================================================================
+
+describe("EasyPost test key detection", () => {
+  it.each([
+    ["EZTK_test_key", true],
+    ["EZTEST_legacy_fixture", true],
+    ["EZAK_production_key", false],
+    ["", false],
+  ])("classifies %s", async (apiKey, expected) => {
+    const { isEasyPostTestApiKey } = await import("../easypost-adapter.js");
+    expect(isEasyPostTestApiKey(apiKey)).toBe(expected);
+  });
+});
 
 describe("EasyPostCarrierAdapter label generation", () => {
   const config = { api_key: "EZTK_test", is_test: true };
@@ -326,12 +400,8 @@ describe("EasyPostCarrierAdapter label generation", () => {
   it("creates label with tracking number and label URL", async () => {
     const result = await adapter.createLabel(mockShipment, mockRequest);
     expect(result.tracking_number).toBe("EZMOCK123456");
-    expect(result.label_url).toBe(
-      "https://labels.example.com/EZMOCK123456.pdf",
-    );
-    expect(result.tracking_url).toBe(
-      "https://track.example.com/EZMOCK123456",
-    );
+    expect(result.label_url).toBe("https://labels.example.com/EZMOCK123456.pdf");
+    expect(result.tracking_url).toBe("https://track.example.com/EZMOCK123456");
   });
 
   it("selects cheapest rate by default", async () => {
@@ -357,8 +427,6 @@ describe("EasyPostCarrierAdapter label generation", () => {
   });
 
   it("throws when no request and no tracking number", async () => {
-    await expect(adapter.createLabel(mockShipment)).rejects.toThrow(
-      /no tracking_number/,
-    );
+    await expect(adapter.createLabel(mockShipment)).rejects.toThrow(/no tracking_number/);
   });
 });

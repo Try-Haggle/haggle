@@ -58,6 +58,7 @@
     "react-dom": "^19.0.0",
     "replicate": "^1.4.0",
     "resend": "^6.12.3",
+    "sharp": "0.34.5",
     "simple-statistics": "^7.8.9",
     "stripe": "^22.0.1",
     "svix": "^1.93.0",

@@ -171,12 +171,16 @@ vi.mock("../lib/event-dispatcher.js", () => ({
 
 // --- Other service mocks (required by server.ts) ---
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -2250,12 +2254,25 @@ describe("Group API", () => {
       const res = await app.inject({
         method: "POST",
         url: "/negotiations/groups",
-        headers: AUTH_HEADERS,
+        headers: SESSION_BUYER_AUTH_HEADERS,
         payload: VALID_GROUP_PAYLOAD,
       });
       expect(res.statusCode).toBe(201);
       expect(res.json().group).toBeDefined();
       expect(mockCreateGroup).toHaveBeenCalledOnce();
+    });
+
+    it("rejects creating a group for another anchor user", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/groups",
+        headers: AUTH_HEADERS,
+        payload: VALID_GROUP_PAYLOAD,
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("GROUP_ACTOR_MISMATCH");
+      expect(mockCreateGroup).not.toHaveBeenCalled();
     });
   });
 
@@ -2294,6 +2311,20 @@ describe("Group API", () => {
       expect(body.group.topology).toBe("1_BUYER_N_SELLERS");
       expect(body.sessions).toHaveLength(1);
     });
+
+    it("rejects group reads for non-anchor users", async () => {
+      mockGetGroupById.mockResolvedValue(mockGroup);
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/negotiations/groups/group-001",
+        headers: INTRUDER_AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("GROUP_ACTOR_MISMATCH");
+      expect(mockGetSessionsByGroupId).not.toHaveBeenCalled();
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -2321,6 +2352,21 @@ describe("Group API", () => {
       });
       expect(res.statusCode).toBe(409);
       expect(res.json().error).toBe("GROUP_NOT_ACTIVE");
+    });
+
+    it("rejects adding sessions for non-anchor users", async () => {
+      mockGetGroupById.mockResolvedValue(mockGroup);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/groups/group-001/sessions",
+        headers: INTRUDER_AUTH_HEADERS,
+        payload: VALID_SESSION_PAYLOAD,
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("GROUP_ACTOR_MISMATCH");
+      expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
     it("returns 409 when capacity exceeded", async () => {
@@ -2364,6 +2410,7 @@ describe("Group API", () => {
     });
 
     it("returns 200 with actions", async () => {
+      mockGetGroupById.mockResolvedValue(mockGroup);
       mockExecuteGroupOrchestration.mockResolvedValue([{ action: "no_action" }]);
       const res = await app.inject({
         method: "POST",
@@ -2372,6 +2419,20 @@ describe("Group API", () => {
       });
       expect(res.statusCode).toBe(200);
       expect(res.json().actions).toHaveLength(1);
+    });
+
+    it("rejects orchestration for non-anchor users", async () => {
+      mockGetGroupById.mockResolvedValue(mockGroup);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/groups/group-001/orchestrate",
+        headers: INTRUDER_AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("GROUP_ACTOR_MISMATCH");
+      expect(mockExecuteGroupOrchestration).not.toHaveBeenCalled();
     });
   });
 
@@ -2398,6 +2459,20 @@ describe("Group API", () => {
       });
       expect(res.statusCode).toBe(409);
       expect(res.json().error).toBe("GROUP_NOT_ACTIVE");
+    });
+
+    it("rejects cancellation for non-anchor users", async () => {
+      mockGetGroupById.mockResolvedValue(mockGroup);
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/negotiations/groups/group-001/cancel",
+        headers: INTRUDER_AUTH_HEADERS,
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error).toBe("GROUP_ACTOR_MISMATCH");
+      expect(mockUpdateGroupStatus).not.toHaveBeenCalled();
     });
 
     it("returns 409 on concurrent modification", async () => {

@@ -2,6 +2,7 @@ export { orderAddresses, userSavedAddresses } from "./addresses.js";
 export { adminActionLog, tagPromotionRules } from "./admin-ops.js";
 export { advisorMessages } from "./advisor-messages.js";
 export { agentLevels } from "./agent-levels.js";
+export { apiRateLimitWindows } from "./api-rate-limit.js";
 export { arpSegments } from "./arp-segments.js";
 export { authenticationEvents, authentications } from "./authentications.js";
 export { buddies } from "./buddies.js";
@@ -12,7 +13,27 @@ export { categoryRelatedness } from "./category-relatedness.js";
 export { chainSyncCursors } from "./chain-sync.js";
 export { commerceOrders, settlementApprovals } from "./commerce-orders.js";
 export { disputeDeposits } from "./dispute-deposits.js";
-export { disputeCases, disputeEvidence, disputeResolutions } from "./disputes.js";
+export {
+  disputeEvidenceProvenanceArchiveOutbox,
+  disputeEvidenceScannerCircuits,
+  disputeEvidenceScannerPermits,
+  disputeEvidenceScanRetryAlertSnapshotRetentionState,
+} from "./dispute-evidence-operations.js";
+export { disputeEvidenceScanRetryAlertSnapshots } from "./dispute-evidence-scan-retry-alert-snapshots.js";
+export {
+  disputeAiAssessmentEvents,
+  disputeAiAssessmentLeases,
+  disputeAiAuditOutbox,
+  disputeCases,
+  disputeEvidence,
+  disputeEvidenceSimilarityReviewAuditOutbox,
+  disputeEvidenceSimilarityReviewEvents,
+  disputeEvidenceUploads,
+  disputeModuleIdempotencyKeys,
+  disputeModuleWebhookOutbox,
+  disputeOperationLeases,
+  disputeResolutions,
+} from "./disputes.js";
 export { dsRatings, dsTagSpecializations } from "./ds-ratings.js";
 export {
   EMAIL_DELIVERY_STATUSES,
@@ -64,9 +85,13 @@ export {
   type NotificationCategory,
   notifications,
 } from "./notifications.js";
+export { paymentTestOperationLeases } from "./payment-test-operation-leases.js";
 export {
+  agentPaymentGrants,
   paymentAuthorizations,
+  paymentDisclosures,
   paymentIntents,
+  paymentOperationIdempotency,
   paymentProviderCapabilities,
   paymentSettlements,
   refunds,
@@ -76,7 +101,32 @@ export { recommendationLogs } from "./recommendation-logs.js";
 export { reviewerAssignments, reviewerProfiles } from "./reviewer.js";
 export { sellerAttestationCommits } from "./seller-attestation-commits.js";
 export { settlementReleases } from "./settlement-releases.js";
-export { shipmentEvents, shipments } from "./shipments.js";
+export { shipmentApvInvoiceDocuments } from "./shipment-apv-invoice-documents.js";
+export {
+  shipmentApvInvoiceReconciliationEvents,
+  shipmentApvInvoiceReconciliationRequests,
+} from "./shipment-apv-invoice-reconciliation.js";
+export {
+  shipmentApvInvoiceRestorationEvents,
+  shipmentApvInvoiceRestorationRequests,
+} from "./shipment-apv-invoice-restoration.js";
+export {
+  shipmentApvInvoiceRestorationRemediationAcknowledgments,
+  shipmentApvInvoiceRestorationRemediationEvents,
+  shipmentApvInvoiceRestorationRemediationRequests,
+} from "./shipment-apv-invoice-restoration-remediation.js";
+export {
+  shipmentApvAdjustmentRevisions,
+  shipmentApvAdjustments,
+  shipmentApvPayoutCancellationRequests,
+  shipmentApvPayoutOffsetAllocations,
+  shipmentApvPayoutOffsets,
+  shipmentApvSellerLiabilities,
+  shipmentEvents,
+  shipmentOperationIdempotency,
+  shipments,
+  shippingRateLimitWindows,
+} from "./shipments.js";
 export { skillExecutions, skills } from "./skills.js";
 export { tagEdges, tagPlacementCache, tagSuggestions } from "./tag-graph.js";
 export { tagIdfCache } from "./tag-idf-cache.js";
@@ -92,3 +142,4 @@ export { trustScores } from "./trust-scores.js";
 export { userWallets } from "./user-wallets.js";
 export { intentMatches, waitingIntents } from "./waiting-intents.js";
 export { webhookIdempotency } from "./webhook-idempotency.js";
+export { websocketAuthTickets } from "./websocket-auth-tickets.js";

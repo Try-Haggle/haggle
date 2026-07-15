@@ -7,12 +7,7 @@
  * FULFILLED    - shipped before deadline
  * CANCELLED    - auto-cancelled at hard deadline
  */
-export type SlaStatus =
-  | "ACTIVE"
-  | "GRACE_PERIOD"
-  | "VIOLATED"
-  | "FULFILLED"
-  | "CANCELLED";
+export type SlaStatus = "ACTIVE" | "GRACE_PERIOD" | "VIOLATED" | "FULFILLED" | "CANCELLED";
 
 /** Configuration for an SLA attached to a transaction. */
 export interface SlaConfig {
@@ -83,6 +78,9 @@ export interface ShipmentEvent {
   carrier_raw_status?: string;
   message?: string;
   location?: string;
+  state_changed?: boolean;
+  ordering_disposition?: string;
+  provider_event_key?: string;
 }
 
 export interface Shipment {
@@ -91,9 +89,25 @@ export interface Shipment {
   carrier: string;
   tracking_number?: string;
   tracking_url?: string;
+  label_url?: string;
+  label_qr_code_url?: string;
+  label_qr_code_available?: boolean;
+  label_refund_status?:
+    | "NONE"
+    | "REQUESTING"
+    | "SUBMITTED"
+    | "REFUNDED"
+    | "REJECTED"
+    | "NOT_APPLICABLE"
+    | "FAILED";
+  label_refund_requested_at?: string;
+  label_refund_updated_at?: string;
+  metadata?: Record<string, unknown>;
   status: ShipmentStatus;
   events: ShipmentEvent[];
   delivered_at?: string;
+  last_carrier_event_at?: string;
+  last_carrier_event_key?: string;
   created_at: string;
   updated_at: string;
 }

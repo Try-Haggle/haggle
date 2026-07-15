@@ -147,6 +147,7 @@ interface DemoSession {
   initTraces: StageTrace[];
   tags: ItemTag[];
   userMemoryBrief: UserMemoryBrief | null;
+  presetTuningDraft: Record<string, unknown> | null;
   lumenProfiles: {
     buyer_agent: LumenVoiceProfile;
     seller_agent: LumenVoiceProfile;
@@ -418,6 +419,10 @@ ${HAGGLE_PLATFORM_CONTEXT}
 Retrieved from user_memory_cards for this buyer and filtered for this item/category.
 These hints are useful but non-authoritative; never violate price floor or protocol rules because of them.
 ${formatUserMemoryBriefForPrompt(session.userMemoryBrief)}
+
+## Approved Preset Tuning Draft
+This draft is user-approved for the selected listing. Treat price_cap_minor as a hard invariant and term checks as the current negotiation plan.
+${session.presetTuningDraft ? JSON.stringify(session.presetTuningDraft, null, 2) : "none"}
 
 ## Category Knowledge
 ${categoryBrief}
@@ -868,6 +873,7 @@ const initSchema = z.object({
     .optional(),
   buyer_agent_id: z.enum(AGENT_PROFILE_IDS).default("vel"),
   seller_agent_id: z.enum(AGENT_PROFILE_IDS).default("dealer_hana"),
+  preset_tuning_draft: z.record(z.unknown()).optional(),
 });
 
 const roundSchema = z
@@ -1014,6 +1020,9 @@ export function registerDemoRoute(app: FastifyInstance, db: Database) {
       itemTags,
     );
     const userMemoryPrompt = formatUserMemoryBriefForPrompt(storedUserMemoryBrief);
+    const presetTuningPrompt = parsed.data.preset_tuning_draft
+      ? JSON.stringify(parsed.data.preset_tuning_draft, null, 2)
+      : "none";
 
     // ── Stage 0a: Strategy Generation (LLM) ──
     const strategyTrace = await traceLLMCall<DemoStrategy>(
@@ -1043,7 +1052,11 @@ My max budget: ${formatMoneyMinor(buyer_budget.max_budget_minor)}
 Stored HIL Memory from user_memory_cards:
 ${userMemoryPrompt}
 
-Use stored memory to personalize target price, concerns, and opening tactic when relevant. It is non-authoritative and must stay within the explicit max budget.`,
+Approved preset tuning draft:
+${presetTuningPrompt}
+
+Use stored memory and the approved preset tuning draft to personalize target price, concerns, and opening tactic when relevant.
+The preset tuning draft reflects explicit user approval for this listing. It is authoritative for the price cap and requested term checks, but must still stay within the explicit max budget.`,
       parseJSON<DemoStrategy>,
     );
     traces.push(strategyTrace);
@@ -1065,7 +1078,10 @@ ${termsForPrompt}
 Item condition: ${item.condition}
 
 Stored HIL Memory:
-${userMemoryPrompt}`,
+${userMemoryPrompt}
+
+Approved preset tuning draft:
+${presetTuningPrompt}`,
       parseJSON<TermAnalysis>,
     );
     traces.push(termTrace);
@@ -1124,6 +1140,7 @@ ${userMemoryPrompt}`,
       initTraces: traces,
       tags: itemTags,
       userMemoryBrief: storedUserMemoryBrief,
+      presetTuningDraft: parsed.data.preset_tuning_draft ?? null,
       lumenProfiles,
     };
 
@@ -1152,6 +1169,7 @@ ${userMemoryPrompt}`,
       terms,
       tags: session.tags,
       hil_memory: summarizeUserMemoryBrief(session.userMemoryBrief),
+      preset_tuning_draft: session.presetTuningDraft,
       lumen_profiles: session.lumenProfiles,
       skills: sessionSkillStack.getManifests(),
       initial_memory: memory,

@@ -16,7 +16,8 @@
  * See handoff/ARCHITECT-BRIEF-step60-62.md §Step 60.
  */
 
-import { llmTelemetry, type Database } from "@haggle/db";
+import { type Database, llmTelemetry } from "@haggle/db";
+import { estimateLlmCostUsd } from "./llm-cost.js";
 
 // ─── Module-level DB instance (set via setTelemetryDb) ───
 let _telemetryDb: Database | null = null;
@@ -29,11 +30,7 @@ export function setTelemetryDb(db: Database): void {
   _telemetryDb = db;
 }
 
-export type LLMService =
-  | "openai.chat"
-  | "openai.embedding"
-  | "replicate.clip"
-  | string; // forward-compatible
+export type LLMService = "openai.chat" | "openai.embedding" | "replicate.clip" | string; // forward-compatible
 
 export interface LLMTelemetryMeta {
   service: LLMService;
@@ -60,6 +57,8 @@ export interface LLMTelemetryRecord extends LLMTelemetryMeta {
   errorType: string | null;
   errorMessage: string | null;
   usage: LLMTelemetryUsage | null;
+  costUsd: number | null;
+  costMinorUsd: number | null;
   timestamp: string; // ISO8601
 }
 
@@ -87,12 +86,22 @@ function emit(record: LLMTelemetryRecord): void {
   }
 }
 
-async function emitToDb(record: LLMTelemetryRecord, meta: LLMTelemetryMeta & { sessionId?: string; roundNo?: number }): Promise<void> {
+async function emitToDb(
+  record: LLMTelemetryRecord,
+  meta: LLMTelemetryMeta & { sessionId?: string; roundNo?: number },
+): Promise<void> {
   if (!_telemetryDb) return;
   try {
     // Map operation to a valid stage enum value, defaulting to UNDERSTAND
-    const validStages = ["UNDERSTAND", "CONTEXT", "DECIDE", "VALIDATE", "RESPOND", "MEMO_UPDATE"] as const;
-    type ValidStage = typeof validStages[number];
+    const validStages = [
+      "UNDERSTAND",
+      "CONTEXT",
+      "DECIDE",
+      "VALIDATE",
+      "RESPOND",
+      "MEMO_UPDATE",
+    ] as const;
+    type ValidStage = (typeof validStages)[number];
     const operationUpper = record.operation.toUpperCase() as ValidStage;
     const stage: ValidStage = validStages.includes(operationUpper) ? operationUpper : "UNDERSTAND";
 
@@ -104,7 +113,7 @@ async function emitToDb(record: LLMTelemetryRecord, meta: LLMTelemetryMeta & { s
       inputTokens: record.usage?.promptTokens ?? 0,
       outputTokens: record.usage?.completionTokens ?? 0,
       latencyMs: record.latencyMs,
-      costMinor: null,
+      costMinor: record.costMinorUsd,
       reasoningUsed: false,
       error: record.errorMessage ?? null,
     });
@@ -122,10 +131,7 @@ export function classifyLLMError(err: unknown): {
   errorType: string;
   errorMessage: string;
 } {
-  const anyErr = err as
-    | { message?: unknown; name?: unknown; status?: unknown }
-    | null
-    | undefined;
+  const anyErr = err as { message?: unknown; name?: unknown; status?: unknown } | null | undefined;
   const message =
     typeof anyErr?.message === "string"
       ? anyErr.message
@@ -139,8 +145,7 @@ export function classifyLLMError(err: unknown): {
             }
           })();
   const name = typeof anyErr?.name === "string" ? anyErr.name : "";
-  const status =
-    typeof anyErr?.status === "number" ? anyErr.status : undefined;
+  const status = typeof anyErr?.status === "number" ? anyErr.status : undefined;
   const haystack = `${name} ${message}`;
 
   let errorType = "unknown";
@@ -149,10 +154,7 @@ export function classifyLLMError(err: unknown): {
     errorType = "timeout";
   } else if (status === 429 || /rate.?limit/i.test(haystack)) {
     errorType = "rate_limit";
-  } else if (
-    status === 401 ||
-    /unauthori[sz]ed|invalid.?api.?key/i.test(haystack)
-  ) {
+  } else if (status === 401 || /unauthori[sz]ed|invalid.?api.?key/i.test(haystack)) {
     errorType = "auth";
   } else if (/ECONNREFUSED|ENOTFOUND|fetch failed|socket/i.test(haystack)) {
     errorType = "network";
@@ -221,6 +223,7 @@ export async function withLLMTelemetry<T>(
       } catch {
         usage = null;
       }
+      const cost = usage ? estimateLlmCostUsd(meta.model, usage) : null;
       const record: LLMTelemetryRecord = {
         service: meta.service,
         model: meta.model,
@@ -231,6 +234,8 @@ export async function withLLMTelemetry<T>(
         errorType: null,
         errorMessage: null,
         usage,
+        costUsd: cost?.totalUsd ?? null,
+        costMinorUsd: cost?.costMinorUsd ?? null,
         timestamp: new Date().toISOString(),
       };
       emit(record);
@@ -264,6 +269,8 @@ export async function withLLMTelemetry<T>(
         errorType,
         errorMessage,
         usage: null,
+        costUsd: null,
+        costMinorUsd: null,
         timestamp: new Date().toISOString(),
       };
       emit(record);

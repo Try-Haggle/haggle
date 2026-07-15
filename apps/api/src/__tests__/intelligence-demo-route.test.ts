@@ -46,6 +46,28 @@ function makeDb(
       ]);
     }
 
+    if (query.raw.includes("UPDATE user_memory_cards")) {
+      const userId = query.values.find(
+        (value) => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value),
+      );
+      const memoryKey = query.values.find(
+        (value) => typeof value === "string" && value.startsWith("advisor:preset_tuning:"),
+      );
+      return Promise.resolve([
+        {
+          id: "card-feedback",
+          user_id: userId,
+          card_type: "preference",
+          memory_key: memoryKey,
+          summary: "Balanced Closer for iphone: cap $450, opening $390",
+          memory: { lastFeedback: { outcome: "accepted" } },
+          strength: "0.8150",
+          version: 2,
+          updated_at: "2026-05-02T00:00:00.000Z",
+        },
+      ]);
+    }
+
     if (query.raw.includes("FROM user_memory_cards")) {
       return Promise.resolve(memoryRows);
     }
@@ -264,6 +286,57 @@ describe("Intelligence demo routes", () => {
       openingTactic: "condition_anchor",
       questions: [],
     });
+
+    await app.close();
+  });
+
+  it("keeps saved preset tuning cards out of base advisor budget memory", async () => {
+    const { db } = makeDb(
+      [],
+      [
+        {
+          id: "card-budget",
+          user_id: "44444444-4444-4444-8444-444444444444",
+          card_type: "pricing",
+          memory_key: "advisor:budget_model",
+          summary: "Target $650, max $700",
+          memory: { targetPrice: 650, budgetMax: 700 },
+          strength: "0.7200",
+          version: 1,
+          updated_at: "2026-04-24T00:00:00.000Z",
+        },
+        {
+          id: "card-preset",
+          user_id: "44444444-4444-4444-8444-444444444444",
+          card_type: "preference",
+          memory_key: "advisor:preset_tuning:iphone",
+          summary: "Balanced Closer for iphone: cap $300, opening $245",
+          memory: {
+            normalizedValue: "preset_tuning:iphone",
+            productScope: "iphone",
+            presetId: "balanced_closer",
+            priceCapMinor: 30000,
+            openingOfferMinor: 24500,
+          },
+          strength: "0.7800",
+          version: 1,
+          updated_at: "2026-04-24T00:00:00.000Z",
+        },
+      ],
+    );
+    const app = Fastify();
+    registerIntelligenceDemoRoutes(app, db);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/intelligence/demo/memory?user_id=44444444-4444-4444-8444-444444444444",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.advisor_memory.budgetMax).toBe(700);
+    expect(body.advisor_memory.targetPrice).toBe(650);
+    expect(body.advisor_memory.source.join(" ")).not.toContain("Balanced Closer");
 
     await app.close();
   });
@@ -780,6 +853,146 @@ describe("Intelligence demo routes", () => {
     ).not.toContain("max_budget");
     expect(body.advisor_plan.nextAction.slot).not.toBe("budget");
     expect(body.reply).not.toContain("예산 범위");
+
+    await app.close();
+  });
+
+  it("does not treat battery percentage answers as budget changes", async () => {
+    const batteryQuestion =
+      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?";
+    callLLMMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        memory: {
+          categoryInterest: "아이폰 17",
+          budgetMax: 90,
+          targetPrice: 86,
+          mustHave: ["battery >= 90%"],
+          avoid: [],
+          riskStyle: "safe_first",
+          negotiationStyle: "defensive",
+          openingTactic: "condition_anchor",
+          questions: [],
+          source: ["90% 이상"],
+        },
+        reply: "90% 이상 기준으로 볼게요.",
+        reasoning_summary: "model incorrectly treated 90% as budget",
+      }),
+      usage: { prompt_tokens: 150, completion_tokens: 35 },
+      reasoning_used: false,
+    });
+
+    const { db } = makeDb();
+    const app = Fastify();
+    registerIntelligenceDemoRoutes(app, db);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/intelligence/demo/advisor-turn",
+      payload: {
+        user_id: "44444444-4444-4444-8444-444444444444",
+        agent_id: "fab",
+        message: "90% 이상",
+        previous_memory: {
+          categoryInterest: "아이폰 17",
+          budgetMax: 170,
+          targetPrice: 160,
+          mustHave: [],
+          avoid: [],
+          riskStyle: "balanced",
+          negotiationStyle: "balanced",
+          openingTactic: "fair_market_anchor",
+          questions: [batteryQuestion],
+          source: ["최근 3년 이내 아이폰", "17은?", "budgetMax: 170"],
+        },
+        listings: [
+          {
+            id: "iphone-17",
+            title: "iPhone 17 128GB",
+            condition: "battery 92%, unlocked, good",
+            askPriceMinor: 120000,
+            floorPriceMinor: 100000,
+            marketMedianMinor: 110000,
+            tags: ["electronics/phones/iphone", "battery_90_plus", "unlocked"],
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.memory.budgetMax).toBe(170);
+    expect(body.memory.targetPrice).toBe(160);
+    expect(body.memory.mustHave).toContain("battery >= 90%");
+    expect(body.memory.source.join(" ")).not.toContain("budgetMax: 90");
+
+    await app.close();
+  });
+
+  it("does not treat short model answers as budget changes", async () => {
+    callLLMMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        memory: {
+          categoryInterest: "아이폰 17",
+          budgetMax: 17,
+          targetPrice: 16,
+          mustHave: [],
+          avoid: [],
+          riskStyle: "balanced",
+          negotiationStyle: "balanced",
+          openingTactic: "fair_market_anchor",
+          questions: [],
+          source: ["17은?"],
+        },
+        reply: "iPhone 17 쪽으로 볼게요.",
+        reasoning_summary: "model incorrectly treated 17 as budget",
+      }),
+      usage: { prompt_tokens: 150, completion_tokens: 35 },
+      reasoning_used: false,
+    });
+
+    const { db } = makeDb();
+    const app = Fastify();
+    registerIntelligenceDemoRoutes(app, db);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/intelligence/demo/advisor-turn",
+      payload: {
+        user_id: "44444444-4444-4444-8444-444444444444",
+        agent_id: "fab",
+        message: "17은?",
+        previous_memory: {
+          categoryInterest: "최근 3년 이내 아이폰",
+          budgetMax: 170,
+          targetPrice: 160,
+          mustHave: [],
+          avoid: [],
+          riskStyle: "balanced",
+          negotiationStyle: "balanced",
+          openingTactic: "fair_market_anchor",
+          questions: ["모델은 iPhone 13과 15 중 어느 쪽을 우선할까요?"],
+          source: ["최근 3년 이내 아이폰", "budgetMax: 170"],
+        },
+        listings: [
+          {
+            id: "iphone-17",
+            title: "iPhone 17 128GB",
+            condition: "battery 92%, unlocked, good",
+            askPriceMinor: 120000,
+            floorPriceMinor: 100000,
+            marketMedianMinor: 110000,
+            tags: ["electronics/phones/iphone", "battery_90_plus", "unlocked"],
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.memory.categoryInterest).toBe("아이폰 17");
+    expect(body.memory.budgetMax).toBe(170);
+    expect(body.memory.targetPrice).toBe(160);
+    expect(body.memory.source.join(" ")).not.toContain("budgetMax: 17");
 
     await app.close();
   });
@@ -3167,6 +3380,141 @@ describe("Intelligence demo routes", () => {
       enforcement: "hard",
     });
     expect(body.reply).toContain("언락 모델이 필수인가요?");
+
+    await app.close();
+  });
+
+  it("stores a user-tuned preset candidate in memory cards", async () => {
+    const { db, execute } = makeDb();
+    const app = Fastify();
+    registerIntelligenceDemoRoutes(app, db);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/intelligence/demo/preset-tuning-candidate",
+      payload: {
+        user_id: "55555555-5555-4555-8555-555555555555",
+        agent_id: "fab",
+        draft: {
+          draftId: "draft_iphone_safe_450",
+          presetId: "safe_buyer",
+          presetLabel: "Safe Buyer",
+          listing: {
+            id: "iphone-15",
+            title: "iPhone 15 Pro 256GB",
+            category: "electronics",
+            askPriceMinor: 50000,
+            marketMedianMinor: 52000,
+            tags: ["iphone", "electronics/phones/iphone"],
+          },
+          priceCapMinor: 45000,
+          openingOfferMinor: 40000,
+          maxAgreementMinor: 45000,
+          concessionSpeed: "slow",
+          riskTolerance: "low",
+          strategyNotes: ["검증 우선"],
+          mustVerify: [
+            {
+              termId: "battery_health",
+              label: "Battery health",
+              enforcement: "hard",
+              source: "listing",
+              question: "Battery?",
+              rationale: "Important",
+              checked: true,
+            },
+            {
+              termId: "find_my_status",
+              label: "Find My off",
+              enforcement: "deal_breaker",
+              source: "tag",
+              question: "Find My off?",
+              rationale: "Activation lock risk",
+              checked: false,
+            },
+          ],
+          leverage: [
+            {
+              termId: "battery_health",
+              label: "Battery below preference",
+              reason: "Memory prefers 90%",
+              priceImpactMinor: 1500,
+              source: "memory",
+              enabled: true,
+            },
+          ],
+          walkAway: [
+            {
+              id: "cap_exceeded",
+              label: "Cap exceeded",
+              reason: "Never exceed cap",
+              source: "preset",
+              enabled: true,
+            },
+          ],
+          sourceBadges: ["listing", "memory", "preset", "tag"],
+          negotiationStartPayload: {
+            preset_id: "safe_buyer",
+            price_cap_minor: 45000,
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.candidate.memoryKey).toBe("advisor:preset_tuning:iphone");
+    expect(body.candidate.summary).toContain("Safe Buyer");
+    expect(body.memory_cards).toHaveLength(1);
+
+    const memoryQueries = execute.mock.calls
+      .map((call) => call[0] as { raw: string; values: unknown[] })
+      .filter((query) => query.raw.includes("INSERT INTO user_memory_cards"));
+    expect(memoryQueries).toHaveLength(1);
+    expect(memoryQueries[0]?.values).toContain("preference");
+    expect(memoryQueries[0]?.values).toContain("advisor:preset_tuning:iphone");
+
+    await app.close();
+  });
+
+  it("records preset tuning outcome feedback against the saved memory card", async () => {
+    const { db, execute } = makeDb();
+    const app = Fastify();
+    registerIntelligenceDemoRoutes(app, db);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/intelligence/demo/preset-tuning-feedback",
+      payload: {
+        user_id: "55555555-5555-4555-8555-555555555555",
+        memory_key: "advisor:preset_tuning:iphone",
+        outcome: "accepted",
+        final_price_minor: 43000,
+        price_cap_minor: 45000,
+        application_mode: "auto",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.delta).toBe(0.035);
+    expect(body.memory_cards[0]).toMatchObject({
+      memory_key: "advisor:preset_tuning:iphone",
+      strength: "0.8150",
+    });
+
+    const feedbackQueries = execute.mock.calls
+      .map((call) => call[0] as { raw: string; values: unknown[] })
+      .filter((query) => query.raw.includes("UPDATE user_memory_cards"));
+    expect(feedbackQueries).toHaveLength(1);
+    expect(feedbackQueries[0]?.raw).toContain("strength::numeric");
+    expect(feedbackQueries[0]?.values).toContain("advisor:preset_tuning:iphone");
+    expect(
+      feedbackQueries[0]?.values.some(
+        (value) =>
+          typeof value === "string" && value.includes("developer_demo_preset_tuning_feedback"),
+      ),
+    ).toBe(true);
 
     await app.close();
   });

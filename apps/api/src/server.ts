@@ -6,12 +6,14 @@ import { Resend } from "resend";
 import { getRuntimeConfig, isCorsOriginAllowed } from "./config/runtime.js";
 import { initCronJobs } from "./jobs/runner.js";
 import { registerActionHandlers } from "./lib/action-handlers.js";
+import { resolveApiRateLimitConfigFromEnv } from "./lib/api-rate-limit.js";
 import { createEventDispatcher } from "./lib/event-dispatcher.js";
 import { configuredJsonBodyLimit } from "./lib/input-limits.js";
 import { setTelemetryDb } from "./lib/llm-telemetry.js";
+import { configuredTrustedProxyCidrs } from "./lib/trusted-proxy.js";
 import { registerMcpRoutes } from "./mcp/router.js";
 import authPlugin from "./middleware/auth.js";
-import { globalRateLimit } from "./middleware/rate-limit.js";
+import { createGlobalRateLimit } from "./middleware/rate-limit.js";
 import { createNotificationBus } from "./notification/index.js";
 import { registerAccountRoutes } from "./routes/account.js";
 import { registerAddressRoutes } from "./routes/addresses.js";
@@ -24,6 +26,7 @@ import { registerBuyerListingsRoutes } from "./routes/buyer-listings.js";
 import { registerClaimRoutes } from "./routes/claim.js";
 import { registerDemoE2ERoutes } from "./routes/demo-e2e.js";
 import { registerDisputeAdvisorRoutes } from "./routes/dispute-advisor.js";
+import { registerDisputeModuleRoutes } from "./routes/dispute-modules.js";
 import { registerDisputeRoutes } from "./routes/disputes.js";
 import { registerDraftRoutes } from "./routes/drafts.js";
 import { registerDSRatingRoutes } from "./routes/ds-ratings.js";
@@ -42,7 +45,9 @@ import { registerSimulateRoute } from "./routes/negotiation-simulate.js";
 import { registerStageRoutes } from "./routes/negotiation-stages.js";
 import { registerNegotiationRoutes } from "./routes/negotiations.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
+import { registerOpsAlertRoutes } from "./routes/ops-alerts.js";
 import { registerOrderRoutes } from "./routes/orders.js";
+import { registerPaymentTestToolRoutes } from "./routes/payment-test-tools.js";
 import { registerPaymentRoutes } from "./routes/payments.js";
 import { registerPresetRoutes } from "./routes/presets.js";
 import { registerPublicListingRoutes } from "./routes/public-listing.js";
@@ -57,17 +62,37 @@ import { registerTagRoutes } from "./routes/tags.js";
 import { registerTrustRoutes } from "./routes/trust.js";
 import { registerWalletRoutes } from "./routes/wallets.js";
 import { registerResendWebhookRoute } from "./routes/webhooks/resend.js";
+import { registerWebSocketAuthRoutes } from "./routes/websocket-auth.js";
 import { registerWebSocketRoutes } from "./ws/negotiation-ws.js";
 import { registerNotificationWsRoute } from "./ws/notification-ws.js";
+
+export const API_CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "Idempotency-Key",
+  "mcp-session-id",
+  "x-haggle-actor-id",
+  "x-haggle-actor-role",
+  "x-haggle-x402-signature",
+  "x-haggle-x402-timestamp",
+  "x-haggle-module-platform-id",
+  "x-haggle-module-timestamp",
+  "x-haggle-module-signature",
+  "x-haggle-idempotency-key",
+  "stripe-signature",
+];
 
 export async function createServer() {
   const runtimeConfig = getRuntimeConfig();
   const jsonBodyLimit = configuredJsonBodyLimit();
+  const trustedProxyCidrs = configuredTrustedProxyCidrs();
+  const apiRateLimitConfig = resolveApiRateLimitConfigFromEnv();
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || "info",
     },
     bodyLimit: jsonBodyLimit,
+    trustProxy: trustedProxyCidrs,
   });
 
   // ─── Raw Body Capture (for webhook signature verification) ──
@@ -114,20 +139,18 @@ export async function createServer() {
       cb(null, isCorsOriginAllowed(origin, runtimeConfig));
     },
     methods: ["GET", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "mcp-session-id",
-      "x-haggle-actor-id",
-      "x-haggle-actor-role",
-      "x-haggle-x402-signature",
-      "stripe-signature",
-    ],
+    allowedHeaders: API_CORS_ALLOWED_HEADERS,
     credentials: true,
   });
 
   // ─── Rate Limiting ───────────────────────────────────────
-  app.addHook("preHandler", globalRateLimit);
+  app.addHook(
+    "preHandler",
+    createGlobalRateLimit({
+      db,
+      config: apiRateLimitConfig,
+    }),
+  );
 
   // ─── Auth Middleware ──────────────────────────────────────
   await app.register(authPlugin);
@@ -150,6 +173,8 @@ export async function createServer() {
   registerPaymentRoutes(app, db);
   registerShipmentRoutes(app, db);
   registerDisputeRoutes(app, db);
+  registerDisputeModuleRoutes(app, db);
+  registerOpsAlertRoutes(app, db);
   registerSettlementReleaseRoutes(app, db);
   registerSettlementApprovalRoutes(app, db);
   registerAuthenticationRoutes(app, db);
@@ -214,15 +239,17 @@ export async function createServer() {
 
   // ─── Demo / E2E Test Routes ────────────────────────────
   registerDemoE2ERoutes(app, db);
+  registerPaymentTestToolRoutes(app, db);
 
   // ─── Notification Routes ──────────────────────────────────
   registerNotificationRoutes(app, db);
   registerResendWebhookRoute(app, db);
+  registerWebSocketAuthRoutes(app, db);
 
   // ─── WebSocket ───────────────────────────────────────────
   await app.register(websocket);
-  await registerWebSocketRoutes(app);
-  await registerNotificationWsRoute(app);
+  await registerWebSocketRoutes(app, db);
+  await registerNotificationWsRoute(app, db);
 
   // ─── Cron Jobs (only if ENABLE_CRON=true) ────────────
   initCronJobs(db);

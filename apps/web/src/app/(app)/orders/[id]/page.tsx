@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
+import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -35,6 +36,9 @@ interface Shipment {
   status: string;
   carrier: string | null;
   tracking_number: string | null;
+  label_url?: string | null;
+  label_qr_code_url?: string | null;
+  label_qr_code_available?: boolean;
   delivered_at: string | null;
   created_at: string;
   events: ShipmentEvent[];
@@ -390,6 +394,39 @@ function ShippingSection({
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink-secondary">Carrier</span>
             <span className="text-sm text-ink-secondary">{shipment.carrier}</span>
+          </div>
+        )}
+
+        {(shipment.label_url || shipment.label_qr_code_url) && (
+          <div className="border-t border-line pt-3 mt-3">
+            <p className="text-xs text-ink-muted uppercase tracking-wider mb-2">Print options</p>
+            <div className="flex flex-wrap gap-2">
+              {shipment.label_url && (
+                <a
+                  href={shipment.label_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({ variant: "secondary", size: "sm" })}
+                >
+                  Download label
+                </a>
+              )}
+              {shipment.label_qr_code_url && (
+                <a
+                  href={shipment.label_qr_code_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({ variant: "primary", size: "sm" })}
+                >
+                  Show USPS QR
+                </a>
+              )}
+            </div>
+            {shipment.label_qr_code_url && (
+              <p className="mt-2 text-xs text-ink-muted">
+                No printer needed: bring the packed item and QR code to a supported USPS location.
+              </p>
+            )}
           </div>
         )}
 
@@ -1157,6 +1194,7 @@ export default function OrderDetailPage() {
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             },
+            payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: true }),
           });
           setState((s) => ({ ...s, payment: result.intent }));
           addLog("Payment", `Intent created: ${result.intent.id.slice(0, 16)}...`, "success");

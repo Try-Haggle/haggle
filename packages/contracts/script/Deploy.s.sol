@@ -3,10 +3,11 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
 import "../sol/HaggleSettlementRouter.sol";
+import "../sol/HaggleConditionalSettlement.sol";
 import "../sol/HaggleDisputeRegistry.sol";
 
 /// @title Deploy
-/// @notice Deploys HaggleSettlementRouter + HaggleDisputeRegistry to Base L2.
+/// @notice Deploys Haggle settlement contracts to Base L2.
 /// @dev Usage:
 ///   forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify
 ///
@@ -38,7 +39,7 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerPk);
 
-        // Deploy Settlement Router
+        // Deploy immediate Settlement Router
         HaggleSettlementRouter router = new HaggleSettlementRouter(deployer, signerAddress);
         console.log("SettlementRouter deployed at:", address(router));
 
@@ -58,6 +59,13 @@ contract Deploy is Script {
             console.log("Max settlement amount set:", maxSettlement);
         }
 
+        // Deploy buyer-approved conditional settlement contract.
+        HaggleConditionalSettlement conditional = new HaggleConditionalSettlement(deployer, signerAddress);
+        console.log("ConditionalSettlement deployed at:", address(conditional));
+
+        conditional.allowAsset(usdcAddress);
+        console.log("USDC allowlisted for ConditionalSettlement");
+
         // Deploy Dispute Registry
         HaggleDisputeRegistry registry = new HaggleDisputeRegistry(deployer);
         console.log("DisputeRegistry deployed at:", address(registry));
@@ -67,6 +75,7 @@ contract Deploy is Script {
         // Verification summary
         console.log("\n--- Deployment Summary ---");
         console.log("SettlementRouter:", address(router));
+        console.log("ConditionalSettlement:", address(conditional));
         console.log("DisputeRegistry:", address(registry));
         console.log("Owner:", deployer);
         console.log("Signer:", signerAddress);
@@ -83,5 +92,7 @@ contract Deploy is Script {
         console.log("[ ] Set maxSettlementAmount if needed");
         console.log("[ ] Verify contract on Basescan");
         console.log("[ ] Update CONTRACT_ADDRESSES in packages/contracts/src/index.ts");
+        console.log("[ ] Set HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS");
+        console.log("[ ] Do not set HAGGLE_X402_PAYMENT_RECEIVER_ADDRESS until receiver/sweep is deployed");
     }
 }

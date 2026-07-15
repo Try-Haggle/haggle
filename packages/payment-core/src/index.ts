@@ -1,17 +1,17 @@
-export * from "./types.js";
+export * from "./execution.js";
+export * from "./facilitator-client.js";
+export * from "./mock-stripe-adapter.js";
+export * from "./mock-x402-adapter.js";
+export * from "./production-readiness.js";
+export * from "./provider.js";
+export * from "./scaffold-contracts.js";
+export * from "./service.js";
+export * from "./settlement-release.js";
 export * from "./state-machine.js";
 export * from "./trust-events.js";
-export * from "./provider.js";
-export * from "./service.js";
-export * from "./mock-x402-adapter.js";
-export * from "./mock-stripe-adapter.js";
-export * from "./execution.js";
+export * from "./types.js";
 export * from "./x402-contracts.js";
 export * from "./x402-protocol.js";
-
-export * from "./scaffold-contracts.js";
-export * from "./facilitator-client.js";
-export * from "./settlement-release.js";
 
 // Heavy modules (depend on viem + @haggle/contracts).
 // NOT re-exported from barrel — import directly when needed:

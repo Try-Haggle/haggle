@@ -57,5 +57,32 @@
         "useImportType": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/src/app/(marketing)/landing.css"],
+      "linter": {
+        "rules": {
+          "style": { "noDescendingSpecificity": "off" },
+          "suspicious": {
+            "noEmptyBlock": "off",
+            "noShorthandPropertyOverrides": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/src/app/(marketing)/landing.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noSvgWithoutTitle": "off",
+            "useButtonType": "off",
+            "useValidAnchor": "off"
+          },
+          "suspicious": { "useIterableCallbackReturn": "off" }
+        }
+      }
+    }
+  ]
 }

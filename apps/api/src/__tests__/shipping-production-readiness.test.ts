@@ -1,6 +1,15 @@
 import fastify from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerShipmentRoutes } from "../routes/shipments.js";
+
+vi.mock("../services/shipping-rate-limit.service.js", () => ({
+  consumeShippingRateMissBudget: vi.fn().mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+    requestCount: 1,
+    windowStartedAt: new Date("2026-07-12T00:00:00.000Z"),
+  }),
+}));
 
 const originalEnv = {
   EASYPOST_API_KEY: process.env.EASYPOST_API_KEY,

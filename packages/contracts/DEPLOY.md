@@ -51,6 +51,7 @@ forge script script/Deploy.s.sol \
 1. 배포 출력에서 주소 복사:
    ```
    SettlementRouter: 0x...
+   ConditionalSettlement: 0x...
    DisputeRegistry: 0x...
    ```
 
@@ -58,6 +59,7 @@ forge script script/Deploy.s.sol \
    ```typescript
    const CONTRACT_ADDRESSES = {
      settlementRouter: "0x...",  // ← 여기
+     conditionalSettlement: "0x...",
      disputeRegistry: "0x...",   // ← 여기
    };
    ```
@@ -65,8 +67,12 @@ forge script script/Deploy.s.sol \
 3. API 서버 환경변수 설정:
    ```
    HAGGLE_SETTLEMENT_ROUTER_ADDRESS=0x...
+   HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS=0x...
    HAGGLE_DISPUTE_REGISTRY_ADDRESS=0x...
    ```
+
+   `HAGGLE_X402_PAYMENT_RECEIVER_ADDRESS`는 x402 exact transfer를 받을 dedicated receiver/sweep contract가 배포된 뒤에만 설정한다.
+   `HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS`를 x402 `payTo`로 직접 쓰면 `createAndFund()`가 호출되지 않고 토큰만 전송될 수 있다.
 
 4. Post-deployment checklist:
    - [ ] Ownership을 multisig로 이전 (Ownable2Step)
@@ -83,6 +89,12 @@ forge verify-contract \
   --constructor-args $(cast abi-encode "constructor(address,address)" $DEPLOYER_ADDRESS $SIGNER_ADDRESS) \
   0xCONTRACT_ADDRESS \
   sol/HaggleSettlementRouter.sol:HaggleSettlementRouter
+
+forge verify-contract \
+  --chain-id 84532 \
+  --constructor-args $(cast abi-encode "constructor(address,address)" $DEPLOYER_ADDRESS $SIGNER_ADDRESS) \
+  0xCONDITIONAL_SETTLEMENT_ADDRESS \
+  sol/HaggleConditionalSettlement.sol:HaggleConditionalSettlement
 ```
 
 ## Run Tests

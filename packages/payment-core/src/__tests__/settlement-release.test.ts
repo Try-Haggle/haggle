@@ -1,17 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { SettlementRelease } from "../settlement-release.js";
 import {
-  createSettlementRelease,
-  confirmDelivery,
-  completeBuyerReview,
   applyApvAdjustment,
-  completeBufferRelease,
-  computeReleasePhase,
-  isFullyReleased,
+  BUFFER_RELEASE_DAYS,
   BUYER_REVIEW_HOURS,
   buyerConfirmReceipt,
-  BUFFER_RELEASE_DAYS,
+  completeBufferRelease,
+  completeBuyerReview,
+  computeReleasePhase,
+  confirmDelivery,
+  createSettlementRelease,
+  isFullyReleased,
 } from "../settlement-release.js";
-import type { SettlementRelease } from "../settlement-release.js";
 import type { Money } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -22,9 +22,7 @@ const PRODUCT: Money = { currency: "USDC", amount_minor: 100_00 };
 const BUFFER: Money = { currency: "USDC", amount_minor: 5_00 };
 const NOW = "2026-03-01T00:00:00.000Z";
 
-function makeRelease(
-  overrides: Partial<SettlementRelease> = {},
-): SettlementRelease {
+function makeRelease(overrides: Partial<SettlementRelease> = {}): SettlementRelease {
   return {
     ...createSettlementRelease({
       payment_intent_id: "pi_001",
@@ -69,7 +67,7 @@ describe("createSettlementRelease", () => {
     expect(r.updated_at).toBe(NOW);
   });
 
-  it("generates a unique id with sr_ prefix", () => {
+  it("generates a unique UUID id", () => {
     const a = createSettlementRelease({
       payment_intent_id: "pi_001",
       order_id: "ord_001",
@@ -82,8 +80,8 @@ describe("createSettlementRelease", () => {
       product_amount: PRODUCT,
       buffer_amount: BUFFER,
     });
-    expect(a.id).toMatch(/^sr_/);
-    expect(b.id).toMatch(/^sr_/);
+    expect(a.id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(b.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(a.id).not.toBe(b.id);
   });
 
@@ -119,24 +117,18 @@ describe("confirmDelivery", () => {
   it("sets buyer_review_deadline = delivered_at + 24 hours", () => {
     const r = makeRelease();
     const updated = confirmDelivery(r, DELIVERED_AT);
-    expect(updated.buyer_review_deadline).toBe(
-      addHours(DELIVERED_AT, BUYER_REVIEW_HOURS),
-    );
+    expect(updated.buyer_review_deadline).toBe(addHours(DELIVERED_AT, BUYER_REVIEW_HOURS));
   });
 
   it("sets buffer_release_deadline = delivered_at + 14 days", () => {
     const r = makeRelease();
     const updated = confirmDelivery(r, DELIVERED_AT);
-    expect(updated.buffer_release_deadline).toBe(
-      addDays(DELIVERED_AT, BUFFER_RELEASE_DAYS),
-    );
+    expect(updated.buffer_release_deadline).toBe(addDays(DELIVERED_AT, BUFFER_RELEASE_DAYS));
   });
 
   it("throws if already past PENDING_DELIVERY", () => {
     const r = makeRelease({ product_release_status: "BUYER_REVIEW" });
-    expect(() => confirmDelivery(r, DELIVERED_AT)).toThrow(
-      /expected "PENDING_DELIVERY"/,
-    );
+    expect(() => confirmDelivery(r, DELIVERED_AT)).toThrow(/expected "PENDING_DELIVERY"/);
   });
 });
 
@@ -167,9 +159,7 @@ describe("completeBuyerReview", () => {
 
   it("throws if not in BUYER_REVIEW status", () => {
     const r = makeRelease({ product_release_status: "PENDING_DELIVERY" });
-    expect(() => completeBuyerReview(r, addDays(NOW, 10))).toThrow(
-      /expected "BUYER_REVIEW"/,
-    );
+    expect(() => completeBuyerReview(r, addDays(NOW, 10))).toThrow(/expected "BUYER_REVIEW"/);
   });
 
   it("sets product_released_at", () => {
@@ -244,9 +234,7 @@ describe("applyApvAdjustment", () => {
 
   it("throws if buffer already RELEASED", () => {
     const r = makeRelease({ buffer_release_status: "RELEASED" });
-    expect(() => applyApvAdjustment(r, 1_00)).toThrow(
-      /buffer already RELEASED/,
-    );
+    expect(() => applyApvAdjustment(r, 1_00)).toThrow(/buffer already RELEASED/);
   });
 });
 
@@ -288,16 +276,12 @@ describe("completeBufferRelease", () => {
   it("throws when deadline not reached", () => {
     const r = bufferReady();
     const beforeDeadline = "2026-03-10T00:00:00.000Z";
-    expect(() => completeBufferRelease(r, beforeDeadline)).toThrow(
-      /deadline not yet reached/,
-    );
+    expect(() => completeBufferRelease(r, beforeDeadline)).toThrow(/deadline not yet reached/);
   });
 
   it("throws if already RELEASED", () => {
     const r = makeRelease({ buffer_release_status: "RELEASED" });
-    expect(() =>
-      completeBufferRelease(r, addDays(NOW, 30)),
-    ).toThrow(/buffer already RELEASED/);
+    expect(() => completeBufferRelease(r, addDays(NOW, 30))).toThrow(/buffer already RELEASED/);
   });
 });
 

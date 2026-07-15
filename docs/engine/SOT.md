@@ -22,7 +22,7 @@
 | 📄 | 설계만 존재 — 코드 없음 |
 | ❓ | 미확인 — 코드 대조 필요 |
 
-**문서 메타:** 코드 기준 브랜치 `feature/builder-memory-to-negotiation` · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
+**문서 메타:** 현재 저장소 코드 대조 2026-07-14 · 최초 통합 2026-07 · 통합 출처 `docs/engine/legacy/01~31_*.md` (v1.0.0~v1.1.0 혼재 원본 28개, 1차 백업 보존)
 
 **폴더 구조:** `SOT.md`(이 문서, 유일 SOT) · `legacy/`(원본 28개 백업) · `reference/`(SOT에 담기엔 방대한 현재-엔진 심화, 필요 시)
 
@@ -38,7 +38,7 @@ Haggle 협상 엔진은 **AI 에이전트가 사람 대신 가격을 협상**하
 2. **제한된 출력** — 모든 효용 차원 `V ∈ [0,1]`, `U_total ∈ [0,1]`.
 3. **역할 대칭** — 구매자/판매자 수식 구조 동일, 파라미터 방향만 반대.
 4. **양쪽 공정** — 구매자 AI ≠ 플랫폼 AI. 크로스프레셔도 실제 BATNA만 사용, 허위 금지.
-5. **저비용** — Codec 압축 + 저비용 모델로 세션당 ~$0.005.
+5. **저비용** — Codec 압축 + DeepSeek V4 Pro. 고정 비용을 가정하지 않고 실측 token/latency와 설정된 모델 단가로 관리.
 6. **Stateless 엔진** — 수평 확장 가능.
 
 > **현황 총평:** 🚧 위 철학 중 *결정론·제한출력·역할대칭*은 순수 수학 레이어(`engine-core`)에서 지켜지나, 그 레이어가 **프로덕션 결정 경로에서 우회**되어 있습니다(§1.3). 실제 결정은 LLM이 내리고 엔진은 보조(추천가·검증)만 합니다. 이 괴리가 이 문서 전반의 핵심 known issue입니다.
@@ -76,7 +76,7 @@ POST /negotiations/start · /sessions/:id/offers · MCP haggle_submit_offer
       ├ reconstructCoreMemory            상태 → 라운드 작업본
       ├ computeCoachingAsync             추천가·유틸 스냅샷 (referee/coach.ts)
       └ executePipeline                  6-Stage (pipeline/pipeline.ts)
-            └ decide → LLM(grok)이 최종 가격·메시지 작성
+            └ decide → LLM(DeepSeek V4 Pro)이 최종 가격·메시지 작성
 ```
 - ✅ 6-Stage 파이프라인은 실제로 구현·가동 (프로덕션 유일 경로).
 - ✅ Stage 1 Understand: 설계는 LLM 파싱이나 **현재는 정규식/휴리스틱**. 구조화 오퍼(숫자)면 우회. → 라운드당 실제 LLM 콜은 **Stage 3 Decide 최대 1회**.
@@ -190,7 +190,7 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 
 > **핵심:** `beta`·`anchor_ratio`조차 최종가를 직접 정하지 않고 **LLM 프롬프트의 추천가(recommended_price) 계산 입력**입니다. LLM이 유효 가격을 반환하면 최종 COUNTER는 LLM 값으로 대체(`decide.ts:84`).
 
-> **프롬프트에도 안 감(추가 검증):** `/start`가 스냅샷에 넣는 `agent_weights`·`agent_overrides:{alpha,u_threshold,…}`는 `strategy_context`에 저장되지만, **LLM 프롬프트 STRATEGY 블록은 이를 렌더하지 않습니다** — `encodeStrategyContext`(`grok-fast-adapter.ts:380`)는 `persona` + **빌더챗 메모리(tone·dealBreakers·urgency·mustEmphasize·mustHave·avoid·notes)만** 넣음. 즉 숫자 파라미터 15개는 advisory 텍스트로도 LLM에 도달하지 않는 **죽은 데이터**. → **LLM에 실제로 닿는 유일한 전략 채널 = 빌더챗 메모리**(숫자 성향이 아님).
+> **프롬프트에도 안 감(추가 검증):** `/start`가 스냅샷에 넣는 `agent_weights`·`agent_overrides:{alpha,u_threshold,…}`는 `strategy_context`에 저장되지만, **LLM 프롬프트 STRATEGY 블록은 이를 렌더하지 않습니다** — `encodeStrategyContext`(`deepseek-adapter.ts:380`)는 `persona` + **빌더챗 메모리(tone·dealBreakers·urgency·mustEmphasize·mustHave·avoid·notes)만** 넣음. 즉 숫자 파라미터 15개는 advisory 텍스트로도 LLM에 도달하지 않는 **죽은 데이터**. → **LLM에 실제로 닿는 유일한 전략 채널 = 빌더챗 메모리**(숫자 성향이 아님).
 
 ### 4.3 현황 — 4개 프리셋 값
 `shared/agent-presets/negotiation-agent-presets.ts · preset-to-params.ts`
@@ -263,16 +263,16 @@ coach.ts:101 / :115          params?.anchor_ratio / params?.beta
 
 ### 5.3 현황 — Coach vs Briefing 🚧 `referee/coach.ts · briefing.ts`
 executor는 매 라운드 **coach와 briefing을 둘 다** 호출하며, 역할이 다릅니다:
-- **coach (`@deprecated` 딱지지만 여전히 LIVE)** → `memory.coaching`으로 들어가 **LLM 프롬프트의 `recommended_price` 앵커를 공급**(`decide.ts:60` `buildUserPrompt(memory,…)` → `grok-fast-adapter.ts:212`). 즉 실제 가격 추천의 원천. **"briefing이 coach를 대체" 설계는 미완성** — `@deprecated`는 오해를 부르는 상태.
+- **coach (`@deprecated` 딱지지만 여전히 LIVE)** → `memory.coaching`으로 들어가 **LLM 프롬프트의 `recommended_price` 앵커를 공급**(`decide.ts` → `deepseek-adapter.ts:205`). 즉 실제 가격 추천의 원천. **"briefing이 coach를 대체" 설계는 미완성** — `@deprecated`는 오해를 부르는 상태.
   - ✅ phase별 recommended_price: OPENING `target×(1±margin)`(margin=anchor_ratio 기반) · BARGAINING Faratin(`p_start:target,p_limit:floor,t=time_pressure||round/max,beta`) · CLOSING 확정가.
 - **briefing (facts-only)** → `context.briefing`으로 들어가 **(a) reasoning 모드 판단**(`shouldUseReasoning`, `decide.ts:47`) **(b) Validate 스테이지**에만 쓰임. 가격 앵커 아님.
 - ⚠️ **utility_snapshot이 두 곳에서 서로 다른 하드코딩 가중치로 중복 계산** — coach(`0.5/0.2/0.15/0.15`, `coach.ts:163`)·briefing(`0.5/0.2/0.3`, `briefing.ts:63`). 둘 다 사용자 weights 무시. coach만 trust score를 u_risk로 반영, briefing은 u_risk=0.5 고정.
 
-### 5.4 현황 — LLM Decide & 프롬프트 🚧 `stages/decide.ts · adapters/grok-fast-adapter.ts`
-- ✅ 어댑터는 **`GrokFastAdapter` 하드코딩**(`executor.ts:70`), xAI 엔드포인트(`api.x.ai/v1`), 모델 `process.env.XAI_MODEL ?? 'grok-4-fast'`. 다른 어댑터(Claude/GPT) 코드에 없음.
-- ✅ 프로덕션 프롬프트 `C:` 라인은 `rec$..|tactic|opp|conv|tp`만 실음 — **`recommended_price`만 하드 앵커, utility_snapshot/weights는 미도달**(`grok-fast-adapter.ts:212`).
+### 5.4 현황 — LLM Decide & 프롬프트 🚧 `stages/decide.ts · adapters/deepseek-adapter.ts`
+- ✅ executor는 **`DeepSeekAdapter`를 고정 사용**(`executor.ts:70`). 클라이언트는 OpenAI-compatible DeepSeek 엔드포인트(`api.deepseek.com/v1`)와 `DEEPSEEK_API_KEY`, `process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro'`를 사용(`deepseek-client.ts:49-62`).
+- ✅ 프로덕션 프롬프트 `C:` 라인은 `rec$..|tactic|opp|conv|tp`만 실음 — **`recommended_price`만 하드 앵커, utility_snapshot/weights는 미도달**(`deepseek-adapter.ts:205`).
 - ✅ decide 흐름: `skill.evaluateOffer`(룰 baseline) → **OPENING/BARGAINING의 COUNTER**면 LLM 증강. LLM이 유효 COUNTER 가격(또는 ACCEPT/REJECT/HOLD) 반환 시 대체, 실패 시 룰 결정 fallback(`decide.ts:84-96`).
-- 🎯 **ACCEPT를 유도하는 실제 gap 휴리스틱 = `encodeClosingHint`**(`grok-fast-adapter.ts:317`): 서버가 gap 비율을 계산해 **gap<5% 또는 <$5 → "이건 사실상 딜, ACCEPT하라"**, gap<10%+종반 → "ACCEPT 강하게 고려"를 프롬프트에 직접 주입. 시스템 프롬프트의 추상 규칙을 서버가 숫자로 못박음.
+- 🎯 **ACCEPT를 유도하는 실제 gap 휴리스틱 = `encodeClosingHint`**(`deepseek-adapter.ts:317`): 서버가 gap 비율을 계산해 **gap<5% 또는 <$5 → "이건 사실상 딜, ACCEPT하라"**, gap<10%+종반 → "ACCEPT 강하게 고려"를 프롬프트에 직접 주입. 시스템 프롬프트의 추상 규칙을 서버가 숫자로 못박음.
 - 🔎 프롬프트 STRATEGY 블록 = persona + **빌더챗 메모리만**(숫자 파라미터 미도달, §4.2). `encodeDelta`(차등 컨텍스트)는 decide 경로에서 **죽은 코드**(`prevMemory=undefined`로 호출 → 항상 full).
 
 ### 5.5 현황 — Referee / Validate 🚧 `referee/validator.ts` → 상세 [`reference/referee.md`](./reference/referee.md)
@@ -348,14 +348,14 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 ## 8. LLM 통합
 
-**이상형:** 라운드당 LLM 2회(Understand·Decide) ≈ 세션당 ~$0.005. Codec 압축으로 토큰 최소화.
+**이상형:** 필요한 단계에만 LLM을 호출하고 Codec 압축으로 토큰을 최소화한다. 비용은 고정값이 아니라 provider usage와 적용 단가로 측정한다.
 **현황:**
 - 💀 **"라운드당 2회"는 틀림 → 실제 1회(Decide만).** Understand·Validate는 규칙, **Respond는 템플릿**(`executor.ts:104` `RESPOND:"template"`)이라 LLM 미호출. pipeline의 respond 토큰 합산은 항상 0(죽은 코드).
-- ✅ 어댑터 xAI 고정, 모델 `XAI_MODEL` env(기본 grok-4-fast). ⚠️ reasoning 플래그는 **grok-4-fast엔 미적용**(`xai-client.ts:117`, 모델명에 `fast` 포함 시 `reasoning_effort` 안 붙임) — timeout/temperature만 바꿈.
-- ✅ 프롬프트용 `S:/B:/C:` 압축은 `grok-fast-adapter.ts:205`의 `encodeCoreMemoCompact`. (별개로 `memo-codec.ts`의 `NS:/PT:…`는 **해시 전용**이고 프롬프트에 안 쓰임 — `context.ts`의 `memo_snapshot`은 dead field.)
-- ✅ 토큰은 xAI API 실측(`usage.prompt/completion_tokens`) → 라운드별 `negotiation_rounds.llm_tokens_used` 저장.
-- 🚧 **비용(USD)은 러프 추정, DB 미저장** — `usdCost = tokens/1000 × 0.0015`(=$1.50/1M, 입출력 미구분). 정확 요금($0.30 in/$0.50 out per 1M)은 advisor 모듈에만 존재하고 파이프라인 미사용 → 3~5배 과대. 계산만 하고 저장 안 함. `llm_latency_ms`도 항상 NULL.
-- 💀 **세션당 비용 집계 없음** — "~$0.005/세션"은 데모 스크립트 인메모리 값이지 프로덕션 지표 아님. `llm_telemetry` 테이블은 `LLM_TELEMETRY=db`일 때만, `costMinor`는 항상 null.
+- ✅ DeepSeek V4 Pro 기본 모델. 일반 모드는 60초/temperature 0.5, reasoning 요청 모드는 90초/temperature 0.3이다. ⚠️ 현재 reasoning은 별도 provider reasoning parameter가 아니라 이 timeout/temperature 정책과 `reasoning_used` 표시다(`deepseek-client.ts:49-62,101-114`).
+- ✅ 프롬프트용 `S:/B:/C:` 압축은 `deepseek-adapter.ts:205`의 `encodeCoreMemoCompact`. (별개로 `memo-codec.ts`의 `NS:/PT:…`는 **해시 전용**이고 프롬프트에 안 쓰임 — `context.ts`의 `memo_snapshot`은 dead field.)
+- ✅ 토큰은 DeepSeek API 실측(`usage.prompt_tokens/completion_tokens`) → 라운드별 `negotiation_rounds.llm_tokens_used` 저장. latency와 token usage는 telemetry에도 수집된다.
+- 🚧 **정확한 USD 비용은 단가 설정이 필요** — `LLM_PRICE_DEEPSEEK_V4_PRO_INPUT_PER_1M_USD`와 `LLM_PRICE_DEEPSEEK_V4_PRO_OUTPUT_PER_1M_USD`(또는 global 가격 env)가 모두 있어야 telemetry cost가 계산된다. 미설정 시 null이다. pipeline의 `tokens/1000 × 0.0007`은 입출력 미분리 러프 추정이며 DB에 저장되지 않는다.
+- 🚧 **세션당 정확 비용 집계 없음** — `LLM_TELEMETRY=db`에서 호출별 row는 저장하지만 세션 합계 read model이 없다. DB telemetry의 `reasoningUsed`도 현재 false로 고정되어 실제 요청 모드와 어긋날 수 있다.
 
 ---
 
@@ -399,7 +399,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 | 9 | 카테고리 하드코딩 | electronics 고정 | 일반화 | 🟡 |
 | 10 | Referee HARD 미차단 | 'BLOCK' 라벨뿐 통과 | HARD 실제 차단 여부 결정 | 🟡 |
 | 11 | 무결성 검증 미작동 | memo/체인 해시 write-only | verify 런타임 연결 + 온체인 앵커 | 🟡 |
-| 12 | 비용 미저장 | 러프 추정, DB 미기록 | 입출력 분리 정확 요금 + 세션 집계 | 🟢 |
+| 12 | 비용 계측 부분 구현 | 실측 token/latency 있음, 단가 미설정 시 비용 null, 세션 집계 없음 | DeepSeek 단가 설정 + reasoning mode 전달 + 세션 집계 | 🟢 |
 | — | **조사 백로그** | 협상 엔진 주요 경로 코드 검증 **완료.** 남은 미확인 없음(신규 발견 시 추가) | — | — |
 
 ---
@@ -408,19 +408,19 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 | 역할 | 파일 |
 |------|------|
-| 페르소나 폼 | `shared/agent-stats/types.ts` |
-| 프리셋 | `shared/agent-presets/*` |
-| 컴파일 | `engine-session/strategy/compiler.ts` |
-| 세션 스키마 | `db/schema/negotiation-sessions.ts` |
-| 실행 진입 | `apps/api/lib/executor-factory.ts` |
-| 라운드 실행 | `apps/api/negotiation/pipeline/executor.ts` |
-| 6-Stage | `apps/api/negotiation/pipeline/pipeline.ts` · `stages/*` |
-| 상태머신 | `apps/api/negotiation/phase/phase-machine.ts` |
-| 메모리 재구성 | `apps/api/negotiation/memory/memory-reconstructor.ts` |
-| 코치·검증 | `apps/api/negotiation/referee/*` |
-| LLM 어댑터 | `apps/api/negotiation/adapters/grok-fast-adapter.ts · xai-client.ts` |
-| Faratin | `engine-core/decision/faratin.ts` |
-| 효용 | `engine-core/utility/*` |
+| 페르소나 폼 | `packages/shared/src/agent-stats/types.ts` |
+| 프리셋 | `packages/shared/src/agent-presets/*` |
+| 컴파일 | `packages/engine-session/src/strategy/compiler.ts` |
+| 세션 스키마 | `packages/db/src/schema/negotiation-sessions.ts` |
+| 실행 진입 | `apps/api/src/lib/executor-factory.ts` |
+| 라운드 실행 | `apps/api/src/negotiation/pipeline/executor.ts` |
+| 6-Stage | `apps/api/src/negotiation/pipeline/pipeline.ts` · `stages/*` |
+| 상태머신 | `apps/api/src/negotiation/phase/phase-machine.ts` |
+| 메모리 재구성 | `apps/api/src/negotiation/memory/memory-reconstructor.ts` |
+| 코치·검증 | `apps/api/src/negotiation/referee/*` |
+| LLM 어댑터 | `apps/api/src/negotiation/adapters/deepseek-adapter.ts` · `deepseek-client.ts` |
+| Faratin | `packages/engine-core/src/decision/faratin.ts` |
+| 효용 | `packages/engine-core/src/utility/*` |
 
 ## 부록 B. 용어
 

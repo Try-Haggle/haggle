@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
+import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 
 /* ===== props ===== */
 interface CheckoutFlowProps {
@@ -6282,6 +6283,9 @@ export default function CheckoutFlow({
           orderId: "ord_8f2ab7c1e4",
           amount: s.amount,
           rail: s.rail,
+          payment_disclosure_ack: createPaymentDisclosureAck({
+            stripeFallback: s.rail === "stripe",
+          }),
         })
         .catch(() => {
           /* demo mode: silent fallback */

@@ -1,7 +1,9 @@
+import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { initiateDepositCollection } from "../payments/deposit-collector.js";
-import { executeRefund } from "../payments/refund-executor.js";
 import { refundDeposit } from "../payments/deposit-refunder.js";
+import { executeRefund } from "../payments/refund-executor.js";
+import { verifyStripeWebhook } from "../payments/stripe-onramp.js";
 
 const originalEnv = {
   DEPOSIT_COLLECTION_MODE: process.env.DEPOSIT_COLLECTION_MODE,
@@ -25,32 +27,114 @@ describe("payment production readiness", () => {
     process.env.NODE_ENV = "production";
     delete process.env.DEPOSIT_COLLECTION_MODE;
 
-    await expect(initiateDepositCollection({
-      deposit_id: "dep_1",
-      dispute_id: "disp_1",
-      amount_cents: 500,
-      seller_user_id: "seller_1",
-    })).rejects.toThrow("DEPOSIT_COLLECTION_MODE must be usdc or stripe in production");
+    await expect(
+      initiateDepositCollection({
+        deposit_id: "dep_1",
+        dispute_id: "disp_1",
+        amount_cents: 500,
+        seller_user_id: "seller_1",
+      }),
+    ).rejects.toThrow("DEPOSIT_COLLECTION_MODE must be usdc or stripe in production");
   });
 
   it("does not allow mock buyer refunds in production", async () => {
     process.env.NODE_ENV = "production";
 
-    await expect(executeRefund({
-      order_id: "ord_1",
-      amount_cents: 500,
-      rail: "mock",
-      reason: "test",
-    })).rejects.toThrow("Mock refunds are disabled in production");
+    await expect(
+      executeRefund({
+        order_id: "ord_1",
+        amount_cents: 500,
+        rail: "mock",
+        reason: "test",
+      }),
+    ).rejects.toThrow("Mock refunds are disabled in production");
   });
 
   it("does not allow mock deposit refunds in production", async () => {
     process.env.NODE_ENV = "production";
 
-    await expect(refundDeposit({
-      deposit_id: "dep_1",
-      amount_cents: 500,
-      rail: "mock",
-    })).rejects.toThrow("Mock deposit refunds are disabled in production");
+    await expect(
+      refundDeposit({
+        deposit_id: "dep_1",
+        amount_cents: 500,
+        rail: "mock",
+      }),
+    ).rejects.toThrow("Mock deposit refunds are disabled in production");
+  });
+
+  it("rejects expired Stripe webhook signatures", () => {
+    const payload = JSON.stringify({
+      id: "evt_expired",
+      type: "crypto.onramp_session.fulfillment_complete",
+    });
+    const secret = "whsec_test_secret";
+    const timestamp = Math.floor(Date.now() / 1000) - 600;
+    const signature = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
+
+    expect(verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, secret)).toBe(false);
+  });
+
+  it("accepts fresh Stripe webhook signatures", () => {
+    const payload = JSON.stringify({
+      id: "evt_fresh",
+      type: "crypto.onramp_session.fulfillment_complete",
+    });
+    const secret = "whsec_test_secret";
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
+
+    expect(verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, secret)).toBe(true);
+  });
+
+  it("accepts Stripe webhook signatures when one rotated v1 signature matches", () => {
+    const payload = JSON.stringify({
+      id: "evt_rotated",
+      type: "crypto.onramp_session.fulfillment_complete",
+    });
+    const secret = "whsec_test_secret";
+    const timestamp = 1_778_544_000;
+    const validSignature = createHmac("sha256", secret)
+      .update(`${timestamp}.${payload}`)
+      .digest("hex");
+    const invalidSignature = "0".repeat(64);
+
+    expect(
+      verifyStripeWebhook(
+        payload,
+        `t=${timestamp}, v1=${invalidSignature}, v1=${validSignature}`,
+        secret,
+        { nowMs: timestamp * 1000 },
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects malformed, future, and untrusted Stripe webhook signatures", () => {
+    const payload = JSON.stringify({
+      id: "evt_bad",
+      type: "crypto.onramp_session.fulfillment_complete",
+    });
+    const secret = "whsec_test_secret";
+    const timestamp = 1_778_544_000;
+    const signature = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
+
+    expect(
+      verifyStripeWebhook(payload, `v1=${signature}`, secret, { nowMs: timestamp * 1000 }),
+    ).toBe(false);
+    expect(
+      verifyStripeWebhook(payload, `t=not-a-time,v1=${signature}`, secret, {
+        nowMs: timestamp * 1000,
+      }),
+    ).toBe(false);
+    expect(
+      verifyStripeWebhook(payload, `t=${timestamp + 301},v1=${signature}`, secret, {
+        nowMs: timestamp * 1000,
+        timestampToleranceSeconds: 300,
+      }),
+    ).toBe(false);
+    expect(
+      verifyStripeWebhook(payload, `t=${timestamp},v1=${signature}`, "", {
+        nowMs: timestamp * 1000,
+      }),
+    ).toBe(false);
   });
 });

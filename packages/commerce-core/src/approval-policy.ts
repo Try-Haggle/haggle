@@ -1,6 +1,4 @@
-export type SellerApprovalMode =
-  | "AUTO_WITHIN_POLICY"
-  | "MANUAL_CONFIRMATION";
+export type SellerApprovalMode = "AUTO_WITHIN_POLICY" | "MANUAL_CONFIRMATION";
 
 export interface FulfillmentSlaPolicy {
   /**
@@ -71,7 +69,7 @@ export interface SettlementTermsSnapshot {
   shipping_cost_buyer_share_minor?: number;
   shipping_cost_seller_share_minor?: number;
   weight_buffer_minor?: number;
-  fulfillment_type?: "shipped" | "local_pickup";
+  fulfillment_type?: FulfillmentType;
 }
 
 export interface SettlementApproval {
@@ -88,7 +86,13 @@ export interface SettlementApproval {
 
 export const MINIMUM_TRANSACTION_MINOR = 10_00; // $10.00 in cents
 
-export type FulfillmentType = "shipped" | "local_pickup";
+export type FulfillmentType =
+  | "physical_shipping"
+  | "shipped"
+  | "local_pickup"
+  | "digital_delivery"
+  | "external_platform_transfer"
+  | "onchain_transfer";
 
 export interface MinimumTransactionResult {
   valid: boolean;
@@ -99,7 +103,7 @@ export function validateMinimumTransaction(
   amount_minor: number,
   fulfillment_type: FulfillmentType,
 ): MinimumTransactionResult {
-  if (fulfillment_type === "local_pickup") {
+  if (fulfillment_type !== "physical_shipping" && fulfillment_type !== "shipped") {
     return { valid: true };
   }
   if (amount_minor < MINIMUM_TRANSACTION_MINOR) {

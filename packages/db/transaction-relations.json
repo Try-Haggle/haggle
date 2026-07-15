@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "relations": [
+    {
+      "constraint": "settlement_releases_payment_intent_id_fkey",
+      "childTable": "settlement_releases",
+      "childColumn": "payment_intent_id",
+      "parentTable": "payment_intents",
+      "parentColumn": "id",
+      "owner": "payment-settlement"
+    },
+    {
+      "constraint": "settlement_releases_order_id_fkey",
+      "childTable": "settlement_releases",
+      "childColumn": "order_id",
+      "parentTable": "commerce_orders",
+      "parentColumn": "id",
+      "owner": "payment-settlement"
+    },
+    {
+      "constraint": "agent_payment_grants_order_id_fkey",
+      "childTable": "agent_payment_grants",
+      "childColumn": "order_id",
+      "parentTable": "commerce_orders",
+      "parentColumn": "id",
+      "owner": "payment-authorization"
+    },
+    {
+      "constraint": "agent_payment_grants_settlement_approval_id_fkey",
+      "childTable": "agent_payment_grants",
+      "childColumn": "settlement_approval_id",
+      "parentTable": "settlement_approvals",
+      "parentColumn": "id",
+      "owner": "payment-authorization"
+    },
+    {
+      "constraint": "payment_intents_agent_payment_grant_id_fkey",
+      "childTable": "payment_intents",
+      "childColumn": "agent_payment_grant_id",
+      "parentTable": "agent_payment_grants",
+      "parentColumn": "id",
+      "owner": "payment-authorization"
+    },
+    {
+      "constraint": "payment_disclosures_agent_payment_grant_id_fkey",
+      "childTable": "payment_disclosures",
+      "childColumn": "agent_payment_grant_id",
+      "parentTable": "agent_payment_grants",
+      "parentColumn": "id",
+      "owner": "payment-authorization"
+    },
+    {
+      "constraint": "payment_disclosures_payment_intent_id_fkey",
+      "childTable": "payment_disclosures",
+      "childColumn": "payment_intent_id",
+      "parentTable": "payment_intents",
+      "parentColumn": "id",
+      "owner": "payment-authorization"
+    },
+    {
+      "constraint": "shipment_apv_adjustments_shipment_id_fkey",
+      "childTable": "shipment_apv_adjustments",
+      "childColumn": "shipment_id",
+      "parentTable": "shipments",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_adjustments_order_id_fkey",
+      "childTable": "shipment_apv_adjustments",
+      "childColumn": "order_id",
+      "parentTable": "commerce_orders",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_adjustments_settlement_release_id_fkey",
+      "childTable": "shipment_apv_adjustments",
+      "childColumn": "settlement_release_id",
+      "parentTable": "settlement_releases",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_payout_offsets_settlement_release_id_fkey",
+      "childTable": "shipment_apv_payout_offsets",
+      "childColumn": "settlement_release_id",
+      "parentTable": "settlement_releases",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_payout_offsets_order_id_fkey",
+      "childTable": "shipment_apv_payout_offsets",
+      "childColumn": "order_id",
+      "parentTable": "commerce_orders",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_seller_liabilities_source_release_id_fkey",
+      "childTable": "shipment_apv_seller_liabilities",
+      "childColumn": "source_settlement_release_id",
+      "parentTable": "settlement_releases",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_seller_liabilities_source_order_id_fkey",
+      "childTable": "shipment_apv_seller_liabilities",
+      "childColumn": "source_order_id",
+      "parentTable": "commerce_orders",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_cancel_requests_settlement_release_id_fkey",
+      "childTable": "shipment_apv_payout_cancellation_requests",
+      "childColumn": "settlement_release_id",
+      "parentTable": "settlement_releases",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    },
+    {
+      "constraint": "shipment_apv_cancel_audit_outbox_request_id_fkey",
+      "childTable": "shipment_apv_payout_cancellation_audit_outbox",
+      "childColumn": "cancellation_request_id",
+      "parentTable": "shipment_apv_payout_cancellation_requests",
+      "parentColumn": "id",
+      "owner": "shipping-apv"
+    }
+  ]
+}

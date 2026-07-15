@@ -1,6 +1,6 @@
+import type { Database } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import jwt from "jsonwebtoken";
-import { isProductionRuntime } from "../config/runtime.js";
+import { createWebSocketTicketPreValidation } from "../middleware/websocket-ticket-auth.js";
 import { registerUserSocket, unregisterUserSocket } from "../notification/ws-registry.js";
 
 // Minimal WebSocket interface — same pattern as negotiation-ws.ts
@@ -14,49 +14,22 @@ interface WebSocket {
   on(event: "error", listener: (err: Error) => void): void;
 }
 
-interface SupabaseJwtPayload {
-  sub: string;
-  exp?: number;
-}
-
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-function verifyWebSocketJwt(token: string): SupabaseJwtPayload {
-  const jwtSecret = process.env.SUPABASE_JWT_SECRET;
-  if (!jwtSecret) {
-    if (isProductionRuntime()) throw new Error("SUPABASE_JWT_SECRET required in production");
-    const decoded = jwt.decode(token) as SupabaseJwtPayload | null;
-    if (!decoded?.sub) throw new Error("Invalid JWT payload");
-    return decoded;
-  }
-  const payload = jwt.verify(token, jwtSecret) as SupabaseJwtPayload;
-  if (!payload.sub) throw new Error("Invalid JWT payload: missing sub");
-  return payload;
-}
-
-export async function registerNotificationWsRoute(app: FastifyInstance): Promise<void> {
+export async function registerNotificationWsRoute(
+  app: FastifyInstance,
+  db: Database,
+): Promise<void> {
   app.get(
     "/ws/notifications",
-    { websocket: true },
+    {
+      websocket: true,
+      preValidation: createWebSocketTicketPreValidation(db, "notification"),
+    },
     async (socket: WebSocket, req) => {
-      const url = new URL(req.url ?? "", `http://${req.headers.host}`);
-      const token = url.searchParams.get("token");
-
-      if (!token) {
-        socket.close(4001, "Missing token");
-        return;
-      }
-
-      let userId: string;
-      try {
-        const payload = verifyWebSocketJwt(token);
-        if (payload.exp && payload.exp * 1000 < Date.now()) {
-          socket.close(4001, "Token expired");
-          return;
-        }
-        userId = payload.sub;
-      } catch {
-        socket.close(4001, "Authentication failed");
+      const userId = req.wsTicketUserId;
+      if (!userId) {
+        socket.close(1011, "Ticket principal unavailable");
         return;
       }
 
@@ -81,7 +54,9 @@ export async function registerNotificationWsRoute(app: FastifyInstance): Promise
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === "ping") socket.send(JSON.stringify({ type: "pong" }));
-        } catch { /* ignore malformed */ }
+        } catch {
+          /* ignore malformed */
+        }
       });
 
       socket.on("close", () => {

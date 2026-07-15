@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { api } from "@/lib/api-client";
+import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 
 /* ── Types ────────────────────────────── */
 
@@ -126,6 +127,7 @@ export function DemoPaymentReal({
     const result = await callApi(async () => {
       const res = await api.post<{ intent: PaymentIntent }>("/payments/prepare", {
         settlement_approval_id: settlementApprovalId,
+        payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: true }),
       });
       return res;
     });

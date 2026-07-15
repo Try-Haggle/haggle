@@ -1,22 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { EscalationConfig } from "../escalation.js";
+import { checkEscalation, DEFAULT_ESCALATION_CONFIG } from "../escalation.js";
+import { MockCarrierAdapter } from "../mock-carrier-adapter.js";
+import { ShippingService } from "../service.js";
+import {
+  checkSellerFulfillment,
+  checkShipmentInputSla,
+  computeShipmentInputDueAt,
+} from "../sla.js";
 import { transitionShipmentStatus } from "../state-machine.js";
 import {
-  computeShipmentInputDueAt,
-  checkShipmentInputSla,
-  checkSellerFulfillment,
-  DEFAULT_SLA_CONFIG,
-} from "../sla.js";
-import { ShippingService } from "../service.js";
-import { MockCarrierAdapter } from "../mock-carrier-adapter.js";
-import {
-  trustTriggersForShipmentSlaMiss,
   trustTriggersForSellerFulfillmentFailure,
+  trustTriggersForShipmentSlaMiss,
 } from "../trust-events.js";
-import {
-  checkEscalation,
-  DEFAULT_ESCALATION_CONFIG,
-} from "../escalation.js";
-import type { EscalationConfig } from "../escalation.js";
 import type { Shipment, ShipmentStatus } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -76,13 +72,10 @@ describe("transitionShipmentStatus", () => {
       ["RETURN_IN_TRANSIT", "return_complete", "RETURNED"],
     ];
 
-    it.each(validCases)(
-      "%s + %s => %s",
-      (status, event, expected) => {
-        const result = transitionShipmentStatus(status, event as any);
-        expect(result).toBe(expected);
-      },
-    );
+    it.each(validCases)("%s + %s => %s", (status, event, expected) => {
+      const result = transitionShipmentStatus(status, event as any);
+      expect(result).toBe(expected);
+    });
   });
 
   describe("invalid transitions return null", () => {
@@ -143,13 +136,10 @@ describe("transitionShipmentStatus", () => {
       ["RETURN_IN_TRANSIT", "return_ship"],
     ];
 
-    it.each(invalidCases)(
-      "%s + %s => null",
-      (status, event) => {
-        const result = transitionShipmentStatus(status, event as any);
-        expect(result).toBeNull();
-      },
-    );
+    it.each(invalidCases)("%s + %s => null", (status, event) => {
+      const result = transitionShipmentStatus(status, event as any);
+      expect(result).toBeNull();
+    });
   });
 });
 
@@ -184,11 +174,7 @@ describe("SLA", () => {
   describe("checkShipmentInputSla", () => {
     it("returns not violated when status is not LABEL_PENDING", () => {
       const shipment = makeShipment({ status: "LABEL_CREATED" });
-      const result = checkShipmentInputSla(
-        shipment,
-        approvedAt,
-        daysFromNow(approvedAt, 10),
-      );
+      const result = checkShipmentInputSla(shipment, approvedAt, daysFromNow(approvedAt, 10));
       expect(result.violated).toBe(false);
       expect(result.trust_triggers).toEqual([]);
     });
@@ -446,10 +432,7 @@ describe("ShippingService", () => {
         carrier: "mock_carrier",
         now: "2026-03-01T00:00:00.000Z",
       });
-      const result = await service.createLabel(
-        shipment,
-        "2026-03-01T01:00:00.000Z",
-      );
+      const result = await service.createLabel(shipment, "2026-03-01T01:00:00.000Z");
       expect(result.shipment.status).toBe("LABEL_CREATED");
       expect(result.shipment.tracking_number).toMatch(/^MOCK-/);
       expect(result.shipment.tracking_url).toBeDefined();
@@ -461,16 +444,12 @@ describe("ShippingService", () => {
 
     it("throws when called on non-LABEL_PENDING shipment", async () => {
       const shipment = makeShipment({ status: "IN_TRANSIT" });
-      await expect(service.createLabel(shipment)).rejects.toThrow(
-        /invalid shipment transition/,
-      );
+      await expect(service.createLabel(shipment)).rejects.toThrow(/invalid shipment transition/);
     });
 
     it("throws when carrier is not registered", async () => {
       const shipment = makeShipment({ carrier: "unknown_carrier" });
-      await expect(service.createLabel(shipment)).rejects.toThrow(
-        /no carrier provider registered/,
-      );
+      await expect(service.createLabel(shipment)).rejects.toThrow(/no carrier provider registered/);
     });
   });
 
@@ -506,9 +485,7 @@ describe("ShippingService", () => {
 
     it("throws on invalid transition", () => {
       const shipment = makeShipment({ status: "DELIVERED" });
-      expect(() =>
-        service.recordEvent(shipment, "ship"),
-      ).toThrow(/invalid shipment transition/);
+      expect(() => service.recordEvent(shipment, "ship")).toThrow(/invalid shipment transition/);
     });
 
     it("accumulates events across multiple recordEvent calls", () => {
@@ -548,12 +525,22 @@ describe("ShippingService", () => {
         status: "LABEL_CREATED",
         tracking_number: "MOCK-123",
       });
-      const result = await service.trackShipment(
-        shipment,
-        "2026-03-03T00:00:00.000Z",
-      );
+      const result = await service.trackShipment(shipment, "2026-03-03T00:00:00.000Z");
       expect(result.shipment.status).toBe("IN_TRANSIT");
       expect(result.shipment.events).toHaveLength(1);
+    });
+
+    it("resolves carrier names case-insensitively", async () => {
+      const uspsService = new ShippingService({ usps: mockAdapter });
+      const shipment = makeShipment({
+        carrier: "USPS",
+        status: "LABEL_CREATED",
+        tracking_number: "MOCK-123",
+      });
+
+      const result = await uspsService.trackShipment(shipment);
+
+      expect(result.shipment.status).toBe("IN_TRANSIT");
     });
   });
 
@@ -586,9 +573,7 @@ describe("ShippingService", () => {
 
     it("throws when carrier is not registered", () => {
       const shipment = makeShipment({ carrier: "unknown" });
-      expect(() => service.processWebhook(shipment, {})).toThrow(
-        /no carrier provider registered/,
-      );
+      expect(() => service.processWebhook(shipment, {})).toThrow(/no carrier provider registered/);
     });
   });
 
@@ -603,10 +588,7 @@ describe("ShippingService", () => {
       expect(shipment.status).toBe("LABEL_PENDING");
 
       // Step 2: Create label
-      const labelResult = await service.createLabel(
-        shipment,
-        "2026-03-01T01:00:00.000Z",
-      );
+      const labelResult = await service.createLabel(shipment, "2026-03-01T01:00:00.000Z");
       shipment = labelResult.shipment;
       expect(shipment.status).toBe("LABEL_CREATED");
       expect(shipment.tracking_number).toBeDefined();

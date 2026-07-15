@@ -10,8 +10,8 @@
 Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When a buyer or seller has an issue with a transaction, they can open a dispute. The system escalates through tiers if either party is unsatisfied.
 
 **Important terminology:** Haggle CANNOT use legal terms like "lawyer", "attorney", "judge", or "court". Instead:
-- Lawyer/Attorney → **"AI Advocate"** (구매자측 AI Advocate, 판매자측 AI Advocate)
-- Judge → **"AI Arbiter"** (T1 only)
+- Party support AI → **"Case Guide"** (구매자측 Case Guide, 판매자측 Case Guide)
+- Tier 1 platform review AI → **"Resolution Assessor"** (T1 only)
 - Jury → **"Community Reviewers"** or **"Review Panel"** (T2/T3)
 - Court → **"Resolution Center"**
 - Trial → **"Review"**
@@ -23,12 +23,12 @@ Haggle uses a 3-tier dispute resolution system modeled after a jury trial. When 
 
 | Tier | Name | Who Decides | Cost | Speed |
 |------|------|-------------|------|-------|
-| T1 | AI Review | AI Arbiter (automated) | $5 flat (or 0.5% if >$600) | Minutes |
+| T1 | AI Review | Resolution Assessor (automated) | $5 flat (or 0.5% if >$600) | Minutes |
 | T2 | Panel Review | 3–27 Community Reviewers | ~1.2% of transaction | 24–48 hours |
 | T3 | Grand Panel | 5–31 Community Reviewers | ~6% of transaction | 48–72 hours |
 
 **Key Principles to SHOW in the design:**
-1. **Fair to BOTH sides** — Each side gets their own AI Advocate. The system is neutral.
+1. **Fair to BOTH sides** — Each side gets their own Case Guide. The system is neutral.
 2. **Loser pays** — Dispute cost is always borne by the losing party. This deters frivolous disputes.
 3. **Transparent** — Every cost, every step, every timeline is visible. No hidden fees.
 4. **On-chain evidence** — Evidence is anchored on-chain for tamper-proof records.
@@ -101,41 +101,41 @@ Horizontal progress bar showing dispute lifecycle:
 - Below each node: timestamp or ETA
 - If escalated: show branch `[T1 Decision] → [Escalate to T2] → [Panel Review] → ...`
 
-#### Section: Your AI Advocate (Buyer Side)
+#### Section: Your Case Guide (Buyer Side)
 This is the AI assistant that builds the buyer's case. Chat-style interface.
 
 **Header:**
 ```
-🛡 Your AI Advocate
+🛡 Your Case Guide
 Building your case · Analyzing evidence
 ```
 
 **Chat messages (styled like the landing page negotiation bubbles but more serious):**
 ```
-[AI Advocate]: I've reviewed your submission. Here's your case summary:
+[Case Guide]: I've reviewed your submission. Here's your case summary:
 
   📋 Key Claim: Battery health was listed as 95% but measured at 82%
   📸 Evidence: 2 photos uploaded, 1 screenshot of listing
   📊 Market Impact: 13% battery degradation = ~$65 value reduction
 
   Strength Assessment: ██████████░ 85% — Strong case
-  
-  Recommendation: This evidence strongly supports your claim. 
+
+  Recommendation: This evidence strongly supports your claim.
   The 13% discrepancy exceeds the 5% tolerance threshold.
 
 [You]: What happens next?
 
-[AI Advocate]: Your case will now go to AI Review (Tier 1). 
-  The AI Arbiter will examine both sides within minutes.
-  
-  If you're unsatisfied with the T1 decision, you can escalate 
+[Case Guide]: Your case will now go to AI Review (Tier 1).
+  The Resolution Assessor will examine both sides within minutes.
+
+  If you're unsatisfied with the T1 decision, you can escalate
   to a Community Panel (Tier 2) for $12.00.
-  
+
   ⚠️ Important: If you escalate and lose, you pay the dispute cost.
 ```
 
 - Chat area should feel professional but accessible
-- AI Advocate messages have a subtle cyan left border
+- Case Guide messages have a subtle cyan left border
 - User messages have standard styling
 - Strength assessment shown as a progress bar with percentage
 - Warnings (like escalation cost) shown in amber-bordered cards
@@ -175,7 +175,7 @@ Transparent cost card:
 
 #### Section: Case Status Updates (Reverse chronological)
 ```
-Apr 19, 15:01 · AI Arbiter reviewing case...
+Apr 19, 15:01 · Resolution Assessor reviewing case...
 Apr 19, 14:40 · Seller submitted response
 Apr 19, 14:36 · Evidence uploaded (2 photos)
 Apr 19, 14:32 · Dispute opened — Item not as described
@@ -204,47 +204,47 @@ The seller is responding to a dispute. Their view is a mirror of the buyer's but
 
 **Same layout structure as buyer view**, but with these differences:
 
-#### AI Advocate (Seller Side)
+#### Case Guide (Seller Side)
 ```
-🛡 Your AI Advocate
+🛡 Your Case Guide
 Defending your position · Reviewing buyer's claims
 ```
 
 **Chat:**
 ```
-[AI Advocate]: The buyer claims the battery health is 82% vs your listed 95%.
+[Case Guide]: The buyer claims the battery health is 82% vs your listed 95%.
   I've analyzed the situation:
 
   📋 Their Claim: Battery at 82%, listed as 95%
   📸 Their Evidence: Battery screenshot (post-delivery)
-  
-  📋 Your Position: 
+
+  📋 Your Position:
   You listed battery at 95% with a screenshot taken at listing time.
-  
-  🔍 Analysis: 
+
+  🔍 Analysis:
   - Battery health can decrease with usage (normal: 1-2% over 2 weeks)
   - 13% gap is unusual for 5 days of ownership
   - Your listing screenshot shows 95% — this is strong evidence
-  
+
   Defense Strength: ████████░░ 72% — Moderate
-  
-  Recommended Action: Upload your original battery screenshot 
-  with EXIF data to prove the timing. This will strengthen 
+
+  Recommended Action: Upload your original battery screenshot
+  with EXIF data to prove the timing. This will strengthen
   your case significantly.
 
 [You]: Here's the screenshot from when I listed it [photo]
 
-[AI Advocate]: Excellent. EXIF data shows this was taken Apr 12 — 
-  7 days before the dispute. Battery shows 95%. 
+[Case Guide]: Excellent. EXIF data shows this was taken Apr 12 —
+  7 days before the dispute. Battery shows 95%.
   This is now in evidence.
-  
+
   Updated Strength: ██████████░ 88% — Strong defense
 ```
 
 #### Seller-specific sections:
 - **Deposit requirement card** (if T2/T3): "You must deposit $12.00 within 48 hours to contest this dispute. Failure to deposit = automatic loss."
 - **Response deadline** prominent countdown timer
-- **Counter-evidence upload** section with guidance from AI Advocate
+- **Counter-evidence upload** section with guidance from Case Guide
 - Same cost breakdown but from seller's perspective
 
 #### Seller Sidebar
@@ -279,10 +279,10 @@ This shows the case AFTER T1 decision, when it's been escalated to T2 Community 
 Decision expected by: Apr 22, 2026 · 14:32 UTC
 ```
 
-#### Left Column: Buyer's Case (summarized by Buyer AI Advocate)
+#### Left Column: Buyer's Case (summarized by Buyer Case Guide)
 ```
 ┌─ Buyer's Position ──────────────────┐
-│ 🛡 Buyer AI Advocate Summary        │
+│ 🛡 Buyer Case Guide Summary        │
 │                                      │
 │ "The battery health was advertised   │
 │ at 95% but measured only 82% upon    │
@@ -302,10 +302,10 @@ Decision expected by: Apr 22, 2026 · 14:32 UTC
 └──────────────────────────────────────┘
 ```
 
-#### Right Column: Seller's Case (summarized by Seller AI Advocate)
+#### Right Column: Seller's Case (summarized by Seller Case Guide)
 ```
 ┌─ Seller's Position ─────────────────┐
-│ 🛡 Seller AI Advocate Summary        │
+│ 🛡 Seller Case Guide Summary        │
 │                                      │
 │ "Battery was 95% at time of sale,    │
 │ verified by EXIF-dated screenshot.   │
@@ -355,19 +355,19 @@ Vote Distribution (anonymized until close):
 ```
 
 #### Below: AI Chat for Each Party
-Both buyer and seller have their own chat section where they can talk to their AI Advocate about the ongoing review:
+Both buyer and seller have their own chat section where they can talk to their Case Guide about the ongoing review:
 
 **Buyer's Chat:**
 ```
 [You]: What's happening with the panel review?
 
-[AI Advocate]: 6 of 9 reviewers have voted. 
+[Case Guide]: 6 of 9 reviewers have voted.
   The voting period closes in 38 hours.
-  
-  I've also requested a Specialist Verification 
-  from LegitApp for battery analysis. This may 
+
+  I've also requested a Specialist Verification
+  from LegitApp for battery analysis. This may
   provide additional evidence if the panel needs it.
-  
+
   📊 Based on similar cases in our records:
   Battery discrepancies >10% typically favor the buyer.
   Your case strength remains strong.
@@ -377,14 +377,14 @@ Both buyer and seller have their own chat section where they can talk to their A
 ```
 [You]: Can I add more evidence?
 
-[AI Advocate]: The evidence submission window has closed 
-  for T2 review. However, your existing EXIF-dated 
+[Case Guide]: The evidence submission window has closed
+  for T2 review. However, your existing EXIF-dated
   screenshot is strong evidence.
-  
-  If you're unsatisfied with the T2 outcome, you can 
+
+  If you're unsatisfied with the T2 outcome, you can
   escalate to T3 (Grand Panel) for approximately $30.
-  
-  ⚠️ Note: If you escalate and lose at T3, 
+
+  ⚠️ Note: If you escalate and lose at T3,
   the dispute cost increases to ~$30.
 ```
 
@@ -434,7 +434,7 @@ This is the page a Community Reviewer sees when they're assigned to vote on a di
 
 #### Section: Case Briefing (AI-Generated Summary)
 
-This is the **neutral** summary prepared by the system. Unlike the buyer/seller AI Advocates, this briefing presents BOTH sides fairly without advocacy.
+This is the **neutral** summary prepared by the system. Unlike the buyer/seller Case Guides, this briefing presents BOTH sides fairly without advocacy.
 
 ```
 ┌─ Case Briefing ─────────────────────────────────────────────────┐
@@ -445,12 +445,12 @@ This is the **neutral** summary prepared by the system. Unlike the buyer/seller 
 │                                                                  │
 │  ─────────────────────────────────────────────────────────────   │
 │                                                                  │
-│  🔵 Buyer's Position (AI Advocate Summary):                      │
+│  🔵 Buyer's Position (Case Guide Summary):                      │
 │  "Battery health 95% listed → 82% received. 13% gap exceeds    │
 │  normal variance (1-2%/week). Evidence: post-delivery battery   │
 │  screenshot showing 82%."                                        │
 │                                                                  │
-│  🟣 Seller's Position (AI Advocate Summary):                     │
+│  🟣 Seller's Position (Case Guide Summary):                     │
 │  "Battery was 95% at listing time — EXIF-dated photo proves     │
 │  this. 5 days of buyer usage could reduce battery health.       │
 │  Seller acted in good faith."                                    │
@@ -683,7 +683,7 @@ Once the reviewer votes, the page transitions to:
 
 ## Shared Components Across All Pages
 
-### AI Advocate Chat Component
+### Case Guide Chat Component
 - Clean chat interface with message bubbles
 - AI messages have a subtle left border (cyan for buyer advocate, violet for seller advocate)
 - User messages are right-aligned, neutral background
@@ -691,7 +691,7 @@ Once the reviewer votes, the page transitions to:
 - Expandable analysis cards within messages
 - Strength meter (progress bar with percentage)
 - Warning cards (amber border) for cost/escalation info
-- Chat input at bottom with "Ask your AI Advocate" placeholder
+- Chat input at bottom with "Ask your Case Guide" placeholder
 
 ### Status Badge Component
 ```css
@@ -735,7 +735,7 @@ Unlike the landing page, animations here are **restrained and meaningful**:
 4. **Evidence cards**: Subtle scale on hover (1.02), lift shadow
 5. **Cost numbers**: Counter animation when tier changes
 6. **Voting progress**: Smooth width transition on the progress bar
-7. **AI Advocate typing**: Reuse landing page typing indicator dots
+7. **Case Guide typing**: Reuse landing page typing indicator dots
 
 **No animations:** No receipt tear, no floating chips, no sparkles. This is serious business.
 
@@ -757,7 +757,7 @@ Unlike the landing page, animations here are **restrained and meaningful**:
 - **Clear warnings about costs.** Never hide the fact that escalation costs money.
 - **Empathetic but neutral.** "We understand this is frustrating" but never "You're right."
 - **AI honesty.** Strength assessments say things like "moderate" not "guaranteed win."
-- **Korean UI text** for user-facing labels (this is a Korean-market product), but AI Advocate speaks in the user's language setting.
+- **Korean UI text** for user-facing labels (this is a Korean-market product), but Case Guide speaks in the user's language setting.
 
 ---
 
@@ -767,7 +767,7 @@ A user opening the dispute page should immediately understand:
 1. **Where am I:** This is my dispute case (#DSP-XXXX)
 2. **What's happening:** Current status and tier
 3. **What's next:** Next step and timeline
-4. **Who's helping me:** My AI Advocate is on my side
+4. **Who's helping me:** My Case Guide is on my side
 5. **What it costs:** Clear, visible, no surprises
 
 ---
@@ -810,7 +810,7 @@ Transaction Complete → Escrow Holds Funds
                          ↓
               Buyer Opens Dispute
                          ↓
-         ┌── T1: AI Arbiter Review (minutes) ──┐
+         ┌── T1: Resolution Assessor Review (minutes) ──┐
          │                                       │
     [Accept]                              [Escalate → T2]
          ↓                                       ↓

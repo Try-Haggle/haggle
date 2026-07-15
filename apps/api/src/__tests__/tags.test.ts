@@ -1,15 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "./helpers.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "./helpers.js";
 
 // ─── Mock service layers ─────────────────────────────────────────────
 vi.mock("../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -83,7 +87,14 @@ vi.mock("../services/tag.service.js", () => ({
   getTagById: vi.fn().mockResolvedValue(null),
   getTagByNormalizedName: vi.fn().mockResolvedValue(null),
   listTags: vi.fn().mockResolvedValue([]),
-  createTag: vi.fn().mockResolvedValue({ id: "tag-1", name: "electronics", normalizedName: "electronics", category: "product", status: "CANDIDATE", useCount: 0 }),
+  createTag: vi.fn().mockResolvedValue({
+    id: "tag-1",
+    name: "electronics",
+    normalizedName: "electronics",
+    category: "product",
+    status: "CANDIDATE",
+    useCount: 0,
+  }),
   updateTag: vi.fn().mockResolvedValue(null),
   getExpertTags: vi.fn().mockResolvedValue([]),
   upsertExpertTag: vi.fn().mockResolvedValue(null),

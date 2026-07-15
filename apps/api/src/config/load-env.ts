@@ -13,7 +13,8 @@ import dotenv from "dotenv";
  *
  * Load order (later files override earlier ones):
  *   1. <repo-root>/.env          — shared defaults for the whole monorepo
- *   2. <repo-root>/apps/api/.env — API-local overrides (optional)
+ *   2. <repo-root>/.env.easypost.local — local EasyPost credentials (optional)
+ *   3. <repo-root>/apps/api/.env — API-local overrides (optional)
  *
  * The repo root is discovered by walking up from this file until we find the
  * directory containing `pnpm-workspace.yaml`, so it no longer breaks when a
@@ -37,8 +38,9 @@ function findRepoRoot(startDir: string): string {
 
 const repoRoot = findRepoRoot(import.meta.dirname);
 
-// Shared root .env first, then API-local .env wins on conflicts.
+// Shared defaults first; local credential and API-specific files may override them.
 dotenv.config({ path: resolve(repoRoot, ".env") });
+dotenv.config({ path: resolve(repoRoot, ".env.easypost.local"), override: true });
 dotenv.config({ path: resolve(repoRoot, "apps/api/.env"), override: true });
 
 export { repoRoot };

@@ -6,19 +6,24 @@
  *
  * Uses Fastify inject() — no real server, DB, or chain required.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+
 import type { FastifyInstance } from "fastify";
-import { getTestApp, closeTestApp } from "../helpers.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { closeTestApp, getTestApp } from "../helpers.js";
 
 // ─── Service mocks ────────────────────────────────────────────────────
 
 vi.mock("../../services/payment-record.service.js", () => ({
+  createAgentPaymentGrantRecord: vi.fn().mockResolvedValue(null),
+  getAgentPaymentGrantById: vi.fn().mockResolvedValue(null),
+  createPaymentDisclosureRecord: vi.fn().mockResolvedValue(null),
   createPaymentAuthorizationRecord: vi.fn().mockResolvedValue(null),
   createPaymentSettlementRecord: vi.fn().mockResolvedValue(null),
   createRefundRecord: vi.fn().mockResolvedValue(null),
   createStoredPaymentIntent: vi.fn().mockResolvedValue(null),
   ensureCommerceOrderForApproval: vi.fn().mockResolvedValue(null),
   getPaymentIntentById: vi.fn().mockResolvedValue(null),
+  getPaymentIntentRowById: vi.fn().mockResolvedValue(null),
   getSettlementApprovalById: vi.fn().mockResolvedValue(null),
   updateCommerceOrderStatus: vi.fn().mockResolvedValue(null),
   updateStoredPaymentIntent: vi.fn().mockResolvedValue(null),
@@ -45,6 +50,28 @@ vi.mock("../../services/shipment-record.service.js", () => ({
 vi.mock("../../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn().mockResolvedValue(null),
 }));
+
+vi.mock("../../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../services/webhook-event-claim.service.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../services/webhook-event-claim.service.js")>();
+  return {
+    ...actual,
+    claimWebhookEvent: vi.fn().mockResolvedValue({
+      outcome: "acquired",
+      source: "x402",
+      eventId: "evt_e2e_unknown",
+      claimId: "44444444-4444-4444-8444-444444444444",
+      attemptCount: 1,
+    }),
+    completeWebhookEvent: vi.fn().mockResolvedValue(true),
+    failWebhookEvent: vi.fn().mockResolvedValue(undefined),
+    startWebhookClaimHeartbeat: vi.fn(() => vi.fn()),
+  };
+});
 
 vi.mock("../../services/dispute-record.service.js", () => ({
   createDisputeRecord: vi.fn().mockResolvedValue(null),
@@ -193,7 +220,7 @@ const BUYER_AUTH = {
 };
 
 const PAYMENT_ID = "pay-e2e-001";
-const ORDER_ID = "order-e2e-001";
+const _ORDER_ID = "order-e2e-001";
 const SETTLEMENT_APPROVAL_ID = "sa-e2e-001";
 
 // ─── Tests ────────────────────────────────────────────────────────────
@@ -255,6 +282,7 @@ describe("E2E: Payment lifecycle", () => {
         "x-haggle-x402-signature": "mock-hmac-sig-abc123",
       },
       payload: {
+        event_id: `evt_e2e_unknown_${Date.now()}`,
         event_type: "settlement.confirmed",
         payment_intent_id: "pi_unknown_e2e",
         tx_hash: "0xabc123def456",

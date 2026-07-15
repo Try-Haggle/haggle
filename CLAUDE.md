@@ -59,8 +59,8 @@ haggle/
 │   ├── api/                          ← Fastify v5 API 서버 (MCP 라우터 포함)
 │   └── web/                          ← Next.js 프론트엔드
 ├── packages/
-│   ├── shared/                       ← 공통 타입, 상수, 유틸 (DO NOT TOUCH)
-│   ├── db/                           ← Drizzle ORM + PostgreSQL (DO NOT TOUCH)
+│   ├── shared/                       ← 공통 타입, 상수, 유틸 (보호 경계: 소비자 영향 확인 후 변경)
+│   ├── db/                           ← Drizzle ORM + PostgreSQL (보호 경계: migration으로만 변경)
 │   ├── contracts/                    ← 스마트 컨트랙트 (Foundry, Base L2)
 │   ├── engine-core/                  ← 순수 수학 엔진 (102 tests, 외부 의존성 0)
 │   ├── engine-session/               ← 세션 오케스트레이션 (121 tests)
@@ -81,11 +81,20 @@ haggle/
 ```
 shared ← db
        ← contracts
-engine-core ← engine-session
+engine-core ← engine-session ← apps/api
 ```
 
-> `engine-core`와 `engine-session`은 `shared`/`db`와 의존 관계 없음.
-> 추후 apps/api에서 engine-session을 import하여 협상 라운드를 실행.
+> `engine-core`와 `engine-session` 자체는 `shared`/`db`와 의존 관계가 없다. `apps/api`가 두 패키지를 사용하면서 DB, LLM, HTTP 경계를 연결한다.
+> 현재 프로덕션 라운드는 `apps/api/src/negotiation/pipeline`이 실행하며 DeepSeek V4 Pro가 최종 가격과 메시지를 결정한다. `engine-core`의 Faratin 계산은 코칭에 사용되지만, `engine-session.executeRound`와 `engine-core.makeDecision`은 현재 프로덕션 최종 결정 경로가 아니다. 정확한 현황은 [docs/engine/SOT.md](./docs/engine/SOT.md)를 따른다.
+
+### `shared`와 `db` 보호 규칙
+
+기존 `DO NOT TOUCH`의 뜻은 영구 변경 금지가 아니라 **임의 변경 금지**다.
+
+- `packages/shared`: API, Web, DB, core package가 함께 소비한다. 공개 타입이나 금액/status 계약을 바꾸기 전에 `rg`로 소비자를 찾고 전체 typecheck/test를 실행한다.
+- `packages/db`: 이미 적용된 migration은 수정·이름 변경하지 않는다. 스키마 변경은 additive migration으로만 하고 `pnpm verify:migrations`, `pnpm verify:db-schema`, `pnpm verify:db-invariants`, 빈 DB replay를 확인한다.
+- 삭제·rename·타입 축소는 호환 migration과 단계적 consumer 전환 없이 한 번에 진행하지 않는다.
+- DB 영역과 테이블 의미를 처음 찾을 때는 [docs/mvp/database-catalog.md](./docs/mvp/database-catalog.md), 변경 절차와 호환성 기준은 [docs/mvp/database-structure-and-governance.md](./docs/mvp/database-structure-and-governance.md)를 읽는다.
 
 ---
 
@@ -134,7 +143,7 @@ pnpm --filter @haggle/engine-session test
 ## 핵심 규칙 (Development Principles)
 
 1. **Protocol-First**: 모든 기능은 HNP 프로토콜 위에 구축
-2. **Cost-Aware**: Codec 압축 + 저비용 모델(Grok-4-Fast)로 LLM 비용 최소화 (~$0.005/세션)
+2. **Cost-Aware**: Codec 압축 + DeepSeek V4 Pro를 사용하고 토큰·비용 telemetry로 LLM 비용을 관리
 3. **Stateless Engine**: 수평 확장 가능한 설계
 4. **Event-Driven**: 모듈 간 직접 의존 금지, 이벤트로 통신
 5. **Open Protocol, Closed Engine**: HNP 스펙은 공개, 엔진 로직은 비공개
@@ -186,6 +195,43 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
+## Loop-Driven MVP Execution
+
+결제, fulfillment, 분쟁 MVP는 루프 기반으로 진행한다. 기준 문서는
+[docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md](./docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md)이다.
+
+핵심 원칙:
+- 큰 자동화 하나가 아니라 `Orchestrator`, `Spec`, `Payment Funding`, `Fulfillment`, `Release Gate`, `Dispute`, `Operator Demo`, `Readiness`, `Repo Governance` 루프로 나눈다.
+- 각 slice는 시작 전에 branch/dirty files/README/CLAUDE 영향 범위를 확인한다.
+- 각 slice는 완료 전에 지정 테스트, `git diff --check`, README/CLAUDE/docs routing 필요 여부를 확인한다.
+- README는 개발자가 실행해야 하는 셋업·명령·데모 절차가 바뀔 때만 갱신한다.
+- CLAUDE.md는 durable architecture, branch, team workflow, non-negotiable safety rule이 바뀔 때만 갱신한다.
+- 커밋, merge, rebase, stash, push, PR 생성은 사람이 명시적으로 요청한 경우에만 한다.
+
+---
+
+## 결제·배송·분쟁 문서 라우팅
+
+MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 시작한다.
+
+| 영역 | 먼저 읽을 문서 | 용도 |
+|------|----------------|------|
+| 전체 루프 | [docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md](./docs/wip/payment-fulfillment-dispute-loop-engineering-plan.md) | 결제 → fulfillment → release/dispute를 slice 단위로 실행하는 기준 |
+| 보안 기준 | [docs/mvp/payment-shipping-dispute-security-controls.md](./docs/mvp/payment-shipping-dispute-security-controls.md) | 구현된 결제·배송·분쟁 보호장치, 운영 설정, 남은 P0/P1 위험 |
+| DB 한눈에 보기 | [docs/mvp/database-catalog.md](./docs/mvp/database-catalog.md) | 환경별 DB, 논리 장부, 핵심 테이블, writer, 민감도와 에이전트 라우팅 |
+| DB 구조·변경 규칙 | [docs/mvp/database-structure-and-governance.md](./docs/mvp/database-structure-and-governance.md) | 거래 데이터 연결, 실제 사용처, 보호 경계, migration 충돌 방지 기준 |
+| 결제 | [docs/wip/payment-production-observability.md](./docs/wip/payment-production-observability.md) | 결제 운영 지표, webhook, reconciliation, safe logging 기준 |
+| 배송/fulfillment | [docs/wip/digital-fulfillment-settlement-design.md](./docs/wip/digital-fulfillment-settlement-design.md) | physical shipping과 no-shipping fulfillment를 같은 상위 모델로 묶는 기준 |
+| 분쟁 | [docs/features/분쟁_시스템_v2.md](./docs/features/분쟁_시스템_v2.md) | 분쟁 비용, 패널, 인센티브, trust 영향의 제품 기준 |
+| 분쟁 API | [docs/wip/dispute-start-api-design.md](./docs/wip/dispute-start-api-design.md) | 분쟁 시작, 증거 업로드, idempotency, money movement freeze 기준 |
+| 팀 E2E 리허설 | [docs/wip/fake-money-fake-address-e2e-test-plan.md](./docs/wip/fake-money-fake-address-e2e-test-plan.md) | 가짜 돈 + 가짜 주소로 결제/배송 상태 흐름을 닫는 Stage 1 기준 |
+
+실제 구현 위치는 `apps/api/src/routes/payments.ts`, `apps/api/src/routes/shipments.ts`,
+`apps/api/src/routes/disputes.ts`, `packages/payment-core/`, `packages/shipping-core/`,
+`packages/dispute-core/`를 함께 확인한다.
+
+---
+
 ## 3man Team (Arch / Bob / Richard)
 
 프로젝트 구현은 3man team 워크플로우를 사용합니다.
@@ -206,7 +252,7 @@ pnpm --filter @haggle/engine-session test
 | 문서 | 내용 |
 |------|------|
 | [mvp/](./docs/mvp/00_INDEX.md) | MVP 계획, 기술 부채, 운영 정책 |
-| [engine/](./docs/engine/00_INDEX.md) | 엔진 + HNP 프로토콜 기술 사양 |
+| [engine/](./docs/engine/SOT.md) | 협상 엔진 Source of Truth |
 | [contracts/](./docs/contracts/00_INDEX.md) | 스마트 컨트랙트 보안 감사 |
 | [strategy/](./docs/strategy/00_INDEX.md) | 사업 전략, 해자, 파트너 리서치 |
 | [features/](./docs/features/00_INDEX.md) | 기능 설계 (태그, 분쟁, 게이미피케이션) |
@@ -215,5 +261,5 @@ pnpm --filter @haggle/engine-session test
 
 ---
 
-*Last Updated: 2026-04-03*
-*Version: 2.2*
+*Last Updated: 2026-07-14*
+*Version: 2.3*

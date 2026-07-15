@@ -60,15 +60,37 @@ create table if not exists payment_intents (
   currency text not null default 'USD',
   amount_minor numeric(18, 0) not null,
   status text not null default 'CREATED',
+  canonical_status text not null default 'pending',
   provider_context jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint payment_intents_canonical_status_chk check (
+    canonical_status in (
+      'pending',
+      'authorized',
+      'captured',
+      'canceled',
+      'refunded',
+      'partially_refunded',
+      'failed',
+      'disputed',
+      'expired'
+    )
+  ),
+  constraint payment_intents_status_compat_chk check (
+    (status in ('CREATED', 'QUOTED') and canonical_status in ('pending', 'expired'))
+    or (status in ('AUTHORIZED', 'SETTLEMENT_PENDING') and canonical_status in ('authorized', 'expired'))
+    or (status = 'SETTLED' and canonical_status in ('captured', 'partially_refunded', 'refunded', 'disputed'))
+    or (status = 'FAILED' and canonical_status = 'failed')
+    or (status = 'CANCELED' and canonical_status in ('canceled', 'expired'))
+  )
 );
 
 create index if not exists payment_intents_order_id_idx on payment_intents (order_id);
 create index if not exists payment_intents_seller_id_idx on payment_intents (seller_id);
 create index if not exists payment_intents_buyer_id_idx on payment_intents (buyer_id);
 create index if not exists payment_intents_status_idx on payment_intents (status);
+create index if not exists payment_intents_canonical_status_idx on payment_intents (canonical_status);
 
 create table if not exists payment_authorizations (
   id uuid primary key default gen_random_uuid(),

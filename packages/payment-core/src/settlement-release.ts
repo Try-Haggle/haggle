@@ -4,10 +4,7 @@ import { createId } from "./id.js";
 // Types
 // ---------------------------------------------------------------------------
 
-export type ProductReleaseStatus =
-  | "PENDING_DELIVERY"
-  | "BUYER_REVIEW"
-  | "RELEASED";
+export type ProductReleaseStatus = "PENDING_DELIVERY" | "BUYER_REVIEW" | "RELEASED";
 
 export type BufferReleaseStatus = "HELD" | "ADJUSTING" | "RELEASED";
 
@@ -81,7 +78,7 @@ export function createSettlementRelease(params: {
 }): SettlementRelease {
   const now = params.now ?? new Date().toISOString();
   return {
-    id: createId("sr"),
+    id: createId(),
     payment_intent_id: params.payment_intent_id,
     order_id: params.order_id,
     product_amount: { ...params.product_amount },
@@ -115,19 +112,13 @@ export function confirmDelivery(
   };
 }
 
-export function completeBuyerReview(
-  release: SettlementRelease,
-  now: string,
-): SettlementRelease {
+export function completeBuyerReview(release: SettlementRelease, now: string): SettlementRelease {
   if (release.product_release_status !== "BUYER_REVIEW") {
     throw new Error(
       `Cannot complete buyer review: product_release_status is "${release.product_release_status}", expected "BUYER_REVIEW"`,
     );
   }
-  if (
-    !release.buyer_review_deadline ||
-    new Date(now) < new Date(release.buyer_review_deadline)
-  ) {
+  if (!release.buyer_review_deadline || new Date(now) < new Date(release.buyer_review_deadline)) {
     throw new Error("buyer review period not yet complete");
   }
   return {
@@ -144,10 +135,7 @@ export function completeBuyerReview(
  * Buyer explicitly confirms receipt. Releases product payment immediately
  * regardless of whether the 24h deadline has passed.
  */
-export function buyerConfirmReceipt(
-  release: SettlementRelease,
-  now: string,
-): SettlementRelease {
+export function buyerConfirmReceipt(release: SettlementRelease, now: string): SettlementRelease {
   if (release.product_release_status !== "BUYER_REVIEW") {
     throw new Error(
       `Cannot confirm receipt: product_release_status is "${release.product_release_status}", expected "BUYER_REVIEW"`,
@@ -180,10 +168,7 @@ export function applyApvAdjustment(
   };
 }
 
-export function completeBufferRelease(
-  release: SettlementRelease,
-  now: string,
-): SettlementRelease {
+export function completeBufferRelease(release: SettlementRelease, now: string): SettlementRelease {
   if (release.buffer_release_status === "RELEASED") {
     throw new Error("Cannot release buffer: buffer already RELEASED");
   }
@@ -191,9 +176,7 @@ export function completeBufferRelease(
     !release.buffer_release_deadline ||
     new Date(now) < new Date(release.buffer_release_deadline)
   ) {
-    throw new Error(
-      "Cannot release buffer: buffer release deadline not yet reached",
-    );
+    throw new Error("Cannot release buffer: buffer release deadline not yet reached");
   }
   const finalAmount = Math.max(
     0,
@@ -210,9 +193,7 @@ export function completeBufferRelease(
   };
 }
 
-export function computeReleasePhase(
-  release: SettlementRelease,
-): OverallReleasePhase {
+export function computeReleasePhase(release: SettlementRelease): OverallReleasePhase {
   if (release.product_release_status === "PENDING_DELIVERY") {
     return "AWAITING_DELIVERY";
   }
@@ -231,7 +212,6 @@ export function computeReleasePhase(
 
 export function isFullyReleased(release: SettlementRelease): boolean {
   return (
-    release.product_release_status === "RELEASED" &&
-    release.buffer_release_status === "RELEASED"
+    release.product_release_status === "RELEASED" && release.buffer_release_status === "RELEASED"
   );
 }

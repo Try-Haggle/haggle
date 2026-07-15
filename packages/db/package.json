@@ -17,10 +17,14 @@
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:generate": "pnpm build && drizzle-kit generate",
+    "db:generate:custom": "pnpm build && drizzle-kit generate --custom",
+    "db:check": "pnpm build && drizzle-kit check",
+    "db:preflight:compat": "node scripts/preflight-existing-table-compatibility.mjs",
+    "db:audit:relations": "node scripts/audit-transaction-relations.mjs",
+    "db:migrate": "pnpm build && pnpm db:preflight:compat && drizzle-kit migrate && pnpm db:audit:relations",
+    "db:push": "pnpm build && drizzle-kit push",
+    "db:studio": "pnpm build && drizzle-kit studio"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

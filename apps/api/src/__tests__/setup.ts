@@ -8,6 +8,7 @@ import { vi } from "vitest";
 
 process.env.NODE_ENV ??= "test";
 process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/haggle_test";
+process.env.HAGGLE_ALLOW_UNVERIFIED_TEST_JWT ??= "true";
 
 // ─── Mock @haggle/db ─────────────────────────────────────────────────
 // createServer() validates DATABASE_URL before calling createDb(), which would
@@ -39,21 +40,49 @@ function createMockInsert() {
   });
 }
 
+function createMockSelect() {
+  return vi.fn().mockImplementation(() => {
+    const selectQueue = (
+      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
+    ).__HAGGLE_TEST_DB_SELECT_ROWS__;
+    const rows: unknown[] = selectQueue?.shift() ?? [];
+    const result = Promise.resolve(rows);
+    const query = {
+      from: vi.fn(() => query),
+      where: vi.fn(() => query),
+      orderBy: vi.fn(() => query),
+      limit: vi.fn(() => query),
+      offset: vi.fn(() => query),
+      // biome-ignore lint/suspicious/noThenProperty: Drizzle query mocks must remain awaitable.
+      then: result.then.bind(result),
+      catch: result.catch.bind(result),
+      finally: result.finally.bind(result),
+    };
+    return query;
+  });
+}
+
 vi.mock("@haggle/db", () => ({
   createDb: vi.fn(() => ({
     query: createMockQueryProxy(),
-    select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
+    select: createMockSelect(),
     insert: createMockInsert(),
-    update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    update: vi
+      .fn()
+      .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
     delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
     execute: vi.fn().mockResolvedValue([]),
-    transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) => fn({
-      execute: vi.fn().mockResolvedValue([]),
-      query: createMockQueryProxy(),
-      select: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }),
-      insert: createMockInsert(),
-      update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
-    })),
+    transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        execute: vi.fn().mockResolvedValue([]),
+        query: createMockQueryProxy(),
+        select: createMockSelect(),
+        insert: createMockInsert(),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+        }),
+      }),
+    ),
   })),
   sql: vi.fn().mockReturnValue(""),
   eq: vi.fn(),
@@ -77,15 +106,122 @@ vi.mock("@haggle/db", () => ({
   hfmiModelCoefficients: {},
   sellerAttestationCommits: {},
   // Table references used directly in route handlers (not via services)
-  webhookIdempotency: { id: "id", idempotencyKey: "idempotencyKey", source: "source", responseStatus: "responseStatus" },
-  refunds: { id: "id", paymentIntentId: "paymentIntentId", status: "status" },
-  disputeResolutions: { disputeId: "disputeId" },
-  disputeCases: { id: "id" },
-  commerceOrders: { id: "id" },
-  shipments: { id: "id", trackingNumber: "trackingNumber" },
+  webhookIdempotency: {
+    id: "id",
+    idempotencyKey: "idempotencyKey",
+    source: "source",
+    responseStatus: "responseStatus",
+  },
+  refunds: {
+    id: "id",
+    paymentIntentId: "paymentIntentId",
+    amountMinor: "amountMinor",
+    status: "status",
+    updatedAt: "updatedAt",
+  },
+  disputeResolutions: {
+    disputeId: "disputeId",
+    outcome: "outcome",
+    refundAmountMinor: "refundAmountMinor",
+    createdAt: "createdAt",
+  },
+  disputeCases: {
+    id: "id",
+    orderId: "orderId",
+    status: "status",
+    metadata: "metadata",
+    resolvedAt: "resolvedAt",
+    closedAt: "closedAt",
+    updatedAt: "updatedAt",
+  },
+  disputeEvidence: { id: "id", disputeId: "disputeId" },
+  disputeEvidenceUploads: {
+    id: "id",
+    disputeId: "disputeId",
+    status: "status",
+    storagePath: "storagePath",
+  },
+  disputeModuleIdempotencyKeys: {
+    id: "id",
+    platformId: "platformId",
+    idempotencyKey: "idempotencyKey",
+    requestFingerprint: "requestFingerprint",
+    disputeId: "disputeId",
+  },
+  disputeModuleWebhookOutbox: {
+    id: "id",
+    eventId: "eventId",
+    platformId: "platformId",
+    externalOrderId: "externalOrderId",
+    disputeId: "disputeId",
+    eventType: "eventType",
+    status: "status",
+    nextAttemptAt: "nextAttemptAt",
+  },
+  commerceOrders: { id: "id", status: "status", updatedAt: "updatedAt" },
+  paymentIntents: {
+    id: "id",
+    orderId: "orderId",
+    providerContext: "providerContext",
+    status: "status",
+    amountMinor: "amountMinor",
+    updatedAt: "updatedAt",
+  },
+  paymentAuthorizations: {
+    paymentIntentId: "paymentIntentId",
+    providerReference: "providerReference",
+    createdAt: "createdAt",
+  },
+  paymentSettlements: {
+    id: "id",
+    paymentIntentId: "paymentIntentId",
+    providerReference: "providerReference",
+    createdAt: "createdAt",
+  },
+  paymentOperationIdempotency: {
+    operation: "operation",
+    idempotencyKey: "idempotencyKey",
+  },
+  shipments: {
+    id: "id",
+    orderId: "orderId",
+    shipmentType: "shipmentType",
+    status: "status",
+    carrier: "carrier",
+    trackingNumber: "trackingNumber",
+    labelUrl: "labelUrl",
+    metadata: "metadata",
+    updatedAt: "updatedAt",
+  },
   shipmentEvents: { shipmentId: "shipmentId" },
-  settlementReleases: { id: "id" },
-  userWallets: { walletAddress: "walletAddress", userId: "userId", network: "network", isPrimary: "isPrimary" },
+  apiRateLimitWindows: {
+    scope: "scope",
+    keyHash: "keyHash",
+    windowStartedAt: "windowStartedAt",
+    requestCount: "requestCount",
+    updatedAt: "updatedAt",
+  },
+  websocketAuthTickets: {
+    id: "id",
+    tokenHash: "tokenHash",
+    userId: "userId",
+    channel: "channel",
+    resourceId: "resourceId",
+    expiresAt: "expiresAt",
+    createdAt: "createdAt",
+  },
+  settlementReleases: {
+    id: "id",
+    orderId: "orderId",
+    productReleaseStatus: "productReleaseStatus",
+    updatedAt: "updatedAt",
+  },
+  userWallets: {
+    walletAddress: "walletAddress",
+    userId: "userId",
+    network: "network",
+    isPrimary: "isPrimary",
+  },
 }));
 
 // ─── Mock MCP SDK ────────────────────────────────────────────────────
@@ -112,6 +248,7 @@ vi.mock("@haggle/payment-core/heavy/real-x402-adapter", () => ({
 }));
 
 vi.mock("@haggle/payment-core/heavy/viem-contracts", () => ({
+  ViemConditionalSettlementContract: vi.fn(),
   ViemDisputeRegistryContract: vi.fn(),
   ViemSettlementRouterContract: vi.fn(),
 }));
@@ -120,7 +257,11 @@ vi.mock("@haggle/payment-core/heavy/viem-contracts", () => ({
 vi.mock("viem", () => ({
   createPublicClient: vi.fn(),
   createWalletClient: vi.fn(),
+  decodeEventLog: vi.fn(),
   http: vi.fn(),
+  isAddress: vi.fn(
+    (value: unknown) => typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value),
+  ),
 }));
 
 vi.mock("viem/accounts", () => ({
@@ -142,12 +283,15 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
   return {
     ...real,
     MockCarrierAdapter: class MockCarrierAdapter {
-      createLabel = vi.fn().mockResolvedValue({ tracking_number: "MOCK123", label_url: "https://mock" });
+      createLabel = vi
+        .fn()
+        .mockResolvedValue({ tracking_number: "MOCK123", label_url: "https://mock" });
       getTrackingInfo = vi.fn().mockResolvedValue({ status: "IN_TRANSIT" });
     },
     EasyPostCarrierAdapter: class EasyPostCarrierAdapter {
-      constructor(_opts: unknown) {}
-      createLabel = vi.fn().mockResolvedValue({ tracking_number: "EP123", label_url: "https://ep" });
+      createLabel = vi
+        .fn()
+        .mockResolvedValue({ tracking_number: "EP123", label_url: "https://ep" });
       getTrackingInfo = vi.fn().mockResolvedValue({ status: "IN_TRANSIT" });
     },
     computeWeightBuffer: (weightOz: number) => ({
@@ -168,11 +312,20 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
         return_to_sender: "RETURN_IN_TRANSIT",
         returned: "RETURNED",
       };
+      const details = Array.isArray(result.tracking_details)
+        ? (result.tracking_details as Array<Record<string, unknown>>)
+        : [];
+      const latest = details.at(-1);
+      const location = latest?.tracking_location as Record<string, unknown> | undefined;
       return {
         tracking_code: result.tracking_code,
         status: statusMap[String(result.status)] ?? "IN_TRANSIT",
         carrier: result.carrier,
-        tracking_details: [],
+        tracking_details: details,
+        occurred_at: typeof latest?.datetime === "string" ? latest.datetime : undefined,
+        carrier_raw_status: String(result.status),
+        message: typeof latest?.message === "string" ? latest.message : undefined,
+        location: location ? [location.city, location.state].filter(Boolean).join(", ") : undefined,
       };
     }),
     parseEasyPostInvoicePayload: vi.fn((body: unknown) => {
