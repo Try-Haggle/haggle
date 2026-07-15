@@ -85,6 +85,7 @@ import {
   updateDepositMetadata,
   updateDepositStatus,
 } from "../services/dispute-deposit.service.js";
+import { resolveStagingDisputeFixtureParty } from "../services/dispute-evidence-fixture-policy.service.js";
 import { createSignedDisputeEvidenceProvenance } from "../services/dispute-evidence-provenance.service.js";
 import {
   enqueueDisputeEvidenceProvenanceArchive,
@@ -374,6 +375,7 @@ const uploadUrlSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/)
     .optional(),
+  fixture_party: z.enum(["buyer", "seller"]).optional(),
 });
 
 const commitEvidenceSchema = z.object({
@@ -383,6 +385,7 @@ const commitEvidenceSchema = z.object({
   camera_session_id: z.string().min(1).max(128).optional(),
   camera_capture_token: z.string().min(32).max(128).optional(),
   captured_at: z.string().datetime({ offset: true }).optional(),
+  fixture_party: z.enum(["buyer", "seller"]).optional(),
 });
 
 const cameraCaptureSessionSchema = z.object({
@@ -2837,6 +2840,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         camera_session_id,
         camera_capture_token,
         capture_sha256,
+        fixture_party,
       } = parsed.data;
 
       // 1. Validate dispute exists and is in an evidence-accepting state
@@ -2866,6 +2870,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 
       let cameraSession = getCameraSession(dispute, camera_session_id);
       let cameraCommitToken: string | undefined;
+      if (camera_session_id && fixture_party) {
+        return reply.code(400).send({
+          error: "FIXTURE_CAMERA_SESSION_CONFLICT",
+          message: "Prepared fixture evidence cannot be submitted as camera evidence",
+        });
+      }
       if (camera_session_id) {
         if (!cameraSession) {
           return reply.code(404).send({ error: "CAMERA_SESSION_NOT_FOUND" });
@@ -2911,7 +2921,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
               amountMinor?: unknown;
             }
           | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
-      const uploadedBy = activePartyForOrder(request.user, order);
+      const fixtureParty = resolveStagingDisputeFixtureParty(request.user?.role, fixture_party);
+      if (fixture_party && !fixtureParty) {
+        return reply.code(403).send({
+          error: "FIXTURE_EVIDENCE_FORBIDDEN",
+          message: "Party fixture uploads are limited to enabled staging admin tests",
+        });
+      }
+      const uploadedBy = fixtureParty ?? activePartyForOrder(request.user, order);
       if (!uploadedBy) {
         return reply.code(403).send({
           error: "FORBIDDEN",
@@ -3049,6 +3066,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         camera_session_id,
         captured_at,
         camera_capture_token,
+        fixture_party,
       } = parsed.data;
 
       // 1. Validate dispute
@@ -3063,6 +3081,12 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         });
       }
       let cameraSession = getCameraSession(dispute, camera_session_id);
+      if (camera_session_id && fixture_party) {
+        return reply.code(400).send({
+          error: "FIXTURE_CAMERA_SESSION_CONFLICT",
+          message: "Prepared fixture evidence cannot be submitted as camera evidence",
+        });
+      }
       if (camera_session_id) {
         if (!cameraSession) {
           return reply.code(404).send({ error: "CAMERA_SESSION_NOT_FOUND" });
@@ -3170,7 +3194,14 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             }
           | undefined) ?? (await getCommerceOrderByOrderId(db, dispute.order_id));
 
-      const submittedBy = activePartyForOrder(request.user, order);
+      const fixtureParty = resolveStagingDisputeFixtureParty(request.user?.role, fixture_party);
+      if (fixture_party && !fixtureParty) {
+        return reply.code(403).send({
+          error: "FIXTURE_EVIDENCE_FORBIDDEN",
+          message: "Party fixture commits are limited to enabled staging admin tests",
+        });
+      }
+      const submittedBy = fixtureParty ?? activePartyForOrder(request.user, order);
       if (!submittedBy) {
         return reply.code(403).send({
           error: "FORBIDDEN",
