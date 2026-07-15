@@ -65,6 +65,7 @@ import {
   type PaymentMetricOperation,
   toPaymentMetricOperation,
 } from "../payments/observability.js";
+import { requiresRealPaymentProviders } from "../payments/provider-runtime-policy.js";
 import {
   createPaymentServiceFromEnv,
   getRealStripeAdapterOrNull,
@@ -334,10 +335,6 @@ type PaymentQuoteConfirmation = {
   expires_at?: string;
   provider_reference?: string;
 };
-
-function requiresRealPaymentProviders(): boolean {
-  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-}
 
 function minorFromMetadata(metadata: Record<string, unknown>, key: string): number | null {
   const value = metadata[key];
