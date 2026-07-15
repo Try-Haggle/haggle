@@ -36,7 +36,8 @@ async function authPlugin(app: FastifyInstance) {
       request.user = {
         id: payload.sub,
         email: payload.email,
-        role: payload.role ?? payload.user_metadata?.role ?? payload.app_metadata?.role,
+        // Supabase user_metadata is user-editable; only app_metadata may elevate the app role.
+        role: payload.app_metadata?.role ?? payload.role,
       };
     } catch {
       return reply.code(401).send({ error: "INVALID_TOKEN" });
