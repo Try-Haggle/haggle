@@ -37,6 +37,7 @@
 | 내부 오류 정보 노출 | webhook·provider 실패 응답은 일반화하고 내부 감사 로그는 redaction 적용 | `apps/api/src/routes/payments.ts` |
 | 분쟁 중 자금 해제 | active dispute와 order `IN_DISPUTE` 상태에서 buyer confirmation·자동 release 차단 | `apps/api/src/routes/settlement-releases.ts` |
 | production 테스트 도구 노출 | admin이면서 `HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true`인 경우에만 허용 | `apps/api/src/routes/payment-test-tools.ts` |
+| staging mock 결제가 production에 노출 | `HAGGLE_ENV=staging`과 `HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS=true`가 모두 설정된 환경에서만 mock provider 허용. production 환경은 opt-in 값을 무시하고 real provider를 계속 강제 | `apps/api/src/payments/provider-runtime-policy.ts` |
 | 혼돈 테스트가 운영 event를 변경 | 전용 source `haggle-chaos-test`와 UUID prefix만 허용하고 최대 100+100 요청으로 제한. 운영 provider source를 전달하거나 범위 없는 cleanup prefix를 사용하면 DB 실행 전에 거절 | `apps/api/src/routes/payment-test-tools.ts`, `apps/api/src/services/webhook-event-claim.service.ts` |
 | 분쟁 후 온체인 상태 우회 | DISPUTED 상태의 증거 해시 재기록과 무서명 expiry 환불을 차단하고, 서명된 release/refund만 허용 | `packages/contracts/sol/HaggleConditionalSettlement.sol` |
 | 위조 환불 완료 처리 | SettlementRefunded receipt의 계약 주소, settlement ID, 구매자, 금액을 검증한 뒤 결제 DB를 확정 | `apps/api/src/routes/payments.ts` |
