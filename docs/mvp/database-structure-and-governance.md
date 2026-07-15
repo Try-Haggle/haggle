@@ -78,7 +78,7 @@ flowchart LR
 
 ### 핵심 거래 연결 강화 상태
 
-빈 DB replay로 확인한 기존 FK는 57개다. 주문→결제, 주문→배송, 주문→분쟁, 분쟁→증거/판정의 핵심 연결은 이미 DB가 강제한다. 이전 문서의 "연결 다수가 FK 없이 애플리케이션에만 의존한다"는 설명은 실제 constraint보다 과도했다.
+빈 DB replay 기준 `origin/staging`에는 FK 15개가 있고, 이번 PR의 migration `0140`까지 적용하면 57개가 된다. 마지막 `0141`이 누락 관계 16개를 추가하므로 PR 전체 적용 후에는 FK 73개다. 주문→결제, 주문→배송, 주문→분쟁, 분쟁→증거/판정의 핵심 연결은 기존 staging부터 DB가 강제한다. 이전 문서의 "연결 다수가 FK 없이 애플리케이션에만 의존한다"는 설명은 실제 constraint보다 과도했다.
 
 이번 변경은 정산 release, agent payment grant/disclosure, 배송 APV 장부의 실제 누락 관계 16개를 추가한다. 기존 데이터 때문에 배포가 중단되지 않도록 `NOT VALID`로 추가하지만 신규 쓰기에는 즉시 적용된다. 관계 목록과 소유자는 `packages/db/transaction-relations.json`이 관리한다.
 
