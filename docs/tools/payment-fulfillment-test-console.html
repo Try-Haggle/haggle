@@ -15922,7 +15922,81 @@ function runEndpoint(endpoint, event) {
   return sendRequest(event);
 }
 
-function runEndpointStep(step, event) {
+function isAiAssessmentInProgressResult(result) {
+  return result?.status === 409 && result?.response?.error === "AI_ASSESSMENT_IN_PROGRESS";
+}
+
+async function waitForAiAssessmentCompletion(initialResult) {
+  if (!isAiAssessmentInProgressResult(initialResult)) return initialResult;
+
+  const disputeId = $("#disputeId").value.trim();
+  if (!disputeId) return initialResult;
+  const path = `/disputes/${encodeURIComponent(disputeId)}`;
+  const token = $("#authToken").value.trim();
+
+  for (let attempt = 1; attempt <= 24; attempt += 1) {
+    await delay(5000);
+    const response = await fetch(apiUrl(path), {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    const text = await response.text();
+    let parsed;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = text;
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return { ok: false, status: response.status, response: parsed, method: "GET", path };
+      }
+      continue;
+    }
+
+    const assessment = parsed?.dispute?.metadata?.ai_resolution_assessor ?? null;
+    if (assessment?.status !== "COMPLETED") continue;
+
+    const completed = {
+      dispute_id: disputeId,
+      ai_assessment: assessment,
+      asynchronous_completion: true,
+    };
+    latestAiAssessmentSnapshot = assessment;
+    setResponse(completed);
+    updateSummary(200, completed, 0);
+    autoFillFromResponse(completed);
+    addLog({
+      method: "GET",
+      path,
+      endpoint: "/disputes/{disputeId}",
+      ok: true,
+      status: 200,
+      message: `AI assessment completed asynchronously after poll ${attempt}`,
+    });
+    return {
+      ok: true,
+      status: 200,
+      response: completed,
+      method: initialResult.method ?? "POST",
+      path: initialResult.path,
+    };
+  }
+
+  const timedOut = {
+    error: "AI_ASSESSMENT_POLL_TIMEOUT",
+    message: "DeepSeek assessment is still running after 120 seconds. The dispute remains locked; retry this step later.",
+  };
+  setResponse(timedOut);
+  updateSummary(null, timedOut);
+  renderDisputeActionFeedback("/disputes/{disputeId}/ai/assess", timedOut);
+  return { ok: false, status: "WAIT", response: timedOut, method: "GET", path };
+}
+
+async function runEndpointStep(step, event) {
   event?.preventDefault();
   syncActorFromToken();
   if (step.action === "upload_fixture_evidence") {
@@ -15935,7 +16009,11 @@ function runEndpointStep(step, event) {
   } else if (step.body) {
     $("#payload").value = pretty(step.body);
   }
-  return sendRequest(event);
+  const result = await sendRequest(event);
+  if (step.endpoint === "/disputes/{disputeId}/ai/assess") {
+    return waitForAiAssessmentCompletion(result);
+  }
+  return result;
 }
 
 async function runOnchainPreflight(event) {
