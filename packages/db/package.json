@@ -21,7 +21,7 @@
     "db:generate:custom": "pnpm build && drizzle-kit generate --custom",
     "db:check": "pnpm build && drizzle-kit check",
     "db:audit:relations": "node scripts/audit-transaction-relations.mjs",
-    "db:migrate": "pnpm build && drizzle-kit migrate",
+    "db:migrate": "pnpm build && drizzle-kit migrate && pnpm db:audit:relations",
     "db:push": "pnpm build && drizzle-kit push",
     "db:studio": "pnpm build && drizzle-kit studio"
   },
