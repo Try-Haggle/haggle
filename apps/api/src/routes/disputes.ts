@@ -3290,7 +3290,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
               expectedSizeBytes: upload.fileSizeBytes,
               filename: normalizedPath.split("/").at(-1) ?? "evidence",
             },
-            { db },
+            { db, trustedStagingFixture: fixtureParty !== null },
           );
         } catch (error) {
           scanResult = {

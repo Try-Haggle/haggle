@@ -140,6 +140,7 @@
 | 삭제된 파일 URL 재발급 | audit evidence row는 유지하되 retention `DELETED` upload의 signed URL 요청은 410으로 차단 | `apps/api/src/routes/disputes.ts` |
 | 임의 파일·경로 commit | signed upload intent, dispute별 storage path, content type, party, object existence를 검증 | `apps/api/src/routes/disputes.ts`, `apps/api/src/lib/dispute-storage-paths.ts` |
 | 악성·위장 파일이 증거로 사용됨 | 업로드를 quarantine에 두고 실제 bytes의 크기·magic type·SHA-256을 검증한 뒤 외부 scanner가 `CLEAN`인 경우에만 증거 row로 승격. 미검사·실패 upload가 있으면 AI 판정도 차단 | `apps/api/src/services/dispute-evidence-scan.service.ts`, `apps/api/src/routes/disputes.ts`, `packages/db/drizzle/0038_dispute_evidence_quarantine.sql` |
+| staging 준비 사진이 scanner 없이 운영 증거로 우회 | admin, `HAGGLE_ENV=staging`, payment test tools 활성화 조건이 모두 맞는 fixture만 로컬 크기·MIME magic·SHA-256 검사 후 integrity-only `CLEAN` 허용. production과 일반 업로드는 외부 scanner 없이는 계속 quarantine | `apps/api/src/services/dispute-evidence-fixture-policy.service.ts`, `apps/api/src/services/dispute-evidence-scan.service.ts` |
 | QR capture URL Host header 오염 | `PUBLIC_API_URL`을 우선 사용하고 fallback host/protocol 형식을 제한 | `apps/api/src/routes/disputes.ts` |
 | 카메라 페이지 token 잔존·embedding | bearer token을 저장하지 않고 `no-store`, CSP, frame/referrer/permissions 보안 헤더 적용 | `apps/api/src/routes/disputes.ts` |
 | 예측 가능한 challenge | `node:crypto`의 `randomInt`로 challenge 생성 | `apps/api/src/routes/disputes.ts` |

@@ -90,6 +90,37 @@ describe("dispute evidence scanning", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("accepts an explicitly trusted staging fixture only after local integrity checks", async () => {
+    const clean = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/png",
+        expectedSizeBytes: png.length,
+        filename: "prepared-fixture.png",
+      },
+      { trustedStagingFixture: true },
+    );
+    const mismatched = await scanDisputeEvidence(
+      {
+        bytes: png,
+        contentType: "image/jpeg",
+        expectedSizeBytes: png.length,
+        filename: "prepared-fixture.jpg",
+      },
+      { trustedStagingFixture: true },
+    );
+
+    expect(clean).toMatchObject({
+      status: "CLEAN",
+      provider: "haggle-staging-fixture-integrity",
+      detail: "INTEGRITY_ONLY_FIXTURE",
+    });
+    expect(mismatched).toMatchObject({
+      status: "INFECTED",
+      detail: "CONTENT_TYPE_MISMATCH",
+    });
+  });
+
   it("sends an authenticated no-redirect request and accepts JSON clean output", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: "clean" }), {

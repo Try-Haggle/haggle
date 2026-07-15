@@ -264,6 +264,7 @@ export async function scanDisputeEvidence(
     dnsLookupImpl?: DisputeModuleDnsLookup;
     db?: Database;
     circuitConfig?: DisputeEvidenceScannerCircuitConfig;
+    trustedStagingFixture?: boolean;
   } = {},
 ): Promise<DisputeEvidenceScanResult> {
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");
@@ -281,6 +282,14 @@ export async function scanDisputeEvidence(
       sha256,
       provider: "haggle-integrity",
       detail: "CONTENT_TYPE_MISMATCH",
+    };
+  }
+  if (options.trustedStagingFixture) {
+    return {
+      status: "CLEAN",
+      sha256,
+      provider: "haggle-staging-fixture-integrity",
+      detail: "INTEGRITY_ONLY_FIXTURE",
     };
   }
 
