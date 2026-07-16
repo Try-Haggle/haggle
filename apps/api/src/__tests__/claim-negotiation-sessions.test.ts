@@ -111,6 +111,25 @@ describe("POST /claim/negotiation-sessions", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true, claimed_count: 2 });
     expect(db.execute).toHaveBeenCalledTimes(1);
+    const statement = db.execute.mock.calls[0]?.[0] as { raw?: string };
+    expect(statement.raw).toContain("UPDATE negotiation_sessions");
+    expect(statement.raw).toContain("UPDATE settlement_approvals");
+    expect(statement.raw).toContain("FROM commerce_orders");
+    expect(statement.raw).not.toContain("UPDATE commerce_orders");
+    await app.close();
+  });
+
+  it("returns the claimed session count from the atomic claim statement", async () => {
+    db.execute.mockResolvedValueOnce([{ claimed_count: 2, claimed_approval_count: 1 }]);
+    const app = buildApp(db, USER);
+    const res = await app.inject({
+      method: "POST",
+      url: "/claim/negotiation-sessions",
+      payload: { guest_buyer_ids: [VALID_GUEST_A, VALID_GUEST_B] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, claimed_count: 2 });
     await app.close();
   });
 

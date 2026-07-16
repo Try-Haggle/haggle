@@ -56,25 +56,68 @@ export function registerClaimRoutes(app: FastifyInstance, db: Database) {
       return reply.send({ ok: true, claimed_count: 0 });
     }
 
-    // Direct UPDATE keeps the call cheap. buyer_id is a uuid column so the
-    // parameterised IN list has no injection vector; seller_id check stops
-    // a malicious caller from claiming the wrong side of a session.
+    // Claim every accepted downstream record in the same statement. An
+    // accepted guest negotiation already has a settlement approval keyed by
+    // the session id, so moving only negotiation_sessions would leave the new
+    // account unable to enter checkout. A session with an order is not
+    // claimable because transferring a funded payment requires a separate,
+    // audited ownership-transfer flow.
     const placeholders = sql.join(
       guestIds.map((id) => sql`${id}::uuid`),
       sql`, `,
     );
     const result = await db.execute(sql`
-        UPDATE negotiation_sessions
-        SET buyer_id = ${userId}::uuid,
-            updated_at = NOW(),
-            version = version + 1
-        WHERE buyer_id IN (${placeholders})
-          AND seller_id <> ${userId}::uuid
+        WITH claimable_sessions AS (
+          SELECT session.id
+          FROM negotiation_sessions AS session
+          WHERE session.buyer_id IN (${placeholders})
+            AND session.seller_id <> ${userId}::uuid
+            AND NOT EXISTS (
+              SELECT 1
+              FROM commerce_orders AS commerce_order
+              WHERE commerce_order.settlement_approval_id = session.id
+            )
+        ),
+        claimed_sessions AS (
+          UPDATE negotiation_sessions
+          SET buyer_id = ${userId}::uuid,
+              updated_at = NOW(),
+              version = version + 1
+          WHERE id IN (SELECT id FROM claimable_sessions)
+            AND buyer_id IN (${placeholders})
+            AND seller_id <> ${userId}::uuid
+          RETURNING id
+        ),
+        claimed_approvals AS (
+          UPDATE settlement_approvals AS approval
+          SET buyer_id = ${userId}::uuid,
+              terms_snapshot = jsonb_set(
+                approval.terms_snapshot,
+                '{buyer_id}',
+                to_jsonb(${userId}::text),
+                true
+              ),
+              updated_at = NOW()
+          WHERE approval.id IN (SELECT id FROM claimed_sessions)
+            AND approval.buyer_id IN (${placeholders})
+          RETURNING approval.id
+        )
+        SELECT
+          (SELECT COUNT(*)::int FROM claimed_sessions) AS claimed_count,
+          (SELECT COUNT(*)::int FROM claimed_approvals) AS claimed_approval_count
       `);
 
+    const resultRows = Array.isArray(result)
+      ? result
+      : ((result as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? []);
+    const claimedCount = Number(resultRows[0]?.claimed_count);
     const rowCount = (result as unknown as { rowCount?: number }).rowCount;
     const count =
-      typeof rowCount === "number" ? rowCount : Array.isArray(result) ? result.length : 0;
+      Number.isInteger(claimedCount) && claimedCount >= 0
+        ? claimedCount
+        : typeof rowCount === "number"
+          ? rowCount
+          : 0;
     return reply.send({ ok: true, claimed_count: count });
   });
 }

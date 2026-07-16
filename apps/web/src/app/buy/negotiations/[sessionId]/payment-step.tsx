@@ -2,10 +2,22 @@
 
 import { formatMoney } from "@haggle/shared";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { CheckCircle2, CreditCard, ExternalLink, RotateCcw, WalletCards } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { Address, Hex } from "viem";
 import { useAccount, useBalance, useWriteContract } from "wagmi";
+import {
+  Alert,
+  Button,
+  buttonVariants,
+  ResultState,
+  SelectableOptionCard,
+  Spinner,
+  Stepper,
+} from "@/components/ui";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 
 // USDC contract ABI (minimal: approve)
@@ -67,7 +79,7 @@ type PaymentStepStatus =
   | "error";
 
 interface PaymentStepProps {
-  sessionId: string;
+  settlementApprovalId: string;
   amountMinor: number;
   currency: string;
 }
@@ -175,7 +187,7 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
-export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepProps) {
+export function PaymentStep({ settlementApprovalId, amountMinor, currency }: PaymentStepProps) {
   const { address, isConnected } = useAccount();
   const { data: balance } = useBalance({ address });
   const { writeContract, isPending: isWriting } = useWriteContract();
@@ -184,6 +196,7 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
   const [step, setStep] = useState<PaymentStepStatus>("select_method");
   const [error, setError] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [_onrampClientSecret, setOnrampClientSecret] = useState<string | null>(null);
   const [conditionalSettlement, setConditionalSettlement] =
@@ -225,15 +238,20 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
     setIsLoading(true);
     setError(null);
     try {
-      const data = await api.post<{ intent?: { id?: string } }>("/payments/prepare", {
-        settlement_approval_id: sessionId,
-        payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: method === "card" }),
-      });
+      const data = await api.post<{ intent?: { id?: string }; order?: { id?: string } }>(
+        "/payments/prepare",
+        {
+          settlement_approval_id: settlementApprovalId,
+          payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: method === "card" }),
+        },
+      );
       const intentId = data.intent?.id;
-      if (!intentId) {
-        throw new Error("Payment intent was not returned");
+      const preparedOrderId = data.order?.id;
+      if (!intentId || !preparedOrderId) {
+        throw new Error("The payment intent or order was not returned.");
       }
       setPaymentIntentId(intentId);
+      setOrderId(preparedOrderId);
       // Route based on payment method
       if (method === "card") {
         await handleStripeOnramp(intentId);
@@ -365,22 +383,13 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
       // Load Stripe onramp widget
       if (typeof window !== "undefined" && data.client_secret) {
-        // @ts-expect-error — @stripe/crypto loaded dynamically, types installed separately
-        const { loadStripeOnramp } = (await import("@stripe/crypto")) as {
-          loadStripeOnramp: (key: string) => Promise<{
-            createSession: (opts: { clientSecret: string }) => {
-              mount: (el: string) => void;
-              addEventListener: (event: string, cb: (e: unknown) => void) => void;
-            };
-          } | null>;
-        };
+        const { loadStripeOnramp } = await import("@stripe/crypto/pure");
         const stripeOnramp = await loadStripeOnramp(data.stripe_publishable_key);
         if (stripeOnramp) {
           const session = stripeOnramp.createSession({ clientSecret: data.client_secret });
           session.mount("#stripe-onramp-element");
-          session.addEventListener("onramp_session_updated", (e: unknown) => {
-            const event = e as { payload?: { session?: { status?: string } } };
-            if (event.payload?.session?.status === "fulfillment_complete") {
+          session.addEventListener("onramp_session_updated", (event) => {
+            if (event.payload.session.status === "fulfillment_complete") {
               setStep("complete");
             }
           });
@@ -470,148 +479,103 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
     }
   }
 
-  const steps: { key: PaymentStepStatus; label: string }[] = [
-    { key: "connect_wallet", label: "Connect Wallet" },
-    { key: "check_balance", label: "Check USDC Balance" },
-    { key: "approve_usdc", label: "Approve USDC" },
-    { key: "sign_x402", label: "Sign USDC Direct" },
-    { key: "submit", label: "Submit" },
-    { key: "complete", label: "Complete" },
-  ];
-
-  const currentStepIndex = steps.findIndex((s) => s.key === step);
+  const progressSteps = ["Method", "Wallet", "Quote", "Authorize", "Complete"];
+  const currentStepIndex: number =
+    step === "select_method"
+      ? 0
+      : step === "connect_wallet"
+        ? 1
+        : step === "check_balance"
+          ? 2
+          : step === "complete"
+            ? 4
+            : 3;
 
   return (
-    <div className="rounded-lg border border-gray-200 p-6 space-y-6">
+    <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold">Complete Payment</h2>
-        <p className="text-sm text-gray-500">
-          {quoteConfirmation && <span className="font-medium text-gray-700">{railLabel}: </span>}
+        <h2 className="font-semibold text-ink text-lg">Complete payment</h2>
+        <p className="text-ink-secondary text-sm">
+          {quoteConfirmation && <span className="font-medium text-ink">{railLabel}: </span>}
           {formatMinor(buyerPaysDisplay)}
           {buyerFeeDisplay.amount_minor > 0 && (
-            <span className="ml-2 text-xs text-gray-400">
+            <span className="ml-2 text-ink-muted text-xs">
               includes {formatMinor(buyerFeeDisplay)} buyer fee
             </span>
           )}
         </p>
       </div>
 
-      {/* Payment method selection */}
+      <Stepper steps={progressSteps} current={currentStepIndex} showLabels={false} />
+
       {step === "select_method" && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">Choose how to pay:</p>
-          <button
-            type="button"
+          <p className="text-ink-secondary text-sm">Choose a payment method.</p>
+          <SelectableOptionCard
+            selected={method === "card"}
+            icon={<CreditCard className="size-5" />}
+            title="Pay with card"
+            description="Stripe converts the card payment to USDC. The complete fee is shown before authorization."
             onClick={() => {
               setMethod("card");
               setStep("connect_wallet");
             }}
-            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
-          >
-            <span className="text-2xl">💳</span>
-            <div>
-              <div className="font-medium">Pay with Card</div>
-              <div className="text-xs text-gray-500">
-                Credit/debit card via Stripe. Buyer fee is calculated before the onramp opens.
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
+          />
+          <SelectableOptionCard
+            selected={method === "crypto"}
+            icon={<WalletCards className="size-5" />}
+            title={`USDC Direct (${formatMinor(fallbackAmount)})`}
+            description="Pay from a Base wallet. Haggle shows the settlement and seller fee before authorization."
             onClick={() => {
               setMethod("crypto");
               setStep("connect_wallet");
             }}
-            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-blue-50/50 transition-colors text-left"
-          >
-            <span className="text-2xl">🔗</span>
-            <div>
-              <div className="font-medium">USDC Direct ({formatMinor(fallbackAmount)})</div>
-              <div className="text-xs text-gray-500">
-                Pay from your wallet with USDC on Base. Seller fee is shown in the quote. Gas paid
-                by Haggle.
-              </div>
-              <div className="text-xs text-blue-600 mt-1">
-                Don&apos;t have a wallet? Create one instantly with Coinbase &mdash; just your email
-              </div>
-            </div>
-          </button>
+          />
         </div>
       )}
 
-      {/* Stripe onramp widget container */}
       {step === "onramp_active" && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600">Complete payment with your card:</p>
-          <div id="stripe-onramp-element" className="min-h-[400px] rounded-lg border" />
+          <p className="text-ink-secondary text-sm">Complete the payment in Stripe.</p>
+          <div
+            id="stripe-onramp-element"
+            className="min-h-[400px] rounded-lg border border-line bg-surface-raised"
+          />
         </div>
       )}
 
       {step === "onramp_loading" && (
-        <div className="py-8 text-center text-gray-500">
-          <div className="animate-spin inline-block w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full mb-2" />
+        <div className="flex flex-col items-center gap-3 py-10 text-ink-secondary">
+          <Spinner size="lg" />
           <p className="text-sm">Setting up card payment...</p>
         </div>
       )}
 
-      {/* Step indicator */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-        {steps.map((s, i) => (
-          <div key={s.key} className="flex items-center">
-            <div
-              className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium shrink-0 ${
-                i < currentStepIndex
-                  ? "bg-green-500 text-white"
-                  : i === currentStepIndex
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-400"
-              }`}
-            >
-              {i < currentStepIndex ? "✓" : i + 1}
-            </div>
-            <span
-              className={`ml-1 text-xs hidden sm:block ${
-                i === currentStepIndex ? "text-blue-600 font-medium" : "text-gray-400"
-              }`}
-            >
-              {s.label}
-            </span>
-            {i < steps.length - 1 && <div className="mx-2 h-px w-4 bg-gray-200 shrink-0" />}
-          </div>
-        ))}
-      </div>
-
-      {/* Step content */}
       <div className="space-y-4">
         {step === "connect_wallet" && (
           <div className="space-y-3">
             {method === "card" && !isConnected ? (
               <>
-                <p className="text-sm text-gray-600">
+                <p className="text-ink-secondary text-sm">
                   Connect the wallet that should receive USDC after your card payment.
                 </p>
                 <ConnectButton />
-                <p className="text-xs text-gray-400 text-center">
+                <p className="text-ink-muted text-xs">
                   The connected wallet must be registered to your Haggle account.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm text-gray-600">
+                <p className="text-ink-secondary text-sm">
                   {method === "crypto"
                     ? "Connect your wallet to pay with USDC."
                     : "Connect your wallet to proceed with payment."}
                 </p>
                 <ConnectButton />
                 {isConnected && (
-                  <button
-                    type="button"
-                    onClick={handlePrepare}
-                    disabled={isLoading}
-                    className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
-                  >
+                  <Button onClick={handlePrepare} loading={isLoading} fullWidth>
                     {isLoading ? "Preparing..." : "Continue"}
-                  </button>
+                  </Button>
                 )}
               </>
             )}
@@ -620,54 +584,51 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
 
         {step === "check_balance" && (
           <div className="space-y-3">
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+            <div className="space-y-2 rounded-lg bg-surface-sunken p-4">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Your address</span>
-                <span className="font-mono text-xs">
+                <span className="text-ink-secondary">Your address</span>
+                <span className="font-mono text-ink text-xs">
                   {address?.slice(0, 6)}...{address?.slice(-4)}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">ETH balance</span>
-                <span>{balance ? `${Number(balance.formatted).toFixed(4)} ETH` : "—"}</span>
+                <span className="text-ink-secondary">ETH balance</span>
+                <span className="text-ink">
+                  {balance ? `${Number(balance.formatted).toFixed(4)} ETH` : "—"}
+                </span>
               </div>
               <div className="flex justify-between text-sm font-medium">
-                <span className="text-gray-500">{buyerTotalLabel}</span>
-                <span>{formatMinor(buyerPaysDisplay)}</span>
+                <span className="text-ink-secondary">{buyerTotalLabel}</span>
+                <span className="text-ink">{formatMinor(buyerPaysDisplay)}</span>
               </div>
               {method === "crypto" && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Rail</span>
-                    <span>{railLabel}</span>
+                    <span className="text-ink-secondary">Rail</span>
+                    <span className="text-ink">{railLabel}</span>
                   </div>
                   {quoteConfirmation && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">{sellerReceivesLabel}</span>
-                      <span>{formatMinor(sellerReceivesDisplay)}</span>
+                      <span className="text-ink-secondary">{sellerReceivesLabel}</span>
+                      <span className="text-ink">{formatMinor(sellerReceivesDisplay)}</span>
                     </div>
                   )}
                 </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleQuote}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
-            >
+            <Button onClick={handleQuote} loading={isLoading} fullWidth>
               {isLoading
                 ? "Loading..."
                 : method === "crypto"
                   ? "Get USDC Direct Quote"
                   : "Get Quote"}
-            </button>
+            </Button>
           </div>
         )}
 
         {step === "approve_usdc" && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-ink-secondary text-sm">
               Approve USDC Direct to spend{" "}
               <strong>
                 {settlementAmountDisplay
@@ -677,10 +638,10 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
               on your behalf.
             </p>
             {(buyerFeeDisplay.amount_minor > 0 || sellerFeeDisplay.amount_minor > 0) && (
-              <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
+              <div className="space-y-1 rounded-lg bg-surface-sunken p-3 text-ink-secondary text-xs">
                 <div className="flex justify-between font-medium">
                   <span>Rail</span>
-                  <span>{railLabel}</span>
+                  <span className="text-ink">{railLabel}</span>
                 </div>
                 {settlementAmountDisplay && (
                   <div className="flex justify-between">
@@ -704,16 +665,15 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                   <span>{sellerReceivesLabel}</span>
                   <span>{formatMinor(sellerReceivesDisplay)}</span>
                 </div>
-                <p className="pt-1 text-gray-500">{feeSummaryLabel}</p>
+                <p className="pt-1 text-ink-muted">{feeSummaryLabel}</p>
               </div>
             )}
             {conditionalSettlement && (
-              <p className="text-xs text-gray-500">
+              <p className="text-ink-muted text-xs">
                 This approval is limited to the rules-bound conditional settlement contract.
               </p>
             )}
-            <button
-              type="button"
+            <Button
               onClick={() =>
                 handleApproveUsdc(
                   (conditionalSettlement?.contract.address ??
@@ -725,64 +685,70 @@ export function PaymentStep({ sessionId, amountMinor, currency }: PaymentStepPro
                 )
               }
               disabled={isLoading || isWriting || !settlementAmountDisplay}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+              loading={isLoading || isWriting}
+              fullWidth
             >
               {isLoading || isWriting ? "Approving..." : "Approve USDC"}
-            </button>
+            </Button>
           </div>
         )}
 
         {step === "sign_x402" && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-ink-secondary text-sm">
               {conditionalSettlement
                 ? "Fund the rules-limited USDC Direct settlement contract from your wallet."
                 : "Sign the USDC Direct payment authorization to complete the transaction."}
             </p>
-            <button
-              type="button"
-              onClick={handleSubmitX402}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
-            >
+            <Button onClick={handleSubmitX402} loading={isLoading} fullWidth>
               {isLoading
                 ? "Submitting..."
                 : conditionalSettlement
                   ? "Fund Conditional Settlement"
                   : "Sign & Submit Payment"}
-            </button>
+            </Button>
           </div>
         )}
 
         {step === "complete" && (
-          <div className="text-center space-y-3 py-4">
-            <div className="text-4xl">✓</div>
-            <p className="text-green-600 font-semibold">
-              {conditionalSettlement ? "Funding Submitted" : "Payment Complete!"}
-            </p>
-            <p className="text-sm text-gray-500">
-              {conditionalSettlement
+          <ResultState
+            tone="success"
+            icon={<CheckCircle2 className="size-7" />}
+            title={conditionalSettlement ? "Funding submitted" : "Payment complete"}
+            description={
+              conditionalSettlement
                 ? `Your ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} funding transaction was submitted. Release remains pending until the contract receipt and release conditions are confirmed.`
-                : `Your payment of ${formatMinor(buyerPaysDisplay)} has been submitted.`}
-            </p>
-          </div>
+                : `Your payment of ${formatMinor(buyerPaysDisplay)} has been submitted.`
+            }
+            action={
+              orderId ? (
+                <Link href={`/orders/${orderId}`} className={cn(buttonVariants(), "min-w-44")}>
+                  View order
+                  <ExternalLink className="size-4" />
+                </Link>
+              ) : undefined
+            }
+          />
         )}
 
         {step === "error" && (
           <div className="space-y-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-            <button
-              type="button"
+            <Alert tone="error" title="Payment could not continue">
+              {error}
+            </Alert>
+            <Button
+              variant="secondary"
               onClick={() => {
                 setError(null);
-                setStep(isConnected ? "check_balance" : "connect_wallet");
+                setStep(
+                  method === "crypto" && paymentIntentId ? "check_balance" : "connect_wallet",
+                );
               }}
-              className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              fullWidth
             >
+              <RotateCcw className="size-4" />
               Try Again
-            </button>
+            </Button>
           </div>
         )}
       </div>

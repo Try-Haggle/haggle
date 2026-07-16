@@ -2,6 +2,7 @@ import { getNegotiationAgentPreset } from "@haggle/shared";
 import { serverApi } from "@/lib/api-server";
 import { createClient } from "@/lib/supabase/server";
 import { GuestClaimBanner } from "./_guest-claim-banner";
+import { type CheckoutApprovalSummary, getCheckoutCta } from "./checkout-contract";
 import { PlaybackArena } from "./playback/playback-arena";
 import type {
   AgentCard,
@@ -110,7 +111,7 @@ function mapFinalStatus(status: string): FinalStatus {
   if (status === "ACCEPTED") return "ACCEPTED";
   if (status === "REJECTED" || status === "EXPIRED" || status === "SUPERSEDED") return "REJECTED";
   if (status === "NEAR_DEAL") return "NEAR_DEAL";
-  return "ACCEPTED";
+  return "ESCALATED";
 }
 
 function fallbackMessage(round: ServerRound, priceMajor: number, currency = "USD"): string {
@@ -254,6 +255,24 @@ export default async function BuyerNegotiationPage({
     data: { user },
   } = await supabase.auth.getUser();
   const isGuest = !user;
+  let approval: CheckoutApprovalSummary | undefined;
+
+  if (payload.session.status === "ACCEPTED" && user) {
+    try {
+      const response = await serverApi.get<{ approval: CheckoutApprovalSummary }>(
+        `/settlement-approvals/${sessionId}`,
+      );
+      approval = response.approval;
+    } catch {
+      // A missing or inaccessible approval keeps checkout fail-closed.
+    }
+  }
+  const checkoutCta = getCheckoutCta({
+    sessionId,
+    sessionStatus: payload.session.status,
+    userId: user?.id ?? null,
+    approval,
+  });
 
   return (
     <>
@@ -261,10 +280,16 @@ export default async function BuyerNegotiationPage({
         <GuestClaimBanner
           sessionId={sessionId}
           status={data.session.finalStatus}
-          finalPriceMinor={data.session.finalPrice}
+          finalPriceMinor={
+            data.session.finalPrice === null ? null : Math.round(data.session.finalPrice * 100)
+          }
         />
       )}
-      <PlaybackArena data={data} />
+      <PlaybackArena
+        data={data}
+        checkoutHref={checkoutCta?.href}
+        checkoutLabel={checkoutCta?.label}
+      />
     </>
   );
 }

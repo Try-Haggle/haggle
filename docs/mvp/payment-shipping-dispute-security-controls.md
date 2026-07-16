@@ -1,7 +1,7 @@
 # 결제·배송·분쟁 보안 통제 기준
 
 상태: MVP 애플리케이션/API 보안 기준
-최종 검증: 2026-07-14
+최종 검증: 2026-07-15
 범위: 결제, physical shipping, L1 분쟁, 테스트 컨트랙트 운영 도구
 
 이 문서는 현재 코드에 구현된 보호장치와 아직 남아 있는 위험을 구분해 기록한다. 스마트 컨트랙트 자체 감사는 [스마트 컨트랙트 보안 보고서](../contracts/smart-contract-security-report.md)를 따른다.
@@ -23,6 +23,8 @@
 |------|-----------|-----------|
 | 다른 사용자의 결제 조회·변경 | payment intent의 buyer/seller를 서버에서 조회하고 ownership middleware로 검사 | `apps/api/src/middleware/ownership.ts`, `apps/api/src/routes/payments.ts` |
 | 클라이언트가 금액·당사자 조작 | 승인된 settlement approval과 주문을 기준으로 intent 생성. 인라인 approval은 production에서 제한 | `apps/api/src/routes/payments.ts` |
+| 실패 협상·판매자·가격 변조로 checkout 진입 | 구매자 CTA와 checkout 서버 화면이 `ACCEPTED` 세션, 동일 ID의 `APPROVED` settlement approval, 현재 buyer, 협상가와 승인 금액 일치를 각각 검증. 직접 URL 진입도 같은 조건에서 실패 폐쇄 | `apps/web/src/app/buy/negotiations/[sessionId]/checkout-contract.ts`, `apps/web/src/app/buy/negotiations/[sessionId]/checkout/page.tsx` |
+| 게스트 가입 뒤 승인 소유권 불일치 | claim이 주문이 아직 없는 guest session과 동일 ID approval만 한 SQL statement에서 이전하고 buyer snapshot을 함께 갱신. 이미 order가 생긴 세션은 별도 감사된 이전 절차 없이 claim하지 않음 | `apps/api/src/routes/claim.ts` |
 | 큰 숫자로 금액 정밀도 손상 | 결제액, 환불액, 배송비, 버퍼를 JavaScript safe integer 범위로 제한 | `apps/api/src/routes/payments.ts` |
 | 중복 승인·정산·환불 | operation별 idempotency key와 request hash를 저장하고 replay/conflict/in-progress를 구분 | `apps/api/src/routes/payments.ts`, `apps/api/src/services/payment-record.service.ts` |
 | 잘못된 상태에서 정산·취소·환불 | 상태 머신과 manual mutation policy로 captured/refunded/disputed 상태 보호 | `apps/api/src/routes/payments.ts`, `packages/payment-core/` |
