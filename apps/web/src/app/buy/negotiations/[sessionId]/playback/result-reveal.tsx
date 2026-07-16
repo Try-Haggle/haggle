@@ -5,13 +5,15 @@ import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
-import { Button } from "@/components/ui";
+import { buttonVariants } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { formatPrice, formatSignedPct } from "./format";
 import type { PlaybackResponse } from "./types";
 
 interface ResultRevealProps {
   data: PlaybackResponse;
-  onAccept?: () => void;
+  checkoutHref?: string;
+  checkoutLabel?: string;
   onReplay?: () => void;
 }
 
@@ -20,7 +22,12 @@ interface ResultRevealProps {
  *   icon | status + headline + listing + price meta | inline CTA
  * Replay is omitted; it's already accessible from the playback header.
  */
-export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultRevealProps) {
+export function ResultReveal({
+  data,
+  checkoutHref,
+  checkoutLabel = "Continue to checkout",
+  onReplay: _onReplay,
+}: ResultRevealProps) {
   const { session, rounds } = data;
   const { finalStatus, finalPrice, listing } = session;
 
@@ -194,11 +201,11 @@ export function ResultReveal({ data, onAccept, onReplay: _onReplay }: ResultReve
           transition={{ duration: 0.5, delay: 0.4 }}
           className="shrink-0 sm:self-center"
         >
-          {isAccepted && onAccept ? (
-            <Button onClick={onAccept} className="w-full sm:w-auto">
-              Continue to checkout
+          {isAccepted && checkoutHref ? (
+            <Link href={checkoutHref} className={cn(buttonVariants(), "w-full sm:w-auto")}>
+              {checkoutLabel}
               <ArrowRight className="size-3.5" />
-            </Button>
+            </Link>
           ) : !isAccepted ? (
             <Link
               href="/browse"

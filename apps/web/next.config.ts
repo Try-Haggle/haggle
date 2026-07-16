@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
       ".js": [".ts", ".tsx", ".js"],
       ".mjs": [".mts", ".mjs"],
     };
+    config.resolve.fallback = {
+      ...(config.resolve.fallback ?? {}),
+      "@react-native-async-storage/async-storage": false,
+      "pino-pretty": false,
+    };
     return config;
   },
   experimental: {

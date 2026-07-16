@@ -50,7 +50,7 @@ function ClaimBuyerInner() {
     setState({ kind: "claiming" });
 
     const sessionId = search?.get("session_id") ?? null;
-    const redirectTo = sessionId ? `/buy/negotiations/${sessionId}` : "/buy/dashboard";
+    const redirectTo = sessionId ? `/buy/negotiations/${sessionId}/checkout` : "/buy/dashboard";
 
     let guestIds: string[] = [];
     try {

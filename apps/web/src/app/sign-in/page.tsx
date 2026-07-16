@@ -72,7 +72,7 @@ function SignInForm() {
     if (error) {
       setAuthError(error.message);
     } else {
-      const nextPath = token ? `/sell/dashboard?claim=${token}` : "/buy/dashboard";
+      const nextPath = token ? `/sell/dashboard?claim=${token}` : defaultNext;
       router.replace(nextPath);
     }
   }

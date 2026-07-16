@@ -15,6 +15,8 @@ import { usePlaybackEngine, usePrefersReducedMotion } from "./use-playback-engin
 
 interface PlaybackArenaProps {
   data: PlaybackResponse;
+  checkoutHref?: string;
+  checkoutLabel?: string;
 }
 
 /**
@@ -24,7 +26,7 @@ interface PlaybackArenaProps {
  *   2. Live arena (during playback)
  *   3. Result reveal (after completion — overlays the arena)
  */
-export function PlaybackArena({ data }: PlaybackArenaProps) {
+export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackArenaProps) {
   const reduceMotion = usePrefersReducedMotion();
   const engine = usePlaybackEngine({
     rounds: data.rounds,
@@ -241,10 +243,8 @@ export function PlaybackArena({ data }: PlaybackArenaProps) {
                     <ResultReveal
                       data={data}
                       onReplay={handleReplay}
-                      onAccept={() => {
-                        // TODO: hook into checkout flow when backend is wired up.
-                        // For now scroll to top so the user sees the result.
-                      }}
+                      checkoutHref={checkoutHref}
+                      checkoutLabel={checkoutLabel}
                     />
                   </div>
                 )}
