@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { ChatBubble } from "./chat-bubble";
 import { ThinkingDots } from "./thinking-dots";
-import type { AgentCard, PlaybackRound } from "./types";
+import type { AgentCard, AgentRole, PlaybackRound } from "./types";
 import type { PlaybackEngine } from "./use-playback-engine";
 
 interface ChatTimelineProps {
@@ -15,6 +15,7 @@ interface ChatTimelineProps {
   currency: string;
   focusedRoundIndex: number | null;
   onFocusRound: (index: number | null) => void;
+  waitingRole?: AgentRole | null;
 }
 
 export function ChatTimeline({
@@ -25,6 +26,7 @@ export function ChatTimeline({
   currency,
   focusedRoundIndex,
   onFocusRound,
+  waitingRole,
 }: ChatTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollKey = useRef<string>("");
@@ -36,7 +38,11 @@ export function ChatTimeline({
     lastScrollKey.current = key;
     const el = containerRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (typeof el.scrollTo === "function") {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [engine.visibleCount, engine.phase, engine.currentRoundIndex]);
 
   const visibleRounds = rounds.slice(0, engine.visibleCount);
@@ -106,6 +112,22 @@ export function ChatTimeline({
             <ThinkingDots
               color={(inFlight.sender === "BUYER" ? buyerAgent : sellerAgent).accentColor}
               label={`${(inFlight.sender === "BUYER" ? buyerAgent : sellerAgent).name} is thinking`}
+            />
+          </motion.div>
+        )}
+
+        {!inFlight && waitingRole && (
+          <motion.div
+            key={`live-waiting-${waitingRole}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className={`flex ${waitingRole === "BUYER" ? "justify-end" : "justify-start"}`}
+          >
+            <ThinkingDots
+              color={(waitingRole === "BUYER" ? buyerAgent : sellerAgent).accentColor}
+              label={`${(waitingRole === "BUYER" ? buyerAgent : sellerAgent).name} is thinking`}
             />
           </motion.div>
         )}

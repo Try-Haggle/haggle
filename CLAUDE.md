@@ -207,6 +207,9 @@ pnpm --filter @haggle/engine-session test
 - README는 개발자가 실행해야 하는 셋업·명령·데모 절차가 바뀔 때만 갱신한다.
 - CLAUDE.md는 durable architecture, branch, team workflow, non-negotiable safety rule이 바뀔 때만 갱신한다.
 - 커밋, merge, rebase, stash, push, PR 생성은 사람이 명시적으로 요청한 경우에만 한다.
+- 배포 승인 게이트: `git push`, PR merge, staging/production 배포처럼 원격 배포를
+  유발할 수 있는 작업은 실행 직전에 사용자에게 대상 환경과 변경 범위를 알리고
+  명시적 승인을 받은 뒤 실행한다. 로컬 구현과 검증이 끝나도 승인 전에는 멈춘다.
 
 ---
 

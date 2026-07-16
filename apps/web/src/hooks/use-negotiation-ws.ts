@@ -8,7 +8,7 @@ const WS_URL = API_URL.replace(/^http/, "ws");
 
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 2000;
-const POLL_INTERVAL_MS = 5000;
+const DEFAULT_POLL_INTERVAL_MS = 5000;
 
 export interface WsMessage {
   type: "round_update" | "status_change" | "pong";
@@ -21,6 +21,8 @@ interface UseNegotiationWsOptions {
   onUpdate: () => void;
   /** Whether the session is in a terminal state */
   isTerminal: boolean;
+  /** Poll interval for guests or when WebSocket is unavailable */
+  pollIntervalMs?: number;
 }
 
 interface UseNegotiationWsResult {
@@ -38,6 +40,7 @@ export function useNegotiationWs({
   sessionId,
   onUpdate,
   isTerminal,
+  pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
 }: UseNegotiationWsOptions): UseNegotiationWsResult {
   const [connectionMode, setConnectionMode] = useState<"ws" | "polling" | "disconnected">(
     "disconnected",
@@ -63,6 +66,7 @@ export function useNegotiationWs({
       if (!token) {
         // No auth — fall back to polling
         setConnectionMode("polling");
+        onUpdateRef.current();
         return;
       }
 
@@ -84,6 +88,9 @@ export function useNegotiationWs({
       ws.onopen = () => {
         reconnectAttemptsRef.current = 0;
         setConnectionMode("ws");
+        // Reconcile any round committed between the initial page load and
+        // the WebSocket subscription becoming active.
+        onUpdateRef.current();
       };
 
       ws.onmessage = (event) => {
@@ -120,6 +127,7 @@ export function useNegotiationWs({
       };
     } catch {
       setConnectionMode("polling");
+      onUpdateRef.current();
     }
   }, [sessionId, isTerminal]);
 
@@ -146,10 +154,10 @@ export function useNegotiationWs({
 
     const interval = setInterval(() => {
       onUpdateRef.current();
-    }, POLL_INTERVAL_MS);
+    }, pollIntervalMs);
 
     return () => clearInterval(interval);
-  }, [connectionMode, isTerminal]);
+  }, [connectionMode, isTerminal, pollIntervalMs]);
 
   return { connectionMode };
 }

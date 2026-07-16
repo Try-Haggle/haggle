@@ -23,8 +23,8 @@ interface PlaybackState {
   status: PlaybackStatus;
   currentRoundIndex: number; // 0-based pointer into rounds array (round being animated)
   phase: RoundPhase;
-  visibleCount: number;       // how many rounds are fully visible (settled)
-  typingChars: number;        // chars revealed in current typing phase
+  visibleCount: number; // how many rounds are fully visible (settled)
+  typingChars: number; // chars revealed in current typing phase
   speed: PlaybackSpeed;
 }
 
@@ -54,7 +54,14 @@ const INITIAL: PlaybackState = {
 function reducer(state: PlaybackState, action: Action): PlaybackState {
   switch (action.type) {
     case "BEGIN":
-      return { ...state, status: "PLAYING", phase: "thinking", currentRoundIndex: 0, visibleCount: 0, typingChars: 0 };
+      return {
+        ...state,
+        status: "PLAYING",
+        phase: "thinking",
+        currentRoundIndex: 0,
+        visibleCount: 0,
+        typingChars: 0,
+      };
     case "ENTER_THINKING":
       return { ...state, phase: "thinking", typingChars: 0 };
     case "ENTER_TYPING":
@@ -64,11 +71,21 @@ function reducer(state: PlaybackState, action: Action): PlaybackState {
     case "SETTLE":
       return { ...state, phase: "settled", visibleCount: state.currentRoundIndex + 1 };
     case "NEXT_ROUND":
-      return { ...state, currentRoundIndex: state.currentRoundIndex + 1, phase: "thinking", typingChars: 0 };
+      return {
+        ...state,
+        currentRoundIndex: state.currentRoundIndex + 1,
+        phase: "thinking",
+        typingChars: 0,
+      };
     case "COMPLETE":
       return { ...state, status: "COMPLETE", phase: "settled" };
     case "SKIP":
-      return { ...state, status: "COMPLETE", phase: "settled", visibleCount: Number.MAX_SAFE_INTEGER };
+      return {
+        ...state,
+        status: "COMPLETE",
+        phase: "settled",
+        visibleCount: Number.MAX_SAFE_INTEGER,
+      };
     case "REPLAY":
       return { ...INITIAL, speed: state.speed, status: "PLAYING" };
     case "PAUSE":
@@ -133,10 +150,13 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): PlaybackEn
     });
     timersRef.current.clear();
   }, []);
-  const addTimer = useCallback(<T extends ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>(t: T): T => {
-    timersRef.current.add(t);
-    return t;
-  }, []);
+  const addTimer = useCallback(
+    <T extends ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>(t: T): T => {
+      timersRef.current.add(t);
+      return t;
+    },
+    [],
+  );
 
   // Schedule a single round's lifecycle. Re-runs whenever the round pointer
   // changes or playback resumes. Returns a cleanup that aborts pending timers.
@@ -221,26 +241,48 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): PlaybackEn
       cancelled = true;
       clearAllTimers();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.currentRoundIndex, state.status, state.speed, rounds, msPerChar, defaultThinkingMs, interRoundPauseMs, reduceMotion]);
+  }, [
+    state.currentRoundIndex,
+    state.status,
+    state.speed,
+    rounds,
+    msPerChar,
+    defaultThinkingMs,
+    interRoundPauseMs,
+    reduceMotion,
+    addTimer,
+    clearAllTimers,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => () => clearAllTimers(), [clearAllTimers]);
 
-  const api = useMemo<PlaybackEngine>(() => ({
-    status: state.status,
-    phase: state.phase,
-    currentRoundIndex: state.currentRoundIndex,
-    visibleCount: Math.min(state.visibleCount, rounds.length),
-    typingChars: state.typingChars,
-    speed: state.speed,
-    begin: () => dispatch({ type: "BEGIN" }),
-    skip: () => { clearAllTimers(); dispatch({ type: "SKIP" }); },
-    replay: () => { clearAllTimers(); dispatch({ type: "REPLAY" }); },
-    pause: () => { clearAllTimers(); dispatch({ type: "PAUSE" }); },
-    resume: () => dispatch({ type: "RESUME" }),
-    setSpeed: (speed) => dispatch({ type: "SET_SPEED", speed }),
-  }), [state, rounds.length, clearAllTimers]);
+  const api = useMemo<PlaybackEngine>(
+    () => ({
+      status: state.status,
+      phase: state.phase,
+      currentRoundIndex: state.currentRoundIndex,
+      visibleCount: Math.min(state.visibleCount, rounds.length),
+      typingChars: state.typingChars,
+      speed: state.speed,
+      begin: () => dispatch({ type: "BEGIN" }),
+      skip: () => {
+        clearAllTimers();
+        dispatch({ type: "SKIP" });
+      },
+      replay: () => {
+        clearAllTimers();
+        dispatch({ type: "REPLAY" });
+      },
+      pause: () => {
+        clearAllTimers();
+        dispatch({ type: "PAUSE" });
+      },
+      resume: () => dispatch({ type: "RESUME" }),
+      setSpeed: (speed) => dispatch({ type: "SET_SPEED", speed }),
+    }),
+    [state, rounds.length, clearAllTimers],
+  );
 
   return api;
 }
@@ -249,7 +291,7 @@ export function usePlaybackEngine(options: UsePlaybackEngineOptions): PlaybackEn
 export function usePrefersReducedMotion(): boolean {
   const [reduce, setReduce] = useReducer((_: boolean, next: boolean) => next, false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReduce(mq.matches);
     const onChange = (e: MediaQueryListEvent) => setReduce(e.matches);
