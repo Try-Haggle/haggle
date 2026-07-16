@@ -12,7 +12,7 @@ import {
   Slider,
   TypingIndicator,
 } from "@/components/ui";
-import { apiClient } from "@/lib/api-client";
+import { ApiError, apiClient } from "@/lib/api-client";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -581,10 +581,14 @@ export function NegotiationAgentBuilderChat({
       });
     } catch (err: unknown) {
       console.error("[negotiation-agent-builder-chat] API error:", err);
+      const apiError = err instanceof ApiError ? err : null;
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: "agent",
-        text: "Connection problem. Please try again in a moment.",
+        text:
+          apiError?.message ??
+          apiError?.code ??
+          "Couldn't reach Haggle. Check your connection and try again.",
         timestamp: Date.now(),
       };
       setMessages((prev) => {
@@ -715,10 +719,14 @@ export function NegotiationAgentBuilderChat({
         });
       } catch (err: unknown) {
         console.error("[negotiation-agent-builder-chat] API error:", err);
+        const apiError = err instanceof ApiError ? err : null;
         const errorMsg: ChatMessage = {
           id: `error-${Date.now()}`,
           role: "agent",
-          text: "Connection problem. Please try again in a moment.",
+          text:
+            apiError?.message ??
+            apiError?.code ??
+            "Couldn't reach Haggle. Check your connection and try again.",
           timestamp: Date.now(),
         };
         setMessages((prev) => {

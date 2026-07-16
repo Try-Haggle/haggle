@@ -23,6 +23,7 @@ export interface DeepSeekCallOptions {
 
 export interface DeepSeekResponse {
   content: string;
+  finish_reason?: string | null;
   usage: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -153,6 +154,7 @@ export async function callLLM(
 
         return {
           content,
+          finish_reason: data.choices?.[0]?.finish_reason ?? null,
           usage: {
             prompt_tokens: data.usage?.prompt_tokens ?? 0,
             completion_tokens: data.usage?.completion_tokens ?? 0,

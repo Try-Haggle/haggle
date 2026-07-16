@@ -464,7 +464,7 @@ export function BuyerLanding({
                         setNegotiationMessage(
                           apiErr?.message ??
                             apiErr?.code ??
-                            "Couldn't start the negotiation. Please try again.",
+                            "Couldn't reach Haggle. Check your connection and try again.",
                         );
                       }
                     }}

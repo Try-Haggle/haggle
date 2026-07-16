@@ -49,6 +49,7 @@ describe("callLLM", () => {
     expect(result.usage.prompt_tokens).toBe(100);
     expect(result.usage.completion_tokens).toBe(50);
     expect(result.reasoning_used).toBe(false);
+    expect(result.finish_reason).toBe("stop");
   });
 
   it("uses reasoning mode (lower temperature) when flag is set", async () => {

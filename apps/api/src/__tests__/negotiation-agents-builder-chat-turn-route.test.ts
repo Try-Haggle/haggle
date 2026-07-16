@@ -137,7 +137,7 @@ describe("POST /negotiations/agents/builder/chat-turn", () => {
     expect(res.statusCode).toBe(502);
     expect(res.json()).toMatchObject({
       error: "CHAT_TURN_FAILED",
-      message: "deepseek timeout",
+      message: "The negotiation advisor could not complete its response. Please try again.",
     });
     await app.close();
   });

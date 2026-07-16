@@ -46,6 +46,7 @@ import {
   setSessionPerspective,
   updateSessionState,
 } from "../services/negotiation-session.service.js";
+import { withNegotiationTransientDbRetry } from "../services/negotiation-transient-retry.service.js";
 import { loadUserMemoryBrief } from "../services/user-memory-card.service.js";
 
 // ── Zod Schemas ────────────────────────────────────────────
@@ -1101,7 +1102,9 @@ export function registerNegotiationRoutes(
       const responderSnapshot = responderRole === "SELLER" ? sellerSnapshot : buyerSnapshot;
 
       try {
-        await setSessionPerspective(db, session.id, responderRole, responderSnapshot);
+        await withNegotiationTransientDbRetry(() =>
+          setSessionPerspective(db, session.id, responderRole, responderSnapshot),
+        );
       } catch (err) {
         console.error("[negotiations/start] perspective swap failed:", err);
         break;
@@ -1123,15 +1126,17 @@ export function registerNegotiationRoutes(
 
       let result: Awaited<ReturnType<typeof executor>>;
       try {
-        result = await executor(db, {
-          sessionId: session.id,
-          offerPriceMinor: nextOfferMinor,
-          senderRole: nextSenderRole,
-          messageText,
-          idempotencyKey: `auto-${session.id}-r${i + 1}`,
-          roundData: {},
-          nowMs: Date.now(),
-        });
+        result = await withNegotiationTransientDbRetry(() =>
+          executor(db, {
+            sessionId: session.id,
+            offerPriceMinor: nextOfferMinor,
+            senderRole: nextSenderRole,
+            messageText,
+            idempotencyKey: `auto-${session.id}-r${i + 1}`,
+            roundData: {},
+            nowMs: Date.now(),
+          }),
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (
