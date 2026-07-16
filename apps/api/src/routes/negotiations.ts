@@ -1088,92 +1088,101 @@ export function registerNegotiationRoutes(
       expiresAt,
     });
 
-    // Drive both sides through the staged executor by swapping the session's
-    // role + negotiation_agent_snapshot before each call. This is the simplest way to
-    // get a back-and-forth LLM transcript persisted under one session id.
-    const TERMINAL = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"]);
-    const executor = getExecutor();
-    let nextSenderRole: "BUYER" | "SELLER" = "BUYER";
-    let nextOfferMinor = buyerTarget;
-    let prevOfferMinor: number | null = null;
-    let prevMessageText: string | null = null;
-    for (let i = 0; i < AUTO_PLAY_MAX_ROUNDS; i++) {
-      const responderRole: "BUYER" | "SELLER" = nextSenderRole === "BUYER" ? "SELLER" : "BUYER";
-      const responderSnapshot = responderRole === "SELLER" ? sellerSnapshot : buyerSnapshot;
+    // A real LLM round can take several seconds. Running all rounds inside this
+    // request exceeded the staging proxy timeout and made the browser report a
+    // network failure even though the session had already been created. Return
+    // the durable session immediately and let the client poll while auto-play
+    // continues in this process. Round idempotency keys make transient DB retries
+    // safe within this worker.
+    void (async () => {
+      // Drive both sides through the staged executor by swapping the session's
+      // role + negotiation_agent_snapshot before each call.
+      const TERMINAL = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"]);
+      const executor = getExecutor();
+      let nextSenderRole: "BUYER" | "SELLER" = "BUYER";
+      let nextOfferMinor = buyerTarget;
+      let prevOfferMinor: number | null = null;
+      let prevMessageText: string | null = null;
 
-      try {
-        await withNegotiationTransientDbRetry(() =>
-          setSessionPerspective(db, session.id, responderRole, responderSnapshot),
-        );
-      } catch (err) {
-        console.error("[negotiations/start] perspective swap failed:", err);
-        break;
-      }
+      for (let i = 0; i < AUTO_PLAY_MAX_ROUNDS; i++) {
+        const responderRole: "BUYER" | "SELLER" = nextSenderRole === "BUYER" ? "SELLER" : "BUYER";
+        const responderSnapshot = responderRole === "SELLER" ? sellerSnapshot : buyerSnapshot;
 
-      // Preferred path: forward the prior round's persisted message so the
-      // engine's understand() stage sees the same conversational signal the
-      // counterparty actually saw. Fall back to a synthesized stub only for
-      // round 1 (no prior message) or if persistence somehow returned empty.
-      const offerDollars = (nextOfferMinor / 100).toFixed(2);
-      const fallbackText =
-        i === 0
-          ? `Hi, I'm interested in this listing. I'd like to offer $${offerDollars}.`
-          : prevOfferMinor != null && nextOfferMinor !== prevOfferMinor
-            ? `Thanks for the response. I can do $${offerDollars}.`
-            : `I'll stay at $${offerDollars} for now.`;
-      const messageText =
-        prevMessageText && prevMessageText.trim().length > 0 ? prevMessageText : fallbackText;
-
-      let result: Awaited<ReturnType<typeof executor>>;
-      try {
-        result = await withNegotiationTransientDbRetry(() =>
-          executor(db, {
-            sessionId: session.id,
-            offerPriceMinor: nextOfferMinor,
-            senderRole: nextSenderRole,
-            messageText,
-            idempotencyKey: `auto-${session.id}-r${i + 1}`,
-            roundData: {},
-            nowMs: Date.now(),
-          }),
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (
-          msg.startsWith("ROUND_LIMIT_EXCEEDED") ||
-          msg.startsWith("SESSION_TERMINAL") ||
-          msg.startsWith("SESSION_EXPIRED") ||
-          msg.startsWith("SESSION_MAX_ROUNDS_EXCEEDED")
-        ) {
+        try {
+          await withNegotiationTransientDbRetry(() =>
+            setSessionPerspective(db, session.id, responderRole, responderSnapshot),
+          );
+        } catch (err) {
+          console.error("[negotiations/start] perspective swap failed:", err);
           break;
         }
-        console.error("[negotiations/start] auto-play executor error:", err);
-        break;
+
+        // Preferred path: forward the prior round's persisted message so the
+        // engine's understand() stage sees the same conversational signal the
+        // counterparty actually saw. Fall back to a synthesized stub only for
+        // round 1 (no prior message) or if persistence somehow returned empty.
+        const offerDollars = (nextOfferMinor / 100).toFixed(2);
+        const fallbackText =
+          i === 0
+            ? `Hi, I'm interested in this listing. I'd like to offer $${offerDollars}.`
+            : prevOfferMinor != null && nextOfferMinor !== prevOfferMinor
+              ? `Thanks for the response. I can do $${offerDollars}.`
+              : `I'll stay at $${offerDollars} for now.`;
+        const messageText =
+          prevMessageText && prevMessageText.trim().length > 0 ? prevMessageText : fallbackText;
+
+        let result: Awaited<ReturnType<typeof executor>>;
+        try {
+          result = await withNegotiationTransientDbRetry(() =>
+            executor(db, {
+              sessionId: session.id,
+              offerPriceMinor: nextOfferMinor,
+              senderRole: nextSenderRole,
+              messageText,
+              idempotencyKey: `auto-${session.id}-r${i + 1}`,
+              roundData: {},
+              nowMs: Date.now(),
+            }),
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (
+            msg.startsWith("ROUND_LIMIT_EXCEEDED") ||
+            msg.startsWith("SESSION_TERMINAL") ||
+            msg.startsWith("SESSION_EXPIRED") ||
+            msg.startsWith("SESSION_MAX_ROUNDS_EXCEEDED")
+          ) {
+            break;
+          }
+          console.error("[negotiations/start] auto-play executor error:", err);
+          break;
+        }
+
+        if (TERMINAL.has(result.sessionStatus)) break;
+        if (result.decision === "REJECT") break;
+        if (!result.outgoingPrice || result.outgoingPrice <= 0) break;
+
+        nextSenderRole = responderRole;
+        prevOfferMinor = nextOfferMinor;
+        // Buyer's counter must never go below their initial offer.
+        nextOfferMinor =
+          responderRole === "BUYER"
+            ? Math.max(buyerTarget, result.outgoingPrice)
+            : result.outgoingPrice;
+        prevMessageText = result.message ?? null;
       }
 
-      if (TERMINAL.has(result.sessionStatus)) break;
-      // Belt-and-suspenders: REJECT decisions should never roll forward as a
-      // synthetic counter even if status mapping somehow leaves the session
-      // ACTIVE. Stop the loop and let the UI render the final rejection.
-      if (result.decision === "REJECT") break;
-      // Guard against the (rare) case where outgoingPrice came back as 0
-      // (e.g. REJECT without termination). Avoid offering $0 as a counter.
-      if (!result.outgoingPrice || result.outgoingPrice <= 0) break;
+      const finalSession = await getSessionById(db, session.id);
+      console.info(
+        `[negotiations/start] auto-play completed session=${session.id} status=${finalSession?.status ?? "UNKNOWN"} rounds=${finalSession?.currentRound ?? 0}`,
+      );
+    })().catch((err) => {
+      console.error(`[negotiations/start] auto-play worker failed session=${session.id}:`, err);
+    });
 
-      nextSenderRole = responderRole;
-      prevOfferMinor = nextOfferMinor;
-      // Buyer's counter must never go below their initial offer — clamp to [buyerTarget, ∞).
-      nextOfferMinor =
-        responderRole === "BUYER"
-          ? Math.max(buyerTarget, result.outgoingPrice)
-          : result.outgoingPrice;
-      prevMessageText = result.message ?? null;
-    }
-
-    const finalSession = (await getSessionById(db, session.id)) ?? session;
-    return reply.code(201).send({
+    return reply.code(202).send({
       session_id: session.id,
-      status: finalSession.status,
+      status: session.status,
       ...(isGuest ? { guest_buyer_id: buyer.id } : {}),
     });
   });
