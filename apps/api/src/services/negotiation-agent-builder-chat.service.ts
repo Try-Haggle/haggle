@@ -1035,10 +1035,13 @@ Candidate planner:
 ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no listing context."}`,
     {
       correlationId: "intelligence-demo-advisor-turn",
-      maxTokens: 700,
+      maxTokens: 2400,
     },
   );
 
+  if (response.finish_reason === "length") {
+    throw new Error("Negotiation advisor response was truncated");
+  }
   const parsed = negotiationAgentBuilderTurnResultSchema.parse(parseJSON(response.content));
   const sourceCandidates =
     parsed.memory.source.length > 0

@@ -102,7 +102,7 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
       request.log.error({ err }, "negotiation agent builder chat turn failed");
       return reply.code(502).send({
         error: "CHAT_TURN_FAILED",
-        message: err instanceof Error ? err.message : "Chat turn failed",
+        message: "The negotiation advisor could not complete its response. Please try again.",
       });
     }
   });
