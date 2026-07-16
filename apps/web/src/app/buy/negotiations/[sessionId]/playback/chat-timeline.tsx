@@ -127,7 +127,6 @@ export function ChatTimeline({
           >
             <ThinkingDots
               color={(waitingRole === "BUYER" ? buyerAgent : sellerAgent).accentColor}
-              label={`${(waitingRole === "BUYER" ? buyerAgent : sellerAgent).name} is thinking`}
             />
           </motion.div>
         )}

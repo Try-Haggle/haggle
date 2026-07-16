@@ -83,7 +83,8 @@ describe("LiveNegotiation", () => {
     mocks.get.mockResolvedValue(payload("ACTIVE", 1));
     render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
 
-    expect(screen.getByText("Buyer Agent is thinking")).toBeInTheDocument();
+    expect(screen.queryByText("Buyer Agent is thinking")).not.toBeInTheDocument();
+    expect(screen.getByText("Live updates")).toBeInTheDocument();
     await act(async () => {
       await mocks.triggerUpdate?.();
     });
