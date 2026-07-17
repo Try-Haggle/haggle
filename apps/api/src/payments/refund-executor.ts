@@ -11,12 +11,9 @@
  *   - Double-refund prevention is the caller's responsibility (check refunds table first)
  */
 
-import { isAddress, encodeFunctionData } from "viem";
-import { relayTransaction, getRelayerConfig } from "./gas-relayer.js";
-import {
-  BASE_USDC_ADDRESS,
-  BASE_SEPOLIA_USDC_ADDRESS,
-} from "@haggle/contracts";
+import { encodeFunctionData, isAddress } from "viem";
+import { getRelayerConfig, relayTransaction } from "./gas-relayer.js";
+import { resolveSettlementAssetAddress } from "./settlement-asset.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,10 +58,7 @@ const ERC20_TRANSFER_ABI = [
 // ---------------------------------------------------------------------------
 
 function getUsdcAddress(): `0x${string}` {
-  const network = process.env.HAGGLE_X402_NETWORK ?? "base";
-  return network === "base-sepolia"
-    ? BASE_SEPOLIA_USDC_ADDRESS
-    : BASE_USDC_ADDRESS;
+  return resolveSettlementAssetAddress();
 }
 
 function centsToUsdcWei(amountCents: number): bigint {
@@ -92,9 +86,7 @@ function getRefundMode(): RefundRail {
  * - usdc: transfers USDC from escrow wallet to the buyer's wallet
  * - stripe: creates a Stripe refund if original payment used Stripe
  */
-export async function executeRefund(
-  params: ExecuteRefundParams,
-): Promise<ExecuteRefundResult> {
+export async function executeRefund(params: ExecuteRefundParams): Promise<ExecuteRefundResult> {
   // Use the explicitly requested rail, or fall back to env-configured mode
   const rail = params.rail ?? getRefundMode();
 
@@ -119,9 +111,7 @@ export async function executeRefund(
 // USDC refund
 // ---------------------------------------------------------------------------
 
-async function executeUsdcRefund(
-  params: ExecuteRefundParams,
-): Promise<ExecuteRefundResult> {
+async function executeUsdcRefund(params: ExecuteRefundParams): Promise<ExecuteRefundResult> {
   if (!params.buyer_wallet_address) {
     throw new Error("USDC refund requires buyer_wallet_address");
   }
@@ -140,10 +130,7 @@ async function executeUsdcRefund(
   const calldata = encodeFunctionData({
     abi: ERC20_TRANSFER_ABI,
     functionName: "transfer",
-    args: [
-      params.buyer_wallet_address as `0x${string}`,
-      amountWei,
-    ],
+    args: [params.buyer_wallet_address as `0x${string}`, amountWei],
   });
 
   const result = await relayTransaction({
@@ -158,9 +145,7 @@ async function executeUsdcRefund(
 // Stripe refund
 // ---------------------------------------------------------------------------
 
-async function executeStripeRefund(
-  params: ExecuteRefundParams,
-): Promise<ExecuteRefundResult> {
+async function executeStripeRefund(params: ExecuteRefundParams): Promise<ExecuteRefundResult> {
   if (!params.stripe_payment_intent_id) {
     throw new Error("Stripe refund requires stripe_payment_intent_id");
   }
@@ -174,7 +159,7 @@ async function executeStripeRefund(
   const response = await fetch("https://api.stripe.com/v1/refunds", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${stripeSecretKey}`,
+      Authorization: `Bearer ${stripeSecretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({

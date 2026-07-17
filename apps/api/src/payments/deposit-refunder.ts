@@ -9,13 +9,10 @@
  * Security: refund only if deposit is DEPOSITED and outcome is seller_favor.
  */
 
-import { isAddress, encodeFunctionData } from "viem";
-import { relayTransaction, getRelayerConfig } from "./gas-relayer.js";
-import {
-  BASE_USDC_ADDRESS,
-  BASE_SEPOLIA_USDC_ADDRESS,
-} from "@haggle/contracts";
+import { encodeFunctionData, isAddress } from "viem";
 import type { DepositPaymentRail } from "./deposit-collector.js";
+import { getRelayerConfig, relayTransaction } from "./gas-relayer.js";
+import { resolveSettlementAssetAddress } from "./settlement-asset.js";
 
 // ---------------------------------------------------------------------------
 // ERC-20 transfer ABI fragment
@@ -39,10 +36,7 @@ const ERC20_TRANSFER_ABI = [
 // ---------------------------------------------------------------------------
 
 function getUsdcAddress(): `0x${string}` {
-  const network = process.env.HAGGLE_X402_NETWORK ?? "base";
-  return network === "base-sepolia"
-    ? BASE_SEPOLIA_USDC_ADDRESS
-    : BASE_USDC_ADDRESS;
+  return resolveSettlementAssetAddress();
 }
 
 function centsToUsdcWei(amountCents: number): bigint {
@@ -73,9 +67,7 @@ export interface RefundDepositResult {
  * - usdc: transfer USDC from escrow wallet back to seller
  * - stripe: record manual refund (crypto onramp refunds are not automated)
  */
-export async function refundDeposit(
-  params: RefundDepositParams,
-): Promise<RefundDepositResult> {
+export async function refundDeposit(params: RefundDepositParams): Promise<RefundDepositResult> {
   switch (params.rail) {
     case "mock":
       if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
@@ -97,9 +89,7 @@ export async function refundDeposit(
   }
 }
 
-async function refundUsdcDeposit(
-  params: RefundDepositParams,
-): Promise<RefundDepositResult> {
+async function refundUsdcDeposit(params: RefundDepositParams): Promise<RefundDepositResult> {
   if (!params.seller_wallet_address) {
     throw new Error("USDC refund requires seller_wallet_address");
   }
@@ -121,10 +111,7 @@ async function refundUsdcDeposit(
   const calldata = encodeFunctionData({
     abi: ERC20_TRANSFER_ABI,
     functionName: "transfer",
-    args: [
-      params.seller_wallet_address as `0x${string}`,
-      amountWei,
-    ],
+    args: [params.seller_wallet_address as `0x${string}`, amountWei],
   });
 
   const result = await relayTransaction({
