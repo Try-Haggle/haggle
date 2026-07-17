@@ -16,6 +16,8 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
+import { createShipmentMutationHeaders } from "@/lib/shipment-idempotency";
+import { canManageSellerShipping, SellerShippingGate } from "@/lib/shipping-role";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -377,6 +379,7 @@ function ShippingSection({
   onAction,
   loading,
   isProduction,
+  isSeller,
   shippingForm,
   rates,
   onShippingFormChange,
@@ -387,6 +390,7 @@ function ShippingSection({
   onAction: (action: string) => void;
   loading: string | null;
   isProduction: boolean;
+  isSeller: boolean;
   shippingForm: ShippingFormState;
   rates: ShippingRate[];
   onShippingFormChange: (section: "fromAddress" | "parcel", field: string, value: string) => void;
@@ -459,14 +463,24 @@ function ShippingSection({
         )}
 
         {shipment.status === "LABEL_PENDING" && (
-          <ShippingFulfillmentForm
-            form={shippingForm}
-            rates={rates}
-            loading={loading}
-            onChange={onShippingFormChange}
-            onPrepareRates={onPrepareRates}
-            onPurchaseRate={onPurchaseRate}
-          />
+          <SellerShippingGate
+            isSeller={isSeller}
+            fallback={
+              <InlineNotice tone="info">
+                Waiting for the seller to enter the ship-from address, confirm the parcel details,
+                and select a carrier rate.
+              </InlineNotice>
+            }
+          >
+            <ShippingFulfillmentForm
+              form={shippingForm}
+              rates={rates}
+              loading={loading}
+              onChange={onShippingFormChange}
+              onPrepareRates={onPrepareRates}
+              onPurchaseRate={onPurchaseRate}
+            />
+          </SellerShippingGate>
         )}
 
         {/* Event timeline */}
@@ -1404,7 +1418,13 @@ export default function OrderDetailPage() {
         shipment: Shipment;
         label_url?: string;
         tracking_number?: string;
-      }>(`/shipments/${state.shipment.id}/purchase-label`, { rate_id: rateId });
+      }>(
+        `/shipments/${state.shipment.id}/purchase-label`,
+        { rate_id: rateId },
+        {
+          headers: createShipmentMutationHeaders("purchase-label", state.shipment.id, rateId),
+        },
+      );
       setState((s) => ({ ...s, shipment: result.shipment }));
       setShippingRates([]);
       addLog(
@@ -1597,6 +1617,7 @@ export default function OrderDetailPage() {
           onAction={handleShippingAction}
           loading={loading}
           isProduction={IS_PRODUCTION}
+          isSeller={canManageSellerShipping(currentUserId, state.order?.sellerId)}
           shippingForm={shippingForm}
           rates={shippingRates}
           onShippingFormChange={handleShippingFormChange}
