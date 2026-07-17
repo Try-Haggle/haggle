@@ -1,6 +1,6 @@
 # Production Readiness - User Action Items
 
-Last updated: 2026-07-14
+Last updated: 2026-07-17
 
 ## Environment
 
@@ -54,7 +54,9 @@ Last updated: 2026-07-14
 ## Product Wiring
 
 - Confirm the buyer checkout screen receives an approved `settlement_approval_id` before calling `/payments/prepare`.
-- Register buyer and seller wallet addresses before testing x402, Stripe onramp, dispute deposits, and refunds.
+- Connect the buyer wallet at checkout; buyer wallet registration is not required. For direct USDC, confirm that the connected address submits `createAndFund` and matches the buyer address in the signed settlement request.
+- Configure a seller payout wallet before settlement tests. Treat the saved address as a routing preference, not proof of wallet ownership.
+- Before enabling real-money Stripe onramp or seller payouts, deploy a nonce-based wallet signature challenge for the onramp destination and for seller payout address creation or changes. Until then, restrict these paths to Base Sepolia and valueless test assets.
 - Enter buyer shipping addresses before seller label preparation. Seller label purchase requires buyer and seller addresses plus parcel dimensions.
 - Exercise seller dispute escalation deposits in staging for both configured deposit rails (`usdc` or `stripe`).
 - For USDC dispute deposits, confirm sellers can approve the returned spender/token/amount and then complete `/deposit/confirm-usdc`.

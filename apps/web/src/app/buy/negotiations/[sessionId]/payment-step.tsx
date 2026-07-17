@@ -373,7 +373,7 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
 
   async function handleStripeOnramp(intentId = paymentIntentId) {
     if (!intentId || !address) {
-      setError("Connect a registered wallet before starting card onramp.");
+      setError("Connect a wallet before starting card onramp.");
       setStep("error");
       return;
     }
@@ -597,9 +597,7 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
                   Connect the wallet that should receive USDC after your card payment.
                 </p>
                 <ConnectButton />
-                <p className="text-ink-muted text-xs">
-                  The connected wallet must be registered to your Haggle account.
-                </p>
+                <p className="text-ink-muted text-xs">You can use any wallet you control.</p>
               </>
             ) : (
               <>

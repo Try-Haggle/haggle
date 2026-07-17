@@ -2756,24 +2756,6 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         return reply.code(400).send({ error: "BUYER_WALLET_NOT_RESOLVED" });
       }
 
-      const walletLookupAddress = parsed.data.buyer_wallet_address
-        ? buyerWalletAddress.toLowerCase()
-        : buyerWalletAddress;
-      const registeredWallet = await db
-        .select({ walletAddress: userWallets.walletAddress })
-        .from(userWallets)
-        .where(
-          and(
-            eq(userWallets.userId, intent.buyer_id),
-            eq(userWallets.walletAddress, walletLookupAddress),
-          ),
-        )
-        .limit(1)
-        .then((rows) => rows[0]?.walletAddress ?? null);
-      if (!registeredWallet) {
-        return reply.code(403).send({ error: "BUYER_WALLET_NOT_REGISTERED" });
-      }
-
       if (fundingEligibility.source === "stripe_onramp") {
         const stripePreconditions = validateStripeOnrampContractFundingPreconditions(
           intent,
@@ -5325,23 +5307,6 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       // Verify requester is the buyer
       if (intent.buyer_id !== request.user!.id) {
         return reply.code(403).send({ error: "FORBIDDEN" });
-      }
-      // Verify destination wallet belongs to the buyer
-      const buyerWallets = await db
-        .select({ walletAddress: userWallets.walletAddress })
-        .from(userWallets)
-        .where(
-          and(
-            eq(userWallets.userId, intent.buyer_id),
-            eq(userWallets.walletAddress, parsed.data.destination_wallet.toLowerCase()),
-          ),
-        )
-        .limit(1);
-      if (buyerWallets.length === 0) {
-        return reply.code(403).send({
-          error: "WALLET_NOT_REGISTERED",
-          message: "Destination wallet is not registered to the buyer. Register your wallet first.",
-        });
       }
       const sellerNetworkName = x402Config.network.startsWith("eip155:")
         ? "base"

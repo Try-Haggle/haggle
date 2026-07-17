@@ -733,7 +733,7 @@ without changing behavior.
 Before returning `createAndFund` typed data for a Stripe-selected intent:
 
 1. Require `stripe_onramp.status = ONRAMP_FUNDED`.
-2. Require a registered buyer wallet.
+2. Require a valid buyer wallet supplied by the connected checkout session. A saved default may be used only when the client does not supply one; database registration is not a payment prerequisite or proof of ownership.
 3. Require the onramp destination wallet to equal the buyer wallet that will call `createAndFund`.
 4. Require destination network to be Base or Base Sepolia, matching `HAGGLE_X402_NETWORK`.
 5. Require destination currency to be USDC.
@@ -741,6 +741,10 @@ Before returning `createAndFund` typed data for a Stripe-selected intent:
 7. If any field is missing from Stripe metadata/webhook payload, return `ONRAMP_RECONCILIATION_REQUIRED` rather than guessing.
 
 The wallet equality check is mandatory. Without it, a buyer could onramp USDC into one wallet and try to fund from another wallet, or a webhook could be mis-bound to the wrong payment intent.
+
+For direct USDC, wallet ownership is proven when that address submits `createAndFund`; the contract rejects any caller other than the signed buyer. The current `user_wallets` write API stores an address without a wallet signature, so a saved row must never be treated as ownership proof.
+
+Before enabling real-money Stripe onramp or seller payouts, add a nonce-based wallet signature challenge when an onramp destination or seller payout address is first selected or changed. Bind the challenge to the Haggle domain, user, wallet address, chain ID, purpose, nonce, and expiry. Keep this proof separate from the optional saved-wallet preference so checkout can continue to accept any wallet the buyer controls.
 
 ### Funding Request Behavior
 
