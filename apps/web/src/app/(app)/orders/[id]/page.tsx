@@ -16,6 +16,7 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
+import { createShipmentMutationHeaders } from "@/lib/shipment-idempotency";
 import { canManageSellerShipping, SellerShippingGate } from "@/lib/shipping-role";
 import { createClient } from "@/lib/supabase/client";
 
@@ -1417,7 +1418,13 @@ export default function OrderDetailPage() {
         shipment: Shipment;
         label_url?: string;
         tracking_number?: string;
-      }>(`/shipments/${state.shipment.id}/purchase-label`, { rate_id: rateId });
+      }>(
+        `/shipments/${state.shipment.id}/purchase-label`,
+        { rate_id: rateId },
+        {
+          headers: createShipmentMutationHeaders("purchase-label", state.shipment.id, rateId),
+        },
+      );
       setState((s) => ({ ...s, shipment: result.shipment }));
       setShippingRates([]);
       addLog(
