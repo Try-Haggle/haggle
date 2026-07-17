@@ -38,7 +38,14 @@ export type ServerRound = {
 
 export type SessionResponse = { session: ServerSession; rounds: ServerRound[] };
 
-const TERMINAL_STATUSES = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"]);
+const TERMINAL_STATUSES = new Set([
+  "ACCEPTED",
+  "REJECTED",
+  "EXPIRED",
+  "SUPERSEDED",
+  "NEAR_DEAL",
+  "STALLED",
+]);
 
 export function isTerminalNegotiationStatus(status: string): boolean {
   return TERMINAL_STATUSES.has(status);
@@ -99,7 +106,8 @@ function mapFinalStatus(status: string): FinalStatus {
     return "REJECTED";
   }
   if (status === "NEAR_DEAL") return "NEAR_DEAL";
-  return "ESCALATED";
+  if (status === "STALLED" || status === "ESCALATED") return "ESCALATED";
+  return "IN_PROGRESS";
 }
 
 function fallbackMessage(round: ServerRound, priceMajor: number, currency = "USD"): string {

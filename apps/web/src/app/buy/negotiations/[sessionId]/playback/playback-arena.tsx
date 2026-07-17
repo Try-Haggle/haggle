@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Play, Radio } from "lucide-react";
+import { AlertCircle, Play, Radio, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArenaHeader } from "./arena-header";
@@ -25,6 +25,8 @@ interface PlaybackArenaProps {
   mode?: "replay" | "live";
   liveTerminal?: boolean;
   connectionLabel?: string;
+  liveError?: string | null;
+  onLiveRetry?: () => void;
 }
 
 /**
@@ -41,6 +43,8 @@ export function PlaybackArena({
   mode = "replay",
   liveTerminal = false,
   connectionLabel = "Live updates",
+  liveError = null,
+  onLiveRetry,
 }: PlaybackArenaProps) {
   const { session, rounds } = data;
   const isLive = mode === "live";
@@ -246,10 +250,28 @@ export function PlaybackArena({
                     style={{ borderBottom: "1px solid var(--border-default)" }}
                   >
                     {isLive ? (
-                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-success">
-                        <Radio className="size-3.5" aria-hidden="true" />
-                        {liveTerminal ? "Negotiation complete" : connectionLabel}
-                      </div>
+                      liveError ? (
+                        <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold text-error">
+                          <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{liveError}</span>
+                          {onLiveRetry && (
+                            <button
+                              type="button"
+                              onClick={onLiveRetry}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-ink transition-colors hover:bg-surface-overlay"
+                              style={{ border: "1px solid var(--border-default)" }}
+                            >
+                              <RotateCcw className="size-3" aria-hidden="true" />
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-success">
+                          <Radio className="size-3.5" aria-hidden="true" />
+                          {liveTerminal ? "Negotiation complete" : connectionLabel}
+                        </div>
+                      )
                     ) : (
                       <PlaybackControls engine={engine} />
                     )}

@@ -8,7 +8,7 @@ export type AgentRole = "BUYER" | "SELLER";
 
 export type DecisionAction = "OPENING" | "COUNTER" | "NEAR_DEAL" | "ACCEPT" | "REJECT";
 
-export type FinalStatus = "ACCEPTED" | "REJECTED" | "NEAR_DEAL" | "ESCALATED";
+export type FinalStatus = "IN_PROGRESS" | "ACCEPTED" | "REJECTED" | "NEAR_DEAL" | "ESCALATED";
 
 export interface AgentCard {
   presetId: string;

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
 import { ApiError, api } from "@/lib/api-client";
 import { formatPriceStr } from "@/lib/format";
+import { storeNegotiationRunToken } from "@/lib/negotiation-auto-play-token";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import {
   NegotiationAgentBuilderChat,
@@ -413,6 +414,7 @@ export function BuyerLanding({
                       try {
                         const res = await api.post<{
                           session_id: string;
+                          run_token: string;
                           guest_buyer_id?: string;
                         }>("/negotiations/start", {
                           listing_public_id: listing.publicId,
@@ -459,6 +461,7 @@ export function BuyerLanding({
                         });
 
                         setNegotiationMessage("Opening the live negotiation...");
+                        storeNegotiationRunToken(res.session_id, res.run_token);
                         window.location.href = `/buy/negotiations/${res.session_id}`;
                       } catch (err) {
                         const apiErr = err instanceof ApiError ? err : null;

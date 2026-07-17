@@ -11,7 +11,6 @@ function mockFetchResponse(body: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
-    json: () => Promise.resolve(body),
     text: () => Promise.resolve(JSON.stringify(body)),
   } as unknown as Response);
 }
@@ -126,16 +125,18 @@ describe("callLLM", () => {
     const successResponse = {
       ok: true,
       status: 200,
-      json: () =>
-        Promise.resolve({
-          choices: [
-            {
-              message: { content: '{"action":"COUNTER","reasoning":"retry success"}' },
-              finish_reason: "stop",
-            },
-          ],
-          usage: { prompt_tokens: 100, completion_tokens: 50 },
-        }),
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            choices: [
+              {
+                message: { content: '{"action":"COUNTER","reasoning":"retry success"}' },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 100, completion_tokens: 50 },
+          }),
+        ),
     } as unknown as Response;
 
     globalThis.fetch = vi
@@ -176,5 +177,18 @@ describe("callLLM", () => {
 
     const result = await callLLM("system", "user");
     expect(result.content).toBe("");
+  });
+
+  it("times out while reading a stalled response body", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => new Promise<string>(() => undefined),
+    } as unknown as Response);
+
+    await expect(callLLM("system", "user", { timeoutMs: 20 })).rejects.toThrow(
+      "DeepSeek API timeout after 20ms",
+    );
+    expect(globalThis.fetch).toHaveBeenCalledOnce();
   });
 });

@@ -3,6 +3,7 @@ import {
   getRoundSpeaker,
   isTerminalNegotiationStatus,
   type ServerRound,
+  transformNegotiationPlayback,
 } from "./negotiation-session-data";
 
 function round(overrides: Partial<ServerRound> = {}): ServerRound {
@@ -35,10 +36,33 @@ describe("negotiation live session data", () => {
   });
 
   it("recognizes final statuses and keeps active statuses live", () => {
-    for (const status of ["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"]) {
+    for (const status of [
+      "ACCEPTED",
+      "REJECTED",
+      "EXPIRED",
+      "SUPERSEDED",
+      "NEAR_DEAL",
+      "STALLED",
+    ]) {
       expect(isTerminalNegotiationStatus(status)).toBe(true);
     }
     expect(isTerminalNegotiationStatus("CREATED")).toBe(false);
     expect(isTerminalNegotiationStatus("ACTIVE")).toBe(false);
+  });
+
+  it("does not label a zero-round created session as escalated", () => {
+    const transformed = transformNegotiationPlayback({
+      session: {
+        id: "22222222-2222-4222-8222-222222222222",
+        status: "CREATED",
+        current_round: 0,
+        last_offer_price_minor: null,
+        buyer_negotiation_agent_preset_id: null,
+        listing: null,
+      },
+      rounds: [],
+    });
+
+    expect(transformed.session.finalStatus).toBe("IN_PROGRESS");
   });
 });

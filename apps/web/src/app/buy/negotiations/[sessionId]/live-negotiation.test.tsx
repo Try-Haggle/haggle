@@ -1,11 +1,12 @@
-import { act, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api-client";
 import type { SessionResponse } from "./negotiation-session-data";
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   get: vi.fn(),
-  triggerUpdate: undefined as (() => void) | undefined,
+  post: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -13,13 +14,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/hooks/use-negotiation-ws", () => ({
-  useNegotiationWs: ({ onUpdate }: { onUpdate: () => void }) => {
-    mocks.triggerUpdate = onUpdate;
-    return { connectionMode: "polling" };
-  },
+  useNegotiationWs: () => ({ connectionMode: "polling" }),
 }));
 
-vi.mock("@/lib/api-client", () => ({ api: { get: mocks.get } }));
+vi.mock("@/lib/api-client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/api-client")>();
+  return { ...original, api: { get: mocks.get, post: mocks.post } };
+});
 
 import { LiveNegotiation } from "./live-negotiation";
 
@@ -66,7 +67,9 @@ describe("LiveNegotiation", () => {
   beforeEach(() => {
     mocks.refresh.mockReset();
     mocks.get.mockReset();
-    mocks.triggerUpdate = undefined;
+    mocks.post.mockReset();
+    window.sessionStorage.clear();
+    mocks.get.mockReturnValue(new Promise(() => undefined));
   });
 
   it("shows the opening and the persisted seller response in order", () => {
@@ -79,20 +82,32 @@ describe("LiveNegotiation", () => {
     expect(screen.getByText("Live updates")).toBeInTheDocument();
   });
 
-  it("reloads the full transcript when a live update arrives", async () => {
-    mocks.get.mockResolvedValue(payload("ACTIVE", 1));
+  it("requests and displays one committed round at a time", async () => {
+    window.sessionStorage.setItem(
+      "haggle:negotiation-run-token:11111111-1111-4111-8111-111111111111",
+      "test-run-token",
+    );
+    mocks.get
+      .mockReset()
+      .mockResolvedValueOnce(payload("CREATED", 0))
+      .mockResolvedValueOnce(payload("ACCEPTED", 1));
+    mocks.post.mockResolvedValue({
+      complete: true,
+      session_status: "ACCEPTED",
+      current_round: 1,
+    });
     render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
 
-    expect(screen.queryByText("Buyer Agent is thinking")).not.toBeInTheDocument();
     expect(screen.getByText("Live updates")).toBeInTheDocument();
-    await act(async () => {
-      await mocks.triggerUpdate?.();
+    await waitFor(() => {
+      expect(mocks.post).toHaveBeenCalledWith(
+        "/negotiations/sessions/11111111-1111-4111-8111-111111111111/auto-play/next",
+        { run_token: "test-run-token" },
+      );
     });
 
-    expect(mocks.get).toHaveBeenCalledWith(
-      "/negotiations/sessions/11111111-1111-4111-8111-111111111111",
-    );
-    expect(screen.getByText("I can meet you at $110.")).toBeInTheDocument();
+    expect(await screen.findByText("I can meet you at $110.")).toBeInTheDocument();
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it("keeps the transcript visible and appends the final actions", () => {
@@ -108,5 +123,31 @@ describe("LiveNegotiation", () => {
     expect(screen.getByText("ACCEPTED")).toBeInTheDocument();
     expect(screen.getByText("Continue to checkout")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Watch replay" })).toHaveAttribute("href", "?replay=1");
+  });
+
+  it("shows a recoverable error and retries from saved progress", async () => {
+    mocks.get.mockReset().mockResolvedValue(payload("CREATED", 0));
+    mocks.post.mockRejectedValueOnce(new ApiError(502, "AUTO_PLAY_ROUND_FAILED"));
+    render(<LiveNegotiation initialPayload={payload("CREATED", 0)} />);
+
+    expect(
+      await screen.findByText(
+        "The next round could not be generated. Your completed rounds are saved.",
+      ),
+    ).toBeInTheDocument();
+
+    mocks.get
+      .mockReset()
+      .mockResolvedValueOnce(payload("CREATED", 0))
+      .mockResolvedValueOnce(payload("ACCEPTED", 1));
+    mocks.post.mockResolvedValueOnce({
+      complete: true,
+      session_status: "ACCEPTED",
+      current_round: 1,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Negotiation complete")).toBeInTheDocument();
   });
 });

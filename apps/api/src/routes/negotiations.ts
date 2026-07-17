@@ -37,6 +37,14 @@ import {
 } from "../services/draft.service.js";
 import { validateHnpIngress } from "../services/hnp-ingress.service.js";
 import { loadListingStrategyContext } from "../services/listing-strategy.service.js";
+import {
+  attachNegotiationAutoPlayContext,
+  createNegotiationAutoPlaySetup,
+  getNegotiationAutoPlayContext,
+  isNegotiationAutoPlayTerminal,
+  planNegotiationAutoPlayRound,
+  validateNegotiationAutoPlayToken,
+} from "../services/negotiation-auto-play.service.js";
 import { evaluateNegotiationStartReadiness } from "../services/negotiation-readiness.service.js";
 import { createRound, getRoundsBySessionId } from "../services/negotiation-round.service.js";
 import {
@@ -46,7 +54,6 @@ import {
   setSessionPerspective,
   updateSessionState,
 } from "../services/negotiation-session.service.js";
-import { withNegotiationTransientDbRetry } from "../services/negotiation-transient-retry.service.js";
 import { loadUserMemoryBrief } from "../services/user-memory-card.service.js";
 
 // ── Zod Schemas ────────────────────────────────────────────
@@ -90,6 +97,10 @@ const startSessionSchema = z.object({
     .positive()
     .max(24 * 14)
     .optional(),
+});
+
+const runNextAutoPlayRoundSchema = z.object({
+  run_token: z.string().min(32).optional(),
 });
 
 const hnpEnvelopeSchema = z.object({
@@ -1075,6 +1086,12 @@ export function registerNegotiationRoutes(
 
     const strategyId = sellerStrategy.compiler.selected_playbook;
     const expiresAt = new Date(effectiveDeadlineMs);
+    const autoPlay = createNegotiationAutoPlaySetup({
+      buyerSnapshot,
+      sellerSnapshot,
+      buyerTargetMinor: buyerTarget,
+      maxRounds: AUTO_PLAY_MAX_ROUNDS,
+    });
 
     // Session starts in SELLER POV — round 1 is the buyer's opening offer.
     const session = await createSession(db, {
@@ -1084,108 +1101,153 @@ export function registerNegotiationRoutes(
       buyerId: buyer.id,
       sellerId: listing.sellerId,
       counterpartyId: buyer.id,
-      negotiationAgentSnapshot: sellerSnapshot,
+      negotiationAgentSnapshot: autoPlay.sellerSnapshot,
       expiresAt,
-    });
-
-    // A real LLM round can take several seconds. Running all rounds inside this
-    // request exceeded the staging proxy timeout and made the browser report a
-    // network failure even though the session had already been created. Return
-    // the durable session immediately and let the client poll while auto-play
-    // continues in this process. Round idempotency keys make transient DB retries
-    // safe within this worker.
-    void (async () => {
-      // Drive both sides through the staged executor by swapping the session's
-      // role + negotiation_agent_snapshot before each call.
-      const TERMINAL = new Set(["ACCEPTED", "REJECTED", "EXPIRED", "SUPERSEDED", "NEAR_DEAL"]);
-      const executor = getExecutor();
-      let nextSenderRole: "BUYER" | "SELLER" = "BUYER";
-      let nextOfferMinor = buyerTarget;
-      let prevOfferMinor: number | null = null;
-      let prevMessageText: string | null = null;
-
-      for (let i = 0; i < AUTO_PLAY_MAX_ROUNDS; i++) {
-        const responderRole: "BUYER" | "SELLER" = nextSenderRole === "BUYER" ? "SELLER" : "BUYER";
-        const responderSnapshot = responderRole === "SELLER" ? sellerSnapshot : buyerSnapshot;
-
-        try {
-          await withNegotiationTransientDbRetry(() =>
-            setSessionPerspective(db, session.id, responderRole, responderSnapshot),
-          );
-        } catch (err) {
-          console.error("[negotiations/start] perspective swap failed:", err);
-          break;
-        }
-
-        // Preferred path: forward the prior round's persisted message so the
-        // engine's understand() stage sees the same conversational signal the
-        // counterparty actually saw. Fall back to a synthesized stub only for
-        // round 1 (no prior message) or if persistence somehow returned empty.
-        const offerDollars = (nextOfferMinor / 100).toFixed(2);
-        const fallbackText =
-          i === 0
-            ? `Hi, I'm interested in this listing. I'd like to offer $${offerDollars}.`
-            : prevOfferMinor != null && nextOfferMinor !== prevOfferMinor
-              ? `Thanks for the response. I can do $${offerDollars}.`
-              : `I'll stay at $${offerDollars} for now.`;
-        const messageText =
-          prevMessageText && prevMessageText.trim().length > 0 ? prevMessageText : fallbackText;
-
-        let result: Awaited<ReturnType<typeof executor>>;
-        try {
-          result = await withNegotiationTransientDbRetry(() =>
-            executor(db, {
-              sessionId: session.id,
-              offerPriceMinor: nextOfferMinor,
-              senderRole: nextSenderRole,
-              messageText,
-              idempotencyKey: `auto-${session.id}-r${i + 1}`,
-              roundData: {},
-              nowMs: Date.now(),
-            }),
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (
-            msg.startsWith("ROUND_LIMIT_EXCEEDED") ||
-            msg.startsWith("SESSION_TERMINAL") ||
-            msg.startsWith("SESSION_EXPIRED") ||
-            msg.startsWith("SESSION_MAX_ROUNDS_EXCEEDED")
-          ) {
-            break;
-          }
-          console.error("[negotiations/start] auto-play executor error:", err);
-          break;
-        }
-
-        if (TERMINAL.has(result.sessionStatus)) break;
-        if (result.decision === "REJECT") break;
-        if (!result.outgoingPrice || result.outgoingPrice <= 0) break;
-
-        nextSenderRole = responderRole;
-        prevOfferMinor = nextOfferMinor;
-        // Buyer's counter must never go below their initial offer.
-        nextOfferMinor =
-          responderRole === "BUYER"
-            ? Math.max(buyerTarget, result.outgoingPrice)
-            : result.outgoingPrice;
-        prevMessageText = result.message ?? null;
-      }
-
-      const finalSession = await getSessionById(db, session.id);
-      console.info(
-        `[negotiations/start] auto-play completed session=${session.id} status=${finalSession?.status ?? "UNKNOWN"} rounds=${finalSession?.currentRound ?? 0}`,
-      );
-    })().catch((err) => {
-      console.error(`[negotiations/start] auto-play worker failed session=${session.id}:`, err);
     });
 
     return reply.code(202).send({
       session_id: session.id,
       status: session.status,
+      run_token: autoPlay.runToken,
       ...(isGuest ? { guest_buyer_id: buyer.id } : {}),
     });
   });
+
+  // POST /negotiations/sessions/:id/auto-play/next — execute exactly one round
+  //
+  // The browser calls this endpoint sequentially. This keeps every LLM round
+  // within a bounded request and lets the UI display committed rounds as they
+  // arrive instead of waiting for an in-process background loop.
+  app.post<{ Params: { id: string } }>(
+    "/negotiations/sessions/:id/auto-play/next",
+    async (request, reply) => {
+      const parsed = runNextAutoPlayRoundSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_AUTO_PLAY_REQUEST", issues: parsed.error.issues });
+      }
+
+      const session = await getSessionById(db, request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+      }
+      const context = getNegotiationAutoPlayContext(session.negotiationAgentSnapshot);
+      if (!context) {
+        return reply.code(409).send({ error: "AUTO_PLAY_CONTEXT_MISSING" });
+      }
+
+      if (request.user) {
+        const access = validateSessionParticipant(request.user, session);
+        if (!access.ok) {
+          return reply.code(access.status).send({ error: access.error });
+        }
+      } else if (!validateNegotiationAutoPlayToken(context, parsed.data.run_token)) {
+        return reply.code(401).send({ error: "AUTO_PLAY_TOKEN_INVALID" });
+      }
+
+      if (isNegotiationAutoPlayTerminal(session.status)) {
+        return reply.send({
+          complete: true,
+          session_status: session.status,
+          current_round: session.currentRound,
+        });
+      }
+
+      if (session.currentRound >= context.maxRounds) {
+        const stalled = await updateSessionState(db, session.id, session.version, {
+          status: "STALLED",
+        });
+        if (!stalled) {
+          return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+        }
+        return reply.send({
+          complete: true,
+          session_status: stalled.status,
+          current_round: stalled.currentRound,
+        });
+      }
+
+      const rounds = await getRoundsBySessionId(db, session.id);
+      const plan = planNegotiationAutoPlayRound(session, rounds, context);
+      if (!plan) {
+        return reply.code(409).send({ error: "AUTO_PLAY_ROUND_UNAVAILABLE" });
+      }
+
+      const claimed = await setSessionPerspective(
+        db,
+        session.id,
+        plan.responderRole,
+        attachNegotiationAutoPlayContext(plan.responderSnapshot, context),
+        session.version,
+      );
+      if (!claimed) {
+        return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+      }
+
+      try {
+        const executor = getExecutor();
+        const result = await executor(
+          db,
+          {
+            sessionId: session.id,
+            offerPriceMinor: plan.offerPriceMinor,
+            senderRole: plan.senderRole,
+            messageText: plan.messageText,
+            idempotencyKey: `auto-${session.id}-r${plan.roundNo}`,
+            roundData: {},
+            nowMs: Date.now(),
+          },
+          eventDispatcher,
+        );
+
+        let finalSession = await getSessionById(db, session.id);
+        if (
+          finalSession &&
+          !isNegotiationAutoPlayTerminal(finalSession.status) &&
+          finalSession.currentRound >= context.maxRounds
+        ) {
+          finalSession =
+            (await updateSessionState(db, finalSession.id, finalSession.version, {
+              status: "STALLED",
+            })) ?? finalSession;
+        }
+
+        const finalStatus = finalSession?.status ?? result.sessionStatus;
+        return reply.code(result.idempotent ? 200 : 201).send({
+          complete: isNegotiationAutoPlayTerminal(finalStatus),
+          session_status: finalStatus,
+          current_round: finalSession?.currentRound ?? result.roundNo,
+          round_id: result.roundId,
+          round_no: result.roundNo,
+          decision: result.decision,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.startsWith("SESSION_NOT_FOUND")) {
+          return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+        }
+        if (
+          message.startsWith("SESSION_TERMINAL") ||
+          message.startsWith("SESSION_EXPIRED") ||
+          message.startsWith("SESSION_MAX_ROUNDS_EXCEEDED") ||
+          message.startsWith("ROUND_LIMIT_EXCEEDED")
+        ) {
+          const latest = await getSessionById(db, session.id);
+          return reply.code(409).send({
+            error: "SESSION_TERMINAL",
+            session_status: latest?.status,
+            current_round: latest?.currentRound,
+          });
+        }
+        if (message.startsWith("CONCURRENT_MODIFICATION")) {
+          return reply.code(409).send({ error: "CONCURRENT_MODIFICATION" });
+        }
+        request.log.error({ err, sessionId: session.id }, "auto-play round failed");
+        return reply.code(502).send({ error: "AUTO_PLAY_ROUND_FAILED" });
+      }
+    },
+  );
 
   // POST /negotiations/sessions/expire-stale — cron 벌크 만료
   // Vercel Cron 또는 외부 scheduler에서 호출
