@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, Lora, Plus_Jakarta_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { AmplitudeProvider } from "@/providers/amplitude-provider";
+import "@rainbow-me/rainbowkit/styles.css";
 import "./globals.css";
 
 const sans = Plus_Jakarta_Sans({
