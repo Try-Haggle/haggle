@@ -1,0 +1,32 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployedAt": "2026-07-17",
+  "contracts": {
+    "settlementRouter": "0x5652321f6d5d0337f7BD754Ba66000616dA8F228",
+    "conditionalSettlement": "0x47228b3B82E3baEF46722aC9475eBfd49Da22a7B",
+    "disputeRegistry": "0x71311522f40981C62C7A930DbaC4e3997adFf8fc",
+    "haggleTestUsdc": "0x579807433033757E895437EEfa9Ae25F387c3fCa"
+  },
+  "configuration": {
+    "owner": "0xAf697e64cA951488E82FDef2FA179D1797DD02D3",
+    "signer": "0x9E30b35dE319C75f034Ba8ddEc732A130d9D58e5",
+    "guardian": "0xAf697e64cA951488E82FDef2FA179D1797DD02D3",
+    "officialUsdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "stagingSettlementAssetProfile": "base-sepolia-husdc",
+    "stagingSettlementAsset": "0x579807433033757E895437EEfa9Ae25F387c3fCa",
+    "stagingBuyer": "0x0da9Ebd940a2B0bBB91d9A3813F72dfc2FA1A658",
+    "stagingBuyerMintedAmount": "100000000000",
+    "settlementRouterMaxAmount": "100000000",
+    "conditionalSettlementMaxAmount": null
+  },
+  "deploymentTransactions": {
+    "settlementRouter": "0xebcece9dc6aa525c8f299b96e415f060704c8de20dcd7021866d50903292500d",
+    "conditionalSettlement": "0x6defe59373f8e5d9d7f3d4b8b69cb16fa17bf87e05cbb0fadeb9428414b5a90f",
+    "disputeRegistry": "0xcfe61affbcfa0fd7e21d67fe682aeedd784c9e8d4ad8b55524abeaa4f40abf74",
+    "haggleTestUsdc": "0x31158c515bbff6b79040a75a5fd2cd80c7527e4fef820e57c1189b204b5f1713",
+    "haggleTestUsdcMint": "0x162299bc113014ba068ad6f6f6d7ef71326fa6d36c384ddd8b0601c82409d0df",
+    "routerAllowHaggleTestUsdc": "0x852f03c961cb43d941df6ac4c43bc19ede0bd48fe5e8f41e5fa8e4038cc3a7e5",
+    "conditionalAllowHaggleTestUsdc": "0xf35313510b306c0eff58974252bffd536a15311037edfd04f9a95a9a2ea42e65"
+  }
+}

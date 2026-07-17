@@ -14,6 +14,9 @@
  * Only vars the app genuinely cannot run without are enforced.
  */
 
+import { BASE_SEPOLIA_CONTRACT_ADDRESSES } from "@haggle/contracts";
+import { BASE_MAINNET_USDC_ADDRESS, BASE_SEPOLIA_HAGGLE_TEST_USDC_ADDRESS } from "@haggle/shared";
+
 type EnvScope = "always" | "production";
 
 interface EnvRule {
@@ -88,6 +91,61 @@ export function validateEnv(): void {
     const formatError = rule.validate?.(value);
     if (formatError) {
       problems.push(`  • ${rule.name}: ${formatError}`);
+    }
+  }
+
+  if (process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging") {
+    const expectedStagingValues = {
+      HAGGLE_SETTLEMENT_ASSET_PROFILE: "base-sepolia-husdc",
+      HAGGLE_X402_NETWORK: "base-sepolia",
+      HAGGLE_X402_WALLET_NETWORK: "eip155:84532",
+      BASE_CHAIN_ID: "84532",
+      HAGGLE_X402_USDC_ASSET_ADDRESS: BASE_SEPOLIA_HAGGLE_TEST_USDC_ADDRESS,
+      HAGGLE_SETTLEMENT_ROUTER_ADDRESS: BASE_SEPOLIA_CONTRACT_ADDRESSES.settlementRouter,
+      HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS: BASE_SEPOLIA_CONTRACT_ADDRESSES.conditionalSettlement,
+      HAGGLE_DISPUTE_REGISTRY_ADDRESS: BASE_SEPOLIA_CONTRACT_ADDRESSES.disputeRegistry,
+    } as const;
+
+    for (const [name, expected] of Object.entries(expectedStagingValues)) {
+      const actual = process.env[name]?.trim();
+      if (!actual) {
+        problems.push(`  • ${name}: required in staging — expected ${expected}`);
+      } else if (actual.toLowerCase() !== expected.toLowerCase()) {
+        problems.push(`  • ${name}: staging must use ${expected} (got "${actual}")`);
+      }
+    }
+
+    const rpcUrl = process.env.HAGGLE_BASE_RPC_URL?.trim();
+    if (!rpcUrl) {
+      problems.push("  • HAGGLE_BASE_RPC_URL: required in staging for Base Sepolia");
+    } else {
+      try {
+        const parsed = new URL(rpcUrl);
+        if (parsed.protocol !== "https:") {
+          problems.push("  • HAGGLE_BASE_RPC_URL: staging RPC URL must use https://");
+        }
+      } catch {
+        problems.push("  • HAGGLE_BASE_RPC_URL: must be a valid https:// URL");
+      }
+    }
+  }
+
+  if (process.env.HAGGLE_ENV?.trim().toLowerCase() === "production") {
+    const expectedProductionValues = {
+      HAGGLE_SETTLEMENT_ASSET_PROFILE: "base-usdc",
+      HAGGLE_X402_NETWORK: "base",
+      HAGGLE_X402_WALLET_NETWORK: "eip155:8453",
+      BASE_CHAIN_ID: "8453",
+      HAGGLE_X402_USDC_ASSET_ADDRESS: BASE_MAINNET_USDC_ADDRESS,
+    } as const;
+
+    for (const [name, expected] of Object.entries(expectedProductionValues)) {
+      const actual = process.env[name]?.trim();
+      if (!actual) {
+        problems.push(`  • ${name}: required in production — expected ${expected}`);
+      } else if (actual.toLowerCase() !== expected.toLowerCase()) {
+        problems.push(`  • ${name}: production must use ${expected} (got "${actual}")`);
+      }
     }
   }
 

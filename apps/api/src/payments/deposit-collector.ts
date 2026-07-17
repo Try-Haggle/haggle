@@ -9,14 +9,11 @@
  *   - Gas paid by Haggle relayer — seller only needs USDC, no ETH
  */
 
-import { isAddress, encodeFunctionData, createPublicClient, http } from "viem";
+import { createPublicClient, encodeFunctionData, http, isAddress } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import { relayTransaction, getRelayerConfig } from "./gas-relayer.js";
+import { getRelayerConfig, relayTransaction } from "./gas-relayer.js";
+import { resolveSettlementAssetAddress } from "./settlement-asset.js";
 import { createOnrampSession } from "./stripe-onramp.js";
-import {
-  BASE_USDC_ADDRESS,
-  BASE_SEPOLIA_USDC_ADDRESS,
-} from "@haggle/contracts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,7 +86,10 @@ const ERC20_TRANSFER_FROM_ABI = [
 
 function getDepositCollectionMode(requestedRail?: DepositPaymentRail): DepositPaymentRail {
   if (requestedRail) {
-    if (requestedRail === "mock" && (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production")) {
+    if (
+      requestedRail === "mock" &&
+      (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production")
+    ) {
       throw new Error("Mock dispute deposits are disabled in production");
     }
     return requestedRail;
@@ -104,10 +104,7 @@ function getDepositCollectionMode(requestedRail?: DepositPaymentRail): DepositPa
 }
 
 function getUsdcAddress(): `0x${string}` {
-  const network = process.env.HAGGLE_X402_NETWORK ?? "base";
-  return network === "base-sepolia"
-    ? BASE_SEPOLIA_USDC_ADDRESS
-    : BASE_USDC_ADDRESS;
+  return resolveSettlementAssetAddress();
 }
 
 function getChainId(): number {
@@ -269,10 +266,7 @@ export async function confirmUsdcDeposit(params: {
     address: usdcAddress,
     abi: ERC20_ALLOWANCE_ABI,
     functionName: "allowance",
-    args: [
-      params.seller_wallet_address as `0x${string}`,
-      relayerConfig.address as `0x${string}`,
-    ],
+    args: [params.seller_wallet_address as `0x${string}`, relayerConfig.address as `0x${string}`],
   });
 
   if (allowance < amountWei) {

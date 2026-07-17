@@ -81,11 +81,33 @@
 | x402 (CDP) | `mock` | `real` + **base-sepolia** | `real` + **base mainnet** | `HAGGLE_X402_MODE`, `HAGGLE_X402_NETWORK` |
 | EasyPost | `mock` | **test 키** | prod 키 | `EASYPOST_API_KEY` |
 | Resend | NODE_ENV 가드 미발송 | test 도메인 | 인증된 prod 도메인 | `RESEND_API_KEY` |
-| xAI(Grok) | `rule` (LLM off) | `staged` (리허설) | `staged` | `NEGOTIATION_ENGINE` |
+| DeepSeek | 로컬 키 또는 테스트 대역 | **DeepSeek V4 Pro** | **DeepSeek V4 Pro** | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` |
 | OpenAI/Replicate/LegitApp | dev 키 | test/dev 키 | prod 키 | 각 API 키 |
 
 > ⚠️ **온체인·결제 prod 전환은 staging 리허설 완료 후 마지막에.** staging에서 base-sepolia로
 > 전체 결제·정산 플로우를 끝까지 통과시킨 뒤에만 mainnet으로. (CLAUDE.md: "안전 > 편리")
+
+### Staging Base Sepolia 고정값
+
+API는 `HAGGLE_ENV=staging`일 때 아래 값이 정확히 일치하지 않으면 시작을 거부한다.
+
+```env
+HAGGLE_X402_NETWORK=base-sepolia
+HAGGLE_X402_WALLET_NETWORK=eip155:84532
+HAGGLE_SETTLEMENT_ASSET_PROFILE=base-sepolia-husdc
+BASE_CHAIN_ID=84532
+HAGGLE_BASE_RPC_URL=https://sepolia.base.org
+HAGGLE_X402_USDC_ASSET_ADDRESS=0x579807433033757E895437EEfa9Ae25F387c3fCa
+HAGGLE_SETTLEMENT_ROUTER_ADDRESS=0x5652321f6d5d0337f7BD754Ba66000616dA8F228
+HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS=0x47228b3B82E3baEF46722aC9475eBfd49Da22a7B
+HAGGLE_DISPUTE_REGISTRY_ADDRESS=0x71311522f40981C62C7A930DbaC4e3997adFf8fc
+```
+
+웹 스테이징 빌드는 `NEXT_PUBLIC_HAGGLE_SETTLEMENT_ASSET_PROFILE=base-sepolia-husdc`를 명시한다.
+이 구성에서는 Base 메인넷과 실제 USDC를 결제 대상으로 사용할 수 없다.
+
+운영 전환은 `base-usdc` 프로필로 바꾼다. 이 프로필은 Base mainnet 체인 ID와 공식
+USDC 주소를 함께 고정하므로 hUSDC가 운영 설정에 남으면 API가 시작되지 않는다.
 
 ---
 

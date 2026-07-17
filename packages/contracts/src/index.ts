@@ -14,10 +14,22 @@ export const CONTRACT_ADDRESSES: ContractAddresses = {
   disputeRegistry: null,
 };
 
+export const BASE_SEPOLIA_CONTRACT_ADDRESSES = {
+  settlementRouter: "0x5652321f6d5d0337f7BD754Ba66000616dA8F228",
+  conditionalSettlement: "0x47228b3B82E3baEF46722aC9475eBfd49Da22a7B",
+  disputeRegistry: "0x71311522f40981C62C7A930DbaC4e3997adFf8fc",
+} as const satisfies ContractAddresses;
+
+export const CONTRACT_ADDRESSES_BY_CHAIN_ID = {
+  84532: BASE_SEPOLIA_CONTRACT_ADDRESSES,
+} as const;
+
 // Base mainnet USDC: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 // Base Sepolia USDC: 0x036CbD53842c5426634e7929541eC2318f3dCF7e
 export const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 export const BASE_SEPOLIA_USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
+export const BASE_SEPOLIA_HAGGLE_TEST_USDC_ADDRESS =
+  "0x579807433033757E895437EEfa9Ae25F387c3fCa" as const;
 
 export const HAGGLE_SETTLEMENT_ROUTER_ABI = [
   {

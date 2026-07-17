@@ -34,6 +34,27 @@ forge script script/Deploy.s.sol \
   --verify
 ```
 
+### Current Base Sepolia deployment
+
+The tracked deployment manifest is `deployments/base-sepolia.json`.
+
+| Contract | Address |
+| --- | --- |
+| SettlementRouter | `0x5652321f6d5d0337f7BD754Ba66000616dA8F228` |
+| ConditionalSettlement | `0x47228b3B82E3baEF46722aC9475eBfd49Da22a7B` |
+| DisputeRegistry | `0x71311522f40981C62C7A930DbaC4e3997adFf8fc` |
+| Haggle Test USDC | `0x579807433033757E895437EEfa9Ae25F387c3fCa` |
+
+This deployment allowlists both the legacy Base Sepolia USDC and Haggle Test USDC.
+Staging checkout is pinned to hUSDC by its settlement asset profile. `SettlementRouter`
+has a 100-token per-settlement cap; the buyer-funded `ConditionalSettlement` checkout
+path has no contract-level amount cap and is limited by the signed grant and the
+buyer's token balance.
+
+Staging uses the `base-sepolia-husdc` settlement asset profile. The test buyer
+`0x0da9Ebd940a2B0bBB91d9A3813F72dfc2FA1A658` received 100,000 hUSDC. Production
+uses the separate `base-usdc` profile, which pins the official Base USDC contract.
+
 ## Deploy to Base Mainnet (Production)
 
 ```bash

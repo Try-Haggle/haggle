@@ -19,6 +19,7 @@ export {
   PAYMENT_DISCLOSURE_VERSION,
 } from "./constants.js";
 export * from "./money.js";
+export * from "./settlement-assets.js";
 export type { ApiError, ApiResponse } from "./types/api.js";
 export type {
   ItemCondition,
