@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { confirmConditionalSettlementFunding } from "./conditional-settlement-confirmation";
 
+async function captureError(operation: () => Promise<unknown>): Promise<Error> {
+  try {
+    await operation();
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    return error as Error;
+  }
+
+  throw new Error("Expected operation to reject");
+}
+
 describe("confirmConditionalSettlementFunding", () => {
   it("retries the same funding transaction until it is confirmed", async () => {
     const request = vi
@@ -40,9 +51,13 @@ describe("confirmConditionalSettlementFunding", () => {
     });
     const sleep = vi.fn().mockResolvedValue(undefined);
 
-    await expect(
+    const error = await captureError(() =>
       confirmConditionalSettlementFunding("payment-id", { request, sleep, maxAttempts: 2 }),
-    ).rejects.toThrow("do not submit another payment");
+    );
+
+    expect(error.message).toBe(
+      "Funding is still waiting for network confirmation. Retry confirmation from the order page; do not submit another payment.",
+    );
     expect(request).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(5_000);
   });
@@ -52,8 +67,12 @@ describe("confirmConditionalSettlementFunding", () => {
       conditional_settlement: { status: "FUNDING_EVENT_MISMATCH" },
     });
 
-    await expect(confirmConditionalSettlementFunding("payment-id", { request })).rejects.toThrow(
-      "FUNDING_EVENT_MISMATCH",
+    const error = await captureError(() =>
+      confirmConditionalSettlementFunding("payment-id", { request }),
+    );
+
+    expect(error.message).toBe(
+      "Funding confirmation returned an unexpected status: FUNDING_EVENT_MISMATCH",
     );
     expect(request).toHaveBeenCalledTimes(1);
   });
