@@ -20,6 +20,7 @@ interface NavProps {
 
 const SELL_TABS = [
   { label: "Dashboard", href: "/sell/dashboard" },
+  { label: "Orders", href: "/orders" },
   { label: "Agents", href: "/sell/agents" },
   { label: "Staging", href: "/staging" },
 ];

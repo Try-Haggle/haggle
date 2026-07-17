@@ -6,6 +6,7 @@ import {
   DollarSign,
   ImageOff,
   MessageSquare,
+  PackageCheck,
   Pencil,
   Plus,
   Share2,
@@ -73,12 +74,18 @@ export function DashboardContent({
         className="mb-8"
         icon={<BarChart3 className="size-6" />}
         title="Seller Dashboard"
-        subtitle="Manage your listings and track AI negotiations"
+        subtitle="Manage listings, negotiations, and fulfillment"
         actions={
-          <Link href="/sell/listings/new" className={buttonVariants({ variant: "primary" })}>
-            <Plus className="size-4" />
-            New Listing
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Link href="/orders" className={buttonVariants({ variant: "secondary" })}>
+              <PackageCheck className="size-4" />
+              Orders
+            </Link>
+            <Link href="/sell/listings/new" className={buttonVariants({ variant: "primary" })}>
+              <Plus className="size-4" />
+              New Listing
+            </Link>
+          </div>
         }
       />
 
