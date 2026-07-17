@@ -1497,6 +1497,58 @@ describe("Payment routes", () => {
     });
   });
 
+  it("POST /payments/:id/x402/conditional-settlement-request accepts an unregistered connected wallet", async () => {
+    mockGetPaymentIntentById.mockClear();
+    mockGetPaymentIntentRowById.mockClear();
+    mockGetAgentPaymentGrantById.mockClear();
+    const buyerWallet = "0x1111111111111111111111111111111111111111";
+    const sellerWallet = "0x2222222222222222222222222222222222222222";
+    const intent = {
+      id: "pi_x402_connected_wallet",
+      order_id: "order_123",
+      seller_id: "seller_123",
+      buyer_id: "test-user-001",
+      selected_rail: "x402",
+      allowed_rails: ["x402", "stripe"],
+      amount: { currency: "USD", amount_minor: 50_000 },
+      status: "QUOTED",
+      agent_payment_grant_id: "grant_123",
+      approval_policy_hash: "sha256:policy",
+      agreement_hash: "sha256:agreement",
+      listing_hash: "sha256:listing",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockGetPaymentIntentById
+      .mockResolvedValueOnce(intent as never)
+      .mockResolvedValueOnce(intent as never);
+    mockGetPaymentIntentRowById.mockResolvedValueOnce({
+      providerContext: { seller_wallet: sellerWallet },
+    } as never);
+    mockGetAgentPaymentGrantById.mockResolvedValueOnce({
+      id: "grant_123",
+      status: "ACTIVE",
+      buyer_id: "test-user-001",
+      seller_id: "seller_123",
+      order_id: "order_123",
+      approval_policy_hash: "sha256:policy",
+      nonce: "grant-nonce",
+    } as never);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_x402_connected_wallet/x402/conditional-settlement-request",
+      headers: AUTH_HEADERS,
+      payload: { buyer_wallet_address: buyerWallet },
+    });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({
+      error: "CONDITIONAL_SETTLEMENT_SIGNATURE_UNAVAILABLE",
+    });
+    expect(mockGetAgentPaymentGrantById).toHaveBeenCalledWith(expect.anything(), "grant_123");
+  });
+
   it("POST /payments/:id/x402/conditional-settlement-request blocks x402 intent after Stripe onramp session is created but not funded", async () => {
     mockGetPaymentIntentById.mockClear();
     mockGetPaymentIntentRowById.mockClear();
@@ -1589,31 +1641,22 @@ describe("Payment routes", () => {
       approval_policy_hash: "sha256:policy",
       nonce: "grant-nonce",
     } as never);
-    (
-      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
-    ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_stripe_wallet_mismatch/x402/conditional-settlement-request",
+      headers: AUTH_HEADERS,
+      payload: {
+        buyer_wallet_address: buyerWallet,
+      },
+    });
 
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/payments/pi_stripe_wallet_mismatch/x402/conditional-settlement-request",
-        headers: AUTH_HEADERS,
-        payload: {
-          buyer_wallet_address: buyerWallet,
-        },
-      });
-
-      expect(res.statusCode).toBe(409);
-      expect(res.json()).toMatchObject({
-        error: "STRIPE_ONRAMP_WALLET_MISMATCH",
-      });
-    } finally {
-      delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-        .__HAGGLE_TEST_DB_SELECT_ROWS__;
-    }
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "STRIPE_ONRAMP_WALLET_MISMATCH",
+    });
   });
 
-  it("POST /payments/:id/x402/conditional-settlement-request allows Stripe after matching onramp funding", async () => {
+  it("POST /payments/:id/x402/conditional-settlement-request accepts a connected wallet without registration", async () => {
     mockGetPaymentIntentById.mockClear();
     mockGetPaymentIntentRowById.mockClear();
     mockGetAgentPaymentGrantById.mockClear();
@@ -1660,29 +1703,20 @@ describe("Payment routes", () => {
       approval_policy_hash: "sha256:policy",
       nonce: "grant-nonce",
     } as never);
-    (
-      globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
-    ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [[{ walletAddress: buyerWallet }]];
+    const res = await app.inject({
+      method: "POST",
+      url: "/payments/pi_stripe_onramp_funded/x402/conditional-settlement-request",
+      headers: AUTH_HEADERS,
+      payload: {
+        buyer_wallet_address: buyerWallet,
+      },
+    });
 
-    try {
-      const res = await app.inject({
-        method: "POST",
-        url: "/payments/pi_stripe_onramp_funded/x402/conditional-settlement-request",
-        headers: AUTH_HEADERS,
-        payload: {
-          buyer_wallet_address: buyerWallet,
-        },
-      });
-
-      expect(res.statusCode).toBe(503);
-      expect(res.json()).toMatchObject({
-        error: "CONDITIONAL_SETTLEMENT_SIGNATURE_UNAVAILABLE",
-      });
-      expect(mockGetAgentPaymentGrantById).toHaveBeenCalledWith(expect.anything(), "grant_123");
-    } finally {
-      delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
-        .__HAGGLE_TEST_DB_SELECT_ROWS__;
-    }
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({
+      error: "CONDITIONAL_SETTLEMENT_SIGNATURE_UNAVAILABLE",
+    });
+    expect(mockGetAgentPaymentGrantById).toHaveBeenCalledWith(expect.anything(), "grant_123");
   });
 
   it("POST /payments/:id/x402/conditional-refund-confirmation rejects receipts without a matching refund event", async () => {
@@ -2442,7 +2476,7 @@ describe("Payment routes", () => {
     }
   });
 
-  it("POST /payments/:id/onramp/session returns the buyer payable amount while funding the negotiated amount", async () => {
+  it("POST /payments/:id/onramp/session accepts any connected destination wallet", async () => {
     const originalStripeSecret = process.env.STRIPE_SECRET_KEY;
     const originalStripePublishable = process.env.STRIPE_PUBLISHABLE_KEY;
     const originalStripeFeeBps = process.env.HAGGLE_STRIPE_ONRAMP_FEE_BPS;
@@ -2454,7 +2488,6 @@ describe("Payment routes", () => {
     (
       globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] }
     ).__HAGGLE_TEST_DB_SELECT_ROWS__ = [
-      [{ walletAddress: "0x1111111111111111111111111111111111111111" }],
       [{ walletAddress: "0x2222222222222222222222222222222222222222" }],
     ];
     const mockFetch = vi.fn().mockResolvedValue({

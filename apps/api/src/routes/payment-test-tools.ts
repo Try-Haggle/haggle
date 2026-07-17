@@ -536,7 +536,7 @@ function currentPaymentRuntime() {
       },
       limits: [
         "configuration only; RPC reachability and deployed bytecode are not probed",
-        "buyer wallet balance, allowance, gas, and registration are checked during execution",
+        "buyer wallet balance, allowance, and gas are checked during execution",
       ],
     },
     conditional_settlement_requirements: [
@@ -545,7 +545,7 @@ function currentPaymentRuntime() {
       "HAGGLE_X402_FEE_WALLET must be a fee recipient address",
       "HAGGLE_ROUTER_RELAYER_PRIVATE_KEY must match the deployed contract signer",
       "HAGGLE_BASE_RPC_URL must point at the selected network",
-      "buyer wallet must be registered before conditional-settlement-request",
+      "the connected buyer wallet must submit the createAndFund transaction",
     ],
   };
 }

@@ -1,7 +1,7 @@
 # 결제·배송·분쟁 보안 통제 기준
 
 상태: MVP 애플리케이션/API 보안 기준
-최종 검증: 2026-07-15
+최종 검증: 2026-07-17
 범위: 결제, physical shipping, L1 분쟁, 테스트 컨트랙트 운영 도구
 
 이 문서는 현재 코드에 구현된 보호장치와 아직 남아 있는 위험을 구분해 기록한다. 스마트 컨트랙트 자체 감사는 [스마트 컨트랙트 보안 보고서](../contracts/smart-contract-security-report.md)를 따른다.
@@ -22,6 +22,8 @@
 | 위협 | 현재 통제 | 구현 위치 |
 |------|-----------|-----------|
 | 다른 사용자의 결제 조회·변경 | payment intent의 buyer/seller를 서버에서 조회하고 ownership middleware로 검사 | `apps/api/src/middleware/ownership.ts`, `apps/api/src/routes/payments.ts` |
+| 임의 구매자 지갑으로 다른 사람의 자금 사용 | 구매 지갑의 사전 DB 등록을 결제 조건으로 사용하지 않는다. 직접 USDC 결제는 인증된 payment buyer만 typed data를 요청할 수 있고, `createAndFund`가 `msg.sender == buyer`를 강제하며 해당 지갑의 allowance와 트랜잭션 서명이 있어야만 자금이 이동한다 | `apps/api/src/routes/payments.ts`, `packages/contracts/sol/HaggleConditionalSettlement.sol` |
+| Stripe 온램프 자금과 다른 지갑의 정산 시도 | webhook으로 확정된 onramp destination wallet을 provider context에 고정하고, 동일 주소가 `createAndFund`를 호출할 때만 조건부 정산 서명을 발급한다 | `apps/api/src/routes/payments.ts` |
 | 클라이언트가 금액·당사자 조작 | 승인된 settlement approval과 주문을 기준으로 intent 생성. 인라인 approval은 production에서 제한 | `apps/api/src/routes/payments.ts` |
 | 실패 협상·판매자·가격 변조로 checkout 진입 | 구매자 CTA와 checkout 서버 화면이 `ACCEPTED` 세션, 동일 ID의 `APPROVED` settlement approval, 현재 buyer, 협상가와 승인 금액 일치를 각각 검증. 직접 URL 진입도 같은 조건에서 실패 폐쇄 | `apps/web/src/app/buy/negotiations/[sessionId]/checkout-contract.ts`, `apps/web/src/app/buy/negotiations/[sessionId]/checkout/page.tsx` |
 | 게스트 가입 뒤 승인 소유권 불일치 | claim이 주문이 아직 없는 guest session과 동일 ID approval만 한 SQL statement에서 이전하고 buyer snapshot을 함께 갱신. 이미 order가 생긴 세션은 별도 감사된 이전 절차 없이 claim하지 않음 | `apps/api/src/routes/claim.ts` |
@@ -51,6 +53,15 @@
 - `STRIPE_WEBHOOK_SECRET`
 - 실제 rail 사용 시 `HAGGLE_X402_MODE=real`, `STRIPE_MODE=real`
 - 실제 컨트랙트 사용 시 RPC, 컨트랙트 주소, asset 주소, fee wallet, relayer signer 설정
+
+### 지갑 신뢰 경계
+
+- 구매자는 Haggle 계정에 지갑을 미리 등록하지 않아도 checkout에서 연결한 지갑으로 결제할 수 있다.
+- `user_wallets`는 기본 지갑과 판매대금 수령 주소를 저장하는 편의 기능이다. 현재 `POST /wallets`는 주소 소유자의 서명을 검증하지 않으므로 이 테이블의 존재만으로 지갑 소유권이 증명되었다고 판단하면 안 된다.
+- 직접 USDC 결제의 구매자 소유권은 `createAndFund`를 제출하는 지갑 서명과 컨트랙트의 `CallerNotBuyer` 검사로 증명한다. 서버 EIP-712 서명은 buyer, seller, asset, 금액, 정책 hash, contract, chain ID, deadline과 nonce에 묶인다.
+- Stripe 온램프 목적지는 webhook으로 확인된 주소와 이후 `createAndFund` 호출 주소가 반드시 같아야 한다. 주소가 다르면 자동 보정하지 않고 결제를 차단한다.
+- **실제 자금 전환 전 필수 보강:** Stripe 온램프 목적지와 판매자 정산 지갑을 최초 설정하거나 변경할 때 서버 발급 nonce, 서비스 도메인, chain ID, 주소와 만료 시각을 포함한 지갑 서명 챌린지를 검증한다. 이 검증은 결제 전 사전 등록을 강제하기 위한 것이 아니라 오입력과 계정 탈취에 의한 잘못된 송금을 막기 위한 것이다.
+- 서명 챌린지가 배포되기 전에는 Base Sepolia와 무가치 테스트 자산에만 이 흐름을 사용하며, production 실자금 준비 완료로 표시하지 않는다.
 
 ## 2. 배송
 
@@ -324,7 +335,7 @@ forge test
 
 2026-07-12 실제 조건부 정산 receipt 연결 검증: 대시보드의 Actual Contract Split은 Payment Intent ID가 있으면 테스트 서명 대신 `/payments/:id/x402/conditional-settlement-request`의 정책·grant·구매자 지갑에 묶인 EIP-712 서명을 사용한다. 지갑이 `createAndFund`를 완료하면 tx hash, settlement ID, 계약 주소와 chain ID를 funding API에 기록하고, 별도 confirmation API가 `SettlementFunded`의 계약·구매자·판매자·자산·금액·정책 hash를 검증한 뒤에만 결제 DB를 `FUNDING_CONFIRMED`로 만들고 fulfillment를 준비한다. 정상 종료는 주문의 실제 settlement release가 `FULLY_RELEASED`인지 확인하고 APV payout offset 스냅샷에 묶인 release 서명을 받아 실행한다. 이후 execution과 confirmation API가 `SettlementReleased`의 settlement, 판매자·수수료 지갑과 금액을 검증한 뒤 결제를 `SETTLED`로 확정한다. 분쟁 환불도 실제 payment refund request 서명을 우선 사용하고 기존 execution·confirmation이 `SettlementRefunded`를 검증한다. 체인 트랜잭션 성공과 API 확정 사이에 RPC·서버 장애가 나면 새 자금 이동을 만들지 않고 저장된 tx hash의 Confirm Funding 또는 Confirm Release로 receipt 확인만 재시도한다. Payment Intent/Order ID가 없는 경우에만 독립 계약 실험용 test-tool 서명으로 fallback한다. 관련 payment, commerce-security, payment-test-tools 집중 회귀 112개와 전체 API 1,834개, dispute-core 152개, shipping-core 214개가 모두 통과했다. Base Sepolia 배포 설정과 테스트 USDC를 사용한 최종 실제 네트워크 리허설은 P0로 남는다.
 
-2026-07-12 온체인 실행 사전점검 검증: 기존 `conditional_settlement_ready`는 주소·signer·RPC 형식이 서명 생성에 충분한지만 나타내므로 실제 자금 흐름 준비 상태와 분리했다. 새 `onchain_flow_preflight`는 x402 real mode, base/base-sepolia network, USDC 주소, 조건부 정산 계약 주소, 수수료 지갑, relayer signer, Base RPC의 7개 boolean check와 실패 key만 반환한다. private key, RPC URL과 credential은 반환하지 않으며 funding, release, refund에 구현된 capability 명칭과 설정 점검의 한계만 함께 제공한다. 전체 ready는 7개가 모두 참일 때만 가능하고 Stripe만 real인 경우나 x402 mock은 차단된다. 0 주소, 0 signer key, URL로 해석되지 않는 RPC와 production의 비-HTTPS RPC도 차단한다. RPC 실제 접근, 배포 bytecode, 구매자 등록·잔액·allowance·gas는 실행 단계 검증으로 명시해 설정 확인을 실전 성공 보장으로 과장하지 않는다. 대시보드 Runtime 실API 결과는 현재 `BLOCKED`, `1/7`, `x402 mock / base-sepolia`, 차단 항목 `x402 real, USDC, contract, fee wallet, signer, RPC`로 표시됐다. blocked/ready, 잘못된 설정과 secret 비노출 테스트를 포함한 payment-test-tools 31개와 전체 API 1,837개, dispute-core 152개, shipping-core 214개가 통과했다.
+2026-07-12 온체인 실행 사전점검 검증: 기존 `conditional_settlement_ready`는 주소·signer·RPC 형식이 서명 생성에 충분한지만 나타내므로 실제 자금 흐름 준비 상태와 분리했다. 새 `onchain_flow_preflight`는 x402 real mode, base/base-sepolia network, USDC 주소, 조건부 정산 계약 주소, 수수료 지갑, relayer signer, Base RPC의 7개 boolean check와 실패 key만 반환한다. private key, RPC URL과 credential은 반환하지 않으며 funding, release, refund에 구현된 capability 명칭과 설정 점검의 한계만 함께 제공한다. 전체 ready는 7개가 모두 참일 때만 가능하고 Stripe만 real인 경우나 x402 mock은 차단된다. 0 주소, 0 signer key, URL로 해석되지 않는 RPC와 production의 비-HTTPS RPC도 차단한다. RPC 실제 접근, 배포 bytecode, 구매자 잔액·allowance·gas는 실행 단계 검증으로 명시해 설정 확인을 실전 성공 보장으로 과장하지 않는다. 대시보드 Runtime 실API 결과는 현재 `BLOCKED`, `1/7`, `x402 mock / base-sepolia`, 차단 항목 `x402 real, USDC, contract, fee wallet, signer, RPC`로 표시됐다. blocked/ready, 잘못된 설정과 secret 비노출 테스트를 포함한 payment-test-tools 31개와 전체 API 1,837개, dispute-core 152개, shipping-core 214개가 통과했다.
 
 2026-07-12 온체인 receipt 브라우저 복구 검증: 체인 트랜잭션 제출 직후, 서버 execution 기록 직후와 receipt confirmation 상태 변경 때마다 탭 범위 `sessionStorage`에 최소 checkpoint를 저장한다. schema v1은 payment/order/settlement/settlement-release ID, 조건부 정산 contract 주소, base/base-sepolia network, funding/release/refund tx hash와 서버 제출 여부 boolean만 허용한다. EIP-712 signature와 params, JWT, private key, API/RPC URL, wallet 주소, 증거와 판정 내용은 저장하지 않는다. codec은 4KB 상한, 7일 만료, 5분 미래 시각 허용, 32-byte tx/settlement, non-zero contract 주소와 network allowlist를 검증하며 malformed·초과·만료 checkpoint를 삭제한다. 복원 후 confirmation 전에는 funding/refund의 payment ID 또는 release의 order/release ID와 settlement, network, contract를 현재 입력과 다시 대조한다. 같은 guard를 `Raise Dispute`, `Sign Release`, `Sign Refund` 진입점에도 적용해 잘못된 새 서명을 요청하거나 wallet prompt를 띄우기 전에 차단한다. 서버 execution이 이미 기록됐다는 checkpoint는 자금 이동이나 execution 제출을 반복하지 않고 confirmation만 재시도하며, crash가 기록 전에 발생한 경우 기존 서버 멱등 경로가 execution을 수용한다. funding confirmed 상태는 이후 release/refund에 필요한 settlement ID 때문에 유지하고, terminal release/refund 성공과 New Test에서는 자동 삭제한다. 새 funding 시작은 전체 트랜잭션 상태를 공통 reset해 이전 refund execution 객체가 새 거래에 섞이지 않는다. codec 12개와 전체 대시보드를 실행한 DOM 통합 19개가 복원, 민감정보 비저장, confirmation·release/refund signing 바인딩 불일치 fetch 0회, New Test 저장소·메모리 초기화를 통과했다.
 
