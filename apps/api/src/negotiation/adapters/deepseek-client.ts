@@ -19,6 +19,8 @@ export interface DeepSeekCallOptions {
   maxTokens?: number;
   /** Correlation ID for telemetry */
   correlationId?: string;
+  /** Total deadline for fetch, response body parsing, and retries. */
+  timeoutMs?: number;
 }
 
 export interface DeepSeekResponse {
@@ -49,8 +51,8 @@ interface DeepSeekChatCompletion {
 
 const DEEPSEEK_API_BASE = "https://api.deepseek.com/v1";
 const RETRY_DELAYS = [1000, 3000]; // 2 retries: 1s, 3s
-const GENERAL_TIMEOUT_MS = 60_000;
-const REASONING_TIMEOUT_MS = 90_000;
+const GENERAL_TIMEOUT_MS = 30_000;
+const REASONING_TIMEOUT_MS = 45_000;
 
 function getApiKey(): string {
   const key = process.env.DEEPSEEK_API_KEY;
@@ -66,22 +68,36 @@ function getModel(): string {
 // Core fetch with timeout
 // ---------------------------------------------------------------------------
 
-async function fetchWithTimeout(
+async function fetchTextWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<Response> {
+): Promise<{ response: Response; text: string }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      controller.abort();
+      const error = new Error(`DeepSeek API timeout after ${timeoutMs}ms`);
+      error.name = "TimeoutError";
+      reject(error);
+    }, timeoutMs);
+  });
 
   try {
-    const response = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-    return response;
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, {
+          ...init,
+          signal: controller.signal,
+        });
+        const text = await response.text();
+        return { response, text };
+      })(),
+      timeout,
+    ]);
   } finally {
-    clearTimeout(timer);
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }
 
@@ -101,7 +117,8 @@ export async function callLLM(
 ): Promise<DeepSeekResponse> {
   const { reasoning = false, maxTokens, correlationId } = options;
   const model = getModel();
-  const timeoutMs = reasoning ? REASONING_TIMEOUT_MS : GENERAL_TIMEOUT_MS;
+  const apiKey = getApiKey();
+  const timeoutMs = options.timeoutMs ?? (reasoning ? REASONING_TIMEOUT_MS : GENERAL_TIMEOUT_MS);
 
   const body: Record<string, unknown> = {
     model,
@@ -116,24 +133,31 @@ export async function callLLM(
 
   const doCall = async (): Promise<DeepSeekResponse> => {
     let lastError: Error | null = null;
+    const deadline = Date.now() + timeoutMs;
 
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
       try {
-        const response = await fetchWithTimeout(
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          const error = new Error(`DeepSeek API timeout after ${timeoutMs}ms`);
+          error.name = "TimeoutError";
+          throw error;
+        }
+
+        const { response, text } = await fetchTextWithTimeout(
           `${DEEPSEEK_API_BASE}/chat/completions`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${getApiKey()}`,
+              Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify(body),
           },
-          timeoutMs,
+          remainingMs,
         );
 
         if (!response.ok) {
-          const text = await response.text().catch(() => "");
           const err = new Error(`DeepSeek API error ${response.status}: ${text}`) as Error & {
             status: number;
             retryable: boolean;
@@ -149,7 +173,7 @@ export async function callLLM(
           throw err;
         }
 
-        const data = (await response.json()) as DeepSeekChatCompletion;
+        const data = JSON.parse(text) as DeepSeekChatCompletion;
         const content = data.choices?.[0]?.message?.content ?? "";
 
         return {
@@ -170,15 +194,18 @@ export async function callLLM(
           throw lastError;
         }
 
-        // Check if abort (timeout)
-        if (lastError.name === "AbortError") {
+        // Abort and explicit deadline errors both stop the retry loop.
+        if (lastError.name === "AbortError" || lastError.name === "TimeoutError") {
           lastError = new Error(`DeepSeek API timeout after ${timeoutMs}ms`);
           (lastError as Error & { name: string }).name = "TimeoutError";
+          break;
         }
 
         // Wait before retry (if retries remaining)
         if (attempt < RETRY_DELAYS.length) {
-          await sleep(RETRY_DELAYS[attempt]!);
+          const delayMs = RETRY_DELAYS[attempt]!;
+          if (Date.now() + delayMs >= deadline) break;
+          await sleep(delayMs);
         }
       }
     }

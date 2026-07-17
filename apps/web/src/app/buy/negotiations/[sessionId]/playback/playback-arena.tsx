@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, Play, Radio, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArenaHeader } from "./arena-header";
@@ -11,12 +12,21 @@ import { PreFight } from "./pre-fight";
 import { ProgressBar } from "./progress-bar";
 import { ResultReveal } from "./result-reveal";
 import type { PlaybackResponse } from "./types";
-import { usePlaybackEngine, usePrefersReducedMotion } from "./use-playback-engine";
+import {
+  type PlaybackEngine,
+  usePlaybackEngine,
+  usePrefersReducedMotion,
+} from "./use-playback-engine";
 
 interface PlaybackArenaProps {
   data: PlaybackResponse;
   checkoutHref?: string;
   checkoutLabel?: string;
+  mode?: "replay" | "live";
+  liveTerminal?: boolean;
+  connectionLabel?: string;
+  liveError?: string | null;
+  onLiveRetry?: () => void;
 }
 
 /**
@@ -26,14 +36,43 @@ interface PlaybackArenaProps {
  *   2. Live arena (during playback)
  *   3. Result reveal (after completion — overlays the arena)
  */
-export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackArenaProps) {
+export function PlaybackArena({
+  data,
+  checkoutHref,
+  checkoutLabel,
+  mode = "replay",
+  liveTerminal = false,
+  connectionLabel = "Live updates",
+  liveError = null,
+  onLiveRetry,
+}: PlaybackArenaProps) {
+  const { session, rounds } = data;
+  const isLive = mode === "live";
   const reduceMotion = usePrefersReducedMotion();
-  const engine = usePlaybackEngine({
+  const replayEngine = usePlaybackEngine({
     rounds: data.rounds,
     reduceMotion,
   });
+  const liveEngine = useMemo<PlaybackEngine>(
+    () => ({
+      status: liveTerminal ? "COMPLETE" : "PLAYING",
+      phase: "settled",
+      currentRoundIndex: Math.max(rounds.length - 1, 0),
+      visibleCount: rounds.length,
+      typingChars: 0,
+      speed: 1,
+      begin: () => undefined,
+      skip: () => undefined,
+      replay: () => undefined,
+      pause: () => undefined,
+      resume: () => undefined,
+      setSpeed: () => undefined,
+    }),
+    [liveTerminal, rounds.length],
+  );
+  const engine = isLive ? liveEngine : replayEngine;
 
-  const [showPreFight, setShowPreFight] = useState(true);
+  const [showPreFight, setShowPreFight] = useState(!isLive);
   const [focusedRoundIndex, setFocusedRoundIndex] = useState<number | null>(null);
 
   // Right-column drives the chat panel height: chat matches it exactly and
@@ -47,13 +86,15 @@ export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackAre
       return;
     }
     const update = () => setSideHeight(node.getBoundingClientRect().height);
+    if (typeof ResizeObserver === "undefined") {
+      update();
+      return;
+    }
     const ro = new ResizeObserver(update);
     ro.observe(node);
     update();
     return () => ro.disconnect();
   }, []);
-
-  const { session, rounds } = data;
 
   // Latest visible offer drives the price ticker.
   const lastVisibleRound = rounds[engine.visibleCount - 1] ?? null;
@@ -62,8 +103,14 @@ export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackAre
   const previousPrice = prevVisibleRound?.offerPrice ?? null;
 
   // Active speaker for the header glow.
-  const activeRole =
-    engine.status === "PLAYING" && engine.currentRoundIndex < rounds.length
+  const lastLiveSender = rounds.at(-1)?.sender;
+  const activeRole = isLive
+    ? liveTerminal
+      ? null
+      : lastLiveSender === "BUYER"
+        ? "SELLER"
+        : "BUYER"
+    : engine.status === "PLAYING" && engine.currentRoundIndex < rounds.length
       ? (rounds[engine.currentRoundIndex]?.sender ?? null)
       : null;
 
@@ -95,7 +142,7 @@ export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackAre
   useEffect(() => {
     if (engine.status === "COMPLETE") {
       const t = setTimeout(() => {
-        document.getElementById("playback-result")?.scrollIntoView({
+        document.getElementById("playback-result")?.scrollIntoView?.({
           behavior: "smooth",
           block: "start",
         });
@@ -133,6 +180,15 @@ export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackAre
             </svg>
             <span>Back to listing</span>
           </Link>
+          {isLive && liveTerminal && (
+            <Link
+              href="?replay=1"
+              className="flex items-center gap-1.5 text-[12px] sm:text-[13px] text-ink-secondary transition-colors hover:text-ink"
+            >
+              <Play className="size-3.5" aria-hidden="true" />
+              Watch replay
+            </Link>
+          )}
         </div>
 
         <AnimatePresence mode="wait">
@@ -193,7 +249,32 @@ export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackAre
                     className="flex items-center justify-end px-4 py-3"
                     style={{ borderBottom: "1px solid var(--border-default)" }}
                   >
-                    <PlaybackControls engine={engine} />
+                    {isLive ? (
+                      liveError ? (
+                        <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold text-error">
+                          <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{liveError}</span>
+                          {onLiveRetry && (
+                            <button
+                              type="button"
+                              onClick={onLiveRetry}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-ink transition-colors hover:bg-surface-overlay"
+                              style={{ border: "1px solid var(--border-default)" }}
+                            >
+                              <RotateCcw className="size-3" aria-hidden="true" />
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-success">
+                          <Radio className="size-3.5" aria-hidden="true" />
+                          {liveTerminal ? "Negotiation complete" : connectionLabel}
+                        </div>
+                      )
+                    ) : (
+                      <PlaybackControls engine={engine} />
+                    )}
                   </div>
                   <ChatTimeline
                     rounds={rounds}
@@ -203,6 +284,7 @@ export function PlaybackArena({ data, checkoutHref, checkoutLabel }: PlaybackAre
                     currency={session.listing.currency}
                     focusedRoundIndex={focusedRoundIndex}
                     onFocusRound={setFocusedRoundIndex}
+                    waitingRole={isLive && !liveTerminal ? activeRole : null}
                   />
                 </div>
 

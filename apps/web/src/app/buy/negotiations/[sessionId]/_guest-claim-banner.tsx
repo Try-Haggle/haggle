@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 
-type Status = "ACCEPTED" | "REJECTED" | "NEAR_DEAL" | "ESCALATED";
+type Status = "IN_PROGRESS" | "ACCEPTED" | "REJECTED" | "NEAR_DEAL" | "ESCALATED";
 
 function formatPrice(minor: number | null): string | null {
   if (typeof minor !== "number" || !Number.isFinite(minor) || minor <= 0) return null;

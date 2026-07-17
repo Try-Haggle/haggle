@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createNegotiationAutoPlaySetup } from "../services/negotiation-auto-play.service.js";
 import { closeTestApp, getTestApp } from "./helpers.js";
 
 // ─── Hoisted mocks (vi.mock factories run before module-level const) ─
@@ -9,6 +10,7 @@ const {
   mockGetSessionById,
   mockGetSessionsByUserId,
   mockGetSessionsByGroupId,
+  mockSetSessionPerspective,
   mockUpdateSessionState,
   mockBatchUpdateSessionStatus,
   mockCreateRound,
@@ -27,6 +29,7 @@ const {
   mockGetSessionById: vi.fn(),
   mockGetSessionsByUserId: vi.fn(),
   mockGetSessionsByGroupId: vi.fn(),
+  mockSetSessionPerspective: vi.fn(),
   mockUpdateSessionState: vi.fn(),
   mockBatchUpdateSessionStatus: vi.fn(),
   mockCreateRound: vi.fn(),
@@ -105,6 +108,7 @@ vi.mock("../services/negotiation-session.service.js", () => ({
   getSessionById: (...args: unknown[]) => mockGetSessionById(...args),
   getSessionsByUserId: (...args: unknown[]) => mockGetSessionsByUserId(...args),
   getSessionsByGroupId: (...args: unknown[]) => mockGetSessionsByGroupId(...args),
+  setSessionPerspective: (...args: unknown[]) => mockSetSessionPerspective(...args),
   updateSessionState: (...args: unknown[]) => mockUpdateSessionState(...args),
   lockSessionForUpdate: vi.fn().mockResolvedValue(null),
   batchUpdateSessionStatus: (...args: unknown[]) => mockBatchUpdateSessionStatus(...args),
@@ -376,6 +380,7 @@ describe("Negotiation API", () => {
     mockGetSessionById.mockResolvedValue(null);
     mockGetSessionsByUserId.mockResolvedValue([]);
     mockGetSessionsByGroupId.mockResolvedValue([]);
+    mockSetSessionPerspective.mockResolvedValue(true);
     mockUpdateSessionState.mockResolvedValue(null);
     mockCreateRound.mockResolvedValue(null);
     mockCreateGroup.mockResolvedValue(mockGroup);
@@ -645,6 +650,82 @@ describe("Negotiation API", () => {
         headers: AUTH_HEADERS,
       });
       expect(res.json().session.negotiation_agent_snapshot).toBeUndefined();
+    });
+  });
+
+  describe("POST /negotiations/sessions/:id/auto-play/next", () => {
+    function autoPlayFixture() {
+      const setup = createNegotiationAutoPlaySetup({
+        buyerSnapshot: { side: "buyer" },
+        sellerSnapshot: { side: "seller" },
+        buyerTargetMinor: 9_000,
+        maxRounds: 8,
+      });
+      return {
+        setup,
+        session: {
+          ...mockSession,
+          role: "SELLER" as const,
+          status: "CREATED",
+          currentRound: 0,
+          lastOfferPriceMinor: null,
+          negotiationAgentSnapshot: setup.sellerSnapshot,
+        },
+      };
+    }
+
+    it("rejects an unauthenticated caller without the session run token", async () => {
+      const { session } = autoPlayFixture();
+      mockGetSessionById.mockResolvedValue(session);
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: "x".repeat(32) },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error).toBe("AUTO_PLAY_TOKEN_INVALID");
+      expect(mockSetSessionPerspective).not.toHaveBeenCalled();
+      expect(mockExecuteNegotiationRound).not.toHaveBeenCalled();
+    });
+
+    it("claims and executes exactly one round for a valid run token", async () => {
+      const { setup, session } = autoPlayFixture();
+      mockGetSessionById
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce({ ...session, status: "ACCEPTED", currentRound: 1, version: 3 });
+      mockExecuteNegotiationRound.mockResolvedValue({
+        idempotent: false,
+        roundId: "round-auto-1",
+        roundNo: 1,
+        decision: "ACCEPT",
+        outgoingPrice: 9_000,
+        utility: { u_total: 1, v_p: 1, v_t: 0, v_r: 0, v_s: 0 },
+        sessionStatus: "ACCEPTED",
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/negotiations/sessions/sess-001/auto-play/next",
+        payload: { run_token: setup.runToken },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({
+        complete: true,
+        session_status: "ACCEPTED",
+        current_round: 1,
+        round_no: 1,
+      });
+      expect(mockSetSessionPerspective).toHaveBeenCalledOnce();
+      expect(mockExecuteNegotiationRound).toHaveBeenCalledOnce();
+      expect(mockExecuteNegotiationRound.mock.calls[0]?.[1]).toMatchObject({
+        sessionId: "sess-001",
+        senderRole: "BUYER",
+        offerPriceMinor: 9_000,
+        idempotencyKey: "auto-sess-001-r1",
+      });
     });
   });
 

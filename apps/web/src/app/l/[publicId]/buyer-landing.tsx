@@ -18,15 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
 import { ApiError, api } from "@/lib/api-client";
 import { formatPriceStr } from "@/lib/format";
+import { storeNegotiationRunToken } from "@/lib/negotiation-auto-play-token";
 import { useAmplitude } from "@/providers/amplitude-provider";
 import {
   NegotiationAgentBuilderChat,
   type NegotiationAgentBuilderMemory,
 } from "./negotiation-agent-builder-chat";
-import {
-  type NegotiationProgressPayload,
-  waitForNegotiationReady,
-} from "./negotiation-start-progress";
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -417,6 +414,7 @@ export function BuyerLanding({
                       try {
                         const res = await api.post<{
                           session_id: string;
+                          run_token: string;
                           guest_buyer_id?: string;
                         }>("/negotiations/start", {
                           listing_public_id: listing.publicId,
@@ -462,22 +460,8 @@ export function BuyerLanding({
                           has_negotiation_agent_builder_memory: !!negotiationAgentBuilderMemory,
                         });
 
-                        const progress = await waitForNegotiationReady({
-                          load: () =>
-                            api.get<NegotiationProgressPayload>(
-                              `/negotiations/sessions/${res.session_id}`,
-                            ),
-                          onProgress: ({ rounds }) => {
-                            setNegotiationMessage(
-                              rounds > 0
-                                ? `Negotiating... ${rounds} round${rounds === 1 ? "" : "s"} complete`
-                                : "Starting the first round...",
-                            );
-                          },
-                        });
-                        if (!progress.ready) {
-                          setNegotiationMessage("Opening the negotiation while it finishes...");
-                        }
+                        setNegotiationMessage("Opening the live negotiation...");
+                        storeNegotiationRunToken(res.session_id, res.run_token);
                         window.location.href = `/buy/negotiations/${res.session_id}`;
                       } catch (err) {
                         const apiErr = err instanceof ApiError ? err : null;

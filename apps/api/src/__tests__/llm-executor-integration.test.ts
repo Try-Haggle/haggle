@@ -3,7 +3,7 @@
  *
  * Tests the full pipeline: executeLLMNegotiationRound() with real Step 56 modules
  * (RefereeService, DefaultEngineSkill, DeepSeekAdapter, phase-machine, screening, etc.)
- * Only DB layer and xAI HTTP client are mocked.
+ * Only the DB layer and DeepSeek HTTP client are mocked.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +16,7 @@ const {
   mockCreateRound,
   mockGetRoundsBySessionId,
   mockGetSessionById,
+  mockLockSessionForUpdate,
   mockUpdateSessionState,
   mockCallLLM,
   mockTxExecute,
@@ -24,6 +25,7 @@ const {
   mockCreateRound: vi.fn(),
   mockGetRoundsBySessionId: vi.fn(),
   mockGetSessionById: vi.fn(),
+  mockLockSessionForUpdate: vi.fn(),
   mockUpdateSessionState: vi.fn(),
   mockCallLLM: vi.fn(),
   mockTxExecute: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("../services/negotiation-round.service.js", () => ({
 
 vi.mock("../services/negotiation-session.service.js", () => ({
   getSessionById: (...args: unknown[]) => mockGetSessionById(...args),
+  lockSessionForUpdate: (...args: unknown[]) => mockLockSessionForUpdate(...args),
   updateSessionState: (...args: unknown[]) => mockUpdateSessionState(...args),
 }));
 
@@ -48,7 +51,7 @@ vi.mock("../services/conversation-signal-sink.js", () => ({
   }),
 }));
 
-// Mock xAI client — the only external API call
+// Mock DeepSeek client — the only external API call
 vi.mock("../negotiation/adapters/deepseek-client.js", () => ({
   callLLM: (...args: unknown[]) => mockCallLLM(...args),
 }));
@@ -151,6 +154,8 @@ function makeMockDb(dbSession: DbSession) {
 
   // tx.execute returns the locked row as raw
   mockTxExecute.mockResolvedValue([dbSession as unknown as Record<string, unknown>]);
+  mockGetSessionById.mockResolvedValue(dbSession);
+  mockLockSessionForUpdate.mockResolvedValue(dbSession as unknown as Record<string, unknown>);
 
   const tx = {
     execute: mockTxExecute,
@@ -170,7 +175,7 @@ function makeMockDb(dbSession: DbSession) {
 }
 
 // ---------------------------------------------------------------------------
-// Standard LLM response for xAI mock
+// Standard LLM response for DeepSeek mock
 // ---------------------------------------------------------------------------
 
 function makeLLMResponse(overrides: Record<string, unknown> = {}) {
@@ -222,6 +227,35 @@ describe("LLM Executor — Integration", () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe("Happy path — BARGAINING with LLM", () => {
+    it("does not hold a database transaction while calling DeepSeek", async () => {
+      const session = makeDbSession({ currentRound: 3, status: "ACTIVE" });
+      const { db, tx } = makeMockDb(session);
+      mockGetRoundsBySessionId.mockResolvedValue([
+        makeDbRound({ roundNo: 1 }),
+        makeDbRound({ roundNo: 2, id: "r-002" }),
+        makeDbRound({ roundNo: 3, id: "r-003" }),
+      ]);
+
+      let transactionActive = false;
+      db.transaction = vi.fn(async (fn: (value: unknown) => Promise<unknown>) => {
+        transactionActive = true;
+        try {
+          return await fn(tx);
+        } finally {
+          transactionActive = false;
+        }
+      });
+      mockCallLLM.mockImplementation(async () => {
+        expect(transactionActive).toBe(false);
+        return makeLLMResponse({ price: 83500 });
+      });
+
+      await executeLLMNegotiationRound(db as any, makeInput({ offerPriceMinor: 85500 }));
+
+      expect(mockCallLLM).toHaveBeenCalledOnce();
+      expect(db.transaction).toHaveBeenCalledOnce();
+    });
+
     it("executes full pipeline: screen → phase → skill → LLM → referee → persist", async () => {
       // Session with significant gap so skill returns COUNTER (not auto-accept)
       const session = makeDbSession({

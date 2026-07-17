@@ -5,7 +5,7 @@
  *   OPENING → BARGAINING → CLOSING → SETTLEMENT
  *
  * Uses real Step 56 modules (Skill, Referee, Phase Machine, Memory Reconstructor)
- * with DB + xAI mocked. Verifies phase transitions, LLM invocation points,
+ * with DB + DeepSeek mocked. Verifies phase transitions, LLM invocation points,
  * price movement, coaching, and validation across a full iPhone 15 Pro negotiation.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,7 @@ const {
   mockCreateRound,
   mockGetRoundsBySessionId,
   mockGetSessionById,
+  mockLockSessionForUpdate,
   mockUpdateSessionState,
   mockCallLLM,
   mockTxExecute,
@@ -28,6 +29,7 @@ const {
   mockCreateRound: vi.fn(),
   mockGetRoundsBySessionId: vi.fn(),
   mockGetSessionById: vi.fn(),
+  mockLockSessionForUpdate: vi.fn(),
   mockUpdateSessionState: vi.fn(),
   mockCallLLM: vi.fn(),
   mockTxExecute: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock("../services/negotiation-round.service.js", () => ({
 
 vi.mock("../services/negotiation-session.service.js", () => ({
   getSessionById: (...args: unknown[]) => mockGetSessionById(...args),
+  lockSessionForUpdate: (...args: unknown[]) => mockLockSessionForUpdate(...args),
   updateSessionState: (...args: unknown[]) => mockUpdateSessionState(...args),
 }));
 
@@ -171,6 +174,8 @@ function makeLLMResponse(action = "COUNTER", priceMinor = 78000) {
 function makeMockDb(session: DbSession) {
   mockMapRawToDbSession.mockReturnValue(session);
   mockTxExecute.mockResolvedValue([session as unknown]);
+  mockGetSessionById.mockResolvedValue(session);
+  mockLockSessionForUpdate.mockResolvedValue(session as unknown);
 
   const tx = {
     execute: mockTxExecute,

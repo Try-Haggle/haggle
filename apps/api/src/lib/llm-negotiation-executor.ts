@@ -6,7 +6,7 @@
  *
  * Pipeline:
  *  1. Idempotency check
- *  2. BEGIN TX → SELECT FOR UPDATE
+ *  2. Read and version the committed session state
  *  3. Terminal/expiry check
  *  4. Load rounds → Memory reconstruction (DB → CoreMemory + RoundFact[] + OpponentPattern)
  *  5. Screening (spam check)
@@ -16,11 +16,11 @@
  *  9. RefereeService.process() (coach + validate + auto-fix + render)
  * 10. Phase transition
  * 11. Map ProtocolDecision → DB persist format
- * 12. Persist round + update session → COMMIT
+ * 12. BEGIN TX → SELECT FOR UPDATE → version check → persist → COMMIT
  * 13. Dispatch events
  */
 
-import { type Database, sql } from "@haggle/db";
+import type { Database } from "@haggle/db";
 import { DeepSeekAdapter } from "../negotiation/adapters/deepseek-adapter.js";
 // LLM client
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
@@ -56,7 +56,11 @@ import {
   getRoundByIdempotencyKey,
   getRoundsBySessionId,
 } from "../services/negotiation-round.service.js";
-import { getSessionById, updateSessionState } from "../services/negotiation-session.service.js";
+import {
+  getSessionById,
+  lockSessionForUpdate,
+  updateSessionState,
+} from "../services/negotiation-session.service.js";
 import type { EventDispatcher, PipelineEvent } from "./event-dispatcher.js";
 import type { RoundExecutionInput, RoundExecutionResult } from "./negotiation-executor.js";
 import { mapRawToDbSession } from "./negotiation-executor.js";
@@ -91,16 +95,13 @@ export async function executeLLMNegotiationRound(
     return buildIdempotentResult(existingRound, db, input.sessionId);
   }
 
-  // --- Transaction ---
-  const result = await db.transaction(async (tx) => {
-    // 1. Lock session row
-    const lockedRows = await tx.execute(
-      sql`SELECT * FROM negotiation_sessions WHERE id = ${input.sessionId} FOR UPDATE`,
-    );
-    const lockedRow = (lockedRows as unknown as Record<string, unknown>[])[0];
-    if (!lockedRow) throw new Error(`SESSION_NOT_FOUND: ${input.sessionId}`);
-
-    const dbSession = mapRawToDbSession(lockedRow);
+  // Build the decision without a transaction. External LLM calls must never
+  // hold a database connection or row lock; persistence is finalized below in
+  // a short optimistic transaction.
+  const result = await (async () => {
+    const sessionRow = await getSessionById(db, input.sessionId);
+    if (!sessionRow) throw new Error(`SESSION_NOT_FOUND: ${input.sessionId}`);
+    const dbSession = sessionRow as unknown as DbSession;
 
     // 2. Terminal check
     if (TERMINAL_STATUSES.has(dbSession.status)) {
@@ -109,27 +110,14 @@ export async function executeLLMNegotiationRound(
 
     // 2b. Expiry check
     if (dbSession.expiresAt && dbSession.expiresAt.getTime() < input.nowMs) {
-      await updateSessionState(tx as unknown as Database, input.sessionId, dbSession.version, {
+      await updateSessionState(db, input.sessionId, dbSession.version, {
         status: "EXPIRED",
       });
       throw new Error("SESSION_EXPIRED");
     }
 
-    // 3. Double-check idempotency inside TX
-    const existingInTx = await getRoundByIdempotencyKey(
-      tx as unknown as Database,
-      input.sessionId,
-      input.idempotencyKey,
-    );
-    if (existingInTx) {
-      return buildIdempotentResultFromRound(existingInTx, dbSession);
-    }
-
-    // 4. Load rounds + reconstruct memory
-    const dbRounds = (await getRoundsBySessionId(
-      tx as unknown as Database,
-      input.sessionId,
-    )) as DbRound[];
+    // Load rounds + reconstruct memory from a committed snapshot.
+    const dbRounds = (await getRoundsBySessionId(db, input.sessionId)) as DbRound[];
     const nextRound = dbSession.currentRound + 1;
 
     // Convert DbRound to DbRoundForMemory
@@ -191,7 +179,7 @@ export async function executeLLMNegotiationRound(
         action: "REJECT",
         reasoning: `Screening blocked: ${screening.reason}`,
       };
-      return await persistLLMRound(tx as unknown as Database, {
+      return await persistPreparedLLMRound(db, {
         dbSession,
         input,
         nextRound,
@@ -234,7 +222,7 @@ export async function executeLLMNegotiationRound(
         action: "HOLD",
         reasoning: intervention.pendingReview?.reason ?? "Human approval required.",
       };
-      return await persistLLMRound(tx as unknown as Database, {
+      return await persistPreparedLLMRound(db, {
         dbSession,
         input,
         nextRound,
@@ -341,7 +329,7 @@ export async function executeLLMNegotiationRound(
     }
 
     // 11-12. Persist
-    return await persistLLMRound(tx as unknown as Database, {
+    return await persistPreparedLLMRound(db, {
       dbSession,
       input,
       nextRound,
@@ -354,7 +342,7 @@ export async function executeLLMNegotiationRound(
       llmTokensUsed,
       reasoningUsed,
     });
-  });
+  })();
 
   // --- Post-commit: dispatch pipeline events ---
   if (eventDispatcher && !result.idempotent) {
@@ -391,6 +379,49 @@ interface PersistParams {
   message: string;
   llmTokensUsed: number;
   reasoningUsed: boolean;
+}
+
+async function persistPreparedLLMRound(
+  db: Database,
+  prepared: PersistParams,
+): Promise<RoundExecutionResult> {
+  return db.transaction(async (tx) => {
+    const transactionDb = tx as unknown as Database;
+    const lockedRow = await lockSessionForUpdate(transactionDb, prepared.input.sessionId);
+    if (!lockedRow) throw new Error(`SESSION_NOT_FOUND: ${prepared.input.sessionId}`);
+    const lockedSession = mapRawToDbSession(lockedRow);
+
+    const existingRound = await getRoundByIdempotencyKey(
+      transactionDb,
+      prepared.input.sessionId,
+      prepared.input.idempotencyKey,
+    );
+    if (existingRound) return buildIdempotentResultFromRound(existingRound, lockedSession);
+
+    if (TERMINAL_STATUSES.has(lockedSession.status)) {
+      throw new Error(`SESSION_TERMINAL: ${lockedSession.status}`);
+    }
+    if (lockedSession.expiresAt && lockedSession.expiresAt.getTime() < prepared.input.nowMs) {
+      await updateSessionState(transactionDb, prepared.input.sessionId, lockedSession.version, {
+        status: "EXPIRED",
+      });
+      throw new Error("SESSION_EXPIRED");
+    }
+
+    if (
+      lockedSession.version !== prepared.dbSession.version ||
+      lockedSession.currentRound !== prepared.dbSession.currentRound ||
+      lockedSession.role !== prepared.dbSession.role
+    ) {
+      throw new Error("CONCURRENT_MODIFICATION: session changed while preparing round");
+    }
+
+    return persistLLMRound(transactionDb, {
+      ...prepared,
+      dbSession: lockedSession,
+      nextRound: lockedSession.currentRound + 1,
+    });
+  });
 }
 
 async function persistLLMRound(tx: Database, params: PersistParams): Promise<RoundExecutionResult> {
