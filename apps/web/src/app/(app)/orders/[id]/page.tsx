@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
+import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 import { createClient } from "@/lib/supabase/client";
 
@@ -178,6 +179,17 @@ function formatTime(iso: string) {
   });
 }
 
+function isFulfillmentReady(orderStatus: string | undefined, shipment: Shipment | null): boolean {
+  if (shipment) return true;
+  return [
+    "FULFILLMENT_PENDING",
+    "FULFILLMENT_ACTIVE",
+    "DELIVERED",
+    "IN_DISPUTE",
+    "CLOSED",
+  ].includes(orderStatus ?? "");
+}
+
 // ─── Timeline Step ───────────────────────────────────────────
 type StepStatus = "done" | "active" | "pending";
 
@@ -236,11 +248,13 @@ function PaymentSection({
   onAction,
   loading,
   isProduction,
+  fulfillmentReady,
 }: {
   payment: PaymentIntent | null;
   onAction: (action: string) => void;
   loading: string | null;
   isProduction: boolean;
+  fulfillmentReady: boolean;
 }) {
   if (!payment) {
     return (
@@ -262,7 +276,14 @@ function PaymentSection({
     );
   }
 
-  const nextAction = getNextPaymentAction(payment.status, isProduction);
+  const needsFundingRecovery =
+    isProduction &&
+    payment.selected_rail === "x402" &&
+    payment.status === "SETTLEMENT_PENDING" &&
+    !fulfillmentReady;
+  const nextAction = needsFundingRecovery
+    ? { label: "Confirm funding", action: "confirm_funding", variant: "primary" as const }
+    : getNextPaymentAction(payment.status, isProduction);
 
   return (
     <SectionCard title="Payment" icon="creditcard">
@@ -294,9 +315,9 @@ function PaymentSection({
             variant={nextAction.variant}
           />
         )}
-        {!nextAction && getPaymentStatusMessage(payment.status, isProduction) && (
+        {!nextAction && getPaymentStatusMessage(payment.status, isProduction, fulfillmentReady) && (
           <InlineNotice tone="info">
-            {getPaymentStatusMessage(payment.status, isProduction)}
+            {getPaymentStatusMessage(payment.status, isProduction, fulfillmentReady)}
           </InlineNotice>
         )}
         {payment.status === "SETTLED" && (
@@ -330,14 +351,21 @@ function getNextPaymentAction(
   }
 }
 
-function getPaymentStatusMessage(status: string, isProduction: boolean): string | null {
+function getPaymentStatusMessage(
+  status: string,
+  isProduction: boolean,
+  fulfillmentReady: boolean,
+): string | null {
   if (!isProduction) return null;
   switch (status) {
     case "QUOTED":
       return "Complete the rail-specific checkout flow to authorize and settle payment.";
     case "AUTHORIZED":
-    case "SETTLEMENT_PENDING":
       return "Waiting for provider settlement confirmation.";
+    case "SETTLEMENT_PENDING":
+      return fulfillmentReady
+        ? "Funds are secured in conditional settlement. Fulfillment can proceed."
+        : "Funding was submitted but still needs receipt confirmation.";
     default:
       return null;
   }
@@ -1241,6 +1269,13 @@ export default function OrderDetailPage() {
           await loadOrder();
           break;
         }
+        case "confirm_funding": {
+          addLog("Payment", "Confirming the existing funding transaction...", "info");
+          await confirmConditionalSettlementFunding(state.payment!.id);
+          addLog("Payment", "Funding confirmed; fulfillment is ready", "success");
+          await loadOrder();
+          break;
+        }
       }
     } catch (err) {
       addLog("Payment", err instanceof Error ? err.message : "Action failed", "error");
@@ -1555,6 +1590,7 @@ export default function OrderDetailPage() {
           onAction={handlePaymentAction}
           loading={loading}
           isProduction={IS_PRODUCTION}
+          fulfillmentReady={isFulfillmentReady(state.order?.status, state.shipment)}
         />
         <ShippingSection
           shipment={state.shipment}

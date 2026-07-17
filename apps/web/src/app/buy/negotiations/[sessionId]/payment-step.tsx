@@ -6,7 +6,14 @@ import { CheckCircle2, CreditCard, ExternalLink, RotateCcw, WalletCards } from "
 import Link from "next/link";
 import { useState } from "react";
 import type { Address, Hex } from "viem";
-import { useAccount, useBalance, useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import {
+  useAccount,
+  useBalance,
+  useChainId,
+  usePublicClient,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
 import {
   Alert,
   Button,
@@ -18,6 +25,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
+import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 import {
   assertConditionalSettlementTarget,
@@ -199,7 +207,8 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
   const chainId = useChainId();
   const { data: balance } = useBalance({ address, chainId: HAGGLE_WALLET_CHAIN_ID });
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
-  const { writeContract, isPending: isWriting } = useWriteContract();
+  const publicClient = usePublicClient({ chainId: HAGGLE_WALLET_CHAIN_ID });
+  const { writeContractAsync, isPending: isWriting } = useWriteContract();
 
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [step, setStep] = useState<PaymentStepStatus>("select_method");
@@ -347,22 +356,22 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
         connectedBuyerAddress: address,
       });
       const amount = BigInt(settlementAmountDisplay.amount_minor);
-      writeContract(
-        {
-          address: target.assetAddress,
-          abi: USDC_ABI,
-          functionName: "approve",
-          args: [target.contractAddress, amount],
-          chainId: HAGGLE_WALLET_CHAIN_ID,
-        },
-        {
-          onSuccess: () => setStep("sign_x402"),
-          onError: (err: Error) => {
-            setError(err.message);
-            setStep("error");
-          },
-        },
-      );
+      if (!publicClient) throw new Error("Base Sepolia RPC client is not available.");
+      const approvalTxHash = await writeContractAsync({
+        address: target.assetAddress,
+        abi: USDC_ABI,
+        functionName: "approve",
+        args: [target.contractAddress, amount],
+        chainId: HAGGLE_WALLET_CHAIN_ID,
+      });
+      const approvalReceipt = await publicClient.waitForTransactionReceipt({
+        hash: approvalTxHash,
+        confirmations: 1,
+      });
+      if (approvalReceipt.status !== "success") {
+        throw new Error("USDC approval transaction failed.");
+      }
+      setStep("sign_x402");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");
@@ -463,44 +472,31 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
         requestBuyerAddress: conditionalSettlement.contract_call.params.buyer,
         connectedBuyerAddress: address,
       });
-      writeContract(
+      const txHash = await writeContractAsync({
+        address: target.contractAddress,
+        abi: CONDITIONAL_SETTLEMENT_ABI,
+        functionName: "createAndFund",
+        args: [
+          toConditionalSettlementTuple(conditionalSettlement),
+          conditionalSettlement.contract_call.signature,
+        ],
+        chainId: HAGGLE_WALLET_CHAIN_ID,
+      });
+      await api.post(
+        `/payments/${paymentIntentId}/x402/conditional-settlement-funding`,
         {
-          address: target.contractAddress,
-          abi: CONDITIONAL_SETTLEMENT_ABI,
-          functionName: "createAndFund",
-          args: [
-            toConditionalSettlementTuple(conditionalSettlement),
-            conditionalSettlement.contract_call.signature,
-          ],
-          chainId: HAGGLE_WALLET_CHAIN_ID,
+          tx_hash: txHash,
+          settlement_id: conditionalSettlement.settlement_id,
+          contract_address: target.contractAddress,
         },
         {
-          onSuccess: async (txHash) => {
-            try {
-              await api.post(`/payments/${paymentIntentId}/x402/conditional-settlement-funding`, {
-                tx_hash: txHash,
-                settlement_id: conditionalSettlement.settlement_id,
-                contract_address: target.contractAddress,
-              });
-              await api
-                .post(`/payments/${paymentIntentId}/x402/conditional-settlement-confirmation`, {
-                  tx_hash: txHash,
-                })
-                .catch(() => {
-                  // Receipt may not be indexed yet; server keeps FUNDING_SUBMITTED for retry.
-                });
-              setStep("complete");
-            } catch (err) {
-              setError(err instanceof Error ? err.message : String(err));
-              setStep("error");
-            }
-          },
-          onError: (err: Error) => {
-            setError(err.message);
-            setStep("error");
+          headers: {
+            "Idempotency-Key": `funding-submit-${paymentIntentId}-${crypto.randomUUID()}`,
           },
         },
       );
+      await confirmConditionalSettlementFunding(paymentIntentId);
+      setStep("complete");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStep("error");
@@ -766,10 +762,10 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
           <ResultState
             tone="success"
             icon={<CheckCircle2 className="size-7" />}
-            title={conditionalSettlement ? "Funding submitted" : "Payment complete"}
+            title={conditionalSettlement ? "Funding confirmed" : "Payment complete"}
             description={
               conditionalSettlement
-                ? `Your ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} funding transaction was submitted. Release remains pending until the contract receipt and release conditions are confirmed.`
+                ? `Your ${formatMinor(settlementAmountDisplay ?? buyerPaysDisplay)} funding transaction is confirmed. The funds remain protected by the release and dispute rules.`
                 : `Your payment of ${formatMinor(buyerPaysDisplay)} has been submitted.`
             }
             action={
