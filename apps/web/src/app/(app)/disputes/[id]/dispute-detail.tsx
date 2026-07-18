@@ -28,7 +28,9 @@ const EVIDENCE_TYPES = [
 ] as const;
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -241,7 +243,7 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
 
   events.push({
     label: `Dispute opened by ${dispute.opened_by}`,
-    timestamp: dispute.created_at,
+    timestamp: dispute.opened_at,
     icon: "open",
   });
 
@@ -257,7 +259,7 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
   if (meta?.escalated_by) {
     events.push({
       label: `Escalated to T${meta.tier ?? "?"} by ${meta.escalated_by}`,
-      timestamp: dispute.updated_at,
+      timestamp: dispute.opened_at,
       icon: "review",
     });
   }
@@ -269,7 +271,7 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
   ) {
     events.push({
       label: `Resolved: ${dispute.status.replace(/_/g, " ").toLowerCase()}`,
-      timestamp: dispute.updated_at,
+      timestamp: dispute.resolution?.resolved_at ?? dispute.opened_at,
       icon: "resolve",
     });
   }
@@ -277,7 +279,7 @@ function buildActivityLog(dispute: Dispute): ActivityEvent[] {
   if (dispute.status === "CLOSED") {
     events.push({
       label: "Dispute closed",
-      timestamp: dispute.updated_at,
+      timestamp: dispute.resolution?.resolved_at ?? dispute.opened_at,
       icon: "close",
     });
   }
@@ -564,7 +566,7 @@ export function DisputeDetail({
         </div>
         <div className="rounded-xl border border-line bg-surface-raised/50 p-3">
           <p className="text-xs text-ink-muted mb-1">Created</p>
-          <p className="text-sm text-ink">{formatDate(dispute.created_at)}</p>
+          <p className="text-sm text-ink">{formatDate(dispute.opened_at)}</p>
         </div>
       </div>
 

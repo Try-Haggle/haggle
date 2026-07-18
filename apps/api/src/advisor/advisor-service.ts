@@ -15,7 +15,7 @@
  */
 
 import type { Database } from "@haggle/db";
-import { advisorMessages, and, desc, eq, sql } from "@haggle/db";
+import { advisorMessages, and, desc, eq, inArray } from "@haggle/db";
 import { buildCanaryInstruction, generateCanary } from "../negotiation/guards/prompt-guard.js";
 import { assembleAdvisorContext } from "./advisor-context.js";
 import { guardAdvisorInput, guardAdvisorOutput } from "./advisor-guard.js";
@@ -49,6 +49,13 @@ function userMessageRole(userRole: AdvisorRole): AdvisorMessageRole {
 /** Roles visible to a given user (isolation enforcement) */
 function visibleRoles(userRole: AdvisorRole): AdvisorMessageRole[] {
   return userRole === "buyer" ? ["buyer_advisor", "buyer_user"] : ["seller_advisor", "seller_user"];
+}
+
+export function buildAdvisorHistoryFilter(disputeId: string, userRole: AdvisorRole) {
+  return and(
+    eq(advisorMessages.disputeId, disputeId),
+    inArray(advisorMessages.role, visibleRoles(userRole)),
+  );
 }
 
 function computeCostUsd(promptTokens: number, completionTokens: number): number {
@@ -131,13 +138,10 @@ async function loadHistory(
   userRole: AdvisorRole,
   limit: number = MAX_HISTORY_TURNS,
 ): Promise<AdvisorMessage[]> {
-  const roles = visibleRoles(userRole);
   const rows = await db
     .select()
     .from(advisorMessages)
-    .where(
-      and(eq(advisorMessages.disputeId, disputeId), sql`${advisorMessages.role} = ANY(${roles})`),
-    )
+    .where(buildAdvisorHistoryFilter(disputeId, userRole))
     .orderBy(desc(advisorMessages.createdAt))
     .limit(limit);
 
@@ -343,13 +347,10 @@ export async function getHistory(
   limit: number = 50,
   offset: number = 0,
 ): Promise<AdvisorMessage[]> {
-  const roles = visibleRoles(userRole);
   const rows = await db
     .select()
     .from(advisorMessages)
-    .where(
-      and(eq(advisorMessages.disputeId, disputeId), sql`${advisorMessages.role} = ANY(${roles})`),
-    )
+    .where(buildAdvisorHistoryFilter(disputeId, userRole))
     .orderBy(advisorMessages.createdAt)
     .limit(limit)
     .offset(offset);
