@@ -1,3 +1,4 @@
+import { resolveAdvisorCanarySecret } from "../advisor/advisor-canary.js";
 import { resolveConditionalSettlementFinalityAlertConfigFromEnv } from "../services/conditional-settlement-finality-alert.service.js";
 import { resolveConditionalSettlementFinalityAlertReceiverSecretsFromEnv } from "../services/conditional-settlement-finality-alert-verifier.service.js";
 import { resolveConditionalSettlementPreflightAlertConfigFromEnv } from "../services/conditional-settlement-preflight-alert.service.js";
@@ -91,6 +92,18 @@ export function getRuntimeConfig(): RuntimeConfig {
   const publicAppUrl = getPublicAppUrl(haggleEnv);
   const databaseUrl = readRequiredEnv("DATABASE_URL");
 
+  if (process.env.DEEPSEEK_API_KEY?.trim()) {
+    try {
+      resolveAdvisorCanarySecret();
+    } catch (error) {
+      throw new Error(
+        `[CONFIG] Invalid Advisor canary configuration: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    }
+  }
+
   try {
     resolveSupabaseJwtConfigFromEnv();
   } catch (error) {
@@ -127,6 +140,16 @@ export function getRuntimeConfig(): RuntimeConfig {
       `[CONFIG] Invalid dispute evidence scanner circuit configuration: ${
         error instanceof Error ? error.message : "unknown error"
       }`,
+    );
+  }
+
+  if (
+    process.env.ENABLE_DISPUTE_PRECEDENT_COLLECTION_JOB === "true" &&
+    process.env.ENABLE_CRON !== "true"
+  ) {
+    throw new Error(
+      "[CONFIG] ENABLE_CRON=true is required when " +
+        "ENABLE_DISPUTE_PRECEDENT_COLLECTION_JOB=true.",
     );
   }
 

@@ -16,6 +16,8 @@ export interface AdvisorMessageMetadata {
   strength?: number;
   blocked?: boolean;
   block_reason?: string;
+  precedent_ids?: string[];
+  precedent_analysis_versions?: string[];
 }
 
 export interface AdvisorMessage {

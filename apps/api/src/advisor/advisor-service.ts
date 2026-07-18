@@ -17,6 +17,7 @@
 import type { Database } from "@haggle/db";
 import { advisorMessages, and, desc, eq, inArray } from "@haggle/db";
 import { buildCanaryInstruction, generateCanary } from "../negotiation/guards/prompt-guard.js";
+import { resolveAdvisorCanarySecret } from "./advisor-canary.js";
 import { assembleAdvisorContext } from "./advisor-context.js";
 import { guardAdvisorInput, guardAdvisorOutput } from "./advisor-guard.js";
 import { callAdvisorLLM } from "./advisor-llm.js";
@@ -208,10 +209,7 @@ export async function chat(
   }
 
   // 4. Generate canary token
-  const canarySecret = process.env.CANARY_SECRET;
-  if (!canarySecret) {
-    throw new Error("CANARY_SECRET environment variable is required for advisor service");
-  }
+  const canarySecret = resolveAdvisorCanarySecret();
   const canaryToken = generateCanary(dispute_id, canarySecret);
   const canaryInstruction = buildCanaryInstruction(canaryToken);
 
@@ -277,6 +275,8 @@ export async function chat(
     strength,
     blocked: !outputGuard.safe,
     block_reason: outputGuard.violations.length > 0 ? outputGuard.violations.join(", ") : undefined,
+    precedent_ids: context.precedentIds,
+    precedent_analysis_versions: context.precedentAnalysisVersions,
   });
 
   return {

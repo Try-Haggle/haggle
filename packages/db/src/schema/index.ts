@@ -21,6 +21,10 @@ export {
 } from "./dispute-evidence-operations.js";
 export { disputeEvidenceScanRetryAlertSnapshots } from "./dispute-evidence-scan-retry-alert-snapshots.js";
 export {
+  type DisputePrecedentEvidenceProfile,
+  disputePrecedents,
+} from "./dispute-precedents.js";
+export {
   disputeAiAssessmentEvents,
   disputeAiAssessmentLeases,
   disputeAiAuditOutbox,

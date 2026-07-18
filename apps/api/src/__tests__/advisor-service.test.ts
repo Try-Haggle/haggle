@@ -1,5 +1,6 @@
 import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it, vi } from "vitest";
+import { resolveAdvisorCanarySecret } from "../advisor/advisor-canary.js";
 import { buildAdvisorHistoryFilter } from "../advisor/advisor-service.js";
 
 vi.mock("@haggle/db", async (importOriginal) => importOriginal());
@@ -26,5 +27,17 @@ describe("advisor history role isolation", () => {
     expect(query.params).toEqual([DISPUTE_ID, "buyer_advisor", "buyer_user"]);
     expect(query.params).not.toContain("seller_advisor");
     expect(query.params).not.toContain("seller_user");
+  });
+});
+
+describe("advisor canary secret", () => {
+  it("requires a server-only secret with at least 32 bytes", () => {
+    expect(() => resolveAdvisorCanarySecret({})).toThrow("CANARY_SECRET is required");
+    expect(() => resolveAdvisorCanarySecret({ CANARY_SECRET: "too-short" })).toThrow(
+      "at least 32 bytes",
+    );
+    expect(resolveAdvisorCanarySecret({ CANARY_SECRET: "0123456789abcdef0123456789abcdef" })).toBe(
+      "0123456789abcdef0123456789abcdef",
+    );
   });
 });

@@ -44,7 +44,7 @@ flowchart LR
 | 결제 | 결제 의도, 권한 부여, 결제 완료, 환불, provider 기능 | `payment_intents`, `payment_authorizations`, `payment_settlements`, `refunds`, `payment_provider_capabilities` | payment routes/services, Stripe/x402 handlers |
 | 정산 | 배송과 분쟁이 끝날 때까지 상품대금과 운임 buffer의 보류/해제 | `settlement_releases` | settlement release service/jobs |
 | 배송 | 발송, 라벨, 추적 이벤트, 요금 제한과 사후 운임 조정(APV) | `shipments`, `shipment_events`, `shipment_apv_*` | shipment routes/services, EasyPost webhook/jobs |
-| 분쟁 | 사건, 격리 업로드, 증거, AI 심사, 사람 검토, 판정과 보증금 | `dispute_cases`, `dispute_evidence`, `dispute_evidence_uploads`, `dispute_ai_assessment_events`, `dispute_resolutions`, `dispute_deposits` | dispute/reviewer routes, dispute jobs |
+| 분쟁 | 사건, 격리 업로드, 증거, AI 심사, 사람 검토, 판정, 판례 분석과 보증금 | `dispute_cases`, `dispute_evidence`, `dispute_evidence_uploads`, `dispute_ai_assessment_events`, `dispute_resolutions`, `dispute_precedents`, `dispute_deposits` | dispute/reviewer routes, dispute jobs |
 | 신뢰·검토 | 신뢰 점수/패널티, 정산 신뢰도, reviewer/DS 전문성 | `trust_scores`, `trust_penalty_records`, `settlement_reliability_snapshots`, `reviewer_profiles`, `ds_ratings` | trust/reviewer services |
 | 태그·추천·시장지능 | 태그 그래프, embedding, 가격 관측, 추천/대화 신호와 기억 | `tags`, `tag_edges`, `listing_embeddings`, `hfmi_price_observations`, `conversation_market_signals`, `evermemos` | tag/recommendation/intelligence services |
 | 알림 | 사용자 알림 설정, 인앱 알림, 이메일 전달 상태 | `notification_preferences`, `notifications`, `email_deliveries` | notification/email jobs |
@@ -87,6 +87,7 @@ flowchart LR
 | `shipments` | 주문별 발송·라벨·추적·환불 상태의 현재 스냅샷 | `id=shipment_id`, `order_id` | shipment service, EasyPost webhook |
 | `shipment_events` | 배송 상태 변화의 append-only 이벤트 이력 | `shipment_id` | shipment event service |
 | `dispute_cases` | 주문별 분쟁 사건과 현재 review 상태 | `id=dispute_id`, `order_id` | dispute routes/jobs |
+| `dispute_precedents` | 종료 사건에서 별도로 작성·승인한 버전형 판례 분석. 원본 증거는 저장하지 않음 | `source_dispute_id`, `status`, `reason_code` | precedent collection job, offline reviewer, Advisor read path |
 | `dispute_evidence_uploads` | 업로드 intent, 격리/검사, 카메라 binding과 보존 상태 | `dispute_id`, `committed_evidence_id` | evidence upload/scanner services |
 | `dispute_evidence` | 검사를 통과해 사건에 채택된 append-only 증거 | `dispute_id` | dispute record/evidence commit service |
 | `dispute_ai_assessment_events` | AI 심사의 입력 hash, 모델, 판정과 재심 이력 | `dispute_id` | dispute AI assessment service |

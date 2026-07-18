@@ -45,9 +45,9 @@ flowchart LR
 
 ### 기존 staging과 이 PR의 차이
 
-2026-07-14 빈 DB replay 기준 기존 `staging`은 migration 31개와 public table 80개다. 이 PR은 migration 142개와 public table 145개로 확장한다. 추가된 65개는 결제·배송 APV·분쟁 증거/감사·운영 보안 테이블이다.
+2026-07-14 빈 DB replay 기준 기존 `staging`은 migration 31개와 public table 80개다. 이 브랜치는 migration 144개와 public table 146개로 확장한다. 추가된 66개는 결제·배송 APV·분쟁 증거/감사·판례·운영 보안 테이블이다.
 
-현재 145개 중 122개는 TypeScript `pgTable`로 관리하고, 배송 APV 복구/경보 운영 테이블 23개는 raw SQL로 관리한다. 분쟁 증거 provenance, scanner circuit/permit, retention 상태 테이블 4개는 기존 이름과 SQL 서비스를 유지한 채 ORM에 편입했다. raw SQL 예외의 영역과 소유자는 `packages/db/schema-ownership.json`이 단일 목록이다. `pnpm verify:db-schema`는 다음을 CI에서 검사한다.
+현재 146개 중 123개는 TypeScript `pgTable`로 관리하고, 배송 APV 복구/경보 운영 테이블 23개는 raw SQL로 관리한다. 분쟁 증거 provenance, scanner circuit/permit, retention 상태 테이블 4개는 기존 이름과 SQL 서비스를 유지한 채 ORM에 편입했다. raw SQL 예외의 영역과 소유자는 `packages/db/schema-ownership.json`이 단일 목록이다. `pnpm verify:db-schema`는 다음을 CI에서 검사한다.
 
 - 동일 테이블의 Drizzle 중복 선언 금지
 - Drizzle 선언은 migration과 schema barrel, `drizzle.config.ts`에 모두 존재

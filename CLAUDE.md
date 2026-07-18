@@ -226,6 +226,7 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 | 결제 | [docs/wip/payment-production-observability.md](./docs/wip/payment-production-observability.md) | 결제 운영 지표, webhook, reconciliation, safe logging 기준 |
 | 배송/fulfillment | [docs/wip/digital-fulfillment-settlement-design.md](./docs/wip/digital-fulfillment-settlement-design.md) | physical shipping과 no-shipping fulfillment를 같은 상위 모델로 묶는 기준 |
 | 분쟁 | [docs/features/분쟁_시스템_v2.md](./docs/features/분쟁_시스템_v2.md) | 분쟁 비용, 패널, 인센티브, trust 영향의 제품 기준 |
+| 분쟁 Advisor·판례 | [docs/mvp/dispute-advisor-precedent-knowledge.md](./docs/mvp/dispute-advisor-precedent-knowledge.md) | 사전 분석 판례 저장, 승인, Advisor 조회와 DeepSeek/Canary 운영 기준 |
 | 분쟁 API | [docs/wip/dispute-start-api-design.md](./docs/wip/dispute-start-api-design.md) | 분쟁 시작, 증거 업로드, idempotency, money movement freeze 기준 |
 | 팀 E2E 리허설 | [docs/wip/fake-money-fake-address-e2e-test-plan.md](./docs/wip/fake-money-fake-address-e2e-test-plan.md) | 가짜 돈 + 가짜 주소로 결제/배송 상태 흐름을 닫는 Stage 1 기준 |
 
