@@ -38,7 +38,7 @@
   </div>
   <div class="callout co-warn">
     <div class="ct">⚠️ 한 줄 총평</div>
-    <div>순수 수학 엔진(<code>engine-core</code>)은 설계대로 정확하나 <b>프로덕션 결정 경로에서 우회</b>돼 있습니다. 실제 결정은 LLM(grok)이 내리고 엔진은 추천가·검증 보조만 합니다. 이 괴리가 문서 전반의 핵심 known issue입니다.</div>
+    <div>순수 수학 엔진(<code>engine-core</code>)은 설계대로 정확하나 <b>프로덕션 결정 경로에서 우회</b>돼 있습니다. 실제 결정은 LLM(DeepSeek)이 내리고 엔진은 추천가·검증 보조만 합니다. 이 괴리가 문서 전반의 핵심 known issue입니다.</div>
   </div>
 </section>
 
@@ -73,7 +73,7 @@
 <div class="json">POST /negotiations/… · MCP haggle_submit_offer
   → getExecutor()                     <span class="c">lib/executor-factory.ts</span>
   → executeStagedNegotiationRound      <span class="c">pipeline/executor.ts (DB 트랜잭션)</span>
-      └ executePipeline → decide → <span class="lbl">LLM(grok)</span>이 최종 가격 작성</div>
+      └ executePipeline → decide → <span class="lbl">LLM(DeepSeek)</span>이 최종 가격 작성</div>
       <p>✅ 6-Stage 실제 가동(유일 경로). Stage 1 Understand는 설계상 LLM이나 현재 정규식/휴리스틱 → 라운드당 LLM 콜 최대 1회(Decide).</p>
     </div>
     <div class="block now dead"><div class="bl">현황 · known issue: 엔진 우회</div>
@@ -153,7 +153,7 @@ CLOSING→NEAR_DEAL</div>
         <tr><td><code>market_utilization·cross_pressure_sensitivity·r_score_minimum·i_completeness_minimum·late_round_aggression_modifier</code></td><td><span class="badge b-dead">💀 죽음</span></td><td>읽는 코드 전무 (일부는 영속화조차 안 됨)</td></tr>
       </table></div>
       <p>⚠️ <code>beta</code>·<code>anchor_ratio</code>조차 최종가를 직접 정하지 않고 LLM 프롬프트의 <b>추천가 계산 입력</b>. LLM이 유효가 반환 시 대체(<code>decide.ts:84</code>).</p>
-      <p>🔎 <b>프롬프트에도 안 감:</b> <code>agent_weights</code>·<code>agent_overrides</code>는 strategy_context에 저장되나 <code>encodeStrategyContext</code>(<code>grok-fast-adapter.ts:380</code>)가 <b>persona + 빌더챗 메모리만</b> 렌더 → 숫자 15개는 advisory 텍스트로도 미도달(죽은 데이터). <b>LLM에 닿는 유일한 전략 채널 = 빌더챗 메모리.</b></p>
+      <p>🔎 <b>프롬프트에도 안 감:</b> <code>agent_weights</code>·<code>agent_overrides</code>는 strategy_context에 저장되나 <code>encodeStrategyContext</code>(<code>deepseek-adapter.ts:380</code>)가 <b>persona + 빌더챗 메모리만</b> 렌더 → 숫자 15개는 advisory 텍스트로도 미도달(죽은 데이터). <b>LLM에 닿는 유일한 전략 채널 = 빌더챗 메모리.</b></p>
     </div>
     <div class="block todo"><div class="bl">할 일 — 미사용 필드 살리기</div>
       <p>연결 지점은 둘: (A) LLM 프롬프트로 가는 추천가·유틸, (B) LLM이 못 뒤집는 룰/레퍼리 게이트.</p>
@@ -213,7 +213,7 @@ CLOSING→NEAR_DEAL</div>
   <div class="cap" id="coach" data-nav="↳ Coach vs Briefing" data-nav-sub>
     <div class="cap-head"><span class="cap-t">Coach vs Briefing</span><span class="cap-badge badge b-warn">🚧</span></div>
     <div class="block now warn"><div class="bl">현황 — 둘 다 LIVE, 역할 다름</div>
-      <p><b>coach</b>(<code>@deprecated</code>인데 여전히 LIVE) → <code>memory.coaching</code> → <b>LLM 프롬프트의 recommended_price 앵커 공급</b>(<code>decide.ts:60</code>→<code>grok-fast-adapter.ts:212</code>). phase별: OPENING <code>target×(1±margin)</code>·BARGAINING Faratin(beta)·CLOSING 확정가. <b>"briefing이 coach를 대체" 설계는 미완성.</b></p>
+      <p><b>coach</b>(<code>@deprecated</code>인데 여전히 LIVE) → <code>memory.coaching</code> → <b>LLM 프롬프트의 recommended_price 앵커 공급</b>(<code>decide.ts:60</code>→<code>deepseek-adapter.ts:212</code>). phase별: OPENING <code>target×(1±margin)</code>·BARGAINING Faratin(beta)·CLOSING 확정가. <b>"briefing이 coach를 대체" 설계는 미완성.</b></p>
       <p><b>briefing</b>(facts-only) → <code>context.briefing</code> → reasoning 모드 판단(<code>decide.ts:47</code>) + Validate에만. 가격 앵커 아님.</p>
       <p>⚠️ utility_snapshot이 <b>두 곳에서 다른 하드코딩 가중치로 중복 계산</b> — coach(.5/.2/.15/.15) · briefing(.5/.2/.3). 둘 다 사용자 weights 무시.</p>
     </div>
@@ -222,8 +222,8 @@ CLOSING→NEAR_DEAL</div>
   <div class="cap" id="decide" data-nav="↳ Decide (LLM)" data-nav-sub>
     <div class="cap-head"><span class="cap-t">Stage 3 — Decide (LLM)</span><span class="cap-badge badge b-warn">🚧</span></div>
     <div class="block now warn"><div class="bl">현황</div>
-      <p>✅ 어댑터 <b>GrokFastAdapter 하드코딩</b>(<code>executor.ts:70</code>), xAI(<code>api.x.ai/v1</code>), 모델 <code>XAI_MODEL ?? grok-4-fast</code>. 다른 어댑터 코드에 없음.</p>
-      <p>✅ 프롬프트 <code>C:</code> 라인은 <code>rec$..|tactic|opp|conv|tp</code>만 — <b>recommended_price만 하드 앵커, utility/weights 미도달</b>(<code>grok-fast-adapter.ts:212</code>).</p>
+      <p>✅ 어댑터 <b>DeepSeekAdapter 하드코딩</b>(<code>executor.ts:70</code>), DeepSeek(<code>api.deepseek.com/v1</code>), 모델 <code>DEEPSEEK_MODEL ?? deepseek-v4-pro</code>. 다른 어댑터 코드에 없음.</p>
+      <p>✅ 프롬프트 <code>C:</code> 라인은 <code>rec$..|tactic|opp|conv|tp</code>만 — <b>recommended_price만 하드 앵커, utility/weights 미도달</b>(<code>deepseek-adapter.ts:212</code>).</p>
       <p>🎯 <b>ACCEPT를 유도하는 gap 휴리스틱 = <code>encodeClosingHint</code></b>(<code>:317</code>): 서버가 gap 계산 → <b>gap&lt;5%/&lt;$5 → "ACCEPT하라"</b>를 프롬프트에 직접 주입. §7의 그 휴리스틱.</p>
       <p>🔎 STRATEGY 블록 = persona + <b>빌더챗 메모리만</b>(숫자 파라미터 미도달, §4). <code>encodeDelta</code> 차등컨텍스트는 decide 경로에서 죽은 코드(prevMemory=undefined).</p>
     </div>
@@ -299,7 +299,7 @@ CLOSING→NEAR_DEAL</div>
   <h2 class="title">LLM 통합</h2>
   <div class="callout co-ok">
     <div class="ct">현황 <span class="badge b-ok">✅</span></div>
-    <div>💀 <b>"라운드당 2회"는 틀림 → 실제 1회(Decide만)</b>. Respond는 템플릿(LLM 미호출), pipeline respond 토큰 합산은 죽은 코드. · ✅ xAI 고정(<code>XAI_MODEL</code>, 기본 grok-4-fast), reasoning은 fast 모델엔 미적용. · ✅ 토큰 실측 → <code>negotiation_rounds.llm_tokens_used</code> 저장. · 🚧 <b>비용 러프 추정·DB 미저장</b>(<code>tokens/1000×0.0015</code>, 정확요금은 advisor 모듈에만). · 💀 세션당 비용 집계 없음("~$0.005/세션"은 데모값).</div>
+    <div>💀 <b>"라운드당 2회"는 틀림 → 실제 1회(Decide만)</b>. Respond는 템플릿(LLM 미호출), pipeline respond 토큰 합산은 죽은 코드. · ✅ DeepSeek 고정(<code>DEEPSEEK_MODEL</code>, 기본 deepseek-v4-pro), reasoning 플래그는 timeout·temperature(0.5→0.3)를 조정. · ✅ 토큰 실측 → <code>negotiation_rounds.llm_tokens_used</code> 저장. · 🚧 <b>비용 러프 추정·DB 미저장</b>(<code>tokens/1000×0.0007</code>, 정확 비용은 단가 env 설정 시). · 💀 세션당 비용 집계 없음("~$0.005/세션"은 데모값).</div>
   </div>
 </section>
 

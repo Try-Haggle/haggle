@@ -82,8 +82,8 @@
   <h2 class="title">먼저 알아야 할 3가지</h2>
   <p class="lead">이 3개를 모르면 코드가 통째로 오해됩니다. 나머지는 전부 이 위에 얹힙니다.</p>
   <div class="grid" style="gap:10px;margin-top:8px">
-    <div class="truth"><div class="tn">1</div><div><div class="tt">협상은 AI vs AI 자동재생이다</div><div class="td">유저가 "협상 시작"을 누르면(<code>POST /negotiations/start</code>), 서버가 <b>구매자·판매자 양쪽 AI 에이전트를 만들어 한 요청에서 협상 전체를 끝까지 자동으로 돌립니다.</b> 사람이 라운드마다 개입하지 않습니다. (외부 에이전트가 오퍼를 하나씩 넣는 <code>/offers</code> 경로도 따로 있음.)</div></div></div>
-    <div class="truth"><div class="tn">2</div><div><div class="tt">가격은 LLM이 정하고, 엔진은 코치+심판이다</div><div class="td">"엔진이 두뇌"라는 상식과 반대입니다. 순수 수학 엔진은 <b>추천가를 계산(코치)</b>하고 <b>규칙을 검증(심판/Referee)</b>할 뿐, 실제 가격·메시지는 <b>LLM(grok)이 작성</b>합니다.</div></div></div>
+    <div class="truth"><div class="tn">1</div><div><div class="tt">협상은 AI vs AI 자동재생이다</div><div class="td">유저가 "협상 시작"을 누르면(<code>POST /negotiations/start</code>), 서버가 <b>(유저가 미리 설정해 둔) 구매자·판매자 양쪽 에이전트 성향을 이 거래용 전략으로 컴파일해, 한 요청에서 협상 전체를 끝까지 자동으로 돌립니다.</b> 에이전트를 그 자리에서 새로 만드는 게 아니라 이미 있는 성향을 이 매물에 맞춰 굽는 것이고, 사람이 라운드마다 개입하지 않습니다. (외부 에이전트가 오퍼를 하나씩 넣는 <code>/offers</code> 경로도 따로 있음.)</div></div></div>
+    <div class="truth"><div class="tn">2</div><div><div class="tt">지금은 가격을 LLM이 정하고, 엔진은 코치+심판이다</div><div class="td">"엔진이 두뇌"라는 상식과 반대입니다. 순수 수학 엔진은 <b>추천가를 계산(코치)</b>하고 <b>규칙을 검증(심판/Referee)</b>할 뿐, 실제 가격·메시지는 <b>LLM(DeepSeek)이 작성</b>합니다. <b>단, 이건 "지켜야 할 원칙"이 아니라 현재 구현일 뿐입니다</b> — 결정론·공정성 때문에 "엔진이 가격·수락을 결정하고 LLM은 언어·비가격만" 맡는 <b>하이브리드</b>로 바꾸는 방향이 검토 중입니다(Part 7).</div></div></div>
     <div class="truth"><div class="tn">3</div><div><div class="tt">상태는 4계층으로 흐른다</div><div class="td"><code>EngineParameters</code>(성향) → <code>MasterStrategy</code>(성향+이 거래 가격) → <code>negotiation_sessions</code>(살아있는 상태) → <code>CoreMemory</code>(매 라운드 재조립되는 작업본). 같은 데이터가 옷을 갈아입습니다.</div></div></div>
   </div>
 
@@ -115,15 +115,15 @@
     <!-- loop container -->
     <rect x="24" y="170" width="732" height="176" rx="12" fill="none" stroke="#8b5cf6" stroke-width="1.3" stroke-dasharray="6 5"/>
     <text x="40" y="190" fill="#c4b5fd" font-family="-apple-system,sans-serif" font-size="12" font-weight="700">매 라운드 반복 · auto-play (구매자·판매자 양쪽 AI)</text>
-    <!-- step 1 CoreMemory -->
-    <rect class="bx" x="40" y="210" width="150" height="64" rx="9"/>
-    <text class="tx" x="115" y="238" text-anchor="middle" font-size="12.5">CoreMemory</text>
-    <text class="sub" x="115" y="255" text-anchor="middle">재조립</text>
+    <!-- step 1 coach (코드상 CoreMemory보다 먼저) -->
+    <rect x="40" y="210" width="150" height="64" rx="9" fill="#14261e" stroke="#2f6f52"/>
+    <text x="115" y="234" text-anchor="middle" fill="#34d399" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700">코치: 추천가</text>
+    <text class="sub" x="115" y="251" text-anchor="middle" fill="#34d399">수학 · Faratin</text>
     <path class="ln" d="M190,242 L214,242"/>
-    <!-- step 2 coach -->
-    <rect x="216" y="210" width="150" height="64" rx="9" fill="#14261e" stroke="#2f6f52"/>
-    <text x="291" y="234" text-anchor="middle" fill="#34d399" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700">코치: 추천가</text>
-    <text class="sub" x="291" y="251" text-anchor="middle" fill="#34d399">수학 · Faratin</text>
+    <!-- step 2 CoreMemory (coaching을 인자로 받아 조립) -->
+    <rect class="bx" x="216" y="210" width="150" height="64" rx="9"/>
+    <text class="tx" x="291" y="238" text-anchor="middle" font-size="12.5">CoreMemory</text>
+    <text class="sub" x="291" y="255" text-anchor="middle">재조립(coaching 포함)</text>
     <path class="ln" d="M366,242 L390,242"/>
     <!-- step 3 LLM -->
     <rect x="392" y="210" width="150" height="64" rx="9" fill="#221a33" stroke="#5b4a86"/>
@@ -143,7 +143,7 @@
     <text x="390" y="402" text-anchor="middle" fill="#34d399" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">결과 — 합의가 · 상태</text>
     <text class="sub" x="390" y="417" text-anchor="middle" fill="#34d399">ACCEPTED / REJECTED / EXPIRED</text>
   </svg>
-  <div class="dgcap">유저 설정 → 협상 시작 → auto-play 루프(CoreMemory→코치→LLM→Referee) → 결과</div>
+  <div class="dgcap">유저 설정 → 협상 시작 → auto-play 루프(코치→CoreMemory→LLM→Referee) → 결과</div>
   </div>
   <p class="muted">아래 Part 1~5가 이 그림의 각 상자를 실제 데이터로 확대합니다.</p>
 </section>
@@ -178,6 +178,9 @@
   <div class="callout co-warn">
     <div class="ct">* 여기서부터 정직해야 합니다 (개선 여지의 시작)</div>
     <div>폼엔 17개 필드가 있지만 <b>실제로 협상 결과를 바꾸는 건 <code>beta</code>·<code>anchor_ratio</code> 2개</b>입니다. 왜 그런지는 Part 2에서 코드로 보여줍니다. 이걸 알아야 "나머지 필드를 어떻게 살릴까"를 고민할 수 있습니다. → <a href="negotiation-engine.html#params">SOT §4</a></div>
+  </div>
+  <div class="plain"><span class="pl">💡 헷갈리기 쉬운 것 — 축 vs 성향 vs 상황</span>
+    "17개가 4개로 줄어든다"가 아닙니다. 서로 다른 3층이에요: <b>4개 축</b>(가격·시간·위험·관계) = <b>딜을 평가하는 기준</b> · <b>17개 파라미터</b> = <b>내 성향</b>(각 축을 얼마나 중시/어떻게 채점 — 고정) · <b>컨텍스트</b> = <b>이 딜의 상황</b>(오퍼·마감·신뢰 — 매 라운드 바뀜). 성적표로 치면 <b>4과목(축)</b>에 과목별 <b>가중치·채점법(성향)</b>을 곱하고, <b>이번 시험 상황(컨텍스트)</b>으로 점수를 매기는 것. 17개 성향은 4개 축에 나눠 붙습니다. 배터리 같은 <b>태그 조건</b>은 대부분 "가격 축의 입력을 조정"하고, 배송처럼 협상 대상인 조건일 때만 "축이 하나 늘어납니다"(다중 Term).
   </div>
 </section>
 
@@ -338,7 +341,7 @@ ema &lt; 0.005 → BOULWARE(잘 안 물러남) · ema &gt; 0.05 → CONCEDER(잘
 <section id="llm" data-nav="5 · LLM이 결정한다">
   <h2 class="sec">Part 5 · <span class="lens llm">LLM</span></h2>
   <h2 class="title">LLM이 결정한다 — 데이터·프롬프트·역할</h2>
-  <p class="lead">가장 중요한 부분입니다. LLM(grok-4-fast)은 <b>코치가 만든 추천가 + 경계값 + 전략(빌더 메모리) + 종료 힌트</b>를 압축 프롬프트로 받아, <b>실제 가격과 상대에게 보낼 메시지를 작성</b>합니다.</p>
+  <p class="lead">가장 중요한 부분입니다. LLM(deepseek-v4-pro)은 <b>코치가 만든 추천가 + 경계값 + 전략(빌더 메모리) + 종료 힌트</b>를 압축 프롬프트로 받아, <b>실제 가격과 상대에게 보낼 메시지를 작성</b>합니다.</p>
 
   <h4>LLM이 받는 데이터 (무엇이 프롬프트에 실리나)</h4>
   <div class="tbl-scroll"><table>
@@ -355,10 +358,10 @@ ema &lt; 0.005 → BOULWARE(잘 안 물러남) · ema &gt; 0.05 → CONCEDER(잘
   </div>
 
   <h4>실제 프롬프트 (iPhone 라운드 2, 판매자) — 펼쳐서 보기</h4>
-  <div class="src"><span class="srcb prod">🟢 프로덕션 어댑터</span><code>apps/api/src/negotiation/adapters/grok-fast-adapter.ts</code><span style="color:var(--ink3)">· ①시스템=buildSystemPrompt 원문 · ②유저=buildUserPrompt 인코더로 iPhone 값 대입 재현 · ③응답=예시</span></div>
+  <div class="src"><span class="srcb prod">🟢 프로덕션 어댑터</span><code>apps/api/src/negotiation/adapters/deepseek-adapter.ts</code><span style="color:var(--ink3)">· ①시스템=buildSystemPrompt 원문 · ②유저=buildUserPrompt 인코더로 iPhone 값 대입 재현 · ③응답=예시</span></div>
   <div class="prompt-blocks">
   <details>
-    <summary>① 시스템 프롬프트 (역할·협상 규칙·출력 스키마)<span class="path">grok-fast-adapter.ts:buildSystemPrompt</span></summary>
+    <summary>① 시스템 프롬프트 (역할·협상 규칙·출력 스키마)<span class="path">deepseek-adapter.ts:buildSystemPrompt</span></summary>
 <pre>You are the SELLER. You own this item and you are talking directly to a real buyer who is interested in it.
 Your job is to defend the value of your item, respond to the buyer's arguments on their merits, and find a
 price you can both live with. ... You never propose a price below your floor, and you do not drop straight
@@ -380,7 +383,7 @@ In "B:t$X/f$Y/c$Z/o$W": t = YOUR target, f = YOUR floor (hard limit), c = YOUR l
 - "message": the chat line the buyer actually sees. 1–2 sentences. Must respond to OPP_SAID and cite one concrete signal.</pre>
   </details>
   <details>
-    <summary>② 유저 프롬프트 (이번 라운드 데이터, 압축)<span class="path">grok-fast-adapter.ts:buildUserPrompt</span></summary>
+    <summary>② 유저 프롬프트 (이번 라운드 데이터, 압축)<span class="path">deepseek-adapter.ts:buildUserPrompt</span></summary>
 <pre>LISTING:
   title: iPhone 14 Pro 128GB
   category: electronics/smartphone
@@ -443,6 +446,13 @@ OPP_SAID: Hi, I'm interested in this listing. I'd like to offer $450.</pre>
   <h2 class="sec">Part 7</h2>
   <h2 class="title">더 나은 방법은? — 개선 여지 지도</h2>
   <p class="lead">이제 전체 과정을 알았으니, "정직하게 표시한 crude/advisory/dead 지점"이 곧 개선 후보입니다. 각각 어디를 건드리는지 함께 적었습니다.</p>
+  <div class="callout co-info">
+    <div class="ct">🧭 가장 큰 갈림길 — 가격·수락을 LLM 대신 엔진이 결정하게 할까?</div>
+    <div><b>"가격은 LLM이 정한다"는 현재 구현일 뿐, 정해진 원칙이 아닙니다.</b> LLM이 최종가를 정하면 모델·요청마다 금액이 흔들려, Haggle의 <b>결정론·공정·감사가능</b> 철학("The Stripe of Negotiations")과 충돌합니다. 그래서 검토 중인 방향은 <b>하이브리드</b>입니다:
+      <div style="margin-top:8px"><b>센서/통역(LLM) → 판사(엔진) → 작가(LLM)</b>: ① LLM이 자연어("배터리 89%")를 엔진이 아는 수치·태그로 통역 → ② 엔진이 그 값으로 <b>가격·수락을 결정(가격은 clamp)</b> → ③ LLM이 그 가격을 자연스럽게 포장. 비결정성을 "지각"에만 국한하고 "판단"은 결정론으로.</div>
+      <div style="margin-top:6px" class="muted">대가: 엔진이 자연어 주장·비가격 조건(IMEI·배송)·경매 상황을 다루려면 상대모델·multi-term을 갖춰야 함(아래 표). 상세 근거·트레이드오프는 팀 리뷰 로그 참고.</div>
+    </div>
+  </div>
   <div class="tbl-scroll"><table>
     <tr><th>지점</th><th>지금</th><th>더 나은 방향</th><th>어디</th></tr>
     <tr><td>파라미터 대부분 사장</td><td>17개 중 beta·anchor_ratio만</td><td>효용/시간 파라미터를 추천가·프롬프트에 배선, 또는 engine-core를 결정 뇌로 복귀</td><td>coach·memory-reconstructor</td></tr>

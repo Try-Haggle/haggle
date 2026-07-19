@@ -122,7 +122,7 @@ POST /negotiations/start · /sessions/:id/offers · MCP haggle_submit_offer
 
 ### 2.3 현황 — known issue
 - 🚧 `terms.active`는 항상 `[]` — 다중 Term 협상 미구현(§6.5).
-- 🚧 `skill_summary: "electronics-iphone-pro-v1"` 하드코딩, L5 category `"electronics"` 고정 → 카테고리 일반화 안 됨.
+- 🚧 **IMEI/아이폰 하드코딩 (단순 예시가 아니라 기본 스킬 자체)** — 기본 엔진 스킬 id가 `"electronics-iphone-pro-v1"`(`default-engine-skill.ts:15`)이고 `IMEI_REQUIRED` 규칙·"IMEI and Find My verification are deal-breakers"가 내장(`:23,:40`). `standard-terms.ts:100`의 `imei_verification`은 "Required for **all** transactions", `understand.ts`는 IMEI 확인 질문. `skill_summary`·L5 category `"electronics"`도 하드코딩. → **어떤 카테고리를 팔든 기본 스킬이 아이폰 스킬이라 IMEI 규칙이 딸려 들어옴.** Tag Garden 일반화 설계를 이 하드코딩 기본 스킬이 우회. (출처: 팀 리뷰 로그 F7)
 - 🔎 `opponent_offer` 2단계: `reconstructCoreMemory`가 일단 `coaching.recommended_price`(플레이스홀더)로 채우고 executor가 즉시 실제 offer로 덮어씀(`executor.ts:222`).
 
 ### 2.4 현황 — 컴파일러 (① → ②) ✅ `engine-session/strategy/compiler.ts`
@@ -169,6 +169,13 @@ enum 전체: CREATED·ACTIVE·NEAR_DEAL·STALLED·ACCEPTED·REJECTED·EXPIRED·S
 
 ### 4.1 이상형
 에이전트 "성향"을 표현하는 단일 폼. 4D 효용 가중치 + 행동 곡선들로, 프리셋·Advanced 슬라이더·빌더 챗이 무엇을 채우든 결국 이 폼으로 모입니다. 각 필드가 협상 행동(양보 속도·앵커·수락 기준·리스크 태도)을 조율해야 합니다.
+
+> **개념 정리 — 축 vs 성향 vs 상황 (헷갈리기 쉬움).** 세 층이 서로 다른 종류다:
+> - **4개 축(차원)** — 가격·시간·위험·관계. 딜을 평가하는 *기준*(고정).
+> - **17개 파라미터** — 내 *성향*: 각 축을 얼마나 중시(가중치 w)/어떻게 채점하나. 에이전트 생성 시 고정.
+> - **컨텍스트** — 이 딜의 *상황·사실*(상대 오퍼·마감·신뢰…). **매 라운드** 바뀜.
+>
+> `U_total = w_p·V_p + w_t·V_t + w_r·V_r + w_s·V_s`. **"17→4로 좁혀진다"가 아니라 17개 성향이 4개 축에 배분**된다 — 가격축(`anchor_ratio`·`gamma`) · 시간축(`alpha`·`v_t_floor`) · 위험축(`w_rep`·`w_info`) · 관계축(`v_s_base`·`n_threshold`) + 4개 가중치. `beta`·`u_threshold`·`u_aspiration`은 축이 아니라 "언제 양보/수락"의 전역 손잡이. → 태그에서 들어오는 조건은 **값 조정(가격축 입력) / 새 Term 축(§6.5) / 게이트(정보성)** 셋 중 하나로 분류해 꽂는다.
 
 ### 4.2 현황 — known issue: 17개 중 2개만 실제 작동 🚧
 저장소 전체 grep 검증 결과, `strategy_params`의 개별 필드를 읽는 런타임 코드는 이것뿐:
@@ -351,7 +358,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 **이상형:** 필요한 단계에만 LLM을 호출하고 Codec 압축으로 토큰을 최소화한다. 비용은 고정값이 아니라 provider usage와 적용 단가로 측정한다.
 **현황:**
 - 💀 **"라운드당 2회"는 틀림 → 실제 1회(Decide만).** Understand·Validate는 규칙, **Respond는 템플릿**(`executor.ts:104` `RESPOND:"template"`)이라 LLM 미호출. pipeline의 respond 토큰 합산은 항상 0(죽은 코드).
-- ✅ DeepSeek V4 Pro 기본 모델. 일반 모드는 60초/temperature 0.5, reasoning 요청 모드는 90초/temperature 0.3이다. ⚠️ 현재 reasoning은 별도 provider reasoning parameter가 아니라 이 timeout/temperature 정책과 `reasoning_used` 표시다(`deepseek-client.ts:49-62,101-114`).
+- ✅ DeepSeek V4 Pro 기본 모델. 일반 모드는 30초/temperature 0.5, reasoning 요청 모드는 45초/temperature 0.3이다. ⚠️ 현재 reasoning은 별도 provider reasoning parameter가 아니라 이 timeout/temperature 정책과 `reasoning_used` 표시다(`deepseek-client.ts:54-55,121-130`).
 - ✅ 프롬프트용 `S:/B:/C:` 압축은 `deepseek-adapter.ts:205`의 `encodeCoreMemoCompact`. (별개로 `memo-codec.ts`의 `NS:/PT:…`는 **해시 전용**이고 프롬프트에 안 쓰임 — `context.ts`의 `memo_snapshot`은 dead field.)
 - ✅ 토큰은 DeepSeek API 실측(`usage.prompt_tokens/completion_tokens`) → 라운드별 `negotiation_rounds.llm_tokens_used` 저장. latency와 token usage는 telemetry에도 수집된다.
 - 🚧 **정확한 USD 비용은 단가 설정이 필요** — `LLM_PRICE_DEEPSEEK_V4_PRO_INPUT_PER_1M_USD`와 `LLM_PRICE_DEEPSEEK_V4_PRO_OUTPUT_PER_1M_USD`(또는 global 가격 env)가 모두 있어야 telemetry cost가 계산된다. 미설정 시 null이다. pipeline의 `tokens/1000 × 0.0007`은 입출력 미분리 러프 추정이며 DB에 저장되지 않는다.
@@ -384,6 +391,16 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 ## 11. 종합 백로그 (SOT ↔ 현황 갭)
 
+### 🧭 열린 설계 결정 — 가격·수락 결정을 LLM 대신 엔진이 하게 할까? (미결정, 하이브리드로 기울음)
+> 출처: 팀 리뷰 로그 F0/F4/F5 (2026-07). SOT §0.2 철학 vs §1.4/§5.4 현황의 충돌 지점.
+
+**"가격은 LLM이 정한다"(§1.4·§5.4)는 *현재 구현*일 뿐, 지켜야 할 *원칙*이 아니다.** LLM이 최종가를 정하면 모델·요청마다 금액이 흔들려 Haggle의 결정론·공정·감사가능 철학(§0.2)과 충돌. 선택지 3:
+- **(A) advisory 배선** — 숫자 파라미터를 코치·프롬프트에 연결. LLM 결정 구조 유지. *(약함 — LLM이 여전히 최종가)*
+- **(B) 엔진 뇌 복귀** — `makeDecision`을 결정 경로로. 17개 필드 활성.
+- **(C) 현행 인정** — "LLM + 빌더메모리 + beta/anchor 2개"를 진짜 설계로.
+
+**정착 방향(Jongwoo 기울음) = 하이브리드(B 변형):** *엔진이 가격·수락을 결정(권위) + LLM은 언어·비가격 지렛대·통역.* 구현 라드 = **센서/통역(LLM) → 판사(엔진) → 작가(LLM)**: ① LLM이 자연어를 엔진이 아는 수치·태그로 통역 → ② 엔진이 결정론적으로 가격·수락 결정(가격 clamp) → ③ LLM이 그 가격을 자연스럽게 포장. 파이프라인 슬롯(Stage 1 Understand=센서, Stage 3 Decide=판사, Stage 5 Respond=작가)이 이미 존재 → 새 아키텍처가 아니라 **결정 권한을 Stage 3 LLM→엔진으로 이동 + Stage 1 특징추출 강화 + Stage 5 clamp**. 대가 = 엔진이 자연어 주장·비가격 term·경매 상황을 다루려면 **상대모델(백로그#4)·multi-term(#6)** 필요.
+
 우선순위는 "실제 협상 품질에 미치는 영향" 기준.
 
 | # | 갭 | 현재 | 목표(SOT) | 규모 |
@@ -396,7 +413,7 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 | 6 | 다중 Term 없음 | 가격 단일 | term_space + Offer Inverter | 🟠 |
 | 7 | 전술/미러링 없음 | suggested_tactic 텍스트만 | 전술 매트릭스 강제 | 🟡 |
 | 8 | 1:N 전체 dormant | 그룹 미생성 → 크로스프레셔·batchEvaluate·supersede·anti-sniping 도달 불가 | `/start` 그룹 생성 or 별도 트리거 | 🟠 |
-| 9 | 카테고리 하드코딩 | electronics 고정 | 일반화 | 🟡 |
+| 9 | 카테고리/IMEI 하드코딩 | 기본 스킬이 `electronics-iphone-pro-v1`(IMEI_REQUIRED 내장), 카테고리 무관 적용 | 카테고리별 스킬·term 일반화 (§2.3) | 🟡 |
 | 10 | Referee HARD 미차단 | 'BLOCK' 라벨뿐 통과 | HARD 실제 차단 여부 결정 | 🟡 |
 | 11 | 무결성 검증 미작동 | memo/체인 해시 write-only | verify 런타임 연결 + 온체인 앵커 | 🟡 |
 | 12 | 비용 계측 부분 구현 | 실측 token/latency 있음, 단가 미설정 시 비용 null, 세션 집계 없음 | DeepSeek 단가 설정 + reasoning mode 전달 + 세션 집계 | 🟢 |
