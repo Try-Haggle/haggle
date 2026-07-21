@@ -1,5 +1,4 @@
 import { computeCounterOffer } from "@haggle/engine-core";
-import { ELECTRONICS_TERMS } from "../term/standard-terms.js";
 import type {
   CoreMemory,
   EngineDecision,
@@ -10,18 +9,26 @@ import type {
   SkillConstraint,
   SkillTermDeclaration,
 } from "../types.js";
+import { type CategoryProfile, ELECTRONICS_PHONE_PROFILE } from "./category-profiles.js";
 
 export class DefaultEngineSkill implements NegotiationSkill {
-  readonly id = "electronics-iphone-pro-v1";
+  readonly id: string;
   readonly version = "1.0.0";
+  private readonly profile: CategoryProfile;
+
+  /**
+   * Category-specific content (LLM context, constraints, terms) comes from the
+   * profile. Production constructs this per-session via resolveCategoryProfile;
+   * the default stays the electronics/phone profile for backward compatibility
+   * with legacy no-arg call sites (tests, the out-of-path llm executor).
+   */
+  constructor(profile: CategoryProfile = ELECTRONICS_PHONE_PROFILE) {
+    this.profile = profile;
+    this.id = profile.id;
+  }
 
   getLLMContext(): string {
-    return [
-      "## Category: Electronics — iPhone Pro",
-      "Market: US used iPhone Pro (13/14/15). Reference: Swappa 30d median.",
-      "Key factors: battery health, carrier lock, screen condition, storage, cosmetic grade.",
-      "IMEI and Find My verification are deal-breakers.",
-    ].join("\n");
+    return this.profile.llmContext;
   }
 
   getTactics(): string[] {
@@ -36,19 +43,11 @@ export class DefaultEngineSkill implements NegotiationSkill {
   }
 
   getConstraints(): SkillConstraint[] {
-    return [
-      { rule: "IMEI_REQUIRED", description: "IMEI must be verified before CLOSING phase" },
-      { rule: "FIND_MY_REQUIRED", description: "Find My must be disabled before sale" },
-      { rule: "BATTERY_THRESHOLD", description: "Battery below 80% triggers mandatory disclosure" },
-    ];
+    return this.profile.constraints;
   }
 
   getTermDeclaration(): SkillTermDeclaration {
-    return {
-      supported_terms: ELECTRONICS_TERMS.map((t) => t.id),
-      category_terms: ELECTRONICS_TERMS,
-      custom_term_handling: "basic",
-    };
+    return this.profile.termDeclaration;
   }
 
   async generateMove(

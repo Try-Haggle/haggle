@@ -46,6 +46,7 @@ import { detectPhaseEvent, tryTransition } from "../phase/phase-machine.js";
 import { computeBriefing } from "../referee/briefing.js";
 import { computeCoachingAsync } from "../referee/coach.js";
 import { screenMessage } from "../screening/auto-screening.js";
+import { resolveCategoryProfile } from "../skills/category-profiles.js";
 import { DefaultEngineSkill } from "../skills/default-engine-skill.js";
 import { ElectronicsKnowledgeSkill } from "../skills/electronics-knowledge.js";
 import { FaratinCoachingSkill } from "../skills/faratin-coaching.js";
@@ -66,7 +67,6 @@ import { executePipeline } from "./pipeline.js";
 // Singletons
 // ---------------------------------------------------------------------------
 
-const skill = new DefaultEngineSkill();
 const adapter = new DeepSeekAdapter();
 
 // Register built-in skills (once at startup)
@@ -339,12 +339,14 @@ export async function executeStagedNegotiationRound(
       topK: 5,
     });
 
-    // Build SkillStack for this session from the listing's category + tags.
-    // Previously this read a nonexistent `dbSession.category` column, so every
-    // session fell back to ["electronics"] and category-gated skills (e.g. the
-    // iPhone/IMEI electronics knowledge skill) misfired on all items. Sourcing
-    // from listing_context lets non-electronics items resolve only '*' skills.
-    const skillStack = SkillStack.fromTags(resolveItemTags(updatedMemory.listing_context));
+    // Build the per-session skill + SkillStack from the listing's category + tags.
+    // Previously the executor read a nonexistent `dbSession.category` column, so
+    // every session fell back to ["electronics"]: the v2 electronics knowledge
+    // skill AND the v1 DefaultEngineSkill's iPhone/IMEI content leaked onto all
+    // items. Sourcing from listing_context lets non-electronics resolve neutral.
+    const itemTags = resolveItemTags(updatedMemory.listing_context);
+    const skillStack = SkillStack.fromTags(itemTags);
+    const skill = new DefaultEngineSkill(resolveCategoryProfile(itemTags));
 
     const conversation = buildConversationContext(
       dbRounds,
