@@ -50,7 +50,7 @@ import { DefaultEngineSkill } from "../skills/default-engine-skill.js";
 import { ElectronicsKnowledgeSkill } from "../skills/electronics-knowledge.js";
 import { FaratinCoachingSkill } from "../skills/faratin-coaching.js";
 import { HaggleEngineSkill } from "../skills/haggle-engine-skill.js";
-import { registerSkill, SkillStack } from "../skills/skill-stack.js";
+import { registerSkill, resolveItemTags, SkillStack } from "../skills/skill-stack.js";
 import { understand, understandFromStructured } from "../stages/understand.js";
 import type {
   ConversationContext,
@@ -327,12 +327,12 @@ export async function executeStagedNegotiationRound(
       topK: 5,
     });
 
-    // Build SkillStack for this session based on item tags/category
-    const sessionCategory = (dbSession as unknown as Record<string, unknown>).category as
-      | string
-      | undefined;
-    const itemTags = sessionCategory ? [sessionCategory] : ["electronics"];
-    const skillStack = SkillStack.fromTags(itemTags);
+    // Build SkillStack for this session from the listing's category + tags.
+    // Previously this read a nonexistent `dbSession.category` column, so every
+    // session fell back to ["electronics"] and category-gated skills (e.g. the
+    // iPhone/IMEI electronics knowledge skill) misfired on all items. Sourcing
+    // from listing_context lets non-electronics items resolve only '*' skills.
+    const skillStack = SkillStack.fromTags(resolveItemTags(updatedMemory.listing_context));
 
     const conversation = buildConversationContext(
       dbRounds,
