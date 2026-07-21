@@ -317,6 +317,18 @@ export async function executeStagedNegotiationRound(
         }
       : understandFromStructured(input.offerPriceMinor, senderRole);
 
+    // L3/H5-a: surface sensor-extracted features on the working memory. This is a
+    // SHADOW for now — it rides into coreMemorySnapshot for observation but does not
+    // affect price until L5 wires category rules.
+    if (understood.extracted_features?.length) {
+      updatedMemory.extracted_features = understood.extracted_features;
+      // Redacted shadow log — omit raw_span (verbatim message text) to keep PII out of logs.
+      console.info(
+        `[sensor] round ${updatedMemory.session.round} features:`,
+        understood.extracted_features.map((f) => ({ key: f.key, type: f.type, value: f.value })),
+      );
+    }
+
     const previousMoves = extractPreviousMoves(dbRounds);
     const memoryBrief = await loadUserMemoryBrief(tx as unknown as Database, {
       userId: userIdForAgentRole(dbSession),
