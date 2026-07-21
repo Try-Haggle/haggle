@@ -25,6 +25,9 @@ export type {
   SessionState,
 } from "./decision/types.js";
 export { applyFeatures } from "./features/apply.js";
+export type { FeatureDef, FeatureValueType, TermKind } from "./features/schema.js";
+// Feature schema (vocabulary the engine understands) — backlog H4
+export { FEATURE_SCHEMA, getFeatureDef, isKnownFeatureKey } from "./features/schema.js";
 // Feature contract (sensor ↔ engine seam) — backlog H4/H5/H6
 export type {
   CategoryFeatureRule,
