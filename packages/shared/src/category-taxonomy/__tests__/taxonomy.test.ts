@@ -35,6 +35,21 @@ describe("resolveChecks (hierarchical inheritance)", () => {
     expect(ids(["electronics/phones/iphone"])).toContain("imei_verification");
   });
 
+  it("matches REAL production tags (bare category + hyphenated) — iphone-15-pro → IMEI", () => {
+    // Production: category is bare "electronics"; tags are hyphenated ("iphone-15-pro").
+    // The "iphone" token must still hit the iphone node or real phones lose IMEI checks.
+    const got = ids(["electronics", "iphone-15-pro", "256gb", "space-black"]);
+    expect(got).toContain("working_status"); // electronics
+    expect(got).toContain("battery_health"); // phones
+    expect(got).toContain("imei_verification"); // iphone
+  });
+
+  it("matches a laptop via token/alias (macbook-pro-14 → laptops), never IMEI", () => {
+    const got = ids(["electronics", "macbook-pro-14"]);
+    expect(got).toContain("battery_cycles");
+    expect(got).not.toContain("imei_verification");
+  });
+
   it("a non-phone electronics item does NOT get IMEI", () => {
     const got = ids(["electronics/laptops"]);
     expect(got).toContain("battery_cycles");

@@ -1,13 +1,14 @@
 /**
- * L4a / HAGGLE-9-B — category profiles for the v1 DefaultEngineSkill.
+ * Category profiles for the v1 DefaultEngineSkill.
  *
- * The engine skill's *decision logic* is category-neutral; only three accessors
- * (LLM context, constraints, term declaration) carried hardcoded iPhone/IMEI
- * content that leaked onto every negotiation regardless of category. A
- * CategoryProfile supplies that content so a non-electronics item gets a neutral
- * profile instead of iPhone/IMEI rules.
+ * L4a extracted the skill's three category-specific accessors (LLM context,
+ * constraints, term declaration) into a CategoryProfile so non-electronics items
+ * stop getting iPhone/IMEI content. P3 makes the profile TAXONOMY-DRIVEN: the
+ * DECIDE-prompt context is built from the shared category taxonomy (resolveChecks),
+ * so any category surfaces its own negotiation checks — not just electronics.
  */
 
+import { type NegotiationCheck, resolveChecks } from "@haggle/shared";
 import { ELECTRONICS_TERMS } from "../term/standard-terms.js";
 import type { SkillConstraint, SkillTermDeclaration } from "../types.js";
 
@@ -55,16 +56,33 @@ export const DEFAULT_PROFILE: CategoryProfile = {
   },
 };
 
+/** Format taxonomy checks into an LLM context block for the DECIDE prompt. */
+function buildCategoryLLMContext(checks: readonly NegotiationCheck[]): string {
+  const lines = checks.map(
+    (c) => `- ${c.questionKo} [${c.enforcement === "hard" ? "필수" : "권장"}]`,
+  );
+  return ["## Category checks — verify/discuss for this item:", ...lines].join("\n");
+}
+
 /**
- * Pick a profile from the resolved item tags (lowercase, from resolveItemTags).
- * Only electronics maps to the phone profile; everything else (and no-category)
- * gets the neutral profile — the point of HAGGLE-9-B.
+ * Build the session's category profile from the taxonomy (P3, TAX backbone).
  *
- * Note: the single electronics profile is still phone-flavored, so non-phone
- * electronics currently inherit phone hints. Splitting per electronics subtype is
- * a follow-up (needs more profiles).
+ * `resolveChecks` walks the category hierarchy (from resolveItemTags's tags), so
+ * any category surfaces its own negotiation checks in the DECIDE prompt. An unknown
+ * category (no checks) falls back to the neutral profile. This replaces L4a's static
+ * electronics/neutral split and fixes its residual — non-phone electronics (laptops)
+ * no longer inherit phone/IMEI hints.
  */
 export function resolveCategoryProfile(tags: readonly string[]): CategoryProfile {
-  const isElectronics = tags.some((t) => t === "electronics" || t.startsWith("electronics/"));
-  return isElectronics ? ELECTRONICS_PHONE_PROFILE : DEFAULT_PROFILE;
+  const checks = resolveChecks(tags);
+  if (checks.length === 0) return DEFAULT_PROFILE;
+  const top = tags.map((t) => t.split("/")[0]).find(Boolean) ?? "category";
+  return {
+    id: `taxonomy-${top}`,
+    llmContext: buildCategoryLLMContext(checks),
+    constraints: checks
+      .filter((c) => c.enforcement === "hard")
+      .map((c) => ({ rule: c.id.toUpperCase(), description: c.questionKo })),
+    termDeclaration: { supported_terms: [], category_terms: [], custom_term_handling: "basic" },
+  };
 }

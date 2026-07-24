@@ -6,17 +6,38 @@ import {
 } from "../category-profiles.js";
 import { DefaultEngineSkill } from "../default-engine-skill.js";
 
-describe("resolveCategoryProfile (L4a / HAGGLE-9-B)", () => {
-  it("maps electronics tags to the phone profile", () => {
-    expect(resolveCategoryProfile(["electronics"])).toBe(ELECTRONICS_PHONE_PROFILE);
-    expect(resolveCategoryProfile(["electronics/phones"])).toBe(ELECTRONICS_PHONE_PROFILE);
-    expect(resolveCategoryProfile(["electronics/laptops"])).toBe(ELECTRONICS_PHONE_PROFILE);
+describe("resolveCategoryProfile (P3 — taxonomy-driven)", () => {
+  it("a real iphone listing (bare electronics + iphone-15-pro tag) gets IMEI in DECIDE context", () => {
+    // Mirrors production tags: bare category + hyphenated tag (not a synthetic token).
+    const p = resolveCategoryProfile(["electronics", "iphone-15-pro"]);
+    expect(p.llmContext).toMatch(/IMEI/);
+    expect(p.llmContext).toMatch(/배터리/);
+    expect(p.constraints.some((c) => c.rule === "IMEI_VERIFICATION")).toBe(true);
   });
 
-  it("maps non-electronics (and empty) tags to the neutral profile", () => {
-    expect(resolveCategoryProfile(["fashion"])).toBe(DEFAULT_PROFILE);
-    expect(resolveCategoryProfile(["home/furniture"])).toBe(DEFAULT_PROFILE);
+  it("non-phone electronics (laptops) gets its own checks, NOT IMEI (fixes L4a residual)", () => {
+    const p = resolveCategoryProfile(["electronics/laptops"]);
+    expect(p.llmContext).toMatch(/사이클|사양/);
+    expect(p.llmContext).not.toMatch(/IMEI/);
+  });
+
+  it("bare electronics gets only top-level checks (no phone/IMEI)", () => {
+    const p = resolveCategoryProfile(["electronics"]);
+    expect(p.llmContext).toMatch(/작동/);
+    expect(p.llmContext).not.toMatch(/IMEI/);
+  });
+
+  it("non-electronics categories get their own checks, never IMEI", () => {
+    const vehicles = resolveCategoryProfile(["vehicles"]).llmContext;
+    expect(vehicles).toMatch(/주행거리|명의/);
+    expect(vehicles).not.toMatch(/IMEI/);
+    // fashion is a clothing alias → real checks, no longer the neutral fallback
+    expect(resolveCategoryProfile(["fashion"]).llmContext).toMatch(/정품|사이즈/);
+  });
+
+  it("unknown / empty tags fall back to the neutral profile", () => {
     expect(resolveCategoryProfile([])).toBe(DEFAULT_PROFILE);
+    expect(resolveCategoryProfile(["nonsense-tag"])).toBe(DEFAULT_PROFILE);
   });
 });
 

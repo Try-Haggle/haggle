@@ -61,6 +61,7 @@ export const CATEGORY_TAXONOMY: readonly CategoryNode[] = [
   },
   {
     path: "electronics/laptops",
+    aliases: ["laptop", "macbook", "notebook", "노트북"],
     checks: [
       { id: "battery_cycles", questionKo: "배터리 사이클 수는 얼마인가요?", enforcement: "soft" },
       { id: "spec_summary", questionKo: "CPU/RAM/저장 사양은 어떻게 되나요?", enforcement: "soft" },
@@ -112,18 +113,31 @@ export function getCategoryNode(path: string): CategoryNode | undefined {
 /**
  * Resolve the negotiation checks for a set of item tags, with hierarchical
  * inheritance: a matched node contributes its own checks plus every ancestor's.
- * A tag matches a node by exact path, by leaf segment, or by alias. Deduped by
- * check id (broadest ancestor first).
+ *
+ * A node matches if any tag — or a token of a hyphenated/spaced tag — equals the
+ * node's exact path, its leaf segment, or an alias. Tokenizing is essential for
+ * real listings: production tags look like "iphone-15-pro" / "space-black", so the
+ * "iphone" token must still match the iphone node (otherwise real phones would lose
+ * their IMEI/battery checks). Deduped by check id (broadest ancestor first).
  */
 export function resolveChecks(tags: readonly string[]): NegotiationCheck[] {
-  const norm = tags.map((t) => t.trim().toLowerCase()).filter(Boolean);
-  const matchedPaths = new Set<string>();
+  const candidates = new Set<string>();
+  for (const raw of tags) {
+    const t = raw.trim().toLowerCase();
+    if (!t) continue;
+    candidates.add(t); // whole tag (preserves path-form tags like "electronics/phones")
+    for (const seg of t.split(/[\s-]+/)) {
+      if (seg) candidates.add(seg); // tokens of hyphenated/spaced tags
+    }
+  }
 
+  const matchedPaths = new Set<string>();
   for (const node of CATEGORY_TAXONOMY) {
     const leaf = node.path.split("/").pop() ?? node.path;
-    const hit = norm.some(
-      (t) => t === node.path || t === leaf || (node.aliases?.includes(t) ?? false),
-    );
+    const hit =
+      candidates.has(node.path) ||
+      candidates.has(leaf) ||
+      (node.aliases?.some((a) => candidates.has(a)) ?? false);
     if (hit) {
       for (const p of pathChain(node.path)) matchedPaths.add(p);
     }
