@@ -1286,9 +1286,22 @@ describe("Intelligence demo routes", () => {
         kind: "hard_slot",
         slotId: "max_budget",
       },
+      // The hard budget slot takes the turn; every soft slot defers as lower_priority.
+      // For a non-iPhone electronics listing (iPad) the category taxonomy (P12) also
+      // contributes soft slots (working_status, cosmetic_grade) — non-blocking, deferred.
       deferred: [
         {
           slotId: "buyer_priority",
+          enforcement: "soft",
+          reason: "lower_priority",
+        },
+        {
+          slotId: "working_status",
+          enforcement: "soft",
+          reason: "lower_priority",
+        },
+        {
+          slotId: "cosmetic_grade",
           enforcement: "soft",
           reason: "lower_priority",
         },
