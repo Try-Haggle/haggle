@@ -1,3 +1,5 @@
+import { resolveChecks } from "@haggle/shared";
+
 export type RequirementStage = "advisor_recommendation" | "pre_close_verification";
 export type RequirementEnforcement = "hard" | "soft";
 
@@ -34,6 +36,8 @@ export type ListingForRequirements = {
   title: string;
   condition: string;
   tags: string[];
+  /** Bare listing category (electronics, clothing, vehicles…) — feeds the taxonomy. */
+  category?: string;
 };
 
 export type TagRequirementPlan = {
@@ -229,13 +233,45 @@ export const EMPTY_TAG_REQUIREMENT_PLAN: TagRequirementPlan = {
   hasBlockingMissingSlots: false,
 };
 
+/**
+ * Derive requirement slots from the shared category taxonomy for a listing's
+ * category + tags. This is the generalized "what to ask per category" source that
+ * replaces the iPhone-only hardcoded map for every other category.
+ */
+function taxonomyCategorySlots(listings: ListingForRequirements[]): TagRequirementSlot[] {
+  const tags = listings.flatMap((l) =>
+    [l.category, ...l.tags].filter((t): t is string => typeof t === "string" && t.length > 0),
+  );
+  if (tags.length === 0) return [];
+  return resolveChecks(tags).map((c) => ({
+    slotId: c.id,
+    tagPath: "taxonomy",
+    label: c.id,
+    questionKo: c.questionKo,
+    stage: "advisor_recommendation" as const,
+    // Advisory / non-blocking. There is no per-check satisfaction logic for taxonomy
+    // slot ids yet, so a HARD (blocking) slot could never be marked satisfied and would
+    // wedge the buyer flow (re-asking forever). Keep taxonomy slots SOFT until a
+    // satisfaction path exists; the check's own hard/soft still drives the
+    // negotiation-runtime prompt (P3, [필수]/[권장]).
+    enforcement: "soft" as const,
+    priority: 70,
+    aliases: [],
+  }));
+}
+
 export function buildAdvisorRequirementPlan(input: {
   memory: NegotiationAgentBuilderMemoryForRequirements;
   listings: ListingForRequirements[];
 }): TagRequirementPlan {
   const matchedTags = resolveMatchedTags(input.memory, input.listings);
   const tagSlots = matchedTags.flatMap((tag) => TAG_REQUIREMENTS[tag] ?? []);
-  const requiredSlots = [...UNIVERSAL_BUYER_SLOTS, ...tagSlots].sort(
+  // Category questions come from the shared taxonomy for every category the
+  // hardcoded TAG_REQUIREMENTS map doesn't already cover (currently iPhone only).
+  // This generalizes "what to ask" beyond phones without disturbing the rich,
+  // test-pinned iPhone slots.
+  const categorySlots = tagSlots.length > 0 ? tagSlots : taxonomyCategorySlots(input.listings);
+  const requiredSlots = [...UNIVERSAL_BUYER_SLOTS, ...categorySlots].sort(
     (a, b) => a.priority - b.priority,
   );
   const activeScope = resolveActiveProductScope(input.memory, input.listings);

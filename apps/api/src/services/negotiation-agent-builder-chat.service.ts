@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { type Database, sql } from "@haggle/db";
-import { priceSemantics } from "@haggle/shared";
+import { priceSemantics, resolveChecks } from "@haggle/shared";
 // (FastifyInstance import removed — this is now a pure service file)
 import { z } from "zod";
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
@@ -862,6 +862,21 @@ const SEARCH_BRAND_TERMS = new Set([
   "harley",
 ]);
 
+/**
+ * Category-relevant emphasis points for the SELLER builder, derived from the shared
+ * taxonomy. The seller never gets asked buyer-style requirement questions, so these
+ * are framed as "what to emphasize / flag as deal-breakers" for the item's category.
+ */
+function buildSellerCategoryHint(listings: Array<{ category?: string; tags: string[] }>): string {
+  const tags = listings.flatMap((l) =>
+    [l.category, ...l.tags].filter((t): t is string => typeof t === "string" && t.length > 0),
+  );
+  const checks = resolveChecks(tags);
+  if (checks.length === 0) return "";
+  const points = checks.map((c) => `  - ${c.questionKo}`).join("\n");
+  return `\n- For this item's category, these points typically matter — decide which to EMPHASIZE or flag as deal-breakers (do NOT ask the seller to provide them):\n${points}`;
+}
+
 export async function processNegotiationAgentBuilderTurn(
   input: z.infer<typeof negotiationAgentBuilderTurnBodySchema>,
 ) {
@@ -911,7 +926,7 @@ ${
           : " This agent is not tied to a listing yet, so price is set per-listing later — gather negotiation posture (what to emphasize, deal-breakers, how firmly to hold) instead."
       }
 - Do NOT ask buyer-style requirement questions (battery %, IMEI, etc.). Instead ask what to EMPHASIZE (condition, accessories, rarity) or any deal-breakers.
-- Ignore the Tag Garden requirement slots entirely — they are buyer-side.`
+- Ignore the Tag Garden requirement slots entirely — they are buyer-side.${buildSellerCategoryHint(input.listings)}`
     : ""
 }
 

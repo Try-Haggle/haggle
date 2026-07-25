@@ -12,7 +12,9 @@ const iphoneListings = [
   },
 ];
 
-function memory(overrides: Partial<Parameters<typeof buildAdvisorRequirementPlan>[0]["memory"]> = {}) {
+function memory(
+  overrides: Partial<Parameters<typeof buildAdvisorRequirementPlan>[0]["memory"]> = {},
+) {
   return {
     categoryInterest: "iPhone Pro 중고",
     mustHave: [],
@@ -23,6 +25,62 @@ function memory(overrides: Partial<Parameters<typeof buildAdvisorRequirementPlan
 }
 
 describe("Tag Garden advisor requirements", () => {
+  it("generalizes beyond iPhone: a vehicles listing gets taxonomy requirement slots (no IMEI)", () => {
+    const plan = buildAdvisorRequirementPlan({
+      memory: memory({
+        categoryInterest: "중고차 알아보는 중",
+        budgetMax: 10000,
+        source: ["예산은 만 달러 정도"],
+      }),
+      listings: [
+        {
+          title: "2019 Toyota Camry",
+          condition: "clean title, 40k miles",
+          tags: ["toyota-camry", "sedan"],
+          category: "vehicles",
+        },
+      ],
+    });
+    const ids = plan.requiredSlots.map((s) => s.slotId);
+    expect(ids).toContain("mileage");
+    expect(ids).toContain("title_status");
+    expect(ids).not.toContain("imei_verification");
+    // Taxonomy slots must be advisory/non-blocking (no satisfaction logic yet) —
+    // otherwise a hard slot with no way to satisfy it would wedge the flow forever.
+    expect(
+      plan.requiredSlots
+        .filter((s) => s.tagPath === "taxonomy")
+        .every((s) => s.enforcement === "soft"),
+    ).toBe(true);
+    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("title_status");
+  });
+
+  it("iPhone reached via taxonomy (no 'iphone' token in memory yet) does not hard-block on IMEI", () => {
+    const plan = buildAdvisorRequirementPlan({
+      memory: memory({ categoryInterest: "electronics", budgetMax: 800, source: ["예산 800"] }),
+      listings: [
+        {
+          title: "iPhone 15 Pro 256GB",
+          condition: "good",
+          tags: ["iphone-15-pro"],
+          category: "electronics",
+        },
+      ],
+    });
+    // imei surfaces (helpful) but must not block the buyer flow.
+    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("imei_verification");
+    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("find_my_status");
+  });
+
+  it("preserves the rich iPhone slots (taxonomy does not override the hardcoded map)", () => {
+    const plan = buildAdvisorRequirementPlan({
+      memory: memory({ budgetMax: 500, source: ["아이폰 예산 500"] }),
+      listings: iphoneListings,
+    });
+    expect(plan.requiredSlots.map((s) => s.slotId)).toContain("battery_health");
+    expect(plan.requiredSlots.every((s) => s.tagPath !== "taxonomy")).toBe(true);
+  });
+
   it("starts with broad shopping intent before budget or model details", () => {
     const plan = buildAdvisorRequirementPlan({
       memory: memory({
@@ -69,9 +127,17 @@ describe("Tag Garden advisor requirements", () => {
       listings: iphoneListings,
     });
 
-    expect(plan.question).toBe("중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?");
-    expect(plan.missingSlots.map((slot) => slot.slotId)).toEqual(["battery_health", "carrier_lock"]);
-    expect(plan.blockingSlots.map((slot) => slot.slotId)).toEqual(["battery_health", "carrier_lock"]);
+    expect(plan.question).toBe(
+      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+    );
+    expect(plan.missingSlots.map((slot) => slot.slotId)).toEqual([
+      "battery_health",
+      "carrier_lock",
+    ]);
+    expect(plan.blockingSlots.map((slot) => slot.slotId)).toEqual([
+      "battery_health",
+      "carrier_lock",
+    ]);
     expect(plan.hasBlockingMissingSlots).toBe(true);
   });
 
@@ -85,7 +151,9 @@ describe("Tag Garden advisor requirements", () => {
       listings: iphoneListings,
     });
 
-    expect(plan.question).toBe("중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?");
+    expect(plan.question).toBe(
+      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+    );
   });
 
   it("prioritizes hard iPhone slots before soft buyer-priority prompts", () => {
@@ -106,7 +174,9 @@ describe("Tag Garden advisor requirements", () => {
       "carrier_lock:hard",
     ]);
     expect(plan.nextSlot?.slotId).toBe("battery_health");
-    expect(plan.question).toBe("중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?");
+    expect(plan.question).toBe(
+      "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+    );
   });
 
   it("moves to carrier slot after a battery threshold is known", () => {
@@ -141,7 +211,8 @@ describe("Tag Garden advisor requirements", () => {
 
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
-      questionKo: "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      questionKo:
+        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
     });
     expect(plan.missingSlots.map((slot) => slot.slotId)).toContain("battery_health");
     expect(plan.missingSlots.map((slot) => slot.slotId)).not.toContain("carrier_lock");
@@ -164,7 +235,10 @@ describe("Tag Garden advisor requirements", () => {
     });
 
     expect(plan.missingSlots.map((slot) => slot.slotId)).not.toContain("buyer_priority");
-    expect(plan.missingSlots.map((slot) => slot.slotId)).toEqual(["battery_health", "carrier_lock"]);
+    expect(plan.missingSlots.map((slot) => slot.slotId)).toEqual([
+      "battery_health",
+      "carrier_lock",
+    ]);
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
     });
@@ -187,7 +261,8 @@ describe("Tag Garden advisor requirements", () => {
     expect(plan.blockingSlots[0]).toMatchObject({
       slotId: "battery_health",
       enforcement: "hard",
-      questionKo: "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 15 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
+      questionKo:
+        "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 15 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
     });
   });
 
@@ -197,10 +272,7 @@ describe("Tag Garden advisor requirements", () => {
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
-        source: [
-          "iPhone 13 Pro는 배터리 90% 이상이면 좋겠어",
-          "이번에는 iPhone 15 Pro도 볼게.",
-        ],
+        source: ["iPhone 13 Pro는 배터리 90% 이상이면 좋겠어", "이번에는 iPhone 15 Pro도 볼게."],
       }),
       listings: [
         {
@@ -218,7 +290,8 @@ describe("Tag Garden advisor requirements", () => {
 
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
-      questionKo: "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 15 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
+      questionKo:
+        "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 15 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
     });
   });
 
@@ -228,10 +301,7 @@ describe("Tag Garden advisor requirements", () => {
         categoryInterest: "iPhone 13 Pro, iPhone 15 Pro",
         budgetMax: 700,
         mustHave: ["battery >= 90%"],
-        source: [
-          "iPhone 13 Pro는 배터리 90% 이상이면 좋겠어",
-          "이번에는 iPhone 15 Pro도 볼게.",
-        ],
+        source: ["iPhone 13 Pro는 배터리 90% 이상이면 좋겠어", "이번에는 iPhone 15 Pro도 볼게."],
         structured: {
           scopedConditionDecisions: [
             {
@@ -259,7 +329,8 @@ describe("Tag Garden advisor requirements", () => {
 
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
-      questionKo: "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      questionKo:
+        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
     });
   });
 
@@ -387,7 +458,8 @@ describe("Tag Garden advisor requirements", () => {
 
     expect(plan.nextSlot).toMatchObject({
       slotId: "battery_health",
-      questionKo: "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 16 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
+      questionKo:
+        "전에 iPhone 13 Pro에서 말한 배터리 조건을 iPhone 16 Pro에도 그대로 적용할까요, 아니면 다시 정할까요?",
     });
   });
 
@@ -411,7 +483,8 @@ describe("Tag Garden advisor requirements", () => {
 
   it("resolves negotiation missing-info slots to Tag Garden questions", () => {
     expect(resolveTagGardenQuestionForSlot("battery_health")).toMatchObject({
-      question: "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
+      question:
+        "중고폰은 배터리 성능에 따라 가격이 꽤 달라져요. 90% 이상만 볼까요, 85% 이상이면 괜찮을까요, 아니면 가격이 좋으면 80%대도 괜찮을까요?",
       slotId: "battery_health",
       enforcement: "hard",
       source: "tag_garden",
