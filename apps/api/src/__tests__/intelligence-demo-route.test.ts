@@ -928,6 +928,76 @@ describe("Intelligence demo routes", () => {
     await app.close();
   });
 
+  it("does not treat a mileage answer as a budget change", async () => {
+    // The LLM wrongly reads "25000" (mileage) as budget; the normalizer must keep the
+    // real $21,000 ceiling instead of raising it to $25,000.
+    callLLMMock.mockResolvedValueOnce({
+      content: JSON.stringify({
+        memory: {
+          categoryInterest: "used Honda Civic",
+          budgetMax: 25000,
+          targetPrice: 16800,
+          mustHave: [],
+          avoid: [],
+          riskStyle: "balanced",
+          negotiationStyle: "aggressive",
+          openingTactic: "fair_market_anchor",
+          questions: [],
+          source: ["25000 or under"],
+        },
+        reply: "Mileage limit set to 25,000 miles.",
+        reasoning_summary: "model incorrectly treated 25000 mileage as budget",
+      }),
+      usage: { prompt_tokens: 150, completion_tokens: 35 },
+      reasoning_used: false,
+    });
+
+    const { db } = makeDb();
+    const app = Fastify();
+    registerIntelligenceDemoRoutes(app, db);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/intelligence/demo/advisor-turn",
+      payload: {
+        user_id: "44444444-4444-4444-8444-444444444444",
+        agent_id: "fab",
+        message: "For mileage, I would want 25000 or under please.",
+        previous_memory: {
+          categoryInterest: "used Honda Civic",
+          budgetMax: 21000,
+          targetPrice: 16800,
+          mustHave: [],
+          avoid: [],
+          riskStyle: "balanced",
+          negotiationStyle: "aggressive",
+          openingTactic: "fair_market_anchor",
+          questions: ["What maximum mileage do you want?"],
+          source: ["budgetMax: 21000"],
+        },
+        listings: [
+          {
+            id: "civic-1",
+            title: "2020 Honda Civic EX",
+            category: "vehicles",
+            condition: "good",
+            askPriceMinor: 2100000,
+            floorPriceMinor: 1900000,
+            marketMedianMinor: 2100000,
+            tags: ["honda", "civic", "sedan"],
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    // budget ceiling preserved — the mileage number did NOT overwrite it.
+    expect(body.memory.budgetMax).toBe(21000);
+
+    await app.close();
+  });
+
   it("does not treat short model answers as budget changes", async () => {
     callLLMMock.mockResolvedValueOnce({
       content: JSON.stringify({
@@ -1207,12 +1277,14 @@ describe("Intelligence demo routes", () => {
 
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.reply).toBe(
-      "테슬라. 후보를 좁혀볼게요. 예산 범위를 알면 선택지를 더 정확히 줄일 수 있어요.",
-    );
+    // The global cleanup still strips filler ("됐고") and budget stays the primary
+    // next slot. SAT additionally batches the vehicle title gate into the same turn.
     expect(body.reply).not.toContain("됐고");
-    expect(body.memory.questions).toEqual(["예산 범위를 알면 선택지를 더 정확히 줄일 수 있어요."]);
     expect(body.advisor_plan.nextAction.slot).toBe("budget");
+    // Buyer-facing: the requirement-framed phrasing ("do you require…"), not the
+    // verification phrasing ("is it…") which is for the runtime/seller.
+    expect(body.memory.questions).toContain("Should the agent only consider clean-title vehicles?");
+    expect(body.memory.questions.length).toBeGreaterThanOrEqual(1);
 
     await app.close();
   });
@@ -1373,9 +1445,11 @@ describe("Intelligence demo routes", () => {
 
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.memory.questions).toEqual([]);
+    // Buyer priority is NOT re-asked (the test's core intent). But the vehicle title
+    // gate (SAT: now a satisfiable hard slot) is unanswered, so it is surfaced next —
+    // asking "is the title/ownership clear?" for a used car is exactly the goal.
+    expect(body.memory.questions).toEqual(["Should the agent only consider clean-title vehicles?"]);
     expect(body.reply).not.toContain("가격, 상태, 안전성 중");
-    expect(body.advisor_plan.nextAction.action).toBe("recommend");
 
     await app.close();
   });

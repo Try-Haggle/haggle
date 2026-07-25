@@ -247,22 +247,34 @@ function taxonomyCategorySlots(listings: ListingForRequirements[]): TagRequireme
     slotId: c.id,
     tagPath: "taxonomy",
     label: c.id,
-    questionKo: c.questionKo,
+    // BUYER-facing: elicit the buyer's REQUIREMENT ("do you require X?"), not a fact
+    // the buyer cannot state ("is X true?"). The verification-framed `questionKo` is for
+    // the runtime/seller; here the buyer configures what their agent should insist on.
+    questionKo: c.buyerAskKo ?? c.questionKo,
     stage: "advisor_recommendation" as const,
-    // Advisory / non-blocking. There is no per-check satisfaction logic for taxonomy
-    // slot ids yet, so a HARD (blocking) slot could never be marked satisfied and would
-    // wedge the buyer flow (re-asking forever). Keep taxonomy slots SOFT until a
-    // satisfaction path exists; the check's own hard/soft still drives the
-    // negotiation-runtime prompt (P3, [필수]/[권장]).
-    enforcement: "soft" as const,
-    priority: 70,
-    aliases: [],
+    // Respect the taxonomy check's own hard/soft. A HARD taxonomy check (vehicle
+    // title, clothing authenticity, iPhone IMEI/Find My) becomes a blocking slot so
+    // the builder actually asks it — but ONLY because it now has a satisfaction path:
+    // `memorySatisfiesSlot` clears a taxonomy slot when its answerHints match OR the
+    // buyer waves it off (no-preference). A hard check WITHOUT answerHints would have
+    // no satisfaction path and wedge the flow, so we fall back to soft for those.
+    enforcement:
+      c.enforcement === "hard" && (c.answerHints?.length ?? 0) > 0
+        ? ("hard" as const)
+        : ("soft" as const),
+    priority: c.enforcement === "hard" ? 65 : 70,
+    aliases: c.answerHints ?? [],
   }));
 }
 
 export function buildAdvisorRequirementPlan(input: {
   memory: NegotiationAgentBuilderMemoryForRequirements;
   listings: ListingForRequirements[];
+  /**
+   * Questions asked on the PREVIOUS turn. A taxonomy gate already asked is treated as
+   * addressed and not re-asked (see memorySatisfiesSlot "ask once"). Defaults to none.
+   */
+  askedQuestions?: readonly string[];
 }): TagRequirementPlan {
   const matchedTags = resolveMatchedTags(input.memory, input.listings);
   const tagSlots = matchedTags.flatMap((tag) => TAG_REQUIREMENTS[tag] ?? []);
@@ -284,7 +296,7 @@ export function buildAdvisorRequirementPlan(input: {
     const scopeMismatch = getHardSlotScopeMismatch(input.memory, slot, activeScope);
     if (scopeMismatch) return [buildScopeConfirmationSlot(slot, scopeMismatch)];
 
-    return memorySatisfiesSlot(input.memory, slot) ? [] : [slot];
+    return memorySatisfiesSlot(input.memory, slot, input.askedQuestions ?? []) ? [] : [slot];
   });
   const blockingSlots = missingSlots.filter((slot) => slot.enforcement === "hard");
   const nextSlot = blockingSlots[0] ?? missingSlots[0] ?? null;
@@ -356,6 +368,7 @@ function listingMatchesMemoryIntent(listing: ListingForRequirements, memoryText:
 function memorySatisfiesSlot(
   memory: NegotiationAgentBuilderMemoryForRequirements,
   slot: TagRequirementSlot,
+  askedQuestions: readonly string[] = [],
 ): boolean {
   if (slot.slotId === "shopping_intent") return hasShoppingIntent(memory.categoryInterest);
   if (slot.slotId === "max_budget") return Boolean(memory.budgetMax);
@@ -381,6 +394,25 @@ function memorySatisfiesSlot(
   }
   if (slot.slotId === "carrier_lock") {
     return hasCarrierDecision(memoryText) || hasCarrierNoPreference(memoryText);
+  }
+
+  // Taxonomy-sourced gates (vehicle title, clothing authenticity, iPhone IMEI/Find My)
+  // are satisfied when EITHER:
+  //  (a) the buyer volunteered/addressed the topic — an answerHint keyword matches, OR
+  //  (b) the gate was already asked on a PREVIOUS turn (its question is in
+  //      askedQuestions). The buyer had their turn to answer, so we treat it as
+  //      addressed and never badger with the same gate twice — whatever they replied
+  //      ("rebuilt is okay", "sure", a Korean phrase, …). Keyword matching alone
+  //      re-asks whenever the answer lacks the exact topic word, which contradicts the
+  //      buyer; this "ask once" signal fixes that.
+  // A blanket no-preference is deliberately NOT accepted (it would fail-open every
+  // still-unasked gate at once). The flow can never wedge: a gate is force-asked
+  // exactly once, then satisfied.
+  if (slot.tagPath === "taxonomy") {
+    return (
+      slot.aliases.some((alias) => memoryText.includes(alias.toLowerCase())) ||
+      askedQuestions.includes(slot.questionKo)
+    );
   }
 
   return slot.aliases.some((alias) => memoryText.includes(alias.toLowerCase()));

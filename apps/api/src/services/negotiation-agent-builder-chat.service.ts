@@ -883,6 +883,7 @@ export async function processNegotiationAgentBuilderTurn(
   const initialRequirementPlan = buildAdvisorRequirementPlan({
     memory: input.previous_memory,
     listings: input.listings,
+    askedQuestions: input.previous_memory.questions,
   });
   const initialCandidatePlan = buildAdvisorCandidatePlan({
     listings: input.listings,
@@ -902,21 +903,20 @@ export async function processNegotiationAgentBuilderTurn(
   // sense without a listing. Only a buyer ON a listing uses the planner.
   const usePlanner = input.side === "buyer" && hasListingContext;
 
-  const response = await callLLM(
-    `You are the Haggle negotiation-agent builder assistant, helping a ${input.side.toUpperCase()} configure their negotiation agent.
+  const advisorSystemPrompt = `You are the Haggle negotiation-agent builder assistant, helping a ${input.side.toUpperCase()} configure their negotiation agent.
 Your task is context engineering: update the user's memory from the latest message and decide whether one essential follow-up question is needed.
 
 Side & price direction:
 - ${sem.promptHint}
 - ${
-      input.side === "seller"
-        ? hasListingContext
-          ? "The seller already set their asking price and floor on the listing. Do not ask about price; never call it a 'budget'."
-          : "This is a reusable agent not tied to any listing, so price is decided per-listing later and is unknown now. Do NOT ask about asking price, floor, or budget — gather negotiation posture instead."
-        : hasListingContext
-          ? "Ask about the user's ideal price and the most they will pay (budget)."
-          : "This is a reusable agent not tied to any listing, so budget is decided per-listing later and is unknown now. Do NOT ask for a budget or target price — gather must-haves, deal-breakers, and negotiation style instead."
-    }
+    input.side === "seller"
+      ? hasListingContext
+        ? "The seller already set their asking price and floor on the listing. Do not ask about price; never call it a 'budget'."
+        : "This is a reusable agent not tied to any listing, so price is decided per-listing later and is unknown now. Do NOT ask about asking price, floor, or budget — gather negotiation posture instead."
+      : hasListingContext
+        ? "Ask about the user's ideal price and the most they will pay (budget)."
+        : "This is a reusable agent not tied to any listing, so budget is decided per-listing later and is unknown now. Do NOT ask for a budget or target price — gather must-haves, deal-breakers, and negotiation style instead."
+  }
 ${
   input.side === "seller"
     ? `HARD SELLER RULES (these OVERRIDE any buyer-oriented rule below):
@@ -959,6 +959,7 @@ ${
   input.side === "buyer"
     ? hasListingContext
       ? `- Infer budgetMax and targetPrice only from explicit budget/price.
+- NEVER read a non-price number as budget/price. Mileage ("25000 or under", "under 30k miles"), battery %, model/year, cycle count, storage size, or any measurement is NOT budget — leave budgetMax/targetPrice unchanged for those. Only a number the buyer frames as their spend/budget/price is budgetMax/targetPrice. Record a mileage answer as a preference (e.g. mustHave "mileage <= 25000"), not as budget.
 - budgetMax and targetPrice are user-facing USD dollars, not cents. If the buyer says "450", "$450", or "450 dollars", store 450.
 - targetPrice should be slightly below budgetMax when reasonable.
 - Do not decide required follow-up slots from intuition. Tag Garden requirement slots below are authoritative.
@@ -975,6 +976,7 @@ ${
 - Do NOT make battery health, carrier unlock, IMEI, or box mandatory by default. They are mandatory only when Tag Garden says the matched item tag requires them.
 - If the user says they want box/original box/full package, record "original box included"; box itself is not a required iPhone slot unless Tag Garden marks it required.
 - If no advisor_recommendation slot is missing after updating memory, questions must be [].
+- CLOSING: this page BUILDS/CONFIGURES the buyer's agent — it does NOT run the negotiation (the user starts that later with a separate "Start Negotiation" button). So when nothing essential is missing, do NOT propose to "start", "begin", or "open" the negotiation, and do NOT say "ready to begin". Instead, confirm the agent is configured and ready, and invite any further input — e.g. "Your agent is set to target $X with a $Y ceiling and a clean/rebuilt-title preference. Anything else you'd like it to prioritize or watch out for?"
 - If the budget is below all listing ask prices, keep the budget as stated and explain the negotiation will need a lower anchor or an older/safer-fit model; do not invent missing constraints.`
       : `- This is a reusable buying agent not tied to any listing. Do NOT ask for a budget or target price — budget is set per-listing later.
 - Do NOT ask what product they are looking for, and do NOT run product or Tag Garden requirement questions; there is no listing yet.
@@ -994,6 +996,7 @@ ${
 - Avoid overly dramatic, poetic, or cheesy phrases. Be natural, professional, and direct.
 - When asking a follow-up question, ask directly without unnecessary filler.
 - Reply in English, naturally, one or two sentences.
+- CRITICAL: write the ENTIRE "reply" in English only — never output Korean (or any non-English) characters. Requirement/candidate questions may be provided to you in Korean; translate them into natural English before asking. The reply must contain zero Korean text.
 
 Return valid JSON only:
 {
@@ -1026,8 +1029,9 @@ Strategy tuning:
 - "strategy" reflects the agent's negotiation numbers (4 weights that sum to ~1.0, plus four curves). The current values are given below.
 - If the latest message implies a behavior change (e.g. "more aggressive", "be patient", "hold firm", "close fast", "I care about a trustworthy counterparty"), return an UPDATED "strategy" reflecting it. Otherwise return the current values unchanged.
 - Envelopes: alpha,beta in [0.3,3.0]; u_threshold,u_aspiration in [0.3,0.85] with u_aspiration > u_threshold. weights each in [0,1] and sum to ~1.0.
-- Higher beta = concedes faster; higher u_threshold/u_aspiration = pickier (walks away more). Raise w_p for price focus, w_t for speed, w_r for counterparty risk, w_s for relationship.`,
-    `Current strategy:
+- Higher beta = concedes faster; higher u_threshold/u_aspiration = pickier (walks away more). Raise w_p for price focus, w_t for speed, w_r for counterparty risk, w_s for relationship.`;
+
+  const advisorUserPrompt = `Current strategy:
 ${input.current_strategy ? JSON.stringify(input.current_strategy) : "(none — use sensible defaults if you must)"}
 
 Previous memory:
@@ -1047,12 +1051,19 @@ ${
 }
 
 Candidate planner:
-${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no listing context."}`,
-    {
-      correlationId: "intelligence-demo-advisor-turn",
-      maxTokens: 2400,
-    },
-  );
+${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no listing context."}`;
+
+  // deepseek-v4-pro is a REASONING model: it emits reasoning_content before the JSON
+  // answer, so a full builder turn commonly runs ~30s — right at callLLM's default 30s
+  // ceiling, which surfaced as intermittent timeout 502s as the conversation (and its
+  // context) grew. Give it a generous token budget (avoid truncation) AND a longer
+  // timeout so the reasoning can finish. (A faster model like deepseek-v4-flash would
+  // cut latency, but that's a separate model-quality decision.)
+  const response = await callLLM(advisorSystemPrompt, advisorUserPrompt, {
+    correlationId: "intelligence-demo-advisor-turn",
+    maxTokens: 6000,
+    timeoutMs: 90_000,
+  });
 
   if (response.finish_reason === "length") {
     throw new Error("Negotiation advisor response was truncated");
@@ -1109,6 +1120,7 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     ? buildAdvisorRequirementPlan({
         memory,
         listings: input.listings,
+        askedQuestions: input.previous_memory.questions,
       })
     : EMPTY_TAG_REQUIREMENT_PLAN;
   const finalCandidatePlan = applyRequirementGateToCandidatePlan(
@@ -3196,6 +3208,7 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   const latestIsNonBudgetNumeric =
     (hasPercentNumber(context.latestMessage) ||
       hasProductModelNumber(context.latestMessage) ||
+      hasMeasurementContext(context.latestMessage, context.previousMemory) ||
       isShortModelAnswerToPendingQuestion(context.latestMessage, context.previousMemory)) &&
     !hasExplicitMoneyUnit(context.latestMessage);
 
@@ -3239,6 +3252,7 @@ function extractExplicitDollarBudget(
   if (
     hasPercentNumber(text) ||
     hasProductModelNumber(text) ||
+    hasMeasurementContext(text, previousMemory) ||
     isShortModelAnswerToPendingQuestion(text, previousMemory)
   )
     return undefined;
@@ -3306,6 +3320,31 @@ function isShortModelAnswerToPendingQuestion(
 
 function hasExplicitMoneyUnit(text: string): boolean {
   return /[$]|(?:usd|dollars?|bucks?|달러|불)\b/i.test(text);
+}
+
+/**
+ * True when a numeric answer is about a NON-price measurement (mileage, cycles, size,
+ * storage, specs) rather than budget — either the message itself names the unit, or it
+ * answers a previous non-price taxonomy question. Without this, "for mileage, 25000 or
+ * under" reads its 25000 as the buyer's budget and corrupts the price ceiling.
+ */
+function hasMeasurementContext(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): boolean {
+  if (
+    /\b(?:mile|miles|mileage|mi|km|kilomet|주행|주행거리|cycle|cycles|사이클|size|사이즈|gb|tb|ram|cpu)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // A bare number answering a non-price taxonomy gate (mileage/specs/size/service).
+  return (
+    previousMemory?.questions.some((q) =>
+      /mileage|mile|service history|cycle|storage|spec|size|cpu|ram/i.test(q),
+    ) ?? false
+  );
 }
 
 function normalizeTargetAgainstBudget(

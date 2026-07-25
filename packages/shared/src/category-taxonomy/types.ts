@@ -13,8 +13,19 @@ export type CheckEnforcement = "hard" | "soft";
 export interface NegotiationCheck {
   /** Stable id, unique across the taxonomy. */
   id: string;
-  /** Human question surfaced by the builders / point to verify in negotiation. */
+  /**
+   * Verification-framed question — "is X true?" — for the negotiation RUNTIME and the
+   * SELLER (the party who can state the fact). e.g. "명의가 명확한가요?".
+   */
   questionKo: string;
+  /**
+   * Requirement-framed question for the BUYER agent-builder — "do you require X?".
+   * The buyer cannot state a fact about the seller's item, so the builder must elicit
+   * the buyer's PREFERENCE (which the agent later verifies with the seller). e.g.
+   * "명의가 깨끗한 매물만 볼까요?". Consumers surfacing a check to the buyer should
+   * prefer this and fall back to `questionKo` when absent.
+   */
+  buyerAskKo?: string;
   /**
    * Links to an engine feature (a FEATURE_SCHEMA key in @haggle/engine-core) when
    * this check is priceable or gated. Referenced as a string to keep shared free of
@@ -22,6 +33,14 @@ export interface NegotiationCheck {
    */
   featureKey?: string;
   enforcement: CheckEnforcement;
+  /**
+   * Keywords/phrases that indicate this check has been ADDRESSED in a buyer's stated
+   * requirements (e.g. "명의", "정품", "imei"). Consumers use these to decide when a
+   * hard check is satisfied — without them a hard check has no satisfaction path and
+   * would wedge a requirement flow into infinite re-asking. Required for any check
+   * that a consumer promotes to a blocking/hard slot.
+   */
+  answerHints?: string[];
 }
 
 /** A node in the category hierarchy. */

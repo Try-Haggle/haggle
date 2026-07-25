@@ -3141,6 +3141,7 @@ function normalizeNegotiationAgentBuilderBudgetMemory(
   const latestIsNonBudgetNumeric =
     (hasPercentNumber(context.latestMessage) ||
       hasProductModelNumber(context.latestMessage) ||
+      hasMeasurementContext(context.latestMessage, context.previousMemory) ||
       isShortModelAnswerToPendingQuestion(context.latestMessage, context.previousMemory)) &&
     !hasExplicitMoneyUnit(context.latestMessage);
 
@@ -3184,6 +3185,7 @@ function extractExplicitDollarBudget(
   if (
     hasPercentNumber(text) ||
     hasProductModelNumber(text) ||
+    hasMeasurementContext(text, previousMemory) ||
     isShortModelAnswerToPendingQuestion(text, previousMemory)
   )
     return undefined;
@@ -3251,6 +3253,30 @@ function isShortModelAnswerToPendingQuestion(
 
 function hasExplicitMoneyUnit(text: string): boolean {
   return /[$]|(?:usd|dollars?|bucks?|달러|불)\b/i.test(text);
+}
+
+/**
+ * True when a numeric answer is about a NON-price measurement (mileage, cycles, size,
+ * storage, specs) rather than budget — either the message names the unit or it answers
+ * a previous non-price taxonomy question. Without this, "for mileage, 25000 or under"
+ * reads 25000 as the buyer's budget and corrupts the price ceiling.
+ */
+function hasMeasurementContext(
+  text: string,
+  previousMemory?: NegotiationAgentBuilderMemory,
+): boolean {
+  if (
+    /\b(?:mile|miles|mileage|mi|km|kilomet|주행|주행거리|cycle|cycles|사이클|size|사이즈|gb|tb|ram|cpu)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return (
+    previousMemory?.questions.some((q) =>
+      /mileage|mile|service history|cycle|storage|spec|size|cpu|ram/i.test(q),
+    ) ?? false
+  );
 }
 
 function normalizeTargetAgainstBudget(

@@ -45,31 +45,155 @@ describe("Tag Garden advisor requirements", () => {
     expect(ids).toContain("mileage");
     expect(ids).toContain("title_status");
     expect(ids).not.toContain("imei_verification");
-    // Taxonomy slots must be advisory/non-blocking (no satisfaction logic yet) —
-    // otherwise a hard slot with no way to satisfy it would wedge the flow forever.
-    expect(
+    // SAT: the taxonomy HARD gate (vehicle title) now blocks so the builder actually
+    // asks it; advisory checks (mileage/service) stay soft.
+    const enforcementBySlot = new Map(
       plan.requiredSlots
         .filter((s) => s.tagPath === "taxonomy")
-        .every((s) => s.enforcement === "soft"),
-    ).toBe(true);
+        .map((s) => [s.slotId, s.enforcement]),
+    );
+    expect(enforcementBySlot.get("title_status")).toBe("hard");
+    expect(enforcementBySlot.get("mileage")).toBe("soft");
+    expect(plan.blockingSlots.map((s) => s.slotId)).toContain("title_status");
+  });
+
+  const vehicleListing = {
+    title: "2019 Toyota Camry",
+    condition: "clean title, 40k miles",
+    tags: ["toyota-camry", "sedan"],
+    category: "vehicles",
+  };
+
+  it("vehicle title gate CLEARS once the buyer addresses it — no wedge", () => {
+    const plan = buildAdvisorRequirementPlan({
+      memory: memory({
+        categoryInterest: "중고차 알아보는 중",
+        budgetMax: 10000,
+        source: ["명의/등록증 깨끗한 걸로 볼게요"],
+      }),
+      listings: [vehicleListing],
+    });
     expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("title_status");
   });
 
-  it("iPhone reached via taxonomy (no 'iphone' token in memory yet) does not hard-block on IMEI", () => {
+  it("vehicle title gate CLEARS when the buyer waves it off (no-preference) — no wedge", () => {
     const plan = buildAdvisorRequirementPlan({
-      memory: memory({ categoryInterest: "electronics", budgetMax: 800, source: ["예산 800"] }),
-      listings: [
-        {
-          title: "iPhone 15 Pro 256GB",
-          condition: "good",
-          tags: ["iphone-15-pro"],
-          category: "electronics",
-        },
-      ],
+      memory: memory({
+        categoryInterest: "중고차 알아보는 중",
+        budgetMax: 10000,
+        source: ["명의는 상관없어요"],
+      }),
+      listings: [vehicleListing],
     });
-    // imei surfaces (helpful) but must not block the buyer flow.
-    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("imei_verification");
-    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("find_my_status");
+    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("title_status");
+  });
+
+  const iphoneTaxonomyListing = {
+    title: "iPhone 15 Pro 256GB",
+    condition: "good",
+    tags: ["iphone-15-pro"],
+    category: "electronics",
+  };
+
+  it("iPhone via taxonomy: IMEI/Find My gates BLOCK (asked) but are satisfiable — no wedge", () => {
+    const unanswered = buildAdvisorRequirementPlan({
+      memory: memory({ categoryInterest: "electronics", budgetMax: 800, source: ["예산 800"] }),
+      listings: [iphoneTaxonomyListing],
+    });
+    // Now the gate is asked (blocks) — that is the point of SAT.
+    expect(unanswered.blockingSlots.map((s) => s.slotId)).toContain("imei_verification");
+
+    // …and answering it clears the block (no infinite re-ask).
+    const answered = buildAdvisorRequirementPlan({
+      memory: memory({
+        categoryInterest: "electronics",
+        budgetMax: 800,
+        source: ["imei 깨끗한지랑 아이클라우드 해제됐는지 확인할게요"],
+      }),
+      listings: [iphoneTaxonomyListing],
+    });
+    expect(answered.blockingSlots.map((s) => s.slotId)).not.toContain("imei_verification");
+    expect(answered.blockingSlots.map((s) => s.slotId)).not.toContain("find_my_status");
+  });
+
+  it("clothing authenticity gate blocks then clears when addressed — no wedge", () => {
+    const clothing = {
+      title: "Nike Air Jordan 1",
+      condition: "good",
+      tags: ["jordan", "sneakers"],
+      category: "fashion",
+    };
+    const unanswered = buildAdvisorRequirementPlan({
+      memory: memory({ categoryInterest: "신발", budgetMax: 300, source: ["예산 300"] }),
+      listings: [clothing],
+    });
+    expect(unanswered.blockingSlots.map((s) => s.slotId)).toContain("authenticity");
+
+    const answered = buildAdvisorRequirementPlan({
+      memory: memory({
+        categoryInterest: "신발",
+        budgetMax: 300,
+        source: ["정품 택이랑 영수증 있어야 해요"],
+      }),
+      listings: [clothing],
+    });
+    expect(answered.blockingSlots.map((s) => s.slotId)).not.toContain("authenticity");
+  });
+
+  it("does NOT re-ask a taxonomy gate already asked last turn, whatever the buyer replied (ask once)", () => {
+    // Buyer answered the title gate with "rebuilt is okay" — a real answer that lacks
+    // the topic keyword. Without ask-once, keyword matching would re-ask "clean title?"
+    // and contradict them. askedQuestions carries the gate's question from last turn.
+    const plan = buildAdvisorRequirementPlan({
+      memory: memory({ categoryInterest: "중고차", budgetMax: 10000, source: ["rebuilt is okay"] }),
+      listings: [vehicleListing],
+      askedQuestions: ["Should the agent only consider clean-title vehicles?"],
+    });
+    expect(plan.blockingSlots.map((s) => s.slotId)).not.toContain("title_status");
+  });
+
+  it("STILL asks a taxonomy gate that was never asked (ask-once does not suppress the first ask)", () => {
+    const plan = buildAdvisorRequirementPlan({
+      memory: memory({ categoryInterest: "중고차", budgetMax: 10000, source: ["예산 만불"] }),
+      listings: [vehicleListing],
+      askedQuestions: [], // nothing asked yet
+    });
+    expect(plan.blockingSlots.map((s) => s.slotId)).toContain("title_status");
+  });
+
+  it("does NOT clear taxonomy safety gates on unrelated messages or a generic no-preference (fail-open guard)", () => {
+    // Each of these buyer messages is about something ELSE; the gate must stay blocking.
+    const stillBlocks = (
+      listing: { title: string; condition: string; tags: string[]; category: string },
+      slotId: string,
+      source: string[],
+    ) => {
+      const plan = buildAdvisorRequirementPlan({
+        memory: memory({ categoryInterest: "찾는 중", budgetMax: 1000, source }),
+        listings: [listing],
+      });
+      expect(plan.blockingSlots.map((s) => s.slotId)).toContain(slotId);
+    };
+
+    // vehicle title: "이전에 봤던 차" (before) and a generic no-preference must NOT clear it.
+    stillBlocks(vehicleListing, "title_status", ["이전에 봤던 차 알아봐줘"]);
+    stillBlocks(vehicleListing, "title_status", ["딱히 조건 없어요"]);
+
+    const clothing = {
+      title: "Nike Air Jordan 1",
+      condition: "good",
+      tags: ["jordan", "sneakers"],
+      category: "fashion",
+    };
+    // authenticity: "택배"(delivery) must NOT clear it.
+    stillBlocks(clothing, "authenticity", ["택배로 받고 싶어요"]);
+
+    // imei: general condition words must NOT clear it.
+    stillBlocks(iphoneTaxonomyListing, "imei_verification", ["정상 작동하는 폰이면 좋겠어"]);
+    stillBlocks(iphoneTaxonomyListing, "imei_verification", ["수리 이력 없는 걸로 보여줘"]);
+
+    // find_my: carrier-unlock "잠금 해제" must NOT clear the iCloud gate.
+    stillBlocks(iphoneTaxonomyListing, "find_my_status", ["통신사 잠금 해제된 걸로"]);
   });
 
   it("preserves the rich iPhone slots (taxonomy does not override the hardcoded map)", () => {
