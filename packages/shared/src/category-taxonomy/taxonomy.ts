@@ -111,16 +111,19 @@ export function getCategoryNode(path: string): CategoryNode | undefined {
 }
 
 /**
- * Resolve the negotiation checks for a set of item tags, with hierarchical
- * inheritance: a matched node contributes its own checks plus every ancestor's.
+ * Resolve the category node paths a set of item tags match, broadest ancestor
+ * first (each matched node contributes its own path plus every ancestor's).
  *
  * A node matches if any tag — or a token of a hyphenated/spaced tag — equals the
  * node's exact path, its leaf segment, or an alias. Tokenizing is essential for
  * real listings: production tags look like "iphone-15-pro" / "space-black", so the
  * "iphone" token must still match the iphone node (otherwise real phones would lose
- * their IMEI/battery checks). Deduped by check id (broadest ancestor first).
+ * their IMEI/battery checks).
+ *
+ * Exposed so the dynamic-learning overlay (resolveChecksWithLearned) can decide
+ * which learned checks apply to a tag set with the same matching + inheritance rules.
  */
-export function resolveChecks(tags: readonly string[]): NegotiationCheck[] {
+export function matchedCategoryPaths(tags: readonly string[]): string[] {
   const candidates = new Set<string>();
   for (const raw of tags) {
     const t = raw.trim().toLowerCase();
@@ -143,7 +146,16 @@ export function resolveChecks(tags: readonly string[]): NegotiationCheck[] {
     }
   }
 
-  const ordered = [...matchedPaths].sort((a, b) => a.split("/").length - b.split("/").length);
+  return [...matchedPaths].sort((a, b) => a.split("/").length - b.split("/").length);
+}
+
+/**
+ * Resolve the negotiation checks for a set of item tags, with hierarchical
+ * inheritance: a matched node contributes its own checks plus every ancestor's.
+ * Deduped by check id (broadest ancestor first).
+ */
+export function resolveChecks(tags: readonly string[]): NegotiationCheck[] {
+  const ordered = matchedCategoryPaths(tags);
   const seen = new Set<string>();
   const out: NegotiationCheck[] = [];
   for (const p of ordered) {
