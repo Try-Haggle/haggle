@@ -9,13 +9,28 @@ vi.mock("@easypost/api", () => {
   return {
     default: class EasyPostClient {
       Tracker = {
-        create: async (params: any) => ({
-          id: "trk_mock",
-          tracking_code: params.tracking_code,
-          status: "unknown",
-          carrier: params.carrier ?? "USPS",
-          public_url: "https://track.example.com/mock",
-        }),
+        create: async (params: any) => {
+          const testStatuses: Record<string, string> = {
+            EZ1000000001: "pre_transit",
+            EZ2000000002: "in_transit",
+            EZ3000000003: "out_for_delivery",
+            EZ4000000004: "delivered",
+          };
+          const status = testStatuses[params.tracking_code] ?? "unknown";
+          return {
+            id: `trk_${status}`,
+            tracking_code: params.tracking_code,
+            status,
+            carrier: params.carrier ?? "USPS",
+            public_url: "https://track.example.com/mock",
+            tracking_details: [
+              {
+                datetime: "2026-07-21T12:00:00.000Z",
+                message: `Test tracker is ${status}`,
+              },
+            ],
+          };
+        },
       };
       Shipment = {
         create: async (_params: any) => ({
@@ -428,5 +443,25 @@ describe("EasyPostCarrierAdapter label generation", () => {
 
   it("throws when no request and no tracking number", async () => {
     await expect(adapter.createLabel(mockShipment)).rejects.toThrow(/no tracking_number/);
+  });
+});
+
+describe("EasyPostCarrierAdapter test tracking", () => {
+  it("verifies EasyPost's delivered test fixture", async () => {
+    const adapter = new EasyPostCarrierAdapter({ api_key: "EZTK_test", is_test: true });
+    const result = await adapter.trackTestStatus("delivered");
+
+    expect(result.canonical_status).toBe("DELIVERED");
+    expect(result.carrier_raw_status).toBe("delivered");
+    expect(result.metadata).toMatchObject({
+      easypost_tracker_id: "trk_delivered",
+      easypost_test_tracking_code: "EZ4000000004",
+      easypost_test_status_verified: true,
+    });
+  });
+
+  it("rejects test fixtures when configured with a production key", async () => {
+    const adapter = new EasyPostCarrierAdapter({ api_key: "EZAK_live", is_test: false });
+    await expect(adapter.trackTestStatus("delivered")).rejects.toThrow(/requires a test API key/);
   });
 });

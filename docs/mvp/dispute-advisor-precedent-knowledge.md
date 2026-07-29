@@ -12,10 +12,10 @@ Advisor는 법원이나 법률 자문 서비스가 아니다. 전문적인 플�
 2. 후보에는 source dispute ID, reason code, outcome, 원본 snapshot hash만 저장한다. 당사자 증거와 판정문 원문은 복사하지 않는다.
 3. 별도 오프라인 절차에서 개인정보를 제거한 사실 요약, 쟁점, 판단 원칙, 증거 프로필, 구별 요소, 구제 내용을 작성한다.
 4. 분석 결과는 `DRAFT`로 저장하고 지정 검토자가 승인한다.
-5. `APPROVED` 상태이면서 효력 기간 안에 있는 분석만 Advisor 컨텍스트에 들어간다.
-6. Advisor 메시지 metadata에 사용한 precedent ID와 analysis version을 남긴다.
+5. `APPROVED` 상태이면서 효력 기간 안에 있는 분석만 Advisor와 Resolution Assessor 컨텍스트에 들어간다.
+6. Advisor 메시지 metadata와 AI 판정 감사 payload에 사용한 precedent ID, analysis/policy version, snapshot hash를 남긴다.
 
-요청 시점 DeepSeek 호출은 5단계의 승인 요약을 읽고 설명만 작성한다. 원문 판례 분석, 후보 승인, 정책 변경은 할 수 없다.
+요청 시점 DeepSeek 호출은 5단계의 승인 요약만 읽는다. 원문 판례 분석, 후보 승인, 정책 변경은 할 수 없다. Resolution Assessor에는 현재 사건과 같은 reason code의 승인 판례만 최대 5개 전달하며 승인 판례가 없으면 빈 목록을 명시적으로 전달한다. 실제 판정 경로에서 코드에 내장된 예시를 승인 판례인 것처럼 사용하지 않는다.
 
 ## 상태 모델
 
@@ -70,4 +70,7 @@ Advisor는 법원이나 법률 자문 서비스가 아니다. 전문적인 플�
 - 승인 권한은 일반 사용자 API에 노출하지 않는다.
 - 원본 증거, 주소, 이메일, 지갑 주소를 판례 요약에 넣지 않는다.
 - 분석 및 정책 버전과 사용한 판례 ID를 감사 metadata에 남긴다.
+- 승인 판례 snapshot이 바뀌면 동일 evidence라도 기존 AI 판정을 idempotent 결과로 재사용하지 않는다.
 - migration 적용, cron 활성화, staging/production 배포는 명시적 승인 후 수행한다.
+
+콜드스타트, Seed/Holdout 분리, 실제 수렴 기준은 [분쟁 판례 콜드스타트·수렴 실제 테스트](../wip/dispute-precedent-cold-start-and-convergence-test.md)를 따른다.

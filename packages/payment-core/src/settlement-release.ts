@@ -193,6 +193,35 @@ export function completeBufferRelease(release: SettlementRelease, now: string): 
   };
 }
 
+/**
+ * Complete the APV buffer immediately for a verified provider test shipment.
+ * Runtime policy must ensure this is never reachable for production assets or
+ * production carrier credentials.
+ */
+export function completeVerifiedTestBufferRelease(
+  release: SettlementRelease,
+  now: string,
+): SettlementRelease {
+  if (release.product_release_status !== "RELEASED") {
+    throw new Error("Cannot release test buffer before buyer receipt confirmation");
+  }
+  if (release.buffer_release_status === "RELEASED") {
+    return release;
+  }
+  if (release.buffer_release_status !== "HELD" || release.apv_adjustment_minor !== 0) {
+    throw new Error("Cannot release test buffer while an APV adjustment is active");
+  }
+  return {
+    ...release,
+    product_amount: { ...release.product_amount },
+    buffer_amount: { ...release.buffer_amount },
+    buffer_release_status: "RELEASED",
+    buffer_released_at: now,
+    buffer_final_amount_minor: release.buffer_amount.amount_minor,
+    updated_at: now,
+  };
+}
+
 export function computeReleasePhase(release: SettlementRelease): OverallReleasePhase {
   if (release.product_release_status === "PENDING_DELIVERY") {
     return "AWAITING_DELIVERY";

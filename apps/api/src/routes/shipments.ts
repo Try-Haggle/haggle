@@ -150,6 +150,10 @@ const recordEventSchema = z.object({
   ).optional(),
 });
 
+const easypostTestTrackerSchema = z.object({
+  status: z.enum(["in_transit", "out_for_delivery", "delivered"]),
+});
+
 const apvSellerReviewSchema = z.object({
   request_id: z.string().uuid(),
   reason: z.string().trim().min(20).max(2000),
@@ -312,6 +316,14 @@ const _webhookSchema = z.object({
 
 function requiresRealShippingProvider(): boolean {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function allowsEasyPostTestTracking(): boolean {
+  return (
+    process.env.HAGGLE_ENV === "staging" &&
+    Boolean(process.env.EASYPOST_API_KEY) &&
+    isEasyPostTestApiKey(process.env.EASYPOST_API_KEY ?? "")
+  );
 }
 
 function realShippingUnavailable(_error?: unknown) {
@@ -774,9 +786,10 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   const carriers: Record<string, import("@haggle/shipping-core").CarrierProvider> = {
     mock: new MockCarrierAdapter(),
   };
+  let easypost: EasyPostCarrierAdapter | null = null;
 
   if (easypostApiKey) {
-    const easypost = new EasyPostCarrierAdapter({
+    easypost = new EasyPostCarrierAdapter({
       api_key: easypostApiKey,
       is_test: isEasyPostTestApiKey(easypostApiKey),
     });
@@ -3149,6 +3162,124 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         responseBody as Record<string, unknown>,
       );
       return reply.code(201).send(responseBody);
+    },
+  );
+
+  // POST /shipments/:id/test-tracker — verify an EasyPost test state and apply it locally
+  app.post(
+    "/shipments/:id/test-tracker",
+    { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] },
+    async (request, reply) => {
+      if (!allowsEasyPostTestTracking()) {
+        return reply.code(404).send({ error: "EASYPOST_TEST_TRACKING_NOT_AVAILABLE" });
+      }
+      const testAdapter =
+        easypost ??
+        new EasyPostCarrierAdapter({
+          api_key: process.env.EASYPOST_API_KEY!,
+          is_test: true,
+        });
+
+      const parsed = easypostTestTrackerSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_TEST_TRACKER_STATUS", issues: parsed.error.issues });
+      }
+
+      const shipment = await getShipmentById(db, (request.params as { id: string }).id);
+      if (!shipment) {
+        return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      }
+      if (!shipment.label_url || typeof shipment.metadata?.easypost_shipment_id !== "string") {
+        return reply.code(409).send({
+          error: "EASYPOST_TEST_LABEL_REQUIRED",
+          message: "Purchase an EasyPost test label before advancing its test tracker",
+        });
+      }
+
+      const allowedPreviousStatuses: Record<(typeof parsed.data)["status"], string[]> = {
+        in_transit: ["LABEL_CREATED"],
+        out_for_delivery: ["IN_TRANSIT"],
+        delivered: ["IN_TRANSIT", "OUT_FOR_DELIVERY"],
+      };
+      if (!allowedPreviousStatuses[parsed.data.status].includes(shipment.status)) {
+        return reply.code(409).send({
+          error: "INVALID_TEST_TRACKER_TRANSITION",
+          current_status: shipment.status,
+          requested_status: parsed.data.status,
+        });
+      }
+
+      try {
+        const providerResult = await testAdapter.trackTestStatus(parsed.data.status);
+        const occurredAt = new Date();
+        const carrierResult = await applyCarrierShipmentEvent(db, {
+          shipmentId: shipment.id,
+          eventKey: `easypost-test:${shipment.id}:${parsed.data.status}`,
+          incomingStatus: providerResult.canonical_status,
+          occurredAt,
+          carrierRawStatus: providerResult.carrier_raw_status,
+          message:
+            providerResult.message ??
+            `EasyPost test tracker verified ${providerResult.carrier_raw_status}`,
+          location: providerResult.location,
+          timestampSource: "carrier",
+        });
+        if (!carrierResult) {
+          return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+        }
+
+        const verifiedShipment = {
+          ...carrierResult.shipment,
+          metadata: {
+            ...carrierResult.shipment.metadata,
+            easypost_test_tracker: {
+              ...providerResult.metadata,
+              fixture_type: "canned_tracking_code",
+              linked_label_tracking_number: shipment.tracking_number,
+              requested_status: parsed.data.status,
+              verified_at: occurredAt.toISOString(),
+            },
+          },
+        };
+        await updateShipmentRecord(db, verifiedShipment);
+        if (carrierResult.effectsRequired) {
+          await applyShipmentSideEffects({ shipment: verifiedShipment, trust_triggers: [] }, db, {
+            buyer_id: shipment.buyer_id,
+            seller_id: shipment.seller_id,
+          });
+        }
+        await auditShipmentAction(db, request, "shipment.test_tracker_verified", {
+          shipmentId: shipment.id,
+          orderId: shipment.order_id,
+          reason: "EasyPost test tracker status verified and applied",
+          metadata: {
+            requested_status: parsed.data.status,
+            provider_status: providerResult.carrier_raw_status,
+            provider_tracker_id: providerResult.metadata?.easypost_tracker_id,
+            provider_tracking_code: providerResult.metadata?.easypost_test_tracking_code,
+            fixture_type: "canned_tracking_code",
+          },
+        });
+
+        return reply.send({
+          shipment: verifiedShipment,
+          provider_verification: {
+            provider: "easypost",
+            mode: "test",
+            status: providerResult.carrier_raw_status,
+            tracker_id: providerResult.metadata?.easypost_tracker_id,
+            tracking_code: providerResult.metadata?.easypost_test_tracking_code,
+            fixture_type: "canned_tracking_code",
+          },
+        });
+      } catch {
+        return reply.code(502).send({
+          error: "EASYPOST_TEST_TRACKER_FAILED",
+          message: "EasyPost could not verify the requested test tracking status",
+        });
+      }
     },
   );
 

@@ -4,8 +4,10 @@ import { buildAdvisorSystemPrompt } from "../advisor/advisor-prompts.js";
 import { buildJobRegistry } from "../jobs/runner.js";
 import {
   buildApprovedPrecedentFilter,
+  buildDisputePrecedentSnapshot,
   formatApprovedDisputePrecedents,
   rankApprovedDisputePrecedents,
+  toResolutionAssessorPrecedentExamples,
 } from "../services/dispute-precedent.service.js";
 
 vi.mock("@haggle/db", async (importOriginal) => importOriginal());
@@ -103,6 +105,77 @@ describe("approved dispute precedent retrieval", () => {
     );
 
     expect(ranked.map((precedent) => precedent.id)).toEqual(["camera-match", "text-only"]);
+  });
+
+  it("maps reviewed analyses into conservative Resolution Assessor examples", () => {
+    const [example] = toResolutionAssessorPrecedentExamples([
+      {
+        id: "precedent-1",
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        outcome: "seller_favor",
+        facts_summary: "The received item matched the platform-stored listing baseline.",
+        issue_summary: "Whether the claimed condition difference was material.",
+        decision_principle:
+          "A claim without contradictory evidence does not displace the baseline.",
+        evidence_profile: {
+          evidence_types: ["listing_snapshot", "camera_capture"],
+          high_weight_evidence: ["listing_snapshot"],
+          material_gaps: ["no contradictory capture"],
+        },
+        distinguishing_factors: ["The listing baseline was complete."],
+        analysis_version: "analysis-v1",
+        policy_version: "policy-v2",
+        approved_at: "2026-07-18T12:00:00.000Z",
+      },
+    ]);
+
+    expect(example).toMatchObject({
+      id: "precedent-1",
+      case_type: "ITEM_NOT_AS_DESCRIBED",
+      outcome: "seller_favor",
+      confidence: "medium",
+      facts: [
+        "The received item matched the platform-stored listing baseline.",
+        "Whether the claimed condition difference was material.",
+      ],
+    });
+    expect(example?.evidence_pattern).toContain("high weight: listing_snapshot");
+    expect(example?.rationale).toContain("The listing baseline was complete.");
+  });
+
+  it("creates an order-independent snapshot over precedent content and versions", () => {
+    const first = {
+      id: "precedent-a",
+      reason_code: "ITEM_NOT_RECEIVED",
+      outcome: "buyer_favor" as const,
+      facts_summary: "facts a",
+      issue_summary: "issue a",
+      decision_principle: "principle a",
+      evidence_profile: {
+        evidence_types: ["tracking_snapshot"],
+        high_weight_evidence: ["carrier_record"],
+        material_gaps: [],
+      },
+      distinguishing_factors: [],
+      analysis_version: "analysis-v1",
+      policy_version: "policy-v2",
+      approved_at: "2026-07-18T12:00:00.000Z",
+    };
+    const second = {
+      ...first,
+      id: "precedent-b",
+      outcome: "no_action" as const,
+      facts_summary: "facts b",
+      analysis_version: "analysis-v2",
+    };
+
+    const forward = buildDisputePrecedentSnapshot([first, second]);
+    const reverse = buildDisputePrecedentSnapshot([second, first]);
+
+    expect(forward).toEqual(reverse);
+    expect(forward.ids).toEqual(["precedent-a", "precedent-b"]);
+    expect(forward.analysis_versions).toEqual(["analysis-v1", "analysis-v2"]);
+    expect(forward.sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 });
 

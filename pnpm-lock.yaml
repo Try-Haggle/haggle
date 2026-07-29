@@ -223,6 +223,9 @@ importers:
       '@amplitude/analytics-browser':
         specifier: ^2.38.0
         version: 2.38.0
+      '@haggle/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@haggle/shared':
         specifier: workspace:*
         version: link:../../packages/shared

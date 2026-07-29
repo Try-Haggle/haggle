@@ -33,6 +33,10 @@ export interface ShipmentRow extends Shipment {
   seller_id: string;
   buyer_id: string;
   shipment_type: string;
+  selected_rate_id?: string;
+  label_created_at?: string;
+  shipped_at?: string;
+  shipment_input_due_at?: string;
 }
 
 function getStringMetadataValue(
@@ -53,6 +57,10 @@ function mapShipment(row: typeof shipments.$inferSelect): ShipmentRow {
     seller_id: row.sellerId,
     buyer_id: row.buyerId,
     shipment_type: row.shipmentType,
+    selected_rate_id: row.selectedRateId ?? undefined,
+    label_created_at: toIso(row.labelCreatedAt),
+    shipped_at: toIso(row.shippedAt),
+    shipment_input_due_at: toIso(row.shipmentInputDueAt),
     status: row.status as ShipmentStatus,
     carrier: row.carrier ?? "unknown",
     tracking_number: row.trackingNumber ?? undefined,
@@ -189,6 +197,7 @@ export async function updateShipmentRecord(db: Database, shipment: Shipment): Pr
       status: shipment.status,
       carrier: shipment.carrier,
       trackingNumber: shipment.tracking_number,
+      metadata: shipment.metadata,
       deliveredAt: shipment.delivered_at ? new Date(shipment.delivered_at) : undefined,
       updatedAt: new Date(),
     })

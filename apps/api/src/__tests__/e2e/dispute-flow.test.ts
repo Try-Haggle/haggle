@@ -227,6 +227,7 @@ function makeOrder(overrides: Record<string, unknown> = {}) {
     buyerId: "buyer-e2e-001",
     sellerId: "seller-e2e-001",
     amountMinor: 77000,
+    status: "DELIVERED",
     ...overrides,
   };
 }

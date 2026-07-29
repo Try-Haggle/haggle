@@ -13,6 +13,7 @@ import {
   lte,
   or,
 } from "@haggle/db";
+import type { DisputeAiPrecedentExample } from "@haggle/dispute-core";
 
 const RESOLVED_STATUSES = [
   "RESOLVED_BUYER_FAVOR",
@@ -52,6 +53,13 @@ export interface DisputePrecedentAnalysisInput {
   analysisVersion: string;
   policyVersion: string;
   analyzedBy: string;
+}
+
+export interface DisputePrecedentSnapshot {
+  ids: string[];
+  analysis_versions: string[];
+  policy_versions: string[];
+  sha256: string;
 }
 
 function requireAnalysisText(name: string, value: string, maxLength: number): string {
@@ -154,6 +162,49 @@ export function formatApprovedDisputePrecedents(precedents: ApprovedDisputePrece
         `PRECEDENT ${index + 1} (Haggle ID: ${precedent.id})\n${JSON.stringify(precedent)}`,
     )
     .join("\n\n");
+}
+
+export function toResolutionAssessorPrecedentExamples(
+  precedents: ApprovedDisputePrecedent[],
+): DisputeAiPrecedentExample[] {
+  return precedents.map((precedent) => ({
+    id: precedent.id,
+    case_type: precedent.reason_code,
+    facts: [precedent.facts_summary, precedent.issue_summary],
+    evidence_pattern: [
+      `evidence types: ${precedent.evidence_profile.evidence_types.join(", ") || "none"}`,
+      `high weight: ${precedent.evidence_profile.high_weight_evidence.join(", ") || "none"}`,
+      `material gaps: ${precedent.evidence_profile.material_gaps.join(", ") || "none"}`,
+    ].join("; "),
+    outcome: precedent.outcome,
+    // The current analysis schema does not claim calibrated confidence. Keep
+    // the prompt conservative until calibration is stored as reviewed data.
+    confidence: "medium",
+    rationale: [
+      precedent.decision_principle,
+      precedent.distinguishing_factors.length > 0
+        ? `Distinguishing factors: ${precedent.distinguishing_factors.join("; ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  }));
+}
+
+export function buildDisputePrecedentSnapshot(
+  precedents: ApprovedDisputePrecedent[],
+): DisputePrecedentSnapshot {
+  const sorted = [...precedents].sort((left, right) => left.id.localeCompare(right.id));
+  const analysisVersions = [
+    ...new Set(sorted.map((precedent) => precedent.analysis_version)),
+  ].sort();
+  const policyVersions = [...new Set(sorted.map((precedent) => precedent.policy_version))].sort();
+  return {
+    ids: sorted.map((precedent) => precedent.id),
+    analysis_versions: analysisVersions,
+    policy_versions: policyVersions,
+    sha256: createHash("sha256").update(JSON.stringify(sorted)).digest("hex"),
+  };
 }
 
 /** Records pre-computed analysis. This function never invokes an LLM. */

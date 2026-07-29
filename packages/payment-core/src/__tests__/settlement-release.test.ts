@@ -7,6 +7,7 @@ import {
   buyerConfirmReceipt,
   completeBufferRelease,
   completeBuyerReview,
+  completeVerifiedTestBufferRelease,
   computeReleasePhase,
   confirmDelivery,
   createSettlementRelease,
@@ -282,6 +283,35 @@ describe("completeBufferRelease", () => {
   it("throws if already RELEASED", () => {
     const r = makeRelease({ buffer_release_status: "RELEASED" });
     expect(() => completeBufferRelease(r, addDays(NOW, 30))).toThrow(/buffer already RELEASED/);
+  });
+});
+
+describe("completeVerifiedTestBufferRelease", () => {
+  it("releases an unchanged buffer after the buyer confirms receipt", () => {
+    let release = confirmDelivery(makeRelease(), NOW);
+    release = buyerConfirmReceipt(release, NOW);
+
+    const updated = completeVerifiedTestBufferRelease(release, NOW);
+
+    expect(updated.buffer_release_status).toBe("RELEASED");
+    expect(updated.buffer_final_amount_minor).toBe(BUFFER.amount_minor);
+    expect(computeReleasePhase(updated)).toBe("FULLY_RELEASED");
+  });
+
+  it("rejects release before buyer receipt confirmation", () => {
+    const release = confirmDelivery(makeRelease(), NOW);
+    expect(() => completeVerifiedTestBufferRelease(release, NOW)).toThrow(
+      /before buyer receipt confirmation/,
+    );
+  });
+
+  it("rejects release while an APV adjustment is active", () => {
+    let release = confirmDelivery(makeRelease(), NOW);
+    release = buyerConfirmReceipt(release, NOW);
+    release = applyApvAdjustment(release, 100);
+    expect(() => completeVerifiedTestBufferRelease(release, NOW)).toThrow(
+      /APV adjustment is active/,
+    );
   });
 });
 

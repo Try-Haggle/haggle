@@ -293,6 +293,26 @@ vi.mock("@haggle/shipping-core", async (importOriginal) => {
         .fn()
         .mockResolvedValue({ tracking_number: "EP123", label_url: "https://ep" });
       getTrackingInfo = vi.fn().mockResolvedValue({ status: "IN_TRANSIT" });
+      trackTestStatus = vi.fn().mockImplementation(async (status: string) => ({
+        canonical_status:
+          status === "delivered"
+            ? "DELIVERED"
+            : status === "out_for_delivery"
+              ? "OUT_FOR_DELIVERY"
+              : "IN_TRANSIT",
+        carrier_raw_status: status,
+        message: `EasyPost test tracker verified ${status}`,
+        metadata: {
+          easypost_tracker_id: `trk_test_${status}`,
+          easypost_test_tracking_code:
+            status === "delivered"
+              ? "EZ4000000004"
+              : status === "out_for_delivery"
+                ? "EZ3000000003"
+                : "EZ2000000002",
+          easypost_test_status_verified: true,
+        },
+      }));
     },
     computeWeightBuffer: (weightOz: number) => ({
       declared_weight_oz: weightOz,

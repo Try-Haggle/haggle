@@ -302,6 +302,31 @@ vi.mock("../services/dispute-ai.service.js", () => ({
   runResolutionAssessor: vi.fn(),
 }));
 
+vi.mock("../services/dispute-precedent.service.js", () => ({
+  listApprovedDisputePrecedents: vi.fn().mockResolvedValue([]),
+  toResolutionAssessorPrecedentExamples: vi.fn(
+    (precedents: Array<{ id: string; analysis_version: string; policy_version: string }>) =>
+      precedents.map((precedent) => ({ id: precedent.id })),
+  ),
+  buildDisputePrecedentSnapshot: vi.fn(
+    (
+      precedents: Array<{
+        id: string;
+        analysis_version: string;
+        policy_version: string;
+      }>,
+    ) => ({
+      ids: precedents.map((precedent) => precedent.id),
+      analysis_versions: [...new Set(precedents.map((precedent) => precedent.analysis_version))],
+      policy_versions: [...new Set(precedents.map((precedent) => precedent.policy_version))],
+      sha256:
+        precedents.length === 0
+          ? "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          : "a".repeat(64),
+    }),
+  ),
+}));
+
 vi.mock("../services/dispute-ai-assessment-event.service.js", () => ({
   appendDisputeAiAssessmentEvent: vi.fn().mockResolvedValue(undefined),
   listDisputeAiAssessmentEvents: vi.fn().mockResolvedValue([]),
@@ -472,7 +497,10 @@ vi.mock("../services/draft.service.js", () => ({
 }));
 
 import { runDisputeEvidenceRetention } from "../jobs/dispute-evidence-retention.js";
-import { runResolutionAssessor } from "../services/dispute-ai.service.js";
+import {
+  buildDisputeAiCaseContextFromDispute,
+  runResolutionAssessor,
+} from "../services/dispute-ai.service.js";
 import {
   appendDisputeAiAssessmentEvent,
   listDisputeAiAssessmentEvents,
@@ -505,6 +533,7 @@ import {
   acquireDisputeOperationLease,
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
+import { listApprovedDisputePrecedents } from "../services/dispute-precedent.service.js";
 import {
   addDisputeEvidenceRecord,
   createDisputeEvidenceUploadRecord,
@@ -547,9 +576,11 @@ import {
   getCommerceOrderByOrderId,
   updateCommerceOrderStatus,
 } from "../services/payment-record.service.js";
+import { getShipmentByOrderId } from "../services/shipment-record.service.js";
 
 const mockGetCommerceOrderByOrderId = getCommerceOrderByOrderId as ReturnType<typeof vi.fn>;
 const mockUpdateCommerceOrderStatus = updateCommerceOrderStatus as ReturnType<typeof vi.fn>;
+const mockGetShipmentByOrderId = getShipmentByOrderId as ReturnType<typeof vi.fn>;
 const mockCreateDisputeRecord = createDisputeRecord as ReturnType<typeof vi.fn>;
 const mockCreateDisputeEvidenceUploadRecord = createDisputeEvidenceUploadRecord as ReturnType<
   typeof vi.fn
@@ -618,6 +649,10 @@ const mockGetDisputeEvidenceRetentionSummary = getDisputeEvidenceRetentionSummar
 const mockSetDisputeEvidenceLegalHold = setDisputeEvidenceLegalHold as ReturnType<typeof vi.fn>;
 const mockRunDisputeEvidenceRetention = runDisputeEvidenceRetention as ReturnType<typeof vi.fn>;
 const mockRunResolutionAssessor = runResolutionAssessor as ReturnType<typeof vi.fn>;
+const mockBuildDisputeAiCaseContextFromDispute = buildDisputeAiCaseContextFromDispute as ReturnType<
+  typeof vi.fn
+>;
+const mockListApprovedDisputePrecedents = listApprovedDisputePrecedents as ReturnType<typeof vi.fn>;
 const mockAppendDisputeAiAssessmentEvent = appendDisputeAiAssessmentEvent as ReturnType<
   typeof vi.fn
 >;
@@ -664,6 +699,34 @@ function fakeOrder(overrides: Record<string, unknown> = {}) {
     sellerId: "test-seller-001",
     amountMinor: 50000,
     status: "DELIVERED",
+    ...overrides,
+  };
+}
+
+function fakeShipment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "shp_123",
+    order_id: "ord_123",
+    seller_id: "test-seller-001",
+    buyer_id: "test-user-001",
+    shipment_type: "outbound",
+    status: "LABEL_CREATED",
+    carrier: "USPS",
+    selected_rate_id: "rate_ground",
+    label_created_at: new Date().toISOString(),
+    metadata: {
+      prepared_rate_quotes: [
+        {
+          id: "rate_ground",
+          carrier: "USPS",
+          service: "GroundAdvantage",
+          est_delivery_days: 3,
+        },
+      ],
+    },
+    events: [],
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -759,6 +822,7 @@ describe("Dispute routes", () => {
     delete (globalThis as typeof globalThis & { __HAGGLE_TEST_DB_SELECT_ROWS__?: unknown[][] })
       .__HAGGLE_TEST_DB_SELECT_ROWS__;
     mockGetCommerceOrderByOrderId.mockResolvedValue(null);
+    mockGetShipmentByOrderId.mockResolvedValue(null);
     mockGetDisputeById.mockResolvedValue(null);
     mockGetDisputeByOrderId.mockResolvedValue(null);
     mockCreateDisputeRecord.mockResolvedValue(null);
@@ -841,7 +905,7 @@ describe("Dispute routes", () => {
       ok: true,
       role: "resolution_assessor",
       displayName: "Resolution Assessor",
-      schemaName: "dispute_ai_resolution_assessor_v1",
+      schemaName: "dispute_ai_resolution_assessor_v2",
       contextHash: "ctx_test_1",
       output: {
         recommended_outcome: "buyer_favor",
@@ -850,6 +914,7 @@ describe("Dispute routes", () => {
         seller_score: 0.2,
         rationale: "Buyer camera evidence is stronger.",
         evidence_findings: ["Buyer submitted verified camera evidence."],
+        precedent_comparisons: [],
         missing_evidence: [],
         risk_flags: [],
         escalation_required: false,
@@ -859,6 +924,7 @@ describe("Dispute routes", () => {
       usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
       cost: null,
     });
+    mockListApprovedDisputePrecedents.mockResolvedValue([]);
     mockAppendDisputeAiAssessmentEvent.mockResolvedValue(undefined);
     mockListDisputeAiAssessmentEvents.mockResolvedValue([]);
     mockAcquireDisputeAiAssessmentLease.mockImplementation(async (_db, input) => ({
@@ -914,6 +980,81 @@ describe("Dispute routes", () => {
       "ord_123",
       "IN_DISPUTE",
     );
+  });
+
+  it("GET /orders/:orderId/dispute-eligibility explains why delivery is not due", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(
+      fakeOrder({ status: "FULFILLMENT_ACTIVE" }),
+    );
+    mockGetShipmentByOrderId.mockResolvedValueOnce(fakeShipment());
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/orders/ord_123/dispute-eligibility",
+      headers: AUTH_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.shipment_status).toBe("LABEL_CREATED");
+    expect(body.reasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "ITEM_NOT_RECEIVED",
+          eligible: false,
+          error: "DELIVERY_NOT_DUE",
+        }),
+      ]),
+    );
+  });
+
+  it("POST /orders/:orderId/disputes blocks item-not-received before carrier acceptance", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(
+      fakeOrder({ status: "FULFILLMENT_ACTIVE" }),
+    );
+    mockGetDisputeByOrderId.mockResolvedValueOnce(null);
+    mockGetShipmentByOrderId.mockResolvedValueOnce(fakeShipment());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/orders/ord_123/disputes",
+      headers: AUTH_HEADERS,
+      payload: {
+        reason_code: "ITEM_NOT_RECEIVED",
+        summary: "The label was just created but I did not receive the item.",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "DELIVERY_NOT_DUE",
+      reason_code: "ITEM_NOT_RECEIVED",
+    });
+    expect(mockCreateDisputeRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it("POST /orders/:orderId/disputes cannot bypass shipping gates with a refund reason", async () => {
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce(
+      fakeOrder({ status: "FULFILLMENT_ACTIVE" }),
+    );
+    mockGetDisputeByOrderId.mockResolvedValueOnce(null);
+    mockGetShipmentByOrderId.mockResolvedValueOnce(fakeShipment());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/orders/ord_123/disputes",
+      headers: AUTH_HEADERS,
+      payload: {
+        reason_code: "REFUND_DISPUTE",
+        summary: "Trying an unrelated reason before a refund exists.",
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("REFUND_NOT_RECORDED");
+    expect(mockCreateDisputeRecord).not.toHaveBeenCalled();
+    expect(mockUpdateCommerceOrderStatus).not.toHaveBeenCalled();
   });
 
   it("POST /orders/:orderId/disputes rejects users who are not order parties", async () => {
@@ -2998,6 +3139,62 @@ describe("Dispute routes", () => {
     );
   });
 
+  it("POST /disputes/:id/ai/assess supplies only approved precedents and audits the snapshot", async () => {
+    const approvedPrecedent = {
+      id: "precedent-approved-1",
+      reason_code: "ITEM_NOT_AS_DESCRIBED",
+      analysis_version: "analysis-v1",
+      policy_version: "policy-v2",
+    };
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        evidence: [
+          {
+            id: "ev_image",
+            dispute_id: "some-id",
+            submitted_by: "buyer",
+            type: "image",
+            created_at: "2026-07-18T12:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+    mockListApprovedDisputePrecedents.mockResolvedValue([approvedPrecedent]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/ai/assess",
+      headers: ADMIN_HEADERS,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockListApprovedDisputePrecedents).toHaveBeenCalledWith(
+      expect.anything(),
+      "ITEM_NOT_AS_DESCRIBED",
+      { limit: 5, evidenceTypes: ["image"] },
+    );
+    expect(mockBuildDisputeAiCaseContextFromDispute).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        policy: expect.objectContaining({
+          precedent_examples: [{ id: "precedent-approved-1" }],
+        }),
+      }),
+    );
+    expect(res.json().ai_assessment).toMatchObject({
+      precedent_snapshot: {
+        ids: ["precedent-approved-1"],
+        analysis_versions: ["analysis-v1"],
+        policy_versions: ["policy-v2"],
+      },
+      precedent_snapshot_hash: "a".repeat(64),
+    });
+  });
+
   it("GET /disputes/:id/ai/assessments returns append-only events in chronological order", async () => {
     mockGetDisputeById.mockResolvedValue(fakeDispute({ status: "UNDER_REVIEW" }));
     mockListDisputeAiAssessmentEvents.mockResolvedValue([
@@ -3315,7 +3512,8 @@ describe("Dispute routes", () => {
       conclusion: "seller_favor",
       confidence: "high",
       evidence_snapshot_hash: emptyEvidenceHash,
-      policy_version: "l1-resolution-policy-v1",
+      policy_version: "l1-resolution-policy-v2",
+      precedent_snapshot_hash: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     };
     mockGetDisputeById.mockResolvedValue(
       fakeDispute({
@@ -3396,6 +3594,54 @@ describe("Dispute routes", () => {
     expect(mockRunResolutionAssessor).toHaveBeenCalledOnce();
   });
 
+  it("POST /disputes/:id/ai/assess reruns when the approved precedent snapshot changed", async () => {
+    const emptyEvidenceHash = createHash("sha256").update(JSON.stringify([])).digest("hex");
+    const previousAssessment = {
+      assessment_id: "asm_before_precedent",
+      revision: 1,
+      status: "COMPLETED",
+      assessed_at: "2026-07-10T00:00:00.000Z",
+      context_hash: "ctx_before_precedent",
+      model: "deepseek-v4-pro",
+      policy_version: "l1-resolution-policy-v2",
+      evidence_snapshot_hash: emptyEvidenceHash,
+      precedent_snapshot_hash: "b".repeat(64),
+    };
+    mockGetDisputeById.mockResolvedValue(
+      fakeDispute({
+        status: "UNDER_REVIEW",
+        metadata: {
+          tier: 1,
+          ai_resolution_assessor: previousAssessment,
+          ai_resolution_assessment_history: [previousAssessment],
+        },
+      }),
+    );
+    mockGetCommerceOrderByOrderId.mockResolvedValue(fakeOrder());
+    mockListApprovedDisputePrecedents.mockResolvedValue([
+      {
+        id: "precedent-new",
+        reason_code: "ITEM_NOT_AS_DESCRIBED",
+        analysis_version: "analysis-v1",
+        policy_version: "policy-v2",
+      },
+    ]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/disputes/some-id/ai/assess",
+      headers: ADMIN_HEADERS,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().ai_assessment.reassessment_reason).toBe(
+      "Approved precedent snapshot changed after the previous assessment",
+    );
+    expect(res.json().ai_assessment.precedent_snapshot_hash).toBe("a".repeat(64));
+    expect(mockRunResolutionAssessor).toHaveBeenCalledOnce();
+  });
+
   it.each([
     [
       "policy",
@@ -3405,7 +3651,7 @@ describe("Dispute routes", () => {
     ],
     [
       "model",
-      "l1-resolution-policy-v1",
+      "l1-resolution-policy-v2",
       "deepseek-v4-flash",
       "AI assessment model changed after the previous assessment",
     ],
@@ -3527,7 +3773,7 @@ describe("Dispute routes", () => {
       revision: 2,
       supersedes_assessment_id: "asm_previous",
       reassessment_reason: "New verified evidence was added after the first assessment.",
-      policy_version: "l1-resolution-policy-v1",
+      policy_version: "l1-resolution-policy-v2",
     });
     expect(res.json().ai_assessment.assessment_id).toBeTruthy();
     expect(res.json().ai_assessment.version_id).toMatch(/^[a-f0-9]{64}$/);
@@ -3579,7 +3825,7 @@ describe("Dispute routes", () => {
       ok: false,
       role: "resolution_assessor",
       displayName: "Resolution Assessor",
-      schemaName: "dispute_ai_resolution_assessor_v1",
+      schemaName: "dispute_ai_resolution_assessor_v2",
       contextHash: "ctx_failed_retry",
       error: "PROVIDER_ERROR",
       message: "provider unavailable",

@@ -114,7 +114,7 @@ describe("dispute AI API service", () => {
       policy: { refund_cap_minor: 12_000 },
     });
     const provider = providerWith({
-      schema_version: "dispute_ai_resolution_assessor_v1",
+      schema_version: "dispute_ai_resolution_assessor_v2",
       role: "resolution_assessor",
       recommended_outcome: "partial_refund",
       confidence: "medium",
@@ -137,6 +137,7 @@ describe("dispute AI API service", () => {
           note: "기계 시각 관찰은 배터리 화면의 82% 표시를 신뢰도 0.94로 확인했습니다.",
         },
       ],
+      precedent_comparisons: [],
       missing_evidence: ["Timestamped device diagnostic"],
       risk_flags: [],
       escalation_required: false,
@@ -149,7 +150,7 @@ describe("dispute AI API service", () => {
       ok: true,
       role: "resolution_assessor",
       displayName: "Resolution Assessor",
-      schemaName: "dispute_ai_resolution_assessor_v1",
+      schemaName: "dispute_ai_resolution_assessor_v2",
       model: "mock-model",
       usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
       cost: null,
@@ -167,7 +168,7 @@ describe("dispute AI API service", () => {
       policy: { refund_cap_minor: 12_000 },
     });
     const base = {
-      schema_version: "dispute_ai_resolution_assessor_v1",
+      schema_version: "dispute_ai_resolution_assessor_v2",
       role: "resolution_assessor",
       recommended_outcome: "partial_refund",
       confidence: "medium",
@@ -188,6 +189,7 @@ describe("dispute AI API service", () => {
           note: "Machine observation reads 82 percent.",
         },
       ],
+      precedent_comparisons: [],
       missing_evidence: [],
       risk_flags: [],
       escalation_required: false,
@@ -235,7 +237,7 @@ describe("dispute AI API service", () => {
     const result = await runResolutionAssessor(
       context,
       providerWith({
-        schema_version: "dispute_ai_resolution_assessor_v1",
+        schema_version: "dispute_ai_resolution_assessor_v2",
         role: "resolution_assessor",
         recommended_outcome: "partial_refund",
         confidence: "medium",
@@ -244,6 +246,7 @@ describe("dispute AI API service", () => {
         refund_amount_minor: 8_000,
         rationale: "Partial refund.",
         evidence_findings: [],
+        precedent_comparisons: [],
         missing_evidence: [],
         risk_flags: [],
         escalation_required: false,
@@ -390,7 +393,7 @@ describe("dispute AI API service", () => {
       await provider.completeJson({
         role: "resolution_assessor",
         display_name: "Resolution Assessor",
-        schema_name: "dispute_ai_resolution_assessor_v1",
+        schema_name: "dispute_ai_resolution_assessor_v2",
         context_hash: "hash",
         system_prompt: "Role: Resolution Assessor.",
         user_prompt: "{}",
@@ -458,7 +461,7 @@ describe("dispute AI API service", () => {
       await provider.completeJson({
         role: "resolution_assessor",
         display_name: "Resolution Assessor",
-        schema_name: "dispute_ai_resolution_assessor_v1",
+        schema_name: "dispute_ai_resolution_assessor_v2",
         context_hash: "hash",
         system_prompt: "Role: Resolution Assessor.",
         user_prompt: "{}",
@@ -505,7 +508,7 @@ describe("dispute AI API service", () => {
       }).completeJson({
         role: "resolution_assessor",
         display_name: "Resolution Assessor",
-        schema_name: "dispute_ai_resolution_assessor_v1",
+        schema_name: "dispute_ai_resolution_assessor_v2",
         context_hash: "hash",
         system_prompt: "Role: Resolution Assessor.",
         user_prompt: "{}",

@@ -54,6 +54,8 @@ export type AdminActionType =
   | "shipment.apv_payout_cancellation_decision"
   | "shipment.apv_cancellation_audit_archive_requeue"
   | "shipment.return_label_purchase"
+  | "shipment.test_tracker_verified"
+  | "shipment.test_buffer_completion"
   | "shipment.webhook_received"
   | "shipment.webhook_rejected"
   | "promotion.run"

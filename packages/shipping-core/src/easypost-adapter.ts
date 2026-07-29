@@ -46,6 +46,19 @@ export function isEasyPostTestApiKey(apiKey: string): boolean {
   return apiKey.startsWith("EZTK") || apiKey.startsWith("EZTEST");
 }
 
+export type EasyPostTestTrackerStatus =
+  | "pre_transit"
+  | "in_transit"
+  | "out_for_delivery"
+  | "delivered";
+
+const EASYPOST_TEST_TRACKING_CODES: Record<EasyPostTestTrackerStatus, string> = {
+  pre_transit: "EZ1000000001",
+  in_transit: "EZ2000000002",
+  out_for_delivery: "EZ3000000003",
+  delivered: "EZ4000000004",
+};
+
 // ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
@@ -53,9 +66,39 @@ export function isEasyPostTestApiKey(apiKey: string): boolean {
 export class EasyPostCarrierAdapter implements CarrierProvider {
   readonly carrier = "easypost";
   private readonly client: InstanceType<typeof EasyPost>;
+  private readonly isTest: boolean;
 
   constructor(config: EasyPostConfig) {
     this.client = new EasyPost(config.api_key);
+    this.isTest = config.is_test ?? isEasyPostTestApiKey(config.api_key);
+  }
+
+  /**
+   * Ask EasyPost test mode for one of its deterministic tracker states.
+   * The returned provider status must match the requested fixture before a
+   * caller may use it to advance a local test shipment.
+   */
+  async trackTestStatus(status: EasyPostTestTrackerStatus): Promise<CarrierTrackingResult> {
+    if (!this.isTest) {
+      throw new Error("EasyPost test tracking requires a test API key");
+    }
+
+    const trackingCode = EASYPOST_TEST_TRACKING_CODES[status];
+    const result = await this.track(trackingCode);
+    if (result.carrier_raw_status !== status) {
+      throw new Error(
+        `EasyPost test tracker returned ${result.carrier_raw_status}, expected ${status}`,
+      );
+    }
+
+    return {
+      ...result,
+      metadata: {
+        ...result.metadata,
+        easypost_test_tracking_code: trackingCode,
+        easypost_test_status_verified: true,
+      },
+    };
   }
 
   /**
