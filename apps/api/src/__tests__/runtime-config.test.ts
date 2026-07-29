@@ -4,6 +4,8 @@ import { getRuntimeConfig, isCorsOriginAllowed } from "../config/runtime.js";
 
 const originalEnv = {
   DATABASE_URL: process.env.DATABASE_URL,
+  DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+  CANARY_SECRET: process.env.CANARY_SECRET,
   HAGGLE_CORS_ORIGINS: process.env.HAGGLE_CORS_ORIGINS,
   NODE_ENV: process.env.NODE_ENV,
   SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET,
@@ -169,6 +171,17 @@ afterEach(() => {
 });
 
 describe("runtime config", () => {
+  it("requires a strong canary secret whenever DeepSeek Advisor access is configured", () => {
+    process.env.NODE_ENV = "development";
+    process.env.DATABASE_URL = "postgres://test";
+    process.env.DEEPSEEK_API_KEY = "deepseek-test-key";
+    delete process.env.CANARY_SECRET;
+    expect(() => getRuntimeConfig()).toThrow("Invalid Advisor canary configuration");
+
+    process.env.CANARY_SECRET = "0123456789abcdef0123456789abcdef";
+    expect(getRuntimeConfig().isProduction).toBe(false);
+  });
+
   it("fails fast for partial or unsafe dispute evidence scanner settings", () => {
     process.env.NODE_ENV = "development";
     process.env.DATABASE_URL = "postgres://test";

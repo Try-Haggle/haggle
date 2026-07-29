@@ -2220,6 +2220,120 @@ describe("Shipment routes", () => {
     expect(res.json().error).toBe("INVALID_RATE_REQUEST");
   });
 
+  it("advances a seller shipment only after EasyPost verifies the staging test status", async () => {
+    const previous = {
+      haggleEnv: process.env.HAGGLE_ENV,
+      network: process.env.HAGGLE_X402_NETWORK,
+      easypostKey: process.env.EASYPOST_API_KEY,
+    };
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_X402_NETWORK = "base-sepolia";
+    process.env.EASYPOST_API_KEY = "EZTK_test_key";
+
+    const shipment = {
+      id: "shipment_test_tracker",
+      order_id: "order_test_tracker",
+      seller_id: "test-user-001",
+      buyer_id: "buyer_test_tracker",
+      shipment_type: "outbound",
+      carrier: "easypost",
+      tracking_number: "EZ_LABEL_TRACKING",
+      label_url: "https://easypost.test/label.pdf",
+      status: "LABEL_CREATED",
+      metadata: { easypost_shipment_id: "shp_test_tracker" },
+      events: [],
+      created_at: "2026-07-21T12:00:00.000Z",
+      updated_at: "2026-07-21T12:00:00.000Z",
+    } as unknown as ShipmentRow;
+    const advancedShipment = { ...shipment, status: "IN_TRANSIT" } as ShipmentRow;
+    mockGetShipmentById.mockResolvedValue(shipment);
+    vi.mocked(applyCarrierShipmentEvent).mockResolvedValueOnce({
+      shipment: advancedShipment,
+      stateChanged: true,
+      effectsRequired: true,
+      disposition: "applied",
+    } as never);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/shipments/${shipment.id}/test-tracker`,
+        headers: AUTH_HEADERS,
+        payload: { status: "in_transit" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        shipment: {
+          status: "IN_TRANSIT",
+          metadata: {
+            easypost_test_tracker: {
+              fixture_type: "canned_tracking_code",
+              linked_label_tracking_number: "EZ_LABEL_TRACKING",
+            },
+          },
+        },
+        provider_verification: {
+          provider: "easypost",
+          mode: "test",
+          status: "in_transit",
+          tracking_code: "EZ2000000002",
+          fixture_type: "canned_tracking_code",
+        },
+      });
+      expect(applyCarrierShipmentEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          shipmentId: shipment.id,
+          incomingStatus: "IN_TRANSIT",
+          carrierRawStatus: "in_transit",
+        }),
+      );
+      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        shipment.order_id,
+        "FULFILLMENT_ACTIVE",
+      );
+    } finally {
+      if (previous.haggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previous.haggleEnv;
+      if (previous.network === undefined) delete process.env.HAGGLE_X402_NETWORK;
+      else process.env.HAGGLE_X402_NETWORK = previous.network;
+      if (previous.easypostKey === undefined) delete process.env.EASYPOST_API_KEY;
+      else process.env.EASYPOST_API_KEY = previous.easypostKey;
+    }
+  });
+
+  it("hides EasyPost test tracking outside the staging test runtime", async () => {
+    const previousHaggleEnv = process.env.HAGGLE_ENV;
+    delete process.env.HAGGLE_ENV;
+    const shipment = {
+      id: "shipment_test_tracker_hidden",
+      order_id: "order_test_tracker_hidden",
+      seller_id: "test-user-001",
+      buyer_id: "buyer_test_tracker",
+      status: "LABEL_CREATED",
+      events: [],
+    } as unknown as ShipmentRow;
+    mockGetShipmentById.mockResolvedValue(shipment);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/shipments/${shipment.id}/test-tracker`,
+        headers: AUTH_HEADERS,
+        payload: { status: "in_transit" },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: "EASYPOST_TEST_TRACKING_NOT_AVAILABLE" });
+      expect(applyCarrierShipmentEvent).not.toHaveBeenCalled();
+    } finally {
+      if (previousHaggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previousHaggleEnv;
+    }
+  });
+
   it("claims an EasyPost webhook before acknowledging an unsupported event", async () => {
     const res = await app.inject({
       method: "POST",

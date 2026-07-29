@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createShipmentRecord } from "../services/shipment-record.service.js";
+import { createShipmentRecord, updateShipmentRecord } from "../services/shipment-record.service.js";
 
 function shipmentRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -50,9 +50,7 @@ describe("shipment-record service", () => {
     const db = {
       query: {
         shipments: {
-          findFirst: vi.fn()
-            .mockResolvedValueOnce(null)
-            .mockResolvedValueOnce(shipmentRow()),
+          findFirst: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(shipmentRow()),
         },
       },
       insert: insert.insert,
@@ -81,8 +79,46 @@ describe("shipment-record service", () => {
     );
 
     expect(shipment.shipment_type).toBe("return");
-    expect(insert.values).toHaveBeenCalledWith(expect.objectContaining({
-      shipmentType: "return",
-    }));
+    expect(insert.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shipmentType: "return",
+      }),
+    );
+  });
+
+  it("persists provider verification metadata with shipment state updates", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockReturnValue({ where });
+    const db = { update: vi.fn().mockReturnValue({ set }) };
+
+    await updateShipmentRecord(db as never, {
+      id: "ship_1",
+      order_id: "order_1",
+      carrier: "easypost",
+      tracking_number: "EZ_LABEL_TRACKING",
+      status: "DELIVERED",
+      events: [],
+      delivered_at: "2026-07-21T12:00:00.000Z",
+      metadata: {
+        easypost_test_tracker: {
+          fixture_type: "canned_tracking_code",
+          easypost_test_status_verified: true,
+          requested_status: "delivered",
+        },
+      },
+      created_at: "2026-07-21T11:00:00.000Z",
+      updated_at: "2026-07-21T12:00:00.000Z",
+    });
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          easypost_test_tracker: expect.objectContaining({
+            fixture_type: "canned_tracking_code",
+            easypost_test_status_verified: true,
+          }),
+        }),
+      }),
+    );
   });
 });

@@ -40,6 +40,9 @@
 | 경보 job 부분 설정으로 무음 실패 | job 활성화 시 `ENABLE_CRON`, URL, 최소 secret을 시작 단계에서 강제. production의 HTTP·사설망 예외 설정은 금지하고 cron registry의 60초 등록을 회귀 테스트 | `apps/api/src/config/runtime.ts`, `apps/api/src/jobs/runner.ts` |
 | 내부 오류 정보 노출 | webhook·provider 실패 응답은 일반화하고 내부 감사 로그는 redaction 적용 | `apps/api/src/routes/payments.ts` |
 | 분쟁 중 자금 해제 | active dispute와 order `IN_DISPUTE` 상태에서 buyer confirmation·자동 release 차단 | `apps/api/src/routes/settlement-releases.ts` |
+| 다른 계정의 판매대금 release | release instruction·execution 기록·receipt confirmation은 해당 주문 seller 또는 admin만 호출. instruction의 seller wallet은 funding 때 저장된 payout wallet과 정확히 일치해야 함 | `apps/api/src/routes/settlement-releases.ts` |
+| 가짜 tx hash로 정산 완료 | Base RPC receipt finality, 계약 주소, `SettlementReleased` event의 settlement ID·seller/fee wallet·양쪽 금액을 모두 검증한 뒤에만 payment를 `SETTLED`로 기록 | `apps/api/src/routes/settlement-releases.ts` |
+| staging APV 대기 우회가 실자금에 노출 | EasyPost test delivery 증빙, 구매자 수령 확인, adjustment 없음, `HAGGLE_ENV=staging`, Base Sepolia, `base-sepolia-husdc` 자산 프로필, EasyPost test key가 모두 맞을 때만 test buffer를 종료하고 상태 변경과 감사 로그를 한 DB transaction에 기록 | `apps/api/src/routes/settlement-releases.ts`, `packages/payment-core/src/settlement-release.ts` |
 | production 테스트 도구 노출 | admin이면서 `HAGGLE_ENABLE_PAYMENT_TEST_TOOLS=true`인 경우에만 허용 | `apps/api/src/routes/payment-test-tools.ts` |
 | staging mock 결제가 production에 노출 | `HAGGLE_ENV=staging`과 `HAGGLE_ENABLE_STAGING_MOCK_PAYMENTS=true`가 모두 설정된 환경에서만 mock provider 허용. production 환경은 opt-in 값을 무시하고 real provider를 계속 강제 | `apps/api/src/payments/provider-runtime-policy.ts` |
 | 혼돈 테스트가 운영 event를 변경 | 전용 source `haggle-chaos-test`와 UUID prefix만 허용하고 최대 100+100 요청으로 제한. 운영 provider source를 전달하거나 범위 없는 cleanup prefix를 사용하면 DB 실행 전에 거절 | `apps/api/src/routes/payment-test-tools.ts`, `apps/api/src/services/webhook-event-claim.service.ts` |
@@ -81,6 +84,7 @@
 | 임의 주소 조합으로 메모리 고갈 | exact-address hash cache를 기본 5,000개로 제한하고 오래된 항목 제거 | `apps/api/src/routes/shipments.ts` |
 | 비정상 parcel로 provider 호출 | 무게 2,400oz, 각 변 120in 상한과 양수 검증 적용 | `apps/api/src/routes/shipments.ts` |
 | 위조 carrier 상태 | production에서는 seller 수동 이벤트를 막고 EasyPost webhook이 상태를 구동 | `apps/api/src/routes/shipments.ts` |
+| staging 배송 완료를 production처럼 오인 | `HAGGLE_ENV=staging` + Base Sepolia + EasyPost test key를 모두 요구하고, EasyPost 공식 canned test Tracker 응답의 요청 상태 일치 여부를 검증한 뒤에만 로컬 shipment를 순차 전이. 화면과 metadata에는 실제 carrier scan이 아닌 simulation임을 표시하고 감사 로그에 provider tracker ID와 test code를 기록 | `packages/shipping-core/src/easypost-adapter.ts`, `apps/api/src/routes/shipments.ts` |
 | EasyPost webhook 위조·재전송·경합 | production secret 필수, raw body 서명 검증 뒤 provider event claim. 처리 중 다른 서버는 503 retry, 완료 event는 duplicate, 같은 ID의 다른 payload는 409 | `apps/api/src/routes/shipments.ts`, `apps/api/src/services/webhook-event-claim.service.ts` |
 | 서로 다른 carrier event의 순서 역전·동시 write | carrier 발생 시각과 event key watermark를 shipment row에 저장하고 status+watermark CAS를 최대 5회 재평가. 기존 shipment는 최신 event로 backfill하며 늦은 event와 terminal 회귀는 상태를 바꾸지 않음 | `apps/api/src/services/shipment-record.service.ts`, `packages/shipping-core/src/carrier-event-ordering.ts`, `packages/db/drizzle/0043_shipment_carrier_event_watermark.sql`, `packages/db/drizzle/0044_shipment_carrier_event_watermark_backfill.sql` |
 | 중간 scan 누락·동일 시각 충돌 | 허용된 forward jump만 적용하고 동일 시각은 provider event key로 결정론적 tie-break. 반송 branch 역행은 금지 | `packages/shipping-core/src/carrier-event-ordering.ts` |
@@ -141,6 +145,7 @@
 |------|-----------|-----------|
 | 다른 주문에 분쟁 생성 | 인증 사용자가 order buyer/seller인지 서버에서 파생 | `apps/api/src/routes/disputes.ts` |
 | 동일 주문에 중복 active dispute | client request id replay와 DB unique invariant로 차단 | `apps/api/src/routes/disputes.ts` |
+| 배송 전 조기·사유 우회 분쟁 | `LABEL_PENDING/LABEL_CREATED`는 미수령 분쟁을 차단한다. 운송사 인수 후 선택 rate의 예상 배송일과 2일 유예가 지나거나 carrier가 `DELIVERED`를 기록해야 미수령 사유를 허용하고, 상품 상태·진품 여부 사유는 배송 완료 후에만 허용한다. 환불 기록 없는 환불 사유와 기한 전 판매자 미발송 사유도 거부한다 | `apps/api/src/services/dispute-opening-eligibility.service.ts`, `apps/api/src/routes/disputes.ts` |
 | 당사자가 심사 상태 조작 | review 시작, buyer/seller evidence 요청, 최종 resolve는 admin 전용 | `apps/api/src/routes/disputes.ts` |
 | 상대방 이름으로 증거 제출 | `submitted_by`를 인증 사용자와 order 관계에서 서버가 재계산 | `apps/api/src/routes/disputes.ts` |
 | 검증된 카메라 표식 위조 | 일반 텍스트·일반 commit에서 예약 marker 사용 차단. marker는 camera session commit만 생성 | `apps/api/src/routes/disputes.ts` |

@@ -24,6 +24,7 @@ import { runDisputeEvidenceScanRetryJob } from "./dispute-evidence-scan-retry.js
 import { runDisputeEvidenceScanRetryAlertJob } from "./dispute-evidence-scan-retry-alert.js";
 import { runDisputeEvidenceScanRetryAlertSnapshotRetentionJob } from "./dispute-evidence-scan-retry-alert-snapshot-retention.js";
 import { runDisputeModuleWebhookOutbox } from "./dispute-module-webhook-outbox.js";
+import { runDisputePrecedentCollection } from "./dispute-precedent-collection.js";
 import { runDisputeSimilarityReviewAlert } from "./dispute-similarity-review-alert.js";
 import { runDisputeSimilarityReviewAuditArchive } from "./dispute-similarity-review-audit-archive.js";
 import { runDisputeSimilarityReviewAuditArchiveAlert } from "./dispute-similarity-review-audit-archive-alert.js";
@@ -121,6 +122,15 @@ export function buildJobRegistry(): CronJob[] {
       intervalMs: 30 * 1000, // every 30 seconds
       handler: runDisputeModuleWebhookOutbox,
       enabled: true,
+    },
+    {
+      name: "dispute-precedent-collection",
+      intervalMs: 24 * 60 * 60 * 1000,
+      handler: async (db) => {
+        await runDisputePrecedentCollection(db);
+      },
+      enabled: process.env.ENABLE_DISPUTE_PRECEDENT_COLLECTION_JOB === "true",
+      runOnStart: true,
     },
     {
       name: "dispute-evidence-retention",

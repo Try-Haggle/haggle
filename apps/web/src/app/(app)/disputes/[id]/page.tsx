@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { serverApi } from "@/lib/api-server";
+import { createClient } from "@/lib/supabase/server";
 import { DisputeDetail } from "./dispute-detail";
 
 export interface DisputeEvidence {
@@ -20,8 +20,10 @@ export interface Dispute {
   status: string;
   opened_by: "buyer" | "seller" | "system";
   evidence: DisputeEvidence[];
-  created_at: string;
-  updated_at: string;
+  opened_at: string;
+  resolution?: {
+    resolved_at?: string;
+  };
   metadata?: Record<string, unknown>;
   refundAmountMinor?: number | null;
 }
@@ -34,11 +36,7 @@ interface OrderInfo {
   order_snapshot: Record<string, unknown>;
 }
 
-export default async function DisputeDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function DisputeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -71,8 +69,7 @@ export default async function DisputeDetailPage({
     // Order fetch may fail — continue without role info
   }
 
-  const userRole: "buyer" | "seller" =
-    order && user.id === order.buyer_id ? "buyer" : "seller";
+  const userRole: "buyer" | "seller" = order && user.id === order.buyer_id ? "buyer" : "seller";
   const amountMinor = order?.amount_minor ?? null;
 
   return (

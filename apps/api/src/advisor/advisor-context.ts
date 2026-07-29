@@ -7,16 +7,22 @@
  */
 
 import type { Database } from "@haggle/db";
-import type { AdvisorRole } from "./advisor-types.js";
+import type { DisputeEvidence } from "@haggle/dispute-core";
+import { computeDisputeCost } from "@haggle/dispute-core";
+import {
+  formatApprovedDisputePrecedents,
+  listApprovedDisputePrecedents,
+} from "../services/dispute-precedent.service.js";
 import { getDisputeById } from "../services/dispute-record.service.js";
 import { getCommerceOrderByOrderId } from "../services/payment-record.service.js";
-import { computeDisputeCost } from "@haggle/dispute-core";
-import type { DisputeEvidence } from "@haggle/dispute-core";
+import type { AdvisorRole } from "./advisor-types.js";
 
 export interface AdvisorContext {
   contextString: string;
   disputeStatus: string;
   amountCents: number;
+  precedentIds: string[];
+  precedentAnalysisVersions: string[];
 }
 
 export async function assembleAdvisorContext(
@@ -32,9 +38,7 @@ export async function assembleAdvisorContext(
 
   // 2. Fetch order for item info and amount
   const order = await getCommerceOrderByOrderId(db, dispute.order_id);
-  const amountCents = order?.amountMinor
-    ? parseInt(String(order.amountMinor))
-    : 0;
+  const amountCents = order?.amountMinor ? parseInt(String(order.amountMinor), 10) : 0;
 
   // 3. Determine tier
   const meta = dispute.metadata as Record<string, unknown> | null;
@@ -46,20 +50,17 @@ export async function assembleAdvisorContext(
   const t3Cost = amountCents > 0 ? computeDisputeCost(amountCents, 3) : null;
 
   // 5. Format evidence from both sides
-  const buyerEvidence = dispute.evidence.filter(
-    (e) => e.submitted_by === "buyer",
-  );
-  const sellerEvidence = dispute.evidence.filter(
-    (e) => e.submitted_by === "seller",
-  );
-  const systemEvidence = dispute.evidence.filter(
-    (e) => e.submitted_by === "system",
-  );
+  const buyerEvidence = dispute.evidence.filter((e) => e.submitted_by === "buyer");
+  const sellerEvidence = dispute.evidence.filter((e) => e.submitted_by === "seller");
+  const systemEvidence = dispute.evidence.filter((e) => e.submitted_by === "system");
 
-  function formatEvidence(
-    items: DisputeEvidence[],
-    label: string,
-  ): string {
+  // Raw precedent cases and candidate/draft rows never enter the request-time
+  // LLM context. This query returns approved, pre-analyzed summaries only.
+  const precedents = await listApprovedDisputePrecedents(db, dispute.reason_code, {
+    evidenceTypes: [...new Set(dispute.evidence.map((evidence) => evidence.type))],
+  });
+
+  function formatEvidence(items: DisputeEvidence[], label: string): string {
     if (items.length === 0) return `${label}: None submitted.`;
     return `${label}:\n${items
       .map(
@@ -95,6 +96,9 @@ ${formatEvidence(sellerEvidence, "SELLER'S EVIDENCE")}
 ${systemEvidence.length > 0 ? formatEvidence(systemEvidence, "SYSTEM EVIDENCE") : ""}
 ${resolutionInfo}
 
+APPROVED PRE-ANALYZED PLATFORM PRECEDENTS:
+${formatApprovedDisputePrecedents(precedents)}
+
 DISPUTE COST INFORMATION:
 ${t1Cost ? `  T1 (AI Review): $${(t1Cost.cost_cents / 100).toFixed(2)} — loser pays` : "  T1 (AI Review): cost unavailable"}
 ${t2Cost ? `  T2 (DS Panel): $${(t2Cost.cost_cents / 100).toFixed(2)} — requires deposit, loser pays` : ""}
@@ -106,5 +110,9 @@ YOUR ROLE: You are advising the ${userRole}.`.trim();
     contextString,
     disputeStatus: dispute.status,
     amountCents,
+    precedentIds: precedents.map((precedent) => precedent.id),
+    precedentAnalysisVersions: [
+      ...new Set(precedents.map((precedent) => precedent.analysis_version)),
+    ],
   };
 }

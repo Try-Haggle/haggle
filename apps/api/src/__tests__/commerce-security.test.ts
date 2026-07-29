@@ -144,6 +144,58 @@ describe("commerce security boundaries", () => {
     expect(res.json().error).toBe("AUTH_REQUIRED");
   });
 
+  it("rejects conditional release confirmation from an order non-seller", async () => {
+    mockGetSettlementReleaseById.mockResolvedValueOnce({
+      id: "sr_not_seller",
+      order_id: "order_not_seller",
+      payment_intent_id: "pi_not_seller",
+    } as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "order_not_seller",
+      buyerId: "test-user-001",
+      sellerId: "different-seller",
+      status: "DELIVERED",
+    } as never);
+    app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/settlement-releases/sr_not_seller/conditional-release-confirmation",
+      headers: AUTH_HEADERS,
+      payload: { tx_hash: `0x${"ab".repeat(32)}` },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: "FORBIDDEN" });
+    expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+  });
+
+  it("rejects a signed conditional release request from an order non-seller", async () => {
+    mockGetSettlementReleaseById.mockResolvedValueOnce({
+      id: "sr_request_not_seller",
+      order_id: "order_request_not_seller",
+      payment_intent_id: "pi_request_not_seller",
+    } as never);
+    mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
+      id: "order_request_not_seller",
+      buyerId: "test-user-001",
+      sellerId: "different-seller",
+      status: "DELIVERED",
+    } as never);
+    app = await buildApp();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/settlement-releases/sr_request_not_seller/conditional-release-request",
+      headers: AUTH_HEADERS,
+      payload: { seller_wallet_address: "0x2222222222222222222222222222222222222222" },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: "FORBIDDEN" });
+    expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
+  });
+
   it("rejects settlement release reads for non-participants", async () => {
     mockGetSettlementReleaseById.mockResolvedValueOnce({
       id: "sr_123",
