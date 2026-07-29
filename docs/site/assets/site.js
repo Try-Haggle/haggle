@@ -8,6 +8,7 @@
 const FEATURES = [
   { title: "Start Here — 협상 엔진", href: "negotiation-engine-start-here.html", icon: "🚀", status: "live" },
   { title: "Negotiation Engine (SOT)", href: "negotiation-engine.html", icon: "⚙️", status: "live" },
+  { title: "Backlog / TODO", href: "negotiation-engine-backlog.html", icon: "✅", status: "live" },
   { title: "Trust & Reputation", href: "#", icon: "🛡️", status: "soon" },
   { title: "Disputes", href: "#", icon: "⚖️", status: "soon" },
   { title: "Adaptive Review (ARP)", href: "#", icon: "⏳", status: "soon" },

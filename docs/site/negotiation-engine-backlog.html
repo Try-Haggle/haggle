@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Backlog / TODO — 협상 엔진 · Haggle Docs</title>
+<link rel="stylesheet" href="assets/style.css" />
+<style>
+  /* 티켓 토글 */
+  .ticket{border:1px solid var(--line);border-radius:11px;margin:10px 0;background:var(--card);overflow:hidden}
+  .ticket>summary{display:flex;align-items:center;gap:10px;padding:12px 15px;cursor:pointer;list-style:none;background:var(--card2)}
+  .ticket>summary::-webkit-details-marker{display:none}
+  .ticket>summary::before{content:"▸";color:var(--accent);font-size:12px;transition:transform .15s;flex:none}
+  .ticket[open]>summary::before{transform:rotate(90deg)}
+  .ticket[open]>summary{border-bottom:1px solid var(--line)}
+  .ticket .ino{font-family:var(--mono);font-weight:800;color:var(--ink3);flex:none;min-width:22px;text-align:center}
+  .ticket .it{font-weight:700;font-size:14.5px;color:var(--ink)}
+  .ticket .chips{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tbody{padding:4px 16px 14px}
+  .field{margin:12px 0}
+  .flabel{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+  .flabel.warn{color:var(--warn)} .flabel.ok{color:var(--ok)} .flabel.dead{color:var(--dead)}
+  .field .val{font-size:13.5px;color:var(--ink2);line-height:1.6}
+  .field .val b{color:var(--ink)}
+  .field ul{margin:4px 0;padding-left:18px;font-size:13.5px;color:var(--ink2)}
+  .field li{margin:3px 0}
+  .field .fileref{display:block;margin-top:3px}
+  .imp{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:20px;white-space:nowrap}
+  .imp.hi{background:rgba(248,113,113,.15);color:var(--dead);border:1px solid rgba(248,113,113,.35)}
+  .imp.mid{background:rgba(251,191,36,.14);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
+  .imp.lo{background:rgba(126,135,148,.15);color:var(--ink3);border:1px solid var(--line)}
+  .eff{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:#22262f;color:var(--ink3);white-space:nowrap}
+  .todo{font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:20px;background:rgba(251,191,36,.12);color:var(--warn);border:1px dashed rgba(251,191,36,.4)}
+  .toolbar{display:flex;gap:8px;margin:10px 0}
+  .toolbar button{font:inherit;font-size:12px;font-weight:600;color:var(--ink2);background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:5px 12px;cursor:pointer}
+  .toolbar button:hover{color:var(--ink);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="logo"></span>Haggle Docs</div>
+  <div class="brandsub">협상 엔진 · Backlog</div>
+  <div id="site-features"></div>
+  <div id="page-toc" class="toc"></div>
+</nav>
+<main>
+
+<section id="intro" class="hero" data-nav="개요">
+  <h2 class="sec">Backlog / TODO · 티켓</h2>
+  <h1>협상 엔진 — 할 일 티켓</h1>
+  <p class="sub">SOT §11 백로그를 <b>코드로 재검증</b>해 만든 실행 티켓입니다. 각 항목을 <b>클릭하면 펼쳐져</b> 문제·현재동작(코드근거)·목표·완료기준·손볼곳을 봅니다. 원천: <a href="negotiation-engine.html#backlog">SOT §11</a>.</p>
+  <div class="meta">검증일 2026-07-18 (staging) · <b>HAGGLE-0이 "하이브리드 EPIC"으로 확대</b>(하위 H1~H9). 아래 #1·#2·#3·#6·#9는 그 하위로 흡수됨 — 개별 티켓은 상세 참고용. #4·#5·#10·#11·#12는 유지.</div>
+  <div class="callout co-info" style="margin-top:16px">
+    <div class="ct">라벨</div>
+    <div><b>중요도</b> <span class="imp hi">🔴 높음</span> 지금 협상을 잘못 만듦(정확성·안전)·하이브리드 핵심 · <span class="imp mid">🟡 중간</span> 품질·하이브리드 전제 · <span class="imp lo">⚪ 낮음</span> 인프라·관측. &nbsp; <b>규모</b> <span class="eff">🟠 큼</span>/<span class="eff">🟡 중</span>/<span class="eff">🟢 작음</span> = 노력. &nbsp; <span class="todo">아직 할 일</span> = 코드로 미해결 확인.</div>
+  </div>
+  <div class="toolbar">
+    <button onclick="document.querySelectorAll('details.ticket').forEach(d=>d.open=true)">모두 펼치기</button>
+    <button onclick="document.querySelectorAll('details.ticket').forEach(d=>d.open=false)">모두 접기</button>
+  </div>
+</section>
+
+<!-- 작업 분담 -->
+<section id="split" data-nav="👥 작업 분담 (2인)">
+  <h2 class="sec">Work split</h2>
+  <h2 class="title">작업 분담 — 4개 그룹, 2명</h2>
+  <p class="lead">"가격·수락을 LLM 대신 <b>엔진이 결정</b>"이 핵심 방향입니다. 이걸 두 반쪽으로 나눠 2명에게: <b>그룹 1 = 결정부(사람 1)</b> — 엔진이 결정하게 만들기. <b>그룹 2 = 센서부(사람 2)</b> — 상대 대화를 엔진이 아는 특징으로 통역해 그 결정에 반영. 두 그룹은 <b>H6</b>에서만 합류하고 그전까진 완전 병렬. <b>그룹 3(정교화)</b>은 핵심 후 나눠 갖고, <b>그룹 4(독립)</b>는 아무 때나 버퍼. (각 티켓은 눌러 펼치기)</p>
+  <div class="callout co-warn">
+    <div class="ct">🤝 유일 동기화 = H6 (특징→컨텍스트 반영)</div>
+    <div>그룹1의 <b>컨텍스트</b>(H1) + 그룹2의 <b>특징</b>(H4·H5)이 만나는 곳. "특징→컨텍스트 조정" 함수 인터페이스만 미리 합의하면 나머진 독립.</div>
+  </div>
+</section>
+
+<!-- 그룹 1 -->
+<section id="g1" data-nav="그룹 1 · 결정부 (사람 1)">
+  <h2 class="sec">Group 1 · 👤 사람 1</h2>
+  <h2 class="title">그룹 1 — 결정부: 엔진이 가격·수락을 결정</h2>
+  <p class="lead"><b>이 그룹 = "가격·수락을 LLM 대신 엔진이 결정하게 만들기"</b> (LLM은 작가). 지금은 LLM이 최종가를 덮어써 모델·요청마다 흔들림(<code>decide.ts:84</code>) → 엔진이 확정(결정론). <b>흐름:</b> 컨텍스트 조립(HAGGLE-1·2·3 = 17파라미터를 엔진에 넘김) → 엔진 결정(<code>computeUtility+makeDecision</code>) + LLM price 제거 → 심판(HAGGLE-10). 짝꿍 그룹2와는 <b>H6</b>에서만 합류.</p>
+  <div class="callout co-warn" style="margin-top:6px"><div class="ct">⚠️ 이 그룹만으로는</div><div>엔진이 <b>숫자(target/floor/시간/신뢰)로만</b> 결정 → 상대의 자연어 주장("배터리 89%라 깎아줘")은 아직 가격에 안 먹힘. 그건 <b>그룹 2(센서부)</b>가 채웁니다.</div></div>
+
+  <details class="ticket">
+    <summary><span class="ino">1</span><span class="it">HAGGLE-1 · 파라미터 대부분 사장 (17개 중 2개만 작동)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">사용자가 프리셋·슬라이더·빌더챗으로 튜닝하는 <code>EngineParameters</code> 17개 필드 중 <b>실제 협상에 반영되는 건 <code>beta</code>·<code>anchor_ratio</code> 2개뿐.</b> 나머지는 저장만 되고 아무도 안 읽는다. 즉 UI로 아무리 튜닝해도 대부분 무시된다. 하이브리드(엔진이 파라미터로 결정)의 핵심.</div></div>
+      <div class="field"><div class="flabel">개념 — 축 vs 성향 vs 상황 (헷갈리기 쉬움)</div><div class="val">"17개를 4개로 좁힌다"가 아니다. <b>4개 축</b>(가격·시간·위험·관계)=딜 평가 기준 · <b>17개 파라미터</b>=내 성향(각 축을 얼마나 중시/어떻게 채점, 고정) · <b>컨텍스트</b>=이 딜의 상황(매 라운드). <code>U_total=w_p·V_p+w_t·V_t+w_r·V_r+w_s·V_s</code>. 17개 성향은 4축에 배분(가격:anchor_ratio·gamma / 시간:alpha·v_t_floor / 위험:w_rep·w_info / 관계:v_s_base·n_threshold)되고, beta·u_threshold는 축이 아닌 전역 손잡이. 이 티켓 = "각 축에 컨텍스트(사실)를 채워 엔진이 17개 성향으로 점수를 내게 하는 것".</div></div>
+      <div class="field"><div class="flabel warn">현재 동작 (코드 근거)</div><div class="val"><ul>
+        <li>런타임에서 <code>strategy_params</code>를 읽는 코드는 <code>anchor_ratio</code>·<code>beta</code> 뿐<span class="fileref">default-engine-skill.ts:75,99 · coach.ts</span></li>
+        <li><code>weights</code>는 추출되나 coach가 <b>하드코딩 가중치</b>로 덮어 무시<span class="fileref">coach.ts:163</span></li>
+        <li><code>alpha·v_t_floor·u_threshold·u_aspiration</code>: 읽는 코드 0건. <code>extractStrategyParams</code>가 7개만 추출<span class="fileref">memory-reconstructor.ts</span></li>
+      </ul></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">사용자가 고른 파라미터가 실제 협상 행동(추천가·수락 기준·시간/위험 태도)에 반영된다.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">프리셋/슬라이더를 바꾸면 <b>동일 상황의 협상 결과가 실제로 달라진다</b>(회귀 테스트로 고정). 어느 필드가 어디에 영향을 주는지 문서화.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">memory-reconstructor(추출 확대) + coach/decide(소비) · 또는 근본해법: 매 라운드 NegotiationContext 조립 → engine-core computeUtility/makeDecision 재연결</div></div>
+      <div class="field"><div class="flabel">의존</div><div class="val">#0 하이브리드 결정 시 근본해법(engine-core 재연결)이 정답에 가까워짐. §SOT 4.4 참고.</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">2</span><span class="it">HAGGLE-2 · 효용함수 미사용 (advisory)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">가장 정교한 4D 효용함수(U_total)가 <b>결정에 안 쓰이고</b>, 코치가 <b>하드코딩 가중치</b>(0.5/0.2/0.15/0.15)로 단순 계산한다 — 사용자 weights 무시. 유틸은 프롬프트에도 도달하지 않는다.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>u_total = u_price*0.5 + u_time*0.2 + u_risk*0.15 + u_quality*0.15</code> 하드코딩<span class="fileref">coach.ts:163</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">사용자 weights로 유틸을 계산하고, 그 값이 결정 게이트(accept/counter/reject) 또는 프롬프트에 반영.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">weights를 바꾸면 유틸·결정이 달라진다.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">coach.ts u_total · stages/decide.ts (게이트) · engine-core/utility</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">3</span><span class="it">HAGGLE-3 · 연속 시간 미반영 (라운드 근사)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">코치의 진행도 <code>t</code>가 실제 경과시간이 아니라 <b>라운드 수 비율</b> 근사다. "마감 12시간 전" 같은 실제 시간 압박이 양보 곡선에 직접 안 들어간다. <code>alpha·v_t_floor</code> 미사용.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val">BARGAINING <code>t = time_pressure || round/max_rounds</code>. α·v_t_floor 안 읽음.<span class="fileref">coach.ts · time-pressure.ts</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val"><code>V_t = max(v_t_floor, (1 − 경과/마감)^α)</code>로 실제 마감시각 기반 시간 압박.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">같은 라운드라도 "오늘 마감"과 "다음주 마감"의 추천가가 달라진다.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">coach.ts · time-pressure.ts · engine-core v-time</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">▶</span><span class="it">엔진 결정 경로 + LLM price 제거 (이 그룹의 핵심)</span><span class="chips"><span class="imp hi">🔴 핵심</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">지금은 코치가 추천가를 만들어도 <b>LLM이 최종가를 직접 정하고 덮어씀</b>(<code>decide.ts:84</code>) → 모델·요청마다 금액이 흔들려 결정론·공정 철학과 충돌.</div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">컨텍스트(HAGGLE-1·2·3)가 채워지면, 엔진 <code>computeUtility+makeDecision</code>이 <b>가격·수락을 확정</b>하고 LLM 출력 스키마에서 <code>price</code>를 제거 → LLM은 그 값으로 메시지만 씀.</div></div>
+      <div class="field"><div class="flabel">하위 단계</div><div class="val"><ul>
+        <li><b>H1a</b> — 엔진 입력(i_completeness·관계 이력)이 코드에 있는지 조사, 없으면 기본값 설계</li>
+        <li><b>H2</b> — <code>decide</code>를 engine-core <code>computeUtility+makeDecision</code>으로 교체 (가격+수락 엔진이)</li>
+        <li><b>H3</b> — LLM 출력에서 <code>price</code> 제거, 엔진 가격을 그대로 사용(작가화)</li>
+      </ul></div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">같은 입력이면 <b>항상 같은 가격·수락</b>(결정론 테스트) · LLM이 가격 못 바꿈 · 프리셋 바꾸면 엔진 가격이 달라짐.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/decide.ts · engine-core/utility·decision · deepseek-adapter.ts(출력 스키마)</div></div>
+      <div class="field"><div class="flabel">의존</div><div class="val">HAGGLE-1·2·3(컨텍스트)이 먼저. 이후 H6(그룹2와 합류)의 전제.</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">10</span><span class="it">HAGGLE-10 · Referee HARD 위반 미차단 (안전)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">규칙(가격이 floor 초과 등) <b>HARD 위반</b>이 auto-fix 최대 2회 후에도 남으면 <b>그대로 통과</b>한다. <code>'BLOCK'</code>은 감사 로그 라벨일 뿐 실제 실행을 막지 않는다. 잘못된 LLM 결정이 상대에게 나갈 수 있는 안전 문제.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작 (코드 근거)</div><div class="val"><ul>
+        <li>auto-fix 루프 <code>while(!hardPassed &amp;&amp; retryCount&lt;2)</code> 후, 위반이 남아도 throw/reject 없이 return<span class="fileref">stages/validate.ts:46,71</span></li>
+        <li>HARD 미해결 시 <code>refereeAction='BLOCK'</code> 라벨만 설정<span class="fileref">stages/validate.ts:99</span></li>
+        <li>respond에도 가격 clamp/lock 없음 (유일 개입 = V1 floor 덮어쓰기, soft)</li>
+      </ul></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">HARD 위반이 실제로 차단(REJECT)되거나 안전한 값으로 강제(clamp)된다 — "BLOCK"이 이름값을 한다.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">floor 위반 등 HARD가 최종 응답으로 절대 안 나감(테스트). "실제 차단할지 vs clamp할지"의 정책 결정 포함.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/validate.ts · stages/respond.ts (가격 clamp) · SOT §5.5</div></div>
+    </div>
+  </details>
+</section>
+
+<!-- 그룹 2 -->
+<section id="g2" data-nav="그룹 2 · 센서부 (사람 2)">
+  <h2 class="sec">Group 2 · 👤 사람 2</h2>
+  <h2 class="title">그룹 2 — 센서부: 대화·조건을 엔진이 아는 특징으로</h2>
+  <p class="lead"><b>이 그룹 = "상대 자연어(배터리 89%·무료배송)를 엔진이 아는 특징으로 통역해, 그룹1 엔진의 가격 결정에 반영"</b> (LLM은 센서/통역). 스키마 밖 논리는 무시 → 감사가능·결정론 유지. <b>흐름:</b> 특징 스키마 → 센서(LLM 추출) → 카테고리 규칙으로 특징→값 반영(H6, 그룹1과 합류) → 누락 시 Tag Garden 질문. 비가격 조건은 HAGGLE-6.</p>
+
+  <details class="ticket">
+    <summary><span class="ino">▶</span><span class="it">특징 스키마 정의 + 센서(LLM 추출) (H4·H5)</span><span class="chips"><span class="imp hi">🔴 핵심</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">목표</div><div class="val"><b>H4</b> — 엔진이 아는 "특징 스키마" 정의: 신호 + 효과 유형(<b>값 조정</b> 배터리 / <b>비가격 term</b> 배송 / <b>게이트</b> IMEI). 카테고리별, 폰부터. &nbsp;<b>H5</b> — Stage 1 Understand를 LLM structured-output 추출로 올려, 상대 자연어를 이 스키마로 변환(센서).</div></div>
+      <div class="field"><div class="flabel warn">현재</div><div class="val">추출 뼈대(<code>conversation-signal-extractor</code>)는 있으나 <b>정규식</b>이고, 뽑은 신호가 <b>가격 결정에 안 흘러감</b><span class="fileref">stages/understand.ts</span></div></div>
+      <div class="field"><div class="flabel ok">완료 기준</div><div class="val">상대 메시지 → 스키마에 정의된 특징으로 안정 추출(검증). 스키마 밖 논리는 버림.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">feature-schema(신규) · stages/understand.ts · deepseek-adapter.ts(추출 프롬프트)</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">9</span><span class="it">HAGGLE-9 · 카테고리/IMEI 하드코딩 (정확성 버그)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val"><b>기본 엔진 스킬 id 자체가 <code>electronics-iphone-pro-v1</code></b>이라, 아이폰이 아닌 매물(옷·가구 등)에도 <b>IMEI 검증 규칙이 딸려 들어온다.</b> 지금 실제 협상에 잘못 적용되는 정확성 버그.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작 (코드 근거)</div><div class="val"><ul>
+        <li>기본 스킬 id = <code>"electronics-iphone-pro-v1"</code><span class="fileref">default-engine-skill.ts:15</span></li>
+        <li><code>IMEI_REQUIRED</code> 규칙 + "IMEI and Find My verification are deal-breakers" 내장<span class="fileref">default-engine-skill.ts:23,40</span></li>
+        <li><code>imei_verification</code> term = "Required for <b>all</b> transactions"<span class="fileref">standard-terms.ts:100</span></li>
+        <li><code>skill_summary</code>·L5 category <code>"electronics"</code>도 하드코딩(3곳)</li>
+      </ul></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">매물 카테고리에 맞는 스킬·term이 선택된다. Tag Garden 일반화 설계가 하드코딩 기본 스킬에 우회되지 않는다.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">비전자 매물 협상에 IMEI 규칙이 붙지 않는다. 카테고리별 기본 스킬 선택 로직 존재.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">default-engine-skill.ts · standard-terms.ts · skill 선택 경로 (SOT §2.3)</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">▶</span><span class="it">특징 → 값 반영 (H6 · 그룹 1과 합류점)</span><span class="chips"><span class="imp hi">🔴 핵심</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">목표</div><div class="val">추출된 특징을 <b>바운드된 결정론적 규칙</b>으로 엔진 입력(가격 축 등)에 반영. 예: 배터리 89% → 값 −2%(상한). 카테고리별 "특징→값" 규칙(HAGGLE-9)을 따름.</div></div>
+      <div class="field"><div class="flabel warn">★ 합류점 (그룹 1과)</div><div class="val"><b>그룹 1의 컨텍스트(H1)가 있어야</b> 특징을 꽂을 수 있음. 두 사람이 <b>이 지점만 같이</b> — 아래 인터페이스 계약을 착수 전 확정.</div></div>
+      <div class="field"><div class="flabel">🔒 인터페이스 계약 (kickoff에서 확정 · 초안)</div><div class="val">
+<div class="flow"><span class="c">// [센서·그룹2] → CoreMemory.extracted_features (신규 필드) 에 씀</span>
+ExtractedFeature {
+  key,                    <span class="c">// H4 스키마의 정해진 키만 (battery_health…)</span>
+  type: "value_adjust"|"term",   <span class="c">// gate(IMEI)는 term의 INFORMATIONAL로 접음</span>
+  value | <b>null</b>,           <span class="c">// null = "언급됐지만 값 모름" → H7</span>
+  unit?, source, raw_span?
+}
+<span class="c">// [엔진·그룹1] assembleNegotiationContext(snapshot, round, features) 안에서 적용</span>
+applyFeatures(features, ctx, categoryRules) → { ctx', adjustments[], missing[] }
+  · value_adjust → <b>adjustVpForFeatures(vp, ratio)</b>  <span class="c">// 경쟁(adjustVpForCompetition) 패턴 복제</span>
+                   <span class="c">// p_target/p_effective 직접 X — V_p에 바운드 조정</span>
+  · term         → ctx.<b>term_space</b> (NEGOTIABLE=배송, INFORMATIONAL=IMEI)
+  · adjustments[]에 rule_id·cap_applied 로그(감사) · missing[]→Tag Garden(H7)</div>
+      <b>못박은 결정:</b> ① 값 계산은 <b>엔진이</b>(센서는 raw만) · ② 조정 = <b>V_p에 <code>adjustVpForFeatures</code></b>(p_target 직접 X, 경쟁 패턴 복제) · ③ 상한 규칙 내장+엔진 강제 · ④ 센서 출력 = <b>CoreMemory.extracted_features(신규)</b> · ⑤ gate=informational term(버킷 2개) · ⑥ 단위=스키마.
+      <div class="aside" style="margin-top:6px">⚠️ 실제 코드 확인: <code>PriceContext</code>엔 fair_value 없음(<code>p_effective/p_target/p_limit</code>), <code>term_space</code>·<code>adjustVpForCompetition</code>는 존재. <b>프로덕션은 NegotiationContext를 안 만듦</b> → H1(조립)이 진짜 새 일. <b>kickoff = 이 3개 타입/스텁 먼저 머지</b>: ExtractedFeature+CoreMemory.extracted_features · assembleNegotiationContext() · adjustVpForFeatures().</div></div></div>
+      <div class="field"><div class="flabel ok">완료 기준</div><div class="val">"배터리 89%" 언급 시 엔진 가격이 <b>상한 내</b>에서 조정됨. 각 특징 효과에 상한+로그(감사가능).</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">memory-reconstructor(컨텍스트 조정) · skills/·standard-terms(값 규칙) · engine-core</div></div>
+      <div class="field"><div class="flabel">의존</div><div class="val">H4·H5(특징) + HAGGLE-9(값 규칙) + <b>그룹 1의 컨텍스트(H1)</b>.</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">▶</span><span class="it">Tag Garden 피드백 루프 (H7)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">목표</div><div class="val">LLM이 어떤 특징(배터리 등)을 멘션했는데 <b>엔진에 그 필드 값이 없으면</b> → 없는 쪽 유저에게 질문(판매자 "배터리 몇%?" / 구매자 "원하는 배터리 수명?") → 수집 → <b>그 태그가 자주 비면 그 카테고리 리스팅의 기본 필수 항목으로 승격.</b></div></div>
+      <div class="field"><div class="flabel warn">현재</div><div class="val">감지·질문 뼈대 <b>일부 존재</b><span class="fileref">understand.ts:missing_information · tag-garden-requirements.ts</span> → 재활용. 없는 건 (a)엔진 결정 연결 (b)"반복→기본 태그" 학습.</div></div>
+      <div class="field"><div class="flabel ok">완료 기준</div><div class="val">엔진에 없는 필드 멘션 시 해당 유저에게 질문 발송·수집. 반복 슬롯이 카테고리 필수 태그로 승격.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/understand.ts · tag-garden-requirements.ts · 리스팅 필수항목 로직</div></div>
+      <div class="field"><div class="flabel">의존</div><div class="val">H5(센서가 멘션 감지).</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">6</span><span class="it">HAGGLE-6 · 다중 Term 없음 (가격 단일)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">배송·보증 등 비가격 조건을 협상하지 못한다(가격 단일 Term). 하이브리드에서 엔진이 비가격 term을 다뤄야 "LLM에서 판단을 뺏어오는" 게 성립한다.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>terms.active = []</code> 항상 비어 있음(future 주석)<span class="fileref">memory-reconstructor.ts:200</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val"><code>term_space</code>(NEGOTIABLE/INFORMATIONAL) + Offer Inverter로 가격·비가격 다차원 협상.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">"$X + 무료배송" 같은 조건부 제안을 주고받고 효용에 반영.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">memory-reconstructor(terms) · engine-core Offer Inverter(신설) · standard-terms</div></div>
+    </div>
+  </details>
+</section>
+
+<!-- 그룹 3 -->
+<section id="g3" data-nav="그룹 3 · 정교화">
+  <h2 class="sec">Group 3</h2>
+  <h2 class="title">그룹 3 — 정교화 (핵심 후)</h2>
+  <p class="muted">Phase 1~2 끝난 뒤 나눠 가짐. 상대모델→전술은 묶여 다니고, 동적β는 별개.</p>
+
+  <details class="ticket">
+    <summary><span class="ino">4</span><span class="it">HAGGLE-4 · 상대방 모델이 거침 (EMA 3버킷만)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">상대 양보율을 EMA로 추적해 <b>3버킷</b>(BOULWARE/LINEAR/CONCEDER)으로만 분류. 상대 β·선호를 추정하는 베이지안 모델이 없다. 하이브리드에서 엔진이 reasoning하려면 필수 전제.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val">EMA α=0.3, aggression 3버킷. bayesian/estimated_utility/6종 이동분류 코드 <b>0건</b>.<span class="fileref">memory-reconstructor.ts · coach.ts:classifyOpponent</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">베이지안 β 추정 + 6종 이동분류(Jonker) + Reputation 사전분포. 상대 성향 추정 정확도↑.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">2+ 라운드 후 상대 β 추정치가 관찰에 수렴. LLM 프롬프트/엔진 결정에 반영.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">memory-reconstructor.ts · engine-core opponent model (신설)</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">7</span><span class="it">HAGGLE-7 · 전술/미러링 없음</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">코치가 <code>suggested_tactic</code>(nibble/anchoring 등)을 파생해 프롬프트로 넘기지만 <b>강제력이 없다.</b> 상대 패턴×단계에 따른 전술 매트릭스·미러링 미구현.</div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">상대 이동을 미러링(같은 카테고리로 응수) + 전술 매트릭스로 "어떻게 양보하는가"를 관장.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">engine-core tactics(신설) · coach/decide</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">5</span><span class="it">HAGGLE-5 · 동적 β 없음 (β 고정)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">경쟁자 수·상대 반응에 따라 양보 속도(β)를 조정하는 로직이 없다. β는 프리셋 값 고정.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>computeDynamicBeta</code>/kappa/lambda 코드 <b>0건</b>.</div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">경쟁 많으면 더 버티고(β↑), 상대가 양보하면 반응하는 동적 β.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">coach.ts / engine-core faratin (β 계산 전처리)</div></div>
+    </div>
+  </details>
+</section>
+
+<!-- 그룹 4 -->
+<section id="g4" data-nav="그룹 4 · 독립 버퍼">
+  <h2 class="sec">Group 4</h2>
+  <h2 class="title">그룹 4 — 독립 (버퍼·아무나)</h2>
+  <p class="muted">하이브리드와 의존 <b>0</b>. 아무 때나·아무나, 슬랙 생기면 채움.</p>
+
+  <details class="ticket">
+    <summary><span class="ino">8</span><span class="it">HAGGLE-8 · 1:N 오케스트레이션 전체 dormant</span><span class="chips"><span class="imp lo">⚪ 낮음*</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">1:N(구매자1·판매자N) 병렬 협상 서브시스템은 엔진·DB·전용 라우트까지 완성돼 있으나, <b>프로덕션 <code>/start</code>가 그룹을 만들지 않아</b> 크로스프레셔·batchEvaluate·supersede·anti-sniping이 전부 도달 불가(dormant). <b>* "1:N 협상"이 근처 로드맵이면 🔴로 승격.</b></div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>createGroup</code>은 수동 라우트 <code>routes/groups.ts</code>에서만 호출(웹앱 미호출). <code>memory.competition</code>은 절대 안 채워짐(dead branch).<span class="fileref">routes/negotiations.ts /start · routes/groups.ts</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val"><code>/start</code>가 그룹을 만들거나 별도 트리거로 1:N 활성화 + 크로스프레셔가 프롬프트에 실제 주입.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">routes/negotiations.ts · group-executor.ts · L5 provider(competition) · memory-reconstructor</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">11</span><span class="it">HAGGLE-11 · 무결성 검증 미작동 (write-only)</span><span class="chips"><span class="imp lo">⚪ 낮음</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">memo SHA-256 해시 + Level-2 해시체인을 생성·저장하지만 <b>저장 후 재계산·비교하는 런타임 경로가 없다</b>(write-only). 온체인 앵커 미구현. 협상 결과엔 무관하나 "감사가능" 기둥엔 중요.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>verifyMemoIntegrity</code>·<code>verifyChain</code> 프로덕션 호출 <b>0건</b>(테스트만). 온체인 앵커는 주석만.<span class="fileref">memo/memo-manager.ts · integrity/hash-chain.ts</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">저장 후 verify를 실행해 위변조 탐지 + (선택) 온체인 앵커링.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">executor(체크포인트 로드 시 verify) · memo-manager · integrity</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">12</span><span class="it">HAGGLE-12 · 비용 계측 부분 구현 (쉬운 윈)</span><span class="chips"><span class="imp lo">⚪ 낮음</span><span class="eff">🟢 작음</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">토큰은 실측 저장하나 <b>USD 비용은 계산만 하고 DB에 저장 안 함</b>, 세션당 집계도 없다. 단가 env 미설정이면 telemetry 비용은 null. 관측성 이슈(협상 품질 무관), 노력은 작음.</div></div>
+      <div class="field"><div class="flabel warn">현재 동작</div><div class="val"><code>usdCost = tokens/1000 × 0.0007</code> 계산·반환만, DB 미기록. 정확 비용은 <code>LLM_PRICE_DEEPSEEK_V4_PRO_*</code> env 설정 시에만.<span class="fileref">pipeline.ts:271 · llm-cost.ts</span></div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">단가 env 설정 + 라운드/세션 비용 저장 + 세션 합계 read model.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">pipeline/executor(persist cost) · llm-telemetry · env 설정</div></div>
+    </div>
+  </details>
+</section>
+
+<section id="note" data-nav="주의">
+  <h2 class="sec">Note</h2>
+  <h2 class="title">주의</h2>
+  <div class="callout co-warn">
+    <div class="ct">중요도·완료기준은 추천값</div>
+    <div>중요도(🔴🟡⚪)와 완료기준은 "협상 정확성·안전 + 하이브리드 전제" 기준의 <b>제 추천</b>입니다. 제품 로드맵(1:N을 곧 팔지, 하이브리드로 갈지)에 따라 바뀝니다. 특히 <b>#0 뇌 결정을 먼저 하면 #1·#2·#4·#6 순위가 확 올라갑니다.</b> 규모(🟠🟡🟢)는 노력이지 중요도가 아닙니다. 코드 근거는 2026-07-18 staging 기준.</div>
+  </div>
+</section>
+
+</main>
+</div>
+<script src="assets/site.js"></script>
+</body>
+</html>

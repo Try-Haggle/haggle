@@ -1,3 +1,5 @@
+import type { ExtractedFeature } from "@haggle/engine-core";
+
 // =========================================
 // Layer A: Engine Contract
 // =========================================
@@ -193,6 +195,12 @@ export interface CoreMemory {
    * collapsing to defaults.
    */
   strategy_params?: StrategyParams;
+  /**
+   * Structured features extracted from the counterparty message by the sensor (H5).
+   * Consumed by assembleNegotiationContext → applyFeatures (H6). Empty/undefined until
+   * the sensor lands.
+   */
+  extracted_features?: ExtractedFeature[];
 }
 
 /** Resolved engine knobs surfaced to the live decision-makers. */
