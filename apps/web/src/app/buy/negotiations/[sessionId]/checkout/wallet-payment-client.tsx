@@ -7,6 +7,12 @@ export function WalletPaymentClient(props: {
   settlementApprovalId: string;
   amountMinor: number;
   currency: string;
+  requiresShipping: boolean;
+  physicalShippingReadiness: {
+    ready: boolean;
+    live_label_max_minor: number;
+    missing: string[];
+  } | null;
 }) {
   return (
     <WalletProvider>

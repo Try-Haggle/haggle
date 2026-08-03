@@ -230,6 +230,7 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 | 판례 콜드스타트·수렴 테스트 | [docs/wip/dispute-precedent-cold-start-and-convergence-test.md](./docs/wip/dispute-precedent-cold-start-and-convergence-test.md) | Seed/Holdout 분리, staging 실제 판정 wave와 통과 기준 |
 | 분쟁 API | [docs/wip/dispute-start-api-design.md](./docs/wip/dispute-start-api-design.md) | 분쟁 시작, 증거 업로드, idempotency, money movement freeze 기준 |
 | 팀 E2E 리허설 | [docs/wip/fake-money-fake-address-e2e-test-plan.md](./docs/wip/fake-money-fake-address-e2e-test-plan.md) | 가짜 돈 + 가짜 주소로 결제/배송 상태 흐름을 닫는 Stage 1 기준 |
+| hUSDC 실배송 리허설 | [docs/wip/husdc-physical-shipping-rehearsal.md](./docs/wip/husdc-physical-shipping-rehearsal.md) | hUSDC 결제와 EasyPost live 레이블·실제 carrier scan을 결합하는 Stage 2 기준 |
 
 실제 구현 위치는 `apps/api/src/routes/payments.ts`, `apps/api/src/routes/shipments.ts`,
 `apps/api/src/routes/disputes.ts`, `packages/payment-core/`, `packages/shipping-core/`,

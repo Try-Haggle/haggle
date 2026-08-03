@@ -16,6 +16,7 @@
 
 import { BASE_SEPOLIA_CONTRACT_ADDRESSES } from "@haggle/contracts";
 import { BASE_MAINNET_USDC_ADDRESS, BASE_SEPOLIA_HAGGLE_TEST_USDC_ADDRESS } from "@haggle/shared";
+import { physicalShippingReadiness } from "../shipping/shipping-execution-mode.js";
 
 type EnvScope = "always" | "production";
 
@@ -112,6 +113,12 @@ export function validateEnv(): void {
         problems.push(`  • ${name}: required in staging — expected ${expected}`);
       } else if (actual.toLowerCase() !== expected.toLowerCase()) {
         problems.push(`  • ${name}: staging must use ${expected} (got "${actual}")`);
+      }
+    }
+
+    if (process.env.HAGGLE_ENABLE_STAGING_LIVE_SHIPPING?.trim() === "true") {
+      for (const missing of physicalShippingReadiness().missing) {
+        problems.push(`  • ${missing}: required when staging live shipping is enabled`);
       }
     }
 

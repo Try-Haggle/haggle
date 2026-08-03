@@ -1067,6 +1067,15 @@ describe("Payment routes", () => {
       "order_123",
       "seller_123",
       "test-user-001",
+      undefined,
+      {
+        metadata: expect.objectContaining({
+          shipping_execution_mode: "integration_manual",
+          shipping_provider_environment: "test",
+          shipping_execution_mode_source: "payment_checkout",
+          shipping_execution_mode_payment_locked: true,
+        }),
+      },
     );
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
       expect.anything(),
@@ -2817,6 +2826,7 @@ describe("Payment routes", () => {
       headers: AUTH_HEADERS,
       payload: {
         settlement_approval_id: sessionId,
+        shipping_execution_mode: "integration_manual",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3007,6 +3017,7 @@ describe("Payment routes", () => {
       },
       payload: {
         settlement_approval_id: sessionId,
+        shipping_execution_mode: "integration_manual",
         payment_disclosure_ack: {
           version: PAYMENT_DISCLOSURE_VERSION,
           text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
@@ -3059,6 +3070,8 @@ describe("Payment routes", () => {
       expect.objectContaining({
         settlement_approval_id: sessionId,
         agent_payment_grant_id: "00000000-0000-4000-a000-000000000077",
+        shipping_execution_mode: "integration_manual",
+        shipping_provider_environment: "test",
       }),
     );
     expect(mockCreatePaymentDisclosureRecord).toHaveBeenCalledWith(
@@ -3113,7 +3126,80 @@ describe("Payment routes", () => {
         listing_id: listingId,
         amount_minor: 50_000,
       },
+      shipping_execution_mode: "integration_manual",
     });
+  });
+
+  it("POST /payments/prepare fails closed when physical shipping is not operationally ready", async () => {
+    mockEnsureCommerceOrderForApproval.mockClear();
+    mockCreateStoredPaymentIntent.mockClear();
+    const sessionId = "00000000-0000-4000-a000-000000000199";
+    const now = new Date().toISOString();
+    vi.stubEnv("HAGGLE_ENV", "staging");
+    vi.stubEnv("HAGGLE_X402_NETWORK", "base-sepolia");
+    vi.stubEnv("HAGGLE_SETTLEMENT_ASSET_PROFILE", "base-sepolia-husdc");
+    vi.stubEnv("HAGGLE_ENABLE_STAGING_LIVE_SHIPPING", "false");
+    vi.stubEnv("EASYPOST_LIVE_API_KEY", "");
+    vi.stubEnv("EASYPOST_LIVE_WEBHOOK_SECRET", "");
+    vi.stubEnv("EASYPOST_WEBHOOK_SECRET", "");
+
+    try {
+      mockGetSettlementApprovalById.mockResolvedValueOnce({
+        id: sessionId,
+        approval_state: "APPROVED",
+        seller_policy: {
+          mode: "AUTO_WITHIN_POLICY",
+          fulfillment_sla: { shipment_input_due_days: 3 },
+          responsiveness: {
+            median_response_minutes: 30,
+            p95_response_minutes: 120,
+            reliable_fast_responder: true,
+          },
+        },
+        terms: {
+          listing_id: "00000000-0000-4000-a000-000000000111",
+          seller_id: "00000000-0000-4000-a000-000000000133",
+          buyer_id: "test-user-001",
+          final_amount_minor: 50_000,
+          currency: "USD",
+          selected_payment_rail: "x402",
+          fulfillment_type: "physical_shipping",
+        },
+        buyer_approved_at: now,
+        seller_approved_at: now,
+        created_at: now,
+        updated_at: now,
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/payments/prepare",
+        headers: AUTH_HEADERS,
+        payload: {
+          settlement_approval_id: sessionId,
+          shipping_execution_mode: "physical_live",
+          payment_disclosure_ack: {
+            version: PAYMENT_DISCLOSURE_VERSION,
+            text_hash: PAYMENT_DISCLOSURE_TEXT_HASH,
+            accepted_at: now,
+            no_custody: true,
+            buyer_approved_rules: true,
+            stripe_fallback: true,
+            stablecoin_not_investment: true,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({
+        error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY",
+        readiness: { ready: false },
+      });
+      expect(mockEnsureCommerceOrderForApproval).not.toHaveBeenCalled();
+      expect(mockCreateStoredPaymentIntent).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("POST /payments/prepare returns the existing active intent idempotently for the same accepted negotiation", async () => {

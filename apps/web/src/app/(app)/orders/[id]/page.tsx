@@ -53,6 +53,11 @@ interface Shipment {
   label_qr_code_url?: string | null;
   label_qr_code_available?: boolean;
   metadata?: {
+    shipping_execution_mode?: "integration_manual" | "physical_live";
+    shipping_provider_environment?: "test" | "live";
+    shipping_execution_mode_source?: "payment_checkout";
+    shipping_execution_mode_payment_locked?: boolean;
+    prepared_rate_quotes?: unknown[];
     easypost_test_tracker?: {
       fixture_type?: string;
       requested_status?: string;
@@ -458,6 +463,7 @@ function ShippingSection({
   onShippingFormChange,
   onPrepareRates,
   onPurchaseRate,
+  onSelectExecutionMode,
 }: {
   shipment: Shipment | null;
   onAction: (action: string) => void;
@@ -470,6 +476,7 @@ function ShippingSection({
   onShippingFormChange: (section: "fromAddress" | "parcel", field: string, value: string) => void;
   onPrepareRates: () => void;
   onPurchaseRate: (rateId: string) => void;
+  onSelectExecutionMode: (mode: "integration_manual" | "physical_live") => void;
 }) {
   if (!shipment) {
     return (
@@ -481,8 +488,15 @@ function ShippingSection({
     );
   }
 
+  const executionMode = shipment.metadata?.shipping_execution_mode ?? "integration_manual";
+  const isPhysicalShipping = executionMode === "physical_live";
+  const isPaymentModeLocked = shipment.metadata?.shipping_execution_mode_payment_locked === true;
   const nextAction = isSeller
-    ? getNextShippingAction(shipment.status, isProduction, testTrackingEnabled)
+    ? getNextShippingAction(
+        shipment.status,
+        isProduction,
+        testTrackingEnabled && !isPhysicalShipping,
+      )
     : null;
 
   return (
@@ -492,6 +506,56 @@ function ShippingSection({
           <span className="text-sm text-ink-secondary">Status</span>
           <StatusBadge domain="order" status={shipment.status} />
         </div>
+        <div className="rounded-lg border border-line bg-surface-sunken p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-ink">Shipping test mode</p>
+              <p className="text-xs text-ink-muted">
+                {isPhysicalShipping
+                  ? "Real addresses, paid EasyPost label, and carrier scans"
+                  : "EasyPost test label with manually controlled delivery states"}
+              </p>
+            </div>
+            <StatusBadge
+              domain="order"
+              status={isPhysicalShipping ? "PHYSICAL LIVE" : "INTEGRATION"}
+            />
+          </div>
+          {isSeller &&
+            !isPaymentModeLocked &&
+            shipment.status === "LABEL_PENDING" &&
+            rates.length === 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant={isPhysicalShipping ? "secondary" : "primary"}
+                  size="sm"
+                  onClick={() => onSelectExecutionMode("integration_manual")}
+                  disabled={Boolean(loading)}
+                >
+                  Integration
+                </Button>
+                <Button
+                  variant={isPhysicalShipping ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => onSelectExecutionMode("physical_live")}
+                  disabled={Boolean(loading)}
+                >
+                  Physical shipping
+                </Button>
+              </div>
+            )}
+          {isPaymentModeLocked && (
+            <p className="mt-2 text-ink-muted text-xs">Locked during checkout</p>
+          )}
+        </div>
+
+        {isPhysicalShipping && (
+          <InlineNotice tone="warning">
+            Product payment uses hUSDC. Haggle's staging fiat budget pays this real EasyPost label,
+            subject to the configured charge cap. Delivery advances only from verified carrier
+            tracking.
+          </InlineNotice>
+        )}
         {shipment.tracking_number && (
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink-secondary">Tracking</span>
@@ -1782,8 +1846,43 @@ export default function OrderDetailPage() {
     }
   }
 
+  async function handleSelectShippingExecutionMode(
+    executionMode: "integration_manual" | "physical_live",
+  ) {
+    if (!state.shipment) return;
+    setLoading(`shipping-mode-${executionMode}`);
+    try {
+      const result = await api.post<{ shipment: Shipment }>(
+        `/shipments/${state.shipment.id}/execution-mode`,
+        { execution_mode: executionMode },
+      );
+      setState((current) => ({ ...current, shipment: result.shipment }));
+      setShippingRates([]);
+      addLog(
+        "Shipping",
+        executionMode === "physical_live"
+          ? "Physical shipping selected: live label charges and carrier scans are enabled"
+          : "Integration mode selected: test label and controlled tracking are enabled",
+        "success",
+      );
+    } catch (err) {
+      addLog("Shipping", err instanceof Error ? err.message : "Mode selection failed", "error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function handlePurchaseRate(rateId: string) {
     if (!state.shipment) return;
+    const isPhysicalShipping = state.shipment.metadata?.shipping_execution_mode === "physical_live";
+    if (
+      isPhysicalShipping &&
+      !window.confirm(
+        "This purchases a live EasyPost label using Haggle's staging fiat budget. It does not spend hUSDC for postage. Continue?",
+      )
+    ) {
+      return;
+    }
     setLoading(`purchase-${rateId}`);
     try {
       addLog("Shipping", "Purchasing selected label...", "info");
@@ -1793,7 +1892,7 @@ export default function OrderDetailPage() {
         tracking_number?: string;
       }>(
         `/shipments/${state.shipment.id}/purchase-label`,
-        { rate_id: rateId },
+        { rate_id: rateId, acknowledge_live_charge: isPhysicalShipping },
         {
           headers: createShipmentMutationHeaders("purchase-label", state.shipment.id, rateId),
         },
@@ -1845,11 +1944,21 @@ export default function OrderDetailPage() {
 
   async function handleCreateReturnLabel() {
     if (!state.shipment) return;
+    const isPhysicalShipping = state.shipment.metadata?.shipping_execution_mode === "physical_live";
+    if (
+      isPhysicalShipping &&
+      !window.confirm(
+        "This purchases a live EasyPost return label using Haggle's staging fiat budget. Continue?",
+      )
+    ) {
+      return;
+    }
     setLoading("return-label");
     try {
       addLog("Shipping", "Creating return label...", "info");
       const result = await api.post<{ shipment: Shipment; tracking_number?: string | null }>(
         `/shipments/${state.shipment.id}/return-label`,
+        { acknowledge_live_charge: isPhysicalShipping },
       );
       addLog(
         "Shipping",
@@ -1997,6 +2106,7 @@ export default function OrderDetailPage() {
           onShippingFormChange={handleShippingFormChange}
           onPrepareRates={handlePrepareShippingRates}
           onPurchaseRate={handlePurchaseRate}
+          onSelectExecutionMode={handleSelectShippingExecutionMode}
         />
         <SettlementSection
           settlement={state.settlementRelease}

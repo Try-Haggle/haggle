@@ -21,6 +21,7 @@ type ShipmentType = "outbound" | "return";
 
 interface CreateShipmentRecordOptions {
   shipmentType?: ShipmentType;
+  metadata?: Record<string, unknown>;
 }
 
 function toIso(value: Date | string | null | undefined): string | undefined {
@@ -122,6 +123,7 @@ export async function createShipmentRecord(
         buyerId,
         shipmentType,
         status: "LABEL_PENDING",
+        metadata: options.metadata,
         shipmentInputDueAt: shipmentInputDueAt ? new Date(shipmentInputDueAt) : undefined,
       })
       .returning();

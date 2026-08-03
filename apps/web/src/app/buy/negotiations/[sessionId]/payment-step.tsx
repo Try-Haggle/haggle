@@ -2,7 +2,15 @@
 
 import { formatMoney } from "@haggle/shared";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { CheckCircle2, CreditCard, ExternalLink, RotateCcw, WalletCards } from "lucide-react";
+import {
+  CheckCircle2,
+  CreditCard,
+  ExternalLink,
+  FlaskConical,
+  RotateCcw,
+  Truck,
+  WalletCards,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import type { Address, Hex } from "viem";
@@ -80,6 +88,7 @@ const CONDITIONAL_SETTLEMENT_ABI = [
 ] as const;
 
 type PaymentMethod = "crypto" | "card";
+type ShippingExecutionMode = "integration_manual" | "physical_live";
 
 type PaymentStepStatus =
   | "select_method"
@@ -97,6 +106,12 @@ interface PaymentStepProps {
   settlementApprovalId: string;
   amountMinor: number;
   currency: string;
+  requiresShipping: boolean;
+  physicalShippingReadiness: {
+    ready: boolean;
+    live_label_max_minor: number;
+    missing: string[];
+  } | null;
 }
 
 interface ConditionalSettlementRequest {
@@ -202,7 +217,13 @@ function isConfirmedSettlementAmount(money: Money | undefined): money is Money {
   );
 }
 
-export function PaymentStep({ settlementApprovalId, amountMinor, currency }: PaymentStepProps) {
+export function PaymentStep({
+  settlementApprovalId,
+  amountMinor,
+  currency,
+  requiresShipping,
+  physicalShippingReadiness,
+}: PaymentStepProps) {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { data: balance } = useBalance({ address, chainId: HAGGLE_WALLET_CHAIN_ID });
@@ -211,6 +232,9 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
   const { writeContractAsync, isPending: isWriting } = useWriteContract();
 
   const [method, setMethod] = useState<PaymentMethod | null>(null);
+  const [shippingExecutionMode, setShippingExecutionMode] = useState<ShippingExecutionMode | null>(
+    requiresShipping ? null : "integration_manual",
+  );
   const [step, setStep] = useState<PaymentStepStatus>("select_method");
   const [error, setError] = useState<string | null>(null);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
@@ -262,6 +286,10 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
       setStep("connect_wallet");
       return;
     }
+    if (requiresShipping && !shippingExecutionMode) {
+      setError("Choose a fulfillment test before continuing.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -270,6 +298,9 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
         "/payments/prepare",
         {
           settlement_approval_id: settlementApprovalId,
+          ...(requiresShipping && shippingExecutionMode
+            ? { shipping_execution_mode: shippingExecutionMode }
+            : {}),
           payment_disclosure_ack: createPaymentDisclosureAck({ stripeFallback: method === "card" }),
         },
       );
@@ -542,28 +573,87 @@ export function PaymentStep({ settlementApprovalId, amountMinor, currency }: Pay
       )}
 
       {step === "select_method" && (
-        <div className="space-y-3">
-          <p className="text-ink-secondary text-sm">Choose a payment method.</p>
-          <SelectableOptionCard
-            selected={method === "card"}
-            icon={<CreditCard className="size-5" />}
-            title="Pay with card"
-            description="Stripe converts the card payment to USDC. The complete fee is shown before authorization."
-            onClick={() => {
-              setMethod("card");
-              setStep("connect_wallet");
-            }}
-          />
-          <SelectableOptionCard
-            selected={method === "crypto"}
-            icon={<WalletCards className="size-5" />}
-            title={`${HAGGLE_SETTLEMENT_ASSET.symbol} Direct (${formatMinor(fallbackAmount)})`}
-            description={`Pay from a ${HAGGLE_WALLET_CHAIN.name} wallet. Haggle shows the settlement and seller fee before authorization.`}
-            onClick={() => {
-              setMethod("crypto");
-              setStep("connect_wallet");
-            }}
-          />
+        <div className="space-y-6">
+          {requiresShipping && (
+            <section className="space-y-3" aria-labelledby="fulfillment-test-heading">
+              <div>
+                <h3 id="fulfillment-test-heading" className="font-medium text-ink text-sm">
+                  Choose a fulfillment test
+                </h3>
+                <p className="mt-1 text-ink-secondary text-xs">
+                  This choice is locked when payment preparation starts.
+                </p>
+              </div>
+              <SelectableOptionCard
+                selected={shippingExecutionMode === "integration_manual"}
+                icon={<FlaskConical className="size-5" />}
+                title="Integration test"
+                description="Use EasyPost test rates and labels. The team can advance carrier states without moving a parcel."
+                onClick={() => setShippingExecutionMode("integration_manual")}
+              />
+              <SelectableOptionCard
+                selected={shippingExecutionMode === "physical_live"}
+                icon={<Truck className="size-5" />}
+                title="Physical shipping rehearsal"
+                description={`Use real addresses, a paid EasyPost label, and actual carrier scans. Haggle pays up to $${((physicalShippingReadiness?.live_label_max_minor ?? 5000) / 100).toFixed(2)} in staging postage.`}
+                disabled={
+                  HAGGLE_WALLET_NETWORK === "base-sepolia" &&
+                  physicalShippingReadiness?.ready !== true
+                }
+                onClick={() => setShippingExecutionMode("physical_live")}
+                className="disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              {HAGGLE_WALLET_NETWORK === "base-sepolia" &&
+                physicalShippingReadiness?.ready !== true && (
+                  <Alert tone="warning" title="Physical shipping setup is incomplete">
+                    {physicalShippingReadiness?.missing.length
+                      ? physicalShippingReadiness.missing.join(" · ")
+                      : "Shipping readiness could not be verified."}
+                  </Alert>
+                )}
+              {shippingExecutionMode === "physical_live" &&
+                HAGGLE_WALLET_NETWORK === "base-sepolia" && (
+                  <Alert tone="warning" title="Real postage, test settlement">
+                    EasyPost charges Haggle's staging payment method in USD. The order settlement
+                    still uses {HAGGLE_SETTLEMENT_ASSET.symbol}, which has no monetary value and
+                    does not reimburse that postage.
+                  </Alert>
+                )}
+            </section>
+          )}
+
+          <section className="space-y-3" aria-labelledby="payment-method-heading">
+            <div>
+              <h3 id="payment-method-heading" className="font-medium text-ink text-sm">
+                Choose a payment method
+              </h3>
+              <p className="mt-1 text-ink-secondary text-xs">
+                Settlement asset: {HAGGLE_SETTLEMENT_ASSET.symbol} on {HAGGLE_WALLET_CHAIN.name}
+              </p>
+            </div>
+            <SelectableOptionCard
+              selected={method === "card"}
+              icon={<CreditCard className="size-5" />}
+              title="Pay with card"
+              description="Stripe converts the card payment to USDC. The complete fee is shown before authorization."
+              onClick={() => {
+                setMethod("card");
+                setStep("connect_wallet");
+              }}
+              disabled={requiresShipping && !shippingExecutionMode}
+            />
+            <SelectableOptionCard
+              selected={method === "crypto"}
+              icon={<WalletCards className="size-5" />}
+              title={`${HAGGLE_SETTLEMENT_ASSET.symbol} Direct (${formatMinor(fallbackAmount)})`}
+              description={`Pay from a ${HAGGLE_WALLET_CHAIN.name} wallet. Haggle shows the settlement and seller fee before authorization.`}
+              onClick={() => {
+                setMethod("crypto");
+                setStep("connect_wallet");
+              }}
+              disabled={requiresShipping && !shippingExecutionMode}
+            />
+          </section>
         </div>
       )}
 

@@ -32,6 +32,7 @@ export type AdminActionType =
   | "payment.admin_override"
   | "reconciliation.report"
   | "shipment.prepare"
+  | "shipment.execution_mode_selected"
   | "shipment.label_purchase"
   | "shipment.label_refund_request"
   | "shipment.label_refund_status"
