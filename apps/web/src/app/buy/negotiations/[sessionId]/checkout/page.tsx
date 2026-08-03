@@ -34,6 +34,15 @@ interface CheckoutSessionResponse {
 interface SettlementApprovalResponse {
   approval: CheckoutApprovalSummary & {
     currency: string;
+    fulfillment_type?: string;
+  };
+}
+
+interface ShippingReadinessResponse {
+  physical_live: {
+    ready: boolean;
+    live_label_max_minor: number;
+    missing: string[];
   };
 }
 
@@ -81,6 +90,19 @@ export default async function NegotiationCheckoutPage({
   }
 
   const money = { currency: approval.currency, amount_minor: amountMinor };
+  let physicalShippingReadiness: ShippingReadinessResponse["physical_live"] | null = null;
+  try {
+    const readiness = await serverApi.get<ShippingReadinessResponse>(
+      "/shipments/test-modes/readiness",
+    );
+    physicalShippingReadiness = readiness.physical_live;
+  } catch {
+    // The payment API remains the final fail-closed readiness check.
+  }
+  const requiresShipping =
+    !approval.fulfillment_type ||
+    approval.fulfillment_type === "physical_shipping" ||
+    approval.fulfillment_type === "shipped";
 
   return (
     <main className="min-h-screen bg-surface px-4 py-6 sm:px-6 sm:py-10">
@@ -104,6 +126,8 @@ export default async function NegotiationCheckoutPage({
               settlementApprovalId={approval.id}
               amountMinor={amountMinor}
               currency={approval.currency}
+              requiresShipping={requiresShipping}
+              physicalShippingReadiness={physicalShippingReadiness}
             />
           </Card>
 

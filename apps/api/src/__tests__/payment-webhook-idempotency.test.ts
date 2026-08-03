@@ -7,6 +7,7 @@ import {
   createPaymentSettlementRecord,
   getCommerceOrderByOrderId,
   getPaymentIntentById,
+  getPaymentIntentRowById,
   getPaymentSettlementByPaymentIntentId,
   setPaymentIntentProviderContext,
   updateCommerceOrderStatus,
@@ -143,6 +144,7 @@ vi.mock("../services/webhook-event-claim.service.js", async (importOriginal) => 
 });
 
 const mockGetPaymentIntentById = vi.mocked(getPaymentIntentById);
+const mockGetPaymentIntentRowById = vi.mocked(getPaymentIntentRowById);
 const mockSetPaymentIntentProviderContext = vi.mocked(setPaymentIntentProviderContext);
 const mockUpdateStoredPaymentIntent = vi.mocked(updateStoredPaymentIntent);
 const mockCreatePaymentSettlementRecord = vi.mocked(createPaymentSettlementRecord);
@@ -231,6 +233,8 @@ describe("payment webhook idempotency", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockGetPaymentIntentRowById.mockReset();
+    mockGetPaymentIntentRowById.mockResolvedValue(null);
     db = buildDb();
     app = Fastify();
     app.addContentTypeParser("application/json", { parseAs: "buffer" }, (request, body, done) => {
@@ -412,6 +416,9 @@ describe("payment webhook idempotency", () => {
 
   it("marks an x402 webhook processed only after settlement persistence succeeds", async () => {
     mockGetPaymentIntentById.mockResolvedValueOnce(paymentIntent());
+    mockGetPaymentIntentRowById.mockResolvedValue({
+      providerContext: { shipping_execution_mode: "physical_live" },
+    } as never);
     mockUpdateStoredPaymentIntent.mockResolvedValueOnce(null);
     mockCreatePaymentSettlementRecord.mockResolvedValueOnce(null as never);
 
@@ -433,6 +440,15 @@ describe("payment webhook idempotency", () => {
       "order_123",
       "seller_123",
       "buyer_123",
+      undefined,
+      {
+        metadata: expect.objectContaining({
+          shipping_execution_mode: "physical_live",
+          shipping_provider_environment: "live",
+          shipping_execution_mode_source: "payment_checkout",
+          shipping_execution_mode_payment_locked: true,
+        }),
+      },
     );
     expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
       expect.anything(),
@@ -481,6 +497,15 @@ describe("payment webhook idempotency", () => {
       "order_123",
       "seller_123",
       "buyer_123",
+      undefined,
+      {
+        metadata: expect.objectContaining({
+          shipping_execution_mode: "integration_manual",
+          shipping_provider_environment: "test",
+          shipping_execution_mode_source: "payment_checkout",
+          shipping_execution_mode_payment_locked: true,
+        }),
+      },
     );
     expect(mockCompleteWebhookEvent).toHaveBeenCalledTimes(1);
   });

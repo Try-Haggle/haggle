@@ -1,6 +1,9 @@
 "use client";
 
+import { CheckCircle2, CircleEllipsis, FlaskConical, Truck, XCircle } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api-client";
 
 /**
  * Staging Hub — Full flow walkthrough for testing.
@@ -16,6 +19,98 @@ interface FlowStep {
   href: string;
   status: "ready" | "needs_data" | "needs_deploy";
   features: string[];
+}
+
+interface TestModeReadiness {
+  settlement_asset: string;
+  network: string;
+  integration_manual: {
+    ready: boolean;
+    staging_husdc: boolean;
+    test_api_key_configured: boolean;
+    missing: string[];
+  };
+  physical_live: {
+    ready: boolean;
+    staging_husdc: boolean;
+    live_shipping_enabled: boolean;
+    live_api_key_configured: boolean;
+    live_webhook_configured: boolean;
+    live_label_max_minor: number;
+    live_label_funding_source: "haggle_staging_fiat_subsidy";
+    missing: string[];
+  };
+}
+
+function TestModeCard({
+  kind,
+  ready,
+  title,
+  description,
+  steps,
+  missing = [],
+}: {
+  kind: "integration" | "physical";
+  ready?: boolean;
+  title: string;
+  description: string;
+  steps: string[];
+  missing?: string[];
+}) {
+  const Icon = kind === "integration" ? FlaskConical : Truck;
+  return (
+    <div className="border border-line bg-surface-sunken/50 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Icon className="h-5 w-5 text-action-primary" aria-hidden="true" />
+          <div>
+            <h3 className="font-semibold text-ink">{title}</h3>
+            <p className="mt-1 text-sm text-ink-secondary">{description}</p>
+          </div>
+        </div>
+        <span
+          className={`inline-flex items-center gap-1 text-xs font-medium ${ready === true ? "text-success" : "text-warning"}`}
+        >
+          {ready === undefined ? (
+            <CircleEllipsis className="h-4 w-4" />
+          ) : ready ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <XCircle className="h-4 w-4" />
+          )}
+          {ready === undefined ? "Checking" : ready ? "Ready" : "Setup needed"}
+        </span>
+      </div>
+      <ol className="mt-4 space-y-2 text-sm text-ink-secondary">
+        {steps.map((step, index) => (
+          <li key={step} className="flex gap-2">
+            <span className="font-mono text-xs text-ink-muted">{index + 1}</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+      {missing.length > 0 && (
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="text-xs font-medium text-warning">Missing configuration</p>
+          <p className="mt-1 text-xs text-ink-muted">{missing.join(" · ")}</p>
+        </div>
+      )}
+      <div className="mt-4 flex gap-2">
+        <Link
+          href="/orders"
+          className="inline-flex h-9 items-center justify-center bg-ink px-3 text-sm font-medium text-surface"
+        >
+          Open orders
+        </Link>
+        <Link
+          href="/sell/dashboard"
+          className="inline-flex h-9 items-center justify-center border border-line px-3 text-sm font-medium text-ink"
+        >
+          Seller dashboard
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 const SELLER_FLOW: FlowStep[] = [
@@ -198,6 +293,15 @@ function FlowCard({ step }: { step: FlowStep }) {
 }
 
 export default function StagingPage() {
+  const [readiness, setReadiness] = useState<TestModeReadiness | null>();
+
+  useEffect(() => {
+    api
+      .get<TestModeReadiness>("/shipments/test-modes/readiness")
+      .then(setReadiness)
+      .catch(() => setReadiness(null));
+  }, []);
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-8">
@@ -206,6 +310,55 @@ export default function StagingPage() {
           Full Haggle flow — test everything end-to-end
         </p>
       </div>
+
+      <section className="mb-10">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Fulfillment test cases</h2>
+            <p className="mt-1 text-sm text-ink-secondary">
+              Both cases use hUSDC on Base Sepolia. Live postage is paid separately from the Haggle
+              staging fiat budget.
+            </p>
+          </div>
+          <span className="text-xs text-ink-muted">hUSDC · Base Sepolia</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <TestModeCard
+            kind="integration"
+            ready={readiness === null ? false : readiness?.integration_manual.ready}
+            title="Integration test"
+            description="EasyPost test label with delivery states controlled by the team."
+            steps={[
+              "Complete negotiation and fund the order with hUSDC.",
+              "Seller selects Integration before requesting rates.",
+              "Buy a test label, then advance carrier states from the order page.",
+              "Finish buyer review, release, or open a dispute.",
+            ]}
+            missing={
+              readiness === null
+                ? ["Readiness endpoint unavailable"]
+                : readiness?.integration_manual.missing
+            }
+          />
+          <TestModeCard
+            kind="physical"
+            ready={readiness === null ? false : readiness?.physical_live.ready}
+            title="Physical shipping rehearsal"
+            description={`Real addresses, actual carrier scans, and Haggle-funded live postage capped at $${((readiness?.physical_live.live_label_max_minor ?? 5000) / 100).toFixed(2)}.`}
+            steps={[
+              "Complete negotiation and fund the order with hUSDC.",
+              "Seller selects Physical shipping before requesting rates.",
+              "Confirm the live label charge, print the label, and hand the parcel to the carrier.",
+              "Wait for verified webhook delivery, then review, release, or dispute.",
+            ]}
+            missing={
+              readiness === null
+                ? ["Readiness endpoint unavailable"]
+                : readiness?.physical_live.missing
+            }
+          />
+        </div>
+      </section>
 
       {/* Seller Flow */}
       <section className="mb-10">

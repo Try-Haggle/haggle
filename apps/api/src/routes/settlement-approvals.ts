@@ -1,12 +1,18 @@
+import { type Database, eq, settlementApprovals } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import { eq, settlementApprovals, type Database } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-type ApprovalState = typeof settlementApprovals.$inferSelect["approvalState"];
+type ApprovalState = (typeof settlementApprovals.$inferSelect)["approvalState"];
+
+function fulfillmentTypeFromSnapshot(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return undefined;
+  const value = (snapshot as Record<string, unknown>).fulfillment_type;
+  return typeof value === "string" ? value : undefined;
+}
 
 function mapRow(row: typeof settlementApprovals.$inferSelect) {
   return {
@@ -19,6 +25,7 @@ function mapRow(row: typeof settlementApprovals.$inferSelect) {
     selected_payment_rail: row.selectedPaymentRail,
     currency: row.currency,
     final_amount_minor: row.finalAmountMinor,
+    fulfillment_type: fulfillmentTypeFromSnapshot(row.termsSnapshot) ?? "physical_shipping",
     seller_approved_at: row.sellerApprovedAt,
     buyer_approved_at: row.buyerApprovedAt,
     created_at: row.createdAt,
@@ -42,15 +49,14 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
         return reply.code(400).send({ error: "MISSING_USER_ID" });
       }
       if (request.user?.role !== "admin" && user_id !== requesterId) {
-        return reply.code(403).send({ error: "FORBIDDEN", message: "Cannot query another user's approvals" });
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "Cannot query another user's approvals" });
       }
 
       const rows = await db.query.settlementApprovals.findMany({
         where: (fields, ops) =>
-          ops.or(
-            ops.eq(fields.buyerId, user_id),
-            ops.eq(fields.sellerId, user_id),
-          ),
+          ops.or(ops.eq(fields.buyerId, user_id), ops.eq(fields.sellerId, user_id)),
         orderBy: (fields, ops) => ops.desc(fields.createdAt),
       });
 
@@ -75,7 +81,9 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
         request.user!.id !== row.buyerId &&
         request.user!.id !== row.sellerId
       ) {
-        return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
       }
 
       return reply.send({ approval: mapRow(row) });
@@ -101,7 +109,10 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
       }
 
       // 상태 확인
-      const approvableStates: ApprovalState[] = ["RESERVED_PENDING_APPROVAL", "AWAITING_SELLER_APPROVAL"];
+      const approvableStates: ApprovalState[] = [
+        "RESERVED_PENDING_APPROVAL",
+        "AWAITING_SELLER_APPROVAL",
+      ];
       if (!approvableStates.includes(row.approvalState)) {
         return reply.code(409).send({
           error: "INVALID_STATE",
@@ -110,7 +121,9 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
       }
 
       // 판매자 승인 → buyer도 이미 승인했으면 APPROVED, 아니면 AWAITING
-      const nextState: ApprovalState = row.buyerApprovedAt ? "APPROVED" : "AWAITING_SELLER_APPROVAL";
+      const nextState: ApprovalState = row.buyerApprovedAt
+        ? "APPROVED"
+        : "AWAITING_SELLER_APPROVAL";
 
       const [updated] = await db
         .update(settlementApprovals)
@@ -157,7 +170,9 @@ export function registerSettlementApprovalRoutes(app: FastifyInstance, db: Datab
       }
 
       // 구매자 승인 → seller도 이미 승인했으면 APPROVED
-      const nextState: ApprovalState = row.sellerApprovedAt ? "APPROVED" : "RESERVED_PENDING_APPROVAL";
+      const nextState: ApprovalState = row.sellerApprovedAt
+        ? "APPROVED"
+        : "RESERVED_PENDING_APPROVAL";
 
       const [updated] = await db
         .update(settlementApprovals)

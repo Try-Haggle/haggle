@@ -125,6 +125,28 @@
 
 - `EASYPOST_API_KEY`
 - `EASYPOST_WEBHOOK_SECRET`
+- staging 통합 테스트는 `EASYPOST_TEST_API_KEY`와 `EASYPOST_TEST_WEBHOOK_SECRET`을 사용한다.
+- staging 실배송 리허설은 `HAGGLE_ENABLE_STAGING_LIVE_SHIPPING=true`,
+  `EASYPOST_LIVE_API_KEY`, `EASYPOST_LIVE_WEBHOOK_SECRET`을 모두 요구한다.
+- staging 실배송의 hUSDC는 상품 정산 테스트 자산이며 EasyPost 우편요금을 결제하지 않는다.
+  실제 우편요금은 Haggle staging fiat 예산에서 지급하고 shipment metadata에 USD 비용과
+  `haggle_staging_fiat_subsidy`를 기록한다.
+- `HAGGLE_STAGING_LIVE_LABEL_MAX_MINOR`는 staging 실물/반품 레이블의 1건당 USD 상한이다.
+  기본값은 5000($50), 코드상 절대 상한은 50000($500)이며 준비 견적과 결제 직전 요금을
+  모두 검사한다.
+- 배송 실행 모드는 shipment metadata에 고정한다. `integration_manual`은 EasyPost test만,
+  `physical_live`는 EasyPost live만 사용하며 rate 요청 뒤에는 모드를 변경할 수 없다.
+- 신규 결제는 체크아웃에서 실행 모드를 명시적으로 고르고 payment intent provider context에 먼저
+  고정한 뒤 결제 완료 시 shipment metadata로 복사한다. 활성 payment intent의 모드 변경 요청은
+  `409 PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT`로 거절한다.
+- 결제에서 생성된 shipment는 `shipping_execution_mode_payment_locked=true`를 기록하며 판매자도
+  실행 모드를 바꿀 수 없다. 기존 수동 생성 shipment만 rate 요청 전 판매자 선택을 허용한다.
+- 정산 자산은 체크아웃 선택값이 아니라 배포 환경에 고정한다. staging은
+  `base-sepolia-husdc`, 실제 USDC는 별도 Base mainnet 배포를 사용해 체인·토큰 주소·컨트랙트가
+  한 주문에서 섞이지 않게 한다.
+- `physical_live` 레이블 구매는 실제 운송비가 청구되므로 API와 UI 양쪽의 명시적 확인을 요구한다.
+- `physical_live` 배송 상태는 수동 event와 test tracker로 진행할 수 없고 검증된 carrier webhook만
+  상태와 배송 완료를 갱신한다.
 - `SHIPPING_RATE_MAX_MISSES_PER_MINUTE=30`
 - `SHIPPING_RATE_CACHE_MAX_ENTRIES=5000`
 - `SHIPPING_RATE_CACHE_TTL_SECONDS`는 기본 30분, 최대 24시간
