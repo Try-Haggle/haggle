@@ -29,6 +29,7 @@ import {
   HAGGLE_SETTLEMENT_ASSET_PROFILE,
   HAGGLE_WALLET_CHAIN_ID,
 } from "@/lib/wallet-network";
+import { WalletProvider } from "@/lib/wallet-provider";
 
 // ─── Types ───────────────────────────────────────────────────
 interface PaymentIntent {
@@ -1398,7 +1399,7 @@ function ActivityLog({ entries }: { entries: LogEntry[] }) {
 }
 
 // ─── Main Page ───────────────────────────────────────────────
-export default function OrderDetailPage() {
+function OrderDetailContent() {
   const params = useParams();
   const orderId = params.id as string;
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount();
@@ -2143,5 +2144,13 @@ export default function OrderDetailPage() {
         </button>
       </div>
     </main>
+  );
+}
+
+export default function OrderDetailPage() {
+  return (
+    <WalletProvider>
+      <OrderDetailContent />
+    </WalletProvider>
   );
 }
