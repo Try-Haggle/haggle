@@ -5,27 +5,28 @@
  * Each stage has a well-defined interface for external agent interop.
  */
 
+import type { EvermemoBrief } from "../../services/evermemo-bridge.service.js";
+import type { UserMemoryBrief } from "../../services/user-memory-card.service.js";
+import type { MemoEncodingConfig } from "../config.js";
+import type { SkillStack } from "../skills/skill-stack.js";
+import type { RefereeBriefing, SkillAppliedRecord } from "../skills/skill-types.js";
 import type {
+  BuddyDNA,
+  ContextLayers,
+  ConversationContext,
   CoreMemory,
-  RoundFact,
-  OpponentPattern,
-  NegotiationSkill,
+  EngineDecision,
+  HarnessTrace,
+  L5Signals,
   ModelAdapter,
   NegotiationPhase,
-  EngineDecision,
-  ValidationResult,
-  ContextLayers,
-  L5Signals,
+  NegotiationSkill,
+  OpponentPattern,
   RoundExplainability,
+  RoundFact,
   StageConfig,
-  BuddyDNA,
-  ConversationContext,
-} from '../types.js';
-import type { RefereeBriefing, SkillAppliedRecord } from '../skills/skill-types.js';
-import type { SkillStack } from '../skills/skill-stack.js';
-import type { MemoEncodingConfig } from '../config.js';
-import type { UserMemoryBrief } from '../../services/user-memory-card.service.js';
-import type { EvermemoBrief } from '../../services/evermemo-bridge.service.js';
+  ValidationResult,
+} from "../types.js";
 
 // =========================================
 // Stage 1: Understand
@@ -33,19 +34,19 @@ import type { EvermemoBrief } from '../../services/evermemo-bridge.service.js';
 
 export interface UnderstandInput {
   raw_message: string;
-  sender_role: 'buyer' | 'seller';
+  sender_role: "buyer" | "seller";
 }
 
 export type ConversationType =
-  | 'PRICE_NEGOTIATION'
-  | 'INFORMATION_REQUEST'
-  | 'INFORMATION_PROVIDED'
-  | 'CONDITION_NEGOTIATION'
-  | 'LOGISTICS_NEGOTIATION'
-  | 'TRUST_SAFETY'
-  | 'READINESS_DISCOVERY'
-  | 'CLOSING_CONFIRMATION'
-  | 'SMALL_TALK';
+  | "PRICE_NEGOTIATION"
+  | "INFORMATION_REQUEST"
+  | "INFORMATION_PROVIDED"
+  | "CONDITION_NEGOTIATION"
+  | "LOGISTICS_NEGOTIATION"
+  | "TRUST_SAFETY"
+  | "READINESS_DISCOVERY"
+  | "CLOSING_CONFIRMATION"
+  | "SMALL_TALK";
 
 export interface InformationLink {
   signal_type: string;
@@ -54,44 +55,44 @@ export interface InformationLink {
   value: string;
   confidence: number;
   connects_to:
-    | 'pricing'
-    | 'product'
-    | 'condition'
-    | 'terms'
-    | 'trust'
-    | 'demand'
-    | 'outcome'
-    | 'memory'
-    | 'market';
+    | "pricing"
+    | "product"
+    | "condition"
+    | "terms"
+    | "trust"
+    | "demand"
+    | "outcome"
+    | "memory"
+    | "market";
 }
 
 export interface MissingInformationNeed {
   slot:
-    | 'product_identity'
-    | 'price_anchor'
-    | 'budget_boundary'
-    | 'condition_summary'
-    | 'battery_health'
-    | 'carrier_lock'
-    | 'verification_status'
-    | 'warranty_status'
-    | 'shipping_terms'
-    | 'payment_safety'
-    | 'buyer_priority';
-  priority: 'high' | 'medium' | 'low';
+    | "product_identity"
+    | "price_anchor"
+    | "budget_boundary"
+    | "condition_summary"
+    | "battery_health"
+    | "carrier_lock"
+    | "verification_status"
+    | "warranty_status"
+    | "shipping_terms"
+    | "payment_safety"
+    | "buyer_priority";
+  priority: "high" | "medium" | "low";
   reason: string;
   question: string;
-  question_source?: 'tag_garden' | 'fallback';
+  question_source?: "tag_garden" | "fallback";
   tag_slot_id?: string;
-  enforcement?: 'hard' | 'soft';
+  enforcement?: "hard" | "soft";
   answer_options?: string[];
 }
 
 export interface UnderstandOutput {
   price_offer?: number;
-  action_intent: 'OFFER' | 'COUNTER' | 'ACCEPT' | 'REJECT' | 'QUESTION' | 'INFO';
+  action_intent: "OFFER" | "COUNTER" | "ACCEPT" | "REJECT" | "QUESTION" | "INFO";
   conditions: Record<string, unknown>;
-  sentiment: 'positive' | 'neutral' | 'negative';
+  sentiment: "positive" | "neutral" | "negative";
   raw_text: string;
   conversation_type?: ConversationType;
   information_links?: InformationLink[];
@@ -145,11 +146,17 @@ export interface DecideInput {
 
 export interface DecideOutput {
   decision: EngineDecision;
-  source: 'llm' | 'skill';
+  source: "llm" | "skill";
   reasoning_mode: boolean;
   llm_raw?: string;
   tokens?: { prompt: number; completion: number };
   latency_ms?: number;
+  /**
+   * Harness trace (intelligence layer) — box the engine allowed, what the AI
+   * chose, and whether it was clamped. Present only when a usable box existed
+   * for a priced COUNTER. Flows into RoundExplainability.harness at validate.
+   */
+  harness?: HarnessTrace;
 }
 
 // =========================================

@@ -75,9 +75,11 @@
 <!-- 그룹 1 -->
 <section id="g1" data-nav="그룹 1 · 결정부 (사람 1)">
   <h2 class="sec">Group 1 · 👤 사람 1</h2>
-  <h2 class="title">그룹 1 — 결정부: 엔진이 가격·수락을 결정</h2>
-  <p class="lead"><b>이 그룹 = "가격·수락을 LLM 대신 엔진이 결정하게 만들기"</b> (LLM은 작가). 지금은 LLM이 최종가를 덮어써 모델·요청마다 흔들림(<code>decide.ts:84</code>) → 엔진이 확정(결정론). <b>흐름:</b> 컨텍스트 조립(HAGGLE-1·2·3 = 17파라미터를 엔진에 넘김) → 엔진 결정(<code>computeUtility+makeDecision</code>) + LLM price 제거 → 심판(HAGGLE-10). 짝꿍 그룹2와는 <b>H6</b>에서만 합류.</p>
-  <div class="callout co-warn" style="margin-top:6px"><div class="ct">⚠️ 이 그룹만으로는</div><div>엔진이 <b>숫자(target/floor/시간/신뢰)로만</b> 결정 → 상대의 자연어 주장("배터리 89%라 깎아줘")은 아직 가격에 안 먹힘. 그건 <b>그룹 2(센서부)</b>가 채웁니다.</div></div>
+  <h2 class="title">그룹 1 — 결정부: 엔진이 <b>box</b>를 정하고 AI가 그 안에서 결정 (하네스)</h2>
+  <p class="lead"><b>이 그룹 = "엔진이 안전한 범위(box)와 품질 하한(baseline)을 만들고, AI는 그 box 안에서 자유롭게 결정하게 만들기".</b> 지금은 LLM이 최종가를 무제한 덮어씀(<code>decide.ts:84</code>, floor만 clamp) → 모델·요청마다 흔들림. 하네스로 바꾸면 <b>안전은 항상 일관, 품질은 모델·스킬에 따라 상승</b>. <b>흐름:</b> 컨텍스트 조립(HAGGLE-1·2·3 = 17파라미터 → box·baseline 계산) → 엔진이 box 산출 → LLM이 box 안에서 결정 → Referee가 box 강제(HAGGLE-10) → intelligence 로그. 짝꿍 그룹2와는 <b>H6</b>에서만 합류.</p>
+  <div class="callout co-ok" style="margin-top:6px"><div class="ct">🧠 핵심 원리 — '일관성'을 둘로 나눔</div><div><b>안전(플로어·손해딜 방지)</b>=모든 유저에게 항상 일관(순수 수학). <b>품질(얼마나 잘 깎나)</b>=모델·스킬에 따라 달라도 됨(그게 제품 가치). 품질 = <b>max(baseline, AI)</b> — baseline 밑으론 못 감, 위로만. 바보 모델=baseline, 똑똑한 모델=그 이상. → 모델 선택·스킬 마켓이 이 위에 안전하게 얹힘.</div></div>
+  <div class="callout co-warn" style="margin-top:6px"><div class="ct">🍀 레버리지</div><div><b>box·baseline이 이미 존재</b> — box=<code>RefereeCoaching.acceptable_range{min,max}</code>(coach.ts:129), baseline=<code>recommended_price</code>(coach.ts:92). 재작업이 아니라 <b>배선</b>: LLM을 box에 묶고, Referee가 box를 강제하고, autonomy 다이얼로 box 폭 조절.</div></div>
+  <div class="callout co-warn" style="margin-top:6px"><div class="ct">⚠️ 이 그룹만으로는</div><div>엔진이 <b>숫자(target/floor/시간/신뢰)로만</b> box 계산 → 상대의 자연어 주장("배터리 89%라 깎아줘")은 아직 box에 안 반영. 그건 <b>그룹 2(센서부)</b>가 채웁니다.</div></div>
 
   <details class="ticket">
     <summary><span class="ino">1</span><span class="it">HAGGLE-1 · 파라미터 대부분 사장 (17개 중 2개만 작동)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
@@ -119,33 +121,57 @@
   </details>
 
   <details class="ticket">
-    <summary><span class="ino">▶</span><span class="it">엔진 결정 경로 + LLM price 제거 (이 그룹의 핵심)</span><span class="chips"><span class="imp hi">🔴 핵심</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
+    <summary><span class="ino">▶</span><span class="it">하네스: 엔진이 box 산출 → LLM이 box 안에서 결정 → Referee 강제 (이 그룹의 핵심)</span><span class="chips"><span class="imp hi">🔴 핵심</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
     <div class="tbody">
-      <div class="field"><div class="flabel">문제</div><div class="val">지금은 코치가 추천가를 만들어도 <b>LLM이 최종가를 직접 정하고 덮어씀</b>(<code>decide.ts:84</code>) → 모델·요청마다 금액이 흔들려 결정론·공정 철학과 충돌.</div></div>
-      <div class="field"><div class="flabel ok">목표</div><div class="val">컨텍스트(HAGGLE-1·2·3)가 채워지면, 엔진 <code>computeUtility+makeDecision</code>이 <b>가격·수락을 확정</b>하고 LLM 출력 스키마에서 <code>price</code>를 제거 → LLM은 그 값으로 메시지만 씀.</div></div>
+      <div class="field"><div class="flabel">문제</div><div class="val">지금은 코치가 box(<code>acceptable_range</code>)·baseline(<code>recommended_price</code>)을 만들어도 <b>LLM이 무시하고 최종가를 무제한 덮어씀</b>(<code>decide.ts:84</code>, 유일 안전장치는 floor clamp). → 모델·요청마다 흔들림(불공정) 또는 반대로 엔진이 전권 쥐면 순수 수학(AI 무의미). <b>하네스</b>로 둘 다 해소.</div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">엔진이 컨텍스트(HAGGLE-1·2·3)로 <b>box[min,max] + baseline</b>을 산출 → <b>LLM은 box 안에서만</b> 값·전술·term 선택 → Referee가 box를 <b>강제(clamp/재요청)</b>. LLM 출력의 <code>price</code>는 제거하지 않고 <b>box에 묶는다</b>(범위 밖이면 clamp). 품질 = max(baseline, AI).</div></div>
       <div class="field"><div class="flabel">하위 단계</div><div class="val"><ul>
-        <li><b>H1a</b> — 엔진 입력(i_completeness·관계 이력)이 코드에 있는지 조사, 없으면 기본값 설계</li>
-        <li><b>H2</b> — <code>decide</code>를 engine-core <code>computeUtility+makeDecision</code>으로 교체 (가격+수락 엔진이)</li>
-        <li><b>H3</b> — LLM 출력에서 <code>price</code> 제거, 엔진 가격을 그대로 사용(작가화)</li>
+        <li><b>H1a</b> ✅ — 엔진 입력 사실 조사 <b>완료</b>: r_score=배선(trust_scores), i_completeness=근사(listing 필드), n_success/losses=0(per-pair·휴면), V_s 재정의 폐기</li>
+        <li><b>H1</b> — 스냅샷 직결로 NegotiationContext 조립 (<code>assemble-context.ts</code>, 스텁 존재) → box·baseline 계산 재료</li>
+        <li><b>H2</b> — <code>computeUtility</code>로 box[min,max]+baseline 산출, DECIDE가 <b>box를 LLM에 하드 제약</b>으로 전달</li>
+        <li><b>H3</b> — LLM 가격을 box에 <b>clamp</b> + <b>autonomy 다이얼</b>(box 폭 조절, MVP는 좁게 시작)</li>
       </ul></div></div>
-      <div class="field"><div class="flabel">완료 기준</div><div class="val">같은 입력이면 <b>항상 같은 가격·수락</b>(결정론 테스트) · LLM이 가격 못 바꿈 · 프리셋 바꾸면 엔진 가격이 달라짐.</div></div>
-      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/decide.ts · engine-core/utility·decision · deepseek-adapter.ts(출력 스키마)</div></div>
-      <div class="field"><div class="flabel">의존</div><div class="val">HAGGLE-1·2·3(컨텍스트)이 먼저. 이후 H6(그룹2와 합류)의 전제.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">LLM이 <b>box를 절대 못 벗어남</b>(강제 테스트) · box·baseline은 같은 입력이면 항상 동일(결정론) · autonomy로 폭 조절 가능 · 더 나은 모델이 baseline보다 나은 결과(delta&gt;0 로그로 확인).</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/decide.ts(box 전달) · stages/validate.ts(box clamp) · coach.ts(box 폭=autonomy) · engine-core/utility</div></div>
+      <div class="field"><div class="flabel">의존</div><div class="val">HAGGLE-1·2·3(컨텍스트→box). 이후 H6(그룹2 특징이 box에 반영)의 전제.</div></div>
     </div>
   </details>
 
   <details class="ticket">
-    <summary><span class="ino">10</span><span class="it">HAGGLE-10 · Referee HARD 위반 미차단 (안전)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <summary><span class="ino">4</span><span class="it">Opponent modeling — 상대 추정 → box 조준점 (레버 A)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟠 큼</span><span class="todo">아직 할 일</span></span></summary>
     <div class="tbody">
-      <div class="field"><div class="flabel">문제</div><div class="val">규칙(가격이 floor 초과 등) <b>HARD 위반</b>이 auto-fix 최대 2회 후에도 남으면 <b>그대로 통과</b>한다. <code>'BLOCK'</code>은 감사 로그 라벨일 뿐 실제 실행을 막지 않는다. 잘못된 LLM 결정이 상대에게 나갈 수 있는 안전 문제.</div></div>
+      <div class="field"><div class="flabel">목표</div><div class="val">AI가 상대 말을 분석해 <code>OpponentEstimate{time_pressure, toughness, est_reservation, confidence}</code> 추정 → 엔진이 <b>내 baseline을 먼저 계산 후 상대 추정으로 box 안 조준점(aim)을 이동</b>. 상대가 급하면 내 target 쪽으로 강하게, 강경하면 baseline 유지. "정보 max, 출력 bounded".</div></div>
+      <div class="field"><div class="flabel">공식 (레버 A)</div><div class="val"><code>shift = confidence × time_pressure</code> · <code>aim = baseline + shift × (target − baseline)</code> · 추정 마지노선으로 캡 · <b>box로 clamp</b>.</div></div>
+      <div class="field"><div class="flabel warn">★ 안전 불변식</div><div class="val">상대 추정은 <b>조준점·속도만</b> 바꾸고 <b>box 경계(내 floor)는 오직 내 params</b>에서. 잘못 읽어도 최악이 "손해지만 안전". confidence로 블렌딩.</div></div>
+      <div class="field"><div class="flabel">현재</div><div class="val">crude EMA 상대모델만 있음(<code>reconstructOpponentPattern</code>), 가격에 거의 안 흘러감. 백로그 #4 업그레이드 자리.</div></div>
+      <div class="field"><div class="flabel">하위/의존</div><div class="val"><b>레버 A</b>(조준점, 매 라운드) = <code>referee/opponent-adjust.ts:adjustAim</code>(스캐폴드 존재). <b>레버 B</b>(양보속도 β, 여러 라운드) = 동적 β #5. <b>추정 생성</b>은 그룹 2 센서(H5)와 합류 — 값 적용은 그룹 1.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">referee/opponent-adjust.ts · coach.ts(baseline→aim) · stages/understand.ts(추정 생성, 그룹2) · harness.ts(trace)</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">10</span><span class="it">HAGGLE-10 · Referee가 box 미강제 (안전 = 하네스 rail)</span><span class="chips"><span class="imp hi">🔴 높음</span><span class="eff">🟡 중</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">문제</div><div class="val">Referee가 <b>floor까지만</b> clamp하고 <b>box[min,max]는 강제 안 함</b>. HARD 위반이 auto-fix 2회 후 남아도 <code>'BLOCK'</code> 라벨만 달고 <b>그대로 통과</b>. 하네스에서 Referee = <b>안전 rail</b>이므로, 이게 안 되면 box가 종잇장.</div></div>
       <div class="field"><div class="flabel warn">현재 동작 (코드 근거)</div><div class="val"><ul>
-        <li>auto-fix 루프 <code>while(!hardPassed &amp;&amp; retryCount&lt;2)</code> 후, 위반이 남아도 throw/reject 없이 return<span class="fileref">stages/validate.ts:46,71</span></li>
-        <li>HARD 미해결 시 <code>refereeAction='BLOCK'</code> 라벨만 설정<span class="fileref">stages/validate.ts:99</span></li>
-        <li>respond에도 가격 clamp/lock 없음 (유일 개입 = V1 floor 덮어쓰기, soft)</li>
+        <li>auto-fix 루프 후 위반 남아도 throw/reject 없이 return<span class="fileref">stages/validate.ts:46,71</span></li>
+        <li>HARD 미해결 시 <code>refereeAction='BLOCK'</code> 라벨만<span class="fileref">stages/validate.ts:99</span></li>
+        <li>가격 개입 = V1 floor 덮어쓰기뿐 (box 상한/하한 강제 없음)</li>
       </ul></div></div>
-      <div class="field"><div class="flabel ok">목표</div><div class="val">HARD 위반이 실제로 차단(REJECT)되거나 안전한 값으로 강제(clamp)된다 — "BLOCK"이 이름값을 한다.</div></div>
-      <div class="field"><div class="flabel">완료 기준</div><div class="val">floor 위반 등 HARD가 최종 응답으로 절대 안 나감(테스트). "실제 차단할지 vs clamp할지"의 정책 결정 포함.</div></div>
-      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/validate.ts · stages/respond.ts (가격 clamp) · SOT §5.5</div></div>
+      <div class="field"><div class="flabel ok">목표</div><div class="val">LLM 값이 box를 벗어나면 <b>[min,max]로 clamp</b>(soft) 하고, HARD 위반은 실제 차단(REJECT) — box가 진짜 rail이 된다. 이 그룹의 하네스 핵심과 짝.</div></div>
+      <div class="field"><div class="flabel">완료 기준</div><div class="val">box 밖 값이 최종 응답으로 <b>절대 안 나감</b>(테스트) · clamp 발생이 intelligence 로그에 기록. "clamp vs REJECT" 정책 결정 포함.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">stages/validate.ts(box clamp) · stages/respond.ts · SOT §5.5·§11 하네스</div></div>
+    </div>
+  </details>
+
+  <details class="ticket">
+    <summary><span class="ino">14</span><span class="it">Intelligence 레이어 — 결정 trace 로깅 (MVP 학습)</span><span class="chips"><span class="imp mid">🟡 중간</span><span class="eff">🟢 작음</span><span class="todo">아직 할 일</span></span></summary>
+    <div class="tbody">
+      <div class="field"><div class="flabel">목표</div><div class="val">autonomy를 얼마나 풀지·어떤 모델·스킬이 baseline을 이기는지 <b>데이터로</b> 판단하기 위해, 매 라운드 <b>결정 trace</b>를 기록. <code>RoundExplainability</code>(metadata jsonb) 확장 → <b>마이그레이션 불필요</b>.</div></div>
+      <div class="field"><div class="flabel">기록 항목</div><div class="val"><code>box{min,max,width}</code> · <code>baseline</code> · <code>ai_choice{price,tactic,source}</code> · <b><code>delta_vs_baseline</code></b>(모델이 이기나) · <code>box_clamp{clamped,original,reason}</code> · <code>autonomy</code> · <code>model_id</code>·<code>skill_ids</code> · tokens·latency · (세션 종료 시 조인) 성사·할인율.</div></div>
+      <div class="field"><div class="flabel warn">현재</div><div class="val">coaching·utility·tokens·latency는 라운드에 저장되나, <b>delta·clamp·autonomy·model/skill이 없음</b><span class="fileref">executor.ts:535 metadata · validate.ts buildExplainability</span></div></div>
+      <div class="field"><div class="flabel ok">완료 기준</div><div class="val">라운드마다 trace 저장 → "delta&gt;0 비율", "clamp 발생률", "모델·스킬별 성사/할인율" 집계 쿼리 가능.</div></div>
+      <div class="field"><div class="flabel">손볼 곳</div><div class="val fileref">types.ts(RoundExplainability 확장) · stages/validate.ts(buildExplainability) · executor.ts(model/skill id)</div></div>
     </div>
   </details>
 </section>

@@ -8,7 +8,9 @@
 import { callLLM } from "../adapters/deepseek-client.js";
 import { shouldUseReasoning } from "../config.js";
 import type { DecideInput, DecideOutput } from "../pipeline/types.js";
-import type { EngineDecision } from "../types.js";
+import { buildHarnessTrace } from "../referee/harness.js";
+import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
+import type { EngineDecision, HarnessTrace } from "../types.js";
 
 /**
  * Make a negotiation decision.
@@ -99,6 +101,38 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
     }
   }
 
+  // Harness rail: bound the chosen price to the engine's box (SOT §11).
+  // The engine already produced box (coaching.acceptable_range) + baseline
+  // (recommended_price); until now the LLM price wasn't bound to it. Clamp a
+  // priced COUNTER into the box and record the trace. No-op when there's no
+  // usable box (facts-only path) or the action carries no price.
+  // The harness is a best-effort add-on: it must NEVER break a round. Any error
+  // here (missing coaching, bad box, etc.) is swallowed so the negotiation still
+  // completes with the un-clamped decision.
+  let harness: HarnessTrace | undefined;
+  try {
+    // Opponent estimate (if the LLM reported one) shifts the aim within the box —
+    // instrumental only; the box (my target/floor) stays the authoritative goal.
+    const estimate = decision.opponent_estimate;
+    const hb = computeHarnessBox(memory.coaching, memory.boundaries, DEFAULT_AUTONOMY, estimate);
+    if (hb && decision.action === "COUNTER" && typeof decision.price === "number") {
+      harness = buildHarnessTrace({
+        range: { baseline: hb.baseline, min: hb.range.min, max: hb.range.max },
+        autonomy: DEFAULT_AUTONOMY,
+        aim: hb.aim,
+        ...(estimate ? { opponent_estimate: estimate } : {}),
+        ai: { price: decision.price, tactic: decision.tactic_used, source },
+        model_id: adapter.modelId,
+      });
+      const clampedPrice = harness.ai_choice.price;
+      if (typeof clampedPrice === "number" && clampedPrice !== decision.price) {
+        decision = { ...decision, price: clampedPrice };
+      }
+    }
+  } catch (err) {
+    console.warn("[decide] harness skipped:", (err as Error).message);
+  }
+
   const latencyMs = Date.now() - startMs;
 
   return {
@@ -108,6 +142,7 @@ export async function decide(input: DecideInput): Promise<DecideOutput> {
     llm_raw: llmRaw,
     tokens,
     latency_ms: latencyMs,
+    ...(harness ? { harness } : {}),
   };
 }
 
