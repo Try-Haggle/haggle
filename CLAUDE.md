@@ -138,6 +138,9 @@ pnpm --filter @haggle/engine-core test
 pnpm --filter @haggle/engine-session test
 ```
 
+> **협상 테스트 랩:** UI 없이 DeepSeek 협상을 대량 실행/측정하는 온디맨드 도구는
+> `nego-lab/`에 있다. 실행법·비용·안전장치는 [nego-lab/README.md](./nego-lab/README.md) 참고.
+
 ---
 
 ## 핵심 규칙 (Development Principles)
