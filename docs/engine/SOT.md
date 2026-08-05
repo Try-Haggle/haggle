@@ -391,15 +391,64 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 
 ## 11. 종합 백로그 (SOT ↔ 현황 갭)
 
-### 🧭 열린 설계 결정 — 가격·수락 결정을 LLM 대신 엔진이 하게 할까? (미결정, 하이브리드로 기울음)
-> 출처: 팀 리뷰 로그 F0/F4/F5 (2026-07). SOT §0.2 철학 vs §1.4/§5.4 현황의 충돌 지점.
+### 🧭 확정 설계 결정 — 하이브리드 결정 = **하네스(Harness): box + autonomy 다이얼**
+> 출처: 팀 리뷰 로그 F0/F4/F5(2026-07) → 미팅 확정(2026-07). 이 절이 이전 "엔진이 단일 가격을 결정" 방향을 **대체**한다.
 
-**"가격은 LLM이 정한다"(§1.4·§5.4)는 *현재 구현*일 뿐, 지켜야 할 *원칙*이 아니다.** LLM이 최종가를 정하면 모델·요청마다 금액이 흔들려 Haggle의 결정론·공정·감사가능 철학(§0.2)과 충돌. 선택지 3:
-- **(A) advisory 배선** — 숫자 파라미터를 코치·프롬프트에 연결. LLM 결정 구조 유지. *(약함 — LLM이 여전히 최종가)*
-- **(B) 엔진 뇌 복귀** — `makeDecision`을 결정 경로로. 17개 필드 활성.
-- **(C) 현행 인정** — "LLM + 빌더메모리 + beta/anchor 2개"를 진짜 설계로.
+**문제:** "가격은 LLM이 정한다"(§1.4·§5.4)는 *현재 구현*일 뿐 원칙이 아니다. 그렇다고 엔진이 단일 가격을 결정하면(순수 수학) — 어떤 AI를 쓰든 같은 값이 나와 **모델·스킬이 협상 품질을 못 바꾼다**(모델 선택·스킬 마켓의 가치 소멸). 반대로 LLM에 전권을 주면 모델·요청마다 흔들려 **불공정·비결정**.
 
-**정착 방향(Jongwoo 기울음) = 하이브리드(B 변형):** *엔진이 가격·수락을 결정(권위) + LLM은 언어·비가격 지렛대·통역.* 구현 라드 = **센서/통역(LLM) → 판사(엔진) → 작가(LLM)**: ① LLM이 자연어를 엔진이 아는 수치·태그로 통역 → ② 엔진이 결정론적으로 가격·수락 결정(가격 clamp) → ③ LLM이 그 가격을 자연스럽게 포장. 파이프라인 슬롯(Stage 1 Understand=센서, Stage 3 Decide=판사, Stage 5 Respond=작가)이 이미 존재 → 새 아키텍처가 아니라 **결정 권한을 Stage 3 LLM→엔진으로 이동 + Stage 1 특징추출 강화 + Stage 5 clamp**. 대가 = 엔진이 자연어 주장·비가격 term·경매 상황을 다루려면 **상대모델(백로그#4)·multi-term(#6)** 필요.
+**해소 열쇠 — '일관성'을 둘로 분리한다:**
+- **안전(Safety)** = 플로어·손해딜·착취 방지 → **모든 유저에게 항상 일관**(순수 수학이 지킴).
+- **품질(Quality)** = 얼마나 잘 깎나·타이밍·전술·조건 트레이드 → **모델·스킬에 따라 달라도 됨. 그게 제품 가치다.**
+> 순수 수학이 지켜야 할 건 **품질이 아니라 안전**. 품질이 모델마다 다른 건 불공정이 아니라 제품 그 자체(더 좋은 도구 = 더 좋은 결과).
+
+**메커니즘 — 엔진 = 하네스, AI = 그 안의 협상가:**
+```
+매 라운드:
+  엔진 → ① box: 유효 카운터 범위 [min,max]          (결정적, 모델 무관)
+        ② baseline: 수학적 추천가                    (결정적 = 품질 하한)
+  AI   → box 안에서 자유롭게: 정확한 값·타이밍·전술·어떤 term을 트레이드할지
+  Referee → box 이탈 시 [min,max]로 clamp/재요청       (안전 강제)
+결과 품질 = max(baseline, AI 판단) — baseline 밑으론 절대 못 감, 위로만.
+```
+- **바보 모델 → baseline만 따름**(현 엔진 수준, 일관 보장). **똑똑한 모델 → baseline을 넘어섬**(추가 가치). ⇒ **품질은 모델 성능에 단조증가, 하한은 보장.** 두 걱정(불공정 / 순수수학)이 동시에 빠진다.
+- **하네스 기법 매핑:** 엔진=하네스(규칙·범위·도구 제공), AI=에이전트(범위 안 추론), 스킬=지식/도구 플러그인. 하네스가 안전을 보장하므로 **스킬을 마켓에서 사고팔아도 내 플로어를 못 뚫는다** → 마켓·모델선택이 이 위에 안전하게 얹힌다.
+
+**Autonomy 다이얼(MVP 핵심):** box **폭**을 조절하는 파라미터 `autonomy ∈ [0,1]`. `0`=box 폭 0=순수 엔진(완전 결정적), `1`=하드 플로어까지=AI 최대 자유. **MVP는 좁게 시작(≈0.2) → 데이터 보며 넓힘.** 일관성↔AI가치 트레이드오프를 실험적으로 튜닝.
+
+**레버리지 — 인프라가 이미 있다(재작업 아님, 배선):**
+- **box** = `RefereeCoaching.acceptable_range {min,max}` (coach.ts:129–144, 이미 계산됨)
+- **baseline** = `RefereeCoaching.recommended_price` (coach.ts:92–127, Faratin/마진)
+- **enforcement** = VALIDATE V1 + auto-fix 루프 (단 현재 **floor까지만** clamp → **box까지 clamp로 확장** 필요)
+- 남은 작업: ① DECIDE에서 LLM에 box를 **하드 제약**으로 전달 ② VALIDATE가 [min,max] 강제 ③ autonomy로 box 폭 조절 ④ intelligence 로그(아래).
+
+#### 🎯 Opponent modeling — 상대 추정으로 box 안 "조준점" 이동 (백로그 #4)
+AI의 두 번째 역할 = **상대 파라미터 추정**. 대화 분석 → `OpponentEstimate{time_pressure, toughness, est_reservation_price?, confidence}`(엔진이 아는 수치). 엔진은 **내 baseline을 먼저** 계산(내 전략) 후, 상대 추정으로 **box 안에서 조준점(aim)을 이동**:
+```
+shift = confidence × time_pressure                 # 상대가 급할수록 강하게
+aim   = baseline + shift × (내_target − baseline)    # 내 target 쪽으로
+aim   = min/max(aim, est_reservation_price)         # 추정 마지노선으로 캡(A+)
+aim   = clamp(aim, box.min, box.max)                # ★ 안전: box 안으로
+```
+- **레버 A**(조준점, 매 라운드 한 점) = `referee/opponent-adjust.ts:adjustAim`. **레버 B**(양보속도 β, 여러 라운드) = 동적 β(백로그 #5).
+- **안전 불변식:** 상대 추정은 **조준점·속도만** 바꾸고 **box 경계(내 floor)는 오직 내 params에서** 온다. 잘못 읽어도 최악이 "손해지만 안전". confidence로 블렌딩해 과신 방지.
+- AI는 "정보 max(내 persona + 상대 추정 + box), 출력 bounded(box)" — 이게 하네스 철학. trace에 `aim`·`opponent_estimate` 로깅해 "상대 읽기가 맞았나(성사율 상관)" 학습.
+
+#### 🧠 Intelligence 레이어 (MVP 학습용 로깅)
+목적: **어떤 모델·스킬이 실제로 baseline을 이기는지, autonomy를 얼마나 풀어도 안전한지**를 데이터로 판단. `RoundExplainability`(metadata jsonb, 마이그레이션 불필요)를 확장해 매 라운드 **결정 trace** 기록:
+
+| 필드 | 뜻 | 학습 목표 |
+|------|-----|-----------|
+| `box {min,max,width}` | 그 라운드 유효 범위 + autonomy 폭 | 폭 vs 결과 상관 |
+| `baseline` | 엔진 추천가(품질 하한) | 기준선 |
+| `ai_choice {price,tactic,source}` | AI가 고른 값·전술·llm/skill | AI 행동 |
+| `delta_vs_baseline` | AI값 − baseline (box폭 정규화) | **모델이 baseline을 이기나** |
+| `box_clamp {clamped,original,reason}` | rail 이탈·클램프 여부 | 자유 과다 감지 |
+| `autonomy` | 그 라운드 다이얼 값 | 폭 튜닝 근거 |
+| `model_id` · `skill_ids` | 사용 모델·스킬 | **모델/스킬별 성과 비교** |
+| `tokens` · `latency` · `reasoning_used` | 비용·성능 | 비용 대비 품질 |
+| (세션 종료 시 조인) `outcome` | 성사·할인율·라운드수 | **최종 결과와 연결** |
+
+→ 이 trace로 "delta>0 비율", "clamp 발생률", "모델·스킬별 성사/할인율"을 집계해 autonomy·모델·스킬 정책을 조정한다.
 
 우선순위는 "실제 협상 품질에 미치는 영향" 기준.
 
@@ -408,13 +457,15 @@ P(t) = P_start + (P_limit − P_start) × (t/T)^(1/β)      t/T는 [0,1] clamp
 | 1 | 파라미터 사장 | beta·anchor_ratio만 작동 | 17개 필드 협상에 관여 | 🟠 (근본: engine-core 재연결) |
 | 2 | 효용함수 미사용 | 하드코딩 u_total, 프롬프트 미도달 | 사용자 weights 반영 → 결정 | 🟡 |
 | 3 | 연속 시간 미반영 | round 비율 근사 | 실 마감시각 + α·v_t_floor | 🟡 |
-| 4 | 상대모델 거침 | EMA 3버킷 | 베이지안 + 6종 분류 | 🟠 |
+| 4 | 상대모델 거침 | EMA 3버킷 | AI가 `OpponentEstimate` 추정 → box 조준점 이동(레버 A) | 🟠 |
 | 5 | 동적 β 없음 | β 고정 | 경쟁·상대반응 조정 | 🟡 |
 | 6 | 다중 Term 없음 | 가격 단일 | term_space + Offer Inverter | 🟠 |
 | 7 | 전술/미러링 없음 | suggested_tactic 텍스트만 | 전술 매트릭스 강제 | 🟡 |
 | 8 | 1:N 전체 dormant | 그룹 미생성 → 크로스프레셔·batchEvaluate·supersede·anti-sniping 도달 불가 | `/start` 그룹 생성 or 별도 트리거 | 🟠 |
 | 9 | 카테고리/IMEI 하드코딩 | 기본 스킬이 `electronics-iphone-pro-v1`(IMEI_REQUIRED 내장), 카테고리 무관 적용 | 카테고리별 스킬·term 일반화 (§2.3) | 🟡 |
-| 10 | Referee HARD 미차단 | 'BLOCK' 라벨뿐 통과 | HARD 실제 차단 여부 결정 | 🟡 |
+| 10 | Referee가 box 미강제 | floor까지만 clamp, HARD 'BLOCK' 라벨뿐 | **box [min,max] clamp** + HARD 실제 차단 | 🟡 |
+| 13 | 하네스 box 미배선 | LLM이 최종가 덮어씀(무제한, floor만 clamp) | 엔진 box·baseline을 LLM 하드 제약으로 + autonomy 다이얼 | 🟠 (결정부 핵심) |
+| 14 | intelligence 로그 부분 | coaching·utility·tokens 저장, delta/clamp/model/skill 없음 | 결정 trace 확장(RoundExplainability) → autonomy·모델·스킬 학습 | 🟢 |
 | 11 | 무결성 검증 미작동 | memo/체인 해시 write-only | verify 런타임 연결 + 온체인 앵커 | 🟡 |
 | 12 | 비용 계측 부분 구현 | 실측 token/latency 있음, 단가 미설정 시 비용 null, 세션 집계 없음 | DeepSeek 단가 설정 + reasoning mode 전달 + 세션 집계 | 🟢 |
 | — | **조사 백로그** | 협상 엔진 주요 경로 코드 검증 **완료.** 남은 미확인 없음(신규 발견 시 추가) | — | — |

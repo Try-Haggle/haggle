@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Haggle — 협상 하네스 예시</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#161b22; --panel2:#1c232d; --line:#2a333f;
+    --ink:#e6edf3; --mut:#8b98a9; --dim:#5c6875;
+    --goal:#3b82f6; --est:#f59e0b; --engine:#10b981; --final:#a78bfa; --alert:#ef4444;
+    --chip:#222c38;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Apple SD Gothic Neo",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.55;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:17px;margin:0}
+  .sub{color:var(--mut);font-size:14px}
+  .banner{background:#2b2410;border:1px solid #4a3d14;color:#f0d894;border-radius:10px;padding:10px 14px;font-size:13px;margin:14px 0 22px}
+  .banner code{background:#00000040;padding:1px 5px;border-radius:4px;font-family:var(--mono)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:0 0 16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .agent{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .agent .role{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+  .agent .name{font-size:16px;font-weight:600;margin:2px 0 8px}
+  .kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;color:var(--mut)}
+  .kv b{color:var(--ink);font-family:var(--mono)}
+  .goaltag{display:inline-block;font-size:11px;color:var(--goal);border:1px solid var(--goal);border-radius:5px;padding:0 6px;margin-left:6px}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 12px;min-width:110px}
+  .stat .l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+  .stat .v{font-size:18px;font-weight:650;font-family:var(--mono);margin-top:2px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--mut);margin:2px 2px 20px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .mv{background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden;margin:0 0 14px}
+  .mv .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,#1a212b,transparent)}
+  .rd{font-family:var(--mono);font-size:13px;color:var(--dim)}
+  .who{font-weight:650;font-size:15px}
+  .who.seller{color:#f0b46b}.who.buyer{color:#7fc7ff}
+  .spacer{flex:1}
+  .chip{font-family:var(--mono);font-size:12px;background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:1px 8px;color:var(--mut)}
+  .msg{padding:12px 16px;font-size:14.5px;border-bottom:1px solid var(--line);color:#dfe7ef}
+  .oppsaid{padding:8px 16px;font-size:13px;color:var(--mut);border-bottom:1px solid var(--line);background:#12171d}
+  .oppsaid b{color:#9fb0c2}
+  .chain{padding:14px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:720px){.chain{grid-template-columns:1fr}}
+  .step{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2)}
+  .step h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .step.goal h4{color:var(--goal)} .step.est h4{color:var(--est)} .step.eng h4{color:var(--engine)}
+  .line{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0;color:var(--mut)}
+  .line b{color:var(--ink);font-family:var(--mono)}
+  .why{font-size:12.5px;color:#c9b98f;margin-top:6px;font-style:italic;line-height:1.4}
+  .boxbar{position:relative;height:34px;margin:8px 16px 0}
+  .boxbar .track{position:absolute;left:0;right:0;top:0;bottom:0;border-radius:6px;background:#0d1217;border:1px solid var(--line)}
+  .boxbar .range{position:absolute;top:0;bottom:0;background:#10b98122;border-left:1px dashed #10b98166;border-right:1px dashed #10b98166}
+  .boxbar .mark{position:absolute;top:-3px;bottom:-3px;width:2px}
+  .boxbar .mark.base{background:var(--engine)} .boxbar .mark.aim{background:var(--est)} .boxbar .mark.pick{background:var(--final);width:3px}
+  .boxbar .tag{position:absolute;font-size:10px;font-family:var(--mono);white-space:nowrap;transform:translateX(-50%)}
+  .barpad{height:34px}
+  .final{padding:13px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid var(--line);background:#141b16}
+  .final .price{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--final)}
+  .final .lbl{font-size:12px;color:var(--mut)}
+  .pill{font-family:var(--mono);font-size:12px;border-radius:6px;padding:2px 8px}
+  .pill.pos{color:#6ee7b7;background:#0c2a1e;border:1px solid #14512f}
+  .pill.neg{color:#fca5a5;background:#2a1414;border:1px solid #5a2020}
+  .pill.zero{color:var(--mut);background:var(--chip);border:1px solid var(--line)}
+  .pill.clamp{color:#fecaca;background:#3a1414;border:1px solid #7a2626}
+  .accepted{padding:16px;text-align:center;font-size:16px;color:#6ee7b7;background:#0c2a1e;border-top:1px solid #14512f}
+  .foot{color:var(--dim);font-size:12.5px;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+  code{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>협상 하네스 — 예시</h1>
+  <div class="sub">엔진이 <b style="color:var(--engine)">box</b>를 만들고 AI가 상대를 추정해 그 안에서 가격을 정하는 과정을, 오가는 정보·모델·토큰·비용·상대 추정·가격 결정 이유까지 라운드별로.</div>
+
+  <div class="banner">
+    📌 <b>예시(샘플 데이터)</b>입니다 — 실제 <code>RoundExplainability.harness</code> 구조와 동일한 형태로 만든 아이폰 협상 시나리오. 실 협상을 돌리면 이 트레이스가 <code>negotiation_rounds.metadata.explainability.harness</code>에 저장됩니다.
+  </div>
+
+  <div id="header"></div>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--goal)"></i> 목표(설정=최우선)</span>
+    <span><i class="dot" style="background:var(--est)"></i> 상대 추정·조준점</span>
+    <span><i class="dot" style="background:var(--engine)"></i> 엔진 box·baseline</span>
+    <span><i class="dot" style="background:var(--final)"></i> AI 최종</span>
+    <span><i class="dot" style="background:var(--alert)"></i> box clamp(안전)</span>
+  </div>
+  <div id="moves"></div>
+  <div id="outcome"></div>
+  <div class="foot">원리: <b>목표(에이전트 설정)가 최우선</b> — 상대 추정은 그 목표를 box 안에서 어떻게 이룰지 궁리하는 도구일 뿐. box 경계(내 floor)는 상대 추정으로 절대 안 움직임. 자세히: <code>docs/engine/SOT.md</code> §11 하네스.</div>
+</div>
+
+<script>
+// 예시 데이터 — 실제 HarnessTrace 구조와 동일. 가격은 minor units(cents).
+const DATA = {
+  item:"iPhone 15 Pro 256GB · 미개봉급 · 리스팅 $520", model:"deepseek-v4-pro", autonomy:0.2,
+  seller:{ name:"Steady (판매자 AI)", persona:"defensive · verifier", target:52000, floor:46000 },
+  buyer: { name:"Hunter (구매자 AI)", persona:"aggressive · hunter",  target:43000, floor:48500 },
+  moves:[
+    { round:1, role:"seller", action:"COUNTER", message:"미개봉 iPhone 15 Pro 256GB, 영수증 있어요. $512부터 시작할게요.",
+      opp_said:"(구매자 첫 접촉 — 관심 표시)", estimate:{time_pressure:0.30,toughness:0.50,confidence:0.30},
+      why:"첫 라운드라 정보 적음 — 낮은 confidence, baseline 근처 유지.",
+      baseline:51200, box:{min:50160,max:51320,width:1160}, aim:51272, pick:51200, delta:0.00, clamp:{clamped:false},
+      model:"deepseek-v4-pro", tokens:{prompt:820,completion:88}, cost_usd:0.000636, latency_ms:2100, reasoning:false },
+    { round:2, role:"buyer", action:"COUNTER", message:"시세보다 높아요 — 비슷한 게 $460 근처에 팔렸던데. $447이면 바로 살게요.",
+      opp_said:"미개봉 … $512부터 시작할게요.", estimate:{time_pressure:0.20,toughness:0.70,confidence:0.40},
+      why:"판매자가 $512로 강하게 앵커 → 강경(toughness↑). 급해 보이진 않음.",
+      baseline:44800, box:{min:44690,max:45540,width:850}, aim:44690, pick:44700, delta:-0.12, clamp:{clamped:false},
+      model:"deepseek-v4-pro", tokens:{prompt:760,completion:102}, cost_usd:0.000603, latency_ms:1950, reasoning:false },
+    { round:3, role:"seller", action:"COUNTER", message:"시세 지적은 인정해요. 미개봉+보증 감안해서 $495까지 내려볼게요.",
+      opp_said:"시세보다 높아요 … $447이면 바로 살게요.", estimate:{time_pressure:0.50,toughness:0.50,est_reservation:47800,confidence:0.60},
+      why:"구매자가 시세 근거로 협상 → 최대 지불선 ~$478로 추정. 낮은 예약가가 조준점을 box 바닥으로 당김.",
+      baseline:49800, box:{min:49040,max:49920,width:880}, aim:49040, pick:49500, delta:-0.34, clamp:{clamped:false},
+      model:"deepseek-v4-pro", tokens:{prompt:880,completion:96}, cost_usd:0.000683, latency_ms:2400, reasoning:true },
+    { round:4, role:"buyer", action:"COUNTER", message:"진짜 미개봉에 보증까지면 $468 낼게요 — 이게 제 현실적인 상한이에요.",
+      opp_said:"시세 지적은 인정해요 … $495까지 내려볼게요.", estimate:{time_pressure:0.40,toughness:0.50,est_reservation:47200,confidence:0.60},
+      why:"판매자가 $512→$495로 양보 → 최저 수용선 ~$472로 추정. 예약가가 조준점을 box 상단(성사 쪽)으로 밀어올림.",
+      baseline:46500, box:{min:46390,max:46900,width:510}, aim:46900, pick:46800, delta:0.59, clamp:{clamped:false},
+      model:"deepseek-v4-pro", tokens:{prompt:800,completion:110}, cost_usd:0.000637, latency_ms:2050, reasoning:false },
+    { round:5, role:"seller", action:"COUNTER", message:"좋아요, $484에 미개봉·보증·오늘 발송까지 — 이러면 거래하시죠.",
+      opp_said:"진짜 미개봉에 보증까지면 $468 … 제 현실적인 상한이에요.", estimate:{time_pressure:0.50,toughness:0.60,est_reservation:47200,confidence:0.75},
+      why:"구매자가 '$468이 상한' 명시 → 예약가 ~$472 확신↑. 성사 위해 box 바닥으로 조준. AI가 $480 제안(과이탈) → 엔진이 box 하한 $484로 되돌림.",
+      baseline:49000, box:{min:48400,max:49120,width:720}, aim:48400, pick:48400, delta:-0.83, clamp:{clamped:true,original:48000,reason:"below_box"},
+      model:"deepseek-v4-pro", tokens:{prompt:900,completion:120}, cost_usd:0.000714, latency_ms:2600, reasoning:true },
+    { round:6, role:"buyer", action:"ACCEPT", accepted_price:48400, message:"콜. $484 좋아요 — 결제 보낼게요.",
+      opp_said:"좋아요, $484에 … 오늘 발송까지.", model:"deepseek-v4-pro", tokens:{prompt:620,completion:60}, cost_usd:0.000476, latency_ms:1400, reasoning:false },
+  ],
+  outcome:{ status:"DEAL", price:48400 }
+};
+
+const $ = (h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;};
+const money = (c)=> c==null?"—":"$"+(c/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct = (v)=> (v*100).toFixed(0)+"%";
+
+function header(d){
+  const tot=d.moves.reduce((a,m)=>({t:a.t+(m.tokens?.prompt||0)+(m.tokens?.completion||0),c:a.c+(m.cost_usd||0)}),{t:0,c:0});
+  const disc=((d.seller.target-d.outcome.price)/d.seller.target*100);
+  document.getElementById('header').appendChild($(`
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:baseline">
+      <h2>${d.item}</h2><span class="chip">model: ${d.model} · autonomy ${d.autonomy}</span></div>
+    <div class="grid" style="margin-top:14px">${agentCard('SELLER',d.seller)}${agentCard('BUYER',d.buyer)}</div>
+    <div class="stats">
+      <div class="stat"><div class="l">결과</div><div class="v" style="color:#6ee7b7;font-size:15px">${d.outcome.status} ${money(d.outcome.price)}</div></div>
+      <div class="stat"><div class="l">라운드</div><div class="v">${d.moves.length}</div></div>
+      <div class="stat"><div class="l">총 토큰</div><div class="v">${tot.t.toLocaleString()}</div></div>
+      <div class="stat"><div class="l">총 비용</div><div class="v">$${tot.c.toFixed(4)}</div></div>
+      <div class="stat"><div class="l">판매자 할인</div><div class="v">${disc.toFixed(1)}%</div></div>
+    </div>
+  </div>`));
+}
+function agentCard(role,a){return `<div class="agent"><div class="role">${role}</div><div class="name">${a.name}</div>
+  <div class="kv"><span>persona</span><b>${a.persona}</b></div>
+  <div class="kv"><span>target <span class="goaltag">GOAL</span></span><b>${money(a.target)}</b></div>
+  <div class="kv"><span>floor <span class="goaltag">GOAL</span></span><b>${money(a.floor)}</b></div></div>`;}
+
+function boxBar(m){
+  const vals=[m.box.min,m.box.max,m.baseline,m.aim,m.pick,m.clamp?.original].filter(v=>typeof v==='number');
+  let lo=Math.min(...vals),hi=Math.max(...vals);const pad=(hi-lo)*0.18||100;lo-=pad;hi+=pad;
+  const x=(v)=>((v-lo)/(hi-lo)*100);
+  const mk=(v,cls,label,style)=> typeof v==='number'?`<div class="mark ${cls}" style="left:${x(v)}%"></div><div class="tag" style="left:${x(v)}%;${style}">${label}<br>${money(v)}</div>`:'';
+  return `<div class="boxbar"><div class="track"></div>
+    <div class="range" style="left:${x(m.box.min)}%;right:${100-x(m.box.max)}%"></div>
+    ${mk(m.baseline,'base','baseline','bottom:-30px;color:var(--engine)')}
+    ${mk(m.aim,'aim','aim','top:-30px;color:var(--est)')}
+    ${mk(m.pick,'pick','최종','bottom:-30px;color:var(--final)')}
+    ${m.clamp&&m.clamp.clamped?mk(m.clamp.original,'','제안(clamp전)','top:-30px;color:var(--alert)'):''}
+  </div><div class="barpad"></div>`;
+}
+function move(m,d){
+  const agent=m.role==='seller'?d.seller:d.buyer;
+  const toks=(m.tokens?.prompt||0)+(m.tokens?.completion||0);
+  const top=`<div class="top"><span class="rd">R${m.round}</span>
+    <span class="who ${m.role}">${m.role==='seller'?'판매자':'구매자'} AI</span>
+    <span class="chip">${m.action}</span><span class="spacer"></span>
+    <span class="chip">${m.model}</span><span class="chip">${toks} tok · $${(m.cost_usd||0).toFixed(4)}</span>
+    <span class="chip">${(m.latency_ms/1000).toFixed(1)}s${m.reasoning?' · reasoning':''}</span></div>`;
+  const msg=`<div class="msg">💬 "${m.message}"</div>`;
+  const opp=m.opp_said?`<div class="oppsaid"><b>상대가 한 말</b> · ${m.opp_said}</div>`:'';
+  if(m.action==='ACCEPT') return $(`<div class="mv">${top}${opp}${msg}<div class="accepted">✔ ${money(m.accepted_price)}에 수락 — 거래 성사</div></div>`);
+  const e=m.estimate||{};
+  const chain=`<div class="chain">
+    <div class="step goal"><h4>① 목표 (설정값)</h4>
+      <div class="line"><span>target</span><b>${money(agent.target)}</b></div>
+      <div class="line"><span>floor (한계)</span><b>${money(agent.floor)}</b></div>
+      <div class="line" style="color:var(--dim);margin-top:4px">box를 만들고, 추정으로도 못 넘김.</div></div>
+    <div class="step est"><h4>② 상대 추정 (AI)</h4>
+      <div class="line"><span>time_pressure</span><b>${pct(e.time_pressure)}</b></div>
+      <div class="line"><span>toughness</span><b>${pct(e.toughness)}</b></div>
+      ${e.est_reservation!=null?`<div class="line"><span>est_reservation</span><b>${money(e.est_reservation)}</b></div>`:''}
+      <div class="line"><span>confidence</span><b>${pct(e.confidence)}</b></div>
+      <div class="why">“${m.why}”</div></div>
+    <div class="step eng"><h4>③ 엔진 box → 조준점</h4>
+      <div class="line"><span>baseline</span><b>${money(m.baseline)}</b></div>
+      <div class="line"><span>box</span><b>${money(m.box.min)}–${money(m.box.max)}</b></div>
+      <div class="line"><span>aim (추정 반영)</span><b style="color:var(--est)">${money(m.aim)}</b></div></div></div>`;
+  const dcls=m.delta>0.02?'pos':m.delta<-0.02?'neg':'zero';
+  const dtxt=(m.delta>0?'+':'')+m.delta.toFixed(2);
+  const clampPill=m.clamp&&m.clamp.clamped?`<span class="pill clamp">⚠ clamp: ${money(m.clamp.original)} → box ${m.clamp.reason==='below_box'?'하한':'상한'}</span>`:`<span class="pill zero">clamp 없음</span>`;
+  const final=`<div class="final"><div><div class="lbl">AI 최종 (box 안)</div><div class="price">${money(m.pick)}</div></div>
+    <span class="pill ${dcls}">Δ vs baseline ${dtxt}</span>${clampPill}</div>`;
+  return $(`<div class="mv">${top}${opp}${msg}${chain}${boxBar(m)}${final}</div>`);
+}
+function outcome(d){
+  document.getElementById('outcome').appendChild($(`<div class="card" style="text-align:center;border-color:#14512f;background:#0c2a1e">
+    <div style="font-size:15px;color:#6ee7b7">✔ 거래 성사 — ${money(d.outcome.price)}</div>
+    <div class="sub" style="margin-top:4px">판매자 floor ${money(d.seller.floor)} 이상, 구매자 floor ${money(d.buyer.floor)} 이하 — 양쪽 안전범위 안에서 타결.</div></div>`));
+}
+header(DATA);
+const mv=document.getElementById('moves');
+DATA.moves.forEach(m=>mv.appendChild(move(m,DATA)));
+outcome(DATA);
+</script>
+</body>
+</html>

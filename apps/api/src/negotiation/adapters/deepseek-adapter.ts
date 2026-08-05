@@ -1,9 +1,11 @@
+import { computeHarnessBox, DEFAULT_AUTONOMY } from "../referee/harness-box.js";
 import type {
   ConversationContext,
   ConversationTurn,
   CoreMemory,
   EngineDecision,
   ModelAdapter,
+  OpponentEstimate,
   RoundFact,
 } from "../types.js";
 import { PHASE_TOKEN_BUDGET as TOKEN_BUDGET } from "../types.js";
@@ -52,18 +54,23 @@ export class DeepSeekAdapter implements ModelAdapter {
       "## Reading the compact memo",
       'In "B:t$X/f$Y/c$Z/o$W": t = YOUR target (best realistic outcome), f = YOUR floor (hard limit you must not cross), c = YOUR last offer, o = the OPPONENT\'s last offer. "HIST" lists prior rounds; "OPP_SAID" is the opponent\'s latest message; "THREAD" is the recent chat. If anything in the prose conflicts with this prompt, trust this prompt.',
       "",
+      "## Your GOAL comes first, then the box",
+      "Your agent's configured strategy (target, floor, tone, dealbreakers in STRATEGY) is your PRIMARY GOAL — that is what you are trying to achieve. Everything else, including your read of the opponent, is just a means to reach that goal.",
+      'When a "BOX" line is present it gives you a safe COUNTER range [min, max] and a "baseline" (the engine\'s fair recommendation). Your COUNTER price MUST land inside [min, max] — a price outside it will be clamped, so choose within it. Use your read of the opponent to decide WHERE in the box to land (push toward your target when they seem eager/time-pressured; sit near baseline when they seem firm), never to abandon your goal.',
+      "",
       skillContext,
       "",
       'All monetary values are USD dollars (e.g., "$450.00" = four hundred fifty US dollars).',
       "",
       "## Output",
       "Respond ONLY with valid JSON matching this schema:",
-      '{"action":"COUNTER|ACCEPT|REJECT|HOLD|DISCOVER|CONFIRM","price":number,"reasoning":"string","message":"string","non_price_terms":{},"tactic_used":"string"}',
+      '{"action":"COUNTER|ACCEPT|REJECT|HOLD|DISCOVER|CONFIRM","price":number,"reasoning":"string","message":"string","non_price_terms":{},"tactic_used":"string","opponent_estimate":{"time_pressure":number,"toughness":number,"est_reservation_price":number,"confidence":number}}',
       "Field rules:",
-      '- "price": USD dollar amount (e.g., 450.00 for $450), NOT cents. Decimals allowed. Omit for ACCEPT/REJECT/HOLD/DISCOVER.',
+      '- "price": USD dollar amount (e.g., 450.00 for $450), NOT cents. Decimals allowed. Omit for ACCEPT/REJECT/HOLD/DISCOVER. For COUNTER it MUST be inside the BOX range if a BOX line is present.',
       '- "reasoning": short internal note for logs. Not shown to the counterparty.',
       '- "message": the chat line the counterparty actually sees. 1–2 short sentences. Must respond to OPP_SAID if present, and cite one concrete LISTING or STRATEGY signal.',
       '- "tactic_used": one tactic name from the skill context.',
+      '- "opponent_estimate": YOUR read of the opponent from what they said/did. time_pressure & toughness & confidence are 0..1; est_reservation_price is their likely walk-away price in USD dollars (omit if unknown). This is used to explain the decision — be honest, not strategic, here.',
       "Do NOT include markdown, code blocks, or any text outside the JSON.",
     ].join("\n");
   }
@@ -93,6 +100,11 @@ export class DeepSeekAdapter implements ModelAdapter {
     } else {
       parts.push(this.encodeCoreMemoCompact(memory));
     }
+
+    // L3.5: Harness box — the safe COUNTER range the price must land in.
+    // Same box the decide stage clamps to, so the LLM sees its real bounds.
+    const boxLine = encodeBox(memory);
+    if (boxLine) parts.push(boxLine);
 
     // L4: History (compact, USD)
     if (recentFacts.length > 0) {
@@ -181,6 +193,9 @@ export class DeepSeekAdapter implements ModelAdapter {
         const trimmed = parsed.message.trim();
         if (trimmed.length > 0) decision.message = trimmed;
       }
+
+      const est = parseOpponentEstimate(parsed.opponent_estimate);
+      if (est) decision.opponent_estimate = est;
 
       return decision;
     } catch (err) {
@@ -273,6 +288,39 @@ export class DeepSeekAdapter implements ModelAdapter {
 
     return diffs.join("|");
   }
+}
+
+// ─── Opponent estimate parsing (USD → minor for reservation price) ─────────
+
+function parseOpponentEstimate(raw: unknown): OpponentEstimate | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const oe = raw as Record<string, unknown>;
+  const num01 = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : undefined;
+  const time_pressure = num01(oe.time_pressure);
+  const toughness = num01(oe.toughness);
+  const confidence = num01(oe.confidence);
+  if (time_pressure === undefined || toughness === undefined || confidence === undefined) {
+    return undefined;
+  }
+  const est: OpponentEstimate = { time_pressure, toughness, confidence };
+  if (typeof oe.est_reservation_price === "number" && oe.est_reservation_price > 0) {
+    // LLM reports USD dollars; convert to minor units (cents) for internal use.
+    est.est_reservation_price = Math.round(oe.est_reservation_price * 100);
+  }
+  return est;
+}
+
+// ─── Harness box encoder ───────────────────────────────────────────────────
+
+function encodeBox(memory: CoreMemory): string | null {
+  const hb = computeHarnessBox(memory.coaching, memory.boundaries, DEFAULT_AUTONOMY);
+  if (!hb) return null;
+  return [
+    "BOX:",
+    `  Propose your COUNTER between $${toDollars(hb.box.min)} and $${toDollars(hb.box.max)} (your safe range this round; a price outside is clamped).`,
+    `  baseline (engine's fair aim) = $${toDollars(hb.baseline)}. Move toward your target within the box based on your read of the opponent; the box already protects your floor.`,
+  ].join("\n");
 }
 
 // ─── Listing / Strategy encoders (free functions; not adapter-state) ───────
