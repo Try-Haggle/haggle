@@ -23,6 +23,7 @@ import {
   requeueShipmentApvCancellationAuditArchive,
 } from "../services/shipment-apv-payout-cancellation-audit-archive.service.js";
 import { createSignedShipmentApvPayoutCancellationAuditExport } from "../services/shipment-apv-payout-cancellation-audit-export.service.js";
+import { getShipmentByOrderId } from "../services/shipment-record.service.js";
 
 vi.mock("../services/payment-record.service.js", () => ({
   getCommerceOrderByOrderId: vi.fn(),
@@ -43,8 +44,16 @@ vi.mock("../services/dispute-record.service.js", () => ({
   getActiveDisputeByOrderId: vi.fn(),
 }));
 
+vi.mock("../services/shipment-record.service.js", () => ({
+  getShipmentByOrderId: vi.fn(),
+}));
+
 vi.mock("../services/trust-ledger.service.js", () => ({
   applyTrustTriggers: vi.fn(),
+}));
+
+vi.mock("../services/admin-action-log.service.js", () => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../payments/settlement-signer.js", () => ({
@@ -117,6 +126,7 @@ const mockGetSettlementReleaseById = vi.mocked(getSettlementReleaseById);
 const mockGetSettlementReleaseByOrderId = vi.mocked(getSettlementReleaseByOrderId);
 const mockUpdateSettlementReleaseRecord = vi.mocked(updateSettlementReleaseRecord);
 const mockGetActiveDisputeByOrderId = vi.mocked(getActiveDisputeByOrderId);
+const mockGetShipmentByOrderId = vi.mocked(getShipmentByOrderId);
 const mockRequestPayoutCancellation = vi.mocked(requestShipmentApvPayoutCancellation);
 const mockDecidePayoutCancellation = vi.mocked(decideShipmentApvPayoutCancellation);
 const mockListPayoutCancellations = vi.mocked(listPendingShipmentApvPayoutCancellations);
@@ -154,7 +164,11 @@ function makeApp(user = { id: "buyer_1", role: "authenticated" }) {
   app.addHook("onRequest", async (request) => {
     request.user = user;
   });
-  registerSettlementReleaseRoutes(app, {} as Database);
+  const db = {} as Database;
+  Object.assign(db, {
+    transaction: async (operation: (tx: Database) => Promise<unknown>) => operation(db),
+  });
+  registerSettlementReleaseRoutes(app, db);
   return app;
 }
 
@@ -657,6 +671,112 @@ describe("settlement release dispute guard", () => {
     await app.close();
   });
 
+  it("lets the seller finalize a verified EasyPost test buffer only in Base Sepolia staging", async () => {
+    const previous = {
+      haggleEnv: process.env.HAGGLE_ENV,
+      network: process.env.HAGGLE_X402_NETWORK,
+      assetProfile: process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE,
+      easypostKey: process.env.EASYPOST_API_KEY,
+    };
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_X402_NETWORK = "base-sepolia";
+    process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE = "base-sepolia-husdc";
+    process.env.EASYPOST_API_KEY = "EZTK_test_key";
+    mockGetCommerceOrderByOrderId.mockResolvedValue({
+      id: "order_1",
+      status: "CLOSED",
+      buyerId: "buyer_1",
+      sellerId: "seller_1",
+    } as never);
+    mockGetActiveDisputeByOrderId.mockResolvedValue(null);
+    mockGetSettlementReleaseByOrderId.mockResolvedValue({
+      ...release,
+      product_release_status: "RELEASED",
+      product_released_at: "2026-07-01T00:00:00.000Z",
+    } as never);
+    mockGetShipmentByOrderId.mockResolvedValue({
+      id: "shipment_1",
+      order_id: "order_1",
+      status: "DELIVERED",
+      metadata: {
+        easypost_test_tracker: {
+          easypost_test_status_verified: true,
+          requested_status: "delivered",
+          easypost_tracker_id: "trk_delivered",
+          easypost_test_tracking_code: "EZ4000000004",
+        },
+      },
+    } as never);
+    const app = makeApp({ id: "seller_1", role: "authenticated" });
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/settlement-releases/by-order/order_1/complete-test-buffer",
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        release: { buffer_release_status: "RELEASED" },
+        phase: "FULLY_RELEASED",
+        provider_verification: {
+          provider: "easypost",
+          mode: "test",
+          tracker_id: "trk_delivered",
+        },
+      });
+      expect(mockUpdateSettlementReleaseRecord).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ buffer_release_status: "RELEASED" }),
+      );
+    } finally {
+      await app.close();
+      if (previous.haggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previous.haggleEnv;
+      if (previous.network === undefined) delete process.env.HAGGLE_X402_NETWORK;
+      else process.env.HAGGLE_X402_NETWORK = previous.network;
+      if (previous.assetProfile === undefined) delete process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE;
+      else process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE = previous.assetProfile;
+      if (previous.easypostKey === undefined) delete process.env.EASYPOST_API_KEY;
+      else process.env.EASYPOST_API_KEY = previous.easypostKey;
+    }
+  });
+
+  it("hides test buffer completion when staging is not using the hUSDC asset profile", async () => {
+    const previous = {
+      haggleEnv: process.env.HAGGLE_ENV,
+      network: process.env.HAGGLE_X402_NETWORK,
+      assetProfile: process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE,
+      easypostKey: process.env.EASYPOST_API_KEY,
+    };
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_X402_NETWORK = "base-sepolia";
+    process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE = "base-sepolia-usdc";
+    process.env.EASYPOST_API_KEY = "EZTK_test_key";
+    const app = makeApp({ id: "seller_1", role: "authenticated" });
+
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/settlement-releases/by-order/order_1/complete-test-buffer",
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({ error: "TEST_BUFFER_COMPLETION_NOT_AVAILABLE" });
+      expect(mockUpdateSettlementReleaseRecord).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+      if (previous.haggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previous.haggleEnv;
+      if (previous.network === undefined) delete process.env.HAGGLE_X402_NETWORK;
+      else process.env.HAGGLE_X402_NETWORK = previous.network;
+      if (previous.assetProfile === undefined) delete process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE;
+      else process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE = previous.assetProfile;
+      if (previous.easypostKey === undefined) delete process.env.EASYPOST_API_KEY;
+      else process.env.EASYPOST_API_KEY = previous.easypostKey;
+    }
+  });
+
   it("blocks automatic buyer review completion while the order is in dispute", async () => {
     const app = makeApp({ id: "admin_1", role: "admin" });
     const res = await app.inject({
@@ -667,6 +787,19 @@ describe("settlement release dispute guard", () => {
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
     expect(mockUpdateSettlementReleaseRecord).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("blocks a seller contract release request while the order is in dispute", async () => {
+    const app = makeApp({ id: "seller_1", role: "authenticated" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/settlement-releases/release_1/conditional-release-request",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "ORDER_IN_DISPUTE" });
     await app.close();
   });
 });

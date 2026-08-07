@@ -1,0 +1,22 @@
+{
+  "name": "@haggle/nego-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "On-demand negotiation test lab: runs real (DeepSeek) negotiations across agent/attribute scenarios against an isolated local DB and reports results.",
+  "scripts": {
+    "run-one": "tsx src/run-one.ts",
+    "dry-run": "tsx src/dry-run.ts",
+    "run-batch": "tsx src/run.ts",
+    "report": "tsx src/report.ts",
+    "catalog": "tsx src/catalog.ts",
+    "preflight": "tsx src/doctor.ts",
+    "clean": "tsx src/clean.ts"
+  },
+  "dependencies": {
+    "@haggle/db": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}

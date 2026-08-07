@@ -127,6 +127,14 @@ import {
   startWebhookClaimHeartbeat,
   webhookPayloadSha256,
 } from "../services/webhook-event-claim.service.js";
+import {
+  defaultShippingExecutionMode,
+  metadataForShippingExecutionMode,
+  physicalShippingReadiness,
+  readShippingExecutionMode,
+  SHIPPING_EXECUTION_MODES,
+  type ShippingExecutionMode,
+} from "../shipping/shipping-execution-mode.js";
 
 const settlementApprovalSchema = z.object({
   id: z.string().max(INPUT_LIMITS.shortTextChars),
@@ -188,6 +196,7 @@ const preparePaymentSchema = z
     settlement_approval_id: z.string().uuid().max(INPUT_LIMITS.shortTextChars).optional(),
     settlement_approval: settlementApprovalSchema.optional(),
     buyer_authorization_mode: z.enum(["human_wallet", "agent_wallet"]).optional(),
+    shipping_execution_mode: z.enum(SHIPPING_EXECUTION_MODES).optional(),
     payment_disclosure_ack: z
       .object({
         version: z.string().max(INPUT_LIMITS.shortTextChars),
@@ -2108,6 +2117,37 @@ function requiresShipmentForFulfillment(fulfillmentType: FulfillmentType): boole
   return fulfillmentType === "physical_shipping" || fulfillmentType === "shipped";
 }
 
+function stagingPhysicalShippingReadinessFailure() {
+  if (process.env.HAGGLE_ENV?.trim().toLowerCase() !== "staging") return null;
+  const readiness = physicalShippingReadiness();
+  return readiness.ready ? null : readiness;
+}
+
+function paymentIntentProviderContext(row: Awaited<ReturnType<typeof getPaymentIntentRowById>>) {
+  return getRecord(row?.providerContext) ?? {};
+}
+
+async function inspectExistingIntentShippingMode(
+  db: Database,
+  intent: PaymentIntent,
+  requestedMode: ShippingExecutionMode | undefined,
+) {
+  const row = await getPaymentIntentRowById(db, intent.id);
+  const currentMode = readShippingExecutionMode(paymentIntentProviderContext(row));
+  return {
+    currentMode,
+    conflict:
+      requestedMode && currentMode !== requestedMode
+        ? {
+            error: "PAYMENT_SHIPPING_EXECUTION_MODE_CONFLICT",
+            message: "Shipping execution mode cannot change after payment preparation",
+            current_mode: currentMode,
+            requested_mode: requestedMode,
+          }
+        : null,
+  };
+}
+
 /**
  * Auto-create a SettlementRelease when a payment reaches SETTLED.
  * Calculates weight buffer from a default parcel weight (can be overridden
@@ -2151,11 +2191,20 @@ async function ensureShipmentForPayment(db: Database, intent: PaymentIntent) {
   if (existing) {
     return { shipment: existing, created: false };
   }
+  const intentRow = await getPaymentIntentRowById(db, intent.id);
+  const executionMode = readShippingExecutionMode(paymentIntentProviderContext(intentRow));
   const shipment = await createShipmentRecord(
     db,
     intent.order_id,
     intent.seller_id,
     intent.buyer_id,
+    undefined,
+    {
+      metadata: metadataForShippingExecutionMode(executionMode, {
+        shipping_execution_mode_source: "payment_checkout",
+        shipping_execution_mode_payment_locked: true,
+      }),
+    },
   );
   return { shipment, created: true };
 }
@@ -2347,6 +2396,27 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(503).send(railError);
     }
 
+    const fulfillmentType = normalizeFulfillmentType(settlementApproval.terms.fulfillment_type);
+    const requiresShipment = requiresShipmentForFulfillment(fulfillmentType);
+    if (parsed.data.shipping_execution_mode && !requiresShipment) {
+      return reply.code(400).send({
+        error: "SHIPPING_EXECUTION_MODE_NOT_APPLICABLE",
+        message: "Shipping execution mode is only valid for a shipped order",
+      });
+    }
+    const shippingExecutionMode = requiresShipment
+      ? (parsed.data.shipping_execution_mode ?? defaultShippingExecutionMode())
+      : undefined;
+    if (shippingExecutionMode === "physical_live") {
+      const readiness = stagingPhysicalShippingReadinessFailure();
+      if (readiness) {
+        return reply.code(503).send({
+          error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY",
+          readiness,
+        });
+      }
+    }
+
     const idempotency = await beginPaymentOperationIdempotency(
       db,
       request,
@@ -2360,6 +2430,22 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
 
     const existingIntent = await getActivePaymentIntentByOrderId(db, order.id);
     if (existingIntent) {
+      const existingMode = await inspectExistingIntentShippingMode(
+        db,
+        existingIntent,
+        parsed.data.shipping_execution_mode,
+      );
+      if (existingMode.conflict) {
+        await recordPaymentOperationIdempotency(
+          db,
+          "payment.prepare",
+          idempotency,
+          existingIntent.id,
+          409,
+          existingMode.conflict,
+        );
+        return reply.code(409).send(existingMode.conflict);
+      }
       const responseBody = {
         intent: existingIntent,
         order,
@@ -2368,6 +2454,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           seller_id: ready.seller_id,
         },
         settlement_context: ready,
+        shipping_execution_mode: requiresShipment ? existingMode.currentMode : undefined,
         idempotent: true,
       };
       await recordPaymentOperationIdempotency(
@@ -2431,11 +2518,28 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         listing_hash: intent.listing_hash,
         disclosure_required_before_execution: !parsed.data.payment_disclosure_ack,
         actor,
+        ...(shippingExecutionMode ? metadataForShippingExecutionMode(shippingExecutionMode) : {}),
       });
     } catch (error) {
       if (!isActivePaymentIntentUniqueViolation(error)) throw error;
       const concurrentIntent = await getActivePaymentIntentByOrderId(db, order.id);
       if (!concurrentIntent) throw error;
+      const existingMode = await inspectExistingIntentShippingMode(
+        db,
+        concurrentIntent,
+        parsed.data.shipping_execution_mode,
+      );
+      if (existingMode.conflict) {
+        await recordPaymentOperationIdempotency(
+          db,
+          "payment.prepare",
+          idempotency,
+          concurrentIntent.id,
+          409,
+          existingMode.conflict,
+        );
+        return reply.code(409).send(existingMode.conflict);
+      }
       const responseBody = {
         intent: concurrentIntent,
         order,
@@ -2444,6 +2548,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
           seller_id: ready.seller_id,
         },
         settlement_context: ready,
+        shipping_execution_mode: requiresShipment ? existingMode.currentMode : undefined,
         idempotent: true,
       };
       await recordPaymentOperationIdempotency(
@@ -2484,6 +2589,7 @@ export function registerPaymentRoutes(app: FastifyInstance, db: Database) {
         seller_id: ready.seller_id,
       },
       settlement_context: ready,
+      shipping_execution_mode: shippingExecutionMode,
       agent_payment_grant: storedGrant,
     };
     await recordPaymentOperationIdempotency(

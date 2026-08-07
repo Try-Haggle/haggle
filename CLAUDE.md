@@ -138,6 +138,9 @@ pnpm --filter @haggle/engine-core test
 pnpm --filter @haggle/engine-session test
 ```
 
+> **협상 테스트 랩:** UI 없이 DeepSeek 협상을 대량 실행/측정하는 온디맨드 도구는
+> `nego-lab/`에 있다. 실행법·비용·안전장치는 [nego-lab/README.md](./nego-lab/README.md) 참고.
+
 ---
 
 ## 핵심 규칙 (Development Principles)
@@ -226,8 +229,11 @@ MVP 결제, 배송/fulfillment, 분쟁 작업은 아래 문서를 먼저 읽고 
 | 결제 | [docs/wip/payment-production-observability.md](./docs/wip/payment-production-observability.md) | 결제 운영 지표, webhook, reconciliation, safe logging 기준 |
 | 배송/fulfillment | [docs/wip/digital-fulfillment-settlement-design.md](./docs/wip/digital-fulfillment-settlement-design.md) | physical shipping과 no-shipping fulfillment를 같은 상위 모델로 묶는 기준 |
 | 분쟁 | [docs/features/분쟁_시스템_v2.md](./docs/features/분쟁_시스템_v2.md) | 분쟁 비용, 패널, 인센티브, trust 영향의 제품 기준 |
+| 분쟁 Advisor·판례 | [docs/mvp/dispute-advisor-precedent-knowledge.md](./docs/mvp/dispute-advisor-precedent-knowledge.md) | 사전 분석 판례 저장, 승인, Advisor 조회와 DeepSeek/Canary 운영 기준 |
+| 판례 콜드스타트·수렴 테스트 | [docs/wip/dispute-precedent-cold-start-and-convergence-test.md](./docs/wip/dispute-precedent-cold-start-and-convergence-test.md) | Seed/Holdout 분리, staging 실제 판정 wave와 통과 기준 |
 | 분쟁 API | [docs/wip/dispute-start-api-design.md](./docs/wip/dispute-start-api-design.md) | 분쟁 시작, 증거 업로드, idempotency, money movement freeze 기준 |
 | 팀 E2E 리허설 | [docs/wip/fake-money-fake-address-e2e-test-plan.md](./docs/wip/fake-money-fake-address-e2e-test-plan.md) | 가짜 돈 + 가짜 주소로 결제/배송 상태 흐름을 닫는 Stage 1 기준 |
+| hUSDC 실배송 리허설 | [docs/wip/husdc-physical-shipping-rehearsal.md](./docs/wip/husdc-physical-shipping-rehearsal.md) | hUSDC 결제와 EasyPost live 레이블·실제 carrier scan을 결합하는 Stage 2 기준 |
 
 실제 구현 위치는 `apps/api/src/routes/payments.ts`, `apps/api/src/routes/shipments.ts`,
 `apps/api/src/routes/disputes.ts`, `packages/payment-core/`, `packages/shipping-core/`,

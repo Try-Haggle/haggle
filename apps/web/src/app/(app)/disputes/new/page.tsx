@@ -5,23 +5,33 @@ import { Suspense, useEffect, useState } from "react";
 import { Alert, BackLink, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { api } from "@/lib/api-client";
 
-const REASON_CODES = [
-  { value: "ITEM_NOT_RECEIVED", label: "Item Not Received" },
-  { value: "ITEM_NOT_AS_DESCRIBED", label: "Item Not As Described" },
-  { value: "ITEM_DAMAGED", label: "Item Damaged" },
-  { value: "UNAUTHORIZED_TRANSACTION", label: "Unauthorized Transaction" },
-  { value: "DUPLICATE_CHARGE", label: "Duplicate Charge" },
-  { value: "OTHER", label: "Other" },
-] as const;
+interface EligibilityReason {
+  code: string;
+  label: string;
+  eligible: boolean;
+  error?: string;
+  message: string;
+  available_at?: string;
+}
+
+interface DisputeEligibility {
+  order_id: string;
+  order_status: string;
+  opened_by: "buyer" | "seller";
+  shipment_status: string | null;
+  reasons: EligibilityReason[];
+}
 
 function NewDisputeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [orderId, setOrderId] = useState(searchParams.get("orderId") ?? "");
-  const [reasonCode, setReasonCode] = useState<string>(REASON_CODES[0].value);
+  const [reasonCode, setReasonCode] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [eligibility, setEligibility] = useState<DisputeEligibility | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,10 +39,62 @@ function NewDisputeForm() {
     if (oid) setOrderId(oid);
   }, [searchParams]);
 
+  useEffect(() => {
+    const normalizedOrderId = orderId.trim();
+    if (!normalizedOrderId) {
+      setEligibility(null);
+      setReasonCode("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setChecking(true);
+      setError(null);
+      try {
+        const result = await api.get<DisputeEligibility>(
+          `/orders/${encodeURIComponent(normalizedOrderId)}/dispute-eligibility`,
+          { signal: controller.signal },
+        );
+        setEligibility(result);
+        setReasonCode((current) => {
+          if (result.reasons.some((reason) => reason.code === current && reason.eligible)) {
+            return current;
+          }
+          return result.reasons.find((reason) => reason.eligible)?.code ?? "";
+        });
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setEligibility(null);
+          setReasonCode("");
+          setError(err instanceof Error ? err.message : "Failed to check dispute eligibility");
+        }
+      } finally {
+        if (!controller.signal.aborted) setChecking(false);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [orderId]);
+
+  const selectedReason = eligibility?.reasons.find((reason) => reason.code === reasonCode) ?? null;
+  const eligibleReasons = eligibility?.reasons.filter((reason) => reason.eligible) ?? [];
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!orderId.trim()) {
       setError("Order ID is required");
+      return;
+    }
+    if (!selectedReason?.eligible) {
+      setError("Select an issue that is currently available for this order");
+      return;
+    }
+    if (!description.trim()) {
+      setError("Describe what happened before opening the dispute");
       return;
     }
 
@@ -40,20 +102,14 @@ function NewDisputeForm() {
     setError(null);
 
     try {
-      const result = await api.post<{ dispute: { id: string } }>("/disputes", {
-        order_id: orderId.trim(),
-        reason_code: reasonCode,
-        opened_by: "buyer",
-        evidence: description.trim()
-          ? [
-              {
-                submitted_by: "buyer",
-                type: "text",
-                text: description.trim(),
-              },
-            ]
-          : [],
-      });
+      const result = await api.post<{ dispute: { id: string } }>(
+        `/orders/${encodeURIComponent(orderId.trim())}/disputes`,
+        {
+          reason_code: reasonCode,
+          summary: description.trim(),
+          client_request_id: crypto.randomUUID(),
+        },
+      );
       router.push(`/disputes/${result.dispute.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to open dispute");
@@ -90,16 +146,50 @@ function NewDisputeForm() {
               id="dispute-reason"
               value={reasonCode}
               onChange={(e) => setReasonCode(e.target.value)}
+              disabled={checking || eligibleReasons.length === 0}
             >
-              {REASON_CODES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
+              {checking && <option value="">Checking order status...</option>}
+              {!checking && eligibleReasons.length === 0 && (
+                <option value="">No issues are available yet</option>
+              )}
+              {eligibility?.reasons.map((reason) => (
+                <option key={reason.code} value={reason.code} disabled={!reason.eligible}>
+                  {reason.label}
+                  {reason.eligible ? "" : " — not available yet"}
                 </option>
               ))}
             </Select>
           </Field>
 
-          <Field label="Description" htmlFor="dispute-description">
+          {eligibility && (
+            <Alert tone={eligibleReasons.length > 0 ? "info" : "neutral"} className="mb-4">
+              <p>
+                Order: {eligibility.order_status}
+                {eligibility.shipment_status
+                  ? ` · Shipping: ${eligibility.shipment_status.replace(/_/g, " ")}`
+                  : ""}
+              </p>
+              {selectedReason ? (
+                <p className="mt-1">{selectedReason.message}</p>
+              ) : (
+                <div className="mt-2 space-y-1">
+                  {eligibility.reasons
+                    .filter((reason) => !reason.eligible)
+                    .slice(0, 3)
+                    .map((reason) => (
+                      <p key={reason.code}>
+                        {reason.label}: {reason.message}
+                        {reason.available_at
+                          ? ` Available after ${new Date(reason.available_at).toLocaleString()}.`
+                          : ""}
+                      </p>
+                    ))}
+                </div>
+              )}
+            </Alert>
+          )}
+
+          <Field label="Description" required htmlFor="dispute-description">
             <Textarea
               id="dispute-description"
               rows={4}
@@ -107,6 +197,7 @@ function NewDisputeForm() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="resize-none"
+              required
             />
           </Field>
 
@@ -116,7 +207,14 @@ function NewDisputeForm() {
             </Alert>
           )}
 
-          <Button type="submit" fullWidth loading={submitting} disabled={!orderId.trim()}>
+          <Button
+            type="submit"
+            fullWidth
+            loading={submitting}
+            disabled={
+              !orderId.trim() || !description.trim() || !selectedReason?.eligible || checking
+            }
+          >
             {submitting ? "Opening dispute..." : "Open Dispute"}
           </Button>
         </form>

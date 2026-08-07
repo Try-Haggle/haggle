@@ -113,12 +113,18 @@ import {
   CAMERA_SIMILARITY_REVIEW_DISTANCE,
   computeImageSimilarityFingerprint,
 } from "../services/dispute-image-similarity.service.js";
+import { evaluateDisputeOpeningEligibility } from "../services/dispute-opening-eligibility.service.js";
 import type { DisputeOperation } from "../services/dispute-operation-lease.service.js";
 import {
   acquireDisputeOperationLease,
   disputeOperationLeaseKey,
   releaseDisputeOperationLease,
 } from "../services/dispute-operation-lease.service.js";
+import {
+  buildDisputePrecedentSnapshot,
+  listApprovedDisputePrecedents,
+  toResolutionAssessorPrecedentExamples,
+} from "../services/dispute-precedent.service.js";
 import {
   addDisputeEvidenceRecord,
   createDisputeEvidenceUploadRecord,
@@ -172,6 +178,7 @@ import {
   getCommerceOrderByOrderId,
   updateCommerceOrderStatus,
 } from "../services/payment-record.service.js";
+import { getShipmentByOrderId } from "../services/shipment-record.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 import { assignReviewersToDispute } from "./reviewer.js";
 
@@ -451,7 +458,7 @@ const aiAssessmentHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
-const DISPUTE_AI_POLICY_VERSION = "l1-resolution-policy-v1";
+const DISPUTE_AI_POLICY_VERSION = "l1-resolution-policy-v2";
 
 const disputeAppealSchema = z.object({
   reason: z.string().min(1).max(INPUT_LIMITS.disputeSummaryChars),
@@ -548,6 +555,21 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     "DELIVERED",
     "IN_DISPUTE",
   ]);
+  const buyerDisputeReasonCodes: DisputeReasonCode[] = [
+    "ITEM_NOT_RECEIVED",
+    "ITEM_NOT_AS_DESCRIBED",
+    "DELIVERY_EXCEPTION",
+    "SELLER_NO_FULFILLMENT",
+    "REFUND_DISPUTE",
+    "PARTIAL_REFUND_DISPUTE",
+    "COUNTERFEIT_CLAIM",
+    "OTHER",
+  ];
+  const sellerDisputeReasonCodes: DisputeReasonCode[] = [
+    "PAYMENT_NOT_COMPLETED",
+    "REFUND_DISPUTE",
+    "PARTIAL_REFUND_DISPUTE",
+  ];
 
   function isActiveDispute(status: string): boolean {
     return !["RESOLVED_BUYER_FAVOR", "RESOLVED_SELLER_FAVOR", "PARTIAL_REFUND", "CLOSED"].includes(
@@ -560,6 +582,21 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
     return (
       (dispute.metadata as Record<string, unknown> | null)?.client_request_id === clientRequestId
     );
+  }
+
+  async function getOpeningEligibility(
+    orderId: string,
+    orderStatus: string,
+    reasonCode: DisputeReasonCode,
+    openedBy: "buyer" | "seller" | "system",
+  ) {
+    const shipment = await getShipmentByOrderId(db, orderId);
+    return evaluateDisputeOpeningEligibility({
+      reasonCode,
+      openedBy,
+      orderStatus,
+      shipment,
+    });
   }
 
   async function writeDisputeOpen(dispute: DisputeCase, orderId: string): Promise<void> {
@@ -1150,6 +1187,58 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
 </html>`;
   }
 
+  // GET /orders/:orderId/dispute-eligibility — reason-level opening policy for the order UI.
+  app.get<{ Params: { orderId: string } }>(
+    "/orders/:orderId/dispute-eligibility",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { orderId } = request.params;
+      const order = await getCommerceOrderByOrderId(db, orderId);
+      if (!order) {
+        return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      }
+
+      const userId = request.user!.id;
+      const openedBy =
+        userId === order.buyerId ? "buyer" : userId === order.sellerId ? "seller" : null;
+      if (!openedBy) {
+        return reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: "You are not a party to this order" });
+      }
+
+      const shipment = await getShipmentByOrderId(db, orderId);
+      const reasonCodes = openedBy === "buyer" ? buyerDisputeReasonCodes : sellerDisputeReasonCodes;
+      const reasons = reasonCodes.map((reasonCode) => {
+        const eligibility = disputableOrderStatuses.has(order.status)
+          ? evaluateDisputeOpeningEligibility({
+              reasonCode,
+              openedBy,
+              orderStatus: order.status,
+              shipment,
+            })
+          : {
+              eligible: false,
+              error: "ORDER_NOT_DISPUTABLE",
+              message: "This order is not in a state where a dispute can be opened.",
+            };
+        return {
+          code: reasonCode,
+          label: REASON_CODE_REGISTRY[reasonCode].label,
+          ...eligibility,
+        };
+      });
+
+      return reply.send({
+        order_id: orderId,
+        order_status: order.status,
+        opened_by: openedBy,
+        shipment_status: shipment?.status ?? null,
+        reasons,
+      });
+    },
+  );
+
   // POST /orders/:orderId/disputes — production-safe public dispute opening path.
   app.post<{ Params: { orderId: string } }>(
     "/orders/:orderId/disputes",
@@ -1222,6 +1311,19 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         return reply
           .code(400)
           .send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
+      }
+      const openingEligibility = await getOpeningEligibility(
+        orderId,
+        order.status,
+        reasonCode,
+        openedBy,
+      );
+      if (!openingEligibility.eligible) {
+        return reply.code(409).send({
+          ...openingEligibility,
+          reason_code: reasonCode,
+          order_status: order.status,
+        });
       }
 
       const initialEvidence = [
@@ -1481,6 +1583,26 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       return reply
         .code(400)
         .send({ error: "INVALID_REASON_CODE", reason_code: parsed.data.reason_code });
+    }
+    if (!disputableOrderStatuses.has(order.status)) {
+      return reply.code(409).send({
+        error: "ORDER_NOT_DISPUTABLE",
+        order_status: order.status,
+        message: "This order is not in a disputable state",
+      });
+    }
+    const openingEligibility = await getOpeningEligibility(
+      parsed.data.order_id,
+      order.status,
+      reasonCode,
+      derivedOpenedBy,
+    );
+    if (!openingEligibility.eligible) {
+      return reply.code(409).send({
+        ...openingEligibility,
+        reason_code: reasonCode,
+        order_status: order.status,
+      });
     }
 
     const evidence = (parsed.data.evidence ?? []).map((e) => ({
@@ -4559,6 +4681,11 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       delete currentAssessmentMetadata.ai_resolution_assessment_attempt_history;
       const currentEvidenceHash = evidenceSnapshotHash(dispute);
       const currentAssessmentModel = resolveDisputeAiModel("resolution_assessor");
+      const approvedPrecedents = await listApprovedDisputePrecedents(db, dispute.reason_code, {
+        limit: 5,
+        evidenceTypes: dispute.evidence.map((evidence) => evidence.type),
+      });
+      const precedentSnapshot = buildDisputePrecedentSnapshot(approvedPrecedents);
       const appeal = appealReviewFor(dispute);
       if (appeal?.status === "OPEN") {
         return reply.code(409).send({
@@ -4579,7 +4706,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
           currentEvidenceHash &&
         (previousAssessment as Record<string, unknown>).policy_version ===
           DISPUTE_AI_POLICY_VERSION &&
-        (previousAssessment as Record<string, unknown>).model === currentAssessmentModel
+        (previousAssessment as Record<string, unknown>).model === currentAssessmentModel &&
+        (previousAssessment as Record<string, unknown>).precedent_snapshot_hash ===
+          precedentSnapshot.sha256
       ) {
         return reply.send({
           dispute_id: id,
@@ -4622,6 +4751,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             "Escalate when evidence is missing, contradictory, or plausibly manipulated.",
             "Do not finalize money movement from AI output alone in the MVP.",
           ],
+          precedent_examples: toResolutionAssessorPrecedentExamples(approvedPrecedents),
         },
       });
       const evidenceHash = currentEvidenceHash;
@@ -4640,6 +4770,9 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
       const assessmentModelChanged =
         previousAssessmentRecord?.status === "COMPLETED" &&
         previousAssessmentRecord.model !== currentAssessmentModel;
+      const precedentSnapshotChanged =
+        previousAssessmentRecord?.status === "COMPLETED" &&
+        previousAssessmentRecord.precedent_snapshot_hash !== precedentSnapshot.sha256;
       let assessmentHistory = aiAssessmentHistoryFor(dispute);
       let previousAssessmentId = previousAssessmentRecord?.assessment_id;
       if (previousAssessmentRecord?.status === "COMPLETED") {
@@ -4676,6 +4809,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
         reassessmentReason = "AI assessment policy changed after the previous assessment";
       } else if (!reassessmentReason && assessmentModelChanged) {
         reassessmentReason = "AI assessment model changed after the previous assessment";
+      } else if (!reassessmentReason && precedentSnapshotChanged) {
+        reassessmentReason = "Approved precedent snapshot changed after the previous assessment";
       }
 
       const leaseId = createUuid();
@@ -4709,6 +4844,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
             reassessment_reason: reassessmentReason,
             evidence_snapshot_hash: evidenceHash,
             policy_version: DISPUTE_AI_POLICY_VERSION,
+            precedent_snapshot: precedentSnapshot,
+            precedent_snapshot_hash: precedentSnapshot.sha256,
             context_hash: result.contextHash,
             error: result.error,
             message: result.message,
@@ -4765,6 +4902,7 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
               id,
               evidenceHash,
               DISPUTE_AI_POLICY_VERSION,
+              precedentSnapshot.sha256,
               result.model ?? "unknown-model",
               result.contextHash,
             ].join(":"),
@@ -4788,6 +4926,8 @@ export function registerDisputeRoutes(app: FastifyInstance, db: Database) {
               : null,
           evidence_snapshot_hash: evidenceHash,
           policy_version: DISPUTE_AI_POLICY_VERSION,
+          precedent_snapshot: precedentSnapshot,
+          precedent_snapshot_hash: precedentSnapshot.sha256,
           context_hash: result.contextHash,
           model: result.model,
           usage: result.usage,

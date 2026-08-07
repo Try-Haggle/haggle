@@ -1,4 +1,4 @@
-import { jsonb, pgTable, text, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const advisorMessages = pgTable(
   "advisor_messages",
@@ -16,10 +16,10 @@ export const advisorMessages = pgTable(
       strength?: number;
       blocked?: boolean;
       block_reason?: string;
+      precedent_ids?: string[];
+      precedent_analysis_versions?: string[];
     }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    index("idx_advisor_messages_dispute").on(table.disputeId, table.createdAt),
-  ],
+  (table) => [index("idx_advisor_messages_dispute").on(table.disputeId, table.createdAt)],
 );

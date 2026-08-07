@@ -17,6 +17,7 @@ import type {
   ConversationContext,
   CoreMemory,
   EngineDecision,
+  HarnessTrace,
   L5Signals,
   ModelAdapter,
   NegotiationPhase,
@@ -153,6 +154,12 @@ export interface DecideOutput {
   llm_raw?: string;
   tokens?: { prompt: number; completion: number };
   latency_ms?: number;
+  /**
+   * Harness trace (intelligence layer) — box the engine allowed, what the AI
+   * chose, and whether it was clamped. Present only when a usable box existed
+   * for a priced COUNTER. Flows into RoundExplainability.harness at validate.
+   */
+  harness?: HarnessTrace;
 }
 
 // =========================================

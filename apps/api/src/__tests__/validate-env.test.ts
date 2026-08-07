@@ -58,6 +58,21 @@ describe("validateEnv staging payment network", () => {
     expect(() => validateEnv()).toThrow(/RPC URL must use https/);
   });
 
+  it("requires live EasyPost credentials when staging physical shipping is enabled", () => {
+    process.env.HAGGLE_ENABLE_STAGING_LIVE_SHIPPING = "true";
+    delete process.env.EASYPOST_LIVE_API_KEY;
+    delete process.env.EASYPOST_LIVE_WEBHOOK_SECRET;
+    delete process.env.EASYPOST_API_KEY;
+    delete process.env.EASYPOST_WEBHOOK_SECRET;
+
+    expect(() => validateEnv()).toThrow(/EASYPOST_LIVE_API_KEY/);
+    expect(() => validateEnv()).toThrow(/EASYPOST_LIVE_WEBHOOK_SECRET/);
+
+    process.env.EASYPOST_LIVE_API_KEY = "EZAK_live_key";
+    process.env.EASYPOST_LIVE_WEBHOOK_SECRET = "whsec_live";
+    expect(() => validateEnv()).not.toThrow();
+  });
+
   it("accepts only the official Base USDC profile in production", () => {
     Object.assign(process.env, {
       HAGGLE_ENV: "production",

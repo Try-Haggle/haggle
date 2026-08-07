@@ -14,7 +14,6 @@ import {
   checkEscalation,
   computeWeightBuffer,
   EasyPostCarrierAdapter,
-  isEasyPostTestApiKey,
   MockCarrierAdapter,
   normalizeCarrierEventTime,
   parseEasyPostInvoicePayload,
@@ -122,6 +121,18 @@ import {
   startWebhookClaimHeartbeat,
   webhookPayloadSha256,
 } from "../services/webhook-event-claim.service.js";
+import {
+  easyPostApiKeyForMode,
+  easyPostWebhookSecrets,
+  integrationShippingReadiness,
+  metadataForShippingExecutionMode,
+  physicalShippingReadiness,
+  providerEnvironmentForMode,
+  readShippingExecutionMode,
+  SHIPPING_EXECUTION_MODES,
+  type ShippingExecutionMode,
+  stagingLiveLabelCostLimit,
+} from "../shipping/shipping-execution-mode.js";
 
 const createShipmentSchema = z.object({
   order_id: z.string().max(INPUT_LIMITS.shortTextChars),
@@ -129,6 +140,11 @@ const createShipmentSchema = z.object({
   buyer_id: z.string().max(INPUT_LIMITS.shortTextChars),
   carrier: z.string().max(INPUT_LIMITS.shortTextChars).optional(),
   shipment_input_due_at: z.string().max(INPUT_LIMITS.mediumTextChars).optional(),
+  execution_mode: z.enum(SHIPPING_EXECUTION_MODES).optional(),
+});
+
+const shippingExecutionModeSchema = z.object({
+  execution_mode: z.enum(SHIPPING_EXECUTION_MODES),
 });
 
 const recordEventSchema = z.object({
@@ -148,6 +164,10 @@ const recordEventSchema = z.object({
     INPUT_LIMITS.jsonPayloadBytes,
     "shipment event payload",
   ).optional(),
+});
+
+const easypostTestTrackerSchema = z.object({
+  status: z.enum(["in_transit", "out_for_delivery", "delivered"]),
 });
 
 const apvSellerReviewSchema = z.object({
@@ -314,11 +334,39 @@ function requiresRealShippingProvider(): boolean {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 }
 
+function allowsEasyPostTestTracking(): boolean {
+  return (
+    process.env.HAGGLE_ENV === "staging" && Boolean(easyPostApiKeyForMode("integration_manual"))
+  );
+}
+
 function realShippingUnavailable(_error?: unknown) {
   return {
     error: "REAL_SHIPPING_PROVIDER_UNAVAILABLE",
     message: "The configured shipping provider is temporarily unavailable",
   };
+}
+
+function stagingPhysicalShippingReadinessFailure() {
+  if (process.env.HAGGLE_ENV?.trim().toLowerCase() !== "staging") return null;
+  const readiness = physicalShippingReadiness();
+  return readiness.ready ? null : readiness;
+}
+
+function liveLabelCostLimitResponse(rateMinor: number, maxRateMinor: number) {
+  return {
+    error: "STAGING_LIVE_LABEL_COST_LIMIT_EXCEEDED",
+    message: "The live EasyPost label exceeds the approved staging postage limit",
+    rate_minor: rateMinor,
+    max_rate_minor: maxRateMinor,
+  };
+}
+
+function easyPostRateMinor(rate: unknown): number | null {
+  if (!rate || typeof rate !== "object") return null;
+  const value = Number.parseFloat(String((rate as { rate?: unknown }).rate ?? ""));
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value * 100);
 }
 
 function sha256Hex(value: string): string {
@@ -450,11 +498,13 @@ function normalizeRateParcel(parcel: Record<string, unknown>): Record<string, nu
 }
 
 function rateQuoteKeyFor(input: {
+  execution_mode?: ShippingExecutionMode;
   from_address: Record<string, unknown>;
   to_address: Record<string, unknown>;
   parcel: Record<string, unknown>;
 }): string {
   const normalized = {
+    execution_mode: input.execution_mode ?? "integration_manual",
     from_address: normalizeRateAddress(input.from_address),
     to_address: normalizeRateAddress(input.to_address),
     parcel: normalizeRateParcel(input.parcel),
@@ -767,18 +817,21 @@ async function createEasyPostLabelQrCode(
 
 export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   const { requireShipmentOwner } = createOwnershipMiddleware(db);
-  const easypostApiKey = process.env.EASYPOST_API_KEY;
-  const easypostWebhookSecret = process.env.EASYPOST_WEBHOOK_SECRET;
+  const testEasyPostApiKey = easyPostApiKeyForMode("integration_manual");
+  const liveEasyPostApiKey = easyPostApiKeyForMode("physical_live");
+  const easypostWebhookSecrets = easyPostWebhookSecrets();
 
   // Build carriers map
   const carriers: Record<string, import("@haggle/shipping-core").CarrierProvider> = {
     mock: new MockCarrierAdapter(),
   };
+  let easypost: EasyPostCarrierAdapter | null = null;
+  let liveEasypost: EasyPostCarrierAdapter | null = null;
 
-  if (easypostApiKey) {
-    const easypost = new EasyPostCarrierAdapter({
-      api_key: easypostApiKey,
-      is_test: isEasyPostTestApiKey(easypostApiKey),
+  if (testEasyPostApiKey) {
+    easypost = new EasyPostCarrierAdapter({
+      api_key: testEasyPostApiKey,
+      is_test: true,
     });
     carriers.easypost = easypost;
     carriers.usps = easypost;
@@ -787,7 +840,53 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     carriers.dhl = easypost;
   }
 
+  if (liveEasyPostApiKey) {
+    liveEasypost = new EasyPostCarrierAdapter({ api_key: liveEasyPostApiKey, is_test: false });
+  }
+
   const shippingService = new ShippingService(carriers);
+
+  function modeForShipment(shipment: {
+    metadata?: Record<string, unknown>;
+  }): ShippingExecutionMode {
+    return readShippingExecutionMode(shipment.metadata);
+  }
+
+  function providerKeyForShipment(shipment: { metadata?: Record<string, unknown> }): string | null {
+    return easyPostApiKeyForMode(modeForShipment(shipment));
+  }
+
+  function providerRequiredForShipment(shipment: { metadata?: Record<string, unknown> }): boolean {
+    return modeForShipment(shipment) === "physical_live" || requiresRealShippingProvider();
+  }
+
+  function shippingServiceForShipment(shipment: {
+    metadata?: Record<string, unknown>;
+  }): ShippingService {
+    if (modeForShipment(shipment) !== "physical_live") return shippingService;
+    return new ShippingService(
+      liveEasypost
+        ? {
+            easypost: liveEasypost,
+            usps: liveEasypost,
+            ups: liveEasypost,
+            fedex: liveEasypost,
+            dhl: liveEasypost,
+          }
+        : {},
+    );
+  }
+
+  function webhookEnvironmentMatchesShipment(
+    shipment: { metadata?: Record<string, unknown> },
+    verifiedEnvironment: "test" | "live" | "shared" | null,
+  ): boolean {
+    return (
+      !verifiedEnvironment ||
+      verifiedEnvironment === "shared" ||
+      verifiedEnvironment === providerEnvironmentForMode(modeForShipment(shipment))
+    );
+  }
 
   /**
    * When shipment reaches DELIVERED, auto-start the buyer review period.
@@ -980,10 +1079,29 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       }
     }
 
+    const requestedMode = parsed.data.execution_mode;
+    const physicalReadinessFailure = stagingPhysicalShippingReadinessFailure();
+    if (requestedMode === "physical_live" && physicalReadinessFailure) {
+      return reply.code(503).send({
+        error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY",
+        readiness: physicalReadinessFailure,
+      });
+    }
+
     const existingShipment = await getShipmentByOrderId(db, parsed.data.order_id, "outbound");
     if (existingShipment) {
+      if (requestedMode && requestedMode !== modeForShipment(existingShipment)) {
+        return reply.code(409).send({
+          error: "SHIPMENT_EXECUTION_MODE_CONFLICT",
+          message: "Shipping execution mode cannot change after the shipment is created",
+          current_mode: modeForShipment(existingShipment),
+          requested_mode: requestedMode,
+        });
+      }
       return reply.send({ shipment: existingShipment, idempotent: true });
     }
+
+    const executionMode = requestedMode ?? readShippingExecutionMode(undefined);
 
     const shipment = await createShipmentRecord(
       db,
@@ -991,10 +1109,83 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       order.sellerId,
       order.buyerId,
       parsed.data.shipment_input_due_at,
+      { metadata: metadataForShippingExecutionMode(executionMode) },
     );
 
     return reply.code(201).send({ shipment });
   });
+
+  app.get(
+    "/shipments/test-modes/readiness",
+    { preHandler: [requireAuth] },
+    async (_request, reply) =>
+      reply.send({
+        settlement_asset: "hUSDC",
+        network: "Base Sepolia",
+        integration_manual: integrationShippingReadiness(),
+        physical_live: physicalShippingReadiness(),
+      }),
+  );
+
+  app.post(
+    "/shipments/:id/execution-mode",
+    { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] },
+    async (request, reply) => {
+      const parsed = shippingExecutionModeSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: "INVALID_SHIPPING_EXECUTION_MODE",
+          issues: parsed.error.issues,
+        });
+      }
+      const shipment = await getShipmentById(db, (request.params as { id: string }).id);
+      if (!shipment) return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      const currentMode = modeForShipment(shipment);
+      if (currentMode === parsed.data.execution_mode) {
+        return reply.send({ shipment, idempotent: true });
+      }
+      if (shipment.metadata?.shipping_execution_mode_payment_locked === true) {
+        return reply.code(409).send({
+          error: "SHIPMENT_EXECUTION_MODE_PAYMENT_LOCKED",
+          message: "Shipping execution mode was agreed during checkout and cannot be changed",
+          current_mode: currentMode,
+        });
+      }
+      if (
+        shipment.status !== "LABEL_PENDING" ||
+        preparedShipmentRatesFromMetadata(shipment.metadata).length > 0
+      ) {
+        return reply.code(409).send({
+          error: "SHIPMENT_EXECUTION_MODE_LOCKED",
+          message: "Choose the shipping mode before requesting rates or purchasing a label",
+          current_mode: currentMode,
+        });
+      }
+      if (parsed.data.execution_mode === "physical_live") {
+        const readiness = stagingPhysicalShippingReadinessFailure();
+        if (readiness) {
+          return reply
+            .code(503)
+            .send({ error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY", readiness });
+        }
+      }
+      const updated = {
+        ...shipment,
+        metadata: metadataForShippingExecutionMode(parsed.data.execution_mode, shipment.metadata),
+      };
+      await db
+        .update(shipmentsTable)
+        .set({ metadata: updated.metadata, updatedAt: new Date() })
+        .where(eqOp(shipmentsTable.id, shipment.id));
+      await auditShipmentAction(db, request, "shipment.execution_mode_selected", {
+        shipmentId: shipment.id,
+        orderId: shipment.order_id,
+        reason: "seller selected immutable shipping execution mode",
+        metadata: { previous_mode: currentMode, execution_mode: parsed.data.execution_mode },
+      });
+      return reply.send({ shipment: updated });
+    },
+  );
 
   // GET /shipments/:id
   app.get(
@@ -1963,8 +2154,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
       }
 
+      const easypostApiKey = providerKeyForShipment(shipment);
+      if (modeForShipment(shipment) === "physical_live") {
+        return reply.code(409).send({
+          error: "LIVE_LABEL_REQUIRES_RATE_SELECTION",
+          message: "Use the prepared-rate purchase endpoint and acknowledge the live label charge",
+        });
+      }
       const carrier = shipment.carrier ?? (requiresRealShippingProvider() ? "easypost" : "mock");
-      if (requiresRealShippingProvider() && !easypostApiKey) {
+      if (providerRequiredForShipment(shipment) && !easypostApiKey) {
         return reply.code(503).send(realShippingUnavailable());
       }
       const idempotency = await beginShipmentOperationIdempotency(
@@ -1976,7 +2174,10 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       );
       if (idempotency.replayed) return;
       try {
-        const result = await shippingService.createLabel({ ...shipment, carrier });
+        const result = await shippingServiceForShipment(shipment).createLabel({
+          ...shipment,
+          carrier,
+        });
         await persistAndRespond(result, reply, db, {
           buyer_id: shipment.buyer_id,
           seller_id: shipment.seller_id,
@@ -2045,6 +2246,16 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         return reply
           .code(400)
           .send({ error: "INVALID_STATUS", message: "Shipment must be in LABEL_PENDING status" });
+      }
+
+      const executionMode = modeForShipment(shipment);
+      const easypostApiKey = providerKeyForShipment(shipment);
+      const physicalReadinessFailure = stagingPhysicalShippingReadinessFailure();
+      if (executionMode === "physical_live" && physicalReadinessFailure) {
+        return reply.code(503).send({
+          error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY",
+          readiness: physicalReadinessFailure,
+        });
       }
 
       const parsed = prepareSchema.safeParse(request.body);
@@ -2222,7 +2433,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
             source: "easypost",
           });
         } catch (error) {
-          if (requiresRealShippingProvider()) {
+          if (providerRequiredForShipment(shipment)) {
             console.error("EasyPost rate fetch failed in /prepare:", safeRedactShippingLog(error));
             return reply.code(502).send(realShippingUnavailable(error));
           }
@@ -2233,7 +2444,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         }
       }
 
-      if (requiresRealShippingProvider()) {
+      if (providerRequiredForShipment(shipment)) {
         return reply.code(503).send(realShippingUnavailable());
       }
 
@@ -2321,9 +2532,13 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
   // POST /shipments/:id/purchase-label — seller selects a rate and purchases label
   const purchaseLabelSchema = z.object({
     rate_id: z.string().min(1, "rate_id is required").max(INPUT_LIMITS.mediumTextChars),
+    acknowledge_live_charge: z.boolean().optional(),
   });
   const refundLabelSchema = z.object({
     reason: z.string().trim().min(3).max(500).default("Seller requested unused label refund"),
+  });
+  const returnLabelSchema = z.object({
+    acknowledge_live_charge: z.boolean().optional(),
   });
 
   app.post(
@@ -2336,10 +2551,36 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
       }
 
+      const executionMode = modeForShipment(shipment);
+      const easypostApiKey = providerKeyForShipment(shipment);
+
+      if (executionMode === "physical_live") {
+        const readiness = stagingPhysicalShippingReadinessFailure();
+        if (readiness) {
+          return reply
+            .code(503)
+            .send({ error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY", readiness });
+        }
+      }
+
       if (shipment.status !== "LABEL_PENDING") {
         return reply.code(400).send({
           error: "INVALID_STATUS",
           message: "Shipment must be in LABEL_PENDING status (label not yet created)",
+        });
+      }
+
+      const parsed = purchaseLabelSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_PURCHASE_REQUEST", issues: parsed.error.issues });
+      }
+
+      if (executionMode === "physical_live" && parsed.data.acknowledge_live_charge !== true) {
+        return reply.code(409).send({
+          error: "LIVE_LABEL_CHARGE_ACKNOWLEDGEMENT_REQUIRED",
+          message: "A live EasyPost label creates a real carrier charge",
         });
       }
 
@@ -2354,14 +2595,23 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      const parsed = purchaseLabelSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply
-          .code(400)
-          .send({ error: "INVALID_PURCHASE_REQUEST", issues: parsed.error.issues });
+      const { rate_id } = parsed.data;
+      const preparedRates = preparedShipmentRatesFromMetadata(shipmentRow.metadata);
+      const preparedRate = preparedRates.find((rate) => rate.id === rate_id);
+
+      if (!preparedRate) {
+        return reply.code(400).send(preparedRateNotFoundResponse(rate_id));
       }
 
-      const { rate_id } = parsed.data;
+      const preparedRateLimit = stagingLiveLabelCostLimit(executionMode, preparedRate.rate_minor);
+      if (preparedRateLimit) {
+        return reply
+          .code(409)
+          .send(
+            liveLabelCostLimitResponse(preparedRateLimit.rateMinor, preparedRateLimit.maxRateMinor),
+          );
+      }
+
       const idempotency = await beginShipmentOperationIdempotency(
         db,
         request,
@@ -2379,21 +2629,6 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           updatedAt: new Date(),
         })
         .where(eqOp(shipmentsTable.id, shipmentId));
-
-      const preparedRates = preparedShipmentRatesFromMetadata(shipmentRow.metadata);
-      const preparedRate = preparedRates.find((rate) => rate.id === rate_id);
-
-      if (!preparedRate) {
-        const responseBody = preparedRateNotFoundResponse(rate_id);
-        await completeShipmentOperation(
-          db,
-          "shipment.purchase_label",
-          idempotency,
-          400,
-          responseBody,
-        );
-        return reply.code(400).send(responseBody);
-      }
 
       // If EasyPost is available and rate_id is an EasyPost prepared rate, buy exactly that prepared rate.
       if (easypostApiKey && rate_id.startsWith("rate_") && !rate_id.startsWith("rate_mock_")) {
@@ -2438,6 +2673,38 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
             return reply.code(409).send(responseBody);
           }
 
+          const currentRateMinor = easyPostRateMinor(rateToBuy);
+          if (currentRateMinor === null) {
+            const responseBody = {
+              error: "INVALID_PROVIDER_RATE",
+              message: "EasyPost returned an invalid label charge",
+              rate_id,
+            };
+            await completeShipmentOperation(
+              db,
+              "shipment.purchase_label",
+              idempotency,
+              502,
+              responseBody,
+            );
+            return reply.code(502).send(responseBody);
+          }
+          const currentRateLimit = stagingLiveLabelCostLimit(executionMode, currentRateMinor);
+          if (currentRateLimit) {
+            const responseBody = liveLabelCostLimitResponse(
+              currentRateLimit.rateMinor,
+              currentRateLimit.maxRateMinor,
+            );
+            await completeShipmentOperation(
+              db,
+              "shipment.purchase_label",
+              idempotency,
+              409,
+              responseBody,
+            );
+            return reply.code(409).send(responseBody);
+          }
+
           const boughtShipment = await client.Shipment.buy(
             preparedRate.easypost_shipment_id,
             rateToBuy,
@@ -2456,6 +2723,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
             label_qr_code_form_id: labelQrCode.formId,
             label_qr_code_reason: labelQrCode.reason,
             label_print_methods: labelQrCode.url ? ["pdf", "usps_label_broker_qr"] : ["pdf"],
+            ...(executionMode === "physical_live" &&
+            process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging"
+              ? {
+                  postage_funding_source: "haggle_staging_fiat_subsidy",
+                  buyer_settlement_asset: "hUSDC",
+                  postage_charge_currency: "USD",
+                  postage_charge_minor: currentRateMinor,
+                }
+              : {}),
           };
 
           // Update shipment in DB
@@ -2466,7 +2742,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
               carrier: rateToBuy.carrier ?? shipment.carrier,
               trackingNumber: boughtShipment.tracking_code ?? undefined,
               labelUrl: boughtShipment.postage_label?.label_url ?? undefined,
-              rateMinor: String(Math.round(parseFloat(rateToBuy.rate ?? "0") * 100)),
+              rateMinor: String(currentRateMinor),
               metadata: shipmentMetadata,
               labelRefundStatus: "NONE",
               labelRefundClaimId: null,
@@ -2497,6 +2773,16 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
             label_qr_code_available: Boolean(labelQrCode.url),
             label_qr_code_status: labelQrCode.status,
             tracking_number: boughtShipment.tracking_code ?? null,
+            postage_funding:
+              executionMode === "physical_live" &&
+              process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging"
+                ? {
+                    source: "haggle_staging_fiat_subsidy",
+                    buyer_settlement_asset: "hUSDC",
+                    charge_currency: "USD",
+                    charge_minor: currentRateMinor,
+                  }
+                : null,
           };
           await auditShipmentAction(db, request, "shipment.label_purchase", {
             shipmentId,
@@ -2505,6 +2791,12 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
             metadata: {
               carrier: rateToBuy.carrier ?? null,
               service: rateToBuy.service ?? null,
+              rateMinor: currentRateMinor,
+              postageFundingSource:
+                executionMode === "physical_live" &&
+                process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging"
+                  ? "haggle_staging_fiat_subsidy"
+                  : null,
             },
           });
           await completeShipmentOperation(
@@ -2531,7 +2823,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         }
       }
 
-      if (requiresRealShippingProvider()) {
+      if (providerRequiredForShipment(shipment)) {
         const responseBody = realShippingUnavailable();
         await completeShipmentOperation(
           db,
@@ -2645,6 +2937,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       const shipmentId = (request.params as { id: string }).id;
       const shipment = await getShipmentById(db, shipmentId);
       if (!shipment) return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      const easypostApiKey = providerKeyForShipment(shipment);
       const parsed = refundLabelSchema.safeParse(request.body ?? {});
       if (!parsed.success)
         return reply
@@ -2694,7 +2987,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       try {
         let providerStatus: ReturnType<typeof normalizeProviderLabelRefundStatus>;
         let providerMode: "easypost" | "mock" = "easypost";
-        if (shipment.carrier === "mock" && !requiresRealShippingProvider()) {
+        if (shipment.carrier === "mock" && modeForShipment(shipment) === "integration_manual") {
           providerStatus = "REFUNDED";
           providerMode = "mock";
         } else {
@@ -2812,6 +3105,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       const shipmentId = (request.params as { id: string }).id;
       const shipment = await getShipmentById(db, shipmentId);
       if (!shipment) return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      const easypostApiKey = providerKeyForShipment(shipment);
       if (shipment.label_refund_status !== "SUBMITTED") {
         return reply.send({
           shipment,
@@ -2874,6 +3168,32 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       const shipment = await getShipmentById(db, shipmentId);
       if (!shipment) {
         return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      }
+      const executionMode = modeForShipment(shipment);
+      const easypostApiKey = providerKeyForShipment(shipment);
+      const parsedReturnRequest = returnLabelSchema.safeParse(request.body ?? {});
+      if (!parsedReturnRequest.success) {
+        return reply.code(400).send({
+          error: "INVALID_RETURN_LABEL_REQUEST",
+          issues: parsedReturnRequest.error.issues,
+        });
+      }
+      if (
+        executionMode === "physical_live" &&
+        parsedReturnRequest.data.acknowledge_live_charge !== true
+      ) {
+        return reply.code(409).send({
+          error: "LIVE_RETURN_LABEL_CHARGE_ACKNOWLEDGEMENT_REQUIRED",
+          message: "A live EasyPost return label creates a real carrier charge",
+        });
+      }
+      if (executionMode === "physical_live") {
+        const readiness = stagingPhysicalShippingReadinessFailure();
+        if (readiness) {
+          return reply
+            .code(503)
+            .send({ error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY", readiness });
+        }
       }
 
       // Validate: dispute for this order exists and outcome is buyer_favor
@@ -2947,7 +3267,10 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           shipment.seller_id,
           shipment.buyer_id,
           undefined,
-          { shipmentType: "return" },
+          {
+            shipmentType: "return",
+            metadata: metadataForShippingExecutionMode(executionMode, shipment.metadata),
+          },
         ));
 
       // Attempt to create a return label via carrier
@@ -3019,6 +3342,36 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
           });
 
           const lowestRate = epShipment.lowestRate();
+          const returnRateMinor = easyPostRateMinor(lowestRate);
+          if (returnRateMinor === null) {
+            const responseBody = {
+              error: "INVALID_PROVIDER_RATE",
+              message: "EasyPost returned an invalid return label charge",
+            };
+            await completeShipmentOperation(
+              db,
+              "shipment.return_label",
+              idempotency,
+              502,
+              responseBody,
+            );
+            return reply.code(502).send(responseBody);
+          }
+          const returnRateLimit = stagingLiveLabelCostLimit(executionMode, returnRateMinor);
+          if (returnRateLimit) {
+            const responseBody = liveLabelCostLimitResponse(
+              returnRateLimit.rateMinor,
+              returnRateLimit.maxRateMinor,
+            );
+            await completeShipmentOperation(
+              db,
+              "shipment.return_label",
+              idempotency,
+              409,
+              responseBody,
+            );
+            return reply.code(409).send(responseBody);
+          }
           const boughtShipment = await client.Shipment.buy(epShipment.id, lowestRate);
 
           trackingNumber = boughtShipment.tracking_code ?? null;
@@ -3038,7 +3391,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
               carrier: lowestRate.carrier ?? "USPS",
               trackingNumber: trackingNumber ?? undefined,
               labelUrl: labelUrl ?? undefined,
-              rateMinor: String(Math.round(parseFloat(lowestRate.rate ?? "0") * 100)),
+              rateMinor: String(returnRateMinor),
               metadata: {
                 ...((returnShipmentRow as { metadata?: Record<string, unknown> | null }).metadata ??
                   {}),
@@ -3048,13 +3401,22 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
                 label_qr_code_form_id: labelQrCode.formId,
                 label_qr_code_reason: labelQrCode.reason,
                 label_print_methods: labelQrCode.url ? ["pdf", "usps_label_broker_qr"] : ["pdf"],
+                ...(executionMode === "physical_live" &&
+                process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging"
+                  ? {
+                      postage_funding_source: "haggle_staging_fiat_subsidy",
+                      buyer_settlement_asset: "hUSDC",
+                      postage_charge_currency: "USD",
+                      postage_charge_minor: returnRateMinor,
+                    }
+                  : {}),
               },
               labelCreatedAt: new Date(),
               updatedAt: new Date(),
             })
             .where(eqOp(shipmentsTable.id, returnShipmentRow.id));
         } catch (error) {
-          if (requiresRealShippingProvider()) {
+          if (providerRequiredForShipment(shipment)) {
             console.error("EasyPost return label creation failed:", safeRedactShippingLog(error));
             const responseBody = realShippingUnavailable(error);
             await completeShipmentOperation(
@@ -3075,7 +3437,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
       // Mock fallback
       if (!trackingNumber) {
-        if (requiresRealShippingProvider()) {
+        if (providerRequiredForShipment(shipment)) {
           const responseBody = realShippingUnavailable();
           await completeShipmentOperation(
             db,
@@ -3152,11 +3514,145 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
     },
   );
 
+  // POST /shipments/:id/test-tracker — verify an EasyPost test state and apply it locally
+  app.post(
+    "/shipments/:id/test-tracker",
+    { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] },
+    async (request, reply) => {
+      if (!allowsEasyPostTestTracking()) {
+        return reply.code(404).send({ error: "EASYPOST_TEST_TRACKING_NOT_AVAILABLE" });
+      }
+      const testAdapter =
+        easypost ??
+        new EasyPostCarrierAdapter({
+          api_key: easyPostApiKeyForMode("integration_manual")!,
+          is_test: true,
+        });
+
+      const parsed = easypostTestTrackerSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: "INVALID_TEST_TRACKER_STATUS", issues: parsed.error.issues });
+      }
+
+      const shipment = await getShipmentById(db, (request.params as { id: string }).id);
+      if (!shipment) {
+        return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      }
+      if (modeForShipment(shipment) !== "integration_manual") {
+        return reply.code(403).send({
+          error: "MANUAL_TRACKING_DISABLED_FOR_PHYSICAL_SHIPPING",
+          message: "Physical shipping status must come from carrier scans and verified webhooks",
+        });
+      }
+      if (!shipment.label_url || typeof shipment.metadata?.easypost_shipment_id !== "string") {
+        return reply.code(409).send({
+          error: "EASYPOST_TEST_LABEL_REQUIRED",
+          message: "Purchase an EasyPost test label before advancing its test tracker",
+        });
+      }
+
+      const allowedPreviousStatuses: Record<(typeof parsed.data)["status"], string[]> = {
+        in_transit: ["LABEL_CREATED"],
+        out_for_delivery: ["IN_TRANSIT"],
+        delivered: ["IN_TRANSIT", "OUT_FOR_DELIVERY"],
+      };
+      if (!allowedPreviousStatuses[parsed.data.status].includes(shipment.status)) {
+        return reply.code(409).send({
+          error: "INVALID_TEST_TRACKER_TRANSITION",
+          current_status: shipment.status,
+          requested_status: parsed.data.status,
+        });
+      }
+
+      try {
+        const providerResult = await testAdapter.trackTestStatus(parsed.data.status);
+        const occurredAt = new Date();
+        const carrierResult = await applyCarrierShipmentEvent(db, {
+          shipmentId: shipment.id,
+          eventKey: `easypost-test:${shipment.id}:${parsed.data.status}`,
+          incomingStatus: providerResult.canonical_status,
+          occurredAt,
+          carrierRawStatus: providerResult.carrier_raw_status,
+          message:
+            providerResult.message ??
+            `EasyPost test tracker verified ${providerResult.carrier_raw_status}`,
+          location: providerResult.location,
+          timestampSource: "carrier",
+        });
+        if (!carrierResult) {
+          return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+        }
+
+        const verifiedShipment = {
+          ...carrierResult.shipment,
+          metadata: {
+            ...carrierResult.shipment.metadata,
+            easypost_test_tracker: {
+              ...providerResult.metadata,
+              fixture_type: "canned_tracking_code",
+              linked_label_tracking_number: shipment.tracking_number,
+              requested_status: parsed.data.status,
+              verified_at: occurredAt.toISOString(),
+            },
+          },
+        };
+        await updateShipmentRecord(db, verifiedShipment);
+        if (carrierResult.effectsRequired) {
+          await applyShipmentSideEffects({ shipment: verifiedShipment, trust_triggers: [] }, db, {
+            buyer_id: shipment.buyer_id,
+            seller_id: shipment.seller_id,
+          });
+        }
+        await auditShipmentAction(db, request, "shipment.test_tracker_verified", {
+          shipmentId: shipment.id,
+          orderId: shipment.order_id,
+          reason: "EasyPost test tracker status verified and applied",
+          metadata: {
+            requested_status: parsed.data.status,
+            provider_status: providerResult.carrier_raw_status,
+            provider_tracker_id: providerResult.metadata?.easypost_tracker_id,
+            provider_tracking_code: providerResult.metadata?.easypost_test_tracking_code,
+            fixture_type: "canned_tracking_code",
+          },
+        });
+
+        return reply.send({
+          shipment: verifiedShipment,
+          provider_verification: {
+            provider: "easypost",
+            mode: "test",
+            status: providerResult.carrier_raw_status,
+            tracker_id: providerResult.metadata?.easypost_tracker_id,
+            tracking_code: providerResult.metadata?.easypost_test_tracking_code,
+            fixture_type: "canned_tracking_code",
+          },
+        });
+      } catch {
+        return reply.code(502).send({
+          error: "EASYPOST_TEST_TRACKER_FAILED",
+          message: "EasyPost could not verify the requested test tracking status",
+        });
+      }
+    },
+  );
+
   // POST /shipments/:id/event — record a shipment event (seller only)
   app.post(
     "/shipments/:id/event",
     { preHandler: [requireAuth, requireShipmentOwner({ role: "seller" })] },
     async (request, reply) => {
+      const shipment = await getShipmentById(db, (request.params as { id: string }).id);
+      if (!shipment) {
+        return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
+      }
+      if (modeForShipment(shipment) === "physical_live") {
+        return reply.code(403).send({
+          error: "MANUAL_SHIPMENT_EVENTS_DISABLED",
+          message: "Physical shipping status must come from carrier scans and verified webhooks",
+        });
+      }
       if (requiresRealShippingProvider() && request.user?.role !== "admin") {
         return reply.code(403).send({
           error: "MANUAL_SHIPMENT_EVENTS_DISABLED",
@@ -3164,10 +3660,6 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         });
       }
 
-      const shipment = await getShipmentById(db, (request.params as { id: string }).id);
-      if (!shipment) {
-        return reply.code(404).send({ error: "SHIPMENT_NOT_FOUND" });
-      }
       const parsed = recordEventSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.code(400).send({ error: "INVALID_EVENT", issues: parsed.error.issues });
@@ -3234,7 +3726,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       }
 
       try {
-        const result = await shippingService.trackShipment(shipment);
+        const result = await shippingServiceForShipment(shipment).trackShipment(shipment);
         await persistAndRespond(result, reply, db, {
           buyer_id: shipment.buyer_id,
           seller_id: shipment.seller_id,
@@ -3250,6 +3742,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
 
   // POST /shipments/rates — get shipping rate quotes
   const rateRequestSchema = z.object({
+    execution_mode: z.enum(SHIPPING_EXECUTION_MODES).default("integration_manual"),
     from_address: z.object({
       name: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
       street1: z.string().min(1).max(INPUT_LIMITS.mediumTextChars),
@@ -3282,7 +3775,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       return reply.code(400).send({ error: "INVALID_RATE_REQUEST", issues: parsed.error.issues });
     }
 
-    const { from_address, to_address, parcel } = parsed.data;
+    const { from_address, to_address, parcel, execution_mode } = parsed.data;
+    const physicalReadinessFailure = stagingPhysicalShippingReadinessFailure();
+    if (execution_mode === "physical_live" && physicalReadinessFailure) {
+      return reply.code(503).send({
+        error: "PHYSICAL_SHIPPING_REHEARSAL_NOT_READY",
+        readiness: physicalReadinessFailure,
+      });
+    }
+    const easypostApiKey = easyPostApiKeyForMode(execution_mode);
     const quoteKey = rateQuoteKeyFor(parsed.data);
     const ttlSeconds = shippingRateCacheTtlSeconds();
     const cachedQuote = shippingRateQuoteCache.get(quoteKey);
@@ -3363,7 +3864,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
         cacheRateQuote(responseBody);
         return reply.send(responseBody);
       } catch (error) {
-        if (requiresRealShippingProvider()) {
+        if (execution_mode === "physical_live" || requiresRealShippingProvider()) {
           console.error("EasyPost rate fetch failed:", safeRedactShippingLog(error));
           return reply.code(502).send(realShippingUnavailable(error));
         }
@@ -3374,7 +3875,7 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       }
     }
 
-    if (requiresRealShippingProvider()) {
+    if (execution_mode === "physical_live" || requiresRealShippingProvider()) {
       return reply.code(503).send(realShippingUnavailable());
     }
 
@@ -3420,20 +3921,38 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       const rawBody =
         (request as unknown as { rawBody?: string | Buffer }).rawBody ??
         JSON.stringify(request.body);
-      // In production, reject webhooks if secret is not configured.
-      if (!easypostWebhookSecret) {
+      let verifiedWebhookEnvironment: "test" | "live" | "shared" | null = null;
+      // In production, reject webhooks if no EasyPost secret is configured.
+      if (easypostWebhookSecrets.length === 0) {
         if (process.env.NODE_ENV === "production") {
           return reply.code(401).send({ error: "EASYPOST_WEBHOOK_SECRET_NOT_CONFIGURED" });
         }
         // In development/test, skip signature verification.
       } else {
-        const isValid = verifyEasyPostWebhook(
-          rawBody,
-          request.headers as Record<string, string>,
-          easypostWebhookSecret,
-          { method: request.method },
+        const candidates = [
+          {
+            secret: process.env.EASYPOST_TEST_WEBHOOK_SECRET?.trim(),
+            environment: "test" as const,
+          },
+          {
+            secret: process.env.EASYPOST_LIVE_WEBHOOK_SECRET?.trim(),
+            environment: "live" as const,
+          },
+          { secret: process.env.EASYPOST_WEBHOOK_SECRET?.trim(), environment: "shared" as const },
+        ].filter(
+          (candidate): candidate is { secret: string; environment: "test" | "live" | "shared" } =>
+            Boolean(candidate.secret),
         );
-        if (!isValid) {
+        verifiedWebhookEnvironment =
+          candidates.find((candidate) =>
+            verifyEasyPostWebhook(
+              rawBody,
+              request.headers as Record<string, string>,
+              candidate.secret,
+              { method: request.method },
+            ),
+          )?.environment ?? null;
+        if (!verifiedWebhookEnvironment) {
           await auditShipmentAction(db, request, "shipment.webhook_rejected", {
             reason: "invalid EasyPost webhook signature",
           });
@@ -3484,6 +4003,14 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
               accepted: true,
               skipped: true,
               reason: "shipment not found for invoice",
+            });
+          }
+          if (!webhookEnvironmentMatchesShipment(shipmentRow, verifiedWebhookEnvironment)) {
+            await completeWebhookEvent(db, webhookClaim, 409);
+            return reply.code(409).send({
+              accepted: false,
+              error: "EASYPOST_WEBHOOK_ENVIRONMENT_MISMATCH",
+              expected_environment: providerEnvironmentForMode(modeForShipment(shipmentRow)),
             });
           }
 
@@ -3645,6 +4172,15 @@ export function registerShipmentRoutes(app: FastifyInstance, db: Database) {
       if (!shipment) {
         await completeWebhookEvent(db, webhookClaim, 200);
         return reply.send({ accepted: true, skipped: true, reason: "shipment not found" });
+      }
+
+      if (!webhookEnvironmentMatchesShipment(shipment, verifiedWebhookEnvironment)) {
+        await completeWebhookEvent(db, webhookClaim, 409);
+        return reply.code(409).send({
+          accepted: false,
+          error: "EASYPOST_WEBHOOK_ENVIRONMENT_MISMATCH",
+          expected_environment: providerEnvironmentForMode(modeForShipment(shipment)),
+        });
       }
 
       try {

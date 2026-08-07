@@ -79,7 +79,7 @@
 | Supabase | 로컬 스택 | staging 프로젝트 | prod 프로젝트 | — |
 | Stripe | `mock` | **test 키** + staging webhook | live 키 + prod webhook | `STRIPE_MODE` |
 | x402 (CDP) | `mock` | `real` + **base-sepolia** | `real` + **base mainnet** | `HAGGLE_X402_MODE`, `HAGGLE_X402_NETWORK` |
-| EasyPost | `mock` | **test 키** | prod 키 | `EASYPOST_API_KEY` |
+| EasyPost | `mock` | 기본은 **test 키**, 승인된 실배송 리허설만 live 키와 Haggle fiat 예산 | live 키와 prefunded fiat 잔액 | `EASYPOST_TEST_API_KEY`, `EASYPOST_LIVE_API_KEY`, `HAGGLE_ENABLE_STAGING_LIVE_SHIPPING`, `HAGGLE_STAGING_LIVE_LABEL_MAX_MINOR` |
 | Resend | NODE_ENV 가드 미발송 | test 도메인 | 인증된 prod 도메인 | `RESEND_API_KEY` |
 | DeepSeek | 로컬 키 또는 테스트 대역 | **DeepSeek V4 Pro** | **DeepSeek V4 Pro** | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` |
 | OpenAI/Replicate/LegitApp | dev 키 | test/dev 키 | prod 키 | 각 API 키 |

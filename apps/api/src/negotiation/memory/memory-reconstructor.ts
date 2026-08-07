@@ -210,10 +210,13 @@ export function reconstructCoreMemory(
 }
 
 /**
- * Pull the agent's resolved engine knobs from the compiled snapshot. These are
- * flat MasterStrategy fields written by compileNegotiationAgentSnapshot
- * (beta/alpha/anchor_ratio/...). Returns undefined when none are present so
- * consumers keep their existing fallbacks.
+ * @deprecated LEGACY LLM/coach path only. Pulls a LOSSY 7-field subset of the
+ * compiled snapshot (drops w_rep / v_s_base / n_threshold / gamma). The engine
+ * decision path reads ALL knobs losslessly straight from the snapshot via
+ * `readEngineKnobs` (negotiation/context/assemble-context.ts). Kept only because
+ * coach.ts / default-engine-skill.ts still read `CoreMemory.strategy_params`;
+ * remove this when the coach path retires in H2. Do not add new fields here —
+ * add them to `readEngineKnobs` instead.
  */
 function extractStrategyParams(strategy: Record<string, unknown>): StrategyParams | undefined {
   const out: StrategyParams = {};

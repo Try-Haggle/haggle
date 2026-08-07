@@ -1859,10 +1859,49 @@ describe("Shipment routes", () => {
       "test-user-001",
       "order-buyer-001",
       undefined,
+      {
+        metadata: expect.objectContaining({
+          shipping_execution_mode: "integration_manual",
+          shipping_provider_environment: "test",
+        }),
+      },
     );
     expect(res.json().shipment).toMatchObject({
       seller_id: "test-user-001",
       buyer_id: "order-buyer-001",
+    });
+  });
+
+  it("does not let the seller change a shipping mode locked during checkout", async () => {
+    const shipment = {
+      id: "shp_checkout_locked",
+      order_id: "ord_checkout_locked",
+      seller_id: "test-user-001",
+      buyer_id: "buyer-001",
+      carrier: "unknown",
+      status: "LABEL_PENDING",
+      metadata: {
+        shipping_execution_mode: "integration_manual",
+        shipping_execution_mode_source: "payment_checkout",
+        shipping_execution_mode_payment_locked: true,
+      },
+      events: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as unknown as ShipmentRow;
+    mockGetShipmentById.mockResolvedValueOnce(shipment).mockResolvedValueOnce(shipment);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/shipments/shp_checkout_locked/execution-mode",
+      headers: AUTH_HEADERS,
+      payload: { execution_mode: "physical_live" },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "SHIPMENT_EXECUTION_MODE_PAYMENT_LOCKED",
+      current_mode: "integration_manual",
     });
   });
 
@@ -1871,7 +1910,7 @@ describe("Shipment routes", () => {
     const res = await app.inject({
       method: "GET",
       url: "/shipments/nonexistent-id",
-      headers: AUTH_HEADERS,
+      headers: ADMIN_HEADERS,
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("SHIPMENT_NOT_FOUND");
@@ -1889,6 +1928,36 @@ describe("Shipment routes", () => {
   });
 
   // POST /shipments/:id/event - validation
+  it("blocks manual carrier events for physical shipping rehearsals", async () => {
+    const shipment = {
+      id: "shp_physical_live",
+      order_id: "ord_physical_live",
+      seller_id: "test-user-001",
+      buyer_id: "buyer-001",
+      status: "LABEL_CREATED",
+      carrier: "USPS",
+      events: [],
+      metadata: {
+        shipping_execution_mode: "physical_live",
+        shipping_provider_environment: "live",
+      },
+    } as unknown as ShipmentRow;
+    mockGetShipmentById.mockResolvedValueOnce(shipment).mockResolvedValueOnce(shipment);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/shipments/${shipment.id}/event`,
+      headers: ADMIN_HEADERS,
+      payload: { event_type: "ship" },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({
+      error: "MANUAL_SHIPMENT_EVENTS_DISABLED",
+    });
+    expect(mockUpdateShipmentRecord).not.toHaveBeenCalled();
+  });
+
   it("POST /shipments/:id/event returns 404 for nonexistent shipment", async () => {
     const res = await app.inject({
       method: "POST",
@@ -2030,6 +2099,61 @@ describe("Shipment routes", () => {
   });
 
   // POST /shipments/:id/label
+  it("blocks the legacy label endpoint for physical shipping", async () => {
+    const shipment = {
+      id: "shp_physical_legacy_label",
+      order_id: "ord_physical_legacy_label",
+      seller_id: "test-user-001",
+      buyer_id: "buyer-001",
+      status: "LABEL_PENDING",
+      carrier: "easypost",
+      events: [],
+      metadata: {
+        shipping_execution_mode: "physical_live",
+        shipping_provider_environment: "live",
+      },
+    } as unknown as ShipmentRow;
+    mockGetShipmentById.mockResolvedValueOnce(shipment).mockResolvedValueOnce(shipment);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/shipments/${shipment.id}/label`,
+      headers: ADMIN_HEADERS,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: "LIVE_LABEL_REQUIRES_RATE_SELECTION" });
+  });
+
+  it("requires an explicit real-charge acknowledgement before buying a physical label", async () => {
+    const shipment = {
+      id: "shp_physical_label",
+      order_id: "ord_physical_label",
+      seller_id: "test-user-001",
+      buyer_id: "buyer-001",
+      status: "LABEL_PENDING",
+      carrier: "easypost",
+      events: [],
+      metadata: {
+        shipping_execution_mode: "physical_live",
+        shipping_provider_environment: "live",
+      },
+    } as unknown as ShipmentRow;
+    mockGetShipmentById.mockResolvedValueOnce(shipment).mockResolvedValueOnce(shipment);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/shipments/${shipment.id}/purchase-label`,
+      headers: ADMIN_HEADERS,
+      payload: { rate_id: "rate_live_1" },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: "LIVE_LABEL_CHARGE_ACKNOWLEDGEMENT_REQUIRED",
+    });
+  });
+
   it("POST /shipments/:id/label returns 404 for nonexistent shipment", async () => {
     const res = await app.inject({
       method: "POST",
@@ -2218,6 +2342,120 @@ describe("Shipment routes", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("INVALID_RATE_REQUEST");
+  });
+
+  it("advances a seller shipment only after EasyPost verifies the staging test status", async () => {
+    const previous = {
+      haggleEnv: process.env.HAGGLE_ENV,
+      network: process.env.HAGGLE_X402_NETWORK,
+      easypostKey: process.env.EASYPOST_API_KEY,
+    };
+    process.env.HAGGLE_ENV = "staging";
+    process.env.HAGGLE_X402_NETWORK = "base-sepolia";
+    process.env.EASYPOST_API_KEY = "EZTK_test_key";
+
+    const shipment = {
+      id: "shipment_test_tracker",
+      order_id: "order_test_tracker",
+      seller_id: "test-user-001",
+      buyer_id: "buyer_test_tracker",
+      shipment_type: "outbound",
+      carrier: "easypost",
+      tracking_number: "EZ_LABEL_TRACKING",
+      label_url: "https://easypost.test/label.pdf",
+      status: "LABEL_CREATED",
+      metadata: { easypost_shipment_id: "shp_test_tracker" },
+      events: [],
+      created_at: "2026-07-21T12:00:00.000Z",
+      updated_at: "2026-07-21T12:00:00.000Z",
+    } as unknown as ShipmentRow;
+    const advancedShipment = { ...shipment, status: "IN_TRANSIT" } as ShipmentRow;
+    mockGetShipmentById.mockResolvedValue(shipment);
+    vi.mocked(applyCarrierShipmentEvent).mockResolvedValueOnce({
+      shipment: advancedShipment,
+      stateChanged: true,
+      effectsRequired: true,
+      disposition: "applied",
+    } as never);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/shipments/${shipment.id}/test-tracker`,
+        headers: AUTH_HEADERS,
+        payload: { status: "in_transit" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        shipment: {
+          status: "IN_TRANSIT",
+          metadata: {
+            easypost_test_tracker: {
+              fixture_type: "canned_tracking_code",
+              linked_label_tracking_number: "EZ_LABEL_TRACKING",
+            },
+          },
+        },
+        provider_verification: {
+          provider: "easypost",
+          mode: "test",
+          status: "in_transit",
+          tracking_code: "EZ2000000002",
+          fixture_type: "canned_tracking_code",
+        },
+      });
+      expect(applyCarrierShipmentEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          shipmentId: shipment.id,
+          incomingStatus: "IN_TRANSIT",
+          carrierRawStatus: "in_transit",
+        }),
+      );
+      expect(mockUpdateCommerceOrderStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        shipment.order_id,
+        "FULFILLMENT_ACTIVE",
+      );
+    } finally {
+      if (previous.haggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previous.haggleEnv;
+      if (previous.network === undefined) delete process.env.HAGGLE_X402_NETWORK;
+      else process.env.HAGGLE_X402_NETWORK = previous.network;
+      if (previous.easypostKey === undefined) delete process.env.EASYPOST_API_KEY;
+      else process.env.EASYPOST_API_KEY = previous.easypostKey;
+    }
+  });
+
+  it("hides EasyPost test tracking outside the staging test runtime", async () => {
+    const previousHaggleEnv = process.env.HAGGLE_ENV;
+    delete process.env.HAGGLE_ENV;
+    const shipment = {
+      id: "shipment_test_tracker_hidden",
+      order_id: "order_test_tracker_hidden",
+      seller_id: "test-user-001",
+      buyer_id: "buyer_test_tracker",
+      status: "LABEL_CREATED",
+      events: [],
+    } as unknown as ShipmentRow;
+    mockGetShipmentById.mockResolvedValue(shipment);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/shipments/${shipment.id}/test-tracker`,
+        headers: AUTH_HEADERS,
+        payload: { status: "in_transit" },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: "EASYPOST_TEST_TRACKING_NOT_AVAILABLE" });
+      expect(applyCarrierShipmentEvent).not.toHaveBeenCalled();
+    } finally {
+      if (previousHaggleEnv === undefined) delete process.env.HAGGLE_ENV;
+      else process.env.HAGGLE_ENV = previousHaggleEnv;
+    }
   });
 
   it("claims an EasyPost webhook before acknowledging an unsupported event", async () => {

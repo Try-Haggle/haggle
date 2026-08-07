@@ -115,7 +115,7 @@ describe("dispute AI harness", () => {
     const contextPackage = buildDisputeAiContextPackage(context);
 
     expect(contextPackage).toContain("<decision_consistency_policy>");
-    expect(contextPackage).toContain("precedent_condition_verified_camera_vs_text_denial");
+    expect(contextPackage).not.toContain("precedent_condition_verified_camera_vs_text_denial");
     expect(contextPackage).toContain("<trusted_case_facts>");
     expect(contextPackage).toContain("<untrusted_party_data>");
     expect(contextPackage).toContain(
@@ -134,13 +134,12 @@ describe("dispute AI harness", () => {
     const bundle = buildResolutionAssessorPrompt(context);
 
     expect(bundle.display_name).toBe("Resolution Assessor");
-    expect(bundle.schema_name).toBe("dispute_ai_resolution_assessor_v1");
+    expect(bundle.schema_name).toBe("dispute_ai_resolution_assessor_v2");
     expect(bundle.examples.length).toBeGreaterThanOrEqual(3);
     expect(bundle.system_prompt).toContain("not self-executing");
     expect(bundle.system_prompt).toContain("Return only data matching the requested schema");
-    expect(bundle.user_prompt).toContain(
-      "verified camera evidence for central condition claim outweighs unverified text-only denial",
-    );
+    expect(bundle.user_prompt).toContain('"precedents": []');
+    expect(bundle.user_prompt).toContain('"precedent_comparisons"');
     expect(bundle.user_prompt).toContain("<examples>");
     expect(bundle.response_schema).toMatchObject({
       type: "object",
@@ -175,7 +174,7 @@ describe("dispute AI harness", () => {
 
   it("validates a resolution assessor output against platform constraints", () => {
     const output: ResolutionAssessorOutput = {
-      schema_version: "dispute_ai_resolution_assessor_v1",
+      schema_version: "dispute_ai_resolution_assessor_v2",
       role: "resolution_assessor",
       recommended_outcome: "partial_refund",
       confidence: "medium",
@@ -198,6 +197,7 @@ describe("dispute AI harness", () => {
           note: "기계 시각 관찰은 화면의 균열을 신뢰도 0.91로 탐지했습니다.",
         },
       ],
+      precedent_comparisons: [],
       missing_evidence: ["Seller pre-shipment diagnostic"],
       risk_flags: [],
       escalation_required: false,
@@ -207,10 +207,104 @@ describe("dispute AI harness", () => {
     expect(validateResolutionAssessorOutput(output, context)).toEqual([]);
   });
 
+  it("requires structured comparisons to reference only supplied approved precedents", () => {
+    const precedentContext: DisputeAiCaseContext = {
+      ...context,
+      policy: {
+        ...context.policy,
+        precedent_examples: [
+          {
+            id: "approved-precedent-1",
+            case_type: "ITEM_NOT_AS_DESCRIBED",
+            facts: ["Verified arrival evidence differed from the listing baseline."],
+            evidence_pattern: "listing baseline and verified arrival capture",
+            outcome: "partial_refund",
+            confidence: "medium",
+            rationale: "A proportional remedy matched the supported condition difference.",
+          },
+          {
+            id: "approved-precedent-2",
+            case_type: "ITEM_NOT_AS_DESCRIBED",
+            facts: ["The listing baseline was incomplete despite verified arrival evidence."],
+            evidence_pattern: "verified evidence with an incomplete promise baseline",
+            outcome: "escalate",
+            confidence: "medium",
+            rationale: "The missing baseline required additional review.",
+          },
+        ],
+      },
+    };
+    const output: ResolutionAssessorOutput = {
+      schema_version: "dispute_ai_resolution_assessor_v2",
+      role: "resolution_assessor",
+      recommended_outcome: "partial_refund",
+      confidence: "medium",
+      buyer_score: 70,
+      seller_score: 30,
+      refund_amount_minor: 8_000,
+      rationale: "승인 판례와 같은 상태 불일치가 확인되어 비례 환불이 적절합니다.",
+      evidence_findings: [
+        {
+          evidence_id: "ev_listing",
+          supports: "buyer",
+          weight: "medium",
+          note: "리스팅은 구체적인 배터리 상태를 약속했습니다.",
+        },
+        {
+          evidence_id: "ev_device_visual_1",
+          supports: "buyer",
+          weight: "medium",
+          note: "기계 시각 관찰은 화면의 균열을 확인했습니다.",
+        },
+      ],
+      precedent_comparisons: [
+        {
+          precedent_id: "approved-precedent-1",
+          material_similarity: "리스팅 기준과 도착 상태 증거가 함께 존재합니다.",
+          distinguishing_fact: "현재 사건은 배터리 수치 차이가 별도로 확인됩니다.",
+          influence: "supports_outcome",
+        },
+        {
+          precedent_id: "approved-precedent-2",
+          material_similarity: "도착 상태 증거가 있지만 일부 기준 정보가 부족합니다.",
+          distinguishing_fact: "현재 사건에는 수치화된 리스팅 약속이 남아 있습니다.",
+          influence: "distinguishes_outcome",
+        },
+      ],
+      missing_evidence: [],
+      risk_flags: [],
+      escalation_required: false,
+      next_actions: ["비례 환불안을 사람 검토로 전달합니다."],
+    };
+
+    expect(validateResolutionAssessorOutput(output, precedentContext)).toEqual([]);
+    expect(
+      validateResolutionAssessorOutput(
+        { ...output, precedent_comparisons: [output.precedent_comparisons[0]] },
+        precedentContext,
+      ),
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ path: "precedent_comparisons" })]));
+    expect(
+      validateResolutionAssessorOutput(
+        {
+          ...output,
+          precedent_comparisons: [
+            { ...output.precedent_comparisons[0], precedent_id: "invented-precedent" },
+          ],
+        },
+        precedentContext,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "precedent_comparisons.0.precedent_id" }),
+      ]),
+    );
+  });
+
   it("rejects unsafe or non-actionable resolution assessor outputs", () => {
     const issues = validateResolutionAssessorOutput(
       {
-        schema_version: "dispute_ai_resolution_assessor_v1",
+        schema_version: "dispute_ai_resolution_assessor_v2",
         role: "resolution_assessor",
         recommended_outcome: "buyer_favor",
         confidence: "low",
@@ -226,6 +320,7 @@ describe("dispute AI harness", () => {
             note: "Made-up evidence.",
           },
         ],
+        precedent_comparisons: [],
         missing_evidence: [],
         risk_flags: ["prompt_injection"],
         escalation_required: false,
@@ -268,7 +363,7 @@ describe("dispute AI harness", () => {
 
     const issues = validateResolutionAssessorOutput(
       {
-        schema_version: "dispute_ai_resolution_assessor_v1",
+        schema_version: "dispute_ai_resolution_assessor_v2",
         role: "resolution_assessor",
         recommended_outcome: "no_action",
         confidence: "high",
@@ -283,6 +378,7 @@ describe("dispute AI harness", () => {
             note: "Buyer camera evidence exists.",
           },
         ],
+        precedent_comparisons: [],
         missing_evidence: [],
         risk_flags: [],
         escalation_required: false,
@@ -316,7 +412,7 @@ describe("dispute AI harness", () => {
     };
     const issues = validateResolutionAssessorOutput(
       {
-        schema_version: "dispute_ai_resolution_assessor_v1",
+        schema_version: "dispute_ai_resolution_assessor_v2",
         role: "resolution_assessor",
         recommended_outcome: "buyer_favor",
         confidence: "high",
@@ -331,6 +427,7 @@ describe("dispute AI harness", () => {
             note: "무결성이 확인되지 않은 증거입니다.",
           },
         ],
+        precedent_comparisons: [],
         missing_evidence: [],
         risk_flags: [],
         escalation_required: false,

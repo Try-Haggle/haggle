@@ -10,13 +10,14 @@ import {
   buyerConfirmReceipt,
   completeBufferRelease,
   completeBuyerReview,
+  completeVerifiedTestBufferRelease,
   computeReleasePhase,
   confirmDelivery,
   createSettlementRelease,
   PaymentService,
 } from "@haggle/payment-core";
 import { toSettlementAssetMoney } from "@haggle/shared";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type Address, createPublicClient, decodeEventLog, type Hex, http, isAddress } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import { z } from "zod";
@@ -31,6 +32,7 @@ import {
   type ConditionalReleaseMessage,
   createConditionalReleaseSigner,
 } from "../payments/settlement-signer.js";
+import { writeAuditLog } from "../services/admin-action-log.service.js";
 import {
   CONDITIONAL_SETTLEMENT_RETRY_AFTER_SECONDS,
   conditionalSettlementConfirmationRetry,
@@ -74,6 +76,7 @@ import {
   completeShipmentApvPayoutOffset,
   reserveShipmentApvPayoutOffset,
 } from "../services/shipment-apv-payout-offset.service.js";
+import { getShipmentByOrderId } from "../services/shipment-record.service.js";
 import { applyTrustTriggers } from "../services/trust-ledger.service.js";
 
 // ---------------------------------------------------------------------------
@@ -252,6 +255,16 @@ function expectedConditionalSettlementChainId(): number {
   return process.env.HAGGLE_X402_NETWORK === "base-sepolia" ? 84532 : 8453;
 }
 
+function isVerifiedSettlementTestRuntime(): boolean {
+  const easypostKey = process.env.EASYPOST_API_KEY?.trim() ?? "";
+  return (
+    process.env.HAGGLE_ENV?.trim().toLowerCase() === "staging" &&
+    process.env.HAGGLE_X402_NETWORK === "base-sepolia" &&
+    process.env.HAGGLE_SETTLEMENT_ASSET_PROFILE === "base-sepolia-husdc" &&
+    (easypostKey.startsWith("EZTK") || easypostKey.startsWith("EZTEST"))
+  );
+}
+
 function validateConditionalReleaseReceipt(
   receipt: { logs?: Array<{ address?: string; topics?: readonly Hex[]; data?: Hex }> },
   expected: {
@@ -354,6 +367,27 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
     return order?.status === "IN_DISPUTE" || Boolean(activeDispute);
   }
 
+  async function requireReleaseSeller(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    orderId: string,
+  ): Promise<boolean> {
+    if (request.user?.role === "admin") return true;
+    const order = await getCommerceOrderByOrderId(db, orderId);
+    if (!order) {
+      reply.code(404).send({ error: "ORDER_NOT_FOUND" });
+      return false;
+    }
+    if (request.user?.id !== order.sellerId) {
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: "Only the order seller may release this settlement",
+      });
+      return false;
+    }
+    return true;
+  }
+
   // POST /settlement-releases — Create a new settlement release
   app.post("/settlement-releases", { preHandler: [requireAdmin] }, async (request, reply) => {
     const parsed = createReleaseSchema.safeParse(request.body);
@@ -415,9 +449,19 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
       }
+      const intentRow = await getPaymentIntentRowById(db, release.payment_intent_id);
+      const providerContext = isRecord(intentRow?.providerContext) ? intentRow.providerContext : {};
+      const conditionalContext = getConditionalSettlementContext(providerContext);
       return reply.send({
         release,
         phase: computeReleasePhase(release),
+        conditional_settlement: {
+          status: typeof conditionalContext.status === "string" ? conditionalContext.status : null,
+          release_tx_hash:
+            typeof conditionalContext.release_tx_hash === "string"
+              ? conditionalContext.release_tx_hash
+              : null,
+        },
       });
     },
   );
@@ -534,12 +578,19 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
 
   app.post(
     "/settlement-releases/:id/conditional-release-request",
-    { preHandler: [requireAdmin] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const release = await getSettlementReleaseById(db, id);
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
+      }
+      if (!(await requireReleaseSeller(request, reply, release.order_id))) return;
+      if (await isOrderInDispute(release.order_id)) {
+        return reply.code(409).send({
+          error: "ORDER_IN_DISPUTE",
+          message: "Settlement release is blocked while the order has an active dispute",
+        });
       }
       if (computeReleasePhase(release) !== "FULLY_RELEASED") {
         return reply.code(409).send({
@@ -710,12 +761,19 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
 
   app.post(
     "/settlement-releases/:id/conditional-release-execution",
-    { preHandler: [requireAdmin] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const release = await getSettlementReleaseById(db, id);
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
+      }
+      if (!(await requireReleaseSeller(request, reply, release.order_id))) return;
+      if (await isOrderInDispute(release.order_id)) {
+        return reply.code(409).send({
+          error: "ORDER_IN_DISPUTE",
+          message: "Settlement release is blocked while the order has an active dispute",
+        });
       }
       if (computeReleasePhase(release) !== "FULLY_RELEASED") {
         return reply.code(409).send({
@@ -806,13 +864,14 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
 
   app.post(
     "/settlement-releases/:id/conditional-release-confirmation",
-    { preHandler: [requireAdmin] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const release = await getSettlementReleaseById(db, id);
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
       }
+      if (!(await requireReleaseSeller(request, reply, release.order_id))) return;
 
       const parsed = conditionalReleaseConfirmationSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
@@ -1435,6 +1494,93 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       return reply.send({
         release: updated,
         phase: computeReleasePhase(updated),
+      });
+    },
+  );
+
+  // Staging-only APV completion after an EasyPost test delivery and buyer receipt confirmation.
+  app.post(
+    "/settlement-releases/by-order/:orderId/complete-test-buffer",
+    { preHandler: [requireAuth, requireOrderOwner({ role: "seller" })] },
+    async (request, reply) => {
+      if (!isVerifiedSettlementTestRuntime()) {
+        return reply.code(404).send({ error: "TEST_BUFFER_COMPLETION_NOT_AVAILABLE" });
+      }
+
+      const { orderId } = request.params as { orderId: string };
+      if (await isOrderInDispute(orderId)) {
+        return reply.code(409).send({
+          error: "ORDER_IN_DISPUTE",
+          message: "Test buffer completion is blocked while the order has an active dispute",
+        });
+      }
+
+      const [release, shipment] = await Promise.all([
+        getSettlementReleaseByOrderId(db, orderId),
+        getShipmentByOrderId(db, orderId),
+      ]);
+      if (!release) {
+        return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
+      }
+      if (shipment?.status !== "DELIVERED") {
+        return reply.code(409).send({ error: "VERIFIED_TEST_DELIVERY_REQUIRED" });
+      }
+
+      const testTracker = isRecord(shipment.metadata?.easypost_test_tracker)
+        ? shipment.metadata.easypost_test_tracker
+        : {};
+      if (
+        testTracker.easypost_test_status_verified !== true ||
+        testTracker.requested_status !== "delivered"
+      ) {
+        return reply.code(409).send({ error: "EASYPOST_TEST_DELIVERY_NOT_VERIFIED" });
+      }
+
+      if (release.buffer_release_status === "RELEASED") {
+        return reply.send({
+          release,
+          phase: computeReleasePhase(release),
+          already_completed: true,
+        });
+      }
+
+      let updated;
+      try {
+        updated = completeVerifiedTestBufferRelease(release, new Date().toISOString());
+      } catch (error) {
+        return reply.code(409).send({
+          error: "TEST_BUFFER_NOT_RELEASABLE",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      await db.transaction(async (tx) => {
+        const txDb = tx as unknown as Database;
+        await updateSettlementReleaseRecord(txDb, updated);
+        await writeAuditLog(txDb, {
+          actorId: request.user!.id,
+          actionType: "shipment.test_buffer_completion",
+          targetType: "settlement_release",
+          targetId: release.id,
+          payload: {
+            order_id: orderId,
+            shipment_id: shipment.id,
+            provider: "easypost",
+            provider_mode: "test",
+            provider_tracker_id: testTracker.easypost_tracker_id,
+            provider_tracking_code: testTracker.easypost_test_tracking_code,
+          },
+        });
+      });
+      return reply.send({
+        release: updated,
+        phase: computeReleasePhase(updated),
+        provider_verification: {
+          provider: "easypost",
+          mode: "test",
+          tracker_id: testTracker.easypost_tracker_id,
+          tracking_code: testTracker.easypost_test_tracking_code,
+        },
+        already_completed: false,
       });
     },
   );

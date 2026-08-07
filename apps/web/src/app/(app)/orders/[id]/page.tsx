@@ -1,8 +1,12 @@
 "use client";
 
+import { HAGGLE_CONDITIONAL_SETTLEMENT_ABI } from "@haggle/contracts";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { type Address, getAddress, isAddress, isHex } from "viem";
+import { useAccount, useChainId, useSwitchChain, useWriteContract } from "wagmi";
 import {
   ActivityFeed,
   BackLink,
@@ -15,10 +19,17 @@ import {
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { confirmConditionalSettlementFunding } from "@/lib/conditional-settlement-confirmation";
+import { confirmConditionalSettlementRelease } from "@/lib/conditional-settlement-release-confirmation";
 import { createPaymentDisclosureAck } from "@/lib/payment-disclosure";
 import { createShipmentMutationHeaders } from "@/lib/shipment-idempotency";
 import { canManageSellerShipping, SellerShippingGate } from "@/lib/shipping-role";
 import { createClient } from "@/lib/supabase/client";
+import {
+  HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+  HAGGLE_SETTLEMENT_ASSET_PROFILE,
+  HAGGLE_WALLET_CHAIN_ID,
+} from "@/lib/wallet-network";
+import { WalletProvider } from "@/lib/wallet-provider";
 
 // ─── Types ───────────────────────────────────────────────────
 interface PaymentIntent {
@@ -42,6 +53,18 @@ interface Shipment {
   label_url?: string | null;
   label_qr_code_url?: string | null;
   label_qr_code_available?: boolean;
+  metadata?: {
+    shipping_execution_mode?: "integration_manual" | "physical_live";
+    shipping_provider_environment?: "test" | "live";
+    shipping_execution_mode_source?: "payment_checkout";
+    shipping_execution_mode_payment_locked?: boolean;
+    prepared_rate_quotes?: unknown[];
+    easypost_test_tracker?: {
+      fixture_type?: string;
+      requested_status?: string;
+      easypost_test_status_verified?: boolean;
+    };
+  };
   delivered_at: string | null;
   created_at: string;
   events: ShipmentEvent[];
@@ -116,6 +139,46 @@ interface Dispute {
   };
 }
 
+interface SettlementRelease {
+  id: string;
+  order_id: string;
+  payment_intent_id: string;
+  product_release_status: "PENDING_DELIVERY" | "BUYER_REVIEW" | "RELEASED";
+  buffer_release_status: "HELD" | "ADJUSTING" | "RELEASED";
+  buffer_amount: { currency: string; amount_minor: number };
+  buyer_review_deadline?: string;
+  buffer_release_deadline?: string;
+}
+
+interface ConditionalSettlementSummary {
+  status: string | null;
+  release_tx_hash: string | null;
+}
+
+interface SettlementReleaseState {
+  release: SettlementRelease | null;
+  phase: string | null;
+  conditionalSettlement: ConditionalSettlementSummary | null;
+}
+
+interface ConditionalReleaseRequest {
+  contract_call: {
+    params: {
+      settlementId: `0x${string}`;
+      sellerWallet: Address;
+      feeWallet: Address;
+      sellerAmount: string;
+      feeAmount: string;
+      deadline: string;
+      signerNonce: string;
+    };
+    signature: `0x${string}`;
+  };
+  typed_data: {
+    domain: { chainId: number; verifyingContract?: string };
+  };
+}
+
 interface OrderState {
   order: {
     id: string;
@@ -129,9 +192,24 @@ interface OrderState {
   payment: PaymentIntent | null;
   shipment: Shipment | null;
   dispute: Dispute | null;
+  settlementRelease: SettlementReleaseState;
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const IS_STAGING_SETTLEMENT_TEST = HAGGLE_SETTLEMENT_ASSET_PROFILE === "base-sepolia-husdc";
+
+function toConditionalReleaseTuple(request: ConditionalReleaseRequest) {
+  const params = request.contract_call.params;
+  return {
+    settlementId: params.settlementId,
+    sellerWallet: getAddress(params.sellerWallet),
+    feeWallet: getAddress(params.feeWallet),
+    sellerAmount: BigInt(params.sellerAmount),
+    feeAmount: BigInt(params.feeAmount),
+    deadline: BigInt(params.deadline),
+    signerNonce: BigInt(params.signerNonce),
+  };
+}
 
 const EMPTY_SHIPPING_FORM: ShippingFormState = {
   fromAddress: {
@@ -380,22 +458,26 @@ function ShippingSection({
   loading,
   isProduction,
   isSeller,
+  testTrackingEnabled,
   shippingForm,
   rates,
   onShippingFormChange,
   onPrepareRates,
   onPurchaseRate,
+  onSelectExecutionMode,
 }: {
   shipment: Shipment | null;
   onAction: (action: string) => void;
   loading: string | null;
   isProduction: boolean;
   isSeller: boolean;
+  testTrackingEnabled: boolean;
   shippingForm: ShippingFormState;
   rates: ShippingRate[];
   onShippingFormChange: (section: "fromAddress" | "parcel", field: string, value: string) => void;
   onPrepareRates: () => void;
   onPurchaseRate: (rateId: string) => void;
+  onSelectExecutionMode: (mode: "integration_manual" | "physical_live") => void;
 }) {
   if (!shipment) {
     return (
@@ -407,7 +489,16 @@ function ShippingSection({
     );
   }
 
-  const nextAction = getNextShippingAction(shipment.status, isProduction);
+  const executionMode = shipment.metadata?.shipping_execution_mode ?? "integration_manual";
+  const isPhysicalShipping = executionMode === "physical_live";
+  const isPaymentModeLocked = shipment.metadata?.shipping_execution_mode_payment_locked === true;
+  const nextAction = isSeller
+    ? getNextShippingAction(
+        shipment.status,
+        isProduction,
+        testTrackingEnabled && !isPhysicalShipping,
+      )
+    : null;
 
   return (
     <SectionCard title="Shipping" icon="truck">
@@ -416,6 +507,56 @@ function ShippingSection({
           <span className="text-sm text-ink-secondary">Status</span>
           <StatusBadge domain="order" status={shipment.status} />
         </div>
+        <div className="rounded-lg border border-line bg-surface-sunken p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-ink">Shipping test mode</p>
+              <p className="text-xs text-ink-muted">
+                {isPhysicalShipping
+                  ? "Real addresses, paid EasyPost label, and carrier scans"
+                  : "EasyPost test label with manually controlled delivery states"}
+              </p>
+            </div>
+            <StatusBadge
+              domain="order"
+              status={isPhysicalShipping ? "PHYSICAL LIVE" : "INTEGRATION"}
+            />
+          </div>
+          {isSeller &&
+            !isPaymentModeLocked &&
+            shipment.status === "LABEL_PENDING" &&
+            rates.length === 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant={isPhysicalShipping ? "secondary" : "primary"}
+                  size="sm"
+                  onClick={() => onSelectExecutionMode("integration_manual")}
+                  disabled={Boolean(loading)}
+                >
+                  Integration
+                </Button>
+                <Button
+                  variant={isPhysicalShipping ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => onSelectExecutionMode("physical_live")}
+                  disabled={Boolean(loading)}
+                >
+                  Physical shipping
+                </Button>
+              </div>
+            )}
+          {isPaymentModeLocked && (
+            <p className="mt-2 text-ink-muted text-xs">Locked during checkout</p>
+          )}
+        </div>
+
+        {isPhysicalShipping && (
+          <InlineNotice tone="warning">
+            Product payment uses hUSDC. Haggle's staging fiat budget pays this real EasyPost label,
+            subject to the configured charge cap. Delivery advances only from verified carrier
+            tracking.
+          </InlineNotice>
+        )}
         {shipment.tracking_number && (
           <div className="flex items-center justify-between">
             <span className="text-sm text-ink-secondary">Tracking</span>
@@ -427,6 +568,12 @@ function ShippingSection({
             <span className="text-sm text-ink-secondary">Carrier</span>
             <span className="text-sm text-ink-secondary">{shipment.carrier}</span>
           </div>
+        )}
+
+        {shipment.metadata?.easypost_test_tracker?.fixture_type === "canned_tracking_code" && (
+          <InlineNotice tone="info">
+            This delivery state is an EasyPost test simulation, not a physical carrier scan.
+          </InlineNotice>
         )}
 
         {(shipment.label_url || shipment.label_qr_code_url) && (
@@ -529,7 +676,18 @@ function ShippingSection({
 function getNextShippingAction(
   status: string,
   isProduction: boolean,
+  testTrackingEnabled: boolean,
 ): { label: string; action: string } | null {
+  if (testTrackingEnabled) {
+    switch (status) {
+      case "LABEL_CREATED":
+        return { label: "Simulate in transit (EasyPost)", action: "test-in-transit" };
+      case "IN_TRANSIT":
+        return { label: "Simulate out for delivery", action: "test-out-for-delivery" };
+      case "OUT_FOR_DELIVERY":
+        return { label: "Simulate delivered (EasyPost)", action: "test-delivered" };
+    }
+  }
   if (isProduction) return null;
   switch (status) {
     case "LABEL_CREATED":
@@ -695,6 +853,131 @@ function ShippingFulfillmentForm({
   );
 }
 
+function SettlementSection({
+  settlement,
+  payment,
+  dispute,
+  isBuyer,
+  isSeller,
+  isWalletConnected,
+  walletAddress,
+  loading,
+  onAction,
+}: {
+  settlement: SettlementReleaseState;
+  payment: PaymentIntent | null;
+  dispute: Dispute | null;
+  isBuyer: boolean;
+  isSeller: boolean;
+  isWalletConnected: boolean;
+  walletAddress?: Address;
+  loading: string | null;
+  onAction: (action: string) => void;
+}) {
+  const release = settlement.release;
+  if (!release) {
+    return (
+      <SectionCard title="Settlement" icon="creditcard">
+        <p className="text-sm text-ink-secondary">Settlement starts after funding is confirmed.</p>
+      </SectionCard>
+    );
+  }
+
+  const conditionalStatus = settlement.conditionalSettlement?.status;
+  const activeDispute = Boolean(
+    dispute &&
+      !["CLOSED", "PARTIAL_REFUND"].includes(dispute.status) &&
+      !dispute.status.startsWith("RESOLVED"),
+  );
+  const releasePending = [
+    "RELEASE_SUBMITTED",
+    "RELEASE_PENDING",
+    "RELEASE_CONFIRMATIONS_PENDING",
+  ].includes(conditionalStatus ?? "");
+  const releaseComplete =
+    payment?.status === "SETTLED" || conditionalStatus === "RELEASE_CONFIRMED";
+
+  return (
+    <SectionCard title="Settlement" icon="creditcard">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-ink-secondary">Release phase</span>
+          <span className="text-xs font-medium text-ink text-right">
+            {(settlement.phase ?? "UNKNOWN").replace(/_/g, " ")}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-ink-secondary">Contract</span>
+          <span className="text-xs font-medium text-ink text-right">
+            {(conditionalStatus ?? "NOT AVAILABLE").replace(/_/g, " ")}
+          </span>
+        </div>
+
+        {activeDispute && (
+          <InlineNotice tone="info">
+            Settlement is locked while this dispute is active.
+          </InlineNotice>
+        )}
+
+        {!activeDispute && isBuyer && release.product_release_status === "BUYER_REVIEW" && (
+          <ActionButton
+            label="Confirm item received"
+            action="buyer-confirm-receipt"
+            onClick={onAction}
+            loading={loading}
+            variant="primary"
+          />
+        )}
+
+        {!activeDispute &&
+          isSeller &&
+          IS_STAGING_SETTLEMENT_TEST &&
+          release.product_release_status === "RELEASED" &&
+          release.buffer_release_status !== "RELEASED" && (
+            <ActionButton
+              label="Finalize test shipping cost"
+              action="complete-test-buffer"
+              onClick={onAction}
+              loading={loading}
+            />
+          )}
+
+        {!activeDispute &&
+          isSeller &&
+          settlement.phase === "FULLY_RELEASED" &&
+          !releaseComplete && (
+            <>
+              {!isWalletConnected ? (
+                <div className="flex justify-start">
+                  <ConnectButton />
+                </div>
+              ) : (
+                <ActionButton
+                  label={releasePending ? "Confirm release transaction" : "Release hUSDC to seller"}
+                  action={releasePending ? "confirm-contract-release" : "release-contract"}
+                  onClick={onAction}
+                  loading={loading}
+                  variant="primary"
+                />
+              )}
+              {walletAddress && (
+                <p className="text-xs font-mono text-ink-muted">
+                  Connected {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
+                </p>
+              )}
+            </>
+          )}
+
+        {releaseComplete && (
+          <div className="rounded-lg bg-success-soft border border-success/20 px-3 py-2 text-sm text-success">
+            Onchain settlement confirmed
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 // ─── Dispute Section ─────────────────────────────────────────
 function DisputeSection({
   dispute,
@@ -773,9 +1056,20 @@ function DisputeSection({
       <p className="text-sm text-ink-secondary mb-3">No dispute for this order.</p>
       <Link
         href={`/disputes/new?orderId=${orderId}`}
-        className={cn(buttonVariants({ variant: "destructive", size: "sm" }), "w-full")}
+        className={cn(
+          buttonVariants({
+            variant:
+              shipment?.status === "DELIVERED" || shipment?.status === "DELIVERY_EXCEPTION"
+                ? "destructive"
+                : "secondary",
+            size: "sm",
+          }),
+          "w-full",
+        )}
       >
-        Report an Issue
+        {shipment?.status === "DELIVERED" || shipment?.status === "DELIVERY_EXCEPTION"
+          ? "Report an Issue"
+          : "Check Issue Eligibility"}
       </Link>
     </SectionCard>
   );
@@ -1105,15 +1399,20 @@ function ActivityLog({ entries }: { entries: LogEntry[] }) {
 }
 
 // ─── Main Page ───────────────────────────────────────────────
-export default function OrderDetailPage() {
+function OrderDetailContent() {
   const params = useParams();
   const orderId = params.id as string;
+  const { address: walletAddress, isConnected: isWalletConnected } = useAccount();
+  const walletChainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
 
   const [state, setState] = useState<OrderState>({
     order: null,
     payment: null,
     shipment: null,
     dispute: null,
+    settlementRelease: { release: null, phase: null, conditionalSettlement: null },
   });
   const [loading, setLoading] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -1146,18 +1445,32 @@ export default function OrderDetailPage() {
 
   const loadOrder = useCallback(async () => {
     try {
-      const data = await api.get<{
-        order: OrderState["order"];
-        payment: PaymentIntent | null;
-        shipment: Shipment | null;
-        dispute: Dispute | null;
-      }>(`/demo/e2e/order/${orderId}`);
+      const [data, settlementData] = await Promise.all([
+        api.get<{
+          order: OrderState["order"];
+          payment: PaymentIntent | null;
+          shipment: Shipment | null;
+          dispute: Dispute | null;
+        }>(`/demo/e2e/order/${orderId}`),
+        api
+          .get<{
+            release: SettlementRelease;
+            phase: string;
+            conditional_settlement?: ConditionalSettlementSummary;
+          }>(`/settlement-releases/by-order/${orderId}`)
+          .catch(() => null),
+      ]);
 
       setState({
         order: data.order,
         payment: data.payment,
         shipment: data.shipment,
         dispute: data.dispute,
+        settlementRelease: {
+          release: settlementData?.release ?? null,
+          phase: settlementData?.phase ?? null,
+          conditionalSettlement: settlementData?.conditional_settlement ?? null,
+        },
       });
     } catch {
       // Fallback: try individual endpoints
@@ -1174,11 +1487,23 @@ export default function OrderDetailPage() {
         const disputeData = await api
           .get<{ dispute: Dispute }>(`/disputes/by-order/${orderId}`)
           .catch(() => null);
+        const settlementData = await api
+          .get<{
+            release: SettlementRelease;
+            phase: string;
+            conditional_settlement?: ConditionalSettlementSummary;
+          }>(`/settlement-releases/by-order/${orderId}`)
+          .catch(() => null);
         setState({
           order: orderData?.order ?? null,
           payment: paymentData?.payment ?? null,
           shipment: shipmentData?.shipment ?? null,
           dispute: disputeData?.dispute ?? null,
+          settlementRelease: {
+            release: settlementData?.release ?? null,
+            phase: settlementData?.phase ?? null,
+            conditionalSettlement: settlementData?.conditional_settlement ?? null,
+          },
         });
       } catch {
         // Silently handle
@@ -1305,6 +1630,29 @@ export default function OrderDetailPage() {
 
     try {
       switch (action) {
+        case "test-in-transit":
+        case "test-out-for-delivery":
+        case "test-delivered": {
+          const status =
+            action === "test-in-transit"
+              ? "in_transit"
+              : action === "test-out-for-delivery"
+                ? "out_for_delivery"
+                : "delivered";
+          addLog("Shipping", `Verifying EasyPost test status: ${status}...`, "info");
+          const result = await api.post<{
+            shipment: Shipment;
+            provider_verification: { tracker_id?: string; tracking_code?: string };
+          }>(`/shipments/${state.shipment.id}/test-tracker`, { status });
+          setState((current) => ({ ...current, shipment: result.shipment }));
+          addLog(
+            "Shipping",
+            `EasyPost verified ${status}${result.provider_verification.tracker_id ? ` (${result.provider_verification.tracker_id})` : ""}`,
+            "success",
+          );
+          await loadOrder();
+          break;
+        }
         case "label": {
           addLog("Shipping", "Creating label...", "info");
           const result = await api.post<{ shipment: Shipment }>(
@@ -1346,6 +1694,96 @@ export default function OrderDetailPage() {
       }
     } catch (err) {
       addLog("Shipping", err instanceof Error ? err.message : "Action failed", "error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function handleSettlementAction(action: string) {
+    const release = state.settlementRelease.release;
+    if (!release) return;
+    setLoading(action);
+
+    try {
+      if (action === "buyer-confirm-receipt") {
+        addLog("Settlement", "Confirming buyer receipt...", "info");
+        await api.post(`/orders/${orderId}/confirm-delivery`, { confirmed: true });
+        addLog("Settlement", "Buyer receipt confirmed", "success");
+        await loadOrder();
+        return;
+      }
+
+      if (action === "complete-test-buffer") {
+        addLog("Settlement", "Finalizing the EasyPost test APV buffer...", "info");
+        await api.post(`/settlement-releases/by-order/${orderId}/complete-test-buffer`, {});
+        addLog("Settlement", "Test shipping cost finalized", "success");
+        await loadOrder();
+        return;
+      }
+
+      if (!walletAddress || !isWalletConnected) {
+        throw new Error("Connect the seller payout wallet before releasing settlement.");
+      }
+      if (walletChainId !== HAGGLE_WALLET_CHAIN_ID) {
+        await switchChainAsync({ chainId: HAGGLE_WALLET_CHAIN_ID });
+      }
+
+      if (action === "confirm-contract-release") {
+        const storedHash = state.settlementRelease.conditionalSettlement?.release_tx_hash;
+        if (!storedHash || !isHex(storedHash) || storedHash.length !== 66) {
+          throw new Error("No submitted release transaction is available to confirm.");
+        }
+        addLog("Settlement", "Checking release transaction finality...", "info");
+        await confirmConditionalSettlementRelease(release.id, storedHash as `0x${string}`);
+        addLog("Settlement", "Onchain settlement confirmed", "success");
+        await loadOrder();
+        return;
+      }
+
+      if (action !== "release-contract") return;
+      addLog("Settlement", "Requesting a signed release instruction...", "info");
+      const request = await api.post<ConditionalReleaseRequest>(
+        `/settlement-releases/${release.id}/conditional-release-request`,
+        { seller_wallet_address: walletAddress },
+      );
+      const verifyingContract = request.typed_data.domain.verifyingContract;
+      if (
+        request.typed_data.domain.chainId !== HAGGLE_WALLET_CHAIN_ID ||
+        !verifyingContract ||
+        !isAddress(verifyingContract) ||
+        !HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS ||
+        getAddress(verifyingContract) !== getAddress(HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS)
+      ) {
+        throw new Error("The release instruction targets an unexpected contract or network.");
+      }
+      if (getAddress(request.contract_call.params.sellerWallet) !== getAddress(walletAddress)) {
+        throw new Error("Connect the seller wallet recorded for this settlement.");
+      }
+
+      addLog("Settlement", "Submitting the hUSDC release transaction...", "info");
+      const txHash = await writeContractAsync({
+        address: HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+        abi: HAGGLE_CONDITIONAL_SETTLEMENT_ABI,
+        functionName: "release",
+        args: [toConditionalReleaseTuple(request), request.contract_call.signature],
+        chainId: HAGGLE_WALLET_CHAIN_ID,
+      });
+      await api.post(`/settlement-releases/${release.id}/conditional-release-execution`, {
+        tx_hash: txHash,
+        settlement_id: request.contract_call.params.settlementId,
+        contract_address: HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,
+        chain_id: HAGGLE_WALLET_CHAIN_ID,
+      });
+      addLog("Settlement", `Release submitted: ${txHash.slice(0, 12)}...`, "success");
+      await confirmConditionalSettlementRelease(release.id, txHash);
+      addLog("Settlement", "Onchain settlement confirmed", "success");
+      await loadOrder();
+    } catch (err) {
+      addLog(
+        "Settlement",
+        err instanceof Error ? err.message : "Settlement action failed",
+        "error",
+      );
     } finally {
       setLoading(null);
     }
@@ -1409,8 +1847,43 @@ export default function OrderDetailPage() {
     }
   }
 
+  async function handleSelectShippingExecutionMode(
+    executionMode: "integration_manual" | "physical_live",
+  ) {
+    if (!state.shipment) return;
+    setLoading(`shipping-mode-${executionMode}`);
+    try {
+      const result = await api.post<{ shipment: Shipment }>(
+        `/shipments/${state.shipment.id}/execution-mode`,
+        { execution_mode: executionMode },
+      );
+      setState((current) => ({ ...current, shipment: result.shipment }));
+      setShippingRates([]);
+      addLog(
+        "Shipping",
+        executionMode === "physical_live"
+          ? "Physical shipping selected: live label charges and carrier scans are enabled"
+          : "Integration mode selected: test label and controlled tracking are enabled",
+        "success",
+      );
+    } catch (err) {
+      addLog("Shipping", err instanceof Error ? err.message : "Mode selection failed", "error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
   async function handlePurchaseRate(rateId: string) {
     if (!state.shipment) return;
+    const isPhysicalShipping = state.shipment.metadata?.shipping_execution_mode === "physical_live";
+    if (
+      isPhysicalShipping &&
+      !window.confirm(
+        "This purchases a live EasyPost label using Haggle's staging fiat budget. It does not spend hUSDC for postage. Continue?",
+      )
+    ) {
+      return;
+    }
     setLoading(`purchase-${rateId}`);
     try {
       addLog("Shipping", "Purchasing selected label...", "info");
@@ -1420,7 +1893,7 @@ export default function OrderDetailPage() {
         tracking_number?: string;
       }>(
         `/shipments/${state.shipment.id}/purchase-label`,
-        { rate_id: rateId },
+        { rate_id: rateId, acknowledge_live_charge: isPhysicalShipping },
         {
           headers: createShipmentMutationHeaders("purchase-label", state.shipment.id, rateId),
         },
@@ -1472,11 +1945,21 @@ export default function OrderDetailPage() {
 
   async function handleCreateReturnLabel() {
     if (!state.shipment) return;
+    const isPhysicalShipping = state.shipment.metadata?.shipping_execution_mode === "physical_live";
+    if (
+      isPhysicalShipping &&
+      !window.confirm(
+        "This purchases a live EasyPost return label using Haggle's staging fiat budget. Continue?",
+      )
+    ) {
+      return;
+    }
     setLoading("return-label");
     try {
       addLog("Shipping", "Creating return label...", "info");
       const result = await api.post<{ shipment: Shipment; tracking_number?: string | null }>(
         `/shipments/${state.shipment.id}/return-label`,
+        { acknowledge_live_charge: isPhysicalShipping },
       );
       addLog(
         "Shipping",
@@ -1618,11 +2101,24 @@ export default function OrderDetailPage() {
           loading={loading}
           isProduction={IS_PRODUCTION}
           isSeller={canManageSellerShipping(currentUserId, state.order?.sellerId)}
+          testTrackingEnabled={IS_STAGING_SETTLEMENT_TEST}
           shippingForm={shippingForm}
           rates={shippingRates}
           onShippingFormChange={handleShippingFormChange}
           onPrepareRates={handlePrepareShippingRates}
           onPurchaseRate={handlePurchaseRate}
+          onSelectExecutionMode={handleSelectShippingExecutionMode}
+        />
+        <SettlementSection
+          settlement={state.settlementRelease}
+          payment={state.payment}
+          dispute={state.dispute}
+          isBuyer={currentUserId === state.order?.buyerId}
+          isSeller={currentUserId === state.order?.sellerId}
+          isWalletConnected={isWalletConnected}
+          walletAddress={walletAddress}
+          loading={loading}
+          onAction={handleSettlementAction}
         />
         <DisputeSection
           dispute={state.dispute}
@@ -1648,5 +2144,13 @@ export default function OrderDetailPage() {
         </button>
       </div>
     </main>
+  );
+}
+
+export default function OrderDetailPage() {
+  return (
+    <WalletProvider>
+      <OrderDetailContent />
+    </WalletProvider>
   );
 }

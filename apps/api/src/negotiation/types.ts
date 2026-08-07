@@ -31,6 +31,13 @@ export interface EngineDecision {
    * advisor strategy, etc) instead of "How about $X?".
    */
   message?: string;
+  /**
+   * The AI's read of the opponent, produced alongside the decision (opponent
+   * modeling — backlog #4). Used to compute the opponent-adjusted aim and logged
+   * in the harness trace. Instrumental only: it never overrides the agent's
+   * configured goal (target/floor); it only helps reach it within the box.
+   */
+  opponent_estimate?: OpponentEstimate;
 }
 
 /**
@@ -188,11 +195,12 @@ export interface CoreMemory {
    */
   strategy_context?: StrategyContextMemory;
   /**
-   * The agent's resolved engine knobs (from the chosen preset + advanced/builder
-   * tuning) that decision-makers actually consume — concession curve, anchor
-   * strength, thresholds, weights. Populated from the compiled snapshot so a
-   * user's tuning reaches the rule path and coach recommendations instead of
-   * collapsing to defaults.
+   * @deprecated LEGACY LLM/coach path only. This is a LOSSY 7-field subset of the
+   * compiled snapshot (see `StrategyParams` / `extractStrategyParams`) that drops
+   * w_rep / v_s_base / n_threshold / gamma — the reason those parameters were dead
+   * in production. The engine decision path (H1/H2) reads the snapshot directly
+   * via `readEngineKnobs` (context/assemble-context.ts) and must NOT consume this.
+   * Retire together with the coach path in H2.
    */
   strategy_params?: StrategyParams;
   /**
@@ -203,7 +211,11 @@ export interface CoreMemory {
   extracted_features?: ExtractedFeature[];
 }
 
-/** Resolved engine knobs surfaced to the live decision-makers. */
+/**
+ * @deprecated LOSSY subset of the compiled snapshot, kept for the legacy LLM/coach
+ * path. The engine decision path reads all knobs losslessly from the snapshot via
+ * `readEngineKnobs` (context/assemble-context.ts). Do not add new consumers.
+ */
 export interface StrategyParams {
   beta?: number;
   alpha?: number;
@@ -280,6 +292,24 @@ export interface OpponentPattern {
   condition_flexibility: number;
   pattern_shift_round?: number;
   estimated_floor: number;
+}
+
+/**
+ * AI-estimated opponent negotiation params (opponent modeling — backlog #4).
+ * Produced by the sensor from the conversation; consumed by the engine to shift
+ * the aim point WITHIN the safe box — never the box edges (those come only from
+ * MY params). A wrong estimate → suboptimal but still safe. See
+ * referee/opponent-adjust.ts and SOT §11 (하네스 / opponent modeling).
+ */
+export interface OpponentEstimate {
+  /** [0,1] how time-pressured the opponent looks (higher → they'll concede → push harder). */
+  time_pressure: number;
+  /** [0,1] how tough/Boulware the opponent looks (higher → concedes slowly). Feeds dynamic β (#5). */
+  toughness: number;
+  /** Estimated opponent reservation price (their walk-away), minor units. Caps the aim. */
+  est_reservation_price?: number;
+  /** [0,1] confidence in this estimate; gates how far it moves the aim (blend vs my baseline). */
+  confidence: number;
 }
 
 // =========================================
@@ -405,6 +435,45 @@ export interface RoundExplainability {
     price?: number;
     action: string;
   };
+  /**
+   * Harness decision trace (intelligence layer). Optional until the box model
+   * lands (backlog #13/#14). Lets us learn — per model/skill/autonomy — whether
+   * the AI beats the deterministic baseline and how wide the box can safely be.
+   * Persisted inside negotiation_rounds.metadata.explainability (jsonb) — no
+   * migration needed.
+   */
+  harness?: HarnessTrace;
+}
+
+/**
+ * One round's harness trace: the engine-produced box + baseline, what the AI
+ * chose within it, and whether the Referee had to pull it back. See
+ * negotiation/referee/harness.ts for the pure builder, and SOT §11 (하네스).
+ */
+export interface HarnessTrace {
+  /** Engine-computed feasible counter range for this round. */
+  box: { min: number; max: number; width: number };
+  /** Deterministic engine recommendation — the quality floor. */
+  baseline: number;
+  /** Opponent-adjusted aim within the box (baseline shifted by the estimate). Absent = no estimate. */
+  aim?: number;
+  /** The opponent estimate used to shift the aim this round (for "was the read right?" analysis). */
+  opponent_estimate?: OpponentEstimate;
+  /** What the AI actually chose inside the box. */
+  ai_choice: { price?: number; tactic?: string; source: "llm" | "skill" };
+  /**
+   * (ai_choice.price − baseline) normalized by box width, signed.
+   * > 0 means the AI moved past the deterministic baseline (potential upside);
+   * 0 means it matched the baseline (bad model → engine floor).
+   */
+  delta_vs_baseline: number;
+  /** Whether the Referee had to clamp the AI value back into the box. */
+  box_clamp: { clamped: boolean; original?: number; reason?: string };
+  /** Box-width dial used this round [0,1]. 0 = pure engine, 1 = floor-only. */
+  autonomy: number;
+  /** Model + skills that produced the decision (for per-model/skill analysis). */
+  model_id?: string;
+  skill_ids?: string[];
 }
 
 // =========================================

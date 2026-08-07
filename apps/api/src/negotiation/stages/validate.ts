@@ -5,16 +5,15 @@
  * Builds RoundExplainability structure for audit trail.
  */
 
-import type { ValidateInput, ValidateOutput } from '../pipeline/types.js';
+import type { ValidateInput, ValidateOutput } from "../pipeline/types.js";
+import { validateMove } from "../referee/validator.js";
+import type { RefereeBriefing } from "../skills/skill-types.js";
 import type {
   EngineDecision,
+  HarnessTrace,
   RoundExplainability,
   ValidationResult,
-  CoreMemory,
-  NegotiationPhase,
-} from '../types.js';
-import type { RefereeBriefing } from '../skills/skill-types.js';
-import { validateMove } from '../referee/validator.js';
+} from "../types.js";
 
 const MAX_RETRY = 2;
 
@@ -38,13 +37,13 @@ export function validateStage(
   let validation: ValidationResult;
   let retryCount = 0;
   let autoFixApplied = false;
-  const allViolations: import('../types.js').ValidationViolation[] = [];
+  const allViolations: import("../types.js").ValidationViolation[] = [];
 
   validation = validateMove(currentDecision, memory, memory.coaching, previousMoves, phase);
   allViolations.push(...validation.violations);
 
   while (!validation.hardPassed && retryCount < MAX_RETRY) {
-    const hardViolations = validation.violations.filter((v) => v.severity === 'HARD');
+    const hardViolations = validation.violations.filter((v) => v.severity === "HARD");
     for (const violation of hardViolations) {
       if (violation.suggested_fix) {
         currentDecision = { ...currentDecision, ...violation.suggested_fix };
@@ -66,6 +65,7 @@ export function validateStage(
     allViolations,
     validation,
     autoFixApplied,
+    decideOutput.harness,
   );
 
   return {
@@ -84,23 +84,24 @@ export function validateStage(
 function buildExplainability(
   round: number,
   briefing: RefereeBriefing,
-  source: 'llm' | 'skill',
+  source: "llm" | "skill",
   originalDecision: EngineDecision,
   finalDecision: EngineDecision,
-  allViolations: import('../types.js').ValidationViolation[],
+  allViolations: import("../types.js").ValidationViolation[],
   finalValidation: ValidationResult,
   autoFixApplied: boolean,
+  harness?: HarnessTrace,
 ): RoundExplainability {
   // Determine referee action — use autoFixApplied flag (not just final violations)
-  let refereeAction: RoundExplainability['referee_result']['action'];
+  let refereeAction: RoundExplainability["referee_result"]["action"];
   if (autoFixApplied) {
-    refereeAction = 'AUTO_FIX';
+    refereeAction = "AUTO_FIX";
   } else if (!finalValidation.hardPassed) {
-    refereeAction = 'BLOCK';
+    refereeAction = "BLOCK";
   } else if (allViolations.length > 0) {
-    refereeAction = 'WARN_AND_PASS';
+    refereeAction = "WARN_AND_PASS";
   } else {
-    refereeAction = 'PASS';
+    refereeAction = "PASS";
   }
 
   // Deduplicate violations for explainability
@@ -109,11 +110,13 @@ function buildExplainability(
   return {
     round,
     coach_recommendation: {
-      // Briefing is facts-only; coaching recommendations now come from skills.
-      // Provide briefing facts for explainability audit trail.
-      price: 0, // No longer recommended by referee — skill responsibility
+      // When the harness ran, surface its real baseline + box; otherwise fall
+      // back to facts-only (briefing) with zeros (skill-owned recommendation).
+      price: harness?.baseline ?? 0,
       basis: `opponent:${briefing.opponentPattern}|stagnation:${briefing.stagnation}`,
-      acceptable_range: { min: 0, max: 0 },
+      acceptable_range: harness
+        ? { min: harness.box.min, max: harness.box.max }
+        : { min: 0, max: 0 },
     },
     decision: {
       source,
@@ -135,10 +138,13 @@ function buildExplainability(
       price: finalDecision.price,
       action: finalDecision.action,
     },
+    ...(harness ? { harness } : {}),
   };
 }
 
-function deduplicateViolations(violations: import('../types.js').ValidationViolation[]): import('../types.js').ValidationViolation[] {
+function deduplicateViolations(
+  violations: import("../types.js").ValidationViolation[],
+): import("../types.js").ValidationViolation[] {
   const seen = new Set<string>();
   return violations.filter((v) => {
     const key = `${v.rule}:${v.severity}`;
