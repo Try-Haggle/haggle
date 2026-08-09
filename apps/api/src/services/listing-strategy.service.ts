@@ -5,10 +5,13 @@ import {
   type EngineParamsInput,
 } from "@haggle/engine-session";
 import {
+  type CategoryCriterion,
+  criterionAnswered,
   DEFAULT_NEGOTIATION_AGENT_PRESET_ID,
   type EngineParameters,
   getNegotiationAgentPreset,
   presetToEngineParameters,
+  requiredCriteria,
 } from "@haggle/shared";
 
 /** Resolve the canonical default preset's parameters (balancer). */
@@ -34,6 +37,8 @@ export interface NegotiationAgentBuilderMemorySnapshot {
   tone?: string;
   urgency?: string;
   notes?: string[];
+  /** Phase G taxonomy-keyed criteria (deterministic layer). */
+  categoryCriteria?: CategoryCriterion[];
   [key: string]: unknown;
 }
 
@@ -178,6 +183,35 @@ export function extractNegotiationAgentBuilderMemory(
     return raw as NegotiationAgentBuilderMemorySnapshot;
   }
   return undefined;
+}
+
+/** A buyer-safe view of one seller-required criterion (check id + ask phrasing). */
+export type BuyerVisibleSellerCriterion = { checkId: string; ask: string };
+
+/**
+ * The seller's REQUIRED category criteria (Phase G), projected to a buyer-safe
+ * view: only the check id + a requirement-framed ask. Optional/leverage criteria,
+ * the seller's stance wording, negotiation posture, and floor price stay private
+ * (matches the public endpoint's redaction contract). Drives Flow 2 (the buyer
+ * builder surfaces "the seller requires X" so the buyer mirrors it) and Flow 3
+ * (the mid-negotiation pause's must-resolve set).
+ */
+export function extractSellerRequiredCriteria(
+  negotiationAgentSnapshot: Record<string, unknown>,
+): BuyerVisibleSellerCriterion[] {
+  const memory = extractNegotiationAgentBuilderMemory(negotiationAgentSnapshot);
+  const criteria = memory?.categoryCriteria;
+  if (!Array.isArray(criteria)) return [];
+  // Only criteria the seller DELIBERATELY set — required AND answered (a stated
+  // stance). The scaffold defaults every HARD taxonomy check to required with no
+  // stance, so without the answered filter the buyer would see "[SELLER REQUIRES]"
+  // on checks the seller never actually engaged.
+  return requiredCriteria(criteria as CategoryCriterion[])
+    .filter(criterionAnswered)
+    .map((c) => ({
+      checkId: c.checkId,
+      ask: c.buyerAskKo ?? c.questionKo,
+    }));
 }
 
 /**

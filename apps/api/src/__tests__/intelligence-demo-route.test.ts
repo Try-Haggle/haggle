@@ -1349,36 +1349,24 @@ describe("Intelligence demo routes", () => {
 
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.memory.structured.questionPlan).toMatchObject({
-      policy: {
-        maxQuestionsPerTurn: 3,
-        order: ["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"],
-      },
-      askedThisTurn: {
-        kind: "hard_slot",
-        slotId: "max_budget",
-      },
-      // The hard budget slot takes the turn; every soft slot defers as lower_priority.
-      // For a non-iPhone electronics listing (iPad) the category taxonomy (P12) also
-      // contributes soft slots (working_status, cosmetic_grade) — non-blocking, deferred.
-      deferred: [
-        {
-          slotId: "buyer_priority",
-          enforcement: "soft",
-          reason: "lower_priority",
-        },
-        {
-          slotId: "working_status",
-          enforcement: "soft",
-          reason: "lower_priority",
-        },
-        {
-          slotId: "cosmetic_grade",
-          enforcement: "soft",
-          reason: "lower_priority",
-        },
-      ],
+    // Core intent: the hard budget slot takes the turn; soft slots defer as
+    // lower_priority. (Exact deferred set is not pinned — the expanded taxonomy adds
+    // per-subtype slots, e.g. an iPad's activation_lock; this test guards the POLICY,
+    // not the full slot list.)
+    expect(body.memory.structured.questionPlan.policy).toMatchObject({
+      maxQuestionsPerTurn: 3,
+      order: ["conflict_resolution", "hard_slot", "candidate_narrowing", "soft_slot"],
     });
+    expect(body.memory.structured.questionPlan.askedThisTurn).toMatchObject({
+      kind: "hard_slot",
+      slotId: "max_budget",
+    });
+    // Every deferred SOFT slot defers as lower_priority (the policy under test).
+    const softDeferred = body.memory.structured.questionPlan.deferred.filter(
+      (d: { enforcement: string }) => d.enforcement === "soft",
+    );
+    expect(softDeferred.length).toBeGreaterThan(0);
+    expect(softDeferred.every((d: { reason: string }) => d.reason === "lower_priority")).toBe(true);
 
     await app.close();
   });
@@ -1445,10 +1433,12 @@ describe("Intelligence demo routes", () => {
 
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    // Buyer priority is NOT re-asked (the test's core intent). But the vehicle title
-    // gate (SAT: now a satisfiable hard slot) is unanswered, so it is surfaced next —
-    // asking "is the title/ownership clear?" for a used car is exactly the goal.
-    expect(body.memory.questions).toEqual(["Should the agent only consider clean-title vehicles?"]);
+    // Buyer priority is NOT re-asked (the test's core intent). Instead an unanswered
+    // vehicle hard gate is surfaced next — the clean-title gate is first in taxonomy
+    // order. (The expanded vehicle spine adds more hard gates; we assert the title gate
+    // is asked and the buyer-priority question is not repeated, not the full list.)
+    expect(body.memory.questions).toContain("Should the agent only consider clean-title vehicles?");
+    expect(body.memory.questions).not.toContain("가격, 상태, 안전성 중 어디를 더 우선할까요?");
     expect(body.reply).not.toContain("가격, 상태, 안전성 중");
 
     await app.close();

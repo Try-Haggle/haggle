@@ -1,5 +1,5 @@
+import { type Database, eq, recommendationLogs } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
-import { type Database, recommendationLogs, eq } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 import { getDashboardRecommendations } from "../services/similar-listings.service.js";
 
@@ -20,14 +20,18 @@ export function registerRecommendationsRoutes(app: FastifyInstance, db: Database
   // PATCH /api/recommendations/log/:logId/click
   app.patch<{
     Params: { logId: string };
-  }>("/api/recommendations/log/:logId/click", { preHandler: [requireAuth] }, async (request, reply) => {
-    const { logId } = request.params;
+  }>(
+    "/api/recommendations/log/:logId/click",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const { logId } = request.params;
 
-    await db
-      .update(recommendationLogs)
-      .set({ clicked: true, clickedAt: new Date() })
-      .where(eq(recommendationLogs.id, logId));
+      await db
+        .update(recommendationLogs)
+        .set({ clicked: true, clickedAt: new Date() })
+        .where(eq(recommendationLogs.id, logId));
 
-    return reply.status(204).send();
-  });
+      return reply.status(204).send();
+    },
+  );
 }

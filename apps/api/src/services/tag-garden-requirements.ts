@@ -21,6 +21,8 @@ export type NegotiationAgentBuilderMemoryForRequirements = {
   mustHave: string[];
   avoid: string[];
   source: string[];
+  /** Phase G structured criteria — a stance here satisfies the matching taxonomy slot. */
+  categoryCriteria?: Array<{ checkId: string; stance?: string }>;
   structured?: {
     scopedConditionDecisions?: Array<{
       slotId: string;
@@ -238,33 +240,69 @@ export const EMPTY_TAG_REQUIREMENT_PLAN: TagRequirementPlan = {
  * category + tags. This is the generalized "what to ask per category" source that
  * replaces the iPhone-only hardcoded map for every other category.
  */
-function taxonomyCategorySlots(listings: ListingForRequirements[]): TagRequirementSlot[] {
+/** Minimal shape of a promoted learned check (avoids a @haggle/shared type import here). */
+export interface LearnedCheckForRequirements {
+  id: string;
+  questionKo: string;
+  buyerAskKo?: string;
+}
+
+function taxonomyCategorySlots(
+  listings: ListingForRequirements[],
+  learnedChecks: readonly LearnedCheckForRequirements[] = [],
+): TagRequirementSlot[] {
   const tags = listings.flatMap((l) =>
     [l.category, ...l.tags].filter((t): t is string => typeof t === "string" && t.length > 0),
   );
   if (tags.length === 0) return [];
-  return resolveChecks(tags).map((c) => ({
-    slotId: c.id,
-    tagPath: "taxonomy",
-    label: c.id,
-    // BUYER-facing: elicit the buyer's REQUIREMENT ("do you require X?"), not a fact
-    // the buyer cannot state ("is X true?"). The verification-framed `questionKo` is for
-    // the runtime/seller; here the buyer configures what their agent should insist on.
-    questionKo: c.buyerAskKo ?? c.questionKo,
-    stage: "advisor_recommendation" as const,
-    // Respect the taxonomy check's own hard/soft. A HARD taxonomy check (vehicle
-    // title, clothing authenticity, iPhone IMEI/Find My) becomes a blocking slot so
-    // the builder actually asks it — but ONLY because it now has a satisfaction path:
-    // `memorySatisfiesSlot` clears a taxonomy slot when its answerHints match OR the
-    // buyer waves it off (no-preference). A hard check WITHOUT answerHints would have
-    // no satisfaction path and wedge the flow, so we fall back to soft for those.
-    enforcement:
-      c.enforcement === "hard" && (c.answerHints?.length ?? 0) > 0
-        ? ("hard" as const)
-        : ("soft" as const),
-    priority: c.enforcement === "hard" ? 65 : 70,
-    aliases: c.answerHints ?? [],
-  }));
+  const staticChecks = resolveChecks(tags);
+  // Learned checks never override a static one (the curated taxonomy wins on id), and are
+  // deduped among themselves so two rows sharing a check key cannot ask the same question
+  // twice.
+  const seenLearned = new Set(staticChecks.map((c) => c.id));
+  const learnedSlots: TagRequirementSlot[] = learnedChecks
+    .filter((c) => {
+      if (seenLearned.has(c.id)) return false;
+      seenLearned.add(c.id);
+      return true;
+    })
+    .map((c) => ({
+      slotId: c.id,
+      tagPath: "taxonomy-learned",
+      label: c.id,
+      questionKo: c.buyerAskKo ?? c.questionKo,
+      stage: "advisor_recommendation" as const,
+      // Learned checks are ALWAYS advisory — never a blocking gate.
+      enforcement: "soft" as const,
+      // Lowest priority: curated taxonomy questions are asked first.
+      priority: 75,
+      aliases: [],
+    }));
+  return [
+    ...staticChecks.map((c) => ({
+      slotId: c.id,
+      tagPath: "taxonomy",
+      label: c.id,
+      // BUYER-facing: elicit the buyer's REQUIREMENT ("do you require X?"), not a fact
+      // the buyer cannot state ("is X true?"). The verification-framed `questionKo` is for
+      // the runtime/seller; here the buyer configures what their agent should insist on.
+      questionKo: c.buyerAskKo ?? c.questionKo,
+      stage: "advisor_recommendation" as const,
+      // Respect the taxonomy check's own hard/soft. A HARD taxonomy check (vehicle
+      // title, clothing authenticity, iPhone IMEI/Find My) becomes a blocking slot so
+      // the builder actually asks it — but ONLY because it now has a satisfaction path:
+      // `memorySatisfiesSlot` clears a taxonomy slot when its answerHints match OR the
+      // buyer waves it off (no-preference). A hard check WITHOUT answerHints would have
+      // no satisfaction path and wedge the flow, so we fall back to soft for those.
+      enforcement:
+        c.enforcement === "hard" && (c.answerHints?.length ?? 0) > 0
+          ? ("hard" as const)
+          : ("soft" as const),
+      priority: c.enforcement === "hard" ? 65 : 70,
+      aliases: c.answerHints ?? [],
+    })),
+    ...learnedSlots,
+  ];
 }
 
 export function buildAdvisorRequirementPlan(input: {
@@ -275,6 +313,12 @@ export function buildAdvisorRequirementPlan(input: {
    * addressed and not re-asked (see memorySatisfiesSlot "ask once"). Defaults to none.
    */
   askedQuestions?: readonly string[];
+  /**
+   * Feature ②: checks LEARNED for this category (promoted from recurring long-tail
+   * questions). Served deterministically alongside the static taxonomy so a warmed
+   * category no longer needs the LLM to think of the question. Always soft.
+   */
+  learnedChecks?: readonly LearnedCheckForRequirements[];
 }): TagRequirementPlan {
   const matchedTags = resolveMatchedTags(input.memory, input.listings);
   const tagSlots = matchedTags.flatMap((tag) => TAG_REQUIREMENTS[tag] ?? []);
@@ -282,7 +326,10 @@ export function buildAdvisorRequirementPlan(input: {
   // hardcoded TAG_REQUIREMENTS map doesn't already cover (currently iPhone only).
   // This generalizes "what to ask" beyond phones without disturbing the rich,
   // test-pinned iPhone slots.
-  const categorySlots = tagSlots.length > 0 ? tagSlots : taxonomyCategorySlots(input.listings);
+  const categorySlots =
+    tagSlots.length > 0
+      ? tagSlots
+      : taxonomyCategorySlots(input.listings, input.learnedChecks ?? []);
   const requiredSlots = [...UNIVERSAL_BUYER_SLOTS, ...categorySlots].sort(
     (a, b) => a.priority - b.priority,
   );
@@ -409,7 +456,17 @@ function memorySatisfiesSlot(
   // still-unasked gate at once). The flow can never wedge: a gate is force-asked
   // exactly once, then satisfied.
   if (slot.tagPath === "taxonomy") {
+    // A structured categoryCriteria stance on this check id counts as addressed —
+    // keeps the planner consistent with the Phase G deterministic layer so the buyer
+    // is not re-asked a taxonomy check they already answered via categoryCriteria.
+    const answeredInCriteria = (memory.categoryCriteria ?? []).some(
+      (criterion) =>
+        criterion.checkId === slot.slotId &&
+        typeof criterion.stance === "string" &&
+        criterion.stance.trim().length > 0,
+    );
     return (
+      answeredInCriteria ||
       slot.aliases.some((alias) => memoryText.includes(alias.toLowerCase())) ||
       askedQuestions.includes(slot.questionKo)
     );

@@ -13,8 +13,8 @@
  */
 
 import {
-  type Database,
   asc,
+  type Database,
   desc,
   disputeCases,
   eq,
@@ -93,9 +93,7 @@ export type InboxDetail =
  * `null` (→ treated as Infinity by callers) when no default rule exists
  * so the inbox does not throw on fresh installs.
  */
-async function getDefaultAutoPromoteThreshold(
-  db: Database,
-): Promise<number | null> {
+async function getDefaultAutoPromoteThreshold(db: Database): Promise<number | null> {
   const rows = await db
     .select()
     .from(tagPromotionRules)
@@ -114,12 +112,8 @@ type TagSuggestionRow = {
   createdAt: Date;
 };
 
-function mapTagRow(
-  row: TagSuggestionRow,
-  threshold: number | null,
-): TagInboxItem {
-  const eligible =
-    threshold !== null && row.occurrenceCount >= threshold;
+function mapTagRow(row: TagSuggestionRow, threshold: number | null): TagInboxItem {
+  const eligible = threshold !== null && row.occurrenceCount >= threshold;
   return {
     id: row.id,
     label: row.label,
@@ -169,11 +163,7 @@ function mapPaymentRow(row: PaymentRow): PaymentInboxItem {
     (ctx as Record<string, unknown>).failureReason ??
     null;
   const providerError =
-    typeof errVal === "string"
-      ? errVal
-      : errVal == null
-        ? null
-        : JSON.stringify(errVal);
+    typeof errVal === "string" ? errVal : errVal == null ? null : JSON.stringify(errVal);
   const amount =
     typeof row.amountMinor === "number"
       ? row.amountMinor
@@ -208,16 +198,14 @@ export async function getInboxSummary(db: Database): Promise<InboxSummary> {
 
   const tagsPending = pendingTagRows.length;
   const tagsAutoPromoteReady =
-    threshold === null
-      ? 0
-      : pendingTagRows.filter((r) => r.occurrenceCount >= threshold).length;
+    threshold === null ? 0 : pendingTagRows.filter((r) => r.occurrenceCount >= threshold).length;
 
   const disputeRows = (await db
     .select()
     .from(disputeCases)
-    .where(
-      inArray(disputeCases.status, [...ACTIVE_DISPUTE_STATUSES]),
-    )) as Array<{ status: string }>;
+    .where(inArray(disputeCases.status, [...ACTIVE_DISPUTE_STATUSES]))) as Array<{
+    status: string;
+  }>;
 
   let open = 0;
   let underReview = 0;
@@ -225,10 +213,7 @@ export async function getInboxSummary(db: Database): Promise<InboxSummary> {
   for (const row of disputeRows) {
     if (row.status === "OPEN") open += 1;
     else if (row.status === "UNDER_REVIEW") underReview += 1;
-    else if (
-      row.status === "WAITING_FOR_BUYER" ||
-      row.status === "WAITING_FOR_SELLER"
-    ) {
+    else if (row.status === "WAITING_FOR_BUYER" || row.status === "WAITING_FOR_SELLER") {
       waiting += 1;
     }
   }
@@ -269,10 +254,7 @@ export async function listPendingTags(
     .select()
     .from(tagSuggestions)
     .where(eq(tagSuggestions.status, "PENDING"))
-    .orderBy(
-      desc(tagSuggestions.occurrenceCount),
-      asc(tagSuggestions.createdAt),
-    )
+    .orderBy(desc(tagSuggestions.occurrenceCount), asc(tagSuggestions.createdAt))
     .limit(limit)
     .offset(offset)) as TagSuggestionRow[];
 
@@ -296,9 +278,7 @@ export async function listActiveDisputes(
   // early so we don't produce a contradictory AND-clause that silently
   // returns zero rows.
   if (opts.status !== undefined) {
-    const isActive = (ACTIVE_DISPUTE_STATUSES as readonly string[]).includes(
-      opts.status,
-    );
+    const isActive = (ACTIVE_DISPUTE_STATUSES as readonly string[]).includes(opts.status);
     if (!isActive) return [];
   }
 

@@ -88,7 +88,8 @@ const PRODUCT_PATTERNS: Array<{
   },
   {
     regex: /\bmac\s*book\s*(air|pro)?\s*(\d{2})?\s*(m[1-4])?\b/gi,
-    normalize: (match) => normalizeToken(["macbook", match[1], match[2], match[3]].filter(Boolean).join(" ")),
+    normalize: (match) =>
+      normalizeToken(["macbook", match[1], match[2], match[3]].filter(Boolean).join(" ")),
   },
   {
     regex: /\bsteam\s*deck\s*(oled|\d{3,4}\s*gb)?\b/gi,
@@ -100,7 +101,8 @@ const PRODUCT_PATTERNS: Array<{
   },
   {
     regex: /\bgalaxy\s*s(2[0-9])\s*(ultra|plus|\+)?\b/gi,
-    normalize: (match) => normalizeToken(["galaxy s" + match[1], normalizePlus(match[2])].filter(Boolean).join(" ")),
+    normalize: (match) =>
+      normalizeToken(["galaxy s" + match[1], normalizePlus(match[2])].filter(Boolean).join(" ")),
   },
   {
     regex: /\bpixel\s*(\d)\s*(pro|xl|fold)?\b/gi,
@@ -111,39 +113,115 @@ const PRODUCT_PATTERNS: Array<{
 const TERM_PATTERNS: PatternDefinition[] = [
   termPattern(/\binsured\s+shipping\b/gi, "shipping", "insured_shipping", 0.88, "high"),
   termPattern(/\b(?:shipping|ship|deliver|delivery)\b/gi, "shipping", "shipping", 0.78, "medium"),
-  termPattern(/(?:\b(?:local\s+pickup|pickup|meet\s+locally)\b|직거래)/gi, "fulfillment", "local_pickup", 0.84, "medium"),
-  termPattern(/(?:\b(?:return|returns|refund)\b|환불)/gi, "return_policy", "returns_refund", 0.78, "medium"),
-  termPattern(/(?:\b(?:warranty|applecare\+?|apple\s*care)\b|보증)/gi, "warranty", "warranty", 0.82, "high"),
+  termPattern(
+    /(?:\b(?:local\s+pickup|pickup|meet\s+locally)\b|직거래)/gi,
+    "fulfillment",
+    "local_pickup",
+    0.84,
+    "medium",
+  ),
+  termPattern(
+    /(?:\b(?:return|returns|refund)\b|환불)/gi,
+    "return_policy",
+    "returns_refund",
+    0.78,
+    "medium",
+  ),
+  termPattern(
+    /(?:\b(?:warranty|applecare\+?|apple\s*care)\b|보증)/gi,
+    "warranty",
+    "warranty",
+    0.82,
+    "high",
+  ),
   termPattern(/\b(?:escrow|haggle\s+checkout)\b/gi, "payment", "escrow", 0.82, "medium"),
-  termPattern(/(?:\b(?:receipt|proof\s+of\s+purchase)\b|영수증)/gi, "proof", "receipt_included", 0.84, "high"),
+  termPattern(
+    /(?:\b(?:receipt|proof\s+of\s+purchase)\b|영수증)/gi,
+    "proof",
+    "receipt_included",
+    0.84,
+    "high",
+  ),
 ];
 
 const CONDITION_PATTERNS: PatternDefinition[] = [
   conditionPattern(/\b(?:oem|original)\s+screen\b/gi, "screen", "oem_screen", 0.9, "high"),
   conditionPattern(/\breplacement\s+battery\b/gi, "battery", "replacement_battery", 0.88, "high"),
-  conditionPattern(/\b(?:sealed|unopened|new\s+in\s+box|brand\s+new\s+in\s+box)\b/gi, "packaging", "sealed_box", 0.9, "high"),
-  conditionPattern(/\b(?:applecare\+?|apple\s*care)\s*(?:active|included|until)?\b/gi, "warranty", "applecare", 0.86, "high"),
-  conditionPattern(/\b(?:scratch|scratches|scuff|crack|cracked)\b/gi, "cosmetic", "cosmetic_damage", 0.82, "high"),
-  conditionPattern(/\b(?:imei|serial)\s*(?:clean|verified|available)?\b/gi, "verification", "serial_or_imei", 0.82, "medium"),
+  conditionPattern(
+    /\b(?:sealed|unopened|new\s+in\s+box|brand\s+new\s+in\s+box)\b/gi,
+    "packaging",
+    "sealed_box",
+    0.9,
+    "high",
+  ),
+  conditionPattern(
+    /\b(?:applecare\+?|apple\s*care)\s*(?:active|included|until)?\b/gi,
+    "warranty",
+    "applecare",
+    0.86,
+    "high",
+  ),
+  conditionPattern(
+    /\b(?:scratch|scratches|scuff|crack|cracked)\b/gi,
+    "cosmetic",
+    "cosmetic_damage",
+    0.82,
+    "high",
+  ),
+  conditionPattern(
+    /\b(?:imei|serial)\s*(?:clean|verified|available)?\b/gi,
+    "verification",
+    "serial_or_imei",
+    0.82,
+    "medium",
+  ),
 ];
 
 const TRUST_RISK_PATTERNS: PatternDefinition[] = [
-  riskPattern(/\b(?:off\s*platform|outside\s+(?:the\s+)?app|text\s+me\s+directly)\b/gi, "channel", "off_platform"),
-  riskPattern(/\b(?:paypal\s+friends\s*(?:and|&)\s*family|friends\s*(?:and|&)\s*family)\b/gi, "payment", "paypal_friends_family"),
-  riskPattern(/\b(?:wire\s+transfer|bank\s+wire|zelle|venmo|cash\s*app)\b/gi, "payment", "irreversible_payment"),
+  riskPattern(
+    /\b(?:off\s*platform|outside\s+(?:the\s+)?app|text\s+me\s+directly)\b/gi,
+    "channel",
+    "off_platform",
+  ),
+  riskPattern(
+    /\b(?:paypal\s+friends\s*(?:and|&)\s*family|friends\s*(?:and|&)\s*family)\b/gi,
+    "payment",
+    "paypal_friends_family",
+  ),
+  riskPattern(
+    /\b(?:wire\s+transfer|bank\s+wire|zelle|venmo|cash\s*app)\b/gi,
+    "payment",
+    "irreversible_payment",
+  ),
   riskPattern(/\b(?:whatsapp|telegram|signal)\b/gi, "channel", "external_messaging"),
   riskPattern(/https?:\/\/[^\s]+/gi, "link", "external_link"),
 ];
 
 const DEMAND_PATTERNS: PatternDefinition[] = [
   demandPattern(/\b(?:need\s+it\s+today|need\s+today|asap|urgent|tonight)\b/gi, "timing", "urgent"),
-  demandPattern(/\b(?:comparing|shopping\s+around|looking\s+at\s+another|another\s+listing)\b/gi, "comparison", "comparison_shopping"),
-  demandPattern(/\b(?:watchlist|watching|looking\s+for|interested\s+in)\b/gi, "interest", "watchlist_interest"),
+  demandPattern(
+    /\b(?:comparing|shopping\s+around|looking\s+at\s+another|another\s+listing)\b/gi,
+    "comparison",
+    "comparison_shopping",
+  ),
+  demandPattern(
+    /\b(?:watchlist|watching|looking\s+for|interested\s+in)\b/gi,
+    "interest",
+    "watchlist_interest",
+  ),
 ];
 
 const DEAL_BLOCKER_PATTERNS: PatternDefinition[] = [
-  blockerPattern(/\b(?:deal\s*breaker|must\s+have|required)\b/gi, "requirement", "explicit_requirement"),
-  blockerPattern(/\b(?:only\s+if|unless|as\s+long\s+as)\b/gi, "conditional", "conditional_acceptance"),
+  blockerPattern(
+    /\b(?:deal\s*breaker|must\s+have|required)\b/gi,
+    "requirement",
+    "explicit_requirement",
+  ),
+  blockerPattern(
+    /\b(?:only\s+if|unless|as\s+long\s+as)\b/gi,
+    "conditional",
+    "conditional_acceptance",
+  ),
 ];
 
 export function extractConversationSignals(
@@ -243,7 +321,8 @@ function isLowInformationNoise(text: string): boolean {
 }
 
 function extractPrices(text: string): SignalDraft[] {
-  const regex = /(?:\$|usd\s*)(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:usd|dollars)\b/gi;
+  const regex =
+    /(?:\$|usd\s*)(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:usd|dollars)\b/gi;
   const signals: SignalDraft[] = [];
 
   for (const match of text.matchAll(regex)) {
@@ -271,15 +350,18 @@ function extractPrices(text: string): SignalDraft[] {
 function extractPriceResistance(text: string): SignalDraft[] {
   const patterns: Array<{ regex: RegExp; boundary: "ceiling" | "floor" }> = [
     {
-      regex: /\b(?:won't|wont|can't|cant|cannot|can\s+not)\s+(?:go|do|pay|offer)?\s*(?:any\s*)?(?:more\s+than|above|over)\s*\$(\d[\d,]*(?:\.\d{1,2})?)/gi,
+      regex:
+        /\b(?:won't|wont|can't|cant|cannot|can\s+not)\s+(?:go|do|pay|offer)?\s*(?:any\s*)?(?:more\s+than|above|over)\s*\$(\d[\d,]*(?:\.\d{1,2})?)/gi,
       boundary: "ceiling",
     },
     {
-      regex: /\b(?:max|maximum|ceiling|top\s+budget|highest|all\s+i\s+can\s+do)\s*(?:is|:)?\s*\$(\d[\d,]*(?:\.\d{1,2})?)/gi,
+      regex:
+        /\b(?:max|maximum|ceiling|top\s+budget|highest|all\s+i\s+can\s+do)\s*(?:is|:)?\s*\$(\d[\d,]*(?:\.\d{1,2})?)/gi,
       boundary: "ceiling",
     },
     {
-      regex: /\b(?:won't|wont|can't|cant|cannot|can\s+not|not)\s+(?:go|take|accept|do)?\s*(?:any\s*)?(?:less\s+than|below|under)\s*\$(\d[\d,]*(?:\.\d{1,2})?)/gi,
+      regex:
+        /\b(?:won't|wont|can't|cant|cannot|can\s+not|not)\s+(?:go|take|accept|do)?\s*(?:any\s*)?(?:less\s+than|below|under)\s*\$(\d[\d,]*(?:\.\d{1,2})?)/gi,
       boundary: "floor",
     },
     {
@@ -411,7 +493,8 @@ function extractCarrierAndColor(text: string): SignalDraft[] {
       marketUsefulness: "high",
     },
     {
-      regex: /\b(?:natural\s+titanium|blue\s+titanium|black\s+titanium|space\s+gray|space\s+black|silver|black|white|gold|blue)\b/gi,
+      regex:
+        /\b(?:natural\s+titanium|blue\s+titanium|black\s+titanium|space\s+gray|space\s+black|silver|black|white|gold|blue)\b/gi,
       type: "product_attribute",
       entityType: "color",
       normalizedValue: "",
@@ -513,7 +596,11 @@ function conditionPattern(
   };
 }
 
-function riskPattern(regex: RegExp, entityType: string, normalizedValue: string): PatternDefinition {
+function riskPattern(
+  regex: RegExp,
+  entityType: string,
+  normalizedValue: string,
+): PatternDefinition {
   return {
     regex,
     type: "trust_risk",
@@ -525,7 +612,11 @@ function riskPattern(regex: RegExp, entityType: string, normalizedValue: string)
   };
 }
 
-function demandPattern(regex: RegExp, entityType: string, normalizedValue: string): PatternDefinition {
+function demandPattern(
+  regex: RegExp,
+  entityType: string,
+  normalizedValue: string,
+): PatternDefinition {
   return {
     regex,
     type: "demand_intent",
@@ -537,7 +628,11 @@ function demandPattern(regex: RegExp, entityType: string, normalizedValue: strin
   };
 }
 
-function blockerPattern(regex: RegExp, entityType: string, normalizedValue: string): PatternDefinition {
+function blockerPattern(
+  regex: RegExp,
+  entityType: string,
+  normalizedValue: string,
+): PatternDefinition {
   return {
     regex,
     type: "deal_blocker",

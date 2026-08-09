@@ -134,10 +134,29 @@ export function phaseToDbStatus(
  * Reconstruct CoreMemory from DB session + strategy snapshot.
  * This is the primary data structure consumed by the LLM pipeline.
  */
+/**
+ * The two prices actually on the table this round, supplied by the caller because the
+ * session row cannot express them.
+ *
+ * `negotiation_sessions.last_offer_price_minor` stores the price a round RESPONDED to,
+ * so reading it one round later yields the CURRENT responder's own previous offer — not
+ * the counterparty's. Left to itself this module then set `opponent_offer` to
+ * `coaching.recommended_price`, i.e. our own recommendation, so `gap` was
+ * |my last offer − my own recommendation| and the engine never saw what the other side
+ * had actually asked for. Both reported price faults trace back here.
+ */
+export interface RoundOffers {
+  /** The offer this round is responding to — the counterparty's live price. */
+  incomingOfferMinor?: number;
+  /** The responder's own most recent outgoing offer, if they have made one. */
+  myLastOfferMinor?: number;
+}
+
 export function reconstructCoreMemory(
   dbSession: DbSessionForMemory,
   negotiationAgentSnapshot: Record<string, unknown>,
   coaching: RefereeCoaching,
+  offers: RoundOffers = {},
 ): CoreMemory {
   const strategy = negotiationAgentSnapshot as Record<string, unknown>;
   const role = dbSession.role.toLowerCase() as "buyer" | "seller";
@@ -148,10 +167,17 @@ export function reconstructCoreMemory(
   const myFloor = extractNumber(strategy, "p_limit") ?? extractNumber(strategy, "floor_price") ?? 0;
   const maxRounds = extractNumber(strategy, "max_rounds") ?? DEFAULT_MAX_ROUNDS;
 
-  const currentOffer = dbSession.lastOfferPriceMinor
+  // The session row only remembers the price the LAST round responded to, which is this
+  // responder's own previous offer — never the counterparty's. Prefer what the caller
+  // measured from the round history; fall back to that stored price, which is at least a
+  // real offer from the transcript. `coaching.recommended_price` must never be used here:
+  // it is our own recommendation, so `gap` collapsed to ~0 and the engine negotiated
+  // against itself.
+  const storedOffer = dbSession.lastOfferPriceMinor
     ? Number(dbSession.lastOfferPriceMinor)
-    : myTarget;
-  const opponentOffer = coaching.recommended_price > 0 ? coaching.recommended_price : currentOffer;
+    : undefined;
+  const currentOffer = offers.myLastOfferMinor ?? storedOffer ?? myTarget;
+  const opponentOffer = offers.incomingOfferMinor ?? storedOffer ?? currentOffer;
   const gap = Math.abs(currentOffer - opponentOffer);
 
   // Phase: use stored phase or infer from status
@@ -195,6 +221,9 @@ export function reconstructCoreMemory(
       current_offer: currentOffer,
       opponent_offer: opponentOffer,
       gap,
+      // Only when the caller actually measured it — absent means "has not offered yet",
+      // which the envelope must not confuse with an offer that equals the target.
+      ...(offers.myLastOfferMinor !== undefined ? { my_last_offer: offers.myLastOfferMinor } : {}),
     },
     terms: {
       active: [], // Terms populated from separate term tracking (future)
@@ -277,7 +306,13 @@ function extractListingContextMemory(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function extractStrategyContextMemory(
+/**
+ * Select the ACTING side's advisor memory (which carries their quick-pick
+ * `categoryCriteria`) into strategy_context, so `encodeStrategyContext` can surface
+ * the party's required gates + soft preferences in their DECIDE prompt. Exported for
+ * a focused test of the buyer/seller key selection (Feature #4 wiring).
+ */
+export function extractStrategyContextMemory(
   strategy: Record<string, unknown>,
   role: "buyer" | "seller",
 ): StrategyContextMemory | undefined {

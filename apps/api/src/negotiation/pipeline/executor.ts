@@ -35,6 +35,7 @@ import {
   type DbRoundForMemory,
   inferPhaseFromStatus,
   phaseToDbStatus,
+  type RoundOffers,
   reconstructCoreMemory,
   reconstructOpponentPattern,
   reconstructRoundFacts,
@@ -43,6 +44,11 @@ import { PgCheckpointPersistence } from "../memory/pg-checkpoint-persistence.js"
 import { PgRoundFactSink } from "../memory/pg-round-fact-sink.js";
 import { checkIntervention } from "../phase/human-intervention.js";
 import { detectPhaseEvent, tryTransition } from "../phase/phase-machine.js";
+import {
+  detectSellerCriteriaPause,
+  readSellerCriteriaFromSnapshot,
+  SELLER_CRITERIA_PAUSE_MARKER,
+} from "../phase/seller-criteria-pause.js";
 import { computeBriefing } from "../referee/briefing.js";
 import { computeCoachingAsync } from "../referee/coach.js";
 import { screenMessage } from "../screening/auto-screening.js";
@@ -61,6 +67,7 @@ import type {
   NegotiationPhase,
   StageConfig,
 } from "../types.js";
+import { isDealClosingAction } from "../types.js";
 import { executePipeline } from "./pipeline.js";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +119,42 @@ function buildDefaultStageConfig(): StageConfig {
 // Main executor
 // ---------------------------------------------------------------------------
 
+/**
+ * Everything the LLM (Phase 2) and persist (Phase 3) steps need, produced by the
+ * Phase 1 read+prepare transaction. Captured under a short row lock that is
+ * released (tx commits) BEFORE the LLM call, so no DB transaction is ever held
+ * across the multi-second DECIDE round-trip.
+ */
+interface PreparedRoundContext {
+  dbSession: DbSession;
+  nextRound: number;
+  dbRounds: DbRound[];
+  updatedMemory: CoreMemory;
+  coaching: import("../types.js").RefereeCoaching;
+  facts: import("../types.js").RoundFact[];
+  opponentPattern: ReturnType<typeof reconstructOpponentPattern>;
+  currentPhase: NegotiationPhase;
+  understood: Parameters<typeof executePipeline>[0];
+  skill: DefaultEngineSkill;
+  skillStack: SkillStack;
+  stageConfig: StageConfig;
+  previousMoves: ReturnType<typeof extractPreviousMoves>;
+  briefing: ReturnType<typeof computeBriefing>;
+  memoryBrief: Awaited<ReturnType<typeof loadUserMemoryBrief>>;
+  evermemoBrief: Awaited<ReturnType<typeof loadEvermemoBrief>>;
+  conversation: ConversationContext;
+  isNearDeal: boolean;
+}
+
+/**
+ * Phase 1 either short-circuits with an already-persisted round (idempotent hit,
+ * spam, seller-criteria pause, human-intervention hold) or hands off a context
+ * for the LLM + persist phases.
+ */
+type PreparedRoundOutcome =
+  | { early: RoundExecutionResult; ctx?: undefined }
+  | { early?: undefined; ctx: PreparedRoundContext };
+
 export async function executeStagedNegotiationRound(
   db: Database,
   input: RoundExecutionInput,
@@ -123,8 +166,14 @@ export async function executeStagedNegotiationRound(
     return buildIdempotentResult(existingRound, db, input.sessionId);
   }
 
-  // --- Transaction ---
-  const result = await db.transaction(async (tx) => {
+  // --- Phase 1: read + prepare (short tx; row lock released before the LLM call) ---
+  // The DECIDE LLM call must NOT run inside a DB transaction. It can take up to 45s,
+  // and holding `SELECT … FOR UPDATE` + a pooled connection across it piles up
+  // `idle in transaction` backends that exhaust the connection pool and wedge the
+  // whole auto-play loop. So we prepare under a short lock, COMMIT (releasing the
+  // lock), run the LLM lock-free (Phase 2), then persist in a second short tx
+  // guarded by the same optimistic `version` check (Phase 3).
+  const prep = await db.transaction(async (tx): Promise<PreparedRoundOutcome> => {
     // 1. Lock session row
     const lockedRows = await tx.execute(
       sql`SELECT * FROM negotiation_sessions WHERE id = ${input.sessionId} FOR UPDATE`,
@@ -162,7 +211,7 @@ export async function executeStagedNegotiationRound(
       input.idempotencyKey,
     );
     if (existingInTx) {
-      return buildIdempotentResultFromRound(existingInTx, dbSession);
+      return { early: buildIdempotentResultFromRound(existingInTx, dbSession) };
     }
 
     // 4. Load rounds + reconstruct memory
@@ -196,9 +245,19 @@ export async function executeStagedNegotiationRound(
     const facts = reconstructRoundFacts(roundsForMemory, dbSession.role);
     const opponentPattern = reconstructOpponentPattern(facts, role);
 
+    // The two live prices, measured from the transcript rather than inferred from the
+    // session row (which only remembers what the previous round replied to). Without
+    // these the engine anchored purely on its own target and produced offers that
+    // ignored the price on the table.
+    const myLastOffer = lastOutgoingOfferMinor(roundsForMemory, dbSession.role);
+    const offers: RoundOffers = {
+      incomingOfferMinor: input.offerPriceMinor,
+      ...(myLastOffer !== undefined ? { myLastOfferMinor: myLastOffer } : {}),
+    };
+
     // Compute coaching first (needed for CoreMemory.coaching which is still RefereeCoaching type)
     // Uses trust score from DB when counterpartyId is available
-    const dummyMemory = buildInitialMemory(dbSession, facts);
+    const dummyMemory = buildInitialMemory(dbSession, facts, offers);
     const coaching = await computeCoachingAsync(
       dummyMemory,
       facts,
@@ -209,7 +268,12 @@ export async function executeStagedNegotiationRound(
     );
 
     // Full CoreMemory with actual coaching (RefereeCoaching, needed for validator + context-assembly)
-    const memory = reconstructCoreMemory(dbSession, dbSession.negotiationAgentSnapshot, coaching);
+    const memory = reconstructCoreMemory(
+      dbSession,
+      dbSession.negotiationAgentSnapshot,
+      coaching,
+      offers,
+    );
 
     // Compute briefing (facts-only, replaces coaching in pipeline ContextOutput)
     const briefing = computeBriefing(memory, facts, opponentPattern);
@@ -240,7 +304,7 @@ export async function executeStagedNegotiationRound(
     });
 
     if (screening.is_spam) {
-      return await persistSpamRound(
+      const spamResult = await persistSpamRound(
         tx as unknown as Database,
         dbSession,
         input,
@@ -248,6 +312,7 @@ export async function executeStagedNegotiationRound(
         updatedMemory,
         coaching,
       );
+      return { early: spamResult };
     }
 
     // 6. Phase detection
@@ -273,6 +338,57 @@ export async function executeStagedNegotiationRound(
       }
     }
 
+    // 6.5 Seller-criteria PAUSE (Phase G, Flow 3). Independent of intervention_mode
+    // (which is pinned FULL_AUTO): if the seller declared a REQUIRED criterion the
+    // buyer never addressed, hold this buyer round ONCE to surface the question, then
+    // let the negotiation continue (fire-once — the buyer's stored criteria are
+    // immutable mid-session, so without this guard the identical unresolved set would
+    // re-hold every buyer round and stall the auto-play loop). The seller's required
+    // criteria + the buyer's own criteria ride on the responder snapshot; pre-Phase-G
+    // sessions carry neither, so this never fires for them.
+    // The interactive resume IS wired: this WAITING round blocks the auto-play loop
+    // (route auto-play/next resume gate), the buyer answers via POST /pause/answer
+    // (applyBuyerPauseAnswer writes their stance → the unresolved set empties), and the
+    // next round proceeds with the answer as a factor.
+    const alreadyPaused = roundsForMemory.some((r) => {
+      const reasoning = (r.metadata as Record<string, unknown> | null)?.reasoning;
+      return typeof reasoning === "string" && reasoning.includes(SELLER_CRITERIA_PAUSE_MARKER);
+    });
+    // Only pause in OPENING/BARGAINING. In CLOSING a HOLD maps to DB status
+    // NEAR_DEAL, which the auto-play loop treats as terminal — pausing there would
+    // permanently stop the negotiation instead of surfacing one question.
+    const pausablePhase = currentPhase === "OPENING" || currentPhase === "BARGAINING";
+    const pauseInputs = readSellerCriteriaFromSnapshot(dbSession.negotiationAgentSnapshot);
+    const sellerCriteriaPause =
+      alreadyPaused || !pausablePhase
+        ? null
+        : detectSellerCriteriaPause({
+            responderRole: role,
+            sellerRequired: pauseInputs.sellerRequired,
+            buyerCriteria: pauseInputs.buyerCriteria,
+            round: nextRound,
+          });
+    if (sellerCriteriaPause) {
+      const pauseResult = await persistHoldRound(
+        tx as unknown as Database,
+        dbSession,
+        input,
+        nextRound,
+        updatedMemory,
+        coaching,
+        currentPhase,
+        {
+          pendingReview: {
+            reason: `${SELLER_CRITERIA_PAUSE_MARKER}: ${sellerCriteriaPause.reason}`,
+          },
+        },
+        // Surface ALL unresolved seller requirements in the single fire-once hold,
+        // so the buyer sees every gap at once (not just the first).
+        sellerCriteriaPause.questions.join(" "),
+      );
+      return { early: pauseResult };
+    }
+
     // 7. Intervention check
     const intervention = checkIntervention(
       { action: "COUNTER", reasoning: "pending" },
@@ -280,7 +396,7 @@ export async function executeStagedNegotiationRound(
       updatedMemory.session.intervention_mode,
     );
     if (!intervention.autoApproved) {
-      return await persistHoldRound(
+      const holdResult = await persistHoldRound(
         tx as unknown as Database,
         dbSession,
         input,
@@ -290,24 +406,11 @@ export async function executeStagedNegotiationRound(
         currentPhase,
         intervention,
       );
+      return { early: holdResult };
     }
 
-    // 8. Fetch L5 market signals
-    const l5Provider = getL5SignalsProvider();
-    const l5Signals = await l5Provider
-      .getMarketSignals({
-        category: "electronics",
-        item_model: extractItemModel(dbSession.negotiationAgentSnapshot),
-      })
-      .catch((err) => {
-        console.warn(
-          "[executor] L5 signals fetch failed, continuing without:",
-          (err as Error).message,
-        );
-        return undefined;
-      }); // Non-fatal: continue without signals
-
-    // 9. Execute 6-Stage Pipeline
+    // 8. Prepare pipeline inputs (L5 market signals are fetched in Phase 2, outside
+    // the transaction, since that is external I/O.)
     const stageConfig = buildDefaultStageConfig();
     const senderRole = role === "buyer" ? "seller" : "buyer";
     const understood = input.messageText
@@ -355,30 +458,92 @@ export async function executeStagedNegotiationRound(
       input.offerPriceMinor,
     );
 
-    const pipelineResult = await executePipeline(understood, input.offerPriceMinor, {
-      skill,
-      skillStack,
-      config: stageConfig,
-      memory: updatedMemory,
-      facts: facts.slice(-5),
-      opponent: opponentPattern ?? {
-        aggression: 0.5,
-        concession_rate: 0,
-        preferred_tactics: ["unknown"],
-        condition_flexibility: 0.5,
-        estimated_floor: 0,
+    // Phase 1 done: hand everything the LLM + persist phases need to the caller. The
+    // transaction COMMITs here, releasing the row lock BEFORE the LLM runs.
+    return {
+      ctx: {
+        dbSession,
+        nextRound,
+        dbRounds,
+        updatedMemory,
+        coaching,
+        facts,
+        opponentPattern,
+        currentPhase,
+        understood,
+        skill,
+        skillStack,
+        stageConfig,
+        previousMoves,
+        briefing,
+        memoryBrief,
+        evermemoBrief,
+        conversation,
+        isNearDeal,
       },
-      phase: currentPhase,
-      buddyDna: DEFAULT_BUDDY_DNA,
-      previousMoves,
-      round: nextRound,
-      briefing,
-      memoEncoding: "codec",
-      l5_signals: l5Signals,
-      memory_brief: memoryBrief,
-      evermemo_brief: evermemoBrief,
-      conversation,
-    });
+    };
+  });
+
+  // Phase 1 short-circuited with an already-persisted round.
+  if (prep.early) return prep.early;
+  const ctx = prep.ctx;
+
+  // --- Phase 2: LLM DECIDE + market signals (NO transaction, NO row lock held) ---
+  // This is the slow, external part of the round. Running it here — after the Phase 1
+  // tx has committed — is the whole point of the split: a hung/slow LLM call can no
+  // longer hold a DB lock or a pooled connection.
+  const l5Signals = await getL5SignalsProvider()
+    .getMarketSignals({
+      category: "electronics",
+      item_model: extractItemModel(ctx.dbSession.negotiationAgentSnapshot),
+    })
+    .catch((err) => {
+      console.warn(
+        "[executor] L5 signals fetch failed, continuing without:",
+        (err as Error).message,
+      );
+      return undefined;
+    }); // Non-fatal: continue without signals
+
+  const pipelineResult = await executePipeline(ctx.understood, input.offerPriceMinor, {
+    skill: ctx.skill,
+    skillStack: ctx.skillStack,
+    config: ctx.stageConfig,
+    memory: ctx.updatedMemory,
+    facts: ctx.facts.slice(-5),
+    opponent: ctx.opponentPattern ?? {
+      aggression: 0.5,
+      concession_rate: 0,
+      preferred_tactics: ["unknown"],
+      condition_flexibility: 0.5,
+      estimated_floor: 0,
+    },
+    phase: ctx.currentPhase,
+    buddyDna: DEFAULT_BUDDY_DNA,
+    previousMoves: ctx.previousMoves,
+    round: ctx.nextRound,
+    briefing: ctx.briefing,
+    memoEncoding: "codec",
+    l5_signals: l5Signals,
+    memory_brief: ctx.memoryBrief,
+    evermemo_brief: ctx.evermemoBrief,
+    conversation: ctx.conversation,
+  });
+
+  // --- Phase 3: persist (short tx; optimistic version guard vs concurrent writers) ---
+  const result = await db.transaction(async (tx) => {
+    const { dbSession, nextRound, updatedMemory, coaching, opponentPattern, isNearDeal } = ctx;
+    let currentPhase = ctx.currentPhase;
+
+    // A concurrent writer may have committed this exact round while the LLM ran.
+    // Re-check idempotency before inserting so we return the winner's round instead
+    // of colliding on the unique idempotency key.
+    const raced = await getRoundByIdempotencyKey(
+      tx as unknown as Database,
+      input.sessionId,
+      input.idempotencyKey,
+    );
+    if (raced) return buildIdempotentResultFromRound(raced, dbSession);
 
     // Extract results from pipeline
     const finalDecision = pipelineResult.stages.validate.final_decision;
@@ -524,9 +689,21 @@ async function persistPipelineRound(
   const dbStatus = phaseToDbStatus(phase, decision.action, dbSession.roundsNoConcession);
   // For REJECT, we do NOT fall back to the incoming offer price — otherwise the
   // auto-play loop reuses the rejected price as the next "counter", producing
-  // self-contradictory transcripts. ACCEPT/CONFIRM use the incoming price.
+  // self-contradictory transcripts.
+  //
+  // Closing actions use the incoming price, unconditionally. This used to read
+  // `decision.price ?? input.offerPriceMinor`, which only reached the incoming offer
+  // when the engine left the price unset — so a stale `boundaries.current_offer`
+  // (the responder's OWN prior counter) won instead, and the round recorded a
+  // different number than the one being accepted. The pipeline already pins
+  // `decision.price` for these actions; stating it here too keeps the persisted
+  // round and its signals correct independently of stage ordering.
   const outgoingPrice =
-    decision.action === "REJECT" ? 0 : (decision.price ?? input.offerPriceMinor);
+    decision.action === "REJECT"
+      ? 0
+      : isDealClosingAction(decision.action)
+        ? input.offerPriceMinor
+        : (decision.price ?? input.offerPriceMinor);
   const messageType = mapActionToMessageType(decision.action, nextRound);
 
   const createdRound = await createRound(tx, {
@@ -535,7 +712,12 @@ async function persistPipelineRound(
     senderRole: input.senderRole,
     messageType,
     priceminor: String(input.offerPriceMinor),
-    counterPriceMinor: decision.action === "COUNTER" ? String(outgoingPrice) : undefined,
+    // COUNTER carries the new offer; a HOLD with a carried price (seller-criteria
+    // pause) records the responder's standing offer so the price ladder survives.
+    counterPriceMinor:
+      decision.action === "COUNTER" || (decision.action === "HOLD" && decision.price != null)
+        ? String(outgoingPrice)
+        : undefined,
     utility: memory.coaching.utility_snapshot
       ? {
           u_total: memory.coaching.utility_snapshot.u_total,
@@ -713,11 +895,22 @@ async function persistHoldRound(
   coaching: import("../types.js").RefereeCoaching,
   phase: NegotiationPhase,
   intervention: { pendingReview?: { reason: string } },
+  /** Buyer-facing message for the held round. Defaults to the approval-wait copy. */
+  message = "Waiting for your approval to proceed.",
 ): Promise<RoundExecutionResult> {
   const holdDecision: EngineDecision = {
     action: "HOLD",
     reasoning: intervention.pendingReview?.reason ?? "Human approval required.",
   };
+  // Carry the responder's OWN standing offer across the hold so the auto-play price
+  // ladder is preserved. Without this the HOLD round stores no outgoing price, and
+  // the next round reads the incoming (counterparty) price as the responder's
+  // "outgoing" and echoes it back — collapsing the negotiation to the counterparty's
+  // number (e.g. the buyer would re-offer the seller's ask and close at full price).
+  const heldOffer = memory.boundaries.current_offer;
+  if (Number.isFinite(heldOffer) && heldOffer > 0) {
+    holdDecision.price = heldOffer;
+  }
   return persistPipelineRound(tx, {
     dbSession,
     input,
@@ -727,7 +920,7 @@ async function persistHoldRound(
     coaching,
     validation: { passed: true, hardPassed: true, violations: [] },
     phase,
-    message: "Waiting for your approval to proceed.",
+    message,
     llmTokensUsed: 0,
     reasoningUsed: false,
   });
@@ -737,17 +930,57 @@ async function persistHoldRound(
 // Helper functions
 // ---------------------------------------------------------------------------
 
-function buildInitialMemory(
+/**
+ * The most recent price THIS side actually put on the table, read from the transcript.
+ *
+ * One round row holds BOTH sides of an exchange: `priceminor` is the offer the SENDER
+ * brought, `counterPriceMinor` is what the responder — the other role — answered with.
+ * So a party's own price is `priceminor` on rounds they sent and `counterPriceMinor` on
+ * rounds they answered. Reading `counterPriceMinor` off their own sent rounds returns
+ * the OPPONENT's number, which is how a buyer who had offered $96 came back holding the
+ * seller's $115 and effectively conceded the whole gap.
+ *
+ * Returns undefined before this side has priced anything.
+ */
+export function lastOutgoingOfferMinor(
+  rounds: readonly DbRoundForMemory[],
+  role: string,
+): number | undefined {
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    const round = rounds[i]!;
+    const mine = round.senderRole === role ? round.priceminor : round.counterPriceMinor;
+    if (mine === null || mine === undefined) continue;
+    const value = Number(mine);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return undefined;
+}
+
+/**
+ * A minimal CoreMemory used ONLY to compute this round's coaching, before the real one
+ * is rebuilt with that coaching attached.
+ *
+ * It must carry the same live prices as the real memory: the coach clamps its
+ * recommendation and its acceptable range to the price envelope, and the envelope is
+ * derived from `opponent_offer` / `my_last_offer`. Built without them, the coach bounds
+ * against a stale session-row price and hands the LLM a box that was never narrowed —
+ * the referee would still catch the final number, but every recommendation upstream of
+ * it would be computed against the wrong negotiation.
+ */
+export function buildInitialMemory(
   dbSession: DbSession,
   _facts: import("../types.js").RoundFact[],
+  offers: RoundOffers = {},
 ): CoreMemory {
   const strategy = dbSession.negotiationAgentSnapshot;
   const myTarget = extractNum(strategy, "p_target") ?? extractNum(strategy, "target_price") ?? 0;
   const myFloor = extractNum(strategy, "p_limit") ?? extractNum(strategy, "floor_price") ?? 0;
   const maxRounds = extractNum(strategy, "max_rounds") ?? 15;
-  const currentOffer = dbSession.lastOfferPriceMinor
+  const storedOffer = dbSession.lastOfferPriceMinor
     ? Number(dbSession.lastOfferPriceMinor)
-    : myTarget;
+    : undefined;
+  const currentOffer = offers.myLastOfferMinor ?? storedOffer ?? myTarget;
+  const opponentOffer = offers.incomingOfferMinor ?? storedOffer ?? currentOffer;
   const role = dbSession.role.toLowerCase() as "buyer" | "seller";
   const phase = inferPhaseFromStatus(
     dbSession.status,
@@ -769,8 +1002,9 @@ function buildInitialMemory(
       my_target: myTarget,
       my_floor: myFloor,
       current_offer: currentOffer,
-      opponent_offer: currentOffer,
-      gap: 0,
+      opponent_offer: opponentOffer,
+      gap: Math.abs(currentOffer - opponentOffer),
+      ...(offers.myLastOfferMinor !== undefined ? { my_last_offer: offers.myLastOfferMinor } : {}),
     },
     terms: { active: [], resolved_summary: "" },
     coaching: {

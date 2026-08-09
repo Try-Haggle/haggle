@@ -17,7 +17,7 @@
  */
 
 import type { Database } from "@haggle/db";
-import { getMedianPrice, type MedianPriceResult } from "./hfmi.service.js";
+import { getMedianPrice } from "./hfmi.service.js";
 
 // ─── Config ───────────────────────────────────────────────────────────
 
@@ -27,12 +27,12 @@ const MIN_SAMPLE_SIZE = 10;
 // ─── Types ────────────────────────────────────────────────────────────
 
 export interface TagAttributes {
-  brand?: string;       // e.g. "apple", "samsung"
-  model?: string;       // e.g. "iphone_15_pro", "galaxy_s24_ultra"
-  storage_gb?: number;  // e.g. 128, 256, 512
-  condition?: string;   // e.g. "A", "B", "C" or "mint", "good", "fair"
-  carrier?: string;     // e.g. "unlocked", "att", "verizon"
-  category?: string;    // e.g. "smartphones", "laptops", "gaming"
+  brand?: string; // e.g. "apple", "samsung"
+  model?: string; // e.g. "iphone_15_pro", "galaxy_s24_ultra"
+  storage_gb?: number; // e.g. 128, 256, 512
+  condition?: string; // e.g. "A", "B", "C" or "mint", "good", "fair"
+  carrier?: string; // e.g. "unlocked", "att", "verizon"
+  category?: string; // e.g. "smartphones", "laptops", "gaming"
 }
 
 export interface HfmiResolution {
@@ -85,21 +85,36 @@ for (const [series, models] of Object.entries(SERIES_MAP)) {
 }
 
 /** Category mapping for Level 5 */
-const MODEL_TO_CATEGORY: Record<string, string> = {
+const _MODEL_TO_CATEGORY: Record<string, string> = {
   // Populated dynamically, but hardcode major ones
-  iphone_13_pro: "smartphones", iphone_13_pro_max: "smartphones",
-  iphone_14_pro: "smartphones", iphone_14_pro_max: "smartphones",
-  iphone_15_pro: "smartphones", iphone_15_pro_max: "smartphones",
-  galaxy_s24_ultra: "smartphones", galaxy_s24_plus: "smartphones",
-  galaxy_s23_ultra: "smartphones", galaxy_s23_plus: "smartphones",
-  pixel_9_pro: "smartphones", pixel_8_pro: "smartphones",
-  macbook_pro_14_m3: "laptops", macbook_pro_14_m2: "laptops",
-  macbook_air_15_m3: "laptops", macbook_air_13_m2: "laptops",
-  ipad_pro_12_m2: "tablets", ipad_pro_11_m4: "tablets", ipad_air_m2: "tablets",
-  ps5_disc: "gaming", ps5_digital: "gaming", switch_oled: "gaming",
-  steam_deck_512: "gaming", steam_deck_oled: "gaming",
-  airpods_pro_2: "audio", airpods_max: "audio",
-  sony_wh1000xm5: "audio", sony_wf1000xm5: "audio",
+  iphone_13_pro: "smartphones",
+  iphone_13_pro_max: "smartphones",
+  iphone_14_pro: "smartphones",
+  iphone_14_pro_max: "smartphones",
+  iphone_15_pro: "smartphones",
+  iphone_15_pro_max: "smartphones",
+  galaxy_s24_ultra: "smartphones",
+  galaxy_s24_plus: "smartphones",
+  galaxy_s23_ultra: "smartphones",
+  galaxy_s23_plus: "smartphones",
+  pixel_9_pro: "smartphones",
+  pixel_8_pro: "smartphones",
+  macbook_pro_14_m3: "laptops",
+  macbook_pro_14_m2: "laptops",
+  macbook_air_15_m3: "laptops",
+  macbook_air_13_m2: "laptops",
+  ipad_pro_12_m2: "tablets",
+  ipad_pro_11_m4: "tablets",
+  ipad_air_m2: "tablets",
+  ps5_disc: "gaming",
+  ps5_digital: "gaming",
+  switch_oled: "gaming",
+  steam_deck_512: "gaming",
+  steam_deck_oled: "gaming",
+  airpods_pro_2: "audio",
+  airpods_max: "audio",
+  sony_wh1000xm5: "audio",
+  sony_wf1000xm5: "audio",
 };
 
 // ─── Tag Extraction ───────────────────────────────────────────────────
@@ -130,14 +145,20 @@ export function extractTagAttributes(
 
       if (cat === "brand" || /^(apple|samsung|google|sony|nintendo|valve)$/i.test(name)) {
         attrs.brand = name;
-      } else if (cat === "model" || /iphone|galaxy|pixel|macbook|ipad|ps5|switch|steam.deck|airpods|wh-?1000|wf-?1000/i.test(name)) {
+      } else if (
+        cat === "model" ||
+        /iphone|galaxy|pixel|macbook|ipad|ps5|switch|steam.deck|airpods|wh-?1000|wf-?1000/i.test(
+          name,
+        )
+      ) {
         attrs.model = name.replace(/[\s-]+/g, "_").replace(/_+/g, "_");
       } else if (cat === "storage" || /^\d+\s*(gb|tb)$/i.test(name)) {
         const match = name.match(/(\d+)\s*(gb|tb)/i);
         if (match) {
-          attrs.storage_gb = match[2].toLowerCase() === "tb"
-            ? parseInt(match[1]) * 1024
-            : parseInt(match[1]);
+          attrs.storage_gb =
+            match[2].toLowerCase() === "tb"
+              ? parseInt(match[1], 10) * 1024
+              : parseInt(match[1], 10);
         }
       } else if (cat === "condition" || /mint|excellent|good|fair|grade/i.test(name)) {
         attrs.condition = name;
@@ -153,7 +174,7 @@ export function extractTagAttributes(
     if (tagGarden.model) attrs.model = tagGarden.model.toLowerCase().replace(/[\s-]+/g, "_");
     if (tagGarden.storage) {
       const match = tagGarden.storage.match(/(\d+)/);
-      if (match) attrs.storage_gb = parseInt(match[1]);
+      if (match) attrs.storage_gb = parseInt(match[1], 10);
     }
     if (tagGarden.condition) attrs.condition = tagGarden.condition;
     if (tagGarden.carrier) attrs.carrier = tagGarden.carrier;

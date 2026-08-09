@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export interface AttemptControlPolicy {
   scope: "buyer_per_listing";
@@ -101,10 +101,17 @@ export async function evaluateAttemptControl(
   const activeSessionsOnListing = toInt(row.active_sessions_on_listing);
   const sessionsInWindow = toInt(row.sessions_in_window);
   const marketplaceAttemptsToday = toInt(row.marketplace_attempts_today);
-  const lastListingAttemptAt = row.last_listing_attempt_at ? new Date(String(row.last_listing_attempt_at)) : null;
+  const lastListingAttemptAt = row.last_listing_attempt_at
+    ? new Date(String(row.last_listing_attempt_at))
+    : null;
 
   const cooldownRemaining = lastListingAttemptAt
-    ? Math.max(0, Math.ceil((lastListingAttemptAt.getTime() + policy.cooldownSeconds * 1000 - now.getTime()) / 1000))
+    ? Math.max(
+        0,
+        Math.ceil(
+          (lastListingAttemptAt.getTime() + policy.cooldownSeconds * 1000 - now.getTime()) / 1000,
+        ),
+      )
     : 0;
 
   const snapshot: AttemptControlSnapshot = {
@@ -118,7 +125,10 @@ export async function evaluateAttemptControl(
     marketplace_daily_attempts: policy.marketplaceDailyAttempts,
     entitlement_source: policy.entitlementSource,
     remaining_sessions: Math.max(0, policy.maxSessionsPerWindow - sessionsInWindow),
-    remaining_marketplace_attempts: Math.max(0, policy.marketplaceDailyAttempts - marketplaceAttemptsToday),
+    remaining_marketplace_attempts: Math.max(
+      0,
+      policy.marketplaceDailyAttempts - marketplaceAttemptsToday,
+    ),
     remaining_rounds: policy.maxRoundsPerSession,
     active_sessions: activeSessions,
     active_sessions_on_listing: activeSessionsOnListing,

@@ -1,3 +1,17 @@
+/**
+ * Phase G structured criterion — one per-item negotiation check, keyed to a taxonomy
+ * check id. Mirrors the shared `CategoryCriterion`. Seller declares required/optional
+ * + stance; buyer mirrors + sets its own stance.
+ */
+export type CategoryCriterion = {
+  checkId: string;
+  questionKo: string;
+  buyerAskKo?: string;
+  enforcement: "hard" | "soft";
+  requirement: "required" | "optional";
+  stance?: string;
+};
+
 export type NegotiationAgentBuilderMemory = {
   categoryInterest: string;
   /** User-facing dollars captured from advisor chat, converted at API boundaries. */
@@ -6,6 +20,8 @@ export type NegotiationAgentBuilderMemory = {
   targetPrice?: number;
   mustHave: string[];
   avoid: string[];
+  /** Phase G taxonomy-keyed criteria (deterministic layer). */
+  categoryCriteria?: CategoryCriterion[];
   riskStyle: "safe_first" | "balanced" | "lowest_price";
   negotiationStyle: "defensive" | "balanced" | "aggressive";
   openingTactic: "condition_anchor" | "fair_market_anchor" | "speed_close";

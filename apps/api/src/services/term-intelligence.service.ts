@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import type { ConversationSignal } from "./conversation-signal-extractor.js";
 
 export interface RecordTermCandidateInput {

@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import {
   createEverOSClientFromEnv,
   type EverOSClient,
@@ -52,7 +52,8 @@ export async function loadEvermemoBrief(
   const client = options.client ?? createEverOSClientFromEnv();
   if (!client) return null;
 
-  const requireEligibility = input.requireEligibility ?? process.env.EVEROS_REQUIRE_ELIGIBILITY !== "false";
+  const requireEligibility =
+    input.requireEligibility ?? process.env.EVEROS_REQUIRE_ELIGIBILITY !== "false";
   if (requireEligibility) {
     const eligible = await isCurrentlyEvermemoEligible(db, input.userId);
     if (!eligible) return null;
@@ -149,9 +150,8 @@ function normalizeEverOSSearchResponse(response: Record<string, unknown>): Everm
   const items: EvermemoBriefItem[] = [];
 
   for (const profile of asRecords(data.profiles)) {
-    const summary = textFrom(profile.description)
-      ?? textFrom(profile.trait_name)
-      ?? textFrom(profile.category);
+    const summary =
+      textFrom(profile.description) ?? textFrom(profile.trait_name) ?? textFrom(profile.category);
     if (!summary) continue;
     items.push({
       source: "everos_profile",
@@ -163,9 +163,8 @@ function normalizeEverOSSearchResponse(response: Record<string, unknown>): Everm
   }
 
   for (const episode of asRecords(data.episodes)) {
-    const summary = textFrom(episode.summary)
-      ?? textFrom(episode.content)
-      ?? textFrom(episode.text);
+    const summary =
+      textFrom(episode.summary) ?? textFrom(episode.content) ?? textFrom(episode.text);
     if (!summary) continue;
     items.push({
       source: "everos_episode",
@@ -178,9 +177,7 @@ function normalizeEverOSSearchResponse(response: Record<string, unknown>): Everm
 
   const agentMemory = isRecord(data.agent_memory) ? data.agent_memory : {};
   for (const entry of [...asRecords(agentMemory.cases), ...asRecords(agentMemory.skills)]) {
-    const summary = textFrom(entry.summary)
-      ?? textFrom(entry.description)
-      ?? textFrom(entry.title);
+    const summary = textFrom(entry.summary) ?? textFrom(entry.description) ?? textFrom(entry.title);
     if (!summary) continue;
     items.push({
       source: "everos_agent_memory",
@@ -221,7 +218,9 @@ function numberFrom(value: unknown): number | undefined {
 }
 
 function pickMetadata(source: Record<string, unknown>, keys: string[]): Record<string, unknown> {
-  return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
+  return Object.fromEntries(
+    keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]),
+  );
 }
 
 function singleLine(value: string): string {

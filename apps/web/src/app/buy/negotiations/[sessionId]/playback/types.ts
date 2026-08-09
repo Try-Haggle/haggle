@@ -62,6 +62,12 @@ export interface PlaybackRound {
   message: string; // 자연어 메시지
   factors: RoundFactors;
   thinkingMs?: number; // 권장 thinking 지속시간 (없으면 default)
+  /**
+   * What the buyer replied when this round paused to ask them. Rendered under the
+   * question so the transcript shows the answer next to what it answered — the
+   * transcript is where people go to check what they agreed to.
+   */
+  pauseAnswers?: Array<{ checkId: string; ask: string; stance: string; label?: string }>;
 }
 
 export interface PlaybackResponse {

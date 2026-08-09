@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArenaHeader } from "./arena-header";
 import { ChatTimeline } from "./chat-timeline";
 import { FactorsPanel } from "./factors-panel";
+import { PauseAnswer, type PauseCheck } from "./pause-answer";
 import { PlaybackControls } from "./playback-controls";
 import { PreFight } from "./pre-fight";
 import { ProgressBar } from "./progress-bar";
@@ -27,6 +28,9 @@ interface PlaybackArenaProps {
   connectionLabel?: string;
   liveError?: string | null;
   onLiveRetry?: () => void;
+  /** Checks the round loop stopped on, waiting for this buyer to answer. */
+  pauseChecks?: PauseCheck[] | null;
+  onPauseAnswer?: (stances: Array<{ checkId: string; stance: string }>) => Promise<void>;
 }
 
 /**
@@ -45,6 +49,8 @@ export function PlaybackArena({
   connectionLabel = "Live updates",
   liveError = null,
   onLiveRetry,
+  pauseChecks = null,
+  onPauseAnswer,
 }: PlaybackArenaProps) {
   const { session, rounds } = data;
   const isLive = mode === "live";
@@ -71,6 +77,10 @@ export function PlaybackArena({
     [liveTerminal, rounds.length],
   );
   const engine = isLive ? liveEngine : replayEngine;
+  // Paused means the rounds have stopped ON PURPOSE, waiting on this buyer. It must
+  // silence the "thinking" dots — otherwise the screen claims work is in flight while it
+  // is really waiting for a human, which is exactly how the pause read as a hang.
+  const isPaused = isLive && !liveTerminal && (pauseChecks?.length ?? 0) > 0;
 
   const [showPreFight, setShowPreFight] = useState(!isLive);
   const [focusedRoundIndex, setFocusedRoundIndex] = useState<number | null>(null);
@@ -284,8 +294,16 @@ export function PlaybackArena({
                     currency={session.listing.currency}
                     focusedRoundIndex={focusedRoundIndex}
                     onFocusRound={setFocusedRoundIndex}
-                    waitingRole={isLive && !liveTerminal ? activeRole : null}
+                    // The "thinking" dots animate purely on "live and not finished", so a
+                    // failed round left them spinning forever next to an error banner —
+                    // which reads as a hang, not a failure. Stop them once we know.
+                    waitingRole={
+                      isLive && !liveTerminal && !liveError && !isPaused ? activeRole : null
+                    }
                   />
+                  {isPaused && onPauseAnswer && (
+                    <PauseAnswer checks={pauseChecks ?? []} onSubmit={onPauseAnswer} />
+                  )}
                 </div>
 
                 {/* Side column: concession curve + factors panel (desktop) */}

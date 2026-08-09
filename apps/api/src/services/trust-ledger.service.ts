@@ -1,17 +1,16 @@
 import {
   computeSettlementReliability,
   resolveTrustPenaltyReason,
-  trustPenaltyScore,
   type TrustTriggerEvent,
+  trustPenaltyScore,
 } from "@haggle/commerce-core";
 import {
+  type Database,
   eq,
-  sql,
-  and,
   onchainTrustProfiles,
   settlementReliabilitySnapshots,
+  sql,
   trustPenaltyRecords,
-  type Database,
 } from "@haggle/db";
 
 type ActorRole = "buyer" | "seller";
@@ -106,7 +105,7 @@ export async function applyTrustTriggers(db: Database, context: TrustLedgerConte
           .where(eq(settlementReliabilitySnapshots.id, updated.id));
       }
     } else {
-      const initial = {
+      const _initial = {
         successful_settlements: 0,
         approval_defaults: 0,
         shipment_sla_misses: 0,

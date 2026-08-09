@@ -1,14 +1,14 @@
-import type { FastifyInstance } from "fastify";
-import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { requireAdmin } from "../middleware/require-auth.js";
+import type { AmountTier, Category } from "@haggle/arp-core";
 import {
   classifyAmountTier,
-  getColdStartHours,
-  computeSignals,
   computeAdjustment,
+  computeSignals,
+  getColdStartHours,
 } from "@haggle/arp-core";
-import type { Category, AmountTier } from "@haggle/arp-core";
+import type { Database } from "@haggle/db";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { requireAdmin } from "../middleware/require-auth.js";
 import {
   getSegment,
   listSegments,
@@ -34,7 +34,12 @@ export function registerARPRoutes(app: FastifyInstance, db: Database) {
       const query = request.query as { category?: string; amount_minor?: string; tags?: string };
       const category = query.category as Category | undefined;
       const amountMinor = query.amount_minor ? Number(query.amount_minor) : undefined;
-      const tagList = query.tags ? query.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+      const tagList = query.tags
+        ? query.tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [];
 
       const amountTier = amountMinor != null ? classifyAmountTier(amountMinor) : undefined;
 
@@ -78,7 +83,9 @@ export function registerARPRoutes(app: FastifyInstance, db: Database) {
       const { id } = request.params;
       const parsed = adjustSignalsSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_ADJUST_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_ADJUST_REQUEST", issues: parsed.error.issues });
       }
 
       // Get current segment from DB
@@ -89,10 +96,7 @@ export function registerARPRoutes(app: FastifyInstance, db: Database) {
       }
 
       // Compute signals
-      const signalResult = computeSignals(
-        parsed.data.signals,
-        Number(current.reviewHours),
-      );
+      const signalResult = computeSignals(parsed.data.signals, Number(current.reviewHours));
 
       // Compute adjustment
       const adjustmentResult = computeAdjustment(

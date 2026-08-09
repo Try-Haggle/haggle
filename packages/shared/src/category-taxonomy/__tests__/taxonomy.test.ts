@@ -89,6 +89,69 @@ describe("resolveChecks (hierarchical inheritance)", () => {
     expect(resolveChecks([])).toHaveLength(0);
   });
 
+  describe("G-TAX expanded categories", () => {
+    it("a used bicycle inherits sports checks + gets its serial (stolen) hard gate", () => {
+      const got = ids(["sports", "bicycle"]);
+      expect(got).toContain("sports_condition"); // inherited from sports
+      expect(got).toContain("bike_serial"); // sports/bicycles node
+      const serial = resolveChecks(["bicycle"]).find((c) => c.id === "bike_serial");
+      expect(serial?.enforcement).toBe("hard");
+      expect(serial?.answerHints?.length ?? 0).toBeGreaterThan(0); // satisfiable gate
+    });
+
+    it("matches a bike by alias/token (road-bike) and never leaks IMEI", () => {
+      const got = ids(["sports", "road-bike"]);
+      expect(got).toContain("bike_serial");
+      expect(got).not.toContain("imei_verification");
+    });
+
+    it("collectibles get a hard authenticity/COA gate with answer hints", () => {
+      const coa = resolveChecks(["collectibles"]).find((c) => c.id === "coa_authenticity");
+      expect(coa?.enforcement).toBe("hard");
+      expect(coa?.answerHints).toContain("psa");
+    });
+
+    it("furniture and books resolve their own soft checks, never a hard gate", () => {
+      const furniture = resolveChecks(["furniture"]);
+      expect(furniture.map((c) => c.id)).toContain("dimensions");
+      expect(furniture.every((c) => c.enforcement === "soft")).toBe(true);
+
+      const books = resolveChecks(["books"]);
+      expect(books.map((c) => c.id)).toContain("edition");
+      expect(books.every((c) => c.enforcement === "soft")).toBe(true);
+    });
+
+    it("every hard check across the taxonomy has answerHints (no wedge / satisfiable)", () => {
+      for (const node of CATEGORY_TAXONOMY) {
+        for (const c of node.checks) {
+          if (c.enforcement === "hard") {
+            expect(c.answerHints?.length ?? 0).toBeGreaterThan(0);
+          }
+        }
+      }
+    });
+
+    it("resolveChecks never yields duplicate ids for any single category (dedup holds)", () => {
+      // Per-item, resolveChecks must return each check id at most once (ancestor +
+      // node dedup). Shared ids ACROSS unrelated categories (e.g. cosmetic_grade in
+      // electronics vs clothing) are intentional and fine — they never co-resolve.
+      for (const tag of [
+        "electronics",
+        "iphone",
+        "clothing",
+        "vehicles",
+        "sports",
+        "bicycle",
+        "collectibles",
+        "furniture",
+        "books",
+      ]) {
+        const resolved = resolveChecks([tag]).map((c) => c.id);
+        expect(new Set(resolved).size).toBe(resolved.length);
+      }
+    });
+  });
+
   it("getCategoryNode looks up by exact path", () => {
     expect(getCategoryNode("vehicles")?.checks.length).toBeGreaterThan(0);
     expect(getCategoryNode("nope")).toBeUndefined();

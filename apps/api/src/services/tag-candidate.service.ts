@@ -18,7 +18,7 @@
  * docs/features/tag-system-design.md §3.3 L2, §4.
  */
 
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 import { getTagIdf } from "./similar-listings.service.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ function normalizeTagName(s: string): string {
 /** Tokenize a string by whitespace + ASCII punctuation. */
 function tokenize(s: string): string[] {
   return s
-    .split(/[\s,.;:!?()\[\]{}"'`/\\|<>~@#$%^&*+=\-]+/)
+    .split(/[\s,.;:!?()[\]{}"'`/\\|<>~@#$%^&*+=-]+/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
 }
@@ -69,11 +69,7 @@ function tokenize(s: string): string[] {
  * Build all sliding word-level n-grams of length [minLen, maxLen]
  * from the given tokens. Returns normalized strings.
  */
-function buildNgrams(
-  tokens: string[],
-  minLen: number,
-  maxLen: number,
-): string[] {
+function buildNgrams(tokens: string[], minLen: number, maxLen: number): string[] {
   const out = new Set<string>();
   const lo = Math.max(1, minLen);
   const hi = Math.max(lo, maxLen);
@@ -119,9 +115,7 @@ export async function gatherFromSimilarListings(
       if (rows.length > 0) {
         const raw = rows[0].text_embedding;
         embedding =
-          typeof raw === "string"
-            ? raw.slice(1, -1).split(",").map(Number)
-            : (raw as number[]);
+          typeof raw === "string" ? raw.slice(1, -1).split(",").map(Number) : (raw as number[]);
       }
     } catch {
       // graceful: caller-supplied embedding wasn't available
@@ -171,10 +165,7 @@ export async function gatherFromSimilarListings(
  * by `idf_score` descending. No category filter — category-aware IDF
  * is post-MVP.
  */
-export async function gatherFromIdfTop(
-  db: Database,
-  n: number,
-): Promise<string[]> {
+export async function gatherFromIdfTop(db: Database, n: number): Promise<string[]> {
   if (n <= 0) return [];
   let rows: Array<{ tag: string }>;
   try {
@@ -243,9 +234,7 @@ export async function resolveLabelsToCandidates(
   // Build the deduped lookup sets — match either the original string
   // (e.g., snapshot_json.tags entries) or its normalized form.
   const dedupedRaw = Array.from(new Set(labels.filter((l) => !!l)));
-  const dedupedNorm = Array.from(
-    new Set(dedupedRaw.map((l) => normalizeTagName(l))),
-  );
+  const dedupedNorm = Array.from(new Set(dedupedRaw.map((l) => normalizeTagName(l))));
 
   let rows: Array<{
     id: string;

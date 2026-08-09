@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { type Database, sql } from "@haggle/db";
-import { priceSemantics, resolveChecks } from "@haggle/shared";
+import {
+  buildCategoryCriteriaScaffold,
+  type CategoryCriterion,
+  criterionAnswered,
+  isTaxonomyCheckId,
+  priceSemantics,
+} from "@haggle/shared";
 // (FastifyInstance import removed — this is now a pure service file)
 import { z } from "zod";
 import { callLLM } from "../negotiation/adapters/deepseek-client.js";
@@ -14,9 +20,16 @@ import {
   buildAdvisorRequirementPlan,
   EMPTY_TAG_REQUIREMENT_PLAN,
   formatTagRequirementPlanForPrompt,
+  type LearnedCheckForRequirements,
   type TagRequirementPlan,
   type TagRequirementSlot,
 } from "../services/tag-garden-requirements.js";
+import {
+  LEARNING_DUPLICATE_SIMILARITY,
+  learningWriteScopes,
+  questionSimilarity,
+  questionTokens,
+} from "./category-check-learning.service.js";
 
 const DEMO_USER_ID = "11111111-1111-4111-8111-111111111111";
 const INPUT_TOKEN_USD = 0.0000002;
@@ -33,6 +46,30 @@ const optionalStringSchema = z.preprocess(
   (value) => (value === null ? undefined : value),
   z.string().optional(),
 );
+
+// Phase G deterministic layer: per-item negotiation criteria keyed to a taxonomy
+// check id. WE own checkId/questionKo/enforcement (from the taxonomy scaffold);
+// reconcileCategoryCriteria re-authors every field except requirement/stance from the
+// scaffold, so this schema is deliberately LENIENT about what the LLM returns. The LLM
+// often emits requirement:"" (empty string), which `.default()` does NOT catch (it
+// only fills missing/undefined), so we preprocess invalid enum values to the default
+// rather than throwing (which surfaced as a 502 on the whole turn).
+// Coerce an invalid/empty enum value to undefined (not a hard default), so downstream
+// reconcile falls back to the taxonomy scaffold's own default (e.g. a HARD check →
+// "required") instead of being forced to a filler value.
+const optionalEnum = <T extends string>(allowed: readonly T[]) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? v : undefined),
+    z.enum(allowed as [T, ...T[]]).optional(),
+  );
+const categoryCriterionSchema = z.object({
+  checkId: z.string().default(""),
+  questionKo: z.string().default(""),
+  buyerAskKo: optionalStringSchema,
+  enforcement: optionalEnum(["hard", "soft"] as const),
+  requirement: optionalEnum(["required", "optional"] as const),
+  stance: optionalStringSchema,
+});
 
 const structuredNegotiationAgentBuilderMemorySchema = z
   .object({
@@ -202,6 +239,11 @@ const negotiationAgentBuilderMemorySchema = z.object({
   dealBreakers: z.array(z.string()).default([]),
   mustEmphasize: z.array(z.string()).default([]),
   notes: z.array(z.string()).default([]),
+  // Phase G structured layer (taxonomy-keyed). Distinct from the free-text buckets
+  // above, which carry LLM long-tail criteria; this carries the taxonomy checks so
+  // the three flows connect by check id (seller declares → buyer mirrors → runtime
+  // pauses on gaps).
+  categoryCriteria: z.array(categoryCriterionSchema).default([]),
   urgency: optionalStringSchema,
   riskStyle: z.enum(["safe_first", "balanced", "lowest_price"]),
   negotiationStyle: z.enum(["defensive", "balanced", "aggressive"]),
@@ -228,6 +270,7 @@ export const PERSISTED_BUILDER_MEMORY_KEYS = [
   "dealBreakers",
   "mustEmphasize",
   "notes",
+  "categoryCriteria",
   "urgency",
   "riskStyle",
   "negotiationStyle",
@@ -293,6 +336,12 @@ export const negotiationAgentBuilderTurnBodySchema = z.object({
   message: z.string().min(1).max(2000),
   previous_memory: negotiationAgentBuilderMemorySchema,
   listings: z.array(advisorListingSchema).default([]),
+  /**
+   * Phase G Flow 2: the seller's REQUIRED category criteria for this listing,
+   * buyer-safe (check id + ask only). The buyer builder surfaces these so the buyer
+   * mirrors the seller's requirements. Empty for the seller side / standalone agents.
+   */
+  seller_required_criteria: z.array(z.object({ checkId: z.string(), ask: z.string() })).default([]),
   /** Which side the user is on. Drives prompt direction (floor vs ceiling). */
   side: z.enum(["buyer", "seller"]).default("buyer"),
   /** Current radar numbers, so the LLM adjusts from them instead of inventing. */
@@ -862,28 +911,167 @@ const SEARCH_BRAND_TERMS = new Set([
   "harley",
 ]);
 
-/**
- * Category-relevant emphasis points for the SELLER builder, derived from the shared
- * taxonomy. The seller never gets asked buyer-style requirement questions, so these
- * are framed as "what to emphasize / flag as deal-breakers" for the item's category.
- */
-function buildSellerCategoryHint(listings: Array<{ category?: string; tags: string[] }>): string {
-  const tags = listings.flatMap((l) =>
+/** The taxonomy tags for an item from a builder turn's listings (category + tags). */
+function listingTagsForCriteria(listings: Array<{ category?: string; tags: string[] }>): string[] {
+  return listings.flatMap((l) =>
     [l.category, ...l.tags].filter((t): t is string => typeof t === "string" && t.length > 0),
   );
-  const checks = resolveChecks(tags);
-  if (checks.length === 0) return "";
-  const points = checks.map((c) => `  - ${c.questionKo}`).join("\n");
-  return `\n- For this item's category, these points typically matter — decide which to EMPHASIZE or flag as deal-breakers (do NOT ask the seller to provide them):\n${points}`;
+}
+
+/**
+ * Reconcile the item's category criteria deterministically. The taxonomy scaffold
+ * is AUTHORITATIVE for the check set + checkId/questionKo/buyerAskKo/enforcement —
+ * the LLM cannot invent, drop, or rename a check. Only `requirement` and `stance`
+ * flow from the party (LLM this turn, else carried from previous memory), so a
+ * seller/buyer's answers accumulate across turns while the structure stays fixed.
+ * Returns [] when there is no listing context (scaffold empty → standalone agent).
+ */
+export function reconcileCategoryCriteria(
+  scaffold: readonly CategoryCriterion[],
+  // Loose shapes — parsed criteria may omit requirement/stance (or send them empty).
+  // Only checkId is relied on to match; requirement/stance fall back below.
+  llmReturned: ReadonlyArray<Partial<CategoryCriterion> & { checkId: string }> | undefined,
+  previous: ReadonlyArray<Partial<CategoryCriterion> & { checkId: string }>,
+): CategoryCriterion[] {
+  const llmById = new Map((llmReturned ?? []).map((c) => [c.checkId, c]));
+  const prevById = new Map(previous.map((c) => [c.checkId, c]));
+
+  return scaffold.map((base) => {
+    const llm = llmById.get(base.checkId);
+    const prev = prevById.get(base.checkId);
+    // A taxonomy `hard`-enforcement check is a deterministic safety gate — it
+    // materially affects the deal (clean title, IMEI/activation lock, authenticity,
+    // theft serial). The generative layer may ESCALATE a soft check to required, but
+    // must NEVER downgrade a hard gate to optional: doing so would let a deal-breaker
+    // close silently with the buyer never taking a stance, and suppress the
+    // mid-negotiation PAUSE that asks them. So hard ⇒ required is pinned here,
+    // overriding whatever the LLM (or a prior turn) returned. Soft checks stay
+    // party-driven (required only if the party insisted).
+    const requirement: CategoryCriterion["requirement"] =
+      base.enforcement === "hard"
+        ? "required"
+        : (llm?.requirement ?? prev?.requirement ?? base.requirement);
+    // Non-blank stance from the LLM wins; otherwise carry a non-blank prior stance.
+    const stance = llm?.stance?.trim() || prev?.stance?.trim() || undefined;
+
+    const merged: CategoryCriterion = {
+      checkId: base.checkId,
+      questionKo: base.questionKo,
+      enforcement: base.enforcement,
+      requirement,
+    };
+    if (base.buyerAskKo !== undefined) merged.buyerAskKo = base.buyerAskKo;
+    if (stance) merged.stance = stance;
+    return merged;
+  });
+}
+
+/**
+ * Build the side-aware CATEGORY CRITERIA prompt block. Seller: decide required vs
+ * optional + state the fact (verification-framed question). Buyer: record a stance
+ * per check (requirement-framed question), and criteria the seller marked required
+ * are flagged [SELLER REQUIRES] so the buyer mirrors them (Flow 2). Both sides emit
+ * memory.categoryCriteria keyed by the EXACT check ids. Empty string when there are
+ * no item criteria (standalone agent) so the caller can inject it unconditionally.
+ */
+function buildCategoryCriteriaPromptBlock(
+  side: "buyer" | "seller",
+  criteria: readonly CategoryCriterion[],
+  sellerRequired: ReadonlyArray<{ checkId: string; ask: string }>,
+): string {
+  if (criteria.length === 0) return "";
+  const sellerRequiredIds = new Set(sellerRequired.map((c) => c.checkId));
+  const lines = criteria
+    .map((c) => {
+      const ask = side === "buyer" ? (c.buyerAskKo ?? c.questionKo) : c.questionKo;
+      const flag = side === "buyer" && sellerRequiredIds.has(c.checkId) ? " [SELLER REQUIRES]" : "";
+      const state = criterionAnswered(c)
+        ? `SET requirement=${c.requirement} stance="${c.stance}"`
+        : side === "seller"
+          ? "NEEDS the seller's decision (required vs optional) + their stance"
+          : "NEEDS the buyer's stance";
+      return `- ${c.checkId} | "${ask}"${flag} | ${state}`;
+    })
+    .join("\n");
+
+  const intro =
+    side === "seller"
+      ? `CATEGORY CRITERIA — set these on the agent for THIS item:
+- For each criterion below, help the seller decide whether it is a REQUIRED deal-breaker (the agent must hold this line) or an OPTIONAL point to emphasize, and capture the seller's stance (the fact/position, e.g. "clean title, in hand" or "battery 91%").
+- Ask about criteria still marked "NEEDS the seller's decision" — one or two per turn, most category-important first. Never re-ask a criterion already SET.`
+      : `CATEGORY CRITERIA — record the buyer's stance for THIS item:
+- For each criterion below, capture the buyer's stance in memory.categoryCriteria: requirement ("required" if the buyer insists on it, otherwise "optional") plus a short stance.
+- Criteria flagged [SELLER REQUIRES] are ones the seller insists on for this item — make sure the buyer has a stance on each (mirror it, or explicitly decline). If one is still unaddressed, ask about it.`;
+
+  return `
+${intro}
+- Return them in memory.categoryCriteria as {checkId, requirement, stance} using the EXACT checkId values listed. Do NOT invent, rename, or drop check ids; leave a criterion's stance empty until it is answered.
+- Keep memory.dealBreakers / memory.mustEmphasize / memory.mustHave / memory.avoid only for long-tail specifics OUTSIDE this list.
+Current category criteria for this item:
+${lines}`;
+}
+
+/**
+ * Long-tail generative block (Phase G, 2-layer hybrid). The taxonomy's category
+ * criteria are authoritative for standard checks, but they cannot cover every
+ * product (the "4–6 digit" specific items). This invites the LLM to elicit ONE
+ * product-specific factor the category list omits — advisory only, stored in the
+ * free-text buckets, never as an invented hard/safety gate and never in
+ * categoryCriteria (the reconcile step structurally drops any non-taxonomy check id
+ * the LLM tries to add there). Returned only when there's an item to reason about.
+ */
+function buildLongTailPromptBlock(side: "buyer" | "seller", hasListingContext: boolean): string {
+  if (!hasListingContext) return "";
+  const bucket =
+    side === "seller"
+      ? "memory.mustEmphasize (leverage) or memory.dealBreakers (a firm limit)"
+      : "memory.mustHave or memory.avoid";
+  return `
+PRODUCT-SPECIFIC FACTORS (beyond the category list):
+- The category-criteria list is authoritative for standard checks, but this exact product may have an important decision-relevant factor it omits (a niche spec, compatibility, edition/rarity, an issue typical of this product). You MAY ask about at most ONE such factor per turn.
+- Record the answer as a short phrase in ${bucket}. It is ADVISORY only: never present a self-invented factor as a mandatory safety/legal gate, and never add it to memory.categoryCriteria (that list is reserved for the standard category checks).
+- Skip this entirely when the category list already covers what matters, or nothing important is missing — do not manufacture questions.`;
+}
+
+/**
+ * Pick the next seller-required criterion the buyer must still address (Flow 2).
+ * Skips any the buyer already answered (a stance on that check id) and any asked on
+ * the previous turn (ask-once). Returns the buyer-facing ask, or null when the buyer
+ * has addressed every seller requirement.
+ */
+function pickSellerMirrorQuestion(
+  sellerRequired: ReadonlyArray<{ checkId: string; ask: string }>,
+  buyerCriteria: ReadonlyArray<{ checkId: string; stance?: string }>,
+  askedQuestions: readonly string[],
+): string | null {
+  const answered = new Set(
+    buyerCriteria
+      .filter((c) => (c.stance?.trim().length ?? 0) > 0)
+      .map((criterion) => criterion.checkId),
+  );
+  for (const requirement of sellerRequired) {
+    if (answered.has(requirement.checkId)) continue;
+    if (askedQuestions.includes(requirement.ask)) continue;
+    return requirement.ask;
+  }
+  return null;
 }
 
 export async function processNegotiationAgentBuilderTurn(
-  input: z.infer<typeof negotiationAgentBuilderTurnBodySchema>,
+  input: z.infer<typeof negotiationAgentBuilderTurnBodySchema> & {
+    /**
+     * Feature ②: promoted learned checks for this listing's category, loaded by the
+     * ROUTE (which owns DB access) and passed in so this service stays I/O-free.
+     * Always advisory — see `taxonomyCategorySlots`.
+     */
+    learned_checks?: readonly LearnedCheckForRequirements[];
+  },
 ) {
   const initialRequirementPlan = buildAdvisorRequirementPlan({
     memory: input.previous_memory,
     listings: input.listings,
     askedQuestions: input.previous_memory.questions,
+    learnedChecks: input.learned_checks ?? [],
   });
   const initialCandidatePlan = buildAdvisorCandidatePlan({
     listings: input.listings,
@@ -902,6 +1090,28 @@ export async function processNegotiationAgentBuilderTurn(
   // seller side — otherwise it injects budget/candidate questions that make no
   // sense without a listing. Only a buyer ON a listing uses the planner.
   const usePlanner = input.side === "buyer" && hasListingContext;
+
+  // Phase G deterministic layer: the item's taxonomy criteria, with any stances the
+  // party already stated carried forward from previous memory. The SELLER builder
+  // actively elicits these (required vs optional + stance). Empty for standalone
+  // agents (no listing → no item checks).
+  const criteriaScaffold = buildCategoryCriteriaScaffold(listingTagsForCriteria(input.listings));
+  const currentCategoryCriteria = reconcileCategoryCriteria(
+    criteriaScaffold,
+    undefined,
+    input.previous_memory.categoryCriteria,
+  );
+  // Side-aware CATEGORY CRITERIA block (empty for standalone agents with no item).
+  // Seller: elicit required/optional + stance. Buyer: record stance + mirror the
+  // seller's required criteria (flagged [SELLER REQUIRES]).
+  const categoryCriteriaBlock = buildCategoryCriteriaPromptBlock(
+    input.side,
+    currentCategoryCriteria,
+    input.seller_required_criteria,
+  );
+  // Generative long-tail layer: lets the LLM cover product-specific factors the
+  // taxonomy omits (advisory only; structurally barred from categoryCriteria).
+  const longTailBlock = buildLongTailPromptBlock(input.side, hasListingContext);
 
   const advisorSystemPrompt = `You are the Haggle negotiation-agent builder assistant, helping a ${input.side.toUpperCase()} configure their negotiation agent.
 Your task is context engineering: update the user's memory from the latest message and decide whether one essential follow-up question is needed.
@@ -925,10 +1135,12 @@ ${
           ? " They already set their asking price and floor on the listing."
           : " This agent is not tied to a listing yet, so price is set per-listing later — gather negotiation posture (what to emphasize, deal-breakers, how firmly to hold) instead."
       }
-- Do NOT ask buyer-style requirement questions (battery %, IMEI, etc.). Instead ask what to EMPHASIZE (condition, accessories, rarity) or any deal-breakers.
-- Ignore the Tag Garden requirement slots entirely — they are buyer-side.${buildSellerCategoryHint(input.listings)}`
+- Ask the seller VERIFICATION-framed questions about their own item ("is the title clean?", "what's the battery health?"), never buyer-style "do you require X?" phrasing — the seller can state facts about the thing they are selling.
+- Ignore the Tag Garden requirement slots entirely — they are buyer-side.`
     : ""
 }
+${categoryCriteriaBlock}
+${longTailBlock}
 
 Lumen agent voice:
 - Agent: ${agentProfile.name} (${agentProfile.role})
@@ -983,19 +1195,27 @@ ${
 - Gather durable preferences instead: typical must-haves, deal-breakers, risk style, and how aggressively to negotiate.
 - Put preferences in memory.mustHave / memory.avoid and reflect style via negotiationStyle, riskStyle, and openingTactic.
 - If the buyer volunteers a budget unprompted, you may still record budgetMax/targetPrice, but never ask for it.
-- If nothing essential is missing, questions must be [].`
+- If nothing essential is missing, questions must be [].
+- CLOSING: this page BUILDS/CONFIGURES the agent — it does NOT run any negotiation. Never end a reply flat: when nothing essential is left to ask, say what the agent is now set to do and invite more, e.g. "Your agent will push hard on price and walk away from anything without a receipt. Anything else you want it to prioritize or avoid?". This invitation is not a requirement question, so questions stays [].`
     : `- Do not ask the seller for an asking price or floor${
         hasListingContext
           ? " — they already set them on the listing"
           : " — price is decided per-listing, not on this reusable agent"
       }. Help shape negotiation posture: what to emphasize, deal-breakers, and how firmly to hold.
 - Put "what to emphasize" items in memory.mustEmphasize and deal-breakers in memory.dealBreakers.
-- If nothing essential is missing, questions must be [].`
+- If nothing essential is missing, questions must be [].
+- If there is anything else worth knowing about THIS item to negotiate it well (history, flaws, included extras, why you're selling), ask for it rather than settling after one answer.
+- CLOSING: this page BUILDS/CONFIGURES the seller's agent — it does NOT run the negotiation (the user starts that later with a separate button). Never end a reply flat: acknowledging the answer and stopping leaves the user with no idea whether more input is wanted. When nothing essential is left to ask, say what the agent is now set to do and invite more, e.g. "Your agent will lead with the full service history and hold firm at $8,000. Anything else you want it to emphasize or hold firm on?". This invitation is not a requirement question, so questions stays [].`
 }
 - Never mention Tag Garden, tags, requirement slots, internal criteria, or context engineering in the user-facing reply.
 - Avoid overly dramatic, poetic, or cheesy phrases. Be natural, professional, and direct.
 - When asking a follow-up question, ask directly without unnecessary filler.
 - Reply in English, naturally, one or two sentences.
+- Ask AT MOST ONE question per reply. When several things are still unknown, ask the single most important one now and leave the rest for later turns. Never bundle two asks into one message ("is it working, and how does it look?") — the user answers the last one and the other is silently lost.
+- ONE TOPIC per question, not just one question mark. "Tell me about its history, the lens, and the case it comes in." is three questions wearing one sentence; so is any list of things to describe. Pick the one that matters most to the negotiation and ask only that.
+- An imperative counts as a question. "Tell me X." / "Describe X." are asks — do not pair one with a second question in the same reply.
+- Ask for a FACT the user can state and that changes the negotiation: condition, defects, what's included, verification, why they're selling. Never ask for an open-ended narrative ("What is its story?", "What makes it special?") — the user does not know what to say and the answer cannot be negotiated with.
+- Keep each entry in memory.questions to ONE topic. Two topics in one string become one unanswerable question later.
 - CRITICAL: write the ENTIRE "reply" in English only — never output Korean (or any non-English) characters. Requirement/candidate questions may be provided to you in Korean; translate them into natural English before asking. The reply must contain zero Korean text.
 
 Return valid JSON only:
@@ -1009,6 +1229,7 @@ Return valid JSON only:
     "dealBreakers": string[],
     "mustEmphasize": string[],
     "notes": string[],
+    "categoryCriteria": [{ "checkId": string, "requirement": "required"|"optional", "stance": string }],
     "urgency": string optional,
     "riskStyle": "safe_first"|"balanced"|"lowest_price",
     "negotiationStyle": "defensive"|"balanced"|"aggressive",
@@ -1063,6 +1284,11 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     correlationId: "intelligence-demo-advisor-turn",
     maxTokens: 6000,
     timeoutMs: 90_000,
+    // G-PERF: the builder defaults to the global model (deepseek-v4-pro — a reasoning
+    // model whose quality matters for structured criteria extraction). Set
+    // BUILDER_LLM_MODEL (e.g. deepseek-v4-flash) to A/B a faster model on the builder
+    // path ONLY, without touching the negotiation-runtime model.
+    ...(process.env.BUILDER_LLM_MODEL ? { model: process.env.BUILDER_LLM_MODEL } : {}),
   });
 
   if (response.finish_reason === "length") {
@@ -1121,6 +1347,7 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
         memory,
         listings: input.listings,
         askedQuestions: input.previous_memory.questions,
+        learnedChecks: input.learned_checks ?? [],
       })
     : EMPTY_TAG_REQUIREMENT_PLAN;
   const finalCandidatePlan = applyRequirementGateToCandidatePlan(
@@ -1142,6 +1369,24 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     ...memory,
     questions: nextQuestions,
   };
+  // Phase G: reconcile category criteria deterministically — the taxonomy scaffold
+  // owns the check set + ids; only requirement/stance flow from the LLM (this turn)
+  // or previous memory. Keeps the structured layer trustworthy for Flow 2 (mirror)
+  // and Flow 3 (pause) regardless of what the LLM echoes back. When a turn arrives
+  // WITHOUT listing context (empty scaffold — e.g. the web sends listings:[] when the
+  // price is momentarily absent), PRESERVE the criteria captured on earlier turns
+  // instead of wiping them to [].
+  finalMemory.categoryCriteria =
+    criteriaScaffold.length > 0
+      ? reconcileCategoryCriteria(
+          criteriaScaffold,
+          parsed.memory.categoryCriteria,
+          input.previous_memory.categoryCriteria,
+        )
+      : // No scaffold this turn: preserve prior criteria, but still enforce the
+        // "only real taxonomy check ids" invariant so a client-crafted
+        // previous_memory can't smuggle fabricated criteria onto the agent.
+        input.previous_memory.categoryCriteria.filter((c) => isTaxonomyCheckId(c.checkId));
   finalMemory.structured = buildStructuredNegotiationAgentBuilderMemory({
     memory: finalMemory,
     previousMemory: input.previous_memory,
@@ -1159,13 +1404,34 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     nextQuestions = [conflictQuestion];
     finalMemory.questions = nextQuestions;
   }
+  // Flow 2 (deterministic mirroring): once nothing higher-priority is pending (no
+  // conflict, no blocking planner slot), FORCE the buyer to address each criterion the
+  // seller marked required — one per turn, ask-once. This makes mirroring reliable
+  // instead of relying on the LLM to volunteer the [SELLER REQUIRES] question, so the
+  // buyer actually sets a stance on every seller requirement before closing.
+  if (
+    usePlanner &&
+    !conflictQuestion &&
+    !finalRequirementPlan.hasBlockingMissingSlots &&
+    input.seller_required_criteria.length > 0
+  ) {
+    const mirrorQuestion = pickSellerMirrorQuestion(
+      input.seller_required_criteria,
+      finalMemory.categoryCriteria,
+      input.previous_memory.questions,
+    );
+    if (mirrorQuestion) {
+      nextQuestions = [mirrorQuestion];
+      finalMemory.questions = nextQuestions;
+    }
+  }
   finalMemory.structured.questionPlan = buildStructuredQuestionPlan({
     nextQuestions,
     requirementPlan: finalRequirementPlan,
     structured: finalMemory.structured,
   });
   const reply = !usePlanner
-    ? parsed.reply
+    ? ensureReplyInvitesMore(keepSingleQuestion(parsed.reply), input.side)
     : buildAdvisorReplyAfterPlanning({
         parsedReply: parsed.reply,
         nextQuestions,
@@ -1185,7 +1451,97 @@ ${usePlanner ? formatCandidatePlanForPrompt(initialCandidatePlan) : "None — no
     tag_requirements: finalRequirementPlan,
     advisor_plan: finalCandidatePlan,
     turn_cost: buildNegotiationAgentBuilderTurnCost(response.usage),
+    learning_observations: collectLearningObservations({
+      // ONLY the LLM's own generative questions. Planner-authored questions (universal
+      // buyer slots, hardcoded tag requirements, mirror/conflict prompts) are ours, not
+      // evidence of a taxonomy gap — recording them would promote "예산 범위는?" into a
+      // permanent "learned check" and then re-observe itself every turn.
+      questions: parsed.memory.questions ?? [],
+      listings: input.listings,
+      scaffold: criteriaScaffold,
+      plannedQuestions: finalRequirementPlan.requiredSlots.map((s) => s.questionKo),
+    }),
   };
+}
+
+/**
+ * Feature ②: long-tail questions the LLM had to invent because the static taxonomy has no
+ * check for them. Emitting them (rather than persisting here) keeps this service free of
+ * DB I/O — the route records them best-effort.
+ *
+ * The signal is ALLOWLISTED, not denylisted: only the model's own generative questions
+ * count, and anything the taxonomy scaffold or the requirement planner already asks is
+ * excluded. Recording our own planner questions would promote them into permanent
+ * "learned checks" that then re-observe themselves every turn.
+ *
+ * The observation is attributed to the MOST SPECIFIC taxonomy path the listing resolves
+ * (not the bare category), so a question learned from an iPhone is not served on every TV.
+ * The listing id is the distinct source, so one seller can never promote a check alone.
+ */
+export interface BuilderLearningObservation {
+  categoryPath: string;
+  questionKo: string;
+  sourceId: string;
+}
+
+function collectLearningObservations(args: {
+  questions: string[];
+  listings: Array<{ id: string; category?: string; tags: string[] }>;
+  scaffold: CategoryCriterion[];
+  plannedQuestions: string[];
+}): BuilderLearningObservation[] {
+  const listing = args.listings[0];
+  // No listing context → no category to attribute the question to.
+  if (!listing) return [];
+
+  // Where these questions get attributed. A listing that resolves the taxonomy uses its
+  // deepest node; one that resolves nothing (category "other" with unmodelled tags) falls
+  // back to tag scopes, so the genuinely uncategorised long tail — the case this feature
+  // exists for — accumulates instead of being dropped. Still nothing to key on (no tags
+  // at all, or only generic ones) → skip: a row no lookup can ever reach is write-only.
+  const listingTags = [listing.category, ...listing.tags].filter(
+    (t): t is string => typeof t === "string" && t.length > 0,
+  );
+  const scopes = learningWriteScopes(listingTags);
+  if (scopes.length === 0) return [];
+
+  // Questions we already ask — taxonomy scaffold (either framing) + planner slots.
+  // Compared on normalized CONTENT WORDS, not raw strings: exact matching let a
+  // reworded copy of the taxonomy's own lien gate through during e2e, differing from
+  // `buyerAskKo` only by "&"→"and" and "loan/lien"→"loan or lien". Promoting that would
+  // have made the buyer answer the same question twice, once per source.
+  const covered: string[][] = [];
+  const addCovered = (text: string | undefined) => {
+    const tokens = questionTokens(text ?? "");
+    if (tokens.length > 0) covered.push(tokens);
+  };
+  for (const c of args.scaffold) {
+    addCovered(c.questionKo);
+    addCovered(c.buyerAskKo);
+  }
+  for (const q of args.plannedQuestions) addCovered(q);
+
+  const isDuplicate = (tokens: string[], against: readonly string[][]) =>
+    against.some((known) => questionSimilarity(tokens, known) >= LEARNING_DUPLICATE_SIMILARITY);
+
+  const out: BuilderLearningObservation[] = [];
+  const seen: string[][] = [];
+  for (const q of args.questions) {
+    const question = q?.trim();
+    if (!question) continue;
+    const tokens = questionTokens(question);
+    // Nothing but framing words — no learnable check in it.
+    if (tokens.length === 0) continue;
+    if (isDuplicate(tokens, covered) || isDuplicate(tokens, seen)) continue;
+    seen.push(tokens);
+    // One row per (scope, question). For a taxonomy hit that is a single row; for the
+    // long tail it fans out across the candidate tags so the thresholds can pick the
+    // one that actually identifies the item.
+    for (const scope of scopes) {
+      out.push({ categoryPath: scope, questionKo: question, sourceId: listing.id });
+    }
+  }
+  return out;
 }
 
 function formatAdvisorListingsForPrompt(
@@ -3003,6 +3359,88 @@ function replyAsksQuestion(reply: string): boolean {
   return getQuestionWindows(reply).length > 0;
 }
 
+/**
+ * Openers that make a sentence a request for information even without a question mark.
+ * Anchored at the start so "I'll tell me"-style false matches can't happen.
+ */
+const ASK_IMPERATIVE = /^\s*(tell me|let me know|share|describe|walk me through|give me|list)\b/i;
+
+/**
+ * Whether a sentence asks the user for something — by question mark OR by imperative.
+ *
+ * Counting only question marks missed a real e2e turn: "Tell me what a buyer should
+ * appreciate — its history, a flawless lens, the case it nests in. What is its story?"
+ * has exactly one "?", so the one-question rule passed it through as a single ask when
+ * it was plainly two (and the first bundled three topics).
+ */
+function sentenceAsks(sentence: string): boolean {
+  return replyAsksQuestion(sentence) || ASK_IMPERATIVE.test(sentence);
+}
+
+/**
+ * Keep at most ONE ask per turn.
+ *
+ * The planner path already guarantees this: it strips the model's questions and appends
+ * exactly one planned slot question. The seller / standalone path returns the raw reply,
+ * so nothing stopped a turn like "…is it in flawless working order, or does it hold any
+ * fault? And its exterior — has time left any marks on it?" Two asks in one bubble get
+ * half-answered (people reply to the last one), and the unanswered half looks answered.
+ *
+ * "Ask" means `sentenceAsks`, not just a question mark — an imperative request carries
+ * the same weight to the reader and used to slip past this entirely.
+ *
+ * Later asks are dropped; non-ask sentences are kept, so the acknowledgement and context
+ * survive. What is dropped is not lost — the model still has it in memory.questions and
+ * can raise it on the next turn.
+ */
+function keepSingleQuestion(reply: string): string {
+  const sentences = reply.split(/(?<=[.!?。！？])\s+/);
+  let seenAsk = false;
+  const kept: string[] = [];
+  for (const sentence of sentences) {
+    if (sentenceAsks(sentence)) {
+      if (seenAsk) continue;
+      seenAsk = true;
+    }
+    kept.push(sentence);
+  }
+  const out = kept
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Never hand back an empty reply just because the split behaved unexpectedly.
+  return out || reply;
+}
+
+/**
+ * Guarantee the reply leaves the user with a next move.
+ *
+ * The requirement planner (`usePlanner`) only runs for a buyer WITH listing context, and
+ * it is what appends the next slot question to that side's replies. The seller path and
+ * the standalone buyer agent return the model's raw reply, so a turn could end on a flat
+ * "Got it, I'll hold firm on that." — the user has no idea whether more input is wanted
+ * or the setup is finished. The prompt now asks for an invitation on those branches too,
+ * but with no planner behind them there is nothing to catch a turn where the model
+ * ignores it, so enforce it here as well.
+ *
+ * Only appends when the reply asks nothing at all; a model that already ended on an ask
+ * is left untouched so we never stack two in one turn. That check has to match
+ * `keepSingleQuestion`'s notion of an ask — otherwise a reply ending in "Tell me what to
+ * emphasize." reads as ask-free here and gets a second ask bolted on.
+ */
+function ensureReplyInvitesMore(reply: string, side: "buyer" | "seller"): string {
+  const trimmed = reply.trim();
+  const asksSomething = trimmed
+    .split(/(?<=[.!?。！？])\s+/)
+    .some((sentence) => sentenceAsks(sentence));
+  if (!trimmed || asksSomething) return reply;
+  const invite =
+    side === "seller"
+      ? "Anything else you want it to emphasize or hold firm on?"
+      : "Anything else you want it to prioritize or avoid?";
+  return `${trimmed} ${invite}`;
+}
+
 function buildNoPreferenceAcknowledgement(
   memory: NegotiationAgentBuilderMemory,
   agentProfileName: string,
@@ -3113,6 +3551,7 @@ function _buildNegotiationAgentBuilderMemoryFromStoredCards(
     dealBreakers: [],
     mustEmphasize: [],
     notes: [],
+    categoryCriteria: [],
     riskStyle: "balanced",
     negotiationStyle: "balanced",
     openingTactic: "fair_market_anchor",

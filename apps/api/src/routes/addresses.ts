@@ -1,10 +1,10 @@
+import type { Database } from "@haggle/db";
+import { and, eq, orderAddresses, userSavedAddresses } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { eq, and, orderAddresses, userSavedAddresses, commerceOrders } from "@haggle/db";
-import { requireAuth } from "../middleware/require-auth.js";
-import { createOwnershipMiddleware } from "../middleware/ownership.js";
 import { INPUT_LIMITS } from "../lib/input-limits.js";
+import { createOwnershipMiddleware } from "../middleware/ownership.js";
+import { requireAuth } from "../middleware/require-auth.js";
 
 // ---------------------------------------------------------------------------
 // Validation schemas
@@ -45,7 +45,7 @@ const savedAddressSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /** Load a commerce order and verify the requesting user is buyer or seller. */
-async function loadOrderWithOwnership(
+async function _loadOrderWithOwnership(
   db: Database,
   orderId: string,
   userId: string,
@@ -87,8 +87,11 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
       const { orderId } = request.params;
 
       // Order already verified by ownership middleware
-      const order = (request as unknown as Record<string, unknown>).orderResource as
-        { id: string; buyerId: string; sellerId: string };
+      const order = (request as unknown as Record<string, unknown>).orderResource as {
+        id: string;
+        buyerId: string;
+        sellerId: string;
+      };
 
       // Ownership check: buyer can only set buyer address, seller can only set seller address
       const userRole = order.buyerId === userId ? "buyer" : "seller";
@@ -155,7 +158,7 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
         .from(orderAddresses)
         .where(eq(orderAddresses.orderId, orderId));
 
-      const result: Record<string, typeof rows[number]> = {};
+      const result: Record<string, (typeof rows)[number]> = {};
       for (const row of rows) {
         result[row.role] = row;
       }
@@ -166,67 +169,54 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
 
   // ─── GET /users/me/addresses ─────────────────────────────────────
   // Get user's saved address book.
-  app.get(
-    "/users/me/addresses",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const userId = request.user!.id;
+  app.get("/users/me/addresses", { preHandler: [requireAuth] }, async (request, reply) => {
+    const userId = request.user!.id;
 
-      const addresses = await db
-        .select()
-        .from(userSavedAddresses)
-        .where(eq(userSavedAddresses.userId, userId));
+    const addresses = await db
+      .select()
+      .from(userSavedAddresses)
+      .where(eq(userSavedAddresses.userId, userId));
 
-      return reply.send({ addresses });
-    },
-  );
+    return reply.send({ addresses });
+  });
 
   // ─── POST /users/me/addresses ────────────────────────────────────
   // Add to address book.
-  app.post(
-    "/users/me/addresses",
-    { preHandler: [requireAuth] },
-    async (request, reply) => {
-      const parsed = savedAddressSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_ADDRESS", issues: parsed.error.issues });
-      }
+  app.post("/users/me/addresses", { preHandler: [requireAuth] }, async (request, reply) => {
+    const parsed = savedAddressSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "INVALID_ADDRESS", issues: parsed.error.issues });
+    }
 
-      const userId = request.user!.id;
+    const userId = request.user!.id;
 
-      // If is_default=true, unset other defaults first
-      if (parsed.data.is_default) {
-        await db
-          .update(userSavedAddresses)
-          .set({ isDefault: false })
-          .where(
-            and(
-              eq(userSavedAddresses.userId, userId),
-              eq(userSavedAddresses.isDefault, true),
-            ),
-          );
-      }
+    // If is_default=true, unset other defaults first
+    if (parsed.data.is_default) {
+      await db
+        .update(userSavedAddresses)
+        .set({ isDefault: false })
+        .where(and(eq(userSavedAddresses.userId, userId), eq(userSavedAddresses.isDefault, true)));
+    }
 
-      const [address] = await db
-        .insert(userSavedAddresses)
-        .values({
-          userId,
-          label: parsed.data.label ?? "home",
-          name: parsed.data.name,
-          street1: parsed.data.street1,
-          street2: parsed.data.street2 ?? null,
-          city: parsed.data.city,
-          state: parsed.data.state,
-          zip: parsed.data.zip,
-          country: parsed.data.country,
-          phone: parsed.data.phone ?? null,
-          isDefault: parsed.data.is_default ?? false,
-        })
-        .returning();
+    const [address] = await db
+      .insert(userSavedAddresses)
+      .values({
+        userId,
+        label: parsed.data.label ?? "home",
+        name: parsed.data.name,
+        street1: parsed.data.street1,
+        street2: parsed.data.street2 ?? null,
+        city: parsed.data.city,
+        state: parsed.data.state,
+        zip: parsed.data.zip,
+        country: parsed.data.country,
+        phone: parsed.data.phone ?? null,
+        isDefault: parsed.data.is_default ?? false,
+      })
+      .returning();
 
-      return reply.code(201).send({ address });
-    },
-  );
+    return reply.code(201).send({ address });
+  });
 
   // ─── PUT /users/me/addresses/:id ─────────────────────────────────
   // Update saved address.
@@ -259,10 +249,7 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
           .update(userSavedAddresses)
           .set({ isDefault: false })
           .where(
-            and(
-              eq(userSavedAddresses.userId, userId),
-              eq(userSavedAddresses.isDefault, true),
-            ),
+            and(eq(userSavedAddresses.userId, userId), eq(userSavedAddresses.isDefault, true)),
           );
       }
 
@@ -307,9 +294,7 @@ export function registerAddressRoutes(app: FastifyInstance, db: Database) {
         return reply.code(403).send({ error: "FORBIDDEN" });
       }
 
-      await db
-        .delete(userSavedAddresses)
-        .where(eq(userSavedAddresses.id, id));
+      await db.delete(userSavedAddresses).where(eq(userSavedAddresses.id, id));
 
       return reply.code(204).send();
     },

@@ -18,6 +18,7 @@ export default defineConfig({
     "./dist/schema/buddy-trades.js",
     "./dist/schema/buyer-interest-vectors.js",
     "./dist/schema/buyer-listings.js",
+    "./dist/schema/category-check-learning.js",
     "./dist/schema/category-relatedness.js",
     "./dist/schema/chain-sync.js",
     "./dist/schema/commerce-orders.js",

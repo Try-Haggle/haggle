@@ -5,17 +5,18 @@
  * These routes create mock data so the frontend can exercise
  * the real API endpoints without needing a full negotiation session.
  */
-import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+
 import type { Database } from "@haggle/db";
 import { commerceOrders, settlementApprovals } from "@haggle/db";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
+import { getDisputeByOrderId } from "../services/dispute-record.service.js";
 import {
   getCommerceOrderByOrderId,
   getPaymentIntentByOrderId,
 } from "../services/payment-record.service.js";
 import { getShipmentByOrderId } from "../services/shipment-record.service.js";
-import { getDisputeByOrderId } from "../services/dispute-record.service.js";
 
 const createDemoOrderSchema = z.object({
   amount_minor: z.number().int().positive().default(45000),
@@ -121,7 +122,7 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
       order: {
         id: order.id,
         status: order.status,
-        amountMinor: parseInt(String(order.amountMinor)),
+        amountMinor: parseInt(String(order.amountMinor), 10),
         currency: order.currency,
         buyerId: order.buyerId,
         sellerId: order.sellerId,
@@ -150,14 +151,16 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
       return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
     }
     if (!canAccessOrder(request.user, order)) {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+      return reply
+        .code(403)
+        .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
     }
 
     return reply.send({
       order: {
         id: order.id,
         status: order.status,
-        amountMinor: parseInt(String(order.amountMinor)),
+        amountMinor: parseInt(String(order.amountMinor), 10),
         currency: order.currency,
         buyerId: order.buyerId,
         sellerId: order.sellerId,
@@ -180,13 +183,15 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
       return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
     }
     if (!canAccessOrder(request.user, order)) {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+      return reply
+        .code(403)
+        .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
     }
     return reply.send({
       order: {
         id: order.id,
         status: order.status,
-        amountMinor: parseInt(String(order.amountMinor)),
+        amountMinor: parseInt(String(order.amountMinor), 10),
         currency: order.currency,
         buyerId: order.buyerId,
         sellerId: order.sellerId,
@@ -206,7 +211,9 @@ export function registerDemoE2ERoutes(app: FastifyInstance, db: Database) {
       return reply.code(404).send({ error: "ORDER_NOT_FOUND" });
     }
     if (!canAccessOrder(request.user, order)) {
-      return reply.code(403).send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
+      return reply
+        .code(403)
+        .send({ error: "FORBIDDEN", message: "You do not have access to this resource" });
     }
 
     const payment = await getPaymentIntentByOrderId(db, orderId);

@@ -12,15 +12,7 @@
  * All mutations are guarded: only PENDING suggestions can transition.
  */
 
-import {
-  type Database,
-  tagSuggestions,
-  tags,
-  and,
-  asc,
-  desc,
-  eq,
-} from "@haggle/db";
+import { asc, type Database, desc, eq, tagSuggestions, tags } from "@haggle/db";
 
 export type SuggestionStatus = "PENDING" | "APPROVED" | "REJECTED" | "MERGED";
 
@@ -41,9 +33,7 @@ export async function listSuggestions(
   const offset = options.offset ?? 0;
   const orderBy = options.orderBy ?? "occurrence_desc";
 
-  const whereClause = options.status
-    ? eq(tagSuggestions.status, options.status)
-    : undefined;
+  const whereClause = options.status ? eq(tagSuggestions.status, options.status) : undefined;
 
   const orderExpr =
     orderBy === "occurrence_desc"
@@ -65,11 +55,7 @@ export async function getSuggestionById(
   db: Database,
   id: string,
 ): Promise<typeof tagSuggestions.$inferSelect | null> {
-  const rows = await db
-    .select()
-    .from(tagSuggestions)
-    .where(eq(tagSuggestions.id, id))
-    .limit(1);
+  const rows = await db.select().from(tagSuggestions).where(eq(tagSuggestions.id, id)).limit(1);
   return rows[0] ?? null;
 }
 
@@ -94,9 +80,7 @@ export async function approveSuggestion(
     category: string;
     initialStatus?: "CANDIDATE" | "EMERGING" | "OFFICIAL";
   },
-): Promise<
-  { ok: true; tagId: string; merged: boolean } | { ok: false; error: string }
-> {
+): Promise<{ ok: true; tagId: string; merged: boolean } | { ok: false; error: string }> {
   const suggestion = await getSuggestionById(db, suggestionId);
   if (!suggestion) return { ok: false, error: "Suggestion not found" };
   if (suggestion.status !== "PENDING") {

@@ -5,9 +5,10 @@
  * Supports template mode (existing renderer) and LLM mode (future).
  */
 
-import type { RespondInput, RespondOutput } from '../pipeline/types.js';
-import { TemplateMessageRenderer } from '../rendering/message-renderer.js';
-import { detectLanguage, type SupportedLocale } from '../rendering/language-detect.js';
+import type { RespondInput, RespondOutput } from "../pipeline/types.js";
+import { detectLanguage, type SupportedLocale } from "../rendering/language-detect.js";
+import { TemplateMessageRenderer } from "../rendering/message-renderer.js";
+import { isDealClosingAction } from "../types.js";
 
 const templateRenderer = new TemplateMessageRenderer();
 
@@ -19,15 +20,8 @@ const templateRenderer = new TemplateMessageRenderer();
  * - 'llm': Future LLM-generated messages (falls back to template for now)
  */
 export function respond(input: RespondInput): RespondOutput {
-  const { validated, memory, config } = input;
-  const mode = config.modes.RESPOND;
-
-  if (mode === 'llm') {
-    // Future: LLM message generation
-    // For now, fall back to template
-    return respondWithTemplate(input);
-  }
-
+  // Both modes currently render via the template path (LLM message generation is a
+  // future mode); routing is kept explicit so the seam stays visible.
   return respondWithTemplate(input);
 }
 
@@ -48,22 +42,22 @@ export function respond(input: RespondInput): RespondOutput {
  *   - English 판매자 → English 응답
  *   - Internal processing always English (token savings)
  */
-function resolveLocale(memory: import('../types.js').CoreMemory): SupportedLocale {
+function resolveLocale(memory: import("../types.js").CoreMemory): SupportedLocale {
   // Check if session has a stored locale
   const sessionAny = memory.session as Record<string, unknown>;
-  if (typeof sessionAny.detected_locale === 'string') {
+  if (typeof sessionAny.detected_locale === "string") {
     return sessionAny.detected_locale as SupportedLocale;
   }
 
   // Auto-detect from the last opponent message if available
-  if (typeof sessionAny.last_opponent_message === 'string') {
+  if (typeof sessionAny.last_opponent_message === "string") {
     const detection = detectLanguage(sessionAny.last_opponent_message as string);
     if (detection.confidence > 0.5) {
       return detection.locale;
     }
   }
 
-  return 'en';
+  return "en";
 }
 
 function respondWithTemplate(input: RespondInput): RespondOutput {
@@ -76,8 +70,11 @@ function respondWithTemplate(input: RespondInput): RespondOutput {
 
   // Prefer the LLM-authored message when one survived validation. Otherwise
   // fall back to the deterministic template renderer. The guards below catch
-  // obvious failure modes (price not echoed, prompt-injection attempts, way
-  // too long) — anything more aggressive is the referee's job, not ours.
+  // obvious failure modes (prompt-injection, too long, and — when closing — a message
+  // that confirms a different price than the agreed one). The pipeline pins
+  // `final_decision.price` to the offer being accepted before this stage runs, and the
+  // template renders that same value, so the fallback states the real number. Anything
+  // more aggressive is the referee's job.
   const llmMessage = pickValidLLMMessage(final_decision);
   const message =
     llmMessage ??
@@ -124,29 +121,60 @@ const INJECTION_PATTERNS = [
  * safe to forward to the counterparty, otherwise null (template fallback).
  *
  * What we accept: a short, single-block string with no obvious prompt-injection
- * vectors. What we reject: anything missing, anything over MAX_LLM_MESSAGE_CHARS,
- * anything that looks like a code fence or a jailbreak attempt.
+ * vectors that states the correct price. What we reject: anything missing, over
+ * MAX_LLM_MESSAGE_CHARS, a code fence / jailbreak attempt, OR (when the decision
+ * carries a price) a message that does not state that exact price — which prevents
+ * the LLM from confirming a deal at a number that isn't the agreed one.
  */
-function pickValidLLMMessage(decision: import('../types.js').EngineDecision): string | null {
+function pickValidLLMMessage(decision: import("../types.js").EngineDecision): string | null {
   const raw = decision.message;
-  if (typeof raw !== 'string') return null;
+  if (typeof raw !== "string") return null;
   const text = raw.trim();
   if (text.length === 0) return null;
   if (text.length > MAX_LLM_MESSAGE_CHARS) return null;
   for (const pat of INJECTION_PATTERNS) {
     if (pat.test(text)) return null;
   }
+  // Only enforce the price echo when the deal is closing — a confirmation must state
+  // the agreed number, and this is where the LLM tends to echo its own last offer
+  // instead. COUNTER/others keep the LLM's phrasing untouched (they reliably echo
+  // their own counter). CONFIRM must be covered too: the CLOSING-phase skills emit
+  // CONFIRM rather than ACCEPT, so an ACCEPT-only check never fired on a real close.
+  if (isDealClosingAction(decision.action) && !messageStatesPrice(text, decision.price)) {
+    return null;
+  }
   return text;
+}
+
+/**
+ * Whether `text` states the given price (in minor units) as its own figure.
+ *
+ * Compares by VALUE, not by string shape: every number in the message is parsed to
+ * minor units and matched against the price, so "$217.75", "217.75" and "$13,400" all
+ * work, and "$215.00" satisfies a price of 21500. Building a regex from the dollar
+ * amount instead — which is what this did first — rounded 21775 to "218", so it threw
+ * away the message that named the price EXACTLY right and would have accepted one off
+ * by 25c. That is the same class of mismatch this guard exists to prevent.
+ *
+ * When there is no meaningful price to state (e.g. REJECT), returns true.
+ */
+function messageStatesPrice(text: string, priceMinor: number | undefined): boolean {
+  if (priceMinor == null || priceMinor <= 0) return true;
+  const figures = text.match(/\d[\d,]*(?:\.\d+)?/g);
+  if (!figures) return false;
+  return figures.some(
+    (raw) => Math.round(Number(raw.replace(/,/g, "")) * 100) === Math.round(priceMinor),
+  );
 }
 
 /**
  * Resolve the counterparty's locale.
  * Used to generate a second message in their language.
  */
-function resolveCounterpartyLocale(memory: import('../types.js').CoreMemory): SupportedLocale {
+function resolveCounterpartyLocale(memory: import("../types.js").CoreMemory): SupportedLocale {
   const sessionAny = memory.session as Record<string, unknown>;
-  if (typeof sessionAny.counterparty_locale === 'string') {
+  if (typeof sessionAny.counterparty_locale === "string") {
     return sessionAny.counterparty_locale as SupportedLocale;
   }
-  return 'en'; // default: counterparty uses English
+  return "en"; // default: counterparty uses English
 }

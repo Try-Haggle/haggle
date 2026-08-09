@@ -11,7 +11,7 @@
  * Step 50 — see handoff/ARCHITECT-BRIEF.md and docs/features/tag-system-design.md §3.1
  */
 
-import { and, eq, sql, tagEdges, type Database } from "@haggle/db";
+import { and, type Database, eq, sql, tagEdges } from "@haggle/db";
 
 export const MAX_DEPTH = 32;
 
@@ -31,11 +31,7 @@ function isUniqueViolation(err: unknown): boolean {
   const e = err as { code?: unknown; message?: unknown; cause?: unknown };
   if (e.code === "23505") return true;
   // Some drivers wrap the original error in `.cause`.
-  if (
-    e.cause &&
-    typeof e.cause === "object" &&
-    (e.cause as { code?: unknown }).code === "23505"
-  ) {
+  if (e.cause && typeof e.cause === "object" && (e.cause as { code?: unknown }).code === "23505") {
     return true;
   }
   if (typeof e.message === "string" && e.message.includes("tag_edges_unique")) {
@@ -56,10 +52,7 @@ function uniqueStrings(values: Iterable<string>): string[] {
  * Return all ancestor tag ids of `tagId` (transitive parents), up to MAX_DEPTH.
  * Does NOT include `tagId` itself.
  */
-export async function getAncestors(
-  db: Database,
-  tagId: string,
-): Promise<string[]> {
+export async function getAncestors(db: Database, tagId: string): Promise<string[]> {
   const result = await db.execute(sql`
     WITH RECURSIVE ancestors AS (
       SELECT parent_tag_id AS ancestor_id, 1 AS depth
@@ -81,10 +74,7 @@ export async function getAncestors(
  * Return all descendant tag ids of `tagId` (transitive children), up to MAX_DEPTH.
  * Does NOT include `tagId` itself.
  */
-export async function getDescendants(
-  db: Database,
-  tagId: string,
-): Promise<string[]> {
+export async function getDescendants(db: Database, tagId: string): Promise<string[]> {
   const result = await db.execute(sql`
     WITH RECURSIVE descendants AS (
       SELECT child_tag_id AS descendant_id, 1 AS depth
@@ -105,10 +95,7 @@ export async function getDescendants(
 /**
  * Direct parents (one hop).
  */
-export async function getParents(
-  db: Database,
-  tagId: string,
-): Promise<string[]> {
+export async function getParents(db: Database, tagId: string): Promise<string[]> {
   const rows = await db
     .select({ parentTagId: tagEdges.parentTagId })
     .from(tagEdges)
@@ -119,10 +106,7 @@ export async function getParents(
 /**
  * Direct children (one hop).
  */
-export async function getChildren(
-  db: Database,
-  tagId: string,
-): Promise<string[]> {
+export async function getChildren(db: Database, tagId: string): Promise<string[]> {
   const rows = await db
     .select({ childTagId: tagEdges.childTagId })
     .from(tagEdges)
@@ -193,12 +177,7 @@ export async function removeEdge(
 ): Promise<void> {
   await db
     .delete(tagEdges)
-    .where(
-      and(
-        eq(tagEdges.parentTagId, parentTagId),
-        eq(tagEdges.childTagId, childTagId),
-      ),
-    );
+    .where(and(eq(tagEdges.parentTagId, parentTagId), eq(tagEdges.childTagId, childTagId)));
 }
 
 // ---------------------------------------------------------------------------
@@ -211,10 +190,7 @@ export async function removeEdge(
  *
  * Used by the L7 step of the placement pipeline.
  */
-export async function pruneAncestorsFromSet(
-  db: Database,
-  tagIds: string[],
-): Promise<string[]> {
+export async function pruneAncestorsFromSet(db: Database, tagIds: string[]): Promise<string[]> {
   const unique = uniqueStrings(tagIds);
   if (unique.length <= 1) return unique;
 
@@ -236,16 +212,11 @@ export async function pruneAncestorsFromSet(
  * Given a set of tag ids, expand each to include all ancestors.
  * Returns deduplicated union. Used for search expansion.
  */
-export async function expandWithAncestors(
-  db: Database,
-  tagIds: string[],
-): Promise<string[]> {
+export async function expandWithAncestors(db: Database, tagIds: string[]): Promise<string[]> {
   const unique = uniqueStrings(tagIds);
   if (unique.length === 0) return [];
 
-  const ancestorLists = await Promise.all(
-    unique.map((id) => getAncestors(db, id)),
-  );
+  const ancestorLists = await Promise.all(unique.map((id) => getAncestors(db, id)));
 
   const out = new Set<string>(unique);
   for (const list of ancestorLists) {

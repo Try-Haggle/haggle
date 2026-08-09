@@ -28,11 +28,13 @@ export function validateHnpProtocolOrder(
 ): HnpProtocolGuardResult {
   const protocolRounds = rounds
     .map((round) => ({ round, hnp: extractHnpProtocol(round.metadata) }))
-    .filter((entry): entry is { round: HnpRoundProtocolRecord; hnp: ExtractedHnpProtocol } => Boolean(entry.hnp));
+    .filter((entry): entry is { round: HnpRoundProtocolRecord; hnp: ExtractedHnpProtocol } =>
+      Boolean(entry.hnp),
+    );
 
   const sameIdempotency = protocolRounds.some(
-    ({ round, hnp }) => round.idempotencyKey === incoming.idempotencyKey
-      && sameProtocolIdentity(hnp, incoming),
+    ({ round, hnp }) =>
+      round.idempotencyKey === incoming.idempotencyKey && sameProtocolIdentity(hnp, incoming),
   );
   if (sameIdempotency) return { ok: true };
 
@@ -48,9 +50,7 @@ export function validateHnpProtocolOrder(
     };
   }
 
-  const duplicateMessage = protocolRounds.find(
-    ({ hnp }) => hnp.messageId === incoming.messageId,
-  );
+  const duplicateMessage = protocolRounds.find(({ hnp }) => hnp.messageId === incoming.messageId);
   if (duplicateMessage) {
     return {
       ok: false,
@@ -60,10 +60,7 @@ export function validateHnpProtocolOrder(
     };
   }
 
-  const maxSequence = protocolRounds.reduce(
-    (max, { hnp }) => Math.max(max, hnp.sequence),
-    -1,
-  );
+  const maxSequence = protocolRounds.reduce((max, { hnp }) => Math.max(max, hnp.sequence), -1);
   if (incoming.sequence <= maxSequence) {
     return {
       ok: false,
@@ -97,25 +94,32 @@ function extractHnpProtocol(metadata: Record<string, unknown> | null): Extracted
   return {
     messageId: record.messageId,
     sequence: record.sequence,
-    messageType: typeof record.type === "string"
-      ? record.type
-      : typeof record.messageType === "string"
-        ? record.messageType
-        : undefined,
+    messageType:
+      typeof record.type === "string"
+        ? record.type
+        : typeof record.messageType === "string"
+          ? record.messageType
+          : undefined,
     proposalHash: typeof record.proposalHash === "string" ? record.proposalHash : undefined,
-    acceptedProposalHash: typeof record.acceptedProposalHash === "string" ? record.acceptedProposalHash : undefined,
+    acceptedProposalHash:
+      typeof record.acceptedProposalHash === "string" ? record.acceptedProposalHash : undefined,
   };
 }
 
-function sameProtocolIdentity(stored: ExtractedHnpProtocol, incoming: HnpProtocolIdentity): boolean {
+function sameProtocolIdentity(
+  stored: ExtractedHnpProtocol,
+  incoming: HnpProtocolIdentity,
+): boolean {
   if (stored.messageId !== incoming.messageId) return false;
   if (stored.sequence !== incoming.sequence) return false;
-  if (incoming.messageType && stored.messageType && incoming.messageType !== stored.messageType) return false;
-  if (incoming.proposalHash && stored.proposalHash && incoming.proposalHash !== stored.proposalHash) return false;
+  if (incoming.messageType && stored.messageType && incoming.messageType !== stored.messageType)
+    return false;
+  if (incoming.proposalHash && stored.proposalHash && incoming.proposalHash !== stored.proposalHash)
+    return false;
   if (
-    incoming.acceptedProposalHash
-    && stored.acceptedProposalHash
-    && incoming.acceptedProposalHash !== stored.acceptedProposalHash
+    incoming.acceptedProposalHash &&
+    stored.acceptedProposalHash &&
+    incoming.acceptedProposalHash !== stored.acceptedProposalHash
   ) {
     return false;
   }

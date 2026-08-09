@@ -1,11 +1,4 @@
-import {
-  eq,
-  and,
-  tags,
-  expertTags,
-  tagMergeLog,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, expertTags, tagMergeLog, tags } from "@haggle/db";
 
 type TagStatus = "CANDIDATE" | "EMERGING" | "OFFICIAL" | "DEPRECATED";
 type MergeReason = "levenshtein" | "synonym" | "manual";
@@ -15,11 +8,7 @@ type MergeReason = "levenshtein" | "synonym" | "manual";
 // ---------------------------------------------------------------------------
 
 export async function getTagById(db: Database, tagId: string) {
-  const rows = await db
-    .select()
-    .from(tags)
-    .where(eq(tags.id, tagId))
-    .limit(1);
+  const rows = await db.select().from(tags).where(eq(tags.id, tagId)).limit(1);
 
   return rows[0] ?? null;
 }
@@ -32,21 +21,13 @@ export async function getTagByNormalizedName(
   const rows = await db
     .select()
     .from(tags)
-    .where(
-      and(
-        eq(tags.normalizedName, normalizedName),
-        eq(tags.category, category),
-      ),
-    )
+    .where(and(eq(tags.normalizedName, normalizedName), eq(tags.category, category)))
     .limit(1);
 
   return rows[0] ?? null;
 }
 
-export async function listTags(
-  db: Database,
-  filters?: { status?: string; category?: string },
-) {
+export async function listTags(db: Database, filters?: { status?: string; category?: string }) {
   const conditions = [];
 
   if (filters?.status) {
@@ -115,19 +96,13 @@ export async function updateTag(
 // ---------------------------------------------------------------------------
 
 export async function getExpertTags(db: Database, tagId: string) {
-  const rows = await db
-    .select()
-    .from(expertTags)
-    .where(eq(expertTags.tagId, tagId));
+  const rows = await db.select().from(expertTags).where(eq(expertTags.tagId, tagId));
 
   return rows;
 }
 
 export async function getExpertTagsByUser(db: Database, userId: string) {
-  const rows = await db
-    .select()
-    .from(expertTags)
-    .where(eq(expertTags.userId, userId));
+  const rows = await db.select().from(expertTags).where(eq(expertTags.userId, userId));
 
   return rows;
 }
@@ -146,12 +121,7 @@ export async function upsertExpertTag(
   const existing = await db
     .select()
     .from(expertTags)
-    .where(
-      and(
-        eq(expertTags.userId, data.userId),
-        eq(expertTags.tagId, data.tagId),
-      ),
-    )
+    .where(and(eq(expertTags.userId, data.userId), eq(expertTags.tagId, data.tagId)))
     .limit(1);
 
   if (existing[0]) {

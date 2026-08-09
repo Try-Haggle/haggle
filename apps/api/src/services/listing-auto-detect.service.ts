@@ -11,11 +11,9 @@
  * as `{ ok: false, error }`.
  */
 
+import { getTaxonomyVocabulary } from "@haggle/shared";
 import OpenAI from "openai";
-import {
-  withLLMTelemetry,
-  usageExtractors,
-} from "../lib/llm-telemetry.js";
+import { usageExtractors, withLLMTelemetry } from "../lib/llm-telemetry.js";
 
 export type ListingSubtype = "phone" | null;
 
@@ -69,6 +67,14 @@ export interface OpenAIClientLike {
   };
 }
 
+/**
+ * Controlled item-type vocabulary from the negotiation taxonomy. The tags we get back are
+ * what `resolveChecks` uses to reach an item's safety gates (mattress → bed bugs,
+ * car-seat → expiration/crash, iphone → IMEI), so the tagger is steered to name the item
+ * using one of these terms. Descriptive attributes stay free-form.
+ */
+const ITEM_TYPE_VOCABULARY = getTaxonomyVocabulary();
+
 const SYSTEM_PROMPT = `You analyze marketplace listings. Given a product photo, title, and optional description, classify the item and propose descriptive tags.
 
 Subtype rules:
@@ -81,7 +87,14 @@ Tag rules:
 - focus on objectively visible / known attributes: model/generation, storage, color, condition cues, included accessories
 - do NOT invent specs you cannot verify from the photo + text
 - do NOT include carrier lock status (unlocked, locked, carrier-locked, etc.) — this is collected separately
-- prefer specific over generic ("iphone-15-pro" over just "smartphone")`;
+- prefer specific over generic ("iphone-15-pro" over just "smartphone")
+
+ITEM-TYPE TAG (important):
+- In addition to the descriptive tags, include ONE tag naming what the item IS, chosen from this list when one genuinely applies:
+${ITEM_TYPE_VOCABULARY.join(", ")}
+- Pick the most specific match (e.g. "iphone" over "phones", "mattress" over "furniture").
+- If nothing in the list genuinely applies, omit it — never force a match.
+- ACCESSORY RULE: a case/cover/stand/mount/charger/cable/strap FOR an item is NOT that item. For "iPhone case" do NOT emit "iphone"; for "TV stand" do NOT emit "television".`;
 
 function buildUserPrompt(input: AutoDetectInput): string {
   const parts = [
@@ -97,13 +110,15 @@ export async function autoDetectListing(
   input: AutoDetectInput,
   openai?: OpenAIClientLike,
 ): Promise<AutoDetectResult> {
-  const modelVersion =
-    process.env.AUTO_DETECT_MODEL || AUTO_DETECT_MODEL_DEFAULT;
+  const modelVersion = process.env.AUTO_DETECT_MODEL || AUTO_DETECT_MODEL_DEFAULT;
 
-  const client: OpenAIClientLike = openai ?? (getOpenAI() as OpenAIClientLike);
   const startedAt = Date.now();
 
   try {
+    // Constructed INSIDE the try: the OpenAI constructor throws when OPENAI_API_KEY is
+    // missing, and this service's contract is "never throws" — the caller degrades on
+    // `{ ok: false }` and still applies deterministic tag enrichment.
+    const client: OpenAIClientLike = openai ?? (getOpenAI() as OpenAIClientLike);
     const resp = await withLLMTelemetry(
       {
         service: "openai.chat",

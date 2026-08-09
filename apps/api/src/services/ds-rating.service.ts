@@ -1,11 +1,4 @@
-import {
-  eq,
-  and,
-  inArray,
-  dsRatings,
-  dsTagSpecializations,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, dsRatings, dsTagSpecializations, eq, inArray } from "@haggle/db";
 
 type DSTier = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM" | "DIAMOND";
 const TIER_ORDER: readonly DSTier[] = ["BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"];

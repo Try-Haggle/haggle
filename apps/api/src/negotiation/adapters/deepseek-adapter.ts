@@ -425,7 +425,7 @@ function renderTurnSpeaker(turn: ConversationTurn, myRole: "buyer" | "seller"): 
   return `${speakerLabel}${priceStr}`;
 }
 
-function encodeStrategyContext(memory: CoreMemory): string | null {
+export function encodeStrategyContext(memory: CoreMemory): string | null {
   const sc = memory.strategy_context;
   if (!sc) return null;
   const lines: string[] = ["STRATEGY:"];
@@ -452,6 +452,43 @@ function encodeStrategyContext(memory: CoreMemory): string | null {
     pushIfArray("mustHave", a.mustHave);
     pushIfArray("avoid", a.avoid);
     pushIfArray("notes", a.notes);
+    // Phase G: the acting side's category criteria. REQUIRED ones are hard lines the
+    // agent must hold; OPTIONAL ones that carry a stated stance (e.g. a tapped mileage
+    // range) are soft preferences that should still shape the negotiation — without
+    // this, a multiple-choice pick like "max 100,000 miles" would be stored but never
+    // reach the agent. Both surface with the party's own stance. Backward-compatible:
+    // pre-Phase-G memory has none.
+    if (Array.isArray(a.categoryCriteria)) {
+      const hasStance = (c: { stance?: unknown }) =>
+        typeof c.stance === "string" && c.stance.length > 0;
+      const render = (c: { questionKo?: unknown; stance?: unknown }) => {
+        const label = typeof c.questionKo === "string" ? c.questionKo : "";
+        const stance = hasStance(c) ? ` = ${c.stance as string}` : "";
+        return `${label}${stance}`.trim();
+      };
+      const criteria = a.categoryCriteria.filter(
+        (c): c is { questionKo?: unknown; stance?: unknown; requirement?: unknown } =>
+          !!c && typeof c === "object",
+      );
+      // Hard/required gates are load-bearing deal-breakers — NEVER silently truncate
+      // them (a multi-category or escalated item can exceed 8; the pause path is uncapped,
+      // so a low cap here would drop a gate from the agent's reasoning while it still
+      // fires a pause). Cap generously; only soft preferences get the tight cap below.
+      const required = criteria
+        .filter((c) => c.requirement === "required")
+        .map(render)
+        .filter((s) => s.length > 0)
+        .slice(0, 24);
+      if (required.length > 0) lines.push(`  requiredCriteria: ${required.join("; ")}`);
+      // Optional criteria WITH a stated stance = soft preferences. Waivers ("no X
+      // preference") carry no stance-of-substance but ride along as neutral context.
+      const preferences = criteria
+        .filter((c) => c.requirement !== "required" && hasStance(c))
+        .map(render)
+        .filter((s) => s.length > 0)
+        .slice(0, 8);
+      if (preferences.length > 0) lines.push(`  preferences: ${preferences.join("; ")}`);
+    }
   }
   return lines.length > 1 ? lines.join("\n") : null;
 }

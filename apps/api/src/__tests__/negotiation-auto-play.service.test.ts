@@ -73,6 +73,34 @@ describe("negotiation auto-play", () => {
     });
   });
 
+  it("preserves the buyer's standing offer across a seller-criteria HOLD round (no seller-price echo)", () => {
+    // A Phase G pause persists a HOLD round. With the fix it carries the buyer's OWN
+    // standing offer as counterPriceMinor, so the next buyer offer uses that — NOT the
+    // seller's incoming priceminor (which would collapse the deal to the seller's ask).
+    const buyerStanding = 90_000;
+    const sellerIncoming = 150_000;
+    const plan = planNegotiationAutoPlayRound(
+      {
+        status: "ACTIVE",
+        currentRound: 2,
+        role: "BUYER",
+        negotiationAgentSnapshot: setup.buyerSnapshot,
+      },
+      [
+        {
+          roundNo: 2,
+          senderRole: "SELLER",
+          priceminor: String(sellerIncoming),
+          counterPriceMinor: String(buyerStanding), // carried by persistHoldRound
+          message: "Should the agent only consider clean-title vehicles?",
+        },
+      ],
+      { ...context, buyerTargetMinor: 80_000 },
+    );
+    expect(plan?.senderRole).toBe("BUYER");
+    expect(plan?.offerPriceMinor).toBe(buyerStanding); // NOT sellerIncoming (150_000)
+  });
+
   it("stops planning at a terminal status or round limit", () => {
     const base = {
       currentRound: 8,

@@ -89,10 +89,54 @@ export function registerNegotiationAgentRoutes(app: FastifyInstance, db: Databas
     const userId = request.user?.id ?? parsed.data.user_id ?? null;
 
     try {
+      // Feature ②: serve checks already LEARNED for this category deterministically, so a
+      // warmed category no longer depends on the LLM thinking of the question. Degrades
+      // to the static taxonomy if the lookup fails.
+      const learningTags = parsed.data.listings.flatMap((l) =>
+        [l.category, ...l.tags].filter((t): t is string => typeof t === "string" && t.length > 0),
+      );
+      let learnedChecks: Array<{ id: string; questionKo: string; buyerAskKo?: string }> = [];
+      if (learningTags.length > 0) {
+        try {
+          const { loadPromotedLearnedChecks } = await import(
+            "../services/category-check-learning.service.js"
+          );
+          learnedChecks = await loadPromotedLearnedChecks(db, learningTags);
+        } catch (err) {
+          request.log.warn({ err }, "learned-check load failed; using static taxonomy");
+        }
+      }
+
       const result = await processNegotiationAgentBuilderTurn({
         ...parsed.data,
         user_id: userId ?? undefined,
+        learned_checks: learnedChecks,
       });
+
+      // Feature ②: a question the static taxonomy does not cover is evidence the taxonomy
+      // is missing a check for this category. Record it (best-effort, never awaited into
+      // the response path) so recurring gaps can be promoted to a deterministic check.
+      const observations = result.learning_observations ?? [];
+      if (observations.length > 0) {
+        void (async () => {
+          try {
+            const { recordCategoryCheckObservation, promoteEligibleCategoryChecks } = await import(
+              "../services/category-check-learning.service.js"
+            );
+            for (const observation of observations) {
+              await recordCategoryCheckObservation(db, { ...observation, origin: "BUILDER" });
+            }
+            // Scoped to the paths just touched — a builder turn must not sweep the table.
+            await promoteEligibleCategoryChecks(
+              db,
+              observations.map((o) => o.categoryPath),
+            );
+          } catch (err) {
+            request.log.warn({ err }, "category-check learning capture failed");
+          }
+        })();
+      }
+
       return reply.send({
         user_id: userId,
         agent_id: parsed.data.agent_id,

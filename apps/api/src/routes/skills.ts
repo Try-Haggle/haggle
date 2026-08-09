@@ -1,17 +1,17 @@
+import type { Database } from "@haggle/db";
+import type { SkillManifest } from "@haggle/skill-core";
+import { isCompatibleCategory, validateManifest } from "@haggle/skill-core";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { requireAuth, requireAdmin } from "../middleware/require-auth.js";
-import { validateManifest, isCompatibleCategory } from "@haggle/skill-core";
-import type { SkillManifest } from "@haggle/skill-core";
+import { requireAdmin, requireAuth } from "../middleware/require-auth.js";
 import {
+  createSkill,
+  getExecutionsBySkillId,
   getSkillBySkillId,
   listSkills,
-  createSkill,
-  updateSkillStatus,
-  updateSkillMetrics,
   recordExecution,
-  getExecutionsBySkillId,
+  updateSkillMetrics,
+  updateSkillStatus,
 } from "../services/skill.service.js";
 
 const createSkillSchema = z.object({
@@ -50,7 +50,9 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
       const query = request.query as { hook_point?: string; product_category?: string };
 
       if (!query.hook_point) {
-        return reply.code(400).send({ error: "MISSING_HOOK_POINT", message: "hook_point query param is required" });
+        return reply
+          .code(400)
+          .send({ error: "MISSING_HOOK_POINT", message: "hook_point query param is required" });
       }
 
       const rows = await listSkills(db, { status: "ACTIVE", hookPoint: query.hook_point });
@@ -136,17 +138,14 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
   );
 
   // GET /skills/:skillId
-  app.get<{ Params: { skillId: string } }>(
-    "/skills/:skillId",
-    async (request, reply) => {
-      const { skillId } = request.params;
-      const row = await getSkillBySkillId(db, skillId);
-      if (!row) {
-        return reply.code(404).send({ error: "SKILL_NOT_FOUND" });
-      }
-      return reply.send({ skill: row });
-    },
-  );
+  app.get<{ Params: { skillId: string } }>("/skills/:skillId", async (request, reply) => {
+    const { skillId } = request.params;
+    const row = await getSkillBySkillId(db, skillId);
+    if (!row) {
+      return reply.code(404).send({ error: "SKILL_NOT_FOUND" });
+    }
+    return reply.send({ skill: row });
+  });
 
   // PATCH /skills/:skillId/activate — DRAFT -> ACTIVE
   app.patch<{ Params: { skillId: string } }>(
@@ -159,7 +158,9 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "SKILL_NOT_FOUND" });
       }
       if (existing.status !== "DRAFT") {
-        return reply.code(400).send({ error: "INVALID_TRANSITION", message: "Only DRAFT skills can be activated" });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_TRANSITION", message: "Only DRAFT skills can be activated" });
       }
       const updated = await updateSkillStatus(db, skillId, "ACTIVE");
       return reply.send({ skill: updated });
@@ -177,7 +178,9 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "SKILL_NOT_FOUND" });
       }
       if (existing.status !== "ACTIVE") {
-        return reply.code(400).send({ error: "INVALID_TRANSITION", message: "Only ACTIVE skills can be suspended" });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_TRANSITION", message: "Only ACTIVE skills can be suspended" });
       }
       const updated = await updateSkillStatus(db, skillId, "SUSPENDED");
       return reply.send({ skill: updated });
@@ -195,7 +198,10 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "SKILL_NOT_FOUND" });
       }
       if (existing.status !== "ACTIVE" && existing.status !== "SUSPENDED") {
-        return reply.code(400).send({ error: "INVALID_TRANSITION", message: "Only ACTIVE or SUSPENDED skills can be deprecated" });
+        return reply.code(400).send({
+          error: "INVALID_TRANSITION",
+          message: "Only ACTIVE or SUSPENDED skills can be deprecated",
+        });
       }
       const updated = await updateSkillStatus(db, skillId, "DEPRECATED");
       return reply.send({ skill: updated });
@@ -210,7 +216,9 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
       const { skillId } = request.params;
       const parsed = executeSkillSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: "INVALID_EXECUTION_REQUEST", issues: parsed.error.issues });
+        return reply
+          .code(400)
+          .send({ error: "INVALID_EXECUTION_REQUEST", issues: parsed.error.issues });
       }
 
       const existing = await getSkillBySkillId(db, skillId);
@@ -218,7 +226,9 @@ export function registerSkillRoutes(app: FastifyInstance, db: Database) {
         return reply.code(404).send({ error: "SKILL_NOT_FOUND" });
       }
       if (existing.status !== "ACTIVE") {
-        return reply.code(400).send({ error: "SKILL_NOT_ACTIVE", message: "Only ACTIVE skills can be executed" });
+        return reply
+          .code(400)
+          .send({ error: "SKILL_NOT_ACTIVE", message: "Only ACTIVE skills can be executed" });
       }
 
       const execution = await recordExecution(db, {

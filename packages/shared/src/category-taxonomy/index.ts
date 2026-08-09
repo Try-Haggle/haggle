@@ -1,4 +1,19 @@
 export type {
+  CategoryChoiceQuestion,
+  CategoryCriterion,
+  CriterionRequirement,
+} from "./criteria.js";
+export {
+  buildBuyerChoiceQuestions,
+  buildCategoryCriteriaScaffold,
+  buildSellerChoiceQuestions,
+  buyerChoiceOptionsForCheck,
+  criterionAnswered,
+  requiredCriteria,
+  resolveBuyerChoiceOption,
+  unresolvedSellerRequirements,
+} from "./criteria.js";
+export type {
   LearnedCheck,
   LearnedCheckObservation,
   LearnedCheckStore,
@@ -11,9 +26,21 @@ export {
   resolveChecksWithLearned,
 } from "./learning.js";
 export {
+  enrichTagsWithTaxonomy,
+  getTaxonomyVocabulary,
+  inferTaxonomyTags,
+  looksLikeAccessory,
+} from "./tag-inference.js";
+export {
   CATEGORY_TAXONOMY,
   getCategoryNode,
+  isTaxonomyCheckId,
   matchedCategoryPaths,
   resolveChecks,
 } from "./taxonomy.js";
-export type { CategoryNode, CheckEnforcement, NegotiationCheck } from "./types.js";
+export type {
+  CategoryNode,
+  CheckAnswerOption,
+  CheckEnforcement,
+  NegotiationCheck,
+} from "./types.js";

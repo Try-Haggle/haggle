@@ -5,13 +5,7 @@
  * these in a service also makes them trivial to mock in route tests.
  */
 
-import {
-  type Database,
-  adminActionLog,
-  desc,
-  eq,
-  tagPromotionRules,
-} from "@haggle/db";
+import { adminActionLog, type Database, desc, eq, tagPromotionRules } from "@haggle/db";
 
 export type PromotionRuleRow = typeof tagPromotionRules.$inferSelect;
 export type PromotionRuleInput = {
@@ -23,13 +17,8 @@ export type PromotionRuleInput = {
   enabled: boolean;
 };
 
-export async function listPromotionRules(
-  db: Database,
-): Promise<PromotionRuleRow[]> {
-  const rows = await db
-    .select()
-    .from(tagPromotionRules)
-    .orderBy(tagPromotionRules.category);
+export async function listPromotionRules(db: Database): Promise<PromotionRuleRow[]> {
+  const rows = await db.select().from(tagPromotionRules).orderBy(tagPromotionRules.category);
   return rows as PromotionRuleRow[];
 }
 
@@ -79,13 +68,8 @@ export async function upsertPromotionRule(
   return getPromotionRule(db, category);
 }
 
-export async function deletePromotionRule(
-  db: Database,
-  category: string,
-): Promise<void> {
-  await db
-    .delete(tagPromotionRules)
-    .where(eq(tagPromotionRules.category, category));
+export async function deletePromotionRule(db: Database, category: string): Promise<void> {
+  await db.delete(tagPromotionRules).where(eq(tagPromotionRules.category, category));
 }
 
 export async function getLastPromotionRun(
@@ -97,8 +81,5 @@ export async function getLastPromotionRun(
     .where(eq(adminActionLog.actionType, "promotion.run"))
     .orderBy(desc(adminActionLog.createdAt))
     .limit(1);
-  return (
-    ((rows as unknown[])[0] as typeof adminActionLog.$inferSelect | undefined) ??
-    null
-  );
+  return ((rows as unknown[])[0] as typeof adminActionLog.$inferSelect | undefined) ?? null;
 }

@@ -42,6 +42,8 @@ interface Listing {
   sellingDeadline: string | null;
   subtype: string | null;
   attributes: Record<string, unknown> | null;
+  /** Phase G Flow 2: the seller's REQUIRED category criteria (buyer-safe: id + ask). */
+  sellerRequiredCriteria: Array<{ checkId: string; ask: string }> | null;
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
@@ -350,6 +352,7 @@ export function BuyerLanding({
                   listingCondition={listing.condition}
                   listingTags={listing.tags ?? undefined}
                   listingDescription={listing.description}
+                  sellerRequiredCriteria={listing.sellerRequiredCriteria ?? undefined}
                   role="buyer"
                   onNegotiationAgentBuilderMemoryUpdate={setNegotiationAgentBuilderMemory}
                   onStrategyUpdate={(s) =>

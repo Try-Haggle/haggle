@@ -86,9 +86,9 @@ describe("promoteLearnedChecks", () => {
 
   it("groups by check across categories and sorts deterministically", () => {
     const observations = [
-      obs("vehicles", "사고 이력이 있나요?", "s1", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력이 있나요?", "s2", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력이 있나요?", "s3", { checkId: "accident_history" }),
+      obs("vehicles", "사고 이력이 있나요?", "s1", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력이 있나요?", "s2", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력이 있나요?", "s3", { checkId: "paint_respray" }),
       obs("clothing", "실측 사이즈?", "s4", { checkId: "measured_size" }),
       obs("clothing", "실측 사이즈?", "s5", { checkId: "measured_size" }),
       obs("clothing", "실측 사이즈?", "s6", { checkId: "measured_size" }),
@@ -100,8 +100,8 @@ describe("promoteLearnedChecks", () => {
 
   it("honors custom thresholds", () => {
     const observations = [
-      obs("vehicles", "사고 이력?", "s1", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력?", "s2", { checkId: "accident_history" }),
+      obs("vehicles", "사고 이력?", "s1", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력?", "s2", { checkId: "paint_respray" }),
     ];
     expect(
       promoteLearnedChecks(observations, { minOccurrences: 2, minDistinctSources: 2 }),
@@ -135,9 +135,9 @@ describe("resolveChecksWithLearned overlay", () => {
     const tags = ["electronics", "iphone-15-pro"];
     const base = resolveChecks(tags);
     const learned = promoteLearnedChecks([
-      obs("vehicles", "사고 이력?", "s1", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력?", "s2", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력?", "s3", { checkId: "accident_history" }),
+      obs("vehicles", "사고 이력?", "s1", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력?", "s2", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력?", "s3", { checkId: "paint_respray" }),
     ]);
     const merged = resolveChecksWithLearned(tags, learned, base);
     expect(merged).toEqual(base);
@@ -226,9 +226,9 @@ describe("input hygiene (verifier findings)", () => {
 
   it("normalizes a trailing slash so the learned check still surfaces via the overlay", () => {
     const observations = [
-      obs("vehicles/", "사고 이력?", "s1", { checkId: "accident_history" }),
-      obs("vehicles/", "사고 이력?", "s2", { checkId: "accident_history" }),
-      obs("vehicles/", "사고 이력?", "s3", { checkId: "accident_history" }),
+      obs("vehicles/", "사고 이력?", "s1", { checkId: "paint_respray" }),
+      obs("vehicles/", "사고 이력?", "s2", { checkId: "paint_respray" }),
+      obs("vehicles/", "사고 이력?", "s3", { checkId: "paint_respray" }),
     ];
     const promoted = promoteLearnedChecks(observations);
     expect(promoted).toHaveLength(1);
@@ -236,7 +236,7 @@ describe("input hygiene (verifier findings)", () => {
     // and it is reachable by the overlay for a vehicles tag.
     const base = resolveChecks(["vehicles"]);
     const merged = resolveChecksWithLearned(["vehicles"], promoted, base);
-    expect(merged.some((c) => c.id === "accident_history")).toBe(true);
+    expect(merged.some((c) => c.id === "paint_respray")).toBe(true);
   });
 
   it("drops unidentifiable observations (blank question, no checkId/featureKey)", () => {
@@ -250,9 +250,9 @@ describe("input hygiene (verifier findings)", () => {
 
   it("is order-independent (deterministic under shuffled input)", () => {
     const base = [
-      obs("vehicles", "사고 이력?", "s1", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력?", "s2", { checkId: "accident_history" }),
-      obs("vehicles", "사고 이력?", "s3", { checkId: "accident_history" }),
+      obs("vehicles", "사고 이력?", "s1", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력?", "s2", { checkId: "paint_respray" }),
+      obs("vehicles", "사고 이력?", "s3", { checkId: "paint_respray" }),
       obs("clothing", "실측?", "s4", { checkId: "measured_size" }),
       obs("clothing", "실측?", "s5", { checkId: "measured_size" }),
       obs("clothing", "실측?", "s6", { checkId: "measured_size" }),
@@ -290,7 +290,7 @@ describe("overlay — genuine base-collision path", () => {
     const base = resolveChecks(tags);
     const learned: LearnedCheck[] = [
       {
-        id: "accident_history",
+        id: "paint_respray",
         questionKo: "사고 이력?",
         enforcement: "hard",
         categoryPath: "vehicles",
@@ -298,7 +298,7 @@ describe("overlay — genuine base-collision path", () => {
       },
     ];
     const merged = resolveChecksWithLearned(tags, learned, base);
-    expect(merged.find((c) => c.id === "accident_history")?.enforcement).toBe("soft");
+    expect(merged.find((c) => c.id === "paint_respray")?.enforcement).toBe("soft");
   });
 });
 

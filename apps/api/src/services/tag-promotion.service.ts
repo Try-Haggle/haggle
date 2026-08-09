@@ -13,9 +13,9 @@
  */
 
 import {
-  type Database,
   adminActionLog,
   and,
+  type Database,
   eq,
   gte,
   inArray,
@@ -44,10 +44,7 @@ export interface PromotionReport {
   suggestionsMerged: number;
   tagsCandidateToEmerging: number;
   tagsEmergingToOfficial: number;
-  perCategory: Record<
-    string,
-    { promoted: number; merged: number; raised: number }
-  >;
+  perCategory: Record<string, { promoted: number; merged: number; raised: number }>;
   durationMs: number;
   errors: Array<{ target: string; error: string }>;
 }
@@ -86,9 +83,7 @@ export async function getRuleForCategory(
   const rows = await db
     .select()
     .from(tagPromotionRules)
-    .where(
-      inArray(tagPromotionRules.category, [category, DEFAULT_RULE_CATEGORY]),
-    );
+    .where(inArray(tagPromotionRules.category, [category, DEFAULT_RULE_CATEGORY]));
 
   const exact = rows.find((r) => r.category === category);
   const fallback = rows.find((r) => r.category === DEFAULT_RULE_CATEGORY);
@@ -145,10 +140,7 @@ export async function promotePendingSuggestions(
     .where(
       and(
         eq(tagSuggestions.status, "PENDING"),
-        gte(
-          tagSuggestions.occurrenceCount,
-          defaultRule.suggestionAutoPromoteCount,
-        ),
+        gte(tagSuggestions.occurrenceCount, defaultRule.suggestionAutoPromoteCount),
       ),
     );
 
@@ -188,9 +180,7 @@ type TagPhaseReport = Pick<
   "tagsCandidateToEmerging" | "tagsEmergingToOfficial" | "perCategory" | "errors"
 >;
 
-export async function promoteExistingTags(
-  db: Database,
-): Promise<TagPhaseReport> {
+export async function promoteExistingTags(db: Database): Promise<TagPhaseReport> {
   const report: TagPhaseReport = {
     tagsCandidateToEmerging: 0,
     tagsEmergingToOfficial: 0,
@@ -301,10 +291,7 @@ const EMPTY_TAG_PHASE: TagPhaseReport = {
  * Not transactional across phases — partial progress is safe because
  * filters are idempotent and row-level updates are race-guarded.
  */
-export async function runPromotionJob(
-  db: Database,
-  actorId: string,
-): Promise<PromotionReport> {
+export async function runPromotionJob(db: Database, actorId: string): Promise<PromotionReport> {
   const started = Date.now();
   const phaseErrors: PromotionReport["errors"] = [];
 
@@ -333,10 +320,7 @@ export async function runPromotionJob(
     suggestionsMerged: suggestionPhase.suggestionsMerged,
     tagsCandidateToEmerging: tagPhase.tagsCandidateToEmerging,
     tagsEmergingToOfficial: tagPhase.tagsEmergingToOfficial,
-    perCategory: mergePerCategory(
-      suggestionPhase.perCategory,
-      tagPhase.perCategory,
-    ),
+    perCategory: mergePerCategory(suggestionPhase.perCategory, tagPhase.perCategory),
     durationMs: Date.now() - started,
     errors: [...phaseErrors, ...suggestionPhase.errors, ...tagPhase.errors],
   };

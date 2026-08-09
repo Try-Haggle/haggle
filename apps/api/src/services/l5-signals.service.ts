@@ -6,10 +6,10 @@
  * Future: SwappaApiProvider, EbayApiProvider, etc.
  */
 
-import type { L5Signals } from '../negotiation/types.js';
 import type { Database } from "@haggle/db";
-import { getMedianPrice } from './hfmi.service.js';
-import { resolveHfmiFromTags, extractTagAttributes, type TagAttributes } from './hfmi-tag-resolver.js';
+import type { L5Signals } from "../negotiation/types.js";
+import { getMedianPrice } from "./hfmi.service.js";
+import { extractTagAttributes, resolveHfmiFromTags } from "./hfmi-tag-resolver.js";
 
 // ---------------------------------------------------------------------------
 // Provider Interface
@@ -74,9 +74,9 @@ export class HfmiEnrichedL5SignalsProvider implements L5SignalsProvider {
       // Strategy 2: Fallback to direct model lookup
       const hfmiModel = params.item_model
         .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/-\d+gb?$/, '')   // strip storage suffix
-        .replace(/-/g, '_');
+        .replace(/\s+/g, "-")
+        .replace(/-\d+gb?$/, "") // strip storage suffix
+        .replace(/-/g, "_");
 
       const medianResult = await getMedianPrice(this.db, hfmiModel);
       if (medianResult && base.market) {
@@ -85,7 +85,7 @@ export class HfmiEnrichedL5SignalsProvider implements L5SignalsProvider {
           avg_sold_price_30d: Math.round(medianResult.median * 100),
           source_prices: [
             ...base.market.source_prices,
-            { platform: 'hfmi', price: Math.round(medianResult.median * 100) },
+            { platform: "hfmi", price: Math.round(medianResult.median * 100) },
           ],
         };
       }
@@ -103,13 +103,13 @@ export class HfmiEnrichedL5SignalsProvider implements L5SignalsProvider {
 
 /** Swappa 30-day median prices in minor units (cents) */
 const SWAPPA_MEDIANS: Record<string, number> = {
-  'iphone-15-pro-128': 85000,
-  'iphone-15-pro-256': 92000,
-  'iphone-15-pro-512': 105000,
-  'iphone-14-pro-128': 62000,
-  'iphone-14-pro-256': 68000,
-  'iphone-13-pro-128': 45000,
-  'iphone-13-pro-256': 50000,
+  "iphone-15-pro-128": 85000,
+  "iphone-15-pro-256": 92000,
+  "iphone-15-pro-512": 105000,
+  "iphone-14-pro-128": 62000,
+  "iphone-14-pro-256": 68000,
+  "iphone-13-pro-128": 45000,
+  "iphone-13-pro-256": 50000,
 };
 
 /** Default fallback median for unknown iPhone Pro models */
@@ -120,7 +120,7 @@ const DEFAULT_IPHONE_MEDIAN = 65000;
  * Returns minor units (cents). Falls back to category default.
  */
 export function getSwappaMedian(itemModel: string): number {
-  const normalized = itemModel.toLowerCase().replace(/\s+/g, '-');
+  const normalized = itemModel.toLowerCase().replace(/\s+/g, "-");
   return SWAPPA_MEDIANS[normalized] ?? DEFAULT_IPHONE_MEDIAN;
 }
 
@@ -142,21 +142,21 @@ export class StaticL5SignalsProvider implements L5SignalsProvider {
 
     // Condition adjustment: fair = -10%, good = 0%, mint = +5%
     let conditionMultiplier = 1.0;
-    if (params.condition === 'fair') conditionMultiplier = 0.90;
-    else if (params.condition === 'mint') conditionMultiplier = 1.05;
+    if (params.condition === "fair") conditionMultiplier = 0.9;
+    else if (params.condition === "mint") conditionMultiplier = 1.05;
 
     const adjustedMedian = Math.round(median * conditionMultiplier);
 
     return {
       market: {
         avg_sold_price_30d: adjustedMedian,
-        price_trend: 'stable',
-        active_listings_count: 0,  // Not implemented in Phase 0
-        source_prices: [],          // Not implemented in Phase 0
+        price_trend: "stable",
+        active_listings_count: 0, // Not implemented in Phase 0
+        source_prices: [], // Not implemented in Phase 0
       },
       category: {
-        avg_discount_rate: 0.12,    // Electronics average 12% discount
-        avg_rounds_to_deal: 4.2,    // Average 4.2 rounds
+        avg_discount_rate: 0.12, // Electronics average 12% discount
+        avg_rounds_to_deal: 4.2, // Average 4.2 rounds
       },
     };
   }

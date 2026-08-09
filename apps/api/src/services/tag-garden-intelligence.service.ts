@@ -1,4 +1,4 @@
-import { sql, type Database } from "@haggle/db";
+import { type Database, sql } from "@haggle/db";
 
 export type TagGardenSignalAction =
   | "promote_candidate"
@@ -93,12 +93,10 @@ export async function getTagGardenIntelligenceSnapshot(
   const mergeSignals = buildMergeSignals(suggestions, tags, limit);
   const deprecateSignals = buildDeprecateSignals(staleTags, staleAfterDays, limit);
   const noiseSignals = buildNoiseSignals(suggestions, noiseAfterDays, limit);
-  const signals = [
-    ...trendSignals,
-    ...mergeSignals,
-    ...deprecateSignals,
-    ...noiseSignals,
-  ].slice(0, limit * 4);
+  const signals = [...trendSignals, ...mergeSignals, ...deprecateSignals, ...noiseSignals].slice(
+    0,
+    limit * 4,
+  );
 
   return {
     generatedAt: new Date().toISOString(),
@@ -154,7 +152,10 @@ async function listActiveTags(db: Database, limit: number): Promise<TagRow[]> {
   return rowsFromResult(result) as TagRow[];
 }
 
-async function listTagCandidateSignalCounts(db: Database, limit: number): Promise<SignalCountRow[]> {
+async function listTagCandidateSignalCounts(
+  db: Database,
+  limit: number,
+): Promise<SignalCountRow[]> {
   const result = await db.execute(sql`
     SELECT
       normalized_value,
@@ -170,7 +171,11 @@ async function listTagCandidateSignalCounts(db: Database, limit: number): Promis
   return rowsFromResult(result) as SignalCountRow[];
 }
 
-async function listStaleTags(db: Database, staleAfterDays: number, limit: number): Promise<TagRow[]> {
+async function listStaleTags(
+  db: Database,
+  staleAfterDays: number,
+  limit: number,
+): Promise<TagRow[]> {
   const result = await db.execute(sql`
     SELECT
       id,
@@ -212,7 +217,11 @@ function buildTrendSignals(
   );
 
   return suggestions
-    .filter((row) => row.occurrence_count >= trendMinOccurrences || (counts.get(row.normalized_label)?.signalCount ?? 0) >= trendMinOccurrences)
+    .filter(
+      (row) =>
+        row.occurrence_count >= trendMinOccurrences ||
+        (counts.get(row.normalized_label)?.signalCount ?? 0) >= trendMinOccurrences,
+    )
     .slice(0, limit)
     .map((row) => {
       const signal = counts.get(row.normalized_label);
@@ -280,9 +289,10 @@ function buildDeprecateSignals(
     normalizedLabel: tag.normalized_name,
     category: tag.category,
     strength: tag.use_count === 0 ? 0.78 : 0.62,
-    reason: tag.use_count === 0
-      ? "Active non-category tag has no recorded usage."
-      : `Active non-category tag has stale usage beyond ${staleAfterDays} days.`,
+    reason:
+      tag.use_count === 0
+        ? "Active non-category tag has no recorded usage."
+        : `Active non-category tag has stale usage beyond ${staleAfterDays} days.`,
     evidence: {
       tag_id: tag.id,
       status: tag.status,
@@ -317,7 +327,10 @@ function buildNoiseSignals(
     }));
 }
 
-function bestTagMatch(normalizedLabel: string, tags: TagRow[]): { tag: TagRow; score: number } | null {
+function bestTagMatch(
+  normalizedLabel: string,
+  tags: TagRow[],
+): { tag: TagRow; score: number } | null {
   let best: { tag: TagRow; score: number } | null = null;
 
   for (const tag of tags) {
@@ -360,7 +373,10 @@ function levenshtein(a: string, b: string): number {
 }
 
 function normalize(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
 }
 
 function clamp01(value: number): number {
@@ -369,7 +385,11 @@ function clamp01(value: number): number {
 
 function rowsFromResult(result: unknown): Record<string, unknown>[] {
   if (Array.isArray(result)) return result as Record<string, unknown>[];
-  if (result && typeof result === "object" && Array.isArray((result as { rows?: unknown[] }).rows)) {
+  if (
+    result &&
+    typeof result === "object" &&
+    Array.isArray((result as { rows?: unknown[] }).rows)
+  ) {
     return (result as { rows: Record<string, unknown>[] }).rows;
   }
   return [];

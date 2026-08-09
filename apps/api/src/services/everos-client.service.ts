@@ -49,7 +49,9 @@ export class EverOSClient {
     }
   }
 
-  async addPersonalMemories(input: EverOSAddPersonalMemoriesInput): Promise<Record<string, unknown>> {
+  async addPersonalMemories(
+    input: EverOSAddPersonalMemoriesInput,
+  ): Promise<Record<string, unknown>> {
     return this.request("/api/v1/memories", {
       method: "POST",
       body: {
@@ -76,7 +78,10 @@ export class EverOSClient {
     });
   }
 
-  async flushPersonalMemories(input: { userId: string; sessionId?: string }): Promise<Record<string, unknown>> {
+  async flushPersonalMemories(input: {
+    userId: string;
+    sessionId?: string;
+  }): Promise<Record<string, unknown>> {
     return this.request("/api/v1/memories/flush", {
       method: "POST",
       body: {
@@ -86,7 +91,10 @@ export class EverOSClient {
     });
   }
 
-  private async request(path: string, input: { method: "POST"; body: Record<string, unknown> }): Promise<Record<string, unknown>> {
+  private async request(
+    path: string,
+    input: { method: "POST"; body: Record<string, unknown> },
+  ): Promise<Record<string, unknown>> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -104,7 +112,9 @@ export class EverOSClient {
       const text = await response.text();
       const parsed = text ? parseJsonObject(text) : {};
       if (!response.ok) {
-        throw new Error(`EVEROS_HTTP_${response.status}: ${response.statusText || text.slice(0, 120)}`);
+        throw new Error(
+          `EVEROS_HTTP_${response.status}: ${response.statusText || text.slice(0, 120)}`,
+        );
       }
       return parsed;
     } finally {
@@ -136,7 +146,7 @@ function parsePositiveInt(value: string | undefined): number | null {
 function parseJsonObject(text: string): Record<string, unknown> {
   const parsed = JSON.parse(text) as unknown;
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
+    ? (parsed as Record<string, unknown>)
     : {};
 }
 

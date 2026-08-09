@@ -12,17 +12,12 @@
  * See docs/mvp/2026-04-08_hfmi-spec.md §6.
  */
 
-import {
-  type Database,
-  hfmiPriceObservations,
-  hfmiModelCoefficients,
-  sql,
-} from "@haggle/db";
+import { type Database, hfmiModelCoefficients, hfmiPriceObservations, sql } from "@haggle/db";
 import type { HfmiModelId } from "./hfmi.service.js";
 
 // ─── Quality gates ────────────────────────────────────────────────────
 
-const MIN_R_SQUARED = 0.50;
+const MIN_R_SQUARED = 0.5;
 const MIN_SAMPLE_SIZE = 30;
 const FIT_WINDOW_DAYS = 90;
 const FIT_VERSION = "v0.1.0";
@@ -64,10 +59,7 @@ interface FeatureRow {
  * Fit OLS hedonic regression for `model`. Returns FitRejected if quality
  * gates fail; inserts a new row and returns FitResult otherwise.
  */
-export async function fitModel(
-  db: Database,
-  model: HfmiModelId,
-): Promise<FitOutcome> {
+export async function fitModel(db: Database, model: HfmiModelId): Promise<FitOutcome> {
   const cutoff = new Date(Date.now() - FIT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   // ── Load observations ──────────────────────────────────────────────
@@ -108,8 +100,14 @@ export async function fitModel(
   // Feature columns: intercept, s256, s512, s1024, battery, gradeB, gradeC, locked
   const K = 8;
   const X: number[][] = rows.map((r) => [
-    1, r.storage256, r.storage512, r.storage1024,
-    r.battery, r.cosmeticB, r.cosmeticC, r.carrierLocked,
+    1,
+    r.storage256,
+    r.storage512,
+    r.storage1024,
+    r.battery,
+    r.cosmeticB,
+    r.cosmeticC,
+    r.carrierLocked,
   ]);
   const y: number[] = rows.map((r) => r.logPrice);
 
@@ -128,8 +126,7 @@ export async function fitModel(
 
   // ── Residual std (log scale) ───────────────────────────────────────
   const residuals = y.map((yi, i) => yi - yHat[i]);
-  const residualVariance =
-    residuals.reduce((acc, r) => acc + r ** 2, 0) / Math.max(n - K, 1);
+  const residualVariance = residuals.reduce((acc, r) => acc + r ** 2, 0) / Math.max(n - K, 1);
   const residualStd = Math.sqrt(residualVariance);
 
   // ── Build coefficient record ───────────────────────────────────────

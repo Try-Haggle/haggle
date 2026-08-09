@@ -34,6 +34,12 @@ export type ServerRound = {
   tactic_used: string | null;
   concession_rate: string | number | null;
   created_at: string;
+  pause_answers?: Array<{
+    checkId: string;
+    ask: string;
+    stance: string;
+    label?: string;
+  }> | null;
 };
 
 export type SessionResponse = { session: ServerSession; rounds: ServerRound[] };
@@ -153,6 +159,7 @@ export function transformNegotiationPlayback(payload: SessionResponse): Playback
       decision,
       offerPrice: offerMajor,
       message: round.message?.trim() || fallbackMessage(round, offerMajor),
+      ...(round.pause_answers?.length ? { pauseAnswers: round.pause_answers } : {}),
       factors: {
         utilityScore: round.utility?.u_total,
         utilityBreakdown: round.utility

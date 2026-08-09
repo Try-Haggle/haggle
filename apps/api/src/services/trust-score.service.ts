@@ -1,18 +1,9 @@
-import {
-  eq,
-  and,
-  trustScores,
-  type Database,
-} from "@haggle/db";
+import { and, type Database, eq, trustScores } from "@haggle/db";
 
 type ActorRole = "buyer" | "seller" | "combined";
 type TrustStatus = "NEW" | "SCORING" | "MATURE";
 
-export async function getTrustScore(
-  db: Database,
-  actorId: string,
-  actorRole?: ActorRole,
-) {
+export async function getTrustScore(db: Database, actorId: string, actorRole?: ActorRole) {
   const conditions = [eq(trustScores.actorId, actorId)];
   if (actorRole) {
     conditions.push(eq(trustScores.actorRole, actorRole));
@@ -78,10 +69,7 @@ export async function upsertTrustScore(
   return row;
 }
 
-export async function getTrustSnapshot(
-  db: Database,
-  actorId: string,
-) {
+export async function getTrustSnapshot(db: Database, actorId: string) {
   const rows = await db
     .select({ rawInputs: trustScores.rawInputs })
     .from(trustScores)

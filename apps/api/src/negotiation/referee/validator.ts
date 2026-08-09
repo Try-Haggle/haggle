@@ -1,13 +1,14 @@
+import type { ValidationMode } from "../config.js";
+import { PHASE_ALLOWED_ACTIONS } from "../prompts/protocol-rules.js";
 import type {
-  EngineDecision,
   CoreMemory,
-  RefereeCoaching,
+  EngineDecision,
   NegotiationPhase,
+  RefereeCoaching,
   ValidationResult,
   ValidationViolation,
-} from '../types.js';
-import type { ValidationMode } from '../config.js';
-import { PHASE_ALLOWED_ACTIONS } from '../prompts/protocol-rules.js';
+} from "../types.js";
+import { clampToEnvelope, computePriceEnvelope, violatesEnvelope } from "./price-envelope.js";
 
 const STAGNATION_WINDOW = 4;
 const STAGNATION_THRESHOLD = 0.02;
@@ -24,7 +25,7 @@ export function validateMove(
   coaching: RefereeCoaching,
   previousMoves: EngineDecision[],
   currentPhase: NegotiationPhase,
-  mode: ValidationMode = 'full',
+  mode: ValidationMode = "full",
 ): ValidationResult {
   const violations: ValidationViolation[] = [];
 
@@ -32,19 +33,42 @@ export function validateMove(
   if (move.price != null) {
     const { role } = memory.session;
     const floor = memory.boundaries.my_floor;
-    if (role === 'buyer' && move.price > floor) {
+    if (role === "buyer" && move.price > floor) {
       violations.push({
-        rule: 'V1',
-        severity: 'HARD',
+        rule: "V1",
+        severity: "HARD",
         guidance: `Buyer price $${move.price} exceeds floor $${floor}. Must stay at or below floor.`,
         suggested_fix: { price: floor },
       });
-    } else if (role === 'seller' && move.price < floor) {
+    } else if (role === "seller" && move.price < floor) {
       violations.push({
-        rule: 'V1',
-        severity: 'HARD',
+        rule: "V1",
+        severity: "HARD",
         guidance: `Seller price $${move.price} below floor $${floor}. Must stay at or above floor.`,
         suggested_fix: { price: floor },
+      });
+    }
+  }
+
+  // ─── V8 (HARD): Offer outside the price envelope ───
+  // V1 only guards the walk-away floor, so nothing stopped a seller quoting ABOVE the
+  // asking price they published, or either side moving backwards from their own previous
+  // offer. The coach now clamps its recommendation, but a price can also come from a
+  // skill computing straight off `boundaries` or from the LLM choosing inside the box —
+  // this catches all three. Only COUNTER is bounded: ACCEPT/CONFIRM take the price on the
+  // table by definition, and the pipeline pins those separately.
+  if (move.price != null && move.action === "COUNTER") {
+    const envelope = computePriceEnvelope(memory);
+    if (violatesEnvelope(move.price, envelope)) {
+      const fixed = clampToEnvelope(move.price, envelope);
+      violations.push({
+        rule: "V8",
+        severity: "HARD",
+        guidance:
+          `${memory.session.role} price $${move.price} is outside the allowed range ` +
+          `$${envelope.min}–$${envelope.max} (own limits, own previous offer, and the ` +
+          `offer on the table). Use $${fixed}.`,
+        suggested_fix: { price: fixed },
       });
     }
   }
@@ -53,26 +77,26 @@ export function validateMove(
   const allowedActions = PHASE_ALLOWED_ACTIONS[currentPhase];
   if (allowedActions && !allowedActions.includes(move.action)) {
     violations.push({
-      rule: 'V2',
-      severity: 'HARD',
-      guidance: `Action '${move.action}' not allowed in ${currentPhase}. Allowed: ${allowedActions.join(', ')}.`,
+      rule: "V2",
+      severity: "HARD",
+      guidance: `Action '${move.action}' not allowed in ${currentPhase}. Allowed: ${allowedActions.join(", ")}.`,
       suggested_fix: { action: allowedActions[0] },
     });
   }
 
   // ─── V3 (HARD): COUNTER when no rounds remaining ───
-  if (move.action === 'COUNTER' && memory.session.rounds_remaining === 0) {
+  if (move.action === "COUNTER" && memory.session.rounds_remaining === 0) {
     violations.push({
-      rule: 'V3',
-      severity: 'HARD',
-      guidance: 'Cannot COUNTER with 0 rounds remaining. Must choose a terminal action.',
-      suggested_fix: { action: 'REJECT' },
+      rule: "V3",
+      severity: "HARD",
+      guidance: "Cannot COUNTER with 0 rounds remaining. Must choose a terminal action.",
+      suggested_fix: { action: "REJECT" },
     });
   }
 
   // ─── Lite mode: skip V4-V7 SOFT rules ───
-  if (mode === 'lite') {
-    const hardViolations = violations.filter((v) => v.severity === 'HARD');
+  if (mode === "lite") {
+    const hardViolations = violations.filter((v) => v.severity === "HARD");
     return {
       passed: violations.length === 0,
       hardPassed: hardViolations.length === 0,
@@ -89,11 +113,16 @@ export function validateMove(
       if (prev.price != null && prevPrev.price != null) {
         const prevDirection = prev.price - prevPrev.price;
         const currDirection = move.price - prev.price;
-        if (prevDirection !== 0 && currDirection !== 0 && Math.sign(prevDirection) !== Math.sign(currDirection)) {
+        if (
+          prevDirection !== 0 &&
+          currDirection !== 0 &&
+          Math.sign(prevDirection) !== Math.sign(currDirection)
+        ) {
           violations.push({
-            rule: 'V4',
-            severity: 'SOFT',
-            guidance: 'Concession direction reversed. This may signal inconsistency to the opponent.',
+            rule: "V4",
+            severity: "SOFT",
+            guidance:
+              "Concession direction reversed. This may signal inconsistency to the opponent.",
           });
         }
       }
@@ -102,17 +131,15 @@ export function validateMove(
 
   // ─── V5 (SOFT): Stagnation — last N rounds concession < threshold ───
   if (previousMoves.length >= STAGNATION_WINDOW) {
-    const recentWithPrice = previousMoves
-      .filter((m) => m.price != null)
-      .slice(-STAGNATION_WINDOW);
+    const recentWithPrice = previousMoves.filter((m) => m.price != null).slice(-STAGNATION_WINDOW);
     if (recentWithPrice.length >= STAGNATION_WINDOW) {
       const first = recentWithPrice[0]!.price!;
       const last = recentWithPrice[recentWithPrice.length - 1]!.price!;
       const totalConcession = first !== 0 ? Math.abs(last - first) / Math.abs(first) : 0;
       if (totalConcession < STAGNATION_THRESHOLD) {
         violations.push({
-          rule: 'V5',
-          severity: 'SOFT',
+          rule: "V5",
+          severity: "SOFT",
           guidance: `Stagnation: last ${STAGNATION_WINDOW} rounds show < ${STAGNATION_THRESHOLD * 100}% concession. Consider a larger move.`,
         });
       }
@@ -131,7 +158,7 @@ export function validateMove(
         const prev = recentMoves[i - 1]!.price!;
         const curr = recentMoves[i]!.price!;
         // Buyer concedes by raising price; seller concedes by lowering price
-        const isConcession = role === 'buyer' ? curr > prev : curr < prev;
+        const isConcession = role === "buyer" ? curr > prev : curr < prev;
         if (!isConcession) {
           allConceding = false;
           break;
@@ -139,8 +166,8 @@ export function validateMove(
       }
       if (allConceding) {
         violations.push({
-          rule: 'V6',
-          severity: 'SOFT',
+          rule: "V6",
+          severity: "SOFT",
           guidance: `One-sided concession detected for ${ONE_SIDED_WINDOW}+ rounds. Opponent may be exploiting.`,
         });
       }
@@ -155,15 +182,15 @@ export function validateMove(
       const recommendedStep = Math.abs(coaching.recommended_price - lastMove.price);
       if (recommendedStep > 0 && actualStep > recommendedStep * LARGE_CONCESSION_MULTIPLIER) {
         violations.push({
-          rule: 'V7',
-          severity: 'SOFT',
+          rule: "V7",
+          severity: "SOFT",
           guidance: `Concession too large: $${actualStep.toFixed(2)} vs recommended ~$${recommendedStep.toFixed(2)}. May leave value on the table.`,
         });
       }
     }
   }
 
-  const hardViolations = violations.filter((v) => v.severity === 'HARD');
+  const hardViolations = violations.filter((v) => v.severity === "HARD");
 
   return {
     passed: violations.length === 0,

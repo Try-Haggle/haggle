@@ -13,6 +13,7 @@ import { persist } from "../stages/persist.js";
 import { respond } from "../stages/respond.js";
 import { understand, understandFromStructured } from "../stages/understand.js";
 import { validateStage } from "../stages/validate.js";
+import { isDealClosingAction } from "../types.js";
 import type {
   PersistInput,
   PersistOutput,
@@ -213,13 +214,20 @@ export async function executePipeline(
     }
   }
 
-  // ─── ACCEPT price/message reconciliation ───
-  // ACCEPT means agreeing to the exact offer on the table. The LLM may set a
+  // ─── Deal-closing price/message reconciliation ───
+  // Closing means agreeing to the exact offer on the table. The LLM may set a
   // divergent `price` or author a free-text `message` stating a different
   // number. Pin the accepted price to the incoming offer and drop the LLM
   // message so the deterministic renderer echoes that same price — keeping the
   // chat text, the persisted price, and the charged amount in agreement.
-  if (validateOutput.final_decision.action === "ACCEPT") {
+  //
+  // CONFIRM closes a deal exactly like ACCEPT (both map to a DB `ACCEPT` and an
+  // `ACCEPTED` session), and the CLOSING-phase skills emit CONFIRM, not ACCEPT —
+  // so an ACCEPT-only check skipped every real closing round. That is how a round
+  // shipped "Confirming the agreement at $215.00" while settling at $217.75: the
+  // engine's `boundaries.current_offer` was the seller's own prior counter, and
+  // nothing reconciled it against the offer actually being accepted.
+  if (isDealClosingAction(validateOutput.final_decision.action)) {
     const acceptedPrice = offerPrice ?? understandOutput.price_offer;
     if (acceptedPrice !== undefined) {
       validateOutput.final_decision.price = acceptedPrice;

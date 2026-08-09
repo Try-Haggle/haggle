@@ -1,7 +1,7 @@
+import type { Database } from "@haggle/db";
+import { and, eq, userWallets } from "@haggle/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { Database } from "@haggle/db";
-import { eq, and, userWallets } from "@haggle/db";
 import { requireAuth } from "../middleware/require-auth.js";
 
 const createWalletSchema = z.object({
@@ -69,10 +69,7 @@ export function registerWalletRoutes(app: FastifyInstance, db: Database) {
   app.get("/wallets", { preHandler: [requireAuth] }, async (request, reply) => {
     const userId = request.user!.id;
 
-    const wallets = await db
-      .select()
-      .from(userWallets)
-      .where(eq(userWallets.userId, userId));
+    const wallets = await db.select().from(userWallets).where(eq(userWallets.userId, userId));
 
     return reply.send({ wallets });
   });
@@ -87,12 +84,7 @@ export function registerWalletRoutes(app: FastifyInstance, db: Database) {
 
       const [deleted] = await db
         .delete(userWallets)
-        .where(
-          and(
-            eq(userWallets.id, walletId),
-            eq(userWallets.userId, userId),
-          ),
-        )
+        .where(and(eq(userWallets.id, walletId), eq(userWallets.userId, userId)))
         .returning();
 
       if (!deleted) {

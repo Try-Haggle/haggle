@@ -1,5 +1,5 @@
-import type { FastifyInstance } from "fastify";
 import type { Database } from "@haggle/db";
+import type { FastifyInstance } from "fastify";
 import { getSimilarListingsForPublicId } from "../services/similar-listings.service.js";
 
 export function registerSimilarListingsRoutes(app: FastifyInstance, db: Database) {

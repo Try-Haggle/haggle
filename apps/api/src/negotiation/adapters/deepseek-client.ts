@@ -21,6 +21,12 @@ export interface DeepSeekCallOptions {
   correlationId?: string;
   /** Total deadline for fetch, response body parsing, and retries. */
   timeoutMs?: number;
+  /**
+   * Override the model for THIS call only (defaults to DEEPSEEK_MODEL). Lets a
+   * latency-sensitive path (e.g. the agent builder) A/B a faster model without
+   * changing the global negotiation model.
+   */
+  model?: string;
 }
 
 export interface DeepSeekResponse {
@@ -116,7 +122,7 @@ export async function callLLM(
   options: DeepSeekCallOptions = {},
 ): Promise<DeepSeekResponse> {
   const { reasoning = false, maxTokens, correlationId } = options;
-  const model = getModel();
+  const model = options.model ?? getModel();
   const apiKey = getApiKey();
   const timeoutMs = options.timeoutMs ?? (reasoning ? REASONING_TIMEOUT_MS : GENERAL_TIMEOUT_MS);
 
