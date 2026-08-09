@@ -144,7 +144,7 @@ describe("commerce security boundaries", () => {
     expect(res.json().error).toBe("AUTH_REQUIRED");
   });
 
-  it("rejects conditional release confirmation from an order non-seller", async () => {
+  it("rejects conditional release confirmation from the order seller", async () => {
     mockGetSettlementReleaseById.mockResolvedValueOnce({
       id: "sr_not_seller",
       order_id: "order_not_seller",
@@ -152,8 +152,8 @@ describe("commerce security boundaries", () => {
     } as never);
     mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
       id: "order_not_seller",
-      buyerId: "test-user-001",
-      sellerId: "different-seller",
+      buyerId: "different-buyer",
+      sellerId: "test-user-001",
       status: "DELIVERED",
     } as never);
     app = await buildApp();
@@ -170,7 +170,7 @@ describe("commerce security boundaries", () => {
     expect(mockGetPaymentIntentById).not.toHaveBeenCalled();
   });
 
-  it("rejects a signed conditional release request from an order non-seller", async () => {
+  it("rejects a signed conditional release request from the order seller", async () => {
     mockGetSettlementReleaseById.mockResolvedValueOnce({
       id: "sr_request_not_seller",
       order_id: "order_request_not_seller",
@@ -178,8 +178,8 @@ describe("commerce security boundaries", () => {
     } as never);
     mockGetCommerceOrderByOrderId.mockResolvedValueOnce({
       id: "order_request_not_seller",
-      buyerId: "test-user-001",
-      sellerId: "different-seller",
+      buyerId: "different-buyer",
+      sellerId: "test-user-001",
       status: "DELIVERED",
     } as never);
     app = await buildApp();

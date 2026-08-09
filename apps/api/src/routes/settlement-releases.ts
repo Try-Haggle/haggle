@@ -367,7 +367,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
     return order?.status === "IN_DISPUTE" || Boolean(activeDispute);
   }
 
-  async function requireReleaseSeller(
+  async function requireReleaseBuyer(
     request: FastifyRequest,
     reply: FastifyReply,
     orderId: string,
@@ -378,10 +378,10 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       reply.code(404).send({ error: "ORDER_NOT_FOUND" });
       return false;
     }
-    if (request.user?.id !== order.sellerId) {
+    if (request.user?.id !== order.buyerId) {
       reply.code(403).send({
         error: "FORBIDDEN",
-        message: "Only the order seller may release this settlement",
+        message: "Only the order buyer may release this settlement",
       });
       return false;
     }
@@ -585,7 +585,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
       }
-      if (!(await requireReleaseSeller(request, reply, release.order_id))) return;
+      if (!(await requireReleaseBuyer(request, reply, release.order_id))) return;
       if (await isOrderInDispute(release.order_id)) {
         return reply.code(409).send({
           error: "ORDER_IN_DISPUTE",
@@ -768,7 +768,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
       }
-      if (!(await requireReleaseSeller(request, reply, release.order_id))) return;
+      if (!(await requireReleaseBuyer(request, reply, release.order_id))) return;
       if (await isOrderInDispute(release.order_id)) {
         return reply.code(409).send({
           error: "ORDER_IN_DISPUTE",
@@ -871,7 +871,7 @@ export function registerSettlementReleaseRoutes(app: FastifyInstance, db: Databa
       if (!release) {
         return reply.code(404).send({ error: "SETTLEMENT_RELEASE_NOT_FOUND" });
       }
-      if (!(await requireReleaseSeller(request, reply, release.order_id))) return;
+      if (!(await requireReleaseBuyer(request, reply, release.order_id))) return;
 
       const parsed = conditionalReleaseConfirmationSchema.safeParse(request.body ?? {});
       if (!parsed.success) {

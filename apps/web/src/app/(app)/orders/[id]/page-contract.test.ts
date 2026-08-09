@@ -23,4 +23,14 @@ describe("order detail wallet provider contract", () => {
     expect(pageSource).toContain("<OrderDetailContent />");
     expect(pageSource).toContain("</WalletProvider>");
   });
+
+  it("lets the buyer execute the final release without replacing the seller payout wallet", () => {
+    expect(source).toMatch(
+      /!activeDispute\s*&&\s*isBuyer\s*&&\s*settlement\.phase === "FULLY_RELEASED"/,
+    );
+    expect(source).not.toContain("{ seller_wallet_address: walletAddress }");
+    expect(source).not.toContain(
+      "getAddress(request.contract_call.params.sellerWallet) !== getAddress(walletAddress)",
+    );
+  });
 });

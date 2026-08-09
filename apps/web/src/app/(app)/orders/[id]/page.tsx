@@ -942,31 +942,28 @@ function SettlementSection({
             />
           )}
 
-        {!activeDispute &&
-          isSeller &&
-          settlement.phase === "FULLY_RELEASED" &&
-          !releaseComplete && (
-            <>
-              {!isWalletConnected ? (
-                <div className="flex justify-start">
-                  <ConnectButton />
-                </div>
-              ) : (
-                <ActionButton
-                  label={releasePending ? "Confirm release transaction" : "Release hUSDC to seller"}
-                  action={releasePending ? "confirm-contract-release" : "release-contract"}
-                  onClick={onAction}
-                  loading={loading}
-                  variant="primary"
-                />
-              )}
-              {walletAddress && (
-                <p className="text-xs font-mono text-ink-muted">
-                  Connected {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
-                </p>
-              )}
-            </>
-          )}
+        {!activeDispute && isBuyer && settlement.phase === "FULLY_RELEASED" && !releaseComplete && (
+          <>
+            {!isWalletConnected ? (
+              <div className="flex justify-start">
+                <ConnectButton />
+              </div>
+            ) : (
+              <ActionButton
+                label={releasePending ? "Confirm release transaction" : "Release hUSDC to seller"}
+                action={releasePending ? "confirm-contract-release" : "release-contract"}
+                onClick={onAction}
+                loading={loading}
+                variant="primary"
+              />
+            )}
+            {walletAddress && (
+              <p className="text-xs font-mono text-ink-muted">
+                Connected {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
+              </p>
+            )}
+          </>
+        )}
 
         {releaseComplete && (
           <div className="rounded-lg bg-success-soft border border-success/20 px-3 py-2 text-sm text-success">
@@ -1722,7 +1719,7 @@ function OrderDetailContent() {
       }
 
       if (!walletAddress || !isWalletConnected) {
-        throw new Error("Connect the seller payout wallet before releasing settlement.");
+        throw new Error("Connect a wallet to submit the buyer-approved settlement release.");
       }
       if (walletChainId !== HAGGLE_WALLET_CHAIN_ID) {
         await switchChainAsync({ chainId: HAGGLE_WALLET_CHAIN_ID });
@@ -1744,7 +1741,7 @@ function OrderDetailContent() {
       addLog("Settlement", "Requesting a signed release instruction...", "info");
       const request = await api.post<ConditionalReleaseRequest>(
         `/settlement-releases/${release.id}/conditional-release-request`,
-        { seller_wallet_address: walletAddress },
+        {},
       );
       const verifyingContract = request.typed_data.domain.verifyingContract;
       if (
@@ -1756,10 +1753,6 @@ function OrderDetailContent() {
       ) {
         throw new Error("The release instruction targets an unexpected contract or network.");
       }
-      if (getAddress(request.contract_call.params.sellerWallet) !== getAddress(walletAddress)) {
-        throw new Error("Connect the seller wallet recorded for this settlement.");
-      }
-
       addLog("Settlement", "Submitting the hUSDC release transaction...", "info");
       const txHash = await writeContractAsync({
         address: HAGGLE_CONDITIONAL_SETTLEMENT_ADDRESS,

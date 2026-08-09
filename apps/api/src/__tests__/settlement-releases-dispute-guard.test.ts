@@ -790,8 +790,8 @@ describe("settlement release dispute guard", () => {
     await app.close();
   });
 
-  it("blocks a seller contract release request while the order is in dispute", async () => {
-    const app = makeApp({ id: "seller_1", role: "authenticated" });
+  it("blocks a buyer contract release request while the order is in dispute", async () => {
+    const app = makeApp({ id: "buyer_1", role: "authenticated" });
     const res = await app.inject({
       method: "POST",
       url: "/settlement-releases/release_1/conditional-release-request",
